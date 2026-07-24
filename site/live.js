@@ -323,15 +323,51 @@
     }
   }
 
-  function rerender() {
+  function narrPollFingerprint(n) {
+    if (!n) return '';
+    const top = (n.tokens || []).slice().sort((a, b) => (b.mcap || 0) - (a.mcap || 0))[0];
+    return [
+      n.title,
+      n.blurb,
+      n.image ?? n.imgSeed,
+      n.combinedViews,
+      n.viewsVelocity,
+      n.authorVelocity,
+      n.gain24h,
+      n.ageMin,
+      n.displayEligible,
+      n.gateReason,
+      (n.posts || []).length,
+      top?.ticker ?? '',
+      top?.mcap ?? 0,
+    ].join('|');
+  }
+
+  function stopRefreshTimer() {
+    if (!refreshTimer) return;
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+
+  function startRefreshTimer() {
+    stopRefreshTimer();
+    refreshTimer = setInterval(() => {
+      refresh().catch(e => console.warn('[live] refresh:', e.message));
+    }, CFG.REFRESH_MS);
+  }
+
+  function rerender(opts = {}) {
     try {
       linkNarrativesToTokens();
-      if (typeof renderTokens     === 'function') renderTokens();
-      if (typeof renderNew        === 'function') renderNew();
+      if (typeof renderTokens === 'function') renderTokens();
+      if (typeof renderNew === 'function') renderNew();
       const l3 = window.InsidorConfig?.isLayer3?.();
-      if (typeof renderTrending   === 'function' && (!l3 || window._narrativesReady)) renderTrending();
-      if (typeof renderNarratives === 'function' && (!l3 || window._narrativesReady)) renderNarratives();
-      if (typeof renderWatch      === 'function') renderWatch();
+      if (typeof renderTrending === 'function' && (!l3 || window._narrativesReady)) renderTrending();
+      /* Layer 3: narrative table updates via Realtime/poll diff only — not token refresh. */
+      if (!l3 && typeof renderNarratives === 'function') {
+        renderNarratives({ reason: opts.reason || 'DexScreener refresh' });
+      }
+      if (typeof renderWatch === 'function') renderWatch();
     } catch (e) { console.warn('[live] rerender:', e.message); }
 
     document.querySelectorAll('.simtag,[data-sim]').forEach(el => {
@@ -386,6 +422,8 @@
   let fallbackPollTimer = null;
   let viralPollTimer = null;
   let pipelineStatePollTimer = null;
+  let refreshTimer = null;
+  let narrativesRealtimeStarted = false;
   const PIPELINE_STATE_POLL_MS = 60_000;
   const knownEligibleIds = new Set();
   const knownPipelineIds = new Set();
@@ -854,34 +892,41 @@
   }
 
   function rerenderNarrativesOnly(opts = {}) {
+    const reason = opts.reason || 'unspecified';
     try {
       linkNarrativesToTokens();
-      if (opts.patchId && typeof window.patchNarrativeRow === 'function') {
-        const list = typeof window.getNarrativeSourceList === 'function'
-          ? window.getNarrativeSourceList()
-          : (typeof NARRATIVES !== 'undefined' ? NARRATIVES : []);
-        const n = list.find(x => x.id === opts.patchId);
-        if (n && window.patchNarrativeRow(n)) {
-          if (typeof renderTrending === 'function') renderTrending();
-          return;
+      if (typeof window.syncNarrativesTable === 'function') {
+        const syncOpts = {
+          reason,
+          quiet: opts.quiet,
+          forceReorder: opts.forceReorder,
+        };
+        if (opts.patchId) syncOpts.ids = [opts.patchId];
+        const result = window.syncNarrativesTable(syncOpts);
+        if (result?.changed && typeof renderTrending === 'function') renderTrending();
+        if (result?.changed && typeof window.rebuildStreamFromNarratives === 'function') {
+          window.rebuildStreamFromNarratives();
         }
+        if (result?.changed && typeof renderStream === 'function') renderStream();
+        return !!result?.changed;
       }
-      if (typeof renderNarratives === 'function') renderNarratives();
-      if (typeof renderTrending === 'function') renderTrending();
-      if (typeof window.rebuildStreamFromNarratives === 'function') window.rebuildStreamFromNarratives();
-      if (typeof renderStream === 'function') renderStream();
+      if (typeof renderNarratives === 'function') {
+        renderNarratives({ reason, forceReorder: opts.forceReorder });
+      }
+      return false;
     } catch (e) {
       console.warn('[live] rerenderNarrativesOnly:', e.message);
+      return false;
     }
   }
 
-  function removeNarrative(id) {
+  function removeNarrative(id, reason = 'removed') {
     if (!id) return;
     const idx = NARRATIVES.findIndex(n => n.id === id);
     if (idx >= 0) NARRATIVES.splice(idx, 1);
     knownEligibleIds.delete(id);
     setNarrativesLive(NARRATIVES.length);
-    rerenderNarrativesOnly();
+    rerenderNarrativesOnly({ reason: `realtime delete: ${id}` });
   }
 
   function mergeScalarFields(n, row) {
@@ -1440,7 +1485,7 @@
       if (cur) {
         mergeScalarFields(cur, row);
         normalizeNarrativeMetrics(cur);
-        rerenderNarrativesOnly({ patchId: row.id });
+        rerenderNarrativesOnly({ patchId: row.id, reason: 'pipeline realtime update' });
       }
     } else if (existingCur) {
       removeNarrative(row.id);
@@ -1542,15 +1587,15 @@
       const mapped = mapNarrativeRow(full);
       mergeNarrativeMapped(mapped, { arrivalAlert: isArrival });
       enrichNarrativeTokens([mapped]).then(hits => {
-        if (hits) rerenderNarrativesOnly();
+        if (hits) rerenderNarrativesOnly({ reason: 'realtime insert enrich' });
       }).catch(e => console.warn('[live] enrich on realtime insert:', e.message));
       if (isArrival) triggerNarrativeArrival(row.id);
-      else if (isNew) renderNarratives();
+      else rerenderNarrativesOnly({ reason: 'realtime insert' });
     } else {
       mergeScalarFields(existing, row);
       normalizeNarrativeMetrics(existing);
       if (isArrival) triggerNarrativeArrival(row.id);
-      else rerenderNarrativesOnly({ patchId: row.id });
+      else rerenderNarrativesOnly({ patchId: row.id, reason: 'realtime update' });
     }
 
     setNarrativesLive(NARRATIVES.length);
@@ -1563,12 +1608,32 @@
   }
 
   function startFallbackPoll() {
-    if (fallbackPollTimer) return;
+    stopFallbackPoll();
+    if (realtimeConnected) return;
     fallbackPollTimer = setInterval(() => {
       if (realtimeConnected) return;
       syncNarrativesFallback().catch(e => console.warn('[live] fallback poll:', e.message));
     }, NARR_REALTIME_FALLBACK_MS);
-    console.log(`[live] Realtime fallback poll every ${NARR_REALTIME_FALLBACK_MS / 1000}s`);
+    console.log(`[live] Realtime fallback poll every ${NARR_REALTIME_FALLBACK_MS / 1000}s (disconnected only)`);
+  }
+
+  function stopViralPoll() {
+    if (!viralPollTimer) return;
+    clearInterval(viralPollTimer);
+    viralPollTimer = null;
+  }
+
+  function startViralPoll() {
+    stopViralPoll();
+    viralPollTimer = setInterval(() => {
+      loadViralStream().catch(e => console.warn('[live] viral poll:', e.message));
+    }, VIRAL_STREAM_POLL_MS);
+  }
+
+  function stopPipelineStatePoll() {
+    if (!pipelineStatePollTimer) return;
+    clearInterval(pipelineStatePollTimer);
+    pipelineStatePollTimer = null;
   }
 
   function updateRealtimeStatus(status) {
@@ -1629,22 +1694,17 @@
   }
 
   function startPipelineStatePoll() {
-    if (pipelineStatePollTimer) return;
+    stopPipelineStatePoll();
     refreshPipelineState().catch(() => {});
     pipelineStatePollTimer = setInterval(() => {
       refreshPipelineState().catch(() => {});
     }, PIPELINE_STATE_POLL_MS);
   }
 
-  function startViralPoll() {
-    if (viralPollTimer) return;
-    viralPollTimer = setInterval(() => {
-      loadViralStream().catch(e => console.warn('[live] viral poll:', e.message));
-    }, VIRAL_STREAM_POLL_MS);
-  }
-
   function startNarrativesRealtime() {
     if (!window.InsidorConfig?.isLayer3?.()) return;
+    if (narrativesRealtimeStarted) return;
+    narrativesRealtimeStarted = true;
     if (!window.supabase?.createClient) {
       console.warn('[live] @supabase/supabase-js missing — using poll fallback only');
       startFallbackPoll();
@@ -1739,41 +1799,71 @@
 
   async function syncNarrativesFallback() {
     if (typeof NARRATIVES === 'undefined') return false;
+    if (realtimeConnected) {
+      console.log('[live] poll skipped — Realtime connected');
+      return false;
+    }
+
     const rows = await fetchNarrativeRows();
     if (!rows.length) return false;
 
     const incomingIds = new Set(rows.map(r => r.id));
+    let removed = 0;
     for (let i = NARRATIVES.length - 1; i >= 0; i -= 1) {
-      if (!incomingIds.has(NARRATIVES[i].id)) NARRATIVES.splice(i, 1);
+      if (!incomingIds.has(NARRATIVES[i].id)) {
+        NARRATIVES.splice(i, 1);
+        removed += 1;
+      }
     }
 
     let added = 0;
+    let changed = 0;
+    const changedIds = [];
+
     for (const row of rows) {
       const mapped = mapNarrativeRow(row);
       const existing = NARRATIVES.find(n => n.id === mapped.id);
       if (!existing) {
         mergeNarrativeMapped(mapped);
         added += 1;
-      } else {
-        mergeScalarFields(existing, row);
-        if (row.narrative_posts) {
-          existing.posts = (row.narrative_posts || [])
-            .slice()
-            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-            .map(mapPostRow);
-        }
-        if (row.narrative_tickers) existing.tokens = row.narrative_tickers.map(mapTickerRow);
-        normalizeNarrativeMetrics(existing);
+        changedIds.push(mapped.id);
+        continue;
+      }
+
+      const before = narrPollFingerprint(existing);
+      mergeScalarFields(existing, row);
+      if (row.narrative_posts) {
+        existing.posts = (row.narrative_posts || [])
+          .slice()
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map(mapPostRow);
+      }
+      if (row.narrative_tickers) existing.tokens = row.narrative_tickers.map(mapTickerRow);
+      normalizeNarrativeMetrics(existing);
+      const after = narrPollFingerprint(existing);
+      if (before !== after) {
+        changed += 1;
+        changedIds.push(existing.id);
       }
     }
 
     initNarrPostTimes(NARRATIVES);
     NARRATIVES.forEach(normalizeNarrativeMetrics);
     setNarrativesLive(NARRATIVES.length);
-    await loadPipelineNarratives();
-    await loadViralStream();
-    rerenderNarrativesOnly();
-    if (added) console.log(`[live] fallback sync — ${added} new eligible narratives`);
+
+    if (!added && !removed && !changed) {
+      console.log('[live] poll: no change');
+      return true;
+    }
+
+    if (typeof window.syncNarrativesTable === 'function') {
+      window.syncNarrativesTable({
+        reason: `poll diff: +${added} -${removed} ~${changed}`,
+      });
+    } else {
+      rerenderNarrativesOnly({ reason: `poll diff: +${added} -${removed} ~${changed}` });
+    }
+
     return true;
   }
 
@@ -1808,14 +1898,14 @@
       mapped.forEach(n => knownEligibleIds.add(n.id));
       console.log(`[live] NARRATIVES = ${NARRATIVES.length} from Supabase`);
       setNarrativesLive(NARRATIVES.length);
-      rerenderNarrativesOnly();
+      rerenderNarrativesOnly({ reason: 'initial load' });
       markPageLiveReady();
       if (!opts.skipRealtime) startNarrativesRealtime();
 
       const runEnrich = async () => {
         const lookupHits = await enrichNarrativeTokens(mapped);
         console.log(`[live] token enrich — ${lookupHits} on-chain`);
-        rerenderNarrativesOnly();
+        if (lookupHits) rerenderNarrativesOnly({ reason: 'token enrich' });
       };
       const runPipeline = () => loadPipelineNarratives().catch(e => {
         console.warn('[live] loadPipelineNarratives:', e.message);
@@ -1914,6 +2004,7 @@
     enrichNarrativeTokens, materializeAllNarrativeTokens, fetchNarrativeById,
     upsertTokenFromLookup, searchAndMergeTokens, fetchExternalTokens, resolveTokenPair,
     setNarrativesFallback, setNarrativesLive, startNarrativesRealtime, syncNarrativesFallback,
+    rerenderNarrativesOnly,
     flashNarrativeRows, pulseLiveIndicator, MIN_INGEST_VIEWS, CFG,
     get mints() { return [...discovered]; },
     get solPrice() { return solPrice; },
@@ -1941,13 +2032,15 @@
       }
       linkNarrativesToTokens();
       materializeAllNarrativeTokens();
-      if (typeof renderNarratives === 'function') renderNarratives();
+      if (!l3 && typeof renderNarratives === 'function') {
+        renderNarratives({ reason: 'boot' });
+      }
       if (typeof renderTrending === 'function') renderTrending();
       if (typeof window.rebuildStreamFromNarratives === 'function') window.rebuildStreamFromNarratives();
       if (typeof renderStream === 'function') renderStream();
       expandDiscover();
       if (typeof syncNarrSoundToggle === 'function') syncNarrSoundToggle();
-      setInterval(refresh, CFG.REFRESH_MS);
+      startRefreshTimer();
     } catch (e) {
       console.error('[live] boot failed:', e.message || e);
       window._narrativesReady = true;

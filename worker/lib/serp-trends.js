@@ -10,34 +10,51 @@ const CONFIG = {
   SERP_URL: 'https://serpapi.com/search',
 };
 
-const termCache = new Map();
-let callsToday = 0;
-let utcDate = new Date().toISOString().slice(0, 10);
-
 function utcDateStr(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
-function resetDayIfNeeded() {
+async function loadSerpUsage(sb) {
   const today = utcDateStr();
-  if (today !== utcDate) {
-    utcDate = today;
-    callsToday = 0;
+  const { data, error } = await sb
+    .from('worker_usage')
+    .select('reads_today')
+    .eq('source', 'serpapi')
+    .eq('utc_date', today)
+    .maybeSingle();
+  if (error && !/worker_usage|schema cache/i.test(error.message)) {
+    throw new Error('loadSerpUsage: ' + error.message);
   }
+  return Number(data?.reads_today) || 0;
 }
 
-function canSpendTrendCall() {
-  resetDayIfNeeded();
+async function recordSerpUsage(sb) {
+  const today = utcDateStr();
+  const current = await loadSerpUsage(sb);
+  const row = {
+    source: 'serpapi',
+    utc_date: today,
+    reads_today: current + 1,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await sb.from('worker_usage').upsert(row, { onConflict: 'source,utc_date' });
+  if (error && !/worker_usage|schema cache/i.test(error.message)) {
+    throw new Error('recordSerpUsage: ' + error.message);
+  }
+  return current + 1;
+}
+
+async function canSpendTrendCall(sb) {
+  const callsToday = await loadSerpUsage(sb);
   return callsToday < CONFIG.MAX_TRENDS_CALLS_PER_DAY;
 }
 
-function recordTrendCall() {
-  resetDayIfNeeded();
-  callsToday += 1;
+async function recordTrendCall(sb) {
+  return recordSerpUsage(sb);
 }
 
-function getTrendBudgetState() {
-  resetDayIfNeeded();
+async function getTrendBudgetState(sb) {
+  const callsToday = await loadSerpUsage(sb);
   return {
     callsToday,
     maxCalls: CONFIG.MAX_TRENDS_CALLS_PER_DAY,
@@ -45,22 +62,40 @@ function getTrendBudgetState() {
   };
 }
 
-function getCachedTrend(term) {
+async function getCachedTrend(sb, term) {
   const key = (term || '').trim().toLowerCase();
   if (!key) return null;
-  const hit = termCache.get(key);
-  if (!hit) return null;
-  if (Date.now() - hit.fetchedAt > CONFIG.CACHE_TTL_MS) {
-    termCache.delete(key);
+
+  const { data, error } = await sb
+    .from('worker_trend_cache')
+    .select('result, fetched_at')
+    .eq('term', key)
+    .maybeSingle();
+
+  if (error && !/worker_trend_cache|schema cache/i.test(error.message)) {
+    console.warn('[serp-trends] cache read failed:', error.message);
     return null;
   }
-  return hit.result;
+  if (!data?.result) return null;
+  if (Date.now() - Date.parse(data.fetched_at) > CONFIG.CACHE_TTL_MS) {
+    await sb.from('worker_trend_cache').delete().eq('term', key).then(() => {});
+    return null;
+  }
+  return data.result;
 }
 
-function setCachedTrend(term, result) {
+async function setCachedTrend(sb, term, result) {
   const key = (term || '').trim().toLowerCase();
   if (!key || !result) return;
-  termCache.set(key, { result, fetchedAt: Date.now() });
+  const row = {
+    term: key,
+    result,
+    fetched_at: new Date().toISOString(),
+  };
+  const { error } = await sb.from('worker_trend_cache').upsert(row, { onConflict: 'term' });
+  if (error && !/worker_trend_cache|schema cache/i.test(error.message)) {
+    console.warn('[serp-trends] cache write failed:', error.message);
+  }
 }
 
 function parseTimeseries(body) {

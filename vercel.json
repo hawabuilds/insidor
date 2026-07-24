@@ -3,7 +3,14 @@
   "outputDirectory": "site",
   "functions": {
     "api/**/*.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    { "path": "/api/cron/ingest", "schedule": "*/2 * * * *" },
+    { "path": "/api/cron/snapshot", "schedule": "*/2 * * * *" },
+    { "path": "/api/cron/score", "schedule": "*/3 * * * *" },
+    { "path": "/api/cron/cluster", "schedule": "*/3 * * * *" },
+    { "path": "/api/cron/trends", "schedule": "*/45 * * * *" }
+  ]
 }

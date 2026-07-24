@@ -3,6 +3,8 @@
 const { embedText } = require('./embeddings');
 const { extractSubjectEntity } = require('./subject-entity');
 const { scanPostSignals } = require('./ticker-proposals');
+const { maxNarrativeAgeForPlatforms } = require('./cluster-engine');
+const { newestPostAgeMinutes } = require('./posted-at');
 
 function fin(v, fallback = 0) {
   const n = Number(v);
@@ -171,6 +173,40 @@ async function upsertTickers(sb, narrativeId, tickers) {
   if (error) throw new Error('narrative_tickers: ' + error.message);
 }
 
+async function closeAgedOutNarratives(sb, narratives, opts = {}) {
+  const closedIds = [];
+  const nowIso = new Date().toISOString();
+
+  for (const narr of narratives || []) {
+    const members = narr.memberPosts || [];
+    if (!members.length) continue;
+
+    const platforms = [...new Set(members.map(p => p.platform || 'x'))];
+    const maxAge = maxNarrativeAgeForPlatforms(platforms, opts);
+    const newestAge = newestPostAgeMinutes(members);
+    if (newestAge == null || newestAge <= maxAge) continue;
+
+    const { error } = await sb
+      .from('narratives')
+      .update({
+        status: 'closed',
+        display_eligible: false,
+        gate_reason: 'too_old',
+        updated_at: nowIso,
+      })
+      .eq('id', narr.id)
+      .eq('status', 'open');
+
+    if (error) {
+      console.warn(`[cluster] close aged ${narr.id}:`, error.message);
+      continue;
+    }
+    closedIds.push(narr.id);
+  }
+
+  return closedIds;
+}
+
 async function closeEmptyNarratives(sb) {
   const { data: open, error } = await sb
     .from('narratives')
@@ -200,5 +236,6 @@ module.exports = {
   assignPosts,
   upsertTickers,
   closeEmptyNarratives,
+  closeAgedOutNarratives,
   ensureEmbedding,
 };

@@ -4,6 +4,7 @@ const FLAT_VIEW_THRESHOLD = Number(process.env.TT_FLAT_VIEW_PCT) || 0.8;
 
 let velocityUnreliable = null;
 let lastDiagnostic = null;
+let hydrated = false;
 
 function distinctViewValues(post) {
   const snaps = (post?.post_snapshots || [])
@@ -46,10 +47,29 @@ function analyzePosts(posts) {
   };
 }
 
-function setDiagnosticResult(result) {
+async function hydrateTtDiagnostic(sb) {
+  if (hydrated || !sb) return;
+  try {
+    const { loadTtVelocityUnreliable } = require('./cron-state');
+    velocityUnreliable = await loadTtVelocityUnreliable(sb);
+  } catch (e) {
+    console.warn('[tt-view-diagnostic] hydrate failed:', e.message);
+  }
+  hydrated = true;
+}
+
+async function setDiagnosticResult(result, sb) {
   lastDiagnostic = result;
   if (result?.checked >= 3) {
     velocityUnreliable = !!result.unreliable;
+    if (sb) {
+      try {
+        const { saveTtVelocityUnreliable } = require('./cron-state');
+        await saveTtVelocityUnreliable(sb, velocityUnreliable);
+      } catch (e) {
+        console.warn('[tt-view-diagnostic] persist failed:', e.message);
+      }
+    }
   }
   return result;
 }
@@ -82,6 +102,7 @@ function logDiagnostic(result, tag = 'snapshotter') {
 module.exports = {
   analyzePosts,
   setDiagnosticResult,
+  hydrateTtDiagnostic,
   isTikTokVelocityUnreliable,
   getLastDiagnostic,
   logDiagnostic,

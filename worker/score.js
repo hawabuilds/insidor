@@ -107,6 +107,8 @@ async function persistScore(sb, postId, viewsVel, engVel, result) {
 
 async function runCycle(sb, opts = {}) {
   const force = !!opts.force;
+  const timeGuard = opts.timeGuard;
+  let scoredIndex = Number(opts.progress?.scoredIndex) || 0;
   const usage = await loadUsage(sb);
 
   if (isDormant(usage)) {
@@ -159,7 +161,17 @@ async function runCycle(sb, opts = {}) {
   const gateStats = emptyGateStats();
   const funnel = { x: { pass: 0, fail: 0 }, tt: { pass: 0, fail: 0 } };
 
-  for (const { post, viewsVelocity: vv, engagementVelocity: ev } of top) {
+  for (let i = scoredIndex; i < top.length; i += 1) {
+    if (timeGuard?.shouldStop()) {
+      return {
+        scored,
+        failures,
+        gateStats,
+        timedOut: true,
+        progress: { scoredIndex: i },
+      };
+    }
+    const { post, viewsVelocity: vv, engagementVelocity: ev } = top[i];
     const platform = post.platform === 'tt' ? 'tt' : 'x';
     const memeMin = memeMinForPost(platform);
 
@@ -233,7 +245,7 @@ async function runCycle(sb, opts = {}) {
       .log();
   }
 
-  return { scored, failures, gateStats };
+  return { scored, failures, gateStats, timedOut: false, progress: null };
 }
 
 async function main() {

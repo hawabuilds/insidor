@@ -1,1 +1,4 @@
-/worker
+# Cron routes import worker/*.js — do not exclude /worker
+worker/.pipeline.lock
+.env.local
+.cursor/

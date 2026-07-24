@@ -57,6 +57,8 @@ const CONFIG = {
   CONFIRMATION_BUDGET_PCT: Number(process.env.TT_CONFIRMATION_BUDGET_PCT) || 0.6,
 };
 
+const { loadTtHashtagCursor, saveTtHashtagCursor } = require('./lib/cron-state');
+
 let hashtagCursor = 0;
 const DISABLED_LOG_MS = 60 * 60 * 1000;
 let lastDisabledLogAt = 0;
@@ -163,6 +165,7 @@ async function processItems(sb, items, label, stats) {
 async function runCycle(sb, opts = {}) {
   const once = !!opts.once;
   loadEnvLocal();
+  hashtagCursor = await loadTtHashtagCursor(sb);
 
   if (!isTikTokEnabled()) {
     maybeLogTikTokDisabled();
@@ -291,6 +294,7 @@ async function runCycle(sb, opts = {}) {
     });
   }
 
+  await saveTtHashtagCursor(sb, hashtagCursor);
   return { ...stats, usage };
 }
 

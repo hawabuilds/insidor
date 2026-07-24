@@ -273,7 +273,13 @@ async function snapshotBatch(sb, posts, state) {
   return { written, failures, reads, apiCalls, ttReads };
 }
 
-async function runCycle(sb) {
+async function runCycle(sb, opts = {}) {
+  const timeGuard = opts.timeGuard;
+  let xOffset = Number(opts.progress?.xBatchOffset) || 0;
+  let ttOffset = Number(opts.progress?.ttBatchOffset) || 0;
+
+  await require('./lib/tt-view-diagnostic').hydrateTtDiagnostic(sb);
+
   let state = await waitIfSpendBlocked(sb);
   if (isSpendBlocked(state)) {
     return { dormant: true };
@@ -299,7 +305,17 @@ async function runCycle(sb) {
   let apiCalls = 0;
   let ttReads = 0;
 
-  for (let i = 0; i < xDue.length; i += CONFIG.BATCH_SIZE) {
+  for (let i = xOffset; i < xDue.length; i += CONFIG.BATCH_SIZE) {
+    if (timeGuard?.shouldStop()) {
+      return {
+        snapshotsWritten,
+        reads: tweetsBilled,
+        apiCalls,
+        pruned,
+        timedOut: true,
+        progress: { xBatchOffset: i, ttBatchOffset: ttOffset },
+      };
+    }
     state = stateRef.current;
     if (tweetsBilled >= tweetBudget || isSpendBlocked(state)) break;
     if (!canAffordPage(state)) break;
@@ -313,12 +329,23 @@ async function runCycle(sb) {
     tweetsBilled += r;
     apiCalls += c || 0;
   }
+  xOffset = xDue.length;
 
   let ttUsage = await loadTikTokUsage(sb);
   const ttEnabled = isTikTokEnabled();
   let apifyUsage = ttEnabled ? await loadApifyUsage(sb) : null;
 
-  for (let i = 0; i < ttDue.length; i += CONFIG.BATCH_SIZE) {
+  for (let i = ttOffset; i < ttDue.length; i += CONFIG.BATCH_SIZE) {
+    if (timeGuard?.shouldStop()) {
+      return {
+        snapshotsWritten,
+        reads: tweetsBilled,
+        apiCalls,
+        pruned,
+        timedOut: true,
+        progress: { xBatchOffset: xOffset, ttBatchOffset: i },
+      };
+    }
     if (!ttEnabled) break;
     if (apifyUsage && isApifyDormant(apifyUsage)) {
       logDormantAlarm(apifyUsage);
@@ -354,10 +381,10 @@ async function runCycle(sb) {
   });
 
   const ttDiag = analyzePosts(all.filter(p => p.platform === 'tt'));
-  setDiagnosticResult(ttDiag);
+  await setDiagnosticResult(ttDiag, sb);
   logDiagnostic(ttDiag, 'snapshotter');
 
-  return { snapshotsWritten, reads: tweetsBilled, apiCalls, pruned };
+  return { snapshotsWritten, reads: tweetsBilled, apiCalls, pruned, timedOut: false, progress: null };
 }
 
 async function main() {

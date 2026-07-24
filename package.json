@@ -22,6 +22,7 @@
     "schema:ingest-floors": "node worker/apply-schema-ingest-floors.js",
     "schema:tweet-billing": "node worker/apply-schema-tweet-billing.js",
     "schema:pipeline-reliability": "node worker/apply-schema-pipeline-reliability.js",
+    "schema:cron": "node worker/apply-schema-cron.js",
     "backfill:tweet-billing": "node worker/backfill-tweet-billing.js",
     "schema:trends": "node worker/apply-schema-trends.js",
     "schema:posted-at": "node worker/apply-schema-posted-at.js",
@@ -30,7 +31,8 @@
     "token-lookup": "node worker/token-lookup.js",
     "trends": "node worker/trends.js",
     "trends:once": "node worker/trends.js --once",
-    "pipeline": "node worker/supervisor.js",
+    "pipeline": "node worker/index.js",
+    "pipeline:supervisor": "node worker/supervisor.js",
     "pipeline:worker": "node worker/index.js"
   },
   "dependencies": {

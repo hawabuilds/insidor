@@ -19,8 +19,8 @@ const UNDERUTILISED_WARN_MS = Number(process.env.INGEST_UNDERUTILISED_MS) || 2 *
 const FLOOR_MIN_DECAY_MS = 60 * 60 * 1000;
 const FLOOR_MIN_CAP_PCT = 0.25;
 const HEALTH_ALARM_REPEAT_MS = 60 * 60 * 1000;
-let lastHealthAlarmAt = 0;
-/** Holds per-lane floors when DB columns are not migrated yet. */
+const { loadLastHealthAlarmAt, saveLastHealthAlarmAt } = require('./cron-state');
+/** Holds per-lane floors when DB columns are not migrated yet (same-process fallback only). */
 let runtimeLaneFloors = null;
 /** In-memory underutilisation clock when ingest_underutilised_since column is absent. */
 let underutilisedSinceMs = null;
@@ -207,10 +207,26 @@ async function checkIngestHealthAlarm(sb, state) {
   const spendPct = (state.reads_today || 0) / BUDGET.DAILY_TWEET_BUDGET;
   const now = Date.now();
   const hasLaneColumns = Number.isFinite(state.floor_catch_all);
+  let lastHealthAlarmAt = 0;
+  try {
+    lastHealthAlarmAt = await loadLastHealthAlarmAt(sb);
+  } catch (_) {
+    lastHealthAlarmAt = 0;
+  }
+
+  async function markHealthAlarm() {
+    if (lastHealthAlarmAt && now - lastHealthAlarmAt < HEALTH_ALARM_REPEAT_MS) return;
+    lastHealthAlarmAt = now;
+    try {
+      await saveLastHealthAlarmAt(sb, now);
+    } catch (e) {
+      console.warn('[budget] save health alarm failed:', e.message);
+    }
+  }
 
   function logUnderutilisedAlarm(sinceMs) {
     if (lastHealthAlarmAt && now - lastHealthAlarmAt < HEALTH_ALARM_REPEAT_MS) return;
-    lastHealthAlarmAt = now;
+    markHealthAlarm();
     const floors = getLaneFloors(state);
     const hours = sinceMs ? Math.round((now - sinceMs) / 3600000 * 10) / 10 : 0;
     console.error(

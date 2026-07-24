@@ -15,7 +15,7 @@ const {
   newNarrativeId,
   applyDisplayGate,
 } = require('./lib/cluster-engine');
-const { upsertNarrative, assignPosts, upsertTickers, closeEmptyNarratives } = require('./lib/cluster-persist');
+const { upsertNarrative, assignPosts, upsertTickers, closeEmptyNarratives, closeAgedOutNarratives } = require('./lib/cluster-persist');
 const { enrichNarrativeTickers } = require('./lib/enrich-tickers');
 const { formatViewsVelocityDist } = require('./lib/dist-stats');
 const { missingViewsStats } = require('./lib/velocity');
@@ -114,21 +114,55 @@ function groupPostsByNarrative(posts) {
   return map;
 }
 
-async function runCycle(sb) {
+async function runCycle(sb, opts = {}) {
+  const timeGuard = opts.timeGuard;
+  let assignIndex = Number(opts.progress?.assignIndex) || 0;
+  let finalizeIndex = Number(opts.progress?.finalizeIndex) || 0;
+  const phase = opts.progress?.phase || 'assign';
+
+  await require('./lib/tt-view-diagnostic').hydrateTtDiagnostic(sb);
+
   const sinceIso = new Date(Date.now() - CONFIG.WINDOW_HOURS * 3600000).toISOString();
   const scoredPosts = (await loadScoredPosts(sb, sinceIso)).map(enrichPost);
   let openNarratives = await loadOpenNarratives(sb);
+
+  const closedAgedIds = await closeAgedOutNarratives(sb, openNarratives, {
+    maxNarrativeAgeMin: CONFIG.MAX_NARRATIVE_AGE_MIN,
+    maxNarrativeAgeMinTt: CONFIG.MAX_NARRATIVE_AGE_MIN_TT,
+  });
+  if (closedAgedIds.length) {
+    console.log(
+      `[cluster] closed aged-out: ${closedAgedIds.length} narratives ` +
+      `(status=closed, gate=too_old — newest post older than max narrative age)`,
+    );
+  }
+  const closedAgedSet = new Set(closedAgedIds);
+  openNarratives = openNarratives.filter(n => !closedAgedSet.has(n.id));
+
   let titleRegensLeft = CONFIG.ANTHROPIC_TITLES_PER_CYCLE;
 
   const unassigned = scoredPosts.filter(p => !p.narrative_id);
   let merges = 0;
   let created = 0;
+  const createdIds = new Set();
   const mergeLog = [];
   const membersAddedByNarr = new Map();
+  const activeIds = new Set();
 
   const sorted = unassigned.slice().sort((a, b) => (b.memeScore || 0) - (a.memeScore || 0));
 
-  for (const post of sorted) {
+  if (phase !== 'finalize') {
+    for (let i = assignIndex; i < sorted.length; i += 1) {
+      if (timeGuard?.shouldStop()) {
+        return {
+          merges,
+          created,
+          active: activeIds.size,
+          timedOut: true,
+          progress: { phase: 'assign', assignIndex: i, finalizeIndex: 0 },
+        };
+      }
+      const post = sorted[i];
     const hit = matchPostToNarrative(
       post,
       openNarratives,
@@ -168,7 +202,9 @@ async function runCycle(sb) {
       post.cluster_match = 'new';
       openNarratives.push(narr);
       created += 1;
+      createdIds.add(id);
       mergeLog.push(`NEW narrative ${id}: ${post.handle}`);
+    }
     }
   }
 
@@ -186,11 +222,11 @@ async function runCycle(sb) {
     }
   }
 
-  const activeIds = new Set();
   const sizeLines = [];
   const gateCounts = {
-    eligible: 0, below_views: 0, low_meme: 0, no_velocity: 0, too_old: 0, no_replication: 0,
+    eligible: 0, below_views: 0, low_meme: 0, no_velocity: 0, no_replication: 0,
   };
+  let freshEvalCount = 0;
   let boughtReachCount = 0;
   let crossPlatformCount = 0;
   const narrativeViewsVels = [];
@@ -201,12 +237,21 @@ async function runCycle(sb) {
   };
   let xSearchBudget = CONFIG.X_REPLICATION_SEARCHES_PER_CYCLE;
 
-  for (const narr of openNarratives) {
+  for (let ni = finalizeIndex; ni < openNarratives.length; ni += 1) {
+    if (timeGuard?.shouldStop()) {
+      return {
+        merges,
+        created,
+        active: activeIds.size,
+        timedOut: true,
+        progress: { phase: 'finalize', assignIndex: sorted.length, finalizeIndex: ni },
+      };
+    }
+    const narr = openNarratives[ni];
     const members = narr.memberPosts || assignedByNarr.get(narr.id) || [];
     if (!members.length) continue;
 
     const platKey = [...new Set(members.map(p => p.platform || 'x'))].includes('tt') ? 'tt' : 'x';
-    narrFunnel[platKey].in += 1;
 
     const membersAdded = membersAddedByNarr.get(narr.id) || 0;
     const wantsRegen = shouldRegenNarrativeCopy(members, {
@@ -252,6 +297,14 @@ async function runCycle(sb) {
       skipVelocityForTt: isTikTokVelocityUnreliable(),
     });
 
+    if (finalized.gate_reason === 'too_old') {
+      finalized.status = 'closed';
+      finalized.display_eligible = false;
+      await upsertNarrative(sb, finalized);
+      closedAgedIds.push(finalized.id);
+      continue;
+    }
+
     await upsertNarrative(sb, finalized);
     await assignPosts(sb, finalized.id, finalized.memberPosts);
     await upsertTickers(sb, finalized.id, finalized.tickers);
@@ -262,28 +315,35 @@ async function runCycle(sb) {
     }
 
     activeIds.add(finalized.id);
-    const reason = finalized.gate_reason || 'below_views';
-    gateCounts[reason] = (gateCounts[reason] || 0) + 1;
-    narrFunnel[platKey].gates[reason] = (narrFunnel[platKey].gates[reason] || 0) + 1;
-    if (finalized.display_eligible) narrFunnel[platKey].eligible += 1;
+
+    const freshEval = createdIds.has(narr.id) || membersAdded > 0;
+    if (freshEval) {
+      freshEvalCount += 1;
+      const reason = finalized.gate_reason || 'below_views';
+      gateCounts[reason] = (gateCounts[reason] || 0) + 1;
+      narrFunnel[platKey].gates[reason] = (narrFunnel[platKey].gates[reason] || 0) + 1;
+      if (finalized.display_eligible) narrFunnel[platKey].eligible += 1;
+      narrFunnel[platKey].in += 1;
+      sizeLines.push(
+        `${finalized.id}="${finalized.title}" posts=${members.length} views=${finalized.combined_views} ` +
+        `authors=${finalized.distinct_authors} av=${Number(finalized.author_velocity).toFixed(1)}/h ` +
+        `meme=${(finalized.meme_score ?? 0).toFixed(2)}/${(finalized.meme_min ?? CONFIG.MEME_MIN_X).toFixed(2)} ` +
+        `vv=${Math.round(finalized.views_velocity)}/min proposals=${finalized.ticker_proposals}` +
+        `${finalized.ct_pickup ? ' ct' : ''} [${finalized.gate_reason}]` +
+        `${finalized.cross_platform ? ' cross_platform' : ''}`,
+      );
+    }
+
     if (finalized.bought_reach) boughtReachCount += 1;
     if (finalized.cross_platform) crossPlatformCount += 1;
     if (finalized.views_velocity > 0) narrativeViewsVels.push(finalized.views_velocity);
     if (finalized.author_velocity > 0) narrativeAuthorVels.push(finalized.author_velocity);
-    sizeLines.push(
-      `${finalized.id}="${finalized.title}" posts=${members.length} views=${finalized.combined_views} ` +
-      `authors=${finalized.distinct_authors} av=${Number(finalized.author_velocity).toFixed(1)}/h ` +
-      `meme=${(finalized.meme_score ?? 0).toFixed(2)}/${(finalized.meme_min ?? CONFIG.MEME_MIN_X).toFixed(2)} ` +
-      `vv=${Math.round(finalized.views_velocity)}/min proposals=${finalized.ticker_proposals}` +
-      `${finalized.ct_pickup ? ' ct' : ''} [${finalized.gate_reason}]` +
-      `${finalized.cross_platform ? ' cross_platform' : ''}`,
-    );
   }
 
   for (const [plat, f] of Object.entries(narrFunnel)) {
     if (!f.in) continue;
     const gateStr = Object.entries(f.gates).map(([g, c]) => `${c} ${g}`).join(', ');
-    console.log(`[cluster] funnel ${plat}: ${f.in} in → ${f.eligible} eligible (${gateStr || 'none'})`);
+    console.log(`[cluster] funnel ${plat} (fresh eval): ${f.in} in → ${f.eligible} eligible (${gateStr || 'none'})`);
   }
 
   const closed = await closeEmptyNarratives(sb);
@@ -299,15 +359,15 @@ async function runCycle(sb) {
   console.log(
     `[cluster] cycle — window ${CONFIG.WINDOW_HOURS}h | scored ${scoredPosts.length} | ` +
     `unassigned ${unassigned.length} | merges ${merges} | new ${created} | ` +
-    `active ${activeIds.size} (${gateCounts.eligible} display, ${boughtReachCount} bought_reach, ` +
-    `${crossPlatformCount} cross_platform) | closed ${closed}`,
+    `active ${activeIds.size} (${gateCounts.eligible} display fresh, ${boughtReachCount} bought_reach, ` +
+    `${crossPlatformCount} cross_platform) | closed empty ${closed} | closed aged ${closedAgedIds.length}`,
   );
   console.log(
-    `[cluster] gate: ${gateCounts.eligible} eligible · ${gateCounts.below_views} below_views · ` +
-    `${gateCounts.low_meme} low_meme · ${gateCounts.no_velocity} no_velocity · ` +
-    `${gateCounts.no_replication || 0} no_replication · ${gateCounts.too_old} too_old`,
+    `[cluster] gate (fresh eval n=${freshEvalCount}): ${gateCounts.eligible} eligible · ` +
+    `${gateCounts.below_views} below_views · ${gateCounts.low_meme} low_meme · ` +
+    `${gateCounts.no_velocity} no_velocity · ${gateCounts.no_replication || 0} no_replication`,
   );
-  console.log(`[cluster] sizes: ${sizeLines.join(' · ') || '(none)'}`);
+  console.log(`[cluster] sizes (fresh eval): ${sizeLines.join(' · ') || '(none)'}`);
   console.log(
     `[cluster] narrative views-velocity dist: ${formatViewsVelocityDist(narrativeViewsVels)}`,
   );
@@ -332,7 +392,15 @@ async function runCycle(sb) {
     console.warn('[cluster] anthropic budget log failed:', e.message);
   }
 
-  return { merges, created, active: activeIds.size };
+  return {
+    merges,
+    created,
+    active: activeIds.size,
+    closedAged: closedAgedIds.length,
+    freshEvalCount,
+    timedOut: false,
+    progress: null,
+  };
 }
 
 async function main() {

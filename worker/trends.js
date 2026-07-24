@@ -56,12 +56,18 @@ async function loadTrendCandidates(sb) {
   return data || [];
 }
 
-async function refreshVelocityMetrics(sb) {
+async function refreshVelocityMetrics(sb, opts = {}) {
+  const timeGuard = opts.timeGuard;
+  let startIndex = Number(opts.progress?.velocityIndex) || 0;
   const rows = await loadOpenNarratives(sb);
   const nowIso = new Date().toISOString();
   let updated = 0;
 
-  for (const row of rows) {
+  for (let ri = startIndex; ri < rows.length; ri += 1) {
+    if (timeGuard?.shouldStop()) {
+      return { updated, open: rows.length, timedOut: true, progress: { velocityIndex: ri, termIndex: 0 } };
+    }
+    const row = rows[ri];
     const posts = (row.narrative_posts || []).map(enrichPost);
     if (!posts.length) continue;
 
@@ -96,7 +102,7 @@ async function refreshVelocityMetrics(sb) {
     updated += 1;
   }
 
-  return { updated, open: rows.length };
+  return { updated, open: rows.length, timedOut: false, progress: null };
 }
 
 async function writeTrendFailure(sb, id, term, reason) {
@@ -128,15 +134,19 @@ async function writeTrendSuccess(sb, id, term, result) {
   if (error) throw new Error(error.message);
 }
 
-async function enrichGoogleTrends(sb) {
+async function enrichGoogleTrends(sb, opts = {}) {
+  const timeGuard = opts.timeGuard;
+  let termStart = Number(opts.progress?.termIndex) || 0;
   const apiKey = process.env.SERPAPI_KEY;
   if (!apiKey) {
     console.warn('[trends] SERPAPI_KEY missing — skipping Google Trends enrichment');
-    return { enriched: 0, failed: 0, cached: 0, apiCalls: 0, skipped: true };
+    return { enriched: 0, failed: 0, cached: 0, apiCalls: 0, skipped: true, timedOut: false, progress: null };
   }
 
   const rows = await loadTrendCandidates(sb);
-  if (!rows.length) return { enriched: 0, failed: 0, cached: 0, apiCalls: 0, candidates: 0 };
+  if (!rows.length) {
+    return { enriched: 0, failed: 0, cached: 0, apiCalls: 0, candidates: 0, timedOut: false, progress: null };
+  }
 
   const byTerm = new Map();
   for (const row of rows) {
@@ -156,14 +166,27 @@ async function enrichGoogleTrends(sb) {
   let failed = 0;
   let cached = 0;
   let apiCalls = 0;
-  const budget = getTrendBudgetState();
+  const budget = await getTrendBudgetState(sb);
 
-  for (const [term, narrs] of termEntries) {
-    let result = getCachedTrend(term);
+  for (let ti = termStart; ti < termEntries.length; ti += 1) {
+    if (timeGuard?.shouldStop()) {
+      return {
+        enriched,
+        failed,
+        cached,
+        apiCalls,
+        candidates: rows.length,
+        terms: termEntries.length,
+        timedOut: true,
+        progress: { velocityIndex: rows.length, termIndex: ti },
+      };
+    }
+    const [term, narrs] = termEntries[ti];
+    let result = await getCachedTrend(sb, term);
 
     if (result) {
       cached += 1;
-    } else if (!canSpendTrendCall()) {
+    } else if (!(await canSpendTrendCall(sb))) {
       console.log(
         `[trends] daily SerpAPI cap (${budget.maxCalls}) — skip "${term}" ` +
         `(${narrs.length} narratives, views≤${Number(narrs[0]?.combined_views) || 0})`,
@@ -172,8 +195,8 @@ async function enrichGoogleTrends(sb) {
     } else {
       try {
         result = await fetchGoogleTrends(term, apiKey);
-        setCachedTrend(term, result);
-        recordTrendCall();
+        await setCachedTrend(sb, term, result);
+        await recordTrendCall(sb);
         apiCalls += 1;
         console.log(
           `[trends] SerpAPI "${term}" → peak ${result.peak} ${result.direction} ` +
@@ -199,19 +222,33 @@ async function enrichGoogleTrends(sb) {
     }
   }
 
-  const after = getTrendBudgetState();
+  const after = await getTrendBudgetState(sb);
   console.log(
     `[trends] Google — candidates ${rows.length}, terms ${termEntries.length}, ` +
     `enriched ${enriched}, cached ${cached}, api ${apiCalls}, failed ${failed}, ` +
     `budget ${after.callsToday}/${after.maxCalls}`,
   );
 
-  return { enriched, failed, cached, apiCalls, candidates: rows.length, terms: termEntries.length };
+  return {
+    enriched,
+    failed,
+    cached,
+    apiCalls,
+    candidates: rows.length,
+    terms: termEntries.length,
+    timedOut: false,
+    progress: null,
+  };
 }
 
-async function runCycle(sb) {
-  const velocity = await refreshVelocityMetrics(sb);
-  const google = await enrichGoogleTrends(sb);
+async function runCycle(sb, opts = {}) {
+  const timeGuard = opts.timeGuard;
+  const progress = opts.progress || {};
+  const velocity = await refreshVelocityMetrics(sb, { timeGuard, progress });
+  if (velocity.timedOut) {
+    return { velocity, google: null, timedOut: true, progress: velocity.progress };
+  }
+  const google = await enrichGoogleTrends(sb, { timeGuard, progress: velocity.progress || progress });
 
   console.log(
     `[trends] cycle — open ${velocity.open} · velocity refreshed ${velocity.updated}`,
@@ -226,7 +263,7 @@ async function runCycle(sb) {
     trend_failed: google.failed,
   });
 
-  return { velocity, google };
+  return { velocity, google, timedOut: !!google?.timedOut, progress: google?.progress || null };
 }
 
 async function main() {

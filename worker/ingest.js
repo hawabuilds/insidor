@@ -46,6 +46,9 @@ const {
   formatRecencyLog,
 } = require('./lib/posted-at');
 const { logIngestLane, logIngestCycleSummary } = require('./lib/ingest-funnel');
+const { loadIngestMemory, saveIngestMemory } = require('./lib/cron-state');
+
+const INGEST_PHASES = ['catch-all', 'media-lane', 'slow-burn', 'near-miss', 'floors'];
 
 const CONFIG = {
   POLL_MS: BUDGET.INGEST_POLL_MS,
@@ -67,12 +70,17 @@ function keptPct(returned, ingested) {
   return ((ingested / returned) * 100).toFixed(1);
 }
 
-let lastCatchAll = 0;
-let lastSlowBurn = 0;
-let lastNearMiss = 0;
-let degradedMode = false;
 let selfTestDone = false;
 let logRequestUrlThisCycle = false;
+
+function phaseIndex(phase) {
+  const i = INGEST_PHASES.indexOf(phase);
+  return i >= 0 ? i : 0;
+}
+
+function shouldRunPhase(startPhase, phase) {
+  return phaseIndex(phase) >= phaseIndex(startPhase || 'catch-all');
+}
 
 async function runIngestSelfTest() {
   loadEnvLocal();
@@ -163,6 +171,9 @@ function logQueryUrlDiff(state, laneKey, recencyMin, buildQueryFn = buildQueries
 async function paginatedSearch(sb, stateRef, label, laneKey, recencyMin, tweetBudget, options = {}) {
   const buildQueryFn = options.buildQueryFn || buildQueries;
   const pageBudget = options.pageBudget;
+  const timeGuard = options.timeGuard;
+  const degradedMode = !!options.degradedMode;
+  const resume = options.resume;
   const { base, effective } = resolveFloor(stateRef.current, laneKey, recencyMin);
   const maxPagesPerLane = BUDGET.MAX_PAGES_PER_LANE;
 
@@ -182,7 +193,7 @@ async function paginatedSearch(sb, stateRef, label, laneKey, recencyMin, tweetBu
   let topRaw = 0;
   let topPassUnique = 0;
   let topPassDuplicates = 0;
-  const seenPostIds = new Set();
+  const seenPostIds = new Set(resume?.seenPostIds || []);
   const mode = degradedMode ? 'degraded' : label;
 
   async function processTweets(tweets, procOpts = {}) {
@@ -242,6 +253,10 @@ async function paginatedSearch(sb, stateRef, label, laneKey, recencyMin, tweetBu
   }
 
   async function fetchPaginatedPage(query, cursor = '') {
+    if (timeGuard?.shouldStop()) {
+      stopReason = 'time_limit';
+      return null;
+    }
     if (pages >= maxPagesPerLane) {
       stopReason = 'lane_pages';
       return null;
@@ -315,14 +330,22 @@ async function paginatedSearch(sb, stateRef, label, laneKey, recencyMin, tweetBu
   }
 
   const queries = buildQueryFn(effective, recencyMin, Date.now(), degradedMode);
-  let cursor = '';
-  let started = false;
+  let cursor = resume?.cursor || '';
+  let started = !!resume?.started;
+  let startQi = resume?.queryIndex || 0;
 
-  for (let qi = 0; qi < queries.length; qi += 1) {
+  for (let qi = startQi; qi < queries.length; qi += 1) {
     const q = queries[qi];
+    if (timeGuard?.shouldStop()) {
+      stopReason = 'time_limit';
+      break;
+    }
     try {
-      let page = await fetchPaginatedPage(q);
-      if (!page) break;
+      let page = await fetchPaginatedPage(q, qi === startQi ? cursor : '');
+      if (!page) {
+        if (stopReason === 'time_limit') break;
+        break;
+      }
       queryUsed = q;
       let data = page.data;
       cursor = data.next_cursor || '';
@@ -333,26 +356,69 @@ async function paginatedSearch(sb, stateRef, label, laneKey, recencyMin, tweetBu
         cursor &&
         tweetsProcessed < tweetBudget &&
         pages < maxPagesPerLane &&
-        (!pageBudget || pageBudget.used < pageBudget.max)
+        (!pageBudget || pageBudget.used < pageBudget.max) &&
+        !timeGuard?.shouldStop()
       ) {
         page = await fetchPaginatedPage(queryUsed, cursor);
-        if (!page) break;
+        if (!page) {
+          if (stopReason === 'time_limit') break;
+          break;
+        }
         data = page.data;
         if (!data.has_next_page || !data.next_cursor) break;
         cursor = data.next_cursor;
       }
+      if (stopReason === 'time_limit') break;
       break;
     } catch (e) {
       if (qi === queries.length - 1 && !degradedMode) {
         console.warn('[ingest] ⚠ DEGRADED MODE — keyword-free query rejected; using ultra-broad "the" term');
-        degradedMode = true;
-        return paginatedSearch(sb, stateRef, label, laneKey, recencyMin, tweetBudget, options);
+        return paginatedSearch(sb, stateRef, label, laneKey, recencyMin, tweetBudget, {
+          ...options,
+          degradedMode: true,
+        });
       }
       if (qi === queries.length - 1) throw e;
     }
   }
 
-  if (started && queryUsed) {
+  if (stopReason === 'time_limit') {
+    return {
+      reads: tweetsProcessed,
+      tweetsBilled,
+      returned,
+      rawFromApi,
+      ingested,
+      skippedViews,
+      skippedStale,
+      ingestAgesMin,
+      baseFloor: base,
+      effectiveFloor: effective,
+      floor: effective,
+      pages,
+      apiCalls,
+      queryUsed,
+      mode,
+      laneKey,
+      stopReason,
+      latestRaw,
+      topRaw,
+      topPassUnique,
+      topPassDuplicates,
+      timedOut: true,
+      degradedModeUsed: degradedMode,
+      laneProgress: {
+        laneKey,
+        cursor,
+        pages,
+        queryIndex: startQi,
+        seenPostIds: [...seenPostIds],
+        started,
+      },
+    };
+  }
+
+  if (started && queryUsed && !timeGuard?.shouldStop()) {
     await runTopPass(queryUsed);
   }
 
@@ -385,12 +451,22 @@ async function paginatedSearch(sb, stateRef, label, laneKey, recencyMin, tweetBu
 
   if (!started) throw new Error('no query succeeded');
 
-  return laneStats;
+  return { ...laneStats, degradedModeUsed: degradedMode };
 }
 
 async function runCycle(sb, opts = {}) {
   const once = !!opts.once;
+  const timeGuard = opts.timeGuard;
+  const startPhase = opts.progress?.phase || 'catch-all';
+  const laneResume = opts.progress?.laneProgress || null;
   logRequestUrlThisCycle = false;
+
+  const ingestMem = await loadIngestMemory(sb);
+  let lastCatchAll = ingestMem.lastCatchAll;
+  let lastSlowBurn = ingestMem.lastSlowBurn;
+  let lastNearMiss = ingestMem.lastNearMiss;
+  let degradedMode = ingestMem.degradedMode;
+  let cycleProgress = { phase: startPhase, laneProgress: laneResume };
 
   if (!selfTestDone) {
     selfTestDone = true;
@@ -406,6 +482,10 @@ async function runCycle(sb, opts = {}) {
       );
     }
     return { dormant: true };
+  }
+
+  if (timeGuard?.shouldStop()) {
+    return { dormant: false, timedOut: true, progress: cycleProgress };
   }
 
   const stateRef = { current: state };
@@ -430,63 +510,95 @@ async function runCycle(sb, opts = {}) {
   const now = Date.now();
   const runCatchAll = once || now - lastCatchAll >= CONFIG.CATCH_ALL_EVERY_MS;
 
-  if (runCatchAll) {
-    lastCatchAll = now;
-    const lanePct = mediaLanePct(state);
-    const textBudget = Math.max(1, Math.floor(tweetBudget * (1 - lanePct)));
-    const mediaBudget = Math.max(0, tweetBudget - textBudget);
+  function laneOpts(laneKey) {
+    const resume = laneResume?.laneKey === laneKey ? laneResume : null;
+    return { timeGuard, degradedMode, resume };
+  }
 
-    logQueryUrlDiff(stateRef.current, 'catch-all', CONFIG.RECENCY_MIN);
+  async function finishIfTimedOut(phase, laneProgress) {
+    if (!timeGuard?.shouldStop()) return false;
+    cycleProgress = { phase, laneProgress: laneProgress || null };
+    await saveIngestMemory(sb, { lastCatchAll, lastSlowBurn, lastNearMiss, degradedMode });
+    return true;
+  }
 
-    const catchAll = await paginatedSearch(
-      sb, stateRef, 'catch-all', 'catch-all', CONFIG.RECENCY_MIN, textBudget,
-    );
-    state = stateRef.current;
-    catchAllResult = catchAll;
-    totalReads += catchAll.reads;
-    totalTweetsBilled += catchAll.tweetsBilled || 0;
-    totalApiCalls += catchAll.apiCalls || 0;
-    totalReturned += catchAll.returned;
-    totalRawFromApi += catchAll.rawFromApi;
-    totalIngested += catchAll.ingested;
-    totalSkippedViews += catchAll.skippedViews;
-    totalSkippedStale += catchAll.skippedStale || 0;
-    maxPagesSeen = Math.max(maxPagesSeen, catchAll.pages);
-    if (catchAll.ingestAgesMin?.length) cycleIngestAges.push(...catchAll.ingestAgesMin);
+  if (shouldRunPhase(startPhase, 'catch-all') && runCatchAll) {
+    if (!laneResume || laneResume.laneKey === 'catch-all') {
+      lastCatchAll = now;
+      const lanePct = mediaLanePct(state);
+      const textBudget = Math.max(1, Math.floor(tweetBudget * (1 - lanePct)));
+      const mediaBudget = Math.max(0, tweetBudget - textBudget);
 
-    logIngestLane('catch-all', catchAll);
+      logQueryUrlDiff(stateRef.current, 'catch-all', CONFIG.RECENCY_MIN);
 
-    if (mediaBudget > 0) {
-      const media = await paginatedSearch(
-        sb, stateRef, 'media-lane', 'media-lane', CONFIG.RECENCY_MIN, mediaBudget,
-        { buildQueryFn: buildMediaQueries },
+      const catchAll = await paginatedSearch(
+        sb, stateRef, 'catch-all', 'catch-all', CONFIG.RECENCY_MIN, textBudget,
+        laneOpts('catch-all'),
       );
+      if (catchAll.degradedModeUsed) degradedMode = true;
+      if (catchAll.timedOut) {
+        if (await finishIfTimedOut('catch-all', catchAll.laneProgress)) {
+          return { totalIngested, totalReads: totalTweetsBilled, timedOut: true, progress: cycleProgress };
+        }
+      }
       state = stateRef.current;
-      mediaResult = media;
-      totalReads += media.reads;
-      totalTweetsBilled += media.tweetsBilled || 0;
-      totalApiCalls += media.apiCalls || 0;
-      totalReturned += media.returned;
-      totalRawFromApi += media.rawFromApi;
-      totalIngested += media.ingested;
-      totalSkippedViews += media.skippedViews;
-      totalSkippedStale += media.skippedStale || 0;
-      maxPagesSeen = Math.max(maxPagesSeen, media.pages);
-      if (media.ingestAgesMin?.length) cycleIngestAges.push(...media.ingestAgesMin);
+      catchAllResult = catchAll;
+      totalReads += catchAll.reads;
+      totalTweetsBilled += catchAll.tweetsBilled || 0;
+      totalApiCalls += catchAll.apiCalls || 0;
+      totalReturned += catchAll.returned;
+      totalRawFromApi += catchAll.rawFromApi;
+      totalIngested += catchAll.ingested;
+      totalSkippedViews += catchAll.skippedViews;
+      totalSkippedStale += catchAll.skippedStale || 0;
+      maxPagesSeen = Math.max(maxPagesSeen, catchAll.pages);
+      if (catchAll.ingestAgesMin?.length) cycleIngestAges.push(...catchAll.ingestAgesMin);
+      logIngestLane('catch-all', catchAll);
 
-      logIngestLane('media-lane', media);
+      if (mediaBudget > 0 && shouldRunPhase(startPhase, 'media-lane')) {
+        const media = await paginatedSearch(
+          sb, stateRef, 'media-lane', 'media-lane', CONFIG.RECENCY_MIN, mediaBudget,
+          { buildQueryFn: buildMediaQueries, ...laneOpts('media-lane') },
+        );
+        if (media.degradedModeUsed) degradedMode = true;
+        if (media.timedOut) {
+          if (await finishIfTimedOut('media-lane', media.laneProgress)) {
+            return { totalIngested, totalReads: totalTweetsBilled, timedOut: true, progress: cycleProgress };
+          }
+        }
+        state = stateRef.current;
+        mediaResult = media;
+        totalReads += media.reads;
+        totalTweetsBilled += media.tweetsBilled || 0;
+        totalApiCalls += media.apiCalls || 0;
+        totalReturned += media.returned;
+        totalRawFromApi += media.rawFromApi;
+        totalIngested += media.ingested;
+        totalSkippedViews += media.skippedViews;
+        totalSkippedStale += media.skippedStale || 0;
+        maxPagesSeen = Math.max(maxPagesSeen, media.pages);
+        if (media.ingestAgesMin?.length) cycleIngestAges.push(...media.ingestAgesMin);
+        logIngestLane('media-lane', media);
+      }
     }
-  } else {
+  } else if (!runCatchAll) {
     console.log(`[ingest] catch-all skipped — next in ${Math.ceil((CONFIG.CATCH_ALL_EVERY_MS - (now - lastCatchAll)) / 60000)}m`);
   }
 
-  if (now - lastSlowBurn >= CONFIG.SLOW_BURN_EVERY_MS) {
+  if (shouldRunPhase(startPhase, 'slow-burn') && now - lastSlowBurn >= CONFIG.SLOW_BURN_EVERY_MS) {
     lastSlowBurn = now;
     const remaining = Math.max(0, tweetBudget - totalTweetsBilled);
-    if (remaining > 0 && !isSpendBlocked(stateRef.current)) {
+    if (remaining > 0 && !isSpendBlocked(stateRef.current) && !timeGuard?.shouldStop()) {
       const slow = await paginatedSearch(
         sb, stateRef, 'slow-burn', 'slow-burn', CONFIG.SLOW_BURN_RECENCY_MIN, remaining,
+        laneOpts('slow-burn'),
       );
+      if (slow.degradedModeUsed) degradedMode = true;
+      if (slow.timedOut) {
+        if (await finishIfTimedOut('slow-burn', slow.laneProgress)) {
+          return { totalIngested, totalReads: totalTweetsBilled, timedOut: true, progress: cycleProgress };
+        }
+      }
       state = stateRef.current;
       slowBurnResult = slow;
       totalReads += slow.reads;
@@ -503,39 +615,47 @@ async function runCycle(sb, opts = {}) {
     }
   }
 
-  if (now - lastNearMiss >= CONFIG.NEAR_MISS_EVERY_MS) {
+  if (shouldRunPhase(startPhase, 'near-miss') && now - lastNearMiss >= CONFIG.NEAR_MISS_EVERY_MS) {
     lastNearMiss = now;
-    const nmGate = await assertCanRequestPage(sb, stateRef.current);
-    stateRef.current = nmGate.state || stateRef.current;
-    if (nmGate.ok) {
-      const { promoted, reads: nmProcessed, tweetsBilled: nmTweets, apiCalls: nmCalls, droppedStale: nmStale, ingestAgesMin: nmAges } =
-        await recheckNearMisses(sb, CONFIG.MIN_INGEST_VIEWS, CONFIG.MAX_POST_AGE_MIN_X, upsertIngestedPost, {
-          billReads: async (tweets) => {
-            stateRef.current = await recordReads(sb, tweets, 'ingest-near-miss');
-          },
-        });
-      state = stateRef.current;
-      totalReads += nmProcessed;
-      totalTweetsBilled += nmTweets || 0;
-      totalApiCalls += nmCalls || 0;
-      nearMissReads = nmTweets || 0;
-      nearMissPromoted = promoted;
-      totalSkippedStale += nmStale || 0;
-      if (nmAges?.length) cycleIngestAges.push(...nmAges);
-      if (promoted || nmTweets) {
-        logIngestLane('near-miss', {
-          reads: nmProcessed,
-          rawFromApi: nmTweets,
-          ingested: promoted,
-          skippedViews: Math.max(0, nmTweets - promoted),
-          skippedStale: nmStale || 0,
-          pages: 1,
-          apiCalls: nmCalls || 0,
-          floor: 'n/a',
-          mode: 'near-miss',
-        });
+    if (!timeGuard?.shouldStop()) {
+      const nmGate = await assertCanRequestPage(sb, stateRef.current);
+      stateRef.current = nmGate.state || stateRef.current;
+      if (nmGate.ok) {
+        const { promoted, reads: nmProcessed, tweetsBilled: nmTweets, apiCalls: nmCalls, droppedStale: nmStale, ingestAgesMin: nmAges } =
+          await recheckNearMisses(sb, CONFIG.MIN_INGEST_VIEWS, CONFIG.MAX_POST_AGE_MIN_X, upsertIngestedPost, {
+            billReads: async (tweets) => {
+              stateRef.current = await recordReads(sb, tweets, 'ingest-near-miss');
+            },
+          });
+        state = stateRef.current;
+        totalReads += nmProcessed;
+        totalTweetsBilled += nmTweets || 0;
+        totalApiCalls += nmCalls || 0;
+        nearMissReads = nmTweets || 0;
+        nearMissPromoted = promoted;
+        totalSkippedStale += nmStale || 0;
+        if (nmAges?.length) cycleIngestAges.push(...nmAges);
+        if (promoted || nmTweets) {
+          logIngestLane('near-miss', {
+            reads: nmProcessed,
+            rawFromApi: nmTweets,
+            ingested: promoted,
+            skippedViews: Math.max(0, nmTweets - promoted),
+            skippedStale: nmStale || 0,
+            pages: 1,
+            apiCalls: nmCalls || 0,
+            floor: 'n/a',
+            mode: 'near-miss',
+          });
+        }
       }
     }
+  }
+
+  if (timeGuard?.shouldStop()) {
+    cycleProgress = { phase: 'floors', laneProgress: null };
+    await saveIngestMemory(sb, { lastCatchAll, lastSlowBurn, lastNearMiss, degradedMode });
+    return { totalIngested, totalReads: totalTweetsBilled, timedOut: true, progress: cycleProgress };
   }
 
   state = stateRef.current;
@@ -624,7 +744,9 @@ async function runCycle(sb, opts = {}) {
     });
   }
 
-  return { totalIngested, totalReads: totalTweetsBilled, totalApiCalls, state };
+  await saveIngestMemory(sb, { lastCatchAll, lastSlowBurn, lastNearMiss, degradedMode });
+
+  return { totalIngested, totalReads: totalTweetsBilled, totalApiCalls, state, timedOut: false, progress: null };
 }
 
 async function main() {
