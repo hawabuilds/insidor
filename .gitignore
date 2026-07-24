@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+*.local
+worker/.pipeline.lock
+__pycache__/
+.cursor/
+
+# Vercel link metadata — not source
+.vercel/
+site/.vercel/
+insidor/
+.env*
+!.env.example
+.vercel
