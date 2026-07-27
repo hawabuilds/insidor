@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   Insidor design tokens
+
+   Extracted verbatim from the two settled prototypes — site/index.html (the
+   deployed build) and docs/reference/insidor-social.html. Both agree exactly on
+   every shared value; the social layer file is a strict superset, adding the
+   bg4 / line2 surfaces, the amber accent, and the tint/border variants.
+
+   The design is settled. Do not introduce new colours here without a design
+   decision — reach for an existing token first.
+   ========================================================================== */
+
+@theme {
+  /* ── surfaces, darkest to lightest ───────────────────────────────────── */
+  --color-bg-0: #060607; /* page */
+  --color-bg-1: #0c0c0e; /* cards, modals, rails */
+  --color-bg-2: #131316; /* insets inside a card */
+  --color-bg-3: #1a1a1e; /* active tab, pressed state */
+  --color-bg-4: #222228; /* avatars, scrollbar thumbs */
+
+  /* ── hairlines ────────────────────────────────────────────────────────── */
+  --color-line: #212127; /* default divider */
+  --color-line-2: #2e2e36; /* raised / modal edge */
+
+  /* ── text ─────────────────────────────────────────────────────────────── */
+  --color-ink: #f4f5f7; /* primary */
+  --color-muted: #8a8a93; /* secondary */
+  --color-dim: #5a5a62; /* tertiary, labels, timestamps */
+
+  /* ── accents ──────────────────────────────────────────────────────────── */
+  /* ion (cyan) — the brand. interactive, live, "we saw it first" */
+  --color-ion: #3de0ff;
+  --color-ion-wash: rgba(61, 224, 255, 0.1);
+  --color-ion-border: rgba(61, 224, 255, 0.32);
+
+  /* lime — gain, holding a position, priority */
+  --color-lime: #9bf03c;
+  --color-lime-wash: rgba(155, 240, 60, 0.1);
+  --color-lime-border: rgba(155, 240, 60, 0.32);
+
+  /* red — loss, blocked, rug risk */
+  --color-red: #ff5c6e;
+  --color-red-wash: rgba(255, 92, 110, 0.1);
+  --color-red-border: rgba(255, 92, 110, 0.35);
+
+  /* amber — sold, cooling, caution */
+  --color-amber: #ffb84d;
+  --color-amber-wash: rgba(255, 184, 77, 0.11);
+
+  /* ── type ─────────────────────────────────────────────────────────────── */
+  --font-display: "Clash Display", -apple-system, system-ui, sans-serif;
+  --font-sans: "General Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ── motion ───────────────────────────────────────────────────────────── */
+  --ease-out-expo: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ============================================================================
+   base
+   ========================================================================== */
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg-0);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers in this product are compared down columns constantly — market caps,
+   view counts, percentages. Tabular figures are not decorative. */
+.tnum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 1.5px solid var(--color-ion);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-bg-4);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

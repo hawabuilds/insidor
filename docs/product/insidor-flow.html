@@ -1,0 +1,671 @@
+<title>Insidor &#8212; Product Flow</title>
+
+<style>
+:root{
+  --bg:#FBFBFC; --paper:#FFFFFF; --sub:#F3F4F7; --sunk:#EEF0F4;
+  --bd:#E3E6EC; --bd2:#CFD4DE;
+  --tx:#0C0E13; --tx2:#4E5666; --tx3:#828B9B;
+  --ac:#2F5FFF; --ac-s:#EDF1FF; --ac-b:#C2CFFF;
+  --ok:#0F7A46; --ok-s:#E8F6EE;
+  --cut:#A33B3B; --cut-s:#FBEDED;
+  --q:#8A5A00; --q-s:#FFF5E2;
+  --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0C0E12; --paper:#12151B; --sub:#161A21; --sunk:#1B202A;
+    --bd:#232833; --bd2:#333A48;
+    --tx:#E9ECF2; --tx2:#98A1B2; --tx3:#69717F;
+    --ac:#7093FF; --ac-s:rgba(112,147,255,.12); --ac-b:rgba(112,147,255,.34);
+    --ok:#3FC47F; --ok-s:rgba(63,196,127,.11);
+    --cut:#FF7A7A; --cut-s:rgba(255,122,122,.10);
+    --q:#E0A63C; --q-s:rgba(224,166,60,.11);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#FBFBFC; --paper:#FFFFFF; --sub:#F3F4F7; --sunk:#EEF0F4;
+  --bd:#E3E6EC; --bd2:#CFD4DE; --tx:#0C0E13; --tx2:#4E5666; --tx3:#828B9B;
+  --ac:#2F5FFF; --ac-s:#EDF1FF; --ac-b:#C2CFFF;
+  --ok:#0F7A46; --ok-s:#E8F6EE; --cut:#A33B3B; --cut-s:#FBEDED; --q:#8A5A00; --q-s:#FFF5E2;
+}
+:root[data-theme="dark"]{
+  --bg:#0C0E12; --paper:#12151B; --sub:#161A21; --sunk:#1B202A;
+  --bd:#232833; --bd2:#333A48; --tx:#E9ECF2; --tx2:#98A1B2; --tx3:#69717F;
+  --ac:#7093FF; --ac-s:rgba(112,147,255,.12); --ac-b:rgba(112,147,255,.34);
+  --ok:#3FC47F; --ok-s:rgba(63,196,127,.11);
+  --cut:#FF7A7A; --cut-s:rgba(255,122,122,.10); --q:#E0A63C; --q-s:rgba(224,166,60,.11);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--sans);
+  font-size:15.5px;line-height:1.62;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,p,ul,ol,dl,figure{margin:0}
+a{color:var(--ac)}
+code,.m{font-family:var(--mono);font-size:.88em}
+
+/* == top bar == */
+.bar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--bd)}
+.bin{max-width:1080px;margin:0 auto;padding:0 24px;height:56px;display:flex;align-items:center;gap:20px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:640;letter-spacing:-.01em;flex:none}
+.brand i{width:17px;height:17px;border-radius:5px;background:var(--ac);position:relative;display:block}
+.brand i::after{content:'';position:absolute;left:4.5px;top:4.5px;width:8px;height:8px;border-radius:2px;background:var(--bg)}
+.jump{margin-left:auto;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.jump::-webkit-scrollbar{display:none}
+.jump a{font-family:var(--mono);font-size:11.5px;color:var(--tx3);text-decoration:none;padding:6px 9px;
+  border-radius:6px;white-space:nowrap}
+.jump a:hover{background:var(--sub);color:var(--tx)}
+.tbtn{flex:none;width:30px;height:30px;border:0;background:none;color:var(--tx3);cursor:pointer;
+  border-radius:6px;display:grid;place-items:center}
+.tbtn:hover{background:var(--sub);color:var(--tx)}
+
+/* == layout == */
+.page{max-width:1080px;margin:0 auto;padding:0 24px 120px}
+.col{max-width:720px}
+.hero{padding:64px 0 40px;border-bottom:1px solid var(--bd);margin-bottom:44px}
+.eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--tx3);margin-bottom:14px}
+h1{font-size:38px;line-height:1.12;letter-spacing:-.032em;font-weight:700;max-width:16ch;text-wrap:balance}
+.lede{font-size:18px;line-height:1.55;color:var(--tx2);margin-top:16px;max-width:60ch}
+.lede b{color:var(--tx);font-weight:600}
+
+section{margin-bottom:56px;scroll-margin-top:72px}
+.snum{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;color:var(--ac);margin-bottom:9px}
+h2{font-size:26px;letter-spacing:-.024em;font-weight:670;line-height:1.2;text-wrap:balance}
+.sdek{color:var(--tx2);margin-top:9px;max-width:62ch}
+h3{font-size:16.5px;font-weight:640;letter-spacing:-.012em;margin:28px 0 8px}
+p+p{margin-top:13px}
+.col p, .col ul, .col ol{max-width:66ch}
+ul,ol{padding-left:20px;margin-top:11px}
+li{margin-bottom:7px}
+li::marker{color:var(--tx3)}
+strong{font-weight:640}
+
+/* == callouts == */
+.note{border:1px solid var(--bd);border-left:3px solid var(--ac);background:var(--paper);
+  border-radius:0 10px 10px 0;padding:18px 20px;margin:22px 0}
+.note.big{border-left-color:var(--ac);background:var(--ac-s);border-color:var(--ac-b)}
+.note .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ac);margin-bottom:8px}
+.note h3{margin:0 0 8px;font-size:17px}
+
+/* == diagram frame == */
+figure{margin:26px 0;border:1px solid var(--bd);border-radius:12px;background:var(--paper);overflow:hidden}
+figure .cap{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--tx3);padding:11px 16px;border-bottom:1px solid var(--bd);background:var(--sub)}
+figure .body{padding:18px;overflow-x:auto}
+.mermaid{display:flex;justify-content:center;min-width:min-content}
+
+/* == tables == */
+.tw{overflow-x:auto;border:1px solid var(--bd);border-radius:12px;background:var(--paper);margin:22px 0}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--tx3);font-weight:600;padding:12px 14px;border-bottom:1px solid var(--bd);background:var(--sub);
+  white-space:nowrap;vertical-align:bottom}
+td{padding:12px 14px;border-bottom:1px solid var(--bd);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td code{background:var(--sunk);padding:1px 5px;border-radius:4px}
+.state{font-family:var(--mono);font-size:12px;font-weight:600;white-space:nowrap}
+
+/* == screen cards == */
+details{border:1px solid var(--bd);border-radius:11px;background:var(--paper);margin-bottom:9px;overflow:hidden}
+details[open]{border-color:var(--bd2)}
+summary{padding:14px 17px;cursor:pointer;display:flex;align-items:baseline;gap:12px;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:'+';margin-left:auto;color:var(--tx3);font-family:var(--mono);flex:none;font-size:16px}
+details[open] summary::after{content:'-'}
+summary:hover{background:var(--sub)}
+.sname{font-family:var(--mono);font-size:13.5px;font-weight:650;flex:none}
+.sjob{color:var(--tx2);font-size:14px;min-width:0}
+.sbody{padding:0 17px 16px;border-top:1px solid var(--bd);padding-top:14px}
+.kv{display:grid;grid-template-columns:74px 1fr;gap:9px 14px;font-size:14px}
+.kv dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--tx3);padding-top:3px}
+.kv dd{margin:0;color:var(--tx2)}
+.kv dd b{color:var(--tx);font-weight:600}
+
+/* == journeys == */
+.jrn{border:1px solid var(--bd);border-radius:11px;background:var(--paper);padding:18px 20px;margin-bottom:11px}
+.jrn .jh{display:flex;align-items:baseline;gap:11px;margin-bottom:9px}
+.jrn .jn{font-family:var(--mono);font-size:11.5px;color:var(--ac);font-weight:650;flex:none}
+.jrn .jt{font-weight:640;font-size:15.5px;letter-spacing:-.01em}
+.jrn p{color:var(--tx2);font-size:14.5px}
+
+/* == lists with tone == */
+.tone{list-style:none;padding:0;margin:18px 0}
+.tone li{display:flex;gap:12px;padding:12px 15px;border:1px solid var(--bd);border-radius:9px;
+  background:var(--paper);margin-bottom:7px;font-size:14.5px;line-height:1.55}
+.tone li .mk{font-family:var(--mono);font-size:11px;font-weight:700;flex:none;padding-top:3px}
+.tone.cut li .mk{color:var(--cut)} .tone.cut li{background:var(--cut-s);border-color:transparent}
+.tone.ok li .mk{color:var(--ok)} .tone.ok li{background:var(--ok-s);border-color:transparent}
+.tone.q li .mk{color:var(--q)} .tone.q li{background:var(--q-s);border-color:transparent}
+.tone li b{font-weight:650}
+
+.foot{border-top:1px solid var(--bd);padding-top:22px;margin-top:56px;color:var(--tx3);font-size:13.5px;
+  font-family:var(--mono)}
+
+@media (max-width:720px){
+  .page{padding:0 16px 80px} .bin{padding:0 16px}
+  h1{font-size:29px} h2{font-size:21px} .lede{font-size:16.5px}
+  .hero{padding:40px 0 30px}
+  .kv{grid-template-columns:1fr;gap:3px 0}
+  .kv dt{padding-top:9px}
+  .jump{display:none}
+}
+</style>
+
+<div class="bar">
+  <div class="bin">
+    <span class="brand"><i></i>Insidor</span>
+    <nav class="jump">
+      <a href="#bug">The bug</a><a href="#loop">Loop</a><a href="#objects">Objects</a>
+      <a href="#nav">Navigation</a><a href="#screens">Screens</a><a href="#life">Lifecycle</a>
+      <a href="#journeys">Journeys</a><a href="#fixes">Fixes</a><a href="#cut">Cut</a><a href="#open">Decisions</a>
+    </nav>
+    <button class="tbtn" id="th" aria-label="Switch theme">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="page">
+
+  <header class="hero col">
+    <div class="eyebrow">Product flow &middot; v1</div>
+    <h1>The flow, expanded</h1>
+    <p class="lede">Insidor watches TikTok and X for things going viral, tells you before crypto traders find out, shows you the coins people are making out of them, and lets you make the first one if nobody has.</p>
+    <p class="lede">This is the document the interface gets rebuilt from. <b>Every screen has a named way in and a named way out.</b> Nothing here is infrastructure &mdash; that stays deferred.</p>
+  </header>
+
+  <!-- 1 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; -->
+  <section id="bug" class="col">
+    <div class="snum">01</div>
+    <h2>Why nothing correlated</h2>
+    <p class="sdek">One structural bug explains every symptom.</p>
+
+    <div class="note big">
+      <div class="lbl">Root cause</div>
+      <h3>The story and the coin are the same record</h3>
+      <p>In every version so far, a viral post <em>is</em> a ticker. One object, one row, one card. That single decision is why the features would not connect:</p>
+      <ul>
+        <li>There is <b>nowhere to put a second coin</b>, so &ldquo;Buy $FERRY&rdquo; had to pretend only one exists.</li>
+        <li>There is <b>nowhere to put you</b> &mdash; no holding, no position &mdash; so the product ended at the purchase.</li>
+        <li>There is <b>nowhere to put what happened afterwards</b>, so nothing could prove it works.</li>
+      </ul>
+      <p>Split story from coin and the rest falls out on its own. A story is the spine. Coins hang off it, and so do you.</p>
+    </div>
+
+    <p>Everything below is downstream of that one split. The navigation gets simpler, not more complicated, because objects now have somewhere to live.</p>
+  </section>
+
+  <!-- 2 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; -->
+  <section id="loop">
+    <div class="col">
+      <div class="snum">02</div>
+      <h2>The loop</h2>
+      <p class="sdek">One path through the product. Everything else is a branch off this.</p>
+    </div>
+    <figure>
+      <div class="cap">Core loop</div>
+      <div class="body"><pre class="mermaid">
+flowchart TD
+  A["Something goes viral on TikTok or X"]
+  B["We spot it before crypto traders do"]
+  C["You see it in Trending with one plain sentence"]
+  D["The card counts the coins and gives you one button"]
+  E["No coins so you make the first one"]
+  F["One coin so you buy it"]
+  G["Several coins so you compare and pick one"]
+  H["What you own shows up in You in dollars"]
+  I["You sell or you take back what you put in"]
+  J["The story ends and joins the public record"]
+  A --> B --> C --> D
+  D --> E
+  D --> F
+  D --> G
+  E --> H
+  F --> H
+  G --> H
+  H --> I --> J --> C
+      </pre></div>
+    </figure>
+    <div class="col">
+      <div class="note">
+        <div class="lbl">The rule that removes the ambiguity</div>
+        <p><b>The card's button is a pure function of how many coins exist.</b> Zero &rarr; <code>Make the coin</code>. Exactly one &rarr; <code>Buy $FERRY</code>. Two or more &rarr; <code>See the 3 coins</code>. No card in the app can say &ldquo;Buy&rdquo; when more than one coin exists &mdash; not because the copy is careful, but because that state cannot be rendered.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; -->
+  <section id="objects">
+    <div class="col">
+      <div class="snum">03</div>
+      <h2>Eight objects</h2>
+      <p class="sdek">Nothing else exists. If a feature does not touch one of these, it does not ship.</p>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Object</th><th>In plain English</th><th>Relationships</th><th>Where you see it</th></tr></thead>
+        <tbody>
+          <tr><td><b>Story</b></td><td>A thing going viral right now that people might make a coin out of.</td>
+            <td>1 post, 1 poster, <b>0&ndash;n coins</b>, 0&ndash;1 main coin</td>
+            <td>Trending card, Story page, Search, the band on every coin page, Following</td></tr>
+          <tr><td><b>Post</b></td><td>The actual video or tweet it came from.</td>
+            <td>belongs to 1 story</td>
+            <td>Card hero, Story page timeline. <b>Its permalink is the proof</b> &mdash; the lead-time claim is unfalsifiable without it.</td></tr>
+          <tr><td><b>Poster</b></td><td>The person who posted it. They get a cut whether they know it or not.</td>
+            <td>1 &rarr; n stories</td>
+            <td>Card byline, Story page, the claim page &mdash; which is their entire product</td></tr>
+          <tr><td><b>Coin</b></td><td>A coin somebody made out of a story. There can be more than one.</td>
+            <td><b>n &rarr; 1 story</b>, 1 maker, 0&ndash;n holdings</td>
+            <td>Coin page, story's coin list, Search, Live rail, You</td></tr>
+          <tr><td><b>Follow</b></td><td>You told us to keep an eye on something.</td>
+            <td>targets a story <b>or</b> a coin &mdash; never silently converts</td>
+            <td>You &rarr; Following. <b>Nine feeders</b>, which fixes the empty watchlist.</td></tr>
+          <tr><td><b>Holding</b></td><td>What you own, what you paid, how you are doing.</td>
+            <td>1 coin, 1 story</td>
+            <td>You &rarr; What you own, the position block on a coin page, the sell sheet</td></tr>
+          <tr><td><b>Launch</b></td><td>A coin you made.</td>
+            <td>1 coin</td>
+            <td>You &rarr; What you made, plus a live earnings band on the coin page</td></tr>
+          <tr><td><b>Payout</b></td><td>Money a coin owes somebody.</td>
+            <td>3 roles per coin: maker 50, poster 40, Insidor 10</td>
+            <td>Create form, You, the claim page</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col">
+      <div class="note">
+        <div class="lbl">The number that carries the product</div>
+        <p><code>minutes_early_when_you_bought</code> exists on every holding and appears nowhere in any build so far: <b>&ldquo;You got in 41 minutes before crypto traders did.&rdquo;</b> That is the emotional payload of the whole thing, and it is currently missing.</p>
+        <p>Note that <code>minutes_early</code> <b>can be negative, and we show it.</b> Roughly a third of real detections will be late. A track record with no left tail reads as marketing.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; -->
+  <section id="nav">
+    <div class="col">
+      <div class="snum">04</div>
+      <h2>Three tabs</h2>
+      <p class="sdek">Down from five. A fourth tab costs 20% of the most valuable space in the app for a screen people visit once.</p>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Tab</th><th>Its one job</th><th>What lives in it</th></tr></thead>
+        <tbody>
+          <tr><td><b>Trending</b></td><td>See what is going viral and what to do about each one.</td>
+            <td>Story cards ordered by how fast they are spreading. A pinned <em>Does this actually work?</em> card at position two, always. A <em>While you were away</em> band on return visits.</td></tr>
+          <tr><td><b>Search</b></td><td>Find anything, browse what has no coin yet, read the honest record.</td>
+            <td>One box, four chips: <b>No coin yet</b> (your candidate-ticker table, with inline Make it), <b>Just made</b> (replaces New Pairs entirely), <b>Trending now</b>, <b>Finished</b> (the track record, misses included).</td></tr>
+          <tr><td><b>You</b></td><td>Everything that is yours, in one scroll, in dollars.</td>
+            <td>Money ready to claim &middot; What you own &middot; What you made &middot; Following &middot; Sold. Each section appears only when it has something. Every row names the story behind it.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figure>
+      <div class="cap">Navigation graph &mdash; no dead ends</div>
+      <div class="body"><pre class="mermaid">
+flowchart TD
+  Trending["Trending"]
+  Search["Search"]
+  You["You"]
+  Story["Story page"]
+  Coin["Coin page"]
+  Works["How this works"]
+  Buy["Buy sheet"]
+  Sell["Sell sheet"]
+  Make["Make a coin"]
+  Wallet["Connect wallet"]
+  Money["Add money"]
+  Claim["Claim page"]
+  Rail["Live rail"]
+  Trending --> Story
+  Trending --> Coin
+  Trending --> Make
+  Trending --> Search
+  Trending --> You
+  Trending --> Works
+  Search --> Story
+  Search --> Coin
+  Search --> Make
+  Story --> Coin
+  Story --> Make
+  Story --> Claim
+  Coin --> Story
+  Coin --> Buy
+  Coin --> Sell
+  Coin --> Money
+  Buy --> Wallet
+  Buy --> Money
+  Buy --> You
+  Sell --> You
+  Make --> Wallet
+  Make --> Coin
+  Make --> You
+  Wallet --> Buy
+  Wallet --> Make
+  Wallet --> Claim
+  Money --> Buy
+  You --> Coin
+  You --> Story
+  You --> Sell
+  You --> Make
+  You --> Claim
+  Rail --> Coin
+  Rail --> Story
+  Rail --> Search
+  Claim --> Story
+  Works --> Trending
+      </pre></div>
+    </figure>
+  </section>
+
+  <!-- 5 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; -->
+  <section id="screens" class="col">
+    <div class="snum">05</div>
+    <h2>Fourteen screens</h2>
+    <p class="sdek">Every one has at least one way in and one way out. Tap to expand.</p>
+
+    <details open>
+      <summary><span class="sname">Trending</span><span class="sjob">Show what is going viral and give exactly one obvious next action per story.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>Opening the app &middot; the logo &middot; the tab &middot; back from any story or coin &middot; a notification &middot; every confirmation screen</dd>
+        <dt>Out</dt><dd>Story page (card body) &middot; Coin page (when exactly one coin) &middot; Make a coin (when zero) &middot; Search &middot; How this works &middot; the original post, external</dd>
+        <dt>Simple</dt><dd>One big card per story: hero, byline, the post, then <b>Why it is spreading</b> in one sentence, then how many minutes early we were, then one button.</dd>
+        <dt>Pro</dt><dd>Same cards, same buttons, same order, half the height. Adds a posts-per-5-minutes sparkline and raw clock times.</dd>
+        <dt>Empty</dt><dd>Never blank. <em>&ldquo;Quiet right now. We are watching.&rdquo;</em> plus an overnight recap and a <b>Starting to move</b> block.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Story page</span><span class="sjob">Settle which coin, if any &mdash; and prove we were early.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>Card body &middot; <b>See the N coins</b> &middot; the band on any coin page &middot; a Search row &middot; a Following row &middot; a Sold row &middot; the Live rail &middot; a shared link</dd>
+        <dt>Out</dt><dd>Any coin page &middot; Make your own coin &middot; Follow &middot; the original post and the first crypto post, both external &middot; the claim page</dd>
+        <dt>Simple</dt><dd>The post embedded and playable. Then <b>Where this came from</b> &mdash; a four-mark timeline with the gaps written in minutes. Then the ranked coin list.</dd>
+        <dt>Pro</dt><dd>The coin list becomes a sortable table with money in it, traded today, owners, biggest-owner %, age.</dd>
+        <dt>Empty</dt><dd><em>&ldquo;Nobody has made a coin from this story. You would be first. It costs about 2 dollars and takes 30 seconds.&rdquo;</em></dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Coin page</span><span class="sjob">Show one coin honestly. The only place you can buy or sell.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>A row in a story's coin list &middot; a one-coin Trending card &middot; Search &middot; the Live rail &middot; Following &middot; What you own &middot; the launch confirmation</dd>
+        <dt>Out</dt><dd><b>Story page, always</b>, via the band at the top &middot; sideways strip to the other coins from the same story &middot; Buy &middot; Sell &middot; Add money</dd>
+        <dt>Simple</dt><dd>A band before anything else: <em>&ldquo;Last Horn. We spotted this story 31 minutes before crypto traders did. This coin was made 2 minutes after we spotted it.&rdquo;</em> Then price, chart, safety in words.</dd>
+        <dt>Pro</dt><dd>Candles. The safety chip expands to the full checklist with the contract address. Full owner tables.</dd>
+        <dt>Empty</dt><dd><em>&ldquo;No trades yet. You would be the first person to buy this.&rdquo;</em></dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Search</span><span class="sjob">Find anything, browse what has no coin, read the honest record.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>The tab &middot; Cmd K &middot; the pinned proof card &middot; <b>Show me the ones with no coin</b> &middot; <b>See all coins from this story</b> &middot; the empty You</dd>
+        <dt>Out</dt><dd>Story page &middot; Coin page &middot; Make a coin, inline &middot; Follow</dd>
+        <dt>Simple</dt><dd>One box, four chips with live counts. <b>No coin yet</b> is the default view and gets its own header.</dd>
+        <dt>Pro</dt><dd>Adds numeric columns and a column chooser.</dd>
+        <dt>Empty</dt><dd><em>&ldquo;Nothing called ferry yet.&rdquo;</em> &rarr; <b>Make the first $FERRY coin.</b> The dead end becomes the best feature.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">You</span><span class="sjob">Everything that is yours, in dollars, including how to get out.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>The tab &middot; every confirmation &middot; any <em>While you were away</em> row &middot; an alert &middot; the Money ready banner</dd>
+        <dt>Out</dt><dd>Coin page &middot; Story page from any row subtitle &middot; Sell &middot; Buy more &middot; Make a coin &middot; Get it (claims fees) &middot; Add money</dd>
+        <dt>Simple</dt><dd>Plain summary first: <em>&ldquo;You have put in $141.20. It is worth $179.60. You are up $38.40.&rdquo;</em> Dollars first, never a bare percentage as the headline.</dd>
+        <dt>Pro</dt><dd>Cost basis, average paid, realised vs unrealised split out, minutes-early per buy.</dd>
+        <dt>Empty</dt><dd><em>&ldquo;Nothing here yet. Tap Follow on any story and it shows up here. You do not need a wallet to do that.&rdquo;</em> Plus three real stories to follow.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Make a coin</span><span class="sjob">Two steps, with cost and fee split shown before you pay.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>Trending card with zero coins &middot; story page &middot; a <b>No coin yet</b> row &middot; <b>Make your own</b> under an existing coin list &middot; a Following row</dd>
+        <dt>Out</dt><dd>Launch confirmation &rarr; the new coin page. It also appears in You, in the Live rail, and in that story's coin list for everyone.</dd>
+        <dt>Simple</dt><dd>Step 1 name it &mdash; <b>the story is fixed at the top and cannot be changed</b>, so there is no way to make a coin out of nothing. Step 2 shows cost, split and safety before you pay.</dd>
+        <dt>Pro</dt><dd>Adds supply and exact fee-per-trade. Safety settings are not switchable in either mode.</dd>
+        <dt>Empty</dt><dd>Code taken: <em>&ldquo;Someone made $FERRY 40 seconds ago. See it, or pick a different name.&rdquo;</em> &mdash; a save, not a loss.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Buy sheet</span><span class="sjob">One number to a purchase, telling the truth about zero.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>Buy on a coin page &middot; Buy more from a holding</dd>
+        <dt>Out</dt><dd>Confirmation &rarr; coin page with the position block &middot; Connect wallet or Add money, both <b>returning here with the amount preserved</b></dd>
+        <dt>Simple</dt><dd>A dollar field, quick buttons, <em>&ldquo;You will get about 231,000 $FERRY&rdquo;</em>, and one always-present line in ordinary text, not a red box: <em>&ldquo;If this goes to zero you lose $50. That happens most of the time.&rdquo;</em></dd>
+        <dt>Pro</dt><dd>Adds SOL/dollar toggle, slippage, priority fee, exact minimum received.</dd>
+        <dt>Empty</dt><dd>No wallet: a three-step explainer replaces the panel rather than blocking.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Sell sheet</span><span class="sjob">Get out in one tap, and say so when there is nobody to sell to.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>Sell on a coin page &middot; Sell on a What you own row &middot; <b>Take back what I put in</b></dd>
+        <dt>Out</dt><dd>Confirmation &rarr; You &middot; <b>See how this ended</b> when the story is over</dd>
+        <dt>Simple</dt><dd>25% / 50% / All of it, then a fourth on its own line: <b>Take back what I put in</b> &mdash; sells exactly enough to recover your original money and leaves the rest riding.</dd>
+        <dt>Pro</dt><dd>Slippage, exact minimum, realised vs unrealised.</dd>
+        <dt>Empty</dt><dd>N/A &mdash; only opens when you own something.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Claim page</span><span class="sjob">Convince someone who has never heard of crypto that this is real money and not a scam.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>A reply on their own post &middot; a link the maker sends &middot; the <b>It is yours</b> line on a story page &middot; <b>typing the address directly</b>, which matters because the only trustworthy version is one they reach without clicking a stranger's link</dd>
+        <dt>Out</dt><dd>Claim my money &rarr; Connect wallet &rarr; paid &middot; <b>I want this taken down</b> &middot; See the story &middot; What is Insidor?</dd>
+        <dt>Simple</dt><dd>A calm standalone page, not the app. <em>&ldquo;$49.50 is waiting for you.&rdquo;</em> Their own thumbnail. No exclamation marks, no emoji, no congratulations &mdash; those read as a scam to exactly this reader.</dd>
+        <dt>Pro</dt><dd>None. An expert never sees this page.</dd>
+        <dt>Empty</dt><dd>Already claimed: shows what was sent, when, and what has accrued since.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Live rail</span><span class="sjob">Prove the app is alive, and send every row somewhere real.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>Present on every screen. On mobile, a bar above the tabs reading <em>Live, 12 just now</em>.</dd>
+        <dt>Out</dt><dd><b>Every row has a destination</b> &mdash; this is the fix for it linking nowhere. Trades &rarr; that coin, scrolled to the trade, highlighted 2s. New coins &rarr; that coin with safety expanded. Going viral &rarr; that story. Each header has a <b>See all</b>.</dd>
+        <dt>Simple</dt><dd>One mode at a time: Trades / New coins / Going viral, in sentences &mdash; <em>&ldquo;someone bought $340 of $FERRY, 4 seconds ago&rdquo;</em>.</dd>
+        <dt>Pro</dt><dd>More rows, all three stacked, amounts and wallet fragments. Destinations do not change.</dd>
+        <dt>Empty</dt><dd>Quiet minute, live dot still pulsing so it is obvious the connection is fine.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">How this works</span><span class="sjob">Teach the five things the product silently assumes, in 90 seconds.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>A header link on every screen &middot; a first-visit card &middot; <em>Why does the price move when I buy?</em> &middot; <em>What am I actually making?</em> &middot; <em>What did you check?</em></dd>
+        <dt>Out</dt><dd>One Back that returns you exactly where you were, <b>including a half-finished buy</b></dd>
+        <dt>Simple</dt><dd>Five short sections, no diagrams: what we do, why minutes matter, what a coin is, what a wallet is, how we get paid.</dd>
+        <dt>Pro</dt><dd>Identical. If an expert needs it, the Simple one is correct too.</dd>
+        <dt>Empty</dt><dd>N/A.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Connect wallet</span> <span class="sjob">Attach a wallet without ever holding a password.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>First Buy &middot; first Sell &middot; first Make a coin &middot; Claim my money</dd>
+        <dt>Out</dt><dd>Returns to the exact action that sent you here, everything preserved. Cancel loses nothing.</dd>
+        <dt>Simple</dt><dd><em>&ldquo;Your coins live there, not with us, and we cannot touch them.&rdquo;</em> Two buttons: I have one / I do not have one.</dd>
+        <dt>Pro</dt><dd>Identical.</dd>
+        <dt>Empty</dt><dd><em>&ldquo;You cancelled. No problem. Try again.&rdquo;</em> Never judgemental, never a dead end.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Add money</span><span class="sjob">Zero to able-to-buy, without Insidor touching a card.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd>Buy sheet when the balance is short &middot; the empty You &middot; the create form when the fee is unaffordable</dd>
+        <dt>Out</dt><dd>Returns to the exact buy or launch that sent you here, amount still filled in</dd>
+        <dt>Simple</dt><dd>Two choices, both handoffs. <em>&ldquo;We never see your card details and we never handle the payment.&rdquo;</em></dd>
+        <dt>Pro</dt><dd>Adds network name and minimum.</dd>
+        <dt>Empty</dt><dd>N/A &mdash; this screen exists because of an empty balance.</dd>
+      </dl></div>
+    </details>
+
+    <details>
+      <summary><span class="sname">Takedown form</span><span class="sjob">A real way out for the person who filmed it, with an honest promise.</span></summary>
+      <div class="sbody"><dl class="kv">
+        <dt>In</dt><dd><b>I want this taken down</b> on the claim page</dd>
+        <dt>Out</dt><dd>Submitted &rarr; claim page with a confirmation band</dd>
+        <dt>Simple</dt><dd>Within one day we stop showing the coin anywhere on Insidor. <b>We cannot delete it from Solana and we say so.</b> Fees keep accruing for you. Anyone who already bought can still sell &mdash; stranding a holder would just move the unfairness onto someone else.</dd>
+        <dt>Pro</dt><dd>None.</dd>
+        <dt>Empty</dt><dd>N/A.</dd>
+      </dl></div>
+    </details>
+  </section>
+
+  <!-- 6 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; -->
+  <section id="life">
+    <div class="col">
+      <div class="snum">06</div>
+      <h2>A story has four states</h2>
+      <p class="sdek">The prototype has one boolean, <code>hasCoin</code>. A screen cannot render what time it is if there is no clock.</p>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>State</th><th>The words the user sees</th><th>What causes it</th><th>What the card does</th></tr></thead>
+        <tbody>
+          <tr><td class="state">Just spotted</td><td>&ldquo;Just spotted &mdash; nobody in crypto has posted about this yet&rdquo;</td><td>Detected under 15 minutes ago</td><td>Full colour, accent line, sorts near the top</td></tr>
+          <tr><td class="state">Spreading</td><td>&ldquo;Spreading &mdash; more people are posting about it every minute&rdquo;</td><td>Posts per 5 min rising, three checks in a row</td><td>Full colour, top of the feed</td></tr>
+          <tr><td class="state">Cooling off</td><td>&ldquo;Cooling off &mdash; fewer people are posting about it now&rdquo;</td><td>Fallen below 60% of the busiest 5 min</td><td>Colour drains to ~65%, image shrinks to a thumbnail, sorts down, leaves after 2h</td></tr>
+          <tr><td class="state">Over</td><td>&ldquo;Over&rdquo; plus one sentence on what happened</td><td>Below 15% of peak for a full hour</td><td>Leaves Trending. Appears under <b>Finished</b> in Search and in Following</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figure>
+      <div class="cap">Story lifecycle</div>
+      <div class="body"><pre class="mermaid">
+stateDiagram-v2
+    [*] --> JustSpotted
+    JustSpotted --> NobodyMadeOne: keeps spreading, still no coin
+    JustSpotted --> OneCoin: somebody makes the first coin
+    JustSpotted --> Over: it never took off
+    NobodyMadeOne --> OneCoin: somebody makes the first coin
+    NobodyMadeOne --> Over: fades, nobody ever made one
+    OneCoin --> SeveralCoins: somebody makes another
+    SeveralCoins --> OneCoin: all but one go quiet
+    OneCoin --> CoolingOff: fewer people posting
+    SeveralCoins --> CoolingOff: fewer people posting
+    NobodyMadeOne --> CoolingOff: fewer people posting
+    CoolingOff --> OneCoin: it picks back up
+    CoolingOff --> Over: nobody is posting any more
+    Over --> [*]
+      </pre></div>
+    </figure>
+    <div class="col">
+      <div class="note">
+        <p>The same four words render identically in six places: the Trending card, the Search row, the band on every coin page, the Following row, the What-you-own subtitle, and the Live rail. <b>A story that never got a coin is not hidden</b> &mdash; it becomes a Finished row reading <em>&ldquo;Nobody ever made a coin from this one. Sometimes that is the right call.&rdquo;</em></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; -->
+  <section id="journeys" class="col">
+    <div class="snum">07</div>
+    <h2>Seven journeys</h2>
+    <p class="sdek">If a screen is not reachable by one of these, it should not exist.</p>
+
+    <div class="jrn"><div class="jh"><span class="jn">J1</span><span class="jt">Never bought anything &mdash; first three minutes</span></div>
+      <p>Lands on Trending from a friend's link. <b>No wallet box, no tour, no modal.</b> Header: <em>&ldquo;Insidor watches the internet and tells you what is about to blow up. Right now: 412 stories, and we are catching them about 31 minutes before crypto traders do.&rdquo;</em> One card down: image, byline, post, <em>Why it is spreading</em>, minutes early, one button. The smallest first action is <b>Follow</b> &mdash; free, no wallet.</p></div>
+
+    <div class="jrn"><div class="jh"><span class="jn">J2</span><span class="jt">Follow a story with no coin, come back when one exists</span></div>
+      <p>Follows from <b>No coin yet</b> in Search. Two hours later, Trending shows a <em>While you were away</em> band: <em>&ldquo;1 story you follow got a coin. Wrong Name is now $CUPS.&rdquo;</em> Lands on the coin page. The story follow <b>stays alive</b>, so it fires again if a second coin appears.</p></div>
+
+    <div class="jrn"><div class="jh"><span class="jn">J3</span><span class="jt">Three coins exist &mdash; pick one</span></div>
+      <p>The card cannot say Buy. It says <b>See the 3 coins</b> and lands on the story page. Three ranked rows, top marked <b>BIGGEST</b>, each showing exactly three facts in the same order: money in it, people who own it, how long ago it was made &mdash; then the safety line in words. No market cap, no liquidity, no volume in Simple.</p></div>
+
+    <div class="jrn"><div class="jh"><span class="jn">J4</span><span class="jt">Nobody made a coin, so you make the first</span></div>
+      <p><em>&ldquo;Nobody has made a coin from this story. You would be first. It costs about 2 dollars and takes 30 seconds. You keep half the fees from every trade, forever.&rdquo;</em> Two steps. The story is fixed at the top and cannot be changed.</p></div>
+
+    <div class="jrn"><div class="jh"><span class="jn">J5</span><span class="jt">After the buy &mdash; check on it, then get out</span></div>
+      <p>The half of the product that does not exist today. <em>&ldquo;You have put in $141.20. It is worth $179.60. You are up $38.40.&rdquo;</em> Each row's subtitle is the thing no other trading app can say: <b>&ldquo;Last Horn &mdash; the story is cooling off.&rdquo;</b> Sell / Buy more / See coin.</p></div>
+
+    <div class="jrn"><div class="jh"><span class="jn">J6</span><span class="jt">The person who filmed the video</span></div>
+      <p>Has never heard of crypto. Gets a deliberately flat message: <em>&ldquo;Someone made a coin based on your Norwegian cup video. You have earned $49.50 from it so far. It is yours whether or not you do anything.&rdquo;</em> No exclamation marks, no emoji &mdash; those read as a scam to this reader.</p></div>
+
+    <div class="jrn"><div class="jh"><span class="jn">J7</span><span class="jt">Coming back the next day</span></div>
+      <p><b>The order is the design:</b> your money, your earnings, your follows, then the world. A dismissible band, not a modal and not a separate screen.</p></div>
+  </section>
+
+  <!-- 8 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; -->
+  <section id="fixes" class="col">
+    <div class="snum">08</div>
+    <h2>The correlation fixes</h2>
+    <p class="sdek">Each of these closes a specific hole you spotted.</p>
+    <ul class="tone ok">
+      <li><span class="mk">FIX</span><span><b>Buy is a function of a count.</b> The ambiguous state is not resolved by copy &mdash; it cannot be rendered.</span></li>
+      <li><span class="mk">FIX</span><span><b>Stories never buy. Coins buy.</b> Buying happens in exactly two places: a coin page, and a row in What you own. Nowhere else.</span></li>
+      <li><span class="mk">FIX</span><span><b>The main coin is the one with the most money in it.</b> Not a weighted score &mdash; a rule you can say out loud in half a sentence. If the biggest is under 2&times; the second, we pick nothing and say so.</span></li>
+      <li><span class="mk">FIX</span><span><b>We never say &ldquo;pick&rdquo; and never put Insidor's name on a coin.</b> The label is <code>BIGGEST</code>, which is a fact, with the rule printed underneath.</span></li>
+      <li><span class="mk">FIX</span><span><b>Nine feeders into the watchlist</b>, including automatic follows on every buy and every coin you make. Nothing you touch fails to appear in You.</span></li>
+      <li><span class="mk">FIX</span><span><b>Every live-rail row has a named destination.</b> Trades, new coins and viral posts each land somewhere specific, and each header has a See all.</span></li>
+      <li><span class="mk">FIX</span><span><b>Lead time is one number owned by the story.</b> Everything else is arithmetic on it, expressed in words. Three competing green minute chips was your complaint restated as a feature.</span></li>
+      <li><span class="mk">FIX</span><span><b>The claim is verified by two public permalinks</b>, not by trusting us &mdash; the original post and the first crypto post, both somebody else's timestamps.</span></li>
+      <li><span class="mk">FIX</span><span><b>Being late is published in the same feed, in grey, in the same slot.</b> <em>&ldquo;Crypto traders got here 6 minutes before us.&rdquo;</em></span></li>
+      <li><span class="mk">FIX</span><span><b>Following a story never silently becomes following a coin.</b> Migrating it would destroy what you actually asked for.</span></li>
+    </ul>
+  </section>
+
+  <!-- 9 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; -->
+  <section id="cut" class="col">
+    <div class="snum">09</div>
+    <h2>Deliberately not building</h2>
+    <p class="sdek">The full design produced far too much product. These are cut on purpose, so they do not creep back.</p>
+    <ul class="tone cut">
+      <li><span class="mk">CUT</span><span><b>A fourth and fifth tab.</b> Following became a section of You; the archive became a filter chip plus one pinned card.</span></li>
+      <li><span class="mk">CUT</span><span><b>All onboarding.</b> No welcome panels, no interest picker, no forced risk screen. You land on the feed. The proof card is item two.</span></li>
+      <li><span class="mk">CUT</span><span><b>The alerts inbox.</b> None of the seven journeys ever opened it. <em>While you were away</em> answers &ldquo;what did I miss&rdquo; better.</span></li>
+      <li><span class="mk">CUT</span><span><b>Practice money.</b> The most painful cut &mdash; it put fake money in the same list as real money, separated by a corner chip. Follow already gives a wallet-free action.</span></li>
+      <li><span class="mk">CUT</span><span><b>The command palette.</b> A search box wearing a keyboard shortcut. Cmd K now just focuses the search field.</span></li>
+      <li><span class="mk">CUT</span><span><b>The weighted consensus score</b> (40% liquidity / 30% volume / 20% holders&hellip;). Four proposals produced four incompatible formulas, which is proof the decision was not ready.</span></li>
+      <li><span class="mk">CUT</span><span><b>Market cap, liquidity, volume, slippage, mint authority, LP, bonding curve, rug, bag &mdash; as words, in Simple mode.</b> Every one appears in the current prototype. Pro may show the numbers; Simple never shows the vocabulary.</span></li>
+      <li><span class="mk">CUT</span><span><b>Nine story states and eleven coin states.</b> Twenty status words before a beginner has bought anything. Four and four.</span></li>
+      <li><span class="mk">CUT</span><span><b>New Pairs as a destination.</b> It was never a destination, it was a sort. It survives as a chip and a rail mode.</span></li>
+      <li><span class="mk">CUT</span><span><b>Insidor holding a non-crypto person's money.</b> It contradicts the one sentence we tell everyone else: your coins live in your wallet, not with us.</span></li>
+      <li><span class="mk">CUT</span><span><b>Buying your own coin ahead of everyone inside the create form.</b> The one screen that would make a beginner correctly ask whether they are running a scam.</span></li>
+      <li><span class="mk">CUT</span><span><b>Graduation badges and confetti.</b> A celebration on an event a beginner cannot parse, contradicting the no-celebration rule the rest of the product depends on.</span></li>
+    </ul>
+    <div class="note">
+      <div class="lbl">What Pro mode is now</div>
+      <p>Exactly four things: adds numeric columns to tables, turns the chart into candles, expands the safety line into the full checklist, exposes slippage on the buy sheet. <b>It never moves a button, never adds a screen, and never shows a state Simple cannot see.</b></p>
+    </div>
+  </section>
+
+  <!-- 10 &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472; -->
+  <section id="open" class="col">
+    <div class="snum">10</div>
+    <h2>Yours to decide</h2>
+    <p class="sdek">Real forks. I picked a default for each so the spec is complete, but these are product calls, not design calls.</p>
+    <ul class="tone q">
+      <li><span class="mk">?</span><span><b>Main coin = most money in it, or most owners?</b> I picked money, because it decides whether you can actually sell later.</span></li>
+      <li><span class="mk">?</span><span><b>Does Insidor keep its 10% when the poster never claims their 40%?</b> Currently the poster's money sits untouched forever and we still take our cut.</span></li>
+      <li><span class="mk">?</span><span><b>Can anyone make a coin from any story, or only ones we detected?</b> Right now the form is only reachable from a story, which is what keeps creation coherent &mdash; but it also means you cannot make a coin about something we missed.</span></li>
+      <li><span class="mk">?</span><span><b>On a takedown, do we hide the coin only, or the story too?</b> I specced coin only, so the public record keeps its lead-time claim.</span></li>
+      <li><span class="mk">?</span><span><b>Does following require an account?</b> I assumed no sign-in, so a first visit can do something free &mdash; which means follows on a laptop are invisible on a phone.</span></li>
+      <li><span class="mk">?</span><span><b>Push notifications, ever?</b> Everything is in-app until the user opts in. Push is the strongest retention lever in a market that moves in minutes.</span></li>
+      <li><span class="mk">?</span><span><b>Does profit or loss ever appear in the Trending feed?</b> I kept money inside You and coin pages only.</span></li>
+      <li><span class="mk">?</span><span><b>Is 2&times; the right threshold for refusing to name a main coin?</b> Higher is more honest but leaves beginners stuck.</span></li>
+    </ul>
+  </section>
+
+  <div class="foot col">
+    Insidor &middot; product flow v1 &middot; all data in the prototypes is fake &middot; infrastructure, ingestion and detection deliberately deferred
+  </div>
+</div>
+
+<script>
+document.getElementById('th').addEventListener('click',function(){
+  var r=document.documentElement, cur=r.getAttribute('data-theme');
+  var dark=matchMedia('(prefers-color-scheme:dark)').matches;
+  var now=cur||(dark?'dark':'light');
+  r.setAttribute('data-theme', now==='dark'?'light':'dark');
+});
+</script>

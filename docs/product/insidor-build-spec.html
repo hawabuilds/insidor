@@ -1,0 +1,473 @@
+<title>Insidor — Build Spec</title>
+
+<style>
+:root{
+  --bg:#07090c; --panel:#0d1218; --panel2:#111823; --sunk:#0a0f14;
+  --line:#1c2530; --line2:#26313e;
+  --text:#e7edf3; --muted:#8b95a2; --dim:#4d5763;
+  --cyan:#4fd6e0; --cyan-s:rgba(79,214,224,.08); --cyan-b:rgba(79,214,224,.32);
+  --lime:#b6f24d; --lime-s:rgba(182,242,77,.08); --lime-b:rgba(182,242,77,.34);
+  --amber:#f5b544; --amber-s:rgba(245,181,68,.09);
+  --red:#ff6b7a; --red-s:rgba(255,107,122,.09);
+  --mono:"SFMono-Regular",ui-monospace,"Menlo","Consolas",monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14.5px;line-height:1.58;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:0 44px 80px}
+.mono{font-family:var(--mono)}
+.cy{color:var(--cyan)} .li{color:var(--lime)} .am{color:var(--amber)} .rd{color:var(--red)}
+.mut{color:var(--muted)} .dim{color:var(--dim)}
+code{font-family:var(--mono);font-size:.87em;background:var(--sunk);border:1px solid var(--line);
+  padding:1px 6px;border-radius:4px;color:var(--cyan)}
+b{font-weight:650}
+
+/* cover */
+.cover{padding:70px 0 44px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:38px}
+.brand i{width:11px;height:11px;border-radius:50%;background:var(--cyan);box-shadow:0 0 14px var(--cyan)}
+.brand b{font-size:19px;letter-spacing:.15em;font-weight:800}
+.kick{font-family:var(--mono);font-size:11.5px;letter-spacing:.17em;color:var(--cyan);margin-bottom:18px}
+h1{font-size:50px;line-height:1.04;letter-spacing:-.028em;font-weight:800;max-width:15ch}
+.lede{font-size:18px;color:var(--muted);margin-top:22px;max-width:60ch;line-height:1.5}
+.lede b{color:var(--text);font-weight:600}
+.cmeta{margin-top:34px;display:flex;gap:26px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;
+  color:var(--dim);letter-spacing:.09em}
+
+section{padding:40px 0;border-bottom:1px solid var(--line)}
+.sn{font-family:var(--mono);font-size:11.5px;letter-spacing:.15em;color:var(--cyan);margin-bottom:10px}
+h2{font-size:28px;letter-spacing:-.02em;font-weight:750;line-height:1.15}
+.dek{color:var(--muted);margin-top:10px;max-width:64ch;font-size:15px}
+h3{font-size:16.5px;font-weight:700;margin:26px 0 8px;letter-spacing:-.008em}
+p+p{margin-top:11px}
+section p,section ul{max-width:70ch}
+ul{list-style:none;margin:14px 0}
+ul li{position:relative;padding:5px 0 5px 20px}
+ul li::before{content:'';position:absolute;left:2px;top:13px;width:5px;height:5px;border-radius:50%;
+  background:var(--cyan-b);border:1px solid var(--cyan)}
+
+/* callouts */
+.box{border:1px solid var(--line);border-left:3px solid var(--cyan);background:var(--panel);
+  border-radius:0 11px 11px 0;padding:17px 20px;margin:20px 0}
+.box .lb{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--cyan);margin-bottom:8px}
+.box.good{border-left-color:var(--lime);background:var(--lime-s)} .box.good .lb{color:var(--lime)}
+.box.bad{border-left-color:var(--red);background:var(--red-s)} .box.bad .lb{color:var(--red)}
+.box.warn{border-left-color:var(--amber);background:var(--amber-s)} .box.warn .lb{color:var(--amber)}
+.box p{font-size:14px}
+
+/* feature blocks */
+.feat{border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,var(--panel),var(--panel2));
+  overflow:hidden;margin:18px 0}
+.feat.pri{border-color:var(--lime-b)}
+.fh{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:15px 19px;border-bottom:1px solid var(--line)}
+.fh .num{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--cyan)}
+.feat.pri .fh .num{color:var(--lime)}
+.fh .nm{font-size:17.5px;font-weight:700;letter-spacing:-.01em}
+.fh .tags{margin-left:auto;display:flex;gap:6px}
+.tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;padding:3px 8px;border-radius:5px;
+  border:1px solid;white-space:nowrap}
+.t-pri{color:var(--lime);border-color:var(--lime-b);background:var(--lime-s)}
+.t-core{color:var(--cyan);border-color:var(--cyan-b);background:var(--cyan-s)}
+.t-late{color:var(--dim);border-color:rgba(77,87,99,.55);border-style:dashed}
+.t-time{color:var(--amber);border-color:rgba(245,181,68,.42);background:var(--amber-s)}
+.fb{padding:16px 19px}
+.fb .job{color:var(--muted);font-size:14px;margin-bottom:14px}
+.kv{display:grid;grid-template-columns:104px 1fr;gap:9px 16px;font-size:13.8px}
+.kv dt{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+  padding-top:3px}
+.kv dd{color:var(--muted)}
+.kv dd b{color:var(--text)}
+
+/* tables */
+.tw{border:1px solid var(--line);border-radius:11px;overflow:hidden;margin:18px 0;background:var(--panel)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--dim);font-weight:600;padding:11px 14px;border-bottom:1px solid var(--line);
+  background:var(--sunk);white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--muted)}
+td b{color:var(--text)}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--mono);white-space:nowrap;font-variant-numeric:tabular-nums}
+tr.tot td{background:var(--sunk);color:var(--text);font-weight:650}
+
+/* week plan */
+.wk{display:flex;gap:14px;padding:14px 0;border-top:1px solid var(--line)}
+.wk:first-of-type{border-top:0}
+.wk .w{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--cyan);width:82px;flex:none;
+  padding-top:3px}
+.wk .c h4{font-size:15.5px;font-weight:700;margin-bottom:5px}
+.wk .c p{font-size:13.8px;color:var(--muted)}
+
+pre{background:var(--sunk);border:1px solid var(--line);border-radius:9px;padding:13px 15px;overflow-x:auto;
+  font-family:var(--mono);font-size:12px;line-height:1.62;margin:14px 0;color:var(--muted)}
+pre .k{color:var(--cyan)} pre .g{color:var(--lime)} pre .c2{color:var(--dim)}
+
+.foot{padding-top:26px;font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.9}
+
+@media print{
+  section{break-inside:avoid}
+  .feat,.box,.tw,pre,.wk{break-inside:avoid}
+  h2,h3{break-after:avoid}
+  .cover{break-after:page;padding-top:40px}
+}
+</style>
+
+<div class="wrap">
+
+<div class="cover">
+  <div class="brand"><i></i><b>INSIDOR</b></div>
+  <div class="kick">BUILD SPEC &middot; STACK VERIFIED &middot; JULY 2026</div>
+  <h1>Seven features, one decided stack.</h1>
+  <p class="lede">Your feature map, checked against primary sources. <b>Three findings change the plan</b> &mdash; one of them unlocks the mechanic I previously said was impossible.</p>
+  <div class="cmeta">
+    <span>6 research tracks</span><span>26 claims verified</span><span>15 corrected</span><span>32 agents</span>
+  </div>
+</div>
+
+<!-- 00 -->
+<section>
+  <div class="sn">00 &mdash; WHAT CHANGED</div>
+  <h2>Three findings that move the plan</h2>
+
+  <div class="box good">
+    <div class="lb">1 &middot; The 40% poster split is natively supported. Better than Bags.</div>
+    <p>I previously called this a showstopper &mdash; that no Solana primitive could route fees to a poster who never consented and has no wallet. <b>That was wrong.</b> Pump.fun ships an on-chain, permissionless <b>creator-fee-sharing</b> system: <code>create_fee_sharing_config</code> &rarr; <code>update_fee_shares_v2</code> &rarr; <code>distribute_creator_fees_v2</code>. It splits creator fees across <b>up to 10 arbitrary pubkeys</b> in basis points summing to exactly 10,000. No rule ties a shareholder to the creator identity &mdash; <b>any pubkey qualifies</b>.</p>
+    <p>Better still: <code>create_v2</code> takes <code>creator</code> as a plain Pubkey argument <b>independent of the signing <code>user</code></b>. Insidor can pay for and sign a launch while assigning creatorship elsewhere. That single fact is the most valuable thing in the research.</p>
+  </div>
+
+  <div class="box bad">
+    <div class="lb">2 &middot; Photon and Axiom have no public API. Feature 2 cannot start as written.</div>
+    <p>Not "hard to get" &mdash; <b>does not exist</b>. Axiom's own complete docs index (<code>llms.txt</code>, which enumerates every page they publish) contains zero developer, API, SDK or webhook entries. Photon's official GitBook has no developer content, and QuickNode's directory states flatly that Photon <b>"does not support API integrations or Telegram bots."</b> Both are Cloudflare-gated closed frontends.</p>
+    <p>There is no "integrate whichever is cheaper" decision to make, because there is nothing to price. The community "Axiom SDKs" require storing users' Axiom <b>passwords</b>, reading their email for login OTPs, and running headless Chrome past Cloudflare. Not shippable in a consumer product.</p>
+    <p><b>The replacement is strictly better on the axis you cared about:</b> Photon charges your user 1% per buy <em>and</em> per sell and pays Insidor nothing. Jupiter lets you set your own integrator fee. You capture revenue from day one &mdash; which deletes the "build our own terminal later to take all fees" milestone.</p>
+  </div>
+
+  <div class="box warn">
+    <div class="lb">3 &middot; "Search PF metadata" is not a thing you can call. You're building an indexer.</div>
+    <p>The pump.fun SDK is <b>transaction-building only</b> &mdash; no search, no discovery, no metadata query. The endpoint that used to do ticker search, <code>frontend-api-v3.pump.fun/coins/search</code>, <b>is dead</b> as of this research. On-chain you get only a <code>uri</code> string; the image sits one HTTP hop deeper inside the IPFS JSON.</p>
+    <p>Match-by-image is a genuinely good idea &mdash; it fills the one hole a previous engineering review found that <em>nobody</em> had specced. But it is <b>not a 3-week feature</b>. It is a corpus you build and keep fresh.</p>
+  </div>
+</section>
+
+<!-- 01 -->
+<section>
+  <div class="sn">01 &mdash; THE STACK</div>
+  <h2>Decided</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Layer</th><th>You chose</th><th>Verdict</th><th>Ship</th></tr></thead>
+    <tbody>
+      <tr><td><b>Coin creation</b></td><td>Pump.fun public SDK</td><td class="li"><b>Correct.</b> <code>@pump-fun/pump-sdk</code>, MIT, official.</td><td>As planned</td></tr>
+      <tr><td><b>Fee routing</b></td><td>&mdash;</td><td class="li"><b>Natively supported.</b> Up to 10 shareholders in bps.</td><td>With creation</td></tr>
+      <tr><td><b>Swap / trade</b></td><td>Photon or Axiom API</td><td class="rd"><b>Impossible.</b> No public API exists.</td><td class="li">Jupiter instead</td></tr>
+      <tr><td><b>Charts</b></td><td>&mdash;</td><td class="mut">DexScreener embed &mdash; free, zero build.</td><td>Week 1</td></tr>
+      <tr><td><b>Trending coins</b></td><td>Axiom / Photon API</td><td class="rd">Same problem.</td><td class="li">Jupiter / Birdeye</td></tr>
+      <tr><td><b>Wallet</b></td><td>Privy API</td><td class="li"><b>Correct.</b> Pump.fun and Jupiter both run on it.</td><td>As planned</td></tr>
+      <tr><td><b>Coin search</b></td><td>PF SDK metadata search</td><td class="am">No such API. Build an index.</td><td>Own indexer</td></tr>
+      <tr><td><b>Image match</b></td><td>PF SDK by image</td><td class="am">Sound idea, wrong tool. Self-hosted embeddings.</td><td>Post-MVP</td></tr>
+      <tr><td><b>Comments</b></td><td>&mdash;</td><td class="mut">Supabase Realtime Broadcast + Postgres.</td><td>Weeks 1&ndash;3</td></tr>
+      <tr><td><b>Moderation</b></td><td>&mdash;</td><td class="rd"><b>No vendor covers crypto harms.</b> Build in-house.</td><td>With comments</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 02 -->
+<section>
+  <div class="sn">02 &mdash; FEATURE 01</div>
+  <h2>Live feed</h2>
+  <div class="feat pri">
+    <div class="fh"><span class="num">F1.1</span><span class="nm">Social layer integration</span>
+      <span class="tags"><span class="tag t-pri">PRIORITY</span></span></div>
+    <div class="fb">
+      <div class="job">Ingest &rarr; detect &rarr; cluster &rarr; score. The engine behind the whole feed.</div>
+      <dl class="kv">
+        <dt>Source</dt><dd>X pay-per-use at <b>$0.005 per post read</b>, hard ceiling <b>2M reads/month</b> &mdash; a <b>$10,000/mo</b> wall before Enterprise. New developers cannot buy Basic.</dd>
+        <dt>Constraint</dt><dd>That ceiling is ~46 posts/second. Thin for genuine viral detection &mdash; curate a watchlist of accounts rather than drinking the firehose.</dd>
+        <dt>Risk</dt><dd class="rd">X may terminate for any reason at sole discretion. Six InfoFi companies lost access in one day, 15 Jan 2026.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="feat pri">
+    <div class="fh"><span class="num">F1.3</span><span class="nm">Comments / share thoughts</span>
+      <span class="tags"><span class="tag t-pri">PRIORITY</span></span></div>
+    <div class="fb">
+      <div class="job">Users discuss a viral post inside Insidor.</div>
+      <dl class="kv">
+        <dt>Build</dt><dd><b>Supabase Realtime Broadcast</b> (not <code>postgres_changes</code>) with Postgres as the store. Zero new vendors &mdash; you need Postgres anyway and Privy handles identity.</dd>
+        <dt>Gotcha</dt><dd>Turn the Pro spend cap <b>off on day one</b>, or you're capped at 500 concurrent connections &mdash; precisely the viral spike the product exists to capture.</dd>
+        <dt>Don't</dt><dd>Don't build your own websocket tier. At 50k DAU it saves under $150/mo and costs two weeks plus permanent on-call.</dd>
+        <dt>Cost</dt><dd><b>$25/mo</b> at 1k DAU &rarr; <b>~$200/mo</b> at 50k DAU.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="box bad">
+    <div class="lb">The moderation trap &mdash; this is where products in this category die</div>
+    <p>Every off-the-shelf moderation API &mdash; OpenAI, Perspective, Azure, Hive &mdash; classifies hate, violence and sexual content, and detects <b>exactly zero</b> of the harms that will actually appear: <b>contract-address spam, honeypot shilling, founder impersonation, coordinated pumps.</b> The crypto-native layer has to be built in-house.</p>
+    <p>Also: <b>Perspective API sunsets 31 Dec 2026</b> and closed quota increases in Feb 2026. Any plan naming it must be rewritten.</p>
+  </div>
+
+  <div class="box bad">
+    <div class="lb">Read this before putting a comment box under an X post</div>
+    <p>X's Display Requirements, verbatim: <b>"No other social or third party actions may be attached to a post. (e.g., subscribe, comment, like)."</b> Attaching an Insidor comment thread directly to a displayed X Post is a literal violation. Attach comments to the <b>narrative</b> &mdash; your own object &mdash; not to the rendered Post.</p>
+  </div>
+
+  <div class="feat">
+    <div class="fh"><span class="num">F1.4&ndash;6</span><span class="nm">Ranking, tags, rev-share, profiles, flex cards</span>
+      <span class="tags"><span class="tag t-late">LATER</span></span></div>
+    <div class="fb">
+      <div class="job">Thumbs up/down, name tags, revenue share for top-ranked users.</div>
+      <div class="box bad" style="margin:0">
+        <div class="lb">Design around this before you build it</div>
+        <p>Rev-share for commentary that promotes tokens Insidor earns trade fees on triggers <b>FTC Endorsement Guides</b> obligations (disclosure program, monitoring, penalties <b>$51,744&ndash;$53,088 per violation</b>) and <b>CFTC Rule 180.1</b> spot-manipulation exposure. It is also the exact shape X deleted the InfoFi category over.</p>
+        <p>The distinction that may save it: rewarding posting <em>on Insidor</em> is not rewarding posting <em>on X</em>. That distinction is ours, not X's, and it has never been tested. Keep it LATER &mdash; you were right to.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 03 -->
+<section>
+  <div class="sn">03 &mdash; FEATURE 02</div>
+  <h2>Live swap, chart, trade</h2>
+  <p class="dek">Rewritten. Photon and Axiom are out; Jupiter is in and pays you.</p>
+
+  <div class="feat pri">
+    <div class="fh"><span class="num">F2</span><span class="nm">Jupiter Plugin + Ultra API</span>
+      <span class="tags"><span class="tag t-pri">PRIORITY</span><span class="tag t-time">3 WEEKS</span></span></div>
+    <div class="fb">
+      <div class="job">Buy the coin without leaving the card &mdash; and take a cut.</div>
+      <pre><span class="c2">// Week 1 — swap, one script tag, brings its own wallet layer</span>
+<span class="k">https://plugin.jup.ag/plugin-v1.js</span>
+
+window.Jupiter.<span class="g">init</span>({
+  displayMode: <span class="g">'integrated'</span>,        <span class="c2">// embed directly in the feed</span>
+  enableWalletPassthrough: <span class="g">true</span>,   <span class="c2">// reuse Privy — never connect twice</span>
+  formProps: { referralAccount, referralFee: <span class="g">100</span> }  <span class="c2">// 100 bps to you</span>
+})</pre>
+      <dl class="kv">
+        <dt>Fee</dt><dd>You set the integrator fee &mdash; <b>max 255 bps</b>. Jupiter takes ~20% of it on the aggregated <code>/order</code> path, <b>0% on the raw <code>/build</code> path</b>.</dd>
+        <dt>Execute</dt><dd><code>api.jup.ag/ultra/v1/order</code> &rarr; <code>/execute</code>, with <code>referralAccount</code> + <code>referralFee</code>.</dd>
+        <dt>Charts</dt><dd>DexScreener iframe &mdash; <code>?embed=1&amp;theme=dark&amp;info=0&amp;trades=0</code>. Free, zero build time.</dd>
+        <dt>Trending</dt><dd><code>api.jup.ag/tokens/v2/toptrending/{5m|1h|6h|24h}</code>.</dd>
+        <dt>Cost</dt><dd>Jupiter Developer <b>$25/mo</b> (10 RPS). Free tier at 1 RPS genuinely works for a private beta.</dd>
+      </dl>
+      <div class="box warn" style="margin:14px 0 0">
+        <div class="lb">Check this yourself before launch</div>
+        <p>Jupiter's docs describe a <b>50 bps platform fee on tokens under 24 hours old</b> &mdash; which would be essentially every Insidor trade. The live API returned <b>10 bps</b> on seconds-old tokens during verification. The docs and the live behaviour disagree. <b>Measure it on a real new-token quote before you price anything.</b></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="box good">
+    <div class="lb">Delete a milestone</div>
+    <p>"Build our own terminal later to take all the fees" was premised on renting a terminal that pays you nothing. Jupiter pays you from week one, so the milestone has no purpose. Spend that time on the indexer instead.</p>
+  </div>
+</section>
+
+<!-- 04 -->
+<section>
+  <div class="sn">04 &mdash; FEATURE 03</div>
+  <h2>Creating coins</h2>
+
+  <div class="feat">
+    <div class="fh"><span class="num">F3.1</span><span class="nm">Create &mdash; Pump.fun SDK</span>
+      <span class="tags"><span class="tag t-core">CORE</span></span></div>
+    <div class="fb">
+      <pre><span class="c2">// @pump-fun/pump-sdk v1.36.0 (MIT)</span>
+<span class="c2">// program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P  (mainnet + devnet)</span>
+
+PUMP_SDK.<span class="g">createV2Instruction</span>({
+  mint, name, symbol, uri,
+  <span class="k">creator</span>,        <span class="c2">// ← ANY pubkey. independent of the signer.</span>
+  <span class="k">user</span>,           <span class="c2">// ← signs and pays</span>
+  mayhemMode: <span class="g">false</span>, cashback: <span class="g">false</span>
+})
+
+<span class="c2">// limits: name ≤32, symbol ≤13, uri ≤200, creator ≠ Pubkey::default()</span></pre>
+      <dl class="kv">
+        <dt>Cost</dt><dd><b>$0.</b> Pump.fun charges nothing to create. Real cost is rent + tx fees (cents), plus your optional dev buy, plus 0.015 SOL from liquidity at graduation.</dd>
+        <dt>Metadata</dt><dd><code>pump.fun/api/ipfs</code> was <b>alive and unauthenticated</b> at verification. Have a Pinata fallback &mdash; don't be single-homed on someone else's uploader.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="feat pri">
+    <div class="fh"><span class="num">F3.x</span><span class="nm">The poster's 40% &mdash; now buildable</span>
+      <span class="tags"><span class="tag t-pri">DECIDE</span></span></div>
+    <div class="fb">
+      <pre><span class="c2">// creator fee sharing — permissionless, on-chain</span>
+create_fee_sharing_config   <span class="c2">// PDA seeds [b"sharing-config", mint]</span>
+update_fee_shares_v2        <span class="c2">// set the split — SEE WARNING</span>
+transfer_creator_fees_to_pump_v2
+distribute_creator_fees_v2  <span class="c2">// permissionless, pro-rata, creates missing ATAs</span>
+
+<span class="c2">// rules: max 10 shareholders · no duplicates · each &gt; 0 · sum EXACTLY 10,000 bps</span>
+<span class="g">[ creator 5000 · poster 4000 · insidor 1000 ]</span>  <span class="c2">// = 10,000 ✓</span></pre>
+      <div class="box warn" style="margin:14px 0 0">
+        <div class="lb">The constraint that shapes the whole flow</div>
+        <p><code>update_fee_shares_v2</code> sets <code>admin_revoked = true</code> &mdash; <b>treat the split as set-once, at launch.</b> You cannot launch now and add the poster later when they show up.</p>
+        <p>The architecture that solves it: at launch time, deterministically derive a <b>Privy embedded wallet from the poster's social handle</b> and set <em>that</em> address as the shareholder. The wallet is addressable on-chain before the human has ever logged in, and <code>distribute_creator_fees_v2</code> will happily pay a wallet nobody has claimed. The money sits there until they arrive.</p>
+        <p class="dim" style="font-size:13px">Verify the exact revocation semantics against the live program before building on this &mdash; the fact-check flagged the consequence as possibly overstated.</p>
+      </div>
+      <div class="box bad" style="margin:14px 0 0">
+        <div class="lb">Two footguns</div>
+        <p><b>1.</b> Creating a <code>sharing_config</code> <em>permanently disables</em> <code>collect_creator_fee_v2</code> for that mint. If your distribution cranker breaks, there is no fallback collection path. Build and monitor it before you ship a single shared coin.</p>
+        <p><b>2.</b> PDA seeds differ between programs: <code>[b"creator-vault", creator]</code> on Pump vs <code>[b"creator_vault", coin_creator]</code> on Pump AMM. <b>Hyphen versus underscore.</b> An easy and expensive bug.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="feat">
+    <div class="fh"><span class="num">F3.2</span><span class="nm">Find the existing coin &mdash; by ticker AND image</span>
+      <span class="tags"><span class="tag t-core">CORE</span><span class="tag t-late">NOT 3 WEEKS</span></span></div>
+    <div class="fb">
+      <div class="job">Fills the one gap a prior engineering review found nobody had specced &mdash; the buy path.</div>
+      <dl class="kv">
+        <dt>Reality</dt><dd>No PF search API. <code>/coins/search</code> is dead. <b>You are building an indexer.</b></dd>
+        <dt>Corpus</dt><dd>Stream <code>create_v2</code> instructions for mint + name + symbol + uri. Hydrate images via Helius <code>getAssetBatch</code> &mdash; <b>1,000 mints/call, 10 credits/call</b>. Use <code>content.files[].cdn_uri</code>; never dereference IPFS yourself.</dd>
+        <dt>Filter</dt><dd>Restrict to tokens with nonzero volume or bonding-curve position &mdash; <b>1&ndash;3M images, not 12M</b>.</dd>
+        <dt>Embed</dt><dd>Self-hosted SSCD on Modal L4. <b>~$30&ndash;150 one-time</b> for the backfill; <b>~$1/mo</b> ongoing for ~25k new tokens/day.</dd>
+        <dt>Search</dt><dd>pgvector HNSW. Combine <b>image similarity + fuzzy ticker + text embedding</b> into one score.</dd>
+      </dl>
+      <div class="box warn" style="margin:14px 0 0">
+        <div class="lb">Calibrate on your own data</div>
+        <p>Published near-duplicate thresholds come from <b>DISC21 &mdash; transformed Flickr photos</b>, not memes with text overlay and AI-generated logos. A tight crop of one face from a source image defeats global descriptors roughly half the time. <b>Hand-label a few hundred real post&rarr;token pairs and fit your own cutoff.</b> Don't ship a borrowed number.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 05 -->
+<section>
+  <div class="sn">05 &mdash; FEATURES 04&ndash;07</div>
+  <h2>Wallet, watchlist, search, trending</h2>
+
+  <div class="feat">
+    <div class="fh"><span class="num">F4</span><span class="nm">Connect wallet &mdash; Privy</span>
+      <span class="tags"><span class="tag t-core">CORE</span></span></div>
+    <div class="fb">
+      <div class="job">Stop researching this layer. <b>Pump.fun and Jupiter both run on Privy</b> &mdash; your competitors have load-tested the exact code paths you'll hit.</div>
+      <dl class="kv">
+        <dt>Package</dt><dd><code>@privy-io/react-auth</code>. Solana is a first-class chain; full create / connect / sign / signAndSend / export surface.</dd>
+        <dt>Custody</dt><dd>2-of-2 Shamir shares reconstructed only inside AWS Nitro Enclaves. SOC2 Type I+II, audited by Cure53 / Zellic / Doyensec. Defensible.</dd>
+        <dt>Price</dt><dd>0&ndash;499 MAU <b>free</b> &middot; 500&ndash;2,499 <b>$299/mo</b> &middot; 2,500&ndash;9,999 <b>$499/mo</b>. Includes 50k signatures and $1M transaction volume per month.</dd>
+      </dl>
+      <div class="box warn" style="margin:14px 0 0">
+        <div class="lb">Three things to price in</div>
+        <p><b>The $1M/month volume ceiling.</b> 500 real traders averaging $2,000/mo of volume hits it. Usage billing starts there &mdash; model it now, not when the invoice lands.</p>
+        <p><b>Privy's swap API pays you nothing on Solana</b> (developer fees are cross-chain only) and gas sponsorship is mandatory for it. Route swaps through Jupiter, not Privy.</p>
+        <p><b>No card&rarr;memecoin.</b> Funding is SOL or USDC, so every new user is onramp &rarr; SOL &rarr; swap: two flows, ~2.5% card fee plus swap. That's a real conversion cliff on the "buy the viral coin in one tap" promise.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="feat">
+    <div class="fh"><span class="num">F5</span><span class="nm">Watchlist &mdash; posts and coins</span>
+      <span class="tags"><span class="tag t-core">CORE</span></span></div>
+    <div class="fb"><div class="job">Two Postgres tables and a star button. The value is the <b>notification when a watched narrative finally mints</b> &mdash; that's the retention hook, not the list itself.</div></div>
+  </div>
+
+  <div class="feat">
+    <div class="fh"><span class="num">F6</span><span class="nm">Search &mdash; keyword and contract address</span>
+      <span class="tags"><span class="tag t-core">CORE</span></span></div>
+    <div class="fb">
+      <div class="job">One query, both worlds: the post and the chart.</div>
+      <dl class="kv">
+        <dt>Keyword</dt><dd>Postgres full-text over your own narrative corpus + the token index you built for F3.2. <b>Search is downstream of the indexer</b> &mdash; it cannot ship before it.</dd>
+        <dt>By CA</dt><dd>Resolve the mint through your index, then show the coin <em>and</em> the narrative it came from.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="feat">
+    <div class="fh"><span class="num">F7</span><span class="nm">Trending &mdash; narratives and coins</span>
+      <span class="tags"><span class="tag t-core">CORE</span></span></div>
+    <div class="fb">
+      <dl class="kv">
+        <dt>Narratives</dt><dd>Your own scoring. Filter by age, views, velocity. This is the part nobody else has.</dd>
+        <dt>Coins</dt><dd class="li">Not Axiom/Photon. <b>Jupiter <code>toptrending</code></b> (free) or <b>Birdeye</b> ($99&ndash;199/mo, adds websockets for live charts).</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- 06 -->
+<section>
+  <div class="sn">06 &mdash; SEQUENCE</div>
+  <h2>What to build, in order</h2>
+  <p class="dek">The three-week clock is real, but it applies to the trading terminal, not the indexer.</p>
+
+  <div class="wk"><div class="w">WEEK 0</div><div class="c"><h4>Kill the assumptions</h4>
+    <p>Three cheap checks before code. Quote a seconds-old token through Jupiter and <b>read the actual platform fee</b> (10 bps or 50 bps &mdash; docs and live behaviour disagree). Call <code>pump.fun/api/ipfs</code> and confirm it still accepts uploads. Read the live <code>update_fee_shares_v2</code> semantics on devnet to confirm exactly how one-shot the split is.</p></div></div>
+
+  <div class="wk"><div class="w">WEEK 1</div><div class="c"><h4>Trading, in a day &mdash; then the corpus</h4>
+    <p>Jupiter Plugin embedded in the feed with <code>enableWalletPassthrough</code> into Privy. DexScreener iframes for charts. Jupiter <code>toptrending</code> for coin data. <b>That is Feature 2 and half of Feature 7 done in week one.</b> Spend the rest of the week streaming <code>create_v2</code> instructions into your token index.</p></div></div>
+
+  <div class="wk"><div class="w">WEEK 2</div><div class="c"><h4>Wallet, create, watchlist</h4>
+    <p>Privy embedded wallets. Pump.fun <code>createV2Instruction</code> with the fee-sharing config wired to a poster-derived wallet. Watchlists for posts and coins.</p></div></div>
+
+  <div class="wk"><div class="w">WEEK 3</div><div class="c"><h4>Comments, with moderation on day one</h4>
+    <p>Supabase Realtime Broadcast, spend cap off. Ship the crypto-native filter <b>in the same release</b> &mdash; CA regex, impersonation checks, rate limits. Never after.</p></div></div>
+
+  <div class="wk"><div class="w">WEEKS 4&ndash;7</div><div class="c"><h4>The indexer and image matching</h4>
+    <p>Backfill and embed the filtered token corpus. Build the combined image + ticker + text scorer. <b>Hand-label your own evaluation set</b> and fit the threshold. Search (F6) ships on top of this.</p></div></div>
+
+  <div class="wk"><div class="w">LATER</div><div class="c"><h4>Trenches, ranking, profiles, flex cards</h4>
+    <p>As you had them. Take legal advice on rev-share <em>before</em> designing it, not before shipping it.</p></div></div>
+</section>
+
+<!-- 07 -->
+<section>
+  <div class="sn">07 &mdash; COST</div>
+  <h2>What it runs</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Line</th><th class="n">Beta</th><th class="n">1k DAU</th><th class="n">50k DAU</th></tr></thead>
+    <tbody>
+      <tr><td><b>X ingestion</b> <span class="dim">$0.005/post read</span></td><td class="n">~$200</td><td class="n">~$1,600</td><td class="n">up to $10,000<span class="dim"> (cap)</span></td></tr>
+      <tr><td><b>Jupiter</b> <span class="dim">Developer tier</span></td><td class="n">$0</td><td class="n">$25</td><td class="n">$25</td></tr>
+      <tr><td><b>Privy</b></td><td class="n">$0</td><td class="n">$299</td><td class="n">$499+</td></tr>
+      <tr><td><b>Supabase</b> <span class="dim">realtime + Postgres</span></td><td class="n">$25</td><td class="n">$25</td><td class="n">~$200</td></tr>
+      <tr><td><b>Birdeye</b> <span class="dim">optional, live charts</span></td><td class="n">$0</td><td class="n">$99</td><td class="n">$199</td></tr>
+      <tr><td><b>Helius</b> <span class="dim">indexing + RPC</span></td><td class="n">$0</td><td class="n">~$50</td><td class="n">~$250</td></tr>
+      <tr><td><b>Image embedding</b></td><td class="n">$30&ndash;150<span class="dim"> once</span></td><td class="n">~$1</td><td class="n">~$1</td></tr>
+      <tr><td><b>Charts</b> <span class="dim">DexScreener</span></td><td class="n">$0</td><td class="n">$0</td><td class="n">$0</td></tr>
+      <tr class="tot"><td>Monthly</td><td class="n">~$225</td><td class="n">~$2,100</td><td class="n">$1,200&ndash;11,000</td></tr>
+    </tbody>
+  </table></div>
+  <p class="dek"><b>X ingestion is the entire cost story.</b> Everything else together is under $1,200/mo even at 50k DAU. The 2M read/month ceiling is both your budget and your product limit &mdash; curate accounts, don't chase the firehose.</p>
+</section>
+
+<!-- 08 -->
+<section>
+  <div class="sn">08 &mdash; BEFORE YOU WRITE CODE</div>
+  <h2>Verify these five</h2>
+  <p class="dek">Adversarial fact-checking refuted <b>15 of 26</b> specific claims in this research &mdash; not the conclusions, but the exact endpoints, prices and method names. APIs in this space move weekly. Treat every code identifier here as needing confirmation on the day you use it.</p>
+  <ul>
+    <li><b>The Jupiter new-token fee.</b> Docs say 50 bps under 24h; the live API returned 10 bps. Quote a real new token and measure. This decides your margin.</li>
+    <li><b>The fee-split revocation semantics.</b> How genuinely one-shot is <code>update_fee_shares_v2</code>? Test on devnet. It determines whether the poster wallet must be derived at launch.</li>
+    <li><b>Whether a shareholder wallet can be one nobody has claimed.</b> The whole 40% mechanic rests on paying an address before its human exists. Prove it on devnet with a fresh keypair.</li>
+    <li><b>X pay-per-use eligibility for a new developer account.</b> The 2M ceiling and the inability to buy Basic are the constraints that shape the product.</li>
+    <li><b>Whether Photon or Axiom have a private partner API.</b> Public: definitively no. Behind a BD email: unverified. One message answers it, and it would change Feature 2.</li>
+  </ul>
+</section>
+
+<!-- 09 -->
+<section style="border-bottom:0">
+  <div class="sn">09 &mdash; LEGAL</div>
+  <h2>Three things to take advice on</h2>
+  <ul>
+    <li><b>Paying a poster who never consented.</b> Now technically easy, which makes the legal question the binding one. Right of publicity is state law with no federal statute, and consent is the primary defence. Ship the opt-out registry and the "not created or endorsed by" disclaimer <em>in the same release</em> as the split.</li>
+    <li><b>Rev-share for commentary.</b> FTC Endorsement Guides plus CFTC Rule 180.1 when you also earn fees on the thing being promoted. This is why it stays LATER.</li>
+    <li><b>Comments attached to X content.</b> The Display Requirements prohibition is explicit. Attach threads to your narrative object, never to the rendered Post.</li>
+  </ul>
+  <div class="foot">
+    Insidor &middot; build spec v1.0 &middot; 22 July 2026<br>
+    6 research tracks &middot; 26 claims adversarially verified &middot; 15 corrected &middot; 32 agents<br>
+    Supersedes sections 07 and 12 of the engineering architecture, which assumed Meteora/Bags and Jupiter-only.
+  </div>
+</section>
+
+</div>

@@ -13,3 +13,8 @@ insidor/
 .env*
 !.env.example
 .vercel
+
+# Next.js
+.next/
+next-env.d.ts
+*.tsbuildinfo

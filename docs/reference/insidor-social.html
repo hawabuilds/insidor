@@ -1,0 +1,533 @@
+<title>Insidor &#8212; Social Layer</title>
+
+<style>
+:root{
+  --bg0:#060607; --bg1:#0C0C0E; --bg2:#131316; --bg3:#1A1A1E; --bg4:#222228;
+  --line:#212127; --line2:#2E2E36;
+  --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62;
+  --ion:#3DE0FF; --ionw:rgba(61,224,255,.10); --ionb:rgba(61,224,255,.32);
+  --lime:#9BF03C; --limew:rgba(155,240,60,.10); --limeb:rgba(155,240,60,.32);
+  --red:#FF5C6E; --redw:rgba(255,92,110,.10); --redb:rgba(255,92,110,.35);
+  --amber:#FFB84D; --amberw:rgba(255,184,77,.11);
+  --disp:"Clash Display","Avenir Next",-apple-system,system-ui,sans-serif;
+  --sans:"General Sans","Avenir Next",-apple-system,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --ez:cubic-bezier(.2,0,0,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg0);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,p{margin:0}
+button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
+input,textarea{font:inherit}
+:focus-visible{outline:1.5px solid var(--ion);outline-offset:2px;border-radius:6px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.cy{color:var(--ion)} .li{color:var(--lime)} .am{color:var(--amber)} .rd{color:var(--red)}
+.mu{color:var(--muted)} .dm{color:var(--dim)}
+
+.wrap{max-width:1180px;margin:0 auto;padding:34px 22px 100px}
+
+/* header */
+.top{display:flex;align-items:center;gap:12px;padding-bottom:22px;border-bottom:1px solid var(--line);
+  margin-bottom:34px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--disp);font-size:15px;font-weight:600;
+  letter-spacing:.07em}
+.brand i{width:8px;height:8px;border-radius:50%;background:var(--ion);box-shadow:0 0 10px rgba(61,224,255,.7)}
+.top .t{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+.top .r{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim)}
+
+.sec{margin-bottom:44px}
+.sh{margin-bottom:16px}
+.sn{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--ion);margin-bottom:8px}
+h2{font-family:var(--disp);font-size:24px;font-weight:600;letter-spacing:-.018em}
+.dek{color:var(--muted);margin-top:8px;max-width:70ch;font-size:14.5px}
+
+/* === the modal mock === */
+.modal{border:1px solid var(--line2);border-radius:14px;background:var(--bg1);overflow:hidden;
+  box-shadow:0 24px 70px rgba(0,0,0,.6)}
+.mh{display:flex;align-items:center;gap:11px;padding:15px 18px;border-bottom:1px solid var(--line)}
+.mh .t{font-family:var(--disp);font-size:16px;font-weight:600}
+.mh .x{margin-left:auto;color:var(--dim)}
+.cols{display:grid;grid-template-columns:1fr 380px}
+.left{padding:18px;border-right:1px solid var(--line)}
+.right{display:flex;flex-direction:column;min-height:0}
+
+.title{font-family:var(--disp);font-size:21px;font-weight:600;letter-spacing:-.015em;margin-bottom:14px}
+.src{border:1px solid var(--line);border-radius:11px;background:var(--bg2);padding:12px;display:flex;gap:11px;
+  margin-bottom:14px}
+.src .im{width:56px;height:56px;border-radius:9px;flex:none;background:var(--bg4);position:relative;
+  overflow:hidden}
+.src .im::before{content:'';position:absolute;inset:0;background:
+  radial-gradient(70% 80% at 30% 25%,rgba(96,124,176,.5),transparent 65%),
+  radial-gradient(60% 70% at 75% 75%,rgba(158,136,110,.4),transparent 62%)}
+.src .b{min-width:0;flex:1}
+.src .who{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim);margin-bottom:5px}
+.src .who b{color:var(--ink);font-weight:600}
+.src p{font-size:13.5px;line-height:1.45}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stat{border:1px solid var(--line);border-radius:9px;background:var(--bg2);padding:10px;text-align:center}
+.stat .v{font-family:var(--mono);font-size:15px;font-weight:600}
+.stat .k{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+  margin-top:3px}
+.insight{border-left:2px solid var(--ion);background:var(--ionw);padding:11px 13px;border-radius:0 8px 8px 0;
+  font-size:13.5px;margin-bottom:14px}
+.insight .s{color:var(--muted);font-size:12.5px;margin-top:3px}
+.toptok{border:1px solid var(--line);border-radius:10px;background:var(--bg2);padding:12px 14px;
+  display:flex;align-items:center;gap:12px}
+.toptok .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.toptok .tk{font-family:var(--disp);font-size:19px;font-weight:600}
+.toptok .r{margin-left:auto;text-align:right;font-family:var(--mono);font-size:13px}
+
+/* === discussion column === */
+.dh{display:flex;align-items:center;gap:9px;padding:13px 16px;border-bottom:1px solid var(--line);flex:none}
+.dh .t{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.dh .n{font-family:var(--mono);font-size:10.5px;color:var(--ion);background:var(--ionw);
+  border:1px solid var(--ionb);border-radius:20px;padding:1px 8px}
+.dh .sort{margin-left:auto;display:flex;gap:2px}
+.dh .sort button{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--dim);padding:3px 7px;
+  border-radius:5px}
+.dh .sort button.on{background:var(--bg3);color:var(--ink)}
+.feed{flex:1;overflow-y:auto;max-height:460px;padding:4px 0}
+.feed::-webkit-scrollbar{width:7px}
+.feed::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
+
+.cm{padding:13px 16px;border-bottom:1px solid var(--line)}
+.cm:last-child{border-bottom:0}
+.cm.new{animation:pop .4s var(--ez)}
+@keyframes pop{from{opacity:0;transform:translateY(-6px);background:var(--ionw)}to{opacity:1;transform:none}}
+.cm .top1{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.av{width:22px;height:22px;border-radius:7px;flex:none;background:var(--bg4)}
+.av.a1{background:linear-gradient(135deg,#3a5f7a,#1d3444)}
+.av.a2{background:linear-gradient(135deg,#6a4a7a,#33203d)}
+.av.a3{background:linear-gradient(135deg,#7a5a3a,#3d2d1d)}
+.av.a4{background:linear-gradient(135deg,#3a7a5f,#1d443a)}
+.av.a5{background:linear-gradient(135deg,#7a3a4a,#3d1d25)}
+.hnd{font-family:var(--mono);font-size:12.5px;font-weight:600}
+.pos{font-family:var(--mono);font-size:10px;letter-spacing:.04em;padding:2px 7px;border-radius:5px;
+  border:1px solid}
+.pos.has{color:var(--lime);border-color:var(--limeb);background:var(--limew)}
+.pos.none{color:var(--dim);border-color:var(--line2)}
+.pos.sold{color:var(--amber);border-color:rgba(255,184,77,.35);background:var(--amberw)}
+.cm .ago{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.cm .body{font-size:13.5px;line-height:1.5;margin-bottom:7px}
+.stamp{font-family:var(--mono);font-size:10.5px;color:var(--dim);display:flex;align-items:center;gap:6px;
+  flex-wrap:wrap}
+.stamp b{color:var(--muted);font-weight:400}
+.stamp .early{color:var(--ion)}
+.cm .acts{display:flex;align-items:center;gap:14px;margin-top:8px;font-family:var(--mono);font-size:10.5px;
+  color:var(--dim)}
+.cm .acts button:hover{color:var(--ink)}
+.cm .acts .up.on{color:var(--lime)}
+
+/* blocked */
+.cm.blocked{background:var(--redw)}
+.cm.blocked .body{color:var(--dim);text-decoration:line-through;text-decoration-color:var(--redb)}
+.blocknote{font-family:var(--mono);font-size:10.5px;color:var(--red);display:flex;align-items:flex-start;
+  gap:7px;margin-top:8px;line-height:1.5}
+.blocknote span{flex:none;margin-top:1px}
+
+/* composer */
+.composer{border-top:1px solid var(--line);padding:12px 16px;flex:none;background:var(--bg1)}
+.cbox{border:1px solid var(--line);border-radius:10px;background:var(--bg0);padding:10px 12px;
+  transition:border-color 150ms var(--ez)}
+.cbox:focus-within{border-color:var(--ionb)}
+.cbox textarea{width:100%;border:0;background:none;color:var(--ink);resize:none;font-size:13.5px;
+  line-height:1.5;min-height:38px;outline:none}
+.cbox textarea::placeholder{color:var(--dim)}
+.crow{display:flex;align-items:center;gap:10px;margin-top:9px}
+.crow .mystamp{font-family:var(--mono);font-size:10px;color:var(--dim);flex:1;min-width:0}
+.crow .mystamp b{color:var(--muted);font-weight:400}
+.btn{height:30px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:650;
+  background:var(--ion);color:#04141a;transition:filter 150ms var(--ez);white-space:nowrap}
+.btn:hover{filter:brightness(1.1)}
+.btn[disabled]{opacity:.35;cursor:default}
+.warn{font-family:var(--mono);font-size:10.5px;color:var(--red);margin-top:8px;display:none;
+  align-items:flex-start;gap:7px;line-height:1.5}
+.warn.on{display:flex}
+
+/* === annotation === */
+.annot{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+.acard{border:1px solid var(--line);border-radius:11px;background:var(--bg1);padding:15px 17px}
+.acard .n{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--ion);margin-bottom:7px}
+.acard h4{font-size:15px;font-weight:650;margin-bottom:6px;letter-spacing:-.01em}
+.acard p{font-size:13.2px;color:var(--muted);line-height:1.55}
+.acard p b{color:var(--ink)}
+
+/* rail */
+.rail{border:1px solid var(--line);border-radius:12px;background:var(--bg1);overflow:hidden;max-width:400px}
+.rtabs{display:flex;gap:2px;padding:8px;border-bottom:1px solid var(--line)}
+.rtabs button{flex:1;height:27px;border-radius:7px;font-size:12px;color:var(--muted)}
+.rtabs button.on{background:var(--bg3);color:var(--ink)}
+.rrow{display:flex;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line)}
+.rrow:last-child{border-bottom:0}
+.rrow .w{min-width:0;flex:1}
+.rrow .h{display:flex;align-items:center;gap:7px;margin-bottom:3px}
+.rrow .hn{font-family:var(--mono);font-size:11.5px;font-weight:600}
+.rrow .on2{font-size:11.5px;color:var(--dim)}
+.rrow .bd{font-size:12.5px;line-height:1.45;color:var(--muted)}
+.rrow .st{font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-top:4px}
+
+/* schema */
+pre{background:var(--bg1);border:1px solid var(--line);border-radius:10px;padding:15px 17px;overflow-x:auto;
+  font-family:var(--mono);font-size:12px;line-height:1.65;color:var(--muted);margin:14px 0}
+pre .k{color:var(--ion)} pre .g{color:var(--lime)} pre .c{color:var(--dim)} pre .r{color:var(--red)}
+pre b{color:var(--ink);font-weight:600}
+
+.note{border:1px solid var(--line);border-left:3px solid var(--ion);background:var(--bg1);
+  border-radius:0 10px 10px 0;padding:15px 18px;margin:16px 0}
+.note.g{border-left-color:var(--lime);background:var(--limew)}
+.note.r{border-left-color:var(--red);background:var(--redw)}
+.note .lb{font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ion);
+  margin-bottom:7px}
+.note.g .lb{color:var(--lime)} .note.r .lb{color:var(--red)}
+.note p{font-size:13.8px;color:var(--muted);line-height:1.55}
+.note p b{color:var(--ink)}
+.note p+p{margin-top:9px}
+
+@media (max-width:940px){
+  .cols{grid-template-columns:1fr}
+  .left{border-right:0;border-bottom:1px solid var(--line)}
+  .annot{grid-template-columns:1fr}
+}
+</style>
+
+<div class="wrap">
+
+<div class="top">
+  <span class="brand"><i></i>INSIDOR</span>
+  <span class="t">Social layer &middot; design</span>
+  <span class="r">click a vote &middot; try posting &middot; try pasting a contract address</span>
+</div>
+
+<!-- &#9552;&#9552;&#9552; 1 &#9552;&#9552;&#9552; -->
+<div class="sec">
+  <div class="sh">
+    <div class="sn">01 &mdash; WHERE IT LIVES</div>
+    <h2>Discussion sits beside the evidence</h2>
+    <p class="dek">The narrative modal is where a user decides &ldquo;is this real, am I early?&rdquo; Other people&rsquo;s takes are part of that judgement, so the modal becomes two columns &mdash; <b>evidence on the left, people on the right</b> &mdash; instead of a separate screen nobody visits.</p>
+  </div>
+
+  <div class="modal">
+    <div class="mh"><span class="t">Narrative</span><span class="x mono">&times;</span></div>
+    <div class="cols">
+
+      <div class="left">
+        <div class="title">Harbor Last Horn</div>
+        <div class="src">
+          <span class="im"></span>
+          <div class="b">
+            <div class="who"><b>@nordkyst_ferge</b> &middot; X &middot; 4h ago</div>
+            <p>A retiring ferry captain blew the horn one last time and the whole harbor blew theirs back. $FERRY i&rsquo;m not okay</p>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="v">2.4M</div><div class="k">Views</div></div>
+          <div class="stat"><div class="v">5.4K</div><div class="k">Reposts</div></div>
+          <div class="stat"><div class="v">115K</div><div class="k">Likes</div></div>
+          <div class="stat"><div class="v">4h</div><div class="k">Age</div></div>
+        </div>
+        <div class="insight">
+          Retiring captain, whole harbor responds. 1 post tracked across X.
+          <div class="s">Momentum established &mdash; mcap $378.3K, narrative age 4h.</div>
+        </div>
+        <div class="toptok">
+          <div><div class="k">Top token</div><div class="tk">$HORN</div></div>
+          <div class="r"><div>$799.6K</div><div class="dm" style="font-size:11px">mcap</div></div>
+        </div>
+      </div>
+
+      <div class="right">
+        <div class="dh">
+          <span class="t">Discussion</span>
+          <span class="n" id="ccount">6</span>
+          <span class="sort">
+            <button class="on" data-sort="early">Earliest</button>
+            <button data-sort="new">Newest</button>
+          </span>
+        </div>
+        <div class="feed" id="feed"></div>
+        <div class="composer">
+          <div class="cbox">
+            <textarea id="ta" rows="2" placeholder="What do you make of this?"></textarea>
+          </div>
+          <div class="warn" id="warn"><span>&#9888;</span><span id="warntext"></span></div>
+          <div class="crow">
+            <span class="mystamp">will post as <b>2.4M views &middot; 1 coin &middot; 4h old</b></span>
+            <button class="btn" id="post">Post</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="annot">
+    <div class="acard">
+      <div class="n">ANATOMY 01</div>
+      <h4>The stamp</h4>
+      <p>Every comment records <b>the state of the narrative at the moment it was written</b> &mdash; views, coin count, age. A take posted at 340K views with no coin is worth more than the same words at 2.4M with three coins. It makes earliness <b>visible and permanent</b>, which is the product&rsquo;s whole thesis applied to people.</p>
+    </div>
+    <div class="acard">
+      <div class="n">ANATOMY 02</div>
+      <h4>The position badge</h4>
+      <p>Insidor knows the commenter&rsquo;s wallet and can read their holdings on-chain, so every comment shows <b>whether they are talking their book</b> &mdash; <span class="li mono">holds 2.1 SOL</span>, <span class="dm mono">no position</span>, or <span class="am mono">sold</span>. No other comment section in crypto can do this, and it is the single most useful fact about any opinion on a coin.</p>
+    </div>
+  </div>
+</div>
+
+<!-- &#9552;&#9552;&#9552; 2 &#9552;&#9552;&#9552; -->
+<div class="sec">
+  <div class="sh">
+    <div class="sn">02 &mdash; THE OBJECT IT ATTACHES TO</div>
+    <h2>Comments belong to the story, never the post or the coin</h2>
+  </div>
+  <div class="note r">
+    <div class="lb">Not the post &mdash; this is a hard rule</div>
+    <p>X&rsquo;s Display Requirements, verbatim: <b>&ldquo;No other social or third party actions may be attached to a post. (e.g., subscribe, comment, like).&rdquo;</b> Hanging an Insidor thread off a rendered X Post is a literal violation of the terms that keep your ingestion alive.</p>
+  </div>
+  <div class="note">
+    <div class="lb">Not the coin either &mdash; this one is product, not policy</div>
+    <p>One story can spawn several coins. If discussion attaches to coins, it <b>fragments across duplicates</b> &mdash; three threads about the same ferry captain, each half-dead. Attach to the story and the conversation stays whole while coins come and go beneath it.</p>
+    <p>It also means a story with <b>no coin yet</b> still has a discussion &mdash; which is exactly where the earliest and most valuable takes happen.</p>
+  </div>
+  <pre><span class="c">-- one table, attached to the story</span>
+<span class="k">create table</span> comment (
+  id            uuid <span class="k">primary key</span>,
+  <b>story_id      uuid <span class="k">not null</span> <span class="k">references</span> story(id),</b>  <span class="c">-- never post, never coin</span>
+  author_id     uuid <span class="k">not null</span> <span class="k">references</span> app_user(id),
+  body          text <span class="k">not null</span>,
+  created_at    timestamptz <span class="k">default</span> now(),
+
+  <span class="c">-- THE STAMP: narrative state frozen at write time. denormalised on purpose --</span>
+  <span class="c">-- it is a historical fact, not a join. it must never change.</span>
+  <b>snap_views      bigint,
+  snap_coin_count int,
+  snap_age_min    int,
+  snap_top_mcap   numeric,</b>
+
+  <span class="c">-- THE POSITION: read from chain at write time, same reasoning</span>
+  <b>snap_position_lamports bigint,
+  snap_position_mint     text,</b>
+
+  status        text <span class="k">default</span> <span class="g">'visible'</span>,  <span class="c">-- visible | held | removed</span>
+  flags         jsonb
+);
+
+<span class="k">create index</span> <span class="k">on</span> comment (story_id, created_at <span class="k">desc</span>);
+<span class="k">create index</span> <span class="k">on</span> comment (story_id, snap_views <span class="k">asc</span>);  <span class="c">-- "earliest takes" sort</span></pre>
+</div>
+
+<!-- &#9552;&#9552;&#9552; 3 &#9552;&#9552;&#9552; -->
+<div class="sec">
+  <div class="sh">
+    <div class="sn">03 &mdash; MODERATION</div>
+    <h2>Structural, not a classifier</h2>
+    <p class="dek">No moderation vendor detects the harms you will actually get. But you do not need a model &mdash; <b>you already have the story&rsquo;s coin index</b>, and that turns the main attack into a database lookup.</p>
+  </div>
+
+  <div class="note g">
+    <div class="lb">The insight that makes this cheap</div>
+    <p>The dominant attack is <b>contract-address shilling</b>: someone drops a CA for their own unrelated coin under a hot narrative. Insidor already knows every mint matched to that story. So:</p>
+    <p><b>If a comment contains a Solana address that is not one of this story&rsquo;s coins, it is a shill.</b> No ML, no vendor, no false-positive tuning. One lookup against a table you built for a different feature.</p>
+  </div>
+
+  <pre><span class="c">-- the whole crypto-native filter, in order of cost</span>
+
+<span class="k">1. ADDRESS GATE</span>   base58 string, 32-44 chars, in the body?
+                  <span class="k">and not in</span> (<span class="k">select</span> mint <span class="k">from</span> coin <span class="k">where</span> story_id = $1)
+                  <span class="r">-&gt; block, no appeal. this is 90% of the spam.</span>
+
+<span class="k">2. IMPERSONATION</span>  handle within edit-distance 2 of the story's poster,
+                  or of a top-50 known account, and not verified as them
+                  <span class="r">-&gt; hold for review</span>
+
+<span class="k">3. WALLET AGE</span>     wallet &lt; 24h old <span class="k">and</span> zero prior transactions
+                  <span class="r">-&gt; rate limit to 1 comment per story, held if links present</span>
+
+<span class="k">4. VELOCITY</span>       &gt; 3 comments / 60s per wallet, or the same body text
+                  posted under &gt; 2 stories in 10 min
+                  <span class="r">-&gt; silent drop, no error shown to the poster</span>
+
+<span class="k">5. GENERIC</span>        an off-the-shelf API for hate / violence / sexual
+                  <span class="c">-- necessary but catches none of 1-4</span></pre>
+
+  <div class="note">
+    <div class="lb">Two operational rules</div>
+    <p><b>Ship the filter in the same release as the comment box.</b> Never after. A crypto comment section left open for one week without one is unrecoverable &mdash; you will be cleaning it up forever.</p>
+    <p><b>Require a connected wallet to post.</b> Not for identity, for cost. It is the cheapest sybil resistance you have, and you already have Privy.</p>
+  </div>
+</div>
+
+<!-- &#9552;&#9552;&#9552; 4 &#9552;&#9552;&#9552; -->
+<div class="sec">
+  <div class="sh">
+    <div class="sn">04 &mdash; THE RAIL</div>
+    <h2>A fourth mode: people</h2>
+    <p class="dek">Your live rail proves the <em>market</em> is alive. A <b>Chatter</b> mode proves the <em>place</em> is alive &mdash; and it is the cheapest way to make a new visitor feel like something is happening here.</p>
+  </div>
+  <div class="rail">
+    <div class="rtabs">
+      <button>Trades</button><button>Launches</button><button>Viral</button><button class="on">Chatter</button>
+    </div>
+    <div id="chatter"></div>
+  </div>
+</div>
+
+<!-- &#9552;&#9552;&#9552; 5 &#9552;&#9552;&#9552; -->
+<div class="sec">
+  <div class="sh">
+    <div class="sn">05 &mdash; WHAT COMES LATER</div>
+    <h2>Ranking, built on the stamp</h2>
+  </div>
+  <div class="note g">
+    <div class="lb">Why the stamp makes ranking non-gameable</div>
+    <p>You planned thumbs up/down and rev-share for top users. Upvotes are trivially farmed. But the stamp gives you something better and <b>already recorded</b>: for every comment on a story that has since played out, you know the narrative state when it was written and what happened after.</p>
+    <p>So a user&rsquo;s score is not &ldquo;how many likes&rdquo; &mdash; it is <b>&ldquo;how early were they on things that worked, across how many independent stories.&rdquo;</b> You cannot farm that without actually being right, early, repeatedly.</p>
+  </div>
+  <div class="note r">
+    <div class="lb">But keep rev-share switched off until counsel has seen it</div>
+    <p>Paying users for commentary on tokens <b>you earn trading fees on</b> triggers FTC Endorsement Guides obligations and CFTC Rule 180.1 exposure. It is also the exact shape X deleted an entire app category over in January. Build the score, display the score, <b>do not pay for the score</b> yet.</p>
+  </div>
+</div>
+
+</div>
+
+<script>
+(function(){
+'use strict';
+var $=function(s){return document.querySelector(s);};
+var E=function(s){return String(s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
+
+/* narrative state now - used to stamp new comments */
+var NOW={views:'2.4M',coins:1,age:'4h'};
+
+var CM=[
+ {a:'@fjordwatch',av:'a1',pos:{t:'has',s:'holds 2.1 SOL'},
+  b:"i live 20 min from this harbor. every boat in the fjord answered him, it wasn't staged. this has legs.",
+  st:{views:'340K',coins:0,age:'40m'},ago:'3h',up:41,early:true},
+ {a:'@saltcapital',av:'a2',pos:{t:'none',s:'no position'},
+  b:"norwegian local news picked it up before CT did. that ordering matters - it means the story is real and not a crypto psyop.",
+  st:{views:'610K',coins:0,age:'1h'},ago:'2h',up:28,early:true},
+ {a:'@mintcondition',av:'a3',pos:{t:'has',s:'holds 0.4 SOL'},
+  b:"$HORN is the only one with real liquidity. the other ticker is a copy launched 22 min later, be careful which one you buy.",
+  st:{views:'1.1M',coins:2,age:'2h'},ago:'1h',up:63,early:false},
+ {a:'@pierhead',av:'a4',pos:{t:'sold',s:'sold'},
+  b:"took profit at 600k. still think it runs but i'm not married to a boat horn.",
+  st:{views:'1.9M',coins:2,age:'3h'},ago:'44m',up:12,early:false},
+ {a:'@dockrat9',av:'a5',pos:{t:'none',s:'no position'},
+  b:"GUARANTEED 100X BUY NOW 7xKXtg2CW3aQ1mT4vLd2NcR8bHs3YgW6fAe1UqZ5jVn0P dont miss this one anon",
+  st:{views:'2.3M',coins:1,age:'4h'},ago:'12m',up:0,blocked:'Contract address does not match any coin from this story. Auto-blocked before it was ever shown.'},
+ {a:'@harbourmaster',av:'a1',pos:{t:'none',s:'no position'},
+  b:"the captain is 71 and did 31 years on the same route. someone should tell him he's a coin now.",
+  st:{views:'2.4M',coins:1,age:'4h'},ago:'6m',up:9,early:false}
+];
+
+var SORT='early';
+
+function stampHTML(st,early){
+  return '<div class="stamp">posted when <b>'+st.views+' views</b> &middot; <b>'+
+    (st.coins===0?'no coin yet':st.coins+' coin'+(st.coins>1?'s':''))+'</b> &middot; <b>'+st.age+' old</b>'+
+    (early?' <span class="early">&middot; early</span>':'')+'</div>';
+}
+
+function cmHTML(c,i,isNew){
+  if(c.blocked){
+    return '<div class="cm blocked"><div class="top1">'+
+      '<span class="av '+c.av+'"></span><span class="hnd">'+E(c.a)+'</span>'+
+      '<span class="pos none">new wallet</span><span class="ago">'+c.ago+'</span></div>'+
+      '<div class="body">'+E(c.b)+'</div>'+
+      '<div class="blocknote"><span>&#9888;</span><span>'+E(c.blocked)+'</span></div></div>';
+  }
+  return '<div class="cm'+(isNew?' new':'')+'" data-i="'+i+'"><div class="top1">'+
+    '<span class="av '+c.av+'"></span><span class="hnd">'+E(c.a)+'</span>'+
+    '<span class="pos '+c.pos.t+'">'+E(c.pos.s)+'</span>'+
+    '<span class="ago">'+c.ago+'</span></div>'+
+    '<div class="body">'+E(c.b)+'</div>'+
+    stampHTML(c.st,c.early)+
+    '<div class="acts"><button class="up'+(c.voted?' on':'')+'" data-up="'+i+'">&#9650; '+c.up+'</button>'+
+    '<button>reply</button></div></div>';
+}
+
+function views2n(v){
+  var m=String(v).match(/^([\d.]+)([KM])?$/);
+  if(!m) return 0;
+  var n=parseFloat(m[1]);
+  if(m[2]==='K') n*=1e3; if(m[2]==='M') n*=1e6;
+  return n;
+}
+
+function render(isNewIdx){
+  var order=CM.map(function(c,i){return {c:c,i:i};});
+  if(SORT==='early'){
+    order.sort(function(x,y){return views2n(x.c.st.views)-views2n(y.c.st.views);});
+  }else{
+    order.reverse();
+  }
+  $('#feed').innerHTML=order.map(function(o){
+    return cmHTML(o.c,o.i,o.i===isNewIdx);
+  }).join('');
+  $('#ccount').textContent=CM.filter(function(c){return !c.blocked;}).length;
+}
+
+/* live CA detection in the composer */
+var B58=/[1-9A-HJ-NP-Za-km-z]{32,44}/;
+var ta=$('#ta'), warn=$('#warn'), warntext=$('#warntext'), postBtn=$('#post');
+
+function check(){
+  var v=ta.value;
+  var m=v.match(B58);
+  if(m){
+    warn.classList.add('on');
+    warntext.textContent='That looks like a contract address, and it is not one of this story\u2019s coins. This comment will be blocked.';
+    postBtn.disabled=true;
+  }else{
+    warn.classList.remove('on');
+    postBtn.disabled=!v.trim();
+  }
+}
+ta.addEventListener('input',check);
+check();
+
+postBtn.addEventListener('click',function(){
+  var v=ta.value.trim();
+  if(!v||B58.test(v)) return;
+  CM.push({a:'@you',av:'a4',pos:{t:'none',s:'no position'},b:v,
+    st:{views:NOW.views,coins:NOW.coins,age:NOW.age},ago:'now',up:0,early:false});
+  ta.value=''; check();
+  SORT='new';
+  document.querySelectorAll('[data-sort]').forEach(function(b){
+    b.classList.toggle('on',b.dataset.sort==='new');});
+  render(CM.length-1);
+});
+
+document.addEventListener('click',function(e){
+  var u=e.target.closest('[data-up]');
+  if(u){var i=+u.dataset.up;
+    if(CM[i].voted){CM[i].up--;CM[i].voted=false;}else{CM[i].up++;CM[i].voted=true;}
+    render(); return;}
+  var s=e.target.closest('[data-sort]');
+  if(s){SORT=s.dataset.sort;
+    document.querySelectorAll('[data-sort]').forEach(function(b){b.classList.toggle('on',b===s);});
+    render(); return;}
+});
+
+/* chatter rail */
+var CH=[
+ {h:'@fjordwatch',on:'Harbor Last Horn',b:'i live 20 min from this harbor. it wasn\u2019t staged.',st:'340K views &middot; no coin yet'},
+ {h:'@saltcapital',on:'Plant TikTok Stitch',b:'grandma content always runs. this is the third one this month.',st:'510K views &middot; 1 coin'},
+ {h:'@mintcondition',on:'Harbor Last Horn',b:'$HORN is the only one with real liquidity.',st:'1.1M views &middot; 2 coins'},
+ {h:'@deskbound',on:'Office Meme Hour',b:'HR naming the stapler is peak 2026.',st:'880K views &middot; no coin yet'},
+ {h:'@pierhead',on:'Harbor Last Horn',b:'took profit at 600k. not married to a boat horn.',st:'1.9M views &middot; 2 coins'}
+];
+$('#chatter').innerHTML=CH.map(function(c,i){
+  return '<div class="rrow"><span class="av a'+((i%5)+1)+'"></span><div class="w">'+
+    '<div class="h"><span class="hn">'+E(c.h)+'</span><span class="on2">on '+E(c.on)+'</span></div>'+
+    '<div class="bd">'+E(c.b)+'</div>'+
+    '<div class="st">'+c.st+'</div></div></div>';
+}).join('');
+
+render();
+})();
+</script>

@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Insidor - what is going viral, and the coins made from it.">
+<title>Insidor</title>
+<style>h1,h2,h3,h4,h5,p{margin:0}input,button{font:inherit;color:inherit}</style>
+<style>
+/* ===========================================================
+   INSIDOR - one complete app.
+   Real viral moments. Search everywhere. Simple = cards.
+   Pro = the same objects, denser, with trading columns.
+   =========================================================== */
+:root{
+  --bg0:#060607; --bg1:#0C0C0E; --bg2:#131316; --bg3:#1A1A1E; --bg4:#222228;
+  --line:#212127; --line2:#2E2E36;
+  --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62;
+  --ion:#3DE0FF; --ionw:rgba(61,224,255,.10); --ionb:rgba(61,224,255,.32);
+  --lime:#9BF03C; --limew:rgba(155,240,60,.10); --limeb:rgba(155,240,60,.32);
+  --red:#FF5C6E; --redw:rgba(255,92,110,.10);
+  --amber:#FFB84D; --amberw:rgba(255,184,77,.11);
+  --disp:"Clash Display","Avenir Next",-apple-system,system-ui,sans-serif;
+  --sans:"General Sans","Avenir Next",-apple-system,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --ez:cubic-bezier(.2,0,0,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg0);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,p{margin:0}
+button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
+input{font:inherit}
+:focus-visible{outline:1.5px solid var(--ion);outline-offset:2px;border-radius:6px}
+.m{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.up{color:var(--lime)} .dn{color:var(--red)} .dm{color:var(--dim)} .mu{color:var(--muted)}
+/* mode gates must outrank component display rules like .grid4{display:grid} and .mini .r,
+   so they are compound selectors rather than single classes */
+body:not([data-m="pro"]) .oP{display:none}
+body[data-m="pro"] .oS{display:none}
+
+/* == HEADER == */
+.nav{position:sticky;top:0;z-index:60;background:var(--bg0);border-bottom:1px solid var(--line);
+  height:58px;display:flex;align-items:center;gap:16px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:8px;font-family:var(--disp);font-size:15px;font-weight:600;
+  letter-spacing:.07em;flex:none;cursor:pointer}
+.brand i{width:8px;height:8px;border-radius:50%;background:var(--ion);box-shadow:0 0 10px rgba(61,224,255,.7)}
+.tabs{display:flex;gap:2px;flex:none}
+.tabs button{height:32px;padding:0 12px;border-radius:8px;color:var(--muted);font-weight:500;font-size:13.5px;
+  white-space:nowrap;transition:all 150ms var(--ez)}
+.tabs button:hover{color:var(--ink);background:var(--bg2)}
+.tabs button.on{color:var(--ink);background:var(--bg2)}
+.srch{flex:1;min-width:120px;max-width:440px;height:36px;border:1px solid var(--line);border-radius:9px;
+  background:var(--bg1);display:flex;align-items:center;gap:9px;padding:0 12px;
+  transition:border-color 150ms var(--ez)}
+.srch:focus-within{border-color:var(--ionb)}
+.srch svg{flex:none;color:var(--dim)}
+.srch input{flex:1;min-width:0;border:0;background:none;color:var(--ink);font-size:13.5px;padding:0}
+.srch input::placeholder{color:var(--dim)}
+.srch input:focus{outline:none}
+.srch .clr{color:var(--dim);font-size:16px;line-height:1;flex:none}
+.srch .clr:hover{color:var(--ink)}
+.nr{display:flex;align-items:center;gap:8px;flex:none}
+.mode{display:flex;align-items:center;gap:8px;height:32px;padding:0 5px 0 11px;border:1px solid var(--line);
+  border-radius:8px;color:var(--muted);font-size:12.5px}
+.mode .sw{width:30px;height:17px;border-radius:9px;background:var(--bg4);position:relative}
+.mode .sw::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;
+  background:var(--dim);transition:transform 200ms var(--ez),background 190ms var(--ez)}
+body[data-m="pro"] .mode{color:var(--ion);border-color:var(--ionb)}
+body[data-m="pro"] .mode .sw{background:var(--ionw)}
+body[data-m="pro"] .mode .sw::after{transform:translateX(13px);background:var(--ion)}
+.ib{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--muted)}
+.ib:hover{background:var(--bg2);color:var(--ink)}
+.connect{height:32px;padding:0 15px;border-radius:8px;background:var(--ion);color:#04141a;font-weight:650;font-size:13px}
+.connect:hover{filter:brightness(1.1)}
+.wal{height:32px;padding:0 12px;border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;
+  gap:7px;font-family:var(--mono);font-size:12px}
+.wal b{color:var(--lime)}
+.demo{background:var(--ionw);border-bottom:1px solid var(--ionb);padding:8px 16px;font-size:12.5px;
+  color:var(--muted);display:flex;align-items:center;gap:10px}
+.demo b{color:var(--ion)}
+.demo button{margin-left:auto;color:var(--dim);font-size:11px;font-family:var(--mono)}
+
+/* == SHELL == */
+.wrap{max-width:1480px;margin:0 auto;padding:22px 16px 90px}
+body:not([data-m="pro"]) .wrap{max-width:660px}
+.vh{margin-bottom:18px}
+.vt{font-family:var(--disp);font-size:25px;font-weight:600;letter-spacing:-.02em}
+.vs{color:var(--muted);font-size:13.5px;margin-top:5px}
+.back{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;margin-bottom:14px;
+  font-family:var(--mono)}
+.back:hover{color:var(--ink)}
+.pills{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
+.pill{height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--line);color:var(--muted);
+  font-size:12.5px;transition:all 150ms var(--ez)}
+.pill:hover{border-color:var(--line2);color:var(--ink)}
+.pill.on{background:var(--bg2);border-color:var(--line2);color:var(--ink);font-weight:600}
+.pill.only.on{border-color:var(--ionb);color:var(--ion);background:var(--ionw)}
+
+/* == SIMPLE CARD == */
+.card{border:1px solid var(--line);border-radius:13px;background:var(--bg1);overflow:hidden;margin-bottom:13px}
+.card:hover{border-color:var(--line2)}
+.hero{width:100%;aspect-ratio:2.4/1;position:relative;display:block;border:0;padding:0;cursor:pointer}
+.hero .plt{position:absolute;right:11px;top:11px;width:26px;height:26px;border-radius:8px;
+  background:rgba(6,6,7,.8);display:grid;place-items:center;color:var(--ink)}
+.hero .st{position:absolute;left:11px;bottom:11px;height:26px;padding:0 10px;border-radius:8px;
+  background:rgba(6,6,7,.8);display:flex;align-items:center;gap:7px;font-size:12px}
+.cb{padding:15px 17px 17px}
+.crow{display:flex;align-items:center;gap:9px;margin-bottom:10px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.crow b{color:var(--ink);font-weight:600}
+.crow .when{margin-left:auto;color:var(--dim);font-size:12.5px}
+.ctit{font-size:18px;line-height:1.35;font-weight:600;letter-spacing:-.012em;margin-bottom:8px}
+.cwhy{font-size:14px;color:var(--muted);line-height:1.55;margin-bottom:12px}
+.facts{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.f{height:29px;padding:0 11px;border-radius:8px;background:var(--bg2);display:inline-flex;align-items:center;
+  gap:6px;font-size:12.5px;color:var(--muted)}
+.f b{color:var(--ink);font-weight:620}
+.f.g{background:var(--limew);color:var(--lime)} .f.g b{color:var(--lime)}
+.f.w{background:var(--amberw);color:var(--amber)} .f.w b{color:var(--amber)}
+.f.i{background:var(--ionw);color:var(--ion)} .f.i b{color:var(--ion)}
+.cact{display:flex;gap:9px;flex-wrap:wrap}
+.risk{font-size:12.5px;color:var(--dim);margin-top:10px;line-height:1.5}
+
+.btn{height:42px;padding:0 17px;border-radius:10px;font-weight:650;font-size:14px;border:1px solid var(--line2);
+  color:var(--muted);display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  transition:all 150ms var(--ez);white-space:nowrap}
+.btn:hover{border-color:var(--dim);color:var(--ink);background:var(--bg2)}
+.btn.ion{background:var(--ion);border-color:var(--ion);color:#04141a}
+.btn.ion:hover{filter:brightness(1.1);background:var(--ion);color:#04141a}
+.btn.lime{background:var(--lime);border-color:var(--lime);color:#0a1400}
+.btn.lime:hover{filter:brightness(1.1);background:var(--lime);color:#0a1400}
+.btn.red{background:var(--red);border-color:var(--red);color:#1a0206}
+.btn.f1{flex:1}
+.btn.sm{height:30px;font-size:12.5px;padding:0 11px;border-radius:7px}
+.btn.on{border-color:var(--ionb);color:var(--ion);background:var(--ionw)}
+.btn[disabled]{opacity:.4;cursor:default}
+
+/* == PRO TABLE == */
+.tblwrap{border:1px solid var(--line);border-radius:11px;background:var(--bg1);overflow:auto}
+table{width:100%;border-collapse:collapse;min-width:1080px}
+th{position:sticky;top:0;background:var(--bg1);z-index:2;font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--dim);font-weight:400;text-align:right;
+  padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer;user-select:none}
+th:first-child{text-align:left;padding-left:14px}
+th:hover{color:var(--ink)}
+th.srt{color:var(--ion)}
+td{padding:0 10px;height:44px;border-bottom:1px solid rgba(33,33,39,.7);text-align:right;white-space:nowrap;
+  font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+td:first-child{text-align:left;padding-left:14px;font-family:var(--sans)}
+tbody tr{cursor:pointer;transition:background 130ms var(--ez)}
+tbody tr:hover{background:var(--bg2)}
+tbody tr.nc{background:rgba(61,224,255,.04)}
+tbody tr.nc:hover{background:rgba(61,224,255,.09)}
+.tid{display:flex;align-items:center;gap:10px}
+.av{width:30px;height:30px;border-radius:8px;flex:none;border:1px solid var(--line)}
+.tk{font-weight:650;font-size:13.5px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.tn{font-size:11.5px;color:var(--dim);margin-top:1px;max-width:230px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;padding:2px 6px;border-radius:5px;
+  border:1px solid var(--line2);color:var(--dim)}
+.tag.i{border-color:var(--ionb);color:var(--ion);background:var(--ionw)}
+.tag.l{border-color:var(--limeb);color:var(--lime);background:var(--limew)}
+.tag.a{border-color:rgba(255,184,77,.4);color:var(--amber);background:var(--amberw)}
+.spk{width:56px;height:20px;vertical-align:middle}
+.spk path{fill:none;stroke-width:1.4}
+
+/* == STORY / TOKEN PAGE == */
+.panel{border:1px solid var(--line);border-radius:12px;background:var(--bg1);overflow:hidden;margin-bottom:14px}
+.ptit{padding:12px 16px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center}
+.ptit .r{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--muted)}
+.tgrid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}
+.thead{display:flex;align-items:center;gap:13px;padding:16px}
+.thead .av{width:46px;height:46px;border-radius:12px}
+.tbig{font-family:var(--disp);font-size:26px;font-weight:600;letter-spacing:-.02em;display:flex;
+  align-items:center;gap:10px;flex-wrap:wrap}
+.tpx{margin-left:auto;text-align:right}
+.tpx .p{font-family:var(--mono);font-size:21px;font-weight:600}
+.tpx .c{font-family:var(--mono);font-size:13px;margin-top:2px}
+.ledger{display:flex;align-items:flex-start;gap:11px;padding:12px 16px;background:var(--limew);
+  border-top:1px solid var(--limeb);border-bottom:1px solid var(--limeb);font-size:13.5px;color:var(--muted)}
+.ledger b{color:var(--lime)} .ledger q{color:var(--dim);font-style:italic}
+.ledger a{margin-left:auto;color:var(--lime);font-weight:600;white-space:nowrap;cursor:pointer;flex:none;font-size:13px}
+.ledger.o{background:var(--ionw);border-color:var(--ionb)}
+.ledger.o b,.ledger.o a{color:var(--ion)}
+.kpis{display:flex;border-top:1px solid var(--line);flex-wrap:wrap}
+.kpis div{flex:1;min-width:104px;padding:11px 15px;border-right:1px solid var(--line)}
+.kpis .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.kpis .v{font-family:var(--mono);font-size:13.5px;margin-top:3px}
+.chartbox{height:260px;padding:14px;border-top:1px solid var(--line);position:relative}
+.chartbox canvas{width:100%;height:100%;display:block}
+.safe{display:flex;gap:11px;padding:14px 16px;border-top:1px solid var(--line);align-items:flex-start}
+.safe .g{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none}
+.safe .g.ok{background:var(--limew);color:var(--lime)}
+.safe .g.wn{background:var(--amberw);color:var(--amber)}
+.safe .tt{font-weight:620;font-size:14px}
+.safe .ds{font-size:13px;color:var(--muted);margin-top:2px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line)}
+.grid4 div{padding:10px 13px;border-right:1px solid var(--line)}
+.grid4 div:last-child{border-right:0}
+.grid4 .k{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.grid4 .v{font-family:var(--mono);font-size:12px;margin-top:2px}
+/* trade */
+.sides{display:flex;gap:6px;padding:13px 13px 0}
+.sides button{flex:1;height:36px;border-radius:9px;font-weight:650;font-size:14px;color:var(--muted);
+  border:1px solid var(--line)}
+.sides button.on[data-side="buy"]{background:var(--lime);border-color:var(--lime);color:#0a1400}
+.sides button.on[data-side="sell"]{background:var(--red);border-color:var(--red);color:#1a0206}
+.fp{padding:12px 13px;border-bottom:1px solid var(--line)}
+.lbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;color:var(--muted);
+  margin-bottom:7px}
+.lbl b{color:var(--ink)}
+.amt{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:9px;background:var(--bg0);
+  padding:10px 12px}
+.amt:focus-within{border-color:var(--ion)}
+.amt input{flex:1;min-width:0;border:0;background:none;color:var(--ink);font-family:var(--mono);font-size:19px;
+  font-weight:600;padding:0}
+.amt input:focus{outline:none}
+.amt .u{font-family:var(--mono);font-size:12px;color:var(--dim)}
+.pre{display:flex;gap:5px;margin-top:9px}
+.pre button{flex:1;height:28px;border:1px solid var(--line);border-radius:7px;font-family:var(--mono);
+  font-size:11.5px;color:var(--muted)}
+.pre button:hover,.pre button.on{border-color:var(--ionb);color:var(--ion);background:var(--ionw)}
+.recv{padding:12px 13px;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;
+  justify-content:space-between;align-items:baseline}
+.recv .k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.recv .v{font-family:var(--mono);font-size:17px;font-weight:600}
+.mini{padding:10px 13px;display:grid;gap:5px}
+.mini .r{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px}
+.mini .r span:first-child{color:var(--dim)}
+.doit{margin:12px 13px 13px;height:44px;width:calc(100% - 26px);border-radius:10px;font-weight:700;
+  font-size:15px;background:var(--lime);color:#0a1400}
+.doit:hover{filter:brightness(1.1)}
+.doit.s{background:var(--red);color:#1a0206}
+.fine{padding:0 13px 13px;font-family:var(--mono);font-size:10.5px;color:var(--dim);text-align:center}
+.posn{padding:13px 16px;border-top:1px solid var(--line);background:var(--bg2)}
+.posn .k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.posn .v{font-family:var(--mono);font-size:21px;font-weight:600;margin-top:3px}
+.posn .s{font-size:12.5px;color:var(--muted);margin-top:3px}
+.posn .e{color:var(--lime);font-family:var(--mono);font-size:12px;margin-top:4px}
+/* timeline */
+.tl{padding:14px 16px}
+.tl .r{display:flex;gap:13px;position:relative;padding-bottom:15px}
+.tl .r:last-child{padding-bottom:0}
+.tl .r::before{content:'';position:absolute;left:5px;top:14px;bottom:-1px;width:1px;background:var(--line)}
+.tl .r:last-child::before{display:none}
+.tl .pip{width:11px;height:11px;border-radius:50%;border:2px solid var(--line2);background:var(--bg1);flex:none;
+  margin-top:3px;z-index:1}
+.tl .r.us .pip{border-color:var(--lime);background:var(--lime)}
+.tl .r.bad .pip{border-color:var(--red);background:var(--red)}
+.tl .t{font-family:var(--mono);font-size:11.5px;color:var(--muted);width:88px;flex:none}
+.tl .w b{font-size:13.5px;font-weight:600}
+.tl .w .s{font-size:12.5px;color:var(--dim);margin-top:2px;line-height:1.5}
+.crow2{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--line);
+  border-radius:11px;background:var(--bg1);margin-bottom:8px;cursor:pointer}
+.crow2:hover{border-color:var(--line2);background:var(--bg2)}
+.crow2.big{border-color:var(--limeb);background:var(--limew)}
+.crow2 .id{min-width:0;flex:1}
+.crow2 .r{text-align:right;flex:none;font-family:var(--mono)}
+.sect{font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim);
+  margin:20px 0 10px;display:flex;align-items:center;gap:10px}
+.sect .ln{flex:1;height:1px;background:var(--line)}
+.empty{border:1px dashed var(--line2);border-radius:12px;padding:38px 20px;text-align:center;color:var(--muted)}
+.empty b{display:block;font-family:var(--disp);font-size:17px;color:var(--ink);font-weight:600;margin-bottom:7px}
+
+/* == MODALS == */
+.scrim{position:fixed;inset:0;background:rgba(4,4,5,.8);-webkit-backdrop-filter:blur(4px);
+  backdrop-filter:blur(4px);z-index:120;display:grid;place-items:start center;padding:4vh 16px;
+  overflow-y:auto;animation:fi 140ms var(--ez)}
+@keyframes fi{from{opacity:0}to{opacity:1}}
+.modal{width:540px;max-width:100%;background:var(--bg1);border:1px solid var(--line2);border-radius:14px;
+  box-shadow:0 30px 80px rgba(0,0,0,.8);overflow:hidden;animation:mi 220ms var(--ez)}
+@keyframes mi{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+.mh{display:flex;align-items:center;gap:11px;padding:15px 17px;border-bottom:1px solid var(--line)}
+.mh .t{font-family:var(--disp);font-size:16.5px;font-weight:600}
+.mh .x{margin-left:auto}
+.mb{padding:17px}
+.mb h5{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+  margin:16px 0 7px}
+.mb h5:first-child{margin-top:0}
+.mb p{color:var(--muted);font-size:13.5px;margin-bottom:9px}
+.mb p b{color:var(--ink)}
+.gen{border:1px solid var(--line);border-radius:11px;overflow:hidden;margin-bottom:14px}
+.genh{padding:10px 12px;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.genh .r{margin-left:auto;color:var(--ion);cursor:pointer;text-transform:none;letter-spacing:0;font-size:11.5px}
+.gp{display:flex;align-items:center;gap:12px;padding:13px 12px}
+.gp .im{width:52px;height:52px;border-radius:10px;flex:none;border:1px solid var(--line)}
+.gp .tkb{font-family:var(--mono);font-size:20px;font-weight:700}
+.gp .nmb{font-size:13px;color:var(--muted);margin-top:2px}
+.why2{padding:0 12px 11px;font-family:var(--mono);font-size:10.5px;color:var(--dim);line-height:1.55}
+.why2 b{color:var(--muted)}
+.alts{display:flex;gap:6px;flex-wrap:wrap;padding:0 12px 12px}
+.alt{height:29px;padding:0 10px;border:1px solid var(--line);border-radius:7px;font-family:var(--mono);
+  font-size:11.5px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.alt:hover{border-color:var(--line2);color:var(--ink)}
+.alt.on{border-color:var(--limeb);color:var(--lime);background:var(--limew)}
+.alt .sc{font-size:9px;color:var(--dim)}
+.blocked{padding:9px 12px;border-top:1px solid var(--line);font-family:var(--mono);font-size:10px;
+  color:var(--dim);line-height:1.6}
+.blocked b{color:var(--amber)}
+.fw{margin-bottom:11px}
+.fw label{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dim);margin-bottom:6px}
+.fw .bx{border:1px solid var(--line);border-radius:9px;background:var(--bg0);padding:10px 12px;
+  display:flex;align-items:center;gap:7px}
+.fw .bx:focus-within{border-color:var(--ion)}
+.fw input{width:100%;border:0;background:none;color:var(--ink);font-size:16px;font-weight:600;padding:0}
+.fw input:focus{outline:none}
+.blk{margin-top:13px;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.blk .bh{padding:10px 12px;background:var(--bg2);border-bottom:1px solid var(--line);font-weight:600;
+  font-size:13px;display:flex;align-items:center}
+.blk .bh .tg{margin-left:auto;font-family:var(--mono);font-size:10.5px;font-weight:400}
+.ci{display:flex;gap:10px;padding:8px 12px;align-items:flex-start}
+.ci .g{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;flex:none;margin-top:1px}
+.ci .g.ok{background:var(--limew);color:var(--lime)} .ci .g.w{background:var(--amberw);color:var(--amber)}
+.ci .k{font-size:12.5px;font-weight:550} .ci .s{font-size:11.5px;color:var(--dim);margin-top:1px}
+.mn .r{display:flex;padding:6px 12px;font-size:12.5px}
+.mn .r span:first-child{color:var(--muted)}
+.mn .r span:last-child{margin-left:auto;font-family:var(--mono)}
+.mn .r.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:9px}
+.mn .r.tot span:first-child{color:var(--ink);font-weight:600}
+.mn .r.e span:last-child{color:var(--lime)}
+.splitb{height:7px;border-radius:4px;display:flex;gap:2px;overflow:hidden;margin:9px 12px 7px}
+.splitb i{height:100%}
+.leg{display:flex;gap:12px;flex-wrap:wrap;padding:0 12px 11px;font-family:var(--mono);font-size:10.5px;
+  color:var(--muted)}
+.leg span{display:flex;align-items:center;gap:5px}
+.leg i{width:8px;height:8px;border-radius:2px}
+.mf{padding:14px 17px;border-top:1px solid var(--line);background:var(--bg2);display:flex;gap:11px;
+  align-items:center}
+.mf .c{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:1}
+
+.ph{background:var(--bg3);position:relative;overflow:hidden}
+.ph::before{content:'';position:absolute;inset:0;background:
+  radial-gradient(72% 84% at 26% 24%,var(--g1),transparent 68%),
+  radial-gradient(62% 72% at 78% 74%,var(--g2),transparent 64%),
+  radial-gradient(48% 56% at 58% 32%,var(--g3),transparent 60%)}
+.ph .cap{position:absolute;inset:0;display:grid;place-items:center;padding:12px;text-align:center;
+  font-family:var(--mono);font-size:9.5px;color:rgba(255,255,255,.28);line-height:1.5}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--bg3);
+  border:1px solid var(--line2);padding:11px 18px;border-radius:10px;font-size:13.5px;z-index:200;
+  animation:tu 240ms var(--ez)}
+@keyframes tu{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+
+@media (max-width:1000px){ .tgrid{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:720px){
+  .nav{gap:9px;padding:0 11px;flex-wrap:wrap;height:auto;padding-top:9px;padding-bottom:9px}
+  .tabs{order:3;width:100%;overflow-x:auto}
+  .srch{order:2;max-width:none}
+  .wrap{padding:16px 12px 70px}
+  .vt{font-size:21px}
+  .cact{flex-direction:column} .btn.f1{width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+</style>
+</head>
+<body>
+<div class="nav">
+  <div class="brand" data-go="trending"><i></i>INSIDOR</div>
+  <div class="tabs" id="tabs"></div>
+  <label class="srch">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-3.6-3.6" stroke-linecap="round"/></svg>
+    <input id="q" placeholder="Search stories, coins, people" autocomplete="off">
+    <button class="clr" id="qx" style="display:none" aria-label="Clear">&times;</button>
+  </label>
+  <div class="nr">
+    <button class="mode" id="modeBtn">Pro<span class="sw"></span></button>
+    <button class="ib" id="helpBtn" aria-label="How this works">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.2 2.4c-.6.2-.8.7-.8 1.2v.4" stroke-linecap="round"/><path d="M12 17h.01" stroke-linecap="round"/></svg>
+    </button>
+    <span id="walSlot"></span>
+  </div>
+</div>
+<div class="demo" id="demo">
+  <span><b>Demo data.</b> Every story is a real viral moment from 2024&ndash;2026 with real dates, real coin outcomes and real lead times. Images are described, not shown.</span>
+  <button id="demoX">hide</button>
+</div>
+<div id="app"></div>
+<div id="modal"></div>
+<div id="toastSlot"></div>
+
+<script>
+(function(){
+'use strict';
+var $=function(s){return document.querySelector(s);};
+var app=$('#app'), modalEl=$('#modal');
+var E=function(s){return String(s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
+var GR=[['rgba(200,150,90,.30)','rgba(61,224,255,.14)','rgba(90,70,50,.40)'],
+        ['rgba(230,150,160,.28)','rgba(120,180,200,.18)','rgba(60,80,90,.40)'],
+        ['rgba(150,140,120,.30)','rgba(200,170,110,.18)','rgba(70,65,55,.42)'],
+        ['rgba(120,160,200,.28)','rgba(200,120,90,.16)','rgba(50,65,90,.44)'],
+        ['rgba(90,180,140,.26)','rgba(220,200,120,.16)','rgba(50,80,70,.44)'],
+        ['rgba(180,120,200,.26)','rgba(120,140,220,.18)','rgba(60,50,85,.44)'],
+        ['rgba(220,170,90,.28)','rgba(160,110,80,.20)','rgba(80,60,45,.42)'],
+        ['rgba(110,170,190,.26)','rgba(190,190,200,.16)','rgba(55,70,80,.44)']];
+var g=function(i){var c=GR[i%8];return '--g1:'+c[0]+';--g2:'+c[1]+';--g3:'+c[2];};
+var XI='<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.9 1.2h3.7l-8.1 9.2 9.5 12.6h-7.4l-5.8-7.6-6.7 7.6H.4l8.6-9.9L0 1.2h7.6l5.2 6.9 6.1-6.9Zm-1.3 19.6h2L6.5 3.3H4.4l13.2 17.5Z"/></svg>';
+var TT='<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16.6 5.8a4.3 4.3 0 0 1-1-2.8h-3.3v13.2a2.6 2.6 0 1 1-1.9-2.5V10a5.9 5.9 0 1 0 5.2 5.9V9.4a7.5 7.5 0 0 0 4.4 1.4V7.5a4.3 4.3 0 0 1-3.4-1.7Z"/></svg>';
+var IG='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/></svg>';
+var TV='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="m8 3 4 3 4-3" stroke-linecap="round"/></svg>';
+var PL={x:XI,tt:TT,ig:IG,tv:TV};
+var IC={ok:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg>',
+ wn:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>',
+ x:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+ bk:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+ big:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg>'};
+
+/* \u2550\u2550\u2550\u2550 STORIES (real moments) \u2550\u2550\u2550\u2550 */
+var ST=[
+{id:'chillguy',cat:'Art',p:'x',who:'Phillip Banks',at:'@PhillipBankss',date:'20 Nov 2024',state:'over',i:0,
+ title:'A cartoon dog who does not care became the internet mascot',
+ img:'Flat-colour drawing of a brown anthropomorphic dog, half-lidded eyes, smug smirk, grey crewneck, blue jeans, red high-tops, hands in pockets.',
+ why:'A shrug-and-smirk dog was the perfect stand-in for anyone pretending not to care.',
+ views:'13.8M',reach:13800000,posts:'\u2014',lead:-7200,
+ timeline:[['4 Oct 2023','The artist posted the drawing','Just a drawing on X. No coin, no attention.'],
+  ['30 Aug 2024','First viral wave on TikTok','A slideshow combining the art with other memes.'],
+  ['15 Nov 2024','$CHILLGUY was created','By an anonymous pump.fun deployer. FIVE DAYS BEFORE the peak.'],
+  ['20 Nov 2024','The meme peaked','$10M to $488M market cap in under two weeks.'],
+  ['21 Nov 2024','The artist objected','He announced DMCA action. Price fell 54% in two hours. He was doxxed and locked his account.']],
+ flag:'creator objected'},
+{id:'moodeng',cat:'Animals',p:'tt',who:'Khao Kheow Open Zoo',at:'@khamoo_and_the_gang',date:'10 Sep 2024',state:'over',i:1,
+ title:'A furious baby pygmy hippo in Thailand',
+ img:'Phone-shot vertical video of a two-month-old pygmy hippo calf, glossy pink-brown skin, squealing and snapping at a zookeeper hosing her down.',
+ why:'A tiny slippery hippo who was permanently furious and completely unintimidating.',
+ views:'6M',reach:6000000,posts:'\u2014',lead:-4320,
+ timeline:[['10 Jul 2024','She was born','At Khao Kheow Open Zoo in Chonburi, Thailand.'],
+  ['Late Aug 2024','Zookeeper clips started spreading','On the zoo own TikTok and Facebook accounts.'],
+  ['10 Sep 2024','$MOODENG was created','Three days BEFORE Forbes ran an explainer on who she was.'],
+  ['28 Sep 2024','Parodied on Saturday Night Live','Peak cultural saturation.'],
+  ['15 Nov 2024','Peak $670M market cap','Later listed on Coinbase. Now down about 94%.']],
+ flag:'zoo trademarked after'},
+{id:'pnut',cat:'News',p:'ig',who:'Mark Longo',at:'@peanut_the_squirrel12',date:'1 Nov 2024',state:'over',i:2,
+ title:'A pet squirrel was seized and euthanised days before a US election',
+ img:'Home video of a hand-raised grey squirrel sitting upright in cupped palms, holding food. The best-known shot has him in a tiny tan cowboy hat.',
+ why:'A state agency killed a beloved pet squirrel, the rabies test came back negative, and it became a symbol of overreach.',
+ views:'Mass news',reach:9000000,posts:'\u2014',lead:-1440,
+ timeline:[['30 Oct 2024','The squirrel was seized','From a property in Pine City, New York.'],
+  ['31 Oct 2024','$PNUT was created','Within about 24 hours, before the euthanasia was even public.'],
+  ['1 Nov 2024','He was euthanised','The rabies test came back negative.'],
+  ['Nov 2024','Peak $2.5B market cap','Amplified into mass news coverage. Now down about 95%.']],
+ flag:''},
+{id:'broccoli',cat:'Crypto',p:'x',who:'Changpeng Zhao',at:'@cz_binance',date:'13 Feb 2025',state:'over',i:5,
+ title:'A crypto founder named his dog and the market exploded in minutes',
+ img:'A photo of a Belgian Malinois, posted by CZ, revealing the dog is called Broccoli.',
+ why:'He named the dog in public and thousands raced to deploy a token on the name within minutes.',
+ views:'\u2014',reach:4000000,posts:'\u2014',lead:-5,
+ timeline:[['13 Feb 2025','He posted the dog photo','Revealing the name Broccoli.'],
+  ['13 Feb 2025','Coins appeared within minutes','The fastest documented lead time anywhere.'],
+  ['Same day','780+ competing tokens','Most buyers bought the wrong one.']],
+ flag:'780+ competing tokens'},
+{id:'hawk',cat:'People',p:'tt',who:'street interview',at:'Tim & Dee TV',date:'11 Jun 2024',state:'over',i:4,
+ title:'A street interview answer became a catchphrase, then a collapse',
+ img:'Vertical phone-shot street interview at night in the Broadway bar district of Nashville.',
+ why:'One improvised phrase was funny enough to become merch and eventually a token.',
+ views:'Tens of M',reach:30000000,posts:'\u2014',lead:262800,
+ timeline:[['11 Jun 2024','The clip went viral','Tens of millions of views within days.'],
+  ['4 Dec 2024','The official coin launched','About six months late. Unofficial ones came earlier.'],
+  ['4 Dec 2024','It collapsed within hours','A small number of wallets took a large share of supply immediately.']],
+ flag:'insider concentration'},
+{id:'nazgul',cat:'Sport',p:'tv',who:'Milan Cortina broadcast',at:'NBC Olympics',date:'18 Feb 2026',state:'spreading',i:6,
+ title:'A loose wolfdog joined an Olympic cross-country race and finished it',
+ img:'Live Olympic broadcast from the women cross-country team sprint in Tesero: a two-year-old Czechoslovakian wolfdog running loose alongside the skiers and crossing the line.',
+ why:'A dog wandered onto an Olympic course on live television and simply completed the race.',
+ views:'Broadcast',reach:2400000,posts:'\u2014',lead:null,
+ timeline:[['18 Feb 2026','It happened live on air','Then clipped across X, TikTok and Instagram.'],
+  ['Now','Still no coin','Nobody has made one. You would be first.']],
+ flag:''},
+{id:'saxophones',cat:'Internet',p:'tt',who:'TikTok trend',at:'multiple creators',date:'Jan 2026',state:'spreading',i:7,
+ title:'The saxophones are getting louder',
+ img:'Short videos laying a saxophone-heavy film score over ordinary footage, captioned as a warning that something terrible is about to happen.',
+ why:'A dread-filled soundtrack over mundane clips turned everyday moments into impending disaster.',
+ views:'\u2014',reach:1800000,posts:'\u2014',lead:null,
+ timeline:[['30 Dec 2025','Seeded on TikTok','Spread through January.'],['Now','Still no coin','Nobody has made one.']],
+ flag:''},
+{id:'crackerbarrel',cat:'Brands',p:'x',who:'Cracker Barrel',at:'@CrackerBarrel',date:'18 Aug 2025',state:'over',i:0,
+ title:'A restaurant chain deleted the old man from its logo and reversed in eight days',
+ img:'A minimalist text-only wordmark replacing the old logo, deleting Uncle Herschel, the old man leaning on a barrel.',
+ why:'People treated removing a cartoon old man as cultural vandalism, and the company folded in eight days.',
+ views:'\u2014',reach:5000000,posts:'\u2014',lead:null,
+ timeline:[['18 Aug 2025','The rebrand was revealed','Every platform plus cable news for over a week.'],
+  ['26 Aug 2025','They reversed it','Eight days. No coin was ever made.']],
+ flag:''},
+{id:'duo',cat:'Brands',p:'tt',who:'Duolingo',at:'@duolingo',date:'11 Feb 2025',state:'over',i:1,
+ title:'Duolingo announced its own mascot had died',
+ img:'The brand own accounts posting an in-character obituary for Duo, the green owl.',
+ why:'A language app killed off its own mascot as a bit and committed to it for weeks.',
+ views:'\u2014',reach:7000000,posts:'\u2014',lead:null,
+ timeline:[['11 Feb 2025','They announced the death','Enormous engagement across every platform.'],
+  ['Now','No coin, and we would not name one','The brand owns the character and is running the joke itself.']],
+ flag:'brand owned'},
+{id:'gorilla',cat:'Internet',p:'x',who:'the debate',at:'multiple',date:'Apr 2025',state:'over',i:2,
+ title:'One hundred men versus one gorilla',
+ img:'No single image. A hypothetical argument about whether a hundred unarmed men could beat a silverback gorilla.',
+ why:'An unresolvable bar argument that everyone had a confident opinion about.',
+ views:'~4B',reach:4000000000,posts:'\u2014',lead:0,
+ timeline:[['Apr 2025','Roughly four billion impressions','One of the largest single arguments on the internet.'],
+  ['Apr 2025','A coin used the initials MVG','It went nowhere. The word gorilla was right there.']],
+ flag:'named itself out of existence'},
+{id:'punch',cat:'Animals',p:'tt',who:'Ichikawa City Zoo',at:'zoo account',date:'5 Feb 2026',state:'cooling',i:3,
+ title:'A rejected baby macaque adopted an IKEA shark plushie',
+ img:'Zoo video of Punch, a baby Japanese macaque abandoned by his mother, clinging to a large orange-and-grey soft toy.',
+ why:'A lonely baby monkey adopted a stuffed toy as a substitute parent and would not let go.',
+ views:'\u2014',reach:2100000,posts:'\u2014',lead:2880,
+ timeline:[['5 Feb 2026','The zoo posted the video','It spread from their own account.'],
+  ['Feb 2026','$PUNCH appeared within days','One of the shortest lead times on record.']],
+ flag:''},
+{id:'genzstare',cat:'Internet',p:'x',who:'the discourse',at:'multiple',date:'Jul 2025',state:'over',i:5,
+ title:'The Gen Z Stare',
+ img:'No single image. A described behaviour: the blank expressionless look Gen Z service workers allegedly give customers.',
+ why:'Every generation got to be annoyed at another generation, the most reliable engine on the internet.',
+ views:'\u2014',reach:3200000,posts:'\u2014',lead:null,
+ timeline:[['29 Jul 2025','It started as a complaint','Ran for weeks across X and TikTok.'],
+  ['Now','Still no coin','Nobody has made one.']],
+ flag:''}
+];
+
+/* \u2550\u2550\u2550\u2550 COINS (separate objects, many per story) \u2550\u2550\u2550\u2550 */
+var CN=[
+{id:'c1',s:'chillguy',t:'CHILLGUY',n:'Just a Chill Guy',px:0.0106,c5:-1.2,c1:2.4,c24:-6.8,liq:1900000,
+ mc:10600000,vol:820000,hold:41200,age:'20mo',after:'5d before peak',peak:'$488M',i:0,mine:false},
+{id:'c2',s:'chillguy',t:'CHIG',n:'Chill Guy (ETH)',px:0.00042,c5:0.4,c1:-3.1,c24:-11.2,liq:120000,
+ mc:410000,vol:38000,hold:1840,age:'20mo',after:'later',peak:'$4M',i:2,mine:false},
+{id:'c3',s:'moodeng',t:'MOODENG',n:'Moo Deng',px:0.0381,c5:1.8,c1:-0.9,c24:4.2,liq:6100000,
+ mc:37700000,vol:4200000,hold:88400,age:'22mo',after:'3d before Forbes',peak:'$670M',i:1,mine:false},
+{id:'c4',s:'pnut',t:'PNUT',n:'Peanut the Squirrel',px:0.117,c5:-0.6,c1:1.9,c24:-3.4,liq:14200000,
+ mc:117000000,vol:19800000,hold:196000,age:'20mo',after:'24h, pre-news',peak:'$2.5B',i:2,mine:false},
+{id:'c5',s:'broccoli',t:'BROCCOLI',n:'Broccoli',px:0.0212,c5:2.2,c1:-4.4,c24:8.1,liq:2900000,
+ mc:21200000,vol:3100000,hold:31900,age:'17mo',after:'minutes',peak:'$350M',i:5,mine:false},
+{id:'c6',s:'broccoli',t:'BROCCOLI714',n:'Broccoli 714',px:0.0009,c5:-3.1,c1:-7.2,c24:-18.4,liq:88000,
+ mc:900000,vol:41000,hold:2100,age:'17mo',after:'minutes',peak:'$40M',i:3,mine:false},
+{id:'c7',s:'hawk',t:'HAWK',n:'Hawk Tuah',px:0.0000021,c5:-0.2,c1:0.1,c24:-1.8,liq:9000,
+ mc:21000,vol:1400,hold:8900,age:'19mo',after:'6mo late',peak:'$490M',i:4,mine:false},
+{id:'c8',s:'gorilla',t:'MVG',n:'Men vs Gorilla',px:0.0000004,c5:0,c1:-1.1,c24:-2.4,liq:2100,
+ mc:4000,vol:300,hold:410,age:'15mo',after:'late',peak:'$300K',i:2,mine:false},
+{id:'c9',s:'punch',t:'PUNCH',n:'Punch',px:0.00088,c5:4.1,c1:9.2,c24:22.6,liq:190000,
+ mc:880000,vol:340000,hold:4200,age:'5mo',after:'days',peak:'$1.9M',i:3,mine:false}
+];
+
+var S={m:'simple',v:'trending',arg:null,cat:'All',noCoin:false,q:'',wallet:false,bal:0,
+       holds:[],launches:[],follows:[],side:'buy',sort:'mc'};
+var st=function(id){return ST.filter(function(x){return x.id===id;})[0];};
+var cn=function(id){return CN.filter(function(x){return x.id===id;})[0];};
+var coinsOf=function(sid){return CN.filter(function(c){return c.s===sid;})
+  .sort(function(a,b){return b.liq-a.liq;});};
+var holdOf=function(cid){return S.holds.filter(function(h){return h.c===cid;})[0];};
+var isFol=function(id){return S.follows.indexOf(id)>-1;};
+var money=function(v){return '$'+v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});};
+var ab=function(v){return v>=1e9?'$'+(v/1e9).toFixed(2)+'B':v>=1e6?'$'+(v/1e6).toFixed(1)+'M':
+  v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v.toFixed(0);};
+var pc=function(v){return '<span class="'+(v>0?'up':v<0?'dn':'dm')+'">'+(v>0?'+':'')+v.toFixed(1)+'%</span>';};
+var num=function(v){return v.toLocaleString();};
+var STW={spreading:{w:'Spreading',c:'var(--amber)'},cooling:{w:'Cooling off',c:'var(--dim)'},
+         over:{w:'Finished',c:'var(--dim)'},just:{w:'Just spotted',c:'var(--ion)'}};
+var leadTxt=function(s){
+  if(s.lead===null) return 'No coin yet';
+  if(s.lead<0) return 'Coin came '+Math.round(-s.lead/1440)+'d BEFORE the peak';
+  if(s.lead===0) return 'Coin came late';
+  return 'Coin came '+(s.lead>=1440?Math.round(s.lead/1440)+'d':s.lead+'m')+' after';
+};
+
+/* \u2550\u2550\u2550\u2550 AUTO-NAMER \u2550\u2550\u2550\u2550 */
+var NM={
+ nazgul:{p:{t:'NAZGUL',n:'Nazgul'},w:'Branch A, proper noun. The animal has a name and the broadcast said it out loud. The ticker IS the name. Five of the six biggest animal coins were named exactly this way.',
+   a:[['WOLFDOG','Wolfdog',58],['SKI','Ski Dog',41],['TESERO','Tesero',33]],
+   b:'OLYMPIC blocked, protected mark. 2026 blocked, numbers are unsearchable.'},
+ saxophones:{p:{t:'SAX',n:'Getting Louder'},w:'Branch B, stressed catchphrase noun. Take the one word people shout, never the whole phrase.',
+   a:[['LOUDER','Louder',64],['DREAD','Dread',38]],
+   b:'The film the audio comes from is blocked. Never name a coin after someone else work.'},
+ crackerbarrel:{p:{t:'HERSCHEL',n:'Uncle Herschel'},w:'Branch D, object noun. The brand is off limits, but the deleted old man has a name and he is the actual subject of the joke.',
+   a:[['BARREL','Barrel',57],['OLDMAN','Old Man',46]],
+   b:'CRACKERBARREL blocked, registered brand and the joke is at their expense.'},
+ duo:{p:null,w:'All four branches blocked. The only nameable subject is a registered mascot owned by a company that is actively running the joke itself.',
+   a:[],b:'DUO, DUOLINGO, OWL all blocked. Registered brand running a live campaign.'},
+ genzstare:{p:{t:'STARE',n:'The Stare'},w:'Branch B, stressed catchphrase noun.',
+   a:[['GENZ','Gen Z',53],['BLANK','Blank',40]],b:'GENZSTARE blocked, too long to shout.'},
+ gorilla:{p:{t:'GORILLA',n:'One Hundred Men'},w:'Branch D, object noun. GORILLA is the word every single person searches.',
+   a:[['SILVERBACK','Silverback',61],['HUNDRED','Hundred Men',44]],
+   b:'MVG blocked, initialism. A real coin used this on a four-billion-impression event and went nowhere.'}
+};
+var namer=function(id){return NM[id]||{p:{t:'COIN',n:'Untitled'},w:'No strong signal found.',a:[],b:''};};
+
+/* \u2550\u2550\u2550\u2550 SEARCH \u2550\u2550\u2550\u2550 */
+function search(q){
+  q=q.toLowerCase().trim();
+  if(!q) return {st:[],cn:[]};
+  return {
+    st:ST.filter(function(s){return (s.title+' '+s.who+' '+s.at+' '+s.cat+' '+s.why).toLowerCase().indexOf(q)>-1;}),
+    cn:CN.filter(function(c){return (c.t+' '+c.n).toLowerCase().indexOf(q)>-1;})
+  };
+}
+function visible(){
+  var l=ST.slice();
+  if(S.cat!=='All') l=l.filter(function(x){return x.cat===S.cat;});
+  if(S.noCoin) l=l.filter(function(x){return !coinsOf(x.id).length;});
+  return l;
+}
+
+/* \u2550\u2550\u2550\u2550 SIMPLE FEED \u2550\u2550\u2550\u2550 */
+function card(s){
+  var cs=coinsOf(s.id), has=cs.length;
+  var act = !has ? '<button class="btn ion f1" data-go="make" data-arg="'+s.id+'">Create the coin</button>'
+    : has===1 ? '<button class="btn lime f1" data-go="coin" data-arg="'+cs[0].id+'">Buy $'+cs[0].t+'</button>'
+    : '<button class="btn f1" data-go="story" data-arg="'+s.id+'">See the '+has+' coins</button>';
+  return '<article class="card">'+
+    '<button class="hero ph" style="'+g(s.i)+'" data-go="story" data-arg="'+s.id+'">'+
+      '<span class="cap">'+E(s.img)+'</span><span class="plt">'+PL[s.p]+'</span>'+
+      '<span class="st" style="color:'+STW[s.state].c+'">'+STW[s.state].w+'</span></button>'+
+    '<div class="cb"><div class="crow"><b>'+E(s.who)+'</b> '+E(s.at)+
+      '<span class="when">'+s.date+'</span></div>'+
+      '<h3 class="ctit">'+E(s.title)+'</h3><p class="cwhy">'+E(s.why)+'</p>'+
+      '<div class="facts"><span class="f"><b>'+E(s.cat)+'</b></span>'+
+        (s.views!=='\u2014'?'<span class="f"><b>'+s.views+'</b> views</span>':'')+
+        (has?'<span class="f g"><b>'+has+'</b> coin'+(has>1?'s':'')+'</span>'
+            :'<span class="f i">Nobody has made a coin</span>')+
+        (s.flag?'<span class="f w">'+E(s.flag)+'</span>':'')+'</div>'+
+      '<div class="cact">'+act+
+        '<button class="btn" data-go="story" data-arg="'+s.id+'">What happened</button></div>'+
+      (has?'<div class="risk">$'+cs[0].t+' peaked at '+cs[0].peak+', now '+ab(cs[0].mc)+
+        '. Almost every coin like this loses most of its value.</div>':'')+
+    '</div></article>';
+}
+function vTrending(){
+  var l=visible();
+  var CAT=['All','Animals','Internet','Brands','People','Sport','News','Art','Crypto'];
+  app.innerHTML='<div class="wrap"><div class="vh"><h1 class="vt">What is going viral</h1>'+
+    '<p class="vs">Everything blowing up, crypto or not. If nobody has made a coin, you can be first.</p></div>'+
+    '<div class="pills">'+CAT.map(function(c){
+      return '<button class="pill'+(S.cat===c?' on':'')+'" data-cat="'+c+'">'+c+'</button>';}).join('')+
+      '<button class="pill only'+(S.noCoin?' on':'')+'" data-only="1">Only ones with no coin</button></div>'+
+    (S.m==='pro'?proTable(l,true):(l.length?l.map(card).join(''):'<div class="empty"><b>Nothing here</b>Try another category.</div>'))+
+    '</div>';
+}
+
+/* \u2550\u2550\u2550\u2550 PRO TABLE - familiar trading columns \u2550\u2550\u2550\u2550 */
+function spark(up){var p=[],y=9;for(var i=0;i<=56;i+=7){y+=Math.sin(i/6)*1.7+(up?-.9:.9);
+  p.push(i+','+Math.max(2,Math.min(18,y)).toFixed(1));}
+  return '<svg class="spk" viewBox="0 0 56 20"><path d="M'+p.join(' L')+'" style="stroke:var(--'+(up?'lime':'red')+')"/></svg>';}
+function proTable(stories,withStories){
+  var rows=[];
+  stories.forEach(function(s){
+    var cs=coinsOf(s.id);
+    if(!cs.length){
+      rows.push('<tr class="nc" data-go="story" data-arg="'+s.id+'">'+
+        '<td><div class="tid"><span class="av ph" style="'+g(s.i)+'"></span>'+
+        '<div><div class="tk">'+E(s.who)+'<span class="tag i">NO COIN</span></div>'+
+        '<div class="tn">'+E(s.title)+'</div></div></div></td>'+
+        '<td class="dm">'+s.cat+'</td><td class="dm">'+s.p.toUpperCase()+'</td>'+
+        '<td class="dm">-</td><td class="dm">-</td><td class="dm">-</td><td class="dm">-</td>'+
+        '<td class="dm">-</td><td class="dm">-</td><td class="dm">-</td>'+
+        '<td>'+(s.views==='\u2014'?'<span class="dm">-</span>':s.views)+'</td>'+
+        '<td><button class="btn sm ion" data-go="make" data-arg="'+s.id+'">Create</button></td></tr>');
+    }
+    cs.forEach(function(c){
+      rows.push('<tr data-go="coin" data-arg="'+c.id+'">'+
+        '<td><div class="tid"><span class="av ph" style="'+g(c.i)+'"></span>'+
+        '<div><div class="tk">$'+c.t+(cs.length>1&&c===cs[0]?'<span class="tag l">BIGGEST</span>':'')+
+        (cs.length>1&&c!==cs[0]?'<span class="tag">ALT</span>':'')+
+        (c.mine?'<span class="tag i">YOURS</span>':'')+'</div>'+
+        '<div class="tn">'+E(c.n)+' &middot; from '+E(s.who)+'</div></div></div></td>'+
+        '<td class="dm">'+s.cat+'</td><td class="dm">'+s.p.toUpperCase()+'</td>'+
+        '<td>$'+(c.px<0.01?c.px.toFixed(7):c.px.toFixed(4))+'</td>'+
+        '<td>'+pc(c.c5)+'</td><td>'+pc(c.c1)+'</td><td>'+pc(c.c24)+'</td>'+
+        '<td>'+ab(c.liq)+'</td><td>'+ab(c.mc)+'</td><td>'+num(c.hold)+'</td>'+
+        '<td>'+spark(c.c24>0)+'</td>'+
+        '<td><button class="btn sm lime" data-go="coin" data-arg="'+c.id+'">Buy</button></td></tr>');
+    });
+  });
+  return '<div class="tblwrap"><table><thead><tr>'+
+    ['Token / story','Cat','Src','Price','5m','1h','24h','Liquidity','Mkt cap','Holders','24h','']
+    .map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
+}
+
+/* \u2550\u2550\u2550\u2550 SEARCH VIEW \u2550\u2550\u2550\u2550 */
+function vSearch(){
+  var r=search(S.q);
+  var body='';
+  if(!S.q){
+    body='<div class="empty"><b>Search everything</b>'+
+      'Type a coin ticker, a person, a story or a category. Try "hippo", "chill", "PNUT" or "animals".</div>';
+  } else if(!r.st.length&&!r.cn.length){
+    body='<div class="empty"><b>Nothing matches "'+E(S.q)+'"</b>'+
+      'No story or coin here uses that. If it is going viral and we missed it, that is on us.</div>';
+  } else {
+    if(r.cn.length) body+='<div class="sect">Coins ('+r.cn.length+')<span class="ln"></span></div>'+
+      r.cn.map(function(c){var s=st(c.s);
+        return '<div class="crow2" data-go="coin" data-arg="'+c.id+'">'+
+          '<span class="av ph" style="'+g(c.i)+'"></span>'+
+          '<div class="id"><div class="tk">$'+c.t+'</div>'+
+          '<div class="tn">'+E(c.n)+' &middot; from '+E(s.who)+'</div></div>'+
+          '<div class="r"><div>'+ab(c.mc)+'</div>'+
+          '<div style="font-size:12px;margin-top:2px">'+pc(c.c24)+'</div></div></div>';}).join('');
+    if(r.st.length) body+='<div class="sect">Stories ('+r.st.length+')<span class="ln"></span></div>'+
+      r.st.map(function(s){var cs=coinsOf(s.id);
+        return '<div class="crow2" data-go="story" data-arg="'+s.id+'">'+
+          '<span class="av ph" style="'+g(s.i)+'"></span>'+
+          '<div class="id"><div class="tk">'+E(s.who)+
+          (cs.length?'':'<span class="tag i">NO COIN</span>')+'</div>'+
+          '<div class="tn">'+E(s.title)+'</div></div>'+
+          '<div class="r"><div class="dm" style="font-size:12px">'+s.date+'</div></div></div>';}).join('');
+  }
+  app.innerHTML='<div class="wrap"><div class="vh"><h1 class="vt">Search</h1>'+
+    '<p class="vs">Every story and every coin made from one.</p></div>'+body+'</div>';
+}
+function vNew(){
+  var l=CN.slice().sort(function(a,b){return (a.age.indexOf('mo')>-1?parseInt(a.age):0)-(b.age.indexOf('mo')>-1?parseInt(b.age):0);});
+  app.innerHTML='<div class="wrap"><div class="vh"><h1 class="vt">New pairs</h1>'+
+    '<p class="vs">Newest coins, most recent first</p></div>'+
+    (S.m==='pro'?proTable(ST.filter(function(s){return coinsOf(s.id).length;}),false)
+     :l.map(function(c){var s=st(c.s);
+       return '<div class="crow2" data-go="coin" data-arg="'+c.id+'">'+
+         '<span class="av ph" style="'+g(c.i)+'"></span>'+
+         '<div class="id"><div class="tk">$'+c.t+'</div><div class="tn">'+E(c.n)+' &middot; '+c.age+' old</div></div>'+
+         '<div class="r"><div>'+ab(c.mc)+'</div><div style="font-size:12px;margin-top:2px">'+pc(c.c24)+'</div></div></div>';
+       }).join(''))+'</div>';
+}
+function vWatch(){
+  if(!S.follows.length){app.innerHTML='<div class="wrap"><div class="vh"><h1 class="vt">Watchlist</h1></div>'+
+    '<div class="empty"><b>Nothing saved yet</b>Hit Watch on any story and it appears here. No wallet needed.'+
+    '<div style="margin-top:14px"><button class="btn ion" data-go="trending">See what is viral</button></div></div></div>';return;}
+  app.innerHTML='<div class="wrap"><div class="vh"><h1 class="vt">Watchlist</h1>'+
+    '<p class="vs">'+S.follows.length+' saved</p></div>'+
+    S.follows.map(function(id){var s=st(id), cs=coinsOf(id);
+      return '<div class="crow2" data-go="story" data-arg="'+id+'">'+
+        '<span class="av ph" style="'+g(s.i)+'"></span>'+
+        '<div class="id"><div class="tk">'+E(s.who)+'</div><div class="tn">'+E(s.title)+'</div></div>'+
+        '<div class="r">'+(cs.length?'<div class="up" style="font-size:12px">'+cs.length+' coin'+(cs.length>1?'s':'')+'</div>'
+          :'<button class="btn sm ion" data-go="make" data-arg="'+id+'">Create</button>')+'</div></div>';}).join('')+'</div>';
+}
+function vPort(){
+  if(!S.holds.length&&!S.launches.length){
+    app.innerHTML='<div class="wrap"><div class="vh"><h1 class="vt">Portfolio</h1></div>'+
+      '<div class="empty"><b>Nothing yet</b>Buy a coin or create one and it shows up here.'+
+      '<div style="margin-top:14px"><button class="btn ion" data-go="trending">See what is viral</button></div></div></div>';return;}
+  var inv=0,val=0;
+  S.holds.forEach(function(h){var c=cn(h.c);inv+=h.paid;val+=h.units*c.px;});
+  var d=val-inv;
+  app.innerHTML='<div class="wrap"><div class="vh"><h1 class="vt">Portfolio</h1></div>'+
+    '<div class="panel"><div style="padding:17px">'+
+      '<div class="kpis" style="border:0"><div style="border:0;padding:0"><div class="k">Value</div>'+
+      '<div class="v" style="font-size:26px">'+money(val)+'</div></div>'+
+      '<div style="border:0;padding:0"><div class="k">Put in</div><div class="v">'+money(inv)+'</div></div>'+
+      '<div style="border:0;padding:0"><div class="k">Profit</div><div class="v '+(d>=0?'up':'dn')+'">'+
+      (d>=0?'+':'-')+money(Math.abs(d))+'</div></div></div></div></div>'+
+    (S.holds.length?'<div class="sect">Holdings<span class="ln"></span></div>'+
+      S.holds.map(function(h){var c=cn(h.c),s=st(c.s),w=h.units*c.px,pl=w-h.paid;
+        return '<div class="crow2" data-go="coin" data-arg="'+c.id+'">'+
+          '<span class="av ph" style="'+g(c.i)+'"></span>'+
+          '<div class="id"><div class="tk">$'+c.t+'</div>'+
+          '<div class="tn">'+E(s.who)+' &middot; '+STW[s.state].w.toLowerCase()+'</div></div>'+
+          '<div class="r"><div>'+money(w)+'</div><div class="'+(pl>=0?'up':'dn')+
+          '" style="font-size:12px;margin-top:2px">'+(pl>=0?'+':'-')+money(Math.abs(pl))+'</div></div></div>';}).join(''):'')+
+    (S.launches.length?'<div class="sect">Coins you created<span class="ln"></span></div>'+
+      S.launches.map(function(l){var c=cn(l);
+        return '<div class="crow2" data-go="coin" data-arg="'+c.id+'">'+
+          '<span class="av ph" style="'+g(c.i)+'"></span>'+
+          '<div class="id"><div class="tk">$'+c.t+'</div><div class="tn">'+E(c.n)+'</div></div>'+
+          '<div class="r"><span class="tag l">CREATOR</span></div></div>';}).join(''):'')+
+    '</div>';
+}
+
+/* \u2550\u2550\u2550\u2550 STORY PAGE \u2550\u2550\u2550\u2550 */
+function vStory(id){
+  var s=st(id), cs=coinsOf(id), n=namer(id);
+  var contested=cs.length>1&&cs[0].liq<cs[1].liq*2;
+  app.innerHTML='<div class="wrap"><button class="back" data-go="trending">'+IC.bk+' Back</button>'+
+    '<div class="panel"><div class="ph" style="'+g(s.i)+';aspect-ratio:2.6/1">'+
+      '<span class="cap">'+E(s.img)+'</span></div>'+
+      '<div style="padding:16px"><div class="crow"><span style="display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;background:var(--bg3);color:var(--muted)">'+PL[s.p]+'</span>'+
+      '<b>'+E(s.who)+'</b> '+E(s.at)+'<span class="when">'+s.date+'</span></div>'+
+      '<h1 class="ctit" style="font-size:21px">'+E(s.title)+'</h1>'+
+      '<p class="cwhy">'+E(s.why)+'</p>'+
+      '<div class="facts"><span class="f"><b>'+s.cat+'</b></span>'+
+        (s.views!=='\u2014'?'<span class="f"><b>'+s.views+'</b> views</span>':'')+
+        '<span class="f" style="color:'+STW[s.state].c+'">'+STW[s.state].w+'</span></div>'+
+      '<div class="cact"><button class="btn'+(isFol(id)?' on':'')+'" data-fol="'+id+'">'+
+        (isFol(id)?'Watching':'Watch this')+'</button>'+
+        '<button class="btn" data-go="ext">Open original post</button></div></div></div>'+
+
+    '<div class="panel"><div class="ptit">What happened<span class="r">'+leadTxt(s)+'</span></div>'+
+      '<div class="tl">'+s.timeline.map(function(t,i){
+        var cls=t[1].indexOf('created')>-1||t[1].indexOf('appeared')>-1?'us':
+                (t[1].indexOf('objected')>-1||t[1].indexOf('collapsed')>-1?'bad':'');
+        return '<div class="r '+cls+'"><span class="pip"></span><span class="t">'+E(t[0])+'</span>'+
+          '<div class="w"><b>'+E(t[1])+'</b><div class="s">'+E(t[2])+'</div></div></div>';}).join('')+
+      '</div></div>'+
+
+    (cs.length
+      ? '<div class="sect">'+cs.length+' coin'+(cs.length>1?'s':'')+' made from this<span class="ln"></span></div>'+
+        cs.map(function(c,i){
+          var top=i===0&&!contested;
+          return '<div class="crow2'+(top?' big':'')+'" data-go="coin" data-arg="'+c.id+'">'+
+            '<span class="av ph" style="'+g(c.i)+'"></span>'+
+            '<div class="id"><div class="tk">$'+c.t+(top?'<span class="tag l">BIGGEST</span>':'')+'</div>'+
+            '<div class="tn">'+ab(c.liq)+' liquidity &middot; '+num(c.hold)+' holders &middot; made '+c.after+'</div></div>'+
+            '<div class="r"><div>'+ab(c.mc)+'</div><div style="font-size:12px;margin-top:2px">'+pc(c.c24)+'</div></div></div>';
+          }).join('')+
+        '<div class="risk">BIGGEST only means the most liquidity, which is what decides whether you can sell. Not a recommendation.</div>'+
+        '<div style="margin-top:12px"><button class="btn" data-go="make" data-arg="'+id+'">Create your own from this story</button></div>'
+      : '<div class="sect">No coin exists<span class="ln"></span></div>'+
+        (n.p
+          ? '<div class="empty"><b>You would be first</b>Nobody has made a coin from this. '+
+            'We would call it <b style="display:inline;color:var(--lime)">$'+n.p.t+'</b>.'+
+            '<div style="margin-top:14px"><button class="btn ion" data-go="make" data-arg="'+id+'">'+
+            'Create the coin</button></div></div>'
+          : '<div class="empty"><b>We will not name this one</b>'+E(n.w)+
+            '<div style="margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--amber)">'+
+            E(n.b)+'</div></div>'))+
+    '</div>';
+}
+
+/* \u2550\u2550\u2550\u2550 COIN PAGE \u2550\u2550\u2550\u2550 */
+function vCoin(id){
+  var c=cn(id), s=st(c.s), sib=coinsOf(c.s), h=holdOf(id);
+  var worth=h?h.units*c.px:0, pl=h?worth-h.paid:0;
+  app.innerHTML='<div class="wrap"><button class="back" data-go="story" data-arg="'+s.id+'">'+IC.bk+' '+E(s.who)+'</button>'+
+  '<div class="tgrid"><div>'+
+    '<div class="panel">'+
+      '<div class="thead"><span class="av ph" style="'+g(c.i)+'"></span>'+
+        '<div><div class="tbig">$'+c.t+'</div><div class="tn">'+E(c.n)+'</div></div>'+
+        '<div class="tpx"><div class="p">$'+(c.px<0.01?c.px.toFixed(7):c.px.toFixed(4))+'</div>'+
+        '<div class="c">'+pc(c.c24)+' 24h</div></div></div>'+
+      '<div class="ledger"><span><b>Insidor saw this story on '+s.date+'.</b> The coin was made '+
+        E(c.after)+' &middot; <q>'+E(s.title.slice(0,52))+'&hellip;</q></span>'+
+        '<a data-go="story" data-arg="'+s.id+'">See the story</a></div>'+
+      (sib.length>1?'<div class="ledger o"><span><b>'+(sib.length-1)+' other coin'+(sib.length>2?'s':'')+
+        '</b> made from the same story. Make sure this is the one you mean.</span>'+
+        '<a data-go="story" data-arg="'+s.id+'">Compare</a></div>':'')+
+      '<div class="kpis">'+
+        '<div><div class="k">Mkt cap</div><div class="v">'+ab(c.mc)+'</div></div>'+
+        '<div><div class="k">Liquidity</div><div class="v">'+ab(c.liq)+'</div></div>'+
+        '<div><div class="k">24h vol</div><div class="v">'+ab(c.vol)+'</div></div>'+
+        '<div><div class="k">Holders</div><div class="v">'+num(c.hold)+'</div></div>'+
+        '<div><div class="k">Peak</div><div class="v">'+c.peak+'</div></div></div>'+
+      '<div class="chartbox"><canvas id="cv"></canvas></div>'+
+      '<div class="safe oS"><span class="g '+(c.c24<-50||c.mc<50000?'wn':'ok')+'">'+
+        (c.c24<-50||c.mc<50000?IC.wn:IC.ok)+'</span><div><div class="tt">'+
+        (c.mc<50000?'Be careful with this one':'Nothing unusual')+'</div><div class="ds">'+
+        (c.mc<50000?'Barely any liquidity and almost nobody trading it. You may not be able to sell.'
+         :'Nobody can print more of this coin or freeze your wallet, and the trading pool is locked.')+
+        '</div></div></div>'+
+      '<div class="grid4 oP">'+
+        '<div><div class="k">Mint</div><div class="v up">Revoked</div></div>'+
+        '<div><div class="k">Freeze</div><div class="v up">Revoked</div></div>'+
+        '<div><div class="k">LP</div><div class="v up">Burned</div></div>'+
+        '<div><div class="k">Top 10</div><div class="v" style="color:var(--amber)">30%</div></div></div>'+
+    '</div></div>'+
+    '<div class="panel">'+
+      '<div class="sides"><button class="'+(S.side==='buy'?'on':'')+'" data-side="buy">Buy</button>'+
+        '<button class="'+(S.side==='sell'?'on':'')+'" data-side="sell">Sell</button></div>'+
+      '<div class="fp"><div class="lbl"><span>Amount</span><span>Balance <b>'+
+        (S.wallet?money(S.bal):'$0.00')+'</b></span></div>'+
+        '<div class="amt"><span class="u">$</span><input id="amt" value="50" inputmode="decimal"></div>'+
+        '<div class="pre">'+[10,50,100,'MAX'].map(function(v){
+          return '<button data-q="'+v+'"'+(v===50?' class="on"':'')+'>'+(typeof v==='number'?'$'+v:v)+'</button>';}).join('')+
+        '</div></div>'+
+      '<div class="fp oP"><div class="lbl"><span>Slippage</span><span>Priority</span></div>'+
+        '<div style="display:flex;gap:8px"><div class="pre" style="flex:1;margin:0">'+
+        ['0.5%','1%','5%'].map(function(v,i){return '<button class="'+(i===1?'on':'')+'">'+v+'</button>';}).join('')+
+        '</div><div class="pre" style="flex:1;margin:0">'+
+        ['Fast','Turbo'].map(function(v,i){return '<button class="'+(i===0?'on':'')+'">'+v+'</button>';}).join('')+
+        '</div></div></div>'+
+      '<div class="recv"><span class="k">You receive</span><span class="v" id="recv">-</span></div>'+
+      '<div class="mini"><div class="r oS"><span>Fees</span><span>~1% + network</span></div>'+
+        '<div class="r oP"><span>Min received</span><span id="minr">-</span></div>'+
+        '<div class="r oP"><span>Price impact</span><span class="up">0.21%</span></div>'+
+        '<div class="r oP"><span>Network</span><span>0.0005 SOL</span></div></div>'+
+      '<button class="doit'+(S.side==='sell'?' s':'')+'" id="doit">'+
+        (S.side==='buy'?'Buy $':'Sell $')+c.t+'</button>'+
+      '<div class="fine">You sign in your own wallet</div>'+
+      (h?'<div class="posn"><div class="k">Your position</div><div class="v">'+money(worth)+'</div>'+
+        '<div class="s">Put in '+money(h.paid)+' &middot; '+(pl>=0?'up ':'down ')+money(Math.abs(pl))+'</div></div>':'')+
+    '</div></div></div>';
+  chart(c); recalc();
+}
+function recalc(){
+  var c=cn(S.arg); if(!c||!$('#amt'))return;
+  var a=parseFloat($('#amt').value||'0')||0,u=a/c.px;
+  $('#recv').textContent=a?Math.round(u).toLocaleString()+' '+c.t:'-';
+  var m=$('#minr'); if(m)m.textContent=a?Math.round(u*.99).toLocaleString():'-';
+}
+function chart(c){
+  var cv=$('#cv'); if(!cv)return;
+  var w=cv.clientWidth,ht=cv.clientHeight,dpr=window.devicePixelRatio||1;
+  cv.width=w*dpr;cv.height=ht*dpr;var x=cv.getContext('2d');x.scale(dpr,dpr);x.clearRect(0,0,w,ht);
+  var cs=getComputedStyle(document.documentElement);
+  var line=cs.getPropertyValue('--line').trim(),lime=cs.getPropertyValue('--lime').trim(),
+      red=cs.getPropertyValue('--red').trim(),ion=cs.getPropertyValue('--ion').trim();
+  x.strokeStyle=line;x.lineWidth=1;
+  for(var i=1;i<4;i++){var y=Math.round(ht/4*i)+.5;x.beginPath();x.moveTo(0,y);x.lineTo(w,y);x.stroke();}
+  var pts=[],p=100,dir=c.c24>=0?1:-1;
+  for(var k=0;k<72;k++){p+=Math.sin(k/6)*2.3+(Math.random()-.5)*2.6+dir*.3;pts.push(p);}
+  var mn=Math.min.apply(null,pts),mx=Math.max.apply(null,pts);
+  var X=function(i){return i/(pts.length-1)*w;},Y=function(v){return ht-10-((v-mn)/(mx-mn||1))*(ht-24);};
+  if(S.m==='pro'){var n=48,bw=w/n;
+    for(var j=0;j<n;j++){var o=pts[j],cl=pts[j+1]||o,hi=Math.max(o,cl)+1.3,lo=Math.min(o,cl)-1.3;
+      var cx=j*bw+bw/2,rise=cl>=o;x.strokeStyle=rise?lime:red;x.fillStyle=rise?lime:red;
+      x.beginPath();x.moveTo(cx,Y(hi));x.lineTo(cx,Y(lo));x.stroke();
+      var t=Y(Math.max(o,cl)),b=Y(Math.min(o,cl));x.fillRect(cx-bw*.3,t,bw*.6,Math.max(1,b-t));}
+  }else{
+    x.beginPath();pts.forEach(function(v,i){i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v));});
+    x.strokeStyle=ion;x.lineWidth=2;x.lineJoin='round';x.stroke();
+    x.lineTo(w,ht);x.lineTo(0,ht);x.closePath();
+    var gr=x.createLinearGradient(0,0,0,ht);
+    gr.addColorStop(0,'rgba(61,224,255,.15)');gr.addColorStop(1,'rgba(61,224,255,0)');
+    x.fillStyle=gr;x.fill();}
+}
+
+/* \u2550\u2550\u2550\u2550 MODALS \u2550\u2550\u2550\u2550 */
+function shell(title,body,foot){
+  modalEl.innerHTML='<div class="scrim" id="scrim"><div class="modal">'+
+    '<div class="mh"><span class="t">'+E(title)+'</span><button class="ib x" data-close>'+IC.x+'</button></div>'+
+    body+(foot||'')+'</div></div>';
+  var sc=$('#scrim');
+  sc.addEventListener('mousedown',function(e){if(e.target===sc)close();});
+  modalEl.querySelectorAll('[data-close]').forEach(function(b){b.addEventListener('click',close);});
+}
+function close(){modalEl.innerHTML='';}
+function toast(m){$('#toastSlot').innerHTML='<div class="toast">'+E(m)+'</div>';
+  setTimeout(function(){$('#toastSlot').innerHTML='';},2500);}
+function sheetWallet(after){
+  shell('Connect a wallet',
+   '<div class="mb"><p>A wallet is the account that holds your coins. They live there, not with us, '+
+   'and we cannot touch or move them.</p><p class="dm" style="font-size:12.5px">You must be 18 or older.</p></div>',
+   '<div class="mf"><span class="c">We never see a password or recovery phrase</span>'+
+   '<button class="btn ion" id="cw">Connect</button></div>');
+  $('#cw').addEventListener('click',function(){
+    S.wallet=true;S.bal=250;paintWallet();close();toast('Wallet connected. $250.00 available.');
+    if(after)setTimeout(after,140);});
+}
+function sheetMake(sid){
+  if(!S.wallet)return sheetWallet(function(){sheetMake(sid);});
+  var s=st(sid), n=namer(sid);
+  if(!n.p){shell('We will not name this one',
+    '<div class="mb"><div class="gen"><div class="genh">Auto-name blocked</div>'+
+    '<div class="why2">'+E(n.w)+'</div><div class="blocked"><b>Blocked:</b> '+E(n.b)+'</div></div>'+
+    '<p>You can still create a coin manually, but we will not propose a name that rides a live brand campaign.</p></div>');
+    return;}
+  shell('Create the coin',
+   '<div class="mb">'+
+     '<div class="gen"><div class="genh">Auto-generated from the post<span class="r" data-regen="1">Regenerate</span></div>'+
+       '<div class="gp"><span class="im ph" style="'+g(s.i)+'"></span>'+
+         '<div><div class="tkb">$'+n.p.t+'</div><div class="nmb">'+E(n.p.n)+'</div></div></div>'+
+       '<div class="why2"><b>Why this name:</b> '+E(n.w)+'</div>'+
+       (n.a.length?'<div class="alts">'+n.a.map(function(a){
+         return '<button class="alt" data-alt="'+a[0]+'|'+E(a[1])+'">$'+a[0]+'<span class="sc">'+a[2]+'</span></button>';
+         }).join('')+'</div>':'')+
+       (n.b?'<div class="blocked"><b>Blocked:</b> '+E(n.b)+'</div>':'')+'</div>'+
+     '<div class="fw"><label>Name</label><div class="bx"><input id="nm" value="'+E(n.p.n)+'"></div></div>'+
+     '<div class="fw"><label>Ticker</label><div class="bx"><span class="mu">$</span>'+
+       '<input id="tk" value="'+n.p.t+'" style="text-transform:uppercase"></div></div>'+
+     '<div class="blk"><div class="bh">Audit &amp; risk<span class="tg up">Safe defaults on</span></div>'+
+       '<div class="ci"><span class="g ok">'+IC.ok+'</span><div><div class="k">Nobody can print more</div>'+
+         '<div class="s">Supply fixed at launch</div></div></div>'+
+       '<div class="ci"><span class="g ok">'+IC.ok+'</span><div><div class="k">Nobody can freeze wallets</div>'+
+         '<div class="s">Holders can always sell</div></div></div>'+
+       '<div class="ci"><span class="g ok">'+IC.ok+'</span><div><div class="k">Trading pool locked</div>'+
+         '<div class="s">Liquidity cannot be pulled</div></div></div>'+
+       '<div class="ci"><span class="g w">'+IC.wn+'</span><div><div class="k">'+E(s.at)+' does not know</div>'+
+         '<div class="s">They get 40% of fees. We will tell them it is waiting.</div></div></div></div>'+
+     '<div class="blk"><div class="bh">Costs and earnings</div><div class="mn">'+
+       '<div class="r"><span>First buy</span><span>$50.00</span></div>'+
+       '<div class="r"><span>Launch fee</span><span>$1.80</span></div>'+
+       '<div class="r"><span>Network</span><span>$0.20</span></div>'+
+       '<div class="r tot"><span>You pay now</span><span>$52.00</span></div>'+
+       '<div class="r e" style="margin-top:7px"><span>Your share of every trade fee</span><span>50%</span></div>'+
+       '<div class="r e"><span>At $100K traded</span><span>about $100</span></div></div>'+
+       '<div class="splitb"><i style="width:50%;background:var(--lime)"></i>'+
+       '<i style="width:40%;background:var(--ion)"></i><i style="width:10%;background:var(--dim)"></i></div>'+
+       '<div class="leg"><span><i style="background:var(--lime)"></i>You 50%</span>'+
+       '<span><i style="background:var(--ion)"></i>'+E(s.at)+' 40%</span>'+
+       '<span><i style="background:var(--dim)"></i>Insidor 10%</span></div></div></div>',
+   '<div class="mf"><span class="c">You sign in your own wallet</span>'+
+     '<button class="btn ion" id="mk">Create $<span id="mkT">'+n.p.t+'</span></button></div>');
+  var tk=$('#tk');
+  tk.addEventListener('input',function(){$('#mkT').textContent=tk.value.toUpperCase();});
+  modalEl.querySelectorAll('[data-alt]').forEach(function(b){b.addEventListener('click',function(){
+    var p=b.dataset.alt.split('|');$('#tk').value=p[0];$('#nm').value=p[1];$('#mkT').textContent=p[0];
+    modalEl.querySelectorAll('[data-alt]').forEach(function(z){z.classList.toggle('on',z===b);});});});
+  $('#mk').addEventListener('click',function(){
+    var t=$('#tk').value.toUpperCase();
+    if(CN.filter(function(c){return c.t===t;})[0])return toast('$'+t+' already exists');
+    if(S.bal<52)return toast('You need $52.00');
+    S.bal-=52;
+    var nc={id:'c'+(CN.length+1),s:sid,t:t,n:$('#nm').value,px:0.000052,c5:0,c1:0,c24:0,liq:2000,
+            mc:52000,vol:0,hold:1,age:'now',after:'by you, just now',peak:'\u2014',i:s.i,mine:true};
+    CN.push(nc);S.launches.push(nc.id);
+    S.holds.push({c:nc.id,units:50/nc.px,paid:50});
+    made(s,nc);});
+}
+function made(s,c){
+  document.querySelector('.modal').innerHTML=
+   '<div class="mh"><span class="t">Live on Solana</span><button class="ib x" data-close>'+IC.x+'</button></div>'+
+   '<div class="mb" style="text-align:center;padding:26px 17px">'+
+     '<div style="width:50px;height:50px;border-radius:50%;display:grid;place-items:center;margin:0 auto 13px;'+
+       'background:var(--limew);color:var(--lime)">'+IC.big+'</div>'+
+     '<h3 style="font-family:var(--disp);font-size:20px;font-weight:600;margin-bottom:5px">$'+c.t+' is live</h3>'+
+     '<p class="mu" style="margin-bottom:16px">You are the first to make a coin from this story.</p>'+
+     '<div style="border:1px solid var(--line2);border-radius:11px;overflow:hidden;text-align:left">'+
+       '<div class="ph" style="'+g(s.i)+';aspect-ratio:1200/520"><span class="cap">'+E(s.img)+'</span></div>'+
+       '<div style="padding:12px 13px;display:flex;align-items:center;gap:10px;background:var(--bg2)">'+
+       '<div><div style="font-family:var(--mono);font-size:16px;font-weight:700">$'+c.t+'</div>'+
+       '<div style="font-family:var(--mono);font-size:11px;color:var(--lime);margin-top:2px">'+
+       'first coin from this story</div></div>'+
+       '<div style="margin-left:auto;font-family:var(--disp);font-size:12.5px;letter-spacing:.06em;'+
+       'color:var(--muted);display:flex;align-items:center;gap:6px">'+
+       '<i style="width:7px;height:7px;border-radius:50%;background:var(--ion);display:block"></i>INSIDOR</div>'+
+       '</div></div>'+
+     '<div style="display:flex;gap:9px;margin-top:14px"><button class="btn" style="flex:1">Save image</button>'+
+       '<button class="btn ion" style="flex:1.3" data-close>Post on X</button></div></div>';
+  modalEl.querySelectorAll('[data-close]').forEach(function(b){b.addEventListener('click',function(){
+    close();paintWallet();go('coin',c.id);toast('$'+c.t+' is live');});});
+}
+function sheetHelp(){
+  shell('How this works',
+   '<div class="mb"><h5>What this is</h5><p>We watch social media for things going viral that have nothing '+
+   'to do with crypto. Every one is a story someone could make a coin from.</p>'+
+   '<h5>Why it matters</h5><p>Chill Guy was everywhere before most of crypto knew. The coin launched '+
+   '<b>five days before</b> the meme peaked and went from $10M to $488M. If you had seen it here while it '+
+   'was still just a drawing, you could have been early or made it yourself.</p>'+
+   '<h5>Simple and Pro</h5><p><b>Simple</b> is a feed of cards, plain English, one button. '+
+   '<b>Pro</b> is the same stories and coins as a sortable table with price, liquidity, market cap and '+
+   'holders, so you can scan fifty at once. Both have search.</p>'+
+   '<h5>The honest part</h5><p><b>Almost every coin like this loses most of its value.</b> '+
+   'MOODENG is down 94% from its peak. CHILLGUY is down 98%. HAWK collapsed within hours.</p></div>');
+}
+
+/* \u2550\u2550\u2550\u2550 NAV \u2550\u2550\u2550\u2550 */
+var NAV=[['trending','Trending'],['search','Search'],['new','New pairs'],['watch','Watchlist'],['portfolio','Portfolio']];
+function paintTabs(){
+  $('#tabs').innerHTML=NAV.map(function(n){
+    var on=n[0]===S.v||((S.v==='story'||S.v==='coin')&&n[0]==='trending');
+    return '<button class="'+(on?'on':'')+'" data-go="'+n[0]+'">'+n[1]+'</button>';}).join('');}
+function paintWallet(){
+  $('#walSlot').innerHTML=S.wallet?'<span class="wal"><b>'+money(S.bal)+'</b></span>'
+    :'<button class="connect" data-go="wallet">Connect</button>';}
+function go(v,arg){
+  if(v==='make')return sheetMake(arg);
+  if(v==='wallet')return sheetWallet();
+  if(v==='ext')return toast('This would open the original post');
+  S.v=v;S.arg=arg;paintTabs();
+  if(v==='trending')vTrending();
+  else if(v==='search')vSearch();
+  else if(v==='new')vNew();
+  else if(v==='watch')vWatch();
+  else if(v==='portfolio')vPort();
+  else if(v==='story')vStory(arg);
+  else if(v==='coin')vCoin(arg);
+  window.scrollTo({top:0});
+}
+document.addEventListener('click',function(e){
+  var t=e.target.closest('[data-go]');
+  if(t)return go(t.dataset.go,t.dataset.arg);
+  var c=e.target.closest('[data-cat]');if(c){S.cat=c.dataset.cat;return vTrending();}
+  var o=e.target.closest('[data-only]');if(o){S.noCoin=!S.noCoin;return vTrending();}
+  var f=e.target.closest('[data-fol]');
+  if(f){var id=f.dataset.fol;
+    if(isFol(id)){S.follows=S.follows.filter(function(x){return x!==id;});toast('Removed');}
+    else{S.follows.push(id);toast('Added to your watchlist');}
+    return go(S.v,S.arg);}
+  var sd=e.target.closest('[data-side]');if(sd){S.side=sd.dataset.side;return vCoin(S.arg);}
+  var q=e.target.closest('[data-q]');
+  if(q){$('#amt').value=q.dataset.q==='MAX'?String(S.bal):q.dataset.q;
+    document.querySelectorAll('[data-q]').forEach(function(x){x.classList.toggle('on',x===q);});return recalc();}
+  if(e.target.closest('[data-regen]'))return toast('Same four branches, different seed');
+  if(e.target.closest('#doit')){
+    var cc=cn(S.arg); if(!S.wallet)return sheetWallet();
+    var a=parseFloat(($('#amt')||{}).value||'0')||0;
+    if(S.side==='buy'){
+      if(a<=0||a>S.bal)return toast('Not enough in your wallet');
+      S.bal-=a;var h=holdOf(cc.id);
+      if(h){h.units+=a/cc.px;h.paid+=a;}else S.holds.push({c:cc.id,units:a/cc.px,paid:a});
+      paintWallet();vCoin(cc.id);return toast('Bought '+money(a)+' of $'+cc.t);
+    } else {
+      var hd=holdOf(cc.id); if(!hd)return toast('You do not own any $'+cc.t);
+      var w=hd.units*cc.px;S.bal+=w;S.holds=S.holds.filter(function(x){return x!==hd;});
+      paintWallet();vCoin(cc.id);return toast('Sold '+money(w));}
+  }
+});
+document.addEventListener('input',function(e){if(e.target.id==='amt')recalc();});
+$('#q').addEventListener('input',function(){
+  S.q=this.value; $('#qx').style.display=this.value?'block':'none';
+  if(S.q&&S.v!=='search'){go('search');$('#q').focus();}
+  else if(S.v==='search')vSearch();});
+$('#qx').addEventListener('click',function(){S.q='';$('#q').value='';this.style.display='none';go('trending');});
+$('#modeBtn').addEventListener('click',function(){
+  S.m=S.m==='simple'?'pro':'simple';document.body.dataset.m=S.m;go(S.v,S.arg);});
+$('#helpBtn').addEventListener('click',sheetHelp);
+$('#demoX').addEventListener('click',function(){$('#demo').style.display='none';});
+addEventListener('keydown',function(e){
+  if(e.key==='Escape')return close();
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('#q').focus();}});
+addEventListener('resize',function(){if(S.v==='coin')chart(cn(S.arg));});
+
+document.body.dataset.m='simple';
+paintTabs();paintWallet();go('trending');
+})();
+</script>
+</body>
+</html>

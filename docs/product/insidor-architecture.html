@@ -1,0 +1,816 @@
+<title>Insidor &#8212; Engineering Architecture</title>
+
+<style>
+:root{
+  --bg:#FCFCFB; --card:#FFFFFF; --sub:#F4F4F1; --sunk:#EDEDE9;
+  --bd:#E4E4DE; --bd2:#CFCFC7;
+  --tx:#14140F; --tx2:#55554D; --tx3:#8A8A80;
+  --ac:#1F5FD8; --ac-s:#EDF2FE; --ac-b:#BFD3F7;
+  --ok:#0B7040; --ok-s:#E7F4EC;
+  --bad:#A32C2C; --bad-s:#FBECEB;
+  --warn:#8A5A00; --warn-s:#FFF4E0;
+  --code:#F6F6F3;
+  --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0D0E10; --card:#141518; --sub:#181A1D; --sunk:#1E2024;
+    --bd:#25272C; --bd2:#353840;
+    --tx:#ECEDF0; --tx2:#9A9CA4; --tx3:#6A6D76;
+    --ac:#6E9BFF; --ac-s:rgba(110,155,255,.11); --ac-b:rgba(110,155,255,.32);
+    --ok:#3FC07C; --ok-s:rgba(63,192,124,.10);
+    --bad:#FF7A72; --bad-s:rgba(255,122,114,.10);
+    --warn:#E0A63C; --warn-s:rgba(224,166,60,.10);
+    --code:#17181B;
+  }
+}
+:root[data-t="light"]{--bg:#FCFCFB;--card:#FFFFFF;--sub:#F4F4F1;--sunk:#EDEDE9;--bd:#E4E4DE;--bd2:#CFCFC7;
+  --tx:#14140F;--tx2:#55554D;--tx3:#8A8A80;--ac:#1F5FD8;--ac-s:#EDF2FE;--ac-b:#BFD3F7;--ok:#0B7040;--ok-s:#E7F4EC;
+  --bad:#A32C2C;--bad-s:#FBECEB;--warn:#8A5A00;--warn-s:#FFF4E0;--code:#F6F6F3}
+:root[data-t="dark"]{--bg:#0D0E10;--card:#141518;--sub:#181A1D;--sunk:#1E2024;--bd:#25272C;--bd2:#353840;
+  --tx:#ECEDF0;--tx2:#9A9CA4;--tx3:#6A6D76;--ac:#6E9BFF;--ac-s:rgba(110,155,255,.11);--ac-b:rgba(110,155,255,.32);
+  --ok:#3FC07C;--ok-s:rgba(63,192,124,.10);--bad:#FF7A72;--bad-s:rgba(255,122,114,.10);
+  --warn:#E0A63C;--warn-s:rgba(224,166,60,.10);--code:#17181B}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:15.5px;line-height:1.62;
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,p,ul,ol,dl,figure,table{margin:0}
+a{color:var(--ac)}
+code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:1px 5px;border-radius:4px}
+pre{background:var(--code);border:1px solid var(--bd);border-radius:9px;padding:14px 16px;overflow-x:auto;
+  font-family:var(--mono);font-size:12.5px;line-height:1.6;margin:16px 0}
+pre code{background:none;padding:0;font-size:inherit}
+
+.bar{position:sticky;top:0;z-index:40;background:var(--bg);border-bottom:1px solid var(--bd)}
+.bin{max-width:1120px;margin:0 auto;padding:0 24px;height:54px;display:flex;align-items:center;gap:18px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:650;letter-spacing:-.01em;flex:none}
+.brand i{width:9px;height:9px;border-radius:50%;background:var(--ac);display:block}
+.jump{margin-left:auto;display:flex;gap:1px;overflow-x:auto;scrollbar-width:none}
+.jump::-webkit-scrollbar{display:none}
+.jump a{font-family:var(--mono);font-size:11px;color:var(--tx3);text-decoration:none;padding:5px 8px;
+  border-radius:5px;white-space:nowrap}
+.jump a:hover{background:var(--sub);color:var(--tx)}
+.tb{flex:none;width:30px;height:30px;border:0;background:none;color:var(--tx3);cursor:pointer;border-radius:6px;
+  display:grid;place-items:center}
+.tb:hover{background:var(--sub);color:var(--tx)}
+
+.page{max-width:1120px;margin:0 auto;padding:0 24px 120px}
+.col{max-width:760px}
+.hero{padding:56px 0 36px;border-bottom:1px solid var(--bd);margin-bottom:20px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--tx3);
+  margin-bottom:13px}
+h1{font-size:40px;line-height:1.1;letter-spacing:-.034em;font-weight:700;max-width:17ch;text-wrap:balance}
+.lede{font-size:18px;line-height:1.55;color:var(--tx2);margin-top:15px;max-width:62ch}
+.lede b{color:var(--tx);font-weight:600}
+.meta{font-family:var(--mono);font-size:11.5px;color:var(--tx3);margin-top:20px;display:flex;gap:18px;flex-wrap:wrap}
+
+/* TOC */
+.toc{border:1px solid var(--bd);border-radius:12px;background:var(--card);padding:20px 24px;margin:28px 0 44px}
+.toc h4{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--tx3);
+  margin-bottom:14px}
+.toc ol{list-style:none;padding:0;columns:2;column-gap:36px}
+.toc li{margin-bottom:7px;break-inside:avoid;font-size:14.5px}
+.toc a{text-decoration:none;color:var(--tx2)}
+.toc a:hover{color:var(--ac)}
+.toc .n{font-family:var(--mono);font-size:11.5px;color:var(--tx3);margin-right:9px}
+
+section{margin-bottom:56px;scroll-margin-top:70px}
+.snum{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;color:var(--ac);margin-bottom:8px}
+h2{font-size:27px;letter-spacing:-.026em;font-weight:670;line-height:1.2;text-wrap:balance}
+h3{font-size:17px;font-weight:650;letter-spacing:-.014em;margin:28px 0 9px}
+h4{font-size:14.5px;font-weight:650;margin:20px 0 7px}
+.dek{color:var(--tx2);margin-top:9px;max-width:64ch}
+p+p{margin-top:12px}
+.col p,.col ul,.col ol{max-width:68ch}
+ul,ol{padding-left:20px;margin-top:11px}
+li{margin-bottom:6px}
+li::marker{color:var(--tx3)}
+strong{font-weight:650}
+
+.note{border:1px solid var(--bd);border-left:3px solid var(--ac);background:var(--card);
+  border-radius:0 10px 10px 0;padding:16px 19px;margin:20px 0}
+.note.k{border-left-color:var(--bad);background:var(--bad-s);border-color:transparent}
+.note.w{border-left-color:var(--warn);background:var(--warn-s);border-color:transparent}
+.note.g{border-left-color:var(--ok);background:var(--ok-s);border-color:transparent}
+.note .lb{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  margin-bottom:7px;color:var(--ac)}
+.note.k .lb{color:var(--bad)} .note.w .lb{color:var(--warn)} .note.g .lb{color:var(--ok)}
+.note p{font-size:14.5px}
+
+figure{margin:24px 0;border:1px solid var(--bd);border-radius:12px;background:var(--card);overflow:hidden}
+figure .cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);
+  padding:10px 15px;border-bottom:1px solid var(--bd);background:var(--sub)}
+figure .body{padding:16px;overflow-x:auto}
+.mermaid{display:flex;justify-content:center;min-width:min-content}
+
+.tw{overflow-x:auto;border:1px solid var(--bd);border-radius:11px;background:var(--card);margin:20px 0}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--tx3);font-weight:600;padding:11px 13px;border-bottom:1px solid var(--bd);background:var(--sub);
+  white-space:nowrap;vertical-align:bottom}
+td{padding:11px 13px;border-bottom:1px solid var(--bd);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.tot td{font-weight:650;background:var(--sub)}
+
+.tone{list-style:none;padding:0;margin:18px 0}
+.tone li{display:flex;gap:12px;padding:12px 15px;border-radius:9px;margin-bottom:7px;font-size:14.5px;
+  line-height:1.55;background:var(--card);border:1px solid var(--bd)}
+.tone li .mk{font-family:var(--mono);font-size:10.5px;font-weight:700;flex:none;padding-top:3px;min-width:26px}
+.tone.bad li{background:var(--bad-s);border-color:transparent} .tone.bad .mk{color:var(--bad)}
+.tone.warn li{background:var(--warn-s);border-color:transparent} .tone.warn .mk{color:var(--warn)}
+.tone.ok li{background:var(--ok-s);border-color:transparent} .tone.ok .mk{color:var(--ok)}
+.tone li b{font-weight:650}
+
+.f{background:var(--card);border:1px solid var(--bd);border-radius:9px;padding:13px 16px;margin:14px 0;
+  font-family:var(--mono);font-size:13px;overflow-x:auto}
+.f .lb{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);margin-bottom:6px;
+  font-family:var(--mono)}
+.f .where{font-family:var(--sans);font-size:12.5px;color:var(--tx2);margin-top:8px;line-height:1.5}
+
+.biblio{list-style:none;padding:0;counter-reset:b}
+.biblio li{counter-increment:b;padding:9px 0 9px 34px;border-bottom:1px solid var(--bd);position:relative;
+  font-size:13.5px}
+.biblio li::before{content:'[' counter(b) ']';position:absolute;left:0;font-family:var(--mono);font-size:11.5px;
+  color:var(--tx3)}
+.biblio a{word-break:break-all}
+.foot{border-top:1px solid var(--bd);padding-top:22px;margin-top:50px;color:var(--tx3);font-size:13px;
+  font-family:var(--mono);line-height:1.7}
+
+@media (max-width:760px){
+  .page{padding:0 16px 80px} .bin{padding:0 16px}
+  h1{font-size:29px} h2{font-size:21px} .lede{font-size:16.5px}
+  .toc ol{columns:1} .jump{display:none} .hero{padding:36px 0 26px}
+}
+</style>
+
+<div class="bar"><div class="bin">
+  <span class="brand"><i></i>Insidor</span>
+  <nav class="jump">
+    <a href="#s0">Verdict</a><a href="#s1">Product</a><a href="#s2">Context</a><a href="#s3">Path</a>
+    <a href="#s4">Ingest</a><a href="#s5">Detect</a><a href="#s6">ML</a><a href="#s7">Chain</a>
+    <a href="#s8">Data</a><a href="#s9">Client</a><a href="#s10">Security</a>
+    <a href="#s11">Latency</a><a href="#s12">Cost</a><a href="#s13">Review</a><a href="#s14">Plan</a>
+    <a href="#s15">Legal</a><a href="#s16">Refs</a>
+  </nav>
+  <button class="tb" id="th" aria-label="Switch theme">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/></svg>
+  </button>
+</div></div>
+
+<div class="page">
+
+<header class="hero col">
+  <div class="eyebrow">Engineering architecture &middot; v1.0</div>
+  <h1>Insidor: detection to coin</h1>
+  <p class="lede">A Solana web app that finds viral moments before crypto traders do, lets you buy the coin that exists or create the first one, and pays a share of fees to whoever made the original post.</p>
+  <p class="lede">This document is the result of two independent research passes: an adversarial fact-check of 120 extracted claims against 24 primary sources, and an eight-discipline engineering design that was then reviewed for contradictions. <b>Both passes found showstoppers.</b> They are in section 0, not buried.</p>
+  <div class="meta"><span>24 sources</span><span>25 claims verified &middot; 9 killed</span><span>8 design layers</span><span>12 contradictions found</span></div>
+</header>
+
+<div class="toc col">
+  <h4>Contents</h4>
+  <ol>
+    <li><a href="#s0"><span class="n">00</span>The verdict</a></li>
+    <li><a href="#s1"><span class="n">01</span>What the product is</a></li>
+    <li><a href="#s2"><span class="n">02</span>System context</a></li>
+    <li><a href="#s3"><span class="n">03</span>The critical path</a></li>
+    <li><a href="#s4"><span class="n">04</span>Ingestion</a></li>
+    <li><a href="#s5"><span class="n">05</span>Virality detection</a></li>
+    <li><a href="#s6"><span class="n">06</span>Clustering and the auto-namer</a></li>
+    <li><a href="#s7"><span class="n">07</span>On-chain</a></li>
+    <li><a href="#s8"><span class="n">08</span>Data model and spine</a></li>
+    <li><a href="#s9"><span class="n">09</span>Client</a></li>
+    <li><a href="#s10"><span class="n">10</span>Security and anti-abuse</a></li>
+    <li><a href="#s11"><span class="n">11</span>Latency budget</a></li>
+    <li><a href="#s12"><span class="n">12</span>Cost model</a></li>
+    <li><a href="#s13"><span class="n">13</span>What the review found</a></li>
+    <li><a href="#s14"><span class="n">14</span>Build plan</a></li>
+    <li><a href="#s15"><span class="n">15</span>Legal and compliance</a></li>
+    <li><a href="#s16"><span class="n">16</span>Bibliography</a></li>
+  </ol>
+</div>
+
+<!-- &#9552;&#9552; 00 &#9552;&#9552; -->
+<section id="s0" class="col">
+  <div class="snum">00</div>
+  <h2>The verdict</h2>
+  <p class="dek">Three findings survived adversarial verification and each one independently threatens the product as specified. Read these before anything else.</p>
+
+  <div class="note k">
+    <div class="lb">Showstopper 1 &middot; the headline mechanic has no trustless implementation</div>
+    <p>Routing a fee share to a poster identified only by a social handle, who never consented and has no wallet, <b>cannot currently be done trustlessly on Solana.</b></p>
+    <ul>
+      <li><b>Bags</b> exposes <code>GET /token-launch/fee-share/wallet/v2</code> which resolves a handle to a wallet <span class="mu">[9]</span> &#8212; but its documentation is <em>silent</em> on what happens for a handle that has never onboarded. That single undocumented behaviour decides the feature.</li>
+      <li><b>PumpPortal</b>'s <code>collectCreatorFee</code> harvests only to the caller's own wallet, and on the pump.fun pool it sweeps all tokens at once <span class="mu">[10]</span>.</li>
+      <li><b>Token-2022 transfer fees</b> are withheld on the <em>destination</em> account by deliberate design to preserve parallelism, and require a project-held withdraw authority to collect <span class="mu">[11]</span>.</li>
+    </ul>
+    <p>Every verified path is custodial. That converts your marquee feature from a smart-contract problem into an <b>unclaimed-funds and money-transmission problem</b>. It is a legal question with an engineering consequence, and it must be answered before Phase 5.</p>
+  </div>
+
+  <div class="note k">
+    <div class="lb">Showstopper 2 &middot; platform policy may forbid the mechanic outright</div>
+    <p>On 15 January 2026, X revoked API access for "InfoFi" applications &#8212; apps attaching financial rewards to posting <span class="mu">[4][20]</span>. Insidor routes money to posters. The distinction we are relying on is that <b>the payout triggers on trading volume, never on posting</b>, which is structurally a royalty rather than a bounty on amplification.</p>
+    <p>That distinction is <b>ours, not X's.</b> The verification pass rated this finding <em>low confidence</em> precisely because nobody has read the mechanic against the actual Developer Agreement text <span class="mu">[19]</span> rather than secondhand reporting. Get counsel to read it before building on X.</p>
+  </div>
+
+  <div class="note k">
+    <div class="lb">Showstopper 3 &middot; TikTok is not available, on two independent grounds</div>
+    <p>A for-profit entity is <b>categorically ineligible</b> for TikTok's Research API under its own eligibility criteria and binding Research Tools ToS <span class="mu">[2]</span>. Separately, it runs roughly 48 hours behind &#8212; useless for a product measured in minutes. The Commercial Content API is regulator-gated; the Display API carries no discovery data; Instagram's hashtag search is capped at 30 hashtags per user per rolling 7 days.</p>
+    <p><b>There is no lawful first-party discovery API for TikTok or Instagram.</b> The architecture below therefore treats X as the sensor for every platform and non-X sources as hydration targets only.</p>
+  </div>
+
+  <div class="note w">
+    <div class="lb">And one structural finding from the design review</div>
+    <p>Eight independent specialists designed the <em>create</em> path in exhaustive detail. <b>Not one of them designed story-to-existing-coin matching</b> &#8212; mapping a detected story to a mint that already exists. That is the buy path, it is the majority of trade volume, and it is the thing the product promises first. It is now assigned explicitly in Phase 4.</p>
+  </div>
+</section>
+
+<!-- &#9552;&#9552; 01 &#9552;&#9552; -->
+<section id="s1" class="col">
+  <div class="snum">01</div>
+  <h2>What the product is</h2>
+  <p>Insidor watches social media for things going viral that have nothing to do with crypto, surfaces them before crypto traders find them, and lets a user either buy the coin that already exists or create the first one. When creating, the coin's name, ticker and image are generated from the source post. Creator fees split three ways: <b>50% creator, 40% original poster, 10% Insidor</b>.</p>
+  <h3>The one number</h3>
+  <p><b>Lead time</b> &#8212; minutes between Insidor detecting a story and the first crypto mention of it. It is the value proposition, the share hook, and the only claim that must be provable to a sceptic without trusting us.</p>
+  <h3>The object model</h3>
+  <p>Eight objects. <b>Story and Coin are separate</b>: one Story has 0..n Coins, a Coin belongs to exactly one Story. Everything else follows from that split.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Object</th><th>Is</th><th>Key relationships</th></tr></thead>
+    <tbody>
+      <tr><td><b>Story</b></td><td>A viral moment</td><td>1 Post, 1 Poster, 0..n Coins</td></tr>
+      <tr><td><b>Post</b></td><td>The source item</td><td>Its permalink is the provenance proof</td></tr>
+      <tr><td><b>Poster</b></td><td>Who published it</td><td>Owed 40% whether or not they know</td></tr>
+      <tr><td><b>Coin</b></td><td>An SPL mint</td><td>n &rarr; 1 Story</td></tr>
+      <tr><td><b>Follow</b></td><td>A watch</td><td>Targets a Story <em>or</em> a Coin</td></tr>
+      <tr><td><b>Holding</b></td><td>A position</td><td>1 Coin, 1 Story</td></tr>
+      <tr><td><b>Launch</b></td><td>A coin you made</td><td>1 Coin</td></tr>
+      <tr><td><b>Payout</b></td><td>Fees owed</td><td>3 legs per Coin</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- &#9552;&#9552; 02 &#9552;&#9552; -->
+<section id="s2">
+  <div class="col"><div class="snum">02</div><h2>System context</h2>
+  <p class="dek">Eight layers. Conflicts found in review are marked on the diagram rather than hidden.</p></div>
+  <figure>
+    <div class="cap">Container diagram</div>
+    <div class="body"><pre class="mermaid">
+flowchart TD
+  subgraph SRC["Sources"]
+    S1["X reseller websocket - stream spine"]
+    S2["X official API v2 batch reads - licensed read spine"]
+    S3["TikTok and Instagram via oEmbed hydration only"]
+  end
+  subgraph L1["Ingestion"]
+    G1["Ingest gateway Rust tokio SourceAdapter"]
+    G2["Dedup on platform and native id"]
+    G3["Velocity poller hot and cold lanes"]
+    G4["Media waterfall and tombstone sweep"]
+    G5["Budget governor"]
+  end
+  BUS["Redpanda single inter-layer bus"]
+  subgraph L2["Detection"]
+    H1["HOT engine Rust and Dragonfly"]
+    H2["Robust author baseline median and MAD"]
+    H3["Admission PI controller"]
+  end
+  subgraph L3["Clustering and naming"]
+    C1["Cohere embed v4 at 1024 dimensions"]
+    C2["pgvector HNSW assignment"]
+    C3["Reconciler and merge events"]
+    C4["Auto namer four branch tree"]
+  end
+  subgraph L4["On chain"]
+    O1["Provenance ledger blake3 chain"]
+    O2["Hourly Merkle anchor SPL memo"]
+    O3["Launch adapter Meteora DBC via Bags"]
+    O4["PosterVault escrow and claim"]
+    O5["Jupiter routing and Jito bundles"]
+  end
+  subgraph L5["Spine"]
+    D1["Postgres 18 system of record and queue"]
+    D2["Tape sequencer monotone seq"]
+    D3["Fan out service"]
+  end
+  subgraph L6["Client"]
+    F1["React SPA Simple and Pro"]
+    F2["Privy embedded wallet"]
+    F3["TxGuard transaction assertion"]
+  end
+  SEC["Security constraint plane and integrity multiplier"]
+  S1 --> G1
+  S2 --> G3
+  S3 --> G4
+  G1 --> G2 --> G3 --> G5 --> BUS
+  BUS --> H1
+  H1 --> H2 --> H3
+  H3 --> C1 --> C2 --> C3
+  C3 --> C4
+  C3 --> O1 --> O2
+  C4 --> O3 --> O4
+  O3 --> O5
+  C3 --> D1 --> D2 --> D3 --> F1
+  F1 --> F2 --> F3 --> O5
+  SEC --> H1
+  SEC --> O4
+    </pre></div>
+  </figure>
+</section>
+
+<!-- &#9552;&#9552; 03 &#9552;&#9552; -->
+<section id="s3">
+  <div class="col"><div class="snum">03</div><h2>The critical path</h2>
+  <p class="dek">Post published to coin created, with the real measured timings.</p></div>
+  <figure>
+    <div class="cap">Sequence &middot; detection to coin</div>
+    <div class="body"><pre class="mermaid">
+sequenceDiagram
+  participant Poster
+  participant Reseller
+  participant Ingest
+  participant Bus
+  participant HotEngine
+  participant Clustering
+  participant Ledger
+  participant Solana
+  participant Feed
+  participant User
+  participant Namer
+  participant Launchpad
+  participant PosterVault
+  Poster->>Reseller: publishes post at t0
+  Reseller->>Ingest: websocket frame at t0 plus 751ms
+  Ingest->>Ingest: dedupe then persist then emit
+  Ingest->>Bus: normalized post at t0 plus 763ms
+  Bus->>HotEngine: post observation
+  HotEngine->>HotEngine: robust baseline and burst score
+  HotEngine->>Clustering: admitted story candidate
+  Clustering->>Clustering: embed then pgvector nearest centroid
+  Clustering->>Ledger: detection record with detected at
+  Ledger->>Solana: Merkle anchor within the hour
+  Ledger->>Feed: lead time provable from anchor slot
+  Feed->>User: story on screen at t0 plus 1637ms
+  User->>Namer: taps create coin
+  Namer->>User: proposes ticker name and image with reasoning
+  User->>Launchpad: signs launch in own wallet
+  Launchpad->>PosterVault: 40 percent leg escrowed to poster handle
+  Launchpad->>Solana: mint plus first buy in one Jito bundle
+  PosterVault-->>Poster: claimable whenever they arrive
+    </pre></div>
+  </figure>
+</section>
+
+<!-- &#9552;&#9552; 04 &#9552;&#9552; -->
+<section id="s4" class="col">
+  <div class="snum">04</div>
+  <h2>Ingestion</h2>
+  <p class="dek">Rust + tokio gateway, Redpanda bus, Postgres + TimescaleDB, Cloudflare R2 archive.</p>
+
+  <div class="note g">
+    <div class="lb">The finding that inverts the obvious design</div>
+    <p>The instinct is "official X stream as the licensed spine, reseller as the volume lane." <b>The roles must invert.</b> Filtered stream is not sold on pay-per-use &#8212; it starts at Pro (~$5,000/mo), which at 1k DAU is 3&times; the entire ingestion budget. But <code>GET /2/tweets</code> batch reads <em>are</em> pay-per-use at $0.005/read with same-UTC-day dedup.</p>
+    <p>So: <b>reseller websocket is the stream spine, official X is the read spine.</b> Official filtered stream turns on at Pro only above ~30k DAU &#8212; a config flag, not a rewrite.</p>
+  </div>
+
+  <div class="f"><div class="lb">Read-routing break-even</div>
+n* = C_official_per_post_per_utc_day / C_reseller_per_read
+   = $0.005 / $0.00015
+   = 33.3 polls per post per UTC day
+<div class="where">Poll a post more than 33&times;/day &rarr; official (flat, dedup makes it free after the first). Fewer &rarr; reseller. The hot lane runs 96 polls/day, the cold lane 12. <b>This one number governs roughly 70% of the ingestion bill.</b></div></div>
+
+  <div class="note w">
+    <div class="lb">Assumption that must be killed in week 1 &#8212; cost $0.02</div>
+    <p>The entire routing model assumes X's same-UTC-day dedup is a <b>billing</b> dedup, not a <b>response cache</b>. If it caches responses, dense re-polling returns stale <code>public_metrics</code> and <b>the velocity signal dies entirely</b>.</p>
+    <p>Test: read one high-velocity post twice 90s apart in the same UTC day; assert <code>like_count</code> differs; then <code>GET /2/usage/tweets</code> and assert usage delta is 1, not 2.</p>
+  </div>
+
+  <h3>X is the sensor for every platform</h3>
+  <p>Since no lawful discovery API exists for TikTok or Instagram, X rules match outbound links &#8212; <code>url:"tiktok.com/@"</code>, <code>url:"instagram.com/reel"</code> &#8212; and the URL is then hydrated through each platform's own public oEmbed. <code>Post.platform</code> is <code>tiktok</code> with a <code>VIA_X_LINK</code> provenance bit set. Anything viral enough to be worth a coin gets cross-posted to X within minutes.</p>
+
+  <h3>Two hard constraints on the timing story</h3>
+  <ul>
+    <li><b>~20s rule activation floor.</b> Rules mutate live without reconnecting <span class="mu">[1]</span>, but "most rule additions take effect about 20 seconds or less." You cannot react to a brand-new term &#8212; you must already be listening.</li>
+    <li><b>Semantic matching is Enterprise-only.</b> The <code>embedding:</code> operator matches by meaning rather than keyword, but requires Enterprise plus an Embedding tier entitlement <span class="mu">[1]</span>. Baseline rule design must assume keyword and structural matching only.</li>
+  </ul>
+
+  <h3>Media waterfall</h3>
+  <p>Five tiers, fixed card height across all five, so there is never a broken image:</p>
+  <ol>
+    <li><code>media.url</code> photo &#8212; free, in the stream payload</li>
+    <li><code>preview_image_url</code> for video &#8212; free, <b>no ffmpeg needed</b>, X generates the still server-side</li>
+    <li><code>og:image</code> of the first outbound link &#8212; own fetch, free</li>
+    <li>Image from the highest-scored reply &#8212; capped at 5, gated behind HOT &ge; p95, since at $0.005/read this is the most expensive operation in the product</li>
+    <li>Deterministic typographic plate keyed on <code>hash(story_id)</code> &#8212; same story always looks the same, which is itself a provenance property</li>
+  </ol>
+</section>
+
+<!-- &#9552;&#9552; 05 &#9552;&#9552; -->
+<section id="s5" class="col">
+  <div class="snum">05</div>
+  <h2>Virality detection</h2>
+  <p class="dek">Rust stream workers scoring in-process against Dragonfly; LightGBM lambdarank for coefficient fitting on ClickHouse.</p>
+
+  <div class="note w">
+    <div class="lb">Correction to something stated earlier in this project</div>
+    <p>X's 2026 open-sourced ranker <span class="mu">[5]</span> gives the <b>shape</b> of a scorer &#8212; a linear weighted sum of predicted action probabilities, multiplicatively attenuated &#8212; but ships <b>zero numeric coefficients</b>, and has deleted SimClusters, TwHIN and real-graph entirely. The widely-circulated 2023 weights (favorite 0.5, retweet 1.0, reply 13.5, reply-engaged-by-author 75.0) <b>cannot be attributed to it</b>. Verification also killed the claim of a specific 15-action Phoenix probability set.</p>
+    <p>Consequence: Insidor must fit its own coefficients. The 2023 weights are usable only as a <em>prior</em>, never as a citation.</p>
+  </div>
+
+  <div class="f"><div class="lb">Action weight, derived not borrowed</div>
+w_a = C / p_a          where p_a = platform base rate of action a per impression
+                             C   = 0.0075, fixed by anchoring X repost to w = 1.0
+<div class="where">The insight behind X's published weights is that weight is the inverse of rarity. Deriving <code>w_a</code> from our own observed base rates reproduces that logic without depending on numbers we cannot verify, and it generalises across platforms where base rates differ wildly.</div></div>
+
+  <div class="f"><div class="lb">Weighted engagement and rate</div>
+E_w(p,t) = SUM_a [ w_a * n_a(p,t) ] + (w_complete / D_sec) * total_watch_seconds(p,t)
+R(p,t)   = E_w(p,t) / max(I(p,t), 1)
+<div class="where"><code>n_a</code> = cumulative count of action a; <code>D_sec</code> = video duration; <code>I</code> = impressions (impression_count on X, play_count on TikTok). The watch-time term is what makes TikTok comparable to X at all.</div></div>
+
+  <div class="f"><div class="lb">Robust scale &#8212; why median and MAD, not mean and stddev</div>
+sigma_hat = max( 1.4826 * MAD,
+                 0.5 * (Q90 - Q50) / 1.2816,
+                 sigma_floor_cohort )
+MAD = median(|x - median(x)|)
+<div class="where">1.4826 is the Gaussian consistency constant; 1.2816 is the 90th-percentile z. A viral post <em>is</em> the outlier you are measuring &#8212; using mean and standard deviation lets the event you are detecting corrupt its own baseline. This is Twitter's own Seasonal Hybrid ESD reasoning <span class="mu">[8]</span>, which substitutes median for mean and MAD for stddev.</div></div>
+
+  <h3>Burst detection</h3>
+  <p>Kleinberg's automata <span class="mu">[7]</span> are fully specified and directly implementable. Two variants matter, and the distinction is the one most implementations get wrong:</p>
+  <ul>
+    <li><b>A*</b> operates over raw inter-arrival gaps. Good, but it is a batch/windowed dynamic program &#8212; not a streaming detector.</li>
+    <li><b>B*</b> operates over <em>windowed counts</em>, which is the realistic ingestion shape, and produces a <b>baseline-normalised burst weight</b> that ranks competing viral moments against each other. That ranking is exactly what a feed needs.</li>
+  </ul>
+  <p class="mu" style="font-size:13.5px">Verification killed the specific claim that Kleinberg's cost recurrence is "identical in form to Viterbi" &#8212; implement from the paper, not from that description.</p>
+
+  <div class="note">
+    <div class="lb">The deliberate inversion &#8212; the whole product rests on it</div>
+    <p>X applies a <b>0.75 multiplier</b> to out-of-network posts and gates them behind social proof. Insidor <b>inverts it</b>: small accounts with no second-degree connections get a <em>boost</em>, because that is exactly where memecoin alpha lives and exactly what the platform is structurally worst at surfacing.</p>
+    <p>The review found this specified <b>four different ways spanning 8&times;</b> at 100 followers &#8212; the precise band where Sybil farms live. One <code>Omega</code>, owned by detection, version-locked to the security purity gate. Everything else is dead code.</p>
+  </div>
+</section>
+
+<!-- &#9552;&#9552; 06 &#9552;&#9552; -->
+<section id="s6" class="col">
+  <div class="snum">06</div>
+  <h2>Clustering and the auto-namer</h2>
+  <p class="dek">Cohere <code>embed-v4.0</code> at 1024-d Matryoshka, stored as <code>halfvec(1024)</code> in Postgres 17 + pgvector 0.8 with a partitioned HNSW index over hot stories only.</p>
+  <p>The decisive reason for embed-v4 is that it is <b>natively interleaved text and image in one space</b> &#8212; a TikTok still and an X caption about the same moment land near each other without a separate fusion step. Cost is negligible: <b>$16/month at 500k DAU</b> <span class="mu">[16]</span>.</p>
+
+  <div class="f"><div class="lb">Story assignment score</div>
+score(p,s) = 0.68*cos(e_p, c_s)
+           + 0.14*J(E_p, E_s)          Jaccard over extracted entities
+           + 0.08*host_overlap
+           + 0.06*media_match
+           + 0.04*exp(-dt_min/240)
+           - 0.20*lang_mismatch*(1-cos)
+<div class="where"><code>e_p</code> = L2-normalised embedding, <code>c_s</code> = story centroid. Assign if score exceeds threshold, else spawn a provisional story under an advisory lock keyed on the nearest centroid &#8212; which kills the concurrent-duplicate-spawn race.</div></div>
+
+  <div class="f"><div class="lb">Centroid update</div>
+alpha = max(0.02, 1/(n+1))
+c_new = (1-alpha)*c_old + alpha*e_p ,  then  c_new /= ||c_new||
+<div class="where">The 0.02 floor stops a large story's centroid from freezing, so a story that mutates (a meme that acquires a new catchphrase) can still follow its own drift.</div></div>
+
+  <h3>The auto-namer</h3>
+  <p>Four branches in priority order, derived from 36 real cases. It shows its reasoning, because visible reasoning is what makes a generator feel intelligent rather than arbitrary.</p>
+  <pre><code>BRANCH A  proper noun            confidence 85-95
+  Does an animate subject have a name in text, caption or comments?
+  The ticker IS the name, unmodified.  Nazgul -> $NAZGUL
+  Five of the six largest animal conversions follow this with zero creativity.
+  If this hits, STOP.
+
+BRANCH B  stressed catchphrase noun      60-80
+  Take the single most-shouted word, never the whole phrase.
+  "hawk tuah" -> $HAWK    "chicken jockey" -> $JOCKEY
+
+BRANCH C  deliberate misspelling         45-65
+  Phonetic, deliberately wrong description of what is in frame.
+  a dog wearing a hat -> $WIF     (the misspelling is load-bearing)
+
+BRANCH D  object noun                    40-60
+  Most distinctive concrete object.  Kool-Aid pineapple -> $JARS
+
+HARD BLOCKS - never proposed
+  - initialisms when any concrete noun exists
+      $MVG sat on a 4-billion-impression event and died while
+      the word "gorilla" was right there
+  - numbers            unsearchable, collide with everything
+  - registered brands where the joke is at the brand's expense
+  - the creator's own real name</code></pre>
+  <p>Critical input most implementations miss: <b>top comments and quote-posts</b>. "dogwifhat" was named by a replier, not the poster. "just a chill guy" was a caption someone else attached. <b>The crowd usually names the thing before the product does.</b></p>
+</section>
+
+<!-- &#9552;&#9552; 07 &#9552;&#9552; -->
+<section id="s7" class="col">
+  <div class="snum">07</div>
+  <h2>On-chain</h2>
+  <p class="dek">Launch on Meteora Dynamic Bonding Curve (<code>dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN</code>), reached in Phase 1 through the Bags public API because its Fee Share v2 program already ships handle-to-wallet resolution <span class="mu">[9]</span>.</p>
+
+  <div class="note k">
+    <div class="lb">This is where showstopper 1 lives</div>
+    <p>Bags takes a <b>protocol cut before any creator-side split</b>, so a fee-claimer's basis-points share applies to the creator half only &#8212; bounding what you can actually pay a poster at roughly <b>half the naive figure</b>. The "40%" in the UI is 40% of the creator leg, not 40% of all fees, and the product copy must say so.</p>
+    <p>Verification also <b>killed</b> the claims that splits must sum to exactly 10,000 bps and that fee-share config is immutable after launch. Do not design against those until re-verified.</p>
+  </div>
+
+  <h3>Provenance &#8212; the one component that cannot be rented</h3>
+  <p>An append-only, ed25519-signed, blake3-chained ledger written <b>at detection time, before any coin exists</b>, Merkle-anchored hourly to Solana in a single SPL memo instruction.</p>
+  <div class="f"><div class="lb">Ledger and anchor</div>
+leaf_hash   = blake3(0x00 || canonical_cbor(record))
+invariant   : record[n].prev_hash == leaf_hash(record[n-1])
+node(L,R)   = blake3(0x01 || L || R)      odd level duplicates last
+proof_len   = ceil(log2(n_leaves))
+
+anchor_cost = 5000 * n_sigs + (cu_limit * price_microlamports) / 1e6
+            = 5000 + (16000 * 25000)/1e6
+            = 5400 lamports  ~ $0.0012 per anchor
+<div class="where">At hourly anchoring that is <b>about $60/year</b> &#8212; and it is the only thing in the system that makes "we saw it first" checkable by a sceptic with no dependency on us. Ship it in Phase 1; every hour it is not running is permanently unrecoverable.</div></div>
+
+  <h3>Execution</h3>
+  <ul>
+    <li><b>Jito bundles</b> for create + first buy atomically, tip from <code>getTipFloor</code>. A one-click launch off a public feed is a sniper magnet by construction <span class="mu">[12]</span>.</li>
+    <li><b>Jupiter</b> for swap routing with integrator fees and pre-created referral token accounts <span class="mu">[14]</span>.</li>
+    <li><b>Helius LaserStream</b> gRPC for mint and trade events <span class="mu">[13]</span>, behind an internal stream interface so the vendor is swappable.</li>
+  </ul>
+</section>
+
+<!-- &#9552;&#9552; 08 &#9552;&#9552; -->
+<section id="s8" class="col">
+  <div class="snum">08</div>
+  <h2>Data model and spine</h2>
+  <p class="dek">One PostgreSQL 18 primary is the entire spine: system of record, job queue via <code>SELECT ... FOR UPDATE SKIP LOCKED</code>, vector store via pgvector 0.8 HNSW, and realtime transport via logical replication consumed by a Go fan-out service.</p>
+  <p>The decisive reason is that Insidor's write load is set by <em>admitted stories</em>, not raw posts &#8212; the admission controller holds that at a constant rate by design. That is a Postgres-shaped workload for a long time.</p>
+
+  <div class="f"><div class="lb">Tape hash chain &#8212; clients can detect gaps and tampering</div>
+h(0) = sha256("insidor.tape.v1")
+h(n) = sha256( h(n-1) || u64be(seq_n) || frame_id_n || u8(kind_n)
+               || subject_id_n || u64be(ts_micros_n)
+               || sha256(canonical_json(d_n)) )
+
+prefix-visibility invariant:
+  for any MVCC snapshot S,  visible(S) = { r in tape : r.seq <= W(S) }
+<div class="where">Holds because exactly one session assigns <code>seq</code>. A client that reconnects can prove it missed nothing.</div></div>
+
+  <div class="f"><div class="lb">Velocity and acceleration</div>
+v(p,t) = ( e_score(t) - e_score(t - dt) ) / (dt/60)      e-units per minute
+a(p,t) = ( v(p,t) - v(p, t-dt) ) / (dt/60)
+<div class="where"><code>dt</code> = poller interval at that age. Acceleration &#8212; the second derivative &#8212; is what catches the ripple rather than the wave, and it is a sortable column in Pro.</div></div>
+</section>
+
+<!-- &#9552;&#9552; 09 &#9552;&#9552; -->
+<section id="s9" class="col">
+  <div class="snum">09</div>
+  <h2>Client</h2>
+  <p class="dek">React 19 + Vite 6 as a pure client-rendered SPA, with a small Cloudflare Worker serving crawler-only OG HTML for share cards.</p>
+  <p>No Next.js or RSC: the app is a persistent-WebSocket authenticated terminal where <em>every byte of state is client state</em>, so server components buy nothing and cost complexity. The Worker exists solely so a shared link unfurls &#8212; and it renders from a <b>signed lead receipt</b>, so a shared card can never carry a stale number.</p>
+
+  <div class="f"><div class="lb">ArrivalScheduler &#8212; why click targets never move under a finger</div>
+insertY = (rank - firstVisible)*ROW_H - (scrollTop mod ROW_H)
+safe    = (now - lastPointerAt > GUARD_TTL_MS)
+          OR (insertY > pointerY + GUARD_RADIUS_PX)
+
+interactionLocked(now) =
+     (now - lastPointerDownAt < 600)
+  OR (now - lastWheelAt      < 220)
+  OR (now - lastTouchMoveAt  < 220)
+  OR |scrollVelocity| > 40 px/s
+  OR armedTicket != null
+<div class="where">This is the single largest contributor to the chaotic feeling in competing terminals. Inserting above a reading user is the cardinal sin; the scheduler makes it structurally impossible.</div></div>
+
+  <p><b>Wallets:</b> Privy embedded wallets plus Wallet Standard behind one <code>WalletPort</code> interface, so a user who has never held crypto can start, and a power user can bring their own. <b>Insidor never custodies funds</b> &#8212; which is exactly why showstopper 1 is dangerous, since the PosterVault escrow is the one place that principle bends.</p>
+</section>
+
+<!-- &#9552;&#9552; 10 &#9552;&#9552; -->
+<section id="s10" class="col">
+  <div class="snum">10</div>
+  <h2>Security and anti-abuse</h2>
+  <p class="dek">Postgres as a constraint-enforcement plane &#8212; the anti-manipulation rules are UNIQUE constraints and CHECKs, not model outputs.</p>
+
+  <div class="note g">
+    <div class="lb">The finding that saves an ML project</div>
+    <p>Research shows per-account bot scores <b>do not correlate well</b> with coordinated liking behaviour. So structural limits beat classifiers: <b>one contribution per author per story per 30-minute window, enforced as a database UNIQUE constraint.</b> O(1), no model, no training set, and it structurally defeats engagement pods. Ship this before any bot classifier.</p>
+  </div>
+
+  <div class="f"><div class="lb">Sublinear Sybil damping</div>
+S_eff = SUM over clusters c of ( n_c ^ alpha ),   alpha = 0.35
+
+  1 account   -> 1.00
+  100 accounts -> 5.01
+  1000 accounts -> 11.2
+<div class="where">Buying 1000 accounts buys 11&times; the influence of one, not 1000&times;. It makes farming economically pointless rather than technically impossible, which is the only defence that holds.</div></div>
+
+  <div class="f"><div class="lb">Coordination edge &#8212; machine-checkable, not vibes</div>
+E(a,b) = 1 iff |S_a & S_b| >= 5
+         AND J_w(a,b) >= 0.55
+         AND median |t_a(s) - t_b(s)| <= 180s
+         AND |S_a & S_b| / min(|S_a|,|S_b|) >= 0.40
+<div class="where">Two accounts are coordinating if they hit the same 5+ stories, with high weighted Jaccard, within 3 minutes of each other, and that overlap dominates at least one of their histories.</div></div>
+
+  <p><b>Burstiness</b> (Goh-Barab&aacute;si) <code>B = (sigma_tau - mu_tau)/(sigma_tau + mu_tau)</code> over inter-arrival times separates organic spread (bursty, B &rarr; 1) from scripted engagement (regular, B &rarr; -1).</p>
+</section>
+
+<!-- &#9552;&#9552; 11 &#9552;&#9552; -->
+<section id="s11">
+  <div class="col"><div class="snum">11</div><h2>Latency budget</h2>
+  <p class="dek">Assembled from every layer's own numbers, <b>including five stages that no layer counted</b>.</p></div>
+  <div class="tw"><table>
+    <thead><tr><th>#</th><th>Stage</th><th>Owner</th><th class="n">p50</th><th class="n">p99</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td class="n">1</td><td>Source to reseller edge</td><td>vendor</td><td class="n">251 ms</td><td class="n">~1400 ms</td><td>Self-reported; p99 unverified</td></tr>
+      <tr><td class="n">2</td><td>Stream interval quantisation</td><td>Ingest</td><td class="n">500 ms</td><td class="n">1000 ms</td><td>Provider default 60s would cost 30,000 ms</td></tr>
+      <tr><td class="n">3</td><td>Normalize, dedupe, persist</td><td>Ingest</td><td class="n">12 ms</td><td class="n">45 ms</td><td>Persist before emit, for replay idempotency</td></tr>
+      <tr><td class="n">4</td><td>Bus hop</td><td><b>nobody</b></td><td class="n">15 ms</td><td class="n">60 ms</td><td>Exists only because two layers picked different buses</td></tr>
+      <tr><td class="n">5</td><td>HOT scoring</td><td>Detection</td><td class="n">2 ms</td><td class="n">12 ms</td><td>Only stage that beats its own claim</td></tr>
+      <tr><td class="n">6</td><td>Score emit quantisation</td><td>Detection</td><td class="n">500 ms</td><td class="n">990 ms</td><td>1 Hz cap, never counted as latency</td></tr>
+      <tr><td class="n">7</td><td>Embedding call</td><td>Clustering</td><td class="n">120 ms</td><td class="n">600 ms</td><td><b>Unbudgeted</b> hosted network hop</td></tr>
+      <tr><td class="n">8</td><td>kNN assign, centroid update</td><td>Clustering</td><td class="n">12 ms</td><td class="n">90 ms</td><td>Sub-4ms claims were extrapolation</td></tr>
+      <tr><td class="n">9</td><td>Integrity multiplier</td><td>Security</td><td class="n">3 ms</td><td class="n">25 ms</td><td>Inputs up to 60 min stale</td></tr>
+      <tr><td class="n">10</td><td>Admission threshold</td><td>Detection</td><td class="n">1 ms</td><td class="n">5 ms</td><td>Threshold up to 5s stale</td></tr>
+      <tr><td class="n">11</td><td>Publish and fan-out</td><td>Backend</td><td class="n">20 ms</td><td class="n">120 ms</td><td>Commit + logical decoding + serialise</td></tr>
+      <tr><td class="n">12</td><td>Network to client</td><td>&#8212;</td><td class="n">40 ms</td><td class="n">200 ms</td><td><b>Protocol conflict</b>: SSE vs WebSocket</td></tr>
+      <tr><td class="n">13</td><td>Decode, drip, paint</td><td>Client</td><td class="n">161 ms</td><td class="n">1100 ms</td><td>Includes deliberate ArrivalScheduler pacing</td></tr>
+      <tr class="tot"><td></td><td>Detection to screen</td><td></td><td class="n">1,637 ms</td><td class="n">~3,200 ms</td><td>Honest figure</td></tr>
+    </tbody>
+  </table></div>
+  <div class="col">
+    <div class="note w">
+      <div class="lb">Against the claims</div>
+      <p>The backend layer claimed <b>491 ms p50</b> for the whole system &#8212; it omitted five of thirteen stages, i.e. five of eight layers. SRE claimed a <b>9,000 ms</b> SLO it never decomposed. Neither number describes the system these designs actually build. <b>1.64 s p50 is the honest figure</b>, and it is still comfortably inside the product's promise, because the competition is measured in <em>minutes</em>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- &#9552;&#9552; 12 &#9552;&#9552; -->
+<section id="s12">
+  <div class="col"><div class="snum">12</div><h2>Cost model</h2>
+  <p class="dek">Every layer priced its own dependencies, so the naive sum double-, triple- and quintuple-counts the shared substrate.</p></div>
+
+  <div class="tw"><table>
+    <thead><tr><th>Layer</th><th class="n">1k DAU</th><th class="n">50k DAU</th><th class="n">500k DAU</th></tr></thead>
+    <tbody>
+      <tr><td>Ingestion</td><td class="n">$2,027</td><td class="n">$11,071</td><td class="n">$56,620</td></tr>
+      <tr><td>Detection</td><td class="n">$2,518</td><td class="n">$12,813</td><td class="n">$51,623</td></tr>
+      <tr><td>ML clustering and namer</td><td class="n">$697</td><td class="n">$2,355</td><td class="n">$4,734</td></tr>
+      <tr><td>On-chain</td><td class="n">$1,173</td><td class="n">$5,870</td><td class="n">$34,988</td></tr>
+      <tr><td>Backend spine</td><td class="n">$1,297</td><td class="n">$6,844</td><td class="n">$19,900</td></tr>
+      <tr><td>Client</td><td class="n">$434</td><td class="n">$2,411</td><td class="n">$10,895</td></tr>
+      <tr><td>Security</td><td class="n">$4,280</td><td class="n">$17,666</td><td class="n">$85,057</td></tr>
+      <tr><td>SRE and platform</td><td class="n">$4,970</td><td class="n">$37,070</td><td class="n">$145,680</td></tr>
+      <tr class="tot"><td>Naive sum</td><td class="n">$17,396</td><td class="n">$96,100</td><td class="n">$409,497</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="col">
+    <p>The X firehose was claimed by <b>four</b> layers, Solana RPC by <b>five</b>, ClickHouse by four, Redis-family by four across three vendors. After deduplication and one decision per shared component:</p>
+  </div>
+
+  <div class="tw"><table>
+    <thead><tr><th>Reconciled line</th><th class="n">1k DAU</th><th class="n">50k DAU</th><th class="n">500k DAU</th></tr></thead>
+    <tbody>
+      <tr><td>X reseller stream + re-poll</td><td class="n">$1,603</td><td class="n">$9,671</td><td class="n">$27,300</td></tr>
+      <tr><td>TikTok / Instagram collection</td><td class="n">$50</td><td class="n">$3,750</td><td class="n">$16,400</td></tr>
+      <tr><td>Broadcast ASR</td><td class="n">$190</td><td class="n">$570</td><td class="n">$2,300</td></tr>
+      <tr><td>Core compute</td><td class="n">$420</td><td class="n">$2,400</td><td class="n">$12,000</td></tr>
+      <tr><td>Redpanda</td><td class="n">$50</td><td class="n">$450</td><td class="n">$1,200</td></tr>
+      <tr><td>Postgres + pgvector + Timescale</td><td class="n">$240</td><td class="n">$1,815</td><td class="n">$4,400</td></tr>
+      <tr><td>Dragonfly</td><td class="n">$95</td><td class="n">$390</td><td class="n">$2,340</td></tr>
+      <tr><td>ClickHouse</td><td class="n">$200</td><td class="n">$900</td><td class="n">$3,500</td></tr>
+      <tr><td>Cohere embed-v4</td><td class="n">$1</td><td class="n">$4</td><td class="n">$16</td></tr>
+      <tr><td>LLM namer + safety</td><td class="n">$106</td><td class="n">$301</td><td class="n">$904</td></tr>
+      <tr><td>OCR, NER, CLIP</td><td class="n">$106</td><td class="n">$468</td><td class="n">$2,173</td></tr>
+      <tr><td>Solana RPC</td><td class="n">$150</td><td class="n">$2,800</td><td class="n">$13,800</td></tr>
+      <tr><td>Execution cells (bare metal)</td><td class="n">$0</td><td class="n">$930</td><td class="n">$4,600</td></tr>
+      <tr><td>Provenance anchoring</td><td class="n">$60</td><td class="n">$64</td><td class="n">$75</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="col">
+    <div class="note w">
+      <div class="lb">The $42,000/month coin-flip</div>
+      <p>Ingestion forces X Enterprise at 500k DAU by counting <b>post-days</b> (7.6M reads/month, blowing the 2M pay-per-use cap). Backend says Enterprise is never triggered by counting <b>distinct posts</b> &#8212; a <b>25&times; discrepancy</b> and a $42,000/month swing that nobody had noticed. Post-day accounting is the only arithmetically consistent one; route hot re-polls to the reseller and hold Enterprise in reserve.</p>
+    </div>
+  </div>
+</section>
+
+<!-- &#9552;&#9552; 13 &#9552;&#9552; -->
+<section id="s13" class="col">
+  <div class="snum">13</div>
+  <h2>What the review found</h2>
+  <p class="dek">Eight specialists designed independently. A principal-engineer pass then hunted for contradictions. It found twelve, plus seven responsibilities nobody claimed.</p>
+
+  <h3>Contradictions</h3>
+  <ul class="tone bad">
+    <li><span class="mk">01</span><span><b>Four message buses, no bridge.</b> Ingestion and SRE build Redpanda. Detection and clustering consume NATS. Backend rejects both for Postgres logical replication. The missing bridge is <em>on the critical path</em> and appears in no cost model.</span></li>
+    <li><span class="mk">02</span><span><b>Three key spaces on the same objects.</b> <code>post_id</code> is a namespaced string, a <code>u128</code>, and a <code>uuid</code> depending on the layer. Any join across them is broken.</span></li>
+    <li><span class="mk">03</span><span><b>Age decay specified three ways, disagreeing 12&times; at the floor.</b> <code>0.6+0.4*2^(-t/360)</code> vs <code>0.05+0.95*2^(-t/45)</code> vs <code>2^(-t/45)</code> with no floor.</span></li>
+    <li><span class="mk">04</span><span><b>The out-of-network inversion has four formulas spanning 8&times;</b> at 100 followers &#8212; and the Sybil pricing is calibrated against the weakest one.</span></li>
+    <li><span class="mk">05</span><span><b>Poll cadence off by 6&times;</b> &#8212; 60s vs 10s &#8212; and the hot-lane cost model rests on the higher figure.</span></li>
+    <li><span class="mk">06</span><span><b>UTC-day dedupe accounting differs 25&times;</b>, swinging $42,000/month.</span></li>
+    <li><span class="mk">07</span><span><b>Protocol mismatch at the client boundary.</b> Backend serves SSE over HTTP/2 with <code>Last-Event-ID</code> gap-fill; the client consumes WebSocket MessagePack.</span></li>
+    <li><span class="mk">08</span><span><b>TxGuard hard-blocks every Phase 1 launch</b> and has no override path by design, because it decodes the split at an offset in a program that will not exist yet.</span></li>
+    <li><span class="mk">09</span><span><b>IP risk blocks launches in two layers and is forbidden from blocking in two others</b> &#8212; on the exact Chill Guy scenario the feature exists for.</span></li>
+    <li><span class="mk">10</span><span><b>Coin image policy is mutually exclusive</b> &#8212; source crop vs derived render &#8212; and <em>both</em> sides advance their choice as the legal defence.</span></li>
+    <li><span class="mk">11</span><span><b>Lead-time <code>t0</code> has two contradictory definitions</b>, and one of them is inflatable in the flattering direction. Use both endpoints on our own clock so measurement error cancels rather than accumulates.</span></li>
+    <li><span class="mk">12</span><span><b>Revenue disagrees 10&times; on creator fee</b> (1% vs 0.1%) &#8212; which flips the seed tier between viable and dead.</span></li>
+  </ul>
+
+  <h3>Unowned responsibilities</h3>
+  <ul class="tone warn">
+    <li><span class="mk">!</span><span><b>Story-to-existing-coin matching</b> &#8212; the entire buy side, and the majority of trade volume.</span></li>
+    <li><span class="mk">!</span><span><b>The Holding object</b> &#8212; nobody owns reconciling on-chain balances with position rows, or cost basis and PnL.</span></li>
+    <li><span class="mk">!</span><span><b>The Follow object</b> &#8212; appears twice in eight designs, owned by none.</span></li>
+    <li><span class="mk">!</span><span><b>The creator 50% and treasury 10% claim paths.</b> The poster's 40% leg is designed in extreme depth; the other two legs are not designed at all.</span></li>
+    <li><span class="mk">!</span><span><b>Broadcast ingestion</b> &#8212; three layers budget ASR for it, zero build an adapter.</span></li>
+    <li><span class="mk">!</span><span><b>The Pro-mode query language</b> &#8212; half the declared UI surface, referenced by three layers, specified by none.</span></li>
+  </ul>
+</section>
+
+<!-- &#9552;&#9552; 14 &#9552;&#9552; -->
+<section id="s14" class="col">
+  <div class="snum">14</div>
+  <h2>Build plan</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Phase</th><th>Weeks</th><th>Ships</th><th>Proves</th></tr></thead>
+    <tbody>
+      <tr><td><b>0</b> Kill assumptions</td><td class="n">1&ndash;3</td><td>Eight cheap experiments, no code. The $0.02 dedupe test. Bags handle resolution for a never-onboarded handle. The real fee schedule.</td><td>Whether the cost model survives contact. Three of these can each independently invalidate the plan.</td></tr>
+      <tr><td><b>1</b> One bus, one clock, one ledger</td><td class="n">4&ndash;11</td><td>Redpanda as the single bus with a schema registry. One id scheme (uuidv7 + platform natural key). Postgres 18 + pgvector. <b>The provenance ledger and hourly anchor.</b></td><td>That we can prove we knew something at a time, to a sceptic, with no dependency on us. The only component that cannot be rented.</td></tr>
+      <tr><td><b>2</b> Detection in shadow</td><td class="n">8&ndash;18</td><td>HOT scoring with one reconciled Omega and one age decay. Clustering with the reconciler and merge events. Nothing publishes.</td><td>That the lead time is real and measurable without flattering ourselves.</td></tr>
+      <tr><td><b>3</b> Read-only product</td><td class="n">16&ndash;24</td><td>Public anonymous feed, Simple mode, share cards rendered from signed lead receipts.</td><td>That the share loop works and the number survives public scrutiny. The cheapest way to find out if anyone cares.</td></tr>
+      <tr><td><b>4</b> Trading</td><td class="n">22&ndash;32</td><td>Privy wallets behind one WalletPort. Adapter-aware TxGuard. Jupiter routing. <b>Story-to-coin matching.</b></td><td>That revenue exists and the buy side works. Trading ships <em>before</em> creation deliberately &#8212; lower risk, no IP exposure.</td></tr>
+      <tr><td><b>5</b> Creation and the 40% promise</td><td class="n">28&ndash;40</td><td>The auto-namer with all four default-deny safety gates. The opt-out registry wired into all enforcement points. PosterVault.</td><td>That the 50/40/10 promise is honourable end to end, including for a poster who never asked to participate.</td></tr>
+      <tr><td><b>6</b> Sovereignty and Pro</td><td class="n">36&ndash;52</td><td>Own fee router on raw Meteora DBC, removing the Bags dependency. Two independent audits. Pro mode.</td><td>That the company survives losing any single vendor &#8212; the launchpad, the reseller, or X itself.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- &#9552;&#9552; 15 &#9552;&#9552; -->
+<section id="s15" class="col">
+  <div class="snum">15</div>
+  <h2>Legal and compliance</h2>
+  <h3>Right of publicity</h3>
+  <p>Routing fees to a creator's handle without consent is state-law governed with no federal statute, and <b>consent is the primary defence</b> <span class="mu">[23]</span>. Mitigations must ship in the <em>same release</em> as the split, never after: a permanent opt-out registry, a "not created or endorsed by" disclaimer on every origin coin, and per-source rate limits so one viral post cannot spawn 200 dilutive launches.</p>
+
+  <h3>The Chill Guy precedent</h3>
+  <p>Phillip Banks announced DMCA action against unauthorised merchandise and "shitcoins" <span class="mu">[22]</span>; the token fell roughly <b>54% in two hours</b>. Enforcement stalled because the deployer was anonymous and the token permissionless. The lesson is not that takedowns work &#8212; it is that <b>IP risk is a price-moving, tradeable signal</b>, which is why it is a first-class column in Pro mode.</p>
+
+  <h3>Front-end registration exposure</h3>
+  <p>SEC staff issued broker-dealer registration guidance for certain user interfaces in April 2026 <span class="mu">[21]</span>. A fee-charging front end that suggests an asset and offers one-click deployment is the exact profile that undermines a neutral-software defence. Concrete mitigations: present three suggestions and never one recommendation; never rank by predicted price performance; keep every transaction user-signed; retain no upgrade authority; route through a third-party launchpad rather than operating a curve.</p>
+
+  <h3>Scraping posture</h3>
+  <p>A federal court held that the Copyright Act preempts X's web-scraping claims <span class="mu">[24]</span>, which is favourable on one axis. But the risk that kills a live-feed product is not a lawsuit &#8212; it is a Tuesday morning when the feed goes dark. The reseller sits in the <em>hiQ</em> posture (logged-in, contractually liable), not the <em>Meta v. Bright Data</em> safe harbour. Keep the licensed lane running even when it is not the cheapest.</p>
+</section>
+
+<!-- &#9552;&#9552; 16 &#9552;&#9552; -->
+<section id="s16" class="col">
+  <div class="snum">16</div>
+  <h2>Bibliography</h2>
+  <p class="dek">24 primary sources. 120 claims extracted, 25 adversarially verified, 16 confirmed, <b>9 killed</b>.</p>
+  <ol class="biblio">
+    <li>X &#8212; Filtered stream: build a rule. <a href="https://docs.x.com/x-api/posts/filtered-stream/integrate/build-a-rule">docs.x.com</a></li>
+    <li>TikTok &#8212; Research API. <a href="https://developers.tiktok.com/products/research-api/">developers.tiktok.com</a></li>
+    <li>twitterapi.io &#8212; Streaming API. <a href="https://twitterapi.io/blog/twitter-streaming-api">twitterapi.io</a></li>
+    <li>Decrypt &#8212; X bans access for InfoFi crypto projects. <a href="https://decrypt.co/354736/elon-musks-x-bans-access-infofi-crypto-projects-ai-slop-backlash">decrypt.co</a></li>
+    <li>xai-org/x-algorithm. <a href="https://github.com/xai-org/x-algorithm">github.com</a></li>
+    <li>igorbrigadir/awesome-twitter-algo. <a href="https://github.com/igorbrigadir/awesome-twitter-algo">github.com</a></li>
+    <li>Kleinberg &#8212; Bursty and hierarchical structure in streams. <a href="https://www.cs.cornell.edu/home/kleinber/bhs.pdf">cs.cornell.edu</a></li>
+    <li>Twitter &#8212; AnomalyDetection (S-H-ESD). <a href="https://github.com/twitter/AnomalyDetection">github.com</a></li>
+    <li>Bags &#8212; Launch token with shared fees. <a href="https://docs.bags.fm/how-to-guides/launch-token-with-shared-fees">docs.bags.fm</a></li>
+    <li>PumpPortal &#8212; Creator fee. <a href="https://pumpportal.fun/creator-fee/">pumpportal.fun</a></li>
+    <li>Solana &#8212; Token-2022 transfer fees. <a href="https://solana.com/docs/tokens/extensions/transfer-fees">solana.com</a></li>
+    <li>Solana &#8212; MEV protection. <a href="https://solana.com/developers/guides/advanced/mev-protection">solana.com</a></li>
+    <li>Helius &#8212; LaserStream gRPC. <a href="https://www.helius.dev/docs/laserstream/grpc">helius.dev</a></li>
+    <li>Jupiter &#8212; Add fees to swap. <a href="https://dev.jup.ag/docs/swap-api/add-fees-to-swap">dev.jup.ag</a></li>
+    <li>BERTopic &#8212; Online topic modelling. <a href="https://maartengr.github.io/BERTopic/getting_started/online/online.html">maartengr.github.io</a></li>
+    <li>Voyage AI &#8212; Pricing. <a href="https://docs.voyageai.com/docs/pricing">docs.voyageai.com</a></li>
+    <li>arXiv 2007.10399 &#8212; streaming clustering. <a href="https://arxiv.org/pdf/2007.10399">arxiv.org</a></li>
+    <li>Ably &#8212; Scaling pub/sub with WebSockets and Redis. <a href="https://ably.com/blog/scaling-pub-sub-with-websockets-and-redis">ably.com</a></li>
+    <li>X &#8212; Developer terms and policy. <a href="https://docs.x.com/developer-terms/policy">docs.x.com</a></li>
+    <li>The Block &#8212; X revises API policies to ban InfoFi. <a href="https://www.theblock.co/post/385805/kaito-token-plummets-x-revises-api-policies-ban-infofi-crypto-projects">theblock.co</a></li>
+    <li>WilmerHale &#8212; SEC staff broker-dealer registration guidance for certain user interfaces, Apr 2026. <a href="https://www.wilmerhale.com/en/insights/client-alerts/20260417-sec-staff-issues-broker-dealer-registration-guidance-for-certain-user-interfaces">wilmerhale.com</a></li>
+    <li>DL News &#8212; Chill Guy artist on the memecoin. <a href="https://www.dlnews.com/articles/people-culture/chill-guy-artist-says-300m-tiktok-memecoin-is-copyright-theft/">dlnews.com</a></li>
+    <li>Lowenstein &#8212; Legal risks of depicting real people. <a href="https://www.lowenstein.com/news-insights/publications/articles/a-haystack-in-a-hurricane-the-legal-risks-of-depicting-real-people-in-your-nft-savare-polito">lowenstein.com</a></li>
+    <li>FKKS &#8212; Copyright Act preempts X's web-scraping claims. <a href="https://ipandmedialaw.fkks.com/post/102j7d0/blockbuster-ruling-federal-court-holds-that-copyright-act-preempts-xs-web-scrap">fkks.com</a></li>
+  </ol>
+
+  <div class="note w" style="margin-top:28px">
+    <div class="lb">Claims that verification killed &#8212; do not build on these</div>
+    <p>The 2026 Phoenix 15-action probability set &middot; Kleinberg's cost recurrence being "identical in form to Viterbi" &middot; S-H-ESD being explicitly designed for local anomalies &middot; the Bags social-provider list covering all ingested platforms &middot; fee splits summing to exactly 10,000 bps &middot; fee-share config being immutable after launch. Several of these were asserted earlier in this project and are now retracted.</p>
+  </div>
+</section>
+
+<div class="foot col">
+  Insidor engineering architecture v1.0 &middot; generated 22 July 2026<br>
+  Two research passes: adversarial verification of 120 claims against 24 primary sources, and an eight-discipline design reviewed for cross-layer contradictions.<br>
+  Figures marked UNVERIFIED or ASSUMPTION are exactly that. Phase 0 exists to kill them.
+</div>
+
+</div>
+
+<script>
+document.getElementById('th').addEventListener('click',function(){
+  var r=document.documentElement,c=r.getAttribute('data-t');
+  var d=matchMedia('(prefers-color-scheme:dark)').matches;
+  var n=c||(d?'dark':'light');
+  r.setAttribute('data-t',n==='dark'?'light':'dark');
+});
+</script>
