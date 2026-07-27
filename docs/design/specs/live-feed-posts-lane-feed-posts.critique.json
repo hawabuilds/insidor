@@ -1,0 +1,129 @@
+{
+ "feature": "Live Feed \u2014 Posts lane (feed-posts)",
+ "verdict": "needs-work",
+ "problems": [
+  {
+   "problem": "FEES ARE INVISIBLE ON A FEE-BEARING SURFACE. Across 6 mechanism sections, 4 screens, ~60 elements and 12 build steps the word 'fee' does not appear once. api/swap.js:9,28 already accepts and forwards a `feeAccount` to Jupiter \u2014 Insidor takes a cut of every swap. The spec's `Buy $TICKER` (.pbtn.trade, solid --ion) is one tap into that path with no fee rendered on the row, in .pd-sheet, or in the (unspecified) Jupiter trade modal. Separately the creator persona is 'wants to mint off a meme and EARN FEES' and the `Create coin` path's fee split (pump.fun creator fee + any Insidor share) is equally unrendered. This is the axis-5 commitment failing at the only two places money moves.",
+   "severity": "blocking",
+   "fix": "Add a mandatory fee disclosure to both action paths: on the row, a --dim mono 9px suffix on the action cell's second line (`+0.85% fee`); in .pd-sheet's .sh-foot, a full line above the button; in the trade modal, fee and expected-received before the confirm. On Create, show the pump.fun creator-fee share and any Insidor share in openDeployFromViralPost() before submit. Read the actual bps from config, never hardcode."
+  },
+  {
+   "problem": "THE BUY BUTTON BYPASSES EVERY SAFETY GATE. n is derived as `count(coin_matches where verdict='confirmed')`. CONFIRMED answers 'is this the right coin for this story', not 'is this safe to buy'. 03-system-design.md \u00a74.4 defines hard safety gates \u2014 mint authority active, freeze authority active, topHoldersPercentage > 60, live && liquidity < $3k, honeypot proxy (numSells==0 && numBuys>30) \u2014 and says they are hidden unless SHOW RISKY. Those gates are specified for the COIN lane only. A correctly-CONFIRMED rug therefore renders a solid cyan primary `Buy $TICKER` on the posts board, one tap into api/swap.js. That is the money-losing bug.",
+   "severity": "blocking",
+   "fix": "Redefine n as `confirmed AND passes \u00a74.4 hard safety`. A confirmed-but-unsafe coin must not produce a Buy: render `See the coin` in .pbtn (outline, not solid) plus a --red `RISK` chip in the chip line naming the failing gate. SHOW RISKY is the only thing that promotes it back to Buy, consistent with the spec's own rule that SHOW RISKY is the one loud gate-relaxing toggle."
+  },
+  {
+   "problem": "THE INVERSE COIN-COUNT BUG: `Create coin` shown for a story that already has a confirmed coin. lib/stories.ts defines `tradeable(coins) = c.ticker && c.mcap != null` and `storyAction()` returns `{kind:'create'}` when tradeable is empty. The spec's SQL uses no such filter, so two live definitions of n exist in one codebase and the spec never reconciles them. Worse, the spec's own state 'BRAND-NEW TOKEN, NO MARKET DATA \u2014 mcap renders \u2014' is exactly the mcap-null case: under the existing storyAction() a coin confirmed 4 minutes ago produces `Create coin`, driving a duplicate mint in the highest-value window the product exists to serve.",
+   "severity": "blocking",
+   "fix": "State explicitly that lib/stories.ts:storyAction()/tradeable() is deleted and replaced by the verdict-derived count. n must be market-data-independent: a confirmed match with null mcap is still n=1. Add a board state 'CONFIRMED COIN, NO MARKET DATA YET' \u2192 `Buy $TICKER` with mcap/liq rendered as --dim `\u2014`."
+  },
+  {
+   "problem": "THE 'ADOPTED' STATE IS MISSING FROM THE ACTION TABLE. \u00a75.9 enumerates five CTA states; the spec reproduces four and drops ADOPTED \u2014 an existing coin the story attaches to, whose spec'd treatment is `Buy $TICKER` LABELLED 'existing coin, adopted by this story' WITH THE TOKEN'S REAL AGE SHOWN. Without that label the board renders a plain `Buy $TICKER` for what is structurally the GYATT class (a 604-day-old shell with $3,142 liquidity). The G2 temporal veto catches accidental predating mints; ADOPTED is the deliberately-allowed predating case, so the veto does not protect this path.",
+   "severity": "blocking",
+   "fix": "Add the ADOPTED row: `Buy $TICKER` plus a mandatory amber `ADOPTED \u00b7 604d` chip in the chip line (age from coin_matches.mint_created_at) and an 'existing coin, adopted by this story' line in .pd-sheet's .pd-tickers. Age disclosure is not optional on this state."
+  },
+  {
+   "problem": "THE LEAD-TIME FIGURE HAS NO DENOMINATOR ON THIS BOARD. Lead time is defined system-wide as `t_crypto \u2212 promoted_at`, and promoted_at is a NARRATIVE field set once at PROMOTE. The spec's own summary says the normal case here is an unclustered post (narrative_id null) \u2014 which has no narrative, hence no promoted_at, hence no computable lead. The AGE cell's `.lead-badge +31m early` is therefore unrenderable on the majority of rows on the board whose entire job is to sell earliness. Separately, `narratives.promoted_at` DOES NOT EXIST in docs/schema.md (only created_at / first_seen_at / updated_at) and is NOT on the spec's \u26a0 missing list \u2014 item 13 flags the mint_ca contradiction but the headline metric's column is unflagged.",
+   "severity": "blocking",
+   "fix": "Add `narratives.promoted_at timestamptz` to the \u26a0 list and to buildOrder step 1. Then decide and state the per-post clock explicitly: either (a) suppress the lead figure entirely on unclustered rows and show only `CT +Nm` once CT picks it up, or (b) define a distinct post-level lead measured from narrative_posts.first_seen_at, rendered in a visually different treatment and explicitly excluded from the published ledger. Do not let one badge silently mean two different measurements."
+  },
+  {
+   "problem": "NEGATIVE LEAD TIME IS UNREPRESENTABLE \u2014 D2 violated in the pixel. The AGE cell has exactly two treatments: `.lead-badge +31m early` (--ion) and `.lead-dim CT +0m` (--dim). D2 states roughly a third of real detections are LATE, and \u00a72.6 defines RECALL MISSES as entities 'alerted on after t_crypto'. `CT +0m` floors a miss at zero: a detection that landed seven minutes after crypto Twitter renders as a tie. The one number that proves the product's core claim cannot render its own failure.",
+   "severity": "blocking",
+   "fix": "Add a third treatment: `.lead-late` in --red mono, text `CT \u22127m late`, using the same lead-badge geometry. It must appear on the board row, in .pd-sheet's .sh-s subtitle, and as a `CT BEAT US \u00b7 \u22127m` event in the rail. Reserve `+0m` for a genuine tie only."
+  },
+  {
+   "problem": "COINABILITY ENFORCEMENT IS BUILD STEP 10 WHILE STEPS 5\u20139 SHIP A PUBLIC BOARD. Step 10's own text says 'This gates GA \u2014 the board cannot ship to the public without D3 enforced,' yet step 5 says 'This is already a shippable product surface' and steps 6\u20139 add media, filters, realtime and trading on top of it. D3 tier 1 is identifiable private individuals, deaths, violence against a named person, and minors. The ordering invites exactly the ship it forbids.",
+   "severity": "blocking",
+   "fix": "Move the coinability classifier + enum to step 2 (it is a column and a classifier, not a dependency of anything). If it cannot move, add an explicit hard constraint to steps 5\u20139: 'ships behind auth to named internal users only; no public route until step 10 lands.'"
+  },
+  {
+   "problem": "THE `media_poster_url` COLUMN IS UNNECESSARY AND ITS JUSTIFICATION IS FACTUALLY WRONG. dataContract item 4 claims 'media_url on TikTok is not a poster frame; without this every video row falls to the gradient placeholder,' and openQuestion #3 asks whether a poster URL exists in the ingest payload. It already does, on both platforms. worker/lib/parse-tiktok-post.js:34-40,79 \u2014 coverFromRaw() reads covers.default || covers.origin || videoMeta.coverUrl || videoMeta.originalCoverUrl into mediaUrl with mediaType 'video'; the file header comment literally reads 'covers.default \u2192 media_url'. worker/lib/parse-raw-post.js:35-54 \u2014 mediaFromRaw() is documented 'Photo URL or video/gif poster frame' and puts preview_image_url / media_url_https into mediaUrl with mediaType 'video'|'gif'. buildOrder step 6's 'poster-frame ingestion' is dead work.",
+   "severity": "major",
+   "fix": "Delete media_poster_url from the \u26a0 list and from step 6. Source CASE 2 from media_url where media_type in ('video','gif'). Close openQuestion #3 as answered. Replace it with the real unverified risk: whether TikTok CDN cover URLs are signed/expiring, which would need a rehost \u2014 verify against a 24h-old row before assuming."
+  },
+  {
+   "problem": "THREE OF THE FIVE PLATFORM FILTER CHIPS FILTER NOTHING. The control strip specifies five .pbadge toggles \u2014 X, TikTok, Reddit, Farcaster, Telegram \u2014 'each with a mono 9px count of current contributions.' worker/lib/ contains exactly two parsers: parse-raw-post.js (platform 'x') and parse-tiktok-post.js (platform 'tt'). There are zero references to reddit, farcaster or telegram anywhere under worker/. Three chips will read 0 forever. The .pd-stats spec has the same problem ('X/Reddit/Farcaster/Telegram \u2192 Views \u00b7 Reposts \u00b7 Replies \u00b7 Likes'). On a terminal whose thesis is 0.97 precision and no fabrication, three dead affordances is the same category of lie as the loremflickr fallback the spec correctly kills.",
+   "severity": "major",
+   "fix": "Ship two chips (X, TikTok). Specify that the chip set is rendered from `select distinct platform from narrative_posts` so it grows when ingest does, rather than being hardcoded to an aspirational five."
+  },
+  {
+   "problem": "F4 (PLAUSIBILITY) IS STRUCTURALLY DEAD ON TIKTOK AND SILENTLY DEMOTES REAL VIRALITY. F4 = (overshoot > 200 && quotes < 5) ? 0.35 : 1. worker/lib/parse-tiktok-post.js:82 hardcodes `quotes: 0` \u2014 TikTok has no quote concept. So `quotes < 5` is always true on TikTok, and TikTok's For-You distribution routinely puts views at >200\u00d7 follower count for entirely organic videos. Every TikTok breakout therefore takes a 0.35 multiplier, which flows into O and then into the `O \u2265 0.30` hard gate \u2014 demoting or gating out virality on the platform where memes most often originate. The spec's openQuestion asks whether `followers` is populated on TikTok (it is: author.fans ?? followerCount ?? followers) and misses the actual defect one field over.",
+   "severity": "major",
+   "fix": "Exempt platform='tt' from F4 (f4 := 1), or replace the quotes denominator with a platform-appropriate amplification signal already ingested \u2014 shareCount (stored as retweets) and collectCount (stored as bookmarks). Rewrite the openQuestion to name `quotes`, not `followers`."
+  },
+  {
+   "problem": "`See the 3 coins` HAS NO DESTINATION. It is one of exactly three primary actions the ONE RULE permits, and the spec never names the surface it opens, never enumerates its states, and never places it in buildOrder (step 9 says only 'the coin-count-derived button'). \u00a75.9's ordering rule for that surface \u2014 rank by score \u2192 earliest mint \u2192 liquidity, never volume alone, badge the earliest `first` \u2014 has no home here.",
+   "severity": "major",
+   "fix": "Either specify the comparison surface as a fifth screen of this feature (a .sheet listing candidate mints with score-derived order, `first` badge, per-coin safety state, and a per-coin Buy each requiring its own confirm), or name it as an explicit cross-feature dependency with an owner, the way step 9 correctly does for coin_matches."
+  },
+  {
+   "problem": "SLIPPAGE IS INVISIBLE AND `dynamicSlippage: true` IS ALREADY ON. api/swap.js:23 sets dynamicSlippage on every swap build. On a sub-10-minute pump.fun curve \u2014 precisely this board's specialty \u2014 a one-tap Buy can execute materially away from the price the user inferred from the row. Nothing on the row, in .pd-sheet, or in the unspecified trade modal states an expected price, an expected received amount, or a max slippage.",
+   "severity": "major",
+   "fix": "Specify the trade modal as part of this feature's action contract: expected received, max slippage, and price impact must render before the confirm, with a --red treatment above a threshold. A board that refuses to render a 73% match confidence cannot ship a swap that hides its own execution risk."
+  },
+  {
+   "problem": "COINABILITY-SUPPRESSED ROWS ARE INVISIBLE IN THE GATE BREAKDOWN. The footer promises `12 hidden by gate` opening 'a per-reason breakdown (meme_score 7, O 3, author cap 2)' \u2014 coinability is absent from that list, and tier-1 blocked rows 'never enter the board and never enter the rail.' A window heavy with blocked content therefore renders as EMPTY (quiet), indistinguishable from a slow night, with no counter anywhere. That is a silent suppression contradicting the spec's own D2-applied-to-the-board principle.",
+   "severity": "major",
+   "fix": "Add `coinability N` to the per-reason breakdown as a bare count with no content detail (the count is honest; itemising blocked content is not). Add the same count to the EMPTY (quiet) state's second line so 'quiet night' and 'we filtered a lot' are distinguishable."
+  },
+  {
+   "problem": "ROW HEIGHT IS 64px WHERE EVERY EXISTING TABLE IN THE INVENTORY IS 54px \u2014 the density drift. .nthd/.ntk, .tnhd/.tnr and .tthd/.ttk are all `min-height:54px; padding:13px 20px`. The spec sets `min-height:64px; padding:10px 20px`. Across 40 rows that is 400px \u2014 roughly a full viewport of lost density on the board that most needs it \u2014 and it visually desyncs the Posts lane from the Stories lane sitting beside it in the same segmented switcher. The cause is the added four-line POST cell (author / text / chip / author-cap foot) against .nar-cell's three.",
+   "severity": "major",
+   "fix": "Return to 54px / padding 13px 20px. Move lifecycle out of the chip line onto a 3px inset-left colour rail \u2014 the .ntk.narr-pinned idiom already establishes it \u2014 and reduce the chip slot to 14px carrying only state chips (ALREADY HOT, 2ND WAVE, \u2192 STORY, FROZEN, NOT MINTABLE). State the chip precedence order explicitly, since the \u22641040px variant clamps to two chips with a `+2` overflow and currently has no rule for which two survive."
+  },
+  {
+   "problem": "NO SPECIFIED BEHAVIOUR WHEN A MATCH VERDICT IS RETRACTED. The spec animates the n:0\u21921 transition beautifully (850ms --ion pulse on the button, 'the single most important state change on this surface'). It never specifies the reverse. coin_matches is a live table with a calibrated abstain band; confirmed \u2192 unsure or confirmed \u2192 rejected while a `Buy $TICKER` sits under the user's cursor is the band doing its job, and the UI has no defined response.",
+   "severity": "major",
+   "fix": "Specify a demotion transition: the button reverts to `Create coin`, the candidate drops to the --muted `$KANG \u00b7 unverified` line, and the row logs a `MATCH RETRACTED \u00b7 $KANG` event in the rail in --amber. It must NOT be silent, and it must not use the same lime/celebratory pulse as promotion."
+  },
+  {
+   "problem": "THE HOURLY p95 REBASE FAKES ACCELERATION. presented_heat = 100 \u00b7 min(1, heat / platform_norms.p95_heat_1h), with platform_norms recomputed hourly by pg_cron. A row's HEAT can jump 61 \u2192 88 with zero change in underlying PostHeat because the denominator moved. It will render with .nm-tick-up (lime, translateY) \u2014 the exact treatment reserved for a real value increase \u2014 and the rail will log nothing. On a board that presents HEAT as its ranking truth in --ink while deliberately demoting REACH to --muted, this is a manufactured signal.",
+   "severity": "major",
+   "fix": "Suppress .nm-tick-up/.nm-tick-down on the first frame after a norms recompute, and emit a `NORMS REBASED` --dim event into the rail so the shift is attributable. The HEAT hover popover already decomposes base/burst/O/C/E/age \u2014 add the denominator and its updated_at."
+  },
+  {
+   "problem": "THE FIRST-RUN USER HAS NO STATE ON ANY OF THE FOUR SCREENS. Forty rows, eleven columns of Gamma-Poisson lower bounds, EWMA burst multiples, an organic multiplier and a presented heat index, and not one onboarding, glossary or first-run affordance is enumerated. The only explanatory surfaces are hover popovers on HEAT/ACCEL/ORG \u2014 pointer-only, therefore structurally absent on the \u22641040px/touch variant the spec itself defines. The third named user is 'the normie who saw something on TikTok and wants in without learning what a bonding curve is.'",
+   "severity": "major",
+   "fix": "Add a FIRST RUN state to the board: a one-time dismissible --dim strip under .pthd naming the three columns that decide the row (HEAT, ACCEL, AGE lead) in one line each, persisted to insidor.feed.posts.v1. Give every popover a tap-equivalent on touch. Also settle openQuestion #7 \u2014 a normie landing on a 40-row pre-coin board with 90% `Create coin` buttons is the wrong front door; route unknown referrers to Stories."
+  },
+  {
+   "problem": "`.pbtn.trade` ALREADY MEANS SOMETHING ELSE. Component inventory \u00a76.8: `.pbtn.deploy / .pbtn.trade \u2014 background:var(--ion); color:#001318 \u2026 Label `Create Coin``. The spec assigns .pbtn.trade to `Buy $TICKER` and .btn-deploy-mini to `Create coin`, silently inverting the semantics of a class the rail's viral cards already use.",
+   "severity": "minor",
+   "fix": "Say 'rename' explicitly, or introduce .pbtn.buy and leave .pbtn.trade alone. Also flag `.newpill` and `.storydot` \u2014 neither appears anywhere in the 651-line inventory; they are new components written as if they were existing ones, alongside .ptk/.pthd/.pd-rank which the spec does correctly flag."
+  },
+  {
+   "problem": "THE 96px ACTION CELL CANNOT HOLD THE ABSTAIN DISCLOSURE. `Create coin` in .btn-deploy-mini (10px mono, padding 4px 10px) fits at ~68px. The second line `$KANG \u00b7 unverified` at 9px mono is ~90px plus the --line border and padding, and will clip in 96px. The one element D1 says must never be hidden is the one that does not fit its own cell.",
+   "severity": "minor",
+   "fix": "Widen the action column to 118px, or move `unverified` to the chip line as a --muted `.lc-pill $KANG \u00b7 UNVERIFIED` and keep the action cell to the button alone. Verify at the \u22641180px breakpoint too, where the grid tightens."
+  },
+  {
+   "problem": "THE SPARKLINE LATERAL DOES NOT EXCLUDE UNAVAILABLE SNAPSHOTS. The hydration query first-differences `views - lag(views) over (order by captured_at)` over the last 9 post_snapshots rows. post_snapshots.unavailable is a live column and engagementFromRaw() returns null fields for unavailable posts, so a deleted-then-restored post produces a null or negative spike in the 20M cell \u2014 the exact 'one vertical step' shape F1 flags as bought reach. The RATE column has an explicit carry-forward rule for view-censored observations; the sparkline SQL has none.",
+   "severity": "minor",
+   "fix": "Add `and unavailable is not true` to the lateral, and carry V forward across gaps the same way RATE does. Also add the matching board-row state the spec only gives to the sheet: a post deleted upstream currently keeps ranking with frozen counts and no row-level indicator."
+  },
+  {
+   "problem": "BUILD STEP 1'S BACKFILL IS CIRCULAR. Step 1 creates platform_norms AND backfills post_heat from seven days of post_snapshots. But censored_entry detection reads platform_norms.median_views_at_age, and presented_heat reads p95_heat_1h \u2014 both produced by the same backfill. Additionally S_fast/S_slow, v_peak and ticks_qualified are path-dependent accumulator state whose reconstruction over the irregular 4/9/14/21/30/42/58/78 grid needs to be stated, not assumed.",
+   "severity": "minor",
+   "fix": "Split step 1 into 1a (schema + norms pass over raw snapshots) and 1b (post_heat backfill reading 1a's norms). State that the EWMA replay uses the continuous-time form against real captured_at deltas, so the backfill and the live accumulator produce identical values on the same input \u2014 that equality is the test."
+  }
+ ],
+ "missing": [
+  "Negative lead time / late detection \u2014 no rendering exists on the row, in .pd-sheet, or in the rail; `CT +0m` floors a miss at zero, directly contradicting D2's 'roughly a third are late, and that is shown'.",
+  "First-run user \u2014 absent from all four screens' state lists; no onboarding, no column glossary, and the only explanations are pointer-only hover popovers that do not exist on the spec's own touch variant.",
+  "ADOPTED coin (\u00a75.9) \u2014 an existing coin the story attaches to, requiring the 'existing coin, adopted by this story' label and the token's real age. Missing from the action table entirely.",
+  "Confirmed coin with no market data yet \u2014 the spec has 'BRAND-NEW TOKEN, NO MARKET DATA' for display but never resolves it against lib/stories.ts's mcap-null tradeable() filter, which currently flips the button back to Create.",
+  "Match verdict retracted while on screen (confirmed \u2192 unsure/rejected) \u2014 the n:0\u21921 promotion is specified in detail; the demotion is not specified at all.",
+  "Wallet connected but insufficient SOL \u2014 'wallet not connected' is handled correctly (true label, enabled, Privy then complete intent); the more common connected-but-broke case drops the user into a failing Jupiter modal with no board-level state.",
+  "Create-coin failure \u2014 mint rejected, ticker taken between click and submit, or user rejects the signature. This is the primary action on ~90% of rows and its error path is unenumerated.",
+  "Post deleted upstream while ranked \u2014 handled in .pd-sheet via post_snapshots.unavailable, absent on the board row, which keeps ranking on frozen counts with no indicator.",
+  "Empty-because-blocked vs empty-because-quiet \u2014 D3 tier-1 rows never enter the board or the rail and are absent from the `N hidden by gate` breakdown, so a heavily-filtered window is indistinguishable from a slow night.",
+  "The `See the N coins` destination \u2014 one of three permitted primary actions has no specified surface, no states, and no place in buildOrder.",
+  "The UNSURE coin page's second-explicit-confirm \u2014 asserted as the sole mechanism preventing an abstain from becoming a purchase, but unspecified and unowned; it lives outside this feature with no named dependency.",
+  "Fee disclosure on both the Buy path (api/swap.js feeAccount) and the Create path (pump.fun creator fees) \u2014 no state, no element, no copy anywhere.",
+  "Slippage / expected-received / price-impact disclosure before a swap confirm, on a board specialising in sub-10-minute curves with dynamicSlippage already enabled.",
+  "COLLAPSE BY STORY = OFF with n>=1 \u2014 the toggle re-renders every member post as its own row, each carrying an independently-resolved action button; twelve rows of one story means twelve `Buy $TICKER` or twelve `See the 3 coins` buttons with no shared state. The action cell's behaviour when collapse is off is unspecified.",
+  "board_state / board_ticks retention \u2014 a full 40-row snapshot every 20s is ~173k rows/day/lane and the delta-10m lookback prevents aggressive trimming; no retention policy is stated.",
+  "Chip-line precedence at <=1040px \u2014 five possible chips clamp to two with a `+2` overflow, with no rule for which two survive. ALREADY HOT and NOT MINTABLE are honesty labels and cannot be the ones that get dropped."
+ ]
+}

@@ -1,0 +1,698 @@
+{
+ "feature": "Search (F6) + Watchlist/Follow (F5) \u2014 one search box that resolves contract addresses, tickers and free text into a single ranked result set, and a star that turns \"I'm waiting on this\" into a push the moment a watched story mints.",
+ "summary": "Search is Insidor's anti-duplicate surface: one box branches on contract address, $TICKER, or free text, and every branch answers the same question \u2014 does a coin already exist for this, and if so which one is real. Watchlist is not a list; it is a subscription to the 0\u21921 coin transition on a story, and the notification that fires when it happens is the retention hook the whole feature exists to deliver. Both surfaces obey the ONE RULE \u2014 the primary button is a pure function of the CONFIRMED coin count \u2014 and both render UNSURE matches visibly with the Buy affordance suppressed, per D1.",
+ "mechanism": "== 1. MODE DETECTION (features/search/model/parse.ts \u2014 pure, tested, no I/O) ==\n\nparseQuery(raw) runs in this order and returns a discriminated union:\n\n  CA      /^[1-9A-HJ-NP-Za-km-z]{32,44}$/ AND bs58.decode(q).length === 32\n          (base58 alphabet excludes 0 O I l; the length test is what stops a 40-char\n          English phrase with no spaces from claiming CA mode)\n  TICKER  /^\\$[A-Za-z0-9]{2,13}$/          \u2192 forced ticker mode ($ is an explicit intent)\n          /^[A-Za-z0-9]{2,13}$/            \u2192 AMBIGUOUS: run ticker AND text, section both.\n          13 = pump.fun symbol ceiling (DESIGN.md \u00a76 F3.1). 2 = floor; 1 char is noise.\n  HANDLE  /^@[A-Za-z0-9_]{1,15}$/          \u2192 poster mode (posts by handle)\n  TEXT    everything else\n\nAmbiguity is resolved by SHOWING both, never by guessing. \"ferry\" is both a plausible\nticker and a plausible keyword; the founder's rule (\"keywords \u2192 both post and chart\")\nmeans the ambiguous case is the normal case, not an edge case.\n\n== 2. RETRIEVAL \u2014 a three-retriever blend, fused by RRF ==\n\nWhy a blend and not one: the corpus is short, noisy social text. FTS alone dies on\ntypos, handles, emoji-heavy posts and cashtags. Trigram alone has no notion of\nrelevance across a document. Embeddings alone lose exact-token precision, which is\nexactly what a ticker query needs. Each retriever covers the others' failure mode.\n\n  R_fts    to_tsvector, GIN. Weighted:\n             narratives:      A=title(simple)+subject_entity, B=title(english), C=blurb(english)\n             narrative_posts: A=handle(simple), B=text(english)\n           score = ts_rank_cd(search_doc, websearch_to_tsquery('english', q), 32)\n           (normalisation 32 = divide by 1+log(doc length); short posts stop winning\n           by being short)\n  R_trgm   pg_trgm GIN over narratives.title, narrative_tickers.ticker,\n           coin_index.symbol, coin_index.name, narrative_posts.handle\n           score = similarity(col, q), threshold 0.30 (0.18 for ticker columns \u2014\n           ticker drift is 1\u20132 chars: FERRY/FERRIE/FERY)\n  R_vec    pgvector HNSW (m=16, ef_construction=64, ef_search=64) over\n           narratives.search_vec (story centroid) and post_embeddings.embedding\n           score = 1 \u2212 (vec <=> embed(q))\n\nEach retriever returns its own top 100. Fuse with weighted Reciprocal Rank Fusion \u2014\nchosen because the three scores are on incomparable scales and normalising them\nrequires a calibration set we do not have:\n\n  RRF(d) = \u03a3_r  w_r / (60 + rank_r(d))       w_fts = 1.00, w_vec = 0.80, w_trgm = 0.60\n  rel    = RRF(d) / max(RRF)                 \u2192 0..1 within the result set\n\n== 3. THE RANKING FORMULA (features/search/model/rank.ts \u2014 pure, tested) ==\n\n  rec  = 1 / (1 + (age_min / 90)^1.1)\n         age_min from narratives.promoted_at for stories, mint_time for coins,\n         posted_at for posts. Half-life \u2248 90 min: a 90-min-old story ranks 0.5,\n         a day-old story 0.06. This is a terminal, not an archive.\n  vir  = ln(1 + heat) / ln(1 + 100)\n         heat = the presented 0..100 heat from the \u00a74.2 ranking primitive\n         (base = rate_LCB_norm \u00d7 burst^0.5 ; heat = (base\u00b7O\u00b7D)^0.85 / ((age+12)/12)^1.35 \u00d7 C).\n         For coins, vir uses CoinHeat_live / p95_CoinHeat_1h.\n  score = (0.55\u00b7rel + 0.25\u00b7vir + 0.20\u00b7rec) \u00d7 boost \u00d7 typePrior\n\n  boost   \u00d71.35  exact ticker equality (q strips $, uppercased, == narrative_tickers.ticker\n                 or coin_index.symbol)\n          \u00d71.15  q is a case-insensitive substring of narratives.title\n          \u00d71.05  story has \u22651 CONFIRMED coin (an actionable result is a better result)\n          \u00d70.60  narratives.needs_review = true (coherence < 0.55 \u2014 garbage-bag story)\n          \u00d70.00  coinability_tier = 'never'  \u2192 hard-filtered BEFORE ranking, not down-weighted\n  typePrior  story 1.00 \u00b7 coin 0.95 \u00b7 post 0.80\n\nRelevance dominates at 0.55 because a search box that reorders your query by\npopularity is a trending board wearing a search box.\n\n== 4. DEDUPE / ROLL-UP \u2014 how three object types become one result set ==\n\nSectioned, not interleaved: three shapes with three column grammars, and a terminal\nuser scans columns. But one interleaving rule makes the set feel like one answer:\n\n  a) A POST whose narrative_id already appears in the Stories section is NOT listed\n     separately. It folds into that story row as \"+3 more posts match\" (expands inline).\n  b) A COIN whose narrative_id already appears in Stories renders in BOTH places \u2014\n     inline in the story row's coin strip, and in the Coins section with its chart\n     columns. This is the founder's rule made literal: keyword \u2192 post AND chart.\n  c) The single highest-scoring object of any kind is lifted out into a BEST MATCH\n     strip above all sections, resolved to exactly one action. Ties broken by\n     typePrior, then earlier promoted_at.\n\n== 5. SNIPPETS\n\n  ts_headline('english', text, websearch_to_tsquery(q),\n              'MaxFragments=1, MaxWords=18, MinWords=8, StartSel=<mark>, StopSel=</mark>')\n  <mark> styled background:rgba(61,224,255,.18); color:var(--ink); border-radius:2px.\n  Never truncate mid-<mark>.\n\n== 6. CA RESOLUTION LADDER (each rung is a cache write-through to the next request)\n\n  1. narrative_tickers.mint = $1           \u2192 coin known, story known           ~4 ms\n  2. coin_index.mint = $1                  \u2192 coin known, story unknown         ~4 ms\n  3. GET /api/token-lookup?mint=           \u2192 DexScreener live, cold resolve  ~250 ms\n     mint_time = min(pairCreatedAt) across ALL pairs (\u00a75.3), NEVER best-pair.\n     Missing pairCreatedAt \u2192 mint_time = null \u2192 UNKNOWN \u2192 Buy suppressed. Never 0.\n  4. RPC getAccountInfo owner check        \u2192 is this even a token?           ~120 ms\n     owner \u2260 Tokenkeg\u2026/TokenzQd\u2026 \u2192 render \"That's a wallet, not a token.\"\n  5. Nothing anywhere \u2192 \"Valid Solana address. No pair, no story, no post.\"\n     This is a result, not an error, and it is rendered as one.\n\n  In parallel with 1\u20133, always: SELECT posts WHERE text ILIKE '%'||$1||'%' \u2014 a mint\n  literally typed into a tracked post is S_mint_in_post = 1.00, the strongest evidence\n  channel the matcher has, and it is what the founder means by \"search CA, post appears\".\n\n== 7. TICKER FAMILY \u2014 the anti-duplicate mechanism\n\n  For $FERRY, list every live Solana mint with that exact symbol, SORTED BY MINT TIME\n  ASCENDING. Not by volume, not by mcap. Rationale from \u00a75.2: conditional on an exact\n  symbol, competing mints are separated by MONTHS (TRUMP: 7 mints / 563 days), so the\n  earliest is almost always the real one and every later one is a copycat. Every\n  incumbent sorts this list by volume, which ranks the copycat that got pumped.\n\n  collision_idf(sym) = log(1 + N_total / (1 + N_symbol)) / log(1 + N_total)\n  rendered as a plain-English line, not a number: \"PUMP is a common ticker \u2014 4 live\n  coins share it\" vs \"FERRY is rare \u2014 1 live coin.\"\n\n== 8. NOTIFICATION TRIGGER\n\n  Fires on the transition confirmed_coin_count(narrative) : 0 \u2192 \u22651, and ONLY on\n  match_status = 'confirmed'. UNSURE never notifies \u2014 pushing \"your story minted\" on a\n  0.6-confidence match is the exact failure the D1 abstain band exists to prevent, and\n  it is unrecoverable trust damage. An UNSURE row that later promotes to CONFIRMED does\n  notify (in-app only, no push \u2014 the earliness is already spent).\n\n  AFTER INSERT OR UPDATE ON narrative_tickers\n    WHEN (NEW.match_status = 'confirmed' AND COALESCE(OLD.match_status,'') <> 'confirmed')\n    \u2192 enqueue_mint_notifications(NEW.narrative_id, NEW.mint)\n      \u2192 INSERT INTO notification (\u2026) SELECT \u2026 FROM follow\n        WHERE narrative_id = NEW.narrative_id AND notify_mint <> 'muted'\n          AND (muted_until IS NULL OR muted_until < now())\n        ON CONFLICT (dedupe_key) DO NOTHING\n      \u2192 realtime.send(payload, 'mint', 'user:'||user_id, private := true)\n\n  dedupe_key = user_id || ':' || narrative_id || ':' || date_trunc('hour', now())/6\n  Coalesce window: all coins confirmed within 90 s of the first collapse into ONE\n  notification (copycat swarms mint 3\u20138 coins in under a minute). If 2+ coins land in\n  the window the message becomes \"got 3 coins in 90 seconds\" and the primary button is\n  \"See the 3 coins\" \u2014 the ONE RULE, enforced inside the notification.\n  Follow-up: at most one, only if a later coin's peak mcap > 4\u00d7 the first AND the first\n  peaked under $25k, labelled \"a bigger coin appeared\".\n\n  Latency budget, mint \u2192 glass: PumpPortal ws \u2192 matcher 3\u20138 s \u2192 confirm \u2192 trigger\n  <1 s \u2192 Broadcast ~60 ms. p50 < 20 s, p90 < 60 s. Web Push adds 2\u201310 s. A 5-minute\n  notification on a product that sells 20-minute head starts is worth nothing; this\n  budget is a product requirement, not an SLO.\n\n== 9. QUERY SHAPES\n\n  -- fused search, one round trip\n  CREATE FUNCTION search_all(q text, q_vec vector, k int DEFAULT 40)\n  RETURNS TABLE(kind text, id uuid, rrf real) AS $$\n    WITH fts AS (\n      SELECT 'story'::text kind, id,\n             row_number() OVER (ORDER BY ts_rank_cd(search_doc,\n               websearch_to_tsquery('english', q), 32) DESC) rnk\n      FROM narratives\n      WHERE search_doc @@ websearch_to_tsquery('english', q)\n        AND promoted_at IS NOT NULL\n        AND status IN ('open','dormant')\n        AND coinability_tier <> 'never'\n      LIMIT 100),\n    trg AS (\n      SELECT 'story', id, row_number() OVER (ORDER BY similarity(title, q) DESC)\n      FROM narratives WHERE title % q AND coinability_tier <> 'never' LIMIT 100),\n    vec AS (\n      SELECT 'story', id, row_number() OVER (ORDER BY search_vec <=> q_vec)\n      FROM narratives WHERE search_vec IS NOT NULL\n      ORDER BY search_vec <=> q_vec LIMIT 100)\n    SELECT kind, id,\n           SUM(w / (60 + rnk))::real\n    FROM (SELECT *, 1.00 w FROM fts UNION ALL\n          SELECT *, 0.60 w FROM trg UNION ALL\n          SELECT *, 0.80 w FROM vec) u\n    GROUP BY kind, id ORDER BY 3 DESC LIMIT k;\n  $$ LANGUAGE sql STABLE;\n  -- (the same CTE shape repeats for kind='post' over narrative_posts and\n  --  kind='coin' over narrative_tickers \u22c8 coin_index; three parallel calls, not one\n  --  giant union, so a slow vector leg cannot stall the text legs)\n\n  -- \"No coin yet\" chip\n  SELECT n.*, COUNT(t.*) FILTER (WHERE t.match_status='unsure') AS unsure_n\n  FROM narratives n LEFT JOIN narrative_tickers t ON t.narrative_id = n.id\n  WHERE n.promoted_at IS NOT NULL AND n.status IN ('open','dormant')\n    AND n.coinability_tier <> 'never'\n    AND NOT EXISTS (SELECT 1 FROM narrative_tickers c\n                    WHERE c.narrative_id = n.id AND c.match_status='confirmed')\n  GROUP BY n.id ORDER BY n.heat DESC LIMIT 50;\n\n  -- Finished chip, default filter = ALL (D2)\n  SELECT * FROM story_outcome\n  WHERE resolved_at > now() - interval '7 days'\n  ORDER BY resolved_at DESC LIMIT 100;    -- outcome IN ('early','late','no_coin','flat','unresolved')\n\n  -- Following\n  SELECT f.*, n.*, c.* FROM follow f\n  LEFT JOIN narratives n ON n.id = f.narrative_id\n  LEFT JOIN coin_index c ON c.mint = f.coin_mint\n  WHERE f.user_id = $1 OR f.device_id = $2\n  ORDER BY f.created_at DESC;\n\n== 10. LATENCY CONTRACT\n  Palette local index (last board tick, ~200 stories + ~400 coins held in the store):\n  answers every keystroke in <16 ms, zero network.\n  Server: FTS+trgm path p95 < 120 ms. Vector leg adds ~30 ms and is rendered as it\n  arrives (the text legs never wait on it). Debounce 180 ms in the palette, 250 ms on\n  the full surface. Request-sequence guard (the existing extSearchReq pattern) so a\n  slow leg never overwrites a newer query's results.",
+ "dataContract": "EXISTS AND USED AS-IS\n  narratives            id, title, blurb, combined_views, views_velocity, accel, gain_24h,\n                        age_min, lead_time_min, lifecycle, status, display_eligible,\n                        gate_reason, platforms, cross_platform, trend_term, search_series,\n                        top_post_id, img_seed, created_at, first_seen_at, updated_at,\n                        meme_score, organic_score\n  narrative_posts       id, narrative_id, platform, handle, text, posted_at (epoch ms \u2014\n                        the age source of truth), views, likes, retweets, replies, quotes,\n                        followers, media_url, media_type, image, notable, platform_post_id\n  narrative_tickers     id, narrative_id, ticker, name, mcap, liquidity, vol24h, holders,\n                        age_min, canonical, first_deployed, endorsed_by, safety, smart_money\n  post_embeddings       post_id, embedding  \u2190 reused for R_vec on the post leg\n  post_meme_scores      suggested_ticker, suggested_name  \u2190 CREATE-path prefill ONLY (\u00a75.4)\n  post_snapshots        views/likes/\u2026 time series \u2192 feeds heat, never read by search directly\n\nMISSING \u2014 SEARCH IS BLOCKED WITHOUT THESE\n  \u26a0 narrative_tickers.mint text\n     THE hard blocker. token-lookup.js resolves pair.baseToken.address and THROWS IT\n     AWAY because there is nowhere to put it (DESIGN.md \u00a72). CA search cannot exist,\n     and neither can a swap. docs/schema.md lists `mint_ca`; the real catalog does not\n     have it. One-column migration + backfill, before anything else in this feature.\n  \u26a0 narrative_tickers.source text        'cashtag' | 'llm' | 'mint_in_post'\n  \u26a0 narrative_tickers.relation text      'derived' | 'adopted' | 'mentioned'\n  \u26a0 narrative_tickers.match_status text  'confirmed' | 'unsure' | 'rejected'\n  \u26a0 narrative_tickers.match_score real   calibrated 0..1 \u2014 STORED, NEVER RENDERED (\u00a75.9:\n                                         categorical, never numeric, next to an action)\n  \u26a0 narrative_tickers.match_channels jsonb  {img, text, tick, social, mint_in_post} \u2014\n                                         drives the evidence popover\n  \u26a0 narrative_tickers.mint_time timestamptz  = min(pairCreatedAt) across ALL pairs.\n                                         NULLABLE, and null must fail closed.\n     Without these six, every Match stamp is a lie and the ONE RULE cannot be computed \u2014\n     storyAction() in lib/types.ts currently keys off `ticker && mcap != null`, which is\n     the exact ticker-string matching that produced the live $KANG and $PUMP bugs.\n\n  \u26a0 narratives.promoted_at timestamptz   Set once, never overwritten. The clock every\n     lead-time claim and every recency term is measured from. Does not exist; created_at\n     is not a substitute (it moves on merge, \u00a73.4 lead-time hazard).\n  \u26a0 narratives.heat real, heat_rank int  The \u00a74.2 primitive is specified but not persisted.\n  \u26a0 narratives.coinability_tier text     'normal' | 'no_create' | 'never'  (D3). Without\n     it there is no way to exclude identifiable private individuals / minors / deaths from\n     a browsable \"No coin yet\" list, which is the most exposed surface in the product.\n  \u26a0 narratives.needs_review boolean, coherence real   (\u00a73.4 SPLIT-not-built)\n  \u26a0 narratives.search_doc tsvector GENERATED STORED + GIN\n  \u26a0 narrative_posts.search_doc tsvector GENERATED STORED + GIN\n  \u26a0 narratives.search_vec vector(D) + HNSW    story centroid. D must match\n     post_embeddings.embedding \u2014 VERIFY the dimension and the model, because query-time\n     embedding has to use the same one.\n  \u26a0 pg_trgm GIN indexes on narratives.title, narrative_tickers.ticker,\n     coin_index.symbol, coin_index.name, narrative_posts.handle\n  \u26a0 narratives.subject_entity, distinct_authors, author_velocity, ct_pickup,\n     ticker_proposals \u2014 DESIGN.md \u00a72 says these exist in the live catalog but are absent\n     from docs/schema.md. VERIFY before writing queries against them.\n\nMISSING \u2014 NEW TABLES\n  \u26a0 coin_index            mint pk, symbol, name, uri, image_url, image_phash bigint,\n                          image_vec vector, created_at, first_pair_at, liquidity, mcap,\n                          curve_pct, is_major bool, updated_at\n                          The F3.2 indexer. Required for CA/ticker search over mints that\n                          were never in a story \u2014 i.e. most of them. DESIGN.md \u00a76 is\n                          explicit: \"Search is downstream of the indexer and cannot ship\n                          before it.\" Rungs 1\u20132 of the CA ladder degrade to rung 3\n                          (live DexScreener) without it, which works but is slow and\n                          cannot answer \"how many $FERRY coins exist\".\n  \u26a0 app_user              specified in DESIGN.md \u00a75, not applied\n  \u26a0 follow                specified in \u00a75 as (user_id, narrative_id | coin_mint) with\n                          check(num_nonnulls = 1). NEEDS FOUR MORE COLUMNS:\n                            device_id text          \u2190 wallet-free follows (flow doc: \"You\n                                                       do not need a wallet to do that\")\n                            notify_mint text default 'mint_only'  -- all|mint_only|muted\n                            muted_until timestamptz\n                            last_notified_at timestamptz\n                          and the check becomes num_nonnulls(user_id, device_id) >= 1.\n  \u26a0 notification          id, user_id, device_id, kind ('mint'|'second_coin'|'digest'),\n                          narrative_id, coin_mint, dedupe_key text UNIQUE, payload jsonb,\n                          created_at, delivered_in_app_at, delivered_push_at, read_at,\n                          dismissed_at\n  \u26a0 push_subscription     id, user_id, endpoint, p256dh, auth, ua, created_at,\n                          last_ok_at, fail_count   (Web Push / VAPID)\n  \u26a0 notification_prefs    user_id pk, push_enabled, quiet_hours_start, quiet_hours_end,\n                          tz, email_digest ('off'|'daily'), min_mcap_usd\n  \u26a0 story_outcome  (materialized view, refreshed every 5 min)\n                          narrative_id, promoted_at, t_mint, t_ct, t_crypto =\n                          least(t_mint, t_ct), lead_time_min = t_crypto \u2212 promoted_at,\n                          first_coin_mint, peak_mcap, outcome\n                          ('early'|'late'|'flat'|'no_coin'|'unresolved'), resolved_at,\n                          proof_post_url, proof_ct_url\n  \u26a0 t_mint / t_ct clocks  The two PROSPECTIVE earliness clocks (PumpPortal websocket +\n                          ~300 CT accounts polled every 2 min) are DESIGNED but NOT\n                          PERSISTED ANYWHERE. Finished is unbuildable without them, and\n                          so is every lead-time number currently rendered \u2014 which means\n                          today's \"+31m early\" badges are computed from lead_time_min with\n                          no prospective clock behind them.\n  \u26a0 search_log            id, user_id, device_id, q, mode, result_counts jsonb,\n                          clicked_kind, clicked_id, clicked_rank, latency_ms, created_at\n                          The only way to tune the 0.55/0.25/0.20 blend. Ship it with v1\n                          or the weights stay guesses forever.\n  \u25cb saved_search          id, user_id, q, mode, created_at, last_fired_at  \u2014 OPTIONAL,\n                          powers \"Watch this search\" in the zero-result state. Flagged as\n                          an open question, not assumed.\n\nREMOVED / DO NOT USE\n  narratives.gain_24h fallback `combined_views * 0.14` (live.js:1662) is invented data\n  and currently drives search narrative ordering. Render \u2014 when there is no real 24h\n  delta from post_snapshots.\n  PENDING{} \u2014 never populated, but read by five render paths. Replaced by the\n  \"No coin yet\" query above.",
+ "screens": [
+  {
+   "name": "Search shell \u2014 /search",
+   "job": "Take one string, decide what kind of thing it is, and never make the user pick a mode.",
+   "layout": "Reuses .shell (grid 1fr 460px). .main padding 26px 26px 80px; content wrap max-width 1140px (the existing #v-search override, line 220). Top to bottom: (1) .vhead \u2014 .vtitle 'Search' Clash 27px, .vsub 'Stories, posts, contracts and coins \u00b7 does a coin already exist for this?'. (2) The input row: full-width 56px-tall field, background var(--bg1), border 1px rgba(255,255,255,.06), radius 13px, padding 0 16px, focus-within border rgba(61,224,255,.55) + box-shadow 0 0 0 3px rgba(61,224,255,.10). Left \u2315 glyph 18px var(--dim); input General Sans 16px; right side holds the mode chip then a mono 10px 'ESC to clear' then kbd \u2318K. (3) .chips rail, 12px below, left-aligned: All \u00b7 No coin yet \u00b7 Just made \u00b7 Trending now \u00b7 Finished, each with a live mono count in var(--dim) that turns var(--ion) when the chip is .active. (4) .tbar-meta line: mono 11.5px \u2014 '{n} results \u00b7 {ms}ms \u00b7 updated {t}' with the pulsing .lz lime dot. (5) Results region. Right rail persists at 460px and gains a FIFTH mode tab: Matches.",
+   "elements": [
+    {
+     "element": "Search input (#searchPageInput)",
+     "shows": "The raw query. Autofocus on route entry. Value is mirrored to the URL as ?q= (debounced 400ms, replaceState) so a result set is linkable \u2014 fixing the prototype's total absence of routing.",
+     "source": "client state; URL searchParams.q",
+     "interaction": "Type \u2192 250ms debounce \u2192 server query. \u2318K while focused selects all. Esc clears the field first, and only closes/leaves on a second Esc. Paste of a 32\u201344 char base58 string skips the debounce entirely and fires immediately \u2014 a pasted CA is never exploratory."
+    },
+    {
+     "element": "Mode chip (inline, right of the input)",
+     "shows": "CONTRACT \u00b7 TICKER \u00b7 POSTER \u00b7 nothing (free text). Mono 9px, uppercase, .06em tracking, in the .lc-pill shell (radius 999px, 1px border).",
+     "source": "parseQuery(q).kind \u2014 features/search/model/parse.ts",
+     "interaction": "Not interactive. It exists so the user can see which branch fired before reading results \u2014 a silent branch is the thing that makes a search box feel unpredictable."
+    },
+    {
+     "element": "Chip rail with live counts",
+     "shows": "All (\u2014) \u00b7 No coin yet (34) \u00b7 Just made (12) \u00b7 Trending now (28) \u00b7 Finished (214). Counts are for the CURRENT query when one is present, and global when the box is empty.",
+     "source": "COUNT(*) per chip predicate; see dataContract \u00a7Query shapes",
+     "interaction": "Click sets ?chip=; chip + query compose (chip filters the set, query orders it). Chip state survives navigation. 'No coin yet' is the default chip when the box is empty (flow doc: 'No coin yet is the default view and gets its own header')."
+    },
+    {
+     "element": "Right rail \u2014 new 'Matches' mode",
+     "shows": "Live mints streaming in whose symbol or name matches the current query, newest first. Row = .tape-row: 30px icon, $SYMBOL + 'minted 12s ago', right column mcap + age. A lime NEW tag for anything under 60s.",
+     "source": "PumpPortal websocket \u2192 coin_index (\u26a0 new) \u2192 Broadcast, folded into the existing board tick envelope (\u00a76.2)",
+     "interaction": "Click \u2192 coin page. This is the anti-duplicate surface made live: while you read about $FERRY, you watch the fourth $FERRY get minted. Falls back to the default Viral mode when the query is empty."
+    },
+    {
+     "element": "Stale-pipeline banner",
+     "shows": "'Pipeline stale \u2014 newest post is 47m old. Results may be behind.' Amber .scoring-paused-banner treatment (rgba(255,176,32,.12) ground, .35 border, #ffd98a text, mono 11px).",
+     "source": "lib/stories.ts PipelineHealth.showingIneligible / minutesStale \u2014 already computed, currently silent (SLI #4)",
+     "interaction": "Non-dismissible while true. Sits above the results, below the chips."
+    }
+   ],
+   "states": [
+    "idle \u2014 empty box: chip rail defaults to 'No coin yet', results region shows that browsable list, plus a 'Try' row of six .pal-ex chips seeded from live data (2 hot tickers, 2 entity words, 1 recent CA, 1 poster handle) \u2014 never the prototype's hardcoded $FERRY/$PLANT",
+    "typing (<2 chars) \u2014 previous results held, not blanked; a 2px cyan progress hairline under the input",
+    "loading \u2014 first query only: 6 skeleton rows using the .ttr-skel .sk shimmer (linear-gradient var(--bg2)\u2192var(--bg3), skel 1.2s). Subsequent queries keep the old set dimmed to .72 opacity",
+    "zero results \u2014 see the free-text screen's zero state; never a bare 'no results'",
+    "error \u2014 'Search is down. The board still works.' + a retry link; the chips stay usable because they are plain table queries that do not go through the fused function",
+    "stale pipeline \u2014 amber banner above results, results still render",
+    "wallet not connected \u2014 fully functional. Only the Buy and Create buttons gate; the \u2605 does not (device-id follows)"
+   ]
+  },
+  {
+   "name": "Free-text results \u2014 /search?q=ferry horn",
+   "job": "Answer a keyword with both the story and the chart, in that order, and resolve to one action.",
+   "layout": "BEST MATCH strip (full width, 72px tall, .ttable skin with a 2px var(--ion) left edge) \u2192 then three sections, each a .sr-section with .sr-section-hd (Clash 15px title, mono 11px count, and a right-aligned 'See all N \u2192' when truncated). Order: Stories (\u22646) \u00b7 Coins (\u22648) \u00b7 Posts (\u226410, collapsed to 3 with '+7 more posts'). Sections with zero rows are omitted entirely, not rendered empty.",
+   "elements": [
+    {
+     "element": "BEST MATCH strip",
+     "shows": "48px thumb \u00b7 object title in Clash 16px \u00b7 a one-line reason ('exact ticker match' / 'top story for these words') in mono 10px var(--dim) \u00b7 the resolved primary button at 156px min-width.",
+     "source": "argmax(score) across all three kinds; reason string from the boost that fired",
+     "interaction": "The whole strip is clickable to the object's route; the button executes the action. Suppressed when the top two scores are within 8% of each other \u2014 a coin-flip 'best match' is worse than none."
+    },
+    {
+     "element": "Story row (.sr-narr, extended grid)",
+     "shows": "grid-template-columns: 28px 56px minmax(0,1.9fr) .7fr .6fr .8fr 132px. Cells: rank (.ttrank mono 11px dim) \u00b7 thumb 56\u00d756 radius 10 (heroPost.media_url, fallback .qthumb .ph palette gradient \u2014 never loremflickr) \u00b7 title (.nar-title Clash 14px with <mark> hits) over snippet (.nar-blurb 11.5px, ts_headline fragment) over .nplat platform marks 16\u00d716 \u00b7 views (fmtCount over a mono 10px '1.2K/min' velocity line) \u00b7 age since promoted_at (47m/4h/2d) \u00b7 lead (.lead-badge.sm '+31m early' lime, or .timing-late '\u22126m late' red, or '\u2014') \u00b7 action.",
+     "source": "narratives.title/blurb, heroPost(story).media_url, combined_views, views_velocity, promoted_at \u26a0new, lead_time_min, platforms",
+     "interaction": "Row click \u2192 /story/[id]. \u2605 in .nar-title-line toggles follow without navigating (stopPropagation). Hovering the lead badge opens a popover with the two proof permalinks."
+    },
+    {
+     "element": "Story row action button",
+     "shows": "PURE FUNCTION of CONFIRMED coin count: 0 \u2192 'Create coin' (.btn-deploy-mini, cyan outline) \u00b7 1 \u2192 'Buy $FERRY' (.deploy-go, solid cyan) \u00b7 2+ \u2192 'See the 3 coins' (.deploy-go). UNSURE coins never enter this count.",
+     "source": "count(narrative_tickers where match_status='confirmed') \u26a0new column",
+     "interaction": "Buy opens the Jupiter modal via useTrade(); Create opens the create sheet with story pinned; See-the-N goes to the story page's coin list. When coinability_tier='no_create', the 0-coin case renders a non-button dim pill 'Not mintable' with a tooltip 'Discussable, not mintable.'"
+    },
+    {
+     "element": "Inline unverified strip (story row, second line)",
+     "shows": "Only when the story has \u22651 UNSURE and 0 CONFIRMED: amber mono 10.5px 'Possible match: $KANG \u2014 we're not confident this is related.' followed by a text link 'View anyway'.",
+     "source": "narrative_tickers where match_status='unsure' \u26a0new",
+     "interaction": "'View anyway' \u2192 coin page with a persistent warning banner and a Buy control that requires a second explicit confirm (\u00a75.9). The row's primary button stays 'Create coin'. D1: abstain shows the candidate, it never hides it."
+    },
+    {
+     "element": "Coin row (.tk, retrimmed for search)",
+     "shows": "grid-template-columns: 28px 2.0fr .8fr .6fr .85fr .85fr .5fr 92px 1.2fr 76px \u2192 # \u00b7 Token (36px .tkico + $SYM/name + .socrow) \u00b7 Price (fmtP) \u00b7 24h (.chgpill) \u00b7 Mcap \u00b7 Liq (.h) \u00b7 Age \u00b7 MATCH \u00b7 Story \u00b7 action.",
+     "source": "coin_index \u26a0new \u22c8 narrative_tickers; price/24h/mcap/liq from DexScreener via the existing lookup; age from mint_time \u26a0new",
+     "interaction": "Row \u2192 /coin/[mint]. The Story cell is a second, independent link to /story/[id] \u2014 this column is the whole differentiator against DexScreener and it must be clickable."
+    },
+    {
+     "element": "MATCH stamp (NEW component .match-stamp)",
+     "shows": "mono 9px uppercase .06em, radius 4, 1px border, 1px 5px padding. CONFIRMED (lime #9BF03C on rgba(155,240,60,.08)) \u00b7 UNVERIFIED (amber #FFB84D on rgba(255,184,77,.08)) \u00b7 ADOPTED (cyan) \u00b7 NO STORY (var(--dim) on var(--line)). Categorical only \u2014 the numeric score is stored and never shown (\u00a75.9).",
+     "source": "narrative_tickers.match_status \u26a0new",
+     "interaction": "Click \u2192 evidence popover: the post's media beside the token logo, the \u0394 in minutes ('minted 4m after the post'), and which channels fired as words ('image + name'). This popover doubles as the earliness proof surface."
+    },
+    {
+     "element": "Post row (NEW .sr-post)",
+     "shows": "grid-template-columns: 28px 40px minmax(0,2.4fr) .8fr .7fr .5fr 92px \u2192 # \u00b7 .pbadge 22px platform mark \u00b7 post text (.note-text Clash 13px, 2-line clamp, <mark> hits) \u00b7 .who @handle + follower count \u00b7 views \u00b7 age \u00b7 '\u2197 post' + '\u2192 story'.",
+     "source": "narrative_posts.text/handle/platform/views/posted_at/platform_post_id",
+     "interaction": "Text click \u2192 post detail modal (.pd-sheet). '\u2197 post' \u2192 the platform permalink, target=_blank \u2014 the permalink IS the proof. NO Create button on a post row, ever: creation is always anchored to a story (flow doc: 'the story is fixed at the top and cannot be changed')."
+    },
+    {
+     "element": "'+N more posts' fold",
+     "shows": "Inside a story row: mono 10.5px var(--ion) '+3 more posts match'.",
+     "source": "posts deduped out of the Posts section by roll-up rule (a)",
+     "interaction": "Expands inline beneath the story row as indented .sr-post rows; does not navigate."
+    },
+    {
+     "element": "Zero-result block",
+     "shows": "Clash 20px 'Nothing called \"ferry horn\" yet.' \u00b7 13px muted 'No story, no post, no coin. That is usually the good news.' \u00b7 primary .deploy-go 'Make the first $FERRYHORN coin' \u00b7 secondary text link 'Watch this search \u2014 we'll tell you if a story shows up'.",
+     "source": "\u2014; the ticker is derived by uppercasing and stripping non-alphanumerics, truncated to 13 chars",
+     "interaction": "Primary opens the create sheet with name and ticker prefilled from the query. The dead end becomes the best feature. Secondary writes a saved_search row (\u26a0 table does not exist \u2014 flagged as an open question)."
+    }
+   ],
+   "states": [
+    "loading \u2014 skeletons per section, sections appear as their leg returns (text legs never wait on the vector leg)",
+    "empty/zero \u2014 the zero-result block above, never a bare message",
+    "story with no coin \u2014 the normal, expected case: 'Create coin' primary, .nocoin pill in the row",
+    "unverified coin match \u2014 amber UNVERIFIED stamp, Buy suppressed, candidate still shown",
+    "abstain \u2014 identical to unverified; abstain is a rendering rule, not a hidden state",
+    "brand-new token, no market data \u2014 Price/24h/Mcap/Liq all render '\u2014' in var(--dim), never 0 and never a green chip. A mono 9px 'no market yet' sits under the ticker",
+    "stale pipeline \u2014 banner; results still render",
+    "coinability tier 'never' \u2014 the story is absent from the result set entirely, with no gap, no count, no trace",
+    "coinability tier 'no_create' \u2014 story renders, Create replaced by 'Not mintable'"
+   ]
+  },
+  {
+   "name": "Contract-address results \u2014 /search?q=<base58>",
+   "job": "Turn a pasted mint into: which coin is this, what story is it from, and did anyone actually post this address.",
+   "layout": "No sections rail \u2014 a vertical stack, max-width 1140px. (1) Coin identity card (compact .tid, 16px 18px padding, shared panel skin). (2) Origin strip (.tp-origin) or its honest empty. (3) 'Posts containing this address' band. (4) 'Same ticker family (N)' \u2014 collapsed accordion. (5) Resolution trace, mono 10px var(--dim), one line.",
+   "elements": [
+    {
+     "element": "Coin identity card (.tid, compact)",
+     "shows": "52px .tkico with logo overlay \u00b7 $SYM Clash 27px \u00b7 token name 13px muted \u00b7 .ca-mini '4mZq\u20268xPq' with copy icon \u00b7 .live-dot when data <120s fresh \u00b7 right side .tid-price: price mono 26px + 24h .chg. Below: a 7-cell .qstats strip \u2014 5m \u00b7 1h \u00b7 24h \u00b7 Mkt cap \u00b7 Liquidity \u00b7 24h vol \u00b7 Holders.",
+     "source": "coin_index \u26a0new, else /api/token-lookup?mint= live; holders from api/holders.js; mint_time = min(pairCreatedAt) across ALL pairs \u26a0new",
+     "interaction": ".ca-mini click copies, turns lime for 1000ms. Card click \u2192 /coin/[mint]. The whole card is the fast path: paste, glance, click."
+    },
+    {
+     "element": "MATCH stamp + evidence line",
+     "shows": "Immediately under the ticker: the .match-stamp plus a plain-English clause \u2014 'matched \u00b7 image + name \u00b7 minted 4m after the post' or 'we're not confident this is related' or 'no story matched this mint'.",
+     "source": "narrative_tickers.match_status / match_channels \u26a0new",
+     "interaction": "Click \u2192 evidence popover."
+    },
+    {
+     "element": "Origin story strip (.tp-origin)",
+     "shows": "48px thumb \u00b7 kicker '.pbadge + Source post \u00b7 <story title>' \u00b7 the post text in curly quotes, 2-line clamp, 86 chars \u00b7 right link 'View story \u2192'.",
+     "source": "narratives \u22c8 narrative_tickers.mint \u26a0new",
+     "interaction": "Whole strip \u2192 /story/[id]."
+    },
+    {
+     "element": "Origin empty state",
+     "shows": "Same strip shell, dashed 1px rgba(255,255,255,.08) border, no thumb: 'No story matched this mint.' plus a 12px muted second line 'It may predate our coverage, or nobody viral posted about it.' plus a text link 'Search the name instead \u2192'.",
+     "source": "\u2014",
+     "interaction": "The link re-runs search in TEXT mode with coin_index.name as the query. This is the recovery path and it is used constantly."
+    },
+    {
+     "element": "'Posts containing this address' band",
+     "shows": "Header 'Posts containing this address (2)'. Rows are .sr-post with a lime MINT IN POST tag (mono 9px, lime on rgba(155,240,60,.12)). This is the founder's 'search CA, post appears' requirement, and mechanically it is S_mint_in_post = 1.00 \u2014 the single strongest evidence channel the matcher has.",
+     "source": "narrative_posts WHERE text ILIKE '%'||mint||'%' (needs a GIN trgm index on text \u26a0new)",
+     "interaction": "Row \u2192 post detail. Band is omitted when empty rather than rendering 'none'."
+    },
+    {
+     "element": "Same-ticker family accordion",
+     "shows": "Collapsed header: '$FERRY \u2014 3 other coins share this ticker'. Expanded: the ticker family table (see the $TICKER screen), with the current mint row highlighted with a 2px cyan left edge.",
+     "source": "coin_index WHERE symbol = $sym AND liquidity > 0 \u26a0new",
+     "interaction": "Click to expand. Only rendered when N \u2265 2 \u2014 the anti-duplicate warning is worthless noise on a unique ticker."
+    },
+    {
+     "element": "Resolution trace",
+     "shows": "mono 10px var(--dim), one line: 'resolved from our index \u00b7 4ms' / 'resolved live from DexScreener \u00b7 240ms' / 'not in any index \u2014 live lookup only'. ",
+     "source": "which rung of the CA ladder answered",
+     "interaction": "None. It exists because a terminal user needs to know whether they are looking at indexed truth or a cold single-source lookup."
+    }
+   ],
+   "states": [
+    "valid base58 but not 32 bytes \u2014 treated as free text; the mode chip never says CONTRACT",
+    "valid mint, in our index, has a story \u2014 the full stack renders",
+    "valid mint, in our index, no story \u2014 origin empty state; the coin card still resolves and Buy still works (a coin with no story is a coin, not an error)",
+    "valid mint, unknown to us, live lookup succeeds \u2014 full card + 'not in any index' trace + a dim note 'we have no story for this'",
+    "valid mint, nothing anywhere \u2014 'Valid Solana address. No pair, no story, no post. Nothing has traded.' Rendered as a RESULT with the address echoed, not as an error toast",
+    "address is a wallet or program, not a token \u2014 'That's a wallet, not a token.' + a 'View trader \u2192' link into the top-traders view",
+    "mint_time is null (missing pairCreatedAt) \u2014 Age renders 'unknown', the MATCH stamp is forced to NO STORY, and Buy is SUPPRESSED. Fails closed. The single most dangerous line in the codebase (token-lookup.js:70 `return 0`) is what this state replaces",
+    "brand-new mint, no market data \u2014 every numeric '\u2014', 'no market yet' under the ticker, Buy still enabled (it is a valid bonding-curve buy)",
+    "wallet not connected \u2014 everything renders, Buy opens the connect flow first"
+   ]
+  },
+  {
+   "name": "$TICKER results \u2014 /search?q=$FERRY (the anti-duplicate screen)",
+   "job": "Say out loud whether a coin already exists for this ticker, so the user buys instead of minting the fourth copy.",
+   "layout": "(1) Verdict header \u2014 a full-width band, .ttable skin, 64px, with the count as the headline. (2) The ticker family table. (3) 'Stories proposing $FERRY with no coin' section. (4) The demoted create affordance. Max-width 1140px.",
+   "elements": [
+    {
+     "element": "Verdict header",
+     "shows": "Clash 20px, one of exactly four sentences: '$FERRY is free on Solana \u2014 you'd be first.' (lime) / '$FERRY exists. 1 coin, matched to a story.' (cyan) / '$FERRY exists 4 times. 1 is matched to a story.' (amber) / '$FERRY exists 4 times. None matched to a story.' (amber). Below it, mono 11px: the collision line \u2014 'FERRY is rare \u2014 1 live coin' or 'PUMP is a common ticker \u2014 4 live coins share it'.",
+     "source": "COUNT over coin_index WHERE symbol=$1 AND liquidity>0; collision_idf rendered as words, never as a number",
+     "interaction": "None. This sentence is the feature."
+    },
+    {
+     "element": "Ticker family table",
+     "shows": "grid-template-columns: 28px 1.3fr 1.5fr .55fr .85fr .85fr .8fr .6fr 92px 88px \u2192 # \u00b7 Mint (.ca-mini short + copy) \u00b7 Name \u00b7 Age \u00b7 Mcap \u00b7 Liq \u00b7 Vol 24h \u00b7 Holders \u00b7 MATCH \u00b7 action. SORTED BY MINT TIME ASCENDING. The earliest row carries a lime FIRST badge.",
+     "source": "coin_index \u26a0new (mint, symbol, name, first_pair_at, liquidity, mcap) \u22c8 narrative_tickers.match_status \u26a0new; holders from api/holders.js, lazily per visible row",
+     "interaction": "Row \u2192 /coin/[mint]. Header is sortable on Mcap/Liq/Age but DEFAULTS to mint time asc and says so in a mono 10px caption: 'oldest first \u2014 the first mint is usually the real one'. Every competitor sorts this by volume, which ranks the copycat that got pumped; the inversion is deliberate and must be labelled."
+    },
+    {
+     "element": "Per-row action",
+     "shows": "'Buy' (solid cyan .buy) only on rows with match_status='confirmed' or 'adopted'. UNVERIFIED and NO STORY rows get a transparent 'View' button with a 1px var(--line) border.",
+     "source": "narrative_tickers.match_status \u26a0new",
+     "interaction": "An unmatched mint is never one tap from a buy on this screen. The family table is where copycats live; making them equally buyable is how a user loses money."
+    },
+    {
+     "element": "'Stories proposing $FERRY, no coin yet' section",
+     "shows": "Story rows (.sr-narr) for narratives whose narrative_tickers contains ticker='FERRY' with source in ('cashtag','llm') and zero confirmed coins. Each carries a provenance tag: mono 9px 'cashtag' (cyan, someone actually typed it) or 'suggested' (dim, an LLM proposed it).",
+     "source": "narrative_tickers WHERE ticker=$1 AND source IN ('cashtag','llm') \u26a0new column, joined to narratives",
+     "interaction": "Inline Create with the ticker prefilled. The provenance distinction is load-bearing: 'suggested' is CREATE-path prefill only and must never look like a market fact (\u00a75.4)."
+    },
+    {
+     "element": "Availability line (.coll, reused verbatim from the create sheet \u00a79.2.3)",
+     "shows": "Three states, same styling as the create sheet so the user sees the same sentence in both places: .coll.free lime '\u2713 $FERRY is free on Solana \u2014 you'd be first to deploy it.' / .coll.taken amber '\u26a0 $FERRY already exists (Last Horn). Trade it instead \u2192' / amber '\u26a1 $FERRY is claimed by a pending story but not deployed yet \u2014 you can still be first.'",
+     "source": "the same lookupTicker path the create sheet already calls",
+     "interaction": "'Trade it instead \u2192' navigates to the confirmed coin. Reusing this exact component means the anti-duplicate warning cannot drift between search and create."
+    },
+    {
+     "element": "Demoted create affordance",
+     "shows": "When \u22651 CONFIRMED coin exists, Create is NOT a button. It is a text link at the bottom of the section, var(--dim), 12px: 'Make another $FERRY anyway \u2192'. When zero coins exist, it is the full-width primary .deploy-go 'Create $FERRY'.",
+     "source": "confirmed count",
+     "interaction": "Demotion, not removal. Minting the fourth copy is legal and sometimes correct; it just should not be the default gesture on a screen whose job is telling you it already exists."
+    }
+   ],
+   "states": [
+    "ticker free \u2014 lime verdict, family table omitted, Create is primary and full width",
+    "1 confirmed coin \u2014 cyan verdict, single-row family table, Buy primary",
+    "N coins, 1 confirmed \u2014 amber verdict, family table with one Buy row and N\u22121 View rows",
+    "N coins, none confirmed \u2014 amber verdict, NO Buy button anywhere on the screen, Create demoted anyway (we can't tell you which is real, so we won't pick)",
+    "ticker matches a major (PUMP, TRUMP) \u2014 G5: excluded from DERIVED, retained as ADOPTED. Verdict line adds 'This is an established coin, not a new mint.'",
+    "proposals exist but no mints \u2014 the 'Stories proposing' section carries the whole screen; family table omitted",
+    "ambiguous bare word (no $) \u2014 this screen renders as a SECTION inside the free-text result set rather than as the whole page",
+    "loading / stale / wallet \u2014 as the shell"
+   ]
+  },
+  {
+   "name": "Chip: No coin yet",
+   "job": "Be the browsable candidate list \u2014 every promoted story nobody has minted \u2014 with Create one tap away and the unmintable ones visibly unmintable.",
+   "layout": "Own header (per flow doc): Clash 18px '34 stories with no coin' + mono 11px 'sorted by how fast they are spreading'. Then a .ttable with a .nthd header. Grid: 28px 40px 88px minmax(0,1.9fr) .7fr .65fr .55fr .7fr 108px \u2192 # \u00b7 thumb \u00b7 TICKER \u00b7 Story \u00b7 Views \u00b7 Velocity \u00b7 Age \u00b7 Lead \u00b7 action. Rows are .tk.pend derived (cursor:default on the numeric cells, but the row itself is clickable and NOT at .72 opacity \u2014 these are the product's most valuable rows and must not look disabled).",
+   "elements": [
+    {
+     "element": "Proposed ticker cell",
+     "shows": "'$FERRY' in mono 13px var(--ink) with a provenance tag beneath in mono 8.5px: 'cashtag' (cyan) / 'suggested' (dim). When nothing was proposed: a .nocoin pill reading 'no ticker'.",
+     "source": "narrative_tickers.ticker + .source \u26a0new; falls back to post_meme_scores.suggested_ticker",
+     "interaction": "Click prefills the create sheet with this ticker. Hovering 'suggested' shows 'An LLM proposed this name. Nobody has typed it.'"
+    },
+    {
+     "element": "Story cell",
+     "shows": "Title (Clash 14px) over a 62-char snippet (11.5px muted) over .nplat platform marks + a .lc-pill lifecycle chip (heating lime / peaking cyan / cooling muted).",
+     "source": "narratives.title/blurb/platforms/lifecycle; snippet from heroPost.text",
+     "interaction": "\u2192 /story/[id]"
+    },
+    {
+     "element": "Velocity cell",
+     "shows": "mono 12.5px '1.2K/min' with a lime \u25b2 when accel > 1.2, amber \u25ac when flat, muted \u25bc when decaying.",
+     "source": "narratives.views_velocity, narratives.accel",
+     "interaction": "Column is sortable; this is the column a creator actually sorts by."
+    },
+    {
+     "element": "Lead cell",
+     "shows": ".lead-badge.sm '+31m early' when the story has been promoted longer than crypto has known about it, else 'live' when t_crypto is still null (nobody in crypto has touched it \u2014 the best possible state).",
+     "source": "promoted_at \u26a0new vs t_crypto \u26a0new",
+     "interaction": "Hover \u2192 the two proof permalinks."
+    },
+    {
+     "element": "Create button",
+     "shows": "Full-height .deploybtn, transparent with a 1px var(--ion) border, label 'Create'. On hover the row's ::before accent bar turns cyan (not the .pend dim treatment).",
+     "source": "\u2014",
+     "interaction": "Opens the create sheet with story pinned, ticker and name prefilled from suggested_ticker/suggested_name, and the post image as the logo candidate. This is the ONLY place SUGGESTED belongs (\u00a75.9)."
+    },
+    {
+     "element": "Not-mintable row variant (D3 tier 'no_create')",
+     "shows": "Identical row, but the action cell renders a non-interactive pill: mono 10px var(--dim), 1px var(--line) border, 'Not mintable'. A dim 9px caption under the story title reads 'Public tragedy \u2014 discussable, not mintable.'",
+     "source": "narratives.coinability_tier \u26a0new",
+     "interaction": "The pill is not focusable and has no click target. The row still opens the story page \u2014 discussion is the point. D3, exactly as written."
+    },
+    {
+     "element": "Unverified-candidate sub-line",
+     "shows": "When a story has UNSURE coins but zero CONFIRMED, a second line: amber mono 10.5px 'Possible match: $KANG \u00b7 unverified' + 'View anyway'.",
+     "source": "narrative_tickers.match_status='unsure' \u26a0new",
+     "interaction": "The story stays in the No-coin-yet list, because an unverified match is not a coin. D1: shown, labelled, not actionable."
+    }
+   ],
+   "states": [
+    "default (query empty) \u2014 this chip IS the default view of /search",
+    "filtered by query \u2014 header becomes '4 stories with no coin match \"ferry\"'",
+    "empty \u2014 'Every promoted story has a coin right now. That is unusual.' + a link to Just made. Not a sad face; a fact",
+    "stale pipeline \u2014 amber banner; and if eligibleCount = 0 the list falls back to most-recent stories with a second banner line 'showing recent stories \u2014 none currently pass the freshness gate'",
+    "tier 'never' \u2014 absent entirely, no count, no gap",
+    "tier 'no_create' \u2014 Not mintable pill",
+    "unverified match present \u2014 amber sub-line, story stays in the list",
+    "wallet not connected \u2014 Create is enabled and opens the connect step inside the create flow; do not gate the button, gate the signature"
+   ]
+  },
+  {
+   "name": "Chips: Just made / Trending now",
+   "job": "Show freshly minted and currently hot coins with the one column no competitor has \u2014 which story it came from.",
+   "layout": "Shared .ttable shell, two configs. Just made: grid 28px 2.0fr .55fr .8fr .6fr .85fr .8fr .7fr 1.2fr 76px \u2192 # \u00b7 Token \u00b7 Age \u00b7 Price \u00b7 5m \u00b7 Mcap \u00b7 Liq \u00b7 Holders \u00b7 Story \u00b7 Buy, sorted mint_time desc. Trending now: same shell with band tabs above it (.trend-subs style, muted\u2192ink, no pill): From a Story (default) \u00b7 Fresh \u00b7 Graduating \u00b7 Live \u2014 the four coin-lane bands from \u00a74.4, because one score across four orders of magnitude of mcap is meaningless.",
+   "elements": [
+    {
+     "element": "Story column",
+     "shows": "Story title, 11.5px, nowrap ellipsis, with a .match-stamp to its left. When the mint has no story: var(--dim) '\u2014' and a mono 9px 'unlinked'.",
+     "source": "narrative_tickers \u22c8 coin_index on mint \u26a0new",
+     "interaction": "Independent link \u2192 /story/[id]. This column is why Just made 'replaces New Pairs entirely' (flow doc) \u2014 a new-pairs firehose without provenance is DexScreener."
+    },
+    {
+     "element": "'From a story only' toggle",
+     "shows": "A loud .chip toggle, ON by default, in the .tbar: 'From a story only \u00b7 12' / when off 'All mints \u00b7 2,847'.",
+     "source": "\u2014",
+     "interaction": "Off shows the raw mint firehose (~40k/day). This must be visually loud, not a drawer checkbox \u2014 it relaxes the product's entire premise (\u00a74.3 showRisky rule)."
+    },
+    {
+     "element": "Graduating progress cell (Trending \u2192 Graduating band only)",
+     "shows": "A .split-bar style 7px track with a lime\u2192#6bd41f fill, and mono 11px '68%' to its right.",
+     "source": "coin_index.curve_pct \u26a0new",
+     "interaction": "Band sorts by progress, not heat \u2014 progress is the only reason anyone opens that column."
+    },
+    {
+     "element": "Safety cell (implicit, via the Buy button)",
+     "shows": "Buy is replaced by a red-outlined 'Risky' pill when a hard safety gate trips (mint authority active, freeze active, top-10 > 60%, live && liq < $3k, zero sells with >30 buys).",
+     "source": "api/safety.js + api/holders.js",
+     "interaction": "Click \u2192 coin page with the safety checklist expanded. devHoldingPct / sniperPct / bundlePct render '\u2014', never a reassuring green (\u00a74.4)."
+    }
+   ],
+   "states": [
+    "Just made empty \u2014 'No coins minted from a story in the last hour.' with the toggle offered as the recovery",
+    "brand-new token, no market data \u2014 Price/5m/Mcap all '\u2014', Age in seconds, mono 9px 'no market yet'. This is the MAJORITY state on Just made and must be the designed-for case, not the edge case",
+    "unverified \u2014 UNVERIFIED stamp in the Story cell, Buy still available (the COIN is real; only the story link is uncertain) but the story link is dimmed and carries a tooltip",
+    "risky \u2014 Risky pill in place of Buy",
+    "stale pipeline \u2014 banner",
+    "loading \u2014 .ttr-skel shimmer rows",
+    "wallet not connected \u2014 Buy opens connect"
+   ]
+  },
+  {
+   "name": "Chip: Finished \u2014 the honest record",
+   "job": "Publish the track record with the misses in the default view, verified by two permalinks that are not ours.",
+   "layout": "(1) Summary header band, 96px, .ttable skin: three mono stat cells (.qs dividers) \u2014 'Stories 214' \u00b7 'Early 61% \u00b7 median +23m' \u00b7 'Late 34% \u00b7 median \u22127m'. The late cell is NOT red-flagged; it is rendered in the same weight as the early cell. (2) Filter chips: All (active by default) \u00b7 Early \u00b7 Late \u00b7 No coin \u00b7 Unresolved, each with counts. (3) The record table: grid 28px 40px minmax(0,1.7fr) .7fr .7fr .6fr .8fr 1.0fr 96px 84px \u2192 # \u00b7 thumb \u00b7 Story \u00b7 We saw it \u00b7 Crypto saw it \u00b7 Lead \u00b7 Peak mcap \u00b7 Coin \u00b7 Outcome \u00b7 Proof.",
+   "elements": [
+    {
+     "element": "Default filter = All",
+     "shows": "The 'All' chip carries .active on mount. There is no code path that mounts this screen with 'Early' selected.",
+     "source": "\u2014",
+     "interaction": "D2, enforced structurally: the filter default is a constant in the route, not a preference, not a remembered state. If a user must opt in to seeing misses, the record is marketing."
+    },
+    {
+     "element": "'We saw it' cell",
+     "shows": "mono 12.5px absolute clock in the user's tz \u2014 '14:07:22' \u2014 with the date on a second dim line when older than today.",
+     "source": "narratives.promoted_at \u26a0new (set once, never overwritten)",
+     "interaction": "None. Absolute clock times, not relative \u2014 a track record with 'about 3 hours ago' is not a record."
+    },
+    {
+     "element": "'Crypto saw it' cell",
+     "shows": "Same treatment. Renders 'not yet' in lime when t_crypto is still null.",
+     "source": "t_crypto = least(t_mint, t_ct) \u26a0neither clock is persisted anywhere today",
+     "interaction": "None."
+    },
+    {
+     "element": "Lead cell",
+     "shows": "mono 13px signed: '+31m' lime / '\u22126m' red / '\u2014' dim. Sign always shown.",
+     "source": "t_crypto \u2212 promoted_at",
+     "interaction": "Sortable. Sorting ascending puts the worst misses first, and that sort is reachable in one click \u2014 a record you cannot sort by your own failures is not auditable."
+    },
+    {
+     "element": "Outcome chip",
+     "shows": "mono 9px uppercase: EARLY (lime) \u00b7 LATE (red) \u00b7 FLAT (amber, a coin existed but peaked under $50k) \u00b7 NO COIN (dim, nobody ever minted) \u00b7 UNRESOLVED (amber outline, a coin exists but we abstained and never confirmed).",
+     "source": "story_outcome.outcome \u26a0new materialized view",
+     "interaction": "Click filters to that outcome. UNRESOLVED is included on purpose: hiding the stories where our own matcher gave up is exactly the marketing D2 forbids."
+    },
+    {
+     "element": "Proof cell",
+     "shows": "Two 12\u00d712 \u2197 glyphs side by side, labelled on hover 'original post' and 'first crypto post'.",
+     "source": "narrative_posts.platform_post_id \u2192 permalink; t_ct source URL \u26a0not stored",
+     "interaction": "Both open external, target=_blank. The claim is verified by two public timestamps that belong to somebody else, not by trusting us."
+    },
+    {
+     "element": "Late-row copy",
+     "shows": "On rows with negative lead, the Story cell gains a dim 10px second line: 'Crypto traders got here 6 minutes before us.'",
+     "source": "lead_time_min < 0",
+     "interaction": "None. Same slot, same feed, grey \u2014 the flow doc's exact instruction."
+    },
+    {
+     "element": "Window selector",
+     "shows": ".chips group in the tbar: 24h \u00b7 7d (default) \u00b7 30d \u00b7 All.",
+     "source": "story_outcome.resolved_at",
+     "interaction": "Widening the window is allowed; there is no way to narrow it to a cherry-picked range."
+    }
+   ],
+   "states": [
+    "loading \u2014 skeleton rows plus a skeleton summary band (the stats must not pop in after the table, or the first frame reads as 100% hits)",
+    "empty (new deployment, no resolved stories) \u2014 'No finished stories yet. This table fills in as stories resolve, wins and misses together.' Do NOT hide the chip",
+    "no prospective clock data \u2014 the whole chip renders a single honest block: 'We can't publish a record yet \u2014 the mint and crypto-Twitter clocks aren't running.' Rendering a record from lead_time_min alone, with no prospective clock behind it, would be fabricating the product's central claim",
+    "unresolved-heavy \u2014 when UNRESOLVED > 30% of the window, an amber note under the summary: 'Our matcher abstained on 34% of these. Abstain rate is monitored.' (\u00a75.7 says a rising abstain rate is a signal, not a failure \u2014 so say so)",
+    "stale pipeline \u2014 banner",
+    "wallet not connected \u2014 fully public; this screen is the marketing surface and requires nothing"
+   ]
+  },
+  {
+   "name": "Command palette (\u2318K)",
+   "job": "Get a keyboard user to any object in the product in under two seconds, without ever performing an action.",
+   "layout": "Reuses .pal-back (fixed inset 0, rgba(4,4,6,.62), blur 6px, padding 12vh 20px) + .pal.pal-search (max-width min(640px,96vw), max-height 72vh, flex column, radius 16). .pal-top holds the input row; .pal-list holds sections, max-height 52vh, padding 8. Sections in fixed order: BEST MATCH (1) \u00b7 STORIES (\u22644) \u00b7 COINS (\u22645) \u00b7 NO COIN YET (\u22643). Hard cap 13 rows \u2014 a palette you scroll is a search page with worse ergonomics.",
+   "elements": [
+    {
+     "element": "Input row (.pal-top-row)",
+     "shows": "\u2315 glyph \u00b7 input (General Sans 16px, placeholder 'Story, ticker ($FERRY), contract (4mZq\u2026), or @handle') \u00b7 the mode chip \u00b7 .pal-hint mono 10px '\u2318\u21b5 full results' \u00b7 kbd 'ESC'.",
+     "source": "client",
+     "interaction": "Keystroke \u2192 local index first (<16ms), then a 180ms-debounced server query with a sequence guard that discards out-of-order responses."
+    },
+    {
+     "element": "Live preview rows (.pal-item)",
+     "shows": "32px .pal-ic (token colour + letter + logo overlay; candidates get .pal-ic.pend var(--bg3); stories get var(--bg2) with a cyan 'N') \u00b7 .pal-nm 13.5px \u00b7 .pal-sub mono 11px muted ('Last Horn \u00b7 $412.9K' / 'no coin yet \u00b7 +31m' / 'unverified match') \u00b7 .pal-r mono 11.5px right-aligned (mcap for coins, views for stories).",
+     "source": "the same search_all() function the full surface calls, limit 13 \u2014 the palette has NO private query path",
+     "interaction": "Hover or arrow to select (.pal-item.sel background var(--bg2), scrollIntoView block:'nearest'). Enter navigates."
+    },
+    {
+     "element": "CA fast path",
+     "shows": "When the input parses as a contract, the list collapses to ONE row: the resolved coin (or 'Resolving 4mZq\u20268xPq' with a shimmer). No sections, no other results.",
+     "source": "the CA ladder",
+     "interaction": "Enter \u2192 /coin/[mint] directly. Paste-then-Enter is two keystrokes and it is the fastest path in the entire product; nothing may sit between them."
+    },
+    {
+     "element": "Keyboard model",
+     "shows": "\u2014",
+     "source": "\u2014",
+     "interaction": "\u2318K/Ctrl-K opens from anywhere; pressing it AGAIN closes. '/' opens when no input is focused. \u2191/\u2193 move through a FLAT index across all sections (section headers are skipped, never selectable). \u2318\u2191/\u2318\u2193 jump to the previous/next section head. Enter opens the selection. \u2318Enter abandons the preview and opens /search?q= with the full surface. Tab accepts the top ticker/entity completion INTO the input (completion, not navigation \u2014 Tab must never navigate). S stars the highlighted row in place, with a lime flash and no close. Backspace on an empty input clears the mode chip. Esc closes and restores focus to whatever had it. Focus is trapped inside .pal while open; body overflow hidden."
+    },
+    {
+     "element": "Relationship to the full Search surface",
+     "shows": "\u2014",
+     "source": "\u2014",
+     "interaction": "The palette is a PROJECTION of /search, never a parallel implementation: same parse, same search_all(), same ranking, same row components at smaller sizes. Two consequences. (1) When the user is ALREADY on /search, \u2318K does not open the overlay \u2014 it focuses and selects the page input, which is exactly the flow doc's 'Cmd K now just focuses the search field'. (2) The palette can do strictly LESS than the surface: it navigates and it stars. It cannot buy, cannot create, cannot filter by chip. Anything that spends money or mints a token requires the full surface and a deliberate click."
+    },
+    {
+     "element": "Try chips (.pal-ex)",
+     "shows": "Six mono 11px pills, filtered live against the current query, seeded from LIVE data: 2 hottest tickers, 2 top entity words, 1 recent CA (shortened), 1 poster handle.",
+     "source": "the last board tick",
+     "interaction": "Click fills the input. Never hardcoded \u2014 the prototype's fixed $FERRY/$PLANT/Norway chips are mock data and must not survive the port."
+    }
+   ],
+   "states": [
+    "empty query \u2014 Try chips + a RECENT section (last 5 queries from localStorage, device-local, never synced) + the 3 hottest No-coin-yet stories",
+    "typing, local only \u2014 results from the in-memory board, a 2px cyan hairline under the input while the server leg is in flight",
+    "no quick matches \u2014 .pal-empty 'No quick matches \u2014 press \u2318\u21b5 for full results'",
+    "resolving CA \u2014 single shimmer row",
+    "unverified coin selected \u2014 the .pal-sub renders amber 'unverified match'; Enter still navigates (viewing is always allowed), the coin page carries the warning banner",
+    "offline / server error \u2014 the local index still answers; a mono 10px 'offline \u2014 showing cached board' sits in the .pal-hint slot",
+    "stale pipeline \u2014 the .pal-hint slot shows amber 'board is 47m stale'"
+   ]
+  },
+  {
+   "name": "The watch control (\u2605) \u2014 every host surface",
+   "job": "One tap that means 'tell me when this mints', available everywhere, requiring nothing.",
+   "layout": "Not a screen \u2014 a 3-state control with four host treatments. (a) Table rows: .star inline in .nar-title-line / .tksym \u2014 background none, var(--dim), 13px, hover var(--ion) + scale(1.15), .on var(--ion). Glyph \u2606/\u2605. (b) Story page header: .tbtn-watch \u2014 mono 11.5px, var(--bg2) ground, 1px rgba(255,255,255,.07), radius 8, padding 5px 11px; labels '\u2606 Watch' / '\u2605 Watching'. (c) Coin page trade panel: same .tbtn-watch in .tb-head. (d) Palette: no visible control, the S key.",
+   "elements": [
+    {
+     "element": "What is watchable",
+     "shows": "A STORY or a COIN. Never a post.",
+     "source": "follow(narrative_id) XOR follow(coin_mint) \u26a0table not applied",
+     "interaction": "A post is evidence, not a subject: posts get pruned, merged and re-parented (\u00a73.4), so a follow on one would silently die or silently move. The story is the durable object and it is what the notification is about. On a post detail modal the \u2605 therefore stars the post's STORY, and the label says so: '\u2605 Watching this story'."
+    },
+    {
+     "element": "Never silently converts",
+     "shows": "When a watched story mints, the follow row REMAINS a story follow. The Following list shows the story row with a coin strip nested inside it; the coin does not become its own row.",
+     "source": "follow.narrative_id unchanged on mint",
+     "interaction": "The notification and the story row both offer an explicit secondary 'Watch $CUPS too', which writes a SECOND follow row with coin_mint set. Migrating the follow would destroy exactly what the user asked for \u2014 they asked about a story, and a story can mint again."
+    },
+    {
+     "element": "Auto-follow (the nine feeders)",
+     "shows": "\u2014",
+     "source": "\u2014",
+     "interaction": "Buying a coin auto-follows THE COIN. Creating a coin auto-follows the coin AND its story. Commenting on a story auto-follows the story. These are not silent conversions \u2014 each is a deliberate financial or social act by the user, and each is announced by a 2-second toast 'Following $CUPS' with an inline Undo. Everything you touch appears in You; nothing appears that you did not touch."
+    },
+    {
+     "element": "No-wallet follows",
+     "shows": "The \u2605 works with no wallet and no account.",
+     "source": "follow.device_id \u26a0new column, a uuid in localStorage['insidor_device']",
+     "interaction": "On first Privy login, all device_id follows are claimed by the user_id in one UPDATE. Conflicts (same target already followed by the account) resolve by keeping the EARLIER created_at, because the earlier follow is the one with the honest lead time. Flow doc: 'You do not need a wallet to do that.'"
+    },
+    {
+     "element": "Notification control (the bell)",
+     "shows": "A 3-state control adjacent to the \u2605 on Following rows only, not in tables: All (every coin, every reopen) \u00b7 Mint only (DEFAULT) \u00b7 Muted. Rendered as a 14px bell glyph \u2014 filled cyan / outline / struck-through dim.",
+     "source": "follow.notify_mint \u26a0new column",
+     "interaction": "Click cycles; long-press or right-click on the \u2605 anywhere in the app opens the same 3-way menu without navigating."
+    },
+    {
+     "element": "Optimistic toggle",
+     "shows": "Fills instantly, lime flash 240ms.",
+     "source": "one store write (Zustand/TanStack), one subscription",
+     "interaction": "Replaces the prototype's refreshWatchStars() which re-rendered SIX views for one boolean \u2014 and which could fire a network search as a side effect. One store write, memoised rows."
+    }
+   ],
+   "states": [
+    "off / on / pending (optimistic, reverts with a 'couldn't save' toast on failure)",
+    "anonymous (device) \u2014 fully functional; a dim mono 9px 'saved to this device' appears once, on the first ever follow, and never again",
+    "already followed via auto-follow \u2014 the \u2605 is on and its tooltip explains why: 'Following since you bought'",
+    "story is tier 'never' \u2014 unreachable; those stories are never rendered",
+    "offline \u2014 queued in localStorage, flushed on reconnect"
+   ]
+  },
+  {
+   "name": "Following \u2014 /you (Watchlist)",
+   "job": "Turn 'I'm waiting on this' into a scannable board, and make an empty one teach instead of sit blank.",
+   "layout": "Sections stacked, each a .wl-section with .wl-section-hd (Clash 15px title, mono 11px count, right-aligned section action). A section renders only when non-empty (flow doc rule), EXCEPT when all are empty, in which case the teaching empty state replaces the whole screen. Section order is fixed by urgency, not by recency: (1) Just minted \u00b7 (2) Waiting \u2014 no coin yet \u00b7 (3) With coins \u00b7 (4) Coins you watch \u00b7 (5) Gone quiet (collapsed).",
+   "elements": [
+    {
+     "element": "Section 1 \u2014 Just minted (N)",
+     "shows": "Stories you follow that got a CONFIRMED coin in the last 24h and that you have not opened. Row = .sr-narr with .ntk.narr-pinned treatment (inset 3px lime left edge + 1px rgba(155,240,60,.18) ring) and a lime NEW pin. The row's second line is the payload: 'Wrong Name is now $CUPS \u00b7 minted 2m after we saw it \u00b7 $18.4K'.",
+     "source": "notification WHERE kind='mint' AND read_at IS NULL \u26a0new table",
+     "interaction": "Primary button resolves by CONFIRMED count (Buy $CUPS / See the 3 coins). Opening the row clears the pin. Section disappears when empty \u2014 it is not a permanent header."
+    },
+    {
+     "element": "Section 2 \u2014 Waiting, no coin yet (N)",
+     "shows": "Same row spec as the No-coin-yet chip, minus the rank column. Adds a mono 10px 'watched 2h ago' on the right.",
+     "source": "follow \u22c8 narratives WHERE confirmed_coin_count = 0",
+     "interaction": "Inline Create per row (D3 tier respected). This is the section the notification is a promise about."
+    },
+    {
+     "element": "Section 3 \u2014 With coins (N)",
+     "shows": "Story rows whose primary resolves to Buy or See-the-N. Each carries a nested coin strip: up to 3 chips, mono 11px, '$CUPS $18.4K' with the .match-stamp inline.",
+     "source": "follow \u22c8 narratives \u22c8 narrative_tickers",
+     "interaction": "Coin chip \u2192 coin page. A dim '+ Watch $CUPS too' at the end of the strip writes the separate coin follow \u2014 the explicit, never-silent conversion."
+    },
+    {
+     "element": "Section 4 \u2014 Coins you watch (N)",
+     "shows": "The .tk 11-column table: Token \u00b7 Price \u00b7 5m \u00b7 1h \u00b7 24h \u00b7 Last 24h spark \u00b7 Volume \u00b7 Liquidity \u00b7 Mkt cap \u00b7 Age \u00b7 action. Plus a Story column replacing the sparkline below 1180px.",
+     "source": "follow WHERE coin_mint IS NOT NULL \u22c8 coin_index \u26a0new",
+     "interaction": "SORTABLE headers. This is a deliberate deviation from the prototype (\u00a74.5/\u00a712.10 note that watchlist headers omit .sortable) \u2014 a 40-coin watchlist without sort is unusable, and the reason the prototype omitted it was a session-Set implementation, not a design decision."
+    },
+    {
+     "element": "Section 5 \u2014 Gone quiet (N), collapsed",
+     "shows": "Collapsed header only: 'Gone quiet (7) \u2014 dormant over 24h, still no coin'. Expands to dim rows at .72 opacity.",
+     "source": "follow \u22c8 narratives WHERE status='dormant' AND updated_at < now()\u221224h AND confirmed_coin_count=0",
+     "interaction": "Per-row 'Stop watching', plus a header action 'Clear all 7'. This section exists because watchlist rot \u2014 60 dead rows above the 3 live ones \u2014 is the actual reason watchlists get abandoned. Rows here still notify; going quiet is not the same as being over."
+    },
+    {
+     "element": "Sort control",
+     "shows": ".chips in the tbar: Recently added (default) \u00b7 Heat \u00b7 Lead time \u00b7 Coin status.",
+     "source": "follow.created_at / narratives.heat \u26a0new / lead_time_min",
+     "interaction": "Sorts within each section; never merges sections."
+    },
+    {
+     "element": "Empty state \u2014 the teaching version",
+     "shows": "Centered block, max-width 480px, no dashed box. Clash 20px 'Nothing watched yet.' Then 13.5px muted: 'Tap \u2605 on any story and we'll tell you the moment somebody mints it. No wallet needed.' Then a full-width sub-header 'Three worth watching right now' and THREE REAL LIVE ROWS from the No-coin-yet list (top 3 by heat), each with an inline \u2605 that fills in place without navigating and a lead chip so the value is legible before the user commits. Then a dim mono 11px stat line, rendered only when the number is real: 'Last week, 61% of watched stories got a coin within 3 hours. 34% never did.'",
+     "source": "the No-coin-yet query, limit 3, ORDER BY heat DESC; the stat from story_outcome \u26a0new",
+     "interaction": "Starring one of the three converts the empty state IN PLACE into a one-row Section 2 \u2014 the user sees the mechanism work in one gesture with no navigation. The honest 34% is included because a retention hook that oversells its hit rate gets uninstalled after the first miss."
+    },
+    {
+     "element": "Notification settings entry",
+     "shows": "Right of the Following header: a 14px bell glyph with a mono 10px count of enabled channels ('in-app' / 'in-app + push').",
+     "source": "notification_prefs \u26a0new",
+     "interaction": "Opens the settings sheet (see the notification screen)."
+    }
+   ],
+   "states": [
+    "empty \u2014 the teaching state above, which is the highest-leverage state on this screen",
+    "anonymous (device follows) \u2014 everything works; a persistent dim banner 'Saved to this device. Connect a wallet to keep these on your phone too.' with a Connect link",
+    "one section only \u2014 no visual gap where the others would be",
+    "story merged into another \u2014 the follow silently repoints to the survivor (\u00a73.4 says repoint watchlist entries) and the row shows a dim 'merged into <title>' caption for 24h. This is the ONE case where the target changes, and it is disclosed",
+    "story closed with no coin ever \u2014 moves to Gone quiet, then after 7 days to a 'Ended without a coin' fold with a Clear action. Never silently deleted",
+    "unverified match on a watched story \u2014 the row shows the amber sub-line and does NOT move to Section 3; an unverified match is not a coin",
+    "coin watched but no market data \u2014 '\u2014' across, 'no market yet'",
+    "stale pipeline \u2014 banner",
+    "loading \u2014 3 skeleton rows, sections not yet known (do not render section headers before their counts, or empty headers flash)"
+   ]
+  },
+  {
+   "name": "The mint notification \u2014 end to end",
+   "job": "Deliver 'the story you followed just got a coin' fast enough that the head start survives the delivery.",
+   "layout": "Four surfaces, one event. (A) In-app toast: fixed bottom-right, 24px inset, width 380px, z-index 400, .note-card skin (linear-gradient(180deg,var(--bg2),var(--bg1)), 1px var(--line), radius 14, padding 13) with a 2px lime left edge and slidein .45s. (B) While-you-were-away band: full-width, position 1 on Trending ABOVE the pinned proof card, 88px, .ttable skin with a lime left edge. (C) Web Push: OS notification with icon = the token logo, badge = the Insidor dot. (D) Settings sheet: .sheet max-width 472px.",
+   "elements": [
+    {
+     "element": "Toast \u2014 line 1",
+     "shows": "Clash 15px: 'Wrong Name is now $CUPS'. The STORY name first, the ticker second \u2014 the user followed a story and must recognise it before they parse a ticker.",
+     "source": "narratives.title + narrative_tickers.ticker \u26a0match_status='confirmed'",
+     "interaction": "\u2014"
+    },
+    {
+     "element": "Toast \u2014 line 2",
+     "shows": "mono 11px: 'Minted 2m ago \u00b7 $18.4K \u00b7 you're 31m early'. When lead is negative: 'Minted 2m ago \u00b7 $18.4K \u00b7 crypto traders got here 6m before us.' \u2014 same slot, same size, grey instead of lime.",
+     "source": "mint_time \u26a0new, coin_index.mcap \u26a0new, promoted_at \u26a0new vs t_crypto \u26a0new",
+     "interaction": "D2 carried into the push: the number that carries the product is shown even when it is bad. A notification that only fires on wins is an ad."
+    },
+    {
+     "element": "Toast \u2014 actions",
+     "shows": "A two-button row: primary .deploy-go (resolves by CONFIRMED count \u2014 'Buy $CUPS' / 'See the 3 coins'), secondary bordered 'See story'. Below both, a dim 11px link 'Watch $CUPS too'.",
+     "source": "confirmed count",
+     "interaction": "Buy opens the Jupiter modal in place, no navigation \u2014 the toast is the trade entry point and every navigation between the alert and the buy costs seconds the product just spent 20 minutes earning. 'Watch $CUPS too' is the explicit, never-silent story\u2192coin conversion."
+    },
+    {
+     "element": "Toast lifecycle",
+     "shows": "\u2014",
+     "source": "\u2014",
+     "interaction": "Auto-dismisses at 12s, PAUSED on hover. Never auto-dismisses while the Jupiter modal it opened is on screen. Max 3 stacked; a fourth collapses the stack into '3 stories you follow got coins' \u2192 opens Following. Delivered on the existing ref-counted Supabase socket via a private 'user:{id}' topic folded into the board tick envelope \u2014 zero new transport, zero new failure modes."
+    },
+    {
+     "element": "While-you-were-away band",
+     "shows": "'1 story you follow got a coin.' Clash 16px, then the coin row inline (36px icon, $CUPS, mcap, age) and the resolved primary button. Multi: '3 stories you follow got coins' with the top one expanded and '+2 more'.",
+     "source": "notification WHERE read_at IS NULL AND created_at > last_session_end",
+     "interaction": "Renders on the next app open when the tab was closed or hidden at fire time. Persists until dismissed or 24h. Dismiss marks read. This is what replaces the alerts inbox \u2014 the flow doc CUT the inbox on the grounds that 'While you were away' answers 'what did I miss' better, and this band is that answer."
+    },
+    {
+     "element": "Push permission \u2014 the earned moment",
+     "shows": "An inline button INSIDE the first while-you-were-away band: 'Get this on your phone next time' + a dim 11px 'These move in minutes. We only send this one thing.'",
+     "source": "\u2014",
+     "interaction": "NEVER prompted on first load, never on signup, never in a modal. The prompt appears exactly once, at the moment the user has just experienced the value and simultaneously discovered they missed it live. That is the highest-converting placement available and it costs nothing to wait for it. Declining hides the ask for 30 days."
+    },
+    {
+     "element": "Push payload",
+     "shows": "Title 'Wrong Name is now $CUPS'. Body 'The story you followed just got its first coin. Minted 2m ago \u00b7 $18.4K \u00b7 you're 31m early.' Icon = token logo (Helius getAsset), badge = the cyan Insidor dot. Actions: 'Buy' and 'See story'. Tag = narrative_id (so a follow-up REPLACES rather than stacks).",
+     "source": "notification.payload jsonb \u26a0new; push_subscription \u26a0new (VAPID)",
+     "interaction": "Deep-links to /coin/[mint]?src=push. The src param feeds search_log-style attribution so the retention claim is measurable rather than assumed."
+    },
+    {
+     "element": "Email",
+     "shows": "DAILY DIGEST ONLY, opt-in, off by default: 'Yesterday: 3 stories you follow got coins.' with a 3-row table and each row's lead time.",
+     "source": "notification_prefs.email_digest \u26a0new",
+     "interaction": "Per-mint email is explicitly REJECTED: email arrives long after the trade is over, and one useless real-time email teaches the user to filter the sender forever. Email's job here is the weekly reminder that the product exists, not the alert."
+    },
+    {
+     "element": "Firing rule",
+     "shows": "\u2014",
+     "source": "AFTER trigger on narrative_tickers, WHEN match_status transitions to 'confirmed'",
+     "interaction": "ONLY CONFIRMED fires. UNSURE never fires anything \u2014 a push claiming 'your story minted' on a 0.6-confidence match is the single most damaging output this system can produce, and the D1 abstain band exists precisely to make it impossible. An UNSURE that later promotes to CONFIRMED fires IN-APP ONLY, with the honest lead ('we confirmed this 40m after it minted'), and never a push."
+    },
+    {
+     "element": "Dedupe and coalescing",
+     "shows": "\u2014",
+     "source": "notification.dedupe_key UNIQUE",
+     "interaction": "One per (user, narrative) per 6h. All coins confirmed within 90s collapse into one message; 2+ makes the copy 'Wrong Name got 3 coins in 90 seconds' and the button 'See the 3 coins' \u2014 the ONE RULE enforced inside the notification, because the copycat swarm is exactly when a user is most likely to buy the wrong one. At most one follow-up, only when a later coin's peak > 4\u00d7 the first and the first peaked under $25k, labelled 'a bigger coin appeared'."
+    },
+    {
+     "element": "Settings sheet",
+     "shows": "Rows: 'In-app alerts \u2014 always on' (disabled toggle with a dim 'this is the product'), 'Push' (toggle + browser permission state), 'Quiet hours' (two time pickers + tz), 'Only if the coin passes safety checks' (toggle, default ON \u2014 suppresses pushes for mint-authority-active / top-10>60% coins), 'Minimum market cap' (None / $10k / $50k), 'Daily email digest' (off by default).",
+     "source": "notification_prefs \u26a0new",
+     "interaction": "Reachable from the Following header bell, from any toast's \u22ef, and from the push itself. Every alert product dies from being un-tunable; three knobs is the whole budget."
+    }
+   ],
+   "states": [
+    "fired, tab focused \u2192 toast",
+    "fired, tab hidden or closed \u2192 queued \u2192 while-you-were-away band on next open (+ push if enabled)",
+    "fired, quiet hours \u2192 held, delivered as the first band on next open, with a dim 'held during quiet hours'",
+    "push permission denied \u2192 the ask hides for 30 days; in-app never degrades",
+    "push subscription expired (410 from the push service) \u2192 row deleted, fail_count incremented, a one-time in-app 'push stopped working \u2014 re-enable?'",
+    "coin fails safety and the safety toggle is on \u2192 no push, but the in-app band still shows it with a red Risky pill (suppressing it entirely would be hiding information the user asked for)",
+    "UNSURE match \u2014 no notification of any kind; the Following row shows the amber sub-line so the user is not blind",
+    "multi-coin swarm \u2192 one coalesced message, See-the-N primary",
+    "story merged before the mint \u2192 notification fires on the SURVIVOR narrative and names it, with a dim 'this story merged with <title>'",
+    "offline at fire time \u2192 Broadcast is missed; the band is the backstop, hydrated from the notification table on next load. The table is the source of truth; the socket is only the fast path",
+    "wallet not connected \u2192 notification fires normally (follows do not need a wallet); the Buy button opens connect first"
+   ]
+  }
+ ],
+ "buildOrder": [
+  "1. MIGRATION A \u2014 the correctness floor. Add narrative_tickers.mint, .source, .relation, .match_status, .match_score, .match_channels, .mint_time; add narratives.promoted_at (set-once, never-clobber, same pattern as cluster-persist.js:46-58), .heat, .coinability_tier, .needs_review. Backfill mint from the DexScreener path token-lookup.js already resolves and currently discards. Ship NOTHING else until this lands \u2014 every screen in this spec computes its primary button from confirmed_coin_count, and today that number does not exist.",
+  "2. Replace lib/types.ts storyAction()'s `ticker && mcap != null` test with `match_status === 'confirmed'`, and add the .match-stamp component. This alone removes the live 'Buy $KANG' bug from every existing surface. Two files, immediate user-visible correctness win.",
+  "3. MIGRATION B \u2014 search plumbing. Generated search_doc tsvector on narratives and narrative_posts + GIN; pg_trgm GIN on narratives.title, narrative_tickers.ticker, narrative_posts.handle; search_log table. No UI yet.",
+  "4. Ship /search free-text, FTS + trigram only, no embeddings, no chips. Rank = (0.55\u00b7rel + 0.25\u00b7vir + 0.20\u00b7rec) \u00d7 boost, RRF over two retrievers. Sections: Stories, Coins, Posts. Includes the zero-result Create block \u2014 the highest-value 40 lines in the feature. URL-driven (?q=), which also gives the app its first linkable route.",
+  "5. CA mode: the four-rung resolution ladder over the new .mint column with the existing /api/token-lookup?mint= as rung 3, plus the mint-in-post band. Ships with the fail-closed rule replacing token-lookup.js:70 `return 0`.",
+  "6. $TICKER mode + the ticker family table sorted by mint time ascending, with the .coll availability line lifted verbatim from the create sheet. This is the anti-duplicate job delivered; it is shippable before the indexer using live DexScreener symbol search, just slower and less complete.",
+  "7. \u2318K palette over the same server route, local-index-first. Zero new backend. Includes the on-/search \u2318K-focuses-the-field reconciliation with the flow doc.",
+  "8. MIGRATION C \u2014 app_user, follow (with device_id, notify_mint, muted_until, last_notified_at), notification, notification_prefs. Wire \u2605 to one store with an optimistic toggle, replacing the two in-memory Sets and the six-view refreshWatchStars() cascade.",
+  "9. Following screen: sections 2, 3, 4 and the teaching empty state with three live starrable rows. Ships before any notification exists \u2014 the list is useful on its own and it is the surface the notification will point at.",
+  "10. THE NOTIFICATION, in-app only: the AFTER trigger on confirmed matches, the dedupe key, the 90-second coalescing window, the user:{id} Broadcast topic folded into the existing socket, the toast, and the while-you-were-away band. This is the retention hook and it MUST NOT wait behind push \u2014 in-app plus the band already delivers the J2 journey end to end.",
+  "11. Web Push: push_subscription, VAPID, service worker, the earned-moment permission prompt inside the first band, quiet hours, the safety-gate toggle. Measure push\u2192buy conversion via ?src=push before spending anything more on it.",
+  "12. Chips, in value order: No coin yet (with D3 tier gating \u2014 do NOT ship a browsable candidate list before coinability_tier exists and is populated) \u2192 Just made with the From-a-story-only toggle \u2192 Trending now with the four coin-lane bands.",
+  "13. The two prospective clocks: persist t_mint from the PumpPortal websocket and t_ct from the ~300 polled CT accounts. Then the story_outcome materialized view. Then the Finished chip with All-default and the honest summary header. Finished cannot ship before this, and shipping a record from lead_time_min alone would be fabricating the product's central claim.",
+  "14. pgvector recall: narratives.search_vec centroid + HNSW, added as a third RRF leg. A/B the blend weights against search_log click-through \u2014 the 0.55/0.25/0.20 numbers are a starting guess and should not survive contact with real data unchanged.",
+  "15. Coin index integration (F3.2): coin_index table, the mint stream, and CA/ticker search over mints that never touched a story. Also unlocks the rail's Matches mode and the true 'N coins share this ticker' count."
+ ],
+ "openQuestions": [
+  "The command palette is CUT in docs/product/insidor-flow.html ('A search box wearing a keyboard shortcut. Cmd K now just focuses the search field') and REQUIRED by this brief. I have specced the reconciliation \u2014 the palette is a strict projection of /search with no private query path and no capability beyond navigate+star, and on /search itself \u2318K focuses the field rather than opening an overlay. Confirm that reconciliation or kill the overlay.",
+  "Do anonymous device_id follows survive to a Privy account, and what wins on conflict? I specced: claim on first login, keep the EARLIER created_at because that follow has the honest lead time. Also: a follow made on a laptop is invisible on a phone until login \u2014 is that acceptable for v1, or does the \u2605 gate on connect after the first three follows?",
+  "Push on iOS requires the PWA to be installed to the home screen. Is web push therefore an Android/desktop-only feature at launch, with iOS users on in-app + band only? If iOS matters, this becomes a native-app question and it is the largest scope item in the feature.",
+  "Does an UNSURE match that later promotes to CONFIRMED notify at all? I specced yes, in-app only, no push, with the lead rendered honestly ('confirmed 40m after it minted'). The counter-argument is that a stale alert is worse than none.",
+  "Is $50k peak mcap the right EARLY/FLAT boundary in story_outcome? It sets the headline hit rate on the Finished chip and therefore the number the whole track record is judged on. Pick it from the existing 1,041-narrative backfill, not from taste.",
+  "Does Finished include stories where a coin exists but our matcher never confirmed it? I specced YES, as an UNRESOLVED outcome, on the grounds that hiding the cases where our own matcher gave up is precisely the marketing D2 forbids. Confirm \u2014 it will make the record look worse and that is the point.",
+  "Saved searches / 'Watch this search \u2014 we'll tell you if a story shows up' in the zero-result state. It is the natural bridge between the two features and it turns the best empty state into a follow. It also needs a saved_search table and a second notification kind. In or out for v1?",
+  "Verify post_embeddings.embedding's dimension AND its model. Query-time embedding must use the same one, and if it is a worker-side model the search path gains a network hop \u2014 is that inside the p95 < 120ms budget, or does the vector leg have to render asynchronously (which is what I specced as the fallback)?",
+  "How far back does search reach? I specced open|dormant in the default set with closed reachable only via the Finished chip. A user searching a two-week-old story by name will get nothing and that will read as a bug.",
+  "Who populates narratives.coinability_tier, and how? D3 is a policy with three tiers judged on 'is there an identifiable person harmed by this becoming a coin'. Nothing in the current pipeline computes it. The No-coin-yet chip is the most exposed surface in the product \u2014 a browsable, one-tap-mintable list \u2014 and it cannot ship before this field is real and evaluated. This is the single largest unowned dependency in the spec.",
+  "Does the mint notification's Buy button open Jupiter in place inside the toast? window.Jupiter is a global singleton with one integratedTargetId (\u00a77.3), so a toast-mounted trade panel may conflict with an already-open one. Verify the singleton can be retargeted, or the toast falls back to navigating.",
+  "The 0.55/0.25/0.20 relevance/virality/recency weights and the \u00d71.35/\u00d71.15 boosts are a defensible starting guess, not a measurement. search_log exists in this spec specifically to replace them. Who owns that tuning pass, and at what query volume does it become meaningful?"
+ ],
+ "priorArt": [
+  "Reciprocal Rank Fusion (Cormack, Clarke & Buettcher, SIGIR 2009) \u2014 chosen over score normalisation because ts_rank_cd, trigram similarity and cosine distance are on incomparable scales and normalising them correctly needs a calibration set we do not have. k=60 is the paper's constant and it is robust; the per-retriever weights are ours.",
+  "PostgreSQL ts_rank_cd with normalisation flag 32 (divide by 1+log(length)) and ts_headline for fragment generation \u2014 standard, already available on Supabase, and it removes the need for any external search service at this corpus size (1,041 narratives, 1,718 posts today).",
+  "pg_trgm GIN for fuzzy ticker and handle matching. Ticker drift in this domain is 1\u20132 characters (FERRY/FERRIE/FERY), which is exactly the regime trigram similarity handles and exactly where FTS returns nothing.",
+  "Linear and Superhuman command palettes \u2014 the flat-index-across-sections keyboard model, \u2318Enter as the escape to full results, and the rule that the palette navigates but never mutates. The 13-row cap comes from the same lineage: a palette you scroll has become a worse search page.",
+  "DexScreener / Photon same-symbol collision lists \u2014 adopted as a pattern, INVERTED in ordering. They sort by volume, which surfaces whichever copycat got pumped; we sort by mint time ascending because \u00a75.2 measured that competing same-symbol mints are separated by months, making the earliest almost always the real one.",
+  "GitHub's three-state watch control (All activity / Releases only / Ignore) as the model for All / Mint only / Muted. 'Releases only' is structurally the same product insight as 'Mint only': the one state change you actually care about, not the firehose.",
+  "Robinhood and Coinbase price alerts for the notify-on-event retention loop. The Insidor difference is that the event is a MINT, not a price \u2014 it happens once, it is irreversible, and being 40 minutes late to it is worthless, which is why the p50 < 20s budget is a product requirement rather than an SLO.",
+  "Photon's freeze-on-hover and never-reflow-below-the-fold list behaviours (already adopted in \u00a74.3) \u2014 carried into the search result set so a live-updating result list does not move under the cursor mid-click.",
+  "The prototype's own .pal / .pal-search palette shell, .sr-narr search rows, .tk token table, .coll availability line, .tp-origin strip, .tbtn-watch and .star \u2014 all reused verbatim from docs/research/design-component-inventory.md. Exactly two components are new: .match-stamp (the categorical confidence chip) and .sr-post (the post result row).",
+  "\u00a75.9 of docs/research/03-system-design.md on categorical-not-numeric confidence \u2014 'do not render 73% match next to an actionable control, users treat 73% as good enough and do their own thresholding, which defeats the abstain band entirely'. match_score is stored for calibration and never rendered anywhere in this spec."
+ ]
+}

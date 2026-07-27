@@ -1,0 +1,464 @@
+{
+ "feature": "F4 \u2014 Wallet & Onboarding, plus the Operator Surface (/ops)",
+ "summary": "Two surfaces that both exist to keep a promise the product makes elsewhere. Part A is the wallet layer: reading Insidor is free and complete, and a wallet is demanded only at the exact instant an action needs one, with the user's work (amount, ticker draft, coin identity) never discarded by the gate \u2014 including the funding cliff, where a user with a wallet and no SOL is the single highest-drop moment in the product. Part B is the operator surface: a health model of ten SLIs, each a named query, where SLI-2 (`stage_output_stall`) and SLI-4 (`board_render_fallback`) would have caught the two-day silent outage in ~10 minutes and at T+0 of user impact respectively, plus the user-facing honesty band that shows a stale board as stale and suppresses every earliness claim while the pipeline is dead.",
+ "screens": [
+  {
+   "name": "A1 \u00b7 Board, signed out (first run)",
+   "job": "Prove the product works before asking for anything. Everything readable is readable; the wallet is demanded only at the instant of an action, in place, without discarding the user's work.",
+   "layout": "Identical to the connected board \u2014 no reduced/teaser variant exists. Existing `.shell` grid `1fr 460px`, `.main` padding 26px 26px 80px, narrative table capped 980px, token tables 1140px, `.rail` 460px sticky. Nav is `.nav` 58px with `.brand`, `.navlinks` (Trending/Search/You), `.navsearch` (\u2318K), `.solpill`, `#userAuth`. The ONLY signed-out deltas are: (1) `#userAuth` renders `.wallet-btn` `Connect`; (2) the comment composer region on the story sheet is replaced by a single `.gate-inline` row; (3) `.doit` / `.deploy-go` relabel and route through the connect flow instead of executing. No blur, no overlay, no lock icons, no row-count cap, no 'sign up to see more'.",
+   "elements": [
+    {
+     "element": "`.wallet-btn` (`#userAuth`)",
+     "shows": "`Connect` \u00b7 `Loading\u2026` while `!ready` (disabled skin: `background:var(--bg2); color:var(--muted); border:1px solid var(--line)`)",
+     "source": "`usePrivy().ready` / `.authenticated` from `@privy-io/react-auth@3.35.2`. NOTE: `useSolanaWallets` does not exist in v3 \u2014 read wallets from `useWallets()` in `@privy-io/react-auth/solana`.",
+     "interaction": "Click \u2192 A2 Connect sheet. Never auto-opens on page load."
+    },
+    {
+     "element": "Narrative table `.ttable.narr-table` \u2014 all six columns",
+     "shows": "Full ranked board, unmodified",
+     "source": "`narratives` + `narrative_posts` + `narrative_tickers` via `getTrendingStories()` in lib/stories.ts",
+     "interaction": "Row click \u2192 story sheet `.nm-sheet`. Star `.star` works signed-out."
+    },
+    {
+     "element": "Row primary CTA \u2014 `.nm-foot-buy .deploy-go` / cell-5 `.btn-deploy-mini`",
+     "shows": "Pure function of CONFIRMED coin count, unchanged by auth: 0 \u2192 `Create coin`; 1 \u2192 `Buy $TICKER`; \u22652 \u2192 `See the 3 coins`",
+     "source": "`count(narrative_tickers where narrative_id=? and match_state='CONFIRMED')` \u2014 `match_state` DOES NOT EXIST YET",
+     "interaction": "Opens the real sheet (trade or create), fully populated. Auth is checked at execution, not at open."
+    },
+    {
+     "element": "Trade panel `.tradebox`, signed out",
+     "shows": "Live Jupiter quote computed with no taker: `.recv` real `12,345.6789 HORN`, `#recvUsd`, `#minrecv`, `#impact` all real. `#bal` = `Balance <span class=\"dim\">Connect wallet</span>`. `#quoteNote` = `live route via Jupiter \u00b7 connect to sign`",
+     "source": "`GET https://api.jup.ag/swap/v2/order` (quote-only, no `taker`) \u00b7 `window.SOL_PRICE` from DexScreener",
+     "interaction": "`.doit` is ENABLED and reads `Connect & buy 1 SOL of $HORN` in the ion gradient (not the lime execute gradient). Click \u2192 A2 with `intent={mint, side, amount, slippage, priority}` carried through; on connect the panel restores with the amount pre-filled and `.doit` becomes the real lime `Buy $HORN`."
+    },
+    {
+     "element": "Create sheet `.sheet` (deploy), signed out",
+     "shows": "Every field live: `#dname`, `#dtick` with keystroke sanitising, the `.coll` availability line (`\u2713 $FERRY is free on Solana \u2014 you'd be first`), `.alts` chips, `.buychips`, `.split`, `#dcost` `~1.02 SOL`",
+     "source": "`narrative_tickers` + Jupiter tokens v2 search for the availability check",
+     "interaction": "`.deploy-go` reads `Connect & create $FERRY`. Draft persisted to `localStorage['insidor.create-draft.v1']` before the connect handoff and restored after; the availability check re-runs on restore."
+    },
+    {
+     "element": "`.gate-inline` (NEW component) \u2014 comment composer replacement",
+     "shows": "One row, `.coll` skin: `background:var(--bg0); border:1px solid rgba(255,255,255,.06); border-radius:11px; padding:10px 13px; font-size:12.5px; color:var(--muted)`. Copy: `Connect a wallet to post. Reading is free \u2014 you don't need one to browse.` with `Connect` as an inline `a{color:var(--ion)}`.",
+     "source": "static",
+     "interaction": "Deliberately NOT a `.pbtn`, NOT ion-filled, NOT full-bleed. It reads as a footnote, not a wall. This is the whole anti-paywall decision."
+    },
+    {
+     "element": "`.star` watchlist toggle",
+     "shows": "`\u2606` / `\u2605`",
+     "source": "`localStorage['insidor.follow.v1']` = `{narratives:[], coins:[]}` while signed out",
+     "interaction": "Works fully signed-out. On connect, the local set is merged into `follow` server-side (union, never overwrite) and the local key is cleared. Toast: `4 saved stories moved to your account`."
+    },
+    {
+     "element": "You tab, signed out",
+     "shows": "Not a redirect and not a login wall. Renders the real empty shell \u2014 Ready to claim `$0.00`, Holdings `\u2014`, Following (from localStorage, real), Launches `\u2014` \u2014 with a single `.gate-inline` at the top: `Connect to see money, positions and claims. Your saved stories are already here.`",
+     "source": "localStorage follow set",
+     "interaction": "Following list is genuinely populated and clickable."
+    }
+   ],
+   "states": [
+    "signed out (default) \u2014 every read surface live",
+    "privy `!ready` \u2014 `.wallet-btn` disabled, label `Loading\u2026`; all CTAs still open their sheets, only execution waits",
+    "privy SDK failed to load \u2014 `fallbackConnect()` renders a plain `.wallet-btn` and the trade/create CTAs fall back to a `.gate-inline` reading `Wallet unavailable \u2014 retry or use an external wallet`; the board is untouched",
+    "connected, 0 SOL \u2192 hands to A3 on any Buy/Create",
+    "connected, funded \u2192 normal",
+    "abstain (UNSURE match) \u2014 no Buy button rendered at all regardless of auth; primary is `Create the coin`, candidate mints shown in a muted, collapsed `.nocoin`-style block labelled `Possible match: $KANG \u2014 we're not confident this is related`",
+    "story with zero coins \u2014 primary `Create coin`; `.nm-coin-mini.empty` renders `No coin deployed yet`",
+    "brand-new token, no market data \u2014 price/5m/1h/24h/vol/liq/mcap all render the literal `\u2014` (never `0`, never `NEW` inferred from a missing timestamp); `.doit` stays enabled because Jupiter can still route",
+    "pipeline stale \u2014 see screen B3; the board renders, the lead badges do not"
+   ]
+  },
+  {
+   "name": "A2 \u00b7 Connect sheet",
+   "job": "Get the right user onto the right wallet in one screen, and be honest that one of the two paths costs money.",
+   "layout": "`.dback` + `.sheet` at `max-width:440px`, radius 20, `animation:pop .18s`. This is an INSIDOR sheet that then hands to the Privy modal \u2014 it exists because Privy's modal cannot express the intent line ('Buying 1 SOL of $HORN') or the cost disclosure. Header `.sh-top` (padding 17px 19px): `.sh-t` `Connect a wallet`, `.sh-s` mono 11px = the carried intent (`to buy 1 SOL of $HORN` / `to create $FERRY` / `to post a comment` / empty when opened from nav). Body `.sh-body` gap 15px. Footer none \u2014 the options ARE the actions.",
+   "elements": [
+    {
+     "element": "Path A tile \u2014 `I have a Solana wallet`",
+     "shows": "`.pbtn`-scale tile, 100% width, 58px, `.bg0` ground, ion border on hover. Left: stacked Phantom/Solflare/Backpack marks (16px, `.soc` skin). Right: `.lead-dim` mono `free \u00b7 instant`",
+     "source": "`toSolanaWalletConnectors()` detection; `walletList:['phantom','solflare','backpack','detected_solana_wallets']`",
+     "interaction": "\u2192 `connectWallet()` with `walletChainType:'solana-only'` (MUST be set \u2014 v3 defaults to `'ethereum-only'` and the modal will show ETH wallets otherwise). Returns to the intent."
+    },
+    {
+     "element": "Path B tile \u2014 `Create one for me`",
+     "shows": "Same tile. Sub-line 11px muted: `Email or Google. We make a Solana wallet for you \u2014 you own it and can export the key any time.` Right: `.lead-dim` `free \u00b7 ~20s`",
+     "source": "`loginMethods:['email','google']`, `embeddedWallets:{ createOnLogin:'users-without-wallets' }`",
+     "interaction": "\u2192 `login()`. Privy mints an embedded Solana wallet. On return, a one-time `.done`-style confirm panel: `.done-ic \u2713`, `Your wallet is ready`, the address in a `.ca-box` with `Copy CA`, and one line `You have 0 SOL. Nothing can be bought yet.` \u2192 hands directly to A3 if an intent was carried."
+    },
+    {
+     "element": "Cost disclosure `.split`-skin block",
+     "shows": "Rendered ONLY under Path B, always, never behind a disclosure toggle: `New wallet, no crypto? Getting money in costs about 2.5\u20134.9% on a card, plus swap costs on the trade. Sending SOL from an exchange is free. We'll show both.`",
+     "source": "static; the live percentages come from the provider quote in A3",
+     "interaction": "none \u2014 it is a statement, not a control"
+    },
+    {
+     "element": "`.fine` footnote",
+     "shows": "`Insidor never holds your funds and never sees your private key.`",
+     "source": "static",
+     "interaction": "none"
+    }
+   ],
+   "states": [
+    "default",
+    "intent-carrying (`.sh-s` shows the destination)",
+    "`!ready` \u2014 both tiles disabled, `.sh-s` = `starting wallet\u2026`",
+    "already authenticated but no Solana wallet linked (email-only user whose embedded wallet failed) \u2014 Path A becomes `Link a Solana wallet`, Path B becomes `Create an Insidor wallet`, calling `useCreateWallet()`",
+    "connector load failure \u2014 Path A disabled with `Wallet extensions unavailable \u2014 check ad blockers`; Path B remains",
+    "user closes the Privy modal without connecting \u2014 sheet stays open, intent preserved, no error state"
+   ]
+  },
+  {
+   "name": "A3 \u00b7 Fund sheet \u2014 the funding cliff",
+   "job": "A user with a wallet and no SOL just tapped Buy. Get SOL in without losing the coin, and never quote a number we cannot stand behind.",
+   "layout": "NOT a modal. It replaces the lower half of `.tradebox` in place \u2014 everything from `.recv` down \u2014 so `$HORN`'s icon, price, chart and identity stay on screen the entire time. On the story sheet (`.nm-sheet`) where there is no trade panel, it opens as a `.sheet` at 440px with the coin's `.tkico` 52px in the header. Body is a 3-tile stack, ordered by SPEED not by our margin.",
+   "elements": [
+    {
+     "element": "Deficit line",
+     "shows": "`You need 1.02 SOL \u00b7 you have 0.14 SOL` \u2014 mono 13px, the need in `var(--ink)`, the have in `var(--red)`. Second line 11px dim: `0.02 SOL is held back for network fees and never spent.`",
+     "source": "`/api/balance?owner=` (Helius `getBalance`, 1 credit) minus GAS_RESERVE_SOL = 0.02",
+     "interaction": "none"
+    },
+    {
+     "element": "Tile 1 \u2014 `Send SOL` (default expanded)",
+     "shows": "QR (rendered client-side, no external service \u2014 CSP), the address in mono 12.5px with `.ca-mini` copy, and `.lead-dim`: `arrives in ~30s \u00b7 costs ~0.000005 SOL \u00b7 no fee from us`",
+     "source": "`useWallets()[0].address`",
+     "interaction": "Copy \u2192 `.ca-mini.copied` lime for 1000ms. Starts the balance watcher (below)."
+    },
+    {
+     "element": "Tile 2 \u2014 `Card`",
+     "shows": "Amount `.bchip` row `$25 | $50 | $100 | $250` (`$50` default). Under it, a `.mini` recap with FOUR rows, all live where possible: `Card fee` `\u2212$1.95 (3.9%)` \u00b7 `You get` `~0.31 SOL` \u00b7 `Then swap into $HORN` `\u22121.0% route \u00b7 \u22120.5% Insidor \u00b7 \u22120.9% impact` \u00b7 `Ends up as` `~$45.90 of $HORN`. Bottom line, mono 12px `var(--muted)`: `$50 in \u00b7 about $45.90 of $HORN out. Two steps, not one \u2014 there is no card-to-memecoin path on Solana.`",
+     "source": "Privy `useAddFunds` / `useFiatOnramp` (both `@experimental`) quote for the fiat leg; Jupiter `/swap/v2/order` for the SOL\u2192mint leg. Card fee is 2.5\u20134.9% depending on provider, amount and region \u2014 read it from the provider quote, NEVER hardcode.",
+     "interaction": "Tap \u2192 Privy onramp. If the provider returns no quote, the tile disables with `Card funding unavailable right now` rather than showing a guessed fee. Provider minimums (~$20) hard-disable smaller presets with `card minimum is $20`."
+    },
+    {
+     "element": "Tile 3 \u2014 `Swap what you have`",
+     "shows": "Only when the wallet holds a non-SOL SPL with a route: `You have 42.10 USDC \u2192 0.28 SOL`. `.lead-dim` `~5s \u00b7 0.2% route`",
+     "source": "Helius `getTokenAccountsByOwner(owner, {programId: TOKEN_PROGRAM}, jsonParsed)` + Jupiter `/order` USDC\u2192SOL",
+     "interaction": "One tap executes the SOL leg, then auto-advances to the original buy."
+    },
+    {
+     "element": "Resume contract \u2014 `.pendbanner`-skin strip pinned at the bottom of the sheet",
+     "shows": "`We'll bring you back to $HORN the moment the SOL lands.` With a `.lz` pulsing lime dot once the watcher is armed.",
+     "source": "`localStorage['insidor.trade-intent.v1'] = {mint, sym, side, amount, slippage, priority, createdAt}`",
+     "interaction": "Balance watcher polls `getBalance` every 6s for up to 15 min (150 credits worst case). On `sol >= need`, closes the fund sheet, restores `.tradebox` with the amount pre-filled, flashes `.doit` lime and shows a toast `0.90 SOL arrived \u2014 ready to buy $HORN`. Intent expires at 30 min. If the user navigates away, the intent survives a refresh and the toast fires on the next page load."
+    },
+    {
+     "element": "Bail-out link",
+     "shows": "`Not now \u2014 watch $HORN instead` mono 11.5px ion",
+     "source": "\u2014",
+     "interaction": "Stars the coin AND its story, closes the sheet. The drop is captured as a follow rather than a bounce."
+    }
+   ],
+   "states": [
+    "needs funding (default)",
+    "card quote pending \u2014 Tile 2 shows `.panel-loading` pulse, no numbers",
+    "card quote failed \u2014 Tile 2 disabled with reason, Tiles 1/3 unaffected",
+    "below provider minimum",
+    "waiting for deposit \u2014 watcher armed, `.lz` pulsing, tiles collapsed to one line each",
+    "partial arrival (`sol < need` but `> 0`) \u2014 deficit line updates live; `.doit` offers `Buy 0.12 SOL of $HORN instead` (the amount they can actually afford, minus reserve)",
+    "funded \u2014 sheet dismisses itself, trade panel restored",
+    "intent expired \u2014 sheet reopens on return with `Your $HORN order expired \u2014 the price moved. Re-quote?`",
+    "token became untradeable while waiting (liquidity pulled) \u2014 hard stop: `$HORN has no route right now. Your SOL is safe in your wallet.` and the intent is dropped, not retried"
+   ]
+  },
+  {
+   "name": "A4 \u00b7 Wallet state in the UI (nav chip, account panel, position badge)",
+   "job": "Balance is visible without being a dashboard, and every claim about someone's position is a recorded historical fact rather than a live guess.",
+   "layout": "Three places, no fourth. (1) Nav `.user-chip` in `.navright`. (2) `.account-panel` \u2014 port the fully-styled-but-never-rendered `.auth-panel` (284px, `top:calc(100% + 10px)`, right:0, radius 16, padding 16, `box-shadow:0 30px 70px -18px rgba(0,0,0,.8)`, hidden = `opacity:0;visibility:hidden;transform:translateY(-6px)`). (3) `#bal` inside `.tradebox .fp .lbl`. Balance appears NOWHERE else \u2014 not in the rail, not per-row, not on the story sheet.",
+   "elements": [
+    {
+     "element": "`.user-chip` (extended)",
+     "shows": "`4mZq\u20268xPq` in `.user-name` + NEW `.user-bal` \u2014 `font-family:var(--mono); font-size:12px; color:var(--lime); padding-left:8px; border-left:1px solid var(--line)` \u2014 reading `1.2345`. No `SOL` suffix (the pill next to it already says SOL), no USD (that's in the panel).",
+     "source": "`/api/balance?owner=` polled every 30s while the tab is visible, plus an immediate refetch after any confirmed swap",
+     "interaction": "Whole chip is now a button \u2192 toggles `.account-panel`. `.user-logout` stays as the 27px icon on the right."
+    },
+    {
+     "element": "`.account-panel` rows",
+     "shows": "1) Wallet type: `Insidor wallet` (embedded) or `Phantom` \u2014 mono 11px dim label + 12.5px ink value. 2) Address + `.ca-mini` copy. 3) `1.2345 SOL` mono 19px ink with `$284.10` mono 12px muted underneath. 4) `.pbtn.trade` full-width `Add funds` \u2192 A3 in standalone mode. 5) `Export wallet` \u2192 A5 (embedded only). 6) `Disconnect` in `var(--red)` on hover.",
+     "source": "`useWallets()[0].walletClientType` ('privy' = embedded) \u00b7 `/api/balance` \u00b7 `window.SOL_PRICE`",
+     "interaction": "Esc / outside-click closes. Never opens on its own."
+    },
+    {
+     "element": "`#bal` in the trade panel",
+     "shows": "Buy side: `Balance <b>1.2345</b> SOL`. Sell side: `Holdings <b>1,204</b> FERRY`. Signed out: `Balance <span class=\"dim\">Connect wallet</span>`. Fetch failed: `Balance <b>\u2014</b> SOL` (never `0`).",
+     "source": "`/api/balance?owner=&mint=`",
+     "interaction": "`MAX` preset computes `balance \u2212 0.02` on buy, `100%` of token balance on sell."
+    },
+    {
+     "element": "`.pos-badge` (NEW) on every comment",
+     "shows": "Four variants, mono 10px, radius 999px, padding 3px 8px: `holds 2.1 SOL` \u2192 lime on `rgba(155,240,60,.10)`, border `rgba(155,240,60,.30)` \u00b7 `no position` \u2192 `var(--dim)` on `rgba(255,255,255,.03)` \u00b7 `sold` \u2192 `#ffb84c` on `rgba(255,184,76,.10)` \u00b7 `position unknown` \u2192 `var(--dim)`, border `var(--line)`",
+     "source": "DENORMALISED AT WRITE TIME onto the comment row: `comment.snap_position_lamports`, `comment.snap_position_mint`, `comment.snap_position_state`. Read once, server-side, at insert: Helius `getTokenAccountsByOwner(author_wallet, {mint: story_top_coin_mint}, {encoding:'jsonParsed'})` = 1 credit. `sold` requires a prior nonzero snapshot for the same (wallet, mint) with the current read at zero, or a Helius `getTransactionsForAddress` hit with `filters.tokenTransfer:{mint, direction:'out'}`.",
+     "interaction": "Hover \u2192 title `position when this was posted \u00b7 14:22 UTC`. It NEVER updates. A live badge would rewrite history and destroy the whole point of the stamp."
+    },
+    {
+     "element": "Fail-closed rule on the badge",
+     "shows": "If the RPC call errors or times out at write time, `snap_position_state = 'unknown'` and the badge renders `position unknown`.",
+     "source": "\u2014",
+     "interaction": "Rendering `no position` on a failed read is a factual claim about a person that we did not verify. Same class of bug as `token-lookup.js:70` returning `ageMin = 0` for a missing timestamp \u2014 missing data must never render as a confident zero."
+    }
+   ],
+   "states": [
+    "connected + funded",
+    "connected + zero balance \u2014 `.user-bal` reads `0.0000` in `var(--dim)`, not lime; the account panel's `Add funds` gets the ion fill",
+    "balance fetch failed \u2014 `.user-bal` renders `\u2014` in `var(--dim)`; never falls back to a cached number without a `stale` title",
+    "external wallet \u2014 `Export wallet` row absent, replaced by `Keys live in Phantom. Insidor never had them.`",
+    "embedded wallet",
+    "disconnected mid-session (extension locked) \u2014 chip reverts to `.wallet-btn` `Connect`, any open trade panel disables `.doit` with `#quoteNote` = `Wallet disconnected`",
+    "comment position unknown",
+    "comment on a story with zero coins \u2014 no `.pos-badge` rendered at all (there is nothing to hold)"
+   ]
+  },
+  {
+   "name": "A5 \u00b7 Account \u2192 Security & export",
+   "job": "A user holding real money in a wallet they did not choose must be able to leave with it, and must understand what their login actually is before they need to.",
+   "layout": "A section inside `/you`, not a modal \u2014 this must be findable when nothing is going wrong. `.secbox` skin (`padding:16px`, shared panel skin), `.sec-h` = `Security`. Three `.sec` rows then a divider then the export block. Reachable from `.account-panel \u2192 Export wallet` and from a permanent `/you` anchor.",
+   "elements": [
+    {
+     "element": "Row 1 \u2014 `Wallet type`",
+     "shows": "`Insidor wallet (Privy)` + `.ok` `\u2713 self-custodial`",
+     "source": "`useWallets()[0].walletClientType === 'privy'`",
+     "interaction": "none"
+    },
+    {
+     "element": "Row 2 \u2014 `Recovery method`",
+     "shows": "`Google \u00b7 zain@\u2026` or `Email \u00b7 z\u2026@gmail.com` or `Passkey`",
+     "source": "`usePrivy().user.google / .email / .passkey`",
+     "interaction": "none"
+    },
+    {
+     "element": "Row 3 \u2014 `Insidor's access`",
+     "shows": "`.ok` `\u2713 none \u2014 we cannot move or recover your funds`",
+     "source": "static",
+     "interaction": "none"
+    },
+    {
+     "element": "Explainer block (`.nm-about` skin, ion left rail)",
+     "shows": "Exactly four sentences, no marketing: `Your login IS your recovery. If you lose access to the Google account or email you signed in with, and you have not exported this key, the funds in this wallet are gone permanently \u2014 nobody at Insidor or Privy can restore them. Exporting shows you the private key in a window run by Privy; Insidor's code never receives it. Exporting does not delete or change this wallet \u2014 it lets you import the same address into Phantom or Solflare and use it anywhere.`",
+     "source": "static",
+     "interaction": "none"
+    },
+    {
+     "element": "`.risk-pill.high` + `Reveal private key` button",
+     "shows": "Red pill: `Anyone with this key owns everything in this wallet, forever.` Button is `.doit.s` styling (red gradient), full width, 46px, DISABLED for 3 seconds after the section scrolls into view, counting down in the label: `Reveal private key (3)`.",
+     "source": "`useExportWallet()` from `@privy-io/react-auth/solana` \u2014 in v3 this is its own hook, split out of the removed `useSolanaWallets`",
+     "interaction": "Click \u2192 Privy's hosted iframe. The 3s dwell exists to stop a fat-finger reveal during a screen share, which is a real and unrecoverable event."
+    },
+    {
+     "element": "Post-export line",
+     "shows": "`Key revealed 26 Jul 2026, 21:14 UTC` \u2014 mono 11px dim, persistent",
+     "source": "`ops_event(kind='wallet_export', user_id, ts)` \u2014 the EVENT is logged, never the key",
+     "interaction": "none. It exists so support can answer 'did I ever export?' without asking the user to do it again."
+    },
+    {
+     "element": "`Disconnect` vs `Log out` distinction",
+     "shows": "Two separate controls with different copy. `Log out` \u2192 `You can sign back in with Google and this wallet returns.` `Remove wallet` is not offered at all.",
+     "source": "`usePrivy().logout()`",
+     "interaction": "Log out shows a confirm ONLY when balance > 0 and no export has ever been recorded: `You have 1.23 SOL here and have never exported the key. Your Google login is the only way back in.`"
+    }
+   ],
+   "states": [
+    "embedded wallet, never exported (default)",
+    "embedded wallet, previously exported \u2014 post-export line present, dwell timer still applies",
+    "external wallet \u2014 the whole export block is absent; replaced by one `.sec` row `Your keys are in Phantom. Insidor never had them.`",
+    "export in progress \u2014 button `.panel-loading`",
+    "export failed / popup blocked \u2014 `.warn` `Privy's window was blocked. Allow popups for insidor.com and retry.`",
+    "balance > 0 and never exported \u2014 a persistent amber `.lc-pill.cooling`-skin nudge at the top of `/you`: `You're holding $284 in a wallet you haven't backed up.` Dismissible per session, returns weekly, never modal"
+   ]
+  },
+  {
+   "name": "B1 \u00b7 /ops \u2014 pipeline health",
+   "job": "Tell one person in under three seconds whether the product's core claim is true right now, and if not, which of eleven stages broke.",
+   "layout": "Same shell as the app (`1fr 460px`), main capped 1140px, so the operator is not learning a second layout under stress. Six stacked regions, all `.ttable` skin, 14px gaps. Server-gated: route handler checks the Privy DID against `OPS_ALLOWLIST` server-side and 404s otherwise \u2014 never a client-side check. THE OPERATOR LOOKS AT REGION 0, THEN REGION 2. Region 0 is the verdict; region 2 is the funnel, and every real outage of this pipeline appears as a column of zeros in the funnel, which names the broken stage without reading a log.",
+   "elements": [
+    {
+     "element": "Region 0 \u2014 `.ops-verdict` strip (88px, full width)",
+     "shows": "Grid `auto 1fr auto`. Left: 14px dot, lime/amber/red, `animation:pulse 2s` only when healthy. Centre: `.ops-state` Clash Display 34px uppercase \u2014 `HEALTHY` / `DEGRADED` / `DEAD` \u2014 and under it `.ops-why` mono 12.5px muted naming the single worst breaching SLI: `worst: stage_output_stall = 7 consecutive zero runs \u00b7 ingest \u00b7 since 14:02 UTC (2h 11m)`. Right: `.ops-clock` mono 11px dim: `evaluated 18s ago \u00b7 watchdog ok \u00b7 healthchecks ok 41s ago`.",
+     "source": "`ops_sli_sample` latest row per SLI, ranked by severity then breach duration",
+     "interaction": "Click the `.ops-why` \u2192 scrolls and highlights that SLI's row in region 1."
+    },
+    {
+     "element": "Region 1 \u2014 `.ttable.ops-sli`, 10 rows",
+     "shows": "Header `# | SLI | Value | Warn | Page | State | Breaching for | Last 60m`. Grid `26px minmax(170px,1.4fr) .85fr .55fr .55fr 96px .85fr 112px`, gap 12, padding 13px 20px, min-height 50px. SLI name in `var(--mono)` 12px ink. Value mono 13px right-aligned, coloured by state. State cell reuses `.timing-pill`: `.timing-early` (lime) = ok, `.timing-mid` (amber) = warn, `.timing-late` (red) = page. Sparkline reuses `.spark` SVG, viewBox `0 0 100 24`, ion stroke, red fill band above the page threshold.",
+     "source": "`ops_sli_sample` (NEW) \u2014 one row per SLI per 60s. Ten SLIs and their exact queries are in `mechanism`.",
+     "interaction": "Row click expands an inline `.mini` block with the raw query text and a `copy` control, so the operator can run it against Supabase directly."
+    },
+    {
+     "element": "Region 2 \u2014 `.ops-funnel`, six stages",
+     "shows": "Six equal `.qs`-skin cells with `::before` hairline dividers, separated by `\u2192` glyphs carrying the conversion rate in mono 10px dim. Per cell: `.k` uppercase 9.5px dim label (ARRIVED / ADMITTED / TRACKED / TRIGGERED / CLUSTERED / PROMOTED), `.v` mono 22px value for the last 60 min, a `.chgpill` up/down vs the 7-day same-hour baseline, and a 22px `.spark` over 6h. A zero renders at 22px in `var(--red)` with a `0` \u2014 never dim, never `\u2014`. Conversions read `31%` `\u2192` `88%` `\u2192` `22%` `\u2192` `41%` `\u2192` `6%`.",
+     "source": "`ops_funnel` (NEW) \u2014 persists what `worker/lib/funnel-log.js` currently only writes to stdout. THIS IS THE CENTRAL GAP: the funnel data exists in-process today and is thrown away.",
+     "interaction": "Cell click \u2192 filters region 3 to the stage that owns it."
+    },
+    {
+     "element": "Region 3 \u2014 `.ttable.ops-stages`, 7 rows",
+     "shows": "`Stage | Last success | Last attempt | p50 dur | Errors 1h | Rows out | Last error`. Rows: `ingest-x`, `ingest-tt`, `snapshot`, `score`, `cluster`, `resolve-coins`, `trends`. The `Last error` cell renders `402 payment_required \u00b7 twitterapi.io \u00b7 14:02:11` in mono 11px `var(--red)`. THIS IS THE CELL THAT WAS INVISIBLE FOR TWO DAYS \u2014 the retry helper only retried 429, so a 402 threw, was never recorded, and vanished.",
+     "source": "`ops_stage_run` (NEW): `{stage, started_at, finished_at, ok, rows_in, rows_out, error_class, http_status, message}`",
+     "interaction": "Click a stage \u2192 rail switches to `Errors` filtered to it."
+    },
+    {
+     "element": "Region 4 \u2014 `.ttable.ops-spend`, 6 rows",
+     "shows": "`API | Today | Cap | Burn | Projected EOD | Unit | 7d`. Rows: twitterapi.io ($0.00015/tweet), Apify TikTok ($1.70/1k), Anthropic, Helius, Jupiter, SerpAPI. Burn column is the `.split-bar` (7px, radius 4, `var(--bg3)` track) with the fill switching lime \u2192 `#ffb84c` at 0.75 \u2192 `var(--red)` at 1.0. Projected EOD = `cost_usd / day_fraction_elapsed`, mono, red when it exceeds the cap.",
+     "source": "`worker_usage` (`source`, `utc_date`, `reads_today`, `cost_usd`, `cost_breakdown`) + `worker_budget_state` + `ops_budget_cap` (NEW \u2014 caps are currently in env/code, not queryable)",
+     "interaction": "Row click \u2192 30-day cost line."
+    },
+    {
+     "element": "Region 5 \u2014 `.ops-gate`, 24h stacked area, 180px",
+     "shows": "Narratives by `gate_reason` over 24h \u2014 bands for `eligible` (lime), `below_views`, `low_meme`, `no_velocity`, `no_replication`, `too_old` (greys, darkening in that order). Legend is a row of `.lc-pill`s. When the `eligible` band touches zero, a 1px `var(--red)` floor rule is drawn across that span with a mono 10px label `board empty`.",
+     "source": "`ops_sli_sample where sli='gate_mix'` \u2014 a 5-minute sampler of `select gate_reason, count(*) from narratives where updated_at > now() - interval '24 hours' group by 1`",
+     "interaction": "Hover \u2192 mono tooltip with the exact counts at that minute."
+    },
+    {
+     "element": "Rail \u2014 `.railtabs` `Alerts | Errors | Cycles`",
+     "shows": "Rows as `.tape-row` (grid `auto 1fr auto`, 30px `.tape-ic`). Alerts: severity glyph, SLI name, `fired 14:02 \u00b7 still breaching 2h 11m` \u2014 resolved alerts strike through and drop to `var(--dim)`. Errors: stage, `402`, message truncated to 44 chars. Cycles: `worker`, `ingested/pruned/snapshots`, `ran_at`.",
+     "source": "`ops_event` (NEW) \u00b7 `ops_stage_run` \u00b7 `worker_cycle_log` (EXISTS)",
+     "interaction": "`.rail-status` pill shows `N breaching` in `.hot` lime when zero, red when nonzero."
+    }
+   ],
+   "states": [
+    "healthy \u2014 verdict lime, all 10 SLIs `.timing-early`",
+    "degraded \u2014 verdict amber; at least one warn, no page-level breach; board is still truthful",
+    "dead \u2014 verdict red; any of SLI 1/2/3/4 breaching at page level",
+    "evaluator stale \u2014 if the newest `ops_sli_sample` is >3 min old the verdict strip greys out entirely and reads `UNKNOWN \u00b7 the evaluator itself has not reported since 14:41`. A green board from a dead evaluator is the failure mode that caused the outage; never render one.",
+    "cold start / no baseline \u2014 funnel `.chgpill`s render `\u2014` rather than a delta against fewer than 3 days of history",
+    "budget-starved \u2014 region 4 red, verdict DEGRADED with `.ops-why` = `budget_burn twitterapi.io 1.00 before 12:00 UTC`",
+    "scoring paused \u2014 the existing `.scoring-paused-banner` (amber, `Meme scoring paused / Anthropic budget exhausted`) is hoisted from the app rail to the top of region 0",
+    "unauthorised \u2014 server 404, no login prompt, no hint the route exists"
+   ]
+  },
+  {
+   "name": "B2 \u00b7 /ops/earliness \u2014 the earliness ledger",
+   "job": "Show the true distribution of lead time including the negatives, and be the exact source the public record renders from \u2014 so the internal number and the marketed number cannot diverge.",
+   "layout": "Main only, 1140px, no rail. Four regions: stat row, distribution, filter chips, ledger table. The public `/record` page renders the SAME query with a narrower column set and the SAME default filter \u2014 one query, two projections, so they cannot drift.",
+   "elements": [
+    {
+     "element": "`.qstats` \u2014 7 cells, single row",
+     "shows": "`Median lead` `+24m` \u00b7 `p25` `+7m` \u00b7 `p75` `+58m` \u00b7 `Alerts (n)` `418` \u00b7 `Precision @6h` `0.71` \u00b7 `Late or missed` `31%` \u00b7 `Unmeasurable` `4%`. `.v` mono 14px, lime when the value beats target (median >20m), red when it does not. `Late or missed` is NEVER coloured red \u2014 it is a fact, not a failure, and colouring it red creates the incentive to hide it.",
+     "source": "the `lead_time` query in `mechanism`, over the trailing 7d, `earliness_eligible = true` only",
+     "interaction": "Cell click sets the corresponding filter chip."
+    },
+    {
+     "element": "Distribution histogram, `.chartcard`, 260px",
+     "shows": "10-minute bins from \u2212120 to +240. Bars left of zero in `var(--red)` at `rgba(255,92,110,.85)`; right of zero in `var(--lime)`. A 1px `var(--ion)` vertical rule at zero labelled `crypto twitter` in mono 9px. Median marked with a dashed ion rule and a `.lead-badge` `+24m`. The \u221260..0 region is NOT clipped and NOT collapsed into an 'other' bucket.",
+     "source": "same query, bucketed",
+     "interaction": "Bar click filters the ledger to that bin."
+    },
+    {
+     "element": "Filter `.chips`",
+     "shows": "`All` (`.active` BY DEFAULT \u2014 D2) \u00b7 `Early` \u00b7 `Late` \u00b7 `No coin in 6h` \u00b7 `Unmeasurable`. There is no `Hits` chip and no way to construct one from the UI.",
+     "source": "\u2014",
+     "interaction": "Chip sets the ledger predicate. The default is asserted in a unit test in `features/ops/model/__tests__/` so a future change to it breaks CI."
+    },
+    {
+     "element": "Ledger `.ttable`",
+     "shows": "`Story | Promoted | First mint | First CT | t_crypto | Lead | Coin | State`. Grid `minmax(200px,2.2fr) .8fr .8fr .8fr .8fr 76px .9fr 96px`. Lead cell: `.lead-badge` `+31m early` when positive; when negative, `.lead-dim` restyled to `var(--red)` reading `\u221214m` with a real minus sign (U+2212), never parenthesised, never absolute-valued. State cell reuses `.timing-pill`: Early / Likely late / Live. Coin cell shows `$HORN` + the `CONFIRMED`/`UNSURE` stamp \u2014 an `UNSURE` match is EXCLUDED from the precision numerator and shown greyed with `unverified`.",
+     "source": "`narratives.promoted_at` (NEW COLUMN) \u00b7 `coin_mints` (NEW TABLE, PumpPortal `subscribeNewToken`) \u00b7 `ct_mentions` (NEW TABLE, ~300 accounts @ 2min) \u00b7 `narrative_tickers.match_state` (NEW COLUMN)",
+     "interaction": "Row click \u2192 the story page. `First mint` \u2192 Solscan. `First CT` \u2192 the tweet permalink (the proof; the row is unfalsifiable without it, so a row with no permalink renders `\u2014` and is marked unmeasurable)."
+    },
+    {
+     "element": "Exclusions footer, mono 11px dim",
+     "shows": "Two lines, always: `Excluded: 62 stories first seen already large (left-censored, earliness_eligible = false).` and `Unmeasurable: 17 stories promoted during a 34-minute PumpPortal gap on 24 Jul \u2014 the mint clock was blind, so these are not counted as wins.`",
+     "source": "`narratives where earliness_eligible = false` + `ops_event where kind='mint_stream_gap'`",
+     "interaction": "none. A dropped PumpPortal socket silently INFLATES every lead time in the window; counting those as wins is the most tempting lie the system can tell itself."
+    }
+   ],
+   "states": [
+    "7d window (default)",
+    "24h / 30d windows",
+    "n < 30 in the window \u2014 the median and percentiles render `\u2014` with `not enough data (n=12)` rather than a noisy number",
+    "mint stream gap overlapping the window \u2014 an amber strip above the histogram naming the gap span",
+    "no CONFIRMED matches at all (fresh install) \u2014 table empty with `No matched coins yet. Lead time cannot be computed until the mint clock has run alongside the pipeline.`",
+    "negative-heavy window \u2014 no special treatment, by design",
+    "abstain-heavy window \u2014 a mono note under the precision cell: `abstain rate 34% (target 15\u201330%) \u2014 matching is drifting`, which is a monitoring signal, not a failure"
+   ]
+  },
+  {
+   "name": "B3 \u00b7 The user-facing honesty band (degraded board)",
+   "job": "When the pipeline is stale, say so on the surface that sells liveness, and withdraw exactly the claims that are no longer true \u2014 without emptying the board.",
+   "layout": "A single full-width strip inserted between `.vhead` and `.tbar` on every board surface, plus per-row and per-badge suppressions. It occupies the `.pendbanner` slot \u2014 which currently has NO container styling (only its `b` is styled); this spec defines it: `display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:12px; margin-bottom:14px; font-size:12.5px; line-height:1.45; font-family:var(--sans)`, with `b{font-family:var(--mono)}`. Four tiers, driven by one number.",
+   "elements": [
+    {
+     "element": "Tier FRESH (`ingest_freshness < 15m`)",
+     "shows": "No strip. `.tbar-meta .lz` lime dot pulsing, `.rail-status.hot` `12 live`, `.simtag.is-live`.",
+     "source": "`max(narrative_posts.first_seen_at)`",
+     "interaction": "normal"
+    },
+    {
+     "element": "Tier LAGGING (15\u201345m)",
+     "shows": "Strip, amber: `background:rgba(255,176,32,.10); border:1px solid rgba(255,176,32,.32); color:#ffd98a`. Copy: `Detection is running slow \u2014 the newest story we've seen is <b>22m</b> old.` Board ranks normally. `.lz` goes amber and stops pulsing. `.rail-status` loses `.hot`.",
+     "source": "SLI-1",
+     "interaction": "none"
+    },
+    {
+     "element": "Tier STALE (>45m, or `display_eligible = 0`)",
+     "shows": "Strip, amber, two lines. Line 1 bold: `Live detection is down.` Line 2: `The newest story on this board is <b>3h 12m</b> old. We stopped receiving posts at <b>14:02 UTC</b> and we know about it.` Right-aligned `.tbtn-watch`-skin link `status \u2197`. PLUS: every `.lead-badge` / `.lead-dim` / `+31m early` on every surface is REMOVED, not greyed \u2014 a stale pipeline cannot make an earliness claim, and rendering a dimmed one still makes it. The `Age` column keeps counting up (that stays true). `.simtag` reads `stale \u00b7 14:02 UTC`.",
+     "source": "SLI-1 + SLI-3",
+     "interaction": "Buy and Create stay fully enabled \u2014 Jupiter, DexScreener and pump.fun are independent of our ingestion and are still telling the truth. Withdrawing trading here would be dishonest in the other direction."
+    },
+    {
+     "element": "Tier FALLBACK (`showingIneligible === true`)",
+     "shows": "Strip, red: `background:rgba(255,92,110,.10); border:1px solid rgba(255,92,110,.32); color:var(--red)`. Copy: `These stories no longer pass our freshness gate. We're showing them because the alternative is an empty screen \u2014 treat every number here as historical.` Each row additionally carries a `.lc-pill.cooling`-skin `stale` chip in `.nar-row-meta`.",
+     "source": "`PipelineHealth.showingIneligible` from lib/stories.ts \u2014 ALREADY COMPUTED AND CURRENTLY DISCARDED IN SILENCE. Same boolean must simultaneously emit `ops_event(kind='board_fallback')`, which is SLI-4.",
+     "interaction": "The strip is not dismissible. This state means the board is lying by omission and the user has a right to keep seeing that."
+    },
+    {
+     "element": "Rail behaviour under STALE/FALLBACK",
+     "shows": "`.railhd .lz` stops pulsing and goes `var(--dim)`. `#railTitle` unchanged. `#streamStatus` = `paused`. `.stream` shows the last-known cards with a single `.noresult`-skin line pinned at the top: `No new posts since 14:02 UTC.`",
+     "source": "SLI-1",
+     "interaction": "Cards remain clickable."
+    },
+    {
+     "element": "What is NEVER done",
+     "shows": "No skeleton loaders standing in for stale data. No fabricated freshness (`updated <span id=\"tokUpd\">now</span>` \u2014 the 4-second interval that writes the literal string `now` \u2014 is deleted; it prints a real `dataUpdatedAt`). No auto-refresh spinner implying work is happening. No empty state where a stale one is truthful.",
+     "source": "\u2014",
+     "interaction": "\u2014"
+    }
+   ],
+   "states": [
+    "fresh",
+    "lagging",
+    "stale",
+    "fallback",
+    "recovering \u2014 when SLI-1 returns under 15m, the strip switches to lime for 90 seconds (`Back live \u2014 41 new stories arrived`) then removes itself; the lead badges return only for stories promoted AFTER recovery",
+    "partial (X down, TikTok alive) \u2014 the strip names the platform: `X detection is down; TikTok stories are still arriving.` with `.pbadge.x` inline",
+    "scoring paused (Anthropic budget) \u2014 the existing `.scoring-paused-banner` renders in the rail as today, independently of these tiers, since the board is fresh but incomplete"
+   ]
+  }
+ ],
+ "mechanism": "## PART A \u2014 MECHANISM\n\n### A.1 The gate predicate \u2014 one function, three tiers\n```ts\n// features/wallet/model/gate.ts  (PURE \u2014 mandatory tests)\ntype Gate = 'open' | 'needs-wallet' | 'needs-sol';\nfunction gateFor(action: Action, w: WalletState): Gate {\n  if (action.kind === 'read' || action.kind === 'follow') return 'open';   // follow persists locally\n  if (!w.connected) return 'needs-wallet';\n  if (action.kind === 'comment') return 'open';                            // no SOL required to post\n  const need = action.solIn + GAS_RESERVE_SOL;                             // 0.02\n  return (w.solBalance ?? 0) >= need ? 'open' : 'needs-sol';\n}\n```\nReads, follows and comments never touch the funding path. Only `buy` and `create` can return `needs-sol`. `create` costs `0.02 (rent+fee) + firstBuy` \u2014 the existing `~1.02 SOL` figure is `0.52 + firstBuy` and must be replaced with a real quoted fee.\n\n### A.2 Privy configuration \u2014 v3 facts that will otherwise break the build\n```ts\n<PrivyProvider appId={APP_ID} config={{\n  appearance: { theme:'dark', accentColor:'#3DE0FF',\n                walletChainType:'solana-only',       // REQUIRED \u2014 v3 default is 'ethereum-only'\n                showWalletLoginFirst:true,\n                walletList:['phantom','solflare','backpack','detected_solana_wallets'] },\n  loginMethods:['wallet','email','google'],\n  embeddedWallets:{ createOnLogin:'users-without-wallets' },\n  externalWallets:{ solana:{ connectors: toSolanaWalletConnectors({shouldAutoConnect:false}) } },\n}}>\n```\n- `useSolanaWallets` **does not exist in v3** (zero hits across all `.d.ts`; Privy's own docs still reference it). Use `useWallets()` / `useCreateWallet()` / `useExportWallet()` from `@privy-io/react-auth/solana`.\n- The package ships **no `use client` banner** \u2014 put it on our own provider wrapper, mount near root, gate every consumer on `usePrivy().ready`.\n- Four Solana peer deps are `optional:true` and will resolve differently in clean CI: declare `@solana/kit`, `@solana-program/system`, `@solana-program/token`, `@solana-program/memo` explicitly.\n- Signing is raw bytes: `useSignTransaction()` \u2192 `{transaction: Uint8Array}` \u2192 `{signedTransaction: Uint8Array}`. Base64\u2194Uint8Array is the only conversion needed for Jupiter `/swap/v2/execute`; do **not** pull in `@solana/web3.js` v1 or a `WalletContextState` shim.\n- **Token refresh loop is mandatory.** Privy access tokens live ~1h; Supabase Realtime caches channel auth for the connection lifetime and disconnects on JWT expiry. Without `getAccessToken()` on a 50-minute timer feeding `supabase.realtime.setAuth()`, every user silently drops off the live feed after an hour. This is the most likely launch-day bug in the design.\n\n### A.3 Funding-cliff arithmetic \u2014 the number shown to the user\n```\ntarget_sol   = amount_in + 0.02                                  // gas reserve, never spendable\ndeficit_sol  = max(0, target_sol - balance_sol)\n\nCARD PATH (two legs, and we say so):\n  leg1 fiat\u2192SOL:  gross_usd\n                  \u2212 provider_fee (2.5%\u20134.9%, READ FROM THE QUOTE, never hardcoded)\n                  \u2212 network      (~0.000005 SOL)\n                  = sol_received\n  leg2 SOL\u2192mint:  Jupiter /swap/v2/order\n                  \u2212 route/LP fee (from quote.routePlan)\n                  \u2212 Insidor referralFee (50 bps; Jupiter keeps 20% of it)\n                  \u2212 priceImpactPct\n                  \u2212 priority fee (0.0005 fast / 0.002 turbo SOL)\n                  = tokens_out\n  displayed: \"$50 in \u2192 about $45.90 of $HORN out.\"   (one number, both legs)\n\nSEND PATH:  0 fee, ~30s, only leg2 costs apply.\nSWAP PATH:  USDC\u2192SOL via Jupiter, then leg2.\n```\nIf the provider quote fails, the card tile disables with a reason. A guessed percentage on a screen about money is worse than an absent one.\n\n**Resume**: `localStorage['insidor.trade-intent.v1']` + a `getBalance` poll every 6s (max 150 polls / 15 min / 150 Helius credits). On satisfaction the trade panel is restored with the amount pre-filled \u2014 the user never re-navigates to the coin.\n\n### A.4 Position badge derivation (server-side, at write time only)\n```\nPOST /api/comment\n  1. verify Privy token with @privy-io/node@0.27.0  \u2192 privy_did \u2192 app_user\n  2. moderation pre-pass (address gate first: any base58 32\u201344 char that is NOT\n     one of this narrative's mints \u2192 block, no appeal \u2014 ~90% of spam, one lookup)\n  3. mint = top CONFIRMED coin of the story, else null\n  4. if mint:\n       helius getTokenAccountsByOwner(author_wallet, {mint}, {encoding:'jsonParsed'})  // 1 credit\n       ui = \u03a3 tokenAmount.uiAmount\n       prior = max(snap_position_lamports) for (author_wallet, mint) in comment\n       state = ui > 0 ? 'holds' : (prior > 0 ? 'sold' : 'none')\n     on RPC error/timeout \u2192 state = 'unknown'      // NEVER 'none'\n  5. insert comment with snap_views, snap_coin_count, snap_age_min, snap_top_mcap,\n     snap_position_lamports, snap_position_mint, snap_position_state\n```\nThe snapshot is immutable. Rendering it live would rewrite history and destroy the only non-gameable ranking signal the product has.\n\n---\n\n## PART B \u2014 MECHANISM\n\n### B.1 The health model: healthy \u21d4 all ten SLIs non-breaching\nA heartbeat proves a process **ran**, not that it **produced anything** \u2014 `worker_pipeline_state.last_heartbeat` would have ticked happily through all 48 hours. Every SLI below is therefore an **output** measure, and the evaluator lives where the pipeline's death cannot silence it.\n\n| # | SLI | Warn | **Page** | Class | Caught the outage? |\n|---|---|---|---|---|---|\n| 1 | `ingest_freshness` | 15 m | **30 m** | dead | \u2705 |\n| 2 | `stage_output_stall` | 3 runs | **5 runs (~10 m)** | dead | \u2705 **fastest** |\n| 3 | `gate_supply` | <8 | **0 for 10 m** | dead | \u2705 |\n| 4 | `board_render_fallback` | \u2014 | **\u22651, immediately** | dead | \u2705 **at T+0 of user impact** |\n| 5 | `stage_liveness` | 2\u00d7 interval | **3\u00d7** | degraded | crash-loop |\n| 6 | `funnel_yield` | \u22122\u03c3 | **\u22123\u03c3** | degraded | \"runs but the floor is too high\" |\n| 7 | `budget_burn` | 0.90 | **1.0 before 12:00 UTC** | degraded | budget starvation |\n| 8 | `tick_freshness` | 60 s | **120 s** | dead | board froze |\n| 9 | `lead_time_p50` | <15 m | **<8 m** | degraded | the claim is failing |\n| 10 | `delta_divergence` | 1% | **5%** | degraded | reconciliation bug |\n\n**SLI-2 is the one that would have caught the two-day outage within minutes**, and it costs nothing \u2014 `worker_cycle_log` already records `ingested` per run.\n\n### B.2 The queries, verbatim\n\n**SLI-1 `ingest_freshness`**\n```sql\nselect extract(epoch from (now() - max(first_seen_at)))/60 as ingest_freshness_min,\n       count(*) filter (where first_seen_at > now() - interval '15 minutes') as posts_15m\nfrom narrative_posts;\n```\n\n**SLI-2 `stage_output_stall` \u2014 the one that catches a silent death**\n```sql\nwith runs as (\n  select worker, ran_at, coalesce(ingested,0) as out_rows,\n         row_number() over (partition by worker order by ran_at desc) as rn\n  from worker_cycle_log\n  where ran_at > now() - interval '6 hours'\n)\nselect worker,\n       coalesce(min(rn) filter (where out_rows > 0) - 1, 999) as zero_run_streak,\n       max(ran_at) as last_run\nfrom runs group by worker;\n```\n`999` (never produced anything in 6h) pages immediately.\n\n**SLI-3 `gate_supply`**\n```sql\nselect count(*) as eligible,\n       count(*) filter (where updated_at > now() - interval '30 minutes') as eligible_fresh\nfrom narratives where display_eligible = true;\n```\n\n**SLI-4 `board_render_fallback` \u2014 sharpest, near-zero cost**\n```sql\nselect count(*) as fallback_renders_5m\nfrom ops_event where kind = 'board_fallback' and ts > now() - interval '5 minutes';\n```\nEmitter: `lib/stories.ts` **already computes `showingIneligible` and returns it in silence.** One fire-and-forget insert (deduped 60 s per instance) turns the code's own knowledge that the board is broken into a page.\n\n**SLI-5 `stage_liveness`**\n```sql\nselect s.stage,\n       extract(epoch from (now() - s.last_run))/60 as minutes_since,\n       s.interval_min\nfrom worker_pipeline_state w,\nlateral (values\n  ('ingest',   w.last_run_ingest,   5),\n  ('snapshot', w.last_run_snapshot, 5),\n  ('score',    w.last_run_score,    5),\n  ('cluster',  w.last_run_cluster,  2),\n  ('trends',   w.last_run_trends,  60)\n) as s(stage, last_run, interval_min)\nwhere w.id = 1;\n```\n\n**SLI-6 `funnel_yield`**\n```sql\nwith cur as (\n  select sum(arrived)::numeric a, sum(admitted)::numeric b\n  from ops_funnel where ts > now() - interval '60 minutes'\n), base as (\n  select avg(r) mu, stddev_samp(r) sd from (\n    select sum(admitted)::numeric / nullif(sum(arrived),0) r\n    from ops_funnel\n    where ts between now() - interval '7 days' and now() - interval '1 hour'\n    group by date_trunc('hour', ts)\n  ) h\n)\nselect (select b/nullif(a,0) from cur) as yield_now, mu, sd,\n       ((select b/nullif(a,0) from cur) - mu) / nullif(sd,0) as z\nfrom base;\n```\n\n**SLI-7 `budget_burn`**\n```sql\nselect u.source, u.reads_today, u.cost_usd, c.daily_cap_usd,\n       u.cost_usd / nullif(c.daily_cap_usd,0) as burn_frac,\n       (extract(epoch from (now() at time zone 'utc') - date_trunc('day', now() at time zone 'utc')) / 86400.0) as day_frac,\n       u.cost_usd / nullif(extract(epoch from (now() at time zone 'utc') - date_trunc('day', now() at time zone 'utc'))/86400.0, 0) as projected_eod\nfrom worker_usage u\njoin ops_budget_cap c on c.source = u.source\nwhere u.utc_date = (current_date at time zone 'utc');\n```\n\n**SLI-8 `tick_freshness`**\n```sql\nselect extract(epoch from (now() - max(updated_at))) as seconds_since_tick\nfrom narratives where display_eligible = true;\n```\n\n**SLI-9 `lead_time_p50` (also the ledger query for B2)**\n```sql\nselect percentile_cont(0.50) within group (order by lead_min) as p50,\n       percentile_cont(0.25) within group (order by lead_min) as p25,\n       percentile_cont(0.75) within group (order by lead_min) as p75,\n       count(*) as n,\n       count(*) filter (where lead_min < 0)::numeric / nullif(count(*),0) as late_rate\nfrom (\n  select n.id, n.title, n.promoted_at, m.first_mint_at, c.first_ct_at,\n         extract(epoch from (least(m.first_mint_at, c.first_ct_at) - n.promoted_at))/60 as lead_min\n  from narratives n\n  left join lateral (\n    select min(cm.mint_time) as first_mint_at\n    from narrative_tickers nt join coin_mints cm on cm.mint = nt.mint_ca\n    where nt.narrative_id = n.id and nt.match_state = 'CONFIRMED'\n  ) m on true\n  left join lateral (\n    select min(x.posted_at) as first_ct_at from ct_mentions x where x.narrative_id = n.id\n  ) c on true\n  where n.promoted_at > now() - interval '7 days'\n    and n.earliness_eligible = true\n    and least(m.first_mint_at, c.first_ct_at) is not null\n    and least(m.first_mint_at, c.first_ct_at) < n.promoted_at + interval '6 hours'\n    and not exists (                                  -- exclude mint-clock blind spots\n      select 1 from ops_event g\n      where g.kind = 'mint_stream_gap'\n        and tstzrange((g.detail->>'from')::timestamptz, (g.detail->>'to')::timestamptz)\n            @> n.promoted_at)\n) t;\n```\n\n**SLI-10 `delta_divergence`**\n```sql\nselect count(*) filter (where kind='client_resync')::numeric\n     / nullif(count(*) filter (where kind='client_session'),0) as resync_rate\nfrom ops_event where ts > now() - interval '15 minutes';\n```\n\n**Funnel (region 2) and gate mix (region 5)**\n```sql\nselect date_trunc('minute', ts) t, sum(arrived) arrived, sum(admitted) admitted,\n       sum(tracked) tracked, sum(triggered) triggered, sum(clustered) clustered,\n       sum(promoted) promoted\nfrom ops_funnel where ts > now() - interval '6 hours' group by 1 order by 1;\n\n-- 5-minute sampler feeding the gate chart\ninsert into ops_sli_sample(ts, sli, value)\nselect now(), 'gate_mix', jsonb_object_agg(coalesce(gate_reason,'unknown'), c)\nfrom (select gate_reason, count(*) c from narratives\n      where updated_at > now() - interval '24 hours' group by 1) x;\n```\n`gate_reason` values are already emitted by `worker/lib/cluster-engine.js:deriveGateReason`: `too_old`, `below_views`, `low_meme`, `no_replication`, `no_velocity`, `eligible`.\n\n### B.3 Alerts \u2014 degraded vs dead\n\n**DEAD** = the product's core claim is false right now. SLIs 1, 2, 3, 4, 8.\n\u2192 Slack `#insidor-alerts` with `@channel`, red attachment, the offending SLI's value, the query, and a one-click `/ops` deep link. **Repeats every 15 min until acked** with `/ack <sli>`. Ack expires after 2 h and the alert re-fires.\n\n**DEGRADED** = quality reduced, board still truthful. SLIs 5, 6, 7, 9, 10.\n\u2192 Slack `#insidor-ops`, amber, **one message, threaded, auto-resolves**, never repeats, never a phone.\n\n**Three independent observers, because any one of them can be the thing that died:**\n1. **Watchdog** \u2014 Inngest function, cron every 2 min, `concurrency:{limit:1}`. Evaluates all ten, writes `ops_sli_sample`, posts to Slack, then pings healthchecks.io.\n2. **External dead-man** \u2014 healthchecks.io expects that ping every 2 min with a 5 min grace. If Inngest, Vercel or the watchdog itself dies, healthchecks emails+SMSes at T+5. **Nothing inside the system can suppress this.**\n3. **In-database** \u2014 `pg_cron` every 5 min \u2192 `evaluate_health()` \u2192 `pg_net` POST to the Slack webhook on any page-level breach. Survives total loss of the app platform.\n\n**Replay against the real incident:** T+4 min warn on SLI-2, **T+10 min page** on SLI-2, T+30 min page on SLI-1, and an immediate page the instant the first user hits `showingIneligible`. Detection ~10 minutes. Was: 2 days.\n\n### B.4 The bug that made it silent, and the fix\n`worker/lib/retry.js` defaults to `retryOn: err => err.status === 429`. A 402 from twitterapi.io (out of credit) is not retryable, so it **threw** \u2014 and because no stage wraps its own failure in a recorded row, the throw vanished into a log nobody reads.\n```js\nconst RETRYABLE  = new Set([408, 425, 429, 500, 502, 503, 504]);\nconst FATAL_LOUD = new Set([401, 402, 403, 429_permanent]);  // credential / billing\nretryOn: err => RETRYABLE.has(err.status)\n```\nPlus a mandatory `worker/lib/stage-run.js` wrapper:\n```js\nawait recordStage(sb, 'ingest-x', async () => { ... });\n// writes ops_stage_run { stage, started_at, finished_at, ok,\n//   rows_in, rows_out, http_status, error_class, message }\n```\n`error_class \u2208 {payment_required, unauthorized, rate_limited, upstream_5xx, timeout, parse, unknown}`. Any `payment_required` or `unauthorized` row pages immediately regardless of the SLI table \u2014 a billing failure is not a statistical condition to be averaged.\n\n### B.5 The degrade tiers as one computed value\n```ts\n// features/ops/model/freshness.ts  (PURE)\ntype Tier = 'fresh' | 'lagging' | 'stale' | 'fallback';\nfunction tier(h: PipelineHealth): Tier {\n  if (h.showingIneligible) return 'fallback';\n  if (h.eligibleCount === 0) return 'stale';\n  if (h.minutesStale == null) return 'stale';       // unknown fails to stale, not to fresh\n  if (h.minutesStale > 45) return 'stale';\n  if (h.minutesStale > 15) return 'lagging';\n  return 'fresh';\n}\nconst showLeadClaims = (t: Tier) => t === 'fresh' || t === 'lagging';\n```\n`showLeadClaims` is the load-bearing line: under `stale`/`fallback` every `+31m early` badge is removed from every surface. A dimmed earliness badge on a dead pipeline is still an earliness claim.",
+ "dataContract": "## EXISTS AND IS USED AS-IS\n- `narratives` \u2014 `id, title, blurb, display_eligible, gate_reason, updated_at, created_at, combined_views, views_velocity, lead_time_min, lifecycle, platforms`\n- `narrative_posts` \u2014 `first_seen_at` (the ingest clock for SLI-1), `posted_at` (bigint **epoch ms**), `platform_post_id` (the permalink proof), `tracking_status`\n- `narrative_tickers` \u2014 `ticker, mint_ca, mcap, liquidity, first_deployed`\n- `worker_cycle_log` \u2014 `worker, ran_at, ingested, pruned, snapshots_written, reads_consumed, adaptive_floor, budget_note` \u2192 **SLI-2 works today with zero schema change**\n- `worker_usage` \u2014 `source, utc_date, reads_today, cost_usd, cost_breakdown` \u2192 region 4\n- `worker_budget_state` \u2014 `reads_today, adaptive_floor, floor_min, media_lane_pct`\n- `worker_pipeline_state` \u2014 `last_run_ingest|snapshot|score|cluster|trends, last_heartbeat, scoring_paused, pause_reason, anthropic_spent_usd, last_health_alarm_at` \u2192 SLI-5\n- `worker_crashes` \u2014 rail \"Errors\" fallback source\n\n## \ud83d\udd34 DOES NOT EXIST \u2014 PART A\n| Object | Why it blocks |\n|---|---|\n| `app_user(id, privy_did unique, wallet_address unique, wallet_type, created_at)` | Nothing maps a Privy DID to anything. Every A-surface needs it. |\n| `follow(user_id, target_type 'narrative'\\|'coin', target_id, created_at)` | Watchlist is two in-memory `Set`s today and dies on refresh. Blocks the localStorage\u2192account merge in A1. |\n| `holding(user_id, mint, narrative_id, tokens, cost_sol, entry_price, opened_at, minutes_early)` | `minutes_early` is the number the product is about, and it must be allowed to be **negative and shown**. |\n| `comment(id, narrative_id, user_id, author_wallet, body, status, created_at, snap_views, snap_coin_count, snap_age_min, snap_top_mcap, snap_position_lamports, snap_position_mint, snap_position_state)` | The stamp is **unrecoverable retroactively** \u2014 build it before comments ship. `snap_position_state \u2208 holds\\|sold\\|none\\|unknown` is what makes A4's fail-closed rule expressible. |\n| `trade_intent(user_id, mint, side, amount_sol, slippage_bps, created_at, expires_at, state)` | Optional server mirror of the localStorage intent, so the funding cliff survives a device switch. |\n| `poster` / `payout` | Not needed for F4; named because the create path's fee split (`.split` panel) is static markup today claiming 3%/1%, while the flow doc specifies maker 50 / poster 40 / Insidor 10. **The UI currently asserts a number the system does not implement.** |\n\n## \ud83d\udd34 DOES NOT EXIST \u2014 PART B\n| Object | Why it blocks |\n|---|---|\n| `narratives.promoted_at timestamptz` | **The single most important missing column.** Lead time is measured from PROMOTE and `promoted_at` must be set once, forever. Today `lead_time_min` is assigned at gate time as `narr.lead_time_min ?? narr.age_min` and recomputed on every cluster cycle \u2014 so it is not a fixed clock and B2 cannot be built on it. |\n| `narratives.earliness_eligible boolean` | Left-censored entries (first seen already large) must be permanently excluded from the earliness denominator or the headline number is a lie. |\n| `narrative_tickers.source text ('cashtag'\\|'llm'\\|'mint_in_post')` | No provenance column exists, so an LLM-invented ticker is indistinguishable from a real cashtag downstream. Root cause of the $KANG class. |\n| `narrative_tickers.match_state ('CONFIRMED'\\|'UNSURE'\\|'REJECTED')`, `.match_score numeric`, `.mint_time timestamptz`, `.evidence jsonb` | **THE ONE RULE is uncomputable without `match_state`** \u2014 the primary button is a function of the CONFIRMED count and there is no CONFIRMED. Also gates B2's precision numerator and the abstain-band monitoring. |\n| `coin_mints(mint pk, mint_time, first_seen_at, symbol, name, creator, source)` | Clock A (PumpPortal `subscribeNewToken`). Without it `t_mint` does not exist and B2 cannot compute lead time at all. |\n| `ct_mentions(id, handle, platform_post_id, posted_at, text, narrative_id, first_seen_at)` | Clock B (~300 CT accounts @ 2 min). `t_crypto = min(t_mint, t_ct)`. Both indexes must be written **before** any alert or the number has lookahead bias. |\n| `ops_funnel(ts, stage, platform, arrived, admitted, tracked, triggered, clustered, promoted)` | **The funnel data is computed in-process today and thrown away** \u2014 `worker/lib/funnel-log.js` only `console.log`s it. Region 2 and SLI-6 are both blocked on persisting it. |\n| `ops_stage_run(id, stage, started_at, finished_at, ok, rows_in, rows_out, http_status, error_class, message)` | The 402 had nowhere to be recorded. This table is the fix. |\n| `ops_event(id, ts, kind, severity, subject, detail jsonb)` | Kinds: `board_fallback` (SLI-4), `alert_fired`, `alert_resolved`, `mint_stream_gap`, `wallet_export`, `client_resync`, `client_session`. |\n| `ops_sli_sample(ts, sli, value jsonb, state)` | Needed for \"0 for 10 minutes\" style thresholds, the 60m sparklines, and the region-5 gate chart. Without history every SLI is instantaneous and cannot express duration. |\n| `ops_budget_cap(source pk, daily_cap_usd, daily_cap_reads)` | Caps live in env/code today and are therefore not joinable in region 4. |\n| `evaluate_health()` pg function + `pg_cron` + `pg_net` | The in-database third observer. |\n\n## OTHER FLAGGED GAPS (existing code, not schema)\n- `.pendbanner` **container has no CSS** (only its `b`) \u2014 B3's honesty band is spec'd into that slot and defines it.\n- `.solpill` markup **does not exist in any commit** although the CSS and `live.js:renderSolNav()` driver do \u2014 A1 requires it.\n- `.auth-panel` is fully styled and never rendered; A4's account panel ports it rather than inventing one.\n- `.dim` has **no CSS rule** despite being used in `#bal`, the safety-check unknown state, and the trade note \u2014 intended `color:var(--dim)` (`#5A5A62`). A4's `Balance \u2014` state depends on it.\n- `updated <span id=\"tokUpd\">now</span>` writes the literal string `now` every 4 s \u2014 a fabricated freshness signal that must be deleted before B3 ships, or the honesty band contradicts the chrome above it.\n- `api/safety.js` reads authority fields off RugCheck `/report/summary`, which does not contain them, and emits `mintRevoked:true` for USDC. Not a wallet bug, but it is the same fail-open pattern as the position badge and should be fixed alongside it (`/v1/tokens/{mint}/report`).\n- `lib/token-lookup.js:70` `if (!pair.pairCreatedAt) return 0;` \u2014 missing timestamp renders as `ageMin = 0`, i.e. \"brand new\", on a terminal that sells earliness. Same class as `no position` on a failed read.",
+ "buildOrder": [
+  "B0 \u00b7 Two hours, zero new infra, closes the outage class: widen `worker/lib/retry.js` retryOn to {408,425,429,500,502,503,504}; add `worker/lib/stage-run.js` + `ops_stage_run` and wrap all seven stages; make `lib/stories.ts` emit `ops_event(kind='board_fallback')` on the `showingIneligible` it already computes. Ship alone \u2014 this is the incident fix.",
+  "B1 \u00b7 The watchdog and the dead-man in one PR: `ops_sli_sample`, `ops_event`, `ops_budget_cap`; an Inngest `watchdog` cron @2min evaluating SLIs 1,2,3,4,5,7,8 (the seven that need no new clocks); Slack webhook with the degraded/dead split; healthchecks.io ping. SLI-2 alone retires the two-day failure mode. Do NOT ship the dashboard first \u2014 alerting without a dashboard is useful; a dashboard nobody is looking at is not.",
+  "B2 \u00b7 Persist the funnel: `ops_funnel` table, `funnel-log.js` writes rows as well as stdout, `pg_cron` + `pg_net` `evaluate_health()` as the third observer. Unblocks SLI-6.",
+  "B3 \u00b7 `/ops` regions 0\u20134 (verdict, SLI table, funnel, stages, spend) behind the server-side DID allowlist. Region 5 needs only the `gate_mix` sampler from B2.",
+  "A1 \u00b7 Wallet provider + gate: `PrivyProvider` wrapper with `walletChainType:'solana-only'` and the 50-min `getAccessToken` \u2192 `realtime.setAuth()` refresh loop; `features/wallet/model/gate.ts` with tests; `app_user` + `follow` tables; `.gate-inline`; localStorage follow set with account merge. Board is unchanged and fully readable \u2014 this step adds no visible gate that was not already there.",
+  "A2 \u00b7 Connect sheet (both paths) + `.user-chip` balance + ported `.account-panel` + the `.solpill` markup that has never existed. Trade panel gets real signed-out quotes and the intent handoff.",
+  "A3 \u00b7 The funding cliff: `.fundbox` in-place panel, send/card/swap tiles, the two-leg cost line read from live quotes, `trade_intent` + the 6-second balance watcher and auto-resume. Highest-drop moment, so it ships as its own release with funnel instrumentation on every tile.",
+  "A4 \u00b7 Export & security section in `/you`, `useExportWallet`, the 3-second dwell, the never-exported-with-balance nudge, `ops_event(kind='wallet_export')`.",
+  "B4 \u00b7 The honesty band: `features/ops/model/freshness.ts` tier function with tests, the `.pendbanner` container style, the four tiers, and \u2014 the load-bearing part \u2014 `showLeadClaims` suppressing every `.lead-badge` under stale/fallback. Delete the `tokUpd` fake-freshness interval in the same PR.",
+  "B5 \u00b7 The clocks: `coin_mints` from the PumpPortal singleton (supervised, heartbeat, gap-detection writing `ops_event(kind='mint_stream_gap')`), `ct_mentions` from the ~300-account poll, `narratives.promoted_at` set once at PROMOTE plus `earliness_eligible`. Nothing about lead time is measurable before this.",
+  "B6 \u00b7 `/ops/earliness` ledger + SLI-9 + the public `/record` projection off the identical query, with the `All`-default filter asserted in a CI test.",
+  "A5 \u00b7 Comment position stamp: `comment` table with all six snap columns, the server-side write path with the address gate and the fail-closed `unknown` state, `.pos-badge`. Ships with moderation in the same release, never before it."
+ ],
+ "openQuestions": [
+  "Card-onramp fee is quoted as 2.5\u20134.9% but that spread is provider/region/amount dependent and both `useAddFunds` and `useFiatOnramp` are `@experimental`. Run a live $50 quote against a target mint before any copy claims a number \u2014 and decide the fallback if Privy's experimental hooks change shape mid-beta.",
+  "Does the funding cliff justify a sponsored first trade? Insidor could subsidise the ~$2 card fee on a user's first buy under $50 and recover it from Jupiter referral over subsequent trades. That is a founder call about CAC, not a design call, but it changes A3's layout (a fourth tile) materially.",
+  "Should `trade_intent` live server-side at all, or is localStorage sufficient? Server-side survives a device switch and gives a real drop-off funnel; it also means we store an unexecuted trading intention, which is a different data-retention posture.",
+  "Privy `role` claim: Supabase third-party auth needs `role:\"authenticated\"` in the JWT and Privy documents no claim-injection hook. We ship server-side writes via service role for now \u2014 but if the answer from Privy support is 'never', the comment write path stays a route handler permanently and RLS-on-the-client is off the table for good.",
+  "What is the ops allowlist mechanism at scale \u2014 env var of Privy DIDs is fine for 3 people and wrong at 15. Does `/ops` get a real role on `app_user`, and if so who grants it?",
+  "SLI-9's page threshold (`lead_time_p50 < 8m`) fires on a product-quality regression, not an outage. Paging on it at 3am is arguably wrong. Should it be a daily digest instead, with paging reserved for the five dead-class SLIs?",
+  "Abstain-rate monitoring: the design says 15\u201330% is healthy and a rising rate is a signal, not a failure. What is the actual alert shape \u2014 a warn at >35% sustained 6h, or a weekly review item? Alerting on it invites threshold-lowering, which defeats D1.",
+  "The `sold` position state needs either a prior snapshot for the same (wallet, mint) or a Helius `getTransactionsForAddress` call. The first is free but only works if the user commented before selling; the second costs credits on every comment. Which, and is `sold` worth the cost versus collapsing it into `no position`? (Recommendation: keep it \u2014 'talking their book after exiting' is exactly what the badge exists to expose.)",
+  "Nothing in this spec covers what a user sees when their own launched coin's story is later reclassified NEVER-SURFACE under D3. The coin exists, the wallet holds fees, and the story is gone from every board. That state needs a decision before creation ships."
+ ],
+ "priorArt": [
+  "`site/index.html:3673-3848` \u2014 the existing Privy module. Reuse its error boundary, the always-render-a-plain-Connect-button-first pattern, and `walletLabel()`. Do NOT reuse its `useSolanaWallets` call or its `@privy-io/react-auth@1` esm.sh import \u2014 both are v1 and the hook is gone in v3.",
+  "`docs/research/design-component-inventory.md` \u00a71.6 `.wallet-btn` / `.user-chip`, \u00a71.5 `.solpill`, \u00a78.8 `.tradebox` (`#bal`, `.pre`, `.recv`, `.mini`, `.doit`, `.fine`), \u00a79 create sheet (`.coll`, `.buychips`, `.split`), \u00a711 `.timing-pill` / `.risk-pill` / `.lead-badge` / `.lc-pill`. Everything in this spec except `.gate-inline`, `.pos-badge`, `.ops-verdict` and `.ops-funnel` is an existing component.",
+  "`.auth-panel` (inventory \u00a71.6, 'fully styled but never rendered') \u2014 A4's account panel is a port, not a new component.",
+  "`lib/stories.ts:PipelineHealth` \u2014 `showingIneligible` and `minutesStale` already exist and already drive nothing. B3's four tiers and SLI-4 are both built on values the code computes today and discards.",
+  "`worker/lib/funnel-log.js` \u2014 the six-stage funnel already has the right shape and the right vocabulary; it just needs a table under it.",
+  "`worker/lib/cluster-engine.js:deriveGateReason` \u2014 the six `gate_reason` values are the exact legend for /ops region 5. No new taxonomy needed.",
+  "`docs/research/03-system-design.md` \u00a76.5 \u2014 the ten-SLI table and the two-independent-observers model. This spec makes each SLI a runnable query and adds the third (in-database) observer.",
+  "Status-page convention (GitHub, Cloudflare): name the component, name the time it broke, say what still works. B3's stale-tier copy follows it \u2014 'we stopped at 14:02 UTC and we know about it' \u2014 rather than a spinner.",
+  "healthchecks.io as the external dead-man's switch: the standard cheap answer to 'who watches the watchdog', and the only observer nothing inside the system can silence."
+ ]
+}

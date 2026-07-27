@@ -1,0 +1,536 @@
+{
+ "feature": "Feature 3 \u2014 Creating coins: the mint flow, the auto-namer, and the anti-duplicate check",
+ "summary": "The create flow turns a story Insidor detected into a live pump.fun coin in two steps and one signature, with the story locked at the top so a coin can never be made out of nothing. Its one job is to make the CREATE path \u2014 the state the matcher lands in 15-30% of the time by design (D1 abstain) and 50-70% of the time by story coinability (\u00a73.5) \u2014 a first-class monetised outcome rather than a consolation prize. The interesting half is the auto-namer, which does not ask a model to invent a ticker: it harvests the phrase people are already repeating across the cluster, ranks candidates deterministically, and uses one Haiku call only to choose and title-case among grounded spans, with a hard substring gate that makes a $KANG-class hallucination structurally impossible.",
+ "mechanism": "## A. THE AUTO-NAMER\n\n### A0. The premise that decides the whole design\nA memecoin's name is not a description of the post. It is **the phrase people are already repeating.** WIF is not \"dog with hat\", it is `dog wif hat` with the misspelling preserved because the misspelling is the meme. MOODENG is a proper name. SIXSEVEN and HAWKTUAH are utterances. CHILLGUY is a caption with the spaces removed. In every real case the ticker is a *span that already exists in the corpus*, not a synthesis.\n\nThat reframes the namer from a generation problem into a **retrieval + normalisation problem**, and retrieval is something Insidor is uniquely positioned to do because it holds the whole cluster, not one post. The thing that goes viral is the thing that gets quoted; the thing that gets quoted has a high `df_in_story`.\n\nConsequence: **the model never authors a token.** It ranks and title-cases grounded spans. This is the create-path application of \u00a75.4's rule that SUGGESTED is a prefill input and never a verdict.\n\n### A1. Stage 0 \u2014 deterministic harvest (no model call, ~4ms, runs at PROMOTE and is cached on the story)\n\nSix candidate sources, each carrying provenance:\n\n| src | extraction | weight `w_source` |\n|---|---|---|\n| `cashtag` | `/\\$([A-Za-z][A-Za-z0-9]{1,12})\\b/` over `narrative_posts.text` + `sample_replies` across the whole cluster | 1.00 |\n| `onscreen` | OCR of the selected video frame / image; on TikTok the on-screen caption is the meme far more often than the spoken audio | 0.85 |\n| `ngram` | n=1..4 spans scored by the \u00a73.5 distinctiveness formula generalised to n-grams | 0.80 |\n| `entity` | proper nouns from the clustering call's `subject` when `subject_type \u2208 {animal, character, object, place, brand, phrase}` | 0.75 |\n| `mint_in_post` | a base58 mint pasted in a post \u2192 not a name candidate, it is a **duplicate signal**; routed to \u00a7B | n/a |\n| `llm_prior` | existing `post_meme_scores.suggested_ticker` / `suggested_name` for posts in this story | 0.35 |\n\n```\ndistinctiveness(span) = (df_in_story(span) / n_posts) \u00d7 ln( N_posts_24h / (1 + df_global_24h(span)) )\n```\nKeep spans with `df_in_story \u2265 2`, or `df_in_story = 1` when the story has one post and the span is in the top post. `llm_prior` is **never allowed to be the primary unless at least one of cashtag/onscreen/ngram/entity corroborates it** \u2014 this is the create-path guard against the exact mechanism that produced $KANG.\n\n### A2. Stage 1 \u2014 normalise to ticker form\n```\nnorm(span) = upper(span) |> strip non-[A-Z0-9] |> collapse\n```\n- Length: hard cap **13** (`create_v2` symbol limit), target **4-9**.\n- Multi-word \u2192 joined with no separator (`just a chill guy` \u2192 `JUSTACHILLGUY` 13ch \u2192 too long).\n- Over-length recovery, in order: (a) drop stopwords (`JUSTACHILLGUY` \u2192 `CHILLGUY`); (b) the single most-distinctive word if it clears the generic test; (c) initials only when \u22653 words and it reads as an acronym. **Never truncate mid-word** \u2014 `CHILLG` is dead on arrival and signals low effort to every trader who sees it.\n- Deliberate misspellings from the source are preserved verbatim. Never \"corrected\".\n- Reject: `GENERIC` set (VIRAL, MEME, TREND, NEWS, TODAY, GUY, MAN, DOG, CAT, LOL alone), leading digit, and `storyDf(term,'30d') / N_stories_30d \u2265 0.02` (the \u00a73.5 generic-subject test, reused).\n\n### A3. Stage 2 \u2014 ranking (this is what renders instantly; the model has not been called yet)\n```\nscore(c) = 0.34\u00b7w_source(c)\n         + 0.26\u00b7min( df_in_story / max(3, 0.25\u00b7n_posts), 1 )\n         + 0.18\u00b7clamp01( distinctiveness / 10 )\n         + 0.12\u00b7len_fit(c)\n         + 0.10\u00b7( 1 \u2212 collision_pressure(c) )\n\nlen_fit            = 1.0 (4-9ch) | 0.7 (3ch or 10-11ch) | 0.35 (12-13ch) | 0 otherwise\ncollision_pressure = clamp01( log10(1 + max_liquidity_usd_of_live_tokens_with_that_symbol) / 7 )\n```\n`collision_pressure` reuses the \u00a75.6 `collision_idf` intuition from the other direction: a symbol already carrying a $10M token is a bad name to ship, not because of legal risk but because your coin is unfindable.\n\n### A4. Stage 3 \u2014 one `claude-haiku-4-5` call, structured output, ~900in/250out \u2248 $0.0005\n\n**System prompt (verbatim, ~700 tokens \u2014 do not prompt-cache, Haiku's minimum cacheable prefix is 4,096):**\n```\nYou name memecoins from viral posts.\n\nA memecoin's name is not a description of the post. It is THE PHRASE PEOPLE ARE\nALREADY REPEATING. Find that phrase in the evidence you are given and normalise\nit. Never invent one.\n\nHow real memecoins get named, in priority order:\n1 CASHTAG   the post or replies already contain $TICKER. Use it. That is reading,\n            not naming.\n2 UTTERANCE the thing that was said, quoted verbatim, misspellings preserved.\n            \"hawk tuah\" -> HAWKTUAH.  \"six seven\" -> SIXSEVEN.\n3 PHRASE    the caption people repeat, spaces removed. \"just a chill guy\" ->\n            CHILLGUY. \"dog wif hat\" -> WIF. Keep deliberate misspellings; the\n            misspelling IS the meme.\n4 ENTITY    the proper name of the animal, character, object or place.\n            \"Moo Deng\" -> MOODENG.  \"Pesto the penguin\" -> PESTO.\n5 NEVER a description. \"hippo baby zoo thailand\" is not a name. MOODENG is.\n\nHard rules:\n- Every candidate must come from source_spans. Quote it verbatim in source_span.\n  If you cannot ground a candidate in a provided span, do not produce it.\n- symbol: A-Z0-9 only, starts with a letter, 3-13 chars, target 4-9.\n- name: <=32 chars, the human-readable form of the SAME phrase, title case.\n- Never a private individual's real name. Public figures and stage names are fine.\n- Never propose a symbol in exclude_symbols.\n- If collisions[symbol].max_liquidity_usd > 50000, deprioritise it: a large coin\n  already owns that ticker.\n- The three alternatives must differ in KIND from the primary and from each other.\n  If primary is a phrase, give an utterance, an entity, and a short compression.\n- If no phrase repeats and no entity is named, set namable=false and say why in one\n  plain sentence a non-crypto person would understand. Do not force a name.\n```\n\n**User message:** `{story:{title, blurb, subject, subject_type, platforms, combined_views, n_posts}, posts:[top 3 by views: {platform, handle, views, text, onscreen_text, top_replies[3]}], source_spans:[{span, kind, df_in_story, distinctiveness, in_replies}] (top 12), entity_keys[8], collisions:{SYM:{n_live, max_liquidity_usd}}, exclude_symbols[], attempt}`\n\n**Output schema:** `{namable:bool, reason_if_not:string|null, primary:{symbol,name,source_span,kind,why}, alternatives:[3 \u00d7 same]}`\n\n### A5. The hallucination gate \u2014 the load-bearing 12 lines\nServer-side, before anything reaches the UI, in order. Any failure discards the **entire** model output and falls back to the Stage-3 deterministic ranking:\n1. `source_span` must be a case-insensitive substring of `concat(posts[].text, onscreen_text, top_replies, entity_keys, source_spans[].span)`.\n2. `^[A-Z][A-Z0-9]{2,12}$`\n3. `len(name) \u2264 32`, `len(symbol) \u2264 13`\n4. `symbol \u2209 blocklist \u222a exclude_symbols`\n5. `symbol == norm(source_span)` **or** `symbol` is a whole-word subset of `norm(source_span)` \u2014 blocks creative leaps while allowing stopword-dropping.\n6. generic test (A2).\n\nThis is why the namer cannot produce a $KANG. A ticker that appears nowhere in the corpus cannot survive rule 1.\n\n### A6. The render contract \u2014 the form never waits on the model\n`p50` for the Haiku call is ~700-900ms; the form must open in <100ms. So:\n- Form opens instantly populated with the **deterministic #1**, `.namer-why` shimmering.\n- Model result arrives \u2192 if the user has touched neither field, fields swap and `.namer-why` fills. If the user has typed **anything**, the model's primary silently becomes alternative slot 1 instead. Never yank text out from under a typing user.\n- Model unavailable / `_scoringPaused` / >2.5s timeout \u2192 deterministic list stands, `.namer-why` reads `Suggestions are off right now \u2014 pick a name yourself.`\n\n### A7. Alternatives and regeneration\nThree alternative `.achip`s, selected for **diversity of kind**, not next-best score: one compression, one entity/proper noun, one drawn from a *different post* in the cluster. Each carries a `--dim` micro-provenance (`in the caption`, `said in 34 posts`, `from the replies`).\n\n`\u21bb Try another`:\n- Presses 1-2 are **free and local** \u2014 they cycle to ranked candidates 4-8, already computed. No network, no cost, instant.\n- Press 3 fires a second model call with `exclude_symbols = everything shown` and `attempt: 2`.\n- Hard cap 3 model calls per user per story. After that: `That's every angle we found. Type your own.`\n- **Regeneration never changes the image and never changes the story.** Only the symbol+name pair. The image is evidence; re-rolling it would sever the link to the post.\n- Every run writes `namer_run{shown, accepted_symbol, accepted_edited}`. What users pick over what was ranked #1 is a free, self-growing label set for re-fitting the A3 weights. This is the same trick \u00a75.9 applies to the buy path.\n\n### A8. No namable subject \u2014 three distinct outcomes, never one generic error\n| Cause | Behaviour |\n|---|---|\n| `coinability_tier = 0` (identifiable private individual, death, violence against a named person, minors) \u2014 **D3** | The story never surfaces. Not a create-flow state at all. |\n| `coinability_tier = 1` (public tragedy, ongoing disaster) | The Create CTA is **never rendered** on any surface. If reached by a stale link: `This story isn't available to coin.` + `Back to the story`. No mechanics explained, no \"why?\" link \u2014 explaining the boundary is a bypass manual. |\n| `namable = false` on an otherwise normal story | **The form opens anyway.** Ticker field empty with placeholder, `.coll` in default state, and `.namer-empty` replaces the alternatives row: `We couldn't find a name in this story \u2014 no phrase repeats across the posts. Pick one yourself.` Below it, the top 5 `entity_keys` as non-committal chips labelled `words from the posts` so the user has raw material. Create enables the moment the field validates. **The namer is an accelerant, never a gate.** |\n\n### A9. The image \u2014 decision: the source post's media, cropped, re-hosted. Never generated.\n\nFour reasons, in order of weight:\n1. **It is the evidence.** The thesis is that the coin is downstream of the story. A generated logo severs the visual link that makes the coin recognisable to the next 10,000 people who watch the same video. Recognition is distribution.\n2. **Insidor's own matcher depends on it.** \u00a75.8 gives `S_img = 1.00` at `hamming(pHash) \u2264 6`. A crop of the post's media confirms against the post at ~1.0. A generated logo lands in the SigLIP channel, **capped at 0.60, which cannot confirm alone** \u2014 meaning Insidor would mint coins its own pipeline cannot verify. Disqualifying.\n3. **\u00a73.16 measured 58.6% byte-identical duplicate logos** across the newest 599 pump.fun coins. Generating puts us in that bucket, indistinguishable from slop.\n4. Generation adds 5-15s to a flow whose pitch is \"30 seconds\" inside a 20-90 minute head start.\n\n**Production pipeline:**\n- `media_type = photo` \u2192 center-weighted square crop, 1000\u00d71000, PNG q90, \u22642MB.\n- `media_type = video` \u2192 **frame selection, not frame 0.** Frame 0 on TikTok is usually black or a title card. Sample 5 frames at 10/25/40/55/70% of duration; pick max Laplacian variance (sharpness) among frames with the largest subject bbox; tie-break earliest. If OCR found on-screen text, prefer a frame where the text is legible \u2014 the text *is* the meme. `ffmpeg` server-side, ~600ms.\n- `media_type = link` \u2192 the OG image of the linked page.\n- **No media (text-only X post)** \u2192 render the post itself: text set in Clash Display on `#0C0C0E`, platform mark, handle, 1000\u00d71000. This is not generating art, it is a screenshot of the evidence \u2014 which is what people screenshot anyway. Deterministic, on-brand, still pHash-matchable to the post record.\n- Every image is SHA-256'd and **re-hosted to Insidor storage** before upload (gotcha 33: 43% of logo URLs point at `ipfs.io`; the hash also feeds the anti-dupe index and the IDF penalty for free).\n- User may upload their own (PNG/JPG/GIF \u22642MB). If they do, a persistent `--dim` line: `Custom image \u2014 this won't match the post automatically.` Because it measurably degrades the story\u2192coin match and they should know.\n\n**Crop UI:** 1:1 frame over the media, drag to reposition, zoom slider. Two presets `Fit` (letterbox onto `#060607`) / `Fill` (center crop); default `Fill`. No filters, no text tools, no stickers.\n\n---\n\n## B. THE ANTI-DUPLICATE CHECK\n\nSearch's entire reason to exist, executed inside the create flow. Runs three times: **on open**, **debounced 250ms per keystroke \u22652ch**, and **again immediately before signing** with a 6s timeout \u2014 because ~40 seconds elapse between open and sign and that is precisely the window in which someone else mints.\n\n### B1. Corpora and queries\n```sql\n-- 1. exact + near symbol.  LIQUIDITY-first, never volume-first (\u00a75.1 correction).\nselect mint, symbol, name, image_sha256, first_mint_at, liquidity_usd, mcap_usd, holders\nfrom   coin_index\nwhere  symbol_norm = $1 or symbol_norm % $1          -- pg_trgm, sim >= 0.6\norder  by liquidity_usd desc nulls last, first_mint_at asc\nlimit  20;\n\n-- 2. image duplicate (only while the image is still the post's media)\nselect mint, symbol, first_mint_at, liquidity_usd,\n       bit_count(image_phash # $phash) as dist\nfrom   coin_index\nwhere  bit_count(image_phash # $phash) <= 6\n  and  first_mint_at > now() - interval '7 days'\norder  by dist asc limit 10;\n\n-- 3. this story's own matches (already computed by \u00a75)\nselect ticker, mint_ca, match_state, match_score, liquidity, mcap, first_deployed\nfrom   narrative_tickers\nwhere  narrative_id = $story and match_state in ('CONFIRMED','UNSURE');\n```\nLive overlay: Jupiter `tokens/v2/search?query={symbol}` for anything the index has stale, because `coin_index` freshness is the failure mode that matters here.\n\n### B2. The push ladder \u2014 four bands, four different pressures\n| Band | Trigger | How hard we push |\n|---|---|---|\n| **D-CONFIRMED** | `narrative_tickers.match_state='CONFIRMED'` for *this* story | **The form does not open.** THE ONE RULE: the entry point renders `Buy $TICKER` instead. If a coin lands mid-session with the form already open, the sheet swaps to a full interstitial: `$FERRY was made 40 seconds ago.` \u2192 `Buy $FERRY` primary, `Make a different one` as a text link. Framed as a save, not a loss. |\n| **D-STRONG** | exact symbol **and** `first_mint_at \u2265 earliest_post_at \u2212 10min` **and** `liquidity \u2265 $1k` **and** (pHash \u2264 6 **or** name-cos \u2265 0.75) | Strongest push short of blocking. `.coll.taken` expands into a `.dupe-card` (icon, symbol, name, money in it, owners, age, `made 4m after the post`). **Primary button becomes `Buy $FERRY`**; `Create it anyway` demotes to a bordered secondary requiring one extra tap, and the cost line gains `You'd be the second $FERRY. The first has $18.2K in it.` We never fully block \u2014 a competing coin is a legitimate intent, and D1 says show the uncertainty, not hide the option. |\n| **D-WEAK** | exact symbol but >48h older than the story, **or** zero liquidity, **or** a different subject \u2014 the $KANG/$PUMP class | **Informational only.** One amber line: `$PUMP already exists \u2014 a $1.8B token from 2024, unrelated to this story. Yours would be a different coin with the same ticker.` **Primary stays `Create $PUMP`.** Pushing a user toward a 2024 major off a fresh story is exactly the bug \u00a75 exists to kill; the anti-dupe check must not reintroduce it from the other direction. |\n| **D-IMAGE** | pHash \u2264 6 against a mint in the last 7 days, symbol differs | Amber line + `.dupe-card`: `This image is already a coin \u2014 $CUPS, made 12m ago, $4.1K in it.` Secondary `See $CUPS`. **Primary stays Create** \u2014 same image under a different ticker is a real fork, not a duplicate. |\n\n### B3. Interaction with the UNSURE band (the subtle part)\nPer \u00a75.9 an UNSURE story's CTA is already `Create the coin`, so the create form is the *correct* destination, not a mistake to be corrected.\n\n- The UNSURE candidate renders **once**, in a `.dupe-unsure` block **above** the name grid \u2014 not in `.coll`. Muted `--dim` border, no amber: `Possibly already made: $KANG \u2014 we're not confident it's from this story. [View it]`.\n- **An UNSURE match never demotes the create button and never changes the primary.** Two reasons: (a) D1 \u2014 abstain never means hide, and it equally never means *push*; applying amber pressure on a 0.45-0.79 score converts an honest abstention into a recommendation. (b) Security \u2014 score-gated suppression is a denial-of-creation vector: mint a decoy with a matching ticker and you suppress everyone else's create flow on a hot story.\n- The push ladder is therefore gated on `match_state='CONFIRMED'` **or** on hard independent evidence (exact symbol + temporal window + image-or-name), **never on `match_score` alone.**\n- If the proposed ticker happens to equal the UNSURE symbol: one line under the field, `Same ticker as the possible match above.` Nothing more.\n- The namer **excludes** the UNSURE symbol from `primary` but keeps it as alternative #1, labelled `possible match`. The user can still choose it deliberately.\n\n### B4. Degradation\n- `coin_index` freshness > 3 min \u2192 `.coll` gains `--dim` line `Checking against coins up to 4 minutes old.` and the pre-sign re-check bypasses the index entirely, going direct to Jupiter/DexScreener.\n- Pre-sign re-check times out or errors \u2192 **does not block signing.** `Couldn't re-check for duplicates` in the confirm panel, user may proceed. A failed read must never consume the user's head start.\n\n---\n\n## C. TRANSACTION MECHANICS\n\n### C1. What is signed\n```ts\nconst mint = Keypair.generate();                    // persisted before signing (see F4)\nix1 = PUMP_SDK.createV2Instruction({\n  mint: mint.publicKey,\n  name,                    // <= 32\n  symbol,                  // <= 13\n  uri,                     // <= 200, ipfs://...\n  creator: creatorPubkey,  // independent of `user` \u2014 officially sanctioned\n  user: signerPubkey,\n});\nix2 = firstBuyLamports > 0 ? PUMP_SDK.buyInstruction({...}) : null;   // BUNDLED\nix3 = D2 ? PUMP_FEES.createFeeSharingConfig({...}) : null;            // config only, no shares\n// tx2, deferred: PUMP_FEES.updateFeeSharesV2([...]) after poster address verification\n```\n- **The first buy is bundled into the launch tx.** Two signatures for one action is worse UX, and an unbundled dev buy is strictly worse than everyone else's \u2014 the sniper bots win the gap. Failure of the buy fails the launch, and the confirm screen says so: `If your first buy can't fill, the whole launch is cancelled and nothing is spent.` (In practice it always fills \u2014 you are the first buyer at the curve floor.)\n- **`creator` may differ from `user`.** Today they are the same. The moment they diverge, the confirm screen must show **two rows** \u2014 `Signed by` and `Creator on-chain` \u2014 because a silent divergence is a footgun aimed at the user.\n- **Shares are deferred, config is not** (\u00a73.2): `createFeeSharingConfig` is not the locking call; `updateFeeSharesV2` is. Creating the config at launch and writing shares seconds later, after the poster's derived address is verified, is materially safer than one blind transaction. Cost: any trade in the gap pays 100% to the creator \u2014 which we disclose rather than hide.\n\n### C2. Cost, itemised (shown in a popover on the cost label)\n```\nMint + metadata rent          ~0.0155 SOL     Token-2022 mint, bonding curve, metadata\npump.fun creation fee          0.0000 SOL     creation itself is free\nNetwork fee (priority incl.)  ~0.0006 SOL\nFee-sharing config            ~0.0043 SOL     only when the split ships\nYour first buy                 0.0000 SOL\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nTotal                         ~0.0204 SOL  \u2248  $4.02\n```\n**FLAG:** exact rent is research item U2 \u2014 unverified. Until a devnet `create_v2` is measured, the UI shows `~0.02 SOL` with `about`, never a precise figure, and the balance gate requires **0.03 SOL** so we never quote a number the transaction then exceeds. The poster's 890,880-lamport account rent (U1 mitigation) is paid by **Insidor's platform wallet in tx 2**, not by the creator \u2014 making a creator fund a stranger's account is indefensible and it never appears in their cost line.\n\n### C3. Retry safety\n`launch.mint_keypair` is persisted (encrypted, server-side) **before** the first signature. Any retry after a possible-landing reuses the **same mint keypair**, so if the original transaction confirms late the retry fails deterministically with `account already in use` rather than producing two coins. Never issue a retry that generates a fresh mint while an earlier signature is unresolved.\n\n---\n\n## D. PROPAGATION \u2014 how the new coin reaches the boards and attaches to its story\n| Surface | Mechanism | Latency |\n|---|---|---|\n| Story's coin list | `insert into narrative_tickers(narrative_id, ticker, mint_ca, source='insidor_launch', match_state='CONFIRMED', match_score=1.0, first_deployed=now())` \u2014 **written by our own server, bypassing the matcher**, because we have ground truth: we minted it from this story | optimistic, immediate |\n| Story primary CTA everywhere | derived from `count(match_state='CONFIRMED')` flipping 0\u21921 \u2192 every viewer's button becomes `Buy $CHILLGUY` | Supabase Realtime on `narrative_tickers`, <1s |\n| Tokens / New Pairs tables | `liveRow()` with `justDeployed=true`, `.newbadge NEW`; **all nine numeric cells render `\u2014`, never `0`** (\u00a75.3: missing data fails closed) | optimistic; real data on next Jupiter/DexScreener poll |\n| Live rail \u2192 Launches | `launchCard()` prepend with `.tape-tag NEW` | Realtime |\n| Live rail \u2192 Viral | unchanged \u2014 creating a coin is not a viral event |\n| Creator's You \u2192 Launches | `launch` row | immediate |\n| Follow | **two** rows: auto-follow the coin *and* keep the story follow (flow-doc FIX: following a story never silently becomes following a coin) | immediate |\n| Search / anti-dupe | synchronous insert into `coin_index` with `is_insidor_launch=true`, so the *next* user's duplicate check catches it within seconds rather than on the next indexer tick | <2s |\n\n**Brand-new-token state (first ~60-90s):** no DexScreener pair, no Jupiter price. `.qstats` all `\u2014`, chart shows `.chart-empty` `No live SOL pair for this token yet`, trade box quote disabled with `price appears once there's a pair`, age reads `just now`.",
+ "screens": [
+  {
+   "name": "Entry affordances (the Create CTAs across every surface)",
+   "job": "Offer Create in exactly the places where CONFIRMED coin count is zero, carrying enough context that the form never has to ask the user what they meant.",
+   "layout": "Not a page \u2014 seven existing components across five surfaces. Every one reads a single server-derived boolean `story.can_create` and a single integer `confirmed_count`. No client-side coinability logic exists anywhere.",
+   "elements": [
+    {
+     "element": "E1 \u00b7 Story page footer primary \u2014 existing `.deploy-go` inside `.sh-foot.nm-foot-buy` (component inventory \u00a77.4)",
+     "shows": "Label `Create coin` when `confirmed_count = 0`; `Buy $TICKER` at 1; `See the 3 coins` at \u22652",
+     "source": "count(narrative_tickers where narrative_id=$ and match_state='CONFIRMED') \u00b7 narratives.can_create",
+     "interaction": "Opens the create sheet with `{narrative_id, top_post_id, entry:'story_primary'}`. The canonical path \u2014 full namer, full split."
+    },
+    {
+     "element": "E2 \u00b7 Narrative table row, cell 5 \u2014 existing `.btn-deploy-mini.deploy-narr` (`data-deploy-narr`, \u00a74.3 cell 5)",
+     "shows": "Pill labelled `Create` in place of the market-cap number",
+     "source": "narrative_tickers rollup; renders the cap instead when a CONFIRMED coin has liquidity>0 and mcap>0",
+     "interaction": "Same payload + `entry:'narr_row'`. Identical form \u2014 a shortcut, not a variant."
+    },
+    {
+     "element": "E3 \u00b7 Story page with an UNSURE match \u2014 same `.deploy-go`, label unchanged",
+     "shows": "`Create the coin` (\u00a75.9: UNSURE never renders Buy)",
+     "source": "confirmed_count=0 AND count(match_state='UNSURE')>=1",
+     "interaction": "Payload adds `unsure_candidates:[{mint,symbol,score}]`. Form renders `.dupe-unsure` above the name grid; primary button unaffected."
+    },
+    {
+     "element": "E4 \u00b7 Viral rail card / post row \u2014 existing `.pbtn.deploy` in `.note-acts` (`data-deploy-post`, \u00a76.8)",
+     "shows": "`Create Coin`",
+     "source": "narrative_posts.id \u2192 narratives rollup, resolved server-side",
+     "interaction": "`.src-quote` shows THIS post, not the story's top post \u2014 the user pointed at a specific one. Image sources from this post's media; the namer weights this post 2\u00d7 in the n-gram harvest."
+    },
+    {
+     "element": "E4b \u00b7 Post row on a post with no narrative yet (below PROMOTE)",
+     "shows": "Same button",
+     "source": "narrative_posts where narrative_id is null",
+     "interaction": "The only path where a coin originates from a post. On submit the server creates a single-post narrative with `source='user_created'` so the invariant `every coin has a story` holds. FLAGGED as a decision \u2014 see openQuestions."
+    },
+    {
+     "element": "E5 \u00b7 Search `no coin yet` list \u2014 existing `.deploybtn` on `.tk.pend` (\u00a75.3) and `.sr-narr` rows",
+     "shows": "`Create Coin`, row shows the candidate ticker and `no coin yet`",
+     "source": "derived: stories where confirmed_count=0 (replaces the never-populated `PENDING` object, interaction model \u00a76 item 14)",
+     "interaction": "Payload carries `prefill_symbol` = the ticker the row displayed. That symbol wins over the namer's #1 because the user clicked a specific thing; `.namer-why` reads `you picked this from search`. Namer still supplies name, image and alternatives."
+    },
+    {
+     "element": "E6 \u00b7 Search empty state \u2014 `.sr-empty` \u2192 `Make the first $FERRY coin`",
+     "shows": "The dead end converted into an action",
+     "source": "zero rows from searchNarratives + searchTokenMatches for query q",
+     "interaction": "Server first re-searches for any story matching q and routes to E1 if found. If genuinely none: v1 recommendation is to BLOCK with `We haven't seen a story about that yet \u2014 follow the search and we'll tell you when we do.` because a storyless coin breaks the thesis. FLAGGED."
+    },
+    {
+     "element": "E7 \u00b7 Coin page side rail \u2014 `Make your own coin`",
+     "shows": "Secondary action under an existing coin's page",
+     "source": "confirmed_count >= 1",
+     "interaction": "The deliberate second coin. Form opens with the D-STRONG panel pre-expanded showing the existing coin, and the namer excludes every existing symbol from all candidates. `.coll` reads `$CHILLGUY exists \u2014 yours would be a different coin.`"
+    },
+    {
+     "element": "Suppression rule (all surfaces)",
+     "shows": "Nothing \u2014 the CTA is absent, not disabled",
+     "source": "narratives.coinability_tier <= 1 (D3). Enforced in the story query server-side, never in the component.",
+     "interaction": "No tooltip, no explanation, no `why?` link."
+    }
+   ],
+   "states": [
+    "can_create=true, confirmed=0 \u2192 Create CTA",
+    "confirmed=1 \u2192 Buy $TICKER, no Create at primary (E7 secondary only)",
+    "confirmed>=2 \u2192 See the N coins, no Create at primary",
+    "unsure>=1, confirmed=0 \u2192 Create the coin (unchanged label)",
+    "coinability_tier=1 (public tragedy) \u2192 no CTA rendered anywhere, story still visible and discussable",
+    "coinability_tier=0 \u2192 story never surfaces at all",
+    "story data stale (updated_at > 10 min) \u2192 CTA still active; creation does not require a live pipeline",
+    "wallet not connected \u2192 CTA still active; connection is deferred to the sign step"
+   ]
+  },
+  {
+   "name": "Create \u2014 Step 1 \u00b7 Name it",
+   "job": "Turn a story into a proposed ticker, name and image that a first-timer can accept in one tap or override in three, with the story locked so a coin can never be made out of nothing.",
+   "layout": "Existing `.dback` backdrop + `.sheet`, widened to `.sheet.create-sheet { max-width: min(560px, 96vw) }` from the stock 472px. Header `.sh-top` (38px `.pbadge`, `.sh-t` `Create a coin`, `.sh-s` mono subtitle `from a story we spotted 31 minutes early`, `.sh-x` \u2715). Body `.sh-body` scrolls, `max-height: min(72vh, calc(100dvh - 200px))`, eight stacked blocks, gap 15px. Footer `.sh-foot` pinned: cost on the left, primary on the right.",
+   "elements": [
+    {
+     "element": "`.src-quote` \u2014 the locked story (existing component, \u00a79.2.1)",
+     "shows": "42px `.qthumb` post media \u00b7 `.src-who` handle \u00b7 `.src-txt` post text 2-line clamp \u00b7 right-aligned `.lead-badge.sm` `+31m early`, or grey `.lead-dim` `\u22126m` when lead time is negative (D2 honesty)",
+     "source": "narrative_posts.media_url|image, .handle, .text \u00b7 narratives.lead_time_min",
+     "interaction": "Not editable, not removable. New `.src-lock` micro-label above it: `STORY \u00b7 CANNOT BE CHANGED` in `--mono 9px --dim uppercase .06em`. Clicking the thumbnail opens the post permalink in a new tab."
+    },
+    {
+     "element": "`.namer` \u2014 identity block (new wrapper around the existing `.name-grid`)",
+     "shows": "96\u00d796 `.mint-img` crop preview at radius 16, left; right column stacks `.fl` Coin name input and `.tickin` ticker input",
+     "source": "namer_run.primary.{name,symbol} \u00b7 launch image pipeline",
+     "interaction": "`#dname` maxlength 32 (raised from the prototype's 28 \u2014 create_v2 cap), `#dtick` maxlength 13 (raised from 10 \u2014 symbol cap is 13, not 10), sanitised to `[A-Z0-9]` per keystroke with a `$` prefix span. Char counter appears at >=28 / >=11."
+    },
+    {
+     "element": "`.namer-why` \u2014 the provenance line",
+     "shows": "`named from the phrase repeated in 31 of 44 posts` / `the cashtag in the post` / `from the video's on-screen text` / `you picked this from search`",
+     "source": "namer_run.candidates[0].{kind, df_in_story, n_posts}",
+     "interaction": "None. This is the trust surface: it states the name came from the evidence, not from a model's imagination. Shimmers while the Haiku call is in flight."
+    },
+    {
+     "element": "`.mint-img-edit` + `.namer-acts`",
+     "shows": "`Edit image` text button under the preview; `\u21bb Try another` `.achip.regen` with a right counter `2 left` after first use",
+     "source": "namer_run.candidates[3..8] locally, then attempt 2",
+     "interaction": "`Edit image` expands the crop panel INLINE (never a second modal \u2014 interaction model \u00a71.5: one modal root, opening a second destroys the first). Regeneration changes symbol+name only, never the image, never the story."
+    },
+    {
+     "element": "`.alts` \u2014 three alternative `.achip`s (existing component)",
+     "shows": "`$CHILL` `$UNBOTHERED` `$HOODIE`, each with a `--dim` micro-provenance beneath: `in the caption` / `said in 34 posts` / `from the replies`",
+     "source": "namer_run.alternatives[], selected for diversity of kind not next-best score",
+     "interaction": "`data-alt` click fills both fields and re-runs the duplicate check. In E3 the UNSURE symbol occupies slot 1 labelled `possible match`."
+    },
+    {
+     "element": "`.coll` \u2014 availability line (existing component, four new bands)",
+     "shows": "See states below",
+     "source": "coin_index symbol + trgm + pHash queries \u00b7 narrative_tickers for this story \u00b7 Jupiter live overlay",
+     "interaction": "Debounced 250ms on every keystroke >=2 chars; also fires on open and on any `.achip` selection."
+    },
+    {
+     "element": "`.dupe-card` \u2014 expanded duplicate (NEW component)",
+     "shows": "36px logo \u00b7 `$FERRY` \u00b7 name \u00b7 `$18.2K in it` \u00b7 `412 owners` \u00b7 `made 4m after the post` \u00b7 `.timing-pill`",
+     "source": "coin_index.{symbol,name,image_url,liquidity_usd,holders,first_mint_at} \u00b7 earliest_post_at",
+     "interaction": "Renders only in bands D-STRONG, D-IMAGE and (muted, as `.dupe-unsure`) UNSURE. Row click \u2192 coin page in a new context, preserving the form."
+    },
+    {
+     "element": "`.buychips` \u2014 first buy (existing component, changed defaults)",
+     "shows": "Label `Buy some yourself (optional)`. Values `None | 0.1 SOL | 0.5 SOL | 1 SOL`, **default None**",
+     "source": "user input; USD equivalent from window.SOL_PRICE",
+     "interaction": "Relabelled from `Your first buy` and re-defaulted from 0.5 SOL to None. `.buychips-note`: `You buy at the same price as everyone else, in the same transaction. Leave it at None if you're unsure.` FLAGGED: the flow doc explicitly CUT dev-buy-in-the-create-form as the one screen that makes a beginner ask whether they are running a scam. This is the honest middle."
+    },
+    {
+     "element": "`.safety-defaults` \u2014 three fixed facts (NEW, `.secbox` skin)",
+     "shows": "`\u2713 Supply 1,000,000,000 \u2014 fixed, you can't mint more` \u00b7 `\u2713 No freeze \u2014 nobody can lock anyone's coins` \u00b7 `\u2713 No transfer fee` \u00b7 `\u2713 Liquidity seeds itself from the bonding curve \u2014 you don't add money`",
+     "source": "pump.fun create_v2 program behaviour (constants, not reads)",
+     "interaction": "Not switchable, in either mode (flow doc: safety settings are never switchable). Lime `\u2713` glyphs, `--mono 11px`. Framed as *what you can't do*, not as a safety badge \u2014 gotcha 17 notes mint/freeze-revoked are worthless as comparative signals but genuinely useful as an explanation of what a first-timer is not on the hook for."
+    },
+    {
+     "element": "`.split` \u2014 fee split (existing component, two variants; see the Fee Split screen)",
+     "shows": "Stacked bar + honest disclosure",
+     "source": "platform parameter, not a user choice",
+     "interaction": "No toggle. Making the split choosable creates a race to 100/0 and makes the poster share meaningless."
+    },
+    {
+     "element": "`.disclaim` \u2014 two `--dim 10.5px` lines",
+     "shows": "`Not created or endorsed by @nordkyst_ferge.` \u00b7 `Anyone can make a coin from this story, including someone else, right now.`",
+     "source": "narrative_posts.handle",
+     "interaction": "None. Ships in the same release as the split per the risk register (right of publicity, consent is the primary defence)."
+    },
+    {
+     "element": "`.sh-foot` \u2014 `.cost` + `.deploy-go`",
+     "shows": "`COST TO LAUNCH` / `~0.021 SOL \u2248 $4.10` (mono, both units) \u00b7 button `Review $CHILLGUY`",
+     "source": "rent + fees estimate; USD from window.SOL_PRICE",
+     "interaction": "Tapping the cost label opens `.cost-pop`, the itemised breakdown. **Step 1's primary is Review, never Create \u2014 nothing signs from this screen.** Button disabled (`background:var(--bg2); color:var(--dim)`) while the ticker is invalid."
+    }
+   ],
+   "states": [
+    "loading \u2014 sheet open in <100ms with the deterministic candidate already filled; `.namer-why` shimmering",
+    "namer resolved \u2014 model result swaps in only if neither field has been touched; otherwise it becomes alternative slot 1",
+    "namer unavailable / _scoringPaused / >2.5s \u2014 deterministic list stands, `.namer-why` reads `Suggestions are off right now \u2014 pick a name yourself.`",
+    "namable=false \u2014 fields empty, `.namer-empty` replaces `.alts`, top 5 entity_keys shown as `words from the posts` chips, Create still reachable",
+    "`.coll` default \u2014 `Enter a ticker for your coin.`",
+    "`.coll.free` (lime) \u2014 `\u2713 $CHILLGUY is free on Solana \u2014 you'd be first to deploy it.`",
+    "`.coll.taken` D-STRONG (amber) \u2014 `.dupe-card` expands, primary flips to `Buy $FERRY`, `Create it anyway` demotes to a bordered secondary",
+    "`.coll.taken` D-WEAK (amber, informational) \u2014 `$PUMP already exists \u2014 a $1.8B token from 2024, unrelated to this story. Yours would be a different coin with the same ticker.` Primary unchanged.",
+    "D-IMAGE \u2014 `This image is already a coin \u2014 $CUPS, made 12m ago, $4.1K in it.` Secondary `See $CUPS`, primary unchanged.",
+    "UNSURE present \u2014 `.dupe-unsure` above the name grid, `--dim` border, no amber, primary and label unaffected",
+    "`.coll.blocked` (red) \u2014 `We don't allow this ticker.` No explanation, no list.",
+    "symbol too long \u2014 `Ticker is 13 characters max. We'd have to cut it to $CHILLGUYWORL.` with a `Use that` micro-action. Never silent truncation.",
+    "name too long \u2014 `Name is 32 characters max \u2014 4 over.`",
+    "leading digit \u2014 `Tickers start with a letter.`",
+    "image unfetchable \u2014 `.mint-img.fallback` rendered-text card + `We couldn't fetch the video's image. Using the post text instead \u2014 or upload your own.`",
+    "custom image chosen \u2014 persistent `--dim` line `Custom image \u2014 this won't match the post automatically.`",
+    "coin_index stale >3 min \u2014 `--dim` line `Checking against coins up to 4 minutes old.`",
+    "pipeline stale \u2014 `.src-quote` gains `Story data last updated 14 minutes ago.` No block.",
+    "poster opted out \u2014 split silently becomes 90/10 with the line `This poster has asked not to receive fees from coins made off their posts.`",
+    "wallet not connected \u2014 form fully usable, `Review` works normally"
+   ]
+  },
+  {
+   "name": "Image editor (inline expanding panel)",
+   "job": "Let someone reframe the post's media to a square without turning the create flow into a design tool.",
+   "layout": "Replaces the `.namer` block in place with a 320px-tall panel inside the same `.sh-body`; the rest of the form stays mounted and scrolls beneath. Never a second modal.",
+   "elements": [
+    {
+     "element": "Crop stage",
+     "shows": "The source media at native aspect with a 1:1 crop frame overlay, corners in `--ion` at 40% opacity",
+     "source": "narrative_posts.media_local_url (re-hosted, SHA-256 keyed)",
+     "interaction": "Drag to reposition, zoom slider `.slip`-style beneath. No rotation, no filters, no text."
+    },
+    {
+     "element": "Fit / Fill segmented control",
+     "shows": "Two `.chip`s",
+     "source": "local",
+     "interaction": "`Fill` (center crop) default; `Fit` letterboxes onto `#060607`."
+    },
+    {
+     "element": "Frame scrubber (video only)",
+     "shows": "5 thumbnail candidates at 10/25/40/55/70% of duration, the auto-picked one outlined in `--ion`",
+     "source": "ffmpeg frame extraction; auto-pick = max Laplacian variance among largest-subject frames, preferring frames with legible OCR text",
+     "interaction": "Tap to choose a different frame. Writes launch.image_frame_ms."
+    },
+    {
+     "element": "Upload your own",
+     "shows": "`.achip` `Upload an image`",
+     "source": "user file",
+     "interaction": "PNG/JPG/GIF <=2MB. On oversize: `Images must be PNG, JPG or GIF, under 2 MB. Yours is 4.1 MB.` plus a `Compress it for me` action (client-side canvas re-encode)."
+    },
+    {
+     "element": "Panel footer",
+     "shows": "`Use this` primary / `Cancel` text",
+     "source": "\u2014",
+     "interaction": "`Use this` collapses the panel and re-runs the D-IMAGE pHash check against the new crop."
+    }
+   ],
+   "states": [
+    "photo source \u2014 crop stage only, no scrubber",
+    "video source \u2014 scrubber present, auto-picked frame outlined",
+    "link source \u2014 OG image, crop only",
+    "no media \u2014 the rendered post-text card, crop disabled, only `Upload your own` available",
+    "media fetch failed \u2014 rendered-text fallback with the `--dim` explanation line",
+    "custom upload active \u2014 a `Revert to the post's image` text action appears",
+    "oversize / wrong type \u2014 inline error plus the compress offer"
+   ]
+  },
+  {
+   "name": "Create \u2014 Step 2 \u00b7 Confirm and sign",
+   "job": "State plainly what is about to become permanent, re-check that nobody minted this in the last 40 seconds, and take exactly one signature.",
+   "layout": "Same `#dback`, same `.sheet` \u2014 the body is replaced in place, not a new modal. Header `.pbadge` is swapped for a back chevron, `.sh-t` becomes `Confirm`. Five stacked blocks. Footer unchanged in structure.",
+   "elements": [
+    {
+     "element": "`.confirm-hero`",
+     "shows": "72px final image, `$CHILLGUY` in Clash Display 23px, `Just a Chill Guy` beneath in `--muted`",
+     "source": "local form state",
+     "interaction": "None. The last look."
+    },
+    {
+     "element": "`.confirm-irreversible` \u2014 red-tinted bordered list",
+     "shows": "Header `PERMANENT` in `--mono 10px uppercase`; rows with a `\u21af` glyph: `The ticker and name. Can't be edited after launch.` \u00b7 `The image. Can't be replaced.` \u00b7 `The fee split. Written once.` (variant A only) \u00b7 `The coin exists on Solana forever \u2014 Insidor can hide it, but can't delete it.`",
+     "source": "pump.fun program semantics; fee_share one-shot lock (errors 6009 / 6024)",
+     "interaction": "None. Not dismissible, not collapsible."
+    },
+    {
+     "element": "`.confirm-rows` \u2014 mono key/value table",
+     "shows": "`Story` \u2192 title with `\u2197` to the permalink \u00b7 `Signed by` \u2192 4mZq\u20268xPq \u00b7 `Creator on-chain` \u2192 4mZq\u20268xPq (**second row rendered only when it differs from the signer**) \u00b7 `First buy` \u2192 `None` or `0.5 SOL \u2248 $98.40 \u2192 about 4,120,000 $CHILLGUY` \u00b7 `Total cost` \u2192 `~0.021 SOL \u2248 $4.10` \u00b7 `Your balance after` \u2192 `1.204 SOL`",
+     "source": "narratives.title \u00b7 narrative_posts permalink \u00b7 Privy wallet address \u00b7 pump bonding-curve quote at the launch supply \u00b7 /api/balance",
+     "interaction": "Copy-on-tap for the addresses. The two-row signer/creator disclosure exists because create_v2 permits them to diverge and a silent divergence is a footgun aimed at the user."
+    },
+    {
+     "element": "`.confirm-recheck` \u2014 the live duplicate re-check",
+     "shows": "`.lz` cyan pulsing dot + `--mono 11px`: `Re-checking nobody minted this\u2026` \u2192 `\u2713 Still free, checked 2s ago`",
+     "source": "the \u00a7B queries, 6s timeout, run at step-2 mount and again on button press",
+     "interaction": "On a D-CONFIRMED or D-STRONG hit that was not present at open, the sign halts and the Duplicate interstitial takes over BEFORE the wallet opens."
+    },
+    {
+     "element": "`.confirm-loss` \u2014 the always-present line",
+     "shows": "`Most coins go to zero. If this one does, you lose the 0.5 SOL you're putting in and earn no fees.` Plus, when a first buy is set: `If your first buy can't fill, the whole launch is cancelled and nothing is spent.`",
+     "source": "\u2014",
+     "interaction": "Plain `--muted` body text, deliberately NOT a red warning box. A warning box gets dismissed; plain text gets read. (Flow doc's rule for the buy sheet, applied here.)"
+    },
+    {
+     "element": "`.sh-foot` primary \u2014 `.deploy-go` `Create $CHILLGUY`",
+     "shows": "The only button in the entire flow that signs",
+     "source": "\u2014",
+     "interaction": "On press: label \u2192 `Waiting for your wallet\u2026` with an inline spinner; **backdrop click and Esc are disabled from this instant until resolution** \u2014 a signing modal that can be dismissed mid-flight is how orphaned mints happen."
+    }
+   ],
+   "states": [
+    "ready \u2014 re-check green, button live",
+    "re-checking \u2014 button live but labelled `Checking\u2026` for up to 6s, then proceeds either way",
+    "re-check found a new coin \u2014 Duplicate interstitial replaces the body",
+    "re-check failed/timed out \u2014 `Couldn't re-check for duplicates` in `--dim`; signing still permitted, because a failed read must never consume the user's head start",
+    "wallet not connected \u2014 button reads `Connect wallet to create` \u2192 Privy \u2192 returns to step 2 with every field preserved",
+    "insufficient SOL \u2014 button reads `Add money to create`, plus `You need about 0.03 SOL. You have 0.004 SOL.` \u2192 Add-money handoff, returns preserved",
+    "story reclassified to tier 1 mid-session \u2014 body replaced with `This story isn't available to coin.` + `Back to the story`",
+    "user rejected in wallet \u2014 returns here exactly as it was, one `--muted` line `Cancelled. Nothing was spent.` No red, no icon, no `are you sure?`"
+   ]
+  },
+  {
+   "name": "Signing progress (in-place state of step 2)",
+   "job": "Make a 4-8 second multi-transaction sequence legible, and make it unambiguous at every instant whether money has left the wallet.",
+   "layout": "`.sh-body` content is replaced by `.sign-steps`, a four-row `--mono 11px` progress list, each row `pending | active | done | failed`, with the hero image reduced to 40px at the top. Footer buttons removed entirely \u2014 there is nothing to press.",
+   "elements": [
+    {
+     "element": "Step 1 \u00b7 `Uploading image and details`",
+     "shows": "Spinner \u2192 \u2713",
+     "source": "POST pump.fun/api/ipfs, Pinata fallback on 5xx or >8s",
+     "interaction": "Fallback is silent and invisible. Only a double failure surfaces."
+    },
+    {
+     "element": "Step 2 \u00b7 `Signing in your wallet`",
+     "shows": "Spinner \u2192 \u2713",
+     "source": "Privy useSignTransaction, raw-bytes API",
+     "interaction": "\u2014"
+    },
+    {
+     "element": "Step 3 \u00b7 `Landing on Solana`",
+     "shows": "Spinner with an elapsed counter after 15s \u2192 \u2713",
+     "source": "sendRawTransaction + getSignatureStatuses poll",
+     "interaction": "\u2014"
+    },
+    {
+     "element": "Step 4 \u00b7 `Assigning the fee split` (variant A only)",
+     "shows": "Spinner \u2192 \u2713, sub-line `Your coin is already live. This step can retry.`",
+     "source": "PUMP_FEES.updateFeeSharesV2 in tx 2, after poster address verification",
+     "interaction": "**Success is declared on step 3.** Step 4 failing produces a retryable band on the success screen, never a failure screen."
+    },
+    {
+     "element": "The universal pre-signature sentence",
+     "shows": "`Nothing has been signed and nothing has been spent.`",
+     "source": "\u2014",
+     "interaction": "Appears verbatim on every failure that occurs before step 2 completes. It is the single most important string in this flow."
+    }
+   ],
+   "states": [
+    "step 1 failed (both IPFS and Pinata) \u2014 `Couldn't upload the image. Nothing has been signed and nothing has been spent.` + `Try again` (retries upload only, keeps every field) + `Use the post's image instead` when the failure was a custom upload",
+    "step 2 popup blocked / Privy not ready \u2014 `Your wallet didn't open. Try again.`",
+    "step 2 threw \u2014 `Your wallet couldn't sign this. Nothing has been signed and nothing has been spent.`",
+    "step 3 RPC unreachable pre-broadcast \u2014 `We couldn't reach Solana. Nothing was spent.`",
+    "step 3 broadcast but unconfirmed at 45s \u2014 `We haven't seen this land yet. It may still go through \u2014 we're watching for 60 more seconds.` with a live elapsed counter. Never claim failure while a signature is unresolved.",
+    "step 3 blockhash expired, confirmed dropped \u2014 `That transaction expired before it landed. Nothing was spent. Try again \u2014 the details are still here.` Retry reuses the SAME mint keypair so a late confirmation makes the retry fail with `account already in use` rather than minting twice.",
+    "step 3 bundled first buy failed \u2014 whole tx failed, nothing spent, message names the buy as the cause",
+    "step 4 failed \u2014 success screen renders anyway with an amber band; retry worker continues for 24h, then notifies the creator"
+   ]
+  },
+  {
+   "name": "Success",
+   "job": "Hand over the contract address, state the earliness fact worth screenshotting, and route into trading \u2014 while the coin silently attaches itself to its story everywhere else.",
+   "layout": "Existing `.done` panel (\u00a79.4), extended. `padding:34px 26px`, centred column, gap 8px, inside the same `.sheet`.",
+   "elements": [
+    {
+     "element": "`.done-ic` + `.done-h`",
+     "shows": "56px lime \u2713 ring \u00b7 `$CHILLGUY is live`",
+     "source": "launch.symbol",
+     "interaction": "No confetti, no celebration \u2014 flow doc CUT."
+    },
+    {
+     "element": "`.done-s` \u2014 the earliness sentence",
+     "shows": "`Just a Chill Guy \u00b7 made from \u201cNorwegian ferry horn\u201d \u00b7 4 minutes after we spotted it`",
+     "source": "launch.minutes_after_promote = launch.landed_at \u2212 narratives.promoted_at, frozen at write time",
+     "interaction": "This is the line users screenshot. It requires `narratives.promoted_at`, which does not exist yet \u2014 see dataContract."
+    },
+    {
+     "element": "`.ca-box` + `.ca-links`",
+     "shows": "Full mint in `--mono 12.5px`, `Copy CA` \u2192 `Copied \u2713` for 1000ms. Second row: `Solscan \u2197` `pump.fun \u2197` `DexScreener \u2197`",
+     "source": "launch.mint",
+     "interaction": "DexScreener link disabled with tooltip `chart appears once there's a pair` until pairAddress resolves (~60-90s)."
+    },
+    {
+     "element": "`.done-share` \u2014 share affordance (NEW)",
+     "shows": "A 1200\u00d7630 preview card: post thumbnail, `$CHILLGUY`, `Made 4 minutes after Insidor spotted this story.` Buttons `Share on X` and `Copy link`",
+     "source": "server-rendered OG image at /c/{mint}, cached; text composed from launch + narratives",
+     "interaction": "`Share on X` opens the X compose intent pre-filled with the text and link. **It never posts on the user's behalf** \u2014 the user submits it themselves in X's own UI."
+    },
+    {
+     "element": "`.done-acts`",
+     "shows": "Primary `.deploy-go` `Trade $CHILLGUY` \u00b7 secondary `.sh-x2` `Done`",
+     "source": "\u2014",
+     "interaction": "`Trade` \u2192 coin page. `Done` \u2192 the **story page**, not the previous view, because seeing the new coin sitting in the story's coin list is the proof that it attached."
+    },
+    {
+     "element": "`.split-pending` band (variant A, conditional)",
+     "shows": "Amber: `Your coin is live. The fee split hasn't been written yet \u2014 we'll keep trying. Until it lands, 100% of fees go to you.` + `Retry now`",
+     "source": "fee_share.status = 'shares_pending'",
+     "interaction": "Persistent; also mirrored on the coin page and in You \u2192 Launches until resolved."
+    }
+   ],
+   "states": [
+    "normal success \u2014 all links live except DexScreener",
+    "fee split pending \u2014 amber band present",
+    "fee split failed after 24h of retries \u2014 band becomes `We couldn't write the fee split. Nothing is lost \u2014 100% of fees go to you. We've flagged this.`",
+    "brand-new token, no market data \u2014 the coin page it routes to shows every numeric as `\u2014`, chart shows `No live SOL pair for this token yet`, age `just now`",
+    "poster opted out \u2014 the share card omits the poster mention entirely"
+   ]
+  },
+  {
+   "name": "Duplicate interstitial",
+   "job": "When somebody else got there first \u2014 at open, mid-form, or in the 40 seconds before signing \u2014 turn a wasted flow into a completed purchase without pretending the user made a mistake.",
+   "layout": "Replaces `.sh-body` entirely inside the same sheet. Centred: coin card, one sentence, three actions stacked by weight.",
+   "elements": [
+    {
+     "element": "Headline",
+     "shows": "`$FERRY was made 40 seconds ago.` (D-CONFIRMED, mid-flow) / `Someone made $FERRY 4 minutes ago.` (at open)",
+     "source": "coin_index.first_mint_at or narrative_tickers.first_deployed",
+     "interaction": "Flow doc's framing: a save, not a loss."
+    },
+    {
+     "element": "`.dupe-card` \u2014 the existing coin",
+     "shows": "Logo \u00b7 `$FERRY` \u00b7 name \u00b7 `$18.2K in it` \u00b7 `412 owners` \u00b7 `made 4m after the post` \u00b7 safety line in words",
+     "source": "coin_index + live Jupiter overlay",
+     "interaction": "Tap \u2192 coin page."
+    },
+    {
+     "element": "Primary `Buy $FERRY`",
+     "shows": "Full-width `.deploy-go`",
+     "source": "\u2014",
+     "interaction": "Closes the create flow, opens the coin page with the buy sheet primed. THE ONE RULE holds: one CONFIRMED coin means one Buy button."
+    },
+    {
+     "element": "Secondary `Make a different one`",
+     "shows": "Bordered `.sh-x2`",
+     "source": "\u2014",
+     "interaction": "Returns to step 1 with everything preserved except the ticker, which is cleared, and the just-minted symbol added to `exclude_symbols` so the namer never re-proposes it."
+    },
+    {
+     "element": "Tertiary `Show me the story`",
+     "shows": "Text link",
+     "source": "\u2014",
+     "interaction": "Closes to the story page, which now renders `Buy $FERRY` for everyone."
+    }
+   ],
+   "states": [
+    "arrived at open (the coin existed before the user clicked Create) \u2014 headline uses relative age",
+    "arrived mid-form via Realtime \u2014 a non-blocking `.pendbanner` first, escalating to the full interstitial only on the sign press",
+    "arrived at the pre-sign re-check \u2014 full interstitial, wallet never opened",
+    "D-STRONG rather than D-CONFIRMED \u2014 this screen is NOT used; the pressure stays inline in `.coll` with `Create it anyway` available",
+    "the duplicate is the story's own UNSURE candidate \u2014 this screen is never used, under any circumstances"
+   ]
+  },
+  {
+   "name": "Not available to coin",
+   "job": "Close the door on D3 tier-1 stories without teaching anyone where the door is.",
+   "layout": "Sheet body replaced with a single centred block, 240px tall. No image, no story quote, no mechanics.",
+   "elements": [
+    {
+     "element": "Message",
+     "shows": "`This story isn't available to coin.`",
+     "source": "narratives.coinability_tier = 1",
+     "interaction": "None."
+    },
+    {
+     "element": "Action",
+     "shows": "`Back to the story`",
+     "source": "\u2014",
+     "interaction": "Returns to the story page, which remains fully readable and discussable \u2014 surface, no create button (D3 tier 2)."
+    }
+   ],
+   "states": [
+    "reached via a stale link or a mid-session reclassification \u2014 the only two ways this can render, since the CTA is suppressed server-side",
+    "tier 0 \u2014 unreachable by construction; the story does not exist in any query result"
+   ]
+  },
+  {
+   "name": "Fee split panel (both variants, embedded in Step 1)",
+   "job": "Make a user understand, in under three seconds, that they are assigning 40% of their coin's fee stream to a stranger who has never heard of Insidor \u2014 or, in the no-split world, that this can never be added later.",
+   "layout": "`.split` block, `background:var(--bg0); border:1px solid rgba(255,255,255,.06); radius 12px; padding 13px`. Header row, one 10px stacked bar, labels BELOW the bar rather than in a legend, then the disclosure block.",
+   "elements": [
+    {
+     "element": "`.split-h` + `.split-total`",
+     "shows": "`Who earns from every trade` \u00b7 right-aligned `--mono 11px --dim` `1% of each trade`",
+     "source": "pump.fun creator fee rate",
+     "interaction": "None."
+    },
+    {
+     "element": "`.split-bar` \u2014 three segments (variant A)",
+     "shows": "lime 50% `You` \u00b7 cyan 40% `@nordkyst_ferge` with the platform mark inline \u00b7 `#3A3A42` 10% `Insidor`",
+     "source": "fee_share.shares = [{maker,5000},{poster,4000},{insidor,1000}], bps summing to exactly 10000",
+     "interaction": "Labels sit under their own segment. Hover/expand reveals `5000 / 4000 / 1000 bps` for the pro reader."
+    },
+    {
+     "element": "`.split-poster` \u2014 the honest disclosure (variant A only)",
+     "shows": "20px `.pbadge` + `@nordkyst_ferge` + `.pill` `hasn't claimed`. Body, verbatim: `@nordkyst_ferge doesn't know about Insidor. We set aside 40% of the trading fees for them at an address derived from their handle. If they never claim it, it sits there \u2014 we don't take it and neither do you. This can't be changed after launch.`",
+     "source": "poster.handle \u00b7 poster.derived_wallet \u00b7 poster.claimed_by is null",
+     "interaction": "None. This is the whole point of the panel."
+    },
+    {
+     "element": "`.split-note` \u2014 the gap disclosure (variant A only)",
+     "shows": "`The split is written in a second transaction moments after launch. Trades in that gap pay 100% to you.`",
+     "source": "\u00a73.2 \u2014 updateFeeSharesV2 sweeps pending fees to the current list first",
+     "interaction": "None. Literally true, unflattering, and exactly the kind of disclosure that earns trust."
+    },
+    {
+     "element": "`.split-bar` \u2014 two segments (variant B, no split)",
+     "shows": "lime 90% `You` \u00b7 `#3A3A42` 10% `Insidor`. Copy: `You earn 0.9% of every trade, forever, paid to your wallet. Insidor keeps 0.1%.`",
+     "source": "platform parameter",
+     "interaction": "None."
+    },
+    {
+     "element": "`.split-future` (variant B only)",
+     "shows": "`--dim`: `Coins made today can't add a poster share later \u2014 the split is set once, at launch.`",
+     "source": "pump_fees one-shot lock",
+     "interaction": "None. This line is what makes the D2 decision urgent, and shipping it stops anyone assuming the split is retrofittable."
+    },
+    {
+     "element": "Absent toggle",
+     "shows": "Nothing",
+     "source": "\u2014",
+     "interaction": "There is deliberately no control. A choosable split becomes a race to 100/0 and makes the poster share meaningless."
+    }
+   ],
+   "states": [
+    "variant A, poster unclaimed \u2014 three segments, full disclosure",
+    "variant A, poster claimed \u2014 `hasn't claimed` pill becomes `claimed`, body shortens to `40% of trading fees go to @nordkyst_ferge, who has claimed their Insidor account.`",
+    "variant A, poster opted out \u2014 bar collapses to `You 90% / Insidor 10%` and reads `This poster has asked not to receive fees from coins made off their posts.`",
+    "variant A, no identifiable poster (E6/E4b storyless or orphan) \u2014 poster segment omitted, falls back to 90/10",
+    "variant B \u2014 two segments plus the `.split-future` line",
+    "fee-share write pending post-launch \u2014 mirrored as the amber `.split-pending` band on the success screen and coin page"
+   ]
+  }
+ ],
+ "dataContract": "## Exists today and is used as-is\n- `narratives.{id, title, blurb, img_seed, platforms, combined_views, lead_time_min, lifecycle, display_eligible, gate_reason, trend_term, updated_at, first_seen_at, created_at, top_post_id}`\n- `narrative_posts.{id, narrative_id, platform, platform_post_id, handle, text, media_url, media_type, image, views, likes, retweets, quotes, replies, sample_replies, posted_at, first_seen_at}` \u2014 `sample_replies` is a first-class namer input (replies are where a phrase proves it is being repeated); `(platform, platform_post_id)` already unique-indexed.\n- `narrative_tickers.{id, narrative_id, ticker, name, mint_ca, liquidity, mcap, holders, vol24h, age_min, first_deployed, canonical, safety, smart_money}`\n- `post_meme_scores.{post_id, suggested_ticker, suggested_name, meme_score, reason}` \u2014 **the create form is the ONLY sanctioned consumer of `suggested_*`** (\u00a75.4: SUGGESTED is a create-path prefill, never a resolution input). Ranked last, weight 0.35, and it can never be primary without corroboration.\n- `post_embeddings.embedding` \u2014 reused for the name-similarity leg of the anti-dupe check.\n\n## DOES NOT EXIST \u2014 blocking, in dependency order\n\n### 1. Columns on existing tables\n| Column | Why the create flow needs it |\n|---|---|\n| `narratives.promoted_at timestamptz` | **The success screen's central sentence** (`made 4 minutes after we spotted it`) and `launch.minutes_after_promote` are both arithmetic on it. \u00a71 says it is set once, forever. Backfill `coalesce(first_seen_at, created_at)` exactly once, then make it immutable at the DB level. |\n| `narratives.coinability_tier smallint` (0/1/2) + `coinable boolean` + `sensitive boolean` | **D3 enforcement.** Every Create CTA reads one derived boolean. Without this the tier-1 suppression is client-side, i.e. not enforcement. |\n| `narratives.subject text` + `subject_type text` | Namer input (`entity` source), \u00a73.5 output with nowhere to live today. |\n| `narratives.entity_keys text[]` | The distinctiveness pre-pass output \u2014 the namer's raw material and the `words from the posts` chips in the `namable=false` state. |\n| `narratives.title_centroid vector` + `titled_at timestamptz` | \u00a73.5 anti-churn regeneration policy; the create form must not open on a story whose title changed 4 seconds ago. |\n| `narrative_tickers.source text` | `'cashtag' \\| 'llm' \\| 'mint_in_post' \\| 'insidor_launch'`. **Blocking**: the propagation step writes `source='insidor_launch'`, and \u00a75.4 makes provenance non-optional. |\n| `narrative_tickers.match_state text` + `match_score numeric` + `match_features jsonb` | \u00a75.7's CONFIRMED/UNSURE/REJECTED/ADOPTED verdict has nowhere to live. Every entry-point CTA and the whole B2 push ladder are functions of `match_state`. |\n| `narrative_posts.ocr_text text` | On-screen text is the highest-yield namer source on TikTok and does not exist anywhere today. |\n| `narrative_posts.media_sha256 text` + `media_phash bit(64)` + `media_local_url text` | Gotcha 33: re-host by SHA-256. Feeds the image pipeline, the D-IMAGE duplicate band, and the story\u2192coin `S_img` channel. |\n\n### 2. New tables\n```sql\ncreate table launch (\n  id uuid primary key default gen_random_uuid(),\n  mint text unique not null,\n  narrative_id uuid not null references narratives(id),   -- NOT NULL: no coin without a story\n  source_post_id uuid references narrative_posts(id),     -- the post the image came from\n  creator_user_id uuid not null references app_user(id),\n  signer_wallet text not null,\n  creator_pubkey text not null,          -- may differ from signer (create_v2)\n  symbol text not null check (symbol ~ '^[A-Z][A-Z0-9]{2,12}$'),\n  name text not null check (char_length(name) <= 32),\n  metadata_uri text not null check (char_length(metadata_uri) <= 200),\n  image_sha256 text not null,\n  image_source text not null,   -- post_media|video_frame|og_image|rendered_text|user_upload\n  image_frame_ms int,\n  namer_run_id uuid references namer_run(id),\n  ticker_source text not null,  -- cashtag|onscreen|ngram|entity|llm|user_typed\n  first_buy_lamports bigint not null default 0,\n  create_signature text,\n  create_slot bigint,\n  landed_at timestamptz,\n  promoted_at_snapshot timestamptz,   -- narratives.promoted_at frozen here\n  minutes_after_promote int,          -- frozen; can be large, never recomputed\n  status text not null,               -- drafting|signing|sent|landed|failed|expired\n  failure_code text,\n  mint_keypair_enc bytea not null,    -- persisted BEFORE first signature; retry safety\n  created_at timestamptz default now()\n);\n\ncreate table namer_run (\n  id uuid primary key default gen_random_uuid(),\n  narrative_id uuid not null references narratives(id),\n  user_id uuid references app_user(id),\n  model text,                    -- claude-haiku-4-5 | deterministic | none\n  attempt int not null default 1,\n  candidates jsonb not null,     -- [{symbol,name,kind,source_span,df_in_story,score,collisions}]\n  primary_symbol text,\n  namable boolean not null,\n  reason_if_not text,\n  gate_failure text,             -- hallucinated_span|regex|length|blocklist|not_derivable|generic\n  latency_ms int, cost_usd numeric,\n  shown jsonb,                   -- exactly what the user saw\n  accepted_symbol text,          -- null until submit\n  accepted_edited boolean,       -- did they type over it\n  created_at timestamptz default now()\n);\n\ncreate table fee_share (\n  mint text primary key references launch(mint),\n  config_pubkey text,\n  shares jsonb not null,         -- [{pubkey,bps,role:'maker'|'poster'|'insidor'}]\n  bps_total int not null check (bps_total = 10000),\n  config_signature text, shares_signature text, shares_written_at timestamptz,\n  poster_id uuid references poster(id),\n  poster_derived_wallet text,\n  poster_prefunded_lamports bigint,   -- U1 mitigation, 890880, paid by Insidor\n  attempts int default 0, last_error text,\n  status text                     -- config_created|shares_pending|shares_written|abandoned\n);\n\ncreate table coin_index (        -- F3.2 indexer; the ONLY anti-dupe corpus\n  mint text primary key,\n  symbol text, name text, symbol_norm text,\n  metadata_uri text, image_url text, image_sha256 text, image_phash bit(64),\n  image_dino vector(768), name_embedding vector(1024),\n  first_mint_at timestamptz not null,   -- from the create_v2 slot, NOT pairCreatedAt\n  creator_pubkey text,\n  liquidity_usd numeric, mcap_usd numeric, holders int, last_market_at timestamptz,\n  is_insidor_launch boolean default false\n);\ncreate index on coin_index (symbol_norm);\ncreate index on coin_index using gin (symbol_norm gin_trgm_ops);\ncreate index on coin_index (first_mint_at desc);\n```\nPlus `app_user`, `poster` (with `derived_wallet`, `opted_out`), `follow` and `holding` from the DESIGN.md plan \u2014 all still `\u274c new`.\n\n## Query shapes used at runtime\n- **Entry-point gating** (one query, cached on the story row): `select can_create, confirmed_count, unsure_count from story_cta_v where id = $1` \u2014 a view over `narratives.coinability_tier` + the `narrative_tickers.match_state` rollup. Every CTA in the product reads this and nothing else.\n- **Name candidates**: `GET /api/story/:id/name-candidates` \u2192 `{candidates[], entity_keys[], collisions{}, namable, image:{url,source,frames[]}}`. Precomputed at PROMOTE and cached; the model leg is fired on form open, not at PROMOTE (attempt-1 result is cached on the story for 20 min).\n- **Anti-dupe**: the three queries in the mechanism \u00a7B1, plus a Jupiter `tokens/v2/search` overlay. Symbol query orders by **liquidity desc, then first_mint_at asc** \u2014 never by 24h volume (\u00a75.1: volume-first ranking is what selects the $1.8B major for a fresh story).\n- **Propagation write** (single transaction): insert `launch`, insert `narrative_tickers` with `source='insidor_launch', match_state='CONFIRMED', match_score=1.0`, insert `coin_index` with `is_insidor_launch=true`, insert two `follow` rows (story + coin), insert `holding` when `first_buy_lamports > 0` with `minutes_early = launch.minutes_after_promote`.\n\n## Non-DB gaps\n- **The F3.2 indexer itself.** `coin_index` has no producer today. The anti-dupe check is the create flow's most important safety feature and it is entirely downstream of an indexer that does not exist. Ship the check read-only against Jupiter search first, and treat pHash/DINO duplicate detection as phase 2.\n- **OCR** for on-screen text \u2014 no service, no column, no worker.\n- **ffmpeg frame extraction** service for video thumbnail selection.\n- **Rendered-text image generator** (the no-media fallback).\n- **Share-card renderer** and the public `/c/{mint}` OG route.\n- **`getSignatureStatuses` polling endpoint** for the unconfirmed-transaction state.\n- **`/api/launch/{prepare,sign,confirm,retry-shares}`** \u2014 none exist. The current `deployFiled()` fabricates a base58 string with `genCA()` and mutates a module-scope array (interaction model \u00a76 item 2).",
+ "mechanismNote": "see mechanism",
+ "buildOrder": [
+  "1 \u00b7 Migration 001 \u2014 the columns everything else reads: `narratives.promoted_at` (backfilled once from `coalesce(first_seen_at, created_at)`, then immutable), `coinability_tier`, `subject`, `subject_type`, `entity_keys`; `narrative_tickers.source`, `match_state`, `match_score`. Ships alone, changes no UI. Nothing downstream is buildable without it.",
+  "2 \u00b7 `story_cta_v` view + `can_create` gating on every existing Create affordance (`.deploy-go`, `.btn-deploy-mini.deploy-narr`, `.pbtn.deploy`, `.deploybtn`). Tier<=1 renders no CTA anywhere, enforced server-side. This is the D3 safety floor and it ships before any new create UI exists.",
+  "3 \u00b7 Deterministic candidate harvester \u2014 cashtag + n-gram distinctiveness + entity_keys + llm_prior, the A3 ranking formula, exposed at `GET /api/story/:id/name-candidates`. Wire it into the EXISTING create sheet by replacing `deriveTicker()`. Immediately better naming with zero model spend and zero new UI.",
+  "4 \u00b7 Image pipeline \u2014 fetch post media, SHA-256, re-host, square crop, ffmpeg frame selection, rendered-text fallback. Adds `narrative_posts.media_sha256/media_phash/media_local_url`. Also fixes the loremflickr/picsum placeholder hack across the whole app (interaction model \u00a76 item 11).",
+  "5 \u00b7 The Haiku namer + `namer_run` table + the A5 hallucination gate + the A6 never-wait-on-model render contract. Feature-flagged; the deterministic path from step 3 is the permanent fallback, not a stub.",
+  "6 \u00b7 `coin_index` + the anti-dupe check, read-only. Phase 6a: Jupiter `tokens/v2/search` only, symbol exact + trgm, liquidity-ordered \u2014 this alone delivers three of the four B2 bands. Phase 6b: the create_v2 mint stream populating `coin_index`. Phase 6c: pHash for D-IMAGE.",
+  "7 \u00b7 Create Step 1, wallet-optional, terminating at `Review`. No signing, no chain. Reuses `.sheet`, `.src-quote`, `.name-grid`, `.coll`, `.achip`, `.buychips`, `.sh-foot`; adds `.namer`, `.dupe-card`, `.safety-defaults`, `.src-lock`. Shippable to internal users as a naming tool.",
+  "8 \u00b7 Real launch \u2014 IPFS upload with Pinata fallback, `createV2Instruction`, bundled first buy, Privy raw-byte signing, send + confirm, `launch` table, `mint_keypair_enc` retry safety, and the complete failure taxonomy with its copy. Step 2 + Signing screens.",
+  "9 \u00b7 Propagation \u2014 the single-transaction write of `narrative_tickers` (source='insidor_launch', CONFIRMED), `coin_index`, both `follow` rows, `holding`; Realtime broadcast; optimistic rows in every table with `\u2014` not `0` for absent market data.",
+  "10 \u00b7 Success screen + `/c/{mint}` OG route + share-card renderer + the X compose intent (never an auto-post).",
+  "11 \u00b7 Fee split, gated on D2 \u2014 `poster` table with the opt-out registry, `fee_share` table, `createFeeSharingConfig` in tx 1, deferred `updateFeeSharesV2` in tx 2 after address verification, the retry worker with a 24h ceiling, and the `not created or endorsed by` disclaimer. All in ONE release per the risk register. Insidor's platform wallet pays the 890,880-lamport poster prefund.",
+  "12 \u00b7 Regeneration UX (2 free local cycles, then attempt 2, cap 3) plus the `accepted_symbol` / `accepted_edited` label loop feeding a refit of the A3 weights. This is the only step that makes the namer improve rather than merely exist."
+ ],
+ "openQuestions": [
+  "D2 is still open and it gates step 11 permanently. A coin minted without a fee-sharing config can NEVER have one added (errors 6009/6024; `reset_fee_sharing_config` is gated on a pump-held authority Insidor does not control). Every coin launched before the decision is permanently split-less. Recommendation: create the sharing config on EVERY launch from day one even while shares stay unwritten \u2014 `isSharingConfigEditable` returns true for a v2 config with no shares, so this costs ~0.0043 SOL per launch and preserves the option. Deciding 'no' later costs nothing; deciding 'yes' later is impossible.",
+  "Dev buy: the flow doc explicitly CUT 'buying your own coin ahead of everyone inside the create form' as the one screen that makes a beginner correctly ask whether they are running a scam, but the brief specifies an optional dev buy. This spec keeps it, defaults it to None, relabels it `Buy some yourself (optional)`, and states plainly that it executes at the same price in the same transaction. Confirm that middle is acceptable, or cut it entirely.",
+  "E6 (search empty state, no story): the flow doc says the form is only reachable from a story, 'which is what keeps creation coherent \u2014 but it also means you cannot make a coin about something we missed.' This spec recommends blocking storyless creation in v1 and offering `follow this search` instead. That forecloses a real user intent. Confirm.",
+  "E4b (orphan post below PROMOTE): allowing it means synthesising a single-post narrative with `source='user_created'` at submit time, which puts user-authored rows into the same table the detection pipeline owns. The alternative is refusing to coin anything we have not promoted, which loses the fastest possible launches. Which invariant matters more?",
+  "The pre-sign re-check window: a 6s timeout that does not block means a determined race still slips through. Tightening it to blocking-with-a-3s-timeout trades a rare duplicate for a common stall. Current recommendation is non-blocking; verify against real p95 latency once `coin_index` exists.",
+  "D-STRONG demotes the create button to a secondary. That is the only place in the product where Insidor steers a user toward buying rather than creating, and creating is the more monetisable outcome for us. Confirm the incentive conflict is being resolved in the user's favour deliberately, and consider logging the create-anyway rate as an honesty metric.",
+  "U2 is unresolved: the exact all-in cost of one `create_v2` (Token-2022 mint and `mayhem_state` byte sizes unverified). Until one devnet launch is measured, the cost line must read `about 0.02 SOL` and the balance gate must require 0.03. Run the devnet launch before writing the cost copy.",
+  "U1 is unresolved: whether `distribute_creator_fees_v2` throws 6070 for a zero-lamport poster account. If it does, every launch under variant A carries an 890,880-lamport prefund. This spec assigns that cost to Insidor, not the creator \u2014 confirm.",
+  "Regeneration cap of 3 model calls per user per story is a cost guess, not a measured one. At $0.0005/call it is not the money that matters, it is the slot-machine dynamic. Watch `accepted_edited` rate: if it climbs above ~40% the namer is not good enough and the cap is masking it.",
+  "Does an UNSURE match ever justify pushing toward buy? This spec says never, on both D1 grounds and denial-of-creation-attack grounds. That means we will occasionally let a user mint a second coin when the first one really was the right match. Accept that cost explicitly.",
+  "Naming a public figure: the prompt permits public figures and stage names and forbids private individuals, but the boundary is genuinely fuzzy for a person who went viral once and is otherwise private \u2014 which is the modal Insidor story. This needs a written rule from the founder, not a model judgement, and it is the D3 tier-1 edge that will actually bite."
+ ],
+ "priorArt": [
+  "pump.fun's own create form \u2014 the direct baseline and the thing users will compare against. It asks for name, ticker, description, image and socials with zero assistance and no duplicate check whatsoever; the entire Insidor advantage here is that it opens pre-filled from evidence. Study its field order and its cost disclosure, then beat it on the two things it does not do.",
+  "Believe / Launchcoin (tweet-to-token) \u2014 the closest existing product to launch-from-a-post, including creator-fee attribution to a poster who did not sign up. Study specifically how it handles a poster who never claims, and how it words that to the creator, since that is exactly the variant-A disclosure problem.",
+  "Zora's 'create from post' and Farcaster's clanker \u2014 both mint from a social object and both had to solve the auto-namer. Worth reading for their failure modes: clanker in particular demonstrates what happens when the naming step is a free-text LLM with no grounding gate.",
+  "Jupiter Studio's DBC launch flow \u2014 the alternative venue named in decision D5. Its create UI is the most disclosure-heavy in Solana launch tooling and is a useful reference for the irreversibility list, even though graduating into Meteora rather than pump.fun is a positioning problem for a pump.fun-detection pipeline.",
+  "Coinbase / Robinhood first-time-crypto confirmation screens \u2014 for the confirm step specifically. The pattern worth stealing is the plain-text loss sentence that is never a dismissible red box, which the flow doc has already independently arrived at for the buy sheet.",
+  "Namecheap / domain-registrar 'that name is taken, here are alternatives' flows \u2014 the closest well-solved analogue to the anti-duplicate ladder. They have spent twenty years learning exactly how hard to push a user toward an available alternative versus the taken one, and the four-band structure here is directly borrowed from that lineage."
+ ]
+}

@@ -1,0 +1,491 @@
+{
+ "feature": "Feature 2 \u2014 Live Swap / Chart / Trade: the coin page, the origin band, and the buy flow",
+ "summary": "The coin page is the only surface in Insidor where money moves, and it has exactly one job beyond executing a trade: prove that this coin exists because of a story we surfaced first, and tell you by how many minutes. Everything else on the page \u2014 chart, stats, tabs, safety \u2014 is table stakes that Axiom and Photon already render; the origin band and the earliness numeral on your holding are the only things they structurally cannot. The buy flow is specified as a 23-state machine because this is the one place where ambiguity costs users real money, and the failure states (slippage revert, expired blockhash, lost contact with no signature) are designed with the same care as the happy path.",
+ "screens": [
+  {
+   "name": "S1 \u00b7 Coin page (/coin/[mint])",
+   "job": "Show one coin honestly, prove where it came from and how early you are, and be the only place a buy or sell can start.",
+   "layout": "Page shell `.shell` = grid `1fr 320px`, gap 16, max-width 1560, padding 0 20px \u2014 main content plus the persistent right rail (existing \u00a76). Inside main, `.tpback` back button (32px tall, margin-bottom 16), then `.tp2` = grid `1fr 356px`, gap 16, align-items start. `.tp2-main{min-width:0; display:flex; flex-direction:column; gap:14px}` in fixed order: `.tid` identity header (84px) \u2192 `.tp-origin-lg` origin band (92px) \u2192 `.qstats` stat grid (58px, 8 cells) \u2192 `.chartcard` (468px: 40px head + 440px iframe) \u2192 `.tp-tabs`+`.tp-tabbody` (auto). `.tp2-side{width:356px; display:flex; flex-direction:column; gap:14px; position:sticky; top:72px}` in order: `.poscard` (only when qty>0, ~168px) \u2192 `.tradebox` (~470px) \u2192 `.secbox` (~180px) \u2192 `.sibstrip` (only when story CONFIRMED coin_count \u22652, ~44px + 40px/row). All panels use the settled shared skin: `linear-gradient(180deg, rgba(255,255,255,.02), transparent 120px), var(--bg1); border:1px solid rgba(255,255,255,.055); border-radius:16px`. BREAKPOINTS \u2014 \u22641240px: right rail collapses to a 44px icon strip. \u22641040px: `.tp2` goes single-column, `.tp2-side` unsticks, `.qstats` becomes `overflow-x:auto` with `.qs{flex:0 0 auto; min-width:74px}`; the trade panel leaves the flow entirely and becomes a fixed bottom bar (68px + safe-area) showing `You receive 231,402 FERRY` left and a `Buy` button right, expanding to an 88vh `.sheet`; `.poscard` collapses to a 52px band directly under the origin band.",
+   "elements": [
+    {
+     "element": ".tid identity header (\u00a78.3, reuse verbatim)",
+     "shows": "52px `.tkico` logo \u00b7 `$FERRY` in Clash Display 27px \u00b7 token name \u00b7 `.newbadge` when age<10min \u00b7 `live` dot when data <120s fresh \u00b7 `.ca-mini` `4mZq\u20268xPq` with copy-to-clipboard (turns lime 1000ms) \u00b7 `.soc` X/TG/web links \u00b7 right-aligned `.tid-price` $0.000221 mono 26px with 24h `.chg`",
+     "source": "tokens.ticker/name/decimals; DexScreener pair priceUsd + priceChange.h24 via /api/token-lookup; socials from pair.info; logo from logoForPair()",
+     "interaction": "Click `.ca-mini` copies mint. Click ticker does nothing (you are here)."
+    },
+    {
+     "element": ".tp-origin-lg origin band (\u00a78.4 EXTENDED \u2014 see S2)",
+     "shows": "The story this coin came from and the earliness numeral",
+     "source": "coin_matches \u22c8 narratives \u22c8 story_clocks (NONE EXIST \u2014 see dataContract)",
+     "interaction": "Whole band is a button \u2192 story page. `matched` chip opens the evidence popover."
+    },
+    {
+     "element": ".qstats stat grid (\u00a78.5, reuse + 1 cell)",
+     "shows": "8 cells, hairline-divided, equal flex: `5m` `1h` `24h` (signed %, `.v.up` lime / `.v.down` red) \u00b7 `Mkt cap` \u00b7 `Liquidity` \u00b7 `24h vol` \u00b7 `Holders` \u00b7 **`Age`** (NEW cell, 8th)",
+     "source": "5m/1h/24h/vol/liq/mcap \u2190 DexScreener pair (priceChange.m5/h1/h24, volume.h24, liquidity.usd, marketCap ?? fdv). Holders \u2190 /api/holders (Helius RPC \u2014 works with no pair). Age \u2190 **min(pairCreatedAt) across ALL Solana pairs for the mint**, not best-pair",
+     "interaction": "Hover raises `.qs` to var(--bg2). Age cell ticks live as `0:47` under 60min."
+    },
+    {
+     "element": "Age cell \u2014 the fail-closed rule",
+     "shows": "`3m` / `0:47` live-ticking under 1h / `\u2014` when pairCreatedAt is missing",
+     "source": "lib/token-lookup.js:70 \u2014 **`if (!pair.pairCreatedAt) return 0` is a live defect**: missing timestamp renders ageMin=0, i.e. 'brand new', which is maximally attractive on a terminal that sells earliness. Must return null",
+     "interaction": "When null, the cell renders `\u2014` in --dim AND the origin band suppresses its lead numeral. Unknown age can never present as new."
+    },
+    {
+     "element": ".chartcard (\u00a78.6, reuse; new `.chart-pending` replaces `.chart-empty`)",
+     "shows": "`.chart-top` with `#chartPrice` mono 19px + `.chg`, right `.tv-tag` reading `DexScreener`. Body = 440px iframe at `https://dexscreener.com/solana/<pairAddress>?embed=1&theme=dark&trades=0&info=0&chartLeftToolbar=0&chartTheme=dark&chartType=usd&interval=5`",
+     "source": "pairAddress from /api/token-lookup; mount logic already correct in site/tokenpage.js:54-77 \u2014 keep it",
+     "interaction": "Pair must be the POOL address, not the mint (mint URLs resolve to the wrong, often USDC, pair \u2014 tokenpage.js:36 already guards this)."
+    },
+    {
+     "element": ".tp-tabs + .tp-tabbody (\u00a78.7, reuse verbatim)",
+     "shows": "`Trades` (default) \u00b7 `Top traders` (rendered only when /api/toptraders returns \u22651 ranked trader) \u00b7 `Holders` \u00b7 `Info`",
+     "source": "/api/trades?mint= (10s poll, 20s cache) \u00b7 /api/toptraders?mint= (once per mint per session) \u00b7 /api/holders?mint= \u00b7 Info from tokens + coin_matches",
+     "interaction": "Trades pane: click a wallet \u2192 `.trfilter` banner filters to that trader, `clear \u2715` resets. Your own fills render `.wal.you` in cyan."
+    },
+    {
+     "element": "Info pane \u2014 supply and origin",
+     "shows": "Contract \u00b7 Created \u00b7 Market cap \u00b7 Liquidity \u00b7 **Total supply (real, from mint account)** \u00b7 Token program (`Token-2022` / `SPL`) \u00b7 Origin story (full-width)",
+     "source": "supply/decimals/tokenProgram \u2190 Helius getAccountInfo(mint, jsonParsed). **The hard-coded `1,000,000,000` at index.html:3169 is faked-behaviour #15 and must go** \u2014 new pump.fun mints are Token-2022 and the assumption does not hold",
+     "interaction": "Origin row links to the story page."
+    },
+    {
+     "element": ".sibstrip \u2014 other coins from this story (NEW)",
+     "shows": "`3 MORE COINS FROM THIS STORY` header, then rows: logo \u00b7 $TICKER \u00b7 mcap \u00b7 age, with the earliest-minted badged `first`",
+     "source": "coin_matches where narrative_id=$1 and verdict='CONFIRMED', ordered by score desc, mint_time asc, liquidity desc \u2014 **never by volume alone**",
+     "interaction": "Row \u2192 that coin page. Only renders for CONFIRMED siblings; UNSURE siblings never appear here (they would read as endorsed)."
+    }
+   ],
+   "states": [
+    "LOADING \u2014 `.tid`/`.qstats`/`.tradebox` render `.sk` skeleton bars (existing `skel` keyframe); the chart card holds its 468px height so nothing reflows",
+    "LIVE \u2014 all panels populated, `live` dot pulsing, trades polling at 10s",
+    "BRAND-NEW T0 (mint seen, no pair, 0\u201360s) \u2014 chart renders `.chart-pending`, not an error; price/5m/1h/24h/mcap/liq/vol all `\u2014`; Holders and Age are live; the trade panel still quotes because Jupiter often routes the bonding curve before any DEX pair indexes",
+    "BRAND-NEW T1 (pair exists, <5 candles) \u2014 iframe mounts, plus a 28px strip across the chart top: `First trades \u2014 4 minutes of history`",
+    "NO ROUTE T2 \u2014 Jupiter returns no route in either direction; trade panel disabled with honest copy, primary becomes `Watch for a route`",
+    "UNVERIFIED MATCH \u2014 origin band in amber chrome, persistent banner, trade panel behind the two-tap gate",
+    "NO STORY \u2014 slim 40px `.tp-origin-none` bar; no earliness claim of any kind is rendered",
+    "STALE PIPELINE \u2014 `_pageLiveAt` older than 180s: a 26px amber strip above `.tid` reading `Live data paused \u2014 prices last updated 4m ago`, the `live` dot goes grey, and the trade panel's `.fine` reads `Quotes still live (Jupiter) \u2014 page metrics are stale`. The two data planes are separated because Jupiter can be healthy while our indexer is not",
+    "WALLET NOT CONNECTED \u2014 page fully readable and quoting; only `.poscard` is absent and the button reads `Connect wallet to buy`",
+    "MATCH UPGRADED LIVE \u2014 Supabase Realtime on coin_matches(mint=eq.$1) fires UNSURE\u2192CONFIRMED while the page is open: the origin band animates from amber to cyan chrome, the lead numeral counts up into place, the two-tap gate drops away. No reload. Nobody else can render this",
+    "TOKEN GONE \u2014 mint has no pair, no holders, no route, age >24h: `This coin appears to be dead. Liquidity $0.` Sell path stays open for holders (never strand a holder); buy path closed"
+   ]
+  },
+  {
+   "name": "S2 \u00b7 Origin band + evidence popover",
+   "job": "Say 'this coin exists because of THIS story, and you were N minutes early' in one glance, and say it falsely never.",
+   "layout": "Full width of `.tp2-main`, height 92px, radius 14, padding 12px 14px, `display:flex; align-items:center; gap:14px`, cursor pointer, hover `border-color:rgba(61,224,255,.35); box-shadow:0 0 0 1px rgba(61,224,255,.1)`. THREE ZONES: [A] 56\u00d756 post-media thumb, radius 10, flex:none. [B] flex:1, min-width:0, three stacked lines. [C] fixed 172px, right-aligned, separated by a 1px `#212127` rule inset 20% top and bottom \u2014 the earliness stack. Then a 96px `View story \u2192` in mono 11.5px cyan, flex:none.",
+   "elements": [
+    {
+     "element": "[B] line 1 \u2014 kicker",
+     "shows": "`.pbadge` 18px platform mark + `ORIGIN STORY \u00b7 @lasthorn \u00b7 2h ago` at 10px uppercase, letter-spacing .07em, --dim",
+     "source": "narrative_posts.platform / .handle / .posted_at (bigint epoch ms) for narratives.top_post_id",
+     "interaction": "none"
+    },
+    {
+     "element": "[B] line 2 \u2014 story title",
+     "shows": "`Harbor horn goes viral in Bergen` \u2014 Clash Display 500, 13.5px, --ink, 1-line clamp",
+     "source": "narratives.title",
+     "interaction": "none"
+    },
+    {
+     "element": "[B] line 3 \u2014 the post itself",
+     "shows": "Curly-quoted post text truncated at 72 chars, mono 11.5px --muted, 1-line clamp",
+     "source": "narrative_posts.text",
+     "interaction": "none"
+    },
+    {
+     "element": "[C] the lead numeral \u2014 THE PRODUCT",
+     "shows": "`+31m` in JetBrains Mono 26px/600, cyan #3DE0FF, tabular. Under it `EARLY VS CRYPTO` at 9.5px uppercase --dim",
+     "source": "story_clocks.lead_time_min = t_crypto \u2212 promoted_at, where t_crypto = min(t_first_matching_mint, t_first_ct_post). **promoted_at does not exist in the schema \u2014 highest-priority gap**",
+     "interaction": "none \u2014 it is a fact, not a control"
+    },
+    {
+     "element": "[C] the proof lines \u2014 literal clock times",
+     "shows": "Two lines at 10.5px mono --muted: `spotted 14:02 \u00b7 crypto 14:33` and `coin minted +2m after spot`",
+     "source": "story_clocks.promoted_at, .t_crypto; coin_matches.mint_time and .delta_minutes",
+     "interaction": "Relative-only would be unfalsifiable. Absolute local times are what a sceptic can check against the permalink."
+    },
+    {
+     "element": "`matched` evidence chip",
+     "shows": "Inline in the kicker when verdict=CONFIRMED: a `.lead-badge.sm`-styled chip reading `matched \u00b7 image + name`",
+     "source": "coin_matches: channel names for whichever of s_img/s_text/s_tick/s_mint_in_post cleared their strong-channel thresholds (0.55/0.55/0.60/0.90)",
+     "interaction": "Click (stopPropagation) \u2192 evidence popover"
+    },
+    {
+     "element": "Evidence popover `.origin-evidence` (NEW)",
+     "shows": "320px `.sheet` skin. Post media 140px beside token logo 56px. Channel chips: `image \u2713` `name \u2713` `ticker ~` `mint-in-post \u2014`. One line: `Minted 4 minutes after the post \u2014 14:04 vs 14:00`. Footer: `Matched by Insidor \u00b7 Report a wrong match`",
+     "source": "coin_matches.s_* + mint_time + narrative_posts.media_url + tokens.logo",
+     "interaction": "**Categorical only \u2014 never render a numeric score.** '73% match' next to a Buy button makes users do their own thresholding, which defeats the abstain band. Three states, three treatments."
+    }
+   ],
+   "states": [
+    "CONFIRMED, POSITIVE LEAD \u2014 cyan chrome, `+31m` cyan, full proof lines. The default good case",
+    "CONFIRMED, NEGATIVE LEAD \u2014 `\u221212m` in red #FF5C6E, label flips to `LATE VS CRYPTO`, sub-line reads `crypto posted first`. **Shipped, never suppressed** (D2: roughly a third of real detections are late; a record with no left tail is marketing)",
+    "CONFIRMED, LEAD PENDING \u2014 no crypto pickup yet, so t_crypto is null. Numeral is replaced by `FIRST` in cyan with sub-label `NOBODY IN CRYPTO HAS POSTED YET`. This is the best possible news and must read as such, not as missing data",
+    "CONFIRMED, UNMEASURABLE \u2014 story fell in a PumpPortal gap window, or left-censored entry (earliness_eligible=false). Numeral renders `\u2014`, sub-label `NOT MEASURABLE`, tooltip explains. Never counted as a win",
+    "UNSURE \u2014 band chrome flips to `border:1px solid rgba(255,184,76,.35); background:rgba(255,184,76,.05)`. Kicker becomes `POSSIBLE ORIGIN \u00b7 UNVERIFIED`. **The lead numeral is SUPPRESSED and replaced by a `.timing-pill.timing-mid` reading `Unverified match`** \u2014 minutes_early is a claim about *this coin's* relationship to the story; if the relationship is unsure the number is a lie. A fourth line appears: `We are not confident $KANG came from this story. Matched on ticker only.` + `Why? \u2192`. The candidate is still SHOWN \u2014 abstain never means hide",
+    "NO STORY \u2014 band is NOT an empty state. It collapses to a 40px `.tp-origin-none` bar in --dim mono 11.5px: `No story matched \u2014 this coin is not linked to anything Insidor detected.` + `Search stories \u2192`. This is the default for any coin reached by pasting a CA, so it must read as neutral, not broken",
+    "ADOPTED relation \u2014 cyan chrome but the kicker reads `ADOPTED BY THIS STORY` and the numeral is the story's lead with a sub-label `coin is 604 days old`. The real age is the disclosure; a pre-existing coin the story attached to is a legitimate buy with a different confidence story",
+    "MULTIPLE CONFIRMED STORIES \u2014 band shows the highest-scoring story and appends `also matched to 1 other story \u2192`"
+   ]
+  },
+  {
+   "name": "S3 \u00b7 Trade panel `.tradebox` (buy side)",
+   "job": "Turn a number into a purchase, disclose what it actually costs, and never render an actionable button on a quote we do not have.",
+   "layout": "356px wide, padding 16, shared panel skin. Vertical stack, gap as noted: `.tb-head` (Trade $FERRY + `.tbtn-watch`, mb 14) \u2192 `.sides` Buy/Sell toggle (38px, mb 14) \u2192 `.fp` amount block (mb 14) \u2192 `.fp` slippage/priority row (Pro only, mb 14) \u2192 `.recv` you-receive panel (mb 12) \u2192 `.mini` recap grid (mb 14) \u2192 `.blockstrip` (conditional, 34px, mb 10) \u2192 `.doit` execute (46px) \u2192 `.fine` quote-note (pt 11). **Build only the `.sides/.fp/.amt/.pre/.recv/.mini/.doit/.fine` generation \u2014 the older `.bs/.otabs/.amtwrap/.presets/.adv/.recap/.execbtn` block at index.html:486-521 is dead (inventory \u00a712.6).**",
+   "elements": [
+    {
+     "element": ".fp amount \u2014 label row",
+     "shows": "Left `Amount`; right `#bal`: `Balance 1.2345 SOL` / `Balance \u2014` / `Connect wallet` in --dim",
+     "source": "/api/balance?owner=&mint= (Helius getBalance + getTokenAccountsByOwner). **Note: the `{mint}` filter works for Token-2022; any code using a `{programId: TOKEN_PROGRAM_ID}` filter breaks on new pump.fun mints**",
+     "interaction": "Clicking the balance figure fills MAX."
+    },
+    {
+     "element": ".amt input + presets",
+     "shows": "mono 20px/600 tabular input, unit `SOL`. Presets `0.1 | 0.5 | 1 | 2 | MAX`",
+     "source": "local state; MAX = balance \u2212 0.02 SOL reserve (network fee + Token-2022 ATA rent + headroom for a retry)",
+     "interaction": "**Changed from the prototype's `0.5|1|2|5`**: 0.1 is the normie entry point and 5 SOL into a three-minute-old book is the user rugging their own fill. Any change debounces 250ms \u2192 re-order."
+    },
+    {
+     "element": "SOL\u21c4USD toggle",
+     "shows": "A 2-chip inline toggle in the unit slot",
+     "source": "window.SOL_PRICE (live.js, `insidor-sol-price` event)",
+     "interaction": "Simple mode defaults to USD and the field reads `$50`; Pro defaults to SOL. Flow doc: Simple is 'a dollar field'."
+    },
+    {
+     "element": ".recv you-receive panel",
+     "shows": "`YOU RECEIVE` 10px uppercase; value `231,402.55 FERRY` mono 19px/700; sub-line `$47.20 \u00b7 1 FERRY = $0.000204`",
+     "source": "order.outAmount / 10^decimals; USD via SOL_PRICE",
+     "interaction": "On refresh, if outAmount moved >1.0% against the user, flash amber (`flashDn`, 600ms) and HOLD \u2014 never auto-advance a worsened quote."
+    },
+    {
+     "element": ".mini recap \u2014 5 rows, equal 12px mono weight",
+     "shows": "`Min received` 228,120 FERRY \u00b7 `Price impact` 0.42% \u00b7 `Route` dflow \u00b7 `Network + priority` ~0.0009 SOL \u00b7 **`Insidor + Jupiter fee` 0.60% \u00b7 $0.28 \u24d8**",
+     "source": "otherAmountThreshold \u00b7 priceImpactPct \u00b7 router \u00b7 prioritizationFeeLamports \u00b7 feeBps + platformFee \u2014 **all five read from the /order response; the prototype's hard-coded `LP fee 1.00%` and `0.0005/0.002 SOL` network literals are faked-behaviour #18 and must be deleted**",
+     "interaction": "Price impact inline colour: \u22641.5% #9BF03C, >1.5% #ffb84c, >5% #FF5C6E."
+    },
+    {
+     "element": "THE FEE DISCLOSURE \u2014 `.mini .r.r-fee`",
+     "shows": "Label `Insidor + Jupiter fee` in --dim 12px, value `0.60% \u00b7 $0.28` in --ink 12px, plus a 10px `\u24d8` in --muted at 4px gap. **Identical typographic weight to Price impact and Min received.** No colour, no box, no badge, no checkbox",
+     "source": "order.feeBps (Insidor referral, floor 50) + order.platformFee.feeBps (Jupiter, currently 10 bps live on new tokens though the published table says 50)",
+     "interaction": "\u24d8 opens a 260px popover: `Insidor fee 0.50% $0.24` / `Jupiter platform 0.10% $0.05` / rule / `Total 0.60% $0.29` / `Jupiter keeps 20% of the Insidor fee.` / `0.50% is the minimum Jupiter permits on integrator fees \u2014 it is not a number we chose.` **Second, mandatory exposure: the confirm dialog repeats the fee as a full uncollapsed row before any signature.** Ambient at equal weight + pre-signature at full weight = disclosed without shouting."
+    },
+    {
+     "element": "Slippage / Priority row (Pro only)",
+     "shows": "Two `.pre` chip groups: `#slipChips` `0.5% | 1% | 3% | Auto` and `#prioChips` `Fast | Turbo`",
+     "source": "slippageBps \u2192 /order; priority \u2192 priorityLevel 'high'(max 400k lamports) / 'veryHigh'(max 2M). Auto = Jupiter RTSE",
+     "interaction": "**Default is `Auto` on tokens under 30 minutes old**, because a fixed 1% on a fresh bonding curve reverts constantly. Simple mode hides this row entirely and always uses Auto."
+    },
+    {
+     "element": ".doit execute button \u2014 a pure function of state",
+     "shows": "See the S4 state machine for every label. Lime gradient `#b4f86a\u2192#9BF03C` on buy, `#ff7584\u2192#FF5C6E` on sell, cyan `#5fe8ff\u2192#3DE0FF` when the action is Connect/Add money rather than Trade",
+     "source": "state machine",
+     "interaction": "**Fix the CSS conflict** \u2014 two `.doit:disabled` rules exist; the later (opacity .72) wins. Pick one."
+    },
+    {
+     "element": ".fine quote-note",
+     "shows": "`route via dflow \u00b7 refreshes in 14s` / `Getting best route\u2026` / `No route for this token yet` / `Safety checks have not run yet` / `No chart yet \u2014 routed on the bonding curve` / on success a Solscan link",
+     "source": "order response + timer",
+     "interaction": "During flight this slot is replaced by `.txstate` (S4)."
+    },
+    {
+     "element": "Simple-mode risk line (always present, ordinary text)",
+     "shows": "`If this goes to zero you lose $50. That happens most of the time.` 11.5px --muted, directly under the button",
+     "source": "amount \u00d7 SOL_PRICE",
+     "interaction": "Flow doc is explicit: ordinary text, not a red box. A red box gets dismissed; a sentence gets read."
+    }
+   ],
+   "states": [
+    "See S4 \u2014 the trade panel has no states of its own; it is a rendering of the buy-flow machine"
+   ]
+  },
+  {
+   "name": "S4 \u00b7 Buy execution overlay (confirm \u2192 sign \u2192 land \u2192 result)",
+   "job": "Take a user from a decision to a confirmed fill, and when it fails, tell them exactly what happened to their money.",
+   "layout": "Confirm dialog reuses `.sheet` at inline max-width 420px (\u00a78.8): `.sh-hd > .sh-t` `Confirm Buy $FERRY` \u2014 **note `.sh-hd` currently has no CSS rule (inventory \u00a712.5); give it `padding:15px 19px; border-bottom:1px solid rgba(255,255,255,.06)` to match `.sh-top`**. Body `padding:16px 20px; font-size:13px; line-height:1.7`, six `<span class=dim>label</span> <b>value</b>` rows. `.sh-foot` `display:flex; gap:8px; padding:12px 16px` with `.wallet-btn#swapCancel` (flex:1) and `.doit.b#swapOk` (flex:1). In-flight and terminal states do NOT open new dialogs \u2014 they render into `.txstate`, a 44px strip replacing `.fine` in the trade panel, so the panel never disappears under the user.",
+   "elements": [
+    {
+     "element": "Confirm dialog rows (six, fixed order)",
+     "shows": "`Amount` 1.00 SOL ($228.40) \u00b7 `You receive` ~231,402 FERRY \u00b7 `Minimum received` 228,120 FERRY \u00b7 `Price impact` 0.42% \u00b7 **`Fees` 0.60% \u00b7 $1.37 (Insidor 0.50% + Jupiter 0.10%)** \u00b7 `Slippage` Auto (RTSE) \u00b7 plus a countdown `Quote valid for 0:14`",
+     "source": "frozen order response",
+     "interaction": "Auto-refresh is SUSPENDED while this dialog is open. Never re-quote under a user's finger."
+    },
+    {
+     "element": ".txstate in-flight strip (NEW)",
+     "shows": "A 2px cyan progress hairline + one sentence + an elapsed counter: `Confirming on-chain\u2026 0:06`",
+     "source": "state machine + wall clock",
+     "interaction": "Never blocks the page. The user can open the Trades tab and watch."
+    },
+    {
+     "element": "Fill confirmation",
+     "shows": "Reuses `.done` (\u00a79.4): lime check, `Filled \u2014 231,402 $FERRY`, sub `1.00 SOL \u00b7 avg $0.000204 \u00b7 you were 41 minutes early`, `.ca-box` with the signature and `Copy` / Solscan",
+     "source": "execute response signature; minutes_early_when_bought computed at fill",
+     "interaction": "Auto-dismisses after 4s or on any click; `.poscard` appears behind it with a `narrFlash`."
+    },
+    {
+     "element": ".blockstrip \u2014 block reason above the button",
+     "shows": "34px, `border:1px solid rgba(255,92,110,.4); background:rgba(255,92,110,.06)`, red mono 11.5px: `No sell route \u2014 we could not find a way to sell this`",
+     "source": "safety checks B1\u2013B4",
+     "interaction": "A user must never have to scroll to a side panel to learn why the button is dead."
+    }
+   ],
+   "states": [
+    "1 IDLE_NO_WALLET \u2014 cyan button `Connect wallet to buy`. **The amount field stays enabled and the quote keeps running** \u2014 quotes need no wallet. Amount, slippage and priority are persisted to `insidor.pending_buy` before opening Privy and rehydrated on return",
+    "2 IDLE_NO_AMOUNT \u2014 disabled, `Enter an amount`",
+    "3 QUOTING \u2014 disabled, `.recv .v` shows a `.sk` shimmer, `.fine` = `Getting best route\u2026`",
+    "4 QUOTED \u2014 lime, enabled, `Buy $FERRY`. `.fine` = `route via dflow \u00b7 refreshes in 14s`",
+    "5 QUOTE_FAILED \u2014 disabled, `.fine` red: `No route for this token yet`. Auto-retry at 2s then 5s, then a manual `Retry` chip. Common on sub-60s mints before the pool indexes",
+    "6 INSUFFICIENT_BALANCE \u2014 **not disabled**: cyan `Add 0.34 SOL`. Opens the funding sheet with the exact shortfall prefilled and a return contract",
+    "7 BELOW_MIN \u2014 disabled, `Minimum 0.001 SOL`",
+    "8 BLOCKED_SAFETY \u2014 disabled with red outline, `Trading blocked`, `.blockstrip` states which of B1\u2013B4 fired",
+    "9 UNVERIFIED_MATCH_GATE \u2014 first tap morphs the button to amber `I understand this may be unrelated \u2014 Buy $KANG` for 4 seconds; a second tap proceeds; timeout reverts. Not a checkbox, not a modal \u2014 one deliberate extra tap, timed out so it cannot become muscle memory",
+    "10 CONFIRM \u2014 dialog open, quote frozen, countdown running",
+    "11 CONFIRM_EXPIRED \u2014 dialog stays open, primary swaps to cyan `Refresh quote`. Nothing is sent on a stale order",
+    "12 ORDERING \u2014 `Building order\u2026`, spinner. POST /api/order \u2192 GET api.jup.ag/swap/v2/order server-side. 8s timeout \u2192 QUOTE_FAILED",
+    "13 AWAITING_SIGNATURE \u2014 `Sign in your wallet\u2026`. Privy `useSignTransaction({transaction: Uint8Array})`. **No timeout** \u2014 a user may take a minute. Cancellable back to QUOTED with everything preserved",
+    "14 SIGN_REJECTED \u2014 `.fine` in --muted, not red: `You cancelled. Nothing was sent.` \u2192 QUOTED. Declining is a normal outcome, not an error",
+    "15 SUBMITTING \u2014 `Sending\u2026`. POST /api/execute \u2192 POST api.jup.ag/swap/v2/execute {requestId, signedTransaction}. 15s timeout \u2192 AMBIGUOUS_TIMEOUT if a signature came back, FAILED_UNKNOWN if not",
+    "16 LANDING \u2014 `Confirming on-chain\u2026 0:06`. If /execute returns pending, poll getSignatureStatuses at 1s up to 45s",
+    "17 FILLED \u2014 lime `Filled \u2713` 1.6s \u2192 back to `Buy $FERRY`. Simultaneously: `.poscard` appears/updates with narrFlash, `.recv` clears, the Trades tab prepends the row with `.wal.you` highlighted 2s, balance refetches, a `trades` row is written",
+    "18 FAILED_SLIPPAGE (Jupiter 6001 / SlippageToleranceExceeded) \u2014 **the #1 real failure on fresh tokens.** `Price moved more than your 1% limit. Nothing was spent except the network fee (~0.00001 SOL).` Two buttons: `Retry at 3%` (pre-computed) and `Retry same`",
+    "19 FAILED_EXPIRED_BLOCKHASH \u2014 `Your transaction did not land in time. Nothing was spent.` `Retry` re-orders and auto-bumps the priority tier one level",
+    "20 FAILED_INSUFFICIENT_LAMPORTS \u2014 balance moved mid-flight. `Not enough SOL for the swap plus fees.` \u2192 `Add money`",
+    "21 FAILED_ONCHAIN \u2014 landed but reverted (err != null). **The one failure where a transaction exists** \u2014 show the Solscan link: `The swap failed on-chain. See it on Solscan.`",
+    "22 FAILED_UNKNOWN \u2014 network/5xx/timeout with NO signature. **We do not know whether it landed and must not claim either way.** `We lost contact before confirming. Check your balance before retrying.` + a `Check status` button that polls the token-account delta for 60s + a Solscan wallet link. **Never auto-retry from here** \u2014 that is how a user gets filled twice",
+    "23 AMBIGUOUS_TIMEOUT \u2014 we have a signature but no status. Poll getSignatureStatuses for 90s, rendering `Still confirming (0:47)` with the signature copyable. Resolves to FILLED or FAILED_ONCHAIN",
+    "INVARIANTS \u2014 (a) a signed transaction is sent exactly once; requestId is single-use so every retry re-orders; (b) amount/slippage/priority survive every failure and every detour; (c) no state auto-advances past a user decision except QUOTING\u2192QUOTED and LANDING\u2192FILLED; (d) a fill is confirmed by signature status, never inferred from a balance change"
+   ]
+  },
+  {
+   "name": "S5 \u00b7 Sell sheet",
+   "job": "Get out in one tap, and say so plainly when there is nobody to sell to.",
+   "layout": "Desktop: the `.sides` toggle flips `.tradebox` to sell \u2014 same panel, red `.doit.s`, unit becomes the symbol, presets become percentages. Mobile and from a `What you own` row: a `.sheet` at max-width 420, radius 20, with `.sh-top` (`Sell $FERRY` + `You own 231,402 \u00b7 worth $179.60`) / `.sh-body` (padding 17px 19px, gap 15) / `.sh-foot`.",
+   "elements": [
+    {
+     "element": "Percentage presets",
+     "shows": "`25% | 50% | 100%` in a `.pre` group",
+     "source": "on-chain qty from /api/balance?owner=&mint=",
+     "interaction": "Sets the token amount, re-orders."
+    },
+    {
+     "element": "Take back what I put in \u2014 its own full-width line",
+     "shows": "Ghost-cyan button: `Take back what I put in \u2014 sell $141.20 worth, leave the rest riding`",
+     "source": "qty_to_sell = holdings.cost_basis_usd / current_price_usd, clamped to \u2264 qty",
+     "interaction": "**When value < cost_basis this control is DISABLED with the honest label `Not enough value left to take back what you put in.` \u2014 never hidden.** Hiding it hides a loss."
+    },
+    {
+     "element": "You-receive + recap",
+     "shows": "`0.62 SOL \u00b7 $141.20`, min received, price impact, the same `.r-fee` row",
+     "source": "order response, sell direction",
+     "interaction": "Impact colouring is unchanged, but on a thin book amber bites far sooner \u2014 which is the point."
+    },
+    {
+     "element": "Realised / unrealised split (Pro)",
+     "shows": "`Realised so far $0 \u00b7 This sale realises +$38.40 \u00b7 Remaining unrealised +$12.10`",
+     "source": "holdings.realised_pnl_usd, cost_basis_usd, qty",
+     "interaction": "none"
+    }
+   ],
+   "states": [
+    "QUOTED \u2014 normal",
+    "NO_BUYERS \u2014 no route, or liquidity below the sale size. `Nobody is buying this right now. Liquidity is $840 and you are trying to sell $179.` with a `Sell 25% instead` shortcut",
+    "DUST \u2014 position worth < $1: `This is worth $0.42. The network fee would take most of it.` Sell stays enabled; we state the arithmetic and let them decide",
+    "PARTIAL FILL IMPOSSIBLE \u2014 Jupiter is all-or-nothing; if 100% has no route but 25% does, we say so rather than silently reducing the amount",
+    "DELISTED COIN \u2014 coin removed from Insidor via a takedown: the coin page is gone but **the sell path stays reachable from `What you own`**. Stranding a holder just moves the unfairness onto someone else",
+    "All buy-flow states 10\u201323 apply identically to the sell direction"
+   ]
+  },
+  {
+   "name": "S6 \u00b7 Add money sheet + first-run explainer",
+   "job": "Get someone who has never held SOL from zero to able-to-buy, and be honest about what it costs and how long it takes \u2014 before they start.",
+   "layout": "`.sheet` max-width 472 (matches the deploy sheet), `.sh-top` / `.sh-body` (padding 17px 19px, gap 15, max-height 64vh) / `.sh-foot`. The FIRST-RUN variant is not a sheet: it replaces the `.tradebox` body in place (`.firstrun`), so the panel is never blocked \u2014 flow doc: 'a three-step explainer replaces the panel rather than blocking'.",
+   "elements": [
+    {
+     "element": "The honest arithmetic block \u2014 first thing in the sheet",
+     "shows": "`$50 card` \u2192 `$48.30 of SOL` (Coinbase fee ~2.5% + spread) \u2192 `$45.50 of $FERRY` (Insidor 0.50% + Jupiter 0.10% + ~2.4% price impact on a $2k book + ~0.0009 SOL network + ~0.002 SOL Token-2022 account rent). One summary line: **`$50 of card money becomes about $45.50 of coin.`**",
+     "source": "provider quote + live /order response for the intended size \u2014 computed, never a static string",
+     "interaction": "This line is the whole point. Every competitor omits it."
+    },
+    {
+     "element": "Timing warning \u2014 above the button, not below",
+     "shows": "`Card money usually lands in 1\u20133 minutes. Prices move in that time.`",
+     "source": "provider settlement class (debit instant, ACH days)",
+     "interaction": "Stated before they start, not after they are committed."
+    },
+    {
+     "element": "Minimum handling",
+     "shows": "When the shortfall is below the provider minimum: `Add $20 (minimum)` with `$14 stays as SOL in your wallet \u2014 you can use it on the next coin.`",
+     "source": "provider minimum from the onramp quote",
+     "interaction": "Never silently round up without saying where the surplus went."
+    },
+    {
+     "element": "Return contract",
+     "shows": "On return: a 44px cyan band on the coin page \u2014 `Money ready \u2014 $47.30 of SOL landed. Continue your buy?`",
+     "source": "`insidor.pending_buy` = {mint, side, amountSol, slippageBps, priorityTier, ts} in localStorage AND mirrored to the URL",
+     "interaction": "**The two-flow seam is where this breaks.** The user leaves for a provider iframe and comes back to a page that forgot what they were doing. The intent must survive the round trip or the normie path is fiction."
+    },
+    {
+     "element": ".firstrun three-step explainer (replaces the tradebox body)",
+     "shows": "`1 Make a wallet \u2014 Insidor makes one for you. No password, no seed phrase. Your coins live in it, not with us.` / `2 Add money \u2014 Card or Apple Pay, through Coinbase. We never see your card details.` / `3 Buy \u2014 Our fee is 0.5%. Price impact on a coin this new is usually 1\u20133%. Realistically, $50 of card becomes about $45.50 of coin.` Two buttons: `Start with $50` / `I already have a wallet`",
+     "source": "static copy + the live fee computation for step 3",
+     "interaction": "Step 3's last sentence is the honest one. It belongs in the first-run panel, not in a disclosure page nobody opens."
+    }
+   ],
+   "states": [
+    "NEVER_HELD_SOL \u2014 `.firstrun` replaces the panel",
+    "WALLET_EMPTY \u2014 sheet opens with the full intended amount prefilled",
+    "PARTIAL_SHORTFALL \u2014 sheet opens with only the shortfall prefilled",
+    "PROVIDER_PENDING \u2014 `Waiting for Coinbase \u2014 usually 1\u20133 minutes` with an elapsed counter; the coin page stays fully usable behind it and keeps quoting",
+    "PROVIDER_FAILED \u2014 `Coinbase declined the payment. We never saw your card, so we cannot tell you why.` + `Try a different method`",
+    "LANDED_PARTIAL \u2014 less SOL arrived than quoted (provider spread): `$47.30 landed, you asked for $50. Buy with $47.30?` \u2014 never top up silently",
+    "MINT_NOT_SUPPORTED \u2014 if we ever attempt direct-to-mint funding: fall back to SOL, disclose the extra hop. **U9 is unverified \u2014 whether useAddFunds/useFiatOnramp can deliver an arbitrary SPL mint on Solana has not been tested. Ship SOL-only and re-scope only after a live quote returns**",
+    "EXPERIMENTAL_HOOK_BROKEN \u2014 both Privy hooks are `@experimental`; version-pin and keep a raw provider-link fallback so a Privy minor bump cannot kill funding"
+   ]
+  },
+  {
+   "name": "S7 \u00b7 Safety panel `.secbox` + block strip",
+   "job": "Run the checks that actually discriminate for brand-new pump.fun tokens, block on the four that can cost you everything, and never award a green tick to a check that means nothing.",
+   "layout": "356px, padding 16, shared skin, sits under `.tradebox`. `.sec-h` header `Safety checks` + a `.risk-pill` when a label exists. Then `.sec` rows: `display:flex; justify-content:space-between; font-size:12px; padding:8px 0; border-top:1px solid rgba(255,255,255,.05)`. Values `.ok` lime / `.warn` #ffb84c / `.dim` --dim \u2014 **`.dim` currently has no CSS rule anywhere (inventory \u00a712.3); add `color:var(--dim)`**. Block reasons are LIFTED out of this panel into `.blockstrip` directly above the buy button.",
+   "elements": [
+    {
+     "element": "THE VERIFIED DEFECT in api/safety.js",
+     "shows": "Every token currently reports `\u2713 Revoked` for both mint and freeze",
+     "source": "`api/safety.js` reads `https://api.rugcheck.xyz/v1/tokens/{mint}/report/summary`, which returns only {score, risks, tokenProgram, tokenType} \u2014 **no authority fields at all**. So `raw.mintAuthority ?? raw.token?.mintAuthority ?? null` is always `null`, and line 24 `mintRevoked: mintAuthority == null ? true : false` renders `true` for every token on Solana. Absent and null are collapsed into 'safe'",
+     "interaction": "Three-valued logic is mandatory: field ABSENT \u2192 null (unknown, renders `\u2014`); field present and null/empty/`1111\u20261111` \u2192 revoked (true); field present with a pubkey \u2192 active (false)."
+    },
+    {
+     "element": "The correct authority source",
+     "shows": "`Mint authority` / `Freeze authority`",
+     "source": "**Helius `getAccountInfo(mint, {encoding:'jsonParsed'})` \u2192 `data.parsed.info.mintAuthority` / `.freezeAuthority` \u2014 primary.** One RPC call, authoritative, works for Token-2022, and works on a 40-second-old mint that RugCheck has not indexed. RugCheck's full `/v1/tokens/{mint}/report` (not `/summary`) is secondary for lpLockedPct / topHolders / risks",
+     "interaction": "api/balance.js already has the Helius RPC plumbing \u2014 extend it rather than adding a client."
+    },
+    {
+     "element": "The pump.fun collapse \u2014 the design consequence",
+     "shows": "For a Token-2022 mint created by the pump.fun program, the two authority rows collapse into ONE --dim line: `Mint & freeze authority \u2014 revoked by pump.fun on every coin (not a signal)`",
+     "source": "tokens.token_program + creator program",
+     "interaction": "**Both flags are near-useless here: every `create_v2` mint has both revoked by construction.** Rendering \u2713\u2713 green teaches the user that green means safe, which is exactly backwards. Green ticks are reserved for checks that discriminate."
+    },
+    {
+     "element": "B4 \u2014 the sell-route check (the highest-value check on the page, and it does not exist today)",
+     "shows": "`Can you sell?` \u2192 `\u2713 Route found` / `\u26a0 No sell route`",
+     "source": "A reverse `/order` call (token\u2192SOL) at quote time for ~1% of the intended out-amount. Buy-side route present + sell-side route absent is the honeypot signature",
+     "interaction": "**BLOCKS.** `We could not find a way to sell this. Not buying.` Costs one extra order call and is worth more than every other check combined."
+    },
+    {
+     "element": "B3 \u2014 Token-2022 extensions (also does not exist today)",
+     "shows": "`Transfer fee` \u2192 `\u2713 None` / `\u26a0 5% on every transfer`; `Transfer hook` \u2192 `\u2713 None` / `\u26a0 Present`",
+     "source": "Helius getAccountInfo \u2192 `data.parsed.info.extensions[]`, cross-checked against RugCheck `transferFee` / `token_extensions`",
+     "interaction": "**BLOCKS.** A transfer hook can make the sell fail arbitrarily. New pump.fun tokens are Token-2022, so this is now the live attack surface and nothing in the codebase reads it."
+    },
+    {
+     "element": "Warn rows",
+     "shows": "`Top 10 holders 68%` (>30% amber) \u00b7 `Creator holds 14%` \u00b7 `Liquidity $2,140` \u00b7 `Bundled launch \u2014 8 wallets bought in the mint block` \u00b7 RugCheck label when present",
+     "source": "/api/holders top10Pct; RugCheck topHolders/creator; DexScreener liquidity.usd; first-block analysis of /api/trades (**does not exist yet**)",
+     "interaction": "Amber, never blocks. LP-burned is SUPPRESSED entirely for pre-graduation bonding-curve tokens rather than showing a scary \u26a0 on every legitimately-new coin."
+    }
+   ],
+   "states": [
+    "ALL PASS \u2014 rows lime, no block strip",
+    "WARN \u2014 amber rows, button unaffected",
+    "BLOCKED \u2014 button disabled, `.blockstrip` names the failing check in plain words",
+    "**CHECKS PENDING (the common case)** \u2014 mint <90s old, RugCheck has no record and no pair exists. `.secbox` renders `Checks pending \u2014 this coin is 47 seconds old.` with a pulse; `.fine` reads `Safety checks have not run yet.` **We do NOT block on unknown** \u2014 blocking every genuinely-early buy would delete the product. We disclose and let the user decide with the uncertainty visible, exactly as D1 does for match confidence",
+    "PARTIAL \u2014 Helius answered, RugCheck did not: authority rows are live, holder-concentration rows render `\u2014`. Never let one dead upstream blank the panel",
+    "RUGCHECK SCORE NULL \u2014 **never rendered as a pass.** A null score on a 2-minute-old token is the norm, and 'no known risks' would be a lie"
+   ]
+  },
+  {
+   "name": "S8 \u00b7 Position block `.poscard` + What-you-own row",
+   "job": "Show what you own, what you paid, and the one number no other trading app can put on a position: how early you were.",
+   "layout": "`.poscard` is 356px, padding 15px 16px, shared panel skin, sitting ABOVE `.tradebox` whenever qty>0. Four bands: header row (18px) \u2192 value row (34px) \u2192 3-cell `.qs`-style mini grid with hairline dividers (46px) \u2192 sentence (16px) \u2192 two buttons (38px, `display:flex; gap:8px`). On mobile it collapses to a 52px band directly beneath the origin band.",
+   "elements": [
+    {
+     "element": "Header row",
+     "shows": "`YOUR POSITION` 9.5px uppercase --dim, left; right: `.lead-badge.sm` reading `+41m early` in cyan",
+     "source": "holdings.minutes_early_when_bought",
+     "interaction": "none"
+    },
+    {
+     "element": "Value row \u2014 dollars first, always",
+     "shows": "`$179.60` mono 22px, then `+$38.40 (+27.2%)` at 13px in lime/red",
+     "source": "qty \u00d7 price_usd; holdings.cost_basis_usd",
+     "interaction": "**Never a bare percentage as the headline** \u2014 flow doc rule. A percentage without a dollar amount is how people misjudge size."
+    },
+    {
+     "element": "3-cell mini grid",
+     "shows": "`Qty 231,402` \u00b7 `Avg paid $0.000174` \u00b7 `Now $0.000221`",
+     "source": "on-chain qty (authoritative) + holdings.avg_price_usd + live price",
+     "interaction": "On a >0.5% qty mismatch between chain and row, trust the chain and flag `cost basis may be incomplete` \u2014 the user may have traded this mint elsewhere."
+    },
+    {
+     "element": "The earliness sentence \u2014 the emotional payload",
+     "shows": "`You bought 41 minutes before crypto traders did.` Negative case ships identically: `Crypto traders posted 12 minutes before you bought.`",
+     "source": "holdings.minutes_early_when_bought = t_crypto \u2212 first_buy_at",
+     "interaction": "**This is a different number from the story's lead time and must not be confused with it.** The story's figure is `t_crypto \u2212 promoted_at` (Insidor's lead); the holding's is `t_crypto \u2212 your_first_buy` (your lead). They differ by however long you took to press the button, and rendering Insidor's number on your position would be flattering and false."
+    },
+    {
+     "element": "Two buttons",
+     "shows": "`.doit.s` half-width `Sell`, ghost half-width `Buy more`",
+     "source": "\u2014",
+     "interaction": "Sell opens S5 with the position prefilled; Buy more flips the trade panel to buy and focuses the amount field."
+    },
+    {
+     "element": "What-you-own row (the `You` tab)",
+     "shows": "thumb \u00b7 `$FERRY` \u00b7 **subtitle is the STORY STATE, not a price**: `Last Horn \u2014 the story is cooling off` \u00b7 right: `$179.60` and `+$38.40` \u00b7 `.lead-dim` `+41m`",
+     "source": "narratives.lifecycle (HEATING/PEAKING/COOLING/DEAD) mapped to plain words; holdings row",
+     "interaction": "Row \u2192 coin page. Subtitle \u2192 story page. Nobody else can put the story's health on a position row."
+    }
+   ],
+   "states": [
+    "HELD \u2014 normal",
+    "LEAD PENDING \u2014 bought before any crypto pickup, so t_crypto was null at fill: badge reads `first mover` in cyan, sentence reads `Nobody in crypto had posted when you bought.` A nightly job backfills the number when t_crypto lands",
+    "LEAD UNMEASURABLE \u2014 no crypto pickup within 6h, or the buy fell in a PumpPortal gap window: badge `\u2014`, tooltip `No crypto pickup within 6 hours.` Shipped, not hidden (D2)",
+    "LATE \u2014 negative minutes_early in red. Roughly a third of real detections; suppressing the left tail turns the record into marketing",
+    "COST BASIS STALE \u2014 chain qty disagrees with our row by >0.5%: PnL renders `\u2014` with `You have traded this outside Insidor \u2014 we cannot compute your cost basis.` Better than a confidently wrong number",
+    "MATCH REVOKED WHILE HELD \u2014 coin_matches drops CONFIRMED\u2192UNSURE after purchase: the badge greys and the sentence becomes `We are no longer confident this coin came from Last Horn.` The earliness claim is withdrawn, and the user is told rather than left with a stale boast",
+    "POSITION CLOSED \u2014 row moves to a `Sold` section with realised PnL and the frozen minutes_early",
+    "DUST \u2014 value <$1, folded into a collapsed `3 dust positions` group"
+   ]
+  }
+ ],
+ "mechanism": "**A. JUPITER SWAP V2 \u2014 THE MIGRATION IS THE WORK ITEM.** Shipped code (`api/quote.js:25`, `api/swap.js:30`) uses Metis V1 `api.jup.ag/swap/v1/quote` + `/swap/v1/swap`. The verified target is `GET api.jup.ag/swap/v2/order` \u2192 `POST api.jup.ag/swap/v2/execute`. This is NOT a path-prefix change from v1 \u2014 it needs parameter/response remapping, percent\u2192bps in routePlan, and an ALT format change. `lite-api.jup.ag` does not serve v2 (404), so there is no keyless fallback. New server routes: `POST /api/order` (holds JUPITER_API_KEY, injects `referralAccount` + `referralFee` from env \u2014 **never from the client**, that is both a revenue hole and a disclosure hole; returns `{requestId, transaction, outAmount, otherAmountThreshold, priceImpactPct, feeBps, platformFee, router, slippageBps, expiresInMs}`) and `POST /api/execute` (`{requestId, signedTransaction}` \u2192 `{status, signature, error, code, slot}`). `api/swap.js` is deleted. `api/quote.js` may survive only as a display-only estimate and should also be deleted so there is exactly one number on screen. PREREQUISITE: `initializeReferralTokenAccount({payerPubKey, referralAccountPubKey, mint})` must be run once per fee mint (wSOL and USDC), rent-funded, before any fee accrues \u2014 miss it and fees silently do not land. Add a boot-time assertion that both accounts exist.\n\n**B. FEE MATH AND DISCLOSURE.** `total_bps = insidor_referral_bps + jupiter_platform_bps`. Insidor's referral has a documented FLOOR of 50 bps on `/order` (range 50\u2013255) and Jupiter keeps 20% of it, so Insidor nets ~40 bps. Jupiter's own platform fee is published at 50 bps for tokens under 24h but measured live at **10 bps** across 25 fresh tokens at every size and router. **Never hardcode either.** Render `feeBps` and `platformFee.feeBps` straight from the order response every time. If the fee in the execute-time response differs from the displayed fee by more than 2 bps, abort to CONFIRM_EXPIRED and re-render \u2014 the disclosed number and the charged number must be the same number. Display: `total% \u00b7 $amount` in a `.mini` row at exactly the weight of its siblings, with an \u24d8 popover for the split, plus a mandatory uncollapsed row in the confirm dialog. Two exposures, neither shouted.\n\n**C. QUOTE LIFECYCLE.** Input debounce 250ms \u2192 `/api/order`. TTL 20s. Auto-refresh every 15s while the panel is visible and `!document.hidden`. At T\u22125s `.fine` shows `refreshes in 5s` with a 2px cyan hairline under `.recv`. **Auto-refresh suspends the moment the confirm dialog opens** \u2014 at expiry the dialog's primary becomes `Refresh quote` rather than silently re-quoting under a finger. If a refresh moves `outAmount` more than 1.0% against the user, flash `.recv .v` amber (`flashDn`, 600ms) and hold. `requestId` is single-use: every retry re-orders from scratch.\n\n**D. SLIPPAGE POLICY.** Default `Auto` (Jupiter RTSE) for any token under 30 minutes old; a fixed 1% on a live bonding curve reverts constantly and every revert is a trust event. Pro users get `0.5 / 1 / 3 / Auto`. On FAILED_SLIPPAGE, the retry button pre-computes one tier up (`Retry at 3%`) rather than asking the user to reason about basis points mid-panic. Priority maps to two tiers only: `Fast` = priorityLevel 'high', maxLamports 400_000; `Turbo` = 'veryHigh', maxLamports 2_000_000. The shipped `veryHigh / 1_000_000` hardcode in `api/swap.js:26` charges 0.001 SOL on every trade regardless of congestion; the displayed lamports must come from `prioritizationFeeLamports` in the response, not from the fabricated `0.0005 / 0.002 SOL` literals in the prototype.\n\n**E. THE BUY STATE MACHINE (23 states).** Transitions:\n```\nIDLE_NO_AMOUNT --amount>0--> QUOTING\nQUOTING --200--> QUOTED | --err--> QUOTE_FAILED --2s,5s--> QUOTING --> (manual Retry)\nQUOTED --no wallet--> IDLE_NO_WALLET --privy ok--> QUOTED (amount rehydrated)\nQUOTED --bal<amt--> INSUFFICIENT_BALANCE --funded--> QUOTED (amount rehydrated)\nQUOTED --safety B1..B4--> BLOCKED_SAFETY   (terminal until checks change)\nQUOTED --verdict=UNSURE--> UNVERIFIED_MATCH_GATE --2nd tap <4s--> CONFIRM\nQUOTED --tap--> CONFIRM --20s--> CONFIRM_EXPIRED --refresh--> CONFIRM\nCONFIRM --ok--> ORDERING --200--> AWAITING_SIGNATURE --8s timeout--> QUOTE_FAILED\nAWAITING_SIGNATURE --signed--> SUBMITTING | --declined--> SIGN_REJECTED --> QUOTED\nSUBMITTING --Success--> LANDING | --Failed+code--> FAILED_{SLIPPAGE|EXPIRED_BLOCKHASH|\n                        INSUFFICIENT_LAMPORTS|ONCHAIN}\nSUBMITTING --timeout, sig present--> AMBIGUOUS_TIMEOUT (poll 90s)\nSUBMITTING --timeout, no sig--> FAILED_UNKNOWN   (NO auto-retry, ever)\nLANDING --confirmed--> FILLED --1.6s--> QUOTED\nLANDING --45s--> AMBIGUOUS_TIMEOUT\nFAILED_* --retry--> QUOTING  (fresh order; slippage/priority may be bumped)\n```\nInvariants: a signed transaction is submitted exactly once; amount/slippage/priority survive every failure and every detour; nothing auto-advances past a user decision except QUOTING\u2192QUOTED and LANDING\u2192FILLED; a fill is confirmed by `getSignatureStatuses`, never inferred from a balance delta. FAILED_UNKNOWN is the only state with no retry affordance, because we cannot distinguish 'did not land' from 'landed and we lost the response', and auto-retrying is how a user gets filled twice.\n\n**F. BRAND-NEW TOKEN TIERS.** T0 (mint seen, no pair, typically 0\u201360s): `.chart-pending` renders a 468px panel \u2014 cyan pulse dot, `Pool not indexed yet`, `DexScreener usually has a chart within 60 seconds of the first trade.`, and a live `mint 0:34 ago` counter. Poll `/api/token-lookup?mint=` every 5s for 3 min, then every 20s; swap in the iframe with a `pop` animation the moment a pair resolves. Stat grid renders `\u2014` for everything price-derived and LIVE for Holders (RPC-based, needs no pair) and Age. **Critically the trade panel still quotes** \u2014 Jupiter routes the pump.fun bonding curve before any DEX pair exists, so buying with no chart is the normal early case, and `.fine` says so: `No chart yet \u2014 routed on the bonding curve.` T1 (pair exists, <5 candles): iframe mounts plus a 28px strip `First trades \u2014 4 minutes of history`; never hide the chart. T2 (no route either direction): QUOTE_FAILED with `Watch for a route` instead of a dead disabled button. **`\u2014` versus `$0` is a semantic distinction that must be enforced everywhere**: `$0` claims worthlessness, `\u2014` claims ignorance. Pre-graduation mcap: DexScreener `marketCap` is often absent, fall back to `fdv`, and if both are absent render `\u2014` with a `pre-graduation` chip.\n\n**G. SAFETY \u2014 WHAT CORRECT LOOKS LIKE.** The defect is exact: `/v1/tokens/{mint}/report/summary` returns `{score, risks, tokenProgram, tokenType}` and carries no authority fields, so `raw.mintAuthority ?? raw.token?.mintAuthority ?? null` evaluates to `null` for every token, and `mintRevoked: mintAuthority == null ? true : false` reports `\u2713 Revoked` universally. Fix in three parts. (1) **Helius becomes primary**: `getAccountInfo(mint, {encoding:'jsonParsed'})` \u2192 `data.parsed.info.mintAuthority` / `.freezeAuthority` / `.supply` / `.decimals` / `.extensions[]`. One call, authoritative, Token-2022-native, and it works on a 40-second-old mint that RugCheck has not indexed \u2014 which is the entire regime this product serves. (2) **Three-valued logic**: `absent \u2192 null (unknown, renders \u2014)`, `present and null|''|'1111\u20261111' \u2192 true (revoked)`, `present with a pubkey \u2192 false (active)`. Never collapse absent into safe. (3) **RugCheck moves to the full `/v1/tokens/{mint}/report`** (not `/summary`) as a secondary source for `markets[].lp.lpLockedPct`, `topHolders[]`, `risks[]`, `transferFee`. BLOCKS (4): B1 mint authority ACTIVE, B2 freeze authority ACTIVE, B3 Token-2022 transfer fee >0 or transfer hook present, B4 no sell route (reverse `/order` for ~1% of the intended out \u2014 buy route present with sell route absent is the honeypot signature, and this is the single highest-value check on the page). WARNS: top-10 concentration, creator holdings, thin liquidity, bundled launch, RugCheck danger label. SUPPRESSED for bonding-curve tokens: LP-burned, which is meaningless pre-graduation. **Because every `create_v2` mint has both authorities revoked by construction, B1/B2 collapse into one --dim non-signal line for pump.fun tokens and get no green tick** \u2014 a green tick that every token earns teaches users that green means safe, which inverts the check's meaning. Unknown never blocks; it discloses.\n\n**H. minutes_early ON A HOLDING.** `minutes_early_when_bought = t_crypto \u2212 first_buy_at`, where `t_crypto = min(t_first_matching_mint, t_first_ct_post)` for the matched story \u2014 distinct from the story's own `lead_time_min = t_crypto \u2212 promoted_at`. Snapshot at fill and freeze (port the never-clobber pattern from `cluster-persist.js:46-58`). If `t_crypto` is null at fill (you bought before any crypto mention \u2014 the best case), store null + `minutes_early_pending=true` and render `first mover`; a nightly job backfills. If t_crypto never lands within 6h, `minutes_early_unmeasurable=true` \u2192 `\u2014`. Negative values are stored and displayed in red (D2). A PumpPortal gap window marks affected holdings unmeasurable rather than counting inflated leads as wins.\n\n**I. THE NORMIE ARITHMETIC.** $50 card \u2192 Coinbase/MoonPay ~2.5% + spread \u2192 ~$48.30 of SOL \u2192 Jupiter: 0.50% Insidor + ~0.10% Jupiter + ~2.4% price impact on a $2k book + ~0.0009 SOL network + ~0.002 SOL Token-2022 account rent \u2192 **~$45.50 of coin, about 9% all-in.** Computed live from the provider quote and a real `/order` call, never a static string. Where it breaks: (1) the two-flow seam loses the in-progress buy \u2014 fixed by `insidor.pending_buy` persisted to localStorage and mirrored to the URL, with a `Money ready` return band; (2) settlement latency of 30s\u201315min against a 20-minute-old story, disclosed BEFORE the flow starts, not after; (3) provider minimums ($10\u201320) exceed what a curious user wants to risk, so we quote the minimum up front and label the surplus; (4) direct-to-mint funding is unverified (U9) so we ship SOL-only; (5) `useAddFunds`/`useFiatOnramp` are both `@experimental` so they get a version pin and a raw provider-link fallback.\n\n**J. REALTIME.** Supabase Realtime subscription on `coin_matches` filtered `mint=eq.$1`. A live UNSURE\u2192CONFIRMED promotion upgrades the origin band chrome, animates the lead numeral into place, and drops the two-tap gate without a reload. Also subscribe to `story_clocks` for the same narrative so `t_crypto` landing while you are on the page turns `first mover` into a real number in front of you. **Privy access tokens live ~1h and Realtime caches channel auth for the connection lifetime \u2014 without a refresh loop calling `supabase.realtime.setAuth()`, every user silently drops off the live feed after an hour. This is the most likely launch-day bug in the whole design.**",
+ "dataContract": "**EXISTS TODAY** (per `docs/schema.md`, generated from a live Supabase probe): `narratives` (id, title, blurb, lifecycle, lead_time_min, first_seen_at, created_at, display_eligible, gate_reason, top_post_id, platforms, combined_views, \u2026), `narrative_posts` (id, narrative_id, platform, handle, text, media_url, media_type, posted_at [bigint epoch **ms**], platform_post_id, views/likes/retweets/quotes/replies, \u2026), `narrative_tickers` (id, narrative_id, ticker, name, mint_ca, mcap, liquidity, vol24h, holders, age_min, safety, smart_money, canonical, first_deployed, endorsed_by), `post_snapshots`, `post_meme_scores` (suggested_ticker, suggested_name), `post_embeddings`, `ingest_near_miss`, `worker_*`.\n\n**DOES NOT EXIST \u2014 every item below is a gap this feature depends on:**\n\n1. **`narratives.promoted_at`** \u2014 \u26d4 THE HIGHEST-PRIORITY GAP. The entire earliness claim is measured from a column that is not in the schema. `first_seen_at` and `created_at` are not substitutes: `promoted_at` is set once at PROMOTE and never overwritten. Every number in the origin band is downstream of this.\n2. **`coin_matches`** \u2014 the whole verdict layer, and the thing the ONE RULE reads. `(id, narrative_id, mint, relation 'DERIVED'|'ADOPTED', verdict 'CONFIRMED'|'UNSURE'|'REJECTED', score numeric, raw_score numeric, s_mint_in_post, s_img, s_text, s_tick, s_social numeric, strong_channels int, time_prior numeric, market_plausibility numeric, mint_time timestamptz, delta_minutes int, gate_veto text, model_version text, created_at, updated_at)`. Unique on `(narrative_id, mint)`; index on `(mint, verdict)` and `(narrative_id, verdict, score desc)`.\n3. **`coin_mints`** \u2014 the prospective mint clock (PumpPortal websocket sink). `(mint pk, symbol, name, creator, minted_at timestamptz, program, uri, image_url, phash bytea, first_seen_at)`. Nothing resembling this exists. Also needs a `mint_stream_gaps (started_at, ended_at, reason)` table, because a dropped connection silently inflates every lead time in that window.\n4. **`crypto_mentions`** \u2014 the ~300 crypto-Twitter accounts polled every 2 min. `(handle, platform_post_id, posted_at, narrative_id, matched_entity, first_seen_at)`. Required for `t_ct`.\n5. **`story_clocks`** (table or materialised view) \u2014 `(narrative_id pk, promoted_at, t_mint, t_ct, t_crypto, lead_time_min int, earliness_eligible bool, unmeasurable bool, gap_window bool)`.\n6. **`holdings`** \u2014 the flow doc's Holding object, which exists in no build. `(id, user_id, wallet, mint, narrative_id, qty numeric, cost_basis_usd numeric, cost_basis_sol numeric, avg_price_usd numeric, realised_pnl_usd numeric, first_buy_at, last_trade_at, minutes_early_when_bought int NULL, minutes_early_pending bool default true, minutes_early_unmeasurable bool default false, cost_basis_stale bool default false)`. Unique on `(user_id, mint)`.\n7. **`trades`** \u2014 our own ledger, which is simultaneously the fee-revenue record, the slippage-vs-fill eval set, and the source of cost basis. `(id, user_id, wallet, mint, side, sol_amount, token_amount, usd_at_trade, price_usd, signature, request_id, fee_bps_charged, fee_lamports, slippage_bps, priority_tier, router, status 'ordered'|'signed'|'submitted'|'landed'|'failed', failure_code, quote_out_amount, actual_out_amount, narrative_id, minutes_early_at_trade, created_at, landed_at)`. `request_id` unique \u2014 the DB enforces the single-submission invariant.\n8. **`token_safety`** cache \u2014 `(mint pk, mint_authority text NULL, freeze_authority text NULL, authority_source 'helius'|'rugcheck', token_program, supply numeric, decimals int, transfer_fee_bps int, has_transfer_hook bool, lp_locked_pct numeric, top10_pct numeric, creator_pct numeric, sell_route_ok bool, risks jsonb, checked_at)`. Today `/api/safety` is stateless, uncached beyond an in-process map, and wrong.\n9. **`tokens`** \u2014 a mint-keyed table. Today the only token record is `narrative_tickers`, which is *story-scoped*, so the same mint attached to two stories duplicates its market data. Needs `(mint pk, ticker, name, decimals, token_program, logo_url, pair_address, first_pair_created_at, socials jsonb, updated_at)` with `narrative_tickers` reduced to a join row.\n10. **`narrative_tickers.source`** \u2014 `'cashtag'|'llm'|'mint_in_post'`. Flagged in the research and still absent; without it an LLM-invented ticker is indistinguishable from a real cashtag and the $KANG class of bug recurs.\n11. **`pending_intents`** \u2014 the onramp/connect return contract. localStorage suffices for v1; a cross-device return (start on desktop, pay on phone) needs a real table.\n\n**KEY QUERY SHAPES.**\nCoin page load, one round trip:\n```sql\nselect t.mint, t.ticker, t.name, t.decimals, t.token_program, t.pair_address,\n       cm.verdict, cm.relation, cm.score, cm.delta_minutes, cm.mint_time,\n       cm.s_img, cm.s_text, cm.s_tick, cm.s_mint_in_post,\n       n.id narrative_id, n.title, n.lifecycle,\n       sc.promoted_at, sc.t_crypto, sc.lead_time_min, sc.earliness_eligible, sc.unmeasurable,\n       p.platform, p.handle, p.text, p.media_url, p.posted_at, p.platform_post_id\nfrom tokens t\nleft join coin_matches cm on cm.mint = t.mint and cm.verdict in ('CONFIRMED','UNSURE')\nleft join narratives   n  on n.id = cm.narrative_id\nleft join story_clocks sc on sc.narrative_id = n.id\nleft join narrative_posts p on p.id = n.top_post_id\nwhere t.mint = $1\norder by (cm.verdict = 'CONFIRMED') desc, cm.score desc\nlimit 1;\n```\nSibling coins (`.sibstrip`) \u2014 **score \u2192 earliest mint \u2192 liquidity, never volume alone**:\n```sql\nselect t.mint, t.ticker, cm.score, cm.mint_time, t.pair_address\nfrom coin_matches cm join tokens t using (mint)\nwhere cm.narrative_id = $1 and cm.verdict = 'CONFIRMED'\norder by cm.score desc, cm.mint_time asc, t.liquidity desc;\n```\nPosition: `select \u2026 from holdings where user_id=$1 and mint=$2 and qty>0` \u2014 but **on-chain `getTokenAccountsByOwner` is authoritative for `qty`**; the row is authoritative only for cost basis. Mismatch >0.5% sets `cost_basis_stale`.\nButton rule (the ONE RULE, as a count): `select count(*) from coin_matches where narrative_id=$1 and verdict='CONFIRMED'` \u2192 0 \u21d2 Create coin, 1 \u21d2 Buy $TICKER, \u22652 \u21d2 See the N coins. UNSURE rows are excluded from this count by construction, which is what makes the ambiguous state unrenderable rather than merely discouraged.",
+ "buildOrder": [
+  "1. Fix api/safety.js. Swap RugCheck `/report/summary` for Helius `getAccountInfo(mint, jsonParsed)` as the primary authority source, add three-valued absent/null/present logic so a missing field renders `\u2014` instead of `\u2713 Revoked`, move RugCheck to the full `/report` endpoint for LP and holder data, and add the `token_safety` cache table. Ships alone, fixes a defect that currently tells every user every token is safe.",
+  "2. Fix lib/token-lookup.js. Delete `if (!pair.pairCreatedAt) return 0` (line 70) so missing timestamps fail closed to null, and replace best-pair age with `min(pairCreatedAt)` across all Solana pairs. Zero extra network cost, same response. A token of unknown age must never render as brand new on a terminal that sells earliness.",
+  "3. Add `narratives.promoted_at` (set once at PROMOTE, never overwritten \u2014 port the never-clobber pattern from cluster-persist.js:46-58) plus the `story_clocks` view. Nothing about earliness can be rendered honestly until this exists.",
+  "4. Migrate Jupiter V1 \u2192 Swap V2. New `POST /api/order` and `POST /api/execute`, server-side referral injection, delete api/swap.js. Run `initializeReferralTokenAccount` for wSOL and USDC and add a boot assertion. Verify the live `feeBps` on a seconds-old token before wiring the disclosure.",
+  "5. Build the trade panel against the new endpoints: `.mini .r-fee` disclosure row + \u24d8 popover, real route/impact/priority values replacing the hardcoded `LP fee 1.00%` and `0.0005/0.002 SOL` literals, preset change to `0.1|0.5|1|2|MAX`, Auto slippage default under 30 min. Add the missing `.dim` and `.sh-hd` CSS rules.",
+  "6. Implement the 23-state buy machine with the `trades` table behind it, `request_id` unique so single-submission is enforced by the database. Ship every failure state in the first cut \u2014 FAILED_UNKNOWN and AMBIGUOUS_TIMEOUT are not polish, they are the states where users lose trust.",
+  "7. Add `coin_matches` and the day-1 non-ML matching rules from the system design (drop suggested_ticker from resolution, add `narrative_tickers.source`, majors blocklist on DERIVED, G2 temporal veto). This is what makes the origin band possible and it needs no models.",
+  "8. Build the origin band `.tp-origin-lg` with all eight states, plus the evidence popover. Categorical channel chips only \u2014 never a numeric score next to an actionable control.",
+  "9. Build `.chart-pending` and the T0/T1/T2 brand-new tiering, and enforce `\u2014` vs `$0` across the stat grid. This is the modal case, not an edge case.",
+  "10. Add the four blocking checks. B4 (reverse-quote sell route) first \u2014 it is one extra order call and worth more than the other three combined. Then B3 (Token-2022 transfer fee and hook), which nothing in the codebase currently reads even though every new pump.fun mint is Token-2022.",
+  "11. Add `holdings` + `.poscard` + the `minutes_early_when_bought` snapshot-and-backfill job, including the negative and pending cases. This is the half of the product that does not exist today.",
+  "12. Sell sheet, including `Take back what I put in` and the NO_BUYERS state.",
+  "13. Add money sheet with the computed end-to-end arithmetic, the `insidor.pending_buy` return contract, and the `.firstrun` three-step explainer. Ship SOL-only until U9 is answered.",
+  "14. Realtime subscription on coin_matches + story_clocks, with the Privy token refresh loop calling `supabase.realtime.setAuth()` \u2014 without it every user silently drops off the live feed after an hour."
+ ],
+ "openQuestions": [
+  "Is 0.5% the right take, or do we move to Jupiter's `/build` path? `/build` has no documented fee floor and Jupiter takes no cut, but it is Metis-only routing and we own transaction assembly and landing. The research measured a 9.68 bps fill-quality gap favouring `/order` on fresh tokens, where dflow and okx won most quotes \u2014 so `/build` likely costs the user more than it saves us. Decide with an A/B on our own flow, not from the docs.",
+  "Jupiter's platform fee is 10 bps live on new tokens but 50 bps in the published table. If they flip it back, our disclosed total silently doubles from 0.60% to 1.00%. Do we display the live response value (correct, but the number moves under users) or a conservative 'up to 1.0%'? This is a copy decision with a trust cost either way.",
+  "Can `useAddFunds`/`useFiatOnramp` actually deliver an arbitrary SPL mint on Solana (U9)? This determines whether the two-flow normie path ever collapses to one. Test by calling `fund()` with a real memecoin mint and seeing whether a quote returns \u2014 do not design on the assumption.",
+  "B4 (no sell route) will block some legitimate buys where the reverse quote is momentarily unavailable rather than genuinely absent. What false-block rate is acceptable? This is a commercial decision about how much revenue we are willing to forgo to never let someone into a honeypot.",
+  "When a match is downgraded CONFIRMED\u2192UNSURE while a user holds the position, do we push a notification or only update the page? A revoked earliness claim on money someone already spent is a real moment and we have no policy for it.",
+  "Does the two-tap UNVERIFIED gate persist per-mint, per-session, or per-user-forever? Per-session is the safe default but will annoy an active trader who deliberately buys unverified candidates.",
+  "Cost basis when a user trades the same mint outside Insidor: reconcile from full chain history (expensive, slow) or mark `cost_basis_stale` and show `\u2014`? Showing a confidently wrong PnL is worse than showing none.",
+  "Is Simple/Pro a persisted per-user toggle, and does a wallet-connected trader see the slippage control on first run or have to opt in? The flow doc says Pro 'never shows a state Simple cannot see', which constrains this more than it first appears.",
+  "Does the `Take back what I put in` control need a tax-lot policy (FIFO vs average cost)? We compute against average cost today, which is simple but is not what a user's accountant will expect."
+ ],
+ "priorArt": [
+  "`site/tokenpage.js:36-77` \u2014 `pairAddressOf()` / `chartURL()` / `mountChart()`. The DexScreener embed logic is correct, including the non-obvious guard that a mint-address URL resolves to the wrong (usually USDC) pair. Port unchanged; only replace `.chart-empty` with `.chart-pending`.",
+  "`lib/format.ts` \u2014 already correct per the research audit. Lift into `shared/format` essentially unchanged. The \u00a711 formatters (`fmtUSD`, `fmtP`, `fmtCount`, `sign`, `age`, `shortAddr`, `timeAgo`, `fmtPnLD`, `fmtTokenBal`, `fmtPnlPct`) must be rebuilt verbatim \u2014 they encode the terminal's numeric voice.",
+  "`api/balance.js` \u2014 Helius `getBalance` + `getTokenAccountsByOwner` with a `{mint}` filter, which works for both SPL and Token-2022. Extend this file's RPC plumbing for the safety fix rather than adding a second client. Warning: any code that switches to a `{programId: TOKEN_PROGRAM_ID}` filter breaks on every new pump.fun mint.",
+  "`api/trades.js`, `api/holders.js`, `api/toptraders.js` \u2014 the Trades / Holders / Top traders panes are already wired end to end at index.html:3126-3160, including the 20s trade cache, the 10s poll, the `.wal.you` self-highlight, and the per-mint-per-session fetch guard on top traders. Reuse as-is.",
+  "`worker/lib/cluster-persist.js:46-58` \u2014 the never-clobber-an-established-value upsert. Port verbatim to `promoted_at` and again to `holdings.minutes_early_when_bought`. Both are write-once-forever facts and both will otherwise be silently overwritten by a later cycle.",
+  "Component inventory \u00a78.3 `.tid`, \u00a78.5 `.qstats`, \u00a78.6 `.chartcard`, \u00a78.7 `.tp-tabs`/`.tp-tabbody`, \u00a78.8 `.tradebox` and its whole child set, \u00a78.9 `.secbox`, \u00a79.4 `.done`, \u00a711 `.lead-badge`/`.timing-pill`/`.risk-pill`/`.pbadge` \u2014 reused directly. Only `.tp-origin` is materially extended (\u00a78.4 \u2192 `.tp-origin-lg`), and the genuinely new components are `.origin-evidence`, `.chart-pending`, `.r-fee`+`.fee-pop`, `.poscard`, `.blockstrip`, `.txstate`, `.sibstrip`, `.firstrun`.",
+  "Component inventory \u00a712 defect list \u2014 three of the eight land inside this feature and must be fixed here: `.dim` has no CSS rule despite being used for every unknown safety value (\u00a712.3), `.sh-hd` on the swap-confirm dialog has no rule (\u00a712.5), and two generations of trade-panel CSS coexist so only the `.sides/.fp/.amt/.pre/.recv/.mini/.doit/.fine` set should be built (\u00a712.6). Also delete the dead canvas chart, `.tfrow`/`.tf`, `drawChart`, `genCandles` (\u00a712.7).",
+  "`worker/lib/nameability.js` \u2014 `GENERIC_TICKERS` (45 entries) is described in the research as the highest value-per-line asset in the repo and has never been imported. It is the ambient-ticker denylist the `S_tick` channel needs.",
+  "`design/insidor-prototype-clickable.html` \u2014 the locked visual source of truth. Design into it; do not redesign.",
+  "Interaction model \u00a72.6 \u2014 the `chartToken?.ca !== t.ca` staleness guard repeated across every panel fetch. In the rebuild this becomes TanStack Query keys, which removes an entire class of race where a slow response paints onto the wrong coin."
+ ]
+}
