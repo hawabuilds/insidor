@@ -30,9 +30,14 @@ echo "Assembling ${#SECTIONS[@]} sections…"
 {
   cat "$VIS/shell-head.html"
   cat "$VIS/shell-cover.html"
+  # Each fragment carries its own <meta charset> and a typography block so it renders
+  # correctly when opened on its own. The shell supplies both for the assembled
+  # document, so strip them here — a meta tag mid-<body> is invalid, and ten copies
+  # of the same @import would refetch the webfonts on every section.
   for f in "${SECTIONS[@]}"; do
     echo "<!-- $(basename "$f") -->"
-    cat "$f"
+    sed -e '/<meta charset="utf-8">/d' \
+        -e '/<!--standalone-->/,/<!--\/standalone-->/d' "$f"
     echo
   done
   echo "</body></html>"
