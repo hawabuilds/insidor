@@ -18,3 +18,4 @@ insidor/
 .next/
 next-env.d.ts
 *.tsbuildinfo
+docs/*.html
