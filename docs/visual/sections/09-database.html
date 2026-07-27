@@ -1,0 +1,614 @@
+<style>
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@500,600&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+.db-mono, .db-svg text {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- entity diagram ---------- */
+.db-diagram {
+  background: #0C0C0E;
+  border: 1px solid #212127;
+  border-radius: 4px;
+  padding: 14px;
+  overflow-x: auto;
+}
+.db-svg { display: block; width: 100%; height: auto; }
+.db-svg .t  { font-size: 11.5px; font-weight: 600; fill: #F4F5F7; letter-spacing: .01em; }
+.db-svg .s  { font-size: 9px;  fill: #8A8A93; }
+.db-svg .s2 { font-size: 9px;  fill: #5A5A62; }
+.db-svg .warn { font-size: 8.5px; fill: #FF5C6E; letter-spacing: .02em; }
+.db-svg .card { font-size: 8.5px; fill: #5A5A62; letter-spacing: .04em; }
+.db-svg .grp {
+  font-size: 9.5px; fill: #8A8A93;
+  letter-spacing: .14em; text-transform: uppercase; font-weight: 600;
+}
+.db-svg .foot { font-size: 9px; fill: #5A5A62; }
+.db-svg .edge   { stroke: #2E2E36; stroke-width: 1; fill: none; }
+.db-svg .edge-d { stroke: #2E2E36; stroke-width: 1; fill: none; stroke-dasharray: 3 3; }
+.db-svg .panel  { fill: #0C0C0E; stroke: #212127; stroke-width: 1; }
+.db-svg .box    { fill: #131316; stroke: #2E2E36; stroke-width: 1; }
+
+/* ---------- core-table listing ---------- */
+.db-tblwrap {
+  background: #0C0C0E; border: 1px solid #212127; border-radius: 4px; overflow-x: auto;
+}
+table.db-tbl {
+  width: 100%; border-collapse: collapse; font-size: 11.5px;
+  font-family: "General Sans", -apple-system, system-ui, sans-serif;
+  background: transparent; margin: 0;
+}
+table.db-tbl thead th {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+  color: #5A5A62; font-weight: 500; text-align: left;
+  padding: 10px 12px; border-bottom: 1px solid #212127; background: #131316;
+  white-space: nowrap;
+}
+table.db-tbl thead th.n { text-align: right; }
+table.db-tbl td {
+  padding: 0 12px; height: 30px; border-bottom: 1px solid #212127;
+  color: #8A8A93; vertical-align: middle; background: transparent;
+}
+table.db-tbl tbody tr:last-child td { border-bottom: 0; }
+table.db-tbl td.nm {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 11px; color: #F4F5F7; white-space: nowrap;
+}
+table.db-tbl td.n {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums; text-align: right; color: #F4F5F7;
+  font-size: 11px; white-space: nowrap;
+}
+table.db-tbl td.w {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 9px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
+}
+.db-w-pipe { color: #3DE0FF; }
+.db-w-web  { color: #FFB84D; }
+table.db-tbl tr.db-group td {
+  background: #131316; color: #5A5A62;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 9px; letter-spacing: .1em; text-transform: uppercase; height: 24px;
+  border-bottom: 1px solid #212127;
+}
+
+/* ---------- constraint cards ---------- */
+.db-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.db-card {
+  background: #0C0C0E; border: 1px solid #212127; border-radius: 4px;
+  padding: 13px 14px 14px;
+}
+.db-card .db-k {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #5A5A62;
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+}
+.db-card .db-k b { color: #3DE0FF; font-weight: 500; }
+.db-card h4 {
+  font-family: "Clash Display", -apple-system, system-ui, sans-serif;
+  font-size: 14.5px; font-weight: 500; color: #F4F5F7;
+  margin: 7px 0 8px; line-height: 1.25; letter-spacing: -.01em;
+}
+.db-card pre {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 9.5px; line-height: 1.55; color: #8A8A93;
+  background: #131316; border: 1px solid #212127; border-radius: 3px;
+  padding: 9px 10px; margin: 0 0 9px; white-space: pre; overflow-x: auto;
+}
+.db-card pre .kw { color: #3DE0FF; }
+.db-card pre .no { color: #FF5C6E; }
+.db-card .db-prev {
+  font-size: 11px; color: #8A8A93; line-height: 1.45;
+  font-family: "General Sans", -apple-system, system-ui, sans-serif;
+}
+.db-card .db-prev span {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #FF5C6E;
+  margin-right: 7px;
+}
+
+/* ---------- migration ledger ---------- */
+.db-mig { background: #0C0C0E; border: 1px solid #212127; border-radius: 4px; overflow: hidden; }
+.db-mig-hd {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 14px; background: #131316; border-bottom: 1px solid #212127;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 9.5px; letter-spacing: .08em; color: #5A5A62;
+}
+.db-mig-hd .db-path { color: #F4F5F7; text-transform: none; letter-spacing: .02em; }
+.db-mig-hd .db-flag {
+  margin-left: auto; color: #FFB84D; text-transform: uppercase; letter-spacing: .1em;
+  border: 1px solid #FFB84D; border-radius: 2px; padding: 2px 7px; font-size: 8.5px;
+}
+.db-mrow {
+  display: grid;
+  grid-template-columns: 46px 210px 1fr 62px 78px;
+  align-items: center; gap: 0;
+  height: 28px; padding: 0 14px; border-bottom: 1px solid #212127;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums; font-size: 10.5px; color: #8A8A93;
+}
+.db-mrow:last-child { border-bottom: 0; }
+.db-mrow.db-mhead {
+  height: 24px; font-size: 8.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: #5A5A62; background: #0C0C0E;
+}
+.db-mrow .db-v { color: #5A5A62; }
+.db-mrow .db-f { color: #F4F5F7; }
+.db-mrow .db-c {
+  font-family: "General Sans", -apple-system, system-ui, sans-serif;
+  font-size: 11px; color: #8A8A93; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; padding-right: 12px;
+}
+.db-mrow .db-l { text-align: right; color: #5A5A62; }
+.db-mrow .db-st { text-align: right; color: #FFB84D; font-size: 9px; letter-spacing: .1em; }
+.db-mrow.db-boot .db-st { color: #5A5A62; }
+.db-mig-ft {
+  padding: 9px 14px; border-top: 1px solid #212127; background: #0C0C0E;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 9.5px; color: #5A5A62;
+}
+.db-mig-ft b { color: #FF5C6E; font-weight: 500; }
+
+@media (max-width: 760px) {
+  .db-cards { grid-template-columns: 1fr; }
+}
+</style>
+
+<section class="sec">
+  <h2>09. How the database is set up</h2>
+
+  <p class="lede">One Postgres, one <code>public</code> schema, 46 tables. Its single job is
+  to make a wrong state <em>unrepresentable</em> — not merely discouraged by careful coding —
+  because every defect the last build shipped passed code review.</p>
+
+  <p>The schema divides cleanly into four families. The <strong>pipeline's tables</strong> hold
+  what we observed: a story, the posts clustered into it, the counter readings taken from those
+  posts over time. The <strong>market's tables</strong> hold what Solana actually did: every mint
+  the stream saw, its price and liquidity series, its safety signals, and the matcher's verdict
+  linking a mint to a story. The <strong>clock and record tables</strong> hold the product's one
+  falsifiable claim — how early we were, and whether it worked out. The <strong>user's tables</strong>
+  hold what a person did: followed, held, commented, traded, launched.</p>
+
+  <p>Naming was decided once so nobody has to remember a list: tables are singular, enums are
+  singular, columns are <code>snake_case</code>, and every foreign key to a story is
+  <code>story_id</code>. The route is <code>/story/[id]</code> and the copy on every screen says
+  story, so the schema says story too — <code>narrative</code> is vocabulary from a codebase being
+  deleted, and a lint rule bans the identifier in both apps.</p>
+
+  <div class="mock" style="break-inside: avoid; page-break-inside: avoid">
+    <div class="db-diagram">
+      <svg class="db-svg" viewBox="0 0 1040 828" xmlns="http://www.w3.org/2000/svg" role="img"
+           aria-label="Entity diagram of the Insidor schema, grouped into pipeline, market, user and record tables">
+        <defs>
+          <marker id="dbArw" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill="#5A5A62"/>
+          </marker>
+        </defs>
+
+        <!-- ============ PANELS ============ -->
+        <rect class="panel" x="12"  y="40"  width="316" height="430" rx="4"/>
+        <rect class="panel" x="344" y="40"  width="340" height="430" rx="4"/>
+        <rect class="panel" x="700" y="40"  width="328" height="430" rx="4"/>
+        <rect class="panel" x="12"  y="505" width="1016" height="270" rx="4"/>
+
+        <circle cx="28"  cy="58"  r="3" fill="#3DE0FF"/>
+        <text class="grp" x="38"  y="62">Pipeline — what we observed</text>
+        <circle cx="360" cy="58"  r="3" fill="#9BF03C"/>
+        <text class="grp" x="370" y="62">Market — what Solana did</text>
+        <circle cx="716" cy="58"  r="3" fill="#FFB84D"/>
+        <text class="grp" x="726" y="62">User — what a person did</text>
+        <circle cx="28"  cy="523" r="3" fill="#F4F5F7"/>
+        <text class="grp" x="38"  y="527">The two clocks and the record</text>
+
+        <!-- ============ EDGES (drawn under boxes) ============ -->
+        <!-- pipeline -->
+        <path class="edge" d="M102,142 V196" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M252,142 V196" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M102,256 V296" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M170,328 H182"  marker-end="url(#dbArw)"/>
+        <path class="edge" d="M102,350 V386" marker-end="url(#dbArw)"/>
+        <!-- story -> coin_match -->
+        <path class="edge" d="M256,111 H402" marker-end="url(#dbArw)"/>
+        <!-- story_ticker -> coin (nullable, forbidden for llm) -->
+        <path class="edge-d" d="M318,228 H444" marker-end="url(#dbArw)"/>
+        <!-- market -->
+        <path class="edge" d="M470,142 V196" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M480,256 V278 H438 V296" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M566,256 V278 H608 V296" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M438,350 V386" marker-end="url(#dbArw)"/>
+        <!-- coin -> CLOCK A -->
+        <path class="edge" d="M523,256 V546" marker-end="url(#dbArw)"/>
+        <!-- user -->
+        <path class="edge" d="M810,142 V172 H786 V196" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M918,142 V172 H942 V196" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M782,111 H710 V416 H794" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M710,328 H716" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M946,111 H1018 V328 H1012" marker-end="url(#dbArw)"/>
+        <!-- story -> story_clock, routed down the left margin -->
+        <path class="edge" d="M76,111 H22 V701 H256" marker-end="url(#dbArw)"/>
+        <!-- record -->
+        <path class="edge" d="M145,604 V642 H330 V666" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M523,604 V642 H400 V666" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M775,604 V712 H474" marker-end="url(#dbArw)"/>
+        <path class="edge-d" d="M945,604 V752 H365 V736" marker-end="url(#dbArw)"/>
+        <path class="edge" d="M474,685 H592" marker-end="url(#dbArw)"/>
+
+        <!-- ============ PIPELINE BOXES ============ -->
+        <rect class="box" x="76" y="80" width="180" height="62" rx="2"/>
+        <rect x="76" y="80" width="2.5" height="62" fill="#3DE0FF"/>
+        <text class="t"    x="88" y="100">story</text>
+        <text class="s"    x="88" y="117">the spine · one per story</text>
+        <text class="warn" x="88" y="132">promoted_at WRITE-ONCE</text>
+
+        <rect class="box" x="34" y="200" width="136" height="56" rx="2"/>
+        <rect x="34" y="200" width="2.5" height="56" fill="#3DE0FF"/>
+        <text class="t"  x="46" y="220">post</text>
+        <text class="s"  x="46" y="236">platform · posted_at</text>
+        <text class="s2" x="46" y="249">views is NULLABLE</text>
+
+        <rect class="box" x="186" y="200" width="132" height="56" rx="2"/>
+        <rect x="186" y="200" width="2.5" height="56" fill="#3DE0FF"/>
+        <text class="t"  x="198" y="220">story_ticker</text>
+        <text class="s"  x="198" y="236">ticker · source</text>
+        <text class="s2" x="198" y="249">no market columns</text>
+        <text class="warn" x="186" y="272">llm ⇒ mint IS NULL</text>
+
+        <rect class="box" x="34" y="300" width="136" height="50" rx="2"/>
+        <rect x="34" y="300" width="2.5" height="50" fill="#3DE0FF"/>
+        <text class="t" x="46" y="319">post_snapshot</text>
+        <text class="s" x="46" y="335">(post_id, captured_at)</text>
+
+        <rect class="box" x="186" y="300" width="132" height="50" rx="2"/>
+        <rect x="186" y="300" width="2.5" height="50" fill="#3DE0FF"/>
+        <text class="t" x="198" y="319">post_heat</text>
+        <text class="s" x="198" y="335">burst · accel</text>
+
+        <rect class="box" x="34" y="386" width="222" height="50" rx="2"/>
+        <rect x="34" y="386" width="2.5" height="50" fill="#3DE0FF"/>
+        <text class="t" x="46" y="405">story_momentum</text>
+        <text class="s" x="46" y="421">five-minute buckets, aligned by CHECK</text>
+
+        <!-- ============ MARKET BOXES ============ -->
+        <rect class="box" x="406" y="80" width="228" height="62" rx="2"/>
+        <rect x="406" y="80" width="2.5" height="62" fill="#9BF03C"/>
+        <text class="t"  x="418" y="100">coin_match</text>
+        <text class="s"  x="418" y="117">verdict · relation · evidence_public</text>
+        <text class="s2" x="418" y="132">UNIQUE (story_id, mint)</text>
+        <text class="warn" x="406" y="160">confirmed ⇒ evidence · CHECK</text>
+
+        <rect class="box" x="448" y="200" width="150" height="56" rx="2"/>
+        <rect x="448" y="200" width="2.5" height="56" fill="#9BF03C"/>
+        <text class="t"  x="460" y="220">coin</text>
+        <text class="s"  x="460" y="236">mint PK · band ⟨gen⟩</text>
+        <text class="warn" x="460" y="249">minted_at NULL = unknown</text>
+
+        <rect class="box" x="364" y="300" width="148" height="50" rx="2"/>
+        <rect x="364" y="300" width="2.5" height="50" fill="#9BF03C"/>
+        <text class="t" x="376" y="319">coin_snapshot</text>
+        <text class="s" x="376" y="335">(mint, captured_at)</text>
+
+        <rect class="box" x="534" y="300" width="148" height="50" rx="2"/>
+        <rect x="534" y="300" width="2.5" height="50" fill="#9BF03C"/>
+        <text class="t" x="546" y="319">coin_safety</text>
+        <text class="s" x="546" y="335">gate_pass ⟨generated⟩</text>
+
+        <rect class="box" x="364" y="386" width="148" height="50" rx="2"/>
+        <rect x="364" y="386" width="2.5" height="50" fill="#9BF03C"/>
+        <text class="t" x="376" y="405">coin_mcap_series</text>
+        <text class="s" x="376" y="421">5-min mcap · 24h</text>
+
+        <text class="card" x="534" y="405">coin_image_embedding</text>
+        <text class="card" x="534" y="419">halfvec(512) · HNSW</text>
+        <text class="card" x="534" y="433">a separate space from post</text>
+
+        <!-- ============ USER BOXES ============ -->
+        <rect class="box" x="782" y="80" width="164" height="62" rx="2"/>
+        <rect x="782" y="80" width="2.5" height="62" fill="#FFB84D"/>
+        <text class="t"  x="794" y="100">app_user</text>
+        <text class="s"  x="794" y="117">privy_did · wallet_address</text>
+        <text class="warn" x="794" y="132">both frozen by trigger</text>
+
+        <rect class="box" x="716" y="200" width="136" height="56" rx="2"/>
+        <rect x="716" y="200" width="2.5" height="56" fill="#FFB84D"/>
+        <text class="t"  x="728" y="220">follow</text>
+        <text class="s"  x="728" y="236">story XOR coin</text>
+        <text class="s2" x="728" y="249">user XOR device_id</text>
+
+        <rect class="box" x="876" y="200" width="136" height="56" rx="2"/>
+        <rect x="876" y="200" width="2.5" height="56" fill="#FFB84D"/>
+        <text class="t"  x="888" y="220">holding</text>
+        <text class="s"  x="888" y="236">(user, wallet, mint)</text>
+        <text class="s2" x="888" y="249">minutes_early signed</text>
+
+        <rect class="box" x="716" y="300" width="136" height="56" rx="2"/>
+        <rect x="716" y="300" width="2.5" height="56" fill="#FFB84D"/>
+        <text class="t"  x="728" y="320">comment</text>
+        <text class="s"  x="728" y="336">the honesty stamp</text>
+        <text class="s2" x="728" y="349">snap_* all frozen</text>
+
+        <rect class="box" x="876" y="300" width="136" height="56" rx="2"/>
+        <rect x="876" y="300" width="2.5" height="56" fill="#FFB84D"/>
+        <text class="t"  x="888" y="320">trade</text>
+        <text class="s"  x="888" y="336">request_id UNIQUE</text>
+        <text class="s2" x="888" y="349">sol_usd_at_trade</text>
+
+        <rect class="box" x="794" y="390" width="140" height="52" rx="2"/>
+        <rect x="794" y="390" width="2.5" height="52" fill="#FFB84D"/>
+        <text class="t" x="806" y="409">launch</text>
+        <text class="s" x="806" y="425">FK on story tier</text>
+
+        <!-- ============ RECORD BOXES ============ -->
+        <rect class="box" x="60" y="550" width="170" height="54" rx="2"/>
+        <rect x="60" y="550" width="2.5" height="54" fill="#F4F5F7"/>
+        <text class="t"  x="72" y="570">ct_mention</text>
+        <text class="s"  x="72" y="586">CLOCK B · a CT sighting</text>
+        <text class="s2" x="72" y="598">permalink NOT NULL</text>
+
+        <rect class="box" x="423" y="550" width="200" height="54" rx="2"/>
+        <rect x="423" y="550" width="2.5" height="54" fill="#F4F5F7"/>
+        <text class="t"  x="435" y="570">coin.minted_at</text>
+        <text class="s"  x="435" y="586">CLOCK A · the mint stream</text>
+        <text class="s2" x="435" y="598">no second mint-time table exists</text>
+
+        <rect class="box" x="690" y="550" width="170" height="54" rx="2"/>
+        <rect x="690" y="550" width="2.5" height="54" fill="#F4F5F7"/>
+        <text class="t"  x="702" y="570">sensor_heartbeat</text>
+        <text class="s"  x="702" y="586">observed_through</text>
+        <text class="s2" x="702" y="598">one row per sensor</text>
+
+        <rect class="box" x="880" y="550" width="130" height="54" rx="2"/>
+        <rect x="880" y="550" width="2.5" height="54" fill="#F4F5F7"/>
+        <text class="t"  x="892" y="570">sensor_gap</text>
+        <text class="s"  x="892" y="586">started / ended</text>
+        <text class="s2" x="892" y="598">an outage, recorded</text>
+
+        <rect class="box" x="256" y="670" width="218" height="66" rx="2"/>
+        <rect x="256" y="670" width="2.5" height="66" fill="#F4F5F7"/>
+        <text class="t"  x="268" y="691">story_clock</text>
+        <text class="s"  x="268" y="708">t_mint · t_ct · both watermarks</text>
+        <text class="warn" x="268" y="723">lead_time_min ⟨generated⟩</text>
+
+        <rect class="box" x="596" y="670" width="194" height="66" rx="2"/>
+        <rect x="596" y="670" width="2.5" height="66" fill="#F4F5F7"/>
+        <text class="t"  x="608" y="691">story_outcome</text>
+        <text class="s"  x="608" y="708">hit / dud / no_coin / late</text>
+        <text class="warn" x="608" y="723">peak needs ≥ 6 samples</text>
+
+        <!-- ============ EDGE LABELS ============ -->
+        <text class="card" x="107" y="176">1 : N</text>
+        <text class="card" x="257" y="176">1 : N</text>
+        <text class="card" x="107" y="282">1 : N</text>
+        <text class="card" x="107" y="376">rollup</text>
+        <text class="card" x="284" y="105">1 : 0..N</text>
+        <text class="card" x="330" y="222">resolved_mint · 0..1</text>
+        <text class="card" x="476" y="176">N : 1</text>
+        <text class="card" x="392" y="284">1 : N</text>
+        <text class="card" x="612" y="284">1 : 1</text>
+        <text class="card" x="380" y="376">rollup</text>
+        <text class="card" x="530" y="492">minted_at_source</text>
+        <text class="card" x="60"  y="694">1 : 0..1 · promoted_at ← story</text>
+        <text class="card" x="245" y="636">t_ct</text>
+        <text class="card" x="432" y="636">t_mint</text>
+        <text class="card" x="490" y="706">watermarks NOT NULL</text>
+        <text class="card" x="700" y="746">unmeasurable_gap_id</text>
+        <text class="card" x="490" y="679">lead_time_min</text>
+        <text class="card" x="820" y="176">1 : N</text>
+        <text class="card" x="948" y="176">1 : N</text>
+        <text class="card" x="716" y="292">1 : N</text>
+        <text class="card" x="940" y="292">1 : N</text>
+
+        <text class="foot" x="12" y="800">follow · holding · comment · launch each carry story_id and / or mint. Those foreign keys point back into the two panels on the left and are omitted above for legibility.</text>
+        <text class="foot" x="12" y="818">⟨gen⟩ = GENERATED ALWAYS … STORED — no INSERT or UPDATE can write it by hand.   Dashed edge = nullable, and forbidden for some values of the parent's provenance column.</text>
+      </svg>
+    </div>
+  </div>
+
+  <p class="cap">Notice what is <em>not</em> connected. <code>story_ticker</code> holds candidate
+  tickers; it has no market columns at all and only a dashed, nullable link to <code>coin</code>.
+  <code>coin_match</code> is the only table the Buy button reads. In the old schema those were one
+  row in one table — which is exactly how an LLM-invented ticker got resolved against a live market.
+  Notice also that <code>story_clock</code> has four inbound edges and no outbound write path: every
+  input to a lead-time claim is a foreign key or a NOT NULL watermark, and the claim itself is a
+  generated column.</p>
+
+  <h3>The core tables</h3>
+
+  <p>Twenty-four of the 46 tables carry the product. The other twenty-two are supporting —
+  embeddings, notification preferences, moderation reports, the seven <code>ops_*</code> observability
+  tables, the search log. Row estimates below assume 1,000 daily active users on the web side and a
+  full-firehose pipeline on the other; note that the pipeline's volume is essentially independent of
+  DAU, because we ingest every mint on Solana whether anyone is looking or not.</p>
+
+  <div class="mock" style="break-inside: avoid; page-break-inside: avoid">
+    <div class="db-tblwrap">
+      <table class="db-tbl">
+        <thead>
+          <tr>
+            <th style="width:170px">Table</th>
+            <th>What it holds</th>
+            <th class="n" style="width:96px">Writes / day</th>
+            <th class="n" style="width:96px">Rows retained</th>
+            <th style="width:88px">Written by</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="db-group"><td colspan="5">Pipeline — what we observed</td></tr>
+          <tr><td class="nm">story</td><td>One clustered story. The spine of every surface.</td><td class="n">400</td><td class="n">36K</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">post</td><td>One ingested X or TikTok post, with its author and counters.</td><td class="n">60K</td><td class="n">5.4M</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">post_snapshot</td><td>One counter reading per post per tick. The only source of accel.</td><td class="n">240K</td><td class="n">21M</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">post_heat</td><td>Current heat and burst per post, 1:1.</td><td class="n">60K</td><td class="n">5.4M</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">story_momentum</td><td>Five-minute view buckets per story, with member_count.</td><td class="n">29K</td><td class="n">2.6M</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">story_ticker</td><td>Candidate tickers and create-path prefills, each with provenance.</td><td class="n">1.2K</td><td class="n">110K</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr class="db-group"><td colspan="5">Market — what Solana did</td></tr>
+          <tr><td class="nm">coin</td><td>Every mint the PumpPortal stream sees. Clock A lives here.</td><td class="n">40K</td><td class="n">3.6M</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">coin_snapshot</td><td>Price, liquidity, mcap and trade counts per tracked coin.</td><td class="n">2.2M</td><td class="n">66M</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">coin_mcap_series</td><td>Five-minute mcap for 24h. The only source of peak_mcap.</td><td class="n">430K</td><td class="n">13M</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">coin_safety</td><td>Authorities, sell route, concentration. 1:1 with checked coins.</td><td class="n">6K</td><td class="n">540K</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">coin_match</td><td>One row per (story, mint). The only input to the primary button.</td><td class="n">2.5K</td><td class="n">225K</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">board_state</td><td>The live board. 200 rows per lane, rewritten every 20 seconds.</td><td class="n">3.5M</td><td class="n">800</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">board_tick</td><td>Rank history for Δ10m. Partitioned by day, 48h retention.</td><td class="n">346K</td><td class="n">700K</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr class="db-group"><td colspan="5">The clocks and the record</td></tr>
+          <tr><td class="nm">ct_mention</td><td>Clock B — the first crypto-Twitter sighting, with a permalink.</td><td class="n">3K</td><td class="n">270K</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">story_clock</td><td>Both clock readings and both sensor watermarks. 1:0..1 with story.</td><td class="n">400</td><td class="n">36K</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">story_outcome</td><td>hit / dud / no_coin / late / unmeasurable. Misses visible by default.</td><td class="n">400</td><td class="n">36K</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">sensor_heartbeat</td><td>One row per sensor. How far each has actually scanned.</td><td class="n">43K</td><td class="n">5</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr><td class="nm">sensor_gap</td><td>One row per detected outage. Makes a lead time unmeasurable.</td><td class="n">4</td><td class="n">400</td><td class="w db-w-pipe">pipeline</td></tr>
+          <tr class="db-group"><td colspan="5">User — what a person did</td></tr>
+          <tr><td class="nm">app_user</td><td>Privy DID → internal uuid → wallet address. Both frozen.</td><td class="n">30</td><td class="n">4K</td><td class="w db-w-web">web</td></tr>
+          <tr><td class="nm">follow</td><td>A story XOR a coin; a user XOR a device. Four partial uniques.</td><td class="n">900</td><td class="n">80K</td><td class="w db-w-web">web</td></tr>
+          <tr><td class="nm">holding</td><td>Cost basis and frozen earliness, per (user, wallet, mint).</td><td class="n">120</td><td class="n">11K</td><td class="w db-w-web">web</td></tr>
+          <tr><td class="nm">comment</td><td>Body plus the honesty stamp — ten frozen snap_* columns.</td><td class="n">700</td><td class="n">63K</td><td class="w db-w-web">web</td></tr>
+          <tr><td class="nm">trade</td><td>quote → sign → submit → confirm, keyed on a unique request_id.</td><td class="n">250</td><td class="n">22K</td><td class="w db-w-web">web</td></tr>
+          <tr><td class="nm">launch</td><td>A pump.fun create_v2 attempt and its encrypted mint keypair.</td><td class="n">25</td><td class="n">2.2K</td><td class="w db-w-web">web</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="cap">Only two writers exist, and no table has both. The pipeline holds the service-role
+  key and owns everything above the last group; the web app owns everything in it and writes only
+  through route handlers. The split is not a convention — it is column-level grants plus RLS, so a
+  browser session cannot write <code>coin_match</code> even if a route handler is wrong.
+  <code>board_state</code> is the only row-count inversion on the page: 3.5M writes a day against a
+  table that never holds more than 800 rows, because ranking is a committed artefact, not a query.</p>
+
+  <h3>The constraints that matter</h3>
+
+  <p>This is the part worth understanding, because it is where the product's rules actually live.
+  Each of the four below corresponds to a specific defect the previous build shipped. In every case
+  the fix is not a better code review — it is a column definition or a CHECK that makes the bad row
+  something Postgres refuses to store.</p>
+
+  <div class="mock" style="break-inside: avoid; page-break-inside: avoid">
+    <div class="db-cards">
+
+      <div class="db-card">
+        <div class="db-k"><span>Rule 01 · <b>ticker provenance</b></span><span>0004_matching.sql</span></div>
+        <h4>A ticker with no provenance cannot be inserted at all.</h4>
+<pre>source ticker_source <span class="kw">NOT NULL</span>   <span class="no">-- no DEFAULT</span>
+CHECK (source &lt;&gt; 'llm' OR resolved_mint <span class="kw">IS NULL</span>)
+CHECK (source &lt;&gt; 'llm' OR source_span <span class="kw">IS NOT NULL</span>)</pre>
+        <div class="db-prev"><span>Prevents</span>An INSERT that forgets to say where a ticker came from
+        fails. There is no value the column can hold meaning “we don't know.” And a ticker the model
+        invented can never point at a real mint — which is the exact defect that produced a Buy
+        button on an unrelated coin.</div>
+      </div>
+
+      <div class="db-card">
+        <div class="db-k"><span>Rule 02 · <b>lead-time immutability</b></span><span>0002 · 0005</span></div>
+        <h4><code>promoted_at</code> is set once and never moves.</h4>
+<pre>CREATE TRIGGER story_freeze_promoted_at
+  BEFORE UPDATE ON public.story
+  FOR EACH ROW EXECUTE FUNCTION
+    insidor.<span class="kw">freeze_columns</span>('promoted_at');</pre>
+        <div class="db-prev"><span>Prevents</span>Lead time is the product's whole claim. A column
+        anyone can quietly overwrite is a claim anyone can quietly edit. The same trigger freezes
+        <code>coin.minted_at</code>, <code>story_clock.t_mint</code> and <code>t_ct</code>, so a later
+        sighting can never move an earlier one.</div>
+      </div>
+
+      <div class="db-card">
+        <div class="db-k"><span>Rule 03 · <b>evidence before confidence</b></span><span>0004_matching.sql</span></div>
+        <h4>A match cannot be CONFIRMED without the evidence that justifies it.</h4>
+<pre>CHECK (verdict &lt;&gt; 'confirmed' OR (
+  score &gt;= 0.80
+  AND ticker_source &lt;&gt; 'llm'
+  AND mint_time <span class="kw">IS NOT NULL</span>
+  AND relation &lt;&gt; 'mentioned'
+  AND (s_mint_in_post &gt;= 0.90 OR strong &gt;= 2)))</pre>
+        <div class="db-prev"><span>Prevents</span>A confident-looking verdict backed by one weak
+        signal. Below the bar the row is still stored — as <code>unsure</code>, which is what renders
+        the abstain state with the Buy button suppressed. Abstaining is a first-class outcome, not a
+        missing row.</div>
+      </div>
+
+      <div class="db-card">
+        <div class="db-k"><span>Rule 04 · <b>absent is not zero</b></span><span>0003 · 0005 · 0010</span></div>
+        <h4>Missing data cannot be stored — or rendered — as zero.</h4>
+<pre>CHECK ((minted_at IS NULL) = (minted_at_source = 'unknown'))
+CHECK (price_usd IS NULL OR price_usd &gt; 0)  <span class="no">-- $0 ≠ absent</span>
+CHECK ((value IS NULL) = (state = 'unknown'))
+CHECK (burst IS NULL OR ticks_qualified &gt;= 2)</pre>
+        <div class="db-prev"><span>Prevents</span>A coin of unknown age reading “0m old” and looking
+        brand new. Every counter is nullable, an unknown authority is the literal
+        <code>'unknown'</code> and fails the gate closed, and <code>?? 0</code> is a lint error all
+        the way out to the React component, which renders an em dash and a reason.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="cap">Four constraints, four shipped defects. Note the shape they share: none of them
+  asks a developer to remember anything. Rule 03 is written out in full rather than calling a
+  function, because a CHECK depending on a user-defined function is a dump/restore ordering hazard,
+  and this is the one constraint that must never fail to restore.</p>
+
+  <h3>Migrations</h3>
+
+  <p>The old build had 24 loose <code>schema-*.sql</code> files applied by 12 ad-hoc scripts, with no
+  ordering and no record of what had actually been run against which database. Nobody could answer
+  “what is live?” without reading the tables. That is now fourteen ordered files and one ledger.</p>
+
+  <p>Every file from <code>0001</code> on opens with <code>insidor.migration_begin()</code> and closes
+  with <code>migration_end()</code>, inside one transaction. <code>migration_begin</code> takes a
+  transaction-scoped advisory lock, so two deploys racing serialise instead of interleaving DDL;
+  refuses to apply <code>0007</code> if <code>0008</code> is already recorded; and refuses to re-apply
+  a file whose bytes changed after it was applied. Every statement inside is idempotent, so
+  <code>migrate.mjs verify</code> can re-run the entire set and assert it is a no-op — if it isn't,
+  the DDL is wrong and CI fails there rather than during a production deploy.</p>
+
+  <div class="mock" style="break-inside: avoid; page-break-inside: avoid">
+    <div class="db-mig">
+      <div class="db-mig-hd">
+        <span class="db-path">supabase/migrations/</span>
+        <span>14 files · 2,753 lines · 46 tables · 21 enums</span>
+        <span class="db-flag">not applied to any database</span>
+      </div>
+      <div class="db-mrow db-mhead">
+        <span>Ver</span><span>File</span><span class="db-c">Contents</span><span class="db-l">Lines</span><span class="db-st">State</span>
+      </div>
+      <div class="db-mrow db-boot"><span class="db-v">0000</span><span class="db-f">migration_framework</span><span class="db-c">schema_migrations, migration_begin/end, add_constraint, create_enum</span><span class="db-l">134</span><span class="db-st">bootstrap</span></div>
+      <div class="db-mrow"><span class="db-v">0001</span><span class="db-f">extensions_and_types</span><span class="db-c">pgcrypto · pg_trgm · vector · btree_gin; 21 enums; freeze_columns</span><span class="db-l">121</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0002</span><span class="db-f">story_and_post</span><span class="db-c">story, post, post_snapshot, post_heat, story_momentum, embeddings</span><span class="db-l">414</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0003</span><span class="db-f">coin</span><span class="db-c">coin, coin_snapshot, coin_mcap_series, coin_safety, creator_stat</span><span class="db-l">272</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0004</span><span class="db-f">matching</span><span class="db-c">story_ticker, coin_match, match_label, confirmable(), recount trigger</span><span class="db-l">304</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0005</span><span class="db-f">clocks_and_outcome</span><span class="db-c">ct_mention, sensor_heartbeat, sensor_gap, story_clock, story_outcome</span><span class="db-l">244</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0006</span><span class="db-f">board</span><span class="db-c">board_state, board_tick (partitioned by day, 48h), board_gate_count</span><span class="db-l">112</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0007</span><span class="db-f">user_and_social</span><span class="db-c">app_user, follow, holding, comment, notification, push_subscription</span><span class="db-l">348</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0008</span><span class="db-f">trading_and_launch</span><span class="db-c">trade, launch, namer_run, fee_share</span><span class="db-l">189</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0009</span><span class="db-f">search</span><span class="db-c">text_array_to_string(), search_doc tsvectors, GIN, trgm, HNSW</span><span class="db-l">96</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0010</span><span class="db-f">ops</span><span class="db-c">ops_stage_run, ops_stage_expected, ops_sli_sample, ops_spend</span><span class="db-l">115</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0011</span><span class="db-f">rls</span><span class="db-c">RLS on all 46 tables, policies, column-level grants</span><span class="db-l">212</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0012</span><span class="db-f">views</span><span class="db-c">coin_tradeable(), story_cta_v, record_summary_mv</span><span class="db-l">98</span><span class="db-st">pending</span></div>
+      <div class="db-mrow"><span class="db-v">0013</span><span class="db-f">realtime</span><span class="db-c">replica identity, comment and coin_match broadcast triggers</span><span class="db-l">94</span><span class="db-st">pending</span></div>
+      <div class="db-mig-ft">
+        <b>Honest status:</b> these fourteen files have never been executed against a live Postgres.
+        Nothing on this page has been validated by an actual apply.
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">Version numbers are ordinals, not timestamps, so two PRs both adding
+  <code>0014</code> collide in git — which is the correct place for that argument to happen.
+  <code>scripts/migrate.mjs</code> is the only path to any database, local or production; the Supabase
+  CLI must never apply these files, because it records the literal
+  <code>@@CHECKSUM_NNNN@@</code> placeholder as the checksum and would permanently brick the drift
+  guard against our own tool.</p>
+
+  <p>Three things follow from that “not applied” flag, and the team should hear them plainly. First,
+  every generated column here is a bet: Postgres checks generation expressions for immutability at
+  DDL time, so a single STABLE function in one of them fails the migration on first apply, loudly and
+  immediately — <code>0009</code>'s typed wrapper around <code>array_to_string</code> exists precisely
+  because of that. Second, CHECK constraints get no such check, so the immutable-safe style used
+  throughout is backed by a dump→restore round trip in CI rather than by discipline. Third, the
+  authoring rules in <code>ARCHITECTURE.md</code> §4.4 require a <code>@phase</code>,
+  <code>@lock</code>, <code>@ticket</code> and <code>@summary</code> header on every file, and the
+  files as committed do not yet carry them — so <code>check-migrations.mjs</code> will fail on the
+  first run and fourteen headers need writing before the first apply. That is the correct order of
+  events: the gate fails before the database does.</p>
+
+</section>

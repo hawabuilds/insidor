@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Insidor — Product &amp; System Walkthrough</title>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg0:#060607; --bg1:#0C0C0E; --bg2:#131316; --bg3:#1A1A1E; --bg4:#222228;
+    --line:#212127; --line2:#2E2E36;
+    --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62;
+    --ion:#3DE0FF; --lime:#9BF03C; --red:#FF5C6E; --amber:#FFB84D;
+    --disp:"Clash Display",-apple-system,system-ui,sans-serif;
+    --sans:"General Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+
+  /* A wide page so the screener mockups render at their real density.
+     Margin is 0 here and handled in padding so backgrounds bleed edge to edge. */
+  @page { size: 1200px 1600px; margin: 0; }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:var(--bg0); }
+  body{
+    color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.62;
+    -webkit-font-smoothing:antialiased; -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+
+  .page{ padding:64px 50px; }
+
+  /* ── cover ─────────────────────────────────────────────────────────── */
+  .cover{ height:1600px; padding:0 90px; display:flex; flex-direction:column; justify-content:center;
+          page-break-after:always; break-after:page; }
+  .cover .brandline{ display:flex; align-items:center; gap:14px; margin-bottom:60px; }
+  .cover .dot{ width:14px; height:14px; border-radius:50%; background:var(--ion);
+               box-shadow:0 0 18px rgba(61,224,255,.75); }
+  .cover .wordmark{ font-family:var(--disp); font-size:26px; font-weight:600; letter-spacing:.16em; }
+  .cover h1{ font-family:var(--disp); font-size:72px; line-height:1.05; font-weight:600;
+             letter-spacing:-.025em; margin:0 0 28px; max-width:20ch; }
+  .cover .sub{ font-size:21px; color:var(--muted); max-width:62ch; line-height:1.55; margin-bottom:70px; }
+  .cover .meta{ font-family:var(--mono); font-size:12.5px; color:var(--dim); letter-spacing:.1em;
+                text-transform:uppercase; border-top:1px solid var(--line); padding-top:26px; }
+  .cover .meta b{ color:var(--muted); font-weight:400; }
+
+  /* ── contents ──────────────────────────────────────────────────────── */
+  .toc{ page-break-after:always; break-after:page; }
+  .toc h2{ border:0; margin-bottom:34px; }
+  .toc ol{ list-style:none; counter-reset:t; padding:0; margin:0; }
+  .toc li{ counter-increment:t; display:flex; gap:20px; align-items:baseline;
+           padding:15px 0; border-bottom:1px solid var(--line); }
+  .toc li::before{ content:counter(t,decimal-leading-zero); font-family:var(--mono);
+                   font-size:13px; color:var(--ion); flex:none; width:32px; }
+  .toc .t{ font-size:18px; font-weight:500; flex:none; }
+  .toc .d{ color:var(--muted); font-size:14.5px; }
+
+  /* ── sections ──────────────────────────────────────────────────────── */
+  .sec{ page-break-before:always; break-before:page; padding:64px 50px; }
+  .sec:first-of-type{ page-break-before:auto; break-before:auto; }
+
+  h2{ font-family:var(--disp); font-size:36px; font-weight:600; letter-spacing:-.02em;
+      margin:0 0 18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+  h3{ font-family:var(--disp); font-size:20px; font-weight:600; letter-spacing:-.01em;
+      margin:38px 0 12px; }
+  h4{ font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.14em;
+      text-transform:uppercase; color:var(--dim); margin:30px 0 10px; }
+
+  p{ margin:0 0 15px; max-width:96ch; }
+  .lede{ font-size:18.5px; line-height:1.55; color:var(--muted); max-width:82ch; margin-bottom:26px; }
+  .cap{ font-family:var(--mono); font-size:12px; line-height:1.6; color:var(--dim);
+        margin:12px 0 34px; padding-left:14px; border-left:2px solid var(--line2); max-width:92ch; }
+  strong{ font-weight:600; color:var(--ink); }
+  code{ font-family:var(--mono); font-size:.9em; background:var(--bg2); color:var(--ion);
+        padding:1px 5px; border-radius:4px; }
+  a{ color:var(--ion); text-decoration:none; }
+
+  ul,ol{ margin:0 0 16px; padding-left:22px; max-width:94ch; }
+  li{ margin-bottom:7px; }
+
+  .mock{ margin:26px 0 6px; break-inside:avoid; page-break-inside:avoid; }
+
+  table{ width:100%; border-collapse:collapse; margin:18px 0 26px; font-size:13.5px;
+         break-inside:avoid; page-break-inside:avoid; }
+  th{ text-align:left; font-family:var(--mono); font-size:10px; letter-spacing:.11em;
+      text-transform:uppercase; color:var(--dim); font-weight:500;
+      padding:9px 12px; border-bottom:1px solid var(--line2); }
+  td{ padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; color:var(--muted); }
+  td:first-child{ color:var(--ink); }
+  .num, .mono{ font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+  .note{ border:1px solid var(--line); border-left:3px solid var(--ion); background:var(--bg1);
+         border-radius:0 10px 10px 0; padding:16px 20px; margin:22px 0;
+         break-inside:avoid; page-break-inside:avoid; max-width:96ch; }
+  .note.warn{ border-left-color:var(--amber); }
+  .note.bad{ border-left-color:var(--red); }
+  .note .lb{ font-family:var(--mono); font-size:10px; letter-spacing:.13em; text-transform:uppercase;
+             color:var(--ion); margin-bottom:8px; }
+  .note.warn .lb{ color:var(--amber); } .note.bad .lb{ color:var(--red); }
+  .note p:last-child{ margin-bottom:0; }
+  svg{ max-width:100%; height:auto; }
+</style>
+</head>
+<body>

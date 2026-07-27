@@ -1,0 +1,433 @@
+<style>
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,500&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400,500&display=swap");
+
+.flow-wrap{background:#0C0C0E;border:1px solid #212127;border-radius:10px;padding:12px;margin:24px 0 8px;overflow:hidden}
+.flow-svg{display:block;width:100%;height:auto;max-width:1000px;margin:0 auto}
+.flow-mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:.9em;color:#3DE0FF}
+
+.flow-svg text{font-family:"General Sans",-apple-system,system-ui,sans-serif;fill:#F4F5F7}
+.flow-svg .fh{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:12px;font-weight:600;fill:#5A5A62;letter-spacing:.12em}
+.flow-svg .ft{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:13.5px;font-weight:600;fill:#F4F5F7}
+.flow-svg .ft2{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:11.5px;font-weight:600;fill:#F4F5F7}
+.flow-svg .fs{font-size:10px;fill:#8A8A93}
+.flow-svg .fd{font-size:9.5px;fill:#5A5A62}
+.flow-svg .lb{font-size:9px;fill:#5A5A62;letter-spacing:.1em}
+.flow-svg .lbc{font-size:9px;fill:#3DE0FF;letter-spacing:.1em}
+.flow-svg .lba{font-size:9px;fill:#FFB84D;letter-spacing:.1em}
+.flow-svg .fm{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:10px;fill:#F4F5F7}
+.flow-svg .fmd{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:9px;fill:#5A5A62}
+.flow-svg .fmm{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:9.5px;fill:#8A8A93}
+.flow-svg .fmc{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:9.5px;fill:#3DE0FF}
+.flow-svg .fml{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:9.5px;fill:#9BF03C}
+.flow-svg .fma{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:9.5px;fill:#FFB84D}
+.flow-svg .card{fill:#131316;stroke:#212127;stroke-width:1}
+.flow-svg .card2{fill:#1A1A1E;stroke:#2E2E36;stroke-width:1}
+.flow-svg .e{fill:none;stroke:#2E2E36;stroke-width:1}
+.flow-svg .ec{fill:none;stroke:#3DE0FF;stroke-width:1.4}
+.flow-svg .ea{fill:none;stroke:#FFB84D;stroke-width:1.2}
+.flow-svg .er{fill:none;stroke:#2E2E36;stroke-width:1;stroke-dasharray:3 3}
+</style>
+
+<section class="sec">
+  <h2>07. How the pages connect</h2>
+
+  <p class="lede">Six sections of this deck each show one screen. This one shows the wiring: which surfaces exist, every path between them, and the single loop the whole product is built to make fast. No new pixels here — only the graph they sit in.</p>
+
+  <p>Insidor has three tabs and three pushed routes. That is the entire surface area. <strong>Live feed</strong>, <strong>Search</strong> and <strong>You</strong> are tabs, always reachable, always in the same place. <strong>Story</strong>, <strong>Coin</strong> and <strong>Create</strong> are pushed routes with their own URLs — they are not tabs, because the lead-time claim is unfalsifiable unless a stranger can open the link and check it, and because a modal cannot be sent to a colleague. Everything else people expect to be a page — the coin lanes, the bands, the filters, the ⌘K palette, the evidence popover, the swap confirm — is either URL state on <span class="flow-mono">/feed</span> or an overlay that closes back to the page underneath.</p>
+
+  <div class="flow-wrap" style="break-inside: avoid; page-break-inside: avoid">
+    <svg class="flow-svg" viewBox="0 0 1000 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Navigation graph">
+      <defs>
+        <marker id="nvA" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#5A5A62"/></marker>
+        <marker id="nvC" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#3DE0FF"/></marker>
+      </defs>
+
+      <text class="fh" x="20" y="26">01 — NAVIGATION GRAPH</text>
+      <text class="fd" x="20" y="42">Three tabs, three pushed routes, and every edge between them.</text>
+
+      <!-- tab bar -->
+      <text class="lb" x="40" y="62">TAB BAR — RENDERED ON EVERY ROUTE</text>
+      <rect x="40" y="70" width="920" height="76" rx="10" fill="#131316" stroke="#2E2E36"/>
+      <rect x="56" y="84" width="284" height="48" rx="7" fill="#1A1A1E" stroke="#2E2E36"/>
+      <rect x="56" y="130" width="284" height="2" fill="#3DE0FF"/>
+      <text class="ft2" x="72" y="104">Live feed</text><text class="fmd" x="72" y="120">/feed</text>
+      <text class="fmc" x="324" y="104" text-anchor="end">live</text>
+      <rect x="356" y="84" width="284" height="48" rx="7" fill="#131316" stroke="#212127"/>
+      <text class="ft2" x="372" y="104" style="fill:#8A8A93">Search</text><text class="fmd" x="372" y="120">/search</text>
+      <rect x="656" y="84" width="288" height="48" rx="7" fill="#131316" stroke="#212127"/>
+      <text class="ft2" x="672" y="104" style="fill:#8A8A93">You</text><text class="fmd" x="672" y="120">/you · watchlist</text>
+
+      <!-- lanes -->
+      <rect x="56" y="168" width="90" height="34" rx="6" fill="#1A1A1E" stroke="#2E2E36"/>
+      <circle cx="70" cy="185" r="3" fill="#3DE0FF"/>
+      <text class="fs" x="80" y="189" style="fill:#F4F5F7">POSTS</text>
+      <rect x="154" y="168" width="96" height="34" rx="6" fill="#131316" stroke="#212127"/>
+      <text class="fs" x="168" y="189">STORIES</text>
+      <rect x="258" y="168" width="82" height="34" rx="6" fill="#131316" stroke="#212127"/>
+      <text class="fs" x="272" y="189">COINS</text>
+
+      <!-- bus edges: lanes / tabs -> pushed routes -->
+      <!-- COINS -> COIN  y=212 -->
+      <path class="e" d="M299,202 V212 H420 V330" marker-end="url(#nvA)"/>
+      <text class="fmd" x="330" y="208">row click</text>
+      <!-- POSTS -> STORY y=224 -->
+      <path class="ec" d="M97,202 V224 H96 V330" marker-end="url(#nvC)"/>
+      <text class="fmc" x="114" y="221">post row → its story</text>
+      <!-- STORIES -> STORY y=236 -->
+      <path class="e" d="M198,202 V236 H140 V330" marker-end="url(#nvA)"/>
+      <text class="fmd" x="146" y="233">row click</text>
+      <!-- SEARCH -> STORY y=248 -->
+      <path class="e" d="M490,132 V248 H184 V330" marker-end="url(#nvA)"/>
+      <text class="fmd" x="190" y="245">result → story</text>
+      <!-- YOU -> STORY y=260 -->
+      <path class="e" d="M794,132 V260 H228 V330" marker-end="url(#nvA)"/>
+      <text class="fmd" x="234" y="257">watched story</text>
+      <!-- SEARCH -> COIN y=272 -->
+      <path class="e" d="M498,132 V272 H480 V330" marker-end="url(#nvA)"/>
+      <text class="fmd" x="474" y="269" text-anchor="end">ticker → coin</text>
+      <!-- YOU -> COIN y=284 -->
+      <path class="e" d="M806,132 V284 H540 V330" marker-end="url(#nvA)"/>
+      <text class="fmd" x="546" y="281">position / watched coin</text>
+      <!-- STORIES -> CREATE y=296 -->
+      <path class="e" d="M206,202 V296 H740 V330" marker-end="url(#nvA)"/>
+      <text class="fmd" x="600" y="293">Create pill · mcap column</text>
+      <!-- POSTS -> CREATE y=308 -->
+      <path class="e" d="M105,202 V308 H776 V330" marker-end="url(#nvA)"/>
+      <text class="fmd" x="560" y="305">Create Coin on a viral post row</text>
+      <!-- SEARCH -> CREATE y=320 -->
+      <path class="e" d="M506,132 V320 H812 V330" marker-end="url(#nvA)"/>
+      <text class="fmd" x="600" y="317">no-coin-yet result</text>
+
+      <!-- pushed routes -->
+      <text class="lb" x="40" y="324">PUSHED ROUTES — OWN URL · OWN BACK CHIP · NOT TABS</text>
+      <rect x="56" y="330" width="240" height="96" rx="8" class="card"/>
+      <text class="ft" x="70" y="356">Story</text>
+      <text class="fmc" x="70" y="374">/story/8814</text>
+      <text class="fd" x="70" y="394">evidence · lead time · coin section</text>
+      <text class="fd" x="70" y="410">discussion in the rail</text>
+
+      <rect x="380" y="330" width="240" height="96" rx="8" class="card"/>
+      <text class="ft" x="394" y="356">Coin</text>
+      <text class="fmc" x="394" y="374">/coin/7xK…q2</text>
+      <text class="fd" x="394" y="394">chart · swap · origin band</text>
+      <text class="fd" x="394" y="410">the only place money moves</text>
+
+      <rect x="704" y="330" width="240" height="96" rx="8" class="card"/>
+      <text class="ft" x="718" y="356">Create</text>
+      <text class="fmc" x="718" y="374">/create?story=8814</text>
+      <text class="fd" x="718" y="394">opens only where confirmed = 0</text>
+      <text class="fd" x="718" y="410">re-checked server-side at submit</text>
+
+      <!-- inter-route -->
+      <path class="ec" d="M296,356 H374" marker-end="url(#nvC)"/>
+      <text class="fmc" x="338" y="348" text-anchor="middle">Buy $FERRY</text>
+      <path class="e" d="M380,392 H302" marker-end="url(#nvA)"/>
+      <text class="fmd" x="338" y="412" text-anchor="middle">origin band</text>
+      <path class="e" d="M620,356 H698" marker-end="url(#nvA)"/>
+      <text class="fmd" x="662" y="348" text-anchor="middle">make your own</text>
+      <path class="ec" d="M704,392 H626" marker-end="url(#nvC)"/>
+      <text class="fmc" x="662" y="412" text-anchor="middle">minted →</text>
+      <path class="ec" d="M176,426 V456 H824 V430" marker-end="url(#nvC)"/>
+      <text class="fmc" x="440" y="450">Create coin — rendered only when the story has zero confirmed coins</text>
+
+      <!-- back edges -->
+      <path class="er" d="M56,382 H28 V96 H36" marker-end="url(#nvA)"/>
+      <text class="lb" transform="rotate(-90 18 260)" x="18" y="260" text-anchor="middle">BACK CHIP → REFERRING TAB</text>
+      <path class="er" d="M944,382 H972 V96 H964" marker-end="url(#nvA)"/>
+      <text class="lb" transform="rotate(-90 986 260)" x="986" y="260" text-anchor="middle">TAB BAR NEVER LEAVES</text>
+
+      <!-- legend -->
+      <path class="e" d="M40,488 H960"/>
+      <line x1="40" y1="511" x2="66" y2="511" stroke="#3DE0FF" stroke-width="1.4"/>
+      <text class="fd" x="74" y="514">the primary path</text>
+      <line x1="196" y1="511" x2="222" y2="511" stroke="#2E2E36" stroke-width="1"/>
+      <text class="fd" x="230" y="514">navigation</text>
+      <line x1="330" y1="511" x2="356" y2="511" stroke="#2E2E36" stroke-width="1" stroke-dasharray="3 3"/>
+      <text class="fd" x="364" y="514">return / back chip, carrying the real referrer</text>
+      <text class="fs" x="40" y="538">Lanes (POSTS · STORIES · COINS) and bands are URL state on one route, not routes of their own — /feed?lane=coins&amp;band=fresh.</text>
+      <text class="fs" x="40" y="557">Overlays — ⌘K palette, evidence popover, swap confirm, wallet sheet — are not routes. They close back to the page beneath them.</text>
+      <text class="fs" x="40" y="576" style="fill:#3DE0FF">Every node has an outbound edge and a return. There is no screen in Insidor you can reach and not leave.</text>
+    </svg>
+  </div>
+
+  <p class="cap">The navigation graph. Notice that Story, Coin and Create are each reachable from at least three places and each lead somewhere forward as well as back — the graph has no leaf. The back chip is drawn dashed because it carries the <em>real</em> referrer (<span class="flow-mono">← Live feed</span>, <span class="flow-mono">← Search</span>, <span class="flow-mono">← You</span>) rather than defaulting to the feed, which is what stops a user landing on a shared story link and being dumped somewhere they have never been.</p>
+
+  <p>Two rules do most of the work here. First, <strong>stories never buy; coins buy.</strong> The Story page's confirmed-coin row navigates to <span class="flow-mono">/coin/&lt;mint&gt;</span> and the swap happens there. Keeping one surface for money means the safety gates, the quote lifecycle and the fee disclosure exist once rather than in three places drifting apart. Second, <strong>Create is entered, never browsed.</strong> There is no "Create" tab; the route only opens from a place where the coin count is genuinely zero, and the server re-checks that count at submit — so nobody pays rent to mint a duplicate of a coin the page was a few seconds behind on.</p>
+
+  <div class="flow-wrap" style="break-inside: avoid; page-break-inside: avoid">
+    <svg class="flow-svg" viewBox="0 0 1000 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The core loop">
+      <defs>
+        <marker id="lpA" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#5A5A62"/></marker>
+        <marker id="lpC" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#3DE0FF"/></marker>
+      </defs>
+
+      <text class="fh" x="20" y="26">02 — THE CORE LOOP</text>
+      <text class="fd" x="20" y="42">Land, scan, judge, act, hold, record — and the reason there is a next lap.</text>
+
+      <rect x="48" y="104" width="112" height="88" rx="8" class="card"/>
+      <text class="fmd" x="60" y="124">01</text><text class="ft2" x="60" y="144">LAND</text>
+      <text class="fs" x="60" y="160">Live feed</text><text class="fmd" x="60" y="176">/feed · posts</text>
+
+      <rect x="180" y="104" width="112" height="88" rx="8" class="card"/>
+      <text class="fmd" x="192" y="124">02</text><text class="ft2" x="192" y="144">SCAN</text>
+      <text class="fs" x="192" y="160">the board</text><text class="fmd" x="192" y="176">54px rows · 5m</text>
+
+      <rect x="312" y="104" width="112" height="88" rx="8" class="card2"/>
+      <text class="fmd" x="324" y="124">03</text><text class="ft2" x="324" y="144">JUDGE</text>
+      <text class="fs" x="324" y="160">Story page</text><text class="fmc" x="324" y="176">+34m early</text>
+
+      <rect x="444" y="104" width="112" height="88" rx="8" class="card2"/>
+      <text class="fmd" x="456" y="124">04</text><text class="ft2" x="456" y="144">ACT</text>
+      <text class="fs" x="456" y="160">one button</text><text class="fml" x="456" y="176">Buy $FERRY</text>
+
+      <rect x="576" y="104" width="112" height="88" rx="8" class="card"/>
+      <text class="fmd" x="588" y="124">05</text><text class="ft2" x="588" y="144">HOLD</text>
+      <text class="fs" x="588" y="160">Coin page</text><text class="fmd" x="588" y="176">2.1M $FERRY</text>
+
+      <rect x="708" y="104" width="112" height="88" rx="8" class="card"/>
+      <text class="fmd" x="720" y="124">06</text><text class="ft2" x="720" y="144">RECORD</text>
+      <text class="fs" x="720" y="160">the outcome</text><text class="fmd" x="720" y="176">HIT · +34m</text>
+
+      <rect x="840" y="104" width="112" height="88" rx="8" class="card"/>
+      <text class="fmd" x="852" y="124">07</text><text class="ft2" x="852" y="144">RETURN</text>
+      <text class="fs" x="852" y="160">You · ★</text><text class="fmd" x="852" y="176">told on mint</text>
+
+      <path class="e" d="M160,148 H176" marker-end="url(#lpA)"/>
+      <path class="ec" d="M292,148 H308" marker-end="url(#lpC)"/>
+      <path class="ec" d="M424,148 H440" marker-end="url(#lpC)"/>
+      <path class="e" d="M556,148 H572" marker-end="url(#lpA)"/>
+      <path class="e" d="M688,148 H704" marker-end="url(#lpA)"/>
+      <path class="e" d="M820,148 H836" marker-end="url(#lpA)"/>
+
+      <!-- conviction -->
+      <text class="lb" transform="rotate(-90 28 320)" x="28" y="320" text-anchor="middle">CONVICTION</text>
+      <line x1="48" y1="380" x2="952" y2="380" stroke="#212127" stroke-width="1" stroke-dasharray="2 4"/>
+      <text class="fd" x="952" y="394" text-anchor="end">arrives with none — a stranger's post about a ferry</text>
+      <polyline points="104,372 236,350 368,288 500,266 632,268 764,276 896,304" fill="none" stroke="#2E2E36" stroke-width="1.5"/>
+      <polyline points="236,350 368,288 500,266" fill="none" stroke="#3DE0FF" stroke-width="2.5"/>
+      <circle cx="104" cy="372" r="3.2" fill="#0C0C0E" stroke="#5A5A62"/>
+      <circle cx="236" cy="350" r="3.2" fill="#0C0C0E" stroke="#3DE0FF"/>
+      <circle cx="368" cy="288" r="3.2" fill="#0C0C0E" stroke="#3DE0FF"/>
+      <circle cx="500" cy="266" r="3.2" fill="#0C0C0E" stroke="#3DE0FF"/>
+      <circle cx="632" cy="268" r="3.2" fill="#0C0C0E" stroke="#5A5A62"/>
+      <circle cx="764" cy="276" r="3.2" fill="#0C0C0E" stroke="#5A5A62"/>
+      <circle cx="896" cy="304" r="3.2" fill="#0C0C0E" stroke="#5A5A62"/>
+
+      <line x1="302" y1="312" x2="302" y2="406" stroke="#3DE0FF" stroke-width="1" stroke-dasharray="2 3"/>
+      <text class="lbc" x="196" y="422">WHERE IT RISES — 02 → 03</text>
+      <text class="fs" x="196" y="438">The story page is the only surface where the evidence and</text>
+      <text class="fs" x="196" y="452">the earliness claim sit in the same scroll. Roughly 90 seconds.</text>
+
+      <line x1="546" y1="272" x2="546" y2="406" stroke="#3DE0FF" stroke-width="1" stroke-dasharray="2 3"/>
+      <text class="lbc" x="546" y="422">AND AGAIN — 03 → 04</text>
+      <text class="fs" x="546" y="438">One button, resolved from the coin count. Conviction rises</text>
+      <text class="fs" x="546" y="452">because there is nothing left to decide, not because we sold it.</text>
+
+      <path class="e" d="M952,148 H976 V498 H24 V148 H44" marker-end="url(#lpA)"/>
+      <text class="fs" x="500" y="518" text-anchor="middle">The record is why there is a second lap: /you says a watched story just minted, the outcome band settles the last one honestly —</text>
+      <text class="fs" x="500" y="534" text-anchor="middle">HIT, DUD, LATE or NO COIN — and the next story is already three rows down the board.</text>
+    </svg>
+  </div>
+
+  <p class="cap">The core loop. The two cyan segments are the only places conviction actually climbs; everything before is triage and everything after is bookkeeping. If the climb from SCAN to ACT takes longer than about ninety seconds, the head start the product sells has already been spent on reading.</p>
+
+  <p>The loop is drawn as a line, not a ring, because it is not symmetrical: most laps end at 02. A user scans forty rows and judges none of them, and that has to be a cheap, non-guilty exit — which is why every row is 54px of readable facts rather than a card that demands a decision. The rows that survive triage go to a page whose entire job is to answer two questions and then present exactly one control.</p>
+
+  <div class="flow-wrap" style="break-inside: avoid; page-break-inside: avoid">
+    <svg class="flow-svg" viewBox="0 0 1000 660" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The decision fork">
+      <defs>
+        <marker id="dfA" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#5A5A62"/></marker>
+        <marker id="dfM" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#FFB84D"/></marker>
+      </defs>
+
+      <text class="fh" x="20" y="26">03 — THE DECISION FORK</text>
+      <text class="fd" x="20" y="42">How a list of candidate mints resolves to exactly one button.</text>
+
+      <rect x="40" y="72" width="260" height="78" rx="8" class="card"/>
+      <text class="ft2" x="54" y="102">matches[] for the story</text>
+      <text class="fd" x="54" y="122">coin_match rows · any verdict · any age</text>
+      <path class="e" d="M170,150 V186" marker-end="url(#dfA)"/>
+
+      <rect x="40" y="190" width="520" height="76" rx="8" class="card2"/>
+      <text class="lb" x="54" y="210">THE ONLY BRANCH CONDITION</text>
+      <text class="fm" x="54" y="232">confirmed = matches.filter(m =&gt;</text>
+      <text class="fm" x="54" y="250">   m.verdict === 'CONFIRMED' &amp;&amp; m.mint_time &amp;&amp; m.ticker &amp;&amp; m.mint)</text>
+      <path class="e" d="M170,266 V296" marker-end="url(#dfA)"/>
+
+      <path class="ea" d="M560,228 H614" marker-end="url(#dfM)"/>
+      <rect x="620" y="190" width="340" height="140" rx="8" fill="#131316" stroke="#2E2E36"/>
+      <rect x="620" y="190" width="3" height="140" fill="#FFB84D"/>
+      <text class="lba" x="638" y="212">WHAT THE FILTER DROPPED · UNSURE</text>
+      <text class="fs" x="638" y="234">Rendered, never hidden. Amber band, placeholder</text>
+      <text class="fs" x="638" y="250">glyph instead of the token logo, one action only:</text>
+      <text class="fma" x="638" y="270">UNVERIFIED CANDIDATES · 2 → View anyway</text>
+      <text class="fs" x="638" y="294" style="fill:#FF5C6E">Buy is not rendered in this region at any size.</text>
+      <text class="fd" x="638" y="314">Abstain never means hide, and never means Buy.</text>
+      <text class="fd" x="620" y="352">unsure.length is in the return value and</text>
+      <text class="fd" x="620" y="368">nowhere in the branch condition.</text>
+
+      <rect x="40" y="300" width="260" height="60" rx="8" fill="#131316" stroke="#3DE0FF"/>
+      <text class="fmc" x="170" y="336" text-anchor="middle" style="font-size:15px">count(confirmed)</text>
+
+      <path class="e" d="M170,360 V390 H145 V444" marker-end="url(#dfA)"/>
+      <path class="e" d="M170,360 V390 H430 V416" marker-end="url(#dfA)"/>
+      <path class="e" d="M170,360 V390 H715 V444" marker-end="url(#dfA)"/>
+      <text class="fmc" x="152" y="410" style="font-size:12px">0</text>
+      <text class="fmc" x="437" y="410" style="font-size:12px">1</text>
+      <text class="fmc" x="722" y="410" style="font-size:12px">2+</text>
+
+      <rect x="40" y="448" width="210" height="88" rx="8" class="card"/>
+      <rect x="56" y="464" width="132" height="32" rx="6" fill="#3DE0FF"/>
+      <text x="122" y="485" text-anchor="middle" style="font-size:11.5px;font-weight:600;fill:#060607">Create coin</text>
+      <text class="fd" x="56" y="522">nobody has minted this yet</text>
+
+      <rect x="300" y="416" width="260" height="36" rx="6" fill="#131316" stroke="#212127"/>
+      <text class="fmm" x="314" y="439">tradeable? liq &gt; 0 · no gate · price &lt; 5m</text>
+      <path class="e" d="M430,452 V466 H360 V474" marker-end="url(#dfA)"/>
+      <path class="e" d="M430,452 V466 H500 V474" marker-end="url(#dfA)"/>
+      <rect x="300" y="478" width="120" height="60" rx="8" class="card"/>
+      <rect x="312" y="492" width="96" height="32" rx="6" fill="#9BF03C"/>
+      <text x="360" y="513" text-anchor="middle" style="font-size:11.5px;font-weight:600;fill:#060607">Buy $FERRY</text>
+      <rect x="440" y="478" width="120" height="60" rx="8" class="card"/>
+      <rect x="452" y="492" width="96" height="32" rx="6" fill="#1A1A1E" stroke="#2E2E36"/>
+      <text x="500" y="513" text-anchor="middle" style="font-size:11.5px;font-weight:600;fill:#8A8A93">View</text>
+      <text x="500" y="530" text-anchor="middle" class="fmd" style="fill:#FF5C6E">liquidity gone</text>
+
+      <rect x="610" y="448" width="210" height="88" rx="8" class="card"/>
+      <rect x="626" y="464" width="152" height="32" rx="6" fill="#131316" stroke="#3DE0FF"/>
+      <text x="702" y="485" text-anchor="middle" style="font-size:11.5px;font-weight:600;fill:#3DE0FF">See the 3 coins</text>
+      <text class="fd" x="626" y="522">ranked by mint time, no per-row Buy</text>
+
+      <path class="e" d="M40,556 H960"/>
+      <text class="lb" x="48" y="572">STORY</text>
+      <text class="lb" x="380" y="572">MATCHES</text>
+      <text class="lb" x="660" y="572">WHAT THE BUTTON READS</text>
+      <path class="e" d="M40,580 H960"/>
+      <text class="fs" x="48" y="602" style="fill:#F4F5F7">Harbor Last Horn</text>
+      <text class="fmm" x="380" y="602">1 confirmed · 0 unverified</text>
+      <rect x="660" y="586" width="104" height="24" rx="5" fill="#9BF03C"/>
+      <text x="712" y="602" text-anchor="middle" style="font-size:10.5px;font-weight:600;fill:#060607">Buy $FERRY</text>
+      <path class="e" d="M40,614 H960"/>
+      <text class="fs" x="48" y="636" style="fill:#F4F5F7">Atletico Confirm Kang</text>
+      <text class="fma" x="380" y="636">0 confirmed · 2 unverified</text>
+      <rect x="660" y="620" width="104" height="24" rx="5" fill="#3DE0FF"/>
+      <text x="712" y="636" text-anchor="middle" style="font-size:10.5px;font-weight:600;fill:#060607">Create coin</text>
+      <text class="fma" x="780" y="636">candidates shown · no Buy</text>
+    </svg>
+  </div>
+
+  <p class="cap">The fork. One pure function, no I/O, unit-tested: the count of confirmed matches selects the button, and nothing else may. The amber panel on the right is the state that matters most — the two Atletico Kang candidates are drawn at full brightness, labelled unverified, and given exactly one action. Greying them out would read as broken; hiding them would be dishonest; putting a Buy on them would sell a claim we declined to make.</p>
+
+  <p>Three guards in that filter are load-bearing rather than defensive. <span class="flow-mono">mint_time</span> null means we cannot state the coin's age, and age is a headline number on a board that sells earliness. <span class="flow-mono">ticker</span> is denormalised onto the match row because the table it originally comes from is truncated and rewritten every enrichment cycle — a page load racing that cycle would otherwise render <span class="flow-mono">Buy $undefined</span>. And confirmation is an identity assertion, not a safety one, which is why the <span class="flow-mono">n = 1</span> branch has a second gate: a rugged coin stays confirmed forever, and without the tradeability check it would render a Buy button forever too.</p>
+
+  <div class="flow-wrap" style="break-inside: avoid; page-break-inside: avoid">
+    <svg class="flow-svg" viewBox="0 0 1000 660" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="User journey timeline for the ferry story">
+
+      <text class="fh" x="20" y="26">04 — ONE STORY, END TO END</text>
+      <text class="fd" x="20" y="42">“Harbor Last Horn” — a retiring Norwegian ferry captain blows the horn one last time. Every clock on this page is real elapsed time.</text>
+
+      <!-- the two walls -->
+      <line x1="294" y1="134" x2="294" y2="612" stroke="#3DE0FF" stroke-width="1" stroke-dasharray="3 4" opacity="0.55"/>
+      <text class="lbc" x="286" y="126" text-anchor="end">INSIDOR&#8217;S BOARD LIGHTS UP HERE &#8594;</text>
+      <line x1="878" y1="134" x2="878" y2="612" stroke="#FFB84D" stroke-width="1" stroke-dasharray="3 4" opacity="0.55"/>
+      <text class="lba" x="870" y="126" text-anchor="end">DEXSCREENER · AXIOM · PHOTON BECOME USEFUL HERE &#8594;</text>
+
+      <!-- axis -->
+      <line x1="52" y1="300" x2="948" y2="300" stroke="#2E2E36" stroke-width="1"/>
+      <g stroke="#212127" stroke-width="1">
+        <line x1="70" y1="294" x2="70" y2="306"/><line x1="156" y1="296" x2="156" y2="304"/>
+        <line x1="242" y1="296" x2="242" y2="304"/><line x1="328" y1="294" x2="328" y2="306"/>
+        <line x1="414" y1="296" x2="414" y2="304"/><line x1="500" y1="296" x2="500" y2="304"/>
+        <line x1="586" y1="294" x2="586" y2="306"/><line x1="672" y1="296" x2="672" y2="304"/>
+        <line x1="758" y1="296" x2="758" y2="304"/><line x1="844" y1="294" x2="844" y2="306"/>
+        <line x1="930" y1="296" x2="930" y2="304"/>
+      </g>
+      <text class="fmd" x="70" y="320" text-anchor="middle">09:00</text>
+      <text class="fmd" x="328" y="320" text-anchor="middle">09:15</text>
+      <text class="fmd" x="586" y="320" text-anchor="middle">09:30</text>
+      <text class="fmd" x="844" y="320" text-anchor="middle">09:45</text>
+
+      <!-- event dots -->
+      <circle cx="70" cy="300" r="4.5" fill="#0C0C0E" stroke="#8A8A93" stroke-width="1.5"/>
+      <circle cx="139" cy="300" r="4.5" fill="#0C0C0E" stroke="#8A8A93" stroke-width="1.5"/>
+      <circle cx="225" cy="300" r="4.5" fill="#0C0C0E" stroke="#3DE0FF" stroke-width="1.5"/>
+      <circle cx="276" cy="300" r="4.5" fill="#0C0C0E" stroke="#3DE0FF" stroke-width="1.5"/>
+      <circle cx="294" cy="300" r="5.5" fill="#3DE0FF"/>
+      <circle cx="603" cy="300" r="5.5" fill="#9BF03C"/>
+      <circle cx="878" cy="300" r="5.5" fill="#FFB84D"/>
+
+      <!-- above cards -->
+      <path class="e" d="M70,294 V256"/>
+      <rect x="56" y="150" width="152" height="106" rx="8" class="card"/>
+      <text class="fm" x="68" y="172" style="font-size:12px">09:00</text>
+      <text class="lb" x="68" y="190">POST PUBLISHED</text>
+      <text class="fs" x="68" y="208">@nordkyst_ferge · X</text>
+      <text class="fd" x="68" y="224">the whole harbour answers</text>
+      <text class="fd" x="68" y="240">nobody in crypto is looking</text>
+
+      <path class="e" d="M225,294 V256"/>
+      <rect x="216" y="150" width="152" height="106" rx="8" class="card2"/>
+      <text class="fmc" x="228" y="172" style="font-size:12px">09:09</text>
+      <text class="lbc" x="228" y="190">SECOND POINT · TRIGGER</text>
+      <text class="fs" x="228" y="208">118K views · accel 3.2×</text>
+      <text class="fd" x="228" y="224">two points make a rate; the</text>
+      <text class="fd" x="228" y="240">rate is what fires, not the size</text>
+
+      <path class="e" d="M603,294 V256"/>
+      <rect x="590" y="150" width="170" height="106" rx="8" class="card"/>
+      <text class="fml" x="602" y="172" style="font-size:12px">09:31</text>
+      <text class="lb" x="602" y="190">SOMEBODY MINTS $FERRY</text>
+      <text class="fs" x="602" y="208">a user, straight off the board</text>
+      <text class="fd" x="602" y="224">18 minutes after it appeared —</text>
+      <text class="fd" x="602" y="240">$799.6K and 1,204 holders by 10:02</text>
+
+      <path class="e" d="M878,294 V256"/>
+      <rect x="778" y="150" width="168" height="106" rx="8" class="card"/>
+      <text class="fma" x="790" y="172" style="font-size:12px">09:47</text>
+      <text class="lba" x="790" y="190">CRYPTO TWITTER ARRIVES</text>
+      <text class="fs" x="790" y="208">t_ct fires · the clock stops</text>
+      <text class="fd" x="790" y="224">the story runs on to 2.4M on the</text>
+      <text class="fd" x="790" y="240">source post, 3.3M across both</text>
+
+      <!-- below cards -->
+      <path class="e" d="M139,306 V344"/>
+      <rect x="110" y="344" width="152" height="88" rx="8" class="card"/>
+      <text class="fm" x="122" y="366" style="font-size:12px">09:04</text>
+      <text class="lb" x="122" y="384">FIRST MEASUREMENT</text>
+      <text class="fs" x="122" y="402">41K views · one snapshot</text>
+      <text class="fd" x="122" y="418">one point has no velocity</text>
+
+      <path class="e" d="M276,306 V322 H294 V306"/>
+      <path class="e" d="M285,322 V344"/>
+      <rect x="270" y="344" width="200" height="96" rx="8" class="card2"/>
+      <text class="fmc" x="282" y="366" style="font-size:12px">09:12 → 09:13</text>
+      <text class="lbc" x="282" y="384">THE STORY IS BORN, THEN SHIPPED</text>
+      <text class="fs" x="282" y="402">@harbourclips posts on TikTok —</text>
+      <text class="fs" x="282" y="418">two authors, two platforms: quorum.</text>
+      <text class="fd" x="282" y="432">60s later promoted_at is written, once.</text>
+
+      <!-- brackets -->
+      <text class="fd" x="147" y="474" text-anchor="middle">9m — the detection floor</text>
+      <path class="e" d="M70,482 V492 H225 V482"/>
+      <text class="fd" x="147" y="510" text-anchor="middle">post to trigger</text>
+
+      <text class="fml" x="740" y="474" text-anchor="middle">+16m — the head start still unspent at the mint</text>
+      <path d="M603,482 V492 H878 V482" fill="none" stroke="#9BF03C" stroke-width="1.4"/>
+      <text class="fd" x="740" y="510" text-anchor="middle">the coin existed, quietly, before anyone else knew there was a story</text>
+
+      <path d="M294,548 V560 H878 V548" fill="none" stroke="#3DE0FF" stroke-width="2.5"/>
+      <text class="fmc" x="586" y="596" text-anchor="middle" style="font-size:26px">+34m</text>
+      <text class="lbc" x="586" y="616" text-anchor="middle">LEAD TIME — WE SAW IT FIRST</text>
+      <text class="fd" x="586" y="638" text-anchor="middle">promoted_at 09:13 · t_crypto = first crypto-native mention 09:47 · measured against 41,208 mints streamed and 300 accounts polled every 2 min</text>
+    </svg>
+  </div>
+
+  <p class="cap">The journey. The cyan wall is where Insidor's board lit up; the amber wall is where DexScreener, Axiom and Photon become useful at all. The 34 minutes between them is the entire product, and it is the number the whole system exists to measure honestly — including when it comes out negative.</p>
+
+  <p>In plain language: at <strong>09:00</strong> a Norwegian ferry captain retires and somebody films the horn. It is a normal post on a normal account, and no part of crypto is watching. At <strong>09:04</strong> our ingest catches it and writes one snapshot — 41,000 views. That number is useless on its own; a single point has no velocity and we deliberately do nothing with it. At <strong>09:09</strong> the second snapshot lands at 118,000 and the trigger fires on the <em>rate</em>, not the size. Nine minutes is our floor and it is a floor for a reason: measure faster and you are reacting to noise, measure slower and you have given the head start away.</p>
+
+  <p>At <strong>09:12</strong> a second account, on a different platform, posts its own clip of the same horn. That is the birth quorum — two authors, two platforms — and it is the check that separates a story from one account having a good day. At <strong>09:13</strong>, sixty seconds later, <span class="flow-mono">promoted_at</span> is written once and never moved again, <span class="flow-mono">/story/8814</span> starts existing at a URL, and the row appears in the stories lane with no coin against it. That single write is the origin of every earliness claim the product will ever make about this story.</p>
+
+  <p>At <strong>09:31</strong> somebody reading our board mints <span class="flow-mono">$FERRY</span> — eighteen minutes after the story appeared, and while the only people who know it is a story are the ones looking at Insidor. At <strong>09:47</strong> crypto Twitter finally arrives, <span class="flow-mono">t_crypto</span> fires, and the measurement closes at <strong>+34 minutes</strong>. From that moment the coin is on every screener and the edge is gone. Sixteen of those minutes were still spendable after the coin existed — that gap, between our wall and theirs, is the only thing being sold here, and the reason every screen in this deck is rendered at 10:02, thirty-one minutes into the coin's life and still inside the window.</p>
+</section>

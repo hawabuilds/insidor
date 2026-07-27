@@ -1,0 +1,573 @@
+<style>
+.cr-mock{
+  --bg0:#060607; --bg1:#0C0C0E; --bg2:#131316; --bg3:#1A1A1E; --bg4:#222228;
+  --line:#212127; --line2:#2E2E36; --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62;
+  --ion:#3DE0FF; --lime:#9BF03C; --red:#FF5C6E; --amber:#FFB84D;
+  background:var(--bg0); border:1px solid var(--line); border-radius:14px;
+  padding:24px; margin:22px 0 8px; color:var(--ink);
+  font-family:"General Sans",-apple-system,system-ui,sans-serif;
+  font-size:13px; line-height:1.45;
+  break-inside:avoid; page-break-inside:avoid;
+}
+.cr-mock *{box-sizing:border-box;}
+.cr-mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
+.cr-lab{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);}
+.cr-disp{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-weight:600;}
+
+.cr-row{display:flex;gap:26px;align-items:flex-start;}
+.cr-sheet{width:472px;flex:0 0 472px;background:var(--bg1);border:1px solid var(--line2);border-radius:12px;overflow:hidden;}
+.cr-shead{display:flex;align-items:center;justify-content:space-between;padding:12px 15px;border-bottom:1px solid var(--line);}
+.cr-shead .cr-x{color:var(--dim);font-size:14px;}
+.cr-sbody{padding:13px 15px;}
+.cr-blk{margin-bottom:13px;}
+.cr-blk:last-child{margin-bottom:0;}
+.cr-lrow{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.cr-n{display:inline-flex;width:14px;height:14px;flex:0 0 14px;border-radius:3px;background:rgba(61,224,255,.11);color:var(--ion);font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8px;align-items:center;justify-content:center;}
+.cr-inset{background:var(--bg2);border:1px solid var(--line);border-radius:7px;padding:10px;}
+
+/* locked story */
+.cr-src{display:flex;gap:10px;}
+.cr-th{width:42px;height:42px;flex:0 0 42px;border-radius:6px;background:linear-gradient(150deg,#14384A 0%,#1E5F72 46%,#0A1B24 100%);}
+.cr-th96{width:96px;height:96px;flex:0 0 96px;border-radius:8px;background:linear-gradient(150deg,#14384A 0%,#1E5F72 46%,#0A1B24 100%);display:flex;align-items:flex-end;justify-content:center;padding-bottom:7px;}
+.cr-th34{width:34px;height:34px;flex:0 0 34px;border-radius:5px;background:linear-gradient(150deg,#2C2140,#5A3A72 50%,#160F20);}
+.cr-th72{width:72px;height:72px;flex:0 0 72px;border-radius:9px;background:linear-gradient(150deg,#14384A 0%,#1E5F72 46%,#0A1B24 100%);}
+.cr-hand{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;}
+.cr-x-mark{display:inline-flex;width:13px;height:13px;border-radius:3px;background:var(--bg4);color:var(--ink);font-size:8px;align-items:center;justify-content:center;font-weight:600;}
+.cr-ptext{color:var(--muted);font-size:11.5px;line-height:1.38;margin-top:3px;}
+.cr-cells{flex:0 0 154px;border-left:1px solid var(--line);padding-left:10px;}
+.cr-cell{display:flex;align-items:center;justify-content:space-between;padding:3px 0;}
+.cr-pill{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;font-size:9.5px;padding:1px 5px;border-radius:4px;border:1px solid rgba(61,224,255,.4);color:var(--ion);}
+.cr-pill.cr-late{border-color:rgba(255,92,110,.45);color:var(--red);}
+.cr-pill.cr-neu{border-color:var(--line2);color:var(--muted);}
+
+/* fields */
+.cr-fields{flex:1;min-width:0;}
+.cr-field{margin-bottom:8px;}
+.cr-fhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;}
+.cr-input{background:var(--bg2);border:1px solid var(--line2);border-radius:6px;padding:7px 9px;display:flex;justify-content:space-between;align-items:center;}
+.cr-input.cr-focus{border-color:rgba(61,224,255,.55);}
+.cr-why{color:var(--muted);font-size:11px;margin-top:7px;}
+.cr-why b{color:var(--ion);font-weight:500;}
+.cr-shim{height:9px;width:180px;border-radius:3px;background:linear-gradient(90deg,#16161A,#26262E 45%,#16161A);}
+
+/* chips */
+.cr-chips{display:flex;gap:7px;flex-wrap:wrap;}
+.cr-chip{background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:6px 9px;min-width:96px;}
+.cr-chip .cr-ct{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;color:var(--ink);}
+.cr-chip .cr-cp{font-size:9.5px;color:var(--dim);margin-top:2px;}
+.cr-regen{display:flex;align-items:center;gap:8px;margin-top:8px;}
+.cr-btn-g{border:1px solid var(--line2);border-radius:6px;padding:5px 9px;font-size:11px;color:var(--muted);}
+.cr-sol{display:flex;gap:6px;}
+.cr-sol span{border:1px solid var(--line2);border-radius:6px;padding:5px 12px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;color:var(--muted);}
+.cr-sol span.cr-on{border-color:var(--ion);color:var(--ion);background:rgba(61,224,255,.07);}
+
+/* coll */
+.cr-coll{border-radius:7px;padding:8px 10px;font-size:11.5px;background:rgba(155,240,60,.06);border:1px solid rgba(155,240,60,.25);color:var(--ink);}
+.cr-coll b{color:var(--lime);font-weight:500;}
+.cr-coll.cr-amb{background:rgba(255,184,77,.06);border-color:rgba(255,184,77,.3);}
+.cr-coll.cr-amb b{color:var(--amber);}
+
+/* kv block */
+.cr-kv{border-top:1px solid var(--line);}
+.cr-kv div{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;font-size:10.5px;}
+.cr-kv div span:first-child{color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
+.cr-kv div span:last-child{color:var(--ink);text-align:right;}
+.cr-kv .cr-zero span:last-child{color:var(--amber);}
+
+/* fee panel */
+.cr-fee{border:1px solid var(--line2);border-radius:7px;padding:10px;background:var(--bg2);}
+.cr-fee .cr-fr{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;font-size:11px;}
+.cr-fee .cr-fr span:first-child{color:var(--muted);}
+.cr-fee .cr-fr .cr-pct{color:var(--ink);}
+.cr-fee .cr-fr .cr-pct.cr-none{color:var(--dim);}
+.cr-note{color:var(--dim);font-size:10.5px;line-height:1.4;margin-top:7px;}
+.cr-disc{color:var(--muted);font-size:11px;line-height:1.45;}
+
+/* footer */
+.cr-foot{display:flex;align-items:center;justify-content:space-between;padding:11px 15px;border-top:1px solid var(--line);background:var(--bg1);}
+.cr-cta{border-radius:7px;padding:9px 16px;font-size:12.5px;font-weight:600;color:#04202A;background:linear-gradient(180deg,#5FE9FF,#26C9EC);}
+.cr-cta.cr-exec{color:#12240A;background:linear-gradient(180deg,#B4F76A,#8CE02C);}
+.cr-cta.cr-ghost{background:none;border:1px solid var(--line2);color:var(--muted);font-weight:500;}
+
+/* rail */
+.cr-rail{flex:1;min-width:0;}
+.cr-ri{border-left:2px solid var(--line2);padding-left:12px;margin-bottom:13px;}
+.cr-rh{font-size:12.5px;font-weight:600;margin-bottom:2px;display:flex;align-items:center;gap:7px;}
+.cr-rb{color:var(--muted);font-size:11.5px;line-height:1.45;}
+.cr-pop{background:var(--bg1);border:1px solid var(--line2);border-radius:8px;padding:11px;margin-top:16px;}
+
+/* bands */
+.cr-band{display:flex;gap:20px;align-items:flex-start;padding:14px 0;border-top:1px solid var(--line);}
+.cr-bmeta{flex:0 0 176px;}
+.cr-bname{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;color:var(--ion);margin-bottom:4px;}
+.cr-bcond{color:var(--dim);font-size:10.5px;line-height:1.4;}
+.cr-bfrag{flex:1;min-width:0;background:var(--bg1);border:1px solid var(--line);border-radius:8px;padding:11px;}
+.cr-dupe{display:flex;align-items:center;gap:10px;margin-top:9px;}
+.cr-dupe .cr-dm{flex:1;min-width:0;}
+.cr-nums{display:flex;gap:12px;margin-top:3px;}
+.cr-nums span{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;font-size:10px;color:var(--muted);}
+.cr-sec-btn{border:1px solid var(--line2);border-radius:6px;padding:5px 10px;font-size:11px;color:var(--ink);white-space:nowrap;}
+.cr-prim{margin-top:9px;padding-top:8px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;}
+
+/* two-up */
+.cr-two{display:flex;gap:26px;align-items:flex-start;}
+.cr-half{flex:1;min-width:0;}
+.cr-cardhead{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.cr-tag{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;letter-spacing:.09em;text-transform:uppercase;padding:2px 6px;border-radius:4px;border:1px solid var(--line2);color:var(--muted);}
+.cr-tag.cr-tion{color:var(--ion);border-color:rgba(61,224,255,.4);}
+.cr-tag.cr-tred{color:var(--red);border-color:rgba(255,92,110,.4);}
+
+/* permanent */
+.cr-perm{border:1px solid rgba(255,92,110,.45);border-radius:7px;padding:10px;background:rgba(255,92,110,.04);}
+.cr-perm ul{margin:6px 0 0;padding-left:15px;}
+.cr-perm li{color:var(--ink);font-size:11.5px;line-height:1.5;}
+.cr-check{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);margin-top:9px;}
+.cr-dot{width:6px;height:6px;border-radius:50%;background:var(--ion);flex:0 0 6px;}
+.cr-dot.cr-glime{background:var(--lime);}
+.cr-loss{color:var(--muted);font-size:11.5px;line-height:1.45;margin-top:9px;}
+
+/* success */
+.cr-succ-ring{width:34px;height:34px;border-radius:50%;border:1px solid rgba(155,240,60,.5);background:rgba(155,240,60,.08);color:var(--lime);display:flex;align-items:center;justify-content:center;font-size:15px;}
+.cr-ca{background:var(--bg2);border:1px solid var(--line);border-radius:7px;padding:9px 10px;}
+.cr-ca .cr-addr{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;color:var(--ink);word-break:break-all;line-height:1.5;margin-top:4px;}
+.cr-links{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap;}
+.cr-link{border:1px solid var(--line2);border-radius:6px;padding:5px 9px;font-size:10.5px;color:var(--ink);}
+.cr-link.cr-off{color:var(--dim);border-color:var(--line);}
+.cr-share{margin-top:11px;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+.cr-share-img{height:74px;background:linear-gradient(135deg,#0E2C3A,#1E5F72 55%,#0A1B24);display:flex;align-items:flex-end;padding:9px 11px;}
+.cr-share-cap{padding:8px 11px;border-top:1px solid var(--line);background:var(--bg2);}
+.cr-statline{display:flex;gap:16px;margin-top:10px;}
+.cr-statline div span:first-child{display:block;}
+.cr-em{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:var(--dim);}
+
+/* namer states grid */
+.cr-grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.cr-scard{background:var(--bg1);border:1px solid var(--line);border-radius:9px;padding:12px;}
+.cr-wchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.cr-wchips span{border:1px solid var(--line2);border-radius:5px;padding:4px 8px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;color:var(--muted);}
+.cr-steps div{display:flex;justify-content:space-between;padding:5px 0;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;border-bottom:1px solid var(--line);}
+</style>
+
+<section class="sec">
+  <h2>05. Creating coins</h2>
+
+  <p class="lede">What the product does when a story has no coin yet — the other half of the same sentence as buying. Its job: turn a detected story into a live pump.fun coin in two steps and one signature, with the source post locked at the top so a coin can never be made out of nothing.</p>
+
+  <p>Creating is never a destination; there is no "new coin" button in the nav. The affordance appears only where the confirmed coin count is zero, and every entry point reads one server row — <span class="cr-mono">select can_create, buy_count, unsure_count from story_cta_v</span>. No client-side coinability logic exists anywhere.</p>
+
+  <h3>Step 1 · Name it</h3>
+
+  <p>The walkthrough uses <strong>"Paid to Move to Norway"</strong> — @nordic_notes on X, 1.1M views, heating, no coin. A 472px sheet, the same width as every other sheet in the product, because this must not read like fintech onboarding to someone who arrived from a ranked table.</p>
+
+  <div class="mock cr-mock">
+    <div class="cr-row">
+      <div class="cr-sheet">
+        <div class="cr-shead">
+          <div class="cr-disp" style="font-size:15px">Create a coin</div>
+          <div class="cr-x">&times;</div>
+        </div>
+        <div class="cr-sbody">
+
+          <div class="cr-blk">
+            <div class="cr-lrow"><span class="cr-n cr-mono">1</span><span class="cr-lab">Story · cannot be changed</span></div>
+            <div class="cr-inset cr-src">
+              <div style="display:flex;gap:10px;flex:1;min-width:0">
+                <div class="cr-th"></div>
+                <div style="min-width:0">
+                  <div class="cr-hand"><span class="cr-x-mark">X</span>@nordic_notes</div>
+                  <div class="cr-ptext">Norway is literally paying people to move north — free kindergarten, student debt written off, a cheque every month. I applied in nine minutes.</div>
+                </div>
+              </div>
+              <div class="cr-cells">
+                <div class="cr-cell"><span class="cr-lab">Spotted</span><span class="cr-mono" style="font-size:10.5px">26m ago</span></div>
+                <div class="cr-cell"><span class="cr-lab">Crypto&nbsp;tw</span><span class="cr-pill">not yet</span></div>
+                <div class="cr-cell"><span class="cr-lab">Story</span><span class="cr-mono" style="font-size:10.5px;color:var(--lime)">accelerating</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cr-blk">
+            <div class="cr-lrow"><span class="cr-n cr-mono">2</span><span class="cr-lab">Name and ticker</span></div>
+            <div style="display:flex;gap:11px">
+              <div>
+                <div class="cr-th96"><span class="cr-lab" style="color:rgba(244,245,247,.55)">from the post</span></div>
+                <div style="font-size:10.5px;color:var(--ion);margin-top:6px;text-align:center">Edit image &#9656;</div>
+              </div>
+              <div class="cr-fields">
+                <div class="cr-field">
+                  <div class="cr-fhead"><span class="cr-lab">Coin name</span><span class="cr-lab cr-mono">12 / 32</span></div>
+                  <div class="cr-input"><span style="font-size:13px">Paid To Move</span></div>
+                </div>
+                <div class="cr-field">
+                  <div class="cr-fhead"><span class="cr-lab">Ticker</span><span class="cr-lab cr-mono">10 / 13</span></div>
+                  <div class="cr-input cr-focus"><span class="cr-mono" style="font-size:13px">$PAIDTOMOVE</span></div>
+                </div>
+                <div class="cr-why">named from the phrase repeated in <b>29 of 41 posts</b></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cr-blk">
+            <div class="cr-lrow"><span class="cr-n cr-mono">3</span><span class="cr-lab">Alternatives</span></div>
+            <div class="cr-chips">
+              <div class="cr-chip"><div class="cr-ct">$PAIDMOVE</div><div class="cr-cp">shortened, stopword dropped</div></div>
+              <div class="cr-chip"><div class="cr-ct">$NORWAY</div><div class="cr-cp">said in 34 posts</div></div>
+              <div class="cr-chip"><div class="cr-ct">$FJORDPILLED</div><div class="cr-cp">from the replies</div></div>
+            </div>
+            <div class="cr-regen"><span class="cr-btn-g">&#8635; Try another</span><span class="cr-lab cr-mono">2 left</span></div>
+          </div>
+
+          <div class="cr-blk">
+            <div class="cr-coll"><b>&#10003;</b> $PAIDTOMOVE is free on Solana — you'd be first to deploy it.</div>
+          </div>
+
+          <div class="cr-blk cr-kv">
+            <div><span>Supply</span><span>1,000,000,000 · FIXED</span></div>
+            <div class="cr-zero"><span>Your supply</span><span>0</span></div>
+            <div><span>Freeze</span><span>NONE</span></div>
+            <div><span>Transfer fee</span><span>0</span></div>
+            <div><span>Liquidity</span><span>SELF-SEEDED</span></div>
+          </div>
+
+          <div class="cr-blk">
+            <div class="cr-lrow"><span class="cr-n cr-mono">4</span><span class="cr-lab">Fee split · written once, at creation</span></div>
+            <div class="cr-fee">
+              <div class="cr-fr"><span>You (signer)</span><span class="cr-pct">90%</span></div>
+              <div class="cr-fr"><span>Insidor</span><span class="cr-pct">10%</span></div>
+              <div class="cr-fr"><span>@nordic_notes</span><span class="cr-pct cr-none">— not written</span></div>
+              <div class="cr-note">Written into the coin when it is created. It cannot be changed later, and it cannot be added later.</div>
+            </div>
+          </div>
+
+          <div class="cr-blk cr-disc">
+            Not created or endorsed by @nordic_notes.<br>
+            Anyone can make a coin from this story, including someone else, right now.
+          </div>
+
+          <div class="cr-blk">
+            <div class="cr-lrow"><span class="cr-n cr-mono">5</span><span class="cr-lab">Buy some yourself (optional)</span></div>
+            <div class="cr-sol"><span class="cr-on">None</span><span>0.1</span><span>0.5</span><span>1 SOL</span></div>
+            <div class="cr-note">Executes at the same price, in the same transaction. There is nobody to go in front of — the coin does not exist yet.</div>
+          </div>
+
+        </div>
+        <div class="cr-foot">
+          <div>
+            <div class="cr-lab">Cost to launch &#9432;</div>
+            <div class="cr-mono" style="font-size:12.5px;margin-top:2px">~0.02 SOL &#8776; $4.02</div>
+          </div>
+          <div class="cr-cta">Review $PAIDTOMOVE</div>
+        </div>
+      </div>
+
+      <div class="cr-rail">
+        <div class="cr-ri">
+          <div class="cr-rh"><span class="cr-n cr-mono">1</span>The locked story</div>
+          <div class="cr-rb">Not editable, not collapsible, first thing on the sheet. The three cells down its right edge answer the only question a creator has — <em>is the window still open</em>. <span class="cr-mono" style="font-size:11px">CRYPTO&nbsp;TW</span> flips to a red <span class="cr-mono" style="font-size:11px">6m ago</span> pill the moment crypto Twitter arrives, at identical size and weight. No closed <span class="cr-mono" style="font-size:11px">+31m early</span> badge appears here: on this path no coin exists, so lead time is an interval still running.</div>
+        </div>
+        <div class="cr-ri">
+          <div class="cr-rh"><span class="cr-n cr-mono">2</span>Name, ticker, image</div>
+          <div class="cr-rb">Ticker sanitised to <span class="cr-mono" style="font-size:11px">[A-Z0-9]</span> per keystroke. The image is the post's own media, cropped and re-hosted — never generated. Editing it expands <em>inline</em>, replacing this block, because opening a second modal destroys the first.</div>
+        </div>
+        <div class="cr-ri">
+          <div class="cr-rh"><span class="cr-n cr-mono">3</span>Alternatives, by kind</div>
+          <div class="cr-rb">Three chips chosen for diversity of kind, not next-best score: a compression, an entity, one lifted from a different post. Each carries its provenance, so picking one is an informed choice rather than a shuffle.</div>
+        </div>
+        <div class="cr-ri">
+          <div class="cr-rh"><span class="cr-n cr-mono">4</span>Fee split and disclaimers</div>
+          <div class="cr-rb">Both disclaimers sit <em>above</em> the optional first buy, so the load-bearing disclosure is above the fold and the optional field is what scrolls.</div>
+        </div>
+        <div class="cr-ri">
+          <div class="cr-rh"><span class="cr-n cr-mono">5</span>The dev buy</div>
+          <div class="cr-rb">Defaults to <span class="cr-mono" style="font-size:11px">None</span>, which is why <span class="cr-mono" style="font-size:11px">YOUR SUPPLY 0</span> is the second row of the fixed-facts block — a first launch leaves the creator holding exactly zero, and if no screen says so they will tap Trade on the success page, see nothing, and conclude they were robbed.</div>
+        </div>
+        <div class="cr-pop">
+          <div class="cr-lab" style="margin-bottom:7px">Cost to launch — itemised</div>
+          <div class="cr-kv" style="border-top:none">
+            <div><span>Mint + metadata rent</span><span>~0.0155 SOL</span></div>
+            <div><span>Priority fee</span><span>0.0005 SOL</span></div>
+            <div><span>Fee-share config</span><span>0.0040 SOL</span></div>
+            <div><span>Total</span><span>~0.0200 SOL &#8776; $4.02</span></div>
+          </div>
+          <div class="cr-note">Insidor's cut &nbsp;<span class="cr-mono">0.0000 SOL</span> now — 10% of your fee stream (0.1% of each trade).</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">Nothing here signs anything. The cost popover ends with our own cut — a breakdown that omits it reads as a claim that we charge nothing. The sheet opens with a name already in it, so the fastest correct path is Review.</p>
+
+  <h3>How the auto-namer works</h3>
+
+  <p>A memecoin's name is not authored, it is <em>retrieved</em>. WIF keeps the misspelling because the misspelling is the meme. So this is retrieval over the whole cluster — every post, its OCR'd on-screen text, the sampled replies — and it is ours to do because we hold the cluster and pump.fun holds one form.</p>
+
+  <p>A deterministic harvester runs at promote time: no model, four milliseconds. Six weighted sources — cashtag 1.00, on-screen text 0.85 (on TikTok the caption is the meme more often than the audio), repeated n-grams 0.80, entities 0.75, the classifier's own suggestion last at 0.35 and never primary without corroboration. Scoring rewards a span frequent <em>inside</em> this story and rare across the last 24 hours of everything, penalises length outside four to nine characters, and penalises symbols already carrying deep liquidity.</p>
+
+  <p>One Haiku call fires on form open and does two things: rank the harvested spans, title-case them. It does not invent. A server gate checks that the span literally appears in the post text, OCR or replies, that the symbol is that span or a whole-word subset of it, plus length and a blocklist. Any failure discards the <em>entire</em> model output and the deterministic ranking stands. The gate also runs on a ticker prefilled from a search row — clicking is not evidence.</p>
+
+  <p>Normalisation drops stopwords first: <span class="cr-mono">PAIDTOMOVE</span> survives from "paid to move to Norway". Still too long and we drop the least distinctive whole word, then fall back to initials. We never truncate mid-word — <span class="cr-mono">$PAIDTOMOV</span> signals low effort to every trader who sees it.</p>
+
+  <p>The form never waits on the model: it opens in under 100ms on the deterministic candidate with the trust line shimmering, and the model result swaps in only if neither field has been touched. If the user typed anything, the model's answer quietly becomes alternative slot one.</p>
+
+  <div class="mock cr-mock">
+    <div class="cr-grid2">
+      <div class="cr-scard">
+        <div class="cr-cardhead"><span class="cr-tag cr-tion">Under 100ms</span><span class="cr-lab">model still in flight</span></div>
+        <div class="cr-input"><span class="cr-mono" style="font-size:13px">$PAIDTOMOVE</span></div>
+        <div style="margin-top:8px"><div class="cr-shim"></div></div>
+        <div class="cr-note">Deterministic #1 is already in the field. Only the provenance line is waiting.</div>
+      </div>
+      <div class="cr-scard">
+        <div class="cr-cardhead"><span class="cr-tag">Namer unavailable</span><span class="cr-lab">or slower than 2.5s</span></div>
+        <div class="cr-input"><span class="cr-mono" style="font-size:13px">$PAIDTOMOVE</span></div>
+        <div class="cr-why" style="color:var(--muted)">Suggestions are off right now — pick a name yourself.</div>
+        <div class="cr-note">The harvested list stays. Nothing is disabled, nothing is retried in front of the user.</div>
+      </div>
+      <div class="cr-scard">
+        <div class="cr-cardhead"><span class="cr-tag cr-tred">namable = false</span><span class="cr-lab">no phrase repeats</span></div>
+        <div class="cr-input"><span class="cr-mono" style="font-size:13px;color:var(--dim)">$</span></div>
+        <div class="cr-why" style="color:var(--muted)">We couldn't find a name in this story — no phrase repeats across the posts. Pick one yourself.</div>
+        <div class="cr-lab" style="margin-top:9px">Words from the posts</div>
+        <div class="cr-wchips"><span>NORWAY</span><span>MOVE</span><span>KRONER</span><span>TROMSO</span><span>CHEQUE</span></div>
+      </div>
+      <div class="cr-scard">
+        <div class="cr-cardhead"><span class="cr-tag">Over 13 characters</span><span class="cr-lab">never silent</span></div>
+        <div class="cr-input"><span class="cr-mono" style="font-size:13px">$PAIDTOMOVETONORWAY</span></div>
+        <div class="cr-coll cr-amb" style="margin-top:8px">Ticker is 13 characters max. We'd have to cut it to <b>$PAIDTOMOVETO</b>. <span style="color:var(--ion)">Use that</span></div>
+        <div class="cr-note">We show the cut and let the user accept it. We never perform it silently.</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">The state that matters commercially is the third: a story nobody can name is precisely the story the harvester exists to fix, so <span class="cr-mono">namable = false</span> never blocks creation — it only removes the shortcut.</p>
+
+  <h3>The anti-duplicate check</h3>
+
+  <p>Search's reason to exist, run inside the create flow. It fires on open, on every debounced keystroke past two characters, and again before signing — forty seconds elapse in between, and that is the window in which somebody else mints. The pre-sign re-check reads the live mint stream <em>first</em>, not our index and not Jupiter: the coins it catches are under ninety seconds old, and both fallbacks are blind to that window.</p>
+
+  <div class="mock cr-mock">
+    <div class="cr-band" style="border-top:none">
+      <div class="cr-bmeta">
+        <div class="cr-bname">D-CONFIRMED</div>
+        <div class="cr-bcond">The matcher confirmed a coin for <em>this</em> story.</div>
+      </div>
+      <div class="cr-bfrag">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="cr-cta cr-exec" style="padding:7px 13px;font-size:12px">Buy $NORWAY</div>
+          <div class="cr-rb" style="color:var(--muted)">The form does not open at all. The entry point itself reads Buy.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cr-band">
+      <div class="cr-bmeta">
+        <div class="cr-bname">D-STRONG</div>
+        <div class="cr-bcond">Exact symbol, minted within 10 min of the earliest post, ≥$1k liquidity, image or name agreement.</div>
+      </div>
+      <div class="cr-bfrag">
+        <div class="cr-coll cr-amb"><b>&#9888;</b> $NORWAY was minted 8 minutes ago, from what looks like this story.</div>
+        <div class="cr-dupe">
+          <div class="cr-th34"></div>
+          <div class="cr-dm">
+            <div><span class="cr-mono" style="font-size:12px">$NORWAY</span> <span style="color:var(--muted);font-size:11.5px">Norway Pays You</span></div>
+            <div class="cr-nums"><span>$18.2K liq</span><span>402 holders</span><span>8m old</span></div>
+          </div>
+          <div class="cr-sec-btn">See $NORWAY &#8599;</div>
+        </div>
+        <div class="cr-prim">
+          <div class="cr-note" style="margin:0">You'd be the second $NORWAY. The first has $18.2K in it.</div>
+          <div class="cr-cta" style="padding:7px 13px;font-size:12px">Review $NORWAY</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cr-band">
+      <div class="cr-bmeta">
+        <div class="cr-bname">D-WEAK</div>
+        <div class="cr-bcond">Exact symbol, but old, illiquid, or plainly a different subject.</div>
+      </div>
+      <div class="cr-bfrag">
+        <div class="cr-coll cr-amb">$MOVE already exists — a <b>$1.8B</b> token from 2024, unrelated to this story. Yours would be a different coin with the same ticker.</div>
+        <div class="cr-note">One line. No card, no secondary button, primary unchanged.</div>
+      </div>
+    </div>
+
+    <div class="cr-band">
+      <div class="cr-bmeta">
+        <div class="cr-bname">D-IMAGE</div>
+        <div class="cr-bcond">Perceptual hash within 6 of a recent mint, symbol differs.</div>
+      </div>
+      <div class="cr-bfrag">
+        <div class="cr-coll cr-amb">This image is already a coin — <b>$FJORD</b>, made 12m ago, $4.1K in it.</div>
+        <div class="cr-dupe"><div class="cr-th34"></div><div class="cr-dm"><div class="cr-nums"><span>$4.1K liq</span><span>77 holders</span><span>12m old</span></div></div><div class="cr-sec-btn">See $FJORD &#8599;</div></div>
+        <div class="cr-note">Primary still unchanged — same image with a different ticker is a fork, not a duplicate.</div>
+      </div>
+    </div>
+
+    <div class="cr-band">
+      <div class="cr-bmeta">
+        <div class="cr-bname">MID-FORM ARRIVAL</div>
+        <div class="cr-bcond">A coin lands and the matcher confirms it while the sheet is open.</div>
+      </div>
+      <div class="cr-bfrag">
+        <div class="cr-coll cr-amb">$NORWAY was made <b>40 seconds ago</b>.</div>
+        <div class="cr-prim">
+          <div class="cr-rb" style="color:var(--muted);font-size:11px">Secondary: <span style="color:var(--ink)">Make a different one</span> · <span style="color:var(--ink)">Show me the story</span></div>
+          <div class="cr-cta cr-exec" style="padding:7px 13px;font-size:12px">Buy $NORWAY</div>
+        </div>
+        <div class="cr-note">If <em>two</em> land, the primary becomes <span class="cr-mono">See the 2 coins</span> — never a Buy aimed at whichever row sorted first.</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">The load-bearing detail: D-STRONG does <strong>not</strong> flip the primary to Buy. It only fires on coins our matcher declined to confirm, so flipping here ships a second, looser, undocumented matcher and hands it the Buy button the real one withheld. It also pays an attacker: mint $NORWAY with the post's image inside the window, seed $1k, and we point every would-be creator at your coin.</p>
+
+  <h3>The fee split, stated honestly</h3>
+
+  <p>Insidor takes 10% of the creator fee stream, or 0.1% of each trade. That is settled and printed in the popover. The open question: does 40% go to the person whose post it came from, at an address derived from their handle, whether or not they have heard of Insidor?</p>
+
+  <p>If it ships, this sheet is where a user learns they are assigning 40% of their coin's earnings to a stranger who has never heard of Insidor, and cannot undo it. That belongs above the fold, not in a tooltip. It is also the most defensible thing about the product, and it is irreversible per coin — so "no, for now" is a permanent answer for every coin launched before we decide.</p>
+
+  <div class="mock cr-mock">
+    <div class="cr-two">
+      <div class="cr-half">
+        <div class="cr-cardhead"><span class="cr-tag cr-tion">If the poster share ships</span></div>
+        <div class="cr-fee">
+          <div class="cr-lab" style="margin-bottom:6px">Fee split · written once, at creation</div>
+          <div class="cr-fr"><span>You (signer)</span><span class="cr-pct">50%</span></div>
+          <div class="cr-fr"><span>@nordic_notes &nbsp;<span style="color:var(--dim);font-size:10px">the poster</span></span><span class="cr-pct" style="color:var(--ion)">40%</span></div>
+          <div class="cr-fr"><span>Insidor</span><span class="cr-pct">10%</span></div>
+          <div class="cr-note">@nordic_notes has not agreed to this and does not know Insidor exists. Their share accrues to an address derived from their handle; they claim it by proving they own the account. If they never do, it sits unclaimed.</div>
+          <div class="cr-note">Written into the coin at creation. It cannot be changed and it cannot be added later.</div>
+        </div>
+      </div>
+      <div class="cr-half">
+        <div class="cr-cardhead"><span class="cr-tag">If it does not</span></div>
+        <div class="cr-fee">
+          <div class="cr-lab" style="margin-bottom:6px">Fee split · written once, at creation</div>
+          <div class="cr-fr"><span>You (signer)</span><span class="cr-pct">90%</span></div>
+          <div class="cr-fr"><span>Insidor</span><span class="cr-pct">10%</span></div>
+          <div class="cr-fr"><span>@nordic_notes &nbsp;<span style="color:var(--dim);font-size:10px">the poster</span></span><span class="cr-pct cr-none">— not written</span></div>
+          <div class="cr-note">A sharing config is still created on every launch, at about 0.0040 SOL, so the account layout never has to change later.</div>
+          <div class="cr-note" style="color:var(--amber)">This coin will never pay the poster. That is permanent for this mint, whatever we decide next month.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">Same geometry, same position, three rows either way. The undecided version does not hide the poster row — it renders <span class="cr-mono">—</span>, claiming ignorance rather than zero. Until the decision lands the sheet ships the right-hand layout: we do not print "you keep 50% forever" while that is undecided.</p>
+
+  <h3>Step 2 · Confirm, and success</h3>
+
+  <p>Same sheet, body replaced. This is the only screen in the flow that signs, and everything on it exists to make the irreversible parts legible before the wallet opens. Backdrop-click and Esc are dead from the press until the transaction resolves.</p>
+
+  <div class="mock cr-mock">
+    <div class="cr-two">
+      <div class="cr-sheet">
+        <div class="cr-shead">
+          <div class="cr-disp" style="font-size:15px">&#8592; Review</div>
+          <div class="cr-x">&times;</div>
+        </div>
+        <div class="cr-sbody">
+          <div class="cr-blk" style="display:flex;gap:12px;align-items:center">
+            <div class="cr-th72"></div>
+            <div>
+              <div class="cr-disp cr-mono" style="font-size:24px">$PAIDTOMOVE</div>
+              <div style="color:var(--muted);font-size:12px">Paid To Move</div>
+            </div>
+          </div>
+
+          <div class="cr-blk cr-perm">
+            <div class="cr-lab" style="color:var(--red)">Permanent</div>
+            <ul>
+              <li>The ticker and name cannot be edited after this.</li>
+              <li>The image cannot be replaced.</li>
+              <li>The fee split is written once.</li>
+              <li>The coin exists on Solana forever. Insidor can hide it. We cannot delete it.</li>
+            </ul>
+          </div>
+
+          <div class="cr-blk cr-kv">
+            <div><span>Story</span><span>Paid to Move to Norway &#8599;</span></div>
+            <div><span>Spotted</span><span>27m ago</span></div>
+            <div><span>Crypto twitter</span><span style="color:var(--ion)">not yet</span></div>
+            <div><span>Story state</span><span style="color:var(--lime)">ACCELERATING</span></div>
+            <div><span>Signed by</span><span>7Ldx…9pQk</span></div>
+            <div><span>First buy</span><span>0.5 SOL</span></div>
+            <div><span>Your $PAIDTOMOVE</span><span>about 17,600,000</span></div>
+            <div><span>Total cost</span><span>~0.52 SOL &#8776; $104.52</span></div>
+            <div><span>Balance after</span><span>0.7145 SOL</span></div>
+          </div>
+
+          <div class="cr-check"><span class="cr-dot"></span>&#10003; Still free, checked 2s ago</div>
+          <div class="cr-loss">Most coins go to zero. If this one does, you lose the 0.5 SOL you're putting in and earn no fees.</div>
+        </div>
+        <div class="cr-foot">
+          <div class="cr-lab">One signature</div>
+          <div class="cr-cta cr-exec">Create $PAIDTOMOVE</div>
+        </div>
+      </div>
+
+      <div class="cr-sheet">
+        <div class="cr-shead">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="cr-succ-ring">&#10003;</div>
+            <div class="cr-disp" style="font-size:17px">$PAIDTOMOVE is live</div>
+          </div>
+          <div class="cr-x">&times;</div>
+        </div>
+        <div class="cr-sbody">
+          <div class="cr-blk" style="color:var(--muted);font-size:12px">Paid To Move · made from “Paid to Move to Norway” · <span style="color:var(--ion)">27 minutes after we spotted it</span></div>
+
+          <div class="cr-blk cr-ca">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span class="cr-lab">Contract address</span>
+              <span class="cr-sec-btn" style="padding:3px 8px;font-size:10px">Copy CA</span>
+            </div>
+            <div class="cr-addr">7Qk2Fn9pXvJ4mR3sLd8HcYtZaGb1WuVnEo6XrTfDpump</div>
+          </div>
+
+          <div class="cr-links">
+            <span class="cr-link">Solscan &#8599;</span>
+            <span class="cr-link">pump.fun &#8599;</span>
+            <span class="cr-link cr-off">DexScreener &#8599;</span>
+          </div>
+          <div class="cr-note">chart appears once there's a pair</div>
+
+          <div class="cr-blk cr-kv" style="margin-top:11px">
+            <div><span>Market cap</span><span class="cr-em">—</span></div>
+            <div><span>Liquidity</span><span class="cr-em">—</span></div>
+            <div><span>Holders</span><span class="cr-em">—</span></div>
+            <div><span>Age</span><span>just now</span></div>
+          </div>
+
+          <div class="cr-share">
+            <div class="cr-share-img"><span class="cr-mono" style="font-size:13px;color:#EAF7FF">$PAIDTOMOVE</span></div>
+            <div class="cr-share-cap">
+              <div style="font-size:11.5px">made from a post we saw <span class="cr-mono" style="color:var(--ion)">27 minutes</span> before crypto did</div>
+              <div class="cr-note">Share card · opens an X compose window. It never auto-posts.</div>
+            </div>
+          </div>
+        </div>
+        <div class="cr-foot">
+          <div class="cr-cta cr-ghost">Done</div>
+          <div class="cr-cta">Trade $PAIDTOMOVE</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:22px;max-width:472px">
+      <div class="cr-lab" style="margin-bottom:7px">While it signs — four rows, not a spinner</div>
+      <div class="cr-steps">
+        <div><span style="color:var(--muted)">Image uploaded</span><span style="color:var(--lime)">&#10003;</span></div>
+        <div><span style="color:var(--muted)">Signed in your wallet</span><span style="color:var(--lime)">&#10003;</span></div>
+        <div><span style="color:var(--ink)">Landing on Solana…</span><span style="color:var(--ion)">&#9671;</span></div>
+        <div><span style="color:var(--dim)">Assigning the fee split</span><span style="color:var(--dim)">·</span></div>
+      </div>
+      <div class="cr-note">Success is declared on row three. Row four failing gives a retryable amber band and the line “Until it lands, 100% of fees go to you” — never a failure screen for a coin that exists.</div>
+    </div>
+  </div>
+
+  <p class="cap">Every numeric is <span class="cr-mono">—</span>, never <span class="cr-mono">$0</span>: the coin is thirty seconds old and there is nothing to report. <span class="cr-mono">Done</span> returns to the <em>story</em>, so the creator sees their coin in the story's coin list — the proof it attached. On landing, one transaction writes the launch, the ticker row as CONFIRMED at score 1.0 (bypassing the matcher: we minted it, so we have ground truth), the index row, and two follow rows — the coin and the story.</p>
+
+</section>

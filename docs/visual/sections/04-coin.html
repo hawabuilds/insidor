@@ -1,0 +1,549 @@
+<style>
+/* ── 04. Coin page ─────────────────────────────────────────────────────── */
+.cn-app{ background:var(--bg0); border:1px solid var(--line2); border-radius:12px; overflow:hidden;
+         font-family:var(--sans); color:var(--ink); }
+.cn-n{ font-family:var(--mono); font-variant-numeric:tabular-nums; }
+.cn-lab{ font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+         color:var(--dim); }
+
+/* product chrome */
+.cn-chrome{ display:flex; align-items:center; gap:20px; height:44px; padding:0 14px;
+            background:var(--bg1); border-bottom:1px solid var(--line); }
+.cn-wm{ font-family:var(--disp); font-size:13px; font-weight:600; letter-spacing:.16em; }
+.cn-nav{ display:flex; gap:16px; font-size:12px; color:var(--dim); }
+.cn-nav .on{ color:var(--ink); }
+.cn-chrome .cn-sp{ margin-left:auto; display:flex; align-items:center; gap:10px; }
+.cn-pill{ font-family:var(--mono); font-size:10px; padding:4px 9px; border:1px solid var(--line2);
+          border-radius:5px; color:var(--muted); background:var(--bg2); }
+
+.cn-body{ display:grid; grid-template-columns:1fr 304px; gap:12px; padding:12px; align-items:start; }
+.cn-card{ background:var(--bg1); border:1px solid var(--line); border-radius:10px; }
+
+/* identity header */
+.cn-idh{ display:flex; align-items:center; gap:13px; padding:14px 16px; }
+.cn-logo{ width:52px; height:52px; border-radius:11px; flex:none;
+          background:radial-gradient(120% 120% at 24% 18%, #2b6f86 0%, #123244 46%, #0a1a24 100%);
+          border:1px solid var(--line2); position:relative; }
+.cn-logo::after{ content:""; position:absolute; left:12px; top:20px; width:28px; height:11px; border-radius:2px 8px 2px 2px;
+                 background:linear-gradient(90deg,#3DE0FF 0%, #9BF03C 100%); opacity:.85; }
+.cn-tick{ font-family:var(--disp); font-size:27px; font-weight:600; letter-spacing:-.01em; line-height:1; }
+.cn-nm{ font-size:12.5px; color:var(--muted); margin-top:4px; }
+.cn-chip{ font-family:var(--mono); font-size:9px; letter-spacing:.06em; text-transform:uppercase;
+          border:1px solid var(--line2); border-radius:4px; padding:1.5px 5px; color:var(--dim); vertical-align:2px; }
+.cn-chip.new{ color:var(--lime); border-color:rgba(155,240,60,.32); background:rgba(155,240,60,.08); }
+.cn-live{ display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:9px;
+          letter-spacing:.1em; text-transform:uppercase; color:var(--ion); }
+.cn-live i{ width:6px; height:6px; border-radius:50%; background:var(--ion); box-shadow:0 0 7px var(--ion); }
+.cn-mint{ display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11px;
+          color:var(--muted); background:var(--bg2); border:1px solid var(--line); border-radius:5px; padding:3px 7px; }
+.cn-mint b{ color:var(--dim); font-weight:400; }
+.cn-soc{ display:inline-flex; gap:5px; }
+.cn-soc span{ width:20px; height:20px; border-radius:5px; background:var(--bg3); border:1px solid var(--line);
+              font-family:var(--mono); font-size:9px; color:var(--muted); display:flex; align-items:center; justify-content:center; }
+.cn-px{ margin-left:auto; text-align:right; }
+.cn-px .p{ font-family:var(--mono); font-size:26px; font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+.cn-px .c{ font-family:var(--mono); font-size:12.5px; color:var(--lime); font-variant-numeric:tabular-nums; }
+
+/* origin band */
+.cn-band{ margin:0 12px 12px; border:1px solid rgba(61,224,255,.30); border-radius:10px;
+          background:linear-gradient(90deg, rgba(61,224,255,.055) 0%, rgba(61,224,255,.012) 46%, transparent 100%); }
+.cn-band.amber{ border-color:rgba(255,184,77,.34);
+          background:linear-gradient(90deg, rgba(255,184,77,.06) 0%, rgba(255,184,77,.012) 46%, transparent 100%); }
+.cn-bh{ display:grid; grid-template-columns:42px 1fr 72px 72px 100px 104px; gap:10px;
+        padding:6px 12px 5px; border-bottom:1px solid var(--line); }
+.cn-bh div:nth-child(n+3){ text-align:right; }
+.cn-brow{ display:grid; grid-template-columns:42px 1fr 72px 72px 100px 104px; gap:10px;
+          padding:9px 12px; align-items:center; min-height:60px; }
+.cn-thumb{ width:42px; height:42px; border-radius:7px; border:1px solid var(--line2);
+           background:linear-gradient(158deg,#14343f 0%,#1d5364 42%,#0b1c24 100%); position:relative; }
+.cn-thumb::after{ content:""; position:absolute; left:6px; right:6px; bottom:9px; height:1px;
+                  background:rgba(61,224,255,.55); box-shadow:0 4px 0 rgba(61,224,255,.20); }
+.cn-st .k{ font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); }
+.cn-st .t{ font-family:var(--disp); font-size:13.5px; font-weight:600; margin:2px 0 3px; }
+.cn-st .q{ font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+.cn-cell{ text-align:right; }
+.cn-cell .v{ font-family:var(--mono); font-size:14px; font-variant-numeric:tabular-nums; }
+.cn-cell .s{ font-family:var(--mono); font-size:9px; letter-spacing:.09em; text-transform:uppercase; color:var(--dim); margin-top:3px; }
+.cn-lead .v{ font-size:22px; color:var(--ion); }
+.cn-lead .s{ color:var(--ion); opacity:.7; }
+.cn-livelead{ font-family:var(--mono); font-size:10.5px; color:var(--ion); margin-top:5px; }
+.cn-stamp{ display:inline-block; font-family:var(--mono); font-size:9px; letter-spacing:.06em;
+           text-transform:uppercase; border:1px solid; border-radius:4px; padding:1px 5px; }
+.cn-stamp.ok{ color:var(--lime); border-color:rgba(155,240,60,.35); background:rgba(155,240,60,.08); }
+.cn-stamp.un{ color:var(--amber); border-color:rgba(255,184,77,.38); background:rgba(255,184,77,.08); }
+.cn-stamp.no{ color:var(--dim); border-color:var(--line); }
+
+/* sibling strip */
+.cn-sib{ margin:0 12px 12px; }
+.cn-sib h5{ margin:0 0 6px; }
+.cn-sibrow{ display:grid; grid-template-columns:22px 1fr 92px 92px 62px; gap:10px; align-items:center;
+            height:38px; padding:0 12px; border-top:1px solid var(--line); font-size:12.5px; }
+.cn-sibrow:last-child{ border-bottom:1px solid var(--line); }
+.cn-slog{ width:22px; height:22px; border-radius:6px; border:1px solid var(--line2);
+          background:linear-gradient(140deg,#243a20,#101a0d); }
+.cn-sibrow .r{ text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12px; }
+
+/* stat grid */
+.cn-stats{ display:grid; grid-template-columns:repeat(8,1fr); margin:0 12px 12px;
+           border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--bg1); }
+.cn-stat{ padding:9px 10px; border-right:1px solid var(--line); }
+.cn-stat:last-child{ border-right:0; }
+.cn-stat .v{ font-family:var(--mono); font-size:14px; font-variant-numeric:tabular-nums; margin-top:4px; }
+.cn-stat .v sup{ font-size:8.5px; color:var(--dim); letter-spacing:.06em; }
+.cn-up{ color:var(--lime); } .cn-dn{ color:var(--red); } .cn-dimv{ color:var(--dim); }
+
+/* chart */
+.cn-chart{ margin:0 12px 12px; }
+.cn-chead{ display:flex; align-items:center; gap:12px; height:40px; padding:0 13px; border-bottom:1px solid var(--line); }
+.cn-chead .p{ font-family:var(--mono); font-size:14px; font-variant-numeric:tabular-nums; }
+.cn-tf{ display:flex; gap:2px; margin-left:auto; }
+.cn-tf span{ font-family:var(--mono); font-size:10px; color:var(--dim); padding:3px 7px; border-radius:4px; }
+.cn-tf span.on{ background:var(--bg3); color:var(--ink); }
+.cn-plot{ padding:10px 13px 8px; }
+.cn-hist{ font-family:var(--mono); font-size:10px; color:var(--dim); padding:0 13px 9px; letter-spacing:.06em; text-transform:uppercase; }
+
+/* tabs + trades */
+.cn-tabs{ display:flex; gap:0; border-bottom:1px solid var(--line); padding:0 13px; }
+.cn-tabs span{ font-size:12px; color:var(--dim); padding:9px 12px; border-bottom:2px solid transparent; }
+.cn-tabs span.on{ color:var(--ink); border-bottom-color:var(--ion); }
+.cn-tabs .ct{ margin-left:auto; align-self:center; font-family:var(--mono); font-size:9.5px;
+              letter-spacing:.1em; text-transform:uppercase; color:var(--dim); border:0; }
+.cn-tr{ display:grid; grid-template-columns:70px 46px 1fr 1fr 1fr 100px; gap:10px; padding:0 12px;
+        align-items:center; height:30px; border-bottom:1px solid var(--line); font-family:var(--mono);
+        font-size:11.5px; font-variant-numeric:tabular-nums; }
+.cn-tr div:nth-child(n+3){ text-align:right; }
+.cn-tr div:last-child{ text-align:right; color:var(--dim); }
+.cn-trh{ height:26px; color:var(--dim); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; }
+.cn-tr.me{ background:rgba(61,224,255,.055); }
+.cn-tr.me div:last-child{ color:var(--ion); }
+
+/* rail */
+.cn-rail{ display:flex; flex-direction:column; gap:12px; }
+.cn-rh{ display:flex; align-items:center; gap:8px; padding:10px 13px 8px; }
+.cn-rh h5{ margin:0; }
+.cn-pos{ padding:0 13px 13px; }
+.cn-pos .big{ font-family:var(--mono); font-size:22px; font-variant-numeric:tabular-nums; }
+.cn-pos .pnl{ font-family:var(--mono); font-size:12.5px; color:var(--lime); margin-top:3px; }
+.cn-pos .kv{ font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:9px; line-height:1.65; }
+.cn-pos .said{ font-size:12px; margin-top:10px; padding-top:9px; border-top:1px solid var(--line); line-height:1.5; }
+.cn-pos .said.bad{ color:var(--red); }
+.cn-pos .said.good{ color:var(--ion); }
+
+.cn-tg{ display:grid; grid-template-columns:1fr 1fr; gap:3px; margin:0 13px 11px; padding:3px;
+        background:var(--bg2); border-radius:7px; }
+.cn-tg span{ text-align:center; font-size:12px; padding:6px 0; border-radius:5px; color:var(--dim); }
+.cn-tg span.on{ background:var(--bg3); color:var(--lime); }
+.cn-tg span.on.sell{ color:var(--red); }
+.cn-amt{ margin:0 13px 8px; background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:9px 11px;
+         display:flex; align-items:center; }
+.cn-amt .v{ font-family:var(--mono); font-size:20px; font-variant-numeric:tabular-nums; }
+.cn-amt .u{ margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--muted);
+            border:1px solid var(--line2); border-radius:5px; padding:3px 7px; }
+.cn-pre{ display:grid; grid-template-columns:repeat(5,1fr); gap:5px; margin:0 13px 10px; }
+.cn-pre span{ text-align:center; font-family:var(--mono); font-size:11px; padding:5px 0; border-radius:5px;
+              border:1px solid var(--line); color:var(--muted); background:var(--bg2); }
+.cn-pre span.on{ border-color:rgba(61,224,255,.4); color:var(--ion); background:rgba(61,224,255,.07); }
+.cn-recv{ margin:0 13px 10px; background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:10px 11px; }
+.cn-recv .v{ font-family:var(--mono); font-size:19px; font-variant-numeric:tabular-nums; margin-top:4px; }
+.cn-recv .s{ font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:4px; }
+.cn-rec{ margin:0 13px 11px; }
+.cn-rec div{ display:flex; justify-content:space-between; gap:8px; font-family:var(--mono); font-size:11.5px;
+             font-variant-numeric:tabular-nums; padding:3.5px 0; color:var(--muted); white-space:nowrap; }
+.cn-rec div b{ font-weight:400; color:var(--ink); }
+.cn-btn{ display:block; margin:0 13px 8px; text-align:center; border-radius:8px; padding:12px 0;
+         font-size:14px; font-weight:600; font-family:var(--sans); }
+.cn-btn.buy{ background:var(--lime); color:#0a1500; }
+.cn-btn.ion{ background:var(--ion); color:#00161c; }
+.cn-btn.ghost{ background:transparent; border:1px solid var(--line2); color:var(--muted); }
+.cn-btn.dead{ background:var(--bg3); color:var(--dim); border:1px solid var(--red); }
+.cn-risk{ font-size:11.5px; color:var(--muted); margin:0 13px 13px; line-height:1.5; }
+.cn-set{ display:flex; gap:6px; margin:0 13px 11px; }
+.cn-set span{ flex:1; font-family:var(--mono); font-size:10px; color:var(--muted); background:var(--bg2);
+              border:1px solid var(--line); border-radius:6px; padding:5px 7px; }
+.cn-set span b{ color:var(--ink); font-weight:400; display:block; margin-top:2px; }
+
+/* safety */
+.cn-sf{ padding:0 13px 12px; }
+.cn-sfr{ display:flex; gap:8px; align-items:baseline; font-size:11.5px; padding:6px 0;
+         border-top:1px solid var(--line); line-height:1.45; }
+.cn-sfr i{ font-family:var(--mono); font-size:11px; font-style:normal; flex:none; width:11px; }
+.cn-sfr .ok{ color:var(--lime); } .cn-sfr .no{ color:var(--red); } .cn-sfr .dm{ color:var(--dim); }
+.cn-sfr small{ display:block; color:var(--dim); font-size:10.5px; font-family:var(--mono); }
+
+/* popovers / smaller mocks */
+.cn-pop{ width:300px; background:var(--bg2); border:1px solid var(--line2); border-radius:9px; padding:12px 13px;
+         box-shadow:0 14px 40px rgba(0,0,0,.6); }
+.cn-pop .ti{ font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+             color:var(--dim); margin-bottom:9px; }
+.cn-pop .fr{ display:flex; justify-content:space-between; font-family:var(--mono); font-size:12px;
+             padding:4px 0; color:var(--muted); font-variant-numeric:tabular-nums; }
+.cn-pop .fr.tot{ border-top:1px solid var(--line); margin-top:4px; padding-top:7px; color:var(--ink); }
+.cn-pop .ft{ font-size:11px; color:var(--muted); margin-top:9px; padding-top:9px; border-top:1px solid var(--line); line-height:1.5; }
+.cn-two{ display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+.cn-three{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; align-items:start; }
+.cn-mini{ background:var(--bg1); border:1px solid var(--line); border-radius:10px; }
+.cn-mini .hd{ padding:9px 13px 8px; border-bottom:1px solid var(--line); }
+.cn-empty{ height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+           gap:7px; background:repeating-linear-gradient(-45deg,var(--bg1) 0 9px,var(--bg2) 9px 18px);
+           border-radius:8px; margin:11px 13px; border:1px solid var(--line); }
+.cn-empty .m{ font-size:12.5px; color:var(--muted); }
+.cn-seq{ counter-reset:cs; list-style:none; padding:0; margin:16px 0 22px; }
+.cn-seq li{ counter-increment:cs; display:grid; grid-template-columns:26px 152px 1fr; gap:14px;
+            padding:9px 0; border-bottom:1px solid var(--line); margin:0; align-items:baseline; }
+.cn-seq li::before{ content:counter(cs,decimal-leading-zero); font-family:var(--mono); font-size:11px; color:var(--ion); }
+.cn-seq .st{ font-family:var(--mono); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink); }
+.cn-seq .bd{ font-size:13.5px; color:var(--muted); line-height:1.5; }
+.cn-seq .bd em{ color:var(--amber); font-style:normal; }
+h5.cn-h5{ font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+          color:var(--dim); margin:0; font-weight:500; }
+</style>
+
+<section class="sec">
+  <h2>04. The Coin page — chart, swap, trade</h2>
+
+  <p class="lede">One coin, told honestly, and the only surface in Insidor where money moves. Chart, stats and swap box are table stakes. The job only this page can do is prove this coin exists because of a story we caught first, say by how many minutes, and refuse to sell you anything on a claim we do not stand behind.</p>
+
+  <p>Above the fold, Axiom, Photon and DexScreener are the same page: candles, market cap, holders, a swap box, all of it fast. Copying that is table stakes and no reason for anyone to switch. The one row nobody else can render is the <strong>origin band</strong> — the post that started it, the clock time we promoted the story, the clock time crypto arrived, and the difference. It sits directly under the identity header, above the stats and the chart, drawn in the terminal's own ranked-row grammar rather than as a hero card. A hero card reads as a boast; a row with column headers and right-aligned mono reads as a measurement.</p>
+
+  <p>The band prints clock times, not relative ages: <code>13:59</code> and <code>14:33</code> are checkable against the permalinks, "34 minutes ago" is not. <code>SPOTTED</code> is our <em>promote</em> time, not the post's birth — the ferry post had been up for hours before it accelerated, and the claim is earliness versus crypto, never versus the internet. The big <span style="color:var(--ion)">+34m</span> is Insidor's frozen record. The small <code>your lead now +18m</code> beneath it is a different number — where the <em>reader</em> stands right now, counting down, flipping amber to <code>crypto caught up 7m ago</code> and red past thirty minutes. They never share a component, because conflating the detector's history with the reader's live standing is the most flattering lie this product could tell.</p>
+
+  <div class="mock" style="break-inside:avoid; page-break-inside:avoid">
+    <div class="cn-app">
+      <div class="cn-chrome">
+        <span class="cn-wm">INSIDOR</span>
+        <div class="cn-nav"><span>Live feed</span><span>Stories</span><span class="on">Coins</span><span>Watchlist</span><span>Finished</span></div>
+        <div class="cn-sp">
+          <span class="cn-pill">SOL $178.40</span>
+          <span class="cn-pill" style="color:var(--ion)">7Ldd…3Zme &nbsp;2.41 SOL</span>
+        </div>
+      </div>
+
+      <div class="cn-body">
+        <div>
+          <!-- identity header -->
+          <div class="cn-card" style="margin-bottom:12px">
+            <div class="cn-idh">
+              <div class="cn-logo"></div>
+              <div>
+                <div class="cn-tick">$FERRY <span class="cn-chip new">new</span> <span class="cn-live"><i></i>live</span></div>
+                <div class="cn-nm">Last Horn &nbsp;·&nbsp; pump.fun &nbsp;·&nbsp; SPL</div>
+                <div style="margin-top:8px; display:flex; gap:8px; align-items:center">
+                  <span class="cn-mint">4mZq…8xPq <b>⧉</b></span>
+                  <span class="cn-soc"><span>𝕏</span><span>TG</span><span>WWW</span></span>
+                </div>
+              </div>
+              <div class="cn-px">
+                <div class="p">$0.0007996</div>
+                <div class="c">+218.4%</div>
+                <div class="cn-lab" style="margin-top:3px">since mint · 31m</div>
+              </div>
+            </div>
+
+            <!-- ORIGIN BAND -->
+            <div class="cn-band">
+              <div class="cn-bh cn-lab">
+                <div></div><div>origin story</div><div>spotted</div><div>crypto</div><div>lead</div><div>match</div>
+              </div>
+              <div class="cn-brow">
+                <div class="cn-thumb"></div>
+                <div class="cn-st">
+                  <div class="k">@nordkyst_ferge · X · 4h ago · 2.4M views</div>
+                  <div class="t">Harbor horn goes viral in Bergen</div>
+                  <div class="q">“han blåste én siste gang og hele havna svarte…”</div>
+                </div>
+                <div class="cn-cell"><div class="v">13:59</div><div class="s">we promoted</div></div>
+                <div class="cn-cell"><div class="v">14:33</div><div class="s">first mint</div></div>
+                <div class="cn-cell cn-lead">
+                  <div class="v">+34m</div><div class="s">early vs crypto</div>
+                  <div class="cn-livelead">your lead now +18m</div>
+                </div>
+                <div class="cn-cell"><span class="cn-stamp ok">matched · image + name</span><div class="s" style="margin-top:5px">why? →</div></div>
+              </div>
+            </div>
+
+            <!-- sibling strip -->
+            <div class="cn-sib">
+              <h5 class="cn-h5">2 more coins from this story</h5>
+              <div class="cn-sibrow">
+                <div class="cn-slog"></div>
+                <div>$HORN <span style="color:var(--muted)">Bergen Horn</span> <span class="cn-lab" style="margin-left:6px">earliest</span></div>
+                <div class="r">$41.2K</div><div class="r">$9.8K liq</div><div class="r" style="color:var(--dim)">44m</div>
+              </div>
+              <div class="cn-sibrow">
+                <div class="cn-slog"></div>
+                <div>$LASTHORN <span style="color:var(--muted)">last horn</span></div>
+                <div class="r">$18.6K</div><div class="r">$4.1K liq</div><div class="r" style="color:var(--dim)">12m</div>
+              </div>
+              <div class="cn-lab" style="padding:7px 12px 0">you are viewing the deepest book · confirmed matches only</div>
+            </div>
+
+            <!-- stat grid -->
+            <div class="cn-stats">
+              <div class="cn-stat"><div class="cn-lab">5m</div><div class="v cn-up">+12.4%</div></div>
+              <div class="cn-stat"><div class="cn-lab">1h</div><div class="v cn-up">+48.2%</div></div>
+              <div class="cn-stat"><div class="cn-lab">24h</div><div class="v cn-dimv" title="coin is 31m old">—</div></div>
+              <div class="cn-stat"><div class="cn-lab">mkt cap</div><div class="v">$799.6K</div></div>
+              <div class="cn-stat"><div class="cn-lab">liquidity</div><div class="v">$84.2K</div></div>
+              <div class="cn-stat"><div class="cn-lab">vol 31m</div><div class="v">$412.8K</div></div>
+              <div class="cn-stat"><div class="cn-lab">holders</div><div class="v">1,204</div></div>
+              <div class="cn-stat"><div class="cn-lab">age</div><div class="v">31m</div></div>
+            </div>
+
+            <!-- chart -->
+            <div class="cn-chart cn-card" style="background:var(--bg1)">
+              <div class="cn-chead">
+                <span class="p">$0.0007996</span>
+                <span class="cn-lab">pair 9Rt4…Kd2n · DexScreener</span>
+                <div class="cn-tf"><span class="on">1m</span><span>5m</span><span>15m</span><span>1h</span><span>4h</span><span>1d</span></div>
+              </div>
+              <div class="cn-plot">
+                <svg viewBox="0 0 940 300" width="100%" height="228" preserveAspectRatio="none" aria-hidden="true">
+                  <g stroke="#212127" stroke-width="1">
+                    <line x1="0" y1="60" x2="940" y2="60"/><line x1="0" y1="120" x2="940" y2="120"/>
+                    <line x1="0" y1="180" x2="940" y2="180"/><line x1="0" y1="240" x2="940" y2="240"/>
+                  </g>
+                  <line x1="12.4" y1="269.1" x2="12.4" y2="275.0" stroke="#9BF03C" stroke-width="1"/> <rect x="5.4" y="270.2" width="13.9" height="3.0" fill="#9BF03C" opacity="0.92"/> <line x1="37.1" y1="265.9" x2="37.1" y2="271.4" stroke="#9BF03C" stroke-width="1"/> <rect x="30.2" y="267.0" width="13.9" height="3.2" fill="#9BF03C" opacity="0.92"/> <line x1="61.8" y1="264.5" x2="61.8" y2="268.3" stroke="#9BF03C" stroke-width="1"/> <rect x="54.9" y="265.6" width="13.9" height="1.4" fill="#9BF03C" opacity="0.92"/> <line x1="86.6" y1="259.7" x2="86.6" y2="266.2" stroke="#9BF03C" stroke-width="1"/> <rect x="79.7" y="259.9" width="13.9" height="5.7" fill="#9BF03C" opacity="0.92"/> <line x1="111.3" y1="257.3" x2="111.3" y2="261.4" stroke="#9BF03C" stroke-width="1"/> <rect x="104.4" y="259.2" width="13.9" height="1.2" fill="#9BF03C" opacity="0.92"/> <line x1="136.1" y1="256.4" x2="136.1" y2="261.2" stroke="#9BF03C" stroke-width="1"/> <rect x="129.1" y="258.7" width="13.9" height="1.2" fill="#9BF03C" opacity="0.92"/> <line x1="160.8" y1="252.2" x2="160.8" y2="259.1" stroke="#9BF03C" stroke-width="1"/> <rect x="153.9" y="253.7" width="13.9" height="5.0" fill="#9BF03C" opacity="0.92"/> <line x1="185.5" y1="252.2" x2="185.5" y2="253.8" stroke="#9BF03C" stroke-width="1"/> <rect x="178.6" y="253.5" width="13.9" height="1.2" fill="#9BF03C" opacity="0.92"/> <line x1="210.3" y1="251.3" x2="210.3" y2="253.5" stroke="#9BF03C" stroke-width="1"/> <rect x="203.3" y="251.9" width="13.9" height="1.6" fill="#9BF03C" opacity="0.92"/> <line x1="235.0" y1="246.9" x2="235.0" y2="253.8" stroke="#9BF03C" stroke-width="1"/> <rect x="228.1" y="248.0" width="13.9" height="3.8" fill="#9BF03C" opacity="0.92"/> <line x1="259.7" y1="240.0" x2="259.7" y2="249.2" stroke="#9BF03C" stroke-width="1"/> <rect x="252.8" y="241.7" width="13.9" height="6.3" fill="#9BF03C" opacity="0.92"/> <line x1="284.5" y1="232.5" x2="284.5" y2="242.4" stroke="#9BF03C" stroke-width="1"/> <rect x="277.5" y="233.8" width="13.9" height="7.9" fill="#9BF03C" opacity="0.92"/> <line x1="309.2" y1="219.2" x2="309.2" y2="236.1" stroke="#9BF03C" stroke-width="1"/> <rect x="302.3" y="222.3" width="13.9" height="11.5" fill="#9BF03C" opacity="0.92"/> <line x1="333.9" y1="211.7" x2="333.9" y2="223.0" stroke="#9BF03C" stroke-width="1"/> <rect x="327.0" y="212.7" width="13.9" height="9.6" fill="#9BF03C" opacity="0.92"/> <line x1="358.7" y1="206.8" x2="358.7" y2="215.1" stroke="#9BF03C" stroke-width="1"/> <rect x="351.8" y="207.0" width="13.9" height="5.7" fill="#9BF03C" opacity="0.92"/> <line x1="383.4" y1="196.7" x2="383.4" y2="208.3" stroke="#9BF03C" stroke-width="1"/> <rect x="376.5" y="199.9" width="13.9" height="7.2" fill="#9BF03C" opacity="0.92"/> <line x1="408.2" y1="182.5" x2="408.2" y2="199.9" stroke="#9BF03C" stroke-width="1"/> <rect x="401.2" y="185.9" width="13.9" height="14.0" fill="#9BF03C" opacity="0.92"/> <line x1="432.9" y1="176.4" x2="432.9" y2="187.6" stroke="#9BF03C" stroke-width="1"/> <rect x="426.0" y="180.1" width="13.9" height="5.7" fill="#9BF03C" opacity="0.92"/> <line x1="457.6" y1="162.4" x2="457.6" y2="180.4" stroke="#9BF03C" stroke-width="1"/> <rect x="450.7" y="164.2" width="13.9" height="15.9" fill="#9BF03C" opacity="0.92"/> <line x1="482.4" y1="148.2" x2="482.4" y2="165.3" stroke="#9BF03C" stroke-width="1"/> <rect x="475.4" y="151.9" width="13.9" height="12.3" fill="#9BF03C" opacity="0.92"/> <line x1="507.1" y1="145.3" x2="507.1" y2="156.0" stroke="#9BF03C" stroke-width="1"/> <rect x="500.2" y="146.9" width="13.9" height="5.0" fill="#9BF03C" opacity="0.92"/> <line x1="531.8" y1="130.9" x2="531.8" y2="148.0" stroke="#9BF03C" stroke-width="1"/> <rect x="524.9" y="131.5" width="13.9" height="15.4" fill="#9BF03C" opacity="0.92"/> <line x1="556.6" y1="131.2" x2="556.6" y2="144.5" stroke="#FF5C6E" stroke-width="1"/> <rect x="549.7" y="131.5" width="13.9" height="9.4" fill="#FF5C6E" opacity="0.92"/> <line x1="581.3" y1="138.1" x2="581.3" y2="150.6" stroke="#FF5C6E" stroke-width="1"/> <rect x="574.4" y="140.9" width="13.9" height="7.8" fill="#FF5C6E" opacity="0.92"/> <line x1="606.1" y1="145.2" x2="606.1" y2="156.6" stroke="#FF5C6E" stroke-width="1"/> <rect x="599.1" y="148.7" width="13.9" height="7.3" fill="#FF5C6E" opacity="0.92"/> <line x1="630.8" y1="155.5" x2="630.8" y2="158.2" stroke="#FF5C6E" stroke-width="1"/> <rect x="623.9" y="156.0" width="13.9" height="1.2" fill="#FF5C6E" opacity="0.92"/> <line x1="655.5" y1="155.2" x2="655.5" y2="167.1" stroke="#FF5C6E" stroke-width="1"/> <rect x="648.6" y="156.4" width="13.9" height="6.7" fill="#FF5C6E" opacity="0.92"/> <line x1="680.3" y1="148.3" x2="680.3" y2="166.8" stroke="#9BF03C" stroke-width="1"/> <rect x="673.3" y="149.7" width="13.9" height="13.5" fill="#9BF03C" opacity="0.92"/> <line x1="705.0" y1="142.4" x2="705.0" y2="153.4" stroke="#9BF03C" stroke-width="1"/> <rect x="698.1" y="144.3" width="13.9" height="5.4" fill="#9BF03C" opacity="0.92"/> <line x1="729.7" y1="131.6" x2="729.7" y2="148.7" stroke="#9BF03C" stroke-width="1"/> <rect x="722.8" y="132.2" width="13.9" height="12.2" fill="#9BF03C" opacity="0.92"/> <line x1="754.5" y1="125.0" x2="754.5" y2="135.8" stroke="#9BF03C" stroke-width="1"/> <rect x="747.5" y="126.3" width="13.9" height="5.8" fill="#9BF03C" opacity="0.92"/> <line x1="779.2" y1="116.8" x2="779.2" y2="126.7" stroke="#9BF03C" stroke-width="1"/> <rect x="772.3" y="118.4" width="13.9" height="7.9" fill="#9BF03C" opacity="0.92"/> <line x1="803.9" y1="111.1" x2="803.9" y2="119.6" stroke="#9BF03C" stroke-width="1"/> <rect x="797.0" y="114.4" width="13.9" height="4.0" fill="#9BF03C" opacity="0.92"/> <line x1="828.7" y1="99.1" x2="828.7" y2="116.6" stroke="#9BF03C" stroke-width="1"/> <rect x="821.8" y="101.2" width="13.9" height="13.1" fill="#9BF03C" opacity="0.92"/> <line x1="853.4" y1="77.7" x2="853.4" y2="104.3" stroke="#9BF03C" stroke-width="1"/> <rect x="846.5" y="80.8" width="13.9" height="20.4" fill="#9BF03C" opacity="0.92"/> <line x1="878.2" y1="59.4" x2="878.2" y2="81.7" stroke="#9BF03C" stroke-width="1"/> <rect x="871.2" y="60.6" width="13.9" height="20.2" fill="#9BF03C" opacity="0.92"/> <line x1="902.9" y1="32.2" x2="902.9" y2="62.1" stroke="#9BF03C" stroke-width="1"/> <rect x="896.0" y="38.1" width="13.9" height="22.5" fill="#9BF03C" opacity="0.92"/> <line x1="927.6" y1="25.0" x2="927.6" y2="44.3" stroke="#9BF03C" stroke-width="1"/> <rect x="920.7" y="30.5" width="13.9" height="7.6" fill="#9BF03C" opacity="0.92"/>
+                  <line x1="0" y1="30.5" x2="940" y2="30.5" stroke="#9BF03C" stroke-width="1" stroke-dasharray="3 4" opacity=".55"/>
+                </svg>
+                <svg viewBox="0 0 940 52" width="100%" height="40" preserveAspectRatio="none" aria-hidden="true" style="margin-top:5px">
+                  <rect x="5.4" y="44.5" width="13.9" height="7.5" fill="#9BF03C" opacity=".30"/> <rect x="30.2" y="32.8" width="13.9" height="19.2" fill="#9BF03C" opacity=".30"/> <rect x="54.9" y="32.9" width="13.9" height="19.1" fill="#9BF03C" opacity=".30"/> <rect x="79.7" y="36.6" width="13.9" height="15.4" fill="#9BF03C" opacity=".30"/> <rect x="104.4" y="39.0" width="13.9" height="13.0" fill="#9BF03C" opacity=".30"/> <rect x="129.1" y="44.2" width="13.9" height="7.8" fill="#9BF03C" opacity=".30"/> <rect x="153.9" y="45.1" width="13.9" height="6.9" fill="#9BF03C" opacity=".30"/> <rect x="178.6" y="26.8" width="13.9" height="25.2" fill="#9BF03C" opacity=".30"/> <rect x="203.3" y="40.5" width="13.9" height="11.5" fill="#9BF03C" opacity=".30"/> <rect x="228.1" y="30.3" width="13.9" height="21.7" fill="#9BF03C" opacity=".30"/> <rect x="252.8" y="39.2" width="13.9" height="12.8" fill="#9BF03C" opacity=".30"/> <rect x="277.5" y="26.1" width="13.9" height="25.9" fill="#9BF03C" opacity=".30"/> <rect x="302.3" y="30.5" width="13.9" height="21.5" fill="#9BF03C" opacity=".30"/> <rect x="327.0" y="37.0" width="13.9" height="15.0" fill="#9BF03C" opacity=".30"/> <rect x="351.8" y="39.5" width="13.9" height="12.5" fill="#9BF03C" opacity=".30"/> <rect x="376.5" y="25.2" width="13.9" height="26.8" fill="#9BF03C" opacity=".30"/> <rect x="401.2" y="41.5" width="13.9" height="10.5" fill="#9BF03C" opacity=".30"/> <rect x="426.0" y="36.9" width="13.9" height="15.1" fill="#9BF03C" opacity=".30"/> <rect x="450.7" y="27.3" width="13.9" height="24.7" fill="#9BF03C" opacity=".30"/> <rect x="475.4" y="18.4" width="13.9" height="33.6" fill="#9BF03C" opacity=".30"/> <rect x="500.2" y="24.4" width="13.9" height="27.6" fill="#9BF03C" opacity=".30"/> <rect x="524.9" y="33.7" width="13.9" height="18.3" fill="#9BF03C" opacity=".30"/> <rect x="549.7" y="13.7" width="13.9" height="38.3" fill="#FF5C6E" opacity=".30"/> <rect x="574.4" y="35.1" width="13.9" height="16.9" fill="#FF5C6E" opacity=".30"/> <rect x="599.1" y="40.8" width="13.9" height="11.2" fill="#FF5C6E" opacity=".30"/> <rect x="623.9" y="32.2" width="13.9" height="19.8" fill="#FF5C6E" opacity=".30"/> <rect x="648.6" y="25.8" width="13.9" height="26.2" fill="#FF5C6E" opacity=".30"/> <rect x="673.3" y="38.5" width="13.9" height="13.5" fill="#9BF03C" opacity=".30"/> <rect x="698.1" y="34.1" width="13.9" height="17.9" fill="#9BF03C" opacity=".30"/> <rect x="722.8" y="26.8" width="13.9" height="25.2" fill="#9BF03C" opacity=".30"/> <rect x="747.5" y="18.9" width="13.9" height="33.1" fill="#9BF03C" opacity=".30"/> <rect x="772.3" y="34.6" width="13.9" height="17.4" fill="#9BF03C" opacity=".30"/> <rect x="797.0" y="25.5" width="13.9" height="26.5" fill="#9BF03C" opacity=".30"/> <rect x="821.8" y="4.5" width="13.9" height="47.5" fill="#9BF03C" opacity=".30"/> <rect x="846.5" y="0.0" width="13.9" height="52.0" fill="#9BF03C" opacity=".30"/> <rect x="871.2" y="12.1" width="13.9" height="39.9" fill="#9BF03C" opacity=".30"/> <rect x="896.0" y="9.9" width="13.9" height="42.1" fill="#9BF03C" opacity=".30"/> <rect x="920.7" y="13.6" width="13.9" height="38.4" fill="#9BF03C" opacity=".30"/>
+                </svg>
+              </div>
+              <div class="cn-hist">first trades — 31 minutes of history</div>
+            </div>
+
+            <!-- tabs -->
+            <div class="cn-chart cn-card" style="background:var(--bg1)">
+              <div class="cn-tabs">
+                <span class="on">Trades</span><span>Holders</span><span>Info</span>
+                <span class="ct">10s poll · your fills cyan</span>
+              </div>
+              <div class="cn-tr cn-trh"><div>time</div><div>side</div><div>price</div><div>sol</div><div>ferry</div><div>wallet</div></div>
+              <div class="cn-tr"><div>15:04:12</div><div class="cn-up">BUY</div><div>$0.0007990</div><div>0.42</div><div>93,780</div><div>9Hs2…kQ1v</div></div>
+              <div class="cn-tr"><div>15:03:58</div><div class="cn-dn">SELL</div><div>$0.0007970</div><div>1.10</div><div>246,220</div><div>Bn4x…7Tqa</div></div>
+              <div class="cn-tr me"><div>15:03:41</div><div class="cn-up">BUY</div><div>$0.0007940</div><div>0.25</div><div>56,171</div><div>7Ldd…3Zme you</div></div>
+              <div class="cn-tr"><div>15:03:20</div><div class="cn-up">BUY</div><div>$0.0007910</div><div>2.00</div><div>451,074</div><div>Gk9p…Ru2c</div></div>
+              <div class="cn-tr"><div>15:02:57</div><div class="cn-up">BUY</div><div>$0.0007880</div><div>0.60</div><div>135,838</div><div>Qw8m…Ld4s</div></div>
+              <div class="cn-tr" style="border-bottom:0"><div>15:02:31</div><div class="cn-dn">SELL</div><div>$0.0007840</div><div>0.35</div><div>79,643</div><div>3Vte…Nn6h</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RAIL -->
+        <div class="cn-rail">
+          <div class="cn-card">
+            <div class="cn-rh"><h5 class="cn-h5">your position</h5><span class="cn-lab" style="margin-left:auto">7Ldd…3Zme</span></div>
+            <div class="cn-pos">
+              <div class="big">$185.03</div>
+              <div class="pnl">+$39.43 &nbsp;(+27.1%)</div>
+              <div class="kv">Qty &nbsp;231,402<br>Avg paid &nbsp;$0.0006292<br>Now &nbsp;$0.0007996</div>
+              <div class="said bad">Crypto traders got here 4 minutes before you bought.</div>
+            </div>
+          </div>
+
+          <div class="cn-card">
+            <div class="cn-tg" style="margin-top:11px"><span class="on">Buy</span><span>Sell</span></div>
+            <div class="cn-amt"><span class="v">0.50</span><span class="u">SOL ⇄ USD</span></div>
+            <div class="cn-pre"><span>0.1</span><span class="on">0.5</span><span>1</span><span>2</span><span>MAX</span></div>
+            <div class="cn-recv">
+              <div class="cn-lab">you receive</div>
+              <div class="v">110,420.55 FERRY</div>
+              <div class="s">$89.20 &nbsp;·&nbsp; 1 FERRY = $0.00080783</div>
+            </div>
+            <div class="cn-rec">
+              <div><span>Min received</span><b>109,316 FERRY</b></div>
+              <div><span>Price impact</span><b class="cn-up">0.42%</b></div>
+              <div><span>Route</span><b>dflow</b></div>
+              <div><span>Network + priority</span><b>~0.0009 SOL</b></div>
+              <div><span>Insidor + Jupiter fee ⓘ</span><b>0.60% · $0.54</b></div>
+            </div>
+            <div class="cn-set">
+              <span>SLIPPAGE<b>Auto (RTSE)</b></span>
+              <span>PRIORITY<b>Fast</b></span>
+              <span>QUOTE<b>refresh 0:12</b></span>
+            </div>
+            <a class="cn-btn buy">Buy $FERRY</a>
+            <p class="cn-risk">If this goes to zero you lose $89.20. That happens most of the time.</p>
+          </div>
+
+          <div class="cn-card">
+            <div class="cn-rh"><h5 class="cn-h5">safety</h5><span class="cn-lab" style="margin-left:auto">helius + rugcheck · 22s ago</span></div>
+            <div class="cn-sf">
+              <div class="cn-sfr"><i class="ok">✓</i><span><b style="font-weight:500">Sell route found</b><small>reverse quote returned for 1% of the position</small></span></div>
+              <div class="cn-sfr"><i class="ok">✓</i><span><b style="font-weight:500">No transfer fee, no transfer hook</b><small>token program: SPL, not Token-2022</small></span></div>
+              <div class="cn-sfr"><i class="dm">·</i><span style="color:var(--dim)">Mint &amp; freeze authority — revoked by pump.fun on every coin (not a signal)</span></div>
+              <div class="cn-sfr"><i class="dm">·</i><span><b style="font-weight:500;color:var(--muted)">Top 10 holders 31.4%</b><small>of circulating · curve PDA, pool vault, burn excluded</small></span></div>
+              <div class="cn-sfr"><i class="dm">—</i><span style="color:var(--dim)">Dev %, sniper %, bundle % — not available at launch</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">Notice what is <em>not</em> here. No numeric match score anywhere — the stamp is categorical prose, because "73% match" beside a spend button makes the user do their own thresholding, which is what the abstain band exists to prevent. The 24H cell reads <code>—</code> with a tooltip <code>coin is 31m old</code>, never <code>0.0%</code>: <code>$0</code> claims worthlessness, <code>—</code> claims ignorance. Volume is labelled <code>VOL SINCE MINT</code> with the elapsed window as a superscript rather than passed off as 24h. And the position card prints a <span style="color:var(--red)">negative</span> user lead at full weight on the hero coin — our lead (+34m, the detector) and your lead (−4m, this wallet) are different numbers, and we will not quietly show you the flattering one.</p>
+
+  <h3>The fee line, and why it is boring on purpose</h3>
+
+  <p>All five recap rows render at one uniform 12px mono weight and all five come from the order response — nothing is a literal in the client. The fee row gets no badge, no box, no colour, no acknowledgement checkbox: a highlighted disclosure is something users learn to dismiss, whereas a row sitting in the same column as the number they care about is something they read. The <code>ⓘ</code> opens the split, and the split states the constraint plainly rather than pretending 0.50% was a price we chose.</p>
+
+  <div class="mock" style="break-inside:avoid; page-break-inside:avoid">
+    <div class="cn-two">
+      <div>
+        <div class="cn-pop">
+          <div class="ti">fee breakdown · 0.50 SOL buy</div>
+          <div class="fr"><span>Insidor fee 0.50%</span><span>$0.45</span></div>
+          <div class="fr"><span>Jupiter platform 0.10%</span><span>$0.09</span></div>
+          <div class="fr tot"><span>Total 0.60%</span><span>$0.54</span></div>
+          <div class="ft">Jupiter keeps 20% of the Insidor fee.<br><br><strong>0.50% is the minimum Jupiter permits on integrator fees — it is not a number we chose.</strong></div>
+        </div>
+        <p class="cap" style="margin-top:12px">Ambient exposure. Same size and colour as its four siblings; the ⓘ is 10px.</p>
+      </div>
+      <div>
+        <div class="cn-pop" style="width:300px">
+          <div class="ti">confirm · buy $FERRY</div>
+          <div class="fr"><span>You pay</span><span>0.50 SOL · $89.20</span></div>
+          <div class="fr"><span>You receive (min)</span><span>109,316 FERRY</span></div>
+          <div class="fr"><span>Price impact</span><span style="color:var(--lime)">0.42%</span></div>
+          <div class="fr"><span>Network + priority</span><span>~0.0009 SOL</span></div>
+          <div class="fr"><span>Insidor + Jupiter fee</span><span>0.60% · $0.54</span></div>
+          <div class="fr" style="color:var(--dim)"><span>&nbsp;&nbsp;Insidor 0.50% / Jupiter 0.10%</span><span>$0.45 / $0.09</span></div>
+          <div class="ft" style="color:var(--muted)">Quote refresh is suspended while this dialog is open. Nothing re-prices under your finger.</div>
+          <a class="cn-btn buy" style="margin:11px 0 0">Sign &amp; buy</a>
+        </div>
+        <p class="cap" style="margin-top:12px">Pre-signature exposure. Full uncollapsed row plus the split, every time, before any signature.</p>
+      </div>
+    </div>
+  </div>
+
+  <p>Two things to hold onto. The floor is real: <strong>the cheapest possible cost to a user is 0.50% per trade</strong>, because Jupiter enforces a 50 bps minimum on integrator fees, with our platform share on top. We cannot undercut it, so we disclose it. And the number moves — Jupiter's platform fee is published at 50 bps and measured live at 10; if they flip it back our disclosed total doubles to 1.00% overnight. Live value versus a stable "up to 1.0%" is open question #6, a trust decision rather than an engineering one. Either way the displayed fee is frozen from the order that produced the signed transaction and re-asserted server-side against that <code>requestId</code> in <code>/api/execute</code>. The client never computes it.</p>
+
+  <h3>The pending state, which is the common case</h3>
+
+  <p>Arriving before the market does means the modal coin page here has no pair, no OHLCV and no liquidity depth. If that renders as an error or as zeroes, the product contradicts itself on its own best screen. So the chart card says <code>Pool not indexed yet</code> with a live counter, price-derived stats render <code>··</code> rather than <code>$0</code>, Holders and Age stay live because they come from Helius RPC and <code>coin_mints</code> and need no pair — <strong>and the trade panel still quotes</strong>, routed on the bonding curve.</p>
+
+  <div class="mock" style="break-inside:avoid; page-break-inside:avoid">
+    <div class="cn-two">
+      <div class="cn-mini">
+        <div class="hd"><span class="cn-lab">$FERRY · chart</span></div>
+        <div class="cn-empty">
+          <div class="m">Pool not indexed yet</div>
+          <div class="cn-lab" style="color:var(--ion)">mint 0:34 ago</div>
+          <div class="cn-lab">dexscreener has not created a pair</div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); border-top:1px solid var(--line)">
+          <div class="cn-stat"><div class="cn-lab">price</div><div class="v cn-dimv">··</div></div>
+          <div class="cn-stat"><div class="cn-lab">liquidity</div><div class="v cn-dimv">··</div></div>
+          <div class="cn-stat"><div class="cn-lab">holders</div><div class="v">17</div></div>
+          <div class="cn-stat" style="border-right:0"><div class="cn-lab">age</div><div class="v">0:34</div></div>
+        </div>
+        <p class="cn-risk" style="margin:11px 13px 12px; color:var(--dim)">Nothing on this card reads <code>$0</code> or <code>0.0%</code>. A flat pill is a claim about the market; a dash is a claim about us.</p>
+      </div>
+      <div class="cn-mini">
+        <div class="hd"><span class="cn-lab">$FERRY · trade panel, no pair</span></div>
+        <div class="cn-tg" style="margin-top:11px"><span class="on">Buy</span><span>Sell</span></div>
+        <div class="cn-amt"><span class="v">0.50</span><span class="u">SOL ⇄ USD</span></div>
+        <div class="cn-recv">
+          <div class="cn-lab">you receive</div>
+          <div class="v">1,884,220.10 FERRY</div>
+          <div class="s" style="color:var(--ion)">No chart yet — routed on the bonding curve</div>
+        </div>
+        <div class="cn-rec">
+          <div><span>Min received</span><b>1,846,535 FERRY</b></div>
+          <div><span>Price impact</span><b class="cn-up">1.10%</b></div>
+          <div><span>Route</span><b>pump.fun curve</b></div>
+          <div><span>Network + priority</span><b>~0.0009 SOL</b></div>
+          <div><span>Insidor + Jupiter fee ⓘ</span><b>0.60% · $0.54</b></div>
+        </div>
+        <div class="cn-sfr" style="margin:0 13px; border-top:0; color:var(--amber)"><i>·</i><span>Checks pending — this coin is 34 seconds old.</span></div>
+        <a class="cn-btn buy" style="margin-top:9px">Buy $FERRY</a>
+        <p class="cn-risk">If this goes to zero you lose $89.20. That happens most of the time.</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">We do not block on unknown. Blocking every buy whose safety checks have not returned yet would delete the product, because the buys worth making are all 40 seconds old. Unknown discloses; only four things block, and only in the buy direction.</p>
+
+  <h3>Safety signals that actually discriminate</h3>
+
+  <p>Every competitor's safety panel gives every pump.fun token a wall of green ticks, because mint and freeze authority are revoked by construction on all of them. A tick every token earns teaches users that green means safe, inverting the check. So those two collapse into one dim non-signal line and green is reserved for checks a token can fail. Four things block a buy: active mint authority, active freeze authority, a Token-2022 transfer fee or hook, and <strong>no sell route</strong> — a reverse order call for ~1% of the intended out. Buy route present with sell route absent is the honeypot signature and is worth more than the other three combined. Selling is never blocked in any state, because stranding a holder just relocates the unfairness; a transfer-fee token discloses in amber and the fee is subtracted from <code>You receive</code> as a sixth recap row.</p>
+
+  <div class="mock" style="break-inside:avoid; page-break-inside:avoid">
+    <div class="cn-three">
+      <div class="cn-mini">
+        <div class="hd"><span class="cn-lab">blocked · buy only</span></div>
+        <div class="cn-sf" style="padding-top:8px">
+          <div class="cn-sfr" style="border-top:0"><i class="no">✕</i><span><b style="font-weight:500;color:var(--red)">No sell route</b><small>reverse quote returned no route, 3 attempts</small></span></div>
+          <div class="cn-sfr"><i class="ok">✓</i><span style="color:var(--muted)">No transfer fee or hook</span></div>
+          <div class="cn-sfr"><i class="dm">·</i><span style="color:var(--dim)">Mint &amp; freeze — revoked by pump.fun (not a signal)</span></div>
+        </div>
+        <div style="margin:0 13px 9px; border:1px solid var(--red); border-radius:7px; padding:8px 10px;
+                    background:rgba(255,92,110,.06); font-size:11.5px; color:var(--red)">
+          No sell route — we could not find a way to sell this.
+        </div>
+        <a class="cn-btn dead">Buy $SCAM</a>
+        <a class="cn-btn ghost" style="margin-bottom:12px">Find a safer coin →</a>
+      </div>
+      <div class="cn-mini">
+        <div class="hd"><span class="cn-lab">token-2022 transfer fee</span></div>
+        <div class="cn-sf" style="padding-top:8px">
+          <div class="cn-sfr" style="border-top:0"><i class="ok">✓</i><span style="color:var(--muted)">Sell route found</span></div>
+          <div class="cn-sfr"><i style="color:var(--amber)">!</i><span><b style="font-weight:500;color:var(--amber)">Transfer fee 2.00%</b><small>charged by the token on every transfer, both directions</small></span></div>
+          <div class="cn-sfr"><i class="dm">·</i><span style="color:var(--dim)">Top 10 holders — (bonding curve holds most of supply)</span></div>
+        </div>
+        <div class="cn-rec" style="border-top:1px solid var(--line); padding-top:7px">
+          <div><span>Insidor + Jupiter fee</span><b>0.60% · $0.54</b></div>
+          <div><span style="color:var(--amber)">Token transfer fee</span><b style="color:var(--amber)">2.00% · $1.78</b></div>
+        </div>
+        <a class="cn-btn buy" style="margin-bottom:12px">Buy $SPIN</a>
+      </div>
+      <div class="cn-mini">
+        <div class="hd"><span class="cn-lab">unverified match · $KANG</span></div>
+        <div class="cn-band amber" style="margin:11px 13px">
+          <div class="cn-brow" style="grid-template-columns:34px 1fr; min-height:0; padding:9px 11px">
+            <div class="cn-thumb" style="width:34px;height:34px;background:linear-gradient(150deg,#3a2e12,#1a1408)"></div>
+            <div class="cn-st">
+              <div class="k" style="color:var(--amber)">possible origin · unverified</div>
+              <div class="t" style="font-size:12.5px">Atletico confirm Kang</div>
+              <div class="q" style="font-size:10.5px">@JacobsBen · X · 45.1K views</div>
+            </div>
+          </div>
+          <div style="padding:0 11px 10px; font-size:11.5px; color:var(--muted); line-height:1.5">
+            <span class="cn-stamp un">we could not confirm this</span><br>
+            <span style="display:inline-block;margin-top:7px">We are not confident $KANG came from this story. Matched on ticker only. <span style="color:var(--ion)">Why? →</span></span>
+          </div>
+        </div>
+        <div style="margin:0 13px 9px; border:1px solid rgba(61,224,255,.3); border-radius:7px; padding:8px 10px;
+                    font-size:11.5px; color:var(--ion)">The verified coin from this story is $ATM →</div>
+        <a class="cn-btn ion">Create the coin for this story</a>
+        <p class="cn-risk" style="color:var(--dim)">Buy is absent. Not greyed, not gated — not rendered.</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">The third card is the most important state in the deck. On an unverified match the panel still quotes and Sell still works, but <strong>Buy does not exist</strong>. A greyed button is an offer withheld; an absent button is a claim we never made. A coin with <em>no</em> story keeps a normal lime Buy — an unmatched coin carries no claim from us, whereas an unsure one carries a claim we decline to monetise.</p>
+
+  <h3>The buy flow, state by state</h3>
+
+  <p>Quotes debounce at 250ms into <code>POST /api/order</code>, with the referral account and fee injected server-side from env and never accepted from the client. TTL is 20s, refreshed every 15s while visible, and <strong>suspended entirely while the confirm dialog is open</strong>. A refresh moving <code>outAmount</code> more than 1.0% against the user flashes amber and holds. <code>requestId</code> is single-use, and the <code>trades</code> row is written at ORDERING with <code>request_id</code> unique — the database, not the UI, enforces single submission across tabs.</p>
+
+  <ol class="cn-seq">
+    <li><span class="st">no wallet</span><span class="bd">Page is fully readable and <em>still quoting</em>. Position card is absent, button reads <code>Connect wallet to buy</code>. Amount and settings survive the Privy round trip.</span></li>
+    <li><span class="st">insufficient balance</span><span class="bd">Not disabled. Cyan <code>Add 0.34 SOL</code>, opening the funding sheet with the shortfall prefilled. A disabled button here is a dead end; a shortfall is a next step.</span></li>
+    <li><span class="st">back from funding</span><span class="bd">If price drifted more than 5%: <em>"When you left, $89.20 bought 110,420 FERRY. It now buys 46,110 (−58%)."</em> at equal weight, with <code>Buy anyway</code> / <code>Change amount</code>. Intents older than 30 minutes, or for another mint, are discarded.</span></li>
+    <li><span class="st">quoting</span><span class="bd">Holds in QUOTING until the mint account answers with decimals. A receive figure wrong by a power of ten is worse than a spinner.</span></li>
+    <li><span class="st">quote expiry</span><span class="bd">20s TTL, refresh at 15s. Adverse move &gt;1.0% flashes amber and waits for an explicit tap.</span></li>
+    <li><span class="st">signing</span><span class="bd">Confirm dialog repeats the uncollapsed fee split. Declining reads <code>You cancelled. Nothing was sent.</code> in --muted, never red — declining is a normal outcome, not an error.</span></li>
+    <li><span class="st">submitted</span><span class="bd"><code>/api/execute</code> re-asserts the frozen fee against the requestId and captures SOL/USD server-side into <code>sol_usd_at_trade</code>. Every PnL number on this page derives from that column, never from the browser's SOL price global.</span></li>
+    <li><span class="st">landing</span><span class="bd"><code>GET /api/txstatus?sig=</code> polls at 1s for 15s then 3s. A fill is confirmed by signature status, <em>never inferred from a balance change</em>. Past 15s: <code>Still confirming (0:47)</code>, polling to 90s.</span></li>
+    <li><span class="st">filled</span><span class="bd"><code>Filled — 110,420 $FERRY</code>, sub-line <code>0.50 SOL · avg $0.00080783</code>, signature copyable, position card flashing in behind.</span></li>
+    <li><span class="st">failed, sig exists</span><span class="bd"><em>"Price moved more than your 1% limit. Nothing was spent except the network fee."</em> — with the signature and a Solscan link, plus <code>Retry at 3%</code> pre-computed. Expired blockhash reads <code>did not land in time</code> and retry bumps priority one tier.</span></li>
+    <li><span class="st">failed, no sig</span><span class="bd"><em>"We lost contact before confirming. Check your balance before retrying."</em> + <code>Check status</code>. <strong>Never auto-retry.</strong> That is how a user gets filled twice.</span></li>
+  </ol>
+
+  <p>Slippage defaults to Auto (Jupiter's RTSE) for anything under thirty minutes old. A fixed 1% on a live bonding curve reverts constantly, and every revert is a trust event even though nothing was lost but the network fee.</p>
+
+  <h3>The funding cliff, stated honestly</h3>
+
+  <p>For a user arriving from a TikTok link with no SOL, the path to holding $FERRY is not one flow but two: card → SOL through the onramp, then SOL → FERRY through the swap. That is roughly <strong>2.5% on the onramp leg plus 0.60% on the swap</strong>, and it takes long enough that the price on the second leg is not the price they saw on the first. This is the single largest drop-off in the product and we should not pretend otherwise. Direct-to-mint fiat funding is cut from v1 because it is unverified that the onramp can deliver an arbitrary SPL mint, and shipping on that assumption makes the normie path fiction. We ship honest arithmetic instead: both legs and both fees stated end to end before the user starts, the shortfall prefilled, and the drift on return shown at equal weight behind an explicit <code>Buy anyway</code>.</p>
+</section>

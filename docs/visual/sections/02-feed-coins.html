@@ -1,0 +1,586 @@
+<style>
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,500&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+.fc-wrap{
+  --fc-bg0:#060607; --fc-bg1:#0C0C0E; --fc-bg2:#131316; --fc-bg3:#1A1A1E; --fc-bg4:#222228;
+  --fc-line:#212127; --fc-line2:#2E2E36;
+  --fc-ink:#F4F5F7; --fc-muted:#8A8A93; --fc-dim:#5A5A62;
+  --fc-ion:#3DE0FF; --fc-lime:#9BF03C; --fc-red:#FF5C6E; --fc-amber:#FFB84D;
+  width:980px; max-width:100%;
+  background:var(--fc-bg0);
+  border:1px solid var(--fc-line2);
+  border-radius:8px;
+  overflow:hidden;
+  font-family:"General Sans",-apple-system,system-ui,sans-serif;
+  color:var(--fc-ink);
+  -webkit-font-smoothing:antialiased;
+}
+.fc-wrap *{box-sizing:border-box;}
+.fc-mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
+.fc-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--fc-dim);
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;}
+
+/* ---------- top chrome ---------- */
+.fc-nav{display:flex;align-items:center;gap:22px;height:44px;padding:0 14px;
+  background:var(--fc-bg1);border-bottom:1px solid var(--fc-line);}
+.fc-mark{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-weight:600;
+  font-size:14px;letter-spacing:.14em;color:var(--fc-ink);}
+.fc-mark span{color:var(--fc-ion);}
+.fc-tabs{display:flex;gap:2px;}
+.fc-tab{font-size:12px;font-weight:500;color:var(--fc-muted);padding:5px 11px;border-radius:5px;}
+.fc-tab.on{color:var(--fc-ink);background:var(--fc-bg3);}
+.fc-navr{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.fc-pill{border:1px solid var(--fc-line2);border-radius:5px;padding:4px 8px;font-size:10.5px;
+  color:var(--fc-muted);font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-variant-numeric:tabular-nums;}
+.fc-pill.ion{border-color:rgba(61,224,255,.34);color:var(--fc-ion);}
+.fc-dot{width:5px;height:5px;border-radius:50%;background:var(--fc-ion);display:inline-block;
+  margin-right:5px;vertical-align:middle;}
+
+/* ---------- control strip ---------- */
+.fc-strip{display:flex;align-items:center;gap:12px;height:44px;padding:0 14px;
+  background:var(--fc-bg1);border-bottom:1px solid var(--fc-line);}
+.fc-seg{display:flex;background:var(--fc-bg2);border:1px solid var(--fc-line);border-radius:6px;padding:2px;}
+.fc-seg b{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:10px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--fc-dim);padding:4px 10px;border-radius:4px;}
+.fc-seg b.on{background:var(--fc-bg3);color:var(--fc-ink);box-shadow:inset 0 0 0 1px var(--fc-line2);}
+.fc-sep{width:1px;height:18px;background:var(--fc-line);}
+.fc-risky{display:flex;align-items:center;gap:7px;margin-left:auto;}
+.fc-sw{width:26px;height:14px;border-radius:8px;background:var(--fc-bg3);
+  border:1px solid var(--fc-line2);position:relative;}
+.fc-sw::after{content:"";position:absolute;left:2px;top:2px;width:8px;height:8px;border-radius:50%;
+  background:var(--fc-red);opacity:.55;}
+.fc-risky span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--fc-red);
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;}
+
+/* ---------- band strip ---------- */
+.fc-bands{display:flex;align-items:center;gap:6px;height:42px;padding:0 14px;
+  background:var(--fc-bg1);border-bottom:1px solid var(--fc-line);}
+.fc-band{display:flex;align-items:baseline;gap:6px;padding:5px 10px;border-radius:6px;
+  border:1px solid transparent;font-size:11.5px;font-weight:500;color:var(--fc-muted);}
+.fc-band.on{background:var(--fc-bg3);border-color:var(--fc-line2);color:var(--fc-ink);}
+.fc-band i{font-style:normal;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-variant-numeric:tabular-nums;font-size:10.5px;color:var(--fc-dim);}
+.fc-band.on i{color:var(--fc-ion);}
+.fc-band u{text-decoration:none;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-size:9.5px;color:var(--fc-amber);}
+.fc-route{margin-left:auto;font-size:10px;color:var(--fc-dim);
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;}
+.fc-abstain{padding:6px 14px;font-size:10px;color:var(--fc-dim);background:var(--fc-bg1);
+  border-bottom:1px solid var(--fc-line);
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;}
+
+/* ---------- table ---------- */
+.fc-tbl{background:var(--fc-bg1);}
+.fc-r{display:grid;
+  grid-template-columns:28px 116px 158px 68px 48px 48px 48px 64px 54px 60px 44px 50px 74px 94px;
+  align-items:center;padding:0 10px;border-bottom:1px solid var(--fc-line);}
+.fc-hd{height:30px;background:var(--fc-bg2);border-bottom:1px solid var(--fc-line2);}
+.fc-hd div{font-size:8.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--fc-dim);
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;white-space:nowrap;}
+.fc-row{height:54px;position:relative;}
+.fc-row.alt{background:#0A0A0C;}
+.fc-num{text-align:right;padding-left:6px;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-variant-numeric:tabular-nums;font-size:11px;color:var(--fc-ink);}
+.fc-hd .fc-num{text-align:right;}
+.fc-rail{position:absolute;left:0;top:0;bottom:0;width:3px;}
+.fc-rail.heat{background:var(--fc-lime);} .fc-rail.peak{background:var(--fc-ion);}
+.fc-rail.cool{background:var(--fc-dim);} .fc-rail.none{background:#141418;}
+
+.fc-rank{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:11px;color:var(--fc-dim);
+  font-variant-numeric:tabular-nums;}
+.fc-rank u{text-decoration:none;font-size:8.5px;color:var(--fc-lime);display:block;line-height:1;}
+
+/* coin cell */
+.fc-coin{display:flex;align-items:center;gap:7px;padding-right:8px;}
+.fc-logo{width:26px;height:26px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);}
+.fc-l1{background:linear-gradient(140deg,#1E4E62,#3DE0FF 60%,#0B2A34);}
+.fc-l2{background:linear-gradient(140deg,#2C4A18,#9BF03C 65%,#16240B);}
+.fc-l3{background:linear-gradient(140deg,#3A3A44,#8A8A93 55%,#1A1A1E);}
+.fc-l4{background:linear-gradient(140deg,#4A2A12,#FFB84D 60%,#241407);}
+.fc-l5{background:linear-gradient(140deg,#4A1520,#FF5C6E 60%,#240A0F);}
+.fc-l6{background:linear-gradient(140deg,#1B2440,#6E7BD8 60%,#0C1020);}
+.fc-l7{background:linear-gradient(140deg,#123028,#3CD9A0 60%,#08201A);}
+.fc-l8{background:linear-gradient(140deg,#2A2A30,#55555F 60%,#141418);}
+.fc-cm{min-width:0;}
+.fc-sym{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-weight:600;font-size:12.5px;
+  color:var(--fc-ink);line-height:1.15;white-space:nowrap;}
+.fc-nm{font-size:9.5px;color:var(--fc-muted);line-height:1.3;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:80px;}
+.fc-new{display:inline-block;margin-left:4px;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-size:7.5px;letter-spacing:.08em;color:var(--fc-lime);border:1px solid rgba(155,240,60,.4);
+  border-radius:3px;padding:0 3px;vertical-align:1px;}
+.fc-minted{display:inline-block;white-space:nowrap;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-size:7.5px;letter-spacing:.02em;color:var(--fc-ion);border:1px solid rgba(61,224,255,.35);
+  background:rgba(61,224,255,.07);border-radius:3px;padding:1px 3px;}
+
+/* story cell */
+.fc-story{display:flex;align-items:center;gap:7px;padding-right:10px;min-width:0;}
+.fc-th{width:16px;height:16px;border-radius:3px;flex:none;}
+.fc-th.unsure{opacity:.6;box-shadow:0 0 0 1px var(--fc-bg0),0 0 0 2px rgba(255,184,77,.45);
+  outline:1px dashed rgba(255,184,77,.55);outline-offset:1px;}
+.fc-st1{background:linear-gradient(135deg,#0E3B4A,#3DE0FF);}
+.fc-st2{background:linear-gradient(135deg,#20401A,#9BF03C);}
+.fc-st3{background:linear-gradient(135deg,#33333C,#9AA0AA);}
+.fc-st4{background:linear-gradient(135deg,#3A2410,#FFB84D);}
+.fc-sm{min-width:0;}
+.fc-stt{font-size:11px;color:var(--fc-ink);line-height:1.2;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:132px;}
+.fc-stt.mut{color:var(--fc-muted);}
+.fc-sub{display:flex;align-items:center;gap:5px;line-height:1.2;margin-top:1px;}
+.fc-lead{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.05em;
+  color:var(--fc-ion);border:1px solid rgba(61,224,255,.35);border-radius:3px;padding:0 3px;}
+.fc-lead.late{color:var(--fc-amber);border-color:rgba(255,184,77,.4);}
+.fc-unv{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:8px;letter-spacing:.08em;
+  color:var(--fc-amber);border:1px solid rgba(255,184,77,.42);background:rgba(255,184,77,.08);
+  border-radius:3px;padding:1px 4px;}
+.fc-multi{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:8.5px;color:var(--fc-dim);}
+.fc-nostory{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:10.5px;color:var(--fc-dim);}
+.fc-matching{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:10.5px;color:var(--fc-dim);}
+.fc-matching::after{content:"···";color:var(--fc-ion);opacity:.7;margin-left:2px;}
+
+/* numerics */
+.fc-chg{display:block;text-align:right;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-variant-numeric:tabular-nums;font-size:10.5px;padding-left:4px;}
+.fc-up{color:var(--fc-lime);} .fc-dn{color:var(--fc-red);}
+.fc-na{color:var(--fc-dim);} .fc-pend{color:var(--fc-dim);letter-spacing:.06em;}
+.fc-sup{font-size:8px;color:var(--fc-dim);vertical-align:5px;margin-left:2px;}
+.fc-hld.warn{color:var(--fc-amber);}
+.fc-age{color:var(--fc-ink);} .fc-age.old{color:var(--fc-muted);}
+
+/* risk */
+.fc-risk{display:flex;align-items:center;justify-content:flex-end;}
+.fc-rk{display:inline-flex;align-items:center;gap:0;width:70px;border:1px solid var(--fc-line2);
+  border-radius:4px;overflow:hidden;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-variant-numeric:tabular-nums;font-size:9px;}
+.fc-rk b{flex:1;text-align:center;padding:3px 0;font-weight:500;background:var(--fc-bg2);}
+.fc-rk s{flex:none;width:26px;text-decoration:none;text-align:center;padding:3px 0;color:var(--fc-dim);
+  background:var(--fc-bg3);border-left:1px solid var(--fc-line2);}
+.fc-rk.amb b{color:var(--fc-amber);} .fc-rk.red b{color:var(--fc-red);}
+.fc-rk.mut b{color:var(--fc-muted);} .fc-rk.dim b{color:var(--fc-dim);}
+
+/* action */
+.fc-act{display:flex;flex-direction:column;align-items:flex-end;gap:2px;padding-left:10px;
+  border-left:1px solid var(--fc-line);height:54px;justify-content:center;}
+.fc-btn{display:block;width:84px;text-align:center;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-size:9.5px;font-weight:600;letter-spacing:.02em;padding:5px 0;border-radius:5px;
+  white-space:nowrap;background:var(--fc-ion);color:#04161C;}
+.fc-btn.ghost{background:transparent;border:1px solid var(--fc-line2);color:var(--fc-muted);font-weight:500;}
+.fc-fee{font-size:8px;color:var(--fc-dim);font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;}
+
+/* pre-rank zone */
+.fc-zone{display:flex;align-items:center;height:26px;padding:0 10px;background:#08080A;
+  border-top:1px dashed var(--fc-line2);border-bottom:1px solid var(--fc-line);}
+.fc-zone .fc-lbl{color:var(--fc-ion);opacity:.8;}
+.fc-zone em{margin-left:auto;font-style:normal;font-size:9.5px;color:var(--fc-dim);
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;}
+.fc-prerank{background:#08080A;}
+.fc-prerank .fc-rank{color:var(--fc-ion);}
+
+.fc-foot{display:flex;align-items:center;height:34px;padding:0 14px;background:var(--fc-bg1);
+  font-size:10.5px;color:var(--fc-muted);
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
+.fc-foot em{font-style:normal;color:var(--fc-dim);margin-left:auto;}
+
+/* ---------- small mocks ---------- */
+.fc-two{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;}
+.fc-pop{width:300px;background:var(--fc-bg1);border:1px solid var(--fc-line2);border-radius:8px;
+  overflow:hidden;font-family:"General Sans",-apple-system,system-ui,sans-serif;}
+.fc-pop *{box-sizing:border-box;}
+.fc-poph{display:flex;align-items:center;gap:8px;padding:9px 11px;background:var(--fc-bg2);
+  border-bottom:1px solid var(--fc-line);}
+.fc-poph b{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:11px;color:var(--fc-ink);}
+.fc-poph i{margin-left:auto;font-style:normal;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-size:9.5px;color:var(--fc-dim);}
+.fc-grp{padding:7px 11px 3px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--fc-dim);font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;}
+.fc-sig{display:flex;align-items:center;gap:8px;padding:4px 11px;font-size:11px;color:var(--fc-ink);}
+.fc-sig s{text-decoration:none;margin-left:auto;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-size:10px;font-variant-numeric:tabular-nums;}
+.fc-sig.off{color:var(--fc-dim);} .fc-sig.off s{color:var(--fc-dim);}
+.fc-sig .ok{color:var(--fc-lime);} .fc-sig .am{color:var(--fc-amber);}
+.fc-popf{margin-top:6px;padding:9px 11px;border-top:1px solid var(--fc-line);background:#08080A;
+  font-size:10px;line-height:1.45;color:var(--fc-dim);}
+.fc-popf b{color:var(--fc-muted);font-weight:500;}
+
+.fc-legend{width:100%;background:var(--fc-bg1);border:1px solid var(--fc-line2);border-radius:8px;
+  overflow:hidden;}
+.fc-lr{display:grid;grid-template-columns:70px 1fr 190px;align-items:center;padding:9px 12px;
+  border-bottom:1px solid var(--fc-line);font-size:11.5px;color:var(--fc-muted);}
+.fc-lr:last-child{border-bottom:0;}
+.fc-lr.h{background:var(--fc-bg2);}
+.fc-lr b{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:13px;color:var(--fc-dim);}
+.fc-lr strong{color:var(--fc-ink);font-weight:500;}
+.fc-lr em{font-style:normal;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:10px;
+  color:var(--fc-dim);}
+
+.fc-reject{width:100%;background:#0A0A0C;border:1px solid var(--fc-line);border-radius:8px;padding:12px 14px;}
+.fc-rj{display:flex;gap:6px;align-items:center;margin-top:8px;}
+.fc-rj b{font-size:11.5px;font-weight:500;color:#3A3A42;border:1px solid #17171B;border-radius:6px;
+  padding:5px 11px;text-decoration:line-through;}
+.fc-reject p{margin:8px 0 0!important;font-size:11px!important;color:var(--fc-dim)!important;
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace!important;}
+</style>
+
+<section class="sec">
+  <h2>02. Live Feed — the coins lane</h2>
+
+  <p class="lede">The same board, switched to the tradeable side: what is moving right now, and — in the slot every competitor fills with a decorative sparkline — where it came from. One job: turn a story into the specific mint you can buy, without ever showing a number we do not have.</p>
+
+  <p>The posts lane answers <em>what is blowing up</em>; the coins lane answers <em>what can I do about it</em>. Same instrument — same 54px rows, hairlines, rank column, 20-second commit. The one real difference is the STORY column, and that column is the entire company. DexScreener, Photon, Axiom and Pump.fun render the same eleven market columns off the same three vendors; none can tell you this mint is the ferry captain's last horn, that we saw the post 34 minutes before crypto Twitter did, and that the trace is auditable at a URL. So it sits in slot three, right after the ticker, and it is the last column the responsive rules may drop.</p>
+
+  <p>The board is never one list. Four bands — <strong>Fresh</strong> (on the bonding curve), <strong>Graduating</strong>, <strong>Live</strong> (migrated, has a pool), <strong>From a Story</strong> (one row per narrative) — each with its own column template and sort key. A three-minute $8K curve token and a $40M AMM token are not comparable quantities, and a table showing both draws four structural dashes per row across a whole band: a table admitting it was built for the wrong data.</p>
+
+  <div class="mock" style="break-inside: avoid; page-break-inside: avoid">
+    <div class="fc-wrap">
+
+      <div class="fc-nav">
+        <div class="fc-mark">INSID<span>O</span>R</div>
+        <div class="fc-tabs">
+          <div class="fc-tab on">Live feed</div>
+          <div class="fc-tab">Search</div>
+          <div class="fc-tab">You</div>
+        </div>
+        <div class="fc-navr">
+          <div class="fc-pill ion"><span class="fc-dot"></span>LIVE</div>
+          <div class="fc-pill">7fXq…4kR2 · 3.14 SOL</div>
+        </div>
+      </div>
+
+      <div class="fc-strip">
+        <div class="fc-seg">
+          <b>POSTS</b><b>STORIES</b><b class="on">COINS</b>
+        </div>
+        <div class="fc-sep"></div>
+        <div class="fc-pill">LAST TICK 4s</div>
+        <div class="fc-pill">PRICES 6s</div>
+        <div class="fc-pill">24 COINS</div>
+        <div class="fc-risky"><div class="fc-sw"></div><span>Show risky</span></div>
+      </div>
+
+      <div class="fc-bands">
+        <div class="fc-band">Fresh <i>38</i> <u>6 hidden</u></div>
+        <div class="fc-band">Graduating <i>11</i></div>
+        <div class="fc-band on">Live <i>24</i></div>
+        <div class="fc-band">From a Story <i>7</i> <u>4 unverified</u> <span class="fc-dot"></span></div>
+        <div class="fc-route">/feed?lane=coins&amp;band=live</div>
+      </div>
+
+      <div class="fc-abstain">matcher abstaining on 34% of candidates</div>
+
+      <div class="fc-tbl">
+        <div class="fc-r fc-hd">
+          <div>#</div><div>COIN</div><div>STORY</div>
+          <div class="fc-num">PRICE</div><div class="fc-num">5M</div><div class="fc-num">1H</div>
+          <div class="fc-num">24H</div><div class="fc-num">VOL 24H</div><div class="fc-num">LIQ</div>
+          <div class="fc-num">MCAP</div><div class="fc-num">HLD</div><div class="fc-num">AGE</div>
+          <div class="fc-num" style="text-align:right;padding-right:2px">RISK</div><div class="fc-num" style="text-align:right;padding-right:4px">ACTION</div>
+        </div>
+
+        <!-- pre-rank zone -->
+        <div class="fc-zone">
+          <div class="fc-lbl">Pre-rank · no trades yet · unranked</div>
+          <em>and 38 more minted in the last 90s</em>
+        </div>
+
+        <div class="fc-r fc-row fc-prerank">
+          <div class="fc-rail none"></div>
+          <div class="fc-rank">·</div>
+          <div class="fc-coin">
+            <div class="fc-logo fc-l7"></div>
+            <div class="fc-cm">
+              <div class="fc-sym">$HARBOR</div>
+              <div style="margin-top:2px"><span class="fc-minted">MINTED 8s AGO</span></div>
+            </div>
+          </div>
+          <div class="fc-story"><span class="fc-matching">matching</span></div>
+          <div class="fc-num fc-pend">··</div>
+          <div class="fc-chg fc-pend">··</div>
+          <div class="fc-chg fc-pend">··</div>
+          <div class="fc-chg fc-pend">··</div>
+          <div class="fc-num fc-pend">··</div>
+          <div class="fc-num fc-pend">··</div>
+          <div class="fc-num fc-pend">··</div>
+          <div class="fc-num fc-pend">··</div>
+          <div class="fc-num fc-age">8s</div>
+          <div class="fc-risk"><span class="fc-rk dim"><b>scan··</b><s>0/9</s></span></div>
+          <div class="fc-act"><span class="fc-btn">Buy $HARBOR</span><span class="fc-fee">+0.5% fee</span></div>
+        </div>
+
+        <div class="fc-r fc-row fc-prerank">
+          <div class="fc-rail none"></div>
+          <div class="fc-rank">·</div>
+          <div class="fc-coin">
+            <div class="fc-logo fc-l8"></div>
+            <div class="fc-cm">
+              <div class="fc-sym">$TOLL</div>
+              <div style="margin-top:2px"><span class="fc-minted">MINTED 51s AGO</span></div>
+            </div>
+          </div>
+          <div class="fc-story"><span class="fc-nostory">no story</span></div>
+          <div class="fc-num fc-pend">··</div>
+          <div class="fc-chg fc-pend">··</div>
+          <div class="fc-chg fc-pend">··</div>
+          <div class="fc-chg fc-pend">··</div>
+          <div class="fc-num fc-pend">··</div>
+          <div class="fc-num fc-pend">··</div>
+          <div class="fc-num fc-pend">··</div>
+          <div class="fc-num fc-pend">··</div>
+          <div class="fc-num fc-age">51s</div>
+          <div class="fc-risk"><span class="fc-rk dim"><b>scan··</b><s>0/9</s></span></div>
+          <div class="fc-act"><span class="fc-btn">Buy $TOLL</span><span class="fc-fee">+0.5% fee</span></div>
+        </div>
+
+        <!-- rank 1 -->
+        <div class="fc-r fc-row">
+          <div class="fc-rail peak"></div>
+          <div class="fc-rank">1</div>
+          <div class="fc-coin">
+            <div class="fc-logo fc-l1"></div>
+            <div class="fc-cm">
+              <div class="fc-sym">$FERRY<span class="fc-new">NEW</span></div>
+              <div class="fc-nm">Last Horn</div>
+            </div>
+          </div>
+          <div class="fc-story">
+            <div class="fc-th fc-st1"></div>
+            <div class="fc-sm">
+              <div class="fc-stt">Harbor Last Horn</div>
+              <div class="fc-sub"><span class="fc-lead">+34m early</span><span class="fc-multi">· 1 of 3 coins</span></div>
+            </div>
+          </div>
+          <div class="fc-num">$0.0007996</div>
+          <div class="fc-chg fc-up">+12.4%</div>
+          <div class="fc-chg fc-up">+48.2%</div>
+          <div class="fc-chg fc-na" title="coin is 31m old">—</div>
+          <div class="fc-num">$412.8K<span class="fc-sup">31m</span></div>
+          <div class="fc-num">$84.2K</div>
+          <div class="fc-num">$799.6K</div>
+          <div class="fc-num">1,204</div>
+          <div class="fc-num fc-age">31m</div>
+          <div class="fc-risk"><span class="fc-rk amb"><b>T10 78</b><s>4/9</s></span></div>
+          <div class="fc-act"><span class="fc-btn">Buy $FERRY</span><span class="fc-fee">+0.5% fee</span></div>
+        </div>
+
+        <!-- rank 2 -->
+        <div class="fc-r fc-row alt">
+          <div class="fc-rail heat"></div>
+          <div class="fc-rank">2<u>▲3</u></div>
+          <div class="fc-coin">
+            <div class="fc-logo fc-l2"></div>
+            <div class="fc-cm">
+              <div class="fc-sym">$PLANT</div>
+              <div class="fc-nm">Stitch Reply</div>
+            </div>
+          </div>
+          <div class="fc-story">
+            <div class="fc-th fc-st2"></div>
+            <div class="fc-sm">
+              <div class="fc-stt">Plant TikTok Stitch</div>
+              <div class="fc-sub"><span class="fc-lead">+11m early</span><span class="fc-multi">· heating</span></div>
+            </div>
+          </div>
+          <div class="fc-num">$0.0005628</div>
+          <div class="fc-chg fc-up">+6.2%</div>
+          <div class="fc-chg fc-up">+48.9%</div>
+          <div class="fc-chg fc-na" title="coin is 2h 14m old">—</div>
+          <div class="fc-num">$268.4K<span class="fc-sup">2h</span></div>
+          <div class="fc-num">$61.4K</div>
+          <div class="fc-num">$562.8K</div>
+          <div class="fc-num">806</div>
+          <div class="fc-num fc-age old">2h 14m</div>
+          <div class="fc-risk"><span class="fc-rk mut"><b>T10 41</b><s>4/9</s></span></div>
+          <div class="fc-act"><span class="fc-btn">Buy $PLANT</span><span class="fc-fee">+0.5% fee</span></div>
+        </div>
+
+        <!-- rank 3 -->
+        <div class="fc-r fc-row">
+          <div class="fc-rail cool"></div>
+          <div class="fc-rank">3<u style="color:#FF5C6E">▼1</u></div>
+          <div class="fc-coin">
+            <div class="fc-logo fc-l3"></div>
+            <div class="fc-cm">
+              <div class="fc-sym">$PIGEON</div>
+              <div class="fc-nm">Board State</div>
+            </div>
+          </div>
+          <div class="fc-story">
+            <div class="fc-th fc-st3"></div>
+            <div class="fc-sm">
+              <div class="fc-stt">Grandmaster vs Pigeon</div>
+              <div class="fc-sub"><span class="fc-lead late">−8m vs CT</span><span class="fc-multi">· cooling</span></div>
+            </div>
+          </div>
+          <div class="fc-num">$0.0007535</div>
+          <div class="fc-chg fc-dn">−4.1%</div>
+          <div class="fc-chg fc-dn">−12.6%</div>
+          <div class="fc-chg fc-up">+41.7%</div>
+          <div class="fc-num">$2.11M</div>
+          <div class="fc-num">$128.7K</div>
+          <div class="fc-num">$753.5K</div>
+          <div class="fc-num">3,318</div>
+          <div class="fc-num fc-age old">1d 04h</div>
+          <div class="fc-risk"><span class="fc-rk dim"><b>? </b><s>4/9</s></span></div>
+          <div class="fc-act"><span class="fc-btn">Buy $PIGEON</span><span class="fc-fee">+0.5% fee</span></div>
+        </div>
+
+        <!-- rank 4 : big mcap, no story -->
+        <div class="fc-r fc-row alt">
+          <div class="fc-rail cool"></div>
+          <div class="fc-rank">4</div>
+          <div class="fc-coin">
+            <div class="fc-logo fc-l6"></div>
+            <div class="fc-cm">
+              <div class="fc-sym">$MOTH</div>
+              <div class="fc-nm">Porch Light</div>
+            </div>
+          </div>
+          <div class="fc-story"><span class="fc-nostory">no story</span></div>
+          <div class="fc-num">$0.0124000</div>
+          <div class="fc-chg fc-up">+2.8%</div>
+          <div class="fc-chg fc-up">+9.4%</div>
+          <div class="fc-chg fc-up">+26.1%</div>
+          <div class="fc-num">$8.06M</div>
+          <div class="fc-num">$684.2K</div>
+          <div class="fc-num">$12.4M</div>
+          <div class="fc-num">14,207</div>
+          <div class="fc-num fc-age old">3d 06h</div>
+          <div class="fc-risk"><span class="fc-rk mut"><b>T10 22</b><s>4/9</s></span></div>
+          <div class="fc-act"><span class="fc-btn">Buy $MOTH</span><span class="fc-fee">+0.5% fee</span></div>
+        </div>
+
+        <!-- rank 5 : UNSURE -->
+        <div class="fc-r fc-row">
+          <div class="fc-rail cool"></div>
+          <div class="fc-rank">5</div>
+          <div class="fc-coin">
+            <div class="fc-logo fc-l4"></div>
+            <div class="fc-cm">
+              <div class="fc-sym">$KANG</div>
+              <div class="fc-nm">Kang Confirm</div>
+            </div>
+          </div>
+          <div class="fc-story">
+            <div class="fc-th fc-st4 unsure"></div>
+            <div class="fc-sm">
+              <div class="fc-stt mut">Atletico Confirm Kang</div>
+              <div class="fc-sub"><span class="fc-unv">UNVERIFIED</span></div>
+            </div>
+          </div>
+          <div class="fc-num">$0.0000473</div>
+          <div class="fc-chg fc-up">+2.4%</div>
+          <div class="fc-chg fc-na" title="coin is 22m old">—</div>
+          <div class="fc-chg fc-na" title="coin is 22m old">—</div>
+          <div class="fc-num">$38.4K<span class="fc-sup">22m</span></div>
+          <div class="fc-num">$11.6K</div>
+          <div class="fc-num">$47.3K</div>
+          <div class="fc-num fc-hld warn">91</div>
+          <div class="fc-num fc-age">22m</div>
+          <div class="fc-risk"><span class="fc-rk amb"><b>H 91</b><s>4/9</s></span></div>
+          <div class="fc-act"><span class="fc-btn ghost">See the coin</span></div>
+        </div>
+
+        <!-- rank 6 -->
+        <div class="fc-r fc-row alt">
+          <div class="fc-rail cool"></div>
+          <div class="fc-rank">6</div>
+          <div class="fc-coin">
+            <div class="fc-logo fc-l5"></div>
+            <div class="fc-cm">
+              <div class="fc-sym">$QUEUE</div>
+              <div class="fc-nm">Post Office</div>
+            </div>
+          </div>
+          <div class="fc-story"><span class="fc-nostory">no story</span></div>
+          <div class="fc-num">$0.0002873</div>
+          <div class="fc-chg fc-dn">−1.9%</div>
+          <div class="fc-chg fc-up">+4.2%</div>
+          <div class="fc-chg fc-na" title="coin is 5h 41m old">—</div>
+          <div class="fc-num">$74.9K<span class="fc-sup">5h</span></div>
+          <div class="fc-num">$27.9K</div>
+          <div class="fc-num">$287.3K</div>
+          <div class="fc-num">412</div>
+          <div class="fc-num fc-age old">5h 41m</div>
+          <div class="fc-risk"><span class="fc-rk red"><b>T10 62</b><s>4/9</s></span></div>
+          <div class="fc-act"><span class="fc-btn">Buy $QUEUE</span><span class="fc-fee">+0.5% fee</span></div>
+        </div>
+      </div>
+
+      <div class="fc-foot">
+        24 of 31 shown · 7 hidden by gate
+        <em>rank commits every 20s · values live · positions frozen on hover</em>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">The Live band, 14 columns. The two <strong>pre-rank</strong> rows are 8 and 51 seconds old: every market cell is <code>··</code>, the rank is a dot, and they sit <em>above</em> row 1 in a dashed zone — a mint with no trades is not rank one, and not rank forty either. $FERRY is rank 1 at $799.6K while $MOTH sits at rank 4 with a $12.4M cap. $FERRY's 24H is a dim <code>—</code> carrying <code>title="coin is 31m old"</code>, never <code>0.0%</code>. $KANG at rank 5 matters most: the matcher abstained, so the thumbnail drops to 60% behind a dashed amber ring, the title goes muted, the lead chip disappears, and the primary is an outline <em>See the coin</em>.</p>
+
+  <h3>How a 31-minute-old token ranks against a three-day-old one</h3>
+
+  <p>Four mechanisms, none a hand-tuned weight. <strong>Band partition</strong>: a curve token lives in Fresh and cannot enter the same ordered list as a migrated one. <strong>Market cap and liquidity are never terms</strong> — display columns and hard gates only, which is why $MOTH's fifteen-fold size advantage buys it nothing. <strong>Acceleration is self-normalised</strong>: five-minute volume against the coin's own last hour, so a coin is only compared to itself and being big earns zero. And in Fresh an <strong>age penalty</strong> (1.87× at twenty minutes, 7.94× at three hours) turns the band over completely in about forty minutes. One more is the thesis in the formula: a story-linked coin is multiplied by 0.35 the moment crypto Twitter picks the story up — when our edge is gone the coin falls off the board <em>while it is still climbing</em>.</p>
+
+  <p>Note what story attachment does <em>not</em> do: it never multiplies rank in the coin-subject bands, only filters and breaks ties. If it multiplied, the incentive would be to game the matcher — the precision-critical component in the system — so keeping story off the multiplier keeps the attack surface off the correctness-critical path.</p>
+
+  <h3>The three pending renders, and why they are three</h3>
+
+  <p>Collapsing them is how a terminal lies. One formatter, applied to every numeric cell in the product.</p>
+
+  <div class="mock" style="break-inside: avoid; page-break-inside: avoid">
+    <div class="fc-wrap" style="width:760px">
+      <div class="fc-legend">
+        <div class="fc-lr h"><b style="color:#5A5A62;font-size:9px;letter-spacing:.1em">RENDER</b><span class="fc-lbl">MEANS</span><span class="fc-lbl">ON THIS BOARD</span></div>
+        <div class="fc-lr"><b>—</b><span><strong>We cannot obtain this.</strong> Permanently unmodelled.</span><em>dev% · sniper% · bundle%</em></div>
+        <div class="fc-lr"><b title="coin is 31m old">—</b><span><strong>The window has not elapsed.</strong> Carries a title attribute naming the age.</span><em>24H on $FERRY, 31m old</em></div>
+        <div class="fc-lr"><b>··</b><span><strong>Expected imminently, waiting.</strong> Data is coming, it just is not here.</span><em>$HARBOR, 8s old, no trades</em></div>
+        <div class="fc-lr" style="background:#0A0A0C"><b style="color:#FF5C6E">0.0%</b><span style="color:#FF5C6E">Never rendered. <span style="color:#8A8A93">A zero pill reads as <em>flat</em>, which is a different assertion from <em>undefined</em>, and is the most misleading render available on a coins board. <code>$0</code> claims worthlessness; <code>—</code> claims ignorance.</span></span><em>—</em></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">The lookup returns <code>null</code> for absent numerics rather than coercing to zero. The consequence that keeps it honest: a missing mint timestamp renders as unknown age and suppresses Buy, instead of returning zero and painting a token of unknown vintage as brand new on a terminal that sells earliness.</p>
+
+  <h3>The RISK chip: why there are no green ticks</h3>
+
+  <p>Every competitor's safety panel opens with two permanent green ticks — <em>mint authority revoked</em>, <em>freeze authority revoked</em>. The pump.fun program revokes both at creation, so every token passes. A check the whole population passes carries zero bits, and worse, it teaches the user that green means safe in a panel where green means nothing; after a week of two ticks on every rug they stop reading it. Neither is rendered as a signal; both appear once in the popover footer as a dim non-signal line saying why.</p>
+
+  <p>What replaces them: worst discriminating signal on the left, fixed obtainability denominator on the right — <code>T10 78 · 4/9</code>. Nine signals would discriminate (dev holding, sniper, bundle and insider percentages, creator history, top-10 concentration, single-holder maximum, holder count, sell-side liveness); we can compute four today, and five need first-slot transaction analysis we are not building yet. The denominator is always visible because <strong>a missing chip reads as "fine"</strong>, and a lime tick is unreachable until creator history has a verdict for that wallet — which is why $PIGEON reads <code>? 4/9</code>.</p>
+
+  <div class="mock fc-two" style="break-inside: avoid; page-break-inside: avoid">
+    <div class="fc-wrap fc-pop">
+      <div class="fc-poph"><span class="fc-rk amb" style="width:70px"><b>T10 78</b><s>4/9</s></span><b>$FERRY</b><i>scanned 41s ago</i></div>
+      <div class="fc-grp">Checked · 4</div>
+      <div class="fc-sig">Top-10 concentration <s class="am">78%</s></div>
+      <div class="fc-sig">Single-holder max (top&#8209;1) <s class="ok">11%</s></div>
+      <div class="fc-sig">Holder count <s class="ok">1,204</s></div>
+      <div class="fc-sig">Sell-side liveness <s class="ok">sells present</s></div>
+      <div class="fc-grp">Not available at launch · 5</div>
+      <div class="fc-sig off">Dev holding % <s>needs first-slot analysis</s></div>
+      <div class="fc-sig off">Sniper % <s>needs first-slot analysis</s></div>
+      <div class="fc-sig off">Bundle % <s>needs first-slot analysis</s></div>
+      <div class="fc-sig off">Insider % <s>needs first-slot analysis</s></div>
+      <div class="fc-sig off">Creator history <s>accumulating · day 9 of 14</s></div>
+      <div class="fc-popf"><b>Mint authority revoked · Freeze authority revoked.</b><br>The pump.fun program revokes both at creation, so every token on this board passes. Not shown as a signal.<br><br>Top-10 excludes the bonding-curve PDA. Without that exclusion every pre-graduation token reads 80–95% concentrated and the column is uniformly red.</div>
+    </div>
+
+    <div class="fc-wrap fc-reject" style="width:400px;background:#0A0A0C">
+      <div class="fc-lbl" style="color:#FF5C6E">Not shipped — the generic DEX chip row</div>
+      <div class="fc-rj"><b>Trending</b><b>New pairs</b><b>Gainers</b><b>Top mcap</b></div>
+      <p>four sorts of one list · no column template per band<br>· "Gainers" ranks a 3m curve token against a $40M AMM pool · "Top mcap" is a leaderboard for whoever is already late</p>
+      <div class="fc-lbl" style="color:#3DE0FF;margin-top:14px">Shipped — four structural bands</div>
+      <div class="fc-rj" style="flex-wrap:wrap">
+        <b style="text-decoration:none;color:#F4F5F7;border-color:#2E2E36">Fresh</b>
+        <b style="text-decoration:none;color:#F4F5F7;border-color:#2E2E36">Graduating</b>
+        <b style="text-decoration:none;color:#F4F5F7;border-color:#2E2E36">Live</b>
+        <b style="text-decoration:none;color:#F4F5F7;border-color:#2E2E36">From a Story</b>
+      </div>
+      <p>each band a different question, a different column set,<br>a different sort key, and its own URL</p>
+    </div>
+  </div>
+
+  <p class="cap">Left: the popover names all nine signals, including the five we cannot compute — naming them as unavailable is the point, because omitting them would let four-of-four read as a clean bill of health. Right: the chip row we removed, and what replaced it.</p>
+
+  <p>Hard gates hide a row unless <em>Show risky</em> is on: live mint or freeze authority, Live liquidity under $3,000, the honeypot proxy, unknown mint time, and top-10 concentration above 85% on Fresh or 60% on Live. Band-dependent on purpose — a flat 60% gate empties Fresh on day one, because a three-minute-old token has nine buyers and is legitimately concentrated. The hidden count is always stated, since a gate that silently shrinks the board is indistinguishable from a broken query. And authority fields are tri-state: absent is <em>unknown</em>, not <em>revoked</em>, or one vendor timeout passes every row.</p>
+
+  <p>Finally, the action column. The primary is a cyan <em>Buy</em>, but it is navigation: it opens the coin page with the tradebox focused, where the quote is fresh and the fee is disclosed before confirm. The dim <code>+0.5% fee</code> line is read from config and is the cheapest number that can ever appear — the Jupiter integrator fee has a fifty-basis-point floor, and implying zero is a lie we would walk back at confirm. On an UNSURE row no Buy control renders at all, at any width, in any state. Abstain never means hide, and it never means Buy either.</p>
+</section>
