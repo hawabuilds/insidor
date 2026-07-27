@@ -1,0 +1,548 @@
+<meta charset="utf-8">
+<!--standalone-->
+<style>
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+html,body{margin:0;padding:0;background:#060607;}
+body{color:#F4F5F7;font-family:"General Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+     font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased;}
+.sec{padding:56px 50px;max-width:1200px;margin:0 auto;}
+h2{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:36px;font-weight:600;
+   letter-spacing:-.02em;margin:0 0 18px;padding-bottom:16px;border-bottom:1px solid #212127;}
+h3{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:20px;font-weight:600;margin:38px 0 12px;}
+h4{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:11px;font-weight:500;
+   letter-spacing:.14em;text-transform:uppercase;color:#5A5A62;margin:30px 0 10px;}
+p{margin:0 0 15px;max-width:96ch;}
+.lede{font-size:18.5px;line-height:1.55;color:#8A8A93;max-width:82ch;margin-bottom:26px;}
+.cap{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#5A5A62;
+     margin:12px 0 34px;padding-left:14px;border-left:2px solid #2E2E36;max-width:92ch;}
+strong{font-weight:600;color:#F4F5F7;}
+code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.9em;background:#131316;
+     color:#3DE0FF;padding:1px 5px;border-radius:4px;}
+a{color:#3DE0FF;text-decoration:none;}
+ul,ol{margin:0 0 16px;padding-left:22px;max-width:94ch;} li{margin-bottom:7px;}
+svg{max-width:100%;height:auto;}
+</style>
+<!--/standalone-->
+
+<style>
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,500&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+.sup-root{
+  --bg0:#060607; --bg1:#0C0C0E; --bg2:#131316; --bg3:#1A1A1E; --bg4:#222228;
+  --line:#212127; --line2:#2E2E36;
+  --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62;
+  --ion:#3DE0FF; --lime:#9BF03C; --red:#FF5C6E; --amber:#FFB84D;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --body:"General Sans",-apple-system,system-ui,sans-serif;
+  --head:"Clash Display",-apple-system,system-ui,sans-serif;
+}
+.sup-root *{box-sizing:border-box}
+.sup-root{font-family:var(--body)}
+.sup-n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.sup-lbl{font-family:var(--body);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim)}
+
+/* ============ generic frames ============ */
+.sup-frame{background:var(--bg0);border:1px solid var(--line2);border-radius:10px;overflow:hidden;
+  color:var(--ink);font-size:12px;line-height:1.35}
+.sup-grid{display:flex;gap:18px;align-items:flex-start}
+.sup-thumb{border-radius:6px;flex:none}
+.sup-th-ferry{background:linear-gradient(135deg,#123842 0%,#1E5F6E 45%,#3DE0FF 130%)}
+.sup-th-horn{background:linear-gradient(140deg,#2A1F0E 0%,#6E5219 50%,#FFB84D 135%)}
+.sup-th-boat{background:linear-gradient(140deg,#141A28 0%,#2C3A57 55%,#5A6E9B 130%)}
+.sup-th-plant{background:linear-gradient(135deg,#14230F 0%,#3C6B22 50%,#9BF03C 135%)}
+.sup-th-pigeon{background:linear-gradient(140deg,#1D1A24 0%,#4A4257 55%,#9A90AE 130%)}
+.sup-th-norway{background:linear-gradient(135deg,#0F1E2A 0%,#1D4A63 50%,#54C6E8 135%)}
+.sup-th-barista{background:linear-gradient(140deg,#241A12 0%,#5E4227 55%,#C98B52 130%)}
+
+/* ============ 1. TRADING ============ */
+.sup-trade{display:flex;gap:0;min-height:1px}
+.sup-tleft{flex:1;border-right:1px solid var(--line);background:var(--bg0)}
+.sup-tright{width:376px;flex:none;background:var(--bg1)}
+
+.sup-crumb{padding:14px 18px 0;display:flex;align-items:center;gap:8px}
+.sup-crumb .sup-lbl{font-size:9px}
+.sup-title{font-family:var(--head);font-size:21px;font-weight:600;letter-spacing:-.01em;padding:6px 18px 2px}
+.sup-two{color:var(--muted);font-size:13px;line-height:1.5;padding:0 18px 14px;max-width:44ch}
+.sup-meta{display:flex;gap:16px;padding:0 18px 16px;border-bottom:1px solid var(--line)}
+.sup-meta div{display:flex;flex-direction:column;gap:3px}
+.sup-meta b{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums}
+
+.sup-coinstrip{display:flex;gap:8px;padding:14px 18px 16px}
+.sup-coin{flex:1;background:var(--bg1);border:1px solid var(--line);border-radius:8px;padding:10px 11px}
+.sup-coin.on{background:var(--bg3);border-color:var(--ion)}
+.sup-coinhead{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.sup-coinhead .sup-thumb{width:20px;height:20px}
+.sup-tick{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.02em}
+.sup-tag{font-family:var(--body);font-size:8px;letter-spacing:.1em;text-transform:uppercase;
+  padding:2px 5px;border-radius:3px;background:var(--bg2);color:var(--dim);margin-left:auto}
+.sup-tag.first{color:var(--ion);background:rgba(61,224,255,.10)}
+.sup-tag.big{color:var(--amber);background:rgba(255,184,77,.10)}
+.sup-tag.unv{color:var(--dim)}
+.sup-mc{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums}
+.sup-sub{font-size:10px;color:var(--dim);margin-top:3px}
+.sup-up{color:var(--lime)} .sup-dn{color:var(--red)}
+
+.sup-chart{padding:2px 18px 18px}
+.sup-facts{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sup-fact{background:var(--bg0);padding:11px 18px}
+.sup-fact b{display:block;font-family:var(--mono);font-size:14px;font-weight:500;margin-top:4px;
+  font-variant-numeric:tabular-nums}
+
+/* trade panel */
+.sup-tabs{display:flex;padding:14px 16px 0;gap:6px}
+.sup-tab{flex:1;text-align:center;padding:8px 0;border-radius:7px;font-size:12px;font-weight:600;
+  background:var(--bg2);color:var(--dim)}
+.sup-tab.on{background:rgba(155,240,60,.12);color:var(--lime)}
+.sup-tab.sell.on{background:rgba(255,92,110,.12);color:var(--red)}
+.sup-panelbody{padding:16px}
+.sup-amt{background:var(--bg2);border:1px solid var(--line2);border-radius:8px;padding:12px 13px}
+.sup-amtrow{display:flex;align-items:baseline;justify-content:space-between}
+.sup-amtbig{font-family:var(--mono);font-size:26px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.sup-cur{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.sup-amtsub{font-size:10px;color:var(--dim);margin-top:5px;font-family:var(--mono)}
+.sup-presets{display:flex;gap:6px;margin-top:10px}
+.sup-preset{flex:1;text-align:center;padding:7px 0;border-radius:6px;background:var(--bg2);
+  border:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--muted)}
+.sup-preset.on{border-color:var(--ion);color:var(--ion);background:rgba(61,224,255,.07)}
+.sup-getrow{display:flex;align-items:center;justify-content:space-between;margin-top:14px;
+  padding:11px 13px;background:var(--bg2);border-radius:8px}
+.sup-lines{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.sup-line{display:flex;justify-content:space-between;padding:5px 0;font-size:11px;color:var(--muted)}
+.sup-line b{font-family:var(--mono);font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums}
+.sup-btn{margin-top:14px;text-align:center;padding:13px 0;border-radius:8px;background:var(--lime);
+  color:#0A1400;font-weight:600;font-size:13.5px;letter-spacing:.01em}
+.sup-route{margin-top:11px;font-size:10px;color:var(--dim);text-align:center;line-height:1.55;font-family:var(--mono)}
+
+/* ============ 2. WATCHLIST ============ */
+.sup-wrap3{display:flex;gap:16px;align-items:stretch}
+.sup-col{flex:1;display:flex;flex-direction:column}
+.sup-colcap{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:#5A5A62;margin-bottom:9px}
+.sup-arrow{align-self:center;color:#3DE0FF;font-family:var(--mono);font-size:16px;padding:0 2px;flex:none}
+
+.sup-wlhead{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;
+  border-bottom:1px solid var(--line);background:var(--bg1)}
+.sup-wltitle{font-family:var(--head);font-size:14px;font-weight:600}
+.sup-wlrow{display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);align-items:flex-start}
+.sup-wlrow:last-child{border-bottom:0}
+.sup-wlrow .sup-thumb{width:34px;height:34px}
+.sup-wlname{font-size:12.5px;font-weight:600;margin-bottom:3px}
+.sup-wlsub{font-size:10.5px;color:var(--dim);font-family:var(--mono)}
+.sup-bell{margin-left:auto;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ion);
+  border:1px solid rgba(61,224,255,.3);border-radius:20px;padding:3px 8px;flex:none}
+.sup-bell.off{color:var(--dim);border-color:var(--line2)}
+
+/* lock screen */
+.sup-lock{background:linear-gradient(170deg,#08131A 0%,#060607 60%);border:1px solid var(--line2);
+  border-radius:14px;padding:16px 12px;display:flex;flex-direction:column}
+.sup-locktime{text-align:center;font-family:var(--mono);font-size:34px;font-weight:500;letter-spacing:-.02em;margin-top:8px}
+.sup-lockdate{text-align:center;font-size:10.5px;color:var(--muted);margin-bottom:20px}
+.sup-notif{background:rgba(26,26,30,.92);border:1px solid var(--line2);border-radius:12px;padding:11px 12px}
+.sup-nhead{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+.sup-nicon{width:16px;height:16px;border-radius:4px;background:linear-gradient(135deg,#3DE0FF,#0E6B7E)}
+.sup-napp{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.sup-nnow{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--dim)}
+.sup-ntitle{font-size:12.5px;font-weight:600;line-height:1.35;margin-bottom:5px}
+.sup-nbody{font-size:11.5px;color:var(--muted);line-height:1.45}
+.sup-nfoot{margin-top:9px;padding-top:8px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.sup-nchip{font-family:var(--mono);font-size:10px;color:var(--ion)}
+
+/* opened app */
+.sup-openhead{padding:13px 14px;border-bottom:1px solid var(--line);background:var(--bg1)}
+.sup-openname{font-family:var(--head);font-size:15px;font-weight:600;margin-bottom:4px}
+.sup-opentwo{font-size:11px;color:var(--muted);line-height:1.45}
+.sup-new{margin:12px 14px;border:1px solid rgba(61,224,255,.28);background:rgba(61,224,255,.05);
+  border-radius:9px;padding:11px 12px}
+.sup-newlbl{font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ion);margin-bottom:8px}
+.sup-newrow{display:flex;align-items:center;gap:8px}
+.sup-newrow .sup-thumb{width:26px;height:26px}
+.sup-newmc{margin-left:auto;text-align:right}
+.sup-openbtn{margin:0 14px 14px;text-align:center;padding:11px 0;border-radius:8px;
+  background:var(--lime);color:#0A1400;font-weight:600;font-size:12.5px}
+.sup-openghost{margin:0 14px 14px;text-align:center;padding:10px 0;border-radius:8px;
+  border:1px solid var(--line2);color:var(--muted);font-size:12px}
+
+/* ============ 3. SEARCH ============ */
+.sup-sbar{display:flex;align-items:center;gap:11px;padding:14px 16px;background:var(--bg1);
+  border-bottom:1px solid var(--line)}
+.sup-mag{width:15px;height:15px;border:1.6px solid var(--dim);border-radius:50%;position:relative;flex:none}
+.sup-mag::after{content:"";position:absolute;width:6px;height:1.6px;background:var(--dim);
+  transform:rotate(45deg);right:-5px;bottom:0}
+.sup-q{font-family:var(--mono);font-size:15px;color:var(--ink)}
+.sup-caret{width:1.5px;height:16px;background:var(--ion);display:inline-block;vertical-align:-3px;margin-left:1px}
+.sup-shint{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--dim)}
+.sup-sgroup{padding:12px 16px 4px;display:flex;align-items:baseline;gap:9px;border-top:1px solid var(--line)}
+.sup-sgroup:first-of-type{border-top:0}
+.sup-count{font-family:var(--mono);font-size:9.5px;color:var(--dim)}
+.sup-srow{display:flex;align-items:center;gap:11px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.sup-srow:last-child{border-bottom:0}
+.sup-srow .sup-thumb{width:32px;height:32px;flex:none}
+.sup-sname{font-size:12.5px;font-weight:600}
+.sup-ssub{font-size:10.5px;color:var(--dim);font-family:var(--mono);margin-top:3px}
+.sup-sright{margin-left:auto;text-align:right;flex:none}
+.sup-addr{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.sup-note{display:flex;gap:9px;align-items:center;margin:0;padding:11px 16px;background:var(--bg2);
+  border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+.sup-note b{color:var(--ink);font-weight:600}
+.sup-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);flex:none}
+
+/* ============ 4. TRENDING ============ */
+.sup-trend{display:flex;gap:16px;align-items:stretch}
+.sup-thead{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--bg1)}
+.sup-tname{font-family:var(--head);font-size:14px;font-weight:600}
+.sup-sorts{margin-left:auto;display:flex;gap:4px}
+.sup-sort{font-family:var(--body);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
+  padding:4px 9px;border-radius:5px;background:var(--bg2);color:var(--dim)}
+.sup-sort.on{background:var(--bg3);color:var(--ink);border:1px solid var(--line2);padding:3px 8px}
+.sup-trow{display:flex;align-items:center;gap:11px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.sup-trow:last-child{border-bottom:0}
+.sup-rank{font-family:var(--mono);font-size:11px;color:var(--dim);width:16px;flex:none;font-variant-numeric:tabular-nums}
+.sup-trow .sup-thumb{width:28px;height:28px;flex:none}
+.sup-tn{font-size:12px;font-weight:600}
+.sup-ts{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:2px}
+.sup-tright2{margin-left:auto;text-align:right;flex:none}
+.sup-tv{font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.sup-nocoin{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--ion)}
+</style>
+
+<section class="sec sup-root">
+  <h2>05. Trading, watchlist, search and trending</h2>
+
+  <p class="lede">Four supporting features. None of them is the reason someone opens Insidor, but
+  without them the person who spots a story early has to leave to act on it, forgets to come back,
+  accidentally makes a coin that already exists, or can only see what we choose to push at them.</p>
+
+  <h3>Trading — buying built into the page</h3>
+
+  <p>When a narrative already has a coin, the buy box sits on the same page as the story. No copying
+  a contract address into another app, no second tab, no losing the thing you were looking at. You
+  read the two-liner, you look at the numbers, you buy. We take a small fee on every trade that goes
+  through us, and that fee is shown in the order before you confirm — nothing hidden in the price.</p>
+
+  <p>We do not build the trading engine. Actually executing a trade on-chain — routing it, getting a
+  good price, handling failures, not losing people's money — is hard, risky, and already solved by
+  companies who do only that. <strong>The plan is to route orders through Axiom or Photon, pending
+  confirmation that they permit it: research found neither publishes a public developer API, so the
+  integration is not yet proven.</strong> The confirmed fallback is Jupiter, which is openly
+  documented and pays us an integrator fee, where Photon charges the user 1% and pays us nothing.</p>
+
+  <div class="mock" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="sup-frame sup-trade">
+      <div class="sup-tleft">
+        <div class="sup-crumb"><span class="sup-lbl">Narrative</span></div>
+        <div class="sup-title">Harbor Last Horn</div>
+        <div class="sup-two">A retiring ferry captain blew his horn one last time, and every boat in
+          the harbour blew back.</div>
+        <div class="sup-meta">
+          <div><span class="sup-lbl">Views</span><b>2.4M</b></div>
+          <div><span class="sup-lbl">Age</span><b>4h</b></div>
+          <div><span class="sup-lbl">Posts</span><b>2</b></div>
+          <div><span class="sup-lbl">Coins</span><b>3</b></div>
+        </div>
+
+        <div class="sup-coinstrip">
+          <div class="sup-coin on">
+            <div class="sup-coinhead"><span class="sup-thumb sup-th-ferry"></span>
+              <span class="sup-tick">$FERRY</span><span class="sup-tag first">First</span></div>
+            <div class="sup-mc">$799.6K</div>
+            <div class="sup-sub"><span class="sup-up">+18.4%</span> · 1h</div>
+          </div>
+          <div class="sup-coin">
+            <div class="sup-coinhead"><span class="sup-thumb sup-th-horn"></span>
+              <span class="sup-tick">$HORN</span><span class="sup-tag big">Biggest</span></div>
+            <div class="sup-mc">$1.2M</div>
+            <div class="sup-sub"><span class="sup-dn">−4.1%</span> · 1h</div>
+          </div>
+          <div class="sup-coin">
+            <div class="sup-coinhead"><span class="sup-thumb sup-th-boat"></span>
+              <span class="sup-tick">$BOAT</span><span class="sup-tag unv">Unverified</span></div>
+            <div class="sup-mc">$61.4K</div>
+            <div class="sup-sub"><span class="sup-up">+2.9%</span> · 1h</div>
+          </div>
+        </div>
+
+        <div class="sup-chart">
+          <svg viewBox="0 0 604 118" width="100%" height="118" role="img" aria-label="Price of FERRY since it was created">
+            <defs>
+              <linearGradient id="supFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#3DE0FF" stop-opacity=".22"/>
+                <stop offset="100%" stop-color="#3DE0FF" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="20"  x2="604" y2="20"  stroke="#212127" stroke-width="1"/>
+            <line x1="0" y1="59"  x2="604" y2="59"  stroke="#212127" stroke-width="1"/>
+            <line x1="0" y1="98"  x2="604" y2="98"  stroke="#212127" stroke-width="1"/>
+            <path d="M0,104 L40,96 L80,99 L120,84 L160,88 L200,70 L240,74 L280,52 L320,60 L360,41
+                     L400,47 L440,33 L480,44 L520,30 L560,36 L604,24 L604,118 L0,118 Z" fill="url(#supFill)"/>
+            <path d="M0,104 L40,96 L80,99 L120,84 L160,88 L200,70 L240,74 L280,52 L320,60 L360,41
+                     L400,47 L440,33 L480,44 L520,30 L560,36 L604,24"
+                  fill="none" stroke="#3DE0FF" stroke-width="1.6" stroke-linejoin="round"/>
+            <circle cx="604" cy="24" r="2.8" fill="#3DE0FF"/>
+            <text x="2"   y="114" font-family="JetBrains Mono" font-size="9" fill="#5A5A62">09:31</text>
+            <text x="286" y="114" font-family="JetBrains Mono" font-size="9" fill="#5A5A62">11:15</text>
+            <text x="566" y="114" font-family="JetBrains Mono" font-size="9" fill="#5A5A62">now</text>
+          </svg>
+        </div>
+
+        <div class="sup-facts">
+          <div class="sup-fact"><span class="sup-lbl">Market cap</span><b>$799.6K</b></div>
+          <div class="sup-fact"><span class="sup-lbl">Liquidity</span><b>$84.2K</b></div>
+          <div class="sup-fact"><span class="sup-lbl">Holders</span><b>1,204</b></div>
+          <div class="sup-fact"><span class="sup-lbl">Created</span><b>09:31</b></div>
+        </div>
+      </div>
+
+      <div class="sup-tright">
+        <div class="sup-tabs">
+          <div class="sup-tab on">Buy</div>
+          <div class="sup-tab sell">Sell</div>
+        </div>
+        <div class="sup-panelbody">
+          <div class="sup-amt">
+            <div class="sup-amtrow"><span class="sup-amtbig">0.50</span><span class="sup-cur">SOL</span></div>
+            <div class="sup-amtsub">≈ $86.40 · balance 4.21 SOL</div>
+          </div>
+          <div class="sup-presets">
+            <div class="sup-preset">0.1</div>
+            <div class="sup-preset on">0.5</div>
+            <div class="sup-preset">1</div>
+            <div class="sup-preset">2</div>
+            <div class="sup-preset">Max</div>
+          </div>
+
+          <div class="sup-getrow">
+            <div><div class="sup-lbl">You receive</div>
+              <div class="sup-n" style="font-size:16px;margin-top:4px">108,061 $FERRY</div></div>
+            <span class="sup-thumb sup-th-ferry" style="width:26px;height:26px"></span>
+          </div>
+
+          <div class="sup-lines">
+            <div class="sup-line"><span>Price per token</span><b>$0.0007996</b></div>
+            <div class="sup-line"><span>Price impact</span><b>0.31%</b></div>
+            <div class="sup-line"><span>Max slippage</span><b>1.0%</b></div>
+            <div class="sup-line"><span>Network fee</span><b>$0.02</b></div>
+            <div class="sup-line"><span>Insidor fee (0.5%)</span><b>$0.43</b></div>
+          </div>
+
+          <div class="sup-btn">Buy $FERRY</div>
+          <div class="sup-route">Order routed to Axiom · wallet by Privy<br>Jupiter used if routing is unavailable</div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">Everything on this panel is a fact you could check elsewhere: price, market cap,
+    liquidity, holder count, the time the coin was made, the fee we charge. The routing line names
+    who executes the trade and who holds the wallet, because the user is entitled to know whose
+    hands their money passes through.</p>
+  </div>
+
+  <h3>Watchlist — the notification is the feature</h3>
+
+  <p>Saving a narrative is easy to build and easy to ignore. The part that matters is what happens
+  after: if a narrative you saved gets its <em>first</em> coin, we tell you within seconds. That is
+  the whole retention mechanic. Instead of hoping the user remembers to check back, we open the app
+  for them at the one moment there is actually something to do — a story they already believed in
+  has just become tradeable, and almost nobody else knows yet.</p>
+
+  <p>The alert only fires on events worth waking someone for: a first coin on a saved narrative, or
+  a new post joining a saved narrative. Not price moves, not daily digests. If we send noise, the
+  user turns notifications off and the mechanic dies.</p>
+
+  <div class="mock" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="sup-wrap3">
+      <div class="sup-col">
+        <div class="sup-colcap">1 · Saved earlier · 11:02</div>
+        <div class="sup-frame" style="flex:1">
+          <div class="sup-wlhead"><span class="sup-wltitle">Watchlist</span>
+            <span class="sup-lbl">4 saved</span></div>
+          <div class="sup-wlrow"><span class="sup-thumb sup-th-norway"></span>
+            <div><div class="sup-wlname">Paid to Move to Norway</div>
+              <div class="sup-wlsub">1.1M views · 1h · no coin yet</div></div>
+            <span class="sup-bell">Alerts on</span></div>
+          <div class="sup-wlrow"><span class="sup-thumb sup-th-barista"></span>
+            <div><div class="sup-wlname">Barista Name Lock-In</div>
+              <div class="sup-wlsub">610K views · 3h · no coin yet</div></div>
+            <span class="sup-bell">Alerts on</span></div>
+          <div class="sup-wlrow"><span class="sup-thumb sup-th-ferry"></span>
+            <div><div class="sup-wlname">Harbor Last Horn</div>
+              <div class="sup-wlsub">2.4M views · 4h · 3 coins</div></div>
+            <span class="sup-bell">Alerts on</span></div>
+          <div class="sup-wlrow"><span class="sup-thumb sup-th-plant"></span>
+            <div><div class="sup-wlname">$PLANT</div>
+              <div class="sup-wlsub">$562.8K · <span class="sup-up">+6.2%</span> 1h</div></div>
+            <span class="sup-bell off">Alerts off</span></div>
+        </div>
+      </div>
+
+      <div class="sup-arrow">→</div>
+
+      <div class="sup-col">
+        <div class="sup-colcap">2 · Phone locked · 11:06</div>
+        <div class="sup-lock" style="flex:1">
+          <div class="sup-locktime">11:06</div>
+          <div class="sup-lockdate">Tuesday 14 October</div>
+          <div class="sup-notif">
+            <div class="sup-nhead"><span class="sup-nicon"></span><span class="sup-napp">Insidor</span>
+              <span class="sup-nnow">now</span></div>
+            <div class="sup-ntitle">First coin on a story you saved</div>
+            <div class="sup-nbody">“Paid to Move to Norway” now has a coin — $MOVE, made 2 minutes ago.</div>
+            <div class="sup-nfoot"><span class="sup-nchip">Open</span><span class="sup-nchip">Watchlist</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sup-arrow">→</div>
+
+      <div class="sup-col">
+        <div class="sup-colcap">3 · Tapped · 11:06</div>
+        <div class="sup-frame" style="flex:1;display:flex;flex-direction:column">
+          <div class="sup-openhead">
+            <div class="sup-openname">Paid to Move to Norway</div>
+            <div class="sup-opentwo">A Norwegian town is paying people €25,000 to move there.</div>
+          </div>
+          <div class="sup-new">
+            <div class="sup-newlbl">New — first coin</div>
+            <div class="sup-newrow">
+              <span class="sup-thumb sup-th-norway"></span>
+              <div><div class="sup-tick">$MOVE</div>
+                <div class="sup-sub">made 11:04 · 2 min ago</div></div>
+              <div class="sup-newmc"><div class="sup-mc" style="font-size:14px">$18.7K</div>
+                <div class="sup-sub">41 holders</div></div>
+            </div>
+          </div>
+          <div class="sup-openbtn">Buy $MOVE</div>
+          <div class="sup-openghost">View the two posts</div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">The notification carries the two-liner, not a ticker on its own — the user saved a
+    story, so remind them which story. Tapping it lands on the coin with a buy button already there,
+    two taps from lock screen to trade.</p>
+  </div>
+
+  <h3>Search — one box, and it stops duplicates</h3>
+
+  <p>One field takes three kinds of input: a keyword (“ferry”), a ticker ($FERRY), or a coin address
+  pasted from anywhere. It returns both sides at once — the posts and narratives we are tracking, and
+  the coins that exist. Its most useful job is unglamorous: a trader sees something funny on X, wants
+  to make a coin out of it, searches, and finds three already exist. That one screen stops a lot of
+  wasted money.</p>
+
+  <div class="mock" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="sup-frame">
+      <div class="sup-sbar">
+        <span class="sup-mag"></span>
+        <span class="sup-q">ferry<span class="sup-caret"></span></span>
+        <span class="sup-shint">keyword · $ticker · coin address</span>
+      </div>
+
+      <div class="sup-sgroup"><span class="sup-lbl">Narratives</span><span class="sup-count">2 results</span></div>
+      <div class="sup-srow">
+        <span class="sup-thumb sup-th-ferry"></span>
+        <div><div class="sup-sname">Harbor Last Horn</div>
+          <div class="sup-ssub">2.4M views · 4h · 2 posts · 3 coins</div></div>
+        <div class="sup-sright"><div class="sup-n" style="font-size:12px">2.4M</div>
+          <div class="sup-sub">views</div></div>
+      </div>
+      <div class="sup-srow">
+        <span class="sup-thumb sup-th-boat"></span>
+        <div><div class="sup-sname">Ferry Cat Stowaway</div>
+          <div class="sup-ssub">180K views · 9h · 1 post · no coin</div></div>
+        <div class="sup-sright"><div class="sup-n" style="font-size:12px">180K</div>
+          <div class="sup-sub">views</div></div>
+      </div>
+
+      <div class="sup-sgroup"><span class="sup-lbl">Coins</span><span class="sup-count">3 results</span></div>
+      <div class="sup-srow">
+        <span class="sup-thumb sup-th-ferry"></span>
+        <div><div class="sup-sname"><span class="sup-tick">$FERRY</span> · Harbor Last Horn</div>
+          <div class="sup-addr">9xQe4Rm2…pump · made 09:31</div></div>
+        <div class="sup-sright"><div class="sup-mc" style="font-size:13px">$799.6K</div>
+          <div class="sup-sub"><span class="sup-up">+18.4%</span> 1h</div></div>
+      </div>
+      <div class="sup-srow">
+        <span class="sup-thumb sup-th-horn"></span>
+        <div><div class="sup-sname"><span class="sup-tick">$HORN</span> · Harbor Last Horn</div>
+          <div class="sup-addr">C2fH8vTq…pump · made 09:58</div></div>
+        <div class="sup-sright"><div class="sup-mc" style="font-size:13px">$1.2M</div>
+          <div class="sup-sub"><span class="sup-dn">−4.1%</span> 1h</div></div>
+      </div>
+      <div class="sup-srow">
+        <span class="sup-thumb sup-th-boat"></span>
+        <div><div class="sup-sname"><span class="sup-tick">$BOAT</span> · Harbor Last Horn</div>
+          <div class="sup-addr">Ak7Ln1Wd…pump · made 10:22</div></div>
+        <div class="sup-sright"><div class="sup-mc" style="font-size:13px">$61.4K</div>
+          <div class="sup-sub"><span class="sup-up">+2.9%</span> 1h</div></div>
+      </div>
+
+      <div class="sup-note"><span class="sup-dot"></span>
+        <span><b>Three coins already exist for this story.</b> Check them before you make a new one.</span>
+      </div>
+    </div>
+    <p class="cap">Coin addresses are shown truncated but are the real thing, and each coin says which
+    narrative it belongs to and when it was made. The amber line at the bottom is the duplicate
+    warning — a statement about the world, not an opinion about it.</p>
+  </div>
+
+  <h3>Trending — letting people browse</h3>
+
+  <p>The feed shows what we think is worth seeing right now. Trending lets someone ignore that and
+  look for themselves: the top narratives and the top coins, sorted by views or by age, newest first
+  or biggest first. It is the release valve for anyone who does not want to be led — and the sort
+  controls are the user's, not ours.</p>
+
+  <div class="mock" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="sup-trend">
+      <div class="sup-frame" style="flex:1">
+        <div class="sup-thead"><span class="sup-tname">Top narratives</span>
+          <span class="sup-sorts"><span class="sup-sort on">Views</span><span class="sup-sort">Age</span></span></div>
+        <div class="sup-trow"><span class="sup-rank">01</span><span class="sup-thumb sup-th-ferry"></span>
+          <div><div class="sup-tn">Harbor Last Horn</div><div class="sup-ts">4h · 3 coins</div></div>
+          <div class="sup-tright2"><div class="sup-tv">2.4M</div><div class="sup-sub">views</div></div></div>
+        <div class="sup-trow"><span class="sup-rank">02</span><span class="sup-thumb sup-th-norway"></span>
+          <div><div class="sup-tn">Paid to Move to Norway</div><div class="sup-ts">1h · <span class="sup-nocoin">No coin yet</span></div></div>
+          <div class="sup-tright2"><div class="sup-tv">1.1M</div><div class="sup-sub">views</div></div></div>
+        <div class="sup-trow"><span class="sup-rank">03</span><span class="sup-thumb sup-th-pigeon"></span>
+          <div><div class="sup-tn">Grandmaster vs Pigeon</div><div class="sup-ts">6h · 1 coin</div></div>
+          <div class="sup-tright2"><div class="sup-tv">1.1M</div><div class="sup-sub">views</div></div></div>
+        <div class="sup-trow"><span class="sup-rank">04</span><span class="sup-thumb sup-th-plant"></span>
+          <div><div class="sup-tn">Plastic Plant Grandma</div><div class="sup-ts">2h · 1 coin</div></div>
+          <div class="sup-tright2"><div class="sup-tv">850K</div><div class="sup-sub">views</div></div></div>
+        <div class="sup-trow"><span class="sup-rank">05</span><span class="sup-thumb sup-th-barista"></span>
+          <div><div class="sup-tn">Barista Name Lock-In</div><div class="sup-ts">3h · <span class="sup-nocoin">No coin yet</span></div></div>
+          <div class="sup-tright2"><div class="sup-tv">610K</div><div class="sup-sub">views</div></div></div>
+      </div>
+
+      <div class="sup-frame" style="flex:1">
+        <div class="sup-thead"><span class="sup-tname">Top coins</span>
+          <span class="sup-sorts"><span class="sup-sort on">Market cap</span><span class="sup-sort">Age</span></span></div>
+        <div class="sup-trow"><span class="sup-rank">01</span><span class="sup-thumb sup-th-horn"></span>
+          <div><div class="sup-tn"><span class="sup-tick">$HORN</span></div><div class="sup-ts">Harbor Last Horn · 3h</div></div>
+          <div class="sup-tright2"><div class="sup-tv">$1.2M</div><div class="sup-sub"><span class="sup-dn">−4.1%</span> 1h</div></div></div>
+        <div class="sup-trow"><span class="sup-rank">02</span><span class="sup-thumb sup-th-ferry"></span>
+          <div><div class="sup-tn"><span class="sup-tick">$FERRY</span></div><div class="sup-ts">Harbor Last Horn · 4h</div></div>
+          <div class="sup-tright2"><div class="sup-tv">$799.6K</div><div class="sup-sub"><span class="sup-up">+18.4%</span> 1h</div></div></div>
+        <div class="sup-trow"><span class="sup-rank">03</span><span class="sup-thumb sup-th-pigeon"></span>
+          <div><div class="sup-tn"><span class="sup-tick">$PIGEON</span></div><div class="sup-ts">Grandmaster vs Pigeon · 5h</div></div>
+          <div class="sup-tright2"><div class="sup-tv">$753.5K</div><div class="sup-sub"><span class="sup-up">+9.7%</span> 1h</div></div></div>
+        <div class="sup-trow"><span class="sup-rank">04</span><span class="sup-thumb sup-th-plant"></span>
+          <div><div class="sup-tn"><span class="sup-tick">$PLANT</span></div><div class="sup-ts">Plastic Plant Grandma · 2h</div></div>
+          <div class="sup-tright2"><div class="sup-tv">$562.8K</div><div class="sup-sub"><span class="sup-up">+6.2%</span> 1h</div></div></div>
+        <div class="sup-trow"><span class="sup-rank">05</span><span class="sup-thumb sup-th-boat"></span>
+          <div><div class="sup-tn"><span class="sup-tick">$BOAT</span></div><div class="sup-ts">Harbor Last Horn · 1h</div></div>
+          <div class="sup-tright2"><div class="sup-tv">$61.4K</div><div class="sup-sub"><span class="sup-up">+2.9%</span> 1h</div></div></div>
+      </div>
+    </div>
+    <p class="cap">Two lists, two sort controls each, nothing else. The ordering follows the column
+    the user picked — views or age on the left, market cap or age on the right — so the ranking is
+    something they can check against reality rather than something they have to trust us about.</p>
+  </div>
+
+  <p>All four features lean on things we rent rather than build: Privy holds the wallet, Axiom or
+  Photon (or Jupiter) executes the trade, DexScreener supplies price and liquidity, and the phone's
+  own notification system delivers the alert. What is ours is the moment each one fires — knowing
+  that a saved story just got its first coin, and that this is worth interrupting someone for.</p>
+
+</section>

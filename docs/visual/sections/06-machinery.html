@@ -1,0 +1,399 @@
+<meta charset="utf-8">
+<!--standalone-->
+<style>
+/* Typography for viewing this fragment on its own. The assembled document
+   supplies the same rules from the shell head, so the build strips this block. */
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+html,body{margin:0;padding:0;background:#060607;}
+body{color:#F4F5F7;font-family:"General Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+     font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased;}
+*{box-sizing:border-box;}
+.sec{padding:56px 50px;max-width:1200px;margin:0 auto;}
+h2{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:36px;font-weight:600;
+   letter-spacing:-.02em;margin:0 0 18px;padding-bottom:16px;border-bottom:1px solid #212127;}
+h3{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:20px;font-weight:600;margin:38px 0 12px;}
+h4{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:11px;font-weight:500;
+   letter-spacing:.14em;text-transform:uppercase;color:#5A5A62;margin:30px 0 10px;}
+p{margin:0 0 15px;max-width:96ch;}
+.lede{font-size:18.5px;line-height:1.55;color:#8A8A93;max-width:82ch;margin-bottom:26px;}
+.cap{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#5A5A62;
+     margin:12px 0 34px;padding-left:14px;border-left:2px solid #2E2E36;max-width:92ch;}
+strong{font-weight:600;color:#F4F5F7;}
+code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.9em;background:#131316;
+     color:#3DE0FF;padding:1px 5px;border-radius:4px;}
+ul,ol{margin:0 0 16px;padding-left:22px;max-width:94ch;} li{margin-bottom:7px;}
+.mock{margin:26px 0 6px;}
+svg{max-width:100%;height:auto;}
+</style>
+<!--/standalone-->
+
+<style>
+/* ── 06. THE SIX PARTS OF THE MACHINE ──────────────────────────────── */
+.mch-mock{
+  background:#0C0C0E; border:1px solid #212127; border-radius:12px;
+  padding:20px 18px 14px; margin:26px 0 10px;
+}
+.mch-mock + .cap{ margin-top:0; }
+.mch-mock svg{ width:100%; height:auto; display:block; }
+.mch-mocktitle{
+  font-family:"General Sans",-apple-system,system-ui,sans-serif;
+  font-size:10px; text-transform:uppercase; letter-spacing:.1em;
+  color:#5A5A62; margin:0 0 16px 2px;
+}
+.mch-mocktitle b{ color:#8A8A93; font-weight:500; }
+
+/* pull-quote style callout for the "gone forever" point */
+.mch-shout{
+  border:1px solid #212127; border-left:3px solid #FFB84D; background:#0C0C0E;
+  border-radius:0 12px 12px 0; padding:20px 24px; margin:24px 0 28px;
+  max-width:96ch; break-inside:avoid; page-break-inside:avoid;
+}
+.mch-shout .mch-lb{
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace; font-size:10px;
+  letter-spacing:.13em; text-transform:uppercase; color:#FFB84D; margin-bottom:10px;
+}
+.mch-shout p{ margin:0; font-size:17px; line-height:1.5; color:#F4F5F7; max-width:none; }
+.mch-shout p + p{ margin-top:10px; font-size:14.5px; color:#8A8A93; }
+
+/* build / rent + schedule table */
+table.mch-tbl{
+  width:100%; border-collapse:collapse; background:#0C0C0E;
+  border:1px solid #212127; border-radius:12px; overflow:hidden;
+  margin:22px 0 8px; break-inside:avoid; page-break-inside:avoid;
+}
+table.mch-tbl th{
+  font-family:"General Sans",-apple-system,system-ui,sans-serif;
+  font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; color:#5A5A62;
+  font-weight:500; text-align:left; padding:11px 16px;
+  border-bottom:1px solid #2E2E36; background:#131316;
+}
+table.mch-tbl td{
+  font-family:"General Sans",-apple-system,system-ui,sans-serif;
+  font-size:12.5px; color:#8A8A93; line-height:1.5;
+  padding:12px 16px; border-bottom:1px solid #212127; vertical-align:top;
+}
+table.mch-tbl tr:last-child td{ border-bottom:none; }
+table.mch-tbl td.mch-c1{ color:#F4F5F7; font-weight:500; width:20%; white-space:nowrap; }
+table.mch-tbl td.mch-cad{
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-variant-numeric:tabular-nums; font-size:11.5px; color:#3DE0FF;
+  white-space:nowrap; width:22%;
+}
+</style>
+
+<section class="sec">
+  <h2>06. The six parts of the machine</h2>
+
+  <p class="lede">Everything behind the app is six moving parts. Four of them run on their own,
+  on a schedule, with nobody watching. One is a database in the middle. The last one is the
+  app itself. This section is the part of Insidor the user never sees.</p>
+
+  <p>The job the machine has to do is narrow: find a post that is going viral right now, work
+  out whether anyone could make a memecoin out of it, and notice when lots of separate posts
+  are all about the same thing. Everything else — the prices, the charts, the wallet, the
+  buying — is rented from companies who already do it well. So the machine is small on
+  purpose. Six parts, and only two of them are things nobody else can do for us.</p>
+
+  <p>They pass work along a line. The <strong>Collector</strong> brings in candidate posts. The
+  <strong>Measurer</strong> watches those posts over time. The <strong>Judge</strong> reads the
+  ones that are moving fastest. The <strong>Grouper</strong> bundles related ones together into
+  a single story. All four write what they find into the <strong>Library</strong>, which is one
+  database and the single source of truth. The <strong>App</strong> only ever reads out of the
+  Library. It never talks to X, or to Claude, or to the data reseller directly.</p>
+
+  <div class="mock" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="mch-mock">
+      <div class="mch-mocktitle">How work flows — <b>four writers, one Library, one reader</b></div>
+      <svg viewBox="0 0 1000 580" xmlns="http://www.w3.org/2000/svg" role="img"
+           aria-label="Diagram: Collector, Measurer, Judge and Grouper run on a schedule and write into the Library; the App reads out of the Library.">
+        <defs>
+          <marker id="mch-ar" markerWidth="9" markerHeight="9" refX="6.8" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#3DE0FF"/>
+          </marker>
+          <marker id="mch-ar2" markerWidth="9" markerHeight="9" refX="6.8" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#5A5A62"/>
+          </marker>
+        </defs>
+
+        <!-- top band label -->
+        <text x="20" y="24" font-family="JetBrains Mono, monospace" font-size="10"
+              letter-spacing="1.4" fill="#5A5A62">AUTOMATIC · RUNS ON A SERVER TO A TIMETABLE · NOBODY PRESSES ANYTHING</text>
+        <line x1="20" y1="34" x2="980" y2="34" stroke="#212127" stroke-width="1"/>
+
+        <!-- ── 1 COLLECTOR ── -->
+        <rect x="20" y="46" width="225" height="118" rx="10" fill="#0C0C0E" stroke="#212127"/>
+        <circle cx="41" cy="72" r="11" fill="#131316" stroke="#2E2E36"/>
+        <text x="41" y="76" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#3DE0FF">1</text>
+        <text x="60" y="77" font-family="Clash Display, sans-serif" font-size="14.5" font-weight="600"
+              letter-spacing="0.5" fill="#F4F5F7">THE COLLECTOR</text>
+        <text x="38" y="102" font-family="General Sans, sans-serif" font-size="11" fill="#8A8A93">
+          <tspan x="38" dy="0">Every few minutes, asks a data</tspan>
+          <tspan x="38" dy="17">reseller for the posts getting</tspan>
+          <tspan x="38" dy="17">attention right now. Filters hard.</tspan>
+        </text>
+
+        <!-- ── 2 MEASURER ── -->
+        <rect x="265" y="46" width="225" height="118" rx="10" fill="#0C0C0E" stroke="#2E2E36"/>
+        <rect x="265" y="46" width="225" height="118" rx="10" fill="none" stroke="#3DE0FF" stroke-opacity="0.28"/>
+        <circle cx="286" cy="72" r="11" fill="#131316" stroke="#2E2E36"/>
+        <text x="286" y="76" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#3DE0FF">2</text>
+        <text x="305" y="77" font-family="Clash Display, sans-serif" font-size="14.5" font-weight="600"
+              letter-spacing="0.5" fill="#F4F5F7">THE MEASURER</text>
+        <text x="283" y="102" font-family="General Sans, sans-serif" font-size="11" fill="#8A8A93">
+          <tspan x="283" dy="0">Re-checks each post every few</tspan>
+          <tspan x="283" dy="17">minutes for hours, writing down</tspan>
+          <tspan x="283" dy="17">its view count every time.</tspan>
+        </text>
+
+        <!-- ── 3 JUDGE ── -->
+        <rect x="510" y="46" width="225" height="118" rx="10" fill="#0C0C0E" stroke="#212127"/>
+        <circle cx="531" cy="72" r="11" fill="#131316" stroke="#2E2E36"/>
+        <text x="531" y="76" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#3DE0FF">3</text>
+        <text x="550" y="77" font-family="Clash Display, sans-serif" font-size="14.5" font-weight="600"
+              letter-spacing="0.5" fill="#F4F5F7">THE JUDGE</text>
+        <text x="528" y="102" font-family="General Sans, sans-serif" font-size="11" fill="#8A8A93">
+          <tspan x="528" dy="0">Claude reads the fastest ones:</tspan>
+          <tspan x="528" dy="17">could a coin come out of this?</tspan>
+          <tspan x="528" dy="17">Suggests a name and a ticker.</tspan>
+        </text>
+
+        <!-- ── 4 GROUPER ── -->
+        <rect x="755" y="46" width="225" height="118" rx="10" fill="#0C0C0E" stroke="#212127"/>
+        <circle cx="776" cy="72" r="11" fill="#131316" stroke="#2E2E36"/>
+        <text x="776" y="76" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#3DE0FF">4</text>
+        <text x="795" y="77" font-family="Clash Display, sans-serif" font-size="14.5" font-weight="600"
+              letter-spacing="0.5" fill="#F4F5F7">THE GROUPER</text>
+        <text x="773" y="102" font-family="General Sans, sans-serif" font-size="11" fill="#8A8A93">
+          <tspan x="773" dy="0">Spots that ten posts are about</tspan>
+          <tspan x="773" dy="17">the same ferry captain, and</tspan>
+          <tspan x="773" dy="17">bundles them into one narrative.</tspan>
+        </text>
+
+        <!-- hand-off chevrons between the four -->
+        <line x1="247" y1="105" x2="261" y2="105" stroke="#3DE0FF" stroke-opacity="0.55" stroke-width="1.4" marker-end="url(#mch-ar)"/>
+        <line x1="492" y1="105" x2="506" y2="105" stroke="#3DE0FF" stroke-opacity="0.55" stroke-width="1.4" marker-end="url(#mch-ar)"/>
+        <line x1="737" y1="105" x2="751" y2="105" stroke="#3DE0FF" stroke-opacity="0.55" stroke-width="1.4" marker-end="url(#mch-ar)"/>
+
+        <!-- write elbows into the Library -->
+        <path d="M132.5,164 V252 H260 V292" fill="none" stroke="#3DE0FF" stroke-opacity="0.4"
+              stroke-width="1.4" marker-end="url(#mch-ar)"/>
+        <path d="M377.5,164 V252 H400 V292" fill="none" stroke="#3DE0FF" stroke-opacity="0.4"
+              stroke-width="1.4" marker-end="url(#mch-ar)"/>
+        <path d="M622.5,164 V252 H550 V292" fill="none" stroke="#3DE0FF" stroke-opacity="0.4"
+              stroke-width="1.4" marker-end="url(#mch-ar)"/>
+        <path d="M867.5,164 V252 H700 V292" fill="none" stroke="#3DE0FF" stroke-opacity="0.4"
+              stroke-width="1.4" marker-end="url(#mch-ar)"/>
+        <text x="475" y="248" font-family="JetBrains Mono, monospace" font-size="10"
+              letter-spacing="1.3" fill="#5A5A62">WRITE</text>
+
+        <!-- ── 5 LIBRARY ── -->
+        <rect x="190" y="304" width="620" height="104" rx="12" fill="#131316" stroke="#2E2E36"/>
+        <circle cx="219" cy="335" r="11" fill="#0C0C0E" stroke="#2E2E36"/>
+        <text x="219" y="339" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#3DE0FF">5</text>
+        <text x="240" y="340" font-family="Clash Display, sans-serif" font-size="17" font-weight="600"
+              letter-spacing="0.5" fill="#F4F5F7">THE LIBRARY</text>
+        <text x="392" y="340" font-family="JetBrains Mono, monospace" font-size="10"
+              letter-spacing="1.3" fill="#5A5A62">SINGLE SOURCE OF TRUTH</text>
+        <text x="206" y="368" font-family="General Sans, sans-serif" font-size="11.5" fill="#8A8A93">
+          <tspan x="206" dy="0">One database. Every post we pulled in, every view-count reading with the minute it was taken,</tspan>
+          <tspan x="206" dy="17">every narrative, every coin that came out of one. Nothing lives anywhere else.</tspan>
+        </text>
+
+        <!-- read arrow -->
+        <path d="M500,408 V462" fill="none" stroke="#5A5A62" stroke-width="1.4" marker-end="url(#mch-ar2)"/>
+        <text x="512" y="440" font-family="JetBrains Mono, monospace" font-size="10"
+              letter-spacing="1.3" fill="#5A5A62">READ ONLY</text>
+
+        <!-- ── 6 APP ── -->
+        <rect x="300" y="470" width="400" height="86" rx="10" fill="#0C0C0E" stroke="#212127"/>
+        <circle cx="321" cy="496" r="11" fill="#131316" stroke="#2E2E36"/>
+        <text x="321" y="500" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#3DE0FF">6</text>
+        <text x="340" y="501" font-family="Clash Display, sans-serif" font-size="14.5" font-weight="600"
+              letter-spacing="0.5" fill="#F4F5F7">THE APP</text>
+        <text x="316" y="526" font-family="General Sans, sans-serif" font-size="11" fill="#8A8A93">
+          <tspan x="316" dy="0">The feed, the narrative page, the buy button. Reads narratives</tspan>
+          <tspan x="316" dy="17">out of the Library. The only part a human ever touches.</tspan>
+        </text>
+      </svg>
+    </div>
+    <p class="cap">Work moves left to right along the top, and everything drains down into one
+    database. The App sits underneath and only reads. If a job dies overnight, the Library still
+    has everything it wrote before it died, and the App carries on serving it.</p>
+  </div>
+
+  <h3>1 · The Collector</h3>
+  <p>Runs every couple of minutes. It asks a data reseller — a company that already has a firehose
+  of social posts and sells access to it — for posts that are getting a lot of attention right now.
+  It cannot look at everything: hundreds of millions of posts are made every day, and paying to read
+  all of them would cost more than the company is worth. So it filters hard before anything else
+  happens, and only a small shortlist survives to the next step.</p>
+
+  <h3>2 · The Measurer — the part that is easy to skip and impossible to replace</h3>
+  <p>The Measurer takes every post the Collector shortlisted and looks at it again a few minutes
+  later. And again. And again, for the first several hours of its life. Each time, it writes down
+  one thing: how many views the post has, and the exact minute it checked.</p>
+
+  <p>This sounds trivial and it is the whole product. Here is why. A single view count tells you
+  almost nothing. Five hundred thousand views could mean the post exploded in ten minutes — in
+  which case it is happening right now and you want in — or that it crawled to the same number over
+  two days, in which case it is finished and everyone who cared already saw it. The number on the
+  post is identical in both cases. Only by measuring the <em>same post twice</em> can you tell the
+  difference.</p>
+
+  <div class="mock" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="mch-mock">
+      <div class="mch-mocktitle">Two posts, <b>the same 500,000 views</b>, opposite meanings</div>
+      <svg viewBox="0 0 1000 410" xmlns="http://www.w3.org/2000/svg" role="img"
+           aria-label="Two line charts. Post A reaches 500,000 views in ten minutes; Post B reaches the same 500,000 views over two days.">
+
+        <!-- panel titles -->
+        <text x="70" y="30" font-family="Clash Display, sans-serif" font-size="14" font-weight="600" fill="#F4F5F7">POST A</text>
+        <text x="132" y="30" font-family="General Sans, sans-serif" font-size="13" fill="#8A8A93">— 500,000 views in ten minutes</text>
+        <text x="540" y="30" font-family="Clash Display, sans-serif" font-size="14" font-weight="600" fill="#F4F5F7">POST B</text>
+        <text x="602" y="30" font-family="General Sans, sans-serif" font-size="13" fill="#8A8A93">— 500,000 views over two days</text>
+
+        <!-- gridlines A -->
+        <line x1="70" y1="300" x2="460" y2="300" stroke="#2E2E36"/>
+        <line x1="70" y1="204" x2="460" y2="204" stroke="#212127" stroke-dasharray="2 4"/>
+        <line x1="70" y1="70"  x2="460" y2="70"  stroke="#212127" stroke-dasharray="2 4"/>
+        <!-- gridlines B -->
+        <line x1="540" y1="300" x2="930" y2="300" stroke="#2E2E36"/>
+        <line x1="540" y1="204" x2="930" y2="204" stroke="#212127" stroke-dasharray="2 4"/>
+        <line x1="540" y1="70"  x2="930" y2="70"  stroke="#212127" stroke-dasharray="2 4"/>
+
+        <!-- shared 500K line -->
+        <line x1="70" y1="108" x2="930" y2="108" stroke="#FFB84D" stroke-opacity="0.55" stroke-dasharray="5 5"/>
+        <rect x="437" y="97" width="126" height="16" fill="#0C0C0E"/>
+        <text x="500" y="109" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10"
+              letter-spacing="1.2" fill="#FFB84D" fill-opacity="0.95">500,000 VIEWS</text>
+
+        <!-- y labels -->
+        <text x="60" y="304" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">0</text>
+        <text x="60" y="208" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">250K</text>
+        <text x="60" y="74"  text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">600K</text>
+        <text x="530" y="304" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">0</text>
+        <text x="530" y="208" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">250K</text>
+        <text x="530" y="74"  text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">600K</text>
+
+        <!-- curve A -->
+        <polyline fill="none" stroke="#9BF03C" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"
+          points="70,300 89.5,294 109,285 128.5,273 148,258 167.5,235 187,204 206.5,175 226,147 245.5,126 265,108 304,98 343,91 401.5,87 460,83"/>
+        <!-- curve B -->
+        <polyline fill="none" stroke="#8A8A93" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"
+          points="540,300 572.5,283 605,264 637.5,242 670,221 702.5,201 735,181 767.5,164 800,149 832.5,135 865,124 897.5,115 930,108"/>
+
+        <!-- readings A -->
+        <circle cx="148" cy="258" r="4.5" fill="#060607" stroke="#9BF03C" stroke-width="2"/>
+        <circle cx="245.5" cy="126" r="4.5" fill="#060607" stroke="#9BF03C" stroke-width="2"/>
+        <line x1="148" y1="258" x2="245.5" y2="126" stroke="#9BF03C" stroke-opacity="0.35" stroke-dasharray="3 3"/>
+        <text x="256" y="150" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#9BF03C">+345,000</text>
+        <text x="256" y="164" font-family="JetBrains Mono, monospace" font-size="9.5" letter-spacing="1"
+              fill="#5A5A62">IN FIVE MINUTES</text>
+        <text x="162" y="286" font-family="JetBrains Mono, monospace" font-size="9.5" letter-spacing="1" fill="#5A5A62">READING 1</text>
+        <text x="234" y="131" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="9.5" letter-spacing="1" fill="#5A5A62">READING 2</text>
+
+        <!-- readings B -->
+        <circle cx="735" cy="181" r="4.5" fill="#060607" stroke="#8A8A93" stroke-width="2"/>
+        <circle cx="738" cy="180" r="4.5" fill="#060607" stroke="#8A8A93" stroke-width="2"/>
+        <text x="752" y="176" font-family="JetBrains Mono, monospace" font-size="10.5" fill="#8A8A93">+600</text>
+        <text x="752" y="190" font-family="JetBrains Mono, monospace" font-size="9.5" letter-spacing="1"
+              fill="#5A5A62">IN FIVE MINUTES</text>
+        <text x="552" y="146" font-family="JetBrains Mono, monospace" font-size="9.5" letter-spacing="1" fill="#5A5A62">
+          <tspan x="552" dy="0">TWO READINGS,</tspan>
+          <tspan x="552" dy="14">FIVE MINUTES APART —</tspan>
+          <tspan x="552" dy="14">ALMOST THE SAME PLACE</tspan>
+        </text>
+
+        <!-- x labels -->
+        <text x="70"  y="320" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">0</text>
+        <text x="167.5" y="320" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">5 min</text>
+        <text x="265" y="320" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">10 min</text>
+        <text x="362.5" y="320" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">15 min</text>
+        <text x="460" y="320" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">20 min</text>
+        <text x="540" y="320" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">0</text>
+        <text x="637.5" y="320" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">12 h</text>
+        <text x="735" y="320" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">24 h</text>
+        <text x="832.5" y="320" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">36 h</text>
+        <text x="930" y="320" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">48 h</text>
+        <text x="265" y="338" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="1.2" fill="#5A5A62">TIME SINCE POSTED</text>
+        <text x="735" y="338" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="1.2" fill="#5A5A62">TIME SINCE POSTED</text>
+
+        <!-- verdict strips -->
+        <rect x="70" y="356" width="390" height="40" rx="8" fill="#0C0C0E" stroke="#2E2E36"/>
+        <rect x="70" y="356" width="3" height="40" fill="#9BF03C"/>
+        <text x="88" y="381" font-family="General Sans, sans-serif" font-size="13" fill="#F4F5F7">Still climbing.
+          <tspan fill="#8A8A93">Happening right now — this is the one.</tspan></text>
+        <rect x="540" y="356" width="390" height="40" rx="8" fill="#0C0C0E" stroke="#212127"/>
+        <rect x="540" y="356" width="3" height="40" fill="#5A5A62"/>
+        <text x="558" y="381" font-family="General Sans, sans-serif" font-size="13" fill="#F4F5F7">Already over.
+          <tspan fill="#8A8A93">Everyone who cared has seen it.</tspan></text>
+      </svg>
+    </div>
+    <p class="cap">Both posts hit exactly 500,000. A tool that reads the number once cannot tell
+    them apart. The difference only exists in the gap between two readings — and that gap is what
+    the Measurer is manufacturing, five minutes at a time.</p>
+  </div>
+
+  <div class="mch-shout">
+    <div class="mch-lb">Why this is urgent</div>
+    <p>This history cannot be bought later. Nobody sells "what did this post look like twenty
+    minutes ago."</p>
+    <p>You can buy today's view count from a dozen places. You cannot buy the shape of how it got
+    there, because nobody was writing it down. If we are not recording it as it happens, it is gone
+    forever — and every day we run, the record gets longer and a competitor starting tomorrow starts
+    with none of it.</p>
+  </div>
+
+  <h3>3 · The Judge</h3>
+  <p>Claude reads the posts that are climbing fastest and answers one question: could someone
+  realistically make a memecoin out of this? Most viral posts are useless to us. Politics, sport,
+  a plane crash, a news bulletin — huge numbers, nothing to name a coin after. What works is one
+  absurd thing that has a name: a frog called Gerald, a plastic plant, a ferry horn. When the
+  answer is yes, the Judge also proposes a coin name and a ticker. Understanding humour is exactly
+  the sort of thing a language model is for, and exactly the sort of thing a rule you write by hand
+  will never do.</p>
+
+  <h3>4 · The Grouper</h3>
+  <p>One person posting a video of a Norwegian ferry captain is luck. Twenty people independently
+  posting about the same captain, on two different platforms, within an hour, is a meme actually
+  forming. The Grouper spots that ten separate posts are about the same thing and bundles them into
+  one <strong>narrative</strong> — which is the unit the whole app is built around. Without it the
+  feed is ten near-identical rows about a ferry. With it, there is one story with ten pieces of
+  evidence behind it.</p>
+
+  <h3>5 · The Library, and 6 · The App</h3>
+  <p>The Library is one database. Everything the four jobs learn goes in there and nowhere else,
+  which means there is never a question of which copy is right. The App reads narratives out of it
+  and puts them on screen. That is the only direction data moves: the App never reaches out to a
+  social network or an AI itself, so a slow reseller or a failed AI call can never make the page
+  hang.</p>
+
+  <h3>Where all of this lives</h3>
+  <p>The first four are not something anyone runs. They are scheduled jobs on a server: they fire
+  on a timetable, whether or not our laptops are open, whether or not anyone is using the app.
+  Nobody presses anything. If one fails it retries on its next turn, and the Library keeps whatever
+  it already wrote.</p>
+
+  <table class="mch-tbl">
+    <thead>
+      <tr><th>Part</th><th>How often it runs</th><th>What it leaves behind in the Library</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="mch-c1">The Collector</td><td class="mch-cad">every 2 minutes</td>
+          <td>New candidate posts — who posted, when, on which platform, first view count.</td></tr>
+      <tr><td class="mch-c1">The Measurer</td><td class="mch-cad">every 2 minutes, first 6 hours</td>
+          <td>One dated reading per post per check. The only part of the record that can never be recovered later.</td></tr>
+      <tr><td class="mch-c1">The Judge</td><td class="mch-cad">every 5 minutes</td>
+          <td>For the fastest movers: a plain-English two-liner, a suggested coin name and ticker.</td></tr>
+      <tr><td class="mch-c1">The Grouper</td><td class="mch-cad">every 5 minutes</td>
+          <td>Narratives — which posts belong to the same story, and which coins came out of it.</td></tr>
+      <tr><td class="mch-c1">The App</td><td class="mch-cad">on demand, when someone opens it</td>
+          <td>Nothing, except what users themselves add: comments, watchlists, coins they created.</td></tr>
+    </tbody>
+  </table>
+  <p class="cap">Two-minute checks are the floor, not the ceiling of ambition — a post that goes
+  from 41,000 to 118,000 views between two checks is invisible to anyone sampling once an hour.
+  The cost of running all of this is roughly £5 a day, with a hard cap that pauses collection
+  rather than quietly running up a bill.</p>
+</section>

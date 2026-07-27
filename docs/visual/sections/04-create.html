@@ -1,0 +1,585 @@
+<meta charset="utf-8">
+<!--standalone-->
+<style>
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+html,body{margin:0;padding:0;background:#060607;}
+body{color:#F4F5F7;font-family:"General Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+     font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased;}
+.sec{padding:56px 50px;max-width:1200px;margin:0 auto;}
+h2{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:36px;font-weight:600;
+   letter-spacing:-.02em;margin:0 0 18px;padding-bottom:16px;border-bottom:1px solid #212127;}
+h3{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:20px;font-weight:600;margin:38px 0 12px;}
+h4{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:11px;font-weight:500;
+   letter-spacing:.14em;text-transform:uppercase;color:#5A5A62;margin:30px 0 10px;}
+p{margin:0 0 15px;max-width:96ch;}
+.lede{font-size:18.5px;line-height:1.55;color:#8A8A93;max-width:82ch;margin-bottom:26px;}
+.cap{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#5A5A62;
+     margin:12px 0 34px;padding-left:14px;border-left:2px solid #2E2E36;max-width:92ch;}
+strong{font-weight:600;color:#F4F5F7;}
+code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.9em;background:#131316;
+     color:#3DE0FF;padding:1px 5px;border-radius:4px;}
+a{color:#3DE0FF;text-decoration:none;}
+ul,ol{margin:0 0 16px;padding-left:22px;max-width:94ch;} li{margin-bottom:7px;}
+svg{max-width:100%;height:auto;}
+</style>
+<!--/standalone-->
+
+<style>
+.cr4{
+  --bg0:#060607; --bg1:#0C0C0E; --bg2:#131316; --bg3:#1A1A1E; --bg4:#222228;
+  --line:#212127; --line2:#2E2E36; --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62;
+  --ion:#3DE0FF; --lime:#9BF03C; --red:#FF5C6E; --amber:#FFB84D;
+  background:var(--bg0); border:1px solid var(--line); border-radius:14px;
+  padding:24px; margin:22px 0 8px; color:var(--ink);
+  font-family:"General Sans",-apple-system,system-ui,sans-serif;
+  font-size:13px; line-height:1.45;
+}
+.cr4 *{box-sizing:border-box;}
+.cr4-mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
+.cr4-lab{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:9px;text-transform:uppercase;
+  letter-spacing:.1em;color:var(--dim);}
+.cr4-disp{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-weight:600;}
+
+.cr4-row{display:flex;gap:24px;align-items:flex-start;}
+.cr4-sheet{width:430px;flex:0 0 430px;background:var(--bg1);border:1px solid var(--line2);
+  border-radius:14px;overflow:hidden;}
+.cr4-grab{height:3px;width:34px;border-radius:2px;background:var(--bg4);margin:9px auto 0;}
+.cr4-shead{display:flex;align-items:center;justify-content:space-between;padding:11px 16px 12px;
+  border-bottom:1px solid var(--line);}
+.cr4-shead .cr4-t{font-size:14px;font-weight:600;}
+.cr4-x{color:var(--dim);font-size:13px;}
+.cr4-sbody{padding:14px 16px 16px;}
+.cr4-blk{margin-bottom:14px;}
+.cr4-blk:last-child{margin-bottom:0;}
+
+/* the locked story strip */
+.cr4-story{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:11px;display:flex;gap:11px;}
+.cr4-th{width:52px;height:52px;flex:0 0 52px;border-radius:7px;
+  background:linear-gradient(150deg,#0E3348 0%,#2A6E86 44%,#08161E 100%);}
+.cr4-two{font-size:12.5px;line-height:1.4;color:var(--ink);}
+.cr4-meta{display:flex;gap:9px;align-items:center;margin-top:6px;flex-wrap:wrap;}
+.cr4-meta span{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:10px;color:var(--dim);}
+.cr4-dotsep{color:var(--line2)!important;}
+.cr4-nocoin{border:1px solid rgba(61,224,255,.4);color:var(--ion)!important;border-radius:4px;padding:1px 6px;font-size:9px!important;
+  text-transform:uppercase;letter-spacing:.09em;}
+
+/* form fields */
+.cr4-fl{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;}
+.cr4-in{background:var(--bg2);border:1px solid var(--line2);border-radius:8px;padding:9px 11px;
+  display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.cr4-in .cr4-val{font-size:13.5px;color:var(--ink);}
+.cr4-in .cr4-val.cr4-tick{font-family:"JetBrains Mono",ui-monospace,monospace;letter-spacing:.02em;}
+.cr4-edit{font-size:10.5px;color:var(--ion);}
+.cr4-ok{display:flex;align-items:center;gap:5px;font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:10px;color:var(--lime);}
+.cr4-tick-ok{width:13px;height:13px;border-radius:50%;border:1px solid rgba(155,240,60,.55);
+  background:rgba(155,240,60,.1);display:inline-flex;align-items:center;justify-content:center;font-size:8px;line-height:1;}
+.cr4-hint{font-size:10.5px;color:var(--dim);margin-top:5px;line-height:1.4;}
+
+/* image picker */
+.cr4-imgrow{display:flex;gap:10px;align-items:center;}
+.cr4-big{width:74px;height:74px;flex:0 0 74px;border-radius:9px;border:1px solid var(--line2);
+  background:linear-gradient(150deg,#0E3348 0%,#2A6E86 44%,#08161E 100%);position:relative;overflow:hidden;}
+.cr4-big .cr4-frame{position:absolute;left:6px;right:6px;bottom:6px;height:16px;border-radius:4px;
+  background:rgba(6,6,7,.55);display:flex;align-items:center;justify-content:center;
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8px;color:#CFE9F2;letter-spacing:.08em;}
+.cr4-alts{display:flex;gap:7px;}
+.cr4-alt{width:40px;height:40px;border-radius:7px;border:1px solid var(--line);}
+.cr4-alt.a1{background:linear-gradient(150deg,#123A2A,#2C7A54 50%,#08180F);}
+.cr4-alt.a2{background:linear-gradient(150deg,#301F3E,#6A3E86 50%,#150E1C);}
+.cr4-alt.a3{background:linear-gradient(150deg,#3A2A12,#8A6320 50%,#1A1206);}
+.cr4-alt.up{background:var(--bg2);display:flex;align-items:center;justify-content:center;
+  color:var(--dim);font-size:15px;border-style:dashed;border-color:var(--line2);}
+
+/* alternative tickers */
+.cr4-chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;}
+.cr4-chip{background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:5px 9px;
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;color:var(--muted);}
+.cr4-chip.on{border-color:rgba(61,224,255,.5);color:var(--ion);background:rgba(61,224,255,.07);}
+.cr4-chip.taken{color:var(--dim);text-decoration:line-through;}
+
+/* first buy */
+.cr4-buyhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;}
+.cr4-toggle{width:34px;height:19px;border-radius:10px;background:rgba(61,224,255,.22);
+  border:1px solid rgba(61,224,255,.5);position:relative;}
+.cr4-toggle i{position:absolute;right:2px;top:2px;width:13px;height:13px;border-radius:50%;background:var(--ion);}
+.cr4-amounts{display:flex;gap:7px;}
+.cr4-amt{flex:1;text-align:center;border:1px solid var(--line2);border-radius:7px;padding:7px 0;
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;color:var(--muted);}
+.cr4-amt.on{border-color:var(--ion);color:var(--ion);background:rgba(61,224,255,.07);}
+
+/* cost table */
+.cr4-cost{border:1px solid var(--line2);border-radius:9px;background:var(--bg2);padding:11px 12px;}
+.cr4-cr{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;font-size:11px;}
+.cr4-cr span:first-child{color:var(--muted);}
+.cr4-cr span:last-child{color:var(--ink);}
+.cr4-cr.free span:last-child{color:var(--lime);}
+.cr4-tot{border-top:1px solid var(--line2);margin-top:6px;padding-top:8px;display:flex;
+  justify-content:space-between;align-items:baseline;}
+.cr4-tot .cr4-l{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--dim);}
+.cr4-tot .cr4-v{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:16px;color:var(--ink);}
+.cr4-tot .cr4-sub{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;color:var(--dim);
+  display:block;text-align:right;margin-top:2px;}
+
+/* earn strip */
+.cr4-earn{border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--bg2);}
+.cr4-er{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:11.5px;}
+.cr4-er span:first-child{color:var(--muted);}
+.cr4-er span:last-child{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--ink);}
+.cr4-er.you span:last-child{color:var(--lime);}
+
+/* cta */
+.cr4-cta{margin-top:14px;border-radius:9px;background:var(--ion);color:#04171D;text-align:center;
+  padding:12px;font-weight:600;font-size:13.5px;}
+.cr4-safe{display:flex;gap:7px;align-items:flex-start;margin-top:10px;color:var(--dim);font-size:10.5px;line-height:1.45;}
+.cr4-lock{width:14px;height:14px;flex:0 0 14px;border-radius:4px;border:1px solid var(--line2);
+  display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--muted);}
+
+/* annotation column */
+.cr4-notes{flex:1;min-width:0;padding-top:4px;}
+.cr4-note{border-left:2px solid var(--line2);padding:0 0 0 13px;margin-bottom:16px;}
+.cr4-note h5{margin:0 0 4px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9.5px;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--ion);font-weight:500;}
+.cr4-note p{margin:0;color:var(--muted);font-size:12px;line-height:1.5;max-width:52ch;}
+.cr4-note.g{border-left-color:rgba(155,240,60,.45);}
+.cr4-note.g h5{color:var(--lime);}
+
+/* two panels */
+.cr4-pair{display:flex;gap:24px;align-items:flex-start;}
+.cr4-panel{flex:1;min-width:0;}
+.cr4-wallet{background:var(--bg1);border:1px solid var(--line2);border-radius:14px;overflow:hidden;}
+.cr4-wtop{padding:12px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;}
+.cr4-badge{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--dim);border:1px solid var(--line2);border-radius:4px;padding:2px 6px;}
+.cr4-wbody{padding:14px 15px;}
+.cr4-txrow{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;font-size:11px;}
+.cr4-txrow span:first-child{color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
+.cr4-txrow span:last-child{color:var(--ink);text-align:right;}
+.cr4-btns{display:flex;gap:9px;margin-top:13px;}
+.cr4-btn{flex:1;text-align:center;padding:10px;border-radius:8px;font-size:12.5px;font-weight:600;}
+.cr4-btn.rej{border:1px solid var(--line2);color:var(--muted);}
+.cr4-btn.app{background:var(--ion);color:#04171D;}
+
+/* success */
+.cr4-succ{background:var(--bg1);border:1px solid var(--line2);border-radius:14px;overflow:hidden;}
+.cr4-shero{padding:16px 16px 14px;display:flex;gap:12px;align-items:center;border-bottom:1px solid var(--line);}
+.cr4-ring{width:36px;height:36px;flex:0 0 36px;border-radius:50%;border:1px solid rgba(155,240,60,.5);
+  background:rgba(155,240,60,.09);color:var(--lime);display:flex;align-items:center;justify-content:center;font-size:15px;}
+.cr4-live{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--lime);}
+.cr4-stats{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line);}
+.cr4-stat{padding:11px 12px;border-right:1px solid var(--line);}
+.cr4-stat:last-child{border-right:0;}
+.cr4-stat .v{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:14px;color:var(--ink);margin-top:3px;}
+.cr4-ca{margin:14px 16px 0;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;}
+.cr4-ca .addr{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;color:var(--ink);
+  word-break:break-all;line-height:1.5;margin-top:4px;}
+.cr4-links{display:flex;gap:8px;margin:11px 16px 0;flex-wrap:wrap;}
+.cr4-link{border:1px solid var(--line2);border-radius:7px;padding:7px 11px;font-size:11px;color:var(--ink);}
+.cr4-link.pri{border-color:rgba(61,224,255,.5);color:var(--ion);background:rgba(61,224,255,.07);}
+.cr4-later{margin:14px 16px 16px;border:1px solid var(--line);border-radius:9px;background:var(--bg2);padding:11px 12px;}
+.cr4-lrow{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:11.5px;}
+.cr4-lrow span:first-child{color:var(--muted);}
+.cr4-lrow span:last-child{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--ink);}
+.cr4-lrow.up span:last-child{color:var(--lime);}
+
+/* ticker states strip */
+.cr4-states{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+.cr4-scard{background:var(--bg1);border:1px solid var(--line);border-radius:10px;padding:12px;}
+.cr4-sin{background:var(--bg2);border:1px solid var(--line2);border-radius:7px;padding:8px 10px;
+  display:flex;justify-content:space-between;align-items:center;margin:8px 0 8px;}
+.cr4-sin.warn{border-color:rgba(255,184,77,.45);}
+.cr4-sin .cr4-val{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12.5px;}
+.cr4-msg{font-size:11px;color:var(--muted);line-height:1.45;}
+.cr4-msg b{font-weight:500;}
+.cr4-msg b.amb{color:var(--amber);}
+.cr4-msg b.lim{color:var(--lime);}
+.cr4-msg b.ion{color:var(--ion);}
+.cr4-shim{height:9px;width:120px;border-radius:3px;background:linear-gradient(90deg,#16161A,#26262E 45%,#16161A);}
+
+.cr4-table{width:100%;border-collapse:collapse;font-size:13px;margin:18px 0 8px;}
+.cr4-table th{text-align:left;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9.5px;
+  letter-spacing:.11em;text-transform:uppercase;color:#5A5A62;font-weight:500;padding:8px 12px;
+  border-bottom:1px solid #2E2E36;}
+.cr4-table td{padding:9px 12px;border-bottom:1px solid #212127;color:#8A8A93;vertical-align:top;}
+.cr4-table td:first-child{color:#F4F5F7;}
+</style>
+
+<section class="sec">
+  <h2>04. Create a coin</h2>
+
+  <p class="lede">Every other tool shows a coin after it exists. We show the story before it exists — so
+  we can offer something nobody else can: the user makes the coin themselves, from the story, in a few
+  taps, and is first in.</p>
+
+  <p>This is the single biggest thing that separates Insidor from Axiom, Photon or GMGN. Those tools are
+  fed by money moving. A coin has to already be trading before it can appear on them, which means every
+  user of those tools arrives after somebody else got there. We are fed by the internet instead, so we
+  see the ferry captain, the plastic plant, the town paying people to move — while the coin is still an
+  idea. At that moment the user has two doors. If a coin exists, they buy it (section 03). If none does,
+  they open this sheet.</p>
+
+  <p>The example here is <strong>"Paid to Move to Norway"</strong> — a Norwegian town is paying people
+  €25,000 to move there. 1.1M views, an hour old, and nobody has made a coin out of it yet.</p>
+
+  <h3>Where the pre-filled name comes from</h3>
+
+  <p>The user does not sit and think of a name. The work was already done, about an hour earlier, by a
+  part of the system they never see. When our AI reader looked at this post it was answering one
+  question — could someone realistically make a memecoin out of this? — and part of answering it is
+  proposing what the coin would be called. That suggestion was written down at the time and stored
+  with the story. By the time somebody taps <em>Create</em>, the name, the ticker and the image have
+  been sitting there ready for an hour.</p>
+
+  <div class="cr4" style="break-inside:avoid;page-break-inside:avoid">
+    <svg viewBox="0 0 1010 132" width="1010" height="132" style="width:100%;height:auto;display:block"
+         xmlns="http://www.w3.org/2000/svg" role="img"
+         aria-label="Timeline from post to pre-filled create sheet">
+      <defs>
+        <marker id="cr4arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <path d="M0,0 L7,3.5 L0,7 z" fill="#2E2E36"/>
+        </marker>
+      </defs>
+      <line x1="34" y1="46" x2="976" y2="46" stroke="#212127" stroke-width="1"/>
+      <g font-family="JetBrains Mono, monospace" font-size="10" fill="#5A5A62">
+        <g>
+          <circle cx="60" cy="46" r="4" fill="#2E2E36"/>
+          <text x="60" y="30" text-anchor="middle">13:18</text>
+          <text x="60" y="70" text-anchor="middle" fill="#8A8A93">posted</text>
+          <text x="60" y="86" text-anchor="middle" font-size="9">on X</text>
+        </g>
+        <g>
+          <circle cx="248" cy="46" r="4" fill="#3DE0FF"/>
+          <text x="248" y="30" text-anchor="middle">13:21</text>
+          <text x="248" y="70" text-anchor="middle" fill="#8A8A93">collector finds it</text>
+          <text x="248" y="86" text-anchor="middle" font-size="9">62K views</text>
+        </g>
+        <g>
+          <circle cx="436" cy="46" r="4" fill="#3DE0FF"/>
+          <text x="436" y="30" text-anchor="middle">13:23</text>
+          <text x="436" y="70" text-anchor="middle" fill="#8A8A93">measured again</text>
+          <text x="436" y="86" text-anchor="middle" font-size="9">171K views</text>
+        </g>
+        <g>
+          <circle cx="636" cy="46" r="4" fill="#9BF03C"/>
+          <text x="636" y="30" text-anchor="middle">13:24</text>
+          <text x="636" y="70" text-anchor="middle" fill="#9BF03C">AI reads it and</text>
+          <text x="636" y="86" text-anchor="middle" fill="#9BF03C" font-size="9">suggests a name + ticker</text>
+        </g>
+        <g>
+          <circle cx="828" cy="46" r="4" fill="#2E2E36"/>
+          <text x="828" y="30" text-anchor="middle">13:25</text>
+          <text x="828" y="70" text-anchor="middle" fill="#8A8A93">appears in Insidor</text>
+          <text x="828" y="86" text-anchor="middle" font-size="9">no coin exists</text>
+        </g>
+        <g>
+          <circle cx="952" cy="46" r="4" fill="#F4F5F7"/>
+          <text x="952" y="30" text-anchor="middle" fill="#F4F5F7">14:22</text>
+          <text x="952" y="70" text-anchor="middle" fill="#F4F5F7">user taps Create</text>
+          <text x="952" y="86" text-anchor="middle" font-size="9">fields already filled</text>
+        </g>
+      </g>
+      <line x1="646" y1="106" x2="940" y2="106" stroke="#2E2E36" stroke-width="1"
+            stroke-dasharray="3 3" marker-end="url(#cr4arrow)"/>
+      <text x="793" y="102" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9"
+            fill="#5A5A62" letter-spacing="1">58 MINUTES OF PREPARATION THE USER NEVER SEES</text>
+    </svg>
+  </div>
+  <p class="cap">The whole left half of this line happens without anybody asking for it. Naming is a
+  by-product of judging, so it costs nothing extra and it is finished long before a human arrives.</p>
+
+  <h3>The create sheet</h3>
+
+  <p>One screen. The story sits at the top so the user can see what they are minting. Everything below
+  it is pre-filled and everything is editable. Nothing here is a decision the user has to research —
+  it is a decision they either accept or nudge.</p>
+
+  <div class="cr4" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="cr4-row">
+      <div class="cr4-sheet">
+        <div class="cr4-grab"></div>
+        <div class="cr4-shead">
+          <span class="cr4-t">Create the coin</span>
+          <span class="cr4-x">&#215;</span>
+        </div>
+        <div class="cr4-sbody">
+
+          <div class="cr4-blk">
+            <div class="cr4-story">
+              <div class="cr4-th"></div>
+              <div>
+                <div class="cr4-two">A Norwegian town is paying people €25,000 to move there.</div>
+                <div class="cr4-meta">
+                  <span>1.1M views</span><span class="cr4-dotsep">·</span>
+                  <span>1h old</span><span class="cr4-dotsep">·</span>
+                  <span>@nordic_notes</span><span class="cr4-dotsep">·</span>
+                  <span class="cr4-nocoin">no coin yet</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cr4-blk">
+            <div class="cr4-fl"><span class="cr4-lab">Name</span><span class="cr4-edit">Edit</span></div>
+            <div class="cr4-in"><span class="cr4-val">Paid To Move To Norway</span></div>
+          </div>
+
+          <div class="cr4-blk">
+            <div class="cr4-fl"><span class="cr4-lab">Ticker</span><span class="cr4-edit">Edit</span></div>
+            <div class="cr4-in">
+              <span class="cr4-val cr4-tick">$NORWAY</span>
+              <span class="cr4-ok"><i class="cr4-tick-ok"><svg viewBox="0 0 12 12" width="8" height="8" aria-hidden="true"><path d="M2.4 6.3 4.7 8.6 9.6 3.7" fill="none" stroke="#9BF03C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></i>AVAILABLE</span>
+            </div>
+            <div class="cr4-chips">
+              <span class="cr4-chip on">$NORWAY</span>
+              <span class="cr4-chip">$MOVE</span>
+              <span class="cr4-chip">$FJORD</span>
+              <span class="cr4-chip taken">$25K</span>
+            </div>
+            <div class="cr4-hint">We checked pump.fun. $25K is already in use.</div>
+          </div>
+
+          <div class="cr4-blk">
+            <div class="cr4-fl"><span class="cr4-lab">Image</span><span class="cr4-edit">Change</span></div>
+            <div class="cr4-imgrow">
+              <div class="cr4-big"><div class="cr4-frame">FROM THE POST</div></div>
+              <div class="cr4-alts">
+                <div class="cr4-alt a1"></div>
+                <div class="cr4-alt a2"></div>
+                <div class="cr4-alt a3"></div>
+                <div class="cr4-alt up">+</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cr4-blk">
+            <div class="cr4-buyhead">
+              <span class="cr4-lab">Buy some yourself first — optional</span>
+              <span class="cr4-toggle"><i></i></span>
+            </div>
+            <div class="cr4-amounts">
+              <span class="cr4-amt">0.25</span>
+              <span class="cr4-amt">0.5</span>
+              <span class="cr4-amt on">1 SOL</span>
+              <span class="cr4-amt">2</span>
+              <span class="cr4-amt">Custom</span>
+            </div>
+            <div class="cr4-hint">Buys 34.61M tokens — 3.2% of supply — at the starting price.</div>
+          </div>
+
+          <div class="cr4-blk">
+            <div class="cr4-cost">
+              <div class="cr4-cr"><span>Your first buy</span><span>1.0000 SOL</span></div>
+              <div class="cr4-cr"><span>pump.fun launch</span><span>0.0200 SOL</span></div>
+              <div class="cr4-cr"><span>Solana network fee</span><span>0.0002 SOL</span></div>
+              <div class="cr4-cr free"><span>Insidor charge</span><span>NONE</span></div>
+              <div class="cr4-tot">
+                <span class="cr4-l">Total from your wallet</span>
+                <span>
+                  <span class="cr4-v">1.0202 SOL</span>
+                  <span class="cr4-sub">≈ £155 · you hold 3.4118 SOL</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cr4-blk">
+            <div class="cr4-earn">
+              <div class="cr4-lab" style="margin-bottom:5px">Afterwards, on every trade of this coin</div>
+              <div class="cr4-er you"><span>You, as the creator</span><span>0.05%</span></div>
+              <div class="cr4-er"><span>Insidor</span><span>0.02%</span></div>
+            </div>
+          </div>
+
+          <div class="cr4-cta">Review in wallet</div>
+          <div class="cr4-safe">
+            <span class="cr4-lock"><svg viewBox="0 0 12 12" width="9" height="9" aria-hidden="true"><path d="M3.4 5.2V3.9a2.6 2.6 0 0 1 5.2 0v1.3" fill="none" stroke="#8A8A93" stroke-width="1.1"/><rect x="2.3" y="5.2" width="7.4" height="5.4" rx="1.2" fill="none" stroke="#8A8A93" stroke-width="1.1"/></svg></span>
+            <span>Insidor never holds your money or your keys. We prepare the transaction; you approve
+            it in your own wallet on the next screen.</span>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="cr4-notes">
+        <div class="cr4-note">
+          <h5>The story is locked to the top</h5>
+          <p>So it is always obvious what this coin is <em>of</em>. The two-line summary is the same
+          sentence the user read in the feed — no re-writing, no surprises.</p>
+        </div>
+        <div class="cr4-note">
+          <h5>Name and ticker arrive filled in</h5>
+          <p>Written an hour ago when the AI judged the post. Tapping <em>Edit</em> replaces them with
+          anything the user prefers; the alternatives are one tap away.</p>
+        </div>
+        <div class="cr4-note">
+          <h5>Availability is a live check, not a guess</h5>
+          <p>We ask pump.fun whether the ticker is taken before the user commits. $25K is struck
+          through because somebody already used it.</p>
+        </div>
+        <div class="cr4-note">
+          <h5>The image is a still from the post</h5>
+          <p>Three alternate frames plus an upload slot. Most users will accept the first one, which is
+          the point.</p>
+        </div>
+        <div class="cr4-note">
+          <h5>The first buy is optional and honest</h5>
+          <p>It says exactly what 1 SOL gets you and what share of the coin that is. Turning the toggle
+          off drops the total to 0.0202 SOL.</p>
+        </div>
+        <div class="cr4-note g">
+          <h5>One number, in pounds</h5>
+          <p>Crypto interfaces habitually show a total the user has to convert in their head. We show
+          SOL and sterling, and we say plainly that we charge nothing at this step.</p>
+        </div>
+        <div class="cr4-note g">
+          <h5>How we actually get paid</h5>
+          <p>A cut of trades afterwards, smaller than the creator's. Stated on the screen where it
+          applies rather than buried in terms.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">Nothing on this sheet is a number we invented about the story. Views, age, who posted
+  it, the cost, the fee split, the share of supply — all facts the user could verify elsewhere. The
+  judgement that put this story in front of them stays behind the curtain.</p>
+
+  <h3>When the ticker is not available</h3>
+
+  <p>Tickers are first-come. Checking after the user has signed something would be a bad experience, so
+  the check runs while they are still looking at the field.</p>
+
+  <div class="cr4" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="cr4-states">
+      <div class="cr4-scard">
+        <span class="cr4-lab">While we check</span>
+        <div class="cr4-sin">
+          <span class="cr4-val">$NORWAY</span>
+          <span class="cr4-shim"></span>
+        </div>
+        <p class="cr4-msg">Half a second, usually. The <b class="ion">Review in wallet</b> button waits
+        rather than letting the user run ahead.</p>
+      </div>
+      <div class="cr4-scard">
+        <span class="cr4-lab">Free</span>
+        <div class="cr4-sin">
+          <span class="cr4-val">$NORWAY</span>
+          <span class="cr4-ok"><i class="cr4-tick-ok"><svg viewBox="0 0 12 12" width="8" height="8" aria-hidden="true"><path d="M2.4 6.3 4.7 8.6 9.6 3.7" fill="none" stroke="#9BF03C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></i>AVAILABLE</span>
+        </div>
+        <p class="cr4-msg">Nothing further to do. <b class="lim">Carry on.</b></p>
+      </div>
+      <div class="cr4-scard">
+        <span class="cr4-lab">Already used</span>
+        <div class="cr4-sin warn">
+          <span class="cr4-val">$25K</span>
+          <span class="cr4-mono" style="font-size:10px;color:#FFB84D">TAKEN</span>
+        </div>
+        <p class="cr4-msg"><b class="amb">$25K already exists on pump.fun.</b> Pick another, or open the
+        one that exists.</p>
+      </div>
+    </div>
+  </div>
+  <p class="cap">The taken state offers a way out, not just a refusal — if a coin with that ticker
+  already exists we can show it, and the user may decide buying it is the better move.</p>
+
+  <h3>Signing it</h3>
+
+  <p>This step is where the safety promise is kept. Insidor builds the transaction and hands it to the
+  user's wallet. The wallet — provided by Privy, so that the specialist handles the hard part — shows
+  what is about to happen and asks for approval. We never take custody of funds and we never see a
+  private key. If the user rejects it, nothing happens and nothing has been spent.</p>
+
+  <div class="cr4" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="cr4-pair">
+      <div class="cr4-panel">
+        <div class="cr4-wallet">
+          <div class="cr4-wtop">
+            <span style="font-weight:600">Approve transaction</span>
+            <span class="cr4-badge">Your wallet</span>
+          </div>
+          <div class="cr4-wbody">
+            <div class="cr4-txrow"><span>Action</span><span>Create token + buy</span></div>
+            <div class="cr4-txrow"><span>Program</span><span>pump.fun</span></div>
+            <div class="cr4-txrow"><span>Token</span><span>Paid To Move To Norway ($NORWAY)</span></div>
+            <div class="cr4-txrow"><span>You send</span><span>1.0202 SOL</span></div>
+            <div class="cr4-txrow"><span>You receive</span><span>34,612,903 $NORWAY</span></div>
+            <div class="cr4-txrow"><span>Requested by</span><span>insidor.app</span></div>
+            <div class="cr4-btns">
+              <span class="cr4-btn rej">Reject</span>
+              <span class="cr4-btn app">Approve</span>
+            </div>
+            <div class="cr4-safe" style="margin-top:11px">
+              <span class="cr4-lock"><svg viewBox="0 0 12 12" width="9" height="9" aria-hidden="true"><path d="M3.4 5.2V3.9a2.6 2.6 0 0 1 5.2 0v1.3" fill="none" stroke="#8A8A93" stroke-width="1.1"/><rect x="2.3" y="5.2" width="7.4" height="5.4" rx="1.2" fill="none" stroke="#8A8A93" stroke-width="1.1"/></svg></span>
+              <span>Signed on your device. Insidor cannot move these funds and cannot sign on your
+              behalf.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cr4-panel">
+        <div class="cr4-succ">
+          <div class="cr4-shero">
+            <span class="cr4-ring"><svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M4.5 10.4 8.4 14.3 15.6 6.4" fill="none" stroke="#9BF03C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div>
+              <div class="cr4-disp" style="font-size:17px">$NORWAY is live</div>
+              <div class="cr4-live">created 14:22:07 · you were first</div>
+            </div>
+          </div>
+          <div class="cr4-stats">
+            <div class="cr4-stat"><div class="cr4-lab">You hold</div><div class="v">3.2%</div></div>
+            <div class="cr4-stat"><div class="cr4-lab">Tokens</div><div class="v">34.61M</div></div>
+            <div class="cr4-stat"><div class="cr4-lab">Market cap</div><div class="v">$5.9K</div></div>
+            <div class="cr4-stat"><div class="cr4-lab">Holders</div><div class="v">1</div></div>
+          </div>
+          <div class="cr4-ca">
+            <span class="cr4-lab">Contract address</span>
+            <div class="addr">4mVqZ8dLp2rN6tYbH1sXeK9wQ3cAujFgS7hRnD2Bpump</div>
+          </div>
+          <div class="cr4-links">
+            <span class="cr4-link pri">Share the story</span>
+            <span class="cr4-link">View the coin</span>
+            <span class="cr4-link">pump.fun</span>
+            <span class="cr4-link">Copy address</span>
+          </div>
+          <div class="cr4-later">
+            <div class="cr4-lab" style="margin-bottom:5px">31 minutes later</div>
+            <div class="cr4-lrow"><span>Holders</span><span>214</span></div>
+            <div class="cr4-lrow up"><span>Market cap</span><span>$88.4K</span></div>
+            <div class="cr4-lrow up"><span>Your creator earnings</span><span>£6.20</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">The success state does one job beyond confirming: it hands over the shareable link.
+  The story page now lists $NORWAY, so anyone the user sends it to lands on the narrative — not on a
+  chart of a coin they have never heard of.</p>
+
+  <h3>What we build here, and what we rent</h3>
+
+  <table class="cr4-table">
+    <tr><th>Piece</th><th>Who does it</th><th>Why</th></tr>
+    <tr><td>Knowing this story has no coin yet</td><td>Insidor</td>
+        <td>The entire reason this screen can exist. Nobody else is looking before the money moves.</td></tr>
+    <tr><td>The suggested name, ticker and image</td><td>Insidor, via Claude</td>
+        <td>Produced as a by-product of judging the post an hour earlier.</td></tr>
+    <tr><td>Checking the ticker is free</td><td>pump.fun</td>
+        <td>They hold the register, so we ask them.</td></tr>
+    <tr><td>Creating the coin</td><td>pump.fun</td>
+        <td>The standard every trader already uses. Building our own launcher would win us nothing.</td></tr>
+    <tr><td>Holding the wallet and signing</td><td>Privy, on the user's device</td>
+        <td>Custody is specialist and dangerous. We stay out of it entirely.</td></tr>
+  </table>
+
+  <p class="cap">Same rule as everywhere else: we build the detection, we rent the plumbing. The only
+  irreplaceable part of this screen is knowing there was something worth minting an hour before anyone
+  else did.</p>
+</section>

@@ -1,0 +1,367 @@
+<meta charset="utf-8">
+<!--standalone-->
+<style>
+/* Typography for viewing this fragment on its own. The assembled document supplies
+   the same rules from the shell, so the build script strips this block. */
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+html,body{margin:0;padding:0;background:#060607;}
+body{color:#F4F5F7;font-family:"General Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+     font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased;}
+.sec{padding:56px 50px;max-width:1200px;margin:0 auto;}
+h2{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:36px;font-weight:600;
+   letter-spacing:-.02em;margin:0 0 18px;padding-bottom:16px;border-bottom:1px solid #212127;}
+h3{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:20px;font-weight:600;margin:38px 0 12px;}
+h4{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:11px;font-weight:500;
+   letter-spacing:.14em;text-transform:uppercase;color:#5A5A62;margin:30px 0 10px;}
+p{margin:0 0 15px;max-width:96ch;}
+.lede{font-size:18.5px;line-height:1.55;color:#8A8A93;max-width:82ch;margin-bottom:26px;}
+.cap{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#5A5A62;
+     margin:12px 0 34px;padding-left:14px;border-left:2px solid #2E2E36;max-width:92ch;}
+strong{font-weight:600;color:#F4F5F7;}
+code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.9em;background:#131316;
+     color:#3DE0FF;padding:1px 5px;border-radius:4px;}
+a{color:#3DE0FF;text-decoration:none;}
+ul,ol{margin:0 0 16px;padding-left:22px;max-width:94ch;} li{margin-bottom:7px;}
+svg{max-width:100%;height:auto;}
+</style>
+<!--/standalone-->
+
+<style>
+.br-wrap{
+  --bg0:#060607; --bg1:#0C0C0E; --bg2:#131316; --bg3:#1A1A1E; --bg4:#222228;
+  --line:#212127; --line2:#2E2E36;
+  --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62;
+  --ion:#3DE0FF; --lime:#9BF03C; --red:#FF5C6E; --amber:#FFB84D;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --body:"General Sans",-apple-system,system-ui,sans-serif;
+  --head:"Clash Display",-apple-system,system-ui,sans-serif;
+  font-family:var(--body); color:var(--ink);
+}
+.br-mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---------- the table ---------- */
+.br-tablewrap{
+  background:var(--bg1); border:1px solid var(--line); border-radius:10px;
+  overflow:hidden; margin:6px 0 0;
+}
+.br-thead{
+  display:grid; grid-template-columns:1.05fr .85fr 1.5fr; gap:0;
+  background:var(--bg2); border-bottom:1px solid var(--line2);
+}
+.br-thead div{
+  font-family:var(--body); font-size:9.5px; text-transform:uppercase; letter-spacing:.11em;
+  color:var(--dim); padding:11px 18px;
+}
+.br-row{
+  display:grid; grid-template-columns:1.05fr .85fr 1.5fr; gap:0;
+  border-bottom:1px solid var(--line); align-items:start;
+}
+.br-row:last-child{border-bottom:0}
+.br-row > div{padding:14px 18px; font-size:13.5px; line-height:1.5}
+.br-job{color:var(--ink); font-weight:500}
+.br-who{font-family:var(--mono); font-size:12.5px; color:var(--muted)}
+.br-who b{color:var(--ink); font-weight:500}
+.br-why{color:var(--muted); font-size:13px}
+.br-tag{
+  display:inline-block; font-family:var(--mono); font-size:9px; letter-spacing:.1em;
+  text-transform:uppercase; padding:2px 6px; border-radius:3px; margin-top:6px;
+  border:1px solid var(--line2); color:var(--dim);
+}
+.br-tag.amber{color:var(--amber); border-color:rgba(255,184,77,.35); background:rgba(255,184,77,.07)}
+
+.br-splitrow{
+  display:grid; grid-template-columns:1.05fr .85fr 1.5fr;
+  background:rgba(61,224,255,.05); border-top:1px solid rgba(61,224,255,.28);
+  border-bottom:1px solid var(--line);
+}
+.br-splitrow:last-child{border-bottom:0}
+.br-splitrow > div{padding:14px 18px; font-size:13.5px; line-height:1.5}
+.br-splitrow .br-job{color:var(--ion)}
+.br-splitrow .br-who b{color:var(--ion)}
+.br-banner{
+  grid-column:1 / -1; padding:9px 18px 0 !important; font-family:var(--body);
+  font-size:9.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--ion);
+  background:transparent;
+}
+
+/* ---------- the diagram panel ---------- */
+.br-panel{
+  background:var(--bg1); border:1px solid var(--line); border-radius:10px; overflow:hidden;
+}
+.br-phdr{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:10px 16px; background:var(--bg2); border-bottom:1px solid var(--line);
+}
+.br-phdr .l{font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--dim)}
+.br-phdr .r{font-family:var(--mono); font-size:10.5px; color:var(--dim); letter-spacing:.06em}
+.br-pbody{padding:22px 20px 18px}
+
+/* ---------- legend under diagram ---------- */
+.br-key{display:flex; gap:26px; flex-wrap:wrap; padding:14px 20px 0; border-top:1px solid var(--line); margin-top:6px}
+.br-key span{display:flex; align-items:center; gap:9px; font-size:12px; color:var(--muted)}
+.br-sw{display:inline-block; width:22px; height:10px; border-radius:3px; flex:none}
+.br-sw.own{background:rgba(61,224,255,.14); border:1px solid var(--ion)}
+.br-sw.rent{background:var(--bg2); border:1px dashed var(--line2)}
+
+/* ---------- replaceability strip ---------- */
+.br-cards{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:6px 0 0}
+.br-card{background:var(--bg1); border:1px solid var(--line); border-radius:10px; padding:16px 17px}
+.br-card h5{
+  margin:0 0 8px; font-family:var(--body); font-size:9.5px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--dim); font-weight:500;
+}
+.br-card p{margin:0; font-size:13px; line-height:1.55; color:var(--muted)}
+.br-card b{color:var(--ink); font-weight:500}
+.br-card .n{font-family:var(--mono); color:var(--lime); font-size:12.5px}
+.br-card .w{font-family:var(--mono); color:var(--amber); font-size:12.5px}
+
+/* ---------- honest note ---------- */
+.br-note{
+  background:var(--bg1); border:1px solid var(--line); border-left:3px solid var(--amber);
+  border-radius:8px; padding:16px 20px; margin:6px 0 0;
+}
+.br-note .h{
+  font-family:var(--body); font-size:9.5px; letter-spacing:.11em; text-transform:uppercase;
+  color:var(--amber); margin-bottom:8px;
+}
+.br-note p{margin:0; font-size:13.5px; color:var(--muted); max-width:none}
+.br-note p + p{margin-top:9px}
+.br-note b{color:var(--ink)}
+</style>
+
+<section class="sec br-wrap">
+  <h2>07. What we build, what we rent</h2>
+
+  <p class="lede">One sentence carries this whole section: <strong>we build the detection, we rent
+  everything else.</strong> Almost every moving part of Insidor already exists as a service somebody
+  else runs better than we would. We pay for those and spend all of our own effort on the one thing
+  nobody sells.</p>
+
+  <p>A small team's only real asset is where it points its attention. Every week spent writing a
+  wallet system, a price chart or a trading engine is a week not spent on the reason the product
+  exists. All of those things are solved problems with mature providers behind them; the thing we
+  are trying to do — see a story going viral <em>before</em> a coin is made out of it — is not sold
+  by anyone, because nobody else is recording it.</p>
+
+  <p>So the rule for every job in the system is the same question: <strong>can we buy this?</strong>
+  If yes, we buy it and move on. If no, that is where the company lives.</p>
+
+  <h3>The jobs, and who does them</h3>
+
+  <div class="br-tablewrap">
+    <div class="br-thead">
+      <div>The job</div><div>Who does it</div><div>Why we do not build it</div>
+    </div>
+
+    <div class="br-row">
+      <div class="br-job">Reading social posts</div>
+      <div class="br-who"><b>A data reseller</b></div>
+      <div class="br-why">Buying direct access to the platform costs tens of thousands of pounds a
+        month. A reseller sells the same posts for a few pounds a day. Same data, two orders of
+        magnitude cheaper.</div>
+    </div>
+
+    <div class="br-row">
+      <div class="br-job">Judging whether a story could become a coin</div>
+      <div class="br-who"><b>Claude</b></div>
+      <div class="br-why">Deciding whether a frog called Gerald is funny is a judgement about
+        humour and human attention. Understanding that is precisely what a language model is for,
+        and writing our own would take years.</div>
+    </div>
+
+    <div class="br-row">
+      <div class="br-job">Buying and selling</div>
+      <div class="br-who"><b>Axiom</b> or <b>Photon</b><br><span style="color:#5A5A62">fallback:</span>
+        <b>Jupiter</b><span class="br-tag amber">confirmation pending</span></div>
+      <div class="br-why">Routing a trade well — finding the best price across venues, handling
+        failures, not losing anyone's money — is a business in its own right. Traders already trust
+        these names. See the note below.</div>
+    </div>
+
+    <div class="br-row">
+      <div class="br-job">Creating coins</div>
+      <div class="br-who"><b>pump.fun</b></div>
+      <div class="br-why">It is the standard everyone in this market already uses. A coin made
+        anywhere else looks wrong to the buyers we want, so being different here costs us rather
+        than helps us.</div>
+    </div>
+
+    <div class="br-row">
+      <div class="br-job">Connecting a wallet</div>
+      <div class="br-who"><b>Privy</b></div>
+      <div class="br-why">Holding and protecting the keys to someone's money is specialist,
+        high-consequence work. Getting it 99% right is the same as getting it wrong.</div>
+    </div>
+
+    <div class="br-row">
+      <div class="br-job">Prices, charts and safety checks</div>
+      <div class="br-who"><b>DexScreener</b> · <b>Helius</b> · <b>RugCheck</b></div>
+      <div class="br-why">Standard, freely available, and identical for everyone. There is no
+        version of a price chart that only we could build.</div>
+    </div>
+
+    <div class="br-splitrow">
+      <div class="br-banner">What we build ourselves</div>
+      <div class="br-job">Finding the viral post before the coin exists</div>
+      <div class="br-who"><b>Insidor</b></div>
+      <div class="br-why">Nobody sells "what did this post look like twenty minutes ago". The only
+        way to have it is to have been measuring at the time.</div>
+    </div>
+
+    <div class="br-splitrow">
+      <div class="br-job">Grouping posts into one narrative</div>
+      <div class="br-who"><b>Insidor</b></div>
+      <div class="br-why">One person posting is luck. Twenty people independently posting about the
+        same ferry captain is a meme forming — and seeing that requires our own record.</div>
+    </div>
+  </div>
+
+  <p class="cap">Six rented jobs, two built ones. The two at the bottom are the entire company;
+  everything above them is plumbing.</p>
+
+  <h3>The same thing as a picture</h3>
+
+  <div class="mock" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="br-panel">
+      <div class="br-phdr">
+        <div class="l">Ownership map</div>
+        <div class="r">CORE 2 JOBS · RENTED 6 SERVICES</div>
+      </div>
+      <div class="br-pbody">
+
+<svg viewBox="0 0 1000 560" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="A small owned core surrounded by six rented services">
+  <defs>
+    <style>
+      .lbl{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:9px;
+           letter-spacing:.11em;fill:#5A5A62}
+      .who{font-family:"General Sans",system-ui,sans-serif;font-size:14px;font-weight:600;fill:#F4F5F7}
+      .job{font-family:"General Sans",system-ui,sans-serif;font-size:11px;fill:#8A8A93}
+      .coreh{font-family:"Clash Display",system-ui,sans-serif;font-size:19px;font-weight:600;fill:#3DE0FF}
+      .corel{font-family:"General Sans",system-ui,sans-serif;font-size:13.5px;fill:#F4F5F7}
+      .zone{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:9.5px;
+            letter-spacing:.14em;fill:#5A5A62}
+    </style>
+  </defs>
+
+  <!-- rented zone boundary -->
+  <rect x="8" y="26" width="984" height="520" rx="14" fill="#0C0C0E"
+        stroke="#2E2E36" stroke-width="1" stroke-dasharray="5 5"/>
+  <text class="zone" x="24" y="18">RENTED — REPLACEABLE, PRICED, SOMEONE ELSE'S PROBLEM</text>
+
+  <!-- connectors -->
+  <g stroke="#2E2E36" stroke-width="1.4" stroke-dasharray="4 5">
+    <line x1="214" y1="128" x2="346" y2="200"/>
+    <line x1="786" y1="128" x2="654" y2="200"/>
+    <line x1="266" y1="286" x2="316" y2="286"/>
+    <line x1="734" y1="286" x2="684" y2="286"/>
+    <line x1="214" y1="444" x2="346" y2="372"/>
+    <line x1="786" y1="444" x2="654" y2="372"/>
+  </g>
+
+  <!-- ── owned core ── -->
+  <rect x="316" y="196" width="368" height="180" rx="12"
+        fill="rgba(61,224,255,.055)" stroke="#3DE0FF" stroke-width="1.6"/>
+  <text class="zone" x="340" y="226" fill="#3DE0FF">WE BUILD THIS</text>
+  <text class="coreh" x="340" y="258">The detection</text>
+
+  <line x1="340" y1="276" x2="660" y2="276" stroke="#2E2E36" stroke-width="1"/>
+  <circle cx="346" cy="302" r="3" fill="#3DE0FF"/>
+  <text class="corel" x="360" y="306">Find the viral post before the coin exists</text>
+  <circle cx="346" cy="336" r="3" fill="#3DE0FF"/>
+  <text class="corel" x="360" y="340">Group the posts into one narrative</text>
+
+  <!-- ── rented chips ── -->
+  <!-- top left -->
+  <rect x="94" y="70" width="240" height="58" rx="9" fill="#131316" stroke="#212127"/>
+  <text class="lbl" x="112" y="93">READING SOCIAL POSTS</text>
+  <text class="who" x="112" y="114">A data reseller</text>
+
+  <!-- top right -->
+  <rect x="666" y="70" width="240" height="58" rx="9" fill="#131316" stroke="#212127"/>
+  <text class="lbl" x="684" y="93">COULD IT BECOME A COIN?</text>
+  <text class="who" x="684" y="114">Claude</text>
+
+  <!-- left -->
+  <rect x="26" y="257" width="240" height="58" rx="9" fill="#131316" stroke="#212127"/>
+  <text class="lbl" x="44" y="280">CONNECTING A WALLET</text>
+  <text class="who" x="44" y="301">Privy</text>
+
+  <!-- right -->
+  <rect x="734" y="257" width="240" height="58" rx="9" fill="#131316" stroke="#212127"/>
+  <text class="lbl" x="752" y="280">CREATING COINS</text>
+  <text class="who" x="752" y="301">pump.fun</text>
+
+  <!-- bottom left -->
+  <rect x="94" y="444" width="240" height="58" rx="9" fill="#131316" stroke="#212127"/>
+  <text class="lbl" x="112" y="467">BUYING AND SELLING</text>
+  <text class="who" x="112" y="488">Axiom / Photon<tspan fill="#8A8A93" font-size="11.5" font-weight="400"> → Jupiter</tspan></text>
+
+  <!-- bottom right -->
+  <rect x="666" y="444" width="240" height="58" rx="9" fill="#131316" stroke="#212127"/>
+  <text class="lbl" x="684" y="467">PRICES · CHARTS · SAFETY</text>
+  <text class="who" x="684" y="488">DexScreener<tspan fill="#8A8A93" font-size="11.5" font-weight="400"> · Helius · RugCheck</tspan></text>
+
+  <!-- footnote inside frame -->
+  <text class="job" x="24" y="534">Anything outside the cyan box can be swapped for a competitor in
+    days. Nothing inside it can be bought at any price.</text>
+</svg>
+
+        <div class="br-key">
+          <span><i class="br-sw own"></i>Ours — the reason the company exists</span>
+          <span><i class="br-sw rent"></i>Rented — paid for monthly, replaceable</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">Look at how small the cyan box is. That is deliberate: six of the eight jobs in the
+  product are somebody else's, so nearly all of our building time goes into the two that are not.</p>
+
+  <h3>Why the rented parts are not a risk</h3>
+
+  <p>The usual worry about renting is dependence — what happens when a supplier raises its price or
+  shuts the door? The answer is that every rented job here has at least two credible providers, and
+  swapping one is a few days of work because none of them touch the part that makes us valuable.
+  Our record of viral posts stays ours whichever wallet or chart provider is plugged in.</p>
+
+  <div class="br-cards">
+    <div class="br-card">
+      <h5>If the data reseller goes away</h5>
+      <p><b>Several competitors sell the same feed.</b> We change one supplier and keep collecting.
+        Time to swap: <span class="n">~2 days</span></p>
+    </div>
+    <div class="br-card">
+      <h5>If a trading venue says no</h5>
+      <p><b>Jupiter is already confirmed and working.</b> The trade button changes where it points;
+        nothing else moves. Time to swap: <span class="n">~3 days</span></p>
+    </div>
+    <div class="br-card">
+      <h5>If our own detection is wrong</h5>
+      <p><b>There is no supplier to call.</b> This is the one failure we cannot buy our way out of —
+        which is exactly why Stage 0 tests it first. <span class="w">Unrecoverable</span></p>
+    </div>
+  </div>
+
+  <p class="cap">The only genuinely dangerous box on the page is the one we own. Everything rented
+  has a second option behind it.</p>
+
+  <h3>An honest note on trading</h3>
+
+  <div class="br-note">
+    <div class="h">Stated plainly, because this one is not settled</div>
+    <p>The plan is to route trades through <b>Axiom or Photon</b>, pending confirmation that they
+      permit it — and that confirmation has not been given. Research found neither publishes a public
+      developer interface: Axiom's own documentation index has zero developer entries, and QuickNode's
+      directory states outright that Photon does not support integrations of this kind.</p>
+    <p>The working alternative is <b>Jupiter</b>, which is confirmed, open, and pays us an integrator
+      fee — where Photon charges the user 1% and pays us nothing. So Axiom or Photon is the plan;
+      Jupiter is the fallback that already works, and the product is designed so that either can sit
+      behind the same button.</p>
+  </div>
+
+  <p style="margin-top:22px">The point of this section is the shape, not the supplier list. We are
+  building one thing and paying other people to do six. If a reviewer wants to know what Insidor
+  actually is, it is the cyan box: <strong>finding the viral post before the coin exists, and
+  grouping it into a narrative.</strong> That is the company. Everything else is plumbing we rent.</p>
+</section>

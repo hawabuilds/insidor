@@ -1,0 +1,313 @@
+<meta charset="utf-8">
+<!--standalone-->
+<style>
+/* Typography for viewing this fragment on its own. The assembled document
+   supplies the same rules from the shell, so the build strips this block. */
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+html,body{margin:0;padding:0;background:#060607;}
+body{color:#F4F5F7;font-family:"General Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+     font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased;}
+.sec{padding:56px 50px;max-width:1200px;margin:0 auto;}
+h2{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:36px;font-weight:600;
+   letter-spacing:-.02em;margin:0 0 18px;padding-bottom:16px;border-bottom:1px solid #212127;}
+h3{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:20px;font-weight:600;margin:38px 0 12px;}
+p{margin:0 0 15px;max-width:96ch;}
+.lede{font-size:18.5px;line-height:1.55;color:#8A8A93;max-width:82ch;margin-bottom:26px;}
+.cap{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#5A5A62;
+     margin:12px 0 34px;padding-left:14px;border-left:2px solid #2E2E36;max-width:92ch;}
+strong{font-weight:600;color:#F4F5F7;}
+.mock{margin:26px 0 6px;}
+svg{max-width:100%;height:auto;}
+</style>
+<!--/standalone-->
+
+<style>
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,500&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+.w01-wrap{
+  --bg0:#060607; --bg1:#0C0C0E; --bg2:#131316; --bg3:#1A1A1E; --bg4:#222228;
+  --line:#212127; --line2:#2E2E36;
+  --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62;
+  --ion:#3DE0FF; --lime:#9BF03C; --red:#FF5C6E; --amber:#FFB84D;
+}
+.w01-wrap *{box-sizing:border-box;}
+.w01-mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
+
+/* ---- the timeline frame ---- */
+.w01-frame{
+  background:#0C0C0E;border:1px solid #2E2E36;border-radius:8px;
+  padding:26px 26px 20px;overflow:hidden;
+}
+.w01-frame-hd{
+  display:flex;align-items:baseline;gap:12px;
+  padding-bottom:16px;margin-bottom:6px;border-bottom:1px solid #212127;
+}
+.w01-frame-hd .t{
+  font-family:"Clash Display",-apple-system,system-ui,sans-serif;
+  font-size:15px;font-weight:600;color:#F4F5F7;letter-spacing:-.01em;
+}
+.w01-frame-hd .s{
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:#5A5A62;margin-left:auto;
+}
+
+/* ---- generic two / three card grids ---- */
+.w01-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0 6px;}
+.w01-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin:22px 0 6px;}
+
+.w01-card{
+  background:#0C0C0E;border:1px solid #212127;border-radius:8px;padding:18px 20px 19px;
+  break-inside:avoid;page-break-inside:avoid;
+}
+.w01-card .kicker{
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:#5A5A62;
+  display:flex;align-items:center;gap:8px;margin-bottom:11px;
+}
+.w01-card .kicker b{font-weight:500;color:#3DE0FF;}
+.w01-card .kicker .n{
+  width:19px;height:19px;border-radius:5px;display:flex;align-items:center;justify-content:center;
+  background:#131316;border:1px solid #2E2E36;color:#8A8A93;font-size:10px;flex:none;
+}
+.w01-card h5{
+  font-family:"Clash Display",-apple-system,system-ui,sans-serif;
+  font-size:16.5px;font-weight:600;letter-spacing:-.01em;color:#F4F5F7;margin:0 0 8px;line-height:1.25;
+}
+.w01-card p{font-size:13.5px;line-height:1.58;color:#8A8A93;margin:0 0 10px;max-width:none;}
+.w01-card p:last-child{margin-bottom:0;}
+.w01-card .ex{
+  margin-top:12px;padding-top:11px;border-top:1px solid #212127;
+  font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;
+  font-size:11px;line-height:1.55;color:#5A5A62;
+}
+.w01-card .ex em{font-style:normal;color:#8A8A93;}
+.w01-card.on{border-color:#2E2E36;background:linear-gradient(180deg,#101014 0%,#0C0C0E 60%);}
+.w01-card.on .edge{display:block;height:2px;border-radius:2px;background:#3DE0FF;width:34px;margin-bottom:14px;}
+.w01-card.lime .edge{background:#9BF03C;}
+.w01-card .edge{display:none;}
+
+.w01-tick{color:#9BF03C;} .w01-ion{color:#3DE0FF;} .w01-dim{color:#5A5A62;}
+</style>
+
+<section class="sec w01-wrap">
+
+  <h2>01. What Insidor is</h2>
+
+  <p class="lede">Memecoins are made out of things going viral. Every tool a trader uses today
+  shows them a coin only after it exists and money is already moving into it. Insidor works one
+  step earlier: we watch the internet, not the money, and show people the story before anyone
+  has made a coin out of it.</p>
+
+  <h3>The problem</h3>
+
+  <p>Axiom, Photon and GMGN are all screens full of coins. They are good screens. But a coin can
+  only appear on them once somebody has already created it, and by then the interesting part has
+  happened. The first buyers are in. The chart already has a shape. What you are looking at is
+  not an opportunity, it is the aftermath of one.</p>
+
+  <p>That has a blunt consequence. If you are consistently arriving after the coin exists, you
+  are not early — you are the person the early buyers sell to. Being fast on those tools only
+  makes you the quickest of the late.</p>
+
+  <h3>The idea</h3>
+
+  <p>Every one of those coins started as something on the internet: a clip, a photo, a sentence
+  that made a lot of people laugh at the same time. That thing is public, it is free to look at,
+  and it exists <strong>before</strong> the coin does. So instead of watching the money, we watch
+  the thing the money will eventually chase. We scan social media, spot posts that are exploding
+  right now, and put them in front of traders while there is still nothing to buy.</p>
+
+  <div class="mock" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="w01-frame">
+      <div class="w01-frame-hd">
+        <span class="t">Where each tool picks up the story</span>
+        <span class="s">Harbor Last Horn &middot; real sequence</span>
+      </div>
+
+      <svg viewBox="0 0 1000 470" xmlns="http://www.w3.org/2000/svg" role="img"
+           aria-label="Timeline showing Insidor starting at 09:13 when the post is climbing and no coin exists, versus every other tool starting at 09:47 once the coin exists and money is flowing, with a 34 minute gap between them labelled as the product.">
+        <defs>
+          <linearGradient id="w01att" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"  stop-color="#3DE0FF" stop-opacity="0.20"/>
+            <stop offset="100%" stop-color="#3DE0FF" stop-opacity="0.00"/>
+          </linearGradient>
+          <linearGradient id="w01gap" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"  stop-color="#3DE0FF" stop-opacity="0.16"/>
+            <stop offset="100%" stop-color="#3DE0FF" stop-opacity="0.05"/>
+          </linearGradient>
+          <filter id="w01glow" x="-120%" y="-120%" width="340%" height="340%">
+            <feGaussianBlur stdDeviation="5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <!-- ================= the gap band, the headline of the diagram ================= -->
+        <rect x="318" y="40" width="544" height="30" rx="6"
+              fill="url(#w01gap)" stroke="#3DE0FF" stroke-opacity="0.42"/>
+        <path d="M330 55 L342 49 L342 61 Z" fill="#3DE0FF"/>
+        <path d="M850 55 L838 49 L838 61 Z" fill="#3DE0FF"/>
+        <text x="590" y="60" text-anchor="middle" fill="#3DE0FF"
+              font-family="JetBrains Mono, monospace" font-size="12.5" letter-spacing="1.6">
+          34 MINUTES &#183; THIS GAP IS THE PRODUCT
+        </text>
+
+        <!-- ================= attention curve (real view counts) ================= -->
+        <path d="M110 326 C 200 318, 250 302, 318 278 C 400 250, 460 226, 500 214
+                 C 560 194, 580 184, 606 172 C 700 144, 790 122, 900 110
+                 L 900 330 L 110 330 Z" fill="url(#w01att)"/>
+        <path d="M110 326 C 200 318, 250 302, 318 278 C 400 250, 460 226, 500 214
+                 C 560 194, 580 184, 606 172 C 700 144, 790 122, 900 110"
+              fill="none" stroke="#3DE0FF" stroke-opacity="0.75" stroke-width="2"/>
+        <text x="112" y="112" fill="#5A5A62" font-family="JetBrains Mono, monospace"
+              font-size="10" letter-spacing="1.3">ATTENTION ON THE POST</text>
+
+        <!-- baseline -->
+        <line x1="90" y1="330" x2="948" y2="330" stroke="#2E2E36" stroke-width="1"/>
+
+        <!-- ================= Insidor marker ================= -->
+        <line x1="318" y1="76" x2="318" y2="330" stroke="#3DE0FF" stroke-opacity="0.55"
+              stroke-width="1.5" stroke-dasharray="3 4"/>
+        <circle cx="318" cy="278" r="6.5" fill="#3DE0FF" filter="url(#w01glow)"/>
+        <circle cx="318" cy="278" r="12" fill="none" stroke="#3DE0FF" stroke-opacity="0.35"/>
+
+        <!-- Insidor callout card -->
+        <rect x="86" y="150" width="216" height="96" rx="7" fill="#0C0C0E" stroke="#3DE0FF" stroke-opacity="0.45"/>
+        <line x1="302" y1="198" x2="318" y2="198" stroke="#3DE0FF" stroke-opacity="0.45"/>
+        <text x="102" y="173" fill="#3DE0FF" font-family="JetBrains Mono, monospace"
+              font-size="9.5" letter-spacing="1.4">INSIDOR STARTS HERE</text>
+        <text x="102" y="197" fill="#F4F5F7" font-family="JetBrains Mono, monospace" font-size="14">09:13</text>
+        <text x="152" y="197" fill="#F4F5F7" font-family="General Sans, sans-serif" font-size="13">The post is climbing.</text>
+        <text x="102" y="217" fill="#9BF03C" font-family="General Sans, sans-serif" font-size="13" font-weight="500">No coin exists yet.</text>
+        <text x="102" y="235" fill="#5A5A62" font-family="General Sans, sans-serif" font-size="12">Nothing to be late to.</text>
+
+        <!-- ================= mint marker ================= -->
+        <line x1="606" y1="146" x2="606" y2="330" stroke="#9BF03C" stroke-opacity="0.40"
+              stroke-width="1.5" stroke-dasharray="3 4"/>
+        <circle cx="606" cy="172" r="5.5" fill="#9BF03C"/>
+        <text x="596" y="116" text-anchor="end" fill="#9BF03C" font-family="JetBrains Mono, monospace"
+              font-size="10" letter-spacing="1.2">09:31 &#183; A USER MINTS $FERRY FROM OUR APP</text>
+        <text x="596" y="134" text-anchor="end" fill="#5A5A62"
+              font-family="General Sans, sans-serif" font-size="12">first coin on this story</text>
+
+        <!-- ================= competitor marker ================= -->
+        <line x1="862" y1="76" x2="862" y2="366" stroke="#8A8A93" stroke-opacity="0.45"
+              stroke-width="1.5" stroke-dasharray="3 4"/>
+        <circle cx="862" cy="114" r="6.5" fill="#8A8A93"/>
+        <circle cx="862" cy="114" r="12" fill="none" stroke="#8A8A93" stroke-opacity="0.3"/>
+
+        <rect x="640" y="366" width="308" height="90" rx="7" fill="#0C0C0E" stroke="#2E2E36"/>
+        <text x="658" y="389" fill="#8A8A93" font-family="JetBrains Mono, monospace"
+              font-size="9.5" letter-spacing="1.4">AXIOM &#183; PHOTON &#183; GMGN START HERE</text>
+        <text x="658" y="413" fill="#F4F5F7" font-family="JetBrains Mono, monospace" font-size="14">09:47</text>
+        <text x="708" y="413" fill="#F4F5F7" font-family="General Sans, sans-serif" font-size="13">The coin exists.</text>
+        <text x="658" y="433" fill="#FF5C6E" font-family="General Sans, sans-serif" font-size="13" font-weight="500">Money is already flowing in.</text>
+        <text x="658" y="449" fill="#5A5A62" font-family="General Sans, sans-serif" font-size="12">You buy from whoever was early.</text>
+
+        <!-- ================= time axis ================= -->
+        <g font-family="JetBrains Mono, monospace" font-size="10.5" fill="#5A5A62">
+          <line x1="110" y1="330" x2="110" y2="337" stroke="#2E2E36"/>
+          <text x="110" y="352" text-anchor="middle">09:00</text>
+          <text x="110" y="366" text-anchor="middle" fill="#3A3A42" font-size="9.5">posted</text>
+
+          <line x1="174" y1="330" x2="174" y2="337" stroke="#2E2E36"/>
+          <text x="174" y="352" text-anchor="middle">09:04</text>
+          <text x="174" y="366" text-anchor="middle" fill="#3A3A42" font-size="9.5">41K views</text>
+
+          <line x1="318" y1="330" x2="318" y2="337" stroke="#2E2E36"/>
+          <text x="318" y="352" text-anchor="middle" fill="#8A8A93">09:13</text>
+
+          <line x1="606" y1="330" x2="606" y2="337" stroke="#2E2E36"/>
+          <text x="606" y="352" text-anchor="middle">09:31</text>
+
+          <line x1="862" y1="330" x2="862" y2="337" stroke="#2E2E36"/>
+          <text x="862" y="352" text-anchor="middle" fill="#8A8A93">09:47</text>
+        </g>
+        <text x="946" y="102" text-anchor="end" fill="#5A5A62"
+              font-family="JetBrains Mono, monospace" font-size="10">2.4M views</text>
+      </svg>
+    </div>
+  </div>
+
+  <p class="cap">One story, one clock. Everyone else's product begins at 09:47, where the coin
+  already exists. Ours begins at 09:13, where there is only a video of a ferry. The 34 minutes
+  in between is the entire company.</p>
+
+  <h3>Two ways to win</h3>
+
+  <p>Arriving that early leaves the user with two moves, and Insidor supports both in the same
+  place. That matters: nobody wants to spot a story here, then go somewhere else to act on it.</p>
+
+  <div class="w01-grid2">
+    <div class="w01-card on">
+      <span class="edge"></span>
+      <div class="kicker"><span class="n">A</span> <b>NO COIN EXISTS YET</b></div>
+      <h5>They create it themselves, in one tap</h5>
+      <p>The story is climbing and nothing has been minted off it. The user makes the coin from
+      inside Insidor and is first in — not first to buy, first to exist.</p>
+      <div class="ex"><em>09:31 &#183; a user mints $FERRY</em><br>crypto Twitter notices at 09:47</div>
+    </div>
+    <div class="w01-card on lime">
+      <span class="edge"></span>
+      <div class="kicker"><span class="n">B</span> <b>A COIN ALREADY EXISTS</b></div>
+      <h5>They buy it in the same app, still early</h5>
+      <p>Someone beat them to minting by a few minutes. They still saw the story before the rest
+      of the market did, so they buy it here without leaving the page.</p>
+      <div class="ex"><em>Plastic Plant Grandma &#183; $PLANT</em><br>850K views &#183; 2h old &#183; $562.8K market cap</div>
+    </div>
+  </div>
+
+  <h3>Why it is defensible</h3>
+
+  <p>Speed alone is not a moat — anyone can build something fast. What protects Insidor is that
+  two assets get bigger every day the product runs, and a competitor starting tomorrow starts
+  with none of either.</p>
+
+  <div class="w01-grid2">
+    <div class="w01-card">
+      <div class="kicker"><b>COMPOUND #1</b> &#183; THE COMMUNITY</div>
+      <h5>Their thesis history lives here</h5>
+      <p>Traders post their reasoning on each story — why this one is real, why that one is
+      nothing. Over months that becomes a public track record with their name on it.</p>
+      <p>People do not abandon a reputation they spent a year building. The writing is the
+      lock-in, and we are not the ones who have to produce it.</p>
+    </div>
+    <div class="w01-card">
+      <div class="kicker"><b>COMPOUND #2</b> &#183; THE RECORD</div>
+      <h5>Which viral posts became coins that made money</h5>
+      <p>Every story we surface, we keep: what it looked like as it climbed, whether a coin
+      followed, and how that coin did. Nobody sells this. You cannot go back and ask what a post
+      looked like twenty minutes ago — if it was not recorded live, it is gone.</p>
+      <p>A competitor can copy the screen in a fortnight. They cannot copy a year of yesterdays.</p>
+    </div>
+  </div>
+
+  <h3>Who this is for</h3>
+
+  <div class="w01-grid3">
+    <div class="w01-card">
+      <div class="kicker"><b>THE TRADER</b></div>
+      <h5>Wants to be first, not fast</h5>
+      <p>Already good at reading a chart, already has Axiom open. What they do not have is
+      anything that fires before the chart exists. That is the only thing we sell them.</p>
+    </div>
+    <div class="w01-card">
+      <div class="kicker"><b>THE CREATOR</b></div>
+      <h5>Wants to mint off a meme</h5>
+      <p>Their whole job is finding the funny thing early. Today that means scrolling all day and
+      hoping. Here the candidates arrive already sorted, with a name and ticker suggested.</p>
+    </div>
+    <div class="w01-card">
+      <div class="kicker"><b>THE NEWCOMER</b></div>
+      <h5>Saw it on TikTok, wants in</h5>
+      <p>No wallet, no jargon, no idea what a bonding curve is. They get a page that explains the
+      story in one sentence and a button that works. Everything else stays out of the way.</p>
+    </div>
+  </div>
+
+  <p class="cap">Three people, one screen. The trader reads it for the timing, the creator for
+  the raw material, the newcomer for the sentence at the top. Nothing on the page is written for
+  an insider only.</p>
+
+</section>

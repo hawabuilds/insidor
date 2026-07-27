@@ -1,0 +1,440 @@
+<meta charset="utf-8">
+<!--standalone-->
+<style>
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+html,body{margin:0;padding:0;background:#060607;}
+body{color:#F4F5F7;font-family:"General Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+     font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased;}
+.sec{padding:56px 50px;max-width:1200px;margin:0 auto;}
+h2{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:36px;font-weight:600;
+   letter-spacing:-.02em;margin:0 0 18px;padding-bottom:16px;border-bottom:1px solid #212127;}
+h3{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:20px;font-weight:600;margin:38px 0 12px;}
+h4{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:11px;font-weight:500;
+   letter-spacing:.14em;text-transform:uppercase;color:#5A5A62;margin:30px 0 10px;}
+p{margin:0 0 15px;max-width:96ch;}
+.lede{font-size:18.5px;line-height:1.55;color:#8A8A93;max-width:82ch;margin-bottom:26px;}
+.cap{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#5A5A62;
+     margin:12px 0 34px;padding-left:14px;border-left:2px solid #2E2E36;max-width:92ch;}
+strong{font-weight:600;color:#F4F5F7;}
+code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.9em;background:#131316;
+     color:#3DE0FF;padding:1px 5px;border-radius:4px;}
+a{color:#3DE0FF;text-decoration:none;}
+ul,ol{margin:0 0 16px;padding-left:22px;max-width:94ch;} li{margin-bottom:7px;}
+svg{max-width:100%;height:auto;}
+</style>
+<!--/standalone-->
+<style>
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,500&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+.line-w{
+  --bg0:#060607; --bg1:#0C0C0E; --bg2:#131316; --bg3:#1A1A1E; --bg4:#222228;
+  --ln:#212127; --ln2:#2E2E36;
+  --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62;
+  --ion:#3DE0FF; --lime:#9BF03C; --red:#FF5C6E; --amber:#FFB84D;
+  color:var(--ink); font-family:"General Sans",-apple-system,system-ui,sans-serif;
+  font-size:12px; line-height:1.4; margin:26px 0 8px;
+}
+.line-w *{box-sizing:border-box;}
+.line-m{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums;}
+.line-lbl{font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--dim);}
+.line-h{font-family:"Clash Display",-apple-system,system-ui,sans-serif; font-weight:600;}
+
+/* ---------- the split ---------- */
+.line-split{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+.line-col{background:var(--bg1); border:1px solid var(--ln2); border-radius:6px; overflow:hidden;}
+.line-col-yes{border-color:rgba(61,224,255,.34);}
+.line-col-no{border-color:rgba(255,92,110,.30);}
+.line-chead{padding:13px 15px 12px; border-bottom:1px solid var(--ln); background:var(--bg2);}
+.line-ctag{
+  display:inline-block; font-size:9px; letter-spacing:.11em; text-transform:uppercase;
+  border-radius:3px; padding:3px 7px; margin-bottom:8px;
+}
+.line-col-yes .line-ctag{color:var(--ion); border:1px solid rgba(61,224,255,.35); background:rgba(61,224,255,.07);}
+.line-col-no  .line-ctag{color:var(--red); border:1px solid rgba(255,92,110,.35); background:rgba(255,92,110,.07);}
+.line-ctitle{font-size:16px; letter-spacing:-.01em;}
+.line-csub{font-size:11.5px; color:var(--muted); margin-top:5px; line-height:1.45;}
+.line-row{
+  display:grid; grid-template-columns:1fr 168px; gap:10px; align-items:baseline;
+  padding:9px 15px; border-bottom:1px solid var(--ln);
+}
+.line-row:last-child{border-bottom:0;}
+.line-rk{font-size:12.5px; color:var(--ink);}
+.line-rv{font-size:11.5px; text-align:right; color:var(--muted);}
+.line-col-yes .line-rv{color:var(--ion);}
+.line-col-no  .line-rv{color:rgba(255,92,110,.62); text-decoration:line-through;}
+.line-col-no  .line-rk{color:var(--muted);}
+.line-foot{padding:11px 15px; font-size:11px; line-height:1.5; color:var(--dim); background:var(--bg2); border-top:1px solid var(--ln);}
+
+/* ---------- the two feed rows ---------- */
+.line-pair{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+.line-case{border:1px solid var(--ln2); border-radius:6px; overflow:hidden; background:var(--bg0);}
+.line-case-bad{border-color:rgba(255,92,110,.34);}
+.line-case-good{border-color:rgba(155,240,60,.34);}
+.line-vhead{display:flex; align-items:center; gap:9px; padding:9px 13px; border-bottom:1px solid var(--ln); background:var(--bg2);}
+.line-vtag{font-size:9px; letter-spacing:.11em; text-transform:uppercase; padding:3px 7px; border-radius:3px;}
+.line-case-bad .line-vtag{color:var(--red); border:1px solid rgba(255,92,110,.4); background:rgba(255,92,110,.08);}
+.line-case-good .line-vtag{color:var(--lime); border:1px solid rgba(155,240,60,.4); background:rgba(155,240,60,.08);}
+.line-vnote{font-size:10.5px; color:var(--dim);}
+
+.line-feed{padding:13px; background:var(--bg0);}
+.line-card{background:var(--bg1); border:1px solid var(--ln); border-radius:6px; padding:12px;}
+.line-top{display:flex; gap:11px;}
+.line-thumb{
+  width:74px; height:56px; border-radius:5px; flex:0 0 auto; border:1px solid var(--ln2);
+  background:linear-gradient(150deg,#0f2b3a 0%,#123f4e 42%,#1d5f63 72%,#2b7a6a 100%);
+  position:relative; overflow:hidden;
+}
+.line-thumb:after{
+  content:""; position:absolute; left:0; right:0; bottom:0; height:38%;
+  background:linear-gradient(180deg,rgba(6,6,7,0) 0%,rgba(6,6,7,.72) 100%);
+}
+.line-thumb-b{background:linear-gradient(150deg,#122a1a 0%,#1b4a24 45%,#2f6b2c 100%);}
+.line-tt{font-size:14.5px; letter-spacing:-.01em; margin-bottom:4px;}
+.line-two{font-size:12.5px; line-height:1.42; color:var(--ink);}
+.line-two-dim{color:var(--muted);}
+.line-meta{font-size:10.5px; color:var(--dim); margin-top:7px;}
+.line-meta b{color:var(--muted); font-weight:500;}
+.line-sep{color:var(--ln2); padding:0 5px;}
+
+.line-strip{display:flex; align-items:center; gap:7px; margin-top:11px; padding-top:10px; border-top:1px solid var(--ln);}
+.line-pill{
+  font-size:10.5px; padding:4px 8px; border-radius:4px; border:1px solid var(--ln2);
+  color:var(--muted); white-space:nowrap;
+}
+.line-pill b{color:var(--ink); font-weight:500;}
+.line-pill-first{border-color:rgba(61,224,255,.36); color:var(--ion);}
+.line-climb{display:flex; align-items:center; gap:6px; font-size:10.5px; color:var(--lime); margin-left:auto;}
+.line-buy{
+  margin-left:auto; font-size:11px; padding:5px 13px; border-radius:4px;
+  background:var(--ion); color:#04222b; font-weight:600; white-space:nowrap;
+}
+
+/* leak-only decoration */
+.line-leak{color:var(--red);}
+.line-cols{display:flex; gap:6px; margin-top:10px; padding-top:9px; border-top:1px solid var(--ln);}
+.line-cell{flex:1; background:var(--bg2); border:1px solid rgba(255,92,110,.22); border-radius:4px; padding:5px 6px; text-align:center;}
+.line-cell .line-lbl{color:rgba(255,92,110,.7); font-size:8px;}
+.line-cell .v{font-size:12px; color:var(--red); margin-top:2px;}
+.line-gutter{
+  margin-top:9px; padding-top:8px; border-top:1px dashed rgba(255,92,110,.3);
+  font-size:9.5px; color:rgba(255,92,110,.72); line-height:1.5;
+}
+
+/* ---------- harder cases ---------- */
+.line-grid4{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+.line-panel{background:var(--bg1); border:1px solid var(--ln2); border-radius:6px; overflow:hidden;}
+.line-phead{padding:10px 14px; border-bottom:1px solid var(--ln); background:var(--bg2); display:flex; align-items:baseline; gap:9px;}
+.line-pnum{font-size:10px; color:var(--dim);}
+.line-ptitle{font-size:13px; letter-spacing:-.005em;}
+.line-pbody{padding:14px;}
+.line-inset{background:var(--bg2); border:1px solid var(--ln); border-radius:5px; padding:11px 12px;}
+.line-coin{display:grid; grid-template-columns:74px 1fr 96px; gap:8px; align-items:center; padding:8px 0; border-bottom:1px solid var(--ln);}
+.line-coin:last-child{border-bottom:0;}
+.line-tick{font-size:12.5px; color:var(--ink);}
+.line-badge{font-size:9px; letter-spacing:.1em; text-transform:uppercase; padding:2px 6px; border-radius:3px; border:1px solid var(--ln2); color:var(--muted); justify-self:start;}
+.line-badge-first{color:var(--ion); border-color:rgba(61,224,255,.4);}
+.line-badge-big{color:var(--lime); border-color:rgba(155,240,60,.4);}
+.line-badge-unv{color:var(--amber); border-color:rgba(255,184,77,.4);}
+.line-mc{font-size:12px; color:var(--muted); text-align:right;}
+.line-instead{
+  margin-top:11px; font-size:10px; color:rgba(255,92,110,.66); letter-spacing:.02em;
+}
+.line-instead s{color:rgba(255,92,110,.55);}
+.line-instead span{color:var(--dim); text-transform:uppercase; letter-spacing:.11em; font-size:9px; margin-right:7px;}
+.line-nobtn{font-size:11.5px; color:var(--muted); line-height:1.5;}
+.line-ghost{
+  display:inline-block; margin-top:8px; font-size:11px; padding:5px 13px; border-radius:4px;
+  border:1px dashed var(--ln2); color:var(--dim);
+}
+.line-quote{
+  font-size:15.5px; line-height:1.48; color:var(--ink);
+  font-family:"General Sans",system-ui,sans-serif;
+}
+
+/* ---------- the test ---------- */
+.line-test{background:var(--bg1); border:1px solid var(--ln2); border-radius:6px; overflow:hidden;}
+.line-tq{padding:18px 20px 17px; border-bottom:1px solid var(--ln); background:var(--bg2);}
+.line-tqt{font-size:19px; letter-spacing:-.015em; color:var(--ink);}
+.line-tgrid{display:grid; grid-template-columns:1fr 1fr;}
+.line-tcol{padding:15px 20px 17px;}
+.line-tcol+.line-tcol{border-left:1px solid var(--ln);}
+.line-tyes{font-size:11px; letter-spacing:.11em; text-transform:uppercase; color:var(--lime); margin-bottom:9px;}
+.line-tno{font-size:11px; letter-spacing:.11em; text-transform:uppercase; color:var(--red); margin-bottom:9px;}
+.line-titem{font-size:11.5px; color:var(--muted); padding:5px 0; border-bottom:1px solid var(--ln);}
+.line-titem:last-child{border-bottom:0;}
+.line-titem b{color:var(--ink); font-weight:500;}
+</style>
+
+<section class="sec">
+  <h2>09. Where the line sits</h2>
+
+  <p class="lede">Part three is where the two halves of this document meet. Everything before
+  this was the machine; everything after is the screen. Exactly one rule governs what is
+  allowed to cross between them.</p>
+
+  <p>The rule is short. <strong>Facts about the world go on screen. Our reasoning never
+  does.</strong> A view count is a fact — the post really has 2.4 million views whether or not
+  Insidor was ever built. A market cap is a fact. So is the time a post went up, the name of
+  the account that posted it, and how many people hold a coin. All of those existed before we
+  looked and would carry on existing if we shut down tomorrow.</p>
+
+  <p>Our reasoning is a different kind of thing. When our system decides a story is worth
+  showing, it is doing arithmetic: comparing one view count against the same post's view count
+  twenty minutes earlier, weighing how many separate people posted about the same ferry
+  captain, asking the AI how memeable the thing is and getting a number back. Those numbers are
+  real and they matter enormously — they are how the ordering is decided — but they exist only
+  because we invented them. They are our workings, and workings do not belong in front of a
+  user.</p>
+
+  <p>In the founder's words: <em>"The app's job is to make the judgement so the user doesn't
+  have to. Showing our workings would just make them do our job for us."</em> That is the whole
+  argument. A trader opening Insidor at 09:13 has perhaps ninety seconds before the window
+  closes. If we hand them a heat score of 8.4 and an acceleration ratio of 3.1x, we have not
+  helped them decide — we have handed them a second decision on top of the first one, and asked
+  them to learn our internal scale before they can use the product. The correct output of all
+  that arithmetic is not a number. It is an ordered list and one plain sentence.</p>
+
+  <div class="line-w" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="line-split">
+      <div class="line-col line-col-yes">
+        <div class="line-chead">
+          <div class="line-ctag">On screen</div>
+          <div class="line-ctitle line-h">Facts about the world</div>
+          <div class="line-csub">True regardless of Insidor. Anyone could verify them from the
+          original post, the block explorer, or a price feed.</div>
+        </div>
+        <div class="line-row"><div class="line-rk">How many people have seen the post</div><div class="line-rv line-m">2.4M views</div></div>
+        <div class="line-row"><div class="line-rk">How old it is</div><div class="line-rv line-m">4h · posted 09:00</div></div>
+        <div class="line-row"><div class="line-rk">Who posted it, and where</div><div class="line-rv line-m">@nordkyst_ferge · X</div></div>
+        <div class="line-row"><div class="line-rk">Whether views are still climbing</div><div class="line-rv line-m">a rising line</div></div>
+        <div class="line-row"><div class="line-rk">Market cap of the coin</div><div class="line-rv line-m">$799.6K</div></div>
+        <div class="line-row"><div class="line-rk">Liquidity in the pool</div><div class="line-rv line-m">$84.2K</div></div>
+        <div class="line-row"><div class="line-rk">How many people hold it</div><div class="line-rv line-m">1,204 holders</div></div>
+        <div class="line-row"><div class="line-rk">Price change</div><div class="line-rv line-m">+38.4% · 1h</div></div>
+        <div class="line-row"><div class="line-rk">When the coin was created</div><div class="line-rv line-m">09:31</div></div>
+        <div class="line-foot">All of these can be checked by the user somewhere else. Showing them
+        builds trust rather than spending it.</div>
+      </div>
+
+      <div class="line-col line-col-no">
+        <div class="line-chead">
+          <div class="line-ctag">Never on screen</div>
+          <div class="line-ctitle line-h">Our reasoning</div>
+          <div class="line-csub">Exists only because we computed it. Meaningless outside our own
+          system, and impossible for a user to check.</div>
+        </div>
+        <div class="line-row"><div class="line-rk">How memeable the AI scored it</div><div class="line-rv line-m">meme_score 7</div></div>
+        <div class="line-row"><div class="line-rk">Growth rate between two checks</div><div class="line-rv line-m">+18.4% / 20m</div></div>
+        <div class="line-row"><div class="line-rk">Acceleration ratio</div><div class="line-rv line-m">3.1x</div></div>
+        <div class="line-row"><div class="line-rk">Combined ranking score</div><div class="line-rv line-m">heat 8.4</div></div>
+        <div class="line-row"><div class="line-rk">Eligibility gates and thresholds</div><div class="line-rv line-m">author cap 2</div></div>
+        <div class="line-row"><div class="line-rk">How sure we are a coin matches</div><div class="line-rv line-m">match 87%</div></div>
+        <div class="line-row"><div class="line-rk">Position in the ranking, and why</div><div class="line-rv line-m">rank &#9650;4</div></div>
+        <div class="line-row"><div class="line-rk">Which AI model made the judgement</div><div class="line-rv line-m">model name</div></div>
+        <div class="line-row"><div class="line-rk">What we looked at and dropped</div><div class="line-rv line-m">40 of 63 eligible</div></div>
+        <div class="line-foot">Every one of these is stored, logged and used. None of it is
+        rendered. The user gets the decision, not the derivation.</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">Left column: nine things a user can independently verify. Right column: nine
+  things that only mean something inside our own database. The struck-through values on the
+  right are shown here, in this document, so the team can recognise them on sight — they never
+  appear in the product.</p>
+
+  <h3>The same row, twice</h3>
+
+  <p>Here is the identical story — Harbor Last Horn, four hours old, one coin already live —
+  rendered both ways. The version on the left is what an earlier draft of this deck put in
+  front of a user. The version on the right is the product.</p>
+
+  <div class="line-w" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="line-pair">
+
+      <div class="line-case line-case-bad">
+        <div class="line-vhead">
+          <div class="line-vtag">Not this</div>
+          <div class="line-vnote">the machine talking to itself, in public</div>
+        </div>
+        <div class="line-feed">
+          <div class="line-card">
+            <div class="line-top">
+              <div class="line-thumb"></div>
+              <div style="flex:1;min-width:0">
+                <div class="line-tt line-h">Harbor Last Horn <span class="line-m line-leak" style="font-size:11px">&#9650;4</span></div>
+                <div class="line-two line-two-dim">A retiring ferry captain blew his horn one last
+                time, and every boat in the harbour blew back.</div>
+                <div class="line-meta line-m">@nordkyst_ferge<span class="line-sep">&middot;</span><b>2.4M</b><span class="line-sep">&middot;</span>4h<span class="line-sep">&middot;</span><span class="line-leak">match 87%</span></div>
+              </div>
+            </div>
+            <div class="line-cols">
+              <div class="line-cell"><div class="line-lbl">Heat</div><div class="v line-m">8.4</div></div>
+              <div class="line-cell"><div class="line-lbl">Accel</div><div class="v line-m">3.1x</div></div>
+              <div class="line-cell"><div class="line-lbl">Org</div><div class="v line-m">3</div></div>
+              <div class="line-cell"><div class="line-lbl">Meme</div><div class="v line-m">7</div></div>
+              <div class="line-cell"><div class="line-lbl">&#916;20m</div><div class="v line-m">+18.4%</div></div>
+            </div>
+            <div class="line-gutter line-m">40 of 63 eligible &middot; 12 hidden by gate &middot;
+            meme_score 7 &middot; O 3 &middot; author cap 2</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="line-case line-case-good">
+        <div class="line-vhead">
+          <div class="line-vtag">This</div>
+          <div class="line-vnote">the judgement, already made</div>
+        </div>
+        <div class="line-feed">
+          <div class="line-card">
+            <div class="line-top">
+              <div class="line-thumb"></div>
+              <div style="flex:1;min-width:0">
+                <div class="line-tt line-h">Harbor Last Horn</div>
+                <div class="line-two">A retiring ferry captain blew his horn one last time, and
+                every boat in the harbour blew back.</div>
+                <div class="line-meta line-m">@nordkyst_ferge on X<span class="line-sep">&middot;</span><b>2.4M views</b><span class="line-sep">&middot;</span>4h old</div>
+              </div>
+            </div>
+            <div class="line-strip">
+              <div class="line-pill line-pill-first">$FERRY <b style="color:inherit">&middot;</b> first</div>
+              <div class="line-pill"><b>$799.6K</b></div>
+              <div class="line-climb line-m">
+                <svg width="46" height="16" viewBox="0 0 46 16" aria-hidden="true">
+                  <path d="M1 14 L9 13 L17 11.4 L25 8.6 L33 5 L45 1.6" fill="none" stroke="#9BF03C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Still climbing
+              </div>
+              <div class="line-buy" style="margin-left:9px">Buy $FERRY</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="cap">Same story, same underlying numbers, same ranking. On the left the user is
+  asked to interpret five scales they have never been taught. On the right they are told what
+  happened, how many people have seen it, how old it is, that one coin exists and it was the
+  first, that attention is still going up — and given one button to act on it. Seven things,
+  nothing else. The reasoning that produced that ordering is identical in both — only one of
+  them says so out loud.</p>
+
+  <h3>The harder cases</h3>
+
+  <p>Obvious internals are easy to keep off screen. The rule earns its keep in the awkward
+  cases, where a number would be genuinely convenient and still has to stay behind the
+  curtain.</p>
+
+  <div class="line-w" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="line-grid4">
+
+      <div class="line-panel">
+        <div class="line-phead"><span class="line-pnum line-m">A</span><span class="line-ptitle line-h">Coins get labels, not confidences</span></div>
+        <div class="line-pbody">
+          <div class="line-inset">
+            <div class="line-coin"><div class="line-tick line-m">$FERRY</div><div class="line-badge line-badge-first">First</div><div class="line-mc line-m">$799.6K</div></div>
+            <div class="line-coin"><div class="line-tick line-m">$HORN</div><div class="line-badge line-badge-big">Biggest</div><div class="line-mc line-m">$1.2M</div></div>
+            <div class="line-coin"><div class="line-tick line-m">$BOAT</div><div class="line-badge line-badge-unv">Unverified</div><div class="line-mc line-m">&mdash;</div></div>
+          </div>
+          <div class="line-instead line-m"><span>instead of</span><s>match 94% &middot; 88% &middot; 31%</s></div>
+        </div>
+      </div>
+
+      <div class="line-panel">
+        <div class="line-phead"><span class="line-pnum line-m">B</span><span class="line-ptitle line-h">Climbing is a shape, not a percentage</span></div>
+        <div class="line-pbody">
+          <div class="line-inset" style="display:flex;align-items:center;gap:14px">
+            <svg width="150" height="52" viewBox="0 0 150 52" aria-hidden="true">
+              <path d="M2 48 L26 46 L50 42 L74 34 L98 22 L122 12 L148 4" fill="none" stroke="#9BF03C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 48 L26 46 L50 42 L74 34 L98 22 L122 12 L148 4 L148 52 L2 52 Z" fill="#9BF03C" opacity=".08"/>
+              <circle cx="148" cy="4" r="2.6" fill="#9BF03C"/>
+            </svg>
+            <div>
+              <div class="line-lbl">Attention</div>
+              <div style="font-size:14px;color:#9BF03C;margin-top:3px">Still climbing</div>
+              <div class="line-meta line-m" style="margin-top:5px">2.4M views &middot; 4h</div>
+            </div>
+          </div>
+          <div class="line-instead line-m"><span>instead of</span><s>+18.4% / 20m &middot; accel 3.1x</s></div>
+        </div>
+      </div>
+
+      <div class="line-panel">
+        <div class="line-phead"><span class="line-pnum line-m">C</span><span class="line-ptitle line-h">Unsure means no button at all</span></div>
+        <div class="line-pbody">
+          <div class="line-inset">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+              <div class="line-tick line-m" style="font-size:14px">$BOAT</div>
+              <div class="line-badge line-badge-unv">Unverified</div>
+            </div>
+            <div class="line-nobtn">We can't confirm this coin is about this story.
+            <span style="color:#3DE0FF">Open it on DexScreener</span> to check for yourself.</div>
+          </div>
+          <div class="line-instead line-m"><span>instead of</span>
+            <span class="line-ghost" style="margin-top:6px">Buy &mdash; disabled</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="line-panel">
+        <div class="line-phead"><span class="line-pnum line-m">D</span><span class="line-ptitle line-h">The sentence is the output</span></div>
+        <div class="line-pbody">
+          <div class="line-inset">
+            <div class="line-quote">&ldquo;A retiring ferry captain blew his horn one last time,
+            and every boat in the harbour blew back.&rdquo;</div>
+            <div class="line-meta line-m" style="margin-top:9px">@nordkyst_ferge on X<span class="line-sep">&middot;</span>2.4M views<span class="line-sep">&middot;</span>4h old</div>
+          </div>
+          <div class="line-instead line-m"><span>behind it</span>three collectors, twelve
+          re-measurements, one AI judgement, one grouping decision</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="cap">A. FIRST, BIGGEST and UNVERIFIED are things the user can act on; 94% is a thing
+  they'd have to interpret. B. A line that goes up says "still climbing" faster than any
+  percentage, and cannot be misread as a promise. C. A disabled button is a taunt — it says we
+  know something and won't tell you; showing nothing, plus a link out, is honest. D. The
+  two-liner is not a summary of the reasoning, it <em>is</em> the reasoning, delivered.</p>
+
+  <h3>The test</h3>
+
+  <p>Any new screen, any new field, any argument about whether something belongs — this settles
+  it in about five seconds, and anyone on the team can apply it without asking.</p>
+
+  <div class="line-w" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="line-test">
+      <div class="line-tq">
+        <div class="line-lbl" style="margin-bottom:8px">Before you put a number on screen, ask</div>
+        <div class="line-tqt line-h">Would this number still be true if Insidor did not exist?</div>
+      </div>
+      <div class="line-tgrid">
+        <div class="line-tcol">
+          <div class="line-tyes line-m">Yes &rarr; it can be shown</div>
+          <div class="line-titem line-m"><b>2.4M views</b> &mdash; the post has them either way</div>
+          <div class="line-titem line-m"><b>$799.6K</b> &mdash; on-chain, public, checkable</div>
+          <div class="line-titem line-m"><b>4h old</b> &mdash; the clock is not ours</div>
+          <div class="line-titem line-m"><b>1,204 holders</b> &mdash; anyone can count them</div>
+        </div>
+        <div class="line-tcol">
+          <div class="line-tno line-m">No &rarr; it stays behind the scenes</div>
+          <div class="line-titem line-m"><b>meme_score 7</b> &mdash; we invented the scale</div>
+          <div class="line-titem line-m"><b>accel 3.1x</b> &mdash; needs our own history to exist</div>
+          <div class="line-titem line-m"><b>match 87%</b> &mdash; our uncertainty, not theirs</div>
+          <div class="line-titem line-m"><b>rank &#9650;4</b> &mdash; a fact about our list, not the world</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">One question, applied to every field. It has a useful side effect: the numbers
+  that pass are exactly the numbers a sceptical user can verify elsewhere, so showing them
+  builds credibility. The numbers that fail are the ones we could never prove anyway.</p>
+
+</section>

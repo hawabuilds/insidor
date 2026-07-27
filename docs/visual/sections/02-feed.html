@@ -1,0 +1,531 @@
+<meta charset="utf-8">
+<!--standalone-->
+<style>
+/* Typography for viewing this fragment on its own. The assembled document supplies
+   the same rules from the shell head, so the build script strips this block. */
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+html,body{margin:0;padding:0;background:#060607;}
+body{color:#F4F5F7;font-family:"General Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+     font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased;}
+.sec{padding:56px 50px;max-width:1200px;margin:0 auto;}
+h2{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:36px;font-weight:600;
+   letter-spacing:-.02em;margin:0 0 18px;padding-bottom:16px;border-bottom:1px solid #212127;}
+h3{font-family:"Clash Display",-apple-system,system-ui,sans-serif;font-size:20px;font-weight:600;margin:38px 0 12px;}
+h4{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:11px;font-weight:500;
+   letter-spacing:.14em;text-transform:uppercase;color:#5A5A62;margin:30px 0 10px;}
+p{margin:0 0 15px;max-width:96ch;}
+.lede{font-size:18.5px;line-height:1.55;color:#8A8A93;max-width:82ch;margin-bottom:26px;}
+.cap{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#5A5A62;
+     margin:12px 0 34px;padding-left:14px;border-left:2px solid #2E2E36;max-width:92ch;}
+strong{font-weight:600;color:#F4F5F7;}
+code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.9em;background:#131316;
+     color:#3DE0FF;padding:1px 5px;border-radius:4px;}
+a{color:#3DE0FF;text-decoration:none;}
+ul,ol{margin:0 0 16px;padding-left:22px;max-width:94ch;} li{margin-bottom:7px;}
+svg{max-width:100%;height:auto;}
+</style>
+<!--/standalone-->
+
+<style>
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,500&f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+.nf-mock{
+  --bg0:#060607; --bg1:#0C0C0E; --bg2:#131316; --bg3:#1A1A1E; --bg4:#222228;
+  --line:#212127; --line2:#2E2E36;
+  --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62;
+  --ion:#3DE0FF; --lime:#9BF03C; --red:#FF5C6E; --amber:#FFB84D;
+  background:var(--bg0); border:1px solid var(--line2); border-radius:7px;
+  overflow:hidden; color:var(--ink);
+  font-family:"General Sans",-apple-system,system-ui,sans-serif;
+  font-size:13px; line-height:1.3; -webkit-font-smoothing:antialiased;
+}
+.nf-mock *{box-sizing:border-box;}
+.nf-mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;}
+.nf-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#5A5A62;font-weight:500;
+  font-family:"General Sans",-apple-system,system-ui,sans-serif;}
+
+/* ---------- app chrome ---------- */
+.nf-top{display:flex;align-items:center;gap:16px;height:56px;padding:0 18px;
+  background:var(--bg1);border-bottom:1px solid var(--line);}
+.nf-logo{display:flex;align-items:center;gap:8px;font-family:"Clash Display",-apple-system,sans-serif;
+  font-weight:600;font-size:16px;letter-spacing:.02em;color:var(--ink);}
+.nf-logo i{display:block;width:14px;height:14px;border-radius:4px;
+  background:linear-gradient(135deg,#3DE0FF 0%,#0B8FA8 100%);box-shadow:0 0 9px rgba(61,224,255,.45);}
+.nf-nav{display:flex;gap:3px;margin-left:14px;}
+.nf-navi{padding:7px 13px;border-radius:6px;font-size:13.5px;font-weight:500;color:var(--muted);}
+.nf-navi.on{background:var(--bg3);color:var(--ink);}
+.nf-srch{margin-left:auto;display:flex;align-items:center;gap:9px;width:310px;height:33px;
+  padding:0 11px;background:var(--bg2);border:1px solid var(--line);border-radius:6px;
+  color:var(--dim);font-size:13px;}
+.nf-srch .mag{width:11px;height:11px;border:1.4px solid #5A5A62;border-radius:50%;
+  position:relative;flex:none;}
+.nf-srch .mag::after{content:"";position:absolute;right:-4px;bottom:-2px;width:5px;height:1.4px;
+  background:#5A5A62;transform:rotate(45deg);}
+.nf-kbd{margin-left:auto;padding:2px 6px;border:1px solid var(--line2);border-radius:4px;
+  font-size:9.5px;color:var(--dim);font-family:"JetBrains Mono",monospace;}
+.nf-conn{height:33px;padding:0 16px;display:flex;align-items:center;border-radius:6px;
+  background:var(--ion);color:#04222A;font-weight:600;font-size:13px;}
+
+/* ---------- feed header strip ---------- */
+.nf-strip{display:flex;align-items:baseline;gap:11px;padding:20px 18px 14px;background:var(--bg0);}
+.nf-h1{font-family:"Clash Display",-apple-system,sans-serif;font-size:19px;font-weight:600;
+  letter-spacing:-.01em;color:var(--ink);}
+.nf-live{display:flex;align-items:center;gap:6px;margin-left:auto;}
+.nf-dot{width:6px;height:6px;border-radius:50%;background:var(--lime);
+  box-shadow:0 0 7px rgba(155,240,60,.7);}
+.nf-livetx{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+
+/* ---------- rows ---------- */
+.nf-list{border-top:1px solid var(--line);}
+.nf-row{display:grid;grid-template-columns:108px 1fr 96px 76px 48px 130px;
+  gap:16px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line);
+  background:var(--bg1);}
+.nf-row:last-child{border-bottom:none;}
+
+.nf-th{width:108px;height:72px;border-radius:5px;position:relative;
+  border:1px solid rgba(255,255,255,.055);overflow:hidden;}
+.nf-th .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:24px;height:24px;border-radius:50%;background:rgba(6,6,7,.5);
+  border:1px solid rgba(244,245,247,.35);}
+.nf-th .play::after{content:"";position:absolute;left:9px;top:7px;
+  border-left:8px solid rgba(244,245,247,.92);border-top:5px solid transparent;
+  border-bottom:5px solid transparent;}
+
+.nf-txt{min-width:0;}
+.nf-title{font-family:"Clash Display",-apple-system,sans-serif;font-size:12.5px;font-weight:600;
+  letter-spacing:.015em;color:var(--muted);margin-bottom:5px;}
+.nf-say{font-size:15.5px;line-height:1.42;color:var(--ink);font-weight:400;
+  min-height:44px;letter-spacing:-.004em;}
+
+.nf-views{text-align:right;}
+.nf-views .n{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:25px;font-weight:500;letter-spacing:-.02em;color:var(--ink);line-height:1;}
+.nf-views .l{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+  margin-top:6px;font-weight:500;}
+
+.nf-spark{display:flex;justify-content:center;}
+
+.nf-age{text-align:right;}
+.nf-age .n{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:15px;color:var(--muted);line-height:1;}
+.nf-age .l{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+  margin-top:6px;font-weight:500;}
+
+.nf-btn{height:38px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:600;letter-spacing:.005em;}
+.nf-btn.buy{background:var(--ion);color:#04222A;}
+.nf-btn.make{background:transparent;border:1px solid rgba(61,224,255,.5);color:var(--ion);}
+.nf-btn.many{background:transparent;border:1px solid var(--line2);color:var(--muted);}
+
+/* ---------- annotated legend ---------- */
+.nf-keys{display:grid;grid-template-columns:1fr 1fr;gap:0 30px;margin:22px 0 8px;}
+.nf-key{display:grid;grid-template-columns:26px 1fr;gap:13px;padding:14px 0;
+  border-bottom:1px solid #212127;align-items:start;}
+.nf-key .num{width:26px;height:26px;border-radius:50%;border:1px solid #2E2E36;background:#131316;
+  display:flex;align-items:center;justify-content:center;
+  font-family:"JetBrains Mono",monospace;font-size:11px;color:#3DE0FF;font-weight:500;}
+.nf-key h5{margin:0 0 4px;font-size:14px;font-weight:600;color:#F4F5F7;
+  font-family:"General Sans",system-ui,sans-serif;letter-spacing:-.005em;}
+.nf-key p{margin:0;font-size:13px;line-height:1.55;color:#8A8A93;max-width:none;}
+.nf-key p em{font-style:normal;color:#C6C7CE;}
+
+/* ---------- before / after ---------- */
+.nf-ba{display:flex;flex-direction:column;gap:20px;}
+.nf-panel{border-radius:7px;overflow:hidden;
+  font-family:"General Sans",-apple-system,system-ui,sans-serif;
+  --ink:#F4F5F7; --muted:#8A8A93; --dim:#5A5A62; --line:#212127; --line2:#2E2E36; --ion:#3DE0FF;}
+.nf-panel.bad{border:1px dashed rgba(255,92,110,.55);background:#0C0C0E;}
+.nf-panel.good{border:1px solid rgba(155,240,60,.4);background:#0C0C0E;}
+.nf-bar{display:flex;align-items:center;gap:10px;padding:9px 14px;
+  font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;}
+.nf-panel.bad .nf-bar{background:rgba(255,92,110,.09);color:#FF5C6E;
+  border-bottom:1px solid rgba(255,92,110,.28);}
+.nf-panel.good .nf-bar{background:rgba(155,240,60,.08);color:#9BF03C;
+  border-bottom:1px solid rgba(155,240,60,.26);}
+.nf-bar .rest{margin-left:auto;letter-spacing:.04em;text-transform:none;font-size:11.5px;
+  color:#8A8A93;font-weight:400;}
+
+/* the rejected dense row */
+.nf-old{--bg2:#131316; --bg4:#222228;font-size:12px;color:#F4F5F7;}
+.nf-old *{box-sizing:border-box;}
+.nf-ogrid{display:grid;
+  grid-template-columns:26px 1fr 52px 52px 52px 52px 62px 44px 48px 44px 96px;
+  gap:10px;align-items:center;padding:9px 14px;}
+.nf-ohd{border-bottom:1px solid #212127;background:#131316;}
+.nf-ohd div{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.11em;
+  text-transform:uppercase;color:#5A5A62;}
+.nf-orow{height:56px;border-bottom:1px solid #212127;}
+.nf-opost{display:flex;align-items:center;gap:9px;min-width:0;}
+.nf-oth{width:40px;height:40px;border-radius:4px;flex:none;
+  background:linear-gradient(150deg,#173445 0%,#2E5C63 48%,#7E5A2E 100%);}
+.nf-oline{font-size:11.5px;line-height:14px;color:#D8D9DE;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;}
+.nf-ohandle{font-family:"JetBrains Mono",monospace;font-size:9px;color:#5A5A62;margin-top:3px;}
+.nf-onum{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:12.5px;text-align:right;}
+.nf-strike{position:relative;color:#8A8A93;}
+.nf-strike::after{content:"";position:absolute;left:-4px;right:-4px;top:50%;height:1.5px;
+  background:#FF5C6E;opacity:.85;}
+.nf-ofoot{padding:11px 14px 13px;font-family:"JetBrains Mono",monospace;font-size:10px;
+  line-height:1.4;color:#5A5A62;background:#0C0C0E;}
+.nf-ofoot .nf-strike{display:inline-block;}
+.nf-obtn{height:26px;border-radius:4px;background:#3DE0FF;color:#04222A;
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;}
+
+/* the corrected row, compact echo of the real thing */
+.nf-newrow{display:grid;grid-template-columns:86px 1fr 88px 68px 44px 122px;gap:15px;
+  align-items:center;padding:15px 16px;}
+.nf-newth{width:86px;height:58px;border-radius:5px;
+  background:linear-gradient(150deg,#173445 0%,#2E5C63 48%,#7E5A2E 100%);
+  border:1px solid rgba(255,255,255,.055);}
+
+/* ---------- behind-the-scenes ledger ---------- */
+.nf-ledger{border:1px solid #212127;border-radius:7px;overflow:hidden;margin:18px 0 6px;}
+.nf-lhd{display:grid;grid-template-columns:150px 1fr 190px;gap:16px;padding:10px 16px;
+  background:#131316;border-bottom:1px solid #2E2E36;}
+.nf-lhd div{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.12em;
+  text-transform:uppercase;color:#5A5A62;}
+.nf-lrow{display:grid;grid-template-columns:150px 1fr 190px;gap:16px;padding:12px 16px;
+  border-bottom:1px solid #212127;align-items:baseline;font-size:13px;background:#0C0C0E;}
+.nf-lrow:last-child{border-bottom:none;}
+.nf-lrow .k{font-family:"JetBrains Mono",monospace;font-size:12px;color:#F4F5F7;}
+.nf-lrow .d{color:#8A8A93;line-height:1.5;}
+.nf-lrow .w{font-family:"JetBrains Mono",monospace;font-size:10.5px;color:#5A5A62;
+  letter-spacing:.03em;}
+.nf-lrow .w b{color:#9BF03C;font-weight:500;}
+</style>
+
+<section class="sec">
+  <h2>02. The narratives feed</h2>
+
+  <p class="lede">The home screen. A single list of the stories going viral on the internet right now, best one at the top, each one explained in two lines of plain English so you never have to watch the video to know what it is.</p>
+
+  <p>Every other tool a trader opens — Axiom, Photon, GMGN — is a list of coins. Insidor's home screen is a list of <strong>stories</strong>, and most of them do not have a coin yet. That is the whole point. If a row already has money flowing into it, you were late. The feed's job is to put the ferry captain in front of you at 09:13, eighteen minutes before anybody turns it into a coin called <span class="nf-mono">$FERRY</span> and thirty-four minutes before crypto Twitter notices.</p>
+
+  <p>The order of the list is the product. Behind it sits everything described in section 01 — how fast views are climbing, how many separate people are posting the same thing, whether the AI thinks a coin could plausibly be made out of it. <strong>None of that appears on screen.</strong> The user gets the order; the order <em>is</em> the answer. Putting our numbers next to the rows would hand the judgement back to the person we are meant to be making it for.</p>
+
+  <h3>The two lines are the product</h3>
+
+  <p>The most important text in the whole app is the sentence under each title. "A retiring ferry captain blew his horn one last time, and every boat in the harbour blew back." Read that and you already know whether it is worth a coin — you can feel whether it is funny, whether it has a name in it, whether people will repeat it. So it is set larger and brighter than the title above it. It is not a subtitle. It is the row.</p>
+
+  <p>Everything else on the row is a fact about the world that would be true whether or not Insidor existed: how many people have seen it, whether the line is still going up, how old it is, and what you can do about it. Seven things, no eighth.</p>
+
+  <div class="mock" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="nf-mock">
+
+      <!-- app chrome -->
+      <div class="nf-top">
+        <div class="nf-logo"><i></i>INSIDOR</div>
+        <div class="nf-nav">
+          <div class="nf-navi on">Feed</div>
+          <div class="nf-navi">Search</div>
+          <div class="nf-navi">Watchlist</div>
+          <div class="nf-navi">You</div>
+        </div>
+        <div class="nf-srch">
+          <span class="mag"></span>
+          <span>Search stories, coins, people</span>
+          <span class="nf-kbd">⌘K</span>
+        </div>
+        <div class="nf-conn">Connect wallet</div>
+      </div>
+
+      <!-- feed header -->
+      <div class="nf-strip">
+        <div class="nf-h1">Happening now</div>
+        <div class="nf-live"><span class="nf-dot"></span><span class="nf-livetx">Live</span></div>
+      </div>
+
+      <div class="nf-list">
+
+        <!-- 1 · Harbor Last Horn -->
+        <div class="nf-row">
+          <div class="nf-th" style="background:linear-gradient(150deg,#173445 0%,#2E5C63 48%,#7E5A2E 100%)"><span class="play"></span></div>
+          <div class="nf-txt">
+            <div class="nf-title">Harbor Last Horn</div>
+            <div class="nf-say">A retiring ferry captain blew his horn one last time, and every boat in the harbour blew back.</div>
+          </div>
+          <div class="nf-views"><div class="n">2.4M</div><div class="l">Views</div></div>
+          <div class="nf-spark">
+            <svg width="76" height="26" viewBox="0 0 76 26" fill="none" aria-hidden="true">
+                            <polyline points="1,23 12,21 23,18 34,15 45,11 56,7 65,4 75,2" stroke="#3DE0FF" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="nf-age"><div class="n">4h</div><div class="l">Old</div></div>
+          <div class="nf-btn many">3 coins &rarr;</div>
+        </div>
+
+        <!-- 2 · Paid to Move to Norway -->
+        <div class="nf-row">
+          <div class="nf-th" style="background:linear-gradient(155deg,#12313E 0%,#1D5E5A 50%,#3E7A4B 100%)"></div>
+          <div class="nf-txt">
+            <div class="nf-title">Paid to Move to Norway</div>
+            <div class="nf-say">A Norwegian town is paying people €25,000 to move there.</div>
+          </div>
+          <div class="nf-views"><div class="n">1.1M</div><div class="l">Views</div></div>
+          <div class="nf-spark">
+            <svg width="76" height="26" viewBox="0 0 76 26" fill="none" aria-hidden="true">
+                            <polyline points="1,24 12,23 23,22 34,20 45,15 56,9 65,4 75,1" stroke="#3DE0FF" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="nf-age"><div class="n">1h</div><div class="l">Old</div></div>
+          <div class="nf-btn make">Create coin</div>
+        </div>
+
+        <!-- 3 · Plastic Plant Grandma -->
+        <div class="nf-row">
+          <div class="nf-th" style="background:linear-gradient(150deg,#22301C 0%,#3E5A2C 55%,#6E7A3A 100%)"><span class="play"></span></div>
+          <div class="nf-txt">
+            <div class="nf-title">Plastic Plant Grandma</div>
+            <div class="nf-say">A grandmother has been watering a plastic plant for eleven years and nobody told her.</div>
+          </div>
+          <div class="nf-views"><div class="n">850K</div><div class="l">Views</div></div>
+          <div class="nf-spark">
+            <svg width="76" height="26" viewBox="0 0 76 26" fill="none" aria-hidden="true">
+                            <polyline points="1,22 12,20 23,18 34,16 45,13 56,10 65,7 75,5" stroke="#3DE0FF" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="nf-age"><div class="n">2h</div><div class="l">Old</div></div>
+          <div class="nf-btn buy">Buy $PLANT</div>
+        </div>
+
+        <!-- 4 · Grandmaster vs Pigeon -->
+        <div class="nf-row">
+          <div class="nf-th" style="background:linear-gradient(150deg,#1D2028 0%,#3A3F4E 50%,#6C6F7C 100%)"></div>
+          <div class="nf-txt">
+            <div class="nf-title">Grandmaster vs Pigeon</div>
+            <div class="nf-say">A chess grandmaster lost to a pigeon and wrote an essay about it.</div>
+          </div>
+          <div class="nf-views"><div class="n">1.1M</div><div class="l">Views</div></div>
+          <div class="nf-spark">
+            <svg width="76" height="26" viewBox="0 0 76 26" fill="none" aria-hidden="true">
+              <polyline points="1,20 12,14 23,9 34,6 45,5 56,4.5 65,4.2 75,4" stroke="#5A5A62" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="nf-age"><div class="n">6h</div><div class="l">Old</div></div>
+          <div class="nf-btn buy">Buy $PIGEON</div>
+        </div>
+
+        <!-- 5 · Barista Name Lock-In -->
+        <div class="nf-row">
+          <div class="nf-th" style="background:linear-gradient(150deg,#2A1E16 0%,#5A3A22 55%,#8A6A44 100%)"></div>
+          <div class="nf-txt">
+            <div class="nf-title">Barista Name Lock-In</div>
+            <div class="nf-say">A barista wrote the wrong name so consistently the customer legally changed his.</div>
+          </div>
+          <div class="nf-views"><div class="n">610K</div><div class="l">Views</div></div>
+          <div class="nf-spark">
+            <svg width="76" height="26" viewBox="0 0 76 26" fill="none" aria-hidden="true">
+                            <polyline points="1,23 12,22 23,20 34,18 45,16 56,14 65,12 75,10" stroke="#3DE0FF" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="nf-age"><div class="n">3h</div><div class="l">Old</div></div>
+          <div class="nf-btn make">Create coin</div>
+        </div>
+
+        <!-- 6 · Gerald the Frog -->
+        <div class="nf-row">
+          <div class="nf-th" style="background:linear-gradient(150deg,#16271C 0%,#2E5C38 50%,#7FA84A 100%)"></div>
+          <div class="nf-txt">
+            <div class="nf-title">Gerald the Frog</div>
+            <div class="nf-say">A pet frog called Gerald escaped and was found three streets away, in a shoe.</div>
+          </div>
+          <div class="nf-views"><div class="n">430K</div><div class="l">Views</div></div>
+          <div class="nf-spark">
+            <svg width="76" height="26" viewBox="0 0 76 26" fill="none" aria-hidden="true">
+              <polyline points="1,11 12,8 23,6 34,5 45,4.6 56,5 65,5.4 75,5.8" stroke="#5A5A62" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="nf-age"><div class="n">8h</div><div class="l">Old</div></div>
+          <div class="nf-btn buy">Buy $GERALD</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <p class="cap">SIX ROWS, SEVEN ELEMENTS EACH, NOTHING ELSE. NOTE ROW 3 SITTING ABOVE ROW 4:
+  850K VIEWS RANKED ABOVE 1.1M. THE LIST IS NOT SORTED BY VIEWS — THE 850K IS TWO HOURS OLD AND
+  STILL CLIMBING, THE 1.1M IS SIX HOURS OLD AND FLAT. THE USER IS NOT TOLD WHY. THEY SEE THE
+  ORDER, AND THE TWO LITTLE LINE GRAPHS QUIETLY AGREE WITH IT.</p>
+
+  <h3>The seven elements, and why each one earns its place</h3>
+
+  <div class="nf-keys">
+    <div class="nf-key">
+      <div class="num">1</div>
+      <div>
+        <h5>A picture from the post</h5>
+        <p>The still frame from the video or image. It is how you recognise a story you have already seen scrolling elsewhere, in a fifth of a second, before reading anything.</p>
+      </div>
+    </div>
+    <div class="nf-key">
+      <div class="num">2</div>
+      <div>
+        <h5>A title</h5>
+        <p><em>"Harbor Last Horn."</em> A short handle so the story can be referred to, searched for, and pasted into a group chat. Deliberately set smaller than the sentence below it.</p>
+      </div>
+    </div>
+    <div class="nf-key">
+      <div class="num">3</div>
+      <div>
+        <h5>Two lines of plain English</h5>
+        <p>The point of the entire screen. <em>You should understand the story without watching the video.</em> Largest, brightest text in the row — it is what you actually judge the trade on.</p>
+      </div>
+    </div>
+    <div class="nf-key">
+      <div class="num">4</div>
+      <div>
+        <h5>How many views</h5>
+        <p>The headline number, big and unambiguous. A true fact about the world: this many people have seen it. Not our estimate of anything, just the count.</p>
+      </div>
+    </div>
+    <div class="nf-key">
+      <div class="num">5</div>
+      <div>
+        <h5>A tiny line graph</h5>
+        <p>The view count over the last hour. Answers the one question a single number cannot: <em>is it still going up, or is it over?</em> Cyan and rising, or grey and flat.</p>
+      </div>
+    </div>
+    <div class="nf-key">
+      <div class="num">6</div>
+      <div>
+        <h5>How old it is</h5>
+        <p>Four hours. Six hours. Combined with the graph this is the whole timing story — 850K in two hours is a different animal from 850K in two days.</p>
+      </div>
+    </div>
+    <div class="nf-key">
+      <div class="num">7</div>
+      <div>
+        <h5>One button</h5>
+        <p><em>Create coin</em> if nobody has made one, <em>Buy $TICKER</em> if somebody has, <em>3 coins &rarr;</em> if several exist and you need to pick. One row, one obvious next move.</p>
+      </div>
+    </div>
+  </div>
+
+  <h3>What we removed, and where it went</h3>
+
+  <p>An earlier version of this screen showed the row as a trading terminal: columns headed HEAT, ACCEL, ORG and MEME, a twenty-minute chart of view-rate change, and a footer counting how many posts our filters had thrown away. Every number on it was real. It still had to go, because it asks the user to do the job we built the company to do for them.</p>
+
+  <div class="mock" style="break-inside:avoid;page-break-inside:avoid">
+    <div class="nf-ba">
+
+      <div class="nf-panel bad">
+        <div class="nf-bar">
+          <span>&#10007;&nbsp; Rejected — our workings on the user's screen</span>
+          <span class="rest">Everything struck through is an internal number. It exists. It never appears.</span>
+        </div>
+        <div class="nf-old">
+          <div class="nf-ogrid nf-ohd">
+            <div>#</div><div>Post</div>
+            <div style="text-align:right">Heat</div>
+            <div style="text-align:right">Reach</div>
+            <div style="text-align:right">Rate</div>
+            <div style="text-align:right">Accel</div>
+            <div style="text-align:right">20m</div>
+            <div style="text-align:right">Org</div>
+            <div style="text-align:right">Meme</div>
+            <div style="text-align:right">Age</div>
+            <div></div>
+          </div>
+          <div class="nf-ogrid nf-orow">
+            <div class="nf-onum" style="text-align:left;color:#8A8A93">1</div>
+            <div class="nf-opost">
+              <div class="nf-oth"></div>
+              <div style="min-width:0">
+                <div class="nf-oline">He blew the horn one last time and the whole harbour answered. 31 years.</div>
+                <div class="nf-ohandle">@nordkyst_ferge · X · 412K followers</div>
+              </div>
+            </div>
+            <div class="nf-onum nf-strike">94</div>
+            <div class="nf-onum" style="color:#8A8A93">2.4M</div>
+            <div class="nf-onum nf-strike">12.4K/m</div>
+            <div class="nf-onum nf-strike">3.2&times;</div>
+            <div class="nf-strike" style="display:flex;justify-content:flex-end">
+              <svg width="58" height="20" viewBox="0 0 58 20" fill="none" aria-hidden="true">
+                <polyline points="1,17 9,16 17,14 25,12 33,9 41,6 49,4 57,2" stroke="#5A5A62" stroke-width="1.3" fill="none" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="nf-onum nf-strike">88</div>
+            <div class="nf-onum nf-strike">84</div>
+            <div class="nf-onum" style="color:#8A8A93">4h</div>
+            <div><div class="nf-obtn">Buy $FERRY</div></div>
+          </div>
+          <div class="nf-ofoot"><span class="nf-strike">40 of 63 eligible · 12 hidden by gate · meme_score 7 · O 3 · author cap 2</span></div>
+        </div>
+      </div>
+
+      <div class="nf-panel good">
+        <div class="nf-bar">
+          <span>&#10003;&nbsp; Shipping — the same story, the same instant</span>
+          <span class="rest">Six facts about the world, and one thing to do. Seven, no eighth.</span>
+        </div>
+        <div class="nf-newrow" style="color:#F4F5F7;font-family:'General Sans',system-ui,sans-serif">
+          <div class="nf-newth"></div>
+          <div style="min-width:0">
+            <div style="font-family:'Clash Display',sans-serif;font-size:12px;font-weight:600;color:#8A8A93;margin-bottom:5px;letter-spacing:.015em">Harbor Last Horn</div>
+            <div style="font-size:15px;line-height:1.42;color:#F4F5F7">A retiring ferry captain blew his horn one last time, and every boat in the harbour blew back.</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:23px;font-weight:500;letter-spacing:-.02em;line-height:1">2.4M</div>
+            <div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#5A5A62;margin-top:6px;font-weight:500">Views</div>
+          </div>
+          <div style="display:flex;justify-content:center">
+            <svg width="68" height="24" viewBox="0 0 68 24" fill="none" aria-hidden="true">
+                            <polyline points="1,21 11,19 21,17 31,14 41,10 51,6 59,4 67,2" stroke="#3DE0FF" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:14px;color:#8A8A93;line-height:1">4h</div>
+            <div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#5A5A62;margin-top:6px;font-weight:500">Old</div>
+          </div>
+          <div style="height:36px;border-radius:6px;border:1px solid #2E2E36;color:#8A8A93;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600">3 coins &rarr;</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="cap">SAME STORY, SAME SECOND, SAME UNDERLYING DATA. THE TOP ROW ASKS THE READER TO WEIGH
+  UP SIX NUMBERS AND DECIDE. THE BOTTOM ROW HAS ALREADY DECIDED, AND SAYS SO BY SITTING AT THE
+  TOP OF THE LIST. NOTE THAT VIEWS, AGE AND THE ACTION SURVIVE THE CUT — THOSE ARE FACTS, NOT
+  OPINIONS.</p>
+
+  <p>To be completely clear: <strong>we still calculate every one of those numbers.</strong> They are what decides the order of the feed, which stories get grouped together, and which of the hundreds of millions of daily posts we bother looking at twice. They are written into the Library on every cycle and they are what section 07 will eventually learn from. They simply never leave the building.</p>
+
+  <div class="nf-ledger">
+    <div class="nf-lhd"><div>Internal number</div><div>What it decides</div><div>Where it lives</div></div>
+    <div class="nf-lrow">
+      <div class="k">heat</div>
+      <div class="d">How high up the feed a story sits right now.</div>
+      <div class="w">Library &rarr; <b>row order only</b></div>
+    </div>
+    <div class="nf-lrow">
+      <div class="k">acceleration</div>
+      <div class="d">Whether a story is still climbing or has peaked, from two measurements of the same post.</div>
+      <div class="w">Library &rarr; <b>row order only</b></div>
+    </div>
+    <div class="nf-lrow">
+      <div class="k">organic score</div>
+      <div class="d">Whether the attention looks like real people or like a paid push.</div>
+      <div class="w">Library &rarr; <b>included / excluded</b></div>
+    </div>
+    <div class="nf-lrow">
+      <div class="k">meme score</div>
+      <div class="d">The AI's read on whether a coin could plausibly be made out of this at all.</div>
+      <div class="w">Library &rarr; <b>included / excluded</b></div>
+    </div>
+    <div class="nf-lrow">
+      <div class="k">eligibility gate</div>
+      <div class="d">How many candidates were dropped before the list was built.</div>
+      <div class="w">Library &rarr; <b>never surfaced</b></div>
+    </div>
+  </div>
+
+  <p class="cap">THE FEED IS THE OUTPUT OF THIS TABLE, NOT A RENDERING OF IT. IF A ROW IS THIRD
+  RATHER THAN FIRST, THAT IS THE ANSWER — THERE IS NO SCORE TO ARGUE WITH, AND NOTHING FOR THE
+  USER TO RE-DERIVE. THE APP'S JOB IS TO HAVE ALREADY MADE THE JUDGEMENT.</p>
+
+</section>
