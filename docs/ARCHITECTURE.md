@@ -2608,650 +2608,1923 @@ Four mechanisms, in the order they fire:
 
 ## 5. AUTH AND SECURITY
 
-### 5.1 The write model, stated once
+Identity is a Solana wallet, held by Privy. It is not a Supabase Auth user, and it never
+will be. Everything below follows from that one fact and from a second one that is easy
+to state and expensive to forget: **Supabase chooses a Postgres role by reading the
+literal `role` claim out of the presented JWT, and falls back to `anon` when it is
+absent.** Privy's access token has a closed claim set — `sid`, `sub`, `iss`, `aud`,
+`iat`, `exp` — and no documented claim-injection hook. A Privy token handed to PostgREST
+does not fail; it succeeds *as `anon`*, returns HTTP 200 with zero rows, and renders a
+portfolio page reading `$0` for a user who is holding. That is the silent-wrongness
+shape this whole document exists to prevent, so it is designed against rather than
+discovered.
 
-**The browser writes nothing.** Every write goes through a server route holding the
-service role. Three reasons, in order of weight:
+### 5.1 The decision: server-side writes on the service role
 
-1. **There is no reliable `authenticated` principal.** Supabase inspects the literal
-   `role` claim in a JWT to choose a Postgres role, and falls back to `anon` when it
-   is absent. Privy's access token has a closed claim set — `sid`, `sub`, `iss`,
-   `aud`, `iat`, `exp` — with no claim-injection surface. A Privy JWT presented
-   directly to PostgREST runs as `anon`.
-2. **The highest-volume follower class is anonymous device follows**, which have no
-   principal at all. No policy could distinguish an owner from anyone who guesses a
-   `device_id`.
-3. **Every write has an invariant needing a server-side READ.** The comment stamp
-   needs a Helius call. The launch needs a fresh `count(confirmed) = 0` at submit. The
-   trade needs the SOL price captured server-side.
+**v1: every write goes through a Next.js Route Handler that verifies the Privy token
+itself and then writes with the service role.** Supabase third-party auth via `jwks_url`
+is phase 2, not v1.
 
-So the policies in `0011` are almost entirely SELECT policies. They exist to make the
-coinability tier and the moderation state unbypassable on the **read** path — the half
-a browser can actually reach.
+Four reasons, in order of weight.
 
-### 5.2 The end-to-end flow
+1. **There is no `authenticated` principal to authorise against.** Privy meets
+   Supabase's stated third-party requirement (asymmetric keys with a `kid`;
+   `https://auth.privy.io/api/v1/apps/<app_id>/jwks.json` returns EC P-256 / `ES256`),
+   and Supabase's `POST /v1/projects/{ref}/config/auth/third-party-auth` accepts a
+   generic `jwks_url` — the five named providers are guides, not an allow-list. Note
+   `jwks_url`, **not** `oidc_issuer_url`: `auth.privy.io` serves no
+   `/.well-known/openid-configuration` (404). None of that helps, because the token
+   still carries no `role`.
+2. **The `sub` is the wrong type.** Privy's `sub` is a DID (`did:privy:cl…`);
+   `app_user.id` is a `uuid`. Even with claim injection, a policy written
+   `user_id::text = auth.jwt() ->> 'sub'` compiles, runs, and evaluates FALSE forever.
+   **`0011_rls.sql` as merged contains exactly that expression in six places.** It is
+   corrected in 5.4 below, and it is the single most important correction in this
+   section.
+3. **The highest-volume follower class is anonymous device follows**, which have no
+   principal at all. No policy can distinguish the owner of a `device_id` from anyone
+   who guesses one, so that path is server-routed regardless of what the authenticated
+   path does.
+4. **Every write has an invariant that requires a server-side READ.** The comment stamp
+   needs a Helius balance call. The launch needs a fresh `count(confirmed) = 0` at
+   submit. The trade needs a SOL price captured server-side. A direct client insert
+   cannot satisfy any of them, so a client insert path would have to be forbidden
+   anyway — which means building it buys nothing and adds a second way in.
+
+**What we give up** is one hop of latency and the use of PostgREST as a write API.
+Neither is load-bearing: no write in this product sits on the board's 2-second path.
+
+**The migration path, and it is not the obvious one.** Phase 2 is *not* persuading Privy
+to inject `role`. It is **minting our own Supabase JWT** in the route that already
+verifies the Privy token: import a signing key into Supabase, mint
+`{ sub: <app_user.id>, role: 'authenticated', exp: now + 15m }`, hand it to the browser,
+and let PostgREST enforce the owner policies directly. The DID→uuid problem disappears
+because we choose the `sub`. The precondition is that `current_app_user()` already
+accepts **both** shapes, which is why it is written the way it is below — phase 2 then
+becomes a config change plus a token endpoint, with zero policy edits and zero schema
+change. Two things to settle first: whether a self-minted JWT counts against Supabase's
+third-party MAU meter at $0.00325 (ask billing), and a 15-minute TTL with a silent
+refresh so a stale tab does not 401 mid-scroll.
+
+### 5.2 The flow end to end
+
+A user lands, connects a wallet, and forty minutes later posts a comment.
 
 ```
-1.  Browser loads. No session required. `anon` reads the board, a story, a coin.
-2.  Connect wallet -> Privy embedded or external. Privy issues an access token
-    (~1h) whose `sub` is a Privy DID: `did:privy:cl...`.
-3.  The browser calls a route handler with `Authorization: Bearer <privy token>`.
-4.  The route verifies it with @privy-io/node against
-    https://auth.privy.io/api/v1/apps/<app-id>/jwks.json
-    — pass jwks_url, NOT oidc_issuer_url; auth.privy.io has no
-    /.well-known/openid-configuration.
-5.  The route resolves the DID to app_user.id, upserting on first sight.
-6.  The route constructs a SERVICE-ROLE Supabase client from env — never from the
-    forwarded request header — and performs the write with an explicit
-    `user_id = <resolved uuid>` predicate written by hand.
-7.  Realtime frames reach the browser over one ref-counted socket. A 50-minute
-    loop re-mints the token and calls supabase.realtime.setAuth().
+ 1  GET /story/<id>          RSC renders with the ANON key through RLS. No session.
+                             Browser holds: nothing.
+ 2  Connect wallet           Privy modal -> embedded or external wallet.
+                             Privy issues an ACCESS TOKEN (~1h, JWT, ES256) and an
+                             IDENTITY TOKEN. Both live in Privy's own cookie/memory.
+                             We store neither ourselves.
+ 3  First authed call        client: await getAccessToken()   <- ALWAYS re-read, never
+                             cached in our own state; the SDK refreshes near expiry.
+                             POST /api/comments
+                               Authorization: Bearer <privy access token>
+                               body: { storyId, body }        <- NO wallet address.
+ 4  Route: verify            jose.jwtVerify(token, JWKS, { issuer, audience })
+                             JWKS cached in module scope, remote-refetched on unknown
+                             kid. Failure of ANY kind -> 401. Never a fallback path.
+ 5  Route: resolve           did -> app_user (upsert on first sight).
+                             wallet address read from PRIVY'S API using the app secret,
+                             never from the request body. Bound once, frozen forever.
+ 6  Route: establish facts   Helius: does this wallet hold this story's top coin?
+                             coin_match: confirmed count, unsure count.
+                             story: age, views, top mcap.
+                             -> the eleven snap_* columns, computed SERVER-SIDE.
+ 7  Route: write             SERVICE-ROLE client constructed from env in-process.
+                             insert into comment (..., user_id = <resolved uuid>, ...)
+                             DB triggers: tier gate, address gate, 3/60s speed limit.
+ 8  Database: broadcast      AFTER INSERT trigger, status='visible' only ->
+                             realtime.send(sanitised row, 'insert', 'story:<id>', true)
+ 9  Every browser on         one ref-counted socket receives the frame. Token refresh
+    that story               loop keeps the socket alive past the hour (5.6).
 ```
 
-Step 6 has a trap worth naming explicitly, because it is the mistake that will be
-made: **never construct the Supabase client from a forwarded `Authorization` header.**
-Supabase's documentation is unambiguous — *"Supabase will adhere to the RLS policy of
-the signed-in user, even if the client library is initialized with a Service Key."*
-Since every write route already verifies a Privy token, forwarding that header is the
-natural thing to type, and it silently demotes the route off the service role.
+Step 5 is where forged input dies. The wallet address is **never** a request field. It is
+fetched from Privy server-side with `PRIVY_APP_SECRET`, written once into
+`app_user.wallet_address`, and frozen by the `app_user_freeze` trigger already in `0007`
+(`freeze_columns('privy_did','wallet_address')`) with a `UNIQUE` constraint on top. One
+address, one DID, permanently. A client that posts `{ wallet: <someone else's> }` is
+posting a field nothing reads.
 
-Step 7 is the single most likely launch-day bug. Realtime caches channel authorisation
-for the connection lifetime and Privy tokens live about an hour, so without the
-refresh loop every user silently drops off the live feed after sixty minutes. It ships
-in the **same release** as the first authenticated channel.
+Step 7 has a trap worth naming because it is the mistake that will be made: **never
+construct the Supabase client from a forwarded `Authorization` header.** Supabase's
+documentation is unambiguous that it adheres to the RLS policy of the signed-in user
+even when the client was initialised with the service key. Since the route has already
+verified a Privy token, forwarding it is the natural thing to type — and it silently
+demotes the route off the service role, at which point every write fails closed and
+every read returns empty. The factories in 5.5 make it impossible to type.
 
-### 5.3 RLS — the read path
+**Token lifetime.** Privy access tokens live about an hour. The client calls
+`getAccessToken()` immediately before every request and never stores the string; the SDK
+handles refresh. The server treats `exp` as absolute — no clock skew allowance beyond
+jose's default, no "recently expired is fine" branch.
+
+### 5.3 The verification code
+
+We verify with `jose` and `createRemoteJWKSet` rather than through
+`@privy-io/node`'s helper. That is a deliberate choice against the SDK: we need to
+assert `iss` and `aud` explicitly and to control the failure taxonomy, and this project
+has already been burned once by a helper whose error handling was assumed rather than
+read (the retry that only retried 429). `jose` is also the library that mints the
+phase-2 Supabase JWT, so it is one dependency, not two.
+
+```ts
+// apps/web/src/features/wallet/server/verify.ts
+import 'server-only';
+import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { serverEnv } from '@insidor/env';
+
+/** Privy's per-app JWKS. NO /.well-known/openid-configuration exists (404), so the
+ *  URL is constructed, not discovered.
+ *  ⚠ VERIFY: that this path is a supported public contract (open item U8), and that
+ *  `iss` is literally "privy.io" on a live token. Read a real token before trusting
+ *  either. Both are asserted below, so a change breaks loudly, not silently. */
+const JWKS = createRemoteJWKSet(
+  new URL(`https://auth.privy.io/api/v1/apps/${serverEnv.NEXT_PUBLIC_PRIVY_APP_ID}/jwks.json`),
+  { cacheMaxAge: 10 * 60_000, timeoutDuration: 4_000 },
+);
+
+export type PrivyClaims = JWTPayload & { sub: string; sid: string };
+
+export class AuthError extends Error {
+  constructor(readonly reason: string) { super(reason); }
+}
+
+export async function verifyPrivyToken(authorization: string | null): Promise<PrivyClaims> {
+  const raw = authorization?.startsWith('Bearer ') === true ? authorization.slice(7) : null;
+  if (raw === null || raw.length === 0) throw new AuthError('missing_bearer');
+
+  let payload: JWTPayload;
+  try {
+    ({ payload } = await jwtVerify(raw, JWKS, {
+      issuer: 'privy.io',
+      audience: serverEnv.NEXT_PUBLIC_PRIVY_APP_ID,
+      algorithms: ['ES256'],          // pinned. `none` and HS* are unrepresentable.
+      clockTolerance: 0,
+    }));
+  } catch (e) {
+    // EVERY failure is 401. There is no branch here that continues on error, and no
+    // catch that returns a default principal. This is the shape of the safety-endpoint
+    // defect: a read that could not establish a fact must not report the safe answer.
+    throw new AuthError(e instanceof Error ? e.name : 'verify_failed');
+  }
+
+  if (typeof payload.sub !== 'string' || !payload.sub.startsWith('did:privy:')) {
+    throw new AuthError('sub_not_a_privy_did');
+  }
+  if (typeof payload.sid !== 'string') throw new AuthError('missing_sid');
+  return payload as PrivyClaims;
+}
+```
+
+```ts
+// apps/web/src/features/wallet/server/principal.ts
+import 'server-only';
+import { serviceClient } from '@insidor/db';
+import { serverEnv } from '@insidor/env';
+import { verifyPrivyToken, AuthError } from './verify';
+
+export type Principal = { userId: string; did: string; wallet: string };
+
+/** The wallet address comes from PRIVY, never from the request. Privy's ACCESS token
+ *  carries no linked accounts — only the identity token does, and a client-supplied
+ *  identity token is a client-supplied wallet. So we ask Privy directly.
+ *  ⚠ VERIFY on the day this is written: endpoint path, the `privy-app-id` header, and
+ *  Basic auth = base64(app_id:app_secret). Documented, not yet called by us. */
+async function privyWallet(did: string): Promise<string> {
+  const res = await fetch(`https://auth.privy.io/api/v1/users/${encodeURIComponent(did)}`, {
+    headers: {
+      authorization: `Basic ${Buffer.from(
+        `${serverEnv.NEXT_PUBLIC_PRIVY_APP_ID}:${serverEnv.PRIVY_APP_SECRET}`,
+      ).toString('base64')}`,
+      'privy-app-id': serverEnv.NEXT_PUBLIC_PRIVY_APP_ID,
+    },
+    signal: AbortSignal.timeout(4_000),
+  });
+  // Any non-2xx throws. A 402, a 403 and a 500 are all failures — the old build's
+  // retry helper retried only 429 and let a 402 vanish for two days.
+  if (!res.ok) throw new AuthError(`privy_user_http_${res.status}`);
+  const user = (await res.json()) as { linked_accounts?: { type: string; chain_type?: string; address?: string }[] };
+  const w = user.linked_accounts?.find(
+    (a) => a.type === 'wallet' && a.chain_type === 'solana' && typeof a.address === 'string',
+  );
+  if (w?.address === undefined) throw new AuthError('no_solana_wallet_linked');
+  return w.address;
+}
+
+/** The ONE function every authed route starts with. */
+export async function requirePrincipal(req: Request): Promise<Principal> {
+  const { sub: did } = await verifyPrivyToken(req.headers.get('authorization'));
+  const db = serviceClient();
+
+  const existing = await db.from('app_user')
+    .select('id, wallet_address').eq('privy_did', did).maybeSingle();
+  if (existing.error !== null) throw existing.error;
+  if (existing.data !== null && existing.data.wallet_address !== null) {
+    void db.from('app_user').update({ last_seen_at: new Date().toISOString() }).eq('id', existing.data.id);
+    return { userId: existing.data.id, did, wallet: existing.data.wallet_address };
+  }
+
+  const wallet = await privyWallet(did);
+  const up = await db.from('app_user')
+    .upsert({ privy_did: did, wallet_address: wallet }, { onConflict: 'privy_did' })
+    .select('id, wallet_address').single();
+  // 23505 on wallet_address means this address is already bound to another DID.
+  // That is a takeover attempt or a Privy account merge; it is a 409, never a rebind.
+  if (up.error !== null) throw up.error;
+  return { userId: up.data.id, did, wallet: up.data.wallet_address! };
+}
+```
+
+```ts
+// apps/web/src/app/api/comments/route.ts — 12 lines, inside the 40-line cap.
+export { POST } from '@server/discussion';
+```
+
+```ts
+// apps/web/src/features/discussion/server/comments.handler.ts (abridged to the auth path)
+import 'server-only';
+import { CommentInput } from '@insidor/contracts';
+import { requirePrincipal, AuthError } from '@server/wallet';
+import { pgStatus } from './pg-error';
+
+export async function POST(req: Request): Promise<Response> {
+  let p;
+  try { p = await requirePrincipal(req); }
+  catch (e) {
+    if (e instanceof AuthError) return Response.json({ error: e.reason }, { status: 401 });
+    throw e;
+  }
+  const parsed = CommentInput.safeParse(await req.json());
+  if (!parsed.success) return Response.json({ error: 'invalid' }, { status: 422 });
+
+  const stamp = await buildStamp(parsed.data.storyId, p.wallet); // Helius + coin_match, server-side
+  const ins = await serviceClient().from('comment').insert({
+    story_id: parsed.data.storyId,
+    user_id: p.userId,               // resolved, never from the body
+    author_wallet: p.wallet,         // bound, never from the body
+    body: parsed.data.body,
+    ...stamp,
+  }).select('id').single();
+
+  if (ins.error !== null) return pgStatus(ins.error);   // 23505->409, IR429->429, 23514->422
+  return Response.json({ id: ins.data.id }, { status: 201 });
+}
+```
+
+### 5.4 RLS — the read path, and the correction to `0011`
+
+The policies are almost entirely SELECT policies. They exist to make the coinability
+tier and the moderation state unbypassable on the half a browser can actually reach.
+`0011` gets them right in structure and wrong in the predicate: six policies compare
+`user_id::text` to the raw `sub`, which under a Privy token is a DID and never a uuid.
+Nothing has been applied to any database yet (open item 1), so **the fix lands in `0011`
+itself**; if any environment has already applied it, the identical block ships as
+`0016_auth_principal.sql`, since a merged-and-applied migration is immutable.
 
 ```sql
--- 0015_roles_bootstrap.sql runs FIRST on non-Supabase Postgres. Without it the
--- GRANTs below abort with `role "anon" does not exist`, and the whole migration
--- set is undeployable to a plain container — which is where CI runs.
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon')
-    THEN CREATE ROLE anon NOLOGIN NOINHERIT; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated')
-    THEN CREATE ROLE authenticated NOLOGIN NOINHERIT; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role')
-    THEN CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS; END IF;
-END $$;
-```
-
-```sql
--- 0011_rls.sql
-
--- The JWT subject, resolved to our own primary key.
+-- Replaces the six `user_id::text = ... ->> 'sub'` predicates in 0011.
 --
--- THIS IS THE LOAD-BEARING DETAIL. Privy's `sub` is a DID (`did:privy:...`) and
--- app_user.id is a uuid. A policy written `user_id::text = ... ->> 'sub'` compiles,
--- runs, and evaluates FALSE forever — returning HTTP 200 with ZERO ROWS, which
--- renders a portfolio page reading "$0" for a user who is holding. It is the
--- silent-wrongness shape this whole document exists to prevent, so the DID is
--- resolved through app_user, which is correct under a Privy JWT AND under a
--- server-minted Supabase JWT.
+-- Accepts BOTH principal shapes deliberately:
+--   * a Privy DID  -> resolved through app_user.privy_did      (phase 1, inert)
+--   * a uuid       -> our own app_user.id                      (phase 2, live)
+-- so switching to server-minted Supabase JWTs is a config change, not a policy rewrite.
 --
--- nullif(...) is not decoration: PostgREST sets request.jwt.claims to the EMPTY
--- STRING on some paths, and ''::jsonb raises inside a policy, failing the entire
--- query rather than the row.
+-- nullif() is not decoration: PostgREST sets request.jwt.claims to the EMPTY STRING on
+-- some paths, and ''::jsonb raises INSIDE the policy — failing the entire query rather
+-- than filtering a row. The CASE guard around ::uuid is the same discipline: WHERE-clause
+-- evaluation order is not guaranteed, so the regex cannot protect the cast from there.
 CREATE OR REPLACE FUNCTION public.current_app_user() RETURNS uuid
 LANGUAGE sql STABLE AS $$
-  SELECT u.id FROM public.app_user u
-   WHERE u.privy_did = (
-     nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'
-   )
+  WITH claim AS (
+    SELECT nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub' AS sub
+  ), norm AS (
+    SELECT sub,
+           CASE WHEN sub ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                THEN sub::uuid END AS sub_uuid
+      FROM claim
+  )
+  SELECT u.id FROM public.app_user u, norm n
+   WHERE u.privy_did = n.sub OR u.id = n.sub_uuid
+   LIMIT 1
 $$;
 
--- Baseline: nothing readable or writable until named.
-DO $$
-DECLARE t text;
-BEGIN
-  FOREACH t IN ARRAY ARRAY[
-    'story','post','post_snapshot','post_heat','post_meme_score','post_embedding',
-    'story_momentum','platform_norm','author_roster','coin','coin_snapshot',
-    'coin_mcap_series','coin_safety','coin_image_embedding','creator_stat',
-    'story_ticker','coin_match','match_label','ct_mention','sensor_heartbeat',
-    'sensor_gap','story_clock','story_outcome','board_state','board_tick',
-    'board_gate_count','app_user','follow','holding','comment','comment_report',
-    'notification','push_subscription','notification_prefs','trade','launch',
-    'namer_run','fee_share','search_log','ops_stage_run','ops_stage_expected',
-    'ops_event','ops_sli_sample','ops_funnel','ops_budget_cap','ops_spend'
-  ] LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', t);
-    EXECUTE format('REVOKE ALL ON public.%I FROM anon, authenticated', t);
-  END LOOP;
-END $$;
-
--- The coinability tier is enforced HERE. A tier-`never` story is not filtered out
--- of a query; it is unreadable. "Absent entirely — no row, no count, no gap, no
--- trace" is a policy, not a WHERE clause someone can forget.
-GRANT SELECT ON public.story TO anon, authenticated;
-CREATE POLICY story_public_read ON public.story FOR SELECT TO anon, authenticated
-  USING (display_eligible);
-CREATE POLICY story_merged_redirect_read ON public.story FOR SELECT TO anon, authenticated
-  USING (status = 'merged' AND coinability_tier <> 'never');   -- 301, never 404
-
--- Tables whose visibility follows their story.
-DO $$
-DECLARE t text;
-BEGIN
-  FOREACH t IN ARRAY ARRAY['post','story_ticker','story_clock','story_outcome','story_momentum'] LOOP
-    EXECUTE format('GRANT SELECT ON public.%I TO anon, authenticated', t);
-    EXECUTE format($f$
-      CREATE POLICY %I ON public.%I FOR SELECT TO anon, authenticated
-        USING (EXISTS (SELECT 1 FROM public.story s
-                        WHERE s.id = %I.story_id AND s.display_eligible))
-    $f$, t || '_public_read', t, t);
-  END LOOP;
-END $$;
-
--- Coins are public unconditionally: a coin exists on Solana whether or not we like
--- the story it came from, and a pasted contract address must resolve to something.
-DO $$
-DECLARE t text;
-BEGIN
-  FOREACH t IN ARRAY ARRAY['coin','coin_snapshot','coin_safety','coin_mcap_series',
-                           'creator_stat','platform_norm','board_state',
-                           'board_gate_count','sensor_heartbeat','sensor_gap'] LOOP
-    EXECUTE format('GRANT SELECT ON public.%I TO anon, authenticated', t);
-    EXECUTE format('CREATE POLICY %I ON public.%I FOR SELECT TO anon, authenticated USING (true)',
-                   t || '_public_read', t);
-  END LOOP;
-END $$;
-
--- ===========================================================================
--- coin_match: public read, but NOT of the score. The numeric score is stored and
--- never sent to the client — not in a tooltip, not in a data attribute, not in an
--- API response. A COLUMN-LEVEL GRANT is the only version of that rule that
--- survives someone writing `select *`. A user shown "73%" beside a Buy button
--- does their own thresholding and the abstain band stops functioning.
--- ===========================================================================
-CREATE POLICY coin_match_public_read ON public.coin_match FOR SELECT TO anon, authenticated
-  USING (retracted_at IS NULL
-         AND EXISTS (SELECT 1 FROM public.story s
-                      WHERE s.id = coin_match.story_id AND s.display_eligible));
-REVOKE SELECT ON public.coin_match FROM anon, authenticated;
-GRANT SELECT (id, story_id, mint, verdict, relation, ticker, name, ticker_source,
-              mint_time, earliest_post_at, delta_min, channels_ran, strong_channels,
-              evidence_public, matched_at)
-  ON public.coin_match TO anon, authenticated;
--- Withheld: score, s_mint_in_post, s_img, s_text, s_tick, s_social, time_prior,
---           market_plausibility, evidence, matcher_version.
-
--- ct_mention: the proof surface. Handle, timestamp and permalink are public; they
--- belong to somebody else and that is the point.
-GRANT SELECT (id, story_id, mint, handle, posted_at, permalink, matched_on)
-  ON public.ct_mention TO anon, authenticated;
-CREATE POLICY ct_mention_public_read ON public.ct_mention FOR SELECT TO anon, authenticated USING (true);
-
--- comment: visible rows are public; a held or blocked comment is visible to its
--- author ONLY. Everyone else sees nothing — not a placeholder, nothing.
-GRANT SELECT ON public.comment TO anon, authenticated;
-CREATE POLICY comment_public_read ON public.comment FOR SELECT TO anon, authenticated
-  USING (status = 'visible'
-         AND EXISTS (SELECT 1 FROM public.story s
-                      WHERE s.id = comment.story_id AND s.display_eligible));
-CREATE POLICY comment_author_read ON public.comment FOR SELECT TO authenticated
-  USING (user_id = public.current_app_user());
-
--- Owner-scoped reads.
+-- Owner-scoped reads. Note `(select public.current_app_user())`, not a bare call: the
+-- subselect form is evaluated ONCE as an InitPlan instead of per row. On `holding` that
+-- is the difference between one app_user lookup and one per position.
 DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['holding','trade','notification','notification_prefs',
                            'push_subscription','follow'] LOOP
-    EXECUTE format('GRANT SELECT ON public.%I TO authenticated', t);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_owner_read', t);
     EXECUTE format($f$
       CREATE POLICY %I ON public.%I FOR SELECT TO authenticated
-        USING (user_id = public.current_app_user())
+        USING (user_id = (SELECT public.current_app_user()))
     $f$, t || '_owner_read', t);
   END LOOP;
 END $$;
 
--- NEVER READABLE BY A BROWSER, and why:
---   post_snapshot, post_heat, post_meme_score, post_embedding  raw sensor data and
---                    scoring internals; the board reads board_state
---   coin_image_embedding, match_label, author_roster            model internals
---   app_user, launch, namer_run, fee_share, search_log          operational
---   ops_*                                DID allowlist; /ops 404s otherwise
---   board_tick                173k rows/day; the rail is pushed, not queried
+DROP POLICY IF EXISTS comment_author_read ON public.comment;
+CREATE POLICY comment_author_read ON public.comment FOR SELECT TO authenticated
+  USING (user_id = (SELECT public.current_app_user()));
+
+DROP POLICY IF EXISTS follow_owner_write ON public.follow;
+CREATE POLICY follow_owner_write ON public.follow FOR INSERT TO authenticated
+  WITH CHECK (user_id = (SELECT public.current_app_user()) AND device_id IS NULL);
+DROP POLICY IF EXISTS follow_owner_delete ON public.follow;
+CREATE POLICY follow_owner_delete ON public.follow FOR DELETE TO authenticated
+  USING (user_id = (SELECT public.current_app_user()));
+
+-- FORCE, not just ENABLE. Without FORCE, a table's OWNER bypasses its own policies —
+-- and the owner is the role the migrations run as.
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['story','post','coin','coin_match','comment','holding','trade',
+                           'follow','app_user','notification','launch'] LOOP
+    EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', t);
+  END LOOP;
+END $$;
 ```
 
-`launch`, `comment` and `trade` INSERT are deliberately **not** granted even to
-`authenticated`. The comment position stamp requires a chain read; the launch requires
-a fresh confirmed-count at submit; the trade requires a server-captured SOL price. A
-direct client insert would produce a fabricated stamp, a duplicate mint, or a wrong
-cost basis. The route is the only path, permanently.
+`launch`, `comment` and `trade` INSERT are deliberately not granted even to
+`authenticated`, permanently — the stamp needs a chain read, the launch needs a fresh
+confirmed-count, the trade needs a server-captured SOL price. The route is the only path.
 
-### 5.4 The service-role boundary
+**An invariant test, because a policy nobody exercises is a comment.**
 
-| Layer | Mechanism |
-|---|---|
-| Module | `packages/db/src/service.ts` is the only file constructing a service-role client. First line `import 'server-only'`. |
-| Graph | dependency-cruiser `service-key-firewall`, `reachable: true` — transitive, so a client component importing a barrel that re-exports a repo is caught. |
-| Build | `server-only` throws at build time if it reaches a `'use client'` graph. |
-| Runtime | `SUPABASE_SERVICE_ROLE_KEY` is not in the `NEXT_PUBLIC_` namespace and is absent from the client env schema, so it cannot be read from a browser bundle even if imported. |
-| Database | `service_role` is the only role with INSERT/UPDATE/DELETE on any table. |
+```sql
+-- supabase/tests/invariants.sql
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"did:privy:notarealuser"}', true);
+DO $$ BEGIN
+  ASSERT (SELECT count(*) FROM public.holding) = 0, 'unknown DID must see zero holdings';
+END $$;
+SELECT set_config('request.jwt.claims', format('{"sub":"%s"}', (SELECT privy_did FROM public.app_user LIMIT 1)), true);
+DO $$ BEGIN
+  ASSERT (SELECT count(*) FROM public.holding) > 0, 'a known DID must see its own holdings — '
+    'this is the assertion that catches the DID/uuid mismatch that returns 200 with zero rows';
+END $$;
+RESET ROLE;
+```
 
-### 5.5 Rate limiting, in three places because each catches something different
+### 5.5 The service-role boundary
 
-| Where | What | Why not one of the others |
+Three factories, three files, one of which is firewalled. The names differ so a wrong
+import reads wrong.
+
+```ts
+// packages/db/src/browser.ts — anon key. Ships to the browser. This is fine.
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from './types.generated';
+import { clientEnv } from '@insidor/env';
+
+let singleton: ReturnType<typeof createClient<Database>> | undefined;
+export function browserClient() {
+  singleton ??= createClient<Database>(
+    clientEnv.NEXT_PUBLIC_SUPABASE_URL,
+    clientEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false }, realtime: { params: { eventsPerSecond: 4 } } },
+  );
+  return singleton;
+}
+```
+
+```ts
+// packages/db/src/server.ts — anon key, request-scoped, for RSC reads through RLS.
+import 'server-only';
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from './types.generated';
+import { serverEnv } from '@insidor/env';
+
+/** Reads only. If you are here to write, you want serviceClient() in a route handler. */
+export function requestClient(accessToken?: string) {
+  return createClient<Database>(
+    serverEnv.NEXT_PUBLIC_SUPABASE_URL,
+    serverEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: accessToken === undefined ? {} : { headers: { Authorization: `Bearer ${accessToken}` } },
+    },
+  );
+}
+```
+
+```ts
+// packages/db/src/service.ts
+// THE ONLY FILE IN THE REPOSITORY THAT NAMES SUPABASE_SERVICE_ROLE_KEY.
+import 'server-only';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from './types.generated';
+import { serverEnv } from '@insidor/env';
+
+let singleton: SupabaseClient<Database> | undefined;
+
+/** Bypasses RLS. Takes NO arguments — in particular it cannot be handed a request or a
+ *  header, because the failure mode this signature exists to prevent is a caller
+ *  "helpfully" forwarding the user's Authorization header, which demotes the client off
+ *  the service role and silently returns zero rows on every read and denies every write. */
+export function serviceClient(): SupabaseClient<Database> {
+  singleton ??= createClient<Database>(
+    serverEnv.NEXT_PUBLIC_SUPABASE_URL,
+    serverEnv.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { 'x-insidor-role': 'service' } } },
+  );
+  return singleton;
+}
+```
+
+What structurally prevents the key reaching the browser, in firing order:
+
+| Layer | Mechanism | Failure mode it removes |
 |---|---|---|
-| **Edge**, `@vercel/firewall` `checkRateLimit({ request, rateLimitKey: wallet })` | `/api/execute`, `/api/order`, `/api/launch/*` | Runs before a function holding a service key starts. Needs a `request`, which is why money endpoints are Route Handlers and never Server Actions. |
-| **Database trigger** | `comment_speed_limit` — 3 per wallet per 60s | Edge limits are per-region. A global cap has to be global. |
-| **Row uniqueness** | `trade.request_id UNIQUE`, `launch.mint_keypair_enc` reuse | The only mechanism that survives two tabs, two devices, and a retry spanning a deploy. A `23505` is a **409**, never a retry. |
+| Env schema | `SUPABASE_SERVICE_ROLE_KEY` exists only in `packages/env`'s **server** schema and is outside the `NEXT_PUBLIC_` namespace. Next inlines nothing else. | Even a bundled import evaluates to `undefined`, not a key. |
+| Module | `import 'server-only'` on line 1 of `service.ts`. | A `'use client'` graph reaching it fails the **build**, not a lint. |
+| Signature | `serviceClient()` takes no parameters. | The forwarded-header demotion is untypeable. |
+| Lint | ui/ and hooks/ may not name `@insidor/db`, `@insidor/env`, `server-only` or `next/headers` (§2, layer 2). | Direct imports from client segments. |
+| Graph | dependency-cruiser `service-key-firewall` with `reachable: true`, from anything outside `features/*/server/` and `apps/pipeline/src/`. | **Transitive** reach — a client component importing a barrel that re-exports a repo. This is the one that actually catches it. |
+| Database | `service_role` is the only role holding INSERT/UPDATE/DELETE on any table. | A leaked *anon* key writes nothing. |
 
-### 5.6 Every write the browser can initiate
+Two additions specific to this section:
 
-The complete set. Every table not named here has zero browser-initiated writes.
-
-| # | Write | Mechanism | Validation | Authorisation |
-|---|---|---|---|---|
-| 1 | follow / unfollow | Route `POST /api/watchlist` | `FollowInput` | Privy token OR signed device cookie; 60/min per subject |
-| 2 | claim device follows on login | Route | `ClaimInput` | Privy token; local storage cleared only on 2xx |
-| 3 | post comment | Route `POST /api/comments` | `CommentInput`, body ≤ 2000 | Privy token; server runs the base58 gate (client check is a courtesy); trigger caps 3/60s; `snap_*` written server-side and frozen |
-| 4 | report a wrong match | Route | `ReportInput` | Privy or device; 5/day |
-| 5 | notification prefs | Route | `PrefsInput` | Privy token, owner-scoped |
-| 6 | push subscription | Route `POST /api/push/subscribe` | `PushSubInput` | Privy token. A Route because the **service worker** calls it |
-| 7 | search telemetry | Route `POST /api/telemetry/search` | `SearchLogInput` | anonymous; `sendBeacon`, so not an Action |
-| 8 | order (quote) | Route `POST /api/order` | `OrderInput` | Privy token; referral + fee injected from env, never the client |
-| 9 | execute (fill) | Route `POST /api/execute` | `ExecuteInput` | + `request_id` UNIQUE + wallet-keyed edge limit + explicit 409 |
-| 10 | tx status | Route `GET /api/txstatus` | base58 signature | Privy token, owner-scoped |
-| 11 | launch prepare | Route `POST /api/launch/prepare` | `LaunchPrepareInput` | Privy token; mint keypair persisted encrypted **before** the first signature |
-| 12 | launch submit | Route `POST /api/launch/confirm` | `LaunchSubmitInput` | + server-side re-check of `buy_count = 0` at submit, so nobody pays to duplicate a coin the page was hiding; 3/hour per wallet |
-| 13 | client resync beacon | Route `POST /api/telemetry/resync` | `ResyncInput` | anonymous; feeds the delta-divergence SLI |
-
-Every zod schema lives in `packages/contracts/src/input/` and is imported **by both**
-the client (optimistic validation) and the server (enforcement), so the two cannot
-drift.
-
-### 5.7 Server Actions vs Route Handlers
-
-Server Action **iff all three** hold: initiated by a React event in our own tree;
-mutates our Postgres and nothing else; the result is a UI change expressed by
-`revalidatePath` / `revalidateTag`.
-
-Route Handler otherwise — and **unconditionally for anything touching money**. Three
-reasons that are not stylistic: Server Action ids rotate per build, so a retry
-spanning a deploy is unroutable, and the retry path is precisely where a user gets
-filled twice; `/api/execute` must return an explicit **409** against a unique
-`request_id`, not a thrown error the client reads as generic failure; and
-`checkRateLimit` needs a `request` object, which a Server Action does not have.
-
-In practice every write in the table above is a Route Handler. Server Actions are
-available and currently unused; when one appears, it appears under that rule.
-
-### 5.8 Realtime
-
-`0013` sets `REPLICA IDENTITY DEFAULT` on `story`, `post`, `coin` and `coin_match`,
-and broadcasts through triggers calling `realtime.send()` — **never** through
-`postgres_changes`. Two reasons. `postgres_changes` caps at roughly five changes per
-second under RLS and forces replica identity full. And more importantly it ignores the
-read-path status filter, so it would deliver a held, address-gated comment containing a
-spammer's contract address **faster** than an unmoderated feed. The
-`broadcast_comment()` trigger returns early unless `status = 'visible'`, so such a row
-never leaves the database.
-
-Topics are sharded from day one: `story:<id>` for comments, `coin:<story_id>` for match
-promotions and retractions. The board is broadcast by the rank-commit job rather than a
-trigger — change-driven, coalesced into at most one frame per 500 ms.
-
----
-
-## 6. THE PIPELINE SERVICE
-
-### 6.1 Execution model
-
-`apps/pipeline` is a single long-lived Node process on Fly.io serving three things:
-an Inngest handler, two health endpoints, and one websocket client. Two machines in
-production (canary deploy), one in staging.
-
-Scheduling is **Inngest**, not `pg_cron` and not Vercel Cron. The requirement list is
-short and every item is a thing that failed before: a singleton per stage so two
-machines do not double-ingest; concurrency keys; retries with backoff; and a
-first-class notion of "ran and produced nothing", which is the state that went
-unnoticed for two days.
-
-```ts
-// apps/pipeline/src/inngest/functions.ts — the shape every stage shares
-export const resolveCoins = inngest.createFunction(
-  {
-    id: 'resolve-coins',
-    // One at a time, globally. Two machines must not both write coin_match.
-    concurrency: { limit: 1, key: '"resolve-coins"' },
-    retries: 3,
+```js
+// eslint.config.mjs — appended. process.env has exactly one legal home.
+{
+  files: ['apps/**/*.{ts,tsx}', 'packages/**/*.ts'],
+  ignores: ['packages/env/src/**', '**/*.config.{ts,js,mjs}'],
+  rules: {
+    'no-restricted-properties': ['error',
+      { object: 'process', property: 'env',
+        message: 'packages/env is the only module that reads process.env. No defaults, no ' +
+                 'fallbacks: `process.env.X ?? "…"` is the same shape as the token lookup that ' +
+                 'returned age 0 — failing OPEN on the axis the product sells.' }],
+    'no-restricted-syntax': ['error',
+      { selector: 'Literal[value=/^(eyJ|sb_secret_|service_role)/]',
+        message: 'That looks like a Supabase key literal. Keys come from @insidor/env.' }],
   },
-  { cron: '*/1 * * * *' },
-  async ({ step }) => runStage('resolve-coins', step, resolveCoinsStage),
-);
+},
 ```
 
-`main.ts` also holds the PumpPortal websocket, because a mint stream is not a cron
-job — it is a subscription whose *silence* is the signal. It lives in the process, not
-in a stage.
+A CI grep is the last line, and it is not redundant with the graph rule — it catches the
+key arriving in a bundle by a path that is not an import at all (an env var
+misconfigured into `NEXT_PUBLIC_`, an inlined literal, a source map):
 
-Boot is `docker-entrypoint.sh → node dist/preflight.js → node dist/main.js`. Preflight
-does four things and exits non-zero on any failure, which means Fly's health check
-never passes and the release rolls back on its own:
+```bash
+# .github/workflows/ci.yml, after `next build`
+if grep -rlE '(sb_secret_|"role" *: *"service_role")' apps/web/.next/static/ ; then
+  echo '::error::service-role material found in a client chunk'; exit 1
+fi
+```
 
-1. Parse the env schema (`packages/env`). No defaults, no fallbacks.
-2. `assertEnvironment()` — `ops_environment.name` must equal `APP_ENV`. A production
-   connection string in a laptop's `.env.local` crashes here.
-3. Assert `max(version) FROM insidor.schema_migrations >= REQUIRED_SCHEMA_VERSION`. A
-   build that needs an unapplied migration refuses to serve rather than throwing
-   *"column does not exist"* at users.
-4. Ping each vendor once and record the result in `ops_event`.
+### 5.6 Realtime auth
 
-### 6.2 The stage contract
+The failure everyone predicts: Realtime caches channel authorisation for the connection
+lifetime and closes the socket when the JWT expires, Privy tokens live about an hour, so
+without a refresh loop every user silently drops off the live feed after sixty minutes —
+values freeze, nothing errors, and the board looks slow rather than broken.
 
-Every stage is a folder under `src/stages/` with `index.ts`, a pure `model/`, an
-`io/`, and `__tests__/`. Every stage is wrapped by one function, and that wrapper is
-where the observability guarantees live.
+The sharper version of the fix is to be deliberate about *which* token the socket
+carries. In v1 there is no `authenticated` role, so the browser connects with the **anon
+key** and never with a Privy token — handing Realtime a Privy token would both run as
+`anon` anyway and add an hourly disconnect for no benefit. That means `0013`'s private
+channels need a policy that lets `anon` read the sharded topics:
+
+```sql
+-- 0016_auth_principal.sql. Private channels authorise against realtime.messages.
+-- The payloads are already sanitised (broadcast_comment returns early unless
+-- status='visible') and carry nothing not already public through 0011, so anon read on
+-- these three topic families is the same disclosure the REST path already permits.
+CREATE POLICY realtime_public_topics ON realtime.messages FOR SELECT TO anon, authenticated
+  USING (realtime.topic() ~ '^(story|coin|board):');
+-- Nobody may WRITE a broadcast frame: every frame originates from a SECURITY DEFINER
+-- trigger or from the pipeline on the service role. There is no INSERT policy, so a
+-- browser cannot inject a fake `match` event and flip a Create button into a Buy.
+```
+
+The loop ships anyway, written and tested now, because phase 2 turns the token into a
+15-minute Supabase JWT and the loop must already exist on that day. One socket, ref
+counted, one token source:
 
 ```ts
-// apps/pipeline/src/lib/stage.ts
-export type StageResult = {
-  /** THE column that makes the output-freshness SLI work. Each stage sets it
-   *  from its OWN output metric. `ingested` does not mean "output" everywhere,
-   *  and two of the four workers that logged at all would page from day one if
-   *  it did. rows_out = 0 with ok = true is a legal, meaningful state: the stage
-   *  ran correctly and there was nothing to do. It is also what the zero-streak
-   *  counter measures. */
-  rowsOut: number;
-  rowsIn?: number;
-  apiReads?: number;
-  costUsd?: number;
-  detail?: Record<string, unknown>;
-};
+// apps/web/src/shared/realtime/client.ts
+'use client';
+import { browserClient } from '@shared/db';
 
-export async function runStage(
-  stage: StageName,
-  step: StepTools,
-  fn: (ctx: StageCtx) => Promise<StageResult>,
-): Promise<StageResult> {
-  const startedAt = new Date();
-  const runId = await openRun(stage, startedAt);   // ops_stage_run, ok = false
+/** Phase 1 returns the anon key (long-lived). Phase 2 returns a 15-minute minted
+ *  Supabase JWT. The loop below does not care which, and that is the point: the day the
+ *  token becomes short-lived, nothing else changes. */
+type TokenSource = () => Promise<string>;
 
+const REFRESH_MS = 50 * 60_000;   // < Privy's ~1h and < any minted TTL we would choose.
+let refs = 0;
+let timer: ReturnType<typeof setInterval> | undefined;
+let getToken: TokenSource | undefined;
+
+async function pushToken(): Promise<void> {
+  if (getToken === undefined) return;
   try {
-    const result = await fn({ db: service, budget: budgetFor(stage), log: logger(stage, runId) });
-    await closeRun(runId, { ok: true, finishedAt: new Date(), ...result });
-    return result;
-  } catch (err) {
-    const e = classify(err);                        // the taxonomy below
-    await closeRun(runId, {
-      ok: false, finishedAt: new Date(), rowsOut: 0,
-      errorCode: e.code, errorDetail: e.detail,
-    });
-    if (e.retryable) throw err;                     // Inngest retries
-    await opsEvent('stage_failed_permanent', 'page', stage, e);
-    return { rowsOut: 0 };                          // do not retry a 402
+    // setAuth re-sends access_token on EVERY joined channel; it does not re-subscribe,
+    // so no frames are lost and no re-authorisation round trip is paid per channel.
+    // ⚠ VERIFY: whether setAuth returns a promise in the installed supabase-js. Await
+    // works either way; a non-promise resolves immediately.
+    await browserClient().realtime.setAuth(await getToken());
+  } catch {
+    // Never leave a stale token in place silently. A failed refresh retries in 30s and
+    // surfaces as the amber `polling fallback` rail state if it keeps failing.
+    setTimeout(() => void pushToken(), 30_000);
+  }
+}
+
+/** A pure interval is NOT sufficient. A laptop asleep for three hours fires its timers
+ *  late, by which time the socket is already closed by the server. These two listeners
+ *  are the difference between "works in a demo" and "works after lunch". */
+function onWake() { void pushToken(); }
+
+export function acquireRealtime(source: TokenSource) {
+  getToken = source;
+  if (refs++ === 0) {
+    void pushToken();
+    timer = setInterval(() => void pushToken(), REFRESH_MS);
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener('online', onWake);
+  }
+  return () => {
+    if (--refs === 0) {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener('online', onWake);
+    }
+  };
+}
+```
+
+```ts
+// apps/web/src/shared/realtime/__tests__/refresh.test.ts
+it('re-mints before the token can expire', async () => {
+  vi.useFakeTimers();
+  const source = vi.fn().mockResolvedValue('t');
+  acquireRealtime(source);
+  await vi.advanceTimersByTimeAsync(59 * 60_000);
+  // 1 initial + 1 at 50 minutes. If this is ever 1, every user drops off at the hour.
+  expect(source).toHaveBeenCalledTimes(2);
+});
+```
+
+### 5.7 Rate limiting
+
+Two layers, because they catch different things and neither subsumes the other.
+
+**Edge**, before a function holding a service key starts. This is what bounds the
+metered-vendor bill: an `/api/order` that reaches the handler has already spent a Jupiter
+call. `checkRateLimit` needs a `request` object, which is the concrete reason every money
+endpoint is a Route Handler and never a Server Action.
+
+```ts
+// apps/web/src/features/wallet/server/limit.ts
+import 'server-only';
+import { checkRateLimit } from '@vercel/firewall';
+
+/** ⚠ VERIFY: the return shape of @vercel/firewall's checkRateLimit and that a rule with
+ *  this id exists in the project firewall config. A missing rule must not read as
+ *  "allowed" — hence the fail-closed default below. */
+export async function edgeLimit(req: Request, id: string, key: string): Promise<Response | null> {
+  try {
+    const { rateLimited } = await checkRateLimit(id, { request: req, rateLimitKey: key });
+    return rateLimited ? new Response(null, { status: 429, headers: { 'retry-after': '10' } }) : null;
+  } catch {
+    // A money endpoint whose limiter is unreachable is CLOSED, not open. This is the
+    // rule the RugCheck defect broke in the other direction.
+    return new Response(null, { status: 503 });
   }
 }
 ```
 
-Four properties follow from that wrapper and are worth stating as guarantees:
+**Database**, because edge counters are regional. Vercel's rate limit is enforced per
+region; a client that spreads requests across regions — trivially, by resolving the
+anycast address from several networks — gets N times the cap. A global cap has to live
+somewhere global, and the only globally consistent thing in this architecture is
+Postgres. It also survives two tabs, two devices and a retry spanning a deploy.
 
-- **A row is opened before the work starts.** A stage that is killed mid-run leaves
-  `ok = false, finished_at NULL`, which the watchdog reads as a crash rather than as
-  silence.
-- **`rows_out` is always recorded**, including on failure, including zero.
-- **The pipeline is idempotent per stage.** Every write is an upsert on a natural key
-  (`post(platform, platform_post_id)`, `coin(mint)`, `coin_match(story_id, mint)`,
-  `coin_snapshot(mint, captured_at)`), so a retry after a partial failure converges.
-  The only non-idempotent operation in the system is PROMOTE, and `promoted_at` is
-  frozen by trigger, so a second attempt is a no-op rather than a corrupted clock.
-- **Nothing catches broadly.** `classify()` is total over a closed taxonomy; an
-  unmatched error is `internal`, retryable, and pages.
+```sql
+-- 0016_auth_principal.sql
+CREATE TABLE IF NOT EXISTS insidor.rate_bucket (
+  scope        text        NOT NULL,
+  key          text        NOT NULL,
+  window_start timestamptz NOT NULL,
+  n            integer     NOT NULL DEFAULT 0,
+  PRIMARY KEY (scope, key, window_start)
+);
 
-### 6.3 The stages
+-- Fixed windows via date_bin: no read-modify-write race, one atomic upsert, and the
+-- count is returned by the same statement that increments it.
+CREATE OR REPLACE FUNCTION insidor.rate_take(p_scope text, p_key text, p_limit integer, p_window interval)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE v_n integer;
+BEGIN
+  INSERT INTO insidor.rate_bucket AS b (scope, key, window_start, n)
+  VALUES (p_scope, p_key, date_bin(p_window, now(), timestamptz 'epoch'), 1)
+  ON CONFLICT (scope, key, window_start) DO UPDATE SET n = b.n + 1
+  RETURNING b.n INTO v_n;
+  IF v_n > p_limit THEN
+    -- A DISTINCT SQLSTATE. 23514 (check_violation) would be mapped to 422 by the route,
+    -- and a rate limit reported as "invalid input" is a bug report we cannot action.
+    RAISE EXCEPTION 'rate limit: % per % for %', p_limit, p_window, p_scope USING ERRCODE = 'IR429';
+  END IF;
+END $$;
 
-| Stage | Cadence | `rows_out` means | Notes |
+CREATE OR REPLACE FUNCTION insidor.launch_rate_limit() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM insidor.rate_take('launch', NEW.signer_wallet, 3, interval '1 hour');
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS launch_rate_limit ON public.launch;
+CREATE TRIGGER launch_rate_limit BEFORE INSERT ON public.launch
+  FOR EACH ROW EXECUTE FUNCTION insidor.launch_rate_limit();
+
+CREATE OR REPLACE FUNCTION insidor.trade_rate_limit() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM insidor.rate_take('order', NEW.wallet, 20, interval '1 minute');
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trade_rate_limit ON public.trade;
+CREATE TRIGGER trade_rate_limit BEFORE INSERT ON public.trade
+  FOR EACH ROW EXECUTE FUNCTION insidor.trade_rate_limit();
+
+-- A janitor, because an unbounded counter table is a slow outage.
+DELETE FROM insidor.rate_bucket WHERE window_start < now() - interval '1 day';
+```
+
+The comment limit already exists in `0007` (`comment_speed_limit`, 3 per wallet per 60s)
+and stays as written — it counts real rows on an existing index and therefore cannot
+disagree with the table it protects.
+
+```ts
+// apps/web/src/features/discussion/server/pg-error.ts
+const MAP: Record<string, number> = {
+  '23505': 409,  // unique violation — a duplicate submission, never a retry
+  '23514': 422,  // check violation — address gate, body length, tier
+  'IR429': 429,  // rate_take
+  '42501': 403,  // insufficient privilege — a policy or grant, not a user error
+};
+export function pgStatus(e: { code?: string; message: string }): Response {
+  const status = MAP[e.code ?? ''] ?? 500;
+  return Response.json({ error: e.code ?? 'unknown', message: status === 500 ? 'server error' : e.message }, { status });
+}
+```
+
+### 5.8 Wallet-signed actions
+
+Buys and mints are signed in the user's wallet. The server's job is to be unable to
+believe a client.
+
+**The server must never trust:** that a swap succeeded, the output amount, the signature,
+the wallet address, the fee bps, the SOL/USD price, the mint, the decimals, the story
+attribution, or the confirmed-coin count the page was rendered with. Every one of those
+is either read from a vendor response server-side or read from the chain.
+
+**Can a client claim a swap succeeded?** It can POST anything it likes. It cannot make
+that claim load-bearing, for four structural reasons.
+
+1. **The signature does not come from the client.** `/api/execute` receives the *signed
+   transaction bytes* and calls Jupiter's `/execute` itself. The signature in
+   `trade.signature` is the one Jupiter returns. There is no code path that accepts a
+   signature as an input field.
+2. **The transaction we broadcast is the transaction we issued.** `/api/order` stores
+   `sha256(message_bytes)` on the trade row at `ORDERING`; `/api/execute` recomputes it
+   from the submitted bytes and refuses on mismatch. Without that check we are a willing
+   relay for any transaction a compromised page hands us, under a UI that says "Buy".
+3. **`holding` is written from a chain read, never from a response body.** The confirm
+   step fetches the transaction and derives the amount from the token-balance delta for
+   the *bound wallet and the requested mint*. A missing or ambiguous delta writes nothing
+   and leaves the trade `submitted` — absent is not zero.
+4. **Nobody but `service_role` can insert into `holding` or `trade`** (5.4), and
+   `trade.request_id` and `trade.signature` are both `UNIQUE`, so a replay is a `23505`
+   and therefore a **409**, never a second fill.
+
+```ts
+// apps/web/src/features/trading/server/execute.handler.ts (the trust boundary only)
+import { createHash } from 'node:crypto';
+
+const bytes = Buffer.from(input.signedTransactionBase64, 'base64');
+const tx = VersionedTransaction.deserialize(bytes);
+
+// (a) It is the transaction we issued for THIS request_id.
+const digest = createHash('sha256').update(tx.message.serialize()).digest('hex');
+if (digest !== trade.order_message_sha256) return json({ error: 'transaction_mismatch' }, 409);
+
+// (b) It is signed by the wallet we bound to this principal — not by whoever the
+//     client says. Fee payer is staticAccountKeys[0] by construction.
+const feePayer = tx.message.staticAccountKeys[0]!;
+if (feePayer.toBase58() !== principal.wallet) return json({ error: 'wrong_signer' }, 403);
+if (!nacl.sign.detached.verify(tx.message.serialize(), tx.signatures[0]!, feePayer.toBytes())) {
+  return json({ error: 'bad_signature' }, 400);
+}
+
+// (c) WE broadcast. The signature is Jupiter's answer, not the client's assertion.
+const res = await jupiter.execute({ signedTransaction: input.signedTransactionBase64, requestId: trade.request_id });
+await db.from('trade').update({ status: 'submitted', signature: res.signature, submitted_at: now }).eq('id', trade.id);
+```
+
+```ts
+// apps/web/src/features/trading/server/confirm.ts — the ONLY writer of a holding row.
+const tx = await helius.getTransaction(signature, { maxSupportedTransactionVersion: 0 });
+if (tx === null) return { state: 'still_confirming' };          // NOT failed. NOT zero.
+if (tx.meta?.err != null) return { state: 'reverted' };
+
+const pre  = tx.meta.preTokenBalances ?.find((b) => b.mint === trade.mint && b.owner === trade.wallet);
+const post = tx.meta.postTokenBalances?.find((b) => b.mint === trade.mint && b.owner === trade.wallet);
+if (post === undefined) return { state: 'unreadable' };          // renders `—`, never 0
+const deltaRaw = BigInt(post.uiTokenAmount.amount) - BigInt(pre?.uiTokenAmount.amount ?? '0');
+if (deltaRaw <= 0n) return { state: 'unreadable' };
+// out_amount_raw is deltaRaw. The client's number, if it sent one, was never read.
+```
+
+Launches carry the same shape plus one rule the browser cannot enforce: the mint keypair
+is generated and persisted encrypted **before** the first signature (`0008`,
+`launch.mint_keypair_enc`, frozen), so a retry reuses it and a late confirmation fails
+with "account already in use" instead of minting twice. `/api/launch/confirm` re-runs
+`count(confirmed) = 0` server-side at submit, so nobody pays gas to duplicate a coin the
+page was already hiding, and the tier gate is a composite foreign key
+(`launch_requires_normal_tier`) rather than a check anyone can skip.
+
+### 5.9 Secrets
+
+| Secret | Lives in | Read by | Rotation |
 |---|---|---|---|
-| `ingest-x` | 180 s | posts admitted | twitterapi.io at $0.00015/post; reserves budget before every call |
-| `ingest-tiktok` | 600 s | posts admitted | Apify |
-| `snapshot` | 60 s | snapshots written | per-post geometric grid; writes `post_snapshot` and `coin_snapshot` |
-| `score` | 120 s | posts scored | the **only** LLM tier: meme score + coinability |
-| `cluster` | 45 s | stories touched | embedding + centroid; writes `story`, never `promoted_at` |
-| `promote` | inside cluster | stories promoted | writes `promoted_at` **exactly once**, and emits `ops_funnel.promoted` — nothing in the old repo ever emitted that counter |
-| `resolve-coins` | 60 s | matches written | the matcher; 0.97 precision floor, 0.15–0.30 abstain band |
-| `clocks-mint` | continuous | clock rows written | consumes the PumpPortal stream; maintains `sensor_heartbeat` |
-| `clocks-ct` | 60 s | mentions written | the CT poller; maintains its own watermark |
-| `rank-commit` | **20 s** | rows committed | writes `board_state`, `board_tick`, `board_gate_count`; broadcasts one coalesced frame |
-| `outcomes` | nightly | stories classified | `story_outcome`; refreshes `record_summary_mv` |
-| `watchdog` | 60 s | SLIs evaluated | writes `ops_sli_sample`; pings the dead-man's switch |
+| `NEXT_PUBLIC_PRIVY_APP_ID` | Vercel, per-environment | browser + web server | Not secret. Changes only with a new Privy app. |
+| `PRIVY_APP_SECRET` | Vercel (Production / Preview scoped separately) | `features/wallet/server` only | Privy dashboard rotate → set `_NEXT` → deploy → promote → delete old. Quarterly. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Vercel + Fly | `packages/db/src/service.ts`, pipeline | Supabase issues a second key; deploy both apps; revoke. **Full audit of `.next/static` after** (5.5 grep). |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Vercel | browser | Rotates with the project JWT secret; forces every open socket to reconnect. Do it in a maintenance window or the whole board reloads. |
+| `SUPABASE_JWT_SIGNING_KEY` (phase 2) | Vercel | the token endpoint only | Supabase supports two active keys; overlap is the rotation. |
+| `LAUNCH_KEYPAIR_ENC_KEY` | Vercel | `features/launch/server` | **Cannot be rotated naively** — it decrypts historical `mint_keypair_enc`. Rotation is re-encrypt-then-swap, or it destroys the ability to retry any in-flight launch. |
+| `DEVICE_COOKIE_SECRET` | Vercel | watchlist route | Rotate freely; the cost is anonymous device follows becoming unclaimable. Two-key verify. |
+| `JUPITER_API_KEY`, `HELIUS_API_KEY` | Vercel + Fly | adapters | Quarterly, rehearsed on Helius first (open item 18). |
+| `MIGRATOR_DATABASE_URL` | GitHub Environment `production` only | `release.yml` | With the `migrator` role password. |
 
-### 6.4 Budgets — enforced by the database, not by discipline
+`packages/env` is the only module permitted to read `process.env`, with no defaults and
+no fallbacks, and no secret is ever scoped to "All Environments" in Vercel —
+`scripts/check-vercel-env-scopes.mjs` fails the PR. The rotation column is new; open item
+18 recorded that key rotation was unaddressed, and the answer is the two-key overlap
+pattern everywhere except `LAUNCH_KEYPAIR_ENC_KEY`, which is called out because rotating
+it the obvious way silently orphans every prepared launch.
 
-Ingestion costs $0.00015 per post. A cap that lives in a config file is a cap that a
-loop can outrun between two reads. So the reservation *is* the increment, in one
-statement, atomic under concurrency.
+Anonymous device follows are a real principal with no identity, so the `device_id` is not
+a client-chosen string:
+
+```ts
+// apps/web/src/features/watchlist/server/device.ts
+import { createHmac, timingSafeEqual } from 'node:crypto';
+const sign = (id: string) => createHmac('sha256', serverEnv.DEVICE_COOKIE_SECRET).update(id).digest('base64url');
+
+export function readDevice(req: Request): string | null {
+  const raw = cookieFrom(req, 'idv');                       // "<uuid>.<mac>"
+  const [id, mac] = raw?.split('.') ?? [];
+  if (id === undefined || mac === undefined) return null;
+  const want = Buffer.from(sign(id)), got = Buffer.from(mac);
+  return want.length === got.length && timingSafeEqual(want, got) ? id : null;
+}
+```
+
+Without the MAC, `follow_device_id_shape` in `0007` accepts any 16–64 hex string and a
+scraper can enumerate other devices' watchlists. HttpOnly, `SameSite=Lax`, 400 days.
+
+### 5.10 Abuse
+
+A wallet costs a fraction of a cent, so wallet-gating is not sybil resistance and is not
+claimed as any. The defence is that the two things worth attacking are structurally
+expensive or structurally unreachable.
+
+**The ranking has no user-supplied input at all.** `PostHeat` is arithmetic over
+engagement counts on X and TikTok; `CoinHeat` is arithmetic over Jupiter's market data.
+Follows, watchlists, comments and clicks appear in **no term of either formula**, and
+story attachment is a filter and a tiebreak rather than a multiplier — deliberately, so
+that gaming the matcher, the 0.97-precision-critical component, buys nothing. There is
+therefore no sybil attack on the board, because there is no input to sybil. Any future
+proposal to add an engagement term to the ranking reopens this section; that is the
+review trigger.
+
+**Match reports are advisory, not actuating.** A report (5/day per principal) enqueues a
+matcher re-run and never retracts a match. Retraction is the matcher's own verdict. A
+hundred wallets reporting a correct match achieve one re-run.
+
+**Comments are shaped so volume does not pay.** Three defences already in the schema, one
+new.
+
+- The discussion sort key is `(story_id, snap_views, created_at)` — earliest means
+  *written when the story was smallest*. That ordering cannot be farmed by posting more;
+  it can only be earned by being early on a story that later mattered, which requires
+  being right. Volume moves nobody up.
+- The position stamp is a server-side chain read. A `holds` badge is a claim about the
+  author's money and `comment_position_holds_needs_amount` refuses the row without the
+  lamports and the mint, so a credible-looking comment costs a real position.
+- The address gate blocks every base58 run of 32–44 characters, including this story's
+  own mints. The payload of comment spam on a memecoin terminal is a contract address;
+  there is nothing a user can say with one that they cannot say with `$KANG`, which is
+  already auto-linked.
+- **New, and the only thing here that raises cost rather than removing reward:** a
+  principal whose wallet has no confirmed `trade` and no on-chain history is capped at
+  one comment per story per hour and its rows enter `status = 'held'` above a per-story
+  volume threshold, promoted by the moderation ladder rather than blocked. Held is
+  invisible to everyone but the author (`comment_author_read`), so a farm sees its own
+  comments and nobody else does — a spammer who cannot observe the failure does not
+  iterate against it.
+
+**The sybil entry point is account creation, not commenting.** Every new DID is a Privy
+MAU we pay for, so `requirePrincipal`'s first-sight upsert carries its own edge limit
+keyed on IP with a lower per-ASN ceiling, and a first-sight rate above baseline writes
+`ops_event(kind='auth_signup_burst', severity='page')`. That is the one abuse signal that
+costs money the moment it starts, so it pages rather than warns.
+
+**Everything auth rejects is counted.** `verifyPrivyToken` failures increment an
+`ops_sli_sample` by reason. A step change in `sub_not_a_privy_did` or
+`privy_user_http_*` is either an attack or a Privy API change, and the two are
+indistinguishable from the application's point of view — which is exactly why the alarm
+is on the rate rather than on any interpretation of it.
+
+## 6. THE PIPELINE SERVICE
+
+`apps/pipeline` is one Node process. It runs fifteen stages and holds two websocket-shaped
+clocks. Eleven of the stages are the funnel — the verbs the product is described in — and
+four are infrastructure. The funnel verbs are the vocabulary; the stage ids below are what
+appears in `ops_stage_run.stage`, `ops_stage_expected.stage` and the Inngest function id,
+and nothing else may name a stage.
+
+| Verb | Stage id | Cadence | `rows_out` means | Funnel counter |
+|---|---|---|---|---|
+| arrive | `ingest-x` | 180 s | posts written | `ops_funnel.arrived` |
+| arrive | `ingest-tiktok` | 600 s | posts written | `ops_funnel.arrived` |
+| admit | *(inside ingest)* | — | posts past the ~15-like floor | `ops_funnel.admitted` |
+| track | `snapshot` | 60 s | `post_snapshot` + `coin_snapshot` rows | `ops_funnel.tracked` |
+| trigger | *(inside snapshot)* | — | posts raised to `tracking_tier ≥ 2` | `ops_funnel.triggered` |
+| qualify | `score` | 120 s | posts scored | — |
+| cluster | `cluster` | 45 s | stories touched | `ops_funnel.clustered` |
+| promote | `promote` | 45 s, after cluster | `story.promoted_at` writes | `ops_funnel.promoted` |
+| name | `name` | 60 s | `story.title` writes + `story_ticker` rows | — |
+| resolve | `resolve-coins` | 60 s | `coin_match` rows | — |
+| rank | `rank-commit` | **20 s** | `board_state` rows committed | — |
+| deliver | `deliver` | 30 s | `notification` rows | — |
+| — | `clocks-ct` | 120 s | `ct_mention` rows | — |
+| — | `clocks-mint` | 5 s (drain) | `coin` upserts from the socket | — |
+| — | `outcomes` | nightly | `story_outcome` rows | — |
+| — | `watchdog` | 60 s | SLIs evaluated | — |
+
+`0010` seeded `ops_stage_expected` with three names from the old build (`ingest`,
+`snapshotter`, `trends`) and is missing seven. `0014` reconciles the roster; migrations are
+immutable, so the fix is a forward `INSERT … ON CONFLICT DO UPDATE` plus a `DELETE` of the
+three dead ids, not an edit to `0010`.
+
+---
+
+### 6.1 The execution model
+
+**One long-lived container on Fly.io, with Inngest as the durable scheduler inside it.**
+The container is the substrate; Inngest is the clock, the singleton and the retry ledger.
+Not two models, not a lockfile — one process, one scheduler, one place a stage can start.
+
+The requirement that eliminates two of the four candidates immediately: **the mint clock is
+a subscription whose silence is the signal.** A PumpPortal websocket must stay open across
+minutes, and a disconnect must open a `sensor_gap` row *before* reconnecting, because a gap
+means lost mints and a lost mint means `story_clock.unmeasurable` rather than a fabricated
+lead time. There is no way to hold that connection in a function that is billed per
+invocation and killed at the response.
+
+**Against Vercel Cron with resumable progress.** Vercel's hard ceiling is per-invocation
+duration (60 s on the default runtime, higher on paid Fluid tiers — ⚠ verify the current
+maximum for our plan before relying on any figure). "Resumable progress" means every stage
+grows a cursor table, a partial-work protocol and a re-entry path, and the 402 bug repeats
+in a new shape: an invocation that dies at the ceiling looks identical to one that finished
+with nothing to do. Cron also gives no singleton — two overlapping schedules or one
+retried invocation both write `coin_match` — no backpressure, no retry semantics, and no
+first-class "ran and produced nothing". That last absence is exactly the two-day outage.
+
+**Against a queue with workers** (SQS/BullMQ/pg-boss + a worker pool). A queue is the right
+shape for fan-out over independent units. Ours is fifteen singleton cadences with hard
+ordering (`cluster` → `promote` → `name` → `resolve-coins`) and per-stage spend caps. On a
+queue you write the scheduler anyway — something has to enqueue on a cron — then the
+singleton (a visibility-timeout race is not a lock), the DLQ, the retry policy and the
+observability. That is Inngest, hand-rolled, with a Redis to operate. `pg-boss` on the
+existing Postgres is the closest honest alternative and stays on the table if Inngest
+becomes a cost or availability problem; §6.2 is written so the scheduler is swappable in
+one file (`src/inngest/functions.ts`).
+
+**Against a durable-execution framework** — Temporal, Restate. Temporal answers a different
+problem: multi-day workflows with human-in-the-loop steps and complex compensation. Ours are
+15-second stages against a database that is already the source of truth. A Temporal cluster
+plus workers plus the determinism constraint on workflow code is a second distributed system
+to operate. Inngest gives the two properties we need from that category — a durable `step`
+boundary and a global concurrency key — from an HTTP handler mounted in the process we
+already have.
+
+**Against a bare long-running container** (`setInterval`, no scheduler). This is what the old
+build ran locally, and it is why the PID lockfile existed and was never called. A bare loop
+has no cross-host singleton, no retry with backoff and no run history that survives the
+process. Two machines run in production for canary deploys; two `setInterval` loops
+double-ingest, which is double spend on the largest cost line in the system.
+
+```
+docker-entrypoint.sh
+  └─ node dist/preflight.js      # exits non-zero → health check never passes → Fly rolls back
+  └─ node dist/main.js
+       ├─ Inngest serve handler  (all 15 stages)
+       ├─ GET /health/live       (process is up)
+       ├─ GET /health/ready      (preflight passed AND a stage ran productively recently)
+       └─ PumpPortal websocket   (in-process; not a stage)
+```
+
+Preflight, in order, each fatal:
+
+1. `packages/env` parses. No defaults, no fallbacks — `process.env.X ?? 'something'` is the
+   same shape as the token lookup that returned age 0.
+2. `assertEnvironment()` — `ops_environment.name = APP_ENV`. A production connection string
+   in a laptop `.env.local` crashes here.
+3. `max(version) FROM insidor.schema_migrations >= REQUIRED_SCHEMA_VERSION`.
+4. `select count(distinct model) from post_embedding` must be ≤ 1 (open item 17).
+5. One unmetered ping per vendor, recorded in `ops_event` at `info`. A 401 here fails the
+   boot rather than pausing a stage four hours later.
+
+---
+
+### 6.2 The stage contract
+
+One interface. Everything a stage may declare about itself is declarative — cadence,
+budget, timeout, lock — so the runner can enforce it without the stage's cooperation.
+
+```ts
+// apps/pipeline/src/lib/stage.ts
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@insidor/contracts/generated/database.types';
+
+export type StageName =
+  | 'ingest-x' | 'ingest-tiktok' | 'snapshot' | 'score'
+  | 'cluster' | 'promote' | 'name' | 'resolve-coins'
+  | 'rank-commit' | 'deliver'
+  | 'clocks-ct' | 'clocks-mint' | 'outcomes' | 'watchdog' | 'trending';
+
+export type VendorSource = 'twitterapi' | 'apify' | 'anthropic' | 'gemini'
+                         | 'jupiter' | 'helius' | 'rugcheck' | 'dexscreener';
+
+export type StageResult = {
+  /** Each stage sets this from its OWN output metric. `rows_out = 0, ok = true` is
+   *  legal and meaningful — ran correctly, nothing to do — and it is precisely what
+   *  the stall SLI counts. Never set it to "items considered". */
+  rowsOut: number;
+  rowsIn?: number;
+  apiReads?: number;
+  costUsd?: number;
+  /** Written to ops_stage_run.detail. Cheap to add, and the only forensics that exist. */
+  detail?: Record<string, unknown>;
+};
+
+export type StageCtx = {
+  db: SupabaseClient<Database>;          // service role
+  budget: BudgetHandle;                  // §6.4 — the ONLY route to a metered call
+  log: Logger;                           // structured JSON, carries stage + runId
+  /** Deadline-aware. Every stage checks it between units of work and returns what it
+   *  has; the runner never has to kill anything mid-write. */
+  deadline: AbortSignal;
+  runId: number;
+  now: Date;                             // injected — model code never calls Date.now()
+};
+
+export type StageDef = {
+  name: StageName;
+  /** Cron or interval. The single source; ops_stage_expected.interval_seconds is
+   *  asserted equal to this at preflight, so the SLI and the schedule cannot drift. */
+  schedule: { cron: string } | { everySeconds: number };
+  /** Wall-clock ceiling. Enforced by AbortSignal, then by Inngest, then by Fly. */
+  timeoutMs: number;
+  /** Vendors this stage is permitted to spend against. budget.fetch() to any other
+   *  source throws `vendor_contract` before the request leaves the process. */
+  sources: readonly VendorSource[];
+  /** Attempts, for retryable classes only. Terminal classes never retry. */
+  retries: number;
+  run: (ctx: StageCtx) => Promise<StageResult>;
+};
+```
+
+Six guarantees follow from the runner rather than from discipline:
+
+- **The row is opened before the work starts.** A stage killed mid-run leaves
+  `ok = false, finished_at IS NULL`, which the watchdog reads as a crash, not as silence.
+- **`rows_out` is always recorded** — on success, on failure, on timeout, on zero.
+- **Idempotency is by natural key, on every write.** `post(platform, platform_post_id)`,
+  `coin(mint)`, `coin_match(story_id, mint)`, `coin_snapshot(mint, captured_at)`,
+  `ct_mention(handle, platform_post_id)`, `notification(dedupe_key)`. A retry after a
+  partial failure converges. The one non-idempotent operation is PROMOTE, and
+  `story.promoted_at` is frozen by trigger (`insidor.freeze_columns`), so a second attempt
+  raises rather than moving the lead-time clock.
+- **Checkpointing is a watermark, not a cursor into a batch.** A stage advances its
+  watermark only over the range it *fully* processed. `clocks-ct` below is the reference
+  implementation: `sensor_heartbeat.observed_through` moves to the oldest fully-scanned
+  boundary, never to the newest row seen, because `story_clock` has a CHECK requiring both
+  watermarks to be past `promoted_at`, and an optimistic watermark converts an unmeasurable
+  lead into a published one.
+- **Partial failure keeps its partial work.** Writes flush per batch; the result carries
+  what landed. A stage that fails on batch 7 of 10 reports `rowsOut` for 6 and an error.
+- **Nothing catches broadly.** `classify()` (§6.4) is total over a closed union; an
+  unmatched error is `internal`, which is retryable *and* pages.
+
+```ts
+export async function runStage(def: StageDef): Promise<StageResult> {
+  const startedAt = new Date();
+  const gate = await checkPaused(def.name);            // §6.4 — 402/401 pause
+  if (gate.paused) {
+    await opsEvent('stage_paused_skip', 'warn', def.name, { reason: gate.reason });
+    return { rowsOut: 0 };
+  }
+
+  const lease = await acquireLease(def.name, HOLDER_ID, def.timeoutMs + 30_000);
+  if (!lease) return { rowsOut: 0 };                   // §6.3 — someone else holds it
+
+  const runId = await openRun(def.name, startedAt);    // ops_stage_run, ok = false
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(new StageTimeout(def.name)), def.timeoutMs);
+  const budget = await budgetFor(def.name, def.sources, runId);
+
+  try {
+    const result = await def.run({
+      db: service, budget, log: logger(def.name, runId),
+      deadline: ac.signal, runId, now: startedAt,
+    });
+    await closeRun(runId, { ok: true, finishedAt: new Date(),
+      apiReads: budget.reads, costUsd: budget.costUsd, ...result });
+    return result;
+  } catch (err) {
+    const e = classify(err);
+    await closeRun(runId, { ok: false, finishedAt: new Date(), rowsOut: 0,
+      apiReads: budget.reads, costUsd: budget.costUsd,
+      errorCode: e.code, errorDetail: e.detail });
+    if (e.pauseStage) await pauseStage(def.name, e);   // loud, and stops the bleeding
+    await opsEvent(`stage_${e.code}`, e.severity, def.name, { detail: e.detail });
+    if (e.retryable) throw err;                        // Inngest retries with backoff
+    return { rowsOut: 0 };
+  } finally {
+    clearTimeout(timer);
+    await releaseLease(def.name, lease.fence);
+    await budget.flush();                              // ops_spend is written even on throw
+  }
+}
+```
+
+#### One stage, fully implemented — `clocks-ct`
+
+Clock B. ~300 handles, every two minutes, `t_ct = min(posted_at)` over the mentions it
+finds. It is the stage worth writing out because it exercises every clause of the contract:
+a metered vendor, a per-cycle budget, a watermark checkpoint, natural-key idempotency, a
+deadline, and the rule that a sensor may never claim to have seen further than it scanned.
+
+```ts
+// apps/pipeline/src/stages/clocks-ct/index.ts
+import { z } from 'zod';
+import type { StageDef, StageCtx, StageResult } from '../../lib/stage';
+import { CT_HANDLES } from './io/roster';           // curated, versioned, in git
+import { extractTargets } from './model/extract';   // PURE: text -> {cashtags, mints, entities}
+
+const HANDLES_PER_CALL = 20;                        // twitterapi.io advanced-search OR query
+const COST_PER_POST_USD = 0.00015;
+
+/** ⚠ VERIFY: twitterapi.io `/twitter/tweet/advanced_search` query syntax, its
+ *  `has_next_page`/`next_cursor` field names, and whether `since_time` is unix
+ *  seconds. Every one of these is asserted by the zod schema below, so a change
+ *  is `vendor_contract` (terminal, pages) and never a silent empty result. */
+const SearchResponse = z.object({
+  tweets: z.array(z.object({
+    id: z.string(),
+    url: z.string().url(),
+    text: z.string(),
+    createdAt: z.string(),
+    author: z.object({ userName: z.string() }),
+  })),
+  has_next_page: z.boolean(),
+  next_cursor: z.string().nullable(),
+});
+
+export const clocksCt: StageDef = {
+  name: 'clocks-ct',
+  schedule: { everySeconds: 120 },
+  timeoutMs: 90_000,                                 // < the 120s cadence, deliberately
+  sources: ['twitterapi'],
+  retries: 2,
+  run: pollCryptoTwitter,
+};
+
+async function pollCryptoTwitter(ctx: StageCtx): Promise<StageResult> {
+  const { db, budget, log, deadline, now } = ctx;
+
+  const { data: hb } = await db.from('sensor_heartbeat')
+    .select('observed_through').eq('sensor', 'ct_poll').single();
+
+  // 90s of overlap. Duplicates are free (UNIQUE (handle, platform_post_id));
+  // a hole is a broken earliness claim.
+  const since = new Date((hb?.observed_through ?? new Date(now.getTime() - 6 * 3600_000))
+    .valueOf() - 90_000);
+
+  const batches = chunk(CT_HANDLES, HANDLES_PER_CALL);
+  // THE checkpoint invariant: the watermark may only advance to the oldest boundary
+  // that every batch reached. One failed batch holds the whole sensor back.
+  let scannedThrough: Date | null = null;
+  let written = 0;
+  let posts = 0;
+  const failed: string[] = [];
+
+  for (const batch of batches) {
+    if (deadline.aborted) { log.warn('deadline', { done: batches.indexOf(batch) }); break; }
+
+    const q = batch.map((h) => `from:${h}`).join(' OR ');
+    let cursor: string | null = null;
+    const batchStart = new Date();
+    const rows: CtMentionInsert[] = [];
+
+    try {
+      do {
+        // Reserves BEFORE the call. A false return is budget_exhausted: terminal.
+        await budget.reserve('twitterapi', 20, 20 * COST_PER_POST_USD);
+        const raw = await budget.fetch('twitterapi', '/twitter/tweet/advanced_search', {
+          query: { query: q, queryType: 'Latest', since_time: Math.floor(+since / 1000),
+                   ...(cursor ? { cursor } : {}) },
+          signal: deadline,
+        });
+        const page = SearchResponse.parse(raw);       // parse failure => vendor_contract
+        posts += page.tweets.length;
+
+        for (const t of page.tweets) {
+          const targets = extractTargets(t.text);
+          if (!targets.cashtags.length && !targets.mints.length && !targets.entities.length) continue;
+          const link = await resolveTarget(db, targets);   // -> {storyId?, mint?, matchedOn}
+          if (!link) continue;                              // ct_mention_targets_something
+          rows.push({
+            story_id: link.storyId ?? null,
+            mint: link.mint ?? null,
+            handle: t.author.userName.toLowerCase(),
+            platform_post_id: t.id,
+            posted_at: new Date(t.createdAt).toISOString(),
+            observed_at: new Date().toISOString(),
+            permalink: t.url,                                // the proof travels with the claim
+            matched_on: link.matchedOn,
+          });
+        }
+        cursor = page.has_next_page ? page.next_cursor : null;
+      } while (cursor && !deadline.aborted);
+
+      if (rows.length) {
+        const { error, count } = await db.from('ct_mention')
+          .upsert(rows, { onConflict: 'handle,platform_post_id', ignoreDuplicates: true,
+                          count: 'exact' });
+        if (error) throw error;                       // constraint_violation is a WIN, and loud
+        written += count ?? 0;
+      }
+      scannedThrough = scannedThrough === null || batchStart < scannedThrough
+        ? batchStart : scannedThrough;
+    } catch (err) {
+      failed.push(batch[0]);
+      if (isTerminal(err)) throw err;                 // 402/401/contract: stop the whole cycle
+      log.warn('batch_failed', { head: batch[0], err: String(err) });
+      // scannedThrough is NOT advanced for this batch. The sensor stays honest.
+    }
+  }
+
+  // Only advance the watermark if every batch reported. A partial sweep leaves the
+  // watermark where it was, and story_clock's CHECK then refuses to record a lead
+  // time measured by a sensor that had not caught up.
+  const complete = failed.length === 0 && !deadline.aborted && scannedThrough !== null;
+  await db.from('sensor_heartbeat').upsert({
+    sensor: 'ct_poll',
+    last_beat_at: new Date().toISOString(),
+    observed_through: (complete ? scannedThrough! : (hb?.observed_through ?? since)).toISOString(),
+    detail: { batches: batches.length, failed: failed.length, posts },
+  });
+
+  if (!complete) await openGapIfNeeded('ct_poll', 'supervisor', { failed });
+  else await closeGapIfOpen('ct_poll');
+
+  return { rowsOut: written, rowsIn: posts, detail: { batches: batches.length, failed } };
+}
+```
+
+The load-bearing line is the second-to-last block. `last_beat_at` and `observed_through` are
+two different facts — *alive* and *scanned through here* — and conflating them is how a
+reconnected-but-empty sensor certifies a lead time it never measured.
+
+---
+
+### 6.3 Scheduling and concurrency
+
+**What may overlap.** Different stages may run concurrently unless one writes what another
+reads within the same tick. Every stage is a singleton against itself, always.
+
+| Stage | May overlap with | Must not overlap with | Why |
+|---|---|---|---|
+| `ingest-x`, `ingest-tiktok` | everything | itself | double spend on the largest cost line |
+| `snapshot` | ingest, score, clocks | itself | `post_snapshot(post_id, captured_at)` PK collisions and a corrupted EWMA |
+| `score` | everything | itself | LLM spend |
+| `cluster` | ingest, snapshot | itself, `promote`, `name` | centroid updates and `promoted_at` must see one consistent story set |
+| `promote` | ingest, snapshot | itself, `cluster`, `resolve-coins` | promote → resolve is the ordering that makes a match attachable |
+| `name` | ingest, snapshot | itself, `cluster` | writes `story.title`, `title_version` |
+| `resolve-coins` | ingest, snapshot, score | itself, `promote` | sole writer of `coin_match` |
+| `rank-commit` | everything | itself | sole writer of `board_state`; `tick_seq` must be strictly monotonic |
+| `deliver` | everything | itself, `resolve-coins` | fires on a 0 → ≥1 confirmed transition |
+| `clocks-ct`, `clocks-mint` | everything | itself | watermark integrity |
+| `watchdog` | everything | itself | — |
+
+Mutual exclusion between *different* stages is expressed as a shared Inngest concurrency
+key (`cluster`, `promote` and `name` share `key: '"story-write"'`, limit 1), not as ordering
+hope.
+
+**The lock.** Not a PID file, not an in-process mutex, not a Redis SETNX we would have to
+operate. A **lease row in Postgres with a fencing token**, because Postgres is the one thing
+every host already shares and the one thing that is authoritative about the writes anyway.
+Session-scoped advisory locks were rejected: Supabase's pooler runs in transaction mode,
+where a session lock is held by whichever backend the pooler happened to hand out and is
+released at a moment unrelated to the caller.
 
 ```sql
 -- 0014_environment_and_budget.sql
+CREATE TABLE IF NOT EXISTS public.ops_stage_lease (
+  stage       text PRIMARY KEY,
+  holder      text NOT NULL,          -- fly machine id + pid
+  fence       bigint NOT NULL,        -- strictly increasing; the anti-zombie token
+  acquired_at timestamptz NOT NULL DEFAULT now(),
+  expires_at  timestamptz NOT NULL
+);
+
+CREATE OR REPLACE FUNCTION public.acquire_stage_lease(
+  p_stage text, p_holder text, p_ttl_ms integer
+) RETURNS bigint
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog AS $$
+DECLARE v_fence bigint;
+BEGIN
+  -- One statement. The predicate that decides whether the lease is free is inside
+  -- the same UPDATE that takes it, so two machines cannot both observe "free".
+  INSERT INTO public.ops_stage_lease (stage, holder, fence, expires_at)
+  VALUES (p_stage, p_holder, 1, now() + make_interval(secs => p_ttl_ms / 1000.0))
+  ON CONFLICT (stage) DO UPDATE
+     SET holder = EXCLUDED.holder,
+         fence  = public.ops_stage_lease.fence + 1,
+         acquired_at = now(),
+         expires_at  = EXCLUDED.expires_at
+   WHERE public.ops_stage_lease.expires_at < now()      -- expired: reclaimable
+      OR public.ops_stage_lease.holder = EXCLUDED.holder -- our own re-entry
+  RETURNING fence INTO v_fence;
+
+  RETURN v_fence;   -- NULL => held by someone else, still alive. Caller returns rows_out 0.
+END $$;
+
+CREATE OR REPLACE FUNCTION public.release_stage_lease(
+  p_stage text, p_holder text, p_fence bigint
+) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_catalog AS $$
+  DELETE FROM public.ops_stage_lease
+   WHERE stage = p_stage AND holder = p_holder AND fence = p_fence;
+$$;
+```
+
+Three properties. A crashed holder's lease expires — `ttl = timeoutMs + 30 s`, so it is
+always longer than the stage can legally run. A zombie that wakes after expiry holds a stale
+fence and its `release` deletes nothing, so it cannot free a lease it no longer owns. And
+the lock is visible: `select * from ops_stage_lease` during an incident says which machine
+is holding what, which a PID file on a dead host does not.
+
+Long stages (`outcomes`) renew mid-flight:
+
+```ts
+// apps/pipeline/src/lib/lease.ts
+export function renewInBackground(stage: StageName, fence: bigint, ttlMs: number) {
+  const t = setInterval(async () => {
+    const { data } = await service.rpc('renew_stage_lease',
+      { p_stage: stage, p_holder: HOLDER_ID, p_fence: Number(fence),
+        p_ttl_ms: ttlMs });
+    // Lost the lease while running: abort immediately rather than write behind a
+    // holder that has already started. Split brain is loud, not silent.
+    if (data !== true) throw new LeaseLost(stage, fence);
+  }, Math.floor(ttlMs / 3));
+  return () => clearInterval(t);
+}
+```
+
+Inngest's `concurrency: { limit: 1, key: '"<stage>"' }` remains configured on every function.
+It is defence in depth and it is *not* the guarantee — the lease is, because it also covers a
+manual CLI invocation, a stuck-then-resumed function, and the two-machine canary window.
+
+---
+
+### 6.4 Budgets and the error taxonomy
+
+#### The ledger
+
+Ingestion is $0.00015/post and is the largest cost line at every DAU tier. A cap in a config
+file is a cap a loop outruns between two reads, so **the reservation is the increment, in
+one statement**, against the tables that actually exist in `0010`.
+
+```sql
+-- 0014_environment_and_budget.sql
+SELECT insidor.add_column('public.ops_budget_cap', 'cycle_cap_reads', 'integer NOT NULL DEFAULT 0');
+SELECT insidor.add_column('public.ops_stage_expected', 'paused_until',  'timestamptz');
+SELECT insidor.add_column('public.ops_stage_expected', 'paused_reason', 'text');
+
 CREATE TABLE IF NOT EXISTS public.ops_environment (
-  id             boolean PRIMARY KEY DEFAULT true CHECK (id),  -- singleton
+  id             boolean PRIMARY KEY DEFAULT true CHECK (id),   -- singleton
   name           text NOT NULL CHECK (name IN ('local','preview','staging','production')),
   network        text NOT NULL CHECK (network IN ('mainnet-beta','devnet')),
   ingest_mode    text NOT NULL CHECK (ingest_mode IN ('off','replay','live')),
   trading_mode   text NOT NULL CHECK (trading_mode IN ('off','simulate','live')),
-  daily_unit_cap integer NOT NULL CHECK (daily_unit_cap >= 0),
   created_at     timestamptz NOT NULL DEFAULT now(),
-
-  -- The dangerous combinations are unrepresentable, not merely discouraged.
   CONSTRAINT env_live_trading_is_production_only
     CHECK (trading_mode <> 'live' OR (name = 'production' AND network = 'mainnet-beta')),
   CONSTRAINT env_live_ingest_is_deployed_only
     CHECK (ingest_mode <> 'live' OR name IN ('staging','production')),
   CONSTRAINT env_local_cannot_spend
-    CHECK (name <> 'local' OR (ingest_mode = 'replay' AND daily_unit_cap = 0)),
-  CONSTRAINT env_preview_cannot_spend
-    CHECK (name <> 'preview' OR (ingest_mode = 'off' AND daily_unit_cap = 0))
+    CHECK (name <> 'local' OR ingest_mode = 'replay')
 );
 
-CREATE OR REPLACE FUNCTION public.reserve_units(
-  p_vendor text, p_units integer, p_micro_usd bigint DEFAULT 0
-) RETURNS boolean
+-- Returns the granted read count. Partial grants are deliberate: a stage near the
+-- cap does less work rather than failing, and learns exactly how much it may do.
+CREATE OR REPLACE FUNCTION public.reserve_spend(
+  p_source text, p_reads integer, p_cost_usd numeric
+) RETURNS TABLE (granted integer, reason text)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog AS $$
-DECLARE v_cap integer; v_mode text; v_now bigint;
+DECLARE v_cap numeric; v_hard boolean; v_mode text; v_spent numeric; v_room integer;
 BEGIN
-  IF p_units <= 0 THEN
-    RAISE EXCEPTION 'reserve_units: p_units must be positive' USING ERRCODE = 'check_violation';
+  IF p_reads <= 0 THEN
+    RAISE EXCEPTION 'reserve_spend: p_reads must be positive' USING ERRCODE = 'check_violation';
   END IF;
 
-  SELECT daily_unit_cap, ingest_mode INTO v_cap, v_mode FROM public.ops_environment;
-
+  SELECT ingest_mode INTO v_mode FROM public.ops_environment;
   IF v_mode <> 'live' THEN
     RAISE EXCEPTION
-      'reserve_units called with ingest_mode=% — this environment must not spend money. '
+      'reserve_spend called with ingest_mode=% — this environment must not spend money. '
       'Set INGEST_MODE=replay and use fixtures.', v_mode USING ERRCODE = 'check_violation';
   END IF;
 
-  INSERT INTO public.ops_spend (day, vendor)
-  VALUES ((now() AT TIME ZONE 'utc')::date, p_vendor)
-  ON CONFLICT (day, vendor) DO NOTHING;
+  SELECT daily_cap_usd, hard_stop INTO v_cap, v_hard
+    FROM public.ops_budget_cap WHERE source = p_source;
+  IF NOT FOUND THEN
+    -- An unknown vendor has no cap, so it gets no money. Fail closed.
+    RETURN QUERY SELECT 0, format('no ops_budget_cap row for source %s', p_source);
+    RETURN;
+  END IF;
 
-  -- The cap is inside the same UPDATE that increments the counter, so parallel
-  -- stages cannot race past it.
+  INSERT INTO public.ops_spend (utc_date, source)
+  VALUES ((now() AT TIME ZONE 'utc')::date, p_source)
+  ON CONFLICT (utc_date, source) DO NOTHING;
+
+  -- The cap test is inside the UPDATE. Parallel stages cannot race past it.
   UPDATE public.ops_spend
-     SET units = units + p_units, micro_usd = micro_usd + p_micro_usd
-   WHERE day = (now() AT TIME ZONE 'utc')::date
-     AND vendor = p_vendor
-     AND units + p_units <= v_cap
-  RETURNING units INTO v_now;
+     SET reads      = reads + p_reads,
+         cost_usd   = cost_usd + p_cost_usd,
+         updated_at = now()
+   WHERE utc_date = (now() AT TIME ZONE 'utc')::date
+     AND source   = p_source
+     AND cost_usd + p_cost_usd <= v_cap
+  RETURNING cost_usd INTO v_spent;
 
-  RETURN v_now IS NOT NULL;   -- false => cap reached; the caller STOPS, never retries
+  IF v_spent IS NOT NULL THEN
+    RETURN QUERY SELECT p_reads, NULL::text;
+  ELSE
+    RETURN QUERY SELECT 0, 'daily_cap_reached';   -- the caller STOPS. It never retries.
+  END IF;
 END $$;
 ```
 
-Every metered vendor call goes through `apps/pipeline/src/lib/budget.ts`, which is the
-only module permitted to construct the raw fetch wrapper for a paid endpoint — enforced
-by a dependency-cruiser rule, the same way the service key is. A `false` return is
-`budget_exhausted`: a non-retryable error, an `ops_event` at `warn`, and a quiet board
-until UTC midnight. **Never raise the cap to make the alert stop.** The usual cause is
-a cadence change shipped without the matching per-cycle budget reduction, which is a
-revert.
+`budget.ts` is the only module in the repository permitted to construct a fetch against a
+metered base URL — enforced by a dependency-cruiser rule, the same way the service key is.
 
-Caps: production is set by the founder; staging is 2 000 units/day (about $0.30);
-preview and local are 0, and cannot be otherwise, because the CHECK constraints above
-refuse.
+```ts
+// apps/pipeline/src/lib/budget.ts
+export async function budgetFor(stage: StageName, sources: readonly VendorSource[], runId: number) {
+  const caps = await loadCycleCaps(sources);        // ops_budget_cap.cycle_cap_reads
+  const used: Record<string, number> = {};
+  let reads = 0, costUsd = 0;
 
-### 6.5 The error taxonomy
+  return {
+    get reads() { return reads; },
+    get costUsd() { return costUsd; },
 
-Closed, exhaustive, and the discriminator for whether Inngest retries.
+    async reserve(source: VendorSource, n: number, usd: number) {
+      if (!sources.includes(source)) {
+        throw new StageError('vendor_contract',
+          `stage ${stage} is not declared against source ${source}`);
+      }
+      // The per-cycle cap is in-process, and it is only sound because §6.3 guarantees
+      // exactly one runner. It is the guard against a cadence change shipped without a
+      // matching budget reduction — the usual cause of a daily cap breach.
+      used[source] = (used[source] ?? 0) + n;
+      if (caps[source] > 0 && used[source] > caps[source]) {
+        throw new StageError('cycle_budget_exhausted',
+          `${stage} asked for ${used[source]} ${source} reads; cycle cap is ${caps[source]}`);
+      }
+      const { data } = await service.rpc('reserve_spend',
+        { p_source: source, p_reads: n, p_cost_usd: usd });
+      const row = data?.[0];
+      if (!row || row.granted < n) {
+        throw new StageError('budget_exhausted', row?.reason ?? 'daily_cap_reached');
+      }
+      reads += n; costUsd += usd;
+    },
+
+    async fetch(source: VendorSource, path: string, init: VendorInit) { /* adapters/ */ },
+    async flush() { /* ops_stage_run.api_reads / cost_usd, already carried by runStage */ },
+  };
+}
+```
+
+Caps, per environment: production is set by the founder; staging is $0.30/day across all
+sources; preview and local cannot spend, because `ops_environment` refuses. **Never raise a
+cap to make an alert stop.** The usual cause is a cadence change without a matching
+`cycle_cap_reads` reduction, and that is a revert.
+
+#### The taxonomy
+
+The old build's retry helper retried on HTTP 429 and only 429. A 402 fell out of the `if`,
+threw, and vanished into a caller that logged nothing; posts stopped arriving; everything
+aged past the 240-minute display gate; nothing alerted for two days. The replacement is a
+**closed union with an explicit disposition per class, where the default is terminal, not
+retryable** — an unrecognised status must never be treated as transient.
 
 ```ts
 // apps/pipeline/src/lib/errors.ts
 export type StageErrorCode =
-  // --- retryable: transient, the next run probably succeeds -------------
-  | 'vendor_timeout'        // no response inside the budget
-  | 'vendor_5xx'            // upstream broken
-  | 'vendor_429'            // rate limited; backoff, do not widen concurrency
-  | 'db_conflict'           // serialisation failure / deadlock
-  | 'internal'              // unclassified. Retries AND pages — silence is worse.
-
-  // --- terminal: retrying makes it worse or costs money -----------------
-  | 'budget_exhausted'      // reserve_units() returned false
-  | 'vendor_402'            // payment required. Retrying spends nothing and fixes nothing.
-  | 'vendor_auth'           // 401/403. A key rotated. Page.
-  | 'vendor_contract'       // 200 with a shape we do not recognise — see below
-  | 'constraint_violation'  // the DATABASE refused the row. This is a WIN.
-  | 'schema_assert_failed'; // REQUIRED_SCHEMA_VERSION not applied
+  // retryable — the next run probably succeeds
+  | 'vendor_timeout' | 'vendor_5xx' | 'vendor_429' | 'db_conflict' | 'internal'
+  // terminal — retrying costs money, or makes it worse
+  | 'budget_exhausted' | 'cycle_budget_exhausted'
+  | 'vendor_402' | 'vendor_auth' | 'vendor_contract' | 'vendor_4xx'
+  | 'constraint_violation' | 'schema_assert_failed' | 'lease_lost' | 'stage_timeout';
 
 export type Classified = {
   code: StageErrorCode;
   retryable: boolean;
-  /** page immediately, or accumulate into an SLI */
+  /** THE difference from the old build: a class that must stop the stage entirely
+   *  until a human clears it. Money and credentials are not transient conditions. */
+  pauseStage: boolean;
   severity: 'info' | 'warn' | 'page';
   detail: string;
 };
+
+const DISPOSITION: Record<StageErrorCode, Omit<Classified, 'code' | 'detail'>> = {
+  vendor_timeout:         { retryable: true,  pauseStage: false, severity: 'info' },
+  vendor_5xx:             { retryable: true,  pauseStage: false, severity: 'info' },
+  vendor_429:             { retryable: true,  pauseStage: false, severity: 'warn' },
+  db_conflict:            { retryable: true,  pauseStage: false, severity: 'info' },
+  internal:               { retryable: true,  pauseStage: false, severity: 'page' },
+  budget_exhausted:       { retryable: false, pauseStage: true,  severity: 'warn' },
+  cycle_budget_exhausted: { retryable: false, pauseStage: false, severity: 'warn' },
+  vendor_402:             { retryable: false, pauseStage: true,  severity: 'page' },
+  vendor_auth:            { retryable: false, pauseStage: true,  severity: 'page' },
+  vendor_contract:        { retryable: false, pauseStage: true,  severity: 'page' },
+  vendor_4xx:             { retryable: false, pauseStage: false, severity: 'warn' },
+  constraint_violation:   { retryable: false, pauseStage: false, severity: 'warn' },
+  schema_assert_failed:   { retryable: false, pauseStage: true,  severity: 'page' },
+  lease_lost:             { retryable: false, pauseStage: false, severity: 'warn' },
+  stage_timeout:          { retryable: true,  pauseStage: false, severity: 'warn' },
+};
+
+export function fromHttpStatus(status: number): StageErrorCode {
+  if (status === 402) return 'vendor_402';
+  if (status === 401 || status === 403) return 'vendor_auth';
+  if (status === 408 || status === 425) return 'vendor_timeout';
+  if (status === 429) return 'vendor_429';
+  if (status >= 500) return 'vendor_5xx';
+  if (status >= 400) return 'vendor_4xx';   // terminal by DEFAULT. Never falls through.
+  return 'vendor_contract';                 // a non-error status reaching here is a bug
+}
+
+export function classify(err: unknown): Classified {
+  const code =
+    err instanceof StageError        ? err.code
+  : err instanceof HttpError         ? fromHttpStatus(err.status)
+  : err instanceof z.ZodError        ? 'vendor_contract'
+  : isPgError(err, '23')             ? 'constraint_violation'   // integrity_constraint_violation
+  : isPgError(err, '40')             ? 'db_conflict'            // serialization / deadlock
+  : err instanceof StageTimeout      ? 'stage_timeout'
+  : err instanceof LeaseLost         ? 'lease_lost'
+  : 'internal';
+  return { code, ...DISPOSITION[code], detail: describe(err) };
+}
 ```
 
-Three entries carry more weight than the rest.
+Five entries carry the weight.
 
-**`vendor_contract`** is a 200 response whose shape we do not recognise. It exists
-because the worst vendor failure is not an outage — it is an endpoint that quietly
-stops returning a field, and a caller that reads `?? null` and then treats null as
-"fine". Every adapter parses its response through a zod schema; a parse failure is
-`vendor_contract`, terminal, and pages. It never degrades to a default.
+**`vendor_402` and `vendor_auth` pause the stage.** `pauseStage` writes
+`ops_stage_expected.paused_until = now() + 24h` with the reason, emits an `ops_event` at
+`page`, and posts to `#insidor-page` naming the stage, the vendor and the status. The stage
+then *skips* each tick and logs `stage_paused_skip` at `warn`, so `ops_stage_run` keeps
+producing rows and the stall SLI keeps measuring. Pausing is loud, bounded, and cleared only
+by a human:
+`update ops_stage_expected set paused_until = null, paused_reason = null where stage = …`.
+Retrying a 402 spends nothing and fixes nothing — a card needs topping up. Retrying a 401
+burns rate limit against a key that has been rotated.
 
-**`constraint_violation`** is logged at `warn`, not `page`, and it is a **success**:
-the schema refused a row the pipeline should not have built. It carries the constraint
-name straight into `ops_stage_run.error_detail`, so `coin_match_confirmed_requires_evidence`
-appearing in the log is a matcher bug found before a user saw a Buy button. A rising
-rate is a matcher regression; a flat low rate is the system working.
+**`vendor_429` never widens concurrency.** Exponential backoff with full jitter, capped at
+the stage's own cadence, so a stage never queues behind itself.
 
-**`internal`** is retryable *and* pages. An unclassified error is a gap in the
-taxonomy, and a gap that fails quietly is exactly how two days of silence happened.
+**`vendor_contract`** is a 200 whose *shape* we do not recognise. The worst vendor failure is
+not an outage; it is an endpoint that quietly stops returning a field and a caller that reads
+`?? null` and treats null as fine. That is the RugCheck defect exactly: `/report/summary`
+carries no authority fields, `mintAuthority == null` read as revoked, and every token got a
+green tick. Every adapter parses through zod; a parse failure is terminal and pages, never a
+default. The schema's three-valued `authority_state` makes *storing* that lie impossible;
+`vendor_contract` makes *fetching* it loud.
 
-### 6.6 The websocket clock
+**`constraint_violation`** is `warn`, and it is a **success**: the database refused a row the
+pipeline should not have built. The constraint name goes into `ops_stage_run.error_detail`,
+so `coin_match_confirmed_requires_evidence` in the log is a matcher bug caught before a user
+saw a Buy button. A rising rate is a regression; a flat low rate is the system working.
 
-Two prospective clocks, symmetric by construction because they share one table and one
-enum. Both are **prospective**: they record what a sensor had scanned *before* any
-lead time is computed from it, so a claim can never be measured against a sensor that
-had not caught up.
+**`internal`** is retryable *and* pages. An unclassified error is a hole in the taxonomy, and
+a hole that fails quietly is how two days of silence happened.
 
-- **Clock A — the mint stream.** A PumpPortal websocket subscribed to token creations.
-  Every event upserts `coin` with `minted_at_source = 'pumpportal_create'`.
-- **Clock B — the CT poller.** A 60-second poll over a curated handle list, writing
-  `ct_mention` with a permalink, because the proof must travel with the claim.
+---
 
-Each maintains one row in `sensor_heartbeat`:
+### 6.5 The websocket clock
+
+One persistent PumpPortal connection, owned by `main.ts`, not by a stage. It is a
+subscription whose silence is the signal, so it cannot be a cron.
 
 ```ts
-// Two distinct facts, and conflating them is the bug this shape prevents.
-//   last_beat_at     — "the sensor is alive"
-//   observed_through — "the sensor has scanned up to HERE"
-// A websocket that reconnects and receives nothing has a fresh last_beat_at and
-// a stale watermark. Only the watermark may be used to justify a lead time,
-// which is why story_clock requires both watermarks >= promoted_at.
-await db.from('sensor_heartbeat').upsert({
-  sensor: 'mint_stream',
-  last_beat_at: now,
-  observed_through: lastEventTime ?? previousWatermark,
-  connected_at: socketConnectedAt,
+// apps/pipeline/src/adapters/pumpportal.ts
+const IDLE_TIMEOUT_MS = 45_000;   // mainnet mints ~40/90s; 45s of silence is a dead socket
+const MAX_BACKOFF_MS  = 30_000;
+const QUEUE_MAX       = 5_000;
+
+export function startMintStream(deps: Deps) {
+  let attempt = 0, ws: WebSocket | null = null, idle: NodeJS.Timeout;
+  const queue: MintEvent[] = [];
+
+  const connect = () => {
+    ws = new WebSocket('wss://pumpportal.fun/api/data');
+    const connectedAt = new Date();
+
+    ws.on('open', async () => {
+      attempt = 0;
+      ws!.send(JSON.stringify({ method: 'subscribeNewToken' }));
+      // Close the gap only AFTER the subscription is acknowledged by traffic, not on
+      // socket open. An open socket with no subscription is a silent hole.
+      await deps.markConnected('mint_stream', connectedAt);
+      bumpIdle();
+    });
+
+    ws.on('message', (buf) => {
+      bumpIdle();
+      const parsed = MintEvent.safeParse(JSON.parse(buf.toString()));
+      if (!parsed.success) {
+        // A shape change on the mint stream is a broken earliness claim, not a warning.
+        void deps.opsEvent('mint_stream_contract', 'page', 'clocks-mint',
+          { issues: parsed.error.issues.slice(0, 3) });
+        return;
+      }
+      if (queue.length >= QUEUE_MAX) {
+        // Backpressure IS a gap. Dropping events silently is the failure this table exists for.
+        void deps.openGap('mint_stream', 'supervisor', { reason: 'queue_overflow' });
+        return;
+      }
+      queue.push(parsed.data);
+    });
+
+    ws.on('close', async (code) => {
+      clearTimeout(idle);
+      // Opened BEFORE the reconnect attempt, so the ledger is complete even if the
+      // reconnect succeeds instantly and even if alerting is down.
+      await deps.openGap('mint_stream', 'supervisor', { code });
+      const wait = Math.min(MAX_BACKOFF_MS, 500 * 2 ** attempt++) * (0.5 + Math.random() / 2);
+      setTimeout(connect, wait);
+    });
+
+    ws.on('error', () => ws?.close());
+  };
+
+  const bumpIdle = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => ws?.close(4000, 'idle'), IDLE_TIMEOUT_MS);
+  };
+
+  connect();
+  return { queue };
+}
+```
+
+**Gap detection.** ⚠ VERIFY: PumpPortal's `subscribeNewToken` payload carries no sequence
+number and no server-side replay, so a gap cannot be detected from the stream itself — only
+from its boundaries. Three detectors, and all three write to the same `sensor_gap` table:
+
+1. **Disconnect boundary.** `close` → `sensor_gap(sensor='mint_stream', started_at=now())`
+   before the reconnect. Reconnect → `ended_at`.
+2. **Idle timeout.** 45 s with no message closes the socket deliberately, which routes into
+   detector 1. A socket that is open and receiving nothing is the failure that looks
+   healthiest.
+3. **Post-hoc reconciliation.** After a gap closes, `clocks-mint` backfills the window from
+   the Helius mint index and writes any mint it finds with
+   `coin.minted_at_source = 'helius_backfill'`, never `'pumpportal_create'`. The two sources
+   are distinguishable forever, because a backfilled mint is evidence of a hole, not
+   evidence of coverage.
+
+**The consequence is refusal, not estimation.** Any story whose `[promoted_at, t_crypto]`
+window intersects an open or historical `sensor_gap` gets
+`story_clock.unmeasurable = true, unmeasurable_sensor, unmeasurable_gap_id`. The lead time
+is suppressed everywhere it would render, and `story_outcome` records `unmeasurable`, which
+`story_outcome_unmeasurable_has_no_lead` forces to carry no lead at all. Unmeasurable
+windows are never wins.
+
+**Coexistence with the scheduler.** The socket never writes to the database from its message
+handler. It appends to a bounded in-process queue; `clocks-mint` — a real stage, with a
+lease, a run row and a `rows_out` — drains it every 5 s and upserts `coin` on `mint`. Three
+things follow: the socket cannot be blocked by database latency; `rows_out = 0` on the
+drainer is a *legible* fact the stall SLI can read; and if the machine dies with a full
+queue, the events were never acknowledged upstream, so the gap is the honest record of what
+was lost. The queue high-water mark goes into `sensor_heartbeat.detail`.
+
+`observed_through` for `mint_stream` is the timestamp of the last successfully *drained*
+event, never the last received one — the same rule as `clocks-ct`.
+
+---
+
+### 6.6 Observability
+
+`watchdog` runs every 60 s and writes one `ops_sli_sample` row per SLI. The principle is that
+**absence and zero must both breach**, because the outage that happened produced neither an
+error nor a metric. `ops_sli_sample`'s `CHECK ((value IS NULL) = (state = 'unknown'))` means
+an SLI that cannot be evaluated is `unknown` — a distinct colour on `/ops`, never green.
+
+**SLI-2 · `stage_output_stall`. This is the one that catches the two-day outage inside three
+cycles.** It is driven from `ops_stage_expected`, not from `ops_stage_run`, so a stage that
+is dead and logging nothing scores 999 rather than scoring nothing at all.
+
+```sql
+WITH last_productive AS (
+  SELECT stage, max(started_at) AS at
+    FROM public.ops_stage_run
+   WHERE rows_out > 0                       -- OUTPUT, not "ran". A heartbeat ticked
+   GROUP BY stage                           -- happily through all 48 hours of the outage.
+)
+SELECT
+  e.stage,
+  e.interval_seconds,
+  lp.at AS last_productive_at,
+  (SELECT count(*) FROM public.ops_stage_run r
+    WHERE r.stage = e.stage
+      AND r.started_at > COALESCE(lp.at, '-infinity'::timestamptz)) AS zero_run_streak,
+  CASE WHEN lp.at IS NULL THEN 999          -- ABSENCE breaches identically to ZERO
+       ELSE ceil(extract(epoch FROM now() - lp.at) / e.interval_seconds)::int
+  END AS intervals_since_output
+FROM public.ops_stage_expected e
+LEFT JOIN last_productive lp ON lp.stage = e.stage
+WHERE e.enabled AND e.paused_until IS NULL
+ORDER BY intervals_since_output DESC;
+```
+
+Warn at `intervals_since_output ≥ 3`, page at `≥ 5`. For `ingest-x` at 180 s that is a page
+**15 minutes** into the outage instead of never. The `WHERE e.paused_until IS NULL` clause is
+not a mute: a paused stage is covered by SLI-11 below, which pages harder.
+
+**SLI-11 · `stage_paused`** — the direct 402/401 detector, and the reason a paused stage does
+not simply disappear from monitoring.
+
+```sql
+SELECT e.stage, e.paused_reason, e.paused_until,
+       extract(epoch FROM now() - COALESCE(
+         (SELECT max(created_at) FROM public.ops_event v
+           WHERE v.stage = e.stage AND v.severity = 'page'), now()))::int AS paged_ago_s
+  FROM public.ops_stage_expected e
+ WHERE e.paused_until IS NOT NULL;
+```
+
+Any row is a page, repeated every 30 minutes until cleared. A pause has no quiet mode.
+
+**SLI-1 · `ingest_freshness`** — the product-level cross-check, independent of whether any
+stage logged at all.
+
+```sql
+SELECT p.platform,
+       extract(epoch FROM now() - max(p.first_seen_at))::int AS freshness_s,
+       count(*) FILTER (WHERE p.first_seen_at > now() - interval '15 minutes') AS last_15m
+  FROM public.post p
+ WHERE p.first_seen_at > now() - interval '6 hours'
+ GROUP BY p.platform;
+```
+
+Warn 15 min, page 30 min. A platform that produces **no group row at all** is `unknown`, and
+`unknown` pages after 30 minutes — otherwise a `GROUP BY` with nothing to group is a green
+board.
+
+**SLI-6 · `sensor_gap_open`** — both sensors, one query, because the tables are symmetric.
+
+```sql
+SELECT g.sensor, 'open_gap' AS kind,
+       extract(epoch FROM now() - g.started_at)::int AS seconds
+  FROM public.sensor_gap g WHERE g.ended_at IS NULL
+UNION ALL
+SELECT h.sensor, 'stale_watermark',
+       extract(epoch FROM now() - h.observed_through)::int
+  FROM public.sensor_heartbeat h
+ WHERE now() - h.observed_through > interval '3 minutes'
+UNION ALL   -- a sensor with no heartbeat row at all
+SELECT s, 'absent', 999999
+  FROM unnest(enum_range(NULL::sensor)) s
+ WHERE s NOT IN (SELECT sensor FROM public.sensor_heartbeat);
+```
+
+Warn 120 s, page 300 s.
+
+**SLI-7 · `budget_burn`** — projected to UTC midnight, and it distinguishes "no data" from
+"$0.00", which `ops_spend`'s own table comment demands.
+
+```sql
+SELECT c.source, c.daily_cap_usd, c.hard_stop,
+       (s.utc_date IS NULL) AS no_row_today,          -- NOT the same as zero spend
+       COALESCE(s.cost_usd, 0) AS spent_usd,
+       COALESCE(s.cost_usd, 0) / NULLIF(c.daily_cap_usd, 0)
+         / NULLIF(extract(epoch FROM (now() AT TIME ZONE 'utc')
+                  - date_trunc('day', now() AT TIME ZONE 'utc')) / 86400.0, 0)
+         AS projected_frac_at_midnight
+  FROM public.ops_budget_cap c
+  LEFT JOIN public.ops_spend s
+    ON s.source = c.source AND s.utc_date = (now() AT TIME ZONE 'utc')::date;
+```
+
+Warn at 0.80 projected, page at 1.00. A `no_row_today = true` on a source whose stage is
+enabled is itself a warn — it means the stage is not calling the vendor.
+
+**SLI-3 · `funnel_yield`** — the semantic check the stall SLI cannot make: every stage
+running and producing rows, and nothing reaching the board.
+
+```sql
+SELECT sum(arrived) AS arrived, sum(admitted) AS admitted, sum(tracked) AS tracked,
+       sum(triggered) AS triggered, sum(clustered) AS clustered, sum(promoted) AS promoted,
+       sum(promoted)::numeric / NULLIF(sum(arrived), 0) AS yield
+  FROM public.ops_funnel
+ WHERE bucket_at > now() - interval '1 hour';
+```
+
+Warn below 0.5%, page below 0.1% — and page on a zero denominator with a non-zero previous
+hour, which is a stalled `arrive` that `ingest-x` reported as success.
+
+The remaining SLIs keep their §6.8 definitions: `board_render_fallback` (2% / 10%),
+`match_abstain_rate` (outside 0.15–0.30), `unclassified_outcomes` (1 / 10),
+`e2e_lead_time_p50` (< 5 min / < 0 min), `delta_divergence` (2% / 5%).
+
+**Degraded versus dead.** These are different pages and different runbook entries.
+
+| | Degraded | Dead |
+|---|---|---|
+| Definition | The system is producing output, but less, later or less trustworthy than it should | An output measure has been flat for ≥ 5 intervals, or a stage is paused |
+| Examples | `vendor_429` sustained · one `clocks-ct` batch failing · abstain rate at 0.38 · budget 85% burnt | `intervals_since_output ≥ 5` · `paused_until` set · `sensor_gap` open > 300 s · watchdog silent |
+| Board | Renders with the amber staleness band and a live counter | Renders the last good tick stamped `as of HH:MM`, HEAT dimmed |
+| Alert | `#insidor-ops`, `warn` | `#insidor-page`, `page`, repeated |
+| Earliness claim | Still made, marked stale | **Suppressed** — an unmeasurable window is never a win |
+
+**The dead-man's switch.** `watchdog` pings healthchecks.io after each successful evaluation.
+If the watchdog dies, healthchecks.io alerts. Nothing inside the system may be the only thing
+able to report that the system is not running — that is the structural version of the
+two-day lesson.
+
+---
+
+### 6.7 Local development
+
+The requirement is running one real stage against real vendor shapes without spending the
+production budget or writing to production. Three independent mechanisms, any one
+sufficient, and none of them a convention:
+
+1. `packages/env` refuses to start when a metered key is present and `INGEST_MODE ≠ 'live'`.
+2. `assertEnvironment()` at preflight: `ops_environment.name` must equal `APP_ENV`. A
+   production connection string in `.env.local` crashes on boot.
+3. `reserve_spend()` raises when the database's `ingest_mode` is not `live`. Even with a key
+   and a bad env, the first metered call fails inside Postgres.
+
+The tool is a stage runner, not a copy of the scheduler:
+
+```ts
+// apps/pipeline/src/cli/run-stage.ts
+//   npm run stage -w apps/pipeline -- clocks-ct --once
+//   npm run stage -w apps/pipeline -- score --once --record     # capture cassettes
+//   npm run stage -w apps/pipeline -- resolve-coins --once --dry --since 6h
+const argv = parseArgs();
+const def = STAGES[argv.stage];                         // same StageDef the scheduler uses
+assertEnv(['local', 'staging']);                        // never production, no flag to force
+
+if (argv.record) {
+  // Records against staging keys, redacts on write, and commits under
+  // src/adapters/__fixtures__/<vendor>/<hash>.json. Recording is the ONLY path
+  // by which a real vendor response enters the repository.
+  setVendorMode({ mode: 'record', budgetCeilingUsd: 0.50 });
+} else {
+  // INGEST_MODE=replay. Every adapter reads its cassette; a cache miss THROWS
+  // rather than falling through to the network, so a missing fixture is a loud
+  // test failure and never a surprise invoice.
+  setVendorMode({ mode: 'replay' });
+}
+
+// --dry wraps the whole run in a transaction that is rolled back, and asserts the
+// stage produced the writes it claims. Local Postgres only; the pooler cannot hold
+// a transaction across the run.
+const result = argv.dry ? await inRolledBackTx(() => runStage(def)) : await runStage(def);
+console.log(JSON.stringify(result, null, 2));
+```
+
+The database is the Supabase CLI stack on the laptop, migrated by `scripts/migrate.mjs up`
+and seeded from `supabase/seed/`. Cassettes let a developer run `score` fifty times against
+the exact bytes that broke production; when a vendor's shape changes for real, the adapter
+contract test in `src/adapters/__tests__/` fails in CI against the committed cassette — the
+same `vendor_contract` failure, found before deploy.
+
+Reproducing an incident is a fixture, not a connection string: pull the offending
+`ops_stage_run.detail` and the cassette, replay, and the failure is deterministic because
+`StageCtx.now` is injected and model code may not call `Date.now()` or `Math.random()`.
+
+---
+
+### 6.8 Deployment
+
+**Where.** Fly.io, `insidor-pipeline`. Production runs two machines with a canary rollout;
+staging runs one. Fly is chosen over Railway for one specific reason: `min_machines_running`
+and rolling strategy give a first-class canary with an automatic rollback on a failing health
+check, and the failure mode we must never have is a pipeline that deploys and then does not
+run.
+
+```toml
+# apps/pipeline/fly.production.toml
+app = "insidor-pipeline"
+primary_region = "iad"                # co-located with the Supabase project
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  strategy = "canary"                 # one machine, health-checked, before the second
+  wait_timeout = "5m"
+
+[env]
+  APP_ENV = "production"
+  PORT = "8080"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  auto_stop_machines = false          # a scheduler that scales to zero is not a scheduler
+  auto_start_machines = false
+  min_machines_running = 2
+
+  [[services.http_checks]]
+    path = "/health/live"
+    interval = "10s"
+    timeout  = "2s"
+    grace_period = "30s"
+
+  [[services.http_checks]]
+    path = "/health/ready"            # the check that gates the canary
+    interval = "30s"
+    timeout  = "5s"
+    grace_period = "90s"
+```
+
+**Two health endpoints, and the difference is the whole point.**
+
+```ts
+// apps/pipeline/src/main.ts
+app.get('/health/live', (_, res) => res.json({ ok: true, sha: BUILD_SHA }));
+
+app.get('/health/ready', async (_, res) => {
+  // Readiness is an OUTPUT measure. "The process is up" is /health/live and it is
+  // exactly what stayed green for two days.
+  const { data } = await service.rpc('stage_output_health');   // the SLI-2 query
+  const worst = data?.[0];
+  const socketOk = mintStream.connectedSince !== null;
+  const ok = worst != null && worst.intervals_since_output < 5 && socketOk;
+  res.status(ok ? 200 : 503).json({
+    ok, sha: BUILD_SHA, schema: APPLIED_SCHEMA_VERSION,
+    worstStage: worst?.stage, intervalsSinceOutput: worst?.intervals_since_output,
+    mintSocket: socketOk,
+  });
 });
 ```
 
-Reconnect handling is where the honesty lives. On `close`, the process opens a
-`sensor_gap` row **before** attempting to reconnect. On successful reconnect it closes
-the gap with `ended_at`. Any story promoted inside an open gap is marked
-`unmeasurable` with `unmeasurable_sensor` and `unmeasurable_gap_id`, and its lead time
-is suppressed everywhere — not estimated, not backfilled, suppressed. Backoff is
-exponential with jitter to 30 s, and a gap open longer than five minutes pages.
+`/health/ready` returns 503 during the first ~90 s of a cold boot, which is why
+`grace_period` is 90 s and why `min_machines_running = 2`: the canary must not be able to
+take the last productive machine down.
 
-Every write to `sensor_gap` happens **before** any alert fires, so the ledger is
-complete even if alerting is down.
+**How it deploys.** `.github/workflows/release.yml` is the only path. Migrations first
+(`scripts/release-plan.mjs` reads the `@phase` header and emits `db_first`), then Fly, then
+Vercel. Expand-only migrations mean the running pipeline keeps working against the new
+schema during the window; `REQUIRED_SCHEMA_VERSION` in preflight means the new pipeline
+refuses to start against an old one.
 
-### 6.7 The rank-commit clock
+**How it rolls back.**
 
-`rank-commit` runs every 20 seconds and is the only writer of `board_state`. Each
-commit:
+```bash
+fly deploy -a insidor-pipeline \
+  --image "$(fly releases -a insidor-pipeline --json | jq -r '.[1].ImageRef')"
+```
 
-1. reads eligible entities and computes heat;
-2. applies rank stability — `EPS_SWAP = 0.08`, two ticks to enter, three to leave,
-   a 90-second dwell (`pinned_until`), `MAX_MOVE = 5` ranks per tick, and an escape
-   hatch that skips the dwell for a genuine breakout and flags it `NEW`;
-3. writes `board_state` and one `board_tick` row per rank;
-4. writes `board_gate_count` with `eligible`, `shown` and a `by_reason` breakdown;
-5. increments `tick_seq` and broadcasts one frame.
+Done when `/health/ready` reports the previous SHA **and** a new `ops_stage_run` row exists
+with `rows_out > 0`. A green health check without a productive run is not a completed
+rollback — that distinction is the entire section.
 
-`tick_seq` is a monotonic watermark and it is what makes hydration and the live stream
-provably consistent. The RSC snapshot returns rows **and** `tick_seq` from one
-statement (a separate `select max(tick_seq)` could observe a commit the row query did
-not, and the client would silently drop the first real frame). The client applies a
-frame iff `frame.tickSeq > watermark`; on a gap it calls a bounded catch-up route
-rather than re-fetching the board.
-
-**Values update live; positions do not.** Rows live in a `Map<id, Row>` updated on
-every frame; only the ordering array is gated on the tick, and it is frozen while the
-pointer is over the board.
-
-The `p95` heat denominator rebases hourly, so a row can move 61 → 88 with nothing
-changing underneath. That commit writes `event = 'rebased'` and the client suppresses
-the tick animation for that frame.
-
-### 6.8 Observability
-
-**Ten SLIs**, evaluated every 60 s by the watchdog into `ops_sli_sample`. The design
-principle is that **absence and zero must both breach**, because the outage that
-happened produced neither an error nor a metric.
-
-| # | SLI | Definition | Warn / Page |
-|---|---|---|---|
-| 1 | `ingest_freshness` | `now() − max(first_seen_at)` on `post` | 15 m / 30 m |
-| 2 | `stage_output_stall` | consecutive `ops_stage_run` rows with `rows_out = 0`, **LEFT JOINed from `ops_stage_expected`** so a dead worker scores 999 on absence | 3 / 5 |
-| 3 | `funnel_yield` | `promoted / arrived` over 1 h | < 0.5% / < 0.1% |
-| 4 | `board_render_fallback` | fraction of board reads served from the polling fallback | 2% / 10% |
-| 5 | `match_abstain_rate` | `unsure / (confirmed + unsure)` | outside 0.15–0.30 |
-| 6 | `sensor_gap_open` | seconds of the longest open `sensor_gap` | 120 s / 300 s |
-| 7 | `budget_burn` | `units / daily_unit_cap`, projected to UTC midnight | 80% / 100% |
-| 8 | `unclassified_outcomes` | `count(story_outcome IS NULL AND promoted_at < now() − 72h)` | 1 / 10 |
-| 9 | `e2e_lead_time_p50` | median `lead_time_min` over 24 h, measurable stories only | < 5 m / < 0 m |
-| 10 | `delta_divergence` | client resync beacons per 1 000 sessions | 2% / 5% |
-
-Three implementation details that are the difference between this working and looking
-like it works:
-
-- **The work-done check.** Freshness is `max(finished_at) FILTER (WHERE rows_out > 0)`,
-  never `max(ran_at)`. The latter reads `live` during the exact outage that happened.
-- **`ops_sli_sample` has `CHECK ((value IS NULL) = (state = 'unknown'))`.** An SLI that
-  cannot be evaluated is `unknown`, which is a distinct colour on `/ops` and is never
-  green. A green board painted by an SLI querying a nonexistent column is how the
-  original outage stayed invisible.
-- **A dead-man's switch.** The watchdog pings healthchecks.io after each successful
-  evaluation. If the watchdog itself dies, healthchecks.io alerts. Nothing inside the
-  system can report that the system is not running.
-
-Alerts route to `#insidor-page` at `page` severity and `#insidor-ops` at `warn`.
-`/ops` reads `ops_sli_sample` directly and is behind a Privy DID allowlist; it 404s
-for everyone else, so the allowlist is not a discoverable surface.
-
-Logging is structured JSON on stdout, one line per stage run plus one per vendor call,
-carrying `stage`, `run_id`, `vendor`, `units`, `cost_usd`, `error_code`. Fly ships it;
-nothing is parsed for correctness — the database rows are the record, and the logs are
-for reading during an incident.
-
----
+If the pipeline will not start, read the last 20 log lines: preflight names the missing
+variable or the mismatched environment. `fly secrets set` restarts it. **Never remove the
+preflight.** If a budget is exhausted, the system is working: accept a quiet board until UTC
+midnight, or raise the cap deliberately with the founder and write down why.
 
 ## 7. CONTRACTS
 
@@ -4130,146 +5403,536 @@ the same — **what would have made this state unrepresentable?**
 
 ---
 
-## 9. TESTING
+## 9. TESTING AND CORRECTNESS
 
-### 9.1 Strategy
+The old build has zero tests across 139 files, including the scoring and clustering
+heuristics that *are* the product. Every defect in the incident list would have been caught
+by a test under twenty lines.
 
-Four layers, chosen because each catches something the others structurally cannot.
+### 9.1 The strategy, and what is deliberately not tested
 
-**Pure unit tests over `model/`.** Vitest cannot render async Server Components, so if
-"test the components" is the standard, testing dies in week two when someone hits that
-wall. The architecture's answer is that all decision logic lives in a segment that is
-pure by lint rule — no React, no I/O, no clock — and every file there has a sibling
-test, enforced by `scripts/check-model-tests.mjs`. Five-line tests, no mocks. That is
-the whole cost, and it is why the rule is non-negotiable rather than aspirational.
+**Start from the constraint that kills most React test plans.** Next.js's own testing guide
+states that Vitest does not support async Server Components. `FeedScreen`, `CoinScreen` and
+`StoryScreen` are async RSCs awaiting Supabase, so "test the components" is not a standard
+that degrades gracefully — it fails on the first file anyone tries, and the codebase
+reverts to zero.
 
-**Negative constraint tests in SQL.** `supabase/tests/invariants.sql` asserts that bad
-writes are **rejected**. A constraint with no failing test is a constraint nobody has
-proved exists. It runs as one transaction ending in `ROLLBACK`, with two helpers:
-`pg_temp.rejects(sql, label)` raises unless the statement errors, and
-`pg_temp.accepts(sql, label)` raises if it does.
+The architecture's answer is structural and predates this section: every decision lives in
+`model/`, a segment that is pure **by lint rule** — no React, no I/O, no `async`, no
+`Date.now()`, `now` passed as a parameter (§2) — and a pure function needs no renderer, no
+DOM, no mock and no fake timers. The purity rule and the testing strategy are one decision
+seen from two sides: **`model/` exists because Vitest cannot render our components.**
 
-**Type tests.** `packages/contracts/src/__typetests__/*.test-d.ts` compile under
-`tsc --noEmit` and assert that the *wrong* code does not compile, using
-`@ts-expect-error` with a description — never a literal `TSxxxx` code, which is not a
-stable API and which is easy to get subtly wrong in a way that makes the test pass for
-the wrong reason.
+| Layer | Where | Catches |
+|---|---|---|
+| Pure unit over `model/` | `features/*/model`, `stages/*/model`, `packages/contracts` | every arithmetic and gate defect |
+| Type tests | `packages/contracts/src/__typetests__/` | a Buy button on an unconfirmed match |
+| Negative SQL tests | `supabase/tests/invariants.sql` | a row the schema must refuse |
+| Adapter contract tests | `apps/pipeline/src/adapters/__tests__/` | a vendor dropping a field |
+| Query-plan assertions | `supabase/tests/plans.sql` | a board that got slow as it got popular |
+| Frozen match regression | `apps/pipeline/eval/match/` | a threshold change lowering precision |
 
-**Query plan assertions.** `supabase/tests/plans.sql` runs `EXPLAIN` and fails on
-forbidden nodes. A board that quietly regresses to a Seq Scan is a correctness problem
-here, because the product's whole claim is that it is early.
+**Not tested, on purpose.** No React rendering — no jsdom, no Testing Library, no snapshot
+files. A snapshot asserts that today's markup equals today's markup: it fails on every
+legitimate change and teaches the team to run `-u`. UI correctness here is *which*
+component renders, decided by `primaryAction()` and the `BuyableCoin` type, both tested
+above the component. No mocked Supabase client — every rule worth testing is a constraint
+the mock does not have. No coverage threshold. No browser E2E (§9.6). No tests over
+`app/`: a 40-line routing manifest has no logic in scope to test.
 
-Deliberately thin: no end-to-end browser suite in v1. It is the slowest, flakiest layer
-and it would duplicate coverage the four above already give. Reconsider once the trade
-flow stops changing weekly.
+`packages/config/vitest.base.ts` sets `environment: 'node'` (never jsdom — nothing under
+test has a DOM), `fakeTimers: { toFake: [] }` (a `model/` test needing timers has a clock
+in it, which lint already forbids), and two projects so `vitest --project invariant`
+— every test whose name starts `INVARIANT` — runs as its own CI step rather than as one
+line among four hundred passes.
+
+`scripts/check-model-tests.mjs` globs `{apps,packages}/**/model/*.ts`, fails on any file
+without a sibling `__tests__/<name>.test.ts`, and **fails first if the glob returns fewer
+than 30 files** — the same defect class as the `totalCruised` floor on dependency-cruiser.
+A gate that goes green on an empty result set is worse than no gate, because it is
+believed.
 
 ### 9.2 The correctness-critical set
 
-These are the tests that stop money being lost. They are tagged `INVARIANT` and run as
-their own CI step, so a failure is never buried in a list of 400 passes.
+Tagged `INVARIANT`. These are the tests that stop money being lost.
 
-| Area | What must hold |
-|---|---|
-| `primaryAction()` | Buy appears iff exactly one confirmed **and safe** coin exists. Never on unsure. Never suppressed by absent market data. |
-| `coin_match` constraints | A confirmable-false row cannot be stored, at any score. |
-| `story_ticker` provenance | An LLM-sourced ticker cannot carry a mint and cannot reach a confirmed match. |
-| Coinability | A tier-`never` story is unreadable, un-commentable and un-launchable. |
-| `promoted_at` | Write-once, enforced under UPDATE. |
-| `lead_time_min` | Generated; unwritable by hand; requires both watermarks past promote. |
-| Safety | `unknown` fails closed. `intrinsic_gate_pass` is false on an all-unknown row. |
-| `Pending<T>` | No input path yields `0` for absent data, at any age. |
-| `trade.request_id` | A duplicate submission is a 409, not a second fill. |
-| Board plans | Q1–Q4 open on their indexes, no Seq Scan, no Sort. |
+**1. The primary-action resolver.** Two tests, closing different holes: a table test over
+behaviour, and a type test over *reachability*.
 
-Plus the **frozen regression set**: the real `$KANG`, `$PUMP` and `GYATT` cases as seed
-fixtures, each asserting zero rows reach a buyable state. They must **fail to become
-buyable**, so a threshold change cannot land silently.
+```ts
+// packages/contracts/src/__tests__/action.test.ts
+import { primaryAction } from '../action';
+import { toCoinMatch } from '../match';
 
-### 9.3 The first ten tests
+const NOW = 1_800_000_000_000 as Instant;
+const [M, N] = ['So1111…112', 'Stake1…111'] as MintAddress[];
+const safe = { pass: true, checkedAt: NOW } as const;
+const bad = { pass: false, failingGate: 'mint_authority', checkedAt: NOW } as const;
+const M_SAFE = new Map([[M, safe], [N, safe]]);
 
-Write these before anything else. In order.
+// row() is a confirmed, derived, cashtag-sourced match with two strong channels.
+// go() applies primaryAction to a normal-coinability story with no matches.
+const ms = (...r: CoinMatchRow[]) => ({ matches: r.map(toCoinMatch), safety: M_SAFE });
 
-**1. `invariants.sql` — a confirmed match with one strong channel is rejected.**
-The single most important assertion in the system. Insert a `coin_match` with
-`verdict = 'confirmed'`, `score = 0.91`, `s_img = 0.80`, everything else NULL. It must
-raise `coin_match_confirmed_requires_evidence`. Then repeat with two strong channels and
-assert it is accepted, and that `story.confirmed_coin_count` became 1 — which also
-proves the recount trigger fired.
+describe('INVARIANT primaryAction', () => {
+  test.each([
+    ['no matches',                    {},                                      'create'],
+    ['one confirmed + safe',          ms(row()),                               'buy'],
+    // Absent from the safety map is UNKNOWN, and unknown fails closed.
+    ['confirmed, never safety-checked', { matches: [toCoinMatch(row())] },     'view'],
+    ['confirmed, a gate failed',      { ...ms(row()), safety: new Map([[M, bad]]) },
+                                                                               'view'],
+    // Safe-but-unsure is still not buyable. Abstain never routes to Buy.
+    ['two unsure, zero confirmed',    ms(row({ verdict: 'unsure' }),
+                                         row({ mint: N, verdict: 'unsure' })), 'create'],
+    ['one confirmed + one unsure',    ms(row(), row({ mint: N, verdict: 'unsure' })),
+                                                                               'buy'],
+    ['two confirmed + safe',          ms(row(), row({ mint: N })),             'multi'],
+    ['no_create, zero confirmed',     { coinability: 'no_create' },            'none'],
+    // Existing coins trade even where minting a new one is forbidden.
+    ['no_create, one confirmed safe', { ...ms(row()), coinability: 'no_create' }, 'buy'],
+  ] as const)('%s -> %s', (_, i, kind) => expect(go(i).kind).toBe(kind));
 
-**2. `invariants.sql` — an LLM-sourced ticker cannot carry a mint.**
-`INSERT INTO story_ticker (…, source, resolved_mint) VALUES (…, 'llm', 'So111…')` must
-raise `story_ticker_llm_never_resolves`. Then assert an insert with **no `source`
-column at all** raises a not-null violation. That second half is the point: provenance
-is not optional.
+  test('adopted + safe -> buy, relation preserved for the ADOPTED chip', () => {
+    const a = go(ms(row({ relation: 'adopted',
+                          mint_time: NOW - 604 * 86_400_000 })));
+    expect(a.kind === 'buy' && a.coin.relation).toBe('adopted');
+  });
 
-**3. `action.test.ts` — the resolver's twelve cases, as a table.**
-Zero matches → create. One confirmed + safe → `Buy $HORN`. **One confirmed with a NULL
-mcap → still buy** (the deleted bug). One confirmed with unknown safety → view (fails
-closed). Three unsure, zero confirmed → create. One confirmed + two unsure → buy, and
-`n` counts 1 not 3. Two confirmed and safe → `See the 2 coins`. `no_create` with zero
-confirmed → none. `no_create` with one confirmed → buy, because existing coins trade.
-Adopted + safe → buy with `relation: 'adopted'`. Plus one property test: for all
-inputs, `kind === 'buy'` implies at least one confirmed match with `pass === true`.
+  // THE DELETED BUG. lib/stories.ts's tradeable() required a non-null mcap, so a
+  // four-minute-old mint flipped back to Create and drove a duplicate launch in
+  // the exact window this product exists to serve. This asserts the SHAPE of the
+  // input, because that is what makes the bug unwritable rather than absent.
+  test('no market field can ever reach the resolver', () =>
+    expect(Object.keys(SAMPLE_INPUT)).toEqual(
+      ['storyId', 'coinability', 'matches', 'safety']));
 
-**4. `invariants.sql` — `promoted_at` cannot be moved.**
-`UPDATE story SET promoted_at = now()` on a promoted story raises. Updating any other
-column on the same row succeeds. Two statements; they encode the entire earliness
-claim.
+  // The cases above test what we thought of; this tests the rule: over 5 000
+  // generated inputs, every coin in a 'buy' or 'multi' action must trace to a
+  // confirmed match whose safety entry has pass === true.
+  test('buyable implies confirmed AND pass===true', () =>
+    forAll(generateInputs(5_000), assertBuyableIsConfirmedAndSafe));
+});
+```
 
-**5. `invariants.sql` — the lead-time clock, including the trigger.**
-Insert a `story_clock` passing `promoted_at` as **99 years ago** and assert the
-resulting `lead_time_min` is 31 — proving the trigger takes the value from the story,
-not the caller, and that the column is generated. Then assert a clock whose mint
-watermark predates promote is rejected, that a clock with no watermark at all is
-rejected by NOT NULL, and that `UPDATE story_clock SET t_ct = …` raises.
+```ts
+// packages/contracts/src/__typetests__/action.test-d.ts — compile-only.
+// Descriptions, never literal TSxxxx codes: those are not a stable API.
+import { BuyButton } from '@features/trading';
 
-**6. `pending.test.ts` — absent never becomes zero.**
-`formatAge(unobtainable('no_mint_time'))` renders `—`, not `0m`.
-`windowChange(known(0.4), 1440, known(41))` returns `not_yet`, not `0.0%`. And a
-compile assertion: `formatAge(numberOrNull)` must not typecheck.
+declare const raw: CoinMatchRow; declare const unsure: UnsureCandidate;
+declare const confirmedOnly: ConfirmedCoin; declare const buyable: BuyableCoin;
 
-**7. `invariants.sql` — safety fails closed.**
-An all-default `coin_safety` row has `intrinsic_gate_pass = false`. A row with
-`mint_authority = 'revoked'`, `freeze_authority = 'revoked'`, `sell_route = 'ok'` but
-`top10_pct = NULL` is still false. And `top10_pct` set with
-`curve_pda_excluded = false` is rejected outright.
+// @ts-expect-error a raw database row is not a BuyableCoin
+BuyButton({ coin: raw, size: 'row', feeBps: 50 });
+// @ts-expect-error an abstained candidate can never reach the Buy button
+BuyButton({ coin: unsure, size: 'row', feeBps: 50 });
+// @ts-expect-error identity confirmed is not permission to buy: SAFE_TO_BUY missing
+BuyButton({ coin: confirmedOnly, size: 'row', feeBps: 50 });
+BuyButton({ coin: buyable, size: 'row', feeBps: 50 });          // the only legal call
+```
 
-**8. `invariants.sql` — coinability, all four halves.**
-A tier-`never` story is not `display_eligible`, returns no `story_cta_v` row, cannot be
-reached through `eligible_story`, and rejects a comment. A `no_create` story reports
-`can_create = false` and rejects a `launch` row. And a `launch` lying about the tier is
-rejected by the composite foreign key.
+**2. The coin-match gates and the abstain band.** The gate function mirrors
+`coin_match_confirmed_requires_evidence` and `public.confirmable()`.
 
-**9. `plans.sql` — Q1 and Q2 have no Sort node.**
-Seed 200 board rows, `EXPLAIN` both board queries, fail on
-`Seq Scan on board_state` or `Sort`. This is the test that stops the board silently
-getting slower as it gets popular.
+```ts
+// apps/pipeline/src/stages/resolve-coins/__tests__/gates.test.ts
+import { describe, expect, test } from 'vitest';
+import { classifyMatch, confirmable } from '../model/gates';
 
-**10. `server-entries.test.ts` + the boundary gate.**
-Every `features/*/server.ts` contains a top-level `import 'server-only'`, and
-`depcruise` reports `totalCruised > 60` with zero violations. The count assertion is
-half the test: dependency-cruiser exits 0 having cruised nothing when it dislikes the
-TypeScript version, and a gate that goes green on an empty graph is worse than no gate.
+describe('INVARIANT match gates', () => {
+  const base = { score: 0.93, tickerSource: 'cashtag', relation: 'derived',
+                 mintTime: 1_800_000_000_000, s: { mintInPost: null, img: 0.71,
+                 text: 0.62, tick: null, social: null } } as const;
 
-### 9.4 The seed
+  const v = (o = {}) => classifyMatch({ ...base, ...o }).verdict;
 
-Captured from staging, redacted through a **column allowlist**, then frozen and
-committed — plus nine hand-written scenario files that are never captured and never
-deleted.
+  test('two strong channels confirm', () => expect(v()).toBe('confirmed'));
 
-Generated data does not contain the shapes that break this product: negative lead time,
-NULL `mint_time`, an unsure match with three candidates, a coin with no snapshots, a
-tier-`never` story that must never surface. The allowlist is the control that matters:
-if a table gains a column absent from `manifest.json`, **capture fails** rather than
-including it, which is what keeps a new wallet or PII column out of git.
-`privy_did` and `wallet_address` are never captured; five synthetic users are
-generated. Comment bodies are replaced; the `snap_*` columns are kept verbatim, because
-their edge cases are the point.
+  test('ONE strong channel never confirms, at any score', () => {
+    for (const score of [0.80, 0.90, 0.99, 1.0]) {
+      expect(v({ score, s: { ...base.s, text: 0.20 } })).toBe('unsure');
+    }
+  });
 
-Monthly, a scheduled job recaptures and opens a PR with the diff, so the seed tracks
-the schema instead of rotting behind it.
+  // mint_in_post alone confirms at >= 0.90; s_social alone never does, being
+  // attacker-controlled metadata capped at 0.85 by CHECK.
+  test.each([['mintInPost', 0.95, 'confirmed'], ['social', 0.85, 'unsure']])(
+    '%s alone -> %s', (k, x, want) => expect(v(onlyChannel(k, x))).toBe(want));
 
----
+  test.each([
+    ['an llm ticker, at any evidence', { score: 1.0, tickerSource: 'llm' }],
+    ['unknown mint_time, which fails CLOSED', { mintTime: null }],
+    ['relation=mentioned, which is candidate generation', { relation: 'mentioned' }],
+  ])('%s cannot confirm', (_, o) => expect(v(o)).toBe('unsure'));
+
+  test('the abstain band is a range, not a point', () => {
+    expect(v({ score: 0.79 })).toBe('unsure');      // below confirm, above reject
+    expect(v({ score: 0.35 })).toBe('unsure');
+    expect(v({ score: 0.34 })).toBe('rejected');
+  });
+});
+```
+
+Parity with SQL is the other half: `confirmable-parity.test.ts` pushes the Cartesian
+product of `[null, 0, 0.54, 0.55, 0.60, 0.89, 0.90, 1.0]` over the four channels through
+`public.confirmable()` in one `unnest` query and asserts the TypeScript predicate agrees
+on all 4 096 rows. It needs Postgres, so it runs in the `invariants` job.
+
+**3. Velocity and acceleration.** The continuous-time EWMA over the irregular
+4/9/14/21/30/42/58/78-minute grid is the arithmetic the whole posts board rests on.
+
+```ts
+// apps/pipeline/src/stages/snapshot/__tests__/velocity.test.ts
+import { describe, expect, test } from 'vitest';
+import { accumulate, burstOf, EMPTY } from '../model/velocity';
+
+const min = (n: number) => n * 60_000;
+
+describe('INVARIANT velocity', () => {
+  // The old velocity.js returned 0 here, ranking a brand-new post as dead.
+  // ACCEL renders an em dash on one snapshot, never a fabricated 1.0x.
+  test('one snapshot -> no rate, no burst, ticks=1', () => {
+    const s = accumulate(EMPTY, { capturedAt: 0, views: 1_200 });
+    expect(s.ticksQualified).toBe(1);
+    expect(burstOf(s)).toEqual({ state: 'not_yet', note: 'needs 2 snapshots' });
+  });
+
+  // Constant arrival over IRREGULAR intervals must converge to burst 1.0. The
+  // discrete form `alpha*x + (1-alpha)*S` does not: it weights every sample
+  // equally regardless of the gap, biasing hot-tier posts upward by construction.
+  test('constant rate on the geometric grid converges to burst ~1', () => {
+    const grid = [4, 9, 14, 21, 30, 42, 58, 78].map(min);
+    let s = EMPTY, views = 0, prev = 0;
+    for (const t of grid) {
+      views += 800 * ((t - prev) / 60_000);            // exactly 800 views/min
+      prev = t;
+      s = accumulate(s, { capturedAt: t, views });
+    }
+    const b = burstOf(s);
+    expect(b.state).toBe('known');
+    if (b.state === 'known') expect(Math.abs(b.value - 1)).toBeLessThan(0.02);
+  });
+
+});
+```
+
+**4. Lead time.** Seven render branches; the two nobody writes are negative and a missing
+clock reading.
+
+```ts
+// packages/contracts/src/__tests__/lead.test.ts
+import { describe, expect, test } from 'vitest';
+import { leadTime } from '../lead';
+
+const P = 1_800_000_000_000 as Instant;
+const at = (m: number) => (P + m * 60_000) as Instant;
+const clock = (o = {}) => ({ promotedAt: P, tMint: null, tCt: null,
+  unmeasurable: false, promotedAtBackfilled: false, ...o });
+
+describe('INVARIANT leadTime', () => {
+  test.each([
+    // t_crypto = min(t_mint, t_ct), from whichever side wins.
+    [{ tMint: at(31), tCt: at(44) }, { kind: 'early', minutes: 31 }],
+    [{ tMint: at(44), tCt: at(31) }, { kind: 'early', minutes: 31 }],
+    // ~A THIRD of real detections are late. The number that proves the claim has
+    // to render its own failure.
+    [{ tCt: at(-7) },                { kind: 'late',  minutes: -7 }],
+    [{ tCt: at(1) },                 { kind: 'tie',   minutes: 1 }],
+    [{ tCt: at(-1) },                { kind: 'tie',   minutes: -1 }],
+    // ONE reading is enough — min() over a single value. The old build had no
+    // branch here at all and produced nothing.
+    [{ tMint: at(18) },              { kind: 'early', minutes: 18 }],
+  ])('%o -> %o', (c, expected) => expect(leadTime(clock(c))).toEqual(expected));
+
+  // NEITHER clock: "+2h14m and counting". Never 0, never early, never a number.
+  test('no clock reading at all -> open, and no minutes field exists', () => {
+    const r = leadTime(clock({}), at(134));
+    expect(r).toEqual({ kind: 'open', sinceMinutes: 134 });
+    expect(r).not.toHaveProperty('minutes');
+  });
+
+  test('unmeasurable and backfilled are suppressed, never estimated', () => {
+    expect(leadTime(clock({ tCt: at(31), unmeasurable: true })).kind).toBe('unmeasurable');
+    expect(leadTime(clock({ tCt: at(31), promotedAtBackfilled: true })).kind)
+      .toBe('suppressed');
+  });
+});
+```
+
+**5. The safety normaliser.** The old `api/safety.js` read `raw.mintAuthority` off
+`/report/summary`, whose schema (`error, lpLockedPct, mint, risks, score,
+score_normalised, tokenProgram, tokenType`) has **no authority fields at all**, then wrote
+`mintRevoked: mintAuthority == null ? true : false`. Every token was reported mint- and
+freeze-revoked; reproduced live on USDC, whose authorities are demonstrably active.
+
+```ts
+// apps/pipeline/src/stages/resolve-coins/__tests__/safety.test.ts
+import { normaliseRugcheck } from '../model/safety';
+import summaryShape from '../../../adapters/__fixtures__/rugcheck.summary.json';
+import fullReport   from '../../../adapters/__fixtures__/rugcheck.report.bonding.json';
+
+describe('INVARIANT safety normaliser', () => {
+  // THE REGRESSION. A response with no authority fields yields 'unknown', which
+  // fails closed at intrinsic_gate_pass. It must NEVER yield 'revoked'.
+  test('a response carrying no authority fields is unknown, not revoked', () => {
+    const s = normaliseRugcheck(summaryShape);       // the WRONG endpoint's shape
+    expect([s.mint_authority, s.freeze_authority]).toEqual(['unknown', 'unknown']);
+    expect(s.signals_checked).toBe(0);
+  });
+
+  test('present authorities are read literally, both ways', () => {
+    expect(normaliseRugcheck({ ...fullReport, mintAuthority: 'BJE5MM…' })
+      .mint_authority).toBe('active');
+    expect(normaliseRugcheck({ ...fullReport, mintAuthority: null })
+      .mint_authority).toBe('revoked');    // explicit null, FULL report only
+  });
+
+  // Raw top-10 on a normal fresh token is 67.89% because the pump.fun curve is
+  // holder #1 at 46.73%, labelled {type:'AMM'} in RugCheck's own knownAccounts.
+  test('top10 excludes AMM and LOCKER holders and sets the flag', () => {
+    const s = normaliseRugcheck(fullReport);
+    expect(s.curve_pda_excluded).toBe(true);
+    expect(s.top10_pct).toBeLessThan(40);
+  });
+
+});
+```
+
+⚠ **Mark for verification.** RugCheck's exact field names on
+`GET /v1/tokens/{mint}/report` — `mintAuthority`, `freezeAuthority`,
+`knownAccounts[].type`, `topHolders[].pct`, `transferFee` — and whether
+`topHoldersPercentage` already nets out the curve PDA. The fixture is one recorded live
+call and the zod schema is derived from it; both want a re-fetch before the RISK column
+ships. Open item 8 in §10 is the same question.
+
+**6. Every formatter that can turn missing data into a plausible number.** A registry, one
+property test, and a script keeping the registry exhaustive.
+
+```ts
+// packages/contracts/src/__tests__/pending.test.ts
+import { FORMATTERS } from '../format-registry';   // name -> (p) => PendingRender
+import { awaiting, known, notYet, unobtainable, windowChange } from '../pending';
+
+const ABSENT = [unobtainable('no_mint_time'), unobtainable('vendor_error'),
+                unobtainable('vendor_absent'), notYet('coin is 41m old'), awaiting()];
+
+describe('INVARIANT absent never renders as a number', () => {
+  for (const [name, fmt] of Object.entries(FORMATTERS)) {
+    for (const p of ABSENT) {
+      test(`${name} + ${p.state}`, () => {
+        const r = fmt(p);
+        expect(['—', '··']).toContain(r.text);
+        expect(r.text).not.toMatch(/\d/);   // no 0, no 0.0%, no $0.00, no 0m
+        expect(r.tone).toBe('dim');
+      });
+    }
+  }
+
+  test('a window longer than the coin age is not_yet, never 0.0%', () =>
+    expect(windowChange(known(0.4), 1440, known(41)))
+      .toMatchObject({ state: 'not_yet', note: 'coin is 41m old' }));
+});
+```
+
+`scripts/check-formatters.mjs` asserts that every exported function in `shared/format`
+returning `PendingRender` appears in `FORMATTERS`. That is what makes this a property
+rather than a property test: a formatter written next month is covered the day it lands.
+
+**7. The retry classifier.** The pipeline died silently for two days because the retry
+helper retried only on HTTP 429; a 402 threw and vanished. `errors.test.ts` is a
+`test.each` over `[429 → vendor_429, retryable]`, `[402 → vendor_402, terminal]`,
+`[401/403 → vendor_auth, terminal]`, `[500/503 → vendor_5xx, retryable]`, plus three
+assertions that carry the weight: an unrecognised error classifies `internal`, retryable
+**and** paging; a `23514` classifies `constraint_violation` at `warn` with the constraint
+name in `detail`, because a refused row is the schema working; and every
+`StageErrorCode` is reachable from some input, since a code nobody can produce is a code
+nobody has implemented.
+
+### 9.3 The frozen regression set
+
+**What it is.** `apps/pipeline/eval/match/pairs.jsonl` — 400 hand-labelled (story, mint)
+pairs, one JSON object per line, each carrying the five channel scores, `relation`,
+`ticker_source`, `mint_time − earliest_post_at`, a `stratum` and a boolean `label`. Same
+shape as `match_label` (§3.7), which is what lets it grow itself: the matcher writes every
+confirmed and unsure decision there with its feature vector.
+
+**How it is built.** Seeded from the incidents — the real `$KANG` (LLM-invented ticker),
+`$PUMP` (generic-ticker collision) and `GYATT` (604-day-old shell adopted as derived) —
+then stratified to 400, because an unstratified sample is 85% easy positives and a
+threshold change moves precision by 0.002 on it:
+
+| Stratum | n | Why |
+|---|---|---|
+| `easy_positive` | 120 | the baseline; a regression here is catastrophic |
+| `hard_positive` | 60 | transformed image, cropped meme, ticker drift |
+| `ticker_collision` | 60 | two live coins share a symbol |
+| `generic_ticker` | 40 | `$MOON`, `$PEPE` — the denylist's job |
+| `adopted_shell` | 40 | old mints attaching to a new story |
+| `llm_invented` | 40 | provenance, the $KANG class |
+| `near_miss` | 40 | genuinely ambiguous; these SHOULD abstain |
+
+**What it blocks.** `npm run test:match-regression` fails the build on precision below
+**0.970**, an abstain rate outside **0.15–0.30**, or any `llm_invented` or `adopted_shell`
+pair reaching `confirmed`. Precision is what D1 commits to, so it is a failing test and not
+a dashboard; the band is two-sided because an abstain rate that *drops* is the matcher
+getting bolder, which is how precision is lost.
+
+```ts
+// apps/pipeline/eval/match/__tests__/regression.test.ts
+test('INVARIANT match precision >= 0.970 on the frozen set', () => {
+  expect(pairs.length).toBeGreaterThanOrEqual(400);        // the set cannot shrink
+  const d = pairs.map((p) => ({ ...p, verdict: classifyMatch(p.features).verdict }));
+  const yes = d.filter((x) => x.verdict === 'confirmed');
+  const maybe = d.filter((x) => x.verdict === 'unsure');
+
+  expect(yes.filter((x) => x.label).length / yes.length).toBeGreaterThanOrEqual(0.970);
+  expect(maybe.length / (yes.length + maybe.length)).toBeGreaterThanOrEqual(0.15);
+  expect(maybe.length / (yes.length + maybe.length)).toBeLessThanOrEqual(0.30);
+  // Per-stratum, because an aggregate hides the strata that cost money.
+  for (const st of ['llm_invented', 'adopted_shell'] as const) {
+    expect(yes.filter((x) => x.stratum === st)).toHaveLength(0);
+  }
+  writeFileSync('eval-report.json', report(d));            // -> PR comment
+});
+```
+
+**How it evolves.** Pairs are appended, never edited or deleted — a wrong label gets
+`label_corrected_at` and a note, so the diff shows a human changing the truth rather than
+the test. `matcher_version` bumps in the same PR as any threshold change, and the PR body
+carries the before/after table from `eval-report.json`. Two hundred pairs is too few to
+move precision; a thousand is more labelling than this team will sustain. Four hundred,
+growing ~40/month from `match_label`, puts the interval on 0.97 at about ±0.017 — tight
+enough to see a real regression, loose enough that noise does not block merges. ⚠ That
+interval is binomial arithmetic, not a measurement; re-derive it once the set is real.
+
+### 9.4 Testing the LLM stages
+
+Meme scoring, coinability, titling and cluster adjudication are non-deterministic. The
+line: **the plumbing is tested, the judgement is measured.**
+
+*Deterministically testable in CI:* **the parse** — output goes through a zod schema, and
+a response missing `coinability_tier` is `vendor_contract`, terminal, paging, never a
+default; tested against six recorded malformed responses (truncated JSON, prose before the
+JSON, an unknown tier, a null score, a score of `1.5`, an empty body). **The clamps** — a
+`meme_score` outside 0–1 is rejected, not clipped; an unrecognised tier maps to `never`,
+matching the column default. **The prompt builder** — pure and in `model/`, so a
+golden-file test turns an accidental prompt edit into a reviewable diff. **The budget
+path** — a `reserve_units()` false return stops the stage rather than falling through to
+an unmetered call.
+
+*Only measurable*, nightly, against a frozen panel of 60 human-labelled posts in
+`apps/pipeline/eval/score/panel.jsonl`. Three signals detect a prompt regression, none a
+string comparison. **Rank correlation, not values:** Spearman ρ between the run's
+`meme_score` ordering and the frozen human ordering, alerting below **0.80** — absolute
+scores drift with model versions, and the *ordering* is what the board consumes.
+**Distribution drift:** Population Stability Index on the coinability histogram against
+the 30-day baseline, paging above 0.25, because a prompt edit quietly reclassifying 8% of
+stories `normal → no_create` empties the Create funnel and raises no error. **The safety
+floor, which is a hard assertion:** twelve panel posts must classify `never` — a named
+private individual, a death, violence, minors — and one of them scoring `normal` fails the
+job and pages. That is the only place LLM output gets an equality assertion, because D3 is
+a commitment, not a metric. Every run pins `model_id` and `sha256(prompt)` into
+`ops_event`, so "did the prompt change or did the model change" is already answered.
+
+### 9.5 Integration tests
+
+**What genuinely needs Postgres:** every CHECK constraint, every generated column
+(`intrinsic_gate_pass`, `lead_time_min`, `band`, `channels_ran`), every trigger
+(`freeze_columns`, `recount_story_coins`, `story_clock_copy_promoted_at`,
+`promote_launch`), RLS policies, column grants, and the four hot query plans — none of
+which can be tested against a mock, because they *are* the database.
+
+**The container is specified and must not change casually:** `supabase/postgres:17.6.1.156`,
+pinned by exact tag, `POSTGRES_DB: postgres`. Not stock Postgres — `0011` grants to `anon`
+and `authenticated`, which only this image's init scripts create — and not
+`pgvector/pgvector`. Health-check over TCP, not the unix socket: the image runs ~60 platform
+migrations with `listen_addresses=''`, so a socket probe goes green before 5432 exists.
+
+**Fixture strategy, and what makes it fast.** Migrating and seeding takes ~25 s; doing that
+per test file is how an integration suite becomes a thing people skip. So it happens once:
+CI marks the seeded database `datistemplate = true`, and `apps/pipeline/src/test/db.ts`
+exposes `freshDb()`, which issues `CREATE DATABASE t_<uuid> TEMPLATE seeded` (~180 ms, a
+file copy), returns a pool and drops it in `onTestFinished`. Per-file isolation beats one
+shared database in a rolled-back transaction, because half of what we test *is*
+transactional: deferred constraints, trigger firing order, `SECURITY DEFINER` functions
+taking their own locks. A test that cannot commit cannot test a commit.
+
+Fixtures are the committed seed — `00_fixtures.sql` captured from staging through a column
+allowlist, plus nine hand-written scenario files, never captured and never deleted:
+negative lead time, NULL `mint_time`, an unsure match with three candidates, a coin with
+no snapshots, a tier-`never` story. Generated data contains none of those shapes, which is
+precisely why they are the ones that break the product.
+
+### 9.6 What replaces end-to-end
+
+Full E2E against a live wallet and a live chain is not viable: real SOL, a funded key in
+CI, mainnet latency, flakiness unrelated to our code. Four things replace it, and between
+them they cover more of the buy flow than a browser suite would.
+
+**1. The trade state machine as a pure model.** `trading/model/tx-state.ts` holds
+`ORDERING → SIGNED → SUBMITTED → LANDED | FAILED | EXPIRED | LOST_CONTACT`, and every
+transition including every illegal one is a table test. The states that hurt users — still
+confirming, lost contact, reverted after a fill — are unreachable in a happy-path browser
+test and trivial here.
+
+**2. Route handlers invoked directly.** A Next route handler is `(req: Request) =>
+Response`. Tests import `POST` from `@server/trading` and call it with a constructed
+`Request` against a seeded database and a stubbed Jupiter adapter — no browser, no server,
+no port. That covers the request-id uniqueness guard (a duplicate submission is a **409**,
+never a second fill), the server-side fee re-assertion, and `referralAccount` coming from
+env rather than the client.
+
+**3. `TRADING_MODE=simulate` everywhere but production**, which
+`env_live_trading_is_production_only` makes structural rather than configured. In simulate
+the Jupiter adapter replays recorded order responses and signing is a no-op, so the whole
+flow — board click, recap rows, `trade` row — runs in CI on real data shapes.
+
+**4. Two live probes, outside the merge path.** A **nightly vendor contract probe** hits
+Jupiter, RugCheck, DexScreener and Helius once each and parses each response through the
+adapter's own zod schema; a parse failure is `vendor_contract` and pages. That is what
+catches an endpoint quietly dropping a field — the failure mode behind the safety defect,
+which no browser test would have caught either. And a daily **canary trade** on staging:
+a burner wallet buys and immediately sells ~0.005 SOL of a liquid mint, asserting the
+transaction lands and that `trade`/`holding` agree with the chain. It is the only thing
+proving signing and submission still work end to end. ⚠ Measure cost and slippage on that
+pair first.
+
+### 9.7 The first ten tests
+
+If only ten are ever written, these ten. Ranked by *money lost if absent*, not by ease.
+
+1. **`action.test.ts` — the resolver table (§9.2.1).** Buy on exactly one confirmed *and
+   safe* coin; never on unsure; never suppressed by absent market data. Every surface
+   routes through it, so one test protects seven screens.
+2. **`invariants.sql` — a confirmed match with one strong channel is rejected.**
+   `verdict='confirmed'`, `score=0.91`, `s_img=0.80`, the rest NULL must raise
+   `coin_match_confirmed_requires_evidence`. Then two strong channels accepted, and
+   `story.confirmed_coin_count` becomes 1 — proving the recount trigger fired.
+3. **`safety.test.ts` — a response with no authority fields yields `unknown`.** The exact
+   shipped defect, in twelve lines.
+4. **`invariants.sql` — an LLM ticker cannot carry a mint.** `source='llm'` with a
+   `resolved_mint` raises `story_ticker_llm_never_resolves`; an insert omitting `source`
+   raises a not-null violation. The second half is the point: provenance is not optional.
+5. **`pending.test.ts` — absent never renders as a number.** The registry property test,
+   which closes `if (!pair.pairCreatedAt) return 0` for every formatter at once — including
+   the ones not written yet.
+6. **`invariants.sql` — `promoted_at` cannot be moved.** Two statements encoding the
+   whole earliness claim: the UPDATE raises, any other column on that row updates fine.
+7. **`errors.test.ts` — `classify` is total, and 402 is terminal.** The two-day silent
+   outage as a table test, including: an unmodelled error is `internal` and pages.
+8. **`velocity.test.ts` — one snapshot yields no rate; constant rate on the irregular grid
+   gives burst ≈ 1.** The two arithmetic errors that make the board wrong while it looks
+   right.
+9. **`lead.test.ts` — negative and open.** `−7` renders as late at identical weight; no
+   clock reading renders `open`, never `0`.
+10. **`regression.test.ts` — precision ≥ 0.970, abstain in 0.15–0.30.** Last only because
+    it needs 400 labelled pairs first. It keeps the other nine honest when someone tunes a
+    threshold to lift coverage.
+
+Tests 1, 3, 5, 7, 8 and 9 need no database and no network; tests 2, 4 and 6 are three
+`pg_temp.rejects()` calls in a file that already exists. The whole list is under a day of
+work, and it is the difference between this build and the last one.
 
 ## 10. OPEN ITEMS
 
