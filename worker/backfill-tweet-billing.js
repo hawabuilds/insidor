@@ -8,8 +8,9 @@
 
 const fs = require('fs');
 const path = require('path');
+const { t, c, cs, row: dbRow } = require('../lib/db-schema');
 const { loadEnvLocal } = require('./lib/env');
-const { CONFIG } = require('./lib/budget');
+const { CONFIG } = require('./adapters/x/budget');
 
 async function main() {
   loadEnvLocal();
@@ -22,36 +23,36 @@ async function main() {
     const { getServiceClient } = require('./lib/supabase');
     const sb = getServiceClient();
 
-    const { data: usageRows } = await sb.from('worker_usage').select('*').eq('source', 'x');
-    for (const row of usageRows || []) {
-      if (!row.reads_today || row.reads_today >= 5000) continue;
-      const tweets = Math.round(row.reads_today * mult);
-      await sb.from('worker_usage').update({
+    const { data: usageRows } = await sb.from(t('worker_usage')).select('*').eq(c('worker_usage', 'source'), 'x');
+    for (const usageRow of usageRows || []) {
+      if (!usageRow.reads_today || usageRow.reads_today >= 5000) continue;
+      const tweets = Math.round(usageRow.reads_today * mult);
+      await sb.from(t('worker_usage')).update(dbRow('worker_usage', {
         reads_today: tweets,
         cost_usd: tweets * costPerTweet,
         updated_at: new Date().toISOString(),
-      }).eq('source', 'x').eq('utc_date', row.utc_date);
-      console.log(`[backfill] worker_usage x ${row.utc_date}: ${row.reads_today} → ${tweets} tweets`);
+      })).eq(c('worker_usage', 'source'), 'x').eq(c('worker_usage', 'utc_date'), usageRow.utc_date);
+      console.log(`[backfill] worker_usage x ${usageRow.utc_date}: ${usageRow.reads_today} → ${tweets} tweets`);
     }
 
-    const { data: state } = await sb.from('worker_budget_state').select('*').eq('id', 1).maybeSingle();
+    const { data: state } = await sb.from(t('worker_budget_state')).select('*').eq(c('worker_budget_state', 'id'), 1).maybeSingle();
     if (state?.reads_today > 0 && state.reads_today < 5000) {
       const tweets = Math.round(state.reads_today * mult);
-      await sb.from('worker_budget_state').update({
+      await sb.from(t('worker_budget_state')).update(dbRow('worker_budget_state', {
         reads_today: tweets,
         updated_at: new Date().toISOString(),
-      }).eq('id', 1);
+      })).eq(c('worker_budget_state', 'id'), 1);
       console.log(`[backfill] worker_budget_state: ${state.reads_today} → ${tweets} tweets`);
     }
 
     const { data: cycles } = await sb
-      .from('worker_cycle_log')
-      .select('id, reads_consumed')
-      .not('reads_consumed', 'is', null)
-      .lt('reads_consumed', 500);
-    for (const row of cycles || []) {
-      const tweets = Math.round(row.reads_consumed * mult);
-      await sb.from('worker_cycle_log').update({ reads_consumed: tweets }).eq('id', row.id);
+      .from(t('worker_cycle_log'))
+      .select(cs('worker_cycle_log', 'id', 'reads_consumed'))
+      .not(c('worker_cycle_log', 'reads_consumed'), 'is', null)
+      .lt(c('worker_cycle_log', 'reads_consumed'), 500);
+    for (const cycleRow of cycles || []) {
+      const tweets = Math.round(cycleRow.reads_consumed * mult);
+      await sb.from(t('worker_cycle_log')).update(dbRow('worker_cycle_log', { reads_consumed: tweets })).eq(c('worker_cycle_log', 'id'), cycleRow.id);
     }
     if (cycles?.length) {
       console.log(`[backfill] worker_cycle_log: ${cycles.length} rows ×${mult}`);

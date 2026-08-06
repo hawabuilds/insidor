@@ -361,12 +361,8 @@
       linkNarrativesToTokens();
       if (typeof renderTokens === 'function') renderTokens();
       if (typeof renderNew === 'function') renderNew();
-      const l3 = window.InsidorConfig?.isLayer3?.();
-      if (typeof renderTrending === 'function' && (!l3 || window._narrativesReady)) renderTrending();
-      /* Layer 3: narrative table updates via Realtime/poll diff only — not token refresh. */
-      if (!l3 && typeof renderNarratives === 'function') {
-        renderNarratives({ reason: opts.reason || 'DexScreener refresh' });
-      }
+      if (typeof renderTrending === 'function' && window._narrativesReady) renderTrending();
+      /* Narratives table: Realtime/poll diff only — not DexScreener token refresh. */
       if (typeof renderWatch === 'function') renderWatch();
     } catch (e) { console.warn('[live] rerender:', e.message); }
 
@@ -387,7 +383,7 @@
   window.MIN_INGEST_VIEWS = MIN_INGEST_VIEWS;
   window.VIRAL_FEED_MAX_AGE_MS_X = VIRAL_FEED_MAX_AGE_MS_X;
   window.VIRAL_FEED_MAX_AGE_MS_TT = VIRAL_FEED_MAX_AGE_MS_TT;
-  const MEME_MIN_X = Number(window.MEME_MIN_X) || 0.6;
+  const MEME_MIN_X = Number(window.MEME_MIN_X) || 0.7;
   const MEME_MIN_TT = Number(window.MEME_MIN_TT) || 0.75;
   window.MEME_MIN_X = MEME_MIN_X;
   window.MEME_MIN_TT = MEME_MIN_TT;
@@ -834,22 +830,25 @@
     });
   }
 
-  function setNarrativesFallback(reason) {
+  function setNarrativesError(reason) {
     const msg = reason || 'unknown error';
-    console.warn('[live] loadNarratives FALLBACK — using inline sample NARRATIVES:', msg);
+    console.error('[live] loadNarratives failed:', msg);
     window._narrativesReady = true;
     window._narrativesLive = false;
-    loadViralStream().catch(e => console.warn('[live] viral after fallback:', e.message));
+    if (typeof window.setNarrativesLoading === 'function') {
+      window.setNarrativesLoading(`Could not load narratives — ${msg}`);
+    }
     const tag = document.getElementById('narrDataTag');
     if (tag) {
       tag.hidden = false;
-      tag.textContent = 'using sample data';
+      tag.textContent = 'load error';
       tag.title = msg;
     }
     const sim = document.getElementById('narrSimTag');
     if (sim) {
-      sim.textContent = 'sample data (Supabase unavailable)';
+      sim.textContent = 'Supabase unavailable';
       sim.classList.remove('is-live');
+      sim.title = msg;
     }
     return false;
   }
@@ -1867,27 +1866,31 @@
     return true;
   }
 
-  /** Layer 3 — load NARRATIVES from Supabase; fall back to inline mock on failure. */
+  /** Layer 3 — load NARRATIVES from Supabase. */
   async function loadNarratives(opts = {}) {
     if (!window.InsidorConfig?.isLayer3?.()) return false;
     if (typeof NARRATIVES === 'undefined') {
-      return setNarrativesFallback('NARRATIVES array not defined — check script load order');
+      return setNarrativesError('NARRATIVES array not defined — check script load order');
     }
 
     const url = window.SUPABASE_URL;
     const anonKey = window.SUPABASE_ANON_KEY;
     if (!url || !anonKey) {
-      return setNarrativesFallback(
+      return setNarrativesError(
         'SUPABASE_URL or SUPABASE_ANON_KEY missing — set both in site/config.js (anon key only, never service key)',
       );
     }
 
     try {
       const rows = await fetchNarrativeRows({ light: opts.lightFetch !== false });
-      if (!rows.length && !opts.allowEmpty) {
-        return setNarrativesFallback(
-          'Supabase returned 0 display_eligible narratives — run seed or check display_eligible / RLS',
-        );
+      if (!rows.length) {
+        NARRATIVES.length = 0;
+        setNarrativesLive(0);
+        rerenderNarrativesOnly({ reason: 'initial load (empty)' });
+        markPageLiveReady();
+        if (!opts.skipRealtime) startNarrativesRealtime();
+        if (!opts.skipViral) await loadViralStream();
+        return true;
       }
 
       const mapped = rows.map(mapNarrativeRow);
@@ -1927,7 +1930,7 @@
       }
       return true;
     } catch (e) {
-      return setNarrativesFallback(e.message || String(e));
+      return setNarrativesError(e.message || String(e));
     }
   }
 
@@ -2003,7 +2006,7 @@
     loadNarratives, loadViralStream, loadPipelineNarratives, linkNarrativesToTokens,
     enrichNarrativeTokens, materializeAllNarrativeTokens, fetchNarrativeById,
     upsertTokenFromLookup, searchAndMergeTokens, fetchExternalTokens, resolveTokenPair,
-    setNarrativesFallback, setNarrativesLive, startNarrativesRealtime, syncNarrativesFallback,
+    setNarrativesError, setNarrativesLive, startNarrativesRealtime, syncNarrativesFallback,
     rerenderNarrativesOnly,
     flashNarrativeRows, pulseLiveIndicator, MIN_INGEST_VIEWS, CFG,
     get mints() { return [...discovered]; },
@@ -2014,27 +2017,19 @@
   const boot = async () => {
     try {
       markPageLiveAt();
-      const l3 = window.InsidorConfig?.isLayer3?.();
-      if (l3) {
-        const cached = restoreViralFeedCache();
-        if (cached?.length) {
-          bootstrapViralFeed(cached);
-          console.log(`[live] VIRAL_STREAM cache = ${cached.length} posts (instant)`);
-        }
-        loadViralStream().catch(e => console.warn('[live] viral boot:', e.message));
-        await Promise.all([
-          loadNarratives({ skipViral: true, deferEnrich: true, lightFetch: true }),
-          fetchSolPrice(),
-          fastBoot(),
-        ]);
-      } else {
-        await Promise.all([fetchSolPrice(), loadNarratives(), fastBoot()]);
+      const cached = restoreViralFeedCache();
+      if (cached?.length) {
+        bootstrapViralFeed(cached);
+        console.log(`[live] VIRAL_STREAM cache = ${cached.length} posts (instant)`);
       }
+      loadViralStream().catch(e => console.warn('[live] viral boot:', e.message));
+      await Promise.all([
+        loadNarratives({ skipViral: true, deferEnrich: true, lightFetch: true }),
+        fetchSolPrice(),
+        fastBoot(),
+      ]);
       linkNarrativesToTokens();
       materializeAllNarrativeTokens();
-      if (!l3 && typeof renderNarratives === 'function') {
-        renderNarratives({ reason: 'boot' });
-      }
       if (typeof renderTrending === 'function') renderTrending();
       if (typeof window.rebuildStreamFromNarratives === 'function') window.rebuildStreamFromNarratives();
       if (typeof renderStream === 'function') renderStream();
@@ -2045,7 +2040,6 @@
       console.error('[live] boot failed:', e.message || e);
       window._narrativesReady = true;
       if (typeof renderTrending === 'function') renderTrending();
-      if (typeof renderNarratives === 'function') renderNarratives();
       if (typeof renderStream === 'function') renderStream();
       if (typeof renderTokens === 'function') renderTokens();
     }

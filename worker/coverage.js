@@ -8,8 +8,8 @@
  */
 
 const { getServiceClient } = require('./lib/supabase');
-const { loadState } = require('./lib/budget');
-const { loadEnvLocal } = require('./lib/env');
+const { t, c, cs } = require('../lib/db-schema');
+const { loadState } = require('./adapters/x/budget');const { loadEnvLocal } = require('./lib/env');
 
 const MIN_INGEST_VIEWS = Number(process.env.MIN_INGEST_VIEWS) || 30_000;
 
@@ -53,16 +53,16 @@ async function main() {
     }
 
     const { data: post } = await sb
-      .from('narrative_posts')
-      .select('id, views, likes, first_seen_at, tracking_status, filter_label')
-      .eq('platform', 'x')
-      .eq('platform_post_id', id)
+      .from(t('narrative_posts'))
+      .select(cs('narrative_posts', 'id', 'views', 'likes', 'first_seen_at', 'tracking_status', 'filter_label'))
+      .eq(c('narrative_posts', 'platform'), 'x')
+      .eq(c('narrative_posts', 'platform_post_id'), id)
       .maybeSingle();
 
     const { data: near } = await sb
-      .from('ingest_near_miss')
-      .select('views, likes, first_seen_at, last_checked_at')
-      .eq('platform_post_id', id)
+      .from(t('ingest_near_miss'))
+      .select(cs('ingest_near_miss', 'views', 'likes', 'first_seen_at', 'last_checked_at'))
+      .eq(c('ingest_near_miss', 'platform_post_id'), id)
       .maybeSingle();
 
     console.log(`\n${url}`);

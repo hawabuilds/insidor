@@ -10,7 +10,7 @@ const {
   costUsd,
   getHistory,
   cycleBudget,
-} = require('./lib/budget');
+} = require('./adapters/x/budget');
 const { loadEnvLocal } = require('./lib/env');
 
 async function main() {

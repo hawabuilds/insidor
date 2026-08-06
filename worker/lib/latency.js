@@ -1,5 +1,6 @@
 'use strict';
 
+const { t, c, cs, REL } = require('../../lib/db-schema');
 const { postCreatedMs } = require('./posted-at');
 
 function percentile(sorted, p) {
@@ -17,13 +18,13 @@ function percentile(sorted, p) {
  */
 async function medianEligibilityLatencyMinutes(sb) {
   const { data, error } = await sb
-    .from('narratives')
+    .from(t('narratives'))
     .select(`
-      id, lead_time_min, updated_at, display_eligible,
-      narrative_posts!narrative_posts_narrative_id_fkey ( posted_at, first_seen_at )
+      ${cs('narratives', 'id', 'lead_time_min', 'updated_at', 'display_eligible')},
+      narrative_posts!${REL.narrative_posts_narrative_id_fkey} ( ${cs('narrative_posts', 'posted_at', 'first_seen_at')} )
     `)
-    .eq('display_eligible', true)
-    .eq('source', 'cluster');
+    .eq(c('narratives', 'display_eligible'), true)
+    .eq(c('narratives', 'source'), 'cluster');
 
   if (error) throw new Error('latency select: ' + error.message);
 

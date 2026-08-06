@@ -5,6 +5,7 @@ node_modules/
 worker/.pipeline.lock
 __pycache__/
 .cursor/
+.backtest/
 
 # Vercel link metadata — not source
 .vercel/
@@ -13,9 +14,3 @@ insidor/
 .env*
 !.env.example
 .vercel
-
-# Next.js
-.next/
-next-env.d.ts
-*.tsbuildinfo
-docs/*.html

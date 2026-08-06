@@ -4,6 +4,7 @@
 /** One-shot pipeline diagnostic. Run: npm run stats */
 
 const { getServiceClient } = require('./lib/supabase');
+const { t, c, cs } = require('../lib/db-schema');
 const { viewsVelocity, missingViewsStats } = require('./lib/velocity');
 const { latestCycle } = require('./lib/cycle-log');
 const { loadEnvLocal } = require('./lib/env');
@@ -42,14 +43,14 @@ async function main() {
   const since = new Date(Date.now() - FRESHNESS_MS).toISOString();
 
   const { data: posts, error: postsErr } = await sb
-    .from('narrative_posts')
+    .from(t('narrative_posts'))
     .select(`
-      id, first_seen_at, tracking_status, likes, views,
-      post_snapshots ( captured_at, views, likes, retweets, replies, unavailable )
+      ${cs('narrative_posts', 'id', 'first_seen_at', 'tracking_status', 'likes', 'views')},
+      post_snapshots ( ${cs('post_snapshots', 'captured_at', 'views', 'likes', 'retweets', 'replies', 'unavailable')} )
     `)
-    .eq('platform', 'x')
-    .not('platform_post_id', 'is', null)
-    .gte('first_seen_at', since);
+    .eq(c('narrative_posts', 'platform'), 'x')
+    .not(c('narrative_posts', 'platform_post_id'), 'is', null)
+    .gte(c('narrative_posts', 'first_seen_at'), since);
 
   if (postsErr) throw new Error('posts: ' + postsErr.message);
 
@@ -65,21 +66,21 @@ async function main() {
   const viewStats = missingViewsStats(with2);
 
   const { count: scoredCount, error: scoredErr } = await sb
-    .from('post_meme_scores')
+    .from(t('post_meme_scores'))
     .select('*', { count: 'exact', head: true });
   if (scoredErr) throw new Error('scored: ' + scoredErr.message);
 
   const postIdSet = new Set(all.map(p => p.id));
   const { data: scoreRows, error: scoreRowsErr } = await sb
-    .from('post_meme_scores')
-    .select('post_id');
+    .from(t('post_meme_scores'))
+    .select(c('post_meme_scores', 'post_id'));
   if (scoreRowsErr) throw new Error('score rows: ' + scoreRowsErr.message);
   const scoredWindow = (scoreRows || []).filter(s => postIdSet.has(s.post_id)).length;
 
   const { data: clusters, error: clusterErr } = await sb
-    .from('narratives')
-    .select('id, status, source, display_eligible, bought_reach, views_velocity')
-    .eq('source', 'cluster');
+    .from(t('narratives'))
+    .select(cs('narratives', 'id', 'status', 'source', 'display_eligible', 'bought_reach', 'views_velocity'))
+    .eq(c('narratives', 'source'), 'cluster');
   if (clusterErr) throw new Error('clusters: ' + clusterErr.message);
 
   const clusterRows = clusters || [];
@@ -90,9 +91,9 @@ async function main() {
   const lastSnapshot = await latestCycle(sb, 'snapshotter');
 
   const { count: prunedAllTime, error: prunedErr } = await sb
-    .from('narrative_posts')
+    .from(t('narrative_posts'))
     .select('*', { count: 'exact', head: true })
-    .eq('tracking_status', 'pruned');
+    .eq(c('narrative_posts', 'tracking_status'), 'pruned');
   if (prunedErr) throw new Error('pruned count: ' + prunedErr.message);
 
   const healthOk = velocityHealthPct >= HEALTH_VELOCITY_PCT;

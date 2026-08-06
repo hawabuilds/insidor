@@ -4,7 +4,7 @@
 /** Backfill narrative_tickers from DexScreener / pump.fun. Run: npm run token-lookup */
 
 const { getServiceClient } = require('./lib/supabase');
-const { enrichAllOpenTickers } = require('./lib/enrich-tickers');
+const { enrichAllOpenTickers } = require('./cluster/lib/enrich-tickers');
 const { loadEnvLocal } = require('./lib/env');
 
 async function main() {

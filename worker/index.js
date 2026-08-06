@@ -12,8 +12,8 @@ const { getServiceClient } = require('./lib/supabase');
 const { loadEnvLocal } = require('./lib/env');
 const { sleep } = require('./lib/retry');
 const { logEligibilityLatency } = require('./lib/latency');
-const { runDryRunCost, assertStartupBudget } = require('./lib/anthropic-budget');
-const { assertXBudgetConfig } = require('./lib/budget');
+const { runDryRunCost, assertStartupBudget } = require('./adapters/anthropic/budget');
+const { assertXBudgetConfig } = require('./adapters/x/budget');
 const INTERVALS = require('./lib/pipeline-intervals');
 
 const STAGES = [
@@ -21,37 +21,37 @@ const STAGES = [
     name: 'ingest',
     intervalMs: INTERVALS.INGEST_MS,
     offsetMs: 0,
-    load: () => require('./ingest').runCycle,
+    load: () => require('./ingest/ingest').runCycle,
   },
   {
     name: 'ingest-tiktok',
     intervalMs: INTERVALS.INGEST_TT_MS,
     offsetMs: 30_000,
-    load: () => require('./ingest-tiktok').runCycle,
+    load: () => require('./ingest/ingest-tiktok').runCycle,
   },
   {
     name: 'snapshot',
     intervalMs: INTERVALS.SNAPSHOT_MS,
     offsetMs: 15_000,
-    load: () => require('./snapshotter').runCycle,
+    load: () => require('./snapshot/snapshotter').runCycle,
   },
   {
     name: 'score',
     intervalMs: INTERVALS.SCORE_MS,
     offsetMs: 45_000,
-    load: () => require('./score').runCycle,
+    load: () => require('./score/score').runCycle,
   },
   {
     name: 'cluster',
     intervalMs: INTERVALS.CLUSTER_MS,
     offsetMs: 90_000,
-    load: () => require('./cluster').runCycle,
+    load: () => require('./cluster/cluster').runCycle,
   },
   {
     name: 'trends',
     intervalMs: INTERVALS.TRENDS_MS,
     offsetMs: 120_000,
-    load: () => require('./trends').runCycle,
+    load: () => require('./trends/trends').runCycle,
   },
 ];
 

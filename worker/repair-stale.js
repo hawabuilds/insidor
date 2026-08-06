@@ -9,6 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { getServiceClient } = require('./lib/supabase');
+const { t, c, cs, row: dbRow, REL } = require('../lib/db-schema');
 const { loadEnvLocal } = require('./lib/env');
 const { normalizePostedAt } = require('./lib/posted-at');
 
@@ -23,9 +24,9 @@ async function repairPostedAtUnits(sb) {
 
   for (;;) {
     const { data, error } = await sb
-      .from('narrative_posts')
-      .select('id, posted_at, first_seen_at')
-      .not('posted_at', 'is', null)
+      .from(t('narrative_posts'))
+      .select(cs('narrative_posts', 'id', 'posted_at', 'first_seen_at'))
+      .not(c('narrative_posts', 'posted_at'), 'is', null)
       .range(offset, offset + page - 1);
 
     if (error) throw new Error('load posts: ' + error.message);
@@ -37,7 +38,10 @@ async function repairPostedAtUnits(sb) {
 
       if (next < 1e12) {
         next = next * 1000;
-        const { error: upErr } = await sb.from('narrative_posts').update({ posted_at: next }).eq('id', row.id);
+        const { error: upErr } = await sb
+          .from(t('narrative_posts'))
+          .update(dbRow('narrative_posts', { posted_at: next }))
+          .eq(c('narrative_posts', 'id'), row.id);
         if (!upErr) fixedSeconds += 1;
         continue;
       }
@@ -46,7 +50,10 @@ async function repairPostedAtUnits(sb) {
       if (next > futureCutoff && row.first_seen_at) {
         const fsMs = new Date(row.first_seen_at).getTime();
         if (Number.isFinite(fsMs)) {
-          const { error: upErr } = await sb.from('narrative_posts').update({ posted_at: fsMs }).eq('id', row.id);
+          const { error: upErr } = await sb
+            .from(t('narrative_posts'))
+            .update(dbRow('narrative_posts', { posted_at: fsMs }))
+            .eq(c('narrative_posts', 'id'), row.id);
           if (!upErr) fixedFuture += 1;
         }
       }
@@ -68,11 +75,11 @@ async function pruneStalePosts(sb) {
 
   for (;;) {
     const { data, error } = await sb
-      .from('narrative_posts')
-      .select('id, posted_at, tracking_status')
-      .eq('tracking_status', 'active')
-      .not('platform_post_id', 'is', null)
-      .not('posted_at', 'is', null)
+      .from(t('narrative_posts'))
+      .select(cs('narrative_posts', 'id', 'posted_at', 'tracking_status'))
+      .eq(c('narrative_posts', 'tracking_status'), 'active')
+      .not(c('narrative_posts', 'platform_post_id'), 'is', null)
+      .not(c('narrative_posts', 'posted_at'), 'is', null)
       .range(offset, offset + page - 1);
 
     if (error) throw new Error('load active posts: ' + error.message);
@@ -82,9 +89,9 @@ async function pruneStalePosts(sb) {
       const ms = normalizePostedAt(row.posted_at);
       if (ms == null || ms >= cutoff) continue;
       const { error: upErr } = await sb
-        .from('narrative_posts')
-        .update({ tracking_status: 'pruned', pruned_at: now })
-        .eq('id', row.id);
+        .from(t('narrative_posts'))
+        .update(dbRow('narrative_posts', { tracking_status: 'pruned', pruned_at: now }))
+        .eq(c('narrative_posts', 'id'), row.id);
       if (!upErr) pruned += 1;
     }
 
@@ -98,13 +105,13 @@ async function pruneStalePosts(sb) {
 async function demoteStaleNarratives(sb) {
   const cutoff = Date.now() - MS_12H;
   const { data: eligible, error } = await sb
-    .from('narratives')
+    .from(t('narratives'))
     .select(`
-      id,
-      narrative_posts!narrative_posts_narrative_id_fkey ( id, posted_at )
+      ${c('narratives', 'id')},
+      narrative_posts!${REL.narrative_posts_narrative_id_fkey} ( ${cs('narrative_posts', 'id', 'posted_at')} )
     `)
-    .eq('display_eligible', true)
-    .eq('source', 'cluster');
+    .eq(c('narratives', 'display_eligible'), true)
+    .eq(c('narratives', 'source'), 'cluster');
 
   if (error) throw new Error('load narratives: ' + error.message);
 
@@ -120,9 +127,9 @@ async function demoteStaleNarratives(sb) {
     if (hasRecent) continue;
 
     const { error: upErr } = await sb
-      .from('narratives')
-      .update({ display_eligible: false, gate_reason: 'too_old', updated_at: now })
-      .eq('id', narr.id);
+      .from(t('narratives'))
+      .update(dbRow('narratives', { display_eligible: false, gate_reason: 'too_old', updated_at: now }))
+      .eq(c('narratives', 'id'), narr.id);
     if (!upErr) demoted += 1;
   }
 

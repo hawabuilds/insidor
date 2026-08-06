@@ -1,0 +1,10 @@
+{
+  "merged_at": "2026-08-03T13:23:48.560Z",
+  "backtest2_path": "C:\\Users\\hawa3\\.cursor\\projects\\Insidor-layer3\\backtest\\filled-backtest2-blind-sheet.csv",
+  "backtest2_rows": 436,
+  "backtest3_path": "C:\\Users\\hawa3\\.cursor\\projects\\Insidor-layer3\\backtest\\filled-backtest3-blind-sheet.csv",
+  "backtest3_rows": 430,
+  "total_rows": 866,
+  "out_blind": "C:\\Users\\hawa3\\.cursor\\projects\\Insidor-layer3\\backtest\\backtest-merged-blind.csv",
+  "out_answers": "C:\\Users\\hawa3\\.cursor\\projects\\Insidor-layer3\\backtest\\backtest-merged-answers.csv"
+}

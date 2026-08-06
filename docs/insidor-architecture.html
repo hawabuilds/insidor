@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Insidor — Architecture Reference</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; font-size: 10.5pt; line-height: 1.45; color: #111; max-width: 780px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 22pt; margin: 0 0 6px; letter-spacing: -0.02em; }
+  h2 { font-size: 13pt; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #3DE0FF; color: #0a0a0c; page-break-after: avoid; }
+  h3 { font-size: 11pt; margin: 14px 0 6px; page-break-after: avoid; }
+  p, li { margin: 0 0 6px; }
+  ul, ol { margin: 4px 0 10px; padding-left: 20px; }
+  .meta { color: #555; font-size: 9.5pt; margin-bottom: 20px; }
+  .tag { display: inline-block; background: #eef9fc; color: #067; padding: 2px 8px; border-radius: 4px; font-size: 9pt; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; font-size: 9.5pt; page-break-inside: avoid; }
+  th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f6; font-weight: 600; }
+  code, pre { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: #f6f6f8; }
+  pre { padding: 10px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; page-break-inside: avoid; }
+  .note { background: #fff8e6; border-left: 3px solid #f5a623; padding: 8px 12px; margin: 10px 0; font-size: 9.5pt; }
+  .cover { text-align: center; padding: 40px 0 30px; page-break-after: always; }
+  .cover h1 { font-size: 28pt; }
+  .toc { page-break-after: always; }
+  .toc li { margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 16px 0; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Insidor</h1>
+  <p style="font-size: 14pt; color: #333;">Architecture Reference</p>
+  <p class="meta">Version 4 prototype · March 2026<br>Production: https://site-amber-one-38.vercel.app</p>
+  <p><span class="tag">Frontend SPA</span> <span class="tag">Privy Auth</span> <span class="tag">Vercel Static</span> <span class="tag">Simulated Data</span></p>
+</div>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li>Project overview</li>
+    <li>Tech stack</li>
+    <li>File structure</li>
+    <li>Views &amp; navigation</li>
+    <li>Data models</li>
+    <li>Modal system</li>
+    <li>State management</li>
+    <li>UI components &amp; sorting</li>
+    <li>Auth &amp; wallet (Privy)</li>
+    <li>External integrations</li>
+    <li>Production vs prototype</li>
+    <li>Future backend considerations</li>
+  </ol>
+</div>
+
+<h2>1. Project overview</h2>
+<p><strong>Insidor</strong> is a narrative-first Solana memecoin discovery and trading UI prototype. It surfaces viral social posts (X, TikTok, Reddit, Farcaster, Telegram), clusters them into <strong>narratives</strong>, links them to <strong>tokens</strong> (live or candidate), and provides simulated deploy/buy flows.</p>
+<p>All market and social metrics are <strong>mock/simulated</strong> in the current build — the UI is designed to show the intended product experience before real APIs are wired in.</p>
+
+<h3>Entry points</h3>
+<table>
+  <tr><th>Path</th><th>Role</th></tr>
+  <tr><td><code>site/index.html</code></td><td><strong>Deploy copy</strong> — Vercel production static site (v4, full feature set)</td></tr>
+  <tr><td><code>Insidor-prototype (2).html</code></td><td>Older dev prototype (feed/research UX, Privy JS SDK core)</td></tr>
+  <tr><td><code>Desktop/insidorprototypev4.html</code></td><td>Local desktop copy kept in sync with deploy</td></tr>
+</table>
+
+<h3>Local development</h3>
+<pre>npx serve . -p 3456</pre>
+<p>Serve from project root. Privy requires an <code>http://</code> origin (not <code>file://</code>). Add localhost to Privy Dashboard allowed origins.</p>
+
+<h3>Deploy</h3>
+<pre>cd site
+npx vercel deploy --prod --yes</pre>
+<p>Zero-build static deploy. No <code>vercel.json</code> — project linked via <code>site/.vercel/project.json</code>. Live URL aliased to <strong>site-amber-one-38.vercel.app</strong>.</p>
+
+<h2>2. Tech stack</h2>
+<table>
+  <tr><th>Layer</th><th>Technology</th></tr>
+  <tr><td>Frontend</td><td>Vanilla HTML / CSS / JavaScript SPA (~2,560 lines in one file)</td></tr>
+  <tr><td>Fonts</td><td>Fontshare (Clash Display, General Sans), Google Fonts (JetBrains Mono)</td></tr>
+  <tr><td>Auth</td><td>Privy via CDN — <code>@privy-io/react-auth@1</code> + React 18 from esm.sh</td></tr>
+  <tr><td>Charts</td><td>TradingView widget (<code>tv.js</code>) on token page</td></tr>
+  <tr><td>Hosting</td><td>Vercel (static HTML, no build step)</td></tr>
+  <tr><td>Images</td><td>loremflickr.com (keyword-locked), fallback picsum.photos</td></tr>
+  <tr><td>Backend</td><td><strong>None</strong> — all data in-memory in the browser</td></tr>
+</table>
+
+<h2>3. File structure</h2>
+<pre>Insidor-app/
+├── site/
+│   ├── index.html          ← production deploy app
+│   └── .vercel/project.json
+├── Insidor-prototype (2).html
+├── docs/                   ← this documentation
+├── package.json            ← @privy-io/js-sdk-core (prototype only)
+└── .cursor/rules/          ← project guardrails</pre>
+
+<p><code>site/index.html</code> internal layout:</p>
+<ol>
+  <li><code>&lt;head&gt;</code> — meta, Privy IDs, fonts, TradingView script, ~930 lines CSS</li>
+  <li><code>&lt;body&gt;</code> — nav, <code>.shell</code> (main views + right rail), inline app script</li>
+  <li>Module script — Privy React mount into <code>#userAuth</code></li>
+</ol>
+
+<h2>4. Views &amp; navigation</h2>
+<p>Routing: <code>VIEWS = ['trending','new','narratives','tokens','search','watchlist','token']</code></p>
+<p>Functions: <code>go(v)</code>, <code>setView(v)</code>, <code>viewStack</code>, <code>stepBack()</code></p>
+
+<table>
+  <tr><th>View ID</th><th>Nav</th><th>Purpose</th></tr>
+  <tr><td><code>v-trending</code></td><td>Yes</td><td>Dual top-10: narratives (24h viral gain) + tokens (trend score). Sub-tabs via <code>#trendSubs</code></td></tr>
+  <tr><td><code>v-new</code></td><td>New Pairs</td><td>Newest tokens by age + pending candidates. No Hot/Gainers chips — newest first only</td></tr>
+  <tr><td><code>v-narratives</code></td><td>Yes</td><td>Full table of 14 narrative clusters. Sort chips: New, Trending. Column sort on Views/Gain/Mcap/Age</td></tr>
+  <tr><td><code>v-tokens</code></td><td>Yes</td><td>All live tokens + pending candidates. Chips: Hot / Gainers / New</td></tr>
+  <tr><td><code>v-watchlist</code></td><td>Yes</td><td>Session watchlists for narratives and tokens (star toggles)</td></tr>
+  <tr><td><code>v-search</code></td><td>No tab</td><td>Full-page search — reached via ⌘K → Enter or <code>openSearchPage()</code></td></tr>
+  <tr><td><code>v-token</code></td><td>Hidden</td><td>Token detail page rendered into <code>#tokenPage</code> by <code>openToken(sym)</code></td></tr>
+</table>
+
+<h3>Right rail (always visible on desktop)</h3>
+<p>460px sticky panel. Modes: <strong>Trades</strong>, <strong>Launches</strong>, <strong>Viral</strong> (<code>railMode</code>). Collapsible on token page via <code>railCollapsed</code>.</p>
+
+<h2>5. Data models</h2>
+
+<h3>NARR[] — viral post feed (10 items)</h3>
+<p>Raw posts for rail, deploy source, trending cards.</p>
+<pre>{ plat, badge, lead, txt, views, posts, accts, peak, vel,
+  who, at, t, pal, media }  // media: photo|video|link|reply|none</pre>
+<p>Platforms: <code>x</code>, <code>tt</code>, <code>rd</code>, <code>fc</code>, <code>tg</code>. Tickers in text as <code>$TICKER</code>.</p>
+
+<h3>TOKENS[] — live coins (10 seeded)</h3>
+<pre>{ sym, name, ca, price, c5, c1h, c24, vol, liq, mc, ageM,
+  lead, narrIdx, holders, live, txns,
+  socials: { web, x, tg }, dex, pump,
+  mintRevoked, freezeRevoked, lpBurned, top10, justDeployed? }</pre>
+<p>Created via <code>mkToken(sym, name, seed, narrIdx, lead)</code>.</p>
+
+<h3>PENDING{} — candidate tickers (no coin yet)</h3>
+<pre>PENDING[sym] = { narrIdx, lead }</pre>
+<p>Shown in New Pairs, Launches rail, deploy availability checks. Starts empty in production site.</p>
+
+<h3>NARRATIVES[] — clusters (14 items)</h3>
+<pre>{ id, title, blurb, imgSeed, image, createdAt, narrIdx,
+  searchSeries, leadTimeMin, organicScore,
+  posts: [ seedPost(...) ],
+  tokens: [ seedTok(...) ] }</pre>
+<p>Example IDs: <code>ferry-horn</code>, <code>norway-move</code>, <code>porch-frog</code>, <code>office-meme</code>, etc.</p>
+<p>Clusters without live tokens show a <strong>Create</strong> button instead of mcap.</p>
+
+<h3>seedPost() → post object</h3>
+<pre>{ platform, handle, followers, text, image,
+  views, replies, quotes, notable, sampleReplies[], postedAt }</pre>
+
+<h3>seedTok() → narrative token metadata</h3>
+<pre>{ ticker, name, mcap, liquidity, vol24h, holders, ageMin,
+  firstDeployed, endorsedBy, canonical,
+  safety: { mintRevoked, lpBurned, topHolderPct, ... },
+  smartMoney: { smartWalletsIn, holderGrowth1h, topTraders[] } }</pre>
+
+<h3>Key helper functions</h3>
+<ul>
+  <li><code>getNarrative(id)</code>, <code>narrTopPost</code>, <code>narrTopToken</code>, <code>narrCombinedViews</code></li>
+  <li><code>narrViralGain24h</code>, <code>narrLifecycle</code> → heating|peaking|cooling</li>
+  <li><code>extractTickers(txt)</code> — regex <code>\$[A-Z]{2,10}</code></li>
+  <li><code>deriveTicker(txt)</code> — longest 3–10 letter word</li>
+  <li><code>syncNarTokens()</code> — sync narrative token mcap from live TOKENS</li>
+  <li><code>narrativeForToken(t)</code>, <code>tokenOriginStrip(t)</code> — token page → narrative link</li>
+</ul>
+
+<h2>6. Modal system</h2>
+<p>Single mount: <code>ensureModalRoot()</code> creates <code>#modalRoot</code> on <code>document.body</code>.</p>
+<p>Shared close: <code>closeDeploy()</code> clears innerHTML + restores body scroll.</p>
+
+<table>
+  <tr><th>Modal</th><th>Backdrop ID</th><th>Open function</th></tr>
+  <tr><td>Deploy / Create coin</td><td><code>#dback</code></td><td><code>openDeploy(idx)</code>, <code>openDeployForNarrative(id)</code></td></tr>
+  <tr><td>Narrative detail</td><td><code>#nmbback</code></td><td><code>openNarrative(id)</code></td></tr>
+  <tr><td>Post detail</td><td><code>#pdback</code></td><td><code>openPostDetail(...)</code></td></tr>
+  <tr><td>⌘K search palette</td><td><code>#palBack</code></td><td><code>openPalette()</code></td></tr>
+  <tr><td>Deploy success</td><td>reuses deploy backdrop</td><td><code>deployFiled()</code> replaces sheet content</td></tr>
+</table>
+
+<p>Pattern: <code>.dback</code> (fixed fullscreen overlay) → <code>.sheet</code> (centered dialog). Body scroll locked while open. Escape closes palette first, then modal, then <code>stepBack()</code>.</p>
+
+<h2>7. State management</h2>
+<div class="note"><strong>No localStorage / sessionStorage</strong> — all state is in-memory for the browser session.</div>
+
+<table>
+  <tr><th>Variable</th><th>Purpose</th></tr>
+  <tr><td><code>viewStack</code></td><td>Back navigation (starts <code>['trending']</code>)</td></tr>
+  <tr><td><code>trendSub</code></td><td><code>'narratives'</code> | <code>'tokens'</code></td></tr>
+  <tr><td><code>railMode</code></td><td><code>'trades'</code> | <code>'launches'</code> | <code>'viral'</code></td></tr>
+  <tr><td><code>curSort</code>, <code>colSort</code>, <code>newColSort</code></td><td>Token / new-pairs table sorting</td></tr>
+  <tr><td><code>narrChipSort</code>, <code>narrSort</code></td><td>Narrative table sorting</td></tr>
+  <tr><td><code>searchQuery</code></td><td>Shared search string (palette + search tab)</td></tr>
+  <tr><td><code>WATCH_TOKENS</code>, <code>WATCH_NARR</code></td><td>Watchlist Sets</td></tr>
+  <tr><td><code>deployIdx</code>, <code>deployBuy</code>, <code>deployCluster</code></td><td>Deploy modal state</td></tr>
+  <tr><td><code>chartToken</code>, <code>curSide</code>, <code>slip</code>, <code>prio</code></td><td>Token page trade panel</td></tr>
+  <tr><td><code>tvWidget</code></td><td>TradingView widget instance</td></tr>
+</table>
+
+<p>Live updates via <code>setInterval</code>: rail stream (2.6s), SOL price (2s), token prices (1.5s), trade feed (2s on token page).</p>
+
+<h2>8. UI components &amp; sorting</h2>
+<h3>Layout</h3>
+<ul>
+  <li><code>.shell</code> — CSS grid: main + 460px rail</li>
+  <li><code>.view.on</code> — active main section</li>
+  <li><code>.ttable</code> + <code>.thd</code> / <code>.nthd</code> — data tables</li>
+</ul>
+
+<h3>Sort systems</h3>
+<ul>
+  <li><strong>Narratives:</strong> chips New | Trending; columns views, gain, mcap, age</li>
+  <li><strong>Tokens:</strong> chips Hot (vol) | Gainers (c24) | New (ageM); column override via header click</li>
+  <li><strong>New pairs:</strong> always newest first (<code>ageM</code>); column sort optional</li>
+  <li><strong>trendScore(t):</strong> weighted vol/mc + txns + c24 + c1h</li>
+</ul>
+
+<h3>Visual components</h3>
+<ul>
+  <li><code>sparkSVG(t)</code> — 24h mini chart in token rows</li>
+  <li><code>narrSparkSVG</code> — narrative search trend sparkline</li>
+  <li><code>starTok</code> / <code>starNarr</code> — watchlist toggles</li>
+  <li><code>.pbadge</code> — platform badges (X, TikTok, etc.)</li>
+  <li><code>.tp-origin</code> — token page source narrative strip</li>
+</ul>
+
+<h2>9. Auth &amp; wallet (Privy)</h2>
+<p>Meta tags: <code>privy-app-id</code>, <code>privy-client-id</code> in HTML head.</p>
+<p>React module mounts <code>PrivyProvider</code> into <code>#userAuth</code>:</p>
+<ul>
+  <li>Unauthenticated → <strong>Connect</strong> button → <code>login()</code></li>
+  <li>Authenticated → user chip (Google name / email / wallet) + logout</li>
+  <li>Fallback if file:// or SDK load failure</li>
+</ul>
+<p><strong>Trade execution is mock</strong> — <code>#exec</code> simulates confirm after 700ms. Copy references user signing in their own wallet.</p>
+
+<h2>10. External integrations</h2>
+<table>
+  <tr><th>Service</th><th>Usage</th></tr>
+  <tr><td>TradingView</td><td><code>TradingView.widget</code> — maps tokens to BINANCE memecoin proxy symbols</td></tr>
+  <tr><td>Privy</td><td>OAuth + wallet connect; origin allowlist in dashboard</td></tr>
+  <tr><td>loremflickr / picsum</td><td>Meme thumbnails via <code>imgURL(kw, seed, size)</code></td></tr>
+  <tr><td>DexScreener</td><td><code>https://dexscreener.com/solana/{ca}</code></td></tr>
+  <tr><td>pump.fun</td><td><code>https://pump.fun/{ca}</code></td></tr>
+  <tr><td>Social platforms</td><td>Simulated permalinks via <code>postURL(p)</code></td></tr>
+</table>
+
+<p><strong>Planned real data sources</strong> (commented in code): X/TikTok API, Google Trends, DexScreener/Birdeye, RugCheck/GMGN, Helius wallet labels.</p>
+
+<h2>11. Production vs prototype</h2>
+<table>
+  <tr><th>Aspect</th><th>site/index.html</th><th>Insidor-prototype (2).html</th></tr>
+  <tr><td>UX</td><td>Multi-tab terminal (Trending, Narratives, Tokens, etc.)</td><td>Feed + Research terminal</td></tr>
+  <tr><td>Auth</td><td>Privy React SDK</td><td>Privy JS SDK core + Solana SIWS</td></tr>
+  <tr><td>Charts</td><td>TradingView widget</td><td>Older canvas approach</td></tr>
+  <tr><td>Narratives</td><td>Full NARRATIVES cluster system</td><td>Simpler state object</td></tr>
+  <tr><td>Deploy</td><td>Vercel static</td><td>Local prototype</td></tr>
+</table>
+
+<h2>12. Future backend considerations</h2>
+<p>For a production architecture, expect to add:</p>
+<ol>
+  <li><strong>Narrative ingestion pipeline</strong> — scrape/API feeds from X, TikTok, Reddit; cluster into narratives</li>
+  <li><strong>Token index</strong> — DexScreener/Birdeye/Helius for live prices, liquidity, safety scores</li>
+  <li><strong>Deploy service</strong> — pump.fun or custom mint; wallet signing via Privy embedded wallet or external</li>
+  <li><strong>Trade execution</strong> — Jupiter or Raydium swap API; slippage/priority fee handling</li>
+  <li><strong>User persistence</strong> — watchlists, preferences, deploy history (DB + auth user ID from Privy)</li>
+  <li><strong>WebSocket feeds</strong> — live trades rail, price ticks, new pair launches</li>
+</ol>
+
+<hr>
+<p class="meta">Generated for Insidor architecture handoff · Primary source: site/index.html (v4)</p>
+
+</body>
+</html>

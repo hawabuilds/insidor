@@ -1,5 +1,7 @@
 'use strict';
 
+const { t, c, row: dbRow, onConflictCols } = require('../../lib/db-schema');
+
 const STAGE_LAST_RUN = {
   ingest: 'last_run_ingest',
   snapshot: 'last_run_snapshot',
@@ -10,9 +12,9 @@ const STAGE_LAST_RUN = {
 
 async function loadProgress(sb, stage) {
   const { data, error } = await sb
-    .from('worker_cron_progress')
-    .select('progress')
-    .eq('stage', stage)
+    .from(t('worker_cron_progress'))
+    .select(c('worker_cron_progress', 'progress'))
+    .eq(c('worker_cron_progress', 'stage'), stage)
     .maybeSingle();
   if (error && !/worker_cron_progress|schema cache/i.test(error.message)) {
     throw new Error(`loadProgress(${stage}): ${error.message}`);
@@ -21,12 +23,14 @@ async function loadProgress(sb, stage) {
 }
 
 async function saveProgress(sb, stage, progress) {
-  const row = {
+  const row = dbRow('worker_cron_progress', {
     stage,
     progress: progress || {},
     updated_at: new Date().toISOString(),
-  };
-  const { error } = await sb.from('worker_cron_progress').upsert(row, { onConflict: 'stage' });
+  });
+  const { error } = await sb
+    .from(t('worker_cron_progress'))
+    .upsert(row, { onConflict: onConflictCols('worker_cron_progress', 'stage') });
   if (error && !/worker_cron_progress|schema cache/i.test(error.message)) {
     throw new Error(`saveProgress(${stage}): ${error.message}`);
   }
@@ -39,24 +43,28 @@ async function clearProgress(sb, stage) {
 async function recordLastRun(sb, stage) {
   const col = STAGE_LAST_RUN[stage];
   if (!col) throw new Error(`unknown cron stage: ${stage}`);
-  const patch = { [col]: new Date().toISOString() };
-  const { error } = await sb.from('worker_pipeline_state').update(patch).eq('id', 1);
+  const patch = { [c('worker_pipeline_state', col)]: new Date().toISOString() };
+  const { error } = await sb.from(t('worker_pipeline_state')).update(patch).eq(c('worker_pipeline_state', 'id'), 1);
   if (error && !/last_run_|schema cache/i.test(error.message)) {
     throw new Error(`recordLastRun(${stage}): ${error.message}`);
   }
 }
 
 async function loadPipelineMemory(sb) {
-  const { data, error } = await sb.from('worker_pipeline_state').select('*').eq('id', 1).maybeSingle();
+  const { data, error } = await sb
+    .from(t('worker_pipeline_state'))
+    .select('*')
+    .eq(c('worker_pipeline_state', 'id'), 1)
+    .maybeSingle();
   if (error) throw new Error('loadPipelineMemory: ' + error.message);
   return data || {};
 }
 
 async function patchPipelineMemory(sb, patch) {
   const { error } = await sb
-    .from('worker_pipeline_state')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', 1);
+    .from(t('worker_pipeline_state'))
+    .update(dbRow('worker_pipeline_state', { ...patch, updated_at: new Date().toISOString() }))
+    .eq(c('worker_pipeline_state', 'id'), 1);
   if (error && !/schema cache/i.test(error.message)) {
     throw new Error('patchPipelineMemory: ' + error.message);
   }
