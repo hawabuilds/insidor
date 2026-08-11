@@ -1,0 +1,9 @@
+packages:
+  - 'contracts'
+  - 'core'
+  - 'adapters/*/*'
+  - 'store'
+  - 'ml/serve'
+  - 'services/*'
+  - 'app'
+  - 'eval'

@@ -1,0 +1,20 @@
+{
+  /* The app extends the one compiler config like every other package: tsc is a checker,
+     never an emitter. Vite does the bundling for the browser; it does not type-check, which
+     is why `pnpm typecheck` is the thing that actually holds the wire vocabulary in place.
+
+     Three overrides, and only three:
+       - DOM libs, because this is the only package that runs in a browser.
+       - jsx, because this is the only package with components.
+       - vite/client types, for import.meta.env. */
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    /* `node` is here for the colocated .test.ts files, which import node:test and run under
+       Node's type stripping like every other test in the repository. */
+    "types": ["vite/client", "node"],
+    "noEmit": true
+  },
+  "include": ["src", "vite.config.ts"]
+}

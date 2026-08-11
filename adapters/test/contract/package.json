@@ -1,0 +1,26 @@
+{
+  "name": "@insidor/adapter-conformance",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*.ts": "./src/*.ts"
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/market-dexscreener": "workspace:*",
+    "@insidor/meter": "workspace:*",
+    "@insidor/platform-registry": "workspace:*",
+    "@insidor/platform-replay": "workspace:*",
+    "@insidor/platform-tiktok": "workspace:*",
+    "@insidor/platform-x": "workspace:*",
+    "@insidor/vendor-kit": "workspace:*",
+    "@insidor/venue-registry": "workspace:*",
+    "@insidor/venue-solana-pumpfun": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  }
+}

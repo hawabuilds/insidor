@@ -1,0 +1,123 @@
+/*
+ * THE SETTLED PALETTE. One file, imported once, in main.tsx.
+ *
+ * Every colour, type face and rhythm in the app resolves to a variable declared here. A
+ * component that needs a colour not in this list is a component making a product judgement
+ * about emphasis, and that judgement belongs in a token with a name.
+ *
+ * Two rules that are about correctness rather than taste:
+ *   - Numbers are ALWAYS mono with tabular figures. A table whose digits change width
+ *     shifts sideways every tick and becomes unreadable at exactly the moment it matters.
+ *   - There is no green/red pair for "good/bad" beyond --up and --down, and those are used
+ *     by sign only. Colour that encodes magnitude is a threshold in a stylesheet.
+ *
+ * Dark only. This is a terminal that runs all day; a light theme here is a second design
+ * nobody will maintain, and the palette was chosen against black.
+ */
+
+:root {
+  /* surfaces */
+  --page: #060607;
+  --card: #0c0c0e;
+  --line: #1a1a1f;
+  --raised: #121216;
+
+  /* text */
+  --text: #f4f5f7;
+  --text-2: #8a8a93;
+  --text-3: #5a5a62;
+
+  /* accents */
+  --cyan: #3de0ff;
+  --lime: #9bf03c;
+  --red: #ff5c6e;
+  --amber: #ffb84d;
+
+  /* semantic — the only place a meaning is attached to a colour */
+  --up: var(--lime);
+  --down: var(--red);
+  --flat: var(--text-2);
+  --alert: var(--amber);
+  --accent: var(--cyan);
+
+  /* type */
+  --font-display: 'Clash Display', 'General Sans', system-ui, sans-serif;
+  --font-body: 'General Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --size-xs: 11px;
+  --size-sm: 12px;
+  --size-md: 14px;
+  --size-lg: 18px;
+  --size-xl: 28px;
+
+  /* rhythm — a fixed row height is what makes sixty rows scannable */
+  --row-h: 64px;
+  --gap-1: 4px;
+  --gap-2: 8px;
+  --gap-3: 12px;
+  --gap-4: 20px;
+  --gap-5: 32px;
+  --radius: 8px;
+
+  /* column widths in ch, so the mono columns line up without measuring anything */
+  --col-reach: 8ch;
+  --col-age: 5ch;
+  --col-spark: 96px;
+  --col-action: 11ch;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--size-md);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+/* Every number in the product goes through this. See ui/Num.tsx. */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+/* The board reorders. A user who asked us not to animate is not asked twice. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

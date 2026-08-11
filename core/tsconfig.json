@@ -1,0 +1,12 @@
+{
+  /* One compiler config lives at the root; this file only says which files are ours.
+     rootDir is load-bearing here for the same reason it is in contracts: it makes
+     `import '../../adapters/src/x.ts'` a typecheck error (TS6059). pnpm already stops
+     the package-name spelling of that import; rootDir stops the relative one. */
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}

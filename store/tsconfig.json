@@ -1,0 +1,13 @@
+{
+  /* rootDir is load-bearing, not tidiness: it makes `import '../../core/src/...'`
+     fail typecheck with TS6059, which is the one hole pnpm's symlinking leaves open.
+     noEmit is restated rather than inherited, for the same reason every other package
+     restates it — Node runs the .ts files directly and nothing here is ever built. */
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}

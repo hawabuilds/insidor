@@ -1,0 +1,136 @@
+/* The buy panel. Narrow, mono, and boring on purpose: this is the one surface where a
+   misread number costs the user money. */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-4);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-3);
+}
+
+.ticker {
+  font-family: var(--font-display);
+  font-size: var(--size-xl);
+  line-height: 1;
+}
+
+.name {
+  color: var(--text-2);
+  font-size: var(--size-sm);
+}
+
+.address {
+  font-family: var(--font-mono);
+  font-size: var(--size-xs);
+  color: var(--text-3);
+}
+
+.amountRow {
+  display: flex;
+  gap: var(--gap-2);
+}
+
+.amountInput {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--size-lg);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: var(--gap-3);
+  text-align: right;
+}
+
+.receive {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-top: var(--gap-2);
+  border-top: 1px solid var(--line);
+}
+
+.receiveLabel {
+  color: var(--text-2);
+  font-size: var(--size-sm);
+}
+
+.receiveValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--size-lg);
+}
+
+.costs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-2);
+  font-size: var(--size-sm);
+}
+
+.costLine {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-3);
+  color: var(--text-2);
+}
+
+.costLabel {
+  display: flex;
+  gap: var(--gap-2);
+  align-items: baseline;
+}
+
+.refundable {
+  font-size: var(--size-xs);
+  color: var(--text-3);
+}
+
+.allIn {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: var(--gap-2);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.allInLoud {
+  color: var(--amber);
+}
+
+.expiry {
+  font-size: var(--size-xs);
+  color: var(--text-3);
+}
+
+.expired {
+  color: var(--red);
+  font-size: var(--size-sm);
+}
+
+.requote {
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  background: transparent;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: var(--size-xs);
+  cursor: pointer;
+}
+
+.error {
+  color: var(--red);
+  font-size: var(--size-sm);
+}
+
+.route {
+  font-size: var(--size-xs);
+  color: var(--text-3);
+}

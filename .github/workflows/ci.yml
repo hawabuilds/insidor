@@ -1,0 +1,79 @@
+# The gate. Everything below is ordered cheapest-first, so the fastest useful signal
+# arrives first and a broken push is red in under a minute rather than in four.
+#
+# WHY the whole job carries a five-minute timeout: a check suite that takes longer than a
+# coffee gets bypassed, and a bypassed gate is worse than no gate because everyone believes
+# it is running. If this starts timing out, the fix is to make it faster, not to raise the
+# number.
+#
+# There is no build step to wait for — Node 24 runs .ts directly by stripping types, so
+# `tsc` here is a checker and nothing more.
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+      # pnpm, not npm. npm workspaces hoist every package into the root node_modules, which
+      # makes `adapters` able to import `core` without declaring it — the single strongest
+      # boundary in this repository, silently removed, with green CI.
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # 1. Types. The contracts are only real because something checks them.
+      - name: typecheck
+        run: pnpm typecheck
+
+      # 2. The vocabulary. The most important check here: a vendor leak arrives as a field
+      #    name, not as an import, and nothing else in this list would catch it.
+      - name: vocabulary — no platform, chain or vendor word in contracts/ or core/
+        run: node tools/check-vocabulary.mjs
+
+      # 3. Purity. The replay guarantee, expressed as a grep over what types cannot say.
+      - name: purity — no clock, no randomness, no network, no await in core/
+        run: node tools/check-purity.mjs
+
+      # 4. Policy. Every threshold named, in one file, so tuning is a diff.
+      - name: policy — no bare numeric literal in core/
+        run: node tools/check-policy.mjs
+
+      # 5. Wall D. Internal scoring must not reach a screen.
+      - name: app vocabulary — no internal word, vendor or threshold in app/src
+        run: node tools/check-app-vocabulary.mjs
+
+      # 6. One runtime in production.
+      - name: python — only in ml/train/, and nothing shells out to it
+        run: node tools/check-python.mjs
+
+      # 7. The import boundary itself, in allow-list form.
+      - name: boundaries
+        run: pnpm check:boundaries
+
+      # 8. The picture of that boundary. A changed SVG in a pull request is the most legible
+      #    possible signal that somebody added a coupling — legible to a non-engineer.
+      - name: dependency graph is current
+        run: node tools/graph.mjs --verify
+
+      # 9. Tests last: they are the slowest, and by here the shape is already known good.
+      #    Includes the LightGBM parity fixture, which is the entire justification for
+      #    allowing a second language anywhere in this repository.
+      - name: test
+        run: pnpm test

@@ -1,0 +1,25 @@
+{
+  "name": "@insidor/store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The only place SQL exists. Persists the vocabulary; owns nothing else.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client.ts": "./src/client.ts",
+    "./migrate.ts": "./src/migrate.ts",
+    "./repo/*.ts": "./src/repo/*.ts"
+  },
+  "scripts": {
+    "migrate": "node src/migrate.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.0"
+  }
+}

@@ -1,0 +1,131 @@
+/* The board. A fixed grid, a fixed row height, and columns sized in ch so the mono cells
+   line up without measurement. This is the table-dense case the design system exists for. */
+
+.board {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow: auto;
+  max-height: calc(100vh - 160px);
+}
+
+.header,
+.row {
+  display: grid;
+  /* picture | title+summary | views | graph | age | button — the seven things, in order. */
+  grid-template-columns:
+    44px minmax(220px, 1fr) var(--col-reach) var(--col-spark) var(--col-age)
+    var(--col-action);
+  align-items: center;
+  gap: var(--gap-3);
+  padding: 0 var(--gap-4);
+}
+
+.header {
+  height: 32px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--size-xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.headerRight {
+  text-align: right;
+}
+
+.row {
+  height: var(--row-h);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  width: 100%;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--raised);
+}
+
+.rowNew {
+  box-shadow: inset 2px 0 0 var(--cyan);
+}
+
+.title {
+  font-weight: 600;
+  font-size: var(--size-md);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary {
+  font-size: var(--size-sm);
+  color: var(--text-2);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summarySecond {
+  color: var(--text-3);
+}
+
+.cellRight {
+  text-align: right;
+}
+
+/* The no-button case. Text where the button would be, so the column keeps its width and the
+   row does not reflow — and so the user is told why rather than left with an empty cell. */
+.noAction {
+  font-size: var(--size-xs);
+  color: var(--text-3);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-3);
+  padding: var(--gap-2) 0;
+  font-size: var(--size-sm);
+  color: var(--text-2);
+}
+
+.pill {
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 10%, transparent);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: var(--size-xs);
+  cursor: pointer;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lime);
+  display: inline-block;
+}
+
+.dotOff {
+  background: var(--red);
+}
+
+.empty {
+  padding: var(--gap-5);
+  color: var(--text-3);
+  text-align: center;
+}

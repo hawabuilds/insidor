@@ -1,9 +1,0 @@
-{
-  "started_at": "2026-07-29T11:35:37.968Z",
-  "lookback_days": 2,
-  "graduations_in_window": 285,
-  "sample_size": 150,
-  "random_seed": 42,
-  "discovery_source": "dune",
-  "built_at": "2026-07-29T12:46:41.815Z"
-}

@@ -1,0 +1,27 @@
+A STORY is the set of posts. A SUBJECT is what they are about. They are not the same
+thing and the distinction is the most common way this task goes wrong.
+
+Worked contrasts:
+
+  posts: several videos of the same cat knocking a glass off a table, filmed by
+         different people, some using the same sound
+  story: "cat knocks glass off table"
+  subject: the cat, if the posts identify it as the same cat by name or appearance;
+           otherwise there is NO subject — the posts share a genre, not a thing.
+
+  posts: a screenshot of one sentence someone wrote, reposted with reactions
+  story: "people reacting to the sentence"
+  subject: the sentence itself. Name it by quoting it, shortened.
+
+  posts: people filming themselves doing a dance to one song
+  story: "the dance"
+  subject: usually NONE. A dance and a sound are a format. A subject would be the
+           person who originated it, but only if the posts are about that person
+           rather than merely using their sound.
+
+  posts: a character from a game appearing in edits by many accounts
+  subject: the character. Name it as the posts name it, not as the publisher does.
+
+When the story is clear and the subject is not, say there is no subject. A story with no
+subject is a normal and frequent outcome. It is not a failure to be avoided, and a
+labelling run where almost everything has a subject is wrong.

@@ -1,0 +1,99 @@
+/* Saved stories, and the alert that fires when one of them mints. */
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) var(--col-reach) var(--col-age) auto;
+  gap: var(--gap-3);
+  align-items: center;
+  height: var(--row-h);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.item:last-child {
+  border-bottom: 0;
+}
+
+.title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub {
+  font-size: var(--size-sm);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: var(--gap-5);
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* The alert. Amber rather than cyan: this is the one thing in the product that interrupts,
+   and it should not look like the rest of the interface. */
+.alerts {
+  position: fixed;
+  right: var(--gap-4);
+  bottom: var(--gap-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-2);
+  z-index: 20;
+  max-width: 340px;
+}
+
+.alert {
+  background: var(--card);
+  border: 1px solid var(--alert);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  padding: var(--gap-3) var(--gap-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-1);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.alertHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-3);
+}
+
+.alertTicker {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--alert);
+}
+
+.alertBody {
+  font-size: var(--size-sm);
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+.alertActions {
+  display: flex;
+  gap: var(--gap-2);
+  margin-top: var(--gap-2);
+}
+
+.dismiss {
+  background: none;
+  border: 0;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: var(--size-xs);
+}

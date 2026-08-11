@@ -1,0 +1,16 @@
+{
+  "name": "@insidor/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The shared vocabulary. Types, ports, and the one frozen Policy object. Zero dependencies, forever.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*.ts": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {}
+}

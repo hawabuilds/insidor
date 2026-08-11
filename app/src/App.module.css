@@ -1,0 +1,72 @@
+/* The shell: a header bar and one content column. There is no sidebar and no dashboard
+   chrome — the board is the product, and everything else is a detour off it. */
+
+.shell {
+  min-height: 100vh;
+  background: var(--page);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-4);
+  padding: var(--gap-3) var(--gap-4);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--page);
+  z-index: 5;
+}
+
+.brand {
+  font-family: var(--font-display);
+  font-size: var(--size-lg);
+  letter-spacing: -0.02em;
+}
+
+.nav {
+  display: flex;
+  gap: var(--gap-3);
+  margin-left: auto;
+  font-size: var(--size-sm);
+  color: var(--text-2);
+}
+
+.navActive {
+  color: var(--text);
+}
+
+.navLink {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: var(--gap-1) var(--gap-2);
+}
+
+.main {
+  padding: var(--gap-4);
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.back {
+  background: none;
+  border: 0;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 0 0 var(--gap-3) 0;
+  font-size: var(--size-sm);
+}
+
+.drawer {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(420px, 100vw);
+  background: var(--card);
+  border-left: 1px solid var(--line);
+  padding: var(--gap-4);
+  overflow: auto;
+  z-index: 30;
+}

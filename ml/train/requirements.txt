@@ -1,0 +1,20 @@
+# ★ THE ONLY PYTHON DEPENDENCIES IN THE REPOSITORY.
+#
+# Nothing under services/, adapters/, core/ or store/ may import, shell out to,
+# or wait on anything installed from this file. tools/check-python.mjs fails the
+# build if a .py file appears outside ml/train/, or if any of those directories
+# mentions `python`, `uv run` or `child_process`.
+#
+# The risk here is not technical, it is gravitational: this directory will try to
+# grow. The moment production shells out to Python the single-runtime property is
+# gone and nobody decided to lose it.
+#
+# Installed into a local virtualenv, by hand, on a laptop, weekly. No container,
+# no scheduler, no CI secret, no GPU, no notebook server, no deploy target.
+
+lightgbm==4.5.0        # the trainer. Three seconds on tens of thousands of rows.
+scikit-learn==1.5.2    # isotonic calibration only; the serving side reimplements it
+pandas==2.2.3
+pyarrow==17.0.0        # parquet, the format the dataset crosses in
+numpy==2.1.3
+psycopg[binary]==3.2.3 # reads internal.decisions and internal.labels. Read-only role.

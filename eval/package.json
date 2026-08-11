@@ -1,0 +1,21 @@
+{
+  "name": "@insidor/eval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline evaluation: replay, the frozen gold set, and the blind labelling protocol. Never touches the network.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./replay/harness.ts": "./src/replay/harness.ts",
+    "./gold/cases.ts": "./src/gold/cases.ts",
+    "./blind/sheet.ts": "./src/blind/sheet.ts"
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/core": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  }
+}

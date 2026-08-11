@@ -1,0 +1,196 @@
+/* The story page: the evidence, the coins, the discussion. Reading-width prose columns over
+   a dense header, because this is the one surface where a user is checking our work rather
+   than scanning. */
+
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--gap-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-4);
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  gap: var(--gap-4);
+  align-items: flex-start;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: var(--size-xl);
+  line-height: 1.1;
+  margin-bottom: var(--gap-2);
+}
+
+.summary {
+  color: var(--text-2);
+  line-height: 1.5;
+  max-width: 62ch;
+}
+
+.stats {
+  display: flex;
+  gap: var(--gap-5);
+  margin-top: var(--gap-3);
+  flex-wrap: wrap;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-1);
+}
+
+.statLabel {
+  font-size: var(--size-xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.evidenceItem {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: var(--gap-3);
+  align-items: start;
+  padding: var(--gap-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.evidenceItem:last-child {
+  border-bottom: 0;
+}
+
+.evidenceMeta {
+  font-size: var(--size-xs);
+  color: var(--text-3);
+  display: flex;
+  gap: var(--gap-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--gap-1);
+}
+
+.excerpt {
+  font-size: var(--size-sm);
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.relation {
+  font-size: var(--size-xs);
+  color: var(--cyan);
+  margin-top: var(--gap-1);
+}
+
+.coin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-2);
+  padding: var(--gap-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.coin:last-child {
+  border-bottom: 0;
+}
+
+.coinHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-3);
+}
+
+.coinTicker {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: var(--size-lg);
+}
+
+.coinGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap-2);
+  font-size: var(--size-sm);
+}
+
+.coinCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* The unsure state gets real estate rather than an empty slot. A user who is told "we are
+   not calling this one yet, and here is how many candidates there are" is better served
+   than one shown a dead button. */
+.unsure {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: var(--gap-4);
+  color: var(--text-2);
+  font-size: var(--size-sm);
+  line-height: 1.5;
+}
+
+.unsureCount {
+  font-family: var(--font-mono);
+  color: var(--amber);
+}
+
+.post {
+  padding: var(--gap-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.post:last-child {
+  border-bottom: 0;
+}
+
+.postMeta {
+  font-size: var(--size-xs);
+  color: var(--text-3);
+  display: flex;
+  gap: var(--gap-2);
+  margin-bottom: var(--gap-1);
+}
+
+.postText {
+  font-size: var(--size-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.composer {
+  display: flex;
+  gap: var(--gap-2);
+  margin-top: var(--gap-3);
+}
+
+.composerInput {
+  flex: 1;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: var(--gap-3);
+  font: inherit;
+}
+
+.loading {
+  color: var(--text-3);
+  padding: var(--gap-5);
+}

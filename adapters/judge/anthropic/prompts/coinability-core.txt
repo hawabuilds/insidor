@@ -1,0 +1,27 @@
+For each group of posts below, answer three things.
+
+IS THERE ONE SUBJECT?
+A subject is a specific person, character, animal, object, phrase, image or moment that
+the posts are all about. Posts that merely share a format, a sound or a hashtag are not
+about one subject unless the same subject appears in them.
+
+WHAT WOULD PEOPLE CALL IT?
+Give the shortest phrase that people in the posts themselves use, or would obviously
+use, to refer to the subject. Prefer words that actually appear in the posts. Do not
+invent a brand name, do not add adjectives that no post used, and do not translate the
+name into English if the posts are not in English.
+
+HOW SURE ARE YOU?
+A number between 0 and 1, given only these posts. Use a low number when the posts are
+consistent with several different subjects.
+
+Answer "no subject" rather than stretching, in each of these cases:
+  - the posts share a template but nothing else
+  - the posts are about a broad topic rather than a specific thing
+  - the only shared element is a platform feature (a sound, a filter, a challenge name)
+  - the posts are reactions to an event rather than to a subject
+  - the group is a single author posting repeatedly
+
+Do not consider how much attention any post received. Numbers of views, likes or shares
+are not shown to you, deliberately: attention is measured elsewhere and mixing it into
+this judgement would make the same evidence count twice.

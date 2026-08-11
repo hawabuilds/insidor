@@ -1,16 +1,13 @@
 node_modules/
+dist/
 .env
 .env.*
-*.local
-worker/.pipeline.lock
-__pycache__/
-.cursor/
-.backtest/
-
-# Vercel link metadata — not source
-.vercel/
-site/.vercel/
-insidor/
-.env*
 !.env.example
-.vercel
+*.tsbuildinfo
+.DS_Store
+coverage/
+.venv/
+__pycache__/
+
+# pnpm workspace links created during scaffolding
+*/node_modules/

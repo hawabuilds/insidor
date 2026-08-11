@@ -1,0 +1,17 @@
+{
+  "name": "@insidor/watchdog",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "One query loop on different infrastructure. Imports contracts and store ONLY, by design.",
+  "main": "./src/main.ts",
+  "scripts": {
+    "start": "node src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/store": "workspace:*"
+  }
+}

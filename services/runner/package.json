@@ -1,0 +1,18 @@
+{
+  "name": "@insidor/runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The seven supervised loops in one process. Wires adapters to core to store, and nothing else.",
+  "main": "./src/main.ts",
+  "scripts": {
+    "start": "node src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/core": "workspace:*",
+    "@insidor/store": "workspace:*"
+  }
+}

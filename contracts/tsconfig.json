@@ -1,0 +1,17 @@
+{
+  /* One compiler config lives at the root; this file only says which files are ours.
+     rootDir is load-bearing: it makes `import '../../core/src/x.ts'` a typecheck error
+     (TS6059), which is the hole pnpm's package boundary cannot close on its own.
+
+     NOT `composite`, deliberately: a composite project must emit, and this repository
+     never emits (TS6310). Every package is checked on its own with `tsc -p`, and
+     cross-package types resolve straight to the other package's .ts source through its
+     exports map. Project references would buy ordering we do not need at the price of a
+     build step we do not want. */
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}

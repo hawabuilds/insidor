@@ -1,0 +1,18 @@
+{
+  "name": "@insidor/venue-registry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/registry.ts",
+    "./*.ts": "./src/*.ts"
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/market-dexscreener": "workspace:*",
+    "@insidor/venue-solana-pumpfun": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@insidor/chainwatch",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The mint watcher: one long-lived process, a durable cursor, and a coverage log that records gaps instead of hiding them.",
+  "main": "./src/main.ts",
+  "scripts": {
+    "start": "node src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/store": "workspace:*"
+  }
+}

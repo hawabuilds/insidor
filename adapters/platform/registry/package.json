@@ -1,0 +1,18 @@
+{
+  "name": "@insidor/platform-registry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/registry.ts",
+    "./*.ts": "./src/*.ts"
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/platform-tiktok": "workspace:*",
+    "@insidor/platform-x": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

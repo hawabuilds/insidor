@@ -1,0 +1,22 @@
+{
+  "name": "@insidor/ml-serve",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Loads a trained artefact and evaluates it. The only ML that runs in production.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./lgbm.ts": "./src/lgbm.ts",
+    "./isotonic.ts": "./src/isotonic.ts",
+    "./artefact.ts": "./src/artefact.ts",
+    "./registry/registry.ts": "./src/registry/registry.ts",
+    "./registry/promote.ts": "./src/registry/promote.ts"
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  }
+}

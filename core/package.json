@@ -1,0 +1,17 @@
+{
+  "name": "@insidor/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "All the logic, pure. Seven stages, each a function from state and policy to a Decision. One dependency, no devDependencies: the tests run on node:test, which is a builtin.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*"
+  }
+}
