@@ -33,6 +33,15 @@ export function toSearchQuery(query: DiscoveryQuery): string {
   // A language filter is expressible and deliberately NOT applied: pinning it
   // to one language is what made every non-English story invisible.
   if (query.sinceMs !== null) parts.push(`since:${isoDay(query.sinceMs)}`);
+  // The cutoff is pushed into the query, never applied to the response. Filtering
+  // after the fact still spends budget on results we must not look at, and a result
+  // that reached this process has already had the chance to leak into a decision.
+  //
+  // until_time takes unix SECONDS and is exact. The day-granularity `until:` operator
+  // is not good enough here: a coin minted at 09:02 would still see everything else
+  // posted that day, which is up to 24 hours of the crowd reacting to the coin —
+  // precisely the contamination the cutoff exists to prevent.
+  if (query.untilMs !== null) parts.push(`until_time:${Math.floor(query.untilMs / 1000)}`);
   return parts.join(' ');
 }
 

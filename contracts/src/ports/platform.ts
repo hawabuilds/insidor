@@ -50,6 +50,20 @@ export interface DiscoveryQuery {
   /** Interpreted by the adapter in its own terms; opaque to core. */
   readonly term: string;
   readonly sinceMs: Millis | null;
+  /**
+   * ★ THE ANTI-CONTAMINATION CUTOFF. Nothing published at or after this instant may
+   * be returned, and an adapter that cannot enforce it must fail rather than filter
+   * client-side — a result already counted against budget has already leaked.
+   *
+   * Live discovery passes null. Replay passes the decision instant, which is what
+   * makes a historical run structurally blind rather than blind by good intentions.
+   * Without it every backtest is contaminated: you go looking for the source post
+   * knowing the coin exists, and the crowd's reaction to the coin is sitting in the
+   * replies you are about to score. The previous build's backtest measured features
+   * on exactly that contaminated surface, which is why its results could not be used
+   * in either direction.
+   */
+  readonly untilMs: Millis | null;
   readonly limit: number;
   readonly cursor: string | null;
 }

@@ -61,7 +61,7 @@ test('capabilities come off the recording, not from this package', () => {
 test('paging is honoured but selection is not — a tape is not re-filtered', async () => {
   const adapter = replayPlatform(tape, { now });
   const page = await adapter.discover(
-    { mode: 'hashtag', term: 'anything-at-all', sinceMs: null, limit: 10, cursor: null },
+    { mode: 'hashtag', term: 'anything-at-all', sinceMs: null, untilMs: null, limit: 10, cursor: null },
     BUDGET,
   );
   assert.equal(page.value.items.length, tape.items.length);

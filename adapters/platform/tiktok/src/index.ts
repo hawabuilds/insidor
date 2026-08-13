@@ -33,6 +33,18 @@ export function toActorInput(query: DiscoveryQuery): {
   const term = query.term.trim();
   if (term.length === 0) throw new NotImplemented('tiktok:discover', 'no hashtag or account to enter by');
 
+  // This source has no server-side time cutoff — the actor returns what the feed
+  // currently shows. Filtering the response here would be a lie of the worst kind:
+  // it would look like a blind historical run while the selection had already been
+  // made by a ranking that knows everything that happened since. Refuse instead, so
+  // a replay that needs a cutoff simply cannot be built on this source.
+  if (query.untilMs !== null) {
+    throw new NotImplemented(
+      'tiktok:discover:cutoff',
+      'this source cannot bound discovery by time; a blind historical run is not available here',
+    );
+  }
+
   return query.mode === 'account' ? { accounts: [term] } : { hashtags: [term] };
 }
 

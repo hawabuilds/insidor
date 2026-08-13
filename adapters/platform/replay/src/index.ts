@@ -73,6 +73,25 @@ export function replayPlatform(tape: Tape, opts: ReplayOptions): ReplayPlatform 
      * about paging rather than about selection.
      */
     async discover(query: DiscoveryQuery, _budget: Budget): Promise<Metered<Discovered>> {
+      // The one query field a tape may NOT ignore. Everything else is selection and
+      // a tape is already the answer to its own query — but the cutoff is a
+      // correctness claim, and silently serving post-cutoff items would produce a
+      // replay that looks blind and is not. A tape recorded without a cutoff cannot
+      // be made clean retroactively, so the honest response is to refuse.
+      if (query.untilMs !== null) {
+        const leaked = tape.items.filter(
+          (it) => it.postedAt !== null && it.postedAt >= query.untilMs!,
+        );
+        if (leaked.length > 0) {
+          throw new Error(
+            `replay: tape "${tape.name}" holds ${leaked.length} item(s) posted at or after the ` +
+              `cutoff ${new Date(query.untilMs).toISOString()}. This tape was recorded without ` +
+              `that cutoff and cannot be replayed blind against it — re-record it with ` +
+              `untilMs set, or replay it with untilMs null and do not call the result blind.`,
+          );
+        }
+      }
+
       const from = query.cursor === null ? 0 : Number.parseInt(query.cursor, 10);
       const start = Number.isFinite(from) && from > 0 ? from : 0;
       const page = tape.items.slice(start, start + query.limit);
