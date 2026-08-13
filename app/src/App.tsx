@@ -25,6 +25,7 @@ import {
   decodeRowPatch,
   fetchBoard,
   openLiveChannel,
+  USING_FIXTURES,
 } from './shared/api/index.ts';
 import { NotImplemented } from './shared/not-implemented.ts';
 import { Feed } from './features/feed/index.ts';
@@ -156,6 +157,19 @@ export function App() {
             </button>
           </nav>
         </header>
+
+        {/* Every number below is invented. This says so, permanently and without a dismiss
+            control — a banner the user can close is a banner that is absent in the screenshot
+            somebody later mistakes for a product. It compiles out of a production build with
+            the fixtures it describes. */}
+        {USING_FIXTURES ? (
+          <div className={styles['fixtureBar']} role="status">
+            <strong>sample data</strong> — no pipeline is connected. Every number on this
+            screen is made up, and each row is here to show one rule: an unsure match with no
+            button, a source that publishes no views, a broken graph where a reading was
+            censored, an age we never learned.
+          </div>
+        ) : null}
 
         <main className={styles['main']}>
           {route.kind === 'feed' ? (

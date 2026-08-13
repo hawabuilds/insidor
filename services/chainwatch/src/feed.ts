@@ -21,35 +21,28 @@
  * lead-time claim we would not be able to honour.
  */
 
-import type { AssetRef, MintTime, Millis } from '@insidor/contracts';
+import type { Millis, MintEvent } from '@insidor/contracts';
 
 import type { Gap } from './coverage.ts';
 import type { MintCursor } from './cursor.ts';
 
-/**
- * A mint as this process saw it. Symbol and name are OBSERVED strings, never
- * identifiers: the resolver scores them, and one meme can spawn 306 tokens
- * sharing a symbol.
+/*
+ * A mint is a `MintEvent` from the vocabulary — asset, venue, mint time, seen-at —
+ * and this file deliberately declares no shape of its own for one. An earlier
+ * draft had a local `ObservedMint` that re-spelled the same facts (`venueId` for
+ * `venue`, `declaredSocial: unknown` for the record of claimed links, no `key` and
+ * no `chain`), and a second spelling of the vocabulary inside a service is how the
+ * vocabulary stops being shared. The supervision types BELOW have no contract
+ * equivalent and so are local: a coverage-bearing page and a durable cursor are
+ * facts about this process, not about a venue.
  */
-export interface ObservedMint {
-  readonly ref: AssetRef;
-  readonly venueId: string;
-  /** Carries its own source and confidence. A vendor field can never be exact. */
-  readonly mintedAt: MintTime;
-  readonly symbol: string | null;
-  readonly name: string | null;
-  readonly creator: string | null;
-  /** Attacker-controlled. The field name says so, and so does the column. */
-  readonly declaredSocial: unknown;
-  readonly firstSeenAt: Millis;
-}
 
 export interface MintFeedPage {
   /** When we started the read. */
   readonly from: Millis;
   /** When the read completed. Coverage extends to here and never further. */
   readonly to: Millis;
-  readonly mints: readonly ObservedMint[];
+  readonly mints: readonly MintEvent[];
   /** The source returned `limit` rows: there may be more we did not see. */
   readonly pageFull: boolean;
   /** Where to resume. Persisted only after the mints above are stored. */
@@ -65,7 +58,7 @@ export interface MintFeed {
 /** Where the mints and the gaps go. Implemented in wiring.ts against store. */
 export interface MintSink {
   /** Must be durable before the cursor advances past these rows. */
-  recordMints(mints: readonly ObservedMint[]): Promise<void>;
+  recordMints(mints: readonly MintEvent[]): Promise<void>;
   /**
    * A gap row. Separate from `recordMints` because a gap is not an absence of
    * mints — it is a statement that the question cannot be answered for that

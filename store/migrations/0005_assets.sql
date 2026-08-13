@@ -17,7 +17,7 @@
 -- A `not null` column would have been satisfied by exactly that wrong number. So
 -- the invariant is stronger than not-null and is enforced three ways below:
 --   1. the source is always recorded, and it is never nullable;
---   2. a vendor field can never claim 'exact' — only a launchpad API or the chain;
+--   2. a vendor field can never claim 'exact' — only the issuer's own API or the chain;
 --   3. the timestamp may be absent ONLY when the confidence says 'unknown', and
 --      'unknown' fails gate G1, so no Buy affordance can render behind it.
 -- Absence is loud and cheap. A confident wrong timestamp costs a user money.
@@ -25,18 +25,24 @@
 create table public.asset (
   chain    text not null check (chain in ('solana')),   -- add ROWS for a chain, not columns
   address  text not null,
-  caip19   text not null unique,        -- 'solana:<genesis>/token:<mint>' — the wire id
-  venue_id text not null,               -- 'solana:pumpfun' | 'solana:amm'
+  -- '<chain>:<address>' — the one storable spelling of an AssetRef, produced by
+  -- contracts' assetKey(). Stored rather than derived so a join can name an asset
+  -- with one column, and unique because two rows sharing it would be one asset.
+  asset_key text not null unique,
+  venue_id  text not null,              -- the market it was FIRST seen on
 
   minted_at         timestamptz,
+  -- The four MINT_TIME_SOURCES of contracts/src/asset.ts, spelled the same way.
+  -- 'issuer_api' is the issuing program's own list endpoint; it is not the name of
+  -- any one venue's product, and it must not become one.
   minted_at_source  text not null check (minted_at_source in
-                      ('launchpad_api', 'chain_rpc', 'vendor_field', 'none')),
+                      ('issuer_api', 'chain_rpc', 'vendor_field', 'none')),
   minted_at_conf    text not null check (minted_at_conf in ('exact', 'bounded', 'unknown')),
   minted_at_bound_s integer,            -- half-width of the bound, in seconds
 
   -- A vendor field can NEVER be 'exact'. A database invariant, not a convention.
   constraint exact_requires_real_source check
-    (minted_at_conf <> 'exact' or minted_at_source in ('launchpad_api', 'chain_rpc')),
+    (minted_at_conf <> 'exact' or minted_at_source in ('issuer_api', 'chain_rpc')),
   constraint bounded_requires_width check
     (minted_at_conf <> 'bounded' or minted_at_bound_s is not null),
   -- Absent iff unknown, in both directions: you cannot hide a missing timestamp

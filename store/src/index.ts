@@ -18,8 +18,13 @@ export { NotImplemented } from './not-implemented.ts';
 export { PgItemRepo } from './repo/items.ts';
 export { PgObservationRepo } from './repo/observations.ts';
 export { PgStoryRepo } from './repo/stories.ts';
+/* Presentation is a column set, not a field set. The type is exported so the one
+   stage that writes a title says so in the vocabulary of this package rather than
+   inventing its own — and so nobody is tempted to hang it off Story. */
+export type { StoryPresentation } from './repo/stories.ts';
 export { PgAssetRepo } from './repo/assets.ts';
 export { PgDecisionRepo, featureHash } from './repo/decisions.ts';
 export { PgLabelRepo } from './repo/labels.ts';
+export type { LabelKey } from './repo/labels.ts';
 export { PgStageRunRepo } from './repo/runs.ts';
 export type { StageRunClose } from './repo/runs.ts';

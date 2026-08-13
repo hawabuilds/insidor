@@ -22,7 +22,7 @@ export {
   useBoardStore,
 } from './live/useBoard.ts';
 
-export { ReadError, fetchBoard, fetchQuote, fetchStory, openLiveChannel, submitTrade } from './client.ts';
+export { ReadError, USING_FIXTURES, fetchBoard, fetchQuote, fetchStory, openLiveChannel, submitTrade } from './client.ts';
 export type { LiveChannel, LiveHandlers } from './client.ts';
 
 /* The two decoders the live wiring needs, because a socket payload does not arrive through

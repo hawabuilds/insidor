@@ -17,7 +17,17 @@
  */
 
 import type { Millis } from '@insidor/contracts';
-import type { Label, LabelRepo, LabelKey } from '@insidor/contracts/ports/store.ts';
+import type { Label, LabelRepo } from '@insidor/contracts/ports/store.ts';
+
+/**
+ * The five columns that identify a label row, derived from the vocabulary rather
+ * than restated beside it — if the primary key ever changes, this stops compiling
+ * instead of quietly addressing the wrong rows.
+ */
+export type LabelKey = Pick<
+  Label,
+  'subjectKind' | 'subjectId' | 'labelName' | 'labelVersion' | 'windowDays'
+>;
 
 import type { Db } from '../client.ts';
 import { toMillis, toMillisRequired, toTimestamp } from '../rows.ts';
@@ -77,11 +87,11 @@ export class PgLabelRepo implements LabelRepo {
         label.labelName,
         label.labelVersion,
         label.windowDays,
-        toTimestamp(label.originTs),
-        toTimestamp(label.resolvesAt),
+        toTimestamp(label.originMs),
+        toTimestamp(label.resolvesAtMs),
         label.population,
         label.source,
-        toTimestamp(label.firstSignalAt),
+        toTimestamp(label.firstSignalMs),
       ],
     );
   }
@@ -158,13 +168,82 @@ export class PgLabelRepo implements LabelRepo {
   }
 
   /** Windows that have closed and are waiting to be graded. The nightly labeller's work queue. */
-  async due(nowMs: Millis, limit: number): Promise<Label[]> {
+  async due(nowMs: Millis, limit: number): Promise<readonly Label[]> {
     const rows = await this.#db.query<LabelRow>(
       `${SELECT_LABEL}
         where status = 'pending' and resolves_at <= $1
         order by resolves_at asc
         limit $2`,
       [toTimestamp(nowMs), limit],
+    );
+    return rows.map(toLabel);
+  }
+
+  /**
+   * Write labels as given, in bulk. The settleable columns are refreshed on
+   * conflict; the identifying ones cannot change, because changing one of them
+   * describes a different row.
+   *
+   * `first_signal_at` is coalesced rather than overwritten, in both directions of
+   * this method: a later, larger signal is not the first one, and the empirical
+   * delay distribution is built out of firsts.
+   */
+  async upsert(labels: readonly Label[]): Promise<number> {
+    for (const label of labels) {
+      await this.#db.query(
+        `insert into internal.labels (
+           subject_kind, subject_id, label_name, label_version, window_days,
+           origin_ts, resolves_at, status, value, y, censor_reason,
+           population, source, first_signal_at, computed_at
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         on conflict (subject_kind, subject_id, label_name, label_version, window_days)
+         do update set
+           origin_ts     = excluded.origin_ts,
+           resolves_at   = excluded.resolves_at,
+           status        = excluded.status,
+           value         = excluded.value,
+           y             = excluded.y,
+           censor_reason = excluded.censor_reason,
+           population    = excluded.population,
+           source        = excluded.source,
+           first_signal_at = coalesce(internal.labels.first_signal_at, excluded.first_signal_at),
+           computed_at   = excluded.computed_at`,
+        [
+          label.subjectKind,
+          label.subjectId,
+          label.labelName,
+          label.labelVersion,
+          label.windowDays,
+          toTimestamp(label.originMs),
+          toTimestamp(label.resolvesAtMs),
+          label.status,
+          label.value,
+          label.y,
+          label.censorReason,
+          label.population,
+          label.source,
+          toTimestamp(label.firstSignalMs),
+          toTimestamp(label.computedAtMs),
+        ],
+      );
+    }
+    return labels.length;
+  }
+
+  /**
+   * Every version and window of one label for one subject, newest window first.
+   *
+   * Deliberately NOT filtered by status. A caller counting resolved rows without
+   * seeing the pending and censored ones beside them is computing a rate over a
+   * population it did not choose, which is the shape of the mistake this whole file
+   * is a reaction to.
+   */
+  async bySubject(subjectId: string, labelName: string): Promise<readonly Label[]> {
+    const rows = await this.#db.query<LabelRow>(
+      `${SELECT_LABEL}
+        where subject_id = $1 and label_name = $2
+        order by resolves_at desc`,
+      [subjectId, labelName],
     );
     return rows.map(toLabel);
   }
@@ -188,15 +267,15 @@ function toLabel(row: LabelRow): Label {
     labelName: row.label_name,
     labelVersion: row.label_version,
     windowDays: row.window_days,
-    originTs: toMillisRequired(row.origin_ts, 'origin_ts'),
-    resolvesAt: toMillisRequired(row.resolves_at, 'resolves_at'),
+    originMs: toMillisRequired(row.origin_ts, 'origin_ts'),
+    resolvesAtMs: toMillisRequired(row.resolves_at, 'resolves_at'),
     status: row.status,
     value: row.value,
     y: row.y,
     censorReason: row.censor_reason,
     population: row.population,
     source: row.source,
-    firstSignalAt: toMillis(row.first_signal_at),
-    computedAt: toMillis(row.computed_at),
+    firstSignalMs: toMillis(row.first_signal_at),
+    computedAtMs: toMillis(row.computed_at),
   };
 }

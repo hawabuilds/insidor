@@ -18,18 +18,19 @@
 
 import type { Millis } from '@insidor/contracts';
 import type { Asset, MintTime } from '@insidor/contracts/asset.ts';
-import type { AssetRef, ChainId, VenueId } from '@insidor/contracts/ids.ts';
+import { parseAssetKey } from '@insidor/contracts/ids.ts';
+import type { AssetKey, AssetRef, ChainId, VenueId } from '@insidor/contracts/ids.ts';
 import type { AssetRepo } from '@insidor/contracts/ports/store.ts';
 
 import type { Db } from '../client.ts';
-import { toMillis, toMillisRequired, toTimestamp } from '../rows.ts';
+import { reBrand, toMillis, toMillisRequired, toTimestamp } from '../rows.ts';
 import type { TimestampColumn } from '../rows.ts';
 
 interface AssetRow {
-  chain: ChainId;
+  chain: string;
   address: string;
-  caip19: string;
-  venue_id: VenueId;
+  asset_key: string;
+  venue_id: string;
   minted_at: TimestampColumn;
   minted_at_source: MintTime['source'];
   minted_at_conf: MintTime['confidence'];
@@ -39,12 +40,28 @@ interface AssetRow {
   image_uri: string | null;
   decimals: number | null;
   creator: string | null;
-  declared_social: Record<string, unknown> | null;
+  /**
+   * jsonb, and `unknown` rather than a shape. Everything in this column was typed
+   * by whoever minted the coin; asserting a type over it here would be trusting the
+   * attacker to have written the object we hoped for. It is narrowed on the way out.
+   */
+  declared_social: unknown;
   first_seen_at: TimestampColumn;
 }
 
+/**
+ * The trust rank of the mint time ALREADY STORED, as a SQL expression.
+ *
+ * Every write compares the incoming rank against this one and loses ties, so mint
+ * time only ever goes up. A vendor field arriving after the chain has answered is
+ * the +22-minute median error trying to walk back in through the update path, and
+ * `case when incoming > stored` is the one line that refuses it.
+ */
+const EXISTING_RANK =
+  "(case public.asset.minted_at_conf when 'exact' then 2 when 'bounded' then 1 else 0 end)";
+
 const SELECT_ASSET = `
-  select chain, address, caip19, venue_id, minted_at, minted_at_source, minted_at_conf,
+  select chain, address, asset_key, venue_id, minted_at, minted_at_source, minted_at_conf,
          minted_at_bound_s, symbol, name, image_uri, decimals, creator,
          declared_social, first_seen_at
     from public.asset
@@ -63,44 +80,81 @@ export class PgAssetRepo implements AssetRepo {
    * already answered must not be allowed to replace it — that is the +22-minute
    * median error walking back in through the update path.
    */
-  async upsert(asset: Asset): Promise<void> {
+  async upsert(assets: readonly Asset[]): Promise<number> {
+    for (const asset of assets) {
+      await this.#db.query(
+        `insert into public.asset (
+           chain, address, asset_key, venue_id,
+           minted_at, minted_at_source, minted_at_conf, minted_at_bound_s,
+           symbol, name, image_uri, decimals, creator, declared_social, first_seen_at
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
+         on conflict (chain, address) do update set
+           venue_id = excluded.venue_id,
+           symbol   = excluded.symbol,
+           name     = excluded.name,
+           image_uri = excluded.image_uri,
+           decimals = coalesce(public.asset.decimals, excluded.decimals),
+           creator  = coalesce(public.asset.creator, excluded.creator),
+           declared_social = excluded.declared_social,
+           minted_at         = case when $16::int > ${EXISTING_RANK} then excluded.minted_at else public.asset.minted_at end,
+           minted_at_source  = case when $16::int > ${EXISTING_RANK} then excluded.minted_at_source else public.asset.minted_at_source end,
+           minted_at_conf    = case when $16::int > ${EXISTING_RANK} then excluded.minted_at_conf else public.asset.minted_at_conf end,
+           minted_at_bound_s = case when $16::int > ${EXISTING_RANK} then excluded.minted_at_bound_s else public.asset.minted_at_bound_s end`,
+        [
+          asset.ref.chain,
+          asset.ref.address,
+          asset.key,
+          asset.venue,
+          toTimestamp(asset.mintedAt.at),
+          asset.mintedAt.source,
+          asset.mintedAt.confidence,
+          asset.mintedAt.boundS,
+          asset.symbol,
+          asset.name,
+          asset.imageUri,
+          asset.decimals,
+          asset.creator,
+          JSON.stringify(asset.declaredSocial),
+          toTimestamp(asset.firstSeenAt),
+          // Whether the incoming mint time is allowed to win, as a rank compared
+          // against the rank already stored. Computed here rather than as a CASE
+          // ladder in SQL so the ordering is one readable list.
+          confidenceRank(asset.mintedAt.confidence),
+        ],
+      );
+    }
+    return assets.length;
+  }
+
+  /** The retrieval the port declares: one storable key, one asset. */
+  async byKey(key: AssetKey): Promise<Asset | null> {
+    const ref = parseAssetKey(key);
+    if (ref === null) throw new TypeError(`'${key}' is not a '<chain>:<address>' asset key`);
+    return this.byRef(ref);
+  }
+
+  /**
+   * Raise the confidence of a stored mint time. It only ever goes up: a vendor
+   * field arriving after the chain has already answered must not replace it, which
+   * is the +22-minute median error walking back in through the update path.
+   */
+  async setMintTime(key: AssetKey, mintedAt: MintTime): Promise<void> {
+    const ref = parseAssetKey(key);
+    if (ref === null) throw new TypeError(`'${key}' is not a '<chain>:<address>' asset key`);
     await this.#db.query(
-      `insert into public.asset (
-         chain, address, caip19, venue_id,
-         minted_at, minted_at_source, minted_at_conf, minted_at_bound_s,
-         symbol, name, image_uri, decimals, creator, declared_social, first_seen_at
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
-       on conflict (chain, address) do update set
-         venue_id = excluded.venue_id,
-         symbol   = excluded.symbol,
-         name     = excluded.name,
-         image_uri = excluded.image_uri,
-         decimals = coalesce(public.asset.decimals, excluded.decimals),
-         creator  = coalesce(public.asset.creator, excluded.creator),
-         declared_social = excluded.declared_social,
-         minted_at         = case when $16 then excluded.minted_at else public.asset.minted_at end,
-         minted_at_source  = case when $16 then excluded.minted_at_source else public.asset.minted_at_source end,
-         minted_at_conf    = case when $16 then excluded.minted_at_conf else public.asset.minted_at_conf end,
-         minted_at_bound_s = case when $16 then excluded.minted_at_bound_s else public.asset.minted_at_bound_s end`,
+      `update public.asset
+          set minted_at = $3, minted_at_source = $4,
+              minted_at_conf = $5, minted_at_bound_s = $6
+        where chain = $1 and address = $2
+          and $7::int > ${EXISTING_RANK}`,
       [
-        asset.ref.chain,
-        asset.ref.address,
-        asset.caip19,
-        asset.venueId,
-        toTimestamp(asset.mint.at),
-        asset.mint.source,
-        asset.mint.confidence,
-        asset.mint.boundS,
-        asset.symbol,
-        asset.name,
-        asset.imageUri,
-        asset.decimals,
-        asset.creator,
-        JSON.stringify(asset.declaredSocial ?? null),
-        toTimestamp(asset.firstSeenAt),
-        // Whether the incoming mint time is allowed to win. Computed here rather
-        // than in SQL so the ranking is one readable list instead of a CASE ladder.
-        confidenceRank(asset.mint.confidence) > 0,
+        ref.chain,
+        ref.address,
+        toTimestamp(mintedAt.at),
+        mintedAt.source,
+        mintedAt.confidence,
+        mintedAt.boundS,
+        confidenceRank(mintedAt.confidence),
       ],
     );
   }
@@ -132,7 +186,7 @@ export class PgAssetRepo implements AssetRepo {
     fromMs: Millis,
     toMs: Millis,
     limit: number,
-  ): Promise<Asset[]> {
+  ): Promise<readonly Asset[]> {
     const rows = await this.#db.query<AssetRow>(
       `${SELECT_ASSET}
         where chain = $1
@@ -170,6 +224,33 @@ export class PgAssetRepo implements AssetRepo {
     );
   }
 
+  /**
+   * The most recent coverage window on a chain, with the cursor position recorded
+   * against it.
+   *
+   * This is how the mint watcher resumes, and it is why there is no cursor table:
+   * `cursor_ref` is a column on the coverage row, so a resume position always
+   * arrives attached to the window it closed. Null means this chain has never been
+   * watched — which is a different fact from a watcher that restarted and lost its
+   * place, and the caller has to be able to tell them apart: the first has no
+   * earlier window to have missed, the second does, and that silence is a gap.
+   */
+  async latestCoverage(
+    chain: ChainId,
+  ): Promise<{ toMs: Millis; cursorRef: string | null } | null> {
+    const rows = await this.#db.query<{ window_to: TimestampColumn; cursor_ref: string | null }>(
+      `select window_to, cursor_ref
+         from internal.mint_coverage
+        where chain = $1
+        order by window_from desc
+        limit 1`,
+      [chain],
+    );
+    const row = rows[0];
+    if (row === undefined) return null;
+    return { toMs: toMillisRequired(row.window_to, 'window_to'), cursorRef: row.cursor_ref };
+  }
+
   /** True when any part of the window was not observed. Labels read this before resolving. */
   async hasCoverageGap(chain: ChainId, fromMs: Millis, toMs: Millis): Promise<boolean> {
     const rows = await this.#db.query<{ gap: boolean }>(
@@ -193,11 +274,13 @@ function confidenceRank(confidence: MintTime['confidence']): number {
 }
 
 function toAsset(row: AssetRow): Asset {
+  const ref: AssetRef = { chain: reBrand<ChainId>(row.chain), address: row.address };
   return {
-    ref: { chain: row.chain, address: row.address },
-    caip19: row.caip19,
-    venueId: row.venue_id,
-    mint: {
+    ref,
+    key: reBrand<AssetKey>(row.asset_key),
+    chain: ref.chain,
+    venue: reBrand<VenueId>(row.venue_id),
+    mintedAt: {
       at: toMillis(row.minted_at),
       source: row.minted_at_source,
       confidence: row.minted_at_conf,
@@ -208,7 +291,24 @@ function toAsset(row: AssetRow): Asset {
     imageUri: row.image_uri,
     decimals: row.decimals,
     creator: row.creator,
-    declaredSocial: row.declared_social,
+    declaredSocial: toDeclaredSocial(row.declared_social),
     firstSeenAt: toMillisRequired(row.first_seen_at, 'first_seen_at'),
   };
+}
+
+/**
+ * Narrow the attacker-controlled blob to the map of strings the vocabulary
+ * declares. Absent is an empty map, never null — a coin that declared no links and
+ * a coin whose column we failed to read are different facts, and the second one
+ * throws upstream rather than arriving here. A non-string value is dropped rather
+ * than coerced: `{"x": {"url": …}}` stringified into a link is how a rendered
+ * anchor ends up pointing somewhere nobody chose.
+ */
+function toDeclaredSocial(value: unknown): Readonly<Record<string, string>> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
+  const links: Record<string, string> = {};
+  for (const [name, link] of Object.entries(value)) {
+    if (typeof link === 'string') links[name] = link;
+  }
+  return links;
 }

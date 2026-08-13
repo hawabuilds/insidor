@@ -14,7 +14,8 @@
  * a plausible number.
  */
 
-import type { CensorReason, CounterKind, Fidelity, Millis, Observation } from '@insidor/contracts';
+import { toStoredRate } from '@insidor/contracts';
+import type { CensorReason, CounterKind, Fidelity, Millis, Observation, Rate } from '@insidor/contracts';
 import type { ItemId } from '@insidor/contracts/ids.ts';
 import type { ObservationRepo } from '@insidor/contracts/ports/store.ts';
 
@@ -33,11 +34,15 @@ interface ObservationRow {
   lag_ms: number | null;
   rate_per_min: number | null;
   censored: CensorReason | null;
+  rate_over_ms: number | null;
+  rate_level: number | null;
+  rate_last_level: number | null;
 }
 
 const SELECT_OBSERVATION = `
   select item_id, kind, captured_at, value, fidelity_kind, fidelity_digits,
-         observed_at, lag_ms, rate_per_min, censored
+         observed_at, lag_ms, rate_per_min, censored,
+         rate_over_ms, rate_level, rate_last_level
     from public.observation
 `;
 
@@ -60,11 +65,18 @@ export class PgObservationRepo implements ObservationRepo {
   async append(observations: readonly Observation[]): Promise<number> {
     let written = 0;
     for (const observation of observations) {
+      // toStoredRate is the ONLY sanctioned flattening of the union, and this is the
+      // only place in the system allowed to perform one. The remaining fields of
+      // whichever branch it was are written beside it, so the reading round-trips
+      // whole instead of being reassembled by guesswork on the way out.
+      const stored = toStoredRate(observation.rate);
+      const rate = observation.rate;
       const rows = await this.#db.query<{ item_id: string }>(
         `insert into public.observation (
            item_id, kind, captured_at, value, fidelity_kind, fidelity_digits,
-           observed_at, lag_ms, rate_per_min, censored
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           observed_at, lag_ms, rate_per_min, censored,
+           rate_over_ms, rate_level, rate_last_level
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          on conflict (item_id, kind, captured_at) do nothing
          returning item_id`,
         [
@@ -78,8 +90,11 @@ export class PgObservationRepo implements ObservationRepo {
             : null,
           toTimestamp(observation.counter.observedAt),
           observation.counter.lagMs ?? null,
-          observation.ratePerMin,
-          observation.censored,
+          stored.ratePerMin,
+          stored.censored,
+          rate.kind === 'measured' ? rate.overMs : null,
+          rate.kind === 'measured' ? rate.level : null,
+          rate.kind === 'censored' ? rate.lastLevel : null,
         ],
       );
       written += rows.length;
@@ -100,18 +115,25 @@ export class PgObservationRepo implements ObservationRepo {
     return row ? toObservation(row) : null;
   }
 
-  /** The window a baseline or an EWMA is computed over. Oldest first. */
+  /**
+   * The window a baseline or an EWMA is computed over. Oldest first.
+   *
+   * `untilMs` is optional and exclusive. The port asks only for a lower bound; the
+   * upper one exists for replay, where the whole point is to see no datum newer
+   * than the decision being reproduced. Omitting it reads up to now.
+   */
   async series(
     itemId: ItemId,
     kind: CounterKind,
     sinceMs: Millis,
-    untilMs: Millis,
-  ): Promise<Observation[]> {
+    untilMs?: Millis,
+  ): Promise<readonly Observation[]> {
     const rows = await this.#db.query<ObservationRow>(
       `${SELECT_OBSERVATION}
-        where item_id = $1 and kind = $2 and captured_at >= $3 and captured_at < $4
+        where item_id = $1 and kind = $2 and captured_at >= $3
+          and ($4::timestamptz is null or captured_at < $4)
         order by captured_at asc`,
-      [itemId, kind, toTimestamp(sinceMs), toTimestamp(untilMs)],
+      [itemId, kind, toTimestamp(sinceMs), untilMs === undefined ? null : toTimestamp(untilMs)],
     );
     return rows.map(toObservation);
   }
@@ -157,9 +179,36 @@ function toObservation(row: ObservationRow): Observation {
       // meaningful when the source admitted its own staleness.
       ...(row.lag_ms === null ? {} : { lagMs: row.lag_ms }),
     },
-    ratePerMin: row.rate_per_min,
-    censored: row.censored,
+    rate: toRate(row),
   };
+}
+
+/**
+ * The flat columns back into the union.
+ *
+ * ★ There is no branch here that produces a zero rate from a censored row, and
+ * there never may be. `rate_per_min` null means we learned nothing; a 0 says the
+ * item is flat, flat reads downstream as cooling, and cooling demotes exactly the
+ * item that is accelerating. The database's `rate_xor_censor` constraint guarantees
+ * one of the two columns is set, so a row with neither was written around it and
+ * throws rather than defaulting to either answer.
+ */
+function toRate(row: ObservationRow): Rate {
+  if (row.rate_per_min !== null) {
+    if (row.rate_over_ms === null || row.rate_level === null) {
+      throw new TypeError('a measured rate arrived without its interval or its level');
+    }
+    return {
+      kind: 'measured',
+      perMin: row.rate_per_min,
+      overMs: row.rate_over_ms,
+      level: row.rate_level,
+    };
+  }
+  if (row.censored === null) {
+    throw new TypeError('an observation arrived with neither a rate nor a censor reason');
+  }
+  return { kind: 'censored', reason: row.censored, lastLevel: row.rate_last_level };
 }
 
 function toFidelity(kind: Fidelity['kind'], digits: number | null): Fidelity {

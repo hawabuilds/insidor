@@ -13,7 +13,7 @@
     "check:vocabulary": "node tools/check-vocabulary.mjs",
     "check:purity": "node tools/check-purity.mjs",
     "check:policy": "node tools/check-policy.mjs",
-    "check:boundaries": "depcruise --config .dependency-cruiser.cjs contracts core adapters store services app eval ml",
+    "check:boundaries": "depcruise --config .dependency-cruiser.cjs contracts core adapters store services app eval ml && node tools/check-boundaries-probe.mjs",
     "check": "pnpm typecheck && pnpm check:vocabulary && pnpm check:purity && pnpm check:policy && pnpm check:boundaries && pnpm test",
     "dev:runner": "node --experimental-strip-types services/runner/src/main.ts",
     "dev:chainwatch": "node --experimental-strip-types services/chainwatch/src/main.ts",

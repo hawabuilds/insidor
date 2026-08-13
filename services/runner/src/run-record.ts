@@ -31,12 +31,14 @@ export interface StageRunResult {
 }
 
 /**
- * `stage` is a plain string rather than StageName because chainwatch writes
- * rows to the same table under a name that is not one of the seven stages, and
- * the watchdog reads them all uniformly.
+ * `stage` is a StageName, not a plain string: `StageRunRepo.open` in contracts
+ * takes StageName, and this service only ever supervises the seven. Another
+ * writer that puts a non-stage name in the same table — chainwatch does, under
+ * its own name — needs that widening to happen in the contract, not to be
+ * asserted away at this seam.
  */
 export interface StageRunRecorder {
-  open(stage: StageName | string, host: string, startedAt: Millis): Promise<string>;
+  open(stage: StageName, host: string, startedAt: Millis): Promise<string>;
   close(runId: string, result: StageRunResult): Promise<void>;
 }
 

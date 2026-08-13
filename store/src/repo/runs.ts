@@ -15,13 +15,18 @@
  *   outcome = 'error'            it ran and it failed
  */
 
-import type { StageName } from '@insidor/contracts';
-import type { StageRunRepo } from '@insidor/contracts/ports/store.ts';
+import { STAGE_NAMES } from '@insidor/contracts';
+import type { Millis, StageName } from '@insidor/contracts';
+import type { StageRunOutcome, StageRunRepo } from '@insidor/contracts/ports/store.ts';
 
 import type { Db } from '../client.ts';
+import { toMillis, toMillisRequired, toTimestamp } from '../rows.ts';
+import type { TimestampColumn } from '../rows.ts';
 
 export interface StageRunClose {
-  readonly outcome: 'ok' | 'empty' | 'error';
+  /** ★ 'empty' is not 'error'. A stage that found nothing and a stage that died
+   *  must be different rows, or a dead pipeline looks like a quiet night. */
+  readonly outcome: StageRunOutcome;
   readonly err: string | null;
   readonly itemsIn: number;
   readonly itemsOut: number;
@@ -35,11 +40,19 @@ export class PgStageRunRepo implements StageRunRepo {
     this.#db = db;
   }
 
-  /** Open a run row. Call this first; if the process dies now, the NULL is the evidence. */
-  async open(stage: StageName, host: string): Promise<string> {
+  /**
+   * Open a run row. Call this first; if the process dies now, the NULL is the
+   * evidence.
+   *
+   * The clock is an argument rather than `now()`, for the same reason a stage is
+   * handed its clock: a run replayed from a recorded instant has to be able to say
+   * when it actually happened.
+   */
+  async open(stage: StageName, host: string, at: Millis): Promise<string> {
     const rows = await this.#db.query<{ id: string }>(
-      `insert into internal.stage_runs (stage, host) values ($1, $2) returning id::text`,
-      [stage, host],
+      `insert into internal.stage_runs (stage, host, started_at)
+       values ($1, $2, $3) returning id::text`,
+      [stage, host, toTimestamp(at)],
     );
     const row = rows[0];
     if (!row) throw new Error('stage run insert returned no row');
@@ -77,25 +90,57 @@ export class PgStageRunRepo implements StageRunRepo {
    * stage erroring every 60 seconds has a very recent last run and has been dead
    * for an hour.
    */
-  async lastSuccessAt(stage: StageName): Promise<Date | null> {
-    const rows = await this.#db.query<{ finished_at: Date | null }>(
+  async lastSuccessAt(stage: StageName): Promise<Millis | null> {
+    const rows = await this.#db.query<{ finished_at: TimestampColumn }>(
       `select max(finished_at) as finished_at
          from internal.stage_runs
         where stage = $1 and outcome in ('ok', 'empty')`,
       [stage],
     );
-    return rows[0]?.finished_at ?? null;
+    const row = rows[0];
+    return row ? toMillis(row.finished_at) : null;
   }
 
-  /** Runs still open past a deadline. A stage that hangs never throws and never alerts on its own. */
-  async openLongerThan(seconds: number): Promise<{ id: string; stage: string; startedAt: Date }[]> {
-    const rows = await this.#db.query<{ id: string; stage: string; started_at: Date }>(
+  /**
+   * Runs still open past a deadline. A stage that hangs never throws and never
+   * alerts on its own.
+   *
+   * `now` is passed in rather than read from the database so the watchdog's window
+   * is the watchdog's decision, and so the query means the same thing when it is
+   * replayed. The id rides along beyond what the port asks for: it is what turns
+   * "something is stuck" into a row somebody can go and look at.
+   */
+  async openLongerThan(
+    ms: number,
+    now: Millis,
+  ): Promise<readonly { readonly id: string; readonly stage: StageName; readonly startedAt: Millis }[]> {
+    const rows = await this.#db.query<{ id: string; stage: string; started_at: TimestampColumn }>(
       `select id::text, stage, started_at
          from internal.stage_runs
-        where finished_at is null and started_at < now() - make_interval(secs => $1)
+        where finished_at is null
+          and started_at < $1::timestamptz - make_interval(secs => $2::double precision)
         order by started_at asc`,
-      [seconds],
+      [toTimestamp(now), ms / 1000],
     );
-    return rows.map((row) => ({ id: row.id, stage: row.stage, startedAt: row.started_at }));
+    return rows.map((row) => ({
+      id: row.id,
+      stage: toStageName(row.stage),
+      startedAt: toMillisRequired(row.started_at, 'started_at'),
+    }));
   }
+}
+
+/**
+ * `stage` is a bare text column — the migration deliberately does not constrain it,
+ * so that a stage added in code is not a schema change. Which means a value read
+ * back has to be checked against the vocabulary rather than assumed to be in it: an
+ * unknown stage name is a row written by something that is not this code, and it
+ * should say so loudly rather than flow on as a StageName that is not one.
+ */
+function toStageName(value: string): StageName {
+  const known = STAGE_NAMES.find((stage) => stage === value);
+  if (known === undefined) {
+    throw new TypeError(`stage_runs.stage holds '${value}', which is not a stage name`);
+  }
+  return known;
 }

@@ -28,8 +28,17 @@ export interface MintCursor {
 /** The store side. Implemented in wiring.ts against @insidor/store. */
 export interface CursorStore {
   load(feedId: string): Promise<MintCursor>;
-  /** Written only AFTER the mints from that read are persisted. See main.ts. */
-  save(cursor: MintCursor): Promise<void>;
+  /**
+   * Written only AFTER the mints from that read are persisted. See main.ts.
+   *
+   * `coveredFromMs` is not decoration. There is no cursor table in the schema:
+   * the resume position is a column on the coverage row (`mint_coverage.cursor_ref`),
+   * because a position with no record of the window it closed is a claim we cannot
+   * check. So saving the cursor and declaring the window it completed are one
+   * write, and the caller has to say where that window started — the instant of
+   * the PREVIOUS successful read, not the instant this read began.
+   */
+  save(cursor: MintCursor, coveredFromMs: Millis): Promise<void>;
 }
 
 export function coldCursor(feedId: string): MintCursor {

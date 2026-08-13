@@ -35,12 +35,30 @@ create table public.observation (
   -- cooling, and cooling demotes it — so the failure hides acceleration, which is
   -- the only thing we are paid to notice.
   rate_per_min double precision,
+  -- The six CENSOR_REASONS of contracts/src/vocabulary.ts, spelled the same way.
+  -- 'no_elapsed' — two readings at the same instant — is one of them: it is a
+  -- division by zero, not a flat counter, and the two must not share a spelling.
   censored     text check (censored in
-                 ('unusable_fidelity', 'below_step', 'stale_counter', 'non_monotonic', 'no_prior')),
+                 ('unusable_fidelity', 'below_step', 'stale_counter', 'non_monotonic',
+                  'no_prior', 'no_elapsed')),
+
+  -- The rest of the measured branch. A rate without the interval it was differenced
+  -- over is unweightable, and a rate read back without its level has silently lost
+  -- half of what the reading said — so the union's two branches round-trip whole
+  -- rather than being rebuilt by guesswork on the way out.
+  rate_over_ms integer,
+  rate_level   double precision,
+  -- The censored branch's carry-forward: the most recent trustworthy level, or null
+  -- if there has never been one. Levels stay usable even when differences do not.
+  rate_last_level double precision,
 
   -- Exactly one of the two is set, always. There is no third state in which a row
   -- has neither a rate nor a reason for not having one.
   constraint rate_xor_censor check ((rate_per_min is null) = (censored is not null)),
+  constraint measured_rate_is_whole check
+    (rate_per_min is null or (rate_over_ms is not null and rate_level is not null)),
+  constraint censored_rate_carries_only_a_level check
+    (censored is null or (rate_over_ms is null and rate_level is null)),
   constraint quantized_declares_digits check
     (fidelity_kind <> 'quantized' or fidelity_digits is not null),
   constraint absent_has_no_value check

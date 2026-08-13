@@ -43,6 +43,22 @@
   padding: var(--gap-1) var(--gap-2);
 }
 
+/* Deliberately unmissable and deliberately not dismissable. See App.tsx. */
+.fixtureBar {
+  padding: var(--gap-2) var(--gap-4);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--warn, #d9a441) 12%, var(--page));
+  color: var(--ink-2, #b9b3a7);
+  font-size: var(--size-sm);
+  line-height: 1.5;
+}
+
+.fixtureBar strong {
+  color: var(--warn, #d9a441);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .main {
   padding: var(--gap-4);
   max-width: 1280px;

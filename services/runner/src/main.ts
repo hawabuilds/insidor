@@ -23,7 +23,7 @@ import { createHeartbeat } from './heartbeat.ts';
 import { createLogger, errorText } from './log.ts';
 import type { Loop } from './loop.ts';
 import { supervise, type SupervisorDeps } from './supervisor.ts';
-import { buildRuntime } from './wiring.ts';
+import { withRuntime } from './wiring.ts';
 
 import { admitLoop } from './loops/admit.ts';
 import { detectLoop } from './loops/detect.ts';
@@ -51,59 +51,65 @@ async function main(): Promise<void> {
   const cfg = loadRunnerConfig(process.env);
   log.info('booting', { host: cfg.host, healthPort: cfg.healthPort, heartbeat: cfg.heartbeat.kind });
 
-  const runtime = await buildRuntime(cfg, log);
-  const startedAt = Date.now();
-  const health = createHealthRegistry(cfg.host, startedAt);
-  const server = startHealthServer(cfg.healthPort, health, () => Date.now(), log);
+  // Everything runs INSIDE the runtime callback, because the singleton advisory
+  // lock lives exactly as long as the session that holds it. Returning from here
+  // is what releases the lock and closes the pool, in that order, and it happens
+  // only once the loops have stopped.
+  await withRuntime(cfg, log, async (runtime) => {
+    const startedAt = Date.now();
+    const health = createHealthRegistry(cfg.host, startedAt);
+    const server = startHealthServer(cfg.healthPort, health, () => Date.now(), log);
 
-  const ac = new AbortController();
-  const supervisorDeps: SupervisorDeps = {
-    stageRuns: runtime.stageRuns,
-    heartbeat: createHeartbeat(cfg.heartbeat, log),
-    health,
-    host: cfg.host,
-    log,
-    signal: ac.signal,
-    now: () => Date.now(),
-    sleep,
-    random: Math.random,
-  };
+    const ac = new AbortController();
+    const supervisorDeps: SupervisorDeps = {
+      stageRuns: runtime.stageRuns,
+      heartbeat: createHeartbeat(cfg.heartbeat, log),
+      health,
+      host: cfg.host,
+      log,
+      signal: ac.signal,
+      now: () => Date.now(),
+      sleep,
+      random: Math.random,
+    };
 
-  const loops: readonly Loop[] = [
-    admitLoop(runtime.loopDeps),
-    trackLoop(runtime.loopDeps),
-    detectLoop(runtime.loopDeps),
-    groupLoop(runtime.loopDeps),
-    qualifyLoop(runtime.loopDeps),
-    resolveLoop(runtime.loopDeps),
-    rankLoop(runtime.loopDeps),
-  ];
+    const loops: readonly Loop[] = [
+      admitLoop(runtime.loopDeps),
+      trackLoop(runtime.loopDeps),
+      detectLoop(runtime.loopDeps),
+      groupLoop(runtime.loopDeps),
+      qualifyLoop(runtime.loopDeps),
+      resolveLoop(runtime.loopDeps),
+      rankLoop(runtime.loopDeps),
+    ];
 
-  const running = loops.map((loop) => supervise(loop, supervisorDeps));
-  log.info('supervising', { loops: loops.map((l) => l.stage) });
+    const running = loops.map((loop) => supervise(loop, supervisorDeps));
+    log.info('supervising', { loops: loops.map((l) => l.stage) });
 
-  let shuttingDown = false;
-  const stop = async (signal: string): Promise<void> => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    log.info('shutting down', { signal, graceMs: cfg.shutdownGraceMs });
+    // Both listeners stay registered, so a second SIGTERM from an impatient
+    // deploy is absorbed rather than killing the process mid-run: `resolve` on
+    // an already-settled promise is a no-op.
+    const signalled = new Promise<string>((resolve) => {
+      process.on('SIGTERM', () => resolve('SIGTERM'));
+      process.on('SIGINT', () => resolve('SIGINT'));
+    });
+
+    const reason = await Promise.race([
+      signalled,
+      Promise.allSettled(running).then(() => 'every loop returned'),
+    ]);
+    log.info('shutting down', { reason, graceMs: cfg.shutdownGraceMs });
     ac.abort();
 
     // Bounded: a loop wedged on a hung vendor call must not hold the deploy
     // open forever. Its run row stays open, which is the correct record of
     // what happened.
     await Promise.race([Promise.allSettled(running), delay(cfg.shutdownGraceMs)]);
-
     server.close();
-    await runtime.close();
-    log.info('stopped');
-    process.exit(0);
-  };
+  });
 
-  process.on('SIGTERM', () => void stop('SIGTERM'));
-  process.on('SIGINT', () => void stop('SIGINT'));
-
-  await Promise.allSettled(running);
+  log.info('stopped');
+  process.exit(0);
 }
 
 // Fail loudly. A process that survives its own unhandled rejection is a process

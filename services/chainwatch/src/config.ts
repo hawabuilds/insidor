@@ -12,6 +12,8 @@
 
 import { hostname } from 'node:os';
 
+import { chainId, type ChainId } from '@insidor/contracts';
+
 export type HeartbeatConfig =
   | { readonly kind: 'off' }
   | {
@@ -30,6 +32,13 @@ export interface ChainwatchConfig {
 
   /** Which feed this process follows. One process per feed, one cursor per feed. */
   readonly feedId: string;
+  /**
+   * The settlement layer this feed watches. Required because the coverage log is
+   * keyed by chain — a gap row cannot be written without one, and a gap has to be
+   * writable on a cycle that saw no mints at all, so it can never be inferred from
+   * what the feed returned.
+   */
+  readonly chain: ChainId;
   readonly transport: 'poll' | 'stream';
   readonly pollIntervalMs: number;
   readonly pageLimit: number;
@@ -104,6 +113,7 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
   const singletonLockName = r.text('SINGLETON_LOCK_NAME');
 
   const feedId = r.text('MINT_FEED_ID');
+  const chainToken = r.text('MINT_FEED_CHAIN');
   const transport = r.choice('MINT_FEED_TRANSPORT', ['poll', 'stream'] as const);
   const pollIntervalMs = r.int('POLL_INTERVAL_MS', 1_000, 600_000);
   const pageLimit = r.int('PAGE_LIMIT', 1, 10_000);
@@ -132,6 +142,13 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
     problems.push('COVERAGE_TOLERANCE_MS must be greater than POLL_INTERVAL_MS');
   }
 
+  // `chainId` throws on a token it cannot make an id from, and a throw from inside
+  // the reader would replace the full list of problems with the first one found.
+  // So the shape is checked here and the id is constructed after the report.
+  if (chainToken !== '' && (chainToken.includes(':') || chainToken.includes('|'))) {
+    problems.push("MINT_FEED_CHAIN must be a bare chain token, with no ':' or '|'");
+  }
+
   if (problems.length > 0) throw new ConfigError(problems);
 
   return {
@@ -141,6 +158,7 @@ export function loadChainwatchConfig(env: Env): ChainwatchConfig {
     shutdownGraceMs,
     singletonLockName,
     feedId,
+    chain: chainId(chainToken),
     transport,
     pollIntervalMs,
     pageLimit,

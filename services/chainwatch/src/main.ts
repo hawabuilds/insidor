@@ -27,14 +27,14 @@
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { backoffDelayMs, type BackoffOptions } from './backoff.ts';
-import { loadChainwatchConfig } from './config.ts';
+import { loadChainwatchConfig, type ChainwatchConfig } from './config.ts';
 import { createCoverage } from './coverage.ts';
-import { coldCursor, type MintCursor } from './cursor.ts';
+import type { MintCursor } from './cursor.ts';
 import { createHeartbeat } from './heartbeat.ts';
 import { createWatchState, startHealthServer } from './health.ts';
 import { createLogger, errorText } from './log.ts';
 import type { RunOutcome } from './run-record.ts';
-import { buildRuntime } from './wiring.ts';
+import { withRuntime, type Runtime } from './wiring.ts';
 
 const log = createLogger({ svc: 'chainwatch' });
 
@@ -56,12 +56,19 @@ async function main(): Promise<void> {
   log.info('booting', {
     host: cfg.host,
     feedId: cfg.feedId,
+    chain: cfg.chain,
     transport: cfg.transport,
     pollIntervalMs: cfg.pollIntervalMs,
     coverageToleranceMs: cfg.coverageToleranceMs,
   });
 
-  const runtime = await buildRuntime(cfg, log);
+  // The loop runs INSIDE the singleton lock rather than after acquiring one,
+  // because a session advisory lock lives exactly as long as its session. See
+  // wiring.ts. Everything below is the same cycle it always was.
+  await withRuntime(cfg, log, (runtime) => watch(cfg, runtime));
+}
+
+async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
   const startedAt = Date.now();
   const state = createWatchState(startedAt);
   const server = startHealthServer(
@@ -94,15 +101,27 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => stop('SIGTERM'));
   process.on('SIGINT', () => stop('SIGINT'));
 
-  // Resume. If the cursor cannot be loaded we start cold — and say so as a
-  // cursor_reset gap, because a cold start after a warm one is not the same
-  // thing as a first ever start.
+  // Resume.
+  //
+  // A feed that has never been watched loads a COLD cursor and that is a normal,
+  // successful load: there is no earlier window, so there is nothing to have
+  // missed. A load that THROWS is the other thing entirely — we cannot see the
+  // watermark, and there may well be one. Starting cold on that would erase it and
+  // then write a coverage row claiming the window began at this read, which turns
+  // an outage into a clean-looking run and costs exactly the evidence this process
+  // exists to produce. So it is fatal, deliberately: the container restarts, the
+  // watermark is still in the table, and the silence becomes a recorded gap on the
+  // first read that succeeds. A process that refuses to start is recoverable; a
+  // process that quietly forgets where it was is not.
   let cursor: MintCursor;
   try {
     cursor = await runtime.cursors.load(cfg.feedId);
   } catch (e) {
-    log.error('cursor could not be loaded; starting cold', { err: errorText(e) });
-    cursor = coldCursor(cfg.feedId);
+    server.close();
+    throw new Error(
+      `cursor for ${cfg.feedId} could not be loaded (${errorText(e)}); refusing to start cold ` +
+        'over a watermark that may exist — restart and resume rather than lose the window',
+    );
   }
 
   // ★ The watermark survives the restart. This is what turns a deploy into a
@@ -129,6 +148,12 @@ async function main(): Promise<void> {
       const page = await runtime.feed.read(cursor, cfg.pageLimit, ac.signal);
       seen = page.mints.length;
 
+      // The window this cycle is about to close: from the last successful read to
+      // this one. Read BEFORE `observed()` moves the watermark. On the first read
+      // ever there is no earlier one, so the window starts where this read did —
+      // never earlier, which would claim coverage of time nobody watched.
+      const coveredFrom = coverage.watermark() ?? page.from;
+
       // 2 — durable before the cursor moves past them.
       if (seen > 0) await runtime.sink.recordMints(page.mints);
 
@@ -151,9 +176,11 @@ async function main(): Promise<void> {
         log.warn('page overflow recorded', { ...overflow });
       }
 
-      // 4 — and only now.
+      // 4 — and only now. The save carries the window it closed, because the
+      // resume position is a column on the coverage row and not a table of its
+      // own: a position nobody can tie to an interval proves nothing.
       cursor = page.cursor;
-      await runtime.cursors.save(cursor);
+      await runtime.cursors.save(cursor, coveredFrom);
 
       state.lastSuccessAt = page.to;
       state.mintsSeen += seen;
@@ -200,7 +227,8 @@ async function main(): Promise<void> {
   }
 
   server.close();
-  await runtime.close();
+  // The pool and the singleton lock are closed by `withRuntime` on the way out of
+  // this function, in a `finally`, including when it leaves by throwing.
   log.info('stopped');
 }
 

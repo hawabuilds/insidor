@@ -78,14 +78,13 @@ export function replayPlatform(tape: Tape, opts: ReplayOptions): ReplayPlatform 
       // correctness claim, and silently serving post-cutoff items would produce a
       // replay that looks blind and is not. A tape recorded without a cutoff cannot
       // be made clean retroactively, so the honest response is to refuse.
-      if (query.untilMs !== null) {
-        const leaked = tape.items.filter(
-          (it) => it.postedAt !== null && it.postedAt >= query.untilMs!,
-        );
+      const cutoff = query.untilMs;
+      if (cutoff !== null) {
+        const leaked = tape.items.filter((it) => it.postedAt !== null && it.postedAt >= cutoff);
         if (leaked.length > 0) {
           throw new Error(
-            `replay: tape "${tape.name}" holds ${leaked.length} item(s) posted at or after the ` +
-              `cutoff ${new Date(query.untilMs).toISOString()}. This tape was recorded without ` +
+            `replay: tape "${tape.source}" holds ${leaked.length} item(s) posted at or after the ` +
+              `cutoff ${new Date(cutoff).toISOString()}. This tape was recorded without ` +
               `that cutoff and cannot be replayed blind against it — re-record it with ` +
               `untilMs set, or replay it with untilMs null and do not call the result blind.`,
           );

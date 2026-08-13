@@ -36,7 +36,50 @@ export class ReadError extends Error {
  */
 const BASE = (import.meta.env?.['VITE_READ_URL'] as string | undefined) ?? '';
 
+/**
+ * No endpoint configured, in a dev build: serve the sample payloads instead of failing.
+ *
+ * Both halves of that condition matter. `import.meta.env.DEV` is a literal the bundler
+ * replaces, so in a production build this is `false && ...` and the whole branch — plus the
+ * dynamic import of `fixtures.ts`, plus the fixtures themselves — is dropped from the output.
+ * There is no runtime flag that can turn sample data on in front of a user.
+ *
+ * The payloads still go through `read`'s caller and therefore through `decode.ts`, exactly
+ * like a network response. Fixtures that bypassed the decoder could hold shapes the server
+ * can never send, and every screen designed against them would be designed against a wire
+ * format that does not exist.
+ */
+const USE_FIXTURES = import.meta.env?.DEV === true && BASE === '';
+
+/**
+ * Exported so the shell can SAY it is showing sample data.
+ *
+ * Non-negotiable: numbers that look like measurements have to be labelled as not being
+ * measurements, on screen, every second they are up. An unlabelled fixture is how a
+ * screenshot of invented market caps ends up in a pitch deck.
+ */
+export const USING_FIXTURES = USE_FIXTURES;
+
+async function readFixture(path: string): Promise<unknown> {
+  const { fixtureBoard, fixtureStory } = await import('./fixtures.ts');
+  if (path.startsWith('/board/')) return fixtureBoard();
+  if (path.startsWith('/story/')) {
+    const id = decodeURIComponent(path.slice('/story/'.length));
+    const story = fixtureStory(id);
+    /* An id the fixtures do not cover is a 404, not an invented page. Fabricating a story
+       for every id would hide the fact that this endpoint does not exist yet. */
+    if (story === null) throw new ReadError(path, 404);
+    return story;
+  }
+  /* Quotes are a live-market call. There is no honest sample of one, because a stale quote
+     is not a quote — so this reports missing rather than returning a plausible number. */
+  throw new ReadError(path, 501);
+}
+
 async function read(path: string, signal?: AbortSignal): Promise<unknown> {
+  if (USE_FIXTURES) return readFixture(path);
+
+
   const response = await fetch(`${BASE}${path}`, {
     headers: { accept: 'application/json' },
     /* The board is never cacheable — every number is stale within a tick — so say so once

@@ -12,6 +12,9 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { CENSOR_REASONS, MINT_TIME_SOURCES } from '@insidor/contracts';
+import { STORY_STATES } from '@insidor/contracts/story.ts';
+
 import { loadMigrations } from './migrate.ts';
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
@@ -108,4 +111,31 @@ test('a vendor-supplied mint time can never claim to be exact', () => {
 
 test('a stage run records an outcome distinct from an error', () => {
   assert.match(read('0008_runs.sql'), /outcome in \('ok', 'empty', 'error'\)/);
+});
+
+/**
+ * The closed lists in the schema and the closed lists in the vocabulary are the
+ * same lists, and this is the check that keeps saying so.
+ *
+ * A CHECK constraint that has drifted from its union is the worst kind of
+ * disagreement: it typechecks perfectly and fails at 3am on the first row of the
+ * kind nobody wrote a test for. contracts/ is the authority in both directions —
+ * where these disagreed, the migration was the thing that was wrong.
+ */
+const checkedValues = (sql: string, column: string): readonly string[] => {
+  const constraint = new RegExp(`${column} in\\s*\\(([^)]*)\\)`).exec(stripComments(sql));
+  assert.ok(constraint, `no 'check (${column} in (…))' constraint found`);
+  const list = constraint[1];
+  assert.ok(list, `the '${column}' constraint has no value list`);
+  return [...list.matchAll(/'([^']+)'/g)].flatMap((match) => (match[1] === undefined ? [] : [match[1]]));
+};
+
+test('the schema and the vocabulary agree on every closed list', () => {
+  assert.deepEqual([...checkedValues(read('0004_stories.sql'), 'state')].sort(), [...STORY_STATES].sort());
+  assert.deepEqual([...checkedValues(read('0003_observations.sql'), 'censored')].sort(), [
+    ...CENSOR_REASONS,
+  ].sort());
+  assert.deepEqual([...checkedValues(read('0005_assets.sql'), 'minted_at_source')].sort(), [
+    ...MINT_TIME_SOURCES,
+  ].sort());
 });

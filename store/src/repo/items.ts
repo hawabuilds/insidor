@@ -12,11 +12,12 @@
  * produces a rate that is silently wrong rather than absent.
  */
 
-import type { Item, CounterSet, Fingerprint, MediaRef } from '@insidor/contracts';
+import type { Item, CounterSet, Fingerprint, MediaRef, Millis } from '@insidor/contracts';
 import type { ItemId, SourceId } from '@insidor/contracts/ids.ts';
 import type { ItemRepo } from '@insidor/contracts/ports/store.ts';
 
 import type { Db } from '../client.ts';
+import { NotImplemented } from '../not-implemented.ts';
 import { reBrand, toBitLiteral, toMillis, toMillisRequired, toTimestamp } from '../rows.ts';
 import type { TimestampColumn } from '../rows.ts';
 
@@ -116,11 +117,64 @@ export class PgItemRepo implements ItemRepo {
     return this.#toItem(row, await this.#fingerprintsFor([row.item_id]));
   }
 
-  async byIds(ids: readonly ItemId[]): Promise<Item[]> {
-    if (ids.length === 0) return [];
+  /**
+   * A map rather than an array, and the difference is not cosmetic: a caller that
+   * zips a returned array against the ids it asked for is silently wrong the first
+   * time one of them is missing, and an item disappearing between two stages is
+   * normal rather than exceptional. A map makes the absence something the caller
+   * has to meet.
+   */
+  async byIds(ids: readonly ItemId[]): Promise<ReadonlyMap<ItemId, Item>> {
+    const found = new Map<ItemId, Item>();
+    if (ids.length === 0) return found;
+
     const rows = await this.#db.query<ItemRow>(`${SELECT_ITEM} where item_id = any($1)`, [[...ids]]);
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
+    for (const row of rows) {
+      const item = this.#toItem(row, fingerprints);
+      found.set(item.itemId, item);
+    }
+    return found;
+  }
+
+  /**
+   * Items admitted since an instant, oldest first — the query every stage that
+   * walks forward in time lives on.
+   *
+   * `first_seen_at` IS the admission clock: an item is in this table because the
+   * admit stage put it there, and the column is never moved forward on a re-arrival
+   * (see upsert). It is not `posted_at`, which is the source's claim about the
+   * world and is null whenever the source omits it or is known to lie.
+   */
+  async admittedSince(at: Millis, limit: number): Promise<readonly Item[]> {
+    const rows = await this.#db.query<ItemRow>(
+      `${SELECT_ITEM} where first_seen_at >= $1 order by first_seen_at asc limit $2`,
+      [toTimestamp(at), limit],
+    );
+    const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => this.#toItem(row, fingerprints));
+  }
+
+  /**
+   * Items due a re-read, newest tier first.
+   *
+   * Left unimplemented deliberately, and throwing rather than returning `[]`. The
+   * re-read cadence is the tracking policy — which tier an item is in at what age,
+   * and how long a tier waits — and policy does not belong in SQL, which is exactly
+   * where the previous build's schedule went to hide. There is also no column to
+   * schedule against yet: `counters_observed_at` records when we last read, not when
+   * we next should, and deriving the second from the first here would bury the
+   * cadence in this file.
+   *
+   * A tracking loop that calls this gets a loud, named gap in
+   * `internal.stage_runs.err`. One that got an empty array would look exactly like a
+   * loop with nothing to do, which is the failure this whole package is a reaction to.
+   */
+  async dueForObservation(_now: Millis, _limit: number): Promise<readonly Item[]> {
+    throw new NotImplemented(
+      'ItemRepo.dueForObservation',
+      'the re-read cadence is tracking policy and there is no next_read_at column to schedule against',
+    );
   }
 
   async bySourceItemId(source: SourceId, sourceItemId: string): Promise<Item | null> {
