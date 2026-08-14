@@ -94,6 +94,11 @@ const manyCoins = {
   reach: m(2_840_000),
   spark: { points: rising(120_000, 2_840_000, 15), windowMs: WINDOW },
   momentum: 'rising',
+  /* ★ Three coins, so NO market cap — and the two tempting answers are both lies. Their
+     caps sum to 452,100, a number that is true of nothing; the largest is 412,000, which
+     is a choice about which coin is the real one dressed up as a measurement. Declining is
+     the same refusal `unsure` makes, arriving through a different branch. */
+  marketCapUsd: noValue('not_reported'),
   firstSeenAt: at(T0 - 3 * HOUR - 14 * MIN),
   isNew: false,
   coins: {
@@ -163,6 +168,9 @@ const oneCoin = {
   reach: m(486_000),
   spark: { points: rising(9_000, 486_000, 15), windowMs: WINDOW },
   momentum: 'rising',
+  /* One settled coin, so the row's cap IS that coin's cap — the same object, not a second
+     reading of it. This is the only branch that carries a number. */
+  marketCapUsd: m(186_400),
   firstSeenAt: at(T0 - 2 * HOUR - 41 * MIN),
   isNew: false,
   coins: {
@@ -202,6 +210,9 @@ const noCoin = {
   reach: m(71_400),
   spark: { points: rising(400, 71_400, 8), windowMs: WINDOW },
   momentum: 'rising',
+  /* Nothing minted, so there is no market to have a number in. A different absence from
+     the one below it, and it says so. */
+  marketCapUsd: noValue('not_minted'),
   firstSeenAt: at(T0 - 11 * MIN),
   isNew: true,
   coins: { kind: 'none' },
@@ -226,6 +237,9 @@ const unsure = {
   reach: m(233_000),
   spark: { points: rising(15_000, 233_000, 15), windowMs: WINDOW },
   momentum: 'rising',
+  /* Six coins claim it and none is settled. The payload carries no coin at all, so there
+     is not even a cap here to be tempted by — which is the union doing its job twice. */
+  marketCapUsd: noValue('not_reported'),
   firstSeenAt: at(T0 - 47 * MIN),
   isNew: false,
   coins: { kind: 'unsure', claimCount: 6 },
@@ -249,6 +263,9 @@ const noReach = {
   reach: noValue('not_reported'),
   spark: { points: flat(4_200, 15, 260), windowMs: WINDOW },
   momentum: 'steady',
+  /* Two coins, and one of them has no cap of its own. Even "the one we can read" would be
+     a pick, so this is absent like every other multi-coin row. */
+  marketCapUsd: noValue('not_reported'),
   firstSeenAt: at(T0 - 5 * HOUR - 8 * MIN),
   isNew: false,
   coins: {
@@ -323,6 +340,10 @@ const censored = {
     windowMs: WINDOW,
   },
   momentum: 'cooling',
+  /* One settled coin, so its cap is the row's. Note this row's AGE is unknown while its
+     cap is known — the two absences are independent, and neither is allowed to infect the
+     other with a zero. */
+  marketCapUsd: m(1_040_000),
   firstSeenAt: noTime('not_read_yet'),
   isNew: false,
   coins: {

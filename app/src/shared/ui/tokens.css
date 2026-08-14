@@ -1,6 +1,12 @@
 /*
  * THE SETTLED PALETTE. One file, imported once, in main.tsx.
  *
+ * This is Hawa's design system, ported verbatim from her styles/index.css. Her names are the
+ * canonical ones (--bg0..--bg3, --ink, --muted, --dim, --line, --ion, --lime, --red, --disp,
+ * --sans, --mono); the names the components already reference (--page, --card, --raised,
+ * --text*, --cyan, --font-*) are defined BELOW in terms of hers, so every existing module
+ * inherits the palette without being rewritten. Add new rules against her names.
+ *
  * Every colour, type face and rhythm in the app resolves to a variable declared here. A
  * component that needs a colour not in this list is a component making a product judgement
  * about emphasis, and that judgement belongs in a token with a name.
@@ -8,6 +14,7 @@
  * Two rules that are about correctness rather than taste:
  *   - Numbers are ALWAYS mono with tabular figures. A table whose digits change width
  *     shifts sideways every tick and becomes unreadable at exactly the moment it matters.
+ *     `font-variant-numeric: tabular-nums` is set on `body`, so this holds by default.
  *   - There is no green/red pair for "good/bad" beyond --up and --down, and those are used
  *     by sign only. Colour that encodes magnitude is a threshold in a stylesheet.
  *
@@ -16,34 +23,52 @@
  */
 
 :root {
-  /* surfaces */
-  --page: #060607;
-  --card: #0c0c0e;
-  --line: #1a1a1f;
-  --raised: #121216;
-
-  /* text */
-  --text: #f4f5f7;
-  --text-2: #8a8a93;
-  --text-3: #5a5a62;
-
-  /* accents */
-  --cyan: #3de0ff;
+  /* ---- Hawa's tokens, verbatim (styles/index.css:1-8) ---- */
+  --bg0: #060607;
+  --bg1: #0c0c0e;
+  --bg2: #131316;
+  --bg3: #1a1a1e;
+  --ink: #f4f5f7;
+  --muted: #8a8a93;
+  --dim: #5a5a62;
+  --line: #212127;
+  --ion: #3de0ff;
   --lime: #9bf03c;
   --red: #ff5c6e;
-  --amber: #ffb84d;
+  --disp: 'Clash Display', -apple-system, sans-serif;
+  --sans: 'General Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Amber is not a token in her sheet — she writes #ffb84c / #ffb020 literally, on exactly
+     three surfaces (ticker taken, safety warn, degraded-feed banner). Named here because the
+     skeleton's components already ask for --amber/--warn and a fallback colour in a module
+     file is a colour nobody can change in one place. */
+  --amber: #ffb84c;
+  --warn: #ffb84c;
+  --ink-2: #ffd98a;
+
+  /* ---- aliases: the skeleton's names, expressed in hers ----
+     These exist so components written against the old names keep working and pick up the
+     new palette for free. Prefer her names in anything new. */
+  --page: var(--bg0);
+  --card: var(--bg1);
+  --raised: var(--bg2);
+  --text: var(--ink);
+  --text-2: var(--muted);
+  --text-3: var(--dim);
+  --cyan: var(--ion);
 
   /* semantic — the only place a meaning is attached to a colour */
   --up: var(--lime);
   --down: var(--red);
-  --flat: var(--text-2);
+  --flat: var(--muted);
   --alert: var(--amber);
-  --accent: var(--cyan);
+  --accent: var(--ion);
 
   /* type */
-  --font-display: 'Clash Display', 'General Sans', system-ui, sans-serif;
-  --font-body: 'General Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-display: var(--disp);
+  --font-body: var(--sans);
+  --font-mono: var(--mono);
 
   --size-xs: 11px;
   --size-sm: 12px;
@@ -65,59 +90,251 @@
   --col-age: 5ch;
   --col-spark: 96px;
   --col-action: 11ch;
+
+  /* shell geometry, from her layout (index.css:103-107). The nav is 58px but the rail pins
+     at 56px in her original — a 2px overlap that hides under the nav's backdrop-filter.
+     Kept verbatim: matching her pixel output beats internal consistency. */
+  --nav-h: 58px;
+  --rail-top: 56px;
+  --rail-w: 460px;
+
+  /* her house easing — fast out, settle in */
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
+/* ---- base (index.css:9-17) ---- */
 * {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
 html,
 body {
-  margin: 0;
-  padding: 0;
-  background: var(--page);
-  color: var(--text);
-  font-family: var(--font-body);
-  font-size: var(--size-md);
+  height: 100%;
+}
+
+body {
+  background: var(--bg0);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* React mounts here; the rail's sticky full-height column needs the chain to be tall. */
+#root {
+  min-height: 100%;
+}
+
+::selection {
+  background: rgba(61, 224, 255, 0.25);
+}
+
+a {
+  color: var(--ion);
+  text-decoration: none;
+}
+
+button {
+  font-family: var(--sans);
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
 }
 
 h1,
 h2,
 h3 {
-  font-family: var(--font-display);
+  font-family: var(--disp);
   font-weight: 600;
   letter-spacing: -0.01em;
-  margin: 0;
 }
 
 /* Every number in the product goes through this. See ui/Num.tsx. */
 .mono {
-  font-family: var(--font-mono);
+  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+.up {
+  color: var(--lime);
 }
 
-button {
-  font: inherit;
-  color: inherit;
+.down {
+  color: var(--red);
+}
+
+/* ---- premium polish (index.css:19-36) ---- */
+body {
+  /* tabular figures for the WHOLE app, not just the cells that remember to ask */
+  font-variant-numeric: tabular-nums;
+  background: radial-gradient(120% 78% at 50% -12%, rgba(61, 224, 255, 0.045), transparent 58%),
+    var(--bg0);
+  /* welded to the viewport: the cyan wash stays at the top while the board scrolls under it */
+  background-attachment: fixed;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e1e24;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2b2b34;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1e1e24 transparent;
 }
 
 :focus-visible {
-  outline: 2px solid var(--cyan);
+  outline: 2px solid rgba(61, 224, 255, 0.5);
   outline-offset: 2px;
+  border-radius: 6px;
 }
 
-/* The board reorders. A user who asked us not to animate is not asked twice. */
+button,
+a,
+input {
+  transition: all 0.18s var(--ease);
+}
+
+/* ---- keyframes (index.css:33-36, 99, 126, 358, 384, 608, 613) ----
+   These are the GLOBAL copies, for global classes (`.flash-up` / `.flash-dn` below) and for
+   any plain stylesheet.
+
+   ★ A MODULE CANNOT USE THEM AND MUST DECLARE ITS OWN. This file previously claimed the
+   opposite — that CSS Modules only rewrites an animation name when the matching @keyframes
+   is in the same file, so a module could say `animation: slidein .45s ease` and land here.
+   That is false in this toolchain, and the build output is the proof: the six module-side
+   references compiled to `_pop_1ak6y_1`, `_fade_1ak6y_1`, `_pulse_dgc2j_1`,
+   `_slidein_dgc2j_1`, `_pulse_gfqlh_356` and `_pop_13thx_1`, none of which had a keyframes
+   block to resolve against. The palette's entrance, the mint alert's entrance and both live
+   pips were silently doing nothing — a stylesheet that compiles, renders, and quietly drops
+   the motion.
+
+   So each module that animates declares the keyframes it needs, next to the rule that uses
+   them. That duplicates six small blocks and is worth it: the alternative is motion that
+   fails silently, which is the failure mode that produced this comment. */
+
+/* a figure that just changed: goes lime/red and decays back to ink over 600ms.
+   ★ Fires on the ARRIVAL of a new value, never on a re-render, and never on a dash —
+   an absent number renders as a dash and a dash must not animate. */
+@keyframes flashUp {
+  0% {
+    color: var(--lime);
+  }
+  100% {
+    color: var(--ink);
+  }
+}
+
+@keyframes flashDn {
+  0% {
+    color: var(--red);
+  }
+  100% {
+    color: var(--ink);
+  }
+}
+
+.flash-up {
+  animation: flashUp 0.6s ease;
+}
+
+.flash-dn {
+  animation: flashDn 0.6s ease;
+}
+
+/* the live pip. Opacity, not box-shadow — the glow pulses with the dot and it is cheaper. */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* a new item arriving at the TOP of a feed: it appears to be pushed down into place. */
+@keyframes slidein {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes skel {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes panelPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop {
+  from {
+    transform: translateY(10px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* The board reorders. A user who asked us not to animate is not asked twice.
+   Hawa's sheet has no such guard; this is additive and changes nothing visually. */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

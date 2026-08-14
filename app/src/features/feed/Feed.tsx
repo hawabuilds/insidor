@@ -1,22 +1,39 @@
 /**
- * THE RANKED BOARD.
+ * THE RANKED BOARD, in Hawa's Trending view: her section head, her two sub-tabs, her toolbar,
+ * and her narratives table.
  *
- * Two properties this component must not lose:
+ * THREE PROPERTIES THIS COMPONENT MUST NOT LOSE
  *
- *   - It renders `order.map(id => <FeedRow key={id}/>)` and never sorts, filters or slices.
- *     The server commits `(tick, order)`; a client that re-sorts has silently replaced the
- *     ranking design with whatever the component author thought was reasonable.
+ *   - It renders `order.map((id, i) => <FeedRow rank={i + 1}/>)` and never sorts, filters or
+ *     slices. The server commits `(tick, order)`; a client that re-sorts has silently replaced
+ *     the ranking design with whatever the component author thought was reasonable. Hawa's
+ *     header cells were click-to-sort; ours are labels, and the sort affordances are gone
+ *     rather than merely inert — see the note at the top of feed.module.css.
+ *
+ *   - The `#` column is that `i + 1` and nothing else. It is computed here, at render, from
+ *     the committed order. It is not a field on `BoardRow`, it is not in `BOARD_ROW_FIELDS`,
+ *     and it must never become either.
+ *
  *   - Keying by story id means React MOVES existing DOM nodes on a reorder rather than
  *     recreating them, so hover, focus and text selection survive a reorder that is applied.
  *
- * The freeze is attached here, to this element, because "inside the board" is what holds the
- * order. Values keep patching while frozen; the pill says how many frames are waiting.
+ * The freeze is attached to the board element, because "inside the board" is what holds the
+ * order. Values keep patching while frozen; the pill says how many frames are waiting. The
+ * two panes are display-toggled rather than mounted and unmounted — that is Hawa's mechanism
+ * (`.trend-pane` / `.trend-pane.on`) and it is also what keeps that element, and therefore its
+ * listeners, alive across a tab switch.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { BoardStore } from '../../shared/api/index.ts';
-import { fetchBoard, useBoardMeta, useBoardOrder, useFreezeWhileInteracting } from '../../shared/api/index.ts';
+import {
+  fetchBoard,
+  useBoardMeta,
+  useBoardOrder,
+  useFreezeWhileInteracting,
+  USING_FIXTURES,
+} from '../../shared/api/index.ts';
 import type { BuyAction } from './row-action.ts';
 import { FeedRow } from './FeedRow.tsx';
 import styles from './feed.module.css';
@@ -24,18 +41,52 @@ import styles from './feed.module.css';
 /** How often the age column re-reads the clock. Ages are coarse; a second is plenty. */
 const CLOCK_MS = 1_000;
 
+/**
+ * Where the numbers on this screen came from. Derived, not asserted: a hardcoded "ingest is
+ * not running" is a sentence that goes stale the day it starts running, and a provenance
+ * label that has quietly become false is worse than none.
+ *
+ * `USING_FIXTURES` is a build-time literal — false whenever a read endpoint is configured, and
+ * the fixtures are dropped from the bundle entirely in a production build.
+ */
+const SOURCE = USING_FIXTURES
+  ? {
+      label: 'sample data',
+      title:
+        'Every number on this board is invented. No database and no ingest are connected — these rows exist to show the rules, not the market.',
+    }
+  : {
+      label: 'local database',
+      title:
+        'This board is computed from the local database. Nothing is ingesting into it right now, so it is a snapshot rather than a market feed.',
+    };
+
+/**
+ * Her Trending sub-tabs (index.html:769-774). Two bare words, not a chip group.
+ *
+ * ★ Her first tab read "Narratives". It reads "Stories" here for the reason set out in the
+ * NAV MAPPING note in App.tsx: "narrative" is our internal name for the grouping stage and is
+ * banned from app/src, while "story" is the word the wire and the projection actually use.
+ * Styling untouched — this is the same two-bare-word tab strip she drew.
+ */
+type Pane = 'stories' | 'tokens';
+
 export interface FeedProps {
   readonly viewId: string;
   readonly store: BoardStore;
+  /** The view heading. Owned by the shell, which is what knows which route is on screen. */
+  readonly title: string;
+  readonly sub: string;
   readonly onOpenStory: (storyId: string) => void;
   readonly onBuy: (action: BuyAction) => void;
 }
 
-export function Feed({ viewId, store, onOpenStory, onBuy }: FeedProps) {
+export function Feed({ viewId, store, title, sub, onOpenStory, onBuy }: FeedProps) {
   const boardRef = useRef<HTMLDivElement | null>(null);
   const order = useBoardOrder();
   const meta = useBoardMeta();
   const [now, setNow] = useState(() => Date.now());
+  const [pane, setPane] = useState<Pane>('stories');
 
   useFreezeWhileInteracting(boardRef, store);
 
@@ -64,45 +115,130 @@ export function Feed({ viewId, store, onOpenStory, onBuy }: FeedProps) {
 
   return (
     <>
-      <div className={styles['status']}>
-        <span className={`${styles['dot']} ${meta.connected ? '' : styles['dotOff']}`} />
-        <span>{meta.connected ? 'live' : 'reconnecting'}</span>
-        {meta.pendingCount > 0 ? (
-          <button
-            type="button"
-            className={styles['pill']}
-            onClick={() => store.setFrozen(false)}
+      <div className={styles['vhead']}>
+        <div className={styles['vtitle']}>{title}</div>
+        <div className={styles['vsub']}>
+          <span>{sub}</span>
+          <span
+            className={`${styles['simtag']} ${USING_FIXTURES ? styles['simtagFixtures'] : ''}`}
+            title={SOURCE.title}
           >
-            {meta.pendingCount} update{meta.pendingCount === 1 ? '' : 's'} waiting
-          </button>
-        ) : null}
+            {SOURCE.label}
+          </span>
+        </div>
       </div>
 
-      <div className={styles['board']} ref={boardRef} role="table" aria-label="ranked stories">
-        <div className={styles['header']} role="row">
-          <span />
-          <span>story</span>
-          <span className={styles['headerRight']}>views</span>
-          <span>activity</span>
-          <span className={styles['headerRight']}>age</span>
-          <span />
+      <div className={styles['subs']} role="tablist" aria-label="board">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={pane === 'stories'}
+          className={`${styles['sub']} ${pane === 'stories' ? styles['subOn'] : ''}`}
+          onClick={() => setPane('stories')}
+        >
+          Stories
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={pane === 'tokens'}
+          className={`${styles['sub']} ${pane === 'tokens' ? styles['subOn'] : ''}`}
+          onClick={() => setPane('tokens')}
+        >
+          Tokens
+        </button>
+      </div>
+
+      <div className={`${styles['pane']} ${pane === 'stories' ? styles['paneOn'] : ''}`}>
+        <div className={styles['tbar']}>
+          <div className={styles['tbarMeta']}>
+            {/* ★ The pip only pulses when something is actually streaming. `connected` is
+                false today because the live channel is unimplemented, so it sits dim — a
+                pulsing green dot over a board that was read once and is not updating is the
+                cheapest lie available. */}
+            <span className={`${styles['lz']} ${meta.connected ? '' : styles['lzOff']}`} />
+            <span
+              title={
+                meta.connected
+                  ? 'Updates are arriving on the live channel.'
+                  : 'No live channel is connected, so this board was read once when the screen opened and is not updating on its own.'
+              }
+            >
+              {meta.connected ? 'live' : 'not streaming'}
+            </span>
+            {meta.pendingCount > 0 ? (
+              <button
+                type="button"
+                className={styles['pill']}
+                title="The order is held while you are reading the board. Press to apply what is waiting."
+                onClick={() => store.setFrozen(false)}
+              >
+                {meta.pendingCount} update{meta.pendingCount === 1 ? '' : 's'} waiting
+              </button>
+            ) : null}
+          </div>
+
+          {/* A count, not a rank. How many rows the committed order carries. */}
+          <div className={styles['tbarMeta']}>
+            <span className={styles['tbarCount']}>{order.length}</span> stories
+          </div>
         </div>
 
-        {order.length === 0 ? (
-          <div className={styles['empty']}>nothing on the board yet</div>
-        ) : (
-          order.map((id) => (
-            <FeedRow
-              key={id}
-              id={id}
-              now={now}
-              onOpen={onOpenStory}
-              onBuy={onBuy}
-              onCompare={handleCompare}
-              onCreate={handleCreate}
-            />
-          ))
-        )}
+        <div className={styles['board']} ref={boardRef} role="table" aria-label="ranked stories">
+          {/* Eight header cells, in the same order and the same tracks as the row. `.h` marks
+              the two that the width query drops; they are rendered either way. */}
+          <div className={styles['header']} role="row">
+            <span className={styles['rank']}>#</span>
+            <span>Story</span>
+            <span className={`${styles['headerRight']} ${styles['h']}`}>Activity</span>
+            <span className={styles['headerRight']}>Views</span>
+            <span className={styles['headerRight']}>Gain 24h</span>
+            <span className={styles['headerRight']}>Age</span>
+            <span className={`${styles['headerRight']} ${styles['h']}`}>Mkt cap</span>
+            <span />
+          </div>
+
+          {order.length === 0 ? (
+            <div className={styles['noresult']}>
+              <b>Nothing is on the board yet.</b>
+              The board publishes stories once there are stories to publish. This is an empty
+              board, not a board that failed to load.
+            </div>
+          ) : (
+            /* ★ order.map, and nothing between the array and the rows. No sort, no filter, no
+               slice. `i + 1` is the # column and it exists only for the length of this call. */
+            order.map((id, i) => (
+              <FeedRow
+                key={id}
+                id={id}
+                rank={i + 1}
+                now={now}
+                onOpen={onOpenStory}
+                onBuy={onBuy}
+                onCompare={handleCompare}
+                onCreate={handleCreate}
+              />
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* The Tokens pane. A board of coins rather than stories, and nothing publishes that
+          list — the coins that exist today arrive attached to a story, one at a time. So it
+          says so, in her panel, in one line. No placeholder rows, no skeleton that never
+          resolves, no table of zeroes. */}
+      <div className={`${styles['pane']} ${pane === 'tokens' ? styles['paneOn'] : ''}`}>
+        <div className={styles['board']}>
+          <div className={styles['noresult']}>
+            <b>There is no coin index yet.</b>
+            Tokens ranks coins the way this board ranks stories, so it needs a published list of
+            coins and a price for each one. Neither exists — every coin you can see today
+            reaches the screen through the story it belongs to.
+            <span className={styles['noresultNote']}>
+              needs: a coins endpoint, and prices for the coins on it
+            </span>
+          </div>
+        </div>
       </div>
     </>
   );

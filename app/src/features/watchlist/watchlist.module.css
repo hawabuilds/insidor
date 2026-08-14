@@ -1,99 +1,295 @@
-/* Saved stories, and the alert that fires when one of them mints. */
+/* SAVED STORIES, and the alert that fires when one of them mints.
 
-.list {
+   Hawa's watchlist section heads (styles/index.css:686-695), her `.ttable` panel (207-209)
+   and her `.sr-narr` row (index.css:1001-1003 / the saved-results list). The rows are the
+   quiet variant of her board row: a flat 4% ion wash on hover, no left edge bar, no gradient
+   decay — a saved list is for finding one thing, not for scanning sixty. */
+
+.section {
+  margin-bottom: 26px;
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.sectionHd {
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.sectionTitle {
+  font-family: var(--disp);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sectionCount {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Her panel: a 1.8% white sheen fading out over the first 100px, a 3.5% inset top highlight,
+   and a very offset drop shadow that pools under the panel rather than haloing it. */
+.table {
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 100px), var(--bg1);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 20px 50px -30px rgba(0, 0, 0, 0.85);
+}
+
+.hd,
+.item {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 0.9fr 0.6fr 22px;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 18px;
+}
+
+/* ★ Labels, not controls. There is no sort affordance here and there is none on the board:
+   the list renders in the order it is given (rule 4). Her `.sortable` / `.sar` rules are not
+   ported anywhere in this app. */
+.hd {
+  background: linear-gradient(180deg, var(--bg2), rgba(19, 19, 22, 0.35));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  min-height: 0;
 }
 
 .item {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) var(--col-reach) var(--col-age) auto;
-  gap: var(--gap-3);
-  align-items: center;
-  height: var(--row-h);
-  border-bottom: 1px solid var(--line);
   cursor: pointer;
+  transition: background 0.16s var(--ease);
 }
 
-.item:last-child {
-  border-bottom: 0;
+/* A hairline as an inset shadow rather than a border, so the last row keeps the panel's
+   rounded corner clean. */
+.item:not(:last-child) {
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.item:hover {
+  background: rgba(61, 224, 255, 0.04);
+}
+
+/* Her `.sr-narr-thumb`: 56px at radius 10 on a --bg2 ground. The shared <Thumb> is 44px for
+   the board and is sized from here rather than changed for everybody. */
+.thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg2);
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.thumb > :is(img, span) {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
 }
 
 .title {
-  font-weight: 600;
+  font-family: var(--disp);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .sub {
-  font-size: var(--size-sm);
-  color: var(--text-2);
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.empty {
-  padding: var(--gap-5);
-  color: var(--text-3);
-  text-align: center;
+/* A row we are no longer tracking. Dimmed and dashed — her grammar for "not a real thing
+   right now" — never removed from the list, because a silently shorter list is not
+   information and the user asked for this story to be kept. */
+.gone .title {
+  color: var(--muted);
 }
 
-/* The alert. Amber rather than cyan: this is the one thing in the product that interrupts,
-   and it should not look like the rest of the interface. */
+.gone .sub {
+  color: var(--dim);
+}
+
+.num {
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  justify-self: end;
+  width: 100%;
+}
+
+/* Her star (index.css:682-685), here as the un-watch control. */
+.star {
+  background: none;
+  border: none;
+  color: var(--ion);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  transition: 0.12s;
+  flex: none;
+  cursor: pointer;
+  justify-self: center;
+}
+
+.star:hover {
+  color: var(--red);
+  transform: scale(1.15);
+}
+
+/* Her `.wl-empty` (index.css:694-695). */
+.empty {
+  padding: 56px 30px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.empty b {
+  color: var(--ink);
+  font-family: var(--disp);
+  font-weight: 500;
+  display: block;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+/* ===== the mint alert =====
+   Her floating sheet (index.css:609-616): a heavy offset shadow, a top sheen, radius 16, and
+   her `pop` entrance.
+
+   The colour is lime rather than the amber this file used to use. In her sheet amber means
+   one thing only — working but diminished (the paused feed banner, a taken ticker) — and a
+   coin appearing is not a degradation, it is the good event this product exists to catch.
+   Lime is her "new / live" hue and her `.newbadge` is exactly this chip.
+
+   Her `pop` is declared HERE rather than taken from tokens.css: CSS Modules scopes the
+   animation NAME in a module file, so a reference to the global `pop` compiles to a name
+   with no keyframes behind it and the card appears with no entrance. See tokens.css. */
+@keyframes pop {
+  from {
+    transform: translateY(10px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
 .alerts {
   position: fixed;
-  right: var(--gap-4);
-  bottom: var(--gap-4);
+  right: 26px;
+  bottom: 26px;
   display: flex;
   flex-direction: column;
-  gap: var(--gap-2);
+  gap: 10px;
   z-index: 20;
   max-width: 340px;
 }
 
 .alert {
-  background: var(--card);
-  border: 1px solid var(--alert);
-  border-left-width: 3px;
-  border-radius: var(--radius);
-  padding: var(--gap-3) var(--gap-4);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 120px), var(--bg1);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  padding: 14px 15px;
   display: flex;
   flex-direction: column;
-  gap: var(--gap-1);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  gap: 6px;
+  box-shadow: 0 30px 70px -18px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  animation: pop 0.18s ease;
 }
 
 .alertHead {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--gap-3);
+  gap: 12px;
 }
 
+/* Her `.newbadge`: a solid lime chip with near-black teal text. */
 .alertTicker {
-  font-family: var(--font-mono);
+  font-family: var(--mono);
+  font-size: 11px;
   font-weight: 700;
-  color: var(--alert);
+  letter-spacing: 0.04em;
+  color: #001318;
+  background: var(--lime);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.alertAge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
 }
 
 .alertBody {
-  font-size: var(--size-sm);
-  color: var(--text-2);
-  line-height: 1.4;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .alertActions {
   display: flex;
-  gap: var(--gap-2);
-  margin-top: var(--gap-2);
+  gap: 6px;
+  margin-top: 6px;
 }
 
-.dismiss {
-  background: none;
-  border: 0;
-  color: var(--text-3);
-  cursor: pointer;
-  font-size: var(--size-xs);
+/* Her `.tbtn-watch` outline chip. `open` is the one that leads somewhere, so it carries the
+   ion; `dismiss` stays muted. Neither is a buy control, and this notification never gets one:
+   an alert with a buy button on it is a product deciding for the user in the two seconds
+   before they have read anything. */
+.act {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--bg2);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 5px 11px;
+  transition: 0.12s;
+}
+
+.act:hover {
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.actGo {
+  color: var(--ion);
+  border-color: rgba(61, 224, 255, 0.35);
+  background: rgba(61, 224, 255, 0.06);
+}
+
+.actGo:hover {
+  color: var(--ion);
+  border-color: rgba(61, 224, 255, 0.6);
 }

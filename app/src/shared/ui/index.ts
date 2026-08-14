@@ -9,6 +9,7 @@
 export { Button } from './Button.tsx';
 export type { ButtonTone } from './Button.tsx';
 export { Card, Tag } from './Card.tsx';
+export { CommandPalette } from './CommandPalette.tsx';
 export { Delta } from './Delta.tsx';
 export { Num } from './Num.tsx';
 export { Pending } from './Pending.tsx';

@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { BoardRow, BoardTick } from '../wire/board.ts';
-import { known, instant } from '../../format/measure.ts';
+import { known, instant, pending } from '../../format/measure.ts';
 import { createBoardStore } from './boardStore.ts';
 
 function row(id: string, reach: number): BoardRow {
@@ -22,6 +22,9 @@ function row(id: string, reach: number): BoardRow {
     reach: known(reach),
     spark: { points: [], windowMs: 3_600_000 },
     momentum: 'steady',
+    /* `coins` is 'none' here, so the honest cap is the matching absence. A stub row that
+       claimed a number no coin backs would let a test pass over a rule it is not testing. */
+    marketCapUsd: pending('not_minted'),
     firstSeenAt: instant(1_700_000_000_000),
     coins: { kind: 'none' },
     isNew: false,

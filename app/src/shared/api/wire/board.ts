@@ -1,10 +1,11 @@
 /**
  * THE BOARD ROW — the wire shape of one line on the ranked feed.
  *
- * The row shows exactly seven things: picture, title, two lines of plain English, views, a
- * small line graph, age, and one button. This interface has exactly the fields those seven
- * need and no others, because a field that exists gets rendered eventually. `id` is the key,
- * `isNew` and `momentum` are treatments of cells already counted rather than new cells.
+ * The row shows exactly eight things: picture, title, two lines of plain English, views, a
+ * small line graph, age, market cap, and one button. This interface has exactly the fields
+ * those eight need and no others, because a field that exists gets rendered eventually. `id`
+ * is the key, `isNew` and `momentum` are treatments of cells already counted rather than new
+ * cells.
  *
  * What is NOT here, and never will be: score, confidence, heat, burst, eta, propensity,
  * policy hash, cost, and rank. Position on the board is the array index of `BoardTick.order`,
@@ -59,6 +60,23 @@ export interface BoardRow {
   readonly spark: Spark;
   readonly momentum: Tone | null;
 
+  /**
+   * The market cap of the story's coin — and a story has a coin only when exactly one of
+   * them is settled.
+   *
+   * ★ MARKET CAP IS A PROPERTY OF A COIN, NOT OF A STORY, so this is DERIVED from `coins`
+   * and is never a number measured against the story itself. Absent for every branch of
+   * `CoinLink` except `one`, with a different reason for each, and the branch that has to
+   * be read twice is `several`: it is absent there DELIBERATELY. A sum across several
+   * coins is a number that is true of nothing, and the largest of them is a choice
+   * dressed as a fact — and picking which coin is the real one is precisely the judgement
+   * the `unsure`/`several` branches exist to say we have not made.
+   *
+   * The decision itself lives in `projectMarketCap` in services/project/src/project.ts,
+   * once, where the reasons are written out. This is only the shape it arrives in.
+   */
+  readonly marketCapUsd: Measured;
+
   /** When the story began, so the row can show its age. Unknown stays unknown. */
   readonly firstSeenAt: Instant;
 
@@ -82,8 +100,25 @@ export interface BoardTick {
   readonly rows: readonly BoardRow[];
 }
 
-/** The fields a live patch is allowed to move. Order is not one of them. */
-export type PatchableField = 'title' | 'summary' | 'thumbUrl' | 'reach' | 'spark' | 'momentum' | 'coins';
+/**
+ * The fields a live patch is allowed to move. Order is not one of them.
+ *
+ * `marketCapUsd` is here because a cap moves with the market between frames and re-sending
+ * the whole row to change one number is how a live channel becomes a refetch loop. It is
+ * derived from `coins`, so a patch that moves `coins` has to move this too or the row will
+ * show the previous coin's cap beside the new coin — the server sends them together, and
+ * the decoder below cannot enforce that because a patch carrying only one of them is a
+ * legitimate frame when only that one changed.
+ */
+export type PatchableField =
+  | 'title'
+  | 'summary'
+  | 'thumbUrl'
+  | 'reach'
+  | 'spark'
+  | 'momentum'
+  | 'marketCapUsd'
+  | 'coins';
 
 export interface RowPatch {
   readonly id: string;

@@ -17,6 +17,7 @@ import {
   assertNoInternalVocabulary,
   decodeBoardRow,
   decodeCoinLink,
+  decodeRowPatch,
 } from './decode.ts';
 
 const CLEAN_ROW = {
@@ -27,6 +28,7 @@ const CLEAN_ROW = {
   reach: { v: 1_240_000 },
   spark: { windowMs: 3_600_000, points: [{ atMs: 1, value: 3 }, { atMs: 2, value: null }] },
   momentum: 'rising',
+  marketCapUsd: { v: 186_400 },
   firstSeenAt: { at: 1_700_000_000_000 },
   coins: { kind: 'none' },
   isNew: true,
@@ -79,6 +81,51 @@ test('a censored spark point stays null instead of collapsing to zero', () => {
     row.spark.points.map((p) => p.value),
     [3, null],
   );
+});
+
+test('a market cap round-trips as a value', () => {
+  const row = decodeBoardRow(CLEAN_ROW);
+  assert.equal(row.marketCapUsd.known, true);
+  if (row.marketCapUsd.known) assert.equal(row.marketCapUsd.amount, 186_400);
+});
+
+test('an absent market cap keeps the reason the server gave it', () => {
+  /* The reason is the whole content of this column when there is no number: "nothing was
+     minted" and "we will not say which of six coins this is" render the same dash and are
+     not the same fact. If the reason were dropped on the way in, the dash would be the
+     only thing left and the distinction would die at the boundary. */
+  for (const why of ['not_minted', 'no_market', 'not_reported'] as const) {
+    const row = decodeBoardRow({ ...CLEAN_ROW, marketCapUsd: { v: null, why } });
+    assert.equal(row.marketCapUsd.known, false);
+    if (!row.marketCapUsd.known) assert.equal(row.marketCapUsd.pending, why);
+  }
+});
+
+test('a market cap the server omitted is pending, never zero', () => {
+  const { marketCapUsd: _omitted, ...withoutCap } = CLEAN_ROW;
+  const row = decodeBoardRow(withoutCap);
+  assert.equal(row.marketCapUsd.known, false);
+  if (!row.marketCapUsd.known) assert.equal(row.marketCapUsd.pending, 'not_read_yet');
+});
+
+test('a live patch can move the market cap, and its absence with it', () => {
+  const moved = decodeRowPatch({ id: 'st_01', fields: { marketCapUsd: { v: 412_000 } } });
+  assert.deepEqual(moved.fields.marketCapUsd, { known: true, amount: 412_000 });
+
+  /* A cap that goes away — the coin stopped being quotable — must arrive as an absence
+     with a reason, not as a patch nobody applied and not as a 0. */
+  const gone = decodeRowPatch({
+    id: 'st_01',
+    fields: { marketCapUsd: { v: null, why: 'no_market' } },
+  });
+  assert.deepEqual(gone.fields.marketCapUsd, { known: false, pending: 'no_market' });
+});
+
+test('a patch that mentions no market cap leaves the field alone', () => {
+  /* Absent from `fields` is not the same as absent as a value: the row keeps the cap it
+     had. Writing a pending value here would blank the column on every unrelated patch. */
+  const patch = decodeRowPatch({ id: 'st_01', fields: { reach: { v: 12 } } });
+  assert.equal('marketCapUsd' in patch.fields, false);
 });
 
 test('an unknown first-seen time decodes to pending, not to now', () => {

@@ -423,6 +423,65 @@ export function projectCoins(candidates: readonly CoinCandidate[]): WireCoinLink
   return { kind: 'several', coins: [first, second, ...rest] };
 }
 
+/**
+ * ★ THE ROW'S MARKET CAP, WHICH IS THE STORY'S COIN'S MARKET CAP, WHICH EXISTS ONLY WHEN
+ * THE STORY HAS EXACTLY ONE COIN.
+ *
+ * MARKET CAP IS A PROPERTY OF A COIN, NOT OF A STORY. Nothing about "chef throws the soup"
+ * has a market capitalisation; six tokens named after it each do. So this function reads
+ * the answer off `coins` and never computes one, and the four branches are four different
+ * facts that must not share a spelling:
+ *
+ *   `one`     → THAT COIN'S CAP, verbatim, absence and all. A coin nobody has traded
+ *               carries `{ v: null, why: 'no_market' }` and it arrives here unchanged —
+ *               "minted, nothing quotable yet" is the coin's own honest state and there is
+ *               nothing for this function to add to it. It is emphatically not a zero: a
+ *               zero says the coin is worthless, and untraded is not worthless.
+ *
+ *   `none`    → `not_minted`. Nothing has been minted from this story, so there is no
+ *               market anywhere to have a number in. This is the only branch where "no
+ *               coin yet" is a true thing to tell a user.
+ *
+ *   `unsure`  → ABSENT. Coins claim this story and we will not say which of them is it.
+ *               The payload carries no coin at all — by construction, see projectCoins —
+ *               so there is not even a cap here to be tempted by. Reaching past the union
+ *               to fetch one from the candidate list would reintroduce exactly the coin
+ *               that branch exists to withhold.
+ *
+ *   `several` → ABSENT, and this is the branch that has to be read twice, because two
+ *               plausible answers are both wrong:
+ *                 · SUMMING the caps produces a number that is true of nothing. Nobody
+ *                   holds a position in "the soup complex"; adding the caps of three
+ *                   rival tokens invents a security that does not exist.
+ *                 · TAKING THE LARGEST is picking which coin is the real one and then
+ *                   presenting the pick as a measurement. It is the same judgement the
+ *                   `unsure` branch refuses to make, laundered through arithmetic — and
+ *                   it is worse than refusing, because the user cannot see it happening.
+ *               Not showing a cap costs a column on some rows. Showing either of those
+ *               costs the user money on the row where the biggest cap belongs to the
+ *               copycat, which is the common case and the reason this product exists.
+ *
+ * ★ THE REASON FOR `unsure` AND `several` IS A COMPROMISE AND IS FLAGGED AS ONE.
+ * `PendingReason` is a closed list of the USER'S reasons, and it has no member meaning
+ * "this story does not resolve to a single coin". `not_reported` is the closest true
+ * reading of the five — the concept does not exist at the level the column asks about, so
+ * nothing reports it — and it is deliberately NOT `no_market` (which would claim the coin
+ * exists and is untraded) and NOT `not_minted` (which would claim no coin exists, flatly
+ * contradicting the row's own summary line two cells away). If the list ever grows a
+ * `no_single_coin`, this is its first caller and these two branches should take it.
+ */
+export function projectMarketCap(coins: WireCoinLink): WireMeasured {
+  switch (coins.kind) {
+    case 'one':
+      return coins.coin.marketCapUsd;
+    case 'none':
+      return measured(null, 'not_minted');
+    case 'unsure':
+    case 'several':
+      return measured(null, 'not_reported');
+  }
+}
+
 /* ── words ────────────────────────────────────────────────────────────── */
 
 /**
@@ -595,6 +654,9 @@ export function projectBoardRow(story: StoryFacts, options: ProjectOptions): Wir
     reach: projectReach(readings),
     spark: projectSpark(readings, options.sparkWindowMs),
     momentum: projectMomentum(readings),
+    /* Taken from the SAME `coins` value the row carries, not re-derived, so the cap and
+       the button can never disagree about how many coins this story has. */
+    marketCapUsd: projectMarketCap(coins),
     firstSeenAt: projectFirstSeenAt(story.members),
     coins,
     isNew: !story.wasOnPreviousBoard,
@@ -604,7 +666,16 @@ export function projectBoardRow(story: StoryFacts, options: ProjectOptions): Wir
   return row;
 }
 
-/** The story page. The board row minus `isNew`, plus the day's change, the evidence and the discussion. */
+/**
+ * The story page. The board row minus `isNew` and minus the row's `marketCapUsd`, plus the
+ * day's change, the evidence and the discussion.
+ *
+ * The market cap is deliberately not repeated here. The page renders the coins THEMSELVES,
+ * each with its own cap beside its own ticker, so the story-level roll-up would be a second
+ * spelling of the same number in the one place where the honest per-coin answer is already
+ * on screen — and on a `several` story it would be a dash sitting next to three real caps,
+ * which reads as a bug rather than as a refusal.
+ */
 export function projectStory(story: StoryFacts, options: ProjectOptions): WireStory | null {
   const title = projectTitle(story);
   if (title === null) return null;

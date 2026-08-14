@@ -1,136 +1,178 @@
-/* The buy panel. Narrow, mono, and boring on purpose: this is the one surface where a
-   misread number costs the user money. */
+/* THE BUY PANEL, in Hawa's trade box (styles/index.css:391-427, 470-506).
+
+   Her trade panel is the most decorated surface she built: a segmented buy/sell control in
+   lime and red, a big mono amount well, an ion "you receive" block, and a 46px gradient key
+   at the bottom that looks like something you press with your thumb.
+
+   ★ MOST OF THAT IS NOT PORTED, AND THAT IS THE POINT. Nothing in this build can place an
+   order — `submitTrade` throws NotImplemented and there is no quote endpoint behind
+   `fetchQuote` — so a buy/sell toggle, an amount field and a lime EXECUTE key would be a
+   form that looks like it works, takes a number off the user, and only admits the truth after
+   they have committed to it. That is rule 3's mistake wearing a nicer coat: an affordance
+   that says "this exists, you may just not have it yet".
+
+   What IS ported is everything that carries real information: her panel chrome, her identity
+   head, her `.mini` recap well for the figures (all dashes today, each with its reason), her
+   `.fine` print, and her amber degraded surface — the one hue she reserves for
+   working-but-diminished — carrying the statement that trading is not connected.
+
+   The rest of her trade box is written down in this comment, and comes back when there is a
+   venue behind it. */
 
 .panel {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-4);
+  gap: 14px;
 }
 
+/* ===== identity head (index.css:270-288, the `.tid` treatment at panel scale) ===== */
 .head {
   display: flex;
-  align-items: center;
-  gap: var(--gap-3);
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.headMeta {
+  min-width: 0;
+  flex: 1;
 }
 
 .ticker {
-  font-family: var(--font-display);
-  font-size: var(--size-xl);
-  line-height: 1;
+  font-family: var(--disp);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
 }
 
 .name {
-  color: var(--text-2);
-  font-size: var(--size-sm);
+  color: var(--muted);
+  font-size: 12.5px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
 }
 
+/* Her sheet's close control (index.css:621). 27px square, muted, ink on hover. */
+.headX {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  transition: 0.12s;
+}
+
+.headX:hover {
+  background: var(--bg2);
+  color: var(--ink);
+}
+
+/* Her contract chip (index.css:279-283). Not pressable here — the copy control lives on the
+   story page, and a second one that looks identical but does nothing is a small lie. */
 .address {
-  font-family: var(--font-mono);
-  font-size: var(--size-xs);
-  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--bg2);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 5px 9px;
+  align-self: flex-start;
 }
 
-.amountRow {
-  display: flex;
-  gap: var(--gap-2);
-}
-
-.amountInput {
-  flex: 1;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--size-lg);
-  background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  color: var(--text);
-  padding: var(--gap-3);
-  text-align: right;
-}
-
-.receive {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding-top: var(--gap-2);
-  border-top: 1px solid var(--line);
-}
-
-.receiveLabel {
-  color: var(--text-2);
-  font-size: var(--size-sm);
-}
-
-.receiveValue {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--size-lg);
-}
-
-.costs {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-2);
-  font-size: var(--size-sm);
+/* ===== the recap well (index.css:417-420) =====
+   Recessed, mono, key left and value right. Every value goes through a formatter that returns
+   a dash for an absence; none of them has a branch that produces a zero. */
+.mini {
+  display: grid;
+  gap: 8px;
+  padding: 12px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
 
 .costLine {
   display: flex;
   justify-content: space-between;
-  gap: var(--gap-3);
-  color: var(--text-2);
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 .costLabel {
-  display: flex;
-  gap: var(--gap-2);
-  align-items: baseline;
+  color: var(--dim);
 }
 
-.refundable {
-  font-size: var(--size-xs);
-  color: var(--text-3);
+/* ===== the statement =====
+   Her amber family (index.css:116-120) — the only hue in her sheet that means
+   working-but-diminished. It is not red: nothing here has failed, and it is not cyan: this
+   is not a feature to be excited about. It is the honest middle. */
+.notLive {
+  padding: 12px 13px;
+  border-radius: 11px;
+  background: rgba(255, 176, 32, 0.12);
+  border: 1px solid rgba(255, 176, 32, 0.35);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
-.allIn {
-  display: flex;
-  justify-content: space-between;
-  border-top: 1px solid var(--line);
-  padding-top: var(--gap-2);
-  color: var(--text);
+.notLive b {
+  color: #ffe8b0;
   font-weight: 600;
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11.5px;
 }
 
-.allInLoud {
-  color: var(--amber);
+.notLiveNeeds {
+  display: block;
+  margin-top: 7px;
+  color: #ffd98a;
+  opacity: 0.85;
 }
 
-.expiry {
-  font-size: var(--size-xs);
-  color: var(--text-3);
+/* ===== her fine print (index.css:427) ===== */
+.fine {
+  padding-top: 2px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--dim);
+  text-align: center;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
 }
 
-.expired {
-  color: var(--red);
-  font-size: var(--size-sm);
+/* Her `.tpback` chrome (index.css:260-262) rather than the lime `.doit` key: this closes a
+   panel, and it must not look like the control that would have bought something. */
+.closeBtn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-family: var(--mono);
+  background: var(--bg1);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+  padding: 11px 13px;
+  transition: 0.15s;
 }
 
-.requote {
-  border: 1px solid var(--cyan);
-  color: var(--cyan);
-  background: transparent;
-  border-radius: 999px;
-  padding: 2px 10px;
-  font-size: var(--size-xs);
-  cursor: pointer;
-}
-
-.error {
-  color: var(--red);
-  font-size: var(--size-sm);
-}
-
-.route {
-  font-size: var(--size-xs);
-  color: var(--text-3);
+.closeBtn:hover {
+  color: var(--ion);
+  border-color: rgba(61, 224, 255, 0.4);
 }

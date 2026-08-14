@@ -275,6 +275,12 @@ export function decodeBoardRow(raw: unknown, path = '$.row'): BoardRow {
     reach: measured(o.reach, `${path}.reach`, 'not_read_yet'),
     spark: decodeSpark(o.spark, `${path}.spark`),
     momentum: tone(o.momentum),
+    /* The fallback is `not_read_yet` and not `not_minted`, because it fires only when the
+       server sent no reason at all — a server too old to know about this field, say. "We
+       have not learned it" is true of that; "nothing has been minted from this" is a claim
+       about the world we would be making on the server's behalf, and the row's own `coins`
+       may say the opposite two lines down. */
+    marketCapUsd: measured(o.marketCapUsd, `${path}.marketCapUsd`, 'not_read_yet'),
     firstSeenAt: instantAt(o.firstSeenAt, `${path}.firstSeenAt`, 'not_read_yet'),
     coins: decodeCoinLink(o.coins, `${path}.coins`),
     isNew: bool(o.isNew, `${path}.isNew`),
@@ -306,6 +312,9 @@ export function decodeRowPatch(raw: unknown, path = '$.patch'): RowPatch {
   if ('reach' in f) fields['reach'] = measured(f['reach'], `${path}.fields.reach`, 'not_read_yet');
   if ('spark' in f) fields['spark'] = decodeSpark(f['spark'], `${path}.fields.spark`);
   if ('momentum' in f) fields['momentum'] = tone(f['momentum']);
+  if ('marketCapUsd' in f) {
+    fields['marketCapUsd'] = measured(f['marketCapUsd'], `${path}.fields.marketCapUsd`, 'not_read_yet');
+  }
   if ('coins' in f) fields['coins'] = decodeCoinLink(f['coins'], `${path}.fields.coins`);
   return { id: str(o['id'], `${path}.id`), fields: fields as RowPatch['fields'] };
 }

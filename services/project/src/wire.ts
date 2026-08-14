@@ -134,6 +134,13 @@ export interface WireBoardRow {
   readonly reach: WireMeasured;
   readonly spark: WireSpark;
   readonly momentum: Tone | null;
+  /**
+   * The market cap of the story's coin — DERIVED from `coins`, never measured against the
+   * story. A story does not have a market cap; a coin does. Absent for every branch but
+   * `one`, and absent for `several` on purpose: see projectMarketCap in project.ts, which
+   * is the only place the choice is made.
+   */
+  readonly marketCapUsd: WireMeasured;
   readonly firstSeenAt: WireInstant;
   readonly coins: WireCoinLink;
   readonly isNew: boolean;

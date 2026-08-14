@@ -1,196 +1,915 @@
-/* The story page: the evidence, the coins, the discussion. Reading-width prose columns over
-   a dense header, because this is the one surface where a user is checking our work rather
-   than scanning. */
+/* THE STORY PAGE, in Hawa's token-page chrome (styles/index.css:259-512), with her viral
+   post cards (514-548) for the evidence list and her star (682-685) in the header.
 
-.page {
+   Her token page is the most finished surface in her build and it is the right shape for
+   this screen: an identity header, a single-row quick-stats strip, a chart card, and a tabbed
+   data panel down the left, with a sticky side column on the right for the thing you can act
+   on. Same layout, different contents — the subject here is a story, and the coin is what
+   hangs off it rather than the other way round.
+
+   ★ WHAT IS DELIBERATELY NOT PORTED, and why (the rules outrank the styling):
+     - `.tv-tag` names her chart's data vendor (index.css:320, filled in at
+       features/token/token-page.js:376). Vendor names are forbidden by rule 1 — they are on
+       the fields.ts substring list — so the chip recipe survives and the vendor does not.
+     - `.tfrow` / `.tf` (the 5m·1h·24h timeframe segmented control) is not rendered. There is
+       no price series behind it, and a control that cannot do anything is the same lie as a
+       disabled button: it says "this works, wait for it".
+     - `.lc-pill` / `.timing-pill` / `.risk-pill` / `.gate-pill` are not ported at all —
+       lifecycle, timing verdicts and gate names are internal scoring vocabulary (rule 1).
+       The pill recipe below (10% tint fill, 28-40% border, full-strength text) is reused for
+       plain facts only: a coin's ticker, "no coin yet", a source name.
+     - Her `.doit:disabled` and `.pbtn.find:disabled` are not used anywhere on this page.
+       An unsure match renders NO button element at any depth (rule 3). */
+
+/* ===== layout (index.css:263-264, 392) =====
+   Chart column 1fr, action column 356px, 16px between columns and 14px between the stacked
+   panels of each. `align-items:start` so the sticky side column can move independently. */
+.tp2 {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: var(--gap-4);
+  grid-template-columns: 1fr 356px;
+  gap: 16px;
   align-items: start;
 }
 
-@media (max-width: 900px) {
-  .page {
-    grid-template-columns: minmax(0, 1fr);
+.tp2Main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tp2Side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* nav 58 + 14 of breathing room */
+  position: sticky;
+  top: 72px;
+}
+
+/* 1040px is her structural break: one column, and the side panel stops pinning. */
+@media (max-width: 1040px) {
+  .tp2 {
+    grid-template-columns: 1fr;
+  }
+
+  .tp2Side {
+    position: static;
   }
 }
 
-.column {
+/* ===== the shared floating panel (index.css:266-269) =====
+   Radius 16 — the token page's panels are the roundest surfaces in the app (boards are 14,
+   cards 13). The sheen fades out over the first 120px rather than running the full height. */
+.panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 120px), var(--bg1);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 16px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 26px 64px -38px rgba(0, 0, 0, 0.85);
+}
+
+/* ===== identity header (index.css:270-288) ===== */
+.tid {
   display: flex;
-  flex-direction: column;
-  gap: var(--gap-4);
+  align-items: center;
+  gap: 15px;
+  padding: 16px 18px;
+}
+
+/* Her `.tid .tkico` is a 52px letter tile at radius 15 with a white ring, an inset top
+   highlight and a drop shadow. The story's picture goes in the same tile. Sizing the shared
+   <Thumb> from here rather than changing the primitive: the board's thumb is 44px and must
+   stay 44px, and this is the only place on the page that wants a different one. */
+.tidIco {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--bg2);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.3),
+    0 8px 20px -6px rgba(0, 0, 0, 0.6);
+}
+
+.tidIco > :is(img, span) {
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  border: 0;
+}
+
+.tidMeta {
+  min-width: 0;
+  flex: 1;
+}
+
+.tidTop {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.tidTitle {
+  font-family: var(--disp);
+  font-size: 27px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
   min-width: 0;
 }
 
-.header {
+.tidName {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 7px;
+  line-height: 1.45;
+  max-width: 70ch;
+}
+
+.tidSub {
   display: flex;
-  gap: var(--gap-4);
-  align-items: flex-start;
-}
-
-.title {
-  font-family: var(--font-display);
-  font-size: var(--size-xl);
-  line-height: 1.1;
-  margin-bottom: var(--gap-2);
-}
-
-.summary {
-  color: var(--text-2);
-  line-height: 1.5;
-  max-width: 62ch;
-}
-
-.stats {
-  display: flex;
-  gap: var(--gap-5);
-  margin-top: var(--gap-3);
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
   flex-wrap: wrap;
 }
 
-.stat {
+/* The headline figure, pushed right exactly as her price block is. Views rather than price:
+   it is the story's own number, and it is one we actually have. */
+.tidFig {
+  margin-left: auto;
+  text-align: right;
+  flex: none;
+}
+
+.tidFigV {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.tidFigK {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--dim);
+  font-weight: 600;
+}
+
+.tidFigChg {
+  font-family: var(--mono);
+  font-size: 13px;
+  margin-top: 2px;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.tidFigChg small {
+  color: var(--dim);
+}
+
+/* ===== the star (index.css:682-685) =====
+   A bare glyph. --dim, ion on hover, and it scales 1.15 in 120ms. Her rows render it at 13px;
+   this is the page-title instance and it sits beside a 27px heading, so it is 18px here.
+
+   It lives INSIDE the h1 (her `.nar-title-line` idiom) so it trails the last word of the
+   title. As a flex sibling it was pushed onto its own line by any title long enough to fill
+   the row, which is most of them. */
+.star {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  margin-left: 10px;
+  vertical-align: baseline;
+  transition: 0.12s;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.star:hover {
+  color: var(--ion);
+  transform: scale(1.15);
+}
+
+.starOn {
+  color: var(--ion);
+}
+
+/* ===== chips =====
+   Her universal pill recipe: a 10% tint fill, a 28-40% border of the same hue, and text at
+   full strength. Used here only for facts — a ticker, "no coin yet", a source name. */
+.chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  white-space: nowrap;
+}
+
+.chipCoin {
+  color: var(--ion);
+  border-color: rgba(61, 224, 255, 0.3);
+  background: rgba(61, 224, 255, 0.08);
+}
+
+/* Her `.nocoin` (index.css:243): the dim outline that marks a row with no coin behind it. */
+.chipNone {
+  color: var(--dim);
+  border-color: var(--line);
+  background: transparent;
+}
+
+/* Her contract chip (index.css:279-283). Copies on click and flashes lime — real behaviour,
+   which is why it is styled as something you can press. */
+.caMini {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--bg2);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 5px 9px;
+  transition: 0.12s;
+}
+
+.caMini:hover {
+  border-color: rgba(61, 224, 255, 0.5);
+  color: var(--ion);
+}
+
+.caMiniCopied {
+  color: var(--lime);
+  border-color: var(--lime);
+}
+
+/* ===== quick stats strip (index.css:289-296) =====
+   Equal cells, `flex-wrap:nowrap` — it must never become two rows. The dividers are ::before
+   pseudo-rules inset 24% top and bottom, so they float as short hairlines instead of reaching
+   the panel edges.
+
+   Her cells are `min-width:0` and only become scrollable below her 1040px break. That works on
+   her page and not on this one: her chart column is the full width of the shell minus the rail
+   and the trade panel, and she is describing a token, whose stats are four characters each.
+   These cells hold a dash and a reason ("no market yet"), which needs about 104px, and the
+   band between 1040 and ~1500 leaves less than that. So the scroll is unconditional and the
+   floor is a min-width: with room, the cells share it equally and no scrollbar appears; without
+   it, the strip scrolls exactly as hers does on a phone. Same structure, one rule, every width. */
+.qstats {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* the rail's 6px scrollbar rather than the global 10px one — this is a 70px-tall strip */
+.qstats::-webkit-scrollbar {
+  height: 6px;
+}
+
+.qstats::-webkit-scrollbar-thumb {
+  background: var(--bg3);
+  border-radius: 3px;
+}
+
+.qs {
+  flex: 1 1 0;
+  min-width: 104px;
+  padding: 11px 12px;
+  position: relative;
+  transition: background 0.14s;
+}
+
+.qs:not(:first-child)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 24%;
+  bottom: 24%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.qs:hover {
+  background: var(--bg2);
+}
+
+.qsK {
+  font-size: 9.5px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+}
+
+.qsV {
+  font-family: var(--mono);
+  font-size: 14px;
+  margin-top: 5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ★ Rule 2, styled. Most of this strip is a dash today because nothing measures a price.
+   A dash on its own reads as breakage, so a pending cell gets two things: a faint diagonal
+   hatch for its ground, and the reason spelled out underneath ("no market yet", never "0").
+   The hatch is the texture version of her `.tkico.pend` dashed tile — her grammar for "not a
+   real thing yet" — and it is texture rather than colour on purpose, because colour in this
+   app means direction and an absence has no direction. The cell reads "not known", quietly. */
+.qsPend {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.012) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+.qsPend .qsV {
+  color: var(--dim);
+}
+
+/* <Pending showWord> puts the reason inline after the dash, which is right in a table cell
+   and wrong in a 1/7-width stat: at this width the label truncates to "— no mark…", which
+   reads as breakage, the exact thing this treatment exists to prevent. So the reason goes
+   UNDER the dash, in the same two-line rhythm as the key over the value. */
+.qsPend .qsV > span {
+  display: block;
+  text-align: left;
+}
+
+.qsPend .qsV > span > span {
+  display: block;
+  margin: 3px 0 0;
+  font-family: var(--sans);
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--dim);
+  white-space: normal;
+}
+
+/* One line under the strip naming what has to exist before those cells fill in. */
+.qsNote {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--dim);
+  line-height: 1.5;
+  padding: 0 2px;
+  letter-spacing: 0.02em;
+}
+
+/* ===== chart card (index.css:308-327) ===== */
+.chartcard {
+  padding: 14px;
+}
+
+.chartTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 11px;
+}
+
+.chartTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.chartTitle b {
+  font-family: var(--mono);
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.chartTitle span {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* Her `.tv-tag`, with the vendor name taken out of it (rule 1). */
+.chartTag {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--dim);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 5px;
+  padding: 2px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+/* Her `.tvchart` well: radius 11 on --bg0 behind a 4.5% border. Hers is 440px tall because it
+   holds a live candle chart. This one holds a 24h activity trace, and 440px of near-empty
+   well reads as a broken embed, so the well is 280. Everything else is hers. */
+.chartWell {
+  height: 280px;
+  border-radius: 11px;
+  overflow: hidden;
+  background: var(--bg0);
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  padding: 14px;
+}
+
+/* The shared <Sparkline> is 96px wide for a table cell. Its viewBox is 0 0 96 24 with
+   `preserveAspectRatio="none"`, so stretching it to the well is exact rather than approximate
+   — and a censored reading still BREAKS the line, because the runs are computed in the
+   component, not here (rule 2). */
+.chartSpark {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.chartSpark > svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* `preserveAspectRatio="none"` scales the stroke with the box, so a 96×24 cell line blown up
+   to a 560×240 well arrives ten times too thick. `non-scaling-stroke` keeps the geometry
+   stretched and the stroke at its real width — 1.6, which is what her chart lines use. */
+.chartSpark polyline {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.6;
+}
+
+/* Her `.chart-empty`: centred mono, and it states what is missing rather than spinning. */
+.chartEmpty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-family: var(--mono);
+  padding: 24px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.chartNote {
+  margin-top: 11px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--dim);
+  line-height: 1.55;
+  letter-spacing: 0.02em;
+}
+
+/* ===== tabs + unified data panel (index.css:329-337) =====
+   One visually continuous panel out of two elements: the strip has no bottom border and a
+   top-only radius, the body no top border and a bottom-only radius. The selected tab's 2px
+   ion underline replaces a transparent one, so nothing shifts when it moves. */
+.tpTabs {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  padding: 0 8px;
+  background: var(--bg1);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+}
+
+.tpt {
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  transition: 0.12s;
+}
+
+.tpt:hover {
+  color: var(--ink);
+}
+
+.tptOn {
+  color: var(--ion);
+  border-bottom-color: var(--ion);
+}
+
+.tpTabbody {
+  background: var(--bg1);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  padding: 10px 12px 12px;
+}
+
+/* ===== evidence, as her viral post cards (index.css:514-548) ===== */
+.card {
+  margin-bottom: 13px;
+}
+
+.card:last-child {
+  margin-bottom: 0;
+}
+
+.quote {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--gap-1);
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 14px 16px;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s, border-color 0.2s, background 0.2s;
 }
 
-.statLabel {
-  font-size: var(--size-xs);
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+/* Her card lift. These cards are not links — the link is the `open` control in the foot — so
+   the lift is the only hover move and there is no cursor:pointer on the card itself. */
+.card:hover .quote {
+  border-color: #2c2c34;
+  background: var(--bg2);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
 }
 
-.evidenceItem {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  gap: var(--gap-3);
-  align-items: start;
-  padding: var(--gap-3) 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.evidenceItem:last-child {
-  border-bottom: 0;
-}
-
-.evidenceMeta {
-  font-size: var(--size-xs);
-  color: var(--text-3);
+.crow {
   display: flex;
-  gap: var(--gap-2);
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 11px;
+  min-width: 0;
   flex-wrap: wrap;
-  margin-bottom: var(--gap-1);
 }
 
-.excerpt {
-  font-size: var(--size-sm);
-  line-height: 1.4;
-  color: var(--text);
+/* Her `.pbadge` (index.css:522-525) — a 26px tile at radius 7. She fills it with a platform
+   logo; the wire carries a source LABEL and no logo, so it carries the source's initial.
+   Brand colours are not guessed from the string: an unknown platform would get the wrong one,
+   and every source rendering in --muted is honest about what we actually know. */
+.pbadge {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--disp);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.who {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.at {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.when {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  margin-left: auto;
+  flex: none;
+}
+
+.quoteRow {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+/* Her `.qthumb` is 54px at radius 9. Same note as `.tidIco`: the shared 44px thumb is sized
+   from here so the board's row height is not disturbed. */
+.qthumb {
+  width: 54px;
+  height: 54px;
+  border-radius: 9px;
+  flex: none;
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.qthumb > :is(img, span) {
+  width: 54px;
+  height: 54px;
+  border-radius: 9px;
+}
+
+.qbody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+/* Clash Display at book weight is what makes a quoted post read as a quote. */
+.qtext {
+  font-family: var(--disp);
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.42;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 
-.relation {
-  font-size: var(--size-xs);
-  color: var(--cyan);
-  margin-top: var(--gap-1);
-}
-
-.coin {
+.cardFoot {
   display: flex;
-  flex-direction: column;
-  gap: var(--gap-2);
-  padding: var(--gap-3) 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.coin:last-child {
-  border-bottom: 0;
-}
-
-.coinHead {
-  display: flex;
-  align-items: baseline;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: var(--gap-3);
+  gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
-.coinTicker {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: var(--size-lg);
-}
-
-.coinGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--gap-2);
-  font-size: var(--size-sm);
-}
-
-.coinCell {
+/* `relation` is a plain-English sentence written by the server, so it is set in the body face
+   rather than in her mono meta style — mono makes a sentence look like a machine field. */
+.rel {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  gap: 6px;
 }
 
-/* The unsure state gets real estate rather than an empty slot. A user who is told "we are
-   not calling this one yet, and here is how many coins claim it" is better served
-   than one shown a dead button. */
-.unsure {
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  padding: var(--gap-4);
-  color: var(--text-2);
-  font-size: var(--size-sm);
-  line-height: 1.5;
+.relMark {
+  color: var(--ion);
+  flex: none;
 }
 
-.unsureCount {
-  font-family: var(--font-mono);
-  color: var(--amber);
+.cardActs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: none;
 }
 
+/* Her `.tbtn-watch` outline chip (index.css:769). Every evidence item has a link — items
+   without one are dropped by the projector, not rendered as a dead control here. */
+.openBtn {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--bg2);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 5px 11px;
+  transition: 0.12s;
+  white-space: nowrap;
+}
+
+.openBtn:hover {
+  color: var(--ion);
+  border-color: rgba(61, 224, 255, 0.4);
+}
+
+/* ===== discussion ===== */
 .post {
-  padding: var(--gap-3) 0;
-  border-bottom: 1px solid var(--line);
+  padding: 12px 2px;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .post:last-child {
-  border-bottom: 0;
+  box-shadow: none;
 }
 
 .postMeta {
-  font-size: var(--size-xs);
-  color: var(--text-3);
   display: flex;
-  gap: var(--gap-2);
-  margin-bottom: var(--gap-1);
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.postWho {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--ink);
 }
 
 .postText {
-  font-size: var(--size-sm);
+  font-family: var(--disp);
+  font-weight: 400;
+  font-size: 13.5px;
   line-height: 1.45;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 
-.composer {
+/* ===== empty states (index.css:691, 694-695) =====
+   Her dashed 8% outline on a 1%-white ground. Used for every "there is nothing here", never
+   for "something failed". */
+.empty {
+  padding: 26px 18px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.empty b {
+  color: var(--ink);
+  font-family: var(--disp);
+  font-weight: 500;
+  display: block;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+
+.emptyNote {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+/* ===== the coins panel (index.css:470, 507-512) =====
+   Her `.tradebox` / `.secbox`: the floating panel at 16px padding, with her `.sec-h` heading. */
+.secbox {
+  padding: 16px;
+}
+
+.secH {
+  font-family: var(--disp);
+  font-weight: 500;
+  font-size: 13px;
+  margin-bottom: 11px;
   display: flex;
-  gap: var(--gap-2);
-  margin-top: var(--gap-3);
+  align-items: center;
+  gap: 7px;
 }
 
-.composerInput {
-  flex: 1;
-  background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  color: var(--text);
-  padding: var(--gap-3);
-  font: inherit;
+.secCount {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
 }
 
+.coin {
+  padding: 13px 0;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.coin:first-of-type {
+  padding-top: 0;
+}
+
+.coin:last-of-type {
+  box-shadow: none;
+  padding-bottom: 0;
+}
+
+.coinTop {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.coinTicker {
+  font-family: var(--disp);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* the chip row under a coin's name — her `.tid-sub`, at panel scale */
+.coinSub {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.coinName {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Her `.mini` recap block (index.css:417-420): a recessed well of key/value mono rows. */
+.mini {
+  display: grid;
+  gap: 7px;
+  margin: 11px 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.miniRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.miniK {
+  color: var(--dim);
+}
+
+.coinActs {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ★ Rule 3, stated in CSS so nobody restyles it back into a button. When a coin cannot be
+   bought, the slot holds TEXT. Not a greyed button, not a button with `aria-disabled`, not a
+   button that opens a "coming soon" toast — a greyed control says "this exists and you may
+   not have it", and that invites the user to sit and wait for it to light up. */
+.noBuy {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  line-height: 1.5;
+  padding-top: 4px;
+}
+
+/* The unsure panel. It gets real estate rather than an empty slot: "several coins claim this
+   and we are not naming one" is a frequent and honest answer on this product, and a user told
+   that is better served than one shown a dead button. There is no coin in this branch of the
+   union, so there is nothing here that could become a buy control. */
+.unsure {
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.01);
+  padding: 14px 15px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.unsureCount {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ===== load states ===== */
 .loading {
-  color: var(--text-3);
-  padding: var(--gap-5);
+  padding: 44px 30px;
+  text-align: center;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
+.failed {
+  color: var(--red);
 }

@@ -28,6 +28,7 @@ import {
   projectCoins,
   projectEvidence,
   projectFirstSeenAt,
+  projectMarketCap,
   projectMomentum,
   projectReach,
   projectReachDelta24h,
@@ -391,6 +392,102 @@ test('an unknown mint time stays unknown rather than becoming freshly minted', (
   assert.notDeepEqual(link.kind === 'one' ? link.coin.mintedAt : null, { at: OPTIONS.nowMs });
 });
 
+/* ── the row's market cap: a property of a coin, borrowed by a story ──────
+   Four branches, four different facts, and the two that must not carry a number are the
+   two where a number is easiest to produce. The `notDeepEqual` lines are not padding: a
+   sum and a max are both single lines of code away, and both typecheck. */
+
+test('one settled coin lends the row its market cap, unchanged', () => {
+  const link = projectCoins([{ coin: coin({ marketCapUsd: 186_400 }), confident: true }]);
+  assert.deepEqual(projectMarketCap(link), { v: 186_400 });
+});
+
+test('one settled coin with no market lends the row that absence, not a zero', () => {
+  /* The coin's own honest state travels through untouched. "Minted, nobody has traded it"
+     is a different claim from "worth nothing", and this is the branch where confusing them
+     would be most expensive: the row has a Buy button on it. */
+  const link = projectCoins([{ coin: coin({ marketCapUsd: null }), confident: true }]);
+  assert.deepEqual(projectMarketCap(link), { v: null, why: 'no_market' });
+  assert.notDeepEqual(projectMarketCap(link), { v: 0 });
+});
+
+test('nothing minted has no market to have a cap in, and says not_minted', () => {
+  assert.deepEqual(projectMarketCap({ kind: 'none' }), { v: null, why: 'not_minted' });
+  assert.notDeepEqual(projectMarketCap({ kind: 'none' }), { v: 0 });
+});
+
+test('★ an unsure story shows no cap, because there is no coin to take one from', () => {
+  /* The branch carries no coin at all, so this is not a refusal the projector has to
+     remember to make — there is nothing here to read. The reason must not be `not_minted`:
+     six coins do exist, and the row's own summary says so one cell away. */
+  const link = projectCoins(candidates(6, false));
+  assert.equal(link.kind, 'unsure');
+  assert.deepEqual(projectMarketCap(link), { v: null, why: 'not_reported' });
+  assert.notDeepEqual(projectMarketCap(link), { v: null, why: 'not_minted' });
+});
+
+test('★ several coins show NO cap: not the sum, not the largest, not the first', () => {
+  /* The one test worth reading twice. Each of the three tempting answers is written out
+     as a literal so that an implementation which produces it fails here by name rather
+     than by a mysterious number.
+
+       sum     — 111,000: a market cap for a security nobody can hold.
+       largest — 90,000:  picking which coin is the real one, presented as a measurement.
+       first   — 1,000:   the same pick, made by the query planner instead of by us. */
+  const link = projectCoins([
+    { coin: coin({ coinId: 'c_a', ticker: 'AAA', marketCapUsd: 1_000 }), confident: true },
+    { coin: coin({ coinId: 'c_b', ticker: 'BBB', marketCapUsd: 90_000 }), confident: true },
+    { coin: coin({ coinId: 'c_c', ticker: 'CCC', marketCapUsd: 20_000 }), confident: true },
+  ]);
+  assert.equal(link.kind, 'several');
+
+  const cap = projectMarketCap(link);
+  assert.deepEqual(cap, { v: null, why: 'not_reported' });
+  assert.notDeepEqual(cap, { v: 111_000 }, 'the sum is a number that is true of nothing');
+  assert.notDeepEqual(cap, { v: 90_000 }, 'the largest is a choice dressed as a fact');
+  assert.notDeepEqual(cap, { v: 1_000 }, 'the first is the planner making the choice');
+  assert.notDeepEqual(cap, { v: 0 });
+});
+
+test('the four branches do not all give the same absence', () => {
+  /* If a refactor ever collapses these onto one reason, the column stops distinguishing
+     "nothing was minted" from "we will not pick", which is the entire content of it. */
+  const reasons = [
+    projectMarketCap({ kind: 'none' }),
+    projectMarketCap(projectCoins(candidates(6, false))),
+    projectMarketCap(projectCoins([{ coin: coin({ marketCapUsd: null }), confident: true }])),
+  ].map((m) => ('why' in m ? m.why : 'present'));
+  assert.deepEqual(reasons, ['not_minted', 'not_reported', 'no_market']);
+  assert.equal(new Set(reasons).size, 3);
+});
+
+test('the row takes its cap from the same coins value it publishes', () => {
+  /* Derived once and read twice would let the cap and the button disagree about how many
+     coins the story has — a Buy button beside a dash, or a cap beside "6 coins claim
+     this". They come from one value on purpose. */
+  const several = projectBoardRow(story({ coins: candidates(3, true) }), OPTIONS);
+  assert.equal(several?.coins.kind, 'several');
+  assert.deepEqual(several?.marketCapUsd, { v: null, why: 'not_reported' });
+
+  const named = projectBoardRow(
+    story({ coins: [{ coin: coin({ marketCapUsd: 186_400 }), confident: true }] }),
+    OPTIONS,
+  );
+  assert.equal(named?.coins.kind, 'one');
+  assert.deepEqual(named?.marketCapUsd, { v: 186_400 });
+
+  const bare = projectBoardRow(story({ coins: [] }), OPTIONS);
+  assert.equal(bare?.coins.kind, 'none');
+  assert.deepEqual(bare?.marketCapUsd, { v: null, why: 'not_minted' });
+});
+
+test('the story page carries no story-level market cap at all', () => {
+  /* The page renders the coins themselves, each with its own cap. A roll-up there would be
+     a second spelling of a number already on screen — and a dash beside three real caps. */
+  const page = projectStory(story({ coins: candidates(3, true) }), OPTIONS);
+  assert.equal('marketCapUsd' in (page ?? {}), false);
+});
+
 /* ── the link itself: spans and coin rows in, the row's button out ─────
    These are the six rows of tools/seed.mjs written as literals, so the acceptance test
    that runs against a real database is checkable here without one. The spans are the
@@ -722,13 +819,14 @@ test('a projected board row carries no forbidden key and no forbidden substring'
   }
 });
 
-test('the row carries exactly the ten public fields and no eleventh', () => {
+test('the row carries exactly the eleven public fields and no twelfth', () => {
   const row = projectBoardRow(story(), OPTIONS);
   assert.deepEqual(Object.keys(row ?? {}).sort(), [
     'coins',
     'firstSeenAt',
     'id',
     'isNew',
+    'marketCapUsd',
     'momentum',
     'reach',
     'spark',

@@ -122,7 +122,11 @@ module.exports = {
     doNotFollow: { path: 'node_modules' },
     tsConfig: { fileName: 'tsconfig.base.json' },
     tsPreCompilationDeps: true,
-    exclude: { path: '\\.test\\.ts$' },
+    /* Tests, and build output. `dist/` is gitignored so it never ships, but this tool walks
+       the filesystem rather than the index — so a developer who has run `pnpm build` once
+       gets a bundled copy of the whole app cruised as if it were source, reported as an
+       orphan forever. Warnings nobody can action are how a real one gets scrolled past. */
+    exclude: { path: '\\.test\\.ts$|(^|/)dist/' },
 
     /**
      * ★ WITHOUT THIS BLOCK EVERY BOUNDARY RULE SILENTLY PASSES.

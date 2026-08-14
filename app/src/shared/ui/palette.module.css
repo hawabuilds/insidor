@@ -1,0 +1,148 @@
+/* The ⌘K palette, ported from Hawa's styles/index.css:714-747.
+
+   Her scrim is aligned to flex-start with `padding:12vh 20px 20px` — the palette sits 12%
+   down the viewport, not centred. That is the detail that makes it feel like a palette and
+   not a modal, so it is kept exactly. */
+
+/* Her scrim fade and her palette pop (index.css:715-718). Declared HERE, not taken from
+   tokens.css: CSS Modules scopes the animation NAME in this file, so a reference to a
+   globally-declared `pop` compiles to a name with no keyframes behind it and the palette
+   snaps in with no entrance at all. See the note in tokens.css. */
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop {
+  from {
+    transform: translateY(10px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.back {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(4, 4, 6, 0.62);
+  backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12vh 20px 20px;
+  animation: fade 0.12s ease;
+}
+
+.pal {
+  width: 100%;
+  max-width: 560px;
+  background: var(--bg1);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.72);
+  animation: pop 0.16s ease;
+}
+
+.top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 15px 17px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.topRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.ic {
+  color: var(--dim);
+  font-size: 18px;
+}
+
+/* Her `.pal-in` is an <input>. It is a heading here, and that is the honest version: there is
+   no index behind this box, and a field you can type into that can never answer is a worse
+   lie than a field that is plainly absent. The type spec is hers, unchanged, so when search
+   exists this becomes an <input> again with no visual change. */
+.title {
+  flex: 1;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+}
+
+.kbd {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.exLbl {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  margin-right: 2px;
+}
+
+.ex {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  transition: 0.12s;
+}
+
+.empty {
+  padding: 30px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.empty b {
+  display: block;
+  font-family: var(--disp);
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.note {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  line-height: 1.5;
+}

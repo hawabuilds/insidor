@@ -29,6 +29,10 @@ export const BOARD_ROW_FIELDS = [
   'reach',
   'spark',
   'momentum',
+  /* Derived from `coins` by the projector, never measured against the story — see the
+     comment on BoardRow.marketCapUsd. It is on the allowlist because the board shows it;
+     the rule about WHICH coin's cap it is lives in one place and it is not this one. */
+  'marketCapUsd',
   'firstSeenAt',
   'coins',
   'isNew',
