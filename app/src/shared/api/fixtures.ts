@@ -413,6 +413,133 @@ export function fixtureBoard(): unknown {
   };
 }
 
+/* ── the launches rail ────────────────────────────────────────────────── */
+
+/**
+ * MINTS, NEWEST FIRST — six of them, and each one is a case the rail has to get right.
+ *
+ * ★ THREE OF THEM ARE CALLED "JERSEY". That is not filler and it is not a joke: a fifteen
+ * second sample of a real mint stream produced three separate tokens with that name, which
+ * is the product's entire premise arriving as data. A rail that renders them as three
+ * indistinguishable rows is telling the truth about what happened, and the address is the
+ * only thing that separates them — which is why it is on the row at all.
+ *
+ * The cases, in order:
+ *   1. a bounded mint time with no cap        — the ordinary new mint
+ *   2. a bounded mint time with a cap         — one that has started trading
+ *   3. an EXACT mint time                     — a chain confirmation landed, so no "~"
+ *   4. a name already truncated by the server — an over-long name, bounded at the source
+ *   5. an unknown mint time                   — an age that renders as a dash, not as 0
+ *   6. an empty ticker                        — renders as nothing, never as the address
+ *
+ * Every mint time here is `bounded` unless stated, because that is what a socket-fed
+ * pipeline can honestly claim: the event says when we HEARD, and the mint happened at or
+ * shortly before that.
+ */
+const LAUNCHES = [
+  {
+    launchId: 'solana:9xJerseyA1qP2mNvKdRt7sZbFgHyCwXeUoTiLkMnPq',
+    ticker: 'JERSEY',
+    name: 'jersey',
+    address: '9xJerseyA1qP2mNvKdRt7sZbFgHyCwXeUoTiLkMnPq',
+    venueLabel: 'Pump.fun',
+    mintedAt: at(T0 - 40_000),
+    mintedAtBoundS: 20,
+    /* Forty seconds old. There is no pool, so there is no cap — and that is the normal
+       state of this rail, not a gap in it. A zero here would say "worthless" about a coin
+       whose actual state is "nobody has traded it yet". */
+    marketCapUsd: noValue('no_market'),
+    marketCapBasis: null,
+  },
+  {
+    launchId: 'solana:4kJerseyB8sV1cQwErTyUiOpAsDfGhJkLzXcVbNm',
+    ticker: 'JERSEY',
+    name: 'Jersey',
+    address: '4kJerseyB8sV1cQwErTyUiOpAsDfGhJkLzXcVbNm',
+    venueLabel: 'Pump.fun',
+    mintedAt: at(T0 - 3 * MIN),
+    mintedAtBoundS: 20,
+    marketCapUsd: m(31_400),
+    marketCapBasis: 'fully-diluted',
+  },
+  {
+    launchId: 'solana:7mJerseyC3dF5gH9jK2lZ4xC6vB8nM1qW3eR5tY',
+    ticker: 'JERSEY',
+    /* Same word, third token, and the capitalisation is the only difference in the name.
+       Nothing on this rail claims which of the three is "the" jersey coin — that judgement
+       is the resolve stage's and it does not run here. */
+    name: 'JERSEY',
+    address: '7mJerseyC3dF5gH9jK2lZ4xC6vB8nM1qW3eR5tY',
+    venueLabel: 'Pump.fun',
+    /* ★ EXACT, because a chain confirmation landed for this one: the earliest signature
+       against the address is a reading, not an estimate, so there is no bound and the rail
+       shows the age with no "~". This is the only row here entitled to that. */
+    mintedAt: at(T0 - 11 * MIN),
+    mintedAtBoundS: null,
+    marketCapUsd: m(88_200),
+    marketCapBasis: 'fully-diluted',
+  },
+  {
+    launchId: 'solana:2bLongNameD7fG3hJ5kL8mN0pQ2rS4tU6vW8xY',
+    ticker: 'OFFICIAL',
+    /* ★ ALREADY TRUNCATED, WITH THE ELLIPSIS THE SERVER PUT THERE. The token was minted
+       with a name several kilobytes long; `boundedText` in the projection cut it to 48
+       characters before it was ever stored, so this is the longest name the rail can
+       receive. The ellipsis is the point: a silently cut name reads as the coin's actual
+       name, and a coin apparently called "OFFICIAL SOLANA FOUNDATION TREASU" is a better
+       impersonation than the string it came from. */
+    name: 'OFFICIAL SOLANA FOUNDATION TREASURY TOKEN DO NOT…',
+    address: '2bLongNameD7fG3hJ5kL8mN0pQ2rS4tU6vW8xY',
+    venueLabel: 'Pump.fun',
+    mintedAt: at(T0 - 24 * MIN),
+    mintedAtBoundS: 20,
+    marketCapUsd: noValue('no_market'),
+    marketCapBasis: null,
+  },
+  {
+    launchId: 'solana:5cNoTimeE9gH1jK3lM5nP7qR9sT1uV3wX5yZ7a',
+    ticker: 'LADLE',
+    name: 'silent kitchen',
+    address: '5cNoTimeE9gH1jK3lM5nP7qR9sT1uV3wX5yZ7a',
+    venueLabel: 'Raydium',
+    /* ★ AN AGE WE NEVER LEARNED, which renders as a dash and NOT as "0s". This row would
+       not survive the projection's own filter today — a coin with no mint time cannot be
+       placed in a newest-first list, so it is left out and counted — and it is here anyway,
+       because the decoder and the rail must both do the right thing on the day it arrives
+       from somewhere else. */
+    mintedAt: noTime('not_read_yet'),
+    mintedAtBoundS: null,
+    marketCapUsd: noValue('no_market'),
+    marketCapBasis: null,
+  },
+  {
+    launchId: 'solana:8dNoTickerF2hJ4kL6mN8pQ0rS2tU4vW6xY8zA',
+    /* ★ EMPTY, AND IT STAYS EMPTY. An unknown ticker renders as nothing — never as the
+       address, never as the name, never as anything else that would look like a ticker to
+       a person deciding what to buy. */
+    ticker: '',
+    name: 'unnamed',
+    address: '8dNoTickerF2hJ4kL6mN8pQ0rS2tU4vW6xY8zA',
+    venueLabel: 'Pump.fun',
+    mintedAt: at(T0 - 51 * MIN),
+    mintedAtBoundS: 20,
+    marketCapUsd: noValue('no_market'),
+    marketCapBasis: null,
+  },
+];
+
+/**
+ * One frame of the rail, as the server would send it.
+ *
+ * `launches` is the committed order and the client never sorts, so the order here is the
+ * order on screen. It is mint order, newest first, which is the only ordering this surface
+ * claims — not "biggest first", and a fixture sorted by cap would quietly teach everyone
+ * looking at it that it is.
+ */
+export function fixtureLaunches(): unknown {
+  return { tick: 1, launches: LAUNCHES };
+}
+
 /* ── one story, in full ───────────────────────────────────────────────── */
 
 /**

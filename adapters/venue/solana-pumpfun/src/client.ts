@@ -1,14 +1,33 @@
 /**
- * The two outside surfaces this venue reads: its own REST list, and a generic
- * chain RPC. Nothing else. Deliberately NOT a streaming subscriber:
+ * The two PULL surfaces this venue reads: its own REST list, and a generic chain
+ * RPC. The push surface is stream.ts and is a separate file for a separate
+ * reason; this header used to argue that no such file should exist, and the
+ * argument has been narrowed rather than deleted, because most of it still holds.
+ *
+ * WHAT IT ARGUED, AND WHAT SURVIVES. Streaming was rejected on three grounds:
  *
  *   - the winnable window is post-mint with a six-day median to peak, so 30–60
- *     seconds of polling latency buys nothing;
- *   - a creation stream decodes one program's create instruction, which makes
- *     it venue-specific rather than chain-specific — the wrong thing to hang a
- *     chain abstraction on;
- *   - and it costs an always-on deployment, a paid RPC tier, reconnect logic,
- *     a durable cursor and gap backfill, permanently.
+ *     seconds of polling latency buys nothing.  ★ STILL TRUE, and it is why the
+ *     stream is not a latency argument. What it buys is completeness — a poll
+ *     over an offset cursor cannot prove it saw the rows that appeared and
+ *     scrolled past between two pages, and an unprovable window is a censored
+ *     label rather than a slow one.
+ *   - a creation stream decodes one program's create instruction, which makes it
+ *     venue-specific rather than chain-specific.  ★ STILL TRUE, and it is why
+ *     stream.ts is in this package, beside the venue it decodes, rather than in
+ *     a service. Nothing above the adapter knows a create instruction exists.
+ *   - it costs an always-on deployment, a paid RPC tier, reconnect logic, a
+ *     durable cursor and gap backfill, permanently.  ★ THIS IS THE PART THAT
+ *     CHANGED. The always-on process, the durable cursor and the coverage log
+ *     were built anyway — services/chainwatch is that process, and it needs them
+ *     whether it polls or listens. The paid RPC tier is not needed because the
+ *     stream reads a free relay rather than decoding instructions ourselves. So
+ *     the marginal cost is the reconnect logic in stream.ts and nothing else.
+ *
+ * The conclusion this file most protects is untouched and is enforced elsewhere:
+ * a feed may never claim an exact mint time. A relayed event is second-hand, it
+ * bounds the mint by its own arrival and no more, and mint-time.ts is where that
+ * is decided for every path including this one.
  */
 
 import { NotImplemented } from '@insidor/vendor-kit';

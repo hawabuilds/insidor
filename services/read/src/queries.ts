@@ -62,3 +62,24 @@ export const BOARD_ROWS_SQL =
   'select story_id, payload from public.board_row where view_id = $1 order by "position" asc';
 
 export const STORY_SQL = 'select payload from public.story_view where story_id = $1';
+
+/**
+ * Existence, again, and for the same reason as the board's: a feed id with no row here
+ * has never been projected, which is a different fact from a feed whose window happens
+ * to hold no mints. A launches rail that showed a transport error over a quiet market
+ * would be the one failure the rail exists to avoid — an empty list and a broken feed
+ * have to look different on screen, so they have to be different answers here.
+ */
+export const LAUNCH_VIEW_SQL = 'select tick from public.launch_view where feed_id = $1';
+
+/**
+ * `asset_key` is NOT selected. The board's equivalent selects `story_id` because the wire
+ * carries a separate `order` array — the live channel patches rows individually and the
+ * ordering has to survive that. Launches are polled whole, so the array of payloads IS
+ * the order, and a column that is not in the result set cannot reach a response by
+ * accident. `position` is quoted for the reason the board's is: POSITION is a SQL
+ * keyword, and quoting removes the question rather than relying on which keyword category
+ * it sits in.
+ */
+export const LAUNCH_ROWS_SQL =
+  'select payload from public.launch_row where feed_id = $1 order by "position" asc';

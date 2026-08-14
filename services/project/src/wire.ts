@@ -168,6 +168,75 @@ export interface WireBoardTick {
   readonly rows: readonly WireBoardRow[];
 }
 
+/* ── the launches rail ────────────────────────────────────────────────── */
+
+/**
+ * ONE NEWLY MINTED COIN, AS THE RAIL SHOWS IT. Nine fields, and the list is short on
+ * purpose: this is not a `WireCoin` with things missing, it is a different and smaller
+ * statement. There is no price, no liquidity, no 24h move and no `tradable`, so no buy
+ * affordance can be built from a launch however the rail is rewritten — a coin minutes
+ * old has none of those things anyway, and a field that is present gets rendered
+ * eventually.
+ *
+ * There is also NO `imageUrl`. A mint's image URI is a string typed by whoever made the
+ * coin; putting it on this wire would put an attacker-chosen host into a browser's
+ * request log for every row that scrolls past. The rail shows a letter tile instead.
+ *
+ * ★ AND NO SOCIAL LINKS, for the same reason and more so. `public.asset.declared_social`
+ * is named as a warning; it never reaches a payload.
+ */
+export interface WireLaunch {
+  /** The asset key, '<chain>:<address>'. A stable client key across frames. */
+  readonly launchId: string;
+  /** Observed, never an identifier — and bounded in length before it got here. */
+  readonly ticker: string;
+  readonly name: string;
+  /** The on-chain identifier. The rail truncates it; it is never a link. */
+  readonly address: string;
+  /** The VENUE, chosen server-side from a Map. Never the feed we read it from. */
+  readonly venueLabel: string;
+  /**
+   * When the coin was minted. Absent is ordinary and stays absent.
+   *
+   * ★ READ THIS TOGETHER WITH `mintedAtBoundS` AND NOT ALONE. On a socket-fed pipeline
+   * this instant is the CENTRE of an interval, not a reading — see projectLaunch.
+   */
+  readonly mintedAt: WireInstant;
+  /**
+   * Half-width of the mint-time bound, in SECONDS, or null when the mint time is exact
+   * (or absent). `mintedAt.at ± mintedAtBoundS` is the claim; the rail renders a "~"
+   * and states the bound rather than presenting an estimate as a reading.
+   *
+   * ★ IT IS A WIDTH AND NOT A LABEL, and it is deliberately NOT called a confidence:
+   * `confidence` is on FORBIDDEN_KEYS, and rightly — a confidence is a number about our
+   * own certainty. A bound is a statement about the world that would be true whether or
+   * not we existed, which is the test every field on this wire has to pass.
+   */
+  readonly mintedAtBoundS: number | null;
+  /**
+   * ★ ABSENT STAYS ABSENT. A coin minted four minutes ago has no pool and therefore no
+   * cap, and that is the normal state of the population this rail exists to show. It is
+   * never 0 — 0 says "worthless" about a coin whose actual state is "nobody has traded
+   * it yet", and those are opposite claims.
+   */
+  readonly marketCapUsd: WireMeasured;
+  /** Non-null exactly when the cap is known. Never guessed, never carried forward. */
+  readonly marketCapBasis: MarketCapBasis | null;
+}
+
+export interface WireLaunchFeed {
+  readonly tick: number;
+  /**
+   * Newest mint first, in the order the projector committed.
+   *
+   * There is no `order` array beside this one, unlike WireBoardTick. The board needs one
+   * because rows arrive individually over the live channel and the ordering has to
+   * survive a patch; launches are polled whole, so the array IS the order and a second
+   * spelling of it would be a second thing that can disagree.
+   */
+  readonly launches: readonly WireLaunch[];
+}
+
 /* ── the story page ───────────────────────────────────────────────────── */
 
 export interface WireEvidence {
@@ -268,6 +337,12 @@ export const FORBIDDEN_SUBSTRINGS: readonly string[] = [
   'helius',
   'rugcheck',
   'supabase',
+  /* The mint feed. It is free and needs no key, which changes nothing: naming it still
+     tells a user which relay we chose, and it arrives attached to other words — a
+     `pumpportal.fun` inside a declared social link, a host inside an image URI. Note it
+     is NOT a substring of 'pumpfun' or 'Pump.fun', so the venue label is unaffected;
+     venueLabel stays the venue and the feed never appears anywhere. */
+  'pumpportal',
 ];
 
 /** A payload that must not be published. Fatal on purpose; storing it is worse. */

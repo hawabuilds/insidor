@@ -245,6 +245,16 @@
   box-shadow: none;
 }
 
+/* ★ THE FILLED TILE. `.tapeIc` above sets `color: var(--bg0)` — near-black text — and a
+   light inset highlight, and carries no background at all, because her original supplied
+   one per token as an inline style. Ported without it the tile is invisible: dark text on
+   the page's own dark ground. This is that missing half, said once in the stylesheet with
+   an existing token rather than as an inline style computed per row, which is where a
+   per-token colour would become a signal nobody chose. */
+.tapeIcOn {
+  background: var(--ion);
+}
+
 .tapeMid {
   min-width: 0;
 }
@@ -256,12 +266,36 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
+/* The venue, beside the ticker and visibly not part of it. A ticker is chosen by whoever
+   minted the coin and a venue label is chosen by us, so they must not read as one string —
+   "$JERSEY Pump.fun" in one weight invites the second half to be read as the first half's
+   claim about itself. Dim, mono, smaller: her grammar for a fact about a row rather than a
+   value in it, the same treatment `.status` gets in the header. */
+.tapeVenue {
+  font-family: var(--mono);
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+/* ★ THE TRUNCATION `.tapeMid`'s `min-width: 0` EXISTS FOR. That hook makes the grid column
+   shrinkable; on its own it truncates nothing, because the text still needs somewhere to be
+   clipped. The projection bounds a token name to 48 characters before it is ever stored, so
+   the worst case is bounded rather than unbounded — but 48 mono characters is still wider
+   than this column, and a name that wraps turns one tape row into three and pushes the rest
+   of the rail down. One line, clipped, with the full string on hover. */
 .tapeAct {
   font-family: var(--mono);
   font-size: 10.5px;
   margin-top: 1px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tapeR {

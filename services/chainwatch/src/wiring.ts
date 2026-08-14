@@ -1,16 +1,20 @@
 /**
  * The composition root: the ONE file in this service that names other packages.
  *
- * The feed itself is unimplemented on purpose. Its body is a venue adapter call
- * — a launchpad list endpoint carrying `created_timestamp`, confirmed against
- * one generic signatures-for-address read — and the venue adapters are separate
- * packages whose names are not fixed yet. Writing a plausible one here would
- * put a chain's field names inside a service, which is the boundary this whole
- * rebuild exists to hold.
+ * The feed is built here and nowhere else, and this file is the only one in the
+ * service that knows which venue is being watched. The `stream` transport is
+ * implemented against the venue adapter's socket client; the `poll` transport is
+ * still a `NotImplemented`, and that asymmetry is honest rather than untidy — a
+ * poll over an offset cursor was the plan when the only available source was a
+ * REST list, and it is not the thing that is running.
  *
- * Everything that makes this process worth deploying — the durable cursor, the
- * backoff, the coverage log, the run records — is implemented, transport
- * agnostic, and tested. Filling in `read()` is a function body, not a redesign.
+ * ★ THE SEAM. The service declares what it needs from a push transport in
+ * stream.ts, in words that name no vendor, no chain and no venue. The adapter's
+ * socket client satisfies that shape without either side importing the other,
+ * because TypeScript is structural. `createFeed` below is the one function that
+ * knows both exist. Everything that makes this process worth deploying — the
+ * durable cursor, the backoff, the coverage log, the run records — remains
+ * transport agnostic and untouched by any of it.
  *
  * THREE THINGS ABOUT THE STORE SIDE ARE WORTH READING BEFORE CHANGING THEM.
  *
@@ -46,13 +50,22 @@ import {
   withAdvisoryLock,
   type Db,
 } from '@insidor/store';
+import {
+  CHAIN,
+  TOKEN_DECIMALS,
+  VENUE_ID,
+  createMintStream,
+  openWebSocket,
+} from '@insidor/venue-solana-pumpfun';
 
+import { backoffDelayMs } from './backoff.ts';
 import type { ChainwatchConfig } from './config.ts';
 import { coldCursor, type CursorStore } from './cursor.ts';
 import type { MintFeed, MintSink } from './feed.ts';
 import type { Logger } from './log.ts';
 import { NotImplemented } from './not-implemented.ts';
 import type { StageRunRecorder } from './run-record.ts';
+import { createStreamFeed } from './stream-feed.ts';
 
 export interface Runtime {
   readonly feed: MintFeed;
@@ -61,19 +74,83 @@ export interface Runtime {
   readonly stageRuns: StageRunRecorder;
 }
 
-function createFeed(cfg: ChainwatchConfig): MintFeed {
-  return {
-    id: cfg.feedId,
-    transport: cfg.transport,
-    read: () =>
-      Promise.reject(
-        new NotImplemented(
-          `mint feed ${cfg.feedId} (${cfg.transport}) — call the venue adapter's creation ` +
-            'listing, confirm each mint time against the chain, and return a page whose ' +
-            '`pageFull` is true when the source returned exactly the limit',
+/**
+ * The feed, and the only place a venue's name appears in this service.
+ *
+ * ★ WHAT IS DELIBERATELY NOT HERE. No socket, no field name, no subscribe frame,
+ * no launchpad marker, no idea that a create instruction exists. All of that is
+ * in the venue adapter, because it is knowledge about one market on one chain,
+ * and a service that learned any of it would be a service that has to be edited
+ * to add a second venue. What crosses this line is the shared vocabulary — a
+ * `MintEvent` — and the generic push port in stream.ts, which names nothing.
+ *
+ * The two halves meet by SHAPE and not by import: stream.ts declares what this
+ * service needs from a push transport, the adapter's socket client happens to
+ * satisfy it, and neither file references the other. This function is the only
+ * thing that knows both exist.
+ */
+function createFeed(cfg: ChainwatchConfig, log: Logger): MintFeed {
+  if (cfg.transport !== 'stream') {
+    return {
+      id: cfg.feedId,
+      transport: cfg.transport,
+      read: () =>
+        Promise.reject(
+          new NotImplemented(
+            `mint feed ${cfg.feedId} (${cfg.transport}) — call the venue adapter's creation ` +
+              'listing, confirm each mint time against the chain, and return a page whose ' +
+              '`pageFull` is true when the source returned exactly the limit',
+          ),
         ),
-      ),
-  };
+    };
+  }
+
+  const feedLog = log.child({ feed: cfg.feedId });
+
+  const stream = createMintStream({
+    url: cfg.streamUrl,
+    chain: CHAIN,
+    venue: VENUE_ID,
+    decimals: TOKEN_DECIMALS,
+    bufferLimit: cfg.streamBufferLimit,
+    staleAfterMs: cfg.streamStaleAfterMs,
+    mintTimeOptions: {
+      // Unused on this path — no two sources are being compared, because there
+      // is only one — and stated rather than left to a default so the day a
+      // chain confirmation is added beside the socket, the tolerance it will be
+      // judged against is already a value someone chose.
+      agreementToleranceMs: cfg.observationLagS * 1_000,
+      observationLagS: cfg.observationLagS,
+    },
+    now: () => Date.now(),
+    // ★ The same schedule the supervisor uses, not a second one. A transport
+    // with its own retry curve is a second answer to "how hard do we retry",
+    // and the two would drift the first time either was tuned.
+    reconnectDelayMs: (attempt) =>
+      backoffDelayMs(attempt, { baseMs: cfg.backoffBaseMs, maxMs: cfg.backoffMaxMs }, Math.random()),
+    open: openWebSocket,
+    // Unref'd: a pending reconnect must never be the reason a stopped process
+    // stays alive, because the grace timer's answer to that is exit(1) and an
+    // open run row.
+    schedule: (fn, ms) => {
+      const timer = setTimeout(fn, ms);
+      timer.unref();
+      return () => clearTimeout(timer);
+    },
+    note: (n) => feedLog.warn(n.msg, n.fields),
+  });
+
+  // Started here rather than on the first read, so the socket is connecting
+  // while the cursor load and the health server are still coming up. A stream
+  // opened per read would make every cycle its own outage.
+  stream.start();
+
+  return createStreamFeed({
+    feedId: cfg.feedId,
+    stream,
+    now: () => Date.now(),
+    note: (msg, fields) => feedLog.warn(msg, fields),
+  });
 }
 
 /**
@@ -91,7 +168,7 @@ function lockKey(name: string): number {
   return createHash('sha256').update(name).digest().readUInt32BE(0);
 }
 
-function buildRuntime(cfg: ChainwatchConfig, db: Db): Runtime {
+function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
   const assets = new PgAssetRepo(db);
 
   /*
@@ -112,11 +189,20 @@ function buildRuntime(cfg: ChainwatchConfig, db: Db): Runtime {
   const stageRuns: StageRunRecorder = new PgStageRunRepo(db);
 
   return {
-    feed: createFeed(cfg),
+    feed: createFeed(cfg, log),
 
     sink: {
       // A MintEvent already carries a whole Asset — the feed's job is to have
       // built one — so persisting a page is the vocabulary going straight in.
+      //
+      // ★ NOTHING HERE DECIDES WHETHER A MINT TIME MAY BE OVERWRITTEN, and it
+      // must not start. `upsert` compares the incoming confidence against the
+      // stored one and loses ties, so a time only ever goes up: the 'bounded'
+      // reading a socket produces can later be raised to 'exact' by a chain
+      // confirmation, and can never be lowered by re-seeing the same coin. A
+      // second copy of that rule here would be a second place for it to be
+      // wrong, and the way it goes wrong is a confident timestamp walking
+      // backwards into a row that already had a better one.
       recordMints: async (mints) => {
         await assets.upsert(mints.map((mint) => mint.asset));
       },
@@ -191,7 +277,7 @@ export async function withRuntime(
         chain: cfg.chain,
         transport: cfg.transport,
       });
-      await run(buildRuntime(cfg, db));
+      await run(buildRuntime(cfg, db, log));
       return true;
     });
 

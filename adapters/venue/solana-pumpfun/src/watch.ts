@@ -48,7 +48,12 @@ export function toMintEvent(raw: unknown, ctx: WatchContext, chainMintMs: Millis
 
   const ref: AssetRef = { chain: ctx.chain, address };
   const mintedAt = mintTime(
-    { issuerMs: num(r.created_timestamp), chainMs: chainMintMs, vendorMs: null },
+    // No `observedMs` on this path, and that is not an omission. This row came
+    // from a list endpoint that carries the issuer's own creation timestamp, so
+    // the instant we happened to fetch the page says nothing about when the coin
+    // was made — it is the age of the request, not the age of the asset. Only a
+    // push notification bounds a mint by its own arrival.
+    { issuerMs: num(r.created_timestamp), chainMs: chainMintMs, vendorMs: null, observedMs: null },
     ctx.mintTimeOptions,
   );
 

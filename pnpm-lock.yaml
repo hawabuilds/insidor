@@ -233,6 +233,9 @@ importers:
       '@insidor/store':
         specifier: workspace:*
         version: link:../../store
+      '@insidor/venue-solana-pumpfun':
+        specifier: workspace:*
+        version: link:../../adapters/venue/solana-pumpfun
 
   services/market:
     dependencies:

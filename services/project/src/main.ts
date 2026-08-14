@@ -23,14 +23,25 @@
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import { asDb, createPool, DB_ROLE, withTransaction } from '@insidor/store';
 
-import { loadStoryFacts, nextTick, previousBoardStoryIds, writeBoard, writeStories } from './db.ts';
-import { projectBoard, projectStory } from './project.ts';
+import {
+  loadLaunchFacts,
+  loadStoryFacts,
+  nextLaunchTick,
+  nextTick,
+  previousBoardStoryIds,
+  writeBoard,
+  writeLaunches,
+  writeStories,
+} from './db.ts';
+import { projectBoard, projectLaunch, projectStory } from './project.ts';
 import type { ProjectOptions } from './project.ts';
 import { WireLeakError } from './wire.ts';
-import type { WireStory } from './wire.ts';
+import type { WireLaunch, WireStory } from './wire.ts';
 
 /** The board the app asks for. `VIEW_ID` in app/src/App.tsx is this string. */
 const VIEW_ID = 'default';
+/** The launches rail the app asks for. `LAUNCH_FEED_ID` in app/src/features/rail is this string. */
+const LAUNCH_FEED_ID = 'default';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -62,6 +73,18 @@ const BOARD_LIMIT = 200;
  * branches on it, it only bounds how far back the statement reaches.
  */
 const REACH_WINDOW_MS = 26 * HOUR_MS;
+
+/**
+ * How far back the launches rail looks, and how many rows it keeps.
+ *
+ * Presentation bounds, like STORY_WINDOW_MS above and not like `marketFreshnessMs` below:
+ * nothing is admitted or rejected by these, they only decide how much of the mint stream is
+ * fetched and stored. Six hours is wide enough that the rail is not empty on a quiet morning
+ * and narrow enough that "new launches" still means new. The row cap is above what the rail
+ * renders, so scrolling reaches the end of the frame rather than the end of the cap.
+ */
+const LAUNCH_WINDOW_MS = 6 * HOUR_MS;
+const LAUNCH_LIMIT = 60;
 
 function connectionUrl(env: Readonly<Record<string, string | undefined>>): string {
   const url = env['DATABASE_URL'];
@@ -139,6 +162,37 @@ async function main(): Promise<void> {
 
       const boardRows = await writeBoard(db, VIEW_ID, tick, board.rows);
       const storyViews = await writeStories(db, pages);
+
+      /* ── the launches rail ──
+         In the SAME transaction as the board, and not because the two frames depend on each
+         other — they do not, and they carry separate ticks precisely so they cannot. It is
+         one transaction because this process is one one-shot: two transactions would mean a
+         run that could half-succeed, and "the board committed but the rail did not" is a
+         state with no owner and no retry. If the rail ever needs its own cadence, it gets
+         its own entrypoint rather than a second commit inside this one. */
+      const launchLoad = await loadLaunchFacts(db, {
+        sinceMs: nowMs - LAUNCH_WINDOW_MS,
+        limit: LAUNCH_LIMIT,
+      });
+
+      /* One bad launch must not take the frame down with it. The likeliest cause is a
+         vendor's name inside a token name somebody chose on purpose — which is free to do
+         and costs us one row, printed, rather than a rail that stops updating. */
+      const launches: WireLaunch[] = [];
+      let launchesWithheld = 0;
+      for (const launchFacts of launchLoad.launches) {
+        try {
+          launches.push(projectLaunch(launchFacts, options));
+        } catch (error: unknown) {
+          if (!(error instanceof WireLeakError)) throw error;
+          launchesWithheld += 1;
+          console.warn(`launch ${launchFacts.assetKey} was withheld: its payload would have leaked`);
+        }
+      }
+
+      const launchTick = await nextLaunchTick(db, LAUNCH_FEED_ID);
+      const launchRows = await writeLaunches(db, LAUNCH_FEED_ID, launchTick, launches);
+
       return {
         tick,
         boardRows,
@@ -146,6 +200,13 @@ async function main(): Promise<void> {
         considered: facts.length,
         skipped,
         withheld: board.withheld.length,
+        launchTick,
+        launchRows,
+        launchesWithheld,
+        /* Printed rather than swallowed: these are coins we hold that the rail cannot show
+           because their mint time is unknown, and a rail quieter than the world has to be
+           diagnosable from the run that made it quiet. */
+        launchesWithoutMintTime: launchLoad.withoutMintTime,
       };
     });
 
@@ -153,6 +214,11 @@ async function main(): Promise<void> {
       `projected view=${VIEW_ID} tick=${result.tick} ` +
         `board_row=${result.boardRows} story_view=${result.storyViews} ` +
         `considered=${result.considered} skipped=${result.skipped} withheld=${result.withheld}`,
+    );
+    console.log(
+      `projected launches feed=${LAUNCH_FEED_ID} tick=${result.launchTick} ` +
+        `launch_row=${result.launchRows} withheld=${result.launchesWithheld} ` +
+        `no_mint_time=${result.launchesWithoutMintTime}`,
     );
   } finally {
     await pool.end();

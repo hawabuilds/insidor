@@ -45,6 +45,33 @@ export interface MintFeedPage {
   readonly mints: readonly MintEvent[];
   /** The source returned `limit` rows: there may be more we did not see. */
   readonly pageFull: boolean;
+  /**
+   * ★ Windows INSIDE [from, to] that this read cannot vouch for. Usually empty.
+   *
+   * Every other field here describes a read as a single event: it started, it
+   * finished, it was or was not complete. That is the whole truth for a pull
+   * transport, where a failure is a read that threw and the supervisor measures
+   * it as silence between two successes.
+   *
+   * A push transport fails differently, and the difference is not cosmetic. Its
+   * connection can drop and recover BETWEEN two successful reads, so both reads
+   * return on time, `coverage.observed()` finds no silence to measure, and the
+   * window is recorded as watched. Nothing above the transport can detect this
+   * afterwards — the only evidence is two instants that exist inside the
+   * transport and nowhere else. So the transport reports them, and main.ts
+   * records them exactly as it records the gaps coverage.ts computes.
+   *
+   * This is deliberately not "a stream field". It is the general statement "we
+   * were connected for this read and still cannot answer for part of it", and a
+   * poll whose source told it a sub-range was unavailable would use it too. What
+   * it is NOT is a place to make a judgement: the tolerance that decides whether
+   * a silence is jitter lives in exactly one place, and a transport that filtered
+   * its own outages before reporting them would be a second one.
+   *
+   * Empty, never omitted. An optional field is one a new transport forgets, and
+   * forgetting it is silent.
+   */
+  readonly blind: readonly Gap[];
   /** Where to resume. Persisted only after the mints above are stored. */
   readonly cursor: MintCursor;
 }

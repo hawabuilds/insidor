@@ -5,15 +5,37 @@
  * live feed right (never hides)". It is part of the shell's grid, and it leaves only when the
  * viewport is too narrow to hold it (≤1040px, in rail.module.css).
  *
- * Nothing is ingesting yet. So the rail is fully built — header, mode tabs, scroller, card
- * shell — and completely honest: the live pip does not pulse, the status pill does not say
- * "feed live", the count is a dash rather than a zero, and each mode says in one line what
- * has to exist before it can show anything. No placeholder rows, no skeleton that never
- * resolves, no invented trades.
+ * ★ ONE OF THE THREE TABS NOW HAS SOMETHING BEHIND IT. Launches reads
+ * `GET /launches/:feedId` — coins in the order they were minted, projected once, server
+ * side, already censored and already length-bounded. Trades and Viral keep their honest
+ * empty cards, unchanged, because nothing is streaming fills and nothing is ingesting
+ * posts. A tab that has data and a tab that does not must not look alike.
+ *
+ * ★ IT POLLS, AND IT SAYS SO. There is no live channel for launches — `openLiveChannel`
+ * covers the board and is unimplemented besides — so the pill reads "updated 4s ago" and
+ * never "feed live". rail.module.css makes the same argument about the pip: a pulsing cyan
+ * dot over a feed nobody is streaming is the cheapest lie in the app. The pip lights when
+ * the last read succeeded and goes out the moment it stops.
+ *
+ * ★ EVERY DECISION IS IN launches.ts, NOT HERE. This file fetches on an interval, holds
+ * four pieces of state, and renders what `railView` returns. That is deliberate and it is
+ * not style: the test runner has no DOM, so a `.tsx` cannot be imported by a test at all —
+ * anything decided in this file is untestable by construction.
+ *
+ * ★ TOKEN NAMES ARE TEXT AND ONLY EVER TEXT. `ticker`, `name` and `address` are typed by
+ * whoever minted the coin. They are rendered as JSX children — never `dangerouslySetInnerHTML`
+ * (which appears nowhere in this app), never an `href`, never a `src`, never a template that
+ * becomes a URL. The projection already bounded their length and stripped control and bidi
+ * characters; this is the second door, and it is the one that cannot be reasoned around.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
+import { fetchLaunches } from '../../shared/api/index.ts';
+import type { LaunchFeed } from '../../shared/api/index.ts';
+import { Num } from '../../shared/ui/index.ts';
+import { LAUNCH_FEED_ID, POLL_MS, railView } from './launches.ts';
+import type { LaunchRow } from './launches.ts';
 import styles from './rail.module.css';
 
 type RailMode = 'trades' | 'launches' | 'viral';
@@ -21,12 +43,12 @@ type RailMode = 'trades' | 'launches' | 'viral';
 interface Mode {
   readonly id: RailMode;
   readonly label: string;
-  /** The rail header title for this mode. Hers reads "Live viral feed"; nothing is live. */
+  /** The rail header title for this mode. */
   readonly title: string;
   /** What this mode shows, in the present tense. */
   readonly shows: string;
-  /** What has to exist first. One sentence, no roadmap. */
-  readonly needs: string;
+  /** What has to exist first. One sentence, no roadmap. Null once something does. */
+  readonly needs: string | null;
 }
 
 const MODES: readonly Mode[] = [
@@ -42,7 +64,10 @@ const MODES: readonly Mode[] = [
     label: 'Launches',
     title: 'New launches',
     shows: 'Coins as they are minted.',
-    needs: 'Needs a mint feed. Nothing is watching for new coins yet, so there is nothing to show.',
+    /* Null: this one is wired. Its empty and error states come from `railView`, which knows
+       whether the feed answered — a fixed sentence here would keep saying "nothing is
+       watching for new coins" over a rail that was full. */
+    needs: null,
   },
   {
     id: 'viral',
@@ -56,21 +81,143 @@ const MODES: readonly Mode[] = [
 /* Her markup opens on Viral. */
 const DEFAULT_MODE: RailMode = 'viral';
 
+/** The clock the ages are drawn against. One state update, so every row agrees on "now". */
+const CLOCK_MS = 1_000;
+
+/**
+ * One mint, in her tape-row grammar: icon | text | right-aligned figures.
+ *
+ * Nothing in here is clickable and nothing is a link. The address is identification — it is
+ * the only thing separating three coins that all call themselves the same word — and it is
+ * shown truncated so it reads as identification rather than as something to copy blind.
+ */
+function LaunchTapeRow({ row }: { row: LaunchRow }) {
+  return (
+    <div className={styles['tapeRow']}>
+      {/* A letter, not the coin's own image. A mint's image URI is a URL an attacker chose,
+          and an <img src> would be a request to their host for every row that scrolls past.
+          The tile takes the dashed "not a real coin" treatment when there is no ticker to
+          take a letter from, which is her existing grammar for exactly that. */}
+      <span
+        className={`${styles['tapeIc']} ${row.ticker === '' ? styles['tapeIcPend'] : styles['tapeIcOn']}`}
+        aria-hidden="true"
+      >
+        {row.tile}
+      </span>
+
+      <div className={styles['tapeMid']}>
+        <div className={styles['tapeSym']}>
+          {/* An unknown ticker renders as nothing at all. It does NOT fall back to the
+              address or to the name — either would look like a ticker to a person. */}
+          <span>{row.ticker}</span>
+          <span className={styles['tapeVenue']}>{row.venueLabel}</span>
+        </div>
+        {/* ★ THE ADDRESS COMES FIRST, AND THAT ORDER IS THE POINT. This line is clipped
+            when it does not fit, so whichever end is last is the end that disappears — and
+            the address is the ONLY thing telling three coins called "Jersey" apart, while
+            the name is the string an attacker chose. Putting the short, fixed-width fact
+            first means a name written to be 48 characters long pushes itself out of view
+            rather than pushing the identification out of view. */}
+        <div className={styles['tapeAct']} title={row.name}>
+          {row.name === '' ? row.address : `${row.address} · ${row.name}`}
+        </div>
+      </div>
+
+      <div className={styles['tapeR']}>
+        <div className={styles['tapeSol']}>
+          {/* Absent stays absent: a coin minted a minute ago has no pool and therefore no
+              cap, and `formatUsd` returns the pending glyph with its reason rather than $0. */}
+          <Num rendered={row.cap} />
+        </div>
+        <div className={styles['tapeT']} title={row.ageLabel} aria-label={row.ageLabel}>
+          <Num rendered={row.age} dim />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LiveRail() {
   const [mode, setMode] = useState<RailMode>(DEFAULT_MODE);
+  const [feed, setFeed] = useState<LaunchFeed | null>(null);
+  const [failure, setFailure] = useState<unknown>(null);
+  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
   const current = MODES.find((m) => m.id === mode) ?? MODES[MODES.length - 1];
+  const onLaunches = mode === 'launches';
+
+  /* Ages tick without a refetch. A rail whose "updated 4s ago" only moved when a request
+     landed would freeze at the exact moment the freezing is the thing worth seeing. */
+  useEffect(() => {
+    if (!onLaunches) return;
+    const id = setInterval(() => setNow(Date.now()), CLOCK_MS);
+    return () => clearInterval(id);
+  }, [onLaunches]);
+
+  /* The poll. It runs only while the Launches tab is open — a rail asking every six seconds
+     for a list nobody is looking at is load we chose to spend on nothing — and every request
+     carries the abort signal, so switching tabs or unmounting cancels the one in flight
+     instead of resolving into a component that is gone.
+
+     A failure is STORED rather than swallowed. The board's refetch deliberately ignores its
+     own errors because a stale board beats no board and the status line already says we are
+     not live; this rail has no such line unless it writes one, so the error is state and
+     `railView` turns it into a banner. */
+  useEffect(() => {
+    if (!onLaunches) return;
+    const controller = new AbortController();
+    let live = true;
+
+    const poll = (): void => {
+      fetchLaunches(LAUNCH_FEED_ID, controller.signal).then(
+        (next) => {
+          if (!live) return;
+          setFeed(next);
+          setFailure(null);
+          setLastOkAt(Date.now());
+        },
+        (error: unknown) => {
+          /* An aborted request is not a failure of the feed — it is us leaving. Reporting it
+             would flash "could not be read" every time somebody switched tabs. */
+          if (!live || controller.signal.aborted) return;
+          setFailure(error);
+        },
+      );
+    };
+
+    poll();
+    const id = setInterval(poll, POLL_MS);
+    return () => {
+      live = false;
+      clearInterval(id);
+      controller.abort();
+    };
+  }, [onLaunches]);
+
+  const view = railView({ feed, failure, lastOkAt, now });
 
   return (
     <aside className={styles['rail']} aria-label="live activity">
       <div className={styles['hd']}>
-        {/* The pip is off, not pulsing. See rail.module.css. */}
-        <span className={`${styles['lz']} ${styles['lzOff']}`} />
+        {/* Off unless the last read of a wired feed actually succeeded. */}
+        <span className={`${styles['lz']} ${onLaunches && view.live ? '' : styles['lzOff']}`} />
         <span className={styles['t']}>{current?.title ?? 'Live activity'}</span>
-        <span className={styles['status']} title="No ingest is connected">
-          no ingest
-        </span>
-        {/* An absent count is a dash, never 0 — 0 would read as "nothing happened". */}
-        <span className={styles['count']}>—</span>
+        {onLaunches ? (
+          <span
+            className={`${styles['status']} ${view.live ? styles['statusHot'] : ''}`}
+            title="Polled, not streamed — this is when the last read came back"
+          >
+            {view.status}
+          </span>
+        ) : (
+          <span className={styles['status']} title="No ingest is connected">
+            no ingest
+          </span>
+        )}
+        {/* An absent count is a dash, never 0 — 0 would read as "nothing happened". A count
+            of zero from a feed that answered is a different thing and is shown as one. */}
+        <span className={styles['count']}>{onLaunches ? view.count : '—'}</span>
       </div>
 
       <div className={styles['tabs']} role="tablist" aria-label="live feed mode">
@@ -88,16 +235,39 @@ export function LiveRail() {
         ))}
       </div>
 
-      <div className={styles['stream']}>
-        {/* One real card, in her card chrome, carrying the truth. The shape is on screen and
-            correct; nothing on it is invented. */}
-        <div className={styles['card']}>
-          <div className={styles['cardTitle']}>{current?.shows ?? ''}</div>
-          <div className={styles['cardText']}>{current?.needs ?? ''}</div>
-          <span className={styles['cardNote']}>
-            When the feed is connected, items arrive here newest-first and this card goes away.
-          </span>
+      {/* The only amber surface in the rail, and it reads as degraded-but-not-broken, which
+          is exactly what a feed that stopped answering is. */}
+      {onLaunches && view.notice !== null ? (
+        <div className={styles['pausedBanner']} role="status">
+          <b>{view.notice.headline}</b>
+          {view.notice.detail}
         </div>
+      ) : null}
+
+      <div className={styles['stream']}>
+        {onLaunches ? (
+          <>
+            {view.rows.map((row) => (
+              <LaunchTapeRow key={row.key} row={row} />
+            ))}
+            {view.empty === null ? null : (
+              <div className={styles['card']}>
+                <div className={styles['cardTitle']}>{view.empty.title}</div>
+                <div className={styles['cardText']}>{view.empty.text}</div>
+              </div>
+            )}
+          </>
+        ) : (
+          /* One real card, in her card chrome, carrying the truth. The shape is on screen and
+             correct; nothing on it is invented. */
+          <div className={styles['card']}>
+            <div className={styles['cardTitle']}>{current?.shows ?? ''}</div>
+            <div className={styles['cardText']}>{current?.needs ?? ''}</div>
+            <span className={styles['cardNote']}>
+              When the feed is connected, items arrive here newest-first and this card goes away.
+            </span>
+          </div>
+        )}
       </div>
     </aside>
   );

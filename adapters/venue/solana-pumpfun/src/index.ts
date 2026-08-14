@@ -108,7 +108,7 @@ export function pumpfunVenue(deps: PumpfunVenueDeps): Venue {
     // Read once, from the same payload the price came from. A mint time
     // assembled from a different read is a different fact.
     const minted: MintTime = mintTime(
-      { issuerMs: readCreatedAt(coin.value), chainMs: null, vendorMs: null },
+      { issuerMs: readCreatedAt(coin.value), chainMs: null, vendorMs: null, observedMs: null },
       deps.mintTimeOptions,
     );
 
@@ -296,3 +296,16 @@ export type { QuoteContext } from './trade.ts';
 export { toMintEvent } from './watch.ts';
 export { launchpadClient, chainClient } from './client.ts';
 export type { ChainClient, LaunchpadClient, SolanaVenueClientConfig } from './client.ts';
+export { createMintStream, openWebSocket, toStreamMintEvent } from './stream.ts';
+export type {
+  MintStream,
+  MintStreamOptions,
+  OpenSocket,
+  StreamDecodeContext,
+  StreamDrain,
+  StreamHandlers,
+  StreamNote,
+  StreamOutage,
+  StreamSocket,
+} from './stream.ts';
+export { boundedText, httpsUri, mintAddress } from './hostile.ts';

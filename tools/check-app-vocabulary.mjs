@@ -39,9 +39,13 @@ const BANNED = {
     'narrative', 'cluster', 'candidate', 'admit', 'qualify', 'coinable',
     'nameability', 'judge', 'judgement', 'judgment', 'abstain',
   ],
+  /* 'pumpportal' is the mint feed. It is free and needs no key, which changes nothing:
+     naming it in a browser bundle still tells a user which relay we chose. Note it is NOT
+     a substring of 'pumpfun' or 'Pump.fun' — the venue label is ours to show and is
+     unaffected. */
   'a vendor the pipeline buys from': [
     'anthropic', 'claude', 'apify', 'twitterapi', 'dexscreener', 'helius',
-    'rugcheck', 'birdeye', 'serpapi', 'lightgbm',
+    'rugcheck', 'birdeye', 'serpapi', 'lightgbm', 'pumpportal',
   ],
   /* Named in the internal forms only. A bare `spend` is the USER's money in a trade panel;
      `spendUsd` and `usdPerDay` are ours, and ours is what has no business in a browser. */

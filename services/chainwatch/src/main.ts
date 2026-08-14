@@ -12,7 +12,8 @@
  *
  *   1. read the feed
  *   2. persist the mints
- *   3. record any gap
+ *   3. record any gap — the ones the page reported inside its own window, and
+ *      the silence since the previous read
  *   4. ONLY THEN advance the durable cursor
  *
  * Reversing 2 and 4 loses mints silently: the cursor says we have seen a window
@@ -157,7 +158,23 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
       // 2 — durable before the cursor moves past them.
       if (seen > 0) await runtime.sink.recordMints(page.mints);
 
-      // 3 — the silence since the previous successful read, if any.
+      // 3a — windows INSIDE this read that the source could not answer for.
+      //
+      // A poll never has any: a read either succeeded or threw, and a throw is
+      // measured below as silence between two successes. A stream does, because
+      // its connection can drop and recover between two reads that both returned
+      // on time — and that hole is invisible to `observed()`, which has no
+      // silence to measure. Recorded before the silence check so that when both
+      // describe the same window they merge onto one coverage row, gap flag
+      // first.
+      for (const window of page.blind) {
+        await runtime.sink.recordGap(window);
+        state.gapsRecorded += 1;
+        state.lastGap = window;
+        log.warn('coverage gap recorded', { ...window });
+      }
+
+      // 3b — the silence since the previous successful read, if any.
       const silence = coverage.observed(page.to);
       if (silence !== null) {
         await runtime.sink.recordGap(silence);

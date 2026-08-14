@@ -56,6 +56,10 @@ const BANNED = {
   'a vendor we happen to buy from': [
     'anthropic', 'claude', 'haiku', 'sonnet', 'openai', 'gemini', 'apify', 'serpapi',
     'dexscreener', 'birdeye', 'helius', 'rugcheck', 'jupiter', 'privy', 'supabase',
+    /* The mint feed. Free, no key, and still a vendor: contracts/ and core/ have no
+       business knowing which relay the mint stream arrives over. adapters/ is deliberately
+       not scanned by this tool, which is where a client for it belongs. */
+    'pumpportal',
     'postgrest', 'supavisor', 'pgvector', 'vercel', 'railway', 'flyio', 'healthchecks',
     'sentry', 'lightgbm', 'sklearn', 'onnx', 'pinecone', 'cloudflare',
   ],

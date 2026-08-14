@@ -57,6 +57,33 @@ export const STORY_FIELDS = [
   'discussion',
 ] as const;
 
+/**
+ * The launches rail's row. NINE fields, and what is absent is the point.
+ *
+ * There is no `priceUsd`, no `liquidityUsd`, no `priceChange24h` and no `tradable` here,
+ * so no buy affordance can be assembled from a launch at runtime even if a server started
+ * sending those keys — `pick` drops them before any component sees them. There is no
+ * `imageUrl` either: a mint's image URI is a string an attacker chose, and a rendered
+ * `<img src>` is a request to a host of their choosing for every row that scrolls past.
+ *
+ * `mintedAtBoundS` is the honest half of `mintedAt` and the two are only ever read
+ * together — an age computed from a bounded instant and shown as a plain "3m ago" is an
+ * estimate wearing a reading's clothes. It is not called a confidence: `confidence` is on
+ * FORBIDDEN_KEYS below, because a confidence is a number about our certainty, whereas a
+ * bound is a fact about the world that would hold whether or not we existed.
+ */
+export const LAUNCH_FIELDS = [
+  'launchId',
+  'ticker',
+  'name',
+  'address',
+  'venueLabel',
+  'mintedAt',
+  'mintedAtBoundS',
+  'marketCapUsd',
+  'marketCapBasis',
+] as const;
+
 export const COIN_FIELDS = [
   'coinId',
   'ticker',
@@ -129,4 +156,10 @@ export const FORBIDDEN_SUBSTRINGS: readonly string[] = [
   'helius',
   'rugcheck',
   'supabase',
+  /* The mint feed the launches rail is fed by. It is free and needs no key, which changes
+     nothing: naming it still tells a user which relay we chose, and it would arrive
+     attached to other words — a host inside an image URI, a link inside a token's declared
+     socials. It is not a substring of 'pumpfun' or 'Pump.fun', so `venueLabel` is
+     unaffected: the venue is the venue, and the feed appears nowhere. */
+  'pumpportal',
 ];

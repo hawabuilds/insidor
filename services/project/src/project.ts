@@ -41,7 +41,7 @@
  * post count would, a match score would not.
  */
 
-import type { Fidelity, FingerprintKind, Millis, Rate } from '@insidor/contracts';
+import type { Fidelity, FingerprintKind, MintTimeConfidence, Millis, Rate } from '@insidor/contracts';
 
 import { orderByRecency } from './order.ts';
 import type { Orderable } from './order.ts';
@@ -58,6 +58,7 @@ import {
   type WireCoinLink,
   type WireEvidence,
   type WireInstant,
+  type WireLaunch,
   type WireMeasured,
   type WireSpark,
   type WireSparkPoint,
@@ -69,6 +70,24 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 /** Display lengths, not judgements. Nothing branches on them; they only trim strings. */
 const TITLE_MAX_CHARS = 96;
 const EXCERPT_MAX_CHARS = 240;
+
+/**
+ * ★ THE THREE ABOVE TRIM OUR OWN TEXT. THESE THREE BOUND SOMEBODY ELSE'S.
+ *
+ * A story title is written by the qualify stage; a token's symbol and name are typed by
+ * whoever minted the coin, which on this product means by someone who would like a rail
+ * position. So these are not display niceties, they are the limit on how much
+ * attacker-chosen text can reach a browser at all — the bound is applied here, in the
+ * projection, so an over-long name is never stored in a payload and therefore can never
+ * be served, whatever the client does with it.
+ *
+ * The numbers are generous against real tokens (tickers run 3-10 characters, names a
+ * handful of words) and tight against a payload written to break a layout.
+ */
+const TICKER_MAX_CHARS = 16;
+const NAME_MAX_CHARS = 48;
+/** A Solana address is 32-44 base58 characters. Anything longer is not one. */
+const ADDRESS_MAX_CHARS = 64;
 
 /* ── what the projector is handed ─────────────────────────────────────── */
 
@@ -633,6 +652,131 @@ function fromTheOneCoin(
   }
 }
 
+/* ── launches: one coin, in the minute it appeared ────────────────────── */
+
+/**
+ * A newly minted coin, as facts, before anything has been bounded or censored.
+ *
+ * Not `CoinFacts` reused. A launch is not a coin-attached-to-a-story with the story
+ * missing: it is a smaller statement with a different key (the asset, not the story), a
+ * different question ("what appeared, and when") and a different set of things it is
+ * allowed to say. Reusing CoinFacts would carry `imageUrl` and every market number into
+ * a payload that must not have them, and a field that is present gets rendered.
+ */
+export interface LaunchFacts {
+  /** '<chain>:<address>'. Unique by constraint, so it is a stable client key. */
+  readonly assetKey: string;
+  /**
+   * ★ ATTACKER-CONTROLLED, BOTH OF THEM. A mint's symbol and name are typed by whoever
+   * made the coin: they can impersonate another token, carry markup, carry a URL, be
+   * ten kilobytes long, or be empty. They arrive here raw and leave bounded — see
+   * `boundedText`, which is the only door they go through.
+   */
+  readonly ticker: string | null;
+  readonly name: string | null;
+  /** The on-chain identifier. Also arrives as raw text and is also bounded. */
+  readonly address: string;
+  /** Already a label, chosen from a Map in db.ts. Never an id passed through. */
+  readonly venueLabel: string;
+  /** Unknown is normal and stays unknown. Never backfilled from first_seen_at. */
+  readonly mintedAt: Millis | null;
+  /**
+   * How well the mint time is known, as 0005 stores it. Named `precision` rather than
+   * `confidence` because `confidence` is a forbidden key on the wire and the two words
+   * must not be one keystroke apart in the same file.
+   */
+  readonly mintPrecision: MintTimeConfidence;
+  /** Half-width of the bound, in SECONDS. 0005 requires it when the precision is bounded. */
+  readonly mintBoundS: number | null;
+  /** The latest reading we hold for this coin, or null when we hold none at all. */
+  readonly market: CoinMarket | null;
+}
+
+/**
+ * ★ MINT TIME ONTO THE WIRE, WHICH IS THE ONE DECISION THIS FUNCTION EXISTS TO MAKE.
+ *
+ * A live mint feed does not tell us when a coin was minted. It tells us when we heard
+ * about it, and the mint happened at or shortly before that — an INTERVAL, not an
+ * instant. 0005 has three columns for saying so and a CHECK constraint
+ * (`exact_requires_real_source`) that stops the third-party spelling of it claiming to
+ * be exact. This is the display side of the same rule.
+ *
+ * Three cases, and the middle one is the common one:
+ *
+ *   exact    → the instant, and no bound. Only a real source can produce this, and only
+ *              a chain confirmation produces it on this path.
+ *   bounded  → the instant AND the width. The rail renders "~3m" and states the bound.
+ *              A bounded time rendered as a bare "3m ago" is an estimate wearing a
+ *              reading's clothes, and mint time is the axis every ordering claim in the
+ *              product hangs on — "the post came before the mint" is the whole thesis,
+ *              and it is a claim about seconds.
+ *   unknown  → absent, with a reason, and NEVER filled from first_seen_at. That column
+ *              is when WE looked, which can postdate a mint by hours; rendering it as an
+ *              age would make the oldest and least-known coins look like the freshest.
+ *
+ * ★ AND THE FOURTH CASE, WHICH IS THE DEFENSIVE ONE: a row claiming `bounded` with no
+ * width is a row written around 0005's `bounded_requires_width`. It is published as
+ * UNREADABLE rather than as a bare instant. An estimate whose error we cannot state is
+ * not a better answer than no answer — it is the same answer with the caveat deleted.
+ */
+function projectMintTime(facts: LaunchFacts): {
+  readonly mintedAt: WireInstant;
+  readonly mintedAtBoundS: number | null;
+} {
+  switch (facts.mintPrecision) {
+    case 'unknown':
+      return { mintedAt: instant(null, 'not_read_yet'), mintedAtBoundS: null };
+    case 'exact':
+      return { mintedAt: instant(facts.mintedAt, 'not_read_yet'), mintedAtBoundS: null };
+    case 'bounded':
+      if (facts.mintBoundS === null || !Number.isFinite(facts.mintBoundS)) {
+        return { mintedAt: instant(null, 'unreadable'), mintedAtBoundS: null };
+      }
+      return {
+        mintedAt: instant(facts.mintedAt, 'not_read_yet'),
+        /* Rounded up: a bound stated smaller than it is claims a precision nobody has,
+           and rounding is the cheapest place to lose one. Never below one second. */
+        mintedAtBoundS: Math.max(1, Math.ceil(facts.mintBoundS)),
+      };
+  }
+}
+
+/**
+ * One launch, finished.
+ *
+ * Throws WireLeakError if anything in the payload is internal vocabulary — which on this
+ * payload means a vendor's name inside a token name somebody typed, and that is not a
+ * hypothetical: naming a rival's data vendor in a ticker is free. The caller drops the
+ * one row rather than the frame.
+ */
+export function projectLaunch(facts: LaunchFacts, options: ProjectOptions): WireLaunch {
+  const market = currentMarket(facts.market, options) ?? undefined;
+  const marketCapUsd = marketNumber(market?.marketCapUsd);
+  const mint = projectMintTime(facts);
+
+  const launch: WireLaunch = {
+    launchId: facts.assetKey,
+    /* An unknown ticker renders as nothing. It does NOT fall back to the address, or to
+       the name, or to anything else that would look like a ticker to a person. */
+    ticker: boundedText(facts.ticker, TICKER_MAX_CHARS),
+    name: boundedText(facts.name, NAME_MAX_CHARS),
+    /* Bounded like the other two. A Solana address is at most 44 characters, so a real
+       one is never touched; anything longer is not an address, and it arrives visibly
+       truncated rather than silently full-length. */
+    address: boundedText(facts.address, ADDRESS_MAX_CHARS),
+    venueLabel: facts.venueLabel,
+    mintedAt: mint.mintedAt,
+    mintedAtBoundS: mint.mintedAtBoundS,
+    marketCapUsd,
+    /* A basis never outlives its cap, in either direction — read off the projected cap
+       rather than off the facts, so a stale reading drops both together. */
+    marketCapBasis: marketCapUsd.v === null ? null : (market?.marketCapBasis ?? null),
+  };
+
+  assertNoInternalVocabulary(launch, `$.launch_row[${facts.assetKey}]`);
+  return launch;
+}
+
 /* ── words ────────────────────────────────────────────────────────────── */
 
 /**
@@ -970,6 +1114,55 @@ function earliestMember(members: readonly MemberFacts[]): MemberFacts | null {
 function nonEmpty(value: string | null): string | null {
   const trimmed = (value ?? '').trim();
   return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * ★ A STRING SOMEBODY ELSE TYPED, MADE SAFE TO STORE AND SHOW. The only door a token's
+ * symbol, name or address goes through.
+ *
+ * Four steps, and the order of the first two is the whole subtlety:
+ *
+ *   1. EVERY WHITESPACE CHARACTER BECOMES A PLAIN SPACE. A newline, a tab and a
+ *      non-breaking space all SEPARATE WORDS, so they have to survive as separators.
+ *      Deleting them instead — which is what step 2 would do to them, since a newline is
+ *      also a control character — turns "line one\nline two" into "line onetwo", and a
+ *      name that reads as one word is a different name.
+ *
+ *   2. WHAT IS LEFT OF THE CONTROL AND FORMAT CLASSES IS DELETED. `\p{Cc}` is the C0/C1
+ *      controls; `\p{Cf}` is the format class, which is where the bidi overrides live.
+ *      U+202E RIGHT-TO-LEFT OVERRIDE inside a token name does not affect that name
+ *      alone — it reverses the visual order of the text AROUND it, so a coin can rewrite
+ *      the label sitting beside it on the rail. Neither class is renderable content and
+ *      both are removable without asking what they were for. The cost is real and
+ *      accepted: ZERO WIDTH JOINER is in `Cf`, so a multi-part emoji comes apart into its
+ *      pieces. A cosmetic loss on a name beats a name that can reorder its own row.
+ *
+ *   3. RUNS OF SPACES ARE COLLAPSED, which is what makes a name of four thousand spaces
+ *      become empty rather than a four-thousand-character cell — and also tidies the gaps
+ *      step 2 leaves behind where a control character sat between two spaces.
+ *
+ *   4. THE RESULT IS CAPPED, with an ellipsis, so a truncation is visible as one. A
+ *      silently cut name reads as the coin's actual name, and a coin apparently called
+ *      "OFFICIAL SOLANA FOUNDATION TREASU" is a better impersonation than the full string
+ *      it came from.
+ *
+ * Capping happens LAST, so a ten-kilobyte string of invisible characters collapses to
+ * nothing rather than to forty-eight characters of garbage with an ellipsis after it.
+ *
+ * An absent or all-junk string comes back as `''` — the empty string, not a placeholder
+ * and not the address. `projectCoin` makes the same choice for the same reason: a coin
+ * with no readable ticker renders as nothing, never as something that looks like one.
+ */
+function boundedText(raw: string | null, max: number): string {
+  if (raw === null) return '';
+  const spaced = raw.replace(/\s/gu, ' ');
+  const stripped = spaced.replace(/[\p{Cc}\p{Cf}]/gu, '');
+  const collapsed = stripped.replace(/ {2,}/gu, ' ').trim();
+  if (collapsed === '') return '';
+  /* `trimTo` cuts at the last space when there is one, which is right for a sentence and
+     wrong for a ticker — a 16-character cap on "MOON SAFE" would cut it to "MOON". So
+     the cut is on characters here, and only the ellipsis is shared. */
+  return collapsed.length <= max ? collapsed : `${collapsed.slice(0, max).trimEnd()}…`;
 }
 
 function trimTo(text: string, max: number): string {

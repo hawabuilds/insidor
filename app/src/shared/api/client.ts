@@ -15,9 +15,10 @@
 
 import { notImplemented } from '../not-implemented.ts';
 import type { BoardTick } from './wire/board.ts';
+import type { LaunchFeed } from './wire/launch.ts';
 import type { Story } from './wire/story.ts';
 import type { TradeIntent, TradeQuote, TradeResult } from './wire/trade.ts';
-import { decodeBoardTick, decodeStory, decodeTradeQuote } from './decode.ts';
+import { decodeBoardTick, decodeLaunchFeed, decodeStory, decodeTradeQuote } from './decode.ts';
 
 /** A failure of the transport, as opposed to a failure of the payload. Callers show these differently. */
 export class ReadError extends Error {
@@ -61,8 +62,14 @@ const USE_FIXTURES = import.meta.env?.DEV === true && BASE === '';
 export const USING_FIXTURES = USE_FIXTURES;
 
 async function readFixture(path: string): Promise<unknown> {
-  const { fixtureBoard, fixtureStory } = await import('./fixtures.ts');
+  const { fixtureBoard, fixtureLaunches, fixtureStory } = await import('./fixtures.ts');
   if (path.startsWith('/board/')) return fixtureBoard();
+  /* The launches rail gets a branch rather than the 501 below, because without one the
+     default dev experience — no VITE_READ_URL — would show the rail's ERROR state on every
+     load, and an error state that is always on is an error state nobody reads. What comes
+     back is a raw wire payload and goes through `decodeLaunchFeed` like anything off the
+     network, so a fixture cannot hold a shape the server could never send. */
+  if (path.startsWith('/launches/')) return fixtureLaunches();
   if (path.startsWith('/story/')) {
     const id = decodeURIComponent(path.slice('/story/'.length));
     const story = fixtureStory(id);
@@ -105,6 +112,19 @@ export async function fetchBoard(viewId: string, signal?: AbortSignal): Promise<
 
 export async function fetchStory(storyId: string, signal?: AbortSignal): Promise<Story> {
   return decodeStory(await read(`/story/${encodeURIComponent(storyId)}`, signal));
+}
+
+/**
+ * One frame of the launches rail.
+ *
+ * Polled, because there is no live channel for it — `openLiveChannel` covers the board and
+ * is unimplemented besides. The caller owns the interval and says on screen when it last
+ * succeeded, so a rail that has stopped updating looks different from a market that has
+ * gone quiet. `read` already sets `cache: 'no-store'`; every row here is stale within a
+ * minute, so a cached one would be worse than no row.
+ */
+export async function fetchLaunches(feedId: string, signal?: AbortSignal): Promise<LaunchFeed> {
+  return decodeLaunchFeed(await read(`/launches/${encodeURIComponent(feedId)}`, signal));
 }
 
 /**

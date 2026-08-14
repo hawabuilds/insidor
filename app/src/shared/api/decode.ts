@@ -23,6 +23,7 @@ import type { Instant, Measured, Delta, PendingReason } from '../format/measure.
 import { instantFrom, measuredFrom } from '../format/measure.ts';
 import type { BoardRow, BoardTick, RowPatch, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinLink, MarketCapBasis } from './wire/coin.ts';
+import type { Launch, LaunchFeed } from './wire/launch.ts';
 import type { DiscussionPost, Evidence, Story } from './wire/story.ts';
 import type { TradeCost, TradeQuote } from './wire/trade.ts';
 import {
@@ -30,6 +31,7 @@ import {
   COIN_FIELDS,
   FORBIDDEN_KEYS,
   FORBIDDEN_SUBSTRINGS,
+  LAUNCH_FIELDS,
   STORY_FIELDS,
 } from './wire/fields.ts';
 
@@ -330,6 +332,77 @@ export function decodeRowPatch(raw: unknown, path = '$.patch'): RowPatch {
   }
   if ('coins' in f) fields['coins'] = decodeCoinLink(f['coins'], `${path}.fields.coins`);
   return { id: str(o['id'], `${path}.id`), fields: fields as RowPatch['fields'] };
+}
+
+/* ── launches ─────────────────────────────────────────────────────────── */
+
+/**
+ * The mint-time bound, in seconds.
+ *
+ * Absent, non-numeric, non-finite or negative all become `null`, which the rail reads as
+ * "no bound was stated". ★ NOTE THE DIRECTION OF THAT DEFAULT AND WHY IT IS SAFE HERE: a
+ * null bound means the rail shows the age WITHOUT a "~", i.e. as a reading. That is only
+ * correct because the server sends this field for exactly the bounded case and omits it
+ * for the exact one — 0005's `bounded_requires_width` makes a bounded mint time with no
+ * width unwritable, and `projectMintTime` publishes such a row as unreadable rather than
+ * as a bare instant. So a missing bound beside a present instant means exact, by
+ * construction on the far side, and this decoder does not have to guess.
+ *
+ * A negative half-width is not a bound, it is a broken reading, and it degrades to the
+ * same null rather than to an interval that runs backwards.
+ */
+function boundSeconds(v: unknown): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return null;
+  return v;
+}
+
+/**
+ * One launch.
+ *
+ * Assert first, pick second, exactly like `decodeBoardRow` — a leak that has already been
+ * dropped by the pick is a leak nobody fixes at the source. This one earns the assert more
+ * than most: `name` and `ticker` are free text somebody chose while minting a coin, and a
+ * vendor's name inside a token name is free to type.
+ */
+export function decodeLaunch(raw: unknown, path = '$.launch'): Launch {
+  assertNoInternalVocabulary(raw, path);
+  const o = pick(obj(raw, path), LAUNCH_FIELDS);
+  return {
+    launchId: str(o.launchId, `${path}.launchId`),
+    ticker: str(o.ticker, `${path}.ticker`),
+    name: str(o.name, `${path}.name`),
+    address: str(o.address, `${path}.address`),
+    venueLabel: str(o.venueLabel, `${path}.venueLabel`),
+    /* Unknown stays unknown, and is never backfilled from anything. The fallback reason
+       fires only when the server sent no reason at all — "we have not learned it" is the
+       only thing that can honestly be said on such a server's behalf. */
+    mintedAt: instantAt(o.mintedAt, `${path}.mintedAt`, 'not_read_yet'),
+    mintedAtBoundS: boundSeconds(o.mintedAtBoundS),
+    /* `no_market` and not `not_read_yet`: on this rail the fallback describes a coin
+       minted minutes ago, and "nothing is quotable yet" is what is true of nearly all of
+       them. Neither branch of this function can produce a number from an absence. */
+    marketCapUsd: measured(o.marketCapUsd, `${path}.marketCapUsd`, 'no_market'),
+    marketCapBasis: decodeBasis(o.marketCapBasis),
+  };
+}
+
+/**
+ * One frame of the rail. `launches` is the order; nothing here sorts it.
+ *
+ * Every row is decoded, and one unreadable row throws the whole frame rather than being
+ * skipped. That is the same call `decodeBoardTick` makes: a rail silently one row short is
+ * a rail that is wrong in a way nobody can see, and the caller already has an error state
+ * that says so out loud.
+ */
+export function decodeLaunchFeed(raw: unknown, path = '$'): LaunchFeed {
+  assertNoInternalVocabulary(raw, path);
+  const o = obj(raw, path);
+  return {
+    tick: int(o['tick'], `${path}.tick`),
+    launches: arr(o['launches'], `${path}.launches`).map((l, i) =>
+      decodeLaunch(l, `${path}.launches[${i}]`),
+    ),
+  };
 }
 
 function decodeEvidence(raw: unknown, path: string): Evidence {

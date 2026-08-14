@@ -58,7 +58,7 @@ export function venueDeps(): VenueDeps {
       chain: { oldestSignatureBlockTime: refuse('rpc:signatures'), tokenAccountState: refuse('rpc:account') },
       meter: m,
       now,
-      mintTimeOptions: { agreementToleranceMs: 60_000 },
+      mintTimeOptions: { agreementToleranceMs: 60_000, observationLagS: 10 },
       platformFeeBps: 50,
       baseUsd: () => null,
       networkLamports: 5_000n,

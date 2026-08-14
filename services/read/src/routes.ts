@@ -23,7 +23,15 @@
  */
 
 import { errorText, type Logger } from './log.ts';
-import { BOARD_ROWS_SQL, BOARD_VIEW_SQL, STORY_SQL, type Db, type Row } from './queries.ts';
+import {
+  BOARD_ROWS_SQL,
+  BOARD_VIEW_SQL,
+  LAUNCH_ROWS_SQL,
+  LAUNCH_VIEW_SQL,
+  STORY_SQL,
+  type Db,
+  type Row,
+} from './queries.ts';
 
 export interface Reply {
   readonly status: number;
@@ -160,6 +168,31 @@ async function story(storyId: string, deps: Deps): Promise<Reply> {
 }
 
 /**
+ * GET /launches/:feedId
+ *
+ * Two statements, no join, no logic — the same shape as the board and for the same
+ * reasons. The payloads come back in the order the projector committed and this service
+ * does not re-sort them: "newest first" was decided once, against mint times this process
+ * cannot read, and re-deriving it here would put the product's ordering rule in the one
+ * package that must never hold one.
+ *
+ * There is no `order` array in the reply. The board has one because rows arrive
+ * individually over the live channel; launches are polled whole, so the array of payloads
+ * is the order and a second spelling of it would be a second thing that can disagree.
+ */
+async function launches(feedId: string, deps: Deps): Promise<Reply> {
+  const views = await deps.db.query(LAUNCH_VIEW_SQL, [feedId]);
+  const view = views[0];
+  if (view === undefined) return NOT_FOUND;
+
+  const rows = await deps.db.query(LAUNCH_ROWS_SQL, [feedId]);
+  return json(200, {
+    tick: tickNumber(view['tick']),
+    launches: rows.map(payloadOf),
+  });
+}
+
+/**
  * The whole router.
  *
  * Every throw below this line — a driver error, a broken projection, a permission
@@ -187,6 +220,7 @@ export async function handle(method: string, rawUrl: string, deps: Deps): Promis
     if (segments.length === 2 && param !== undefined) {
       if (head === 'board') return await board(param, deps);
       if (head === 'story') return await story(param, deps);
+      if (head === 'launches') return await launches(param, deps);
     }
     return NOT_FOUND;
   } catch (e) {

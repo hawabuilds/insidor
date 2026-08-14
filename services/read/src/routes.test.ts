@@ -17,7 +17,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { SILENT } from './log.ts';
-import { BOARD_ROWS_SQL, BOARD_VIEW_SQL, STORY_SQL, type Row } from './queries.ts';
+import {
+  BOARD_ROWS_SQL,
+  BOARD_VIEW_SQL,
+  LAUNCH_ROWS_SQL,
+  LAUNCH_VIEW_SQL,
+  STORY_SQL,
+  type Row,
+} from './queries.ts';
 import { handle, type Deps } from './routes.ts';
 
 interface Call {
@@ -203,6 +210,105 @@ test('a row with no payload is a 500, not the literal undefined', async () => {
   assert.doesNotThrow(() => JSON.parse(reply.body), 'every body this service sends is JSON');
 });
 
+/* ── launches ─────────────────────────────────────────────────────────── */
+
+/** Two finished payloads, as the projector would have written them. */
+const DOCK = {
+  launchId: 'solana:Dock1',
+  ticker: 'DOCK',
+  name: 'refuses to dock',
+  address: 'Dock1',
+  venueLabel: 'Pump.fun',
+  mintedAt: { at: 1_755_079_200_000 },
+  mintedAtBoundS: 30,
+  marketCapUsd: { v: 412_000 },
+  marketCapBasis: 'fully-diluted',
+};
+const JERSEY = {
+  launchId: 'solana:Jrsy2',
+  ticker: 'JERSEY',
+  name: 'jersey',
+  address: 'Jrsy2',
+  venueLabel: 'Pump.fun',
+  mintedAt: { at: 1_755_079_260_000 },
+  mintedAtBoundS: 30,
+  /* The common case on this rail: minted a moment ago, so there is no pool and no cap. */
+  marketCapUsd: { v: null, why: 'no_market' },
+  marketCapBasis: null,
+};
+
+test('the launches feed is the tick and the payloads, in the committed order', async () => {
+  const { deps, calls } = fakeDb({
+    [LAUNCH_VIEW_SQL]: [{ tick: '9' }],
+    /* Deliberately not in mint order or alphabetical order: the driver returns them in
+       whatever `order by "position"` produced, and this service must hand that back
+       untouched. A re-sort here would be the product's ordering rule living in the one
+       package that holds no rules. */
+    [LAUNCH_ROWS_SQL]: [{ payload: JERSEY }, { payload: DOCK }],
+  });
+
+  const reply = await handle('GET', '/launches/default', deps);
+  assert.equal(reply.status, 200);
+  assert.deepEqual(JSON.parse(reply.body), { tick: 9, launches: [JERSEY, DOCK] });
+
+  assert.deepEqual(
+    calls.map((c) => c.sql),
+    [LAUNCH_VIEW_SQL, LAUNCH_ROWS_SQL],
+    'exactly two statements, in this order, and no join',
+  );
+  assert.deepEqual(calls[1]?.params, ['default']);
+});
+
+test('a launch payload is returned verbatim — no envelope, no added field, none dropped', async () => {
+  const { deps } = fakeDb({
+    [LAUNCH_VIEW_SQL]: [{ tick: 1 }],
+    [LAUNCH_ROWS_SQL]: [{ payload: JERSEY }],
+  });
+  const body = JSON.parse((await handle('GET', '/launches/default', deps)).body) as {
+    launches: unknown[];
+  };
+  assert.deepEqual(body.launches[0], JERSEY);
+  /* The absence in particular: an absent cap must arrive as the absent form with its
+     reason, not as a zero and not as a missing key. This service adds no coalesce. */
+  assert.deepEqual((body.launches[0] as typeof JERSEY).marketCapUsd, {
+    v: null,
+    why: 'no_market',
+  });
+});
+
+test('a feed that exists with no mints is an empty rail, not a 404', async () => {
+  /* The distinction the whole endpoint turns on. A quiet market and an unreachable feed
+     look identical if both answer 404, and the rail would show a transport error over a
+     market that is simply quiet. */
+  const { deps } = fakeDb({ [LAUNCH_VIEW_SQL]: [{ tick: '4' }], [LAUNCH_ROWS_SQL]: [] });
+  const reply = await handle('GET', '/launches/default', deps);
+  assert.equal(reply.status, 200);
+  assert.deepEqual(JSON.parse(reply.body), { tick: 4, launches: [] });
+});
+
+test('a launches feed that has never been projected is 404 and never asks for its rows', async () => {
+  const { deps, calls } = fakeDb({ [LAUNCH_VIEW_SQL]: [] });
+  const reply = await handle('GET', '/launches/never', deps);
+  assert.equal(reply.status, 404);
+  assert.deepEqual(JSON.parse(reply.body), { error: 'not found' });
+  assert.deepEqual(calls.map((c) => c.sql), [LAUNCH_VIEW_SQL]);
+});
+
+test('a launch row with no payload is a 500, not the literal undefined', async () => {
+  const { deps } = fakeDb({ [LAUNCH_VIEW_SQL]: [{ tick: '1' }], [LAUNCH_ROWS_SQL]: [{}] });
+  const reply = await handle('GET', '/launches/default', deps);
+  assert.equal(reply.status, 500);
+  assert.doesNotThrow(() => JSON.parse(reply.body), 'every body this service sends is JSON');
+});
+
+test('★ a driver failure on the launches path says nothing about the schema either', async () => {
+  const { deps } = throwingDb(new Error('permission denied for table market_reading'));
+  const reply = await handle('GET', '/launches/default', deps);
+  assert.equal(reply.status, 500);
+  assert.deepEqual(JSON.parse(reply.body), { error: 'server error' });
+  assertSaysNothing(reply.body);
+});
+
 /* ── ★ parameters, never interpolation ────────────────────────────────── */
 
 test('★ a path parameter reaches the driver as a PARAMETER, never interpolated', async () => {
@@ -214,6 +320,23 @@ test('★ a path parameter reaches the driver as a PARAMETER, never interpolated
   for (const call of calls) {
     assert.ok(
       call.sql === BOARD_VIEW_SQL || call.sql === BOARD_ROWS_SQL,
+      'the statement must be byte-identical to the constant in queries.ts',
+    );
+    assert.ok(!call.sql.includes('drop'), 'nothing from the path may appear in the statement');
+    assert.deepEqual(call.params, [hostile], 'the id travels in the parameter array, decoded once');
+  }
+  assert.equal(calls.length, 2);
+});
+
+test('★ a hostile feed id reaches the driver as a PARAMETER on the launches path too', async () => {
+  const hostile = "default'; drop table public.launch_row; --";
+  const { deps, calls } = fakeDb({ [LAUNCH_VIEW_SQL]: [{ tick: '1' }], [LAUNCH_ROWS_SQL]: [] });
+
+  await handle('GET', `/launches/${encodeURIComponent(hostile)}`, deps);
+
+  for (const call of calls) {
+    assert.ok(
+      call.sql === LAUNCH_VIEW_SQL || call.sql === LAUNCH_ROWS_SQL,
       'the statement must be byte-identical to the constant in queries.ts',
     );
     assert.ok(!call.sql.includes('drop'), 'nothing from the path may appear in the statement');

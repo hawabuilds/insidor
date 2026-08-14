@@ -14,6 +14,10 @@ const complete: Record<string, string> = {
   POLL_INTERVAL_MS: '20000',
   PAGE_LIMIT: '500',
   COVERAGE_TOLERANCE_MS: '60000',
+  MINT_STREAM_URL: 'wss://stream.example/api/data',
+  MINT_STREAM_BUFFER_LIMIT: '5000',
+  MINT_STREAM_STALE_MS: '90000',
+  MINT_OBSERVATION_LAG_S: '10',
   BACKOFF_BASE_MS: '1000',
   BACKOFF_MAX_MS: '60000',
   HEARTBEAT: 'off',
@@ -70,4 +74,64 @@ test('an unknown transport is rejected rather than assumed', () => {
 test('the coverage tolerance has no default, because lead-time honesty depends on it', () => {
   const { COVERAGE_TOLERANCE_MS: _omitted, ...missing } = complete;
   assert.throws(() => loadChainwatchConfig(missing), ConfigError);
+});
+
+test('the observation lag has no default either — it is the other honesty number', () => {
+  // It is what turns "we were told at T" into a comparable mint time. Defaulting
+  // it would mean whoever last edited a constant decided whether the pre-mint
+  // ordering gate is measuring anything at all.
+  const { MINT_OBSERVATION_LAG_S: _omitted, ...missing } = complete;
+  assert.throws(() => loadChainwatchConfig(missing), ConfigError);
+  assert.equal(loadChainwatchConfig(complete).observationLagS, 10);
+});
+
+test('a buffer smaller than a page would report every busy window as a hole', () => {
+  // `pageFull` is true when the drain hands over exactly `limit`, and a buffer
+  // that cannot hold a page can never do anything else — so every cycle would
+  // write a page_overflow row and the coverage log would stop meaning anything.
+  assert.throws(
+    () => loadChainwatchConfig({ ...complete, MINT_STREAM_BUFFER_LIMIT: '499' }),
+    ConfigError,
+  );
+  assert.doesNotThrow(() =>
+    loadChainwatchConfig({ ...complete, MINT_STREAM_BUFFER_LIMIT: '500' }),
+  );
+});
+
+test('a staleness window at or below the poll interval reconnects on its own cadence', () => {
+  assert.throws(
+    () => loadChainwatchConfig({ ...complete, MINT_STREAM_STALE_MS: '20000' }),
+    ConfigError,
+  );
+});
+
+test('a stream URL that is not a websocket URL is refused at boot, not at connect', () => {
+  // The socket constructor fails asynchronously on the first attempt, which
+  // arrives looking exactly like a vendor outage. This is a config error and
+  // should read as one.
+  assert.throws(
+    () => loadChainwatchConfig({ ...complete, MINT_STREAM_URL: 'https://stream.example/api' }),
+    ConfigError,
+  );
+  assert.doesNotThrow(() =>
+    loadChainwatchConfig({ ...complete, MINT_STREAM_URL: 'ws://127.0.0.1:9/api' }),
+  );
+});
+
+test('every problem is reported at once, not one per restart', () => {
+  const broken = {
+    ...complete,
+    MINT_STREAM_URL: 'https://stream.example/api',
+    MINT_OBSERVATION_LAG_S: '0',
+    MINT_STREAM_STALE_MS: '20000',
+  };
+  try {
+    loadChainwatchConfig(broken);
+    assert.fail('expected a ConfigError');
+  } catch (e) {
+    const text = e instanceof Error ? e.message : String(e);
+    assert.match(text, /MINT_STREAM_URL/);
+    assert.match(text, /MINT_OBSERVATION_LAG_S/);
+    assert.match(text, /MINT_STREAM_STALE_MS/);
+  }
 });

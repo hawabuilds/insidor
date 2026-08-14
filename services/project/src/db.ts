@@ -29,6 +29,7 @@ import type {
   MarketAbsenceReason,
   MarketCapBasis,
   Millis,
+  MintTimeConfidence,
   Rate,
 } from '@insidor/contracts';
 import type { MatchEvidence } from '@insidor/contracts/story.ts';
@@ -39,13 +40,14 @@ import { permalinkFor } from './permalinks.ts';
 import type {
   CoinFacts,
   CoinMarket,
+  LaunchFacts,
   MarketNumber,
   MemberFacts,
   MemberRelation,
   ReachReading,
   StoryFacts,
 } from './project.ts';
-import type { PendingReason, WireBoardRow, WireStory } from './wire.ts';
+import type { PendingReason, WireBoardRow, WireLaunch, WireStory } from './wire.ts';
 
 /* ── the frame ────────────────────────────────────────────────────────── */
 
@@ -536,8 +538,31 @@ const VENUE_LABELS: ReadonlyMap<string, string> = new Map([
   ['raydium', 'Raydium'],
 ]);
 
+/**
+ * ★ TWO SPELLINGS ARE LOOKED UP, AND THAT IS NOT TIDINESS. `venue_id` has no CHECK on it
+ * (0005 declares none), and the writers disagree: the seed writes the bare market
+ * (`pumpfun`) while contracts' `venueId(chain, market)` — which every real adapter uses —
+ * produces `solana:pumpfun`. Looking up only the full id would label every coin the live
+ * mint feed writes as "Solana:pumpfun", which is not a lie but is the kind of ugly that
+ * ships. So: the whole id first, then the part after the last colon, then the capitalised
+ * fallback. The fallback still looks wrong enough to get fixed, which is its job.
+ *
+ * The lookup is a Map and not an object literal, and it has to be said again because the
+ * trap is invisible: `venue_id` is unconstrained text, and an object literal answers for
+ * its prototype as well as its own keys. Indexed as one, a venue_id of `constructor` or
+ * `toString` returns a FUNCTION, so `??` never fires and a function is returned from
+ * something typed `string`. Nothing would throw: the censor's walk skips a non-string
+ * non-object and JSON.stringify DROPS a function-valued key entirely, so the row would be
+ * stored and served with no `venueLabel` at all — failing in decode.ts, in a user's
+ * browser, as far from this line as it is possible to get.
+ */
 function venueLabel(venueId: string): string {
-  return VENUE_LABELS.get(venueId) ?? venueId.charAt(0).toUpperCase() + venueId.slice(1);
+  const direct = VENUE_LABELS.get(venueId);
+  if (direct !== undefined) return direct;
+  const market = venueId.slice(venueId.lastIndexOf(':') + 1);
+  const byMarket = VENUE_LABELS.get(market);
+  if (byMarket !== undefined) return byMarket;
+  return market.charAt(0).toUpperCase() + market.slice(1);
 }
 
 /**
@@ -804,6 +829,139 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<readon
   );
 }
 
+/* ── launches: the mint stream, on its own axis ───────────────────────── */
+
+interface LaunchRow {
+  asset_key: string;
+  address: string;
+  venue_id: string;
+  symbol: string | null;
+  name: string | null;
+  minted_at: Date | string | null;
+  minted_at_conf: MintTimeConfidence;
+  minted_at_bound_s: number | null;
+}
+
+export interface LaunchWindow {
+  /** Coins minted at or after this instant. A presentation bound, not a judgement. */
+  readonly sinceMs: Millis;
+  readonly limit: number;
+}
+
+/**
+ * How many characters of somebody else's text may cross from Postgres into this process.
+ * Not a display length — see the `left(…)` note below and TICKER/NAME_MAX_CHARS in
+ * project.ts, which is where what a user sees is decided.
+ */
+const TRANSPORT_TEXT_CAP = 200;
+
+/**
+ * The most recently minted coins, newest first.
+ *
+ * ★ `minted_at_conf <> 'unknown'` IS AN EXCLUSION AND IT IS DELIBERATE, so it is worth
+ * saying what it costs. A coin whose mint time we never learned is a coin that cannot be
+ * placed on the axis this list is ordered by. Putting it at the bottom would say it is the
+ * oldest, putting it at the top would say it is the newest, and both are claims we cannot
+ * make; ordering it by `first_seen_at` instead would be the "backfill the mint time from
+ * when we looked" mistake wearing an ORDER BY. So it is left out, and the projector counts
+ * what it left out and prints the count, because a rail quieter than the world has to be
+ * diagnosable rather than merely quiet. 0005's own header makes the same call from the
+ * other side: an 'unknown' mint time fails gate G1.
+ *
+ * `minted_at is not null` is redundant against `unknown_iff_absent` and is written anyway:
+ * it is the predicate on 0005's partial `asset_time_idx`, and without it the planner has
+ * no partial index to walk backwards.
+ *
+ * ★ `left(…, $3)` BOUNDS THE BYTES, NOT THE DISPLAY. `symbol` and `name` are unbounded
+ * `text` columns holding strings an attacker typed, and this projector runs inside a
+ * transaction while ingest is writing — a single ten-megabyte token name would be pulled
+ * into this process in full before any code of ours saw it. The display bound is a
+ * different and much smaller number, applied in project.ts where a test can call it with a
+ * literal. Two numbers on purpose: if this one ever became the display rule, the rule would
+ * be living in a string literal in a SQL file.
+ */
+async function loadLaunches(db: Db, window: LaunchWindow): Promise<readonly LaunchRow[]> {
+  return db.query<LaunchRow>(
+    `select a.asset_key,
+            a.address,
+            a.venue_id,
+            left(a.symbol, $3::int) as symbol,
+            left(a.name, $3::int)   as name,
+            a.minted_at,
+            a.minted_at_conf,
+            a.minted_at_bound_s
+       from public.asset a
+      where a.minted_at is not null
+        and a.minted_at_conf <> 'unknown'
+        and a.minted_at >= to_timestamp($1::double precision / 1000.0)
+      order by a.minted_at desc, a.asset_key desc
+      limit $2`,
+    [window.sinceMs, window.limit, TRANSPORT_TEXT_CAP],
+  );
+}
+
+export interface LaunchLoad {
+  readonly launches: readonly LaunchFacts[];
+  /**
+   * How many coins in the window were left out for having no usable mint time. Printed by
+   * the projector: a rail that is quieter than the world must say so somewhere.
+   */
+  readonly withoutMintTime: number;
+}
+
+/**
+ * Every launch the rail could show, with whatever reading we hold for each.
+ *
+ * Two statements, never one join. The market read is separate for the reason
+ * `loadStoryFacts` gives: joined in it would have to be a LEFT join, and an inner one
+ * would silently DELETE every coin nobody has read yet — which is most of a launches feed,
+ * by construction, because a coin four minutes old has no pool to have been read.
+ */
+export async function loadLaunchFacts(db: Db, window: LaunchWindow): Promise<LaunchLoad> {
+  const rows = await loadLaunches(db, window);
+  if (rows.length === 0) return { launches: [], withoutMintTime: await countWithoutMintTime(db, window) };
+
+  const markets = await loadMarketReadings(db, [...new Set(rows.map((row) => row.asset_key))]);
+  const launches = rows.map((row) => ({
+    assetKey: row.asset_key,
+    ticker: row.symbol,
+    name: row.name,
+    address: row.address,
+    venueLabel: venueLabel(row.venue_id),
+    mintedAt: row.minted_at === null ? null : toMillis(row.minted_at),
+    mintPrecision: row.minted_at_conf,
+    mintBoundS: row.minted_at_bound_s,
+    /* `?? null` and never a fabricated empty reading. A coin with no row in
+       public.market_reading has not been READ, which is our state; an empty reading would
+       say the venue answered and had nothing, which is the world's. projectLaunch gives
+       the two different reasons. */
+    market: markets.get(row.asset_key) ?? null,
+  }));
+  return { launches, withoutMintTime: await countWithoutMintTime(db, window) };
+}
+
+/**
+ * The coins the query above refused, counted rather than guessed at.
+ *
+ * A separate statement rather than a `count(*) filter` bolted onto the first, because the
+ * first has a `limit` on it and a count under a limit is not a count. This one has no
+ * limit and returns one number.
+ */
+async function countWithoutMintTime(db: Db, window: LaunchWindow): Promise<number> {
+  const rows = await db.query<{ n: string }>(
+    `select count(*)::text as n
+       from public.asset a
+      where a.minted_at_conf = 'unknown'
+        and a.first_seen_at >= to_timestamp($1::double precision / 1000.0)`,
+    [window.sinceMs],
+  );
+  /* Bounded by `first_seen_at` and not by `minted_at`, because these rows have no
+     `minted_at` at all — that is what makes them the rows in question. It is the wrong
+     clock for an ordering and the right one for "how many of these turned up lately",
+     which is the only question being asked of it. */
+  return Number(rows[0]?.n ?? '0');
+}
+
 /* ── the writes ───────────────────────────────────────────────────────── */
 
 /**
@@ -867,6 +1025,76 @@ export async function writeStories(db: Db, pages: readonly WireStory[]): Promise
        on conflict (story_id) do update
          set payload = excluded.payload, projected_at = excluded.projected_at`,
       [page.id, JSON.stringify(page)],
+    );
+    written += 1;
+  }
+  return written;
+}
+
+/**
+ * The next frame number for the launches feed.
+ *
+ * ★ A SECOND FUNCTION AND NOT A PARAMETERISED FIRST ONE, knowingly. Generalising `nextTick`
+ * over both projections means passing it a table name and a key column name, and a table
+ * name arriving as a string is the one habit this file must never start: the moment a
+ * statement is assembled from an identifier, "is every parameter parameterised" stops being
+ * answerable by reading. Two nine-line functions that each say their own table out loud is
+ * the cheaper price.
+ *
+ * `previous + 1` and nothing else, for the reason `nextTick` gives. This tick has no live
+ * channel behind it today, and it is still an increment rather than a timestamp so that the
+ * one that eventually arrives does not have to change what a frame number means.
+ */
+export async function nextLaunchTick(db: Db, feedId: string): Promise<number> {
+  const rows = await db.query<{ tick: string }>(
+    `select tick::text as tick from public.launch_view where feed_id = $1`,
+    [feedId],
+  );
+  const current = rows[0];
+  return current === undefined ? 1 : Number(current.tick) + 1;
+}
+
+/**
+ * Commit one launches frame.
+ *
+ * Same order as `writeBoard` and for the same reasons: the view row first because
+ * `launch_row` references it, then the rows that have fallen out of the window, then the
+ * survivors with their new positions. All of it inside the caller's transaction, so a
+ * half-written rail is not a state the read service can observe.
+ *
+ * ★ THE VIEW ROW IS WRITTEN EVEN WHEN THERE ARE NO LAUNCHES, and that is the point of
+ * doing it first. `GET /launches/:feedId` answers 404 when there is no view row, which
+ * means "this feed has never been projected" — a real fact, and a different one from "we
+ * projected and nothing has been minted". Skipping the insert on an empty run would
+ * collapse the two, and the rail would show a transport error over a quiet market.
+ */
+export async function writeLaunches(
+  db: Db,
+  feedId: string,
+  tick: number,
+  launches: readonly WireLaunch[],
+): Promise<number> {
+  await db.query(
+    `insert into public.launch_view (feed_id, tick, projected_at)
+     values ($1, $2, now())
+     on conflict (feed_id) do update
+       set tick = excluded.tick, projected_at = excluded.projected_at`,
+    [feedId, tick],
+  );
+
+  await db.query(
+    `delete from public.launch_row where feed_id = $1 and asset_key <> all($2::text[])`,
+    [feedId, launches.map((launch) => launch.launchId)],
+  );
+
+  let written = 0;
+  for (const [position, launch] of launches.entries()) {
+    await db.query(
+      `insert into public.launch_row (feed_id, asset_key, position, payload)
+       values ($1, $2, $3, $4::jsonb)
+       on conflict (feed_id, asset_key) do update
+         set position = excluded.position, payload = excluded.payload`,
+      [feedId, launch.launchId, position, JSON.stringify(launch)],
     );
     written += 1;
   }
