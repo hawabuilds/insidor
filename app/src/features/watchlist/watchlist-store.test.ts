@@ -41,7 +41,7 @@ test('a settled coin on a watched story fires once', () => {
 test('an unsure match is not a mint event', () => {
   const store = createWatchStore();
   store.toggle('st_1');
-  assert.equal(store.observe('st_1', { kind: 'unsure', candidateCount: 306 }, 1), null);
+  assert.equal(store.observe('st_1', { kind: 'unsure', claimCount: 306 }, 1), null);
   assert.equal(store.alerts().length, 0);
 });
 

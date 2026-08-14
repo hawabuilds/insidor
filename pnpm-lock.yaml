@@ -234,6 +234,34 @@ importers:
         specifier: workspace:*
         version: link:../../store
 
+  services/project:
+    dependencies:
+      '@insidor/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@insidor/platform-tiktok':
+        specifier: workspace:*
+        version: link:../../adapters/platform/tiktok
+      '@insidor/platform-x':
+        specifier: workspace:*
+        version: link:../../adapters/platform/x
+      '@insidor/store':
+        specifier: workspace:*
+        version: link:../../store
+      pg:
+        specifier: ^8.16.0
+        version: 8.23.0
+
+  services/read:
+    dependencies:
+      pg:
+        specifier: ^8.16.0
+        version: 8.23.0
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.15.0
+        version: 8.21.0
+
   services/runner:
     dependencies:
       '@insidor/contracts':

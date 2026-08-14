@@ -248,7 +248,7 @@ export function decodeCoinLink(raw: unknown, path = '$.coins'): CoinLink {
     case 'none':
       return { kind: 'none' };
     case 'unsure':
-      return { kind: 'unsure', candidateCount: int(o['candidateCount'], `${path}.candidateCount`) };
+      return { kind: 'unsure', claimCount: int(o['claimCount'], `${path}.claimCount`) };
     case 'one':
       return { kind: 'one', coin: decodeCoin(o['coin'], `${path}.coin`) };
     case 'several': {

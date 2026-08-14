@@ -1,0 +1,20 @@
+{
+  "name": "@insidor/read",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The browser's read surface. Three SELECTs against the projection, held by the app role and nothing else.",
+  "main": "./src/main.ts",
+  "scripts": {
+    "start": "node --env-file-if-exists=../../.env.local src/main.ts",
+    "dev": "node --watch --env-file-if-exists=../../.env.local src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.0"
+  }
+}

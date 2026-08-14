@@ -42,7 +42,7 @@ export interface CompareAction {
 export interface NoAction {
   readonly kind: 'none';
   readonly reason: 'match_unsure' | 'not_tradable';
-  readonly candidateCount: number | null;
+  readonly claimCount: number | null;
 }
 
 export type RowAction = CreateAction | BuyAction | CompareAction | NoAction;
@@ -59,12 +59,12 @@ export function actionFor(storyId: string, coins: CoinLink): RowAction {
     case 'unsure':
       /* Deliberately terminal. There is no branch here that reaches for a coin, because
          `unsure` does not carry one — the wire vocabulary saw to that. */
-      return { kind: 'none', reason: 'match_unsure', candidateCount: coins.candidateCount };
+      return { kind: 'none', reason: 'match_unsure', claimCount: coins.claimCount };
 
     case 'one':
       return coins.coin.tradable
         ? { kind: 'buy', storyId, coin: coins.coin }
-        : { kind: 'none', reason: 'not_tradable', candidateCount: 1 };
+        : { kind: 'none', reason: 'not_tradable', claimCount: 1 };
 
     case 'several':
       /* Compare is always available even if some of them are untradable: comparing is

@@ -208,7 +208,7 @@ const noCoin = {
 };
 
 /**
- * ★ THE ONE THAT MATTERS — candidates exist and none is confidently the one.
+ * ★ THE ONE THAT MATTERS — several coins claim the story and none is confidently the one.
  *
  * `unsure` carries NO coin, so there is nothing to buy with and the row renders no button at
  * all. Not a disabled button: a disabled button says "this exists but you may not have it",
@@ -228,7 +228,7 @@ const unsure = {
   momentum: 'rising',
   firstSeenAt: at(T0 - 47 * MIN),
   isNew: false,
-  coins: { kind: 'unsure', candidateCount: 6 },
+  coins: { kind: 'unsure', claimCount: 6 },
 };
 
 /**

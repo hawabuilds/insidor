@@ -135,7 +135,7 @@
 }
 
 /* The unsure state gets real estate rather than an empty slot. A user who is told "we are
-   not calling this one yet, and here is how many candidates there are" is better served
+   not calling this one yet, and here is how many coins claim it" is better served
    than one shown a dead button. */
 .unsure {
   border: 1px dashed var(--line);

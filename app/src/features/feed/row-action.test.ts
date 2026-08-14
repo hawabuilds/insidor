@@ -49,11 +49,11 @@ test('several coins mean Compare', () => {
 });
 
 test('an unsure match produces no button at all, not a disabled one', () => {
-  const action = actionFor('st_1', { kind: 'unsure', candidateCount: 306 });
+  const action = actionFor('st_1', { kind: 'unsure', claimCount: 306 });
   assert.equal(action.kind, 'none');
   if (action.kind === 'none') {
     assert.equal(action.reason, 'match_unsure');
-    assert.equal(action.candidateCount, 306);
+    assert.equal(action.claimCount, 306);
   }
   /* And there is no coin anywhere in the result to hand to a buy panel. */
   assert.equal(JSON.stringify(action).includes('ticker'), false);

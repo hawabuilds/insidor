@@ -87,7 +87,7 @@ test('an unknown first-seen time decodes to pending, not to now', () => {
 });
 
 test('the unsure link exposes no coin at all', () => {
-  const link = decodeCoinLink({ kind: 'unsure', candidateCount: 306, coin: { ticker: 'X' } });
+  const link = decodeCoinLink({ kind: 'unsure', claimCount: 306, coin: { ticker: 'X' } });
   assert.equal(link.kind, 'unsure');
   assert.equal('coin' in link, false);
 });

@@ -59,8 +59,13 @@ export interface Coin {
 export type CoinLink =
   /** Nothing minted from this story yet. The user can be the one to mint it. */
   | { readonly kind: 'none' }
-  /** Candidates exist; none of them is confidently the one. NO coin is exposed here. */
-  | { readonly kind: 'unsure'; readonly candidateCount: number }
+  /**
+   * Coins claiming this story exist; none of them is confidently the one. NO coin is
+   * exposed here, and the number is a fact rather than our arithmetic: it counts coins
+   * that named themselves after this story, which is true whether or not we looked.
+   * The pipeline's own word for one of them is not on this wire and must not appear here.
+   */
+  | { readonly kind: 'unsure'; readonly claimCount: number }
   | { readonly kind: 'one'; readonly coin: Coin }
   /** At least two, ordered by the server. The tuple type makes "several" mean several. */
   | { readonly kind: 'several'; readonly coins: readonly [Coin, Coin, ...Coin[]] };

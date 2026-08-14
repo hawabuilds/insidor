@@ -67,7 +67,7 @@ so the screen doubles as the argument for the vocabulary:
 
 | Row | What it is there to show |
 |---|---|
-| Chef throws the soup | Six candidate tokens, none confident → **no button at all**, not a disabled one |
+| Chef throws the soup | Six tokens claim it, none confident → **no button at all**, not a disabled one |
 | Grandmother learns the dance | A source that publishes no view count → a dash, not `0` |
 | Man builds a slide | A censored reading → the graph **breaks**; and an age we never learned → a dash, not "brand new" |
 | Pigeon on the bus | Nothing minted → Create |

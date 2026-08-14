@@ -15,8 +15,15 @@
     "check:policy": "node tools/check-policy.mjs",
     "check:boundaries": "depcruise --config .dependency-cruiser.cjs contracts core adapters store services app eval ml && node tools/check-boundaries-probe.mjs",
     "check": "pnpm typecheck && pnpm check:vocabulary && pnpm check:purity && pnpm check:policy && pnpm check:boundaries && pnpm test",
+    "db:up": "node tools/db.mjs up",
+    "db:migrate": "node tools/db.mjs migrate",
+    "db:reset": "node tools/db.mjs reset",
+    "db:seed": "node tools/db.mjs seed",
+    "db:project": "node tools/db.mjs project",
+    "db:psql": "node tools/db.mjs psql",
     "dev:runner": "node --experimental-strip-types services/runner/src/main.ts",
     "dev:chainwatch": "node --experimental-strip-types services/chainwatch/src/main.ts",
+    "dev:read": "pnpm --filter @insidor/read dev",
     "dev:app": "pnpm --filter @insidor/app dev"
   },
   "devDependencies": {

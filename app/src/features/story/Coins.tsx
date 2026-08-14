@@ -2,8 +2,8 @@
  * THE COINS minted from this story.
  *
  * One meme can spawn hundreds of tokens, so this panel's real job is the `unsure` case: when
- * we are not confident which coin is the one, the panel says so, says how many candidates
- * there are, and offers no way to buy. That is not a degraded state to be styled around —
+ * we are not confident which coin is the one, the panel says so, says how many coins claim
+ * the story, and offers no way to buy. That is not a degraded state to be styled around —
  * on this product it is a frequent and honest answer, and it gets real estate.
  *
  * The buy affordance is decided per coin by `actionFor`, the same function the feed row
@@ -92,7 +92,7 @@ export function Coins({
       return (
         <Card title="Coins">
           <div className={styles['unsure']}>
-            <span className={styles['unsureCount']}>{coins.candidateCount}</span> coins claim this
+            <span className={styles['unsureCount']}>{coins.claimCount}</span> coins claim this
             story and none of them is settled yet. We are not naming one, so there is nothing to
             buy here — this panel will fill in when it is.
           </div>

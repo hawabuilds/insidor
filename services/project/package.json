@@ -1,0 +1,20 @@
+{
+  "name": "@insidor/project",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The projector: reads domain facts, applies the censoring and the wire shape ONCE, and writes the finished payloads the read surface serves verbatim.",
+  "main": "./src/main.ts",
+  "scripts": {
+    "start": "node src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/platform-tiktok": "workspace:*",
+    "@insidor/platform-x": "workspace:*",
+    "@insidor/store": "workspace:*",
+    "pg": "^8.16.0"
+  }
+}

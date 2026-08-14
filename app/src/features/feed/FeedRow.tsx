@@ -95,9 +95,9 @@ function FeedRowInner({ id, now, onOpen, onBuy, onCompare, onCreate }: FeedRowPr
         {action.kind === 'none' ? (
           <span className={styles['noAction']}>
             {action.reason === 'match_unsure'
-              ? action.candidateCount === null
+              ? action.claimCount === null
                 ? 'coin not settled'
-                : `${action.candidateCount} candidates, none settled`
+                : `${action.claimCount} coins claim this, none settled`
               : 'not tradable yet'}
           </span>
         ) : (

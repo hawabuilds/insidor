@@ -109,4 +109,7 @@ export { CAPABILITIES, FIDELITY, PRICES, SOURCE, VENDOR } from './capabilities.t
 export { httpClient } from './client.ts';
 export type { XClient, XClientConfig } from './client.ts';
 export { toSearchQuery } from './discover.ts';
+/* The citation link. Exported from the barrel because the projector — which must
+   never know a URL shape — is the caller, and it asks this package by name. */
+export { postUrl } from './permalink.ts';
 export { toItem, toCounters } from './to-item.ts';

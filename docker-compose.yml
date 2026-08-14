@@ -1,0 +1,71 @@
+# THE LOCAL DATABASE, AND WHY THE IMAGE TAG IS NOT NEGOTIABLE.
+#
+# `pgvector/pgvector:pg17`, not `postgres:17`. Migration 0002 does
+# `create extension if not exists vector` and then builds two HNSW indexes over
+# `bit(256)` / `bit(64)` columns with `bit_hamming_ops`. On stock `postgres:17`
+# that migration dies on the first statement with
+#
+#     ERROR: extension "vector" is not available
+#
+# and it dies *there* rather than at the index, so the error names something that
+# looks optional. It is not optional: near-duplicate carrier search is the free,
+# language-blind half of grouping, and it is an index in the database we already
+# run precisely because the alternative is a second service. Anyone "simplifying"
+# this back to the official image is deleting tier-1 grouping.
+#
+# ONE SERVICE. There is no pgbouncer here on purpose. store/src/client.ts refuses
+# to open a service- or internal-role pool against port 6543, because transaction
+# pooling releases session advisory locks between statements and `withAdvisoryLock`
+# would then silently stop guarding anything. Local dev talks to Postgres directly
+# so that the thing we develop against has the same locking semantics as the thing
+# we reason about.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: insidor-db
+    restart: unless-stopped
+    environment:
+      # ── LOCAL-DEV-ONLY CREDENTIALS ────────────────────────────────────────
+      # These three values are in version control on purpose: they are the
+      # default in tools/db.mjs and in .env.example, so `pnpm db:up && pnpm
+      # db:migrate && pnpm db:seed` works on a fresh clone with nothing to fill
+      # in. They are worthless outside this container, which binds to 127.0.0.1
+      # and holds nothing but seeded sample rows.
+      #
+      # NOTHING DEPLOYED MAY EVER USE THEM. The deployed database issues its own
+      # login users; the roles this repo actually cares about (insidor_app,
+      # insidor_service, insidor_internal) are NOLOGIN group roles created by
+      # migration 0001 and carry no password at all.
+      POSTGRES_USER: insidor
+      POSTGRES_PASSWORD: insidor
+      POSTGRES_DB: insidor
+      # Deterministic collation. A container that inherits the host's locale
+      # sorts text differently on two machines, and "order by" is the one thing
+      # the board's committed ordering must not disagree about.
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      # Bound to loopback. An unqualified "5432:5432" listens on every interface,
+      # which on a laptop on a café network is a Postgres with the password
+      # printed above open to the room.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # A NAMED volume, not a bind mount. The observation series is append-only
+      # and never backfillable, so even locally the data outliving a `docker
+      # compose down` is the correct default; `pnpm db:reset` is the explicit way
+      # to throw it away.
+      - insidor-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready against the real database and the real user, not just the
+      # port. The port answers several seconds before initdb has finished
+      # creating the database, and a migration that connects in that gap fails
+      # with "database does not exist" — which reads like a config error and is
+      # not one.
+      test: ["CMD-SHELL", "pg_isready -U insidor -d insidor -h 127.0.0.1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+volumes:
+  insidor-pgdata:
