@@ -230,6 +230,12 @@ export function decodeCoin(raw: unknown, path = '$.coin'): Coin {
     marketCapUsd: measured(o.marketCapUsd, `${path}.marketCapUsd`, 'no_market'),
     marketCapBasis: decodeBasis(o.marketCapBasis),
     liquidityUsd: measured(o.liquidityUsd, `${path}.liquidityUsd`, 'not_reported'),
+    /* The fallback is `not_reported` and not `no_market`: it fires only when the server
+       sent no reason at all — a server too old to know about this field — and "nothing
+       reports a change for this" is true of that, while "there is no market" is a claim
+       about the world we would be making on the server's behalf, next to a price cell
+       that may hold a number. */
+    priceChange24h: delta(o.priceChange24h, `${path}.priceChange24h`, 'not_reported'),
     tradable: bool(o.tradable, `${path}.tradable`),
   };
 }
@@ -281,6 +287,10 @@ export function decodeBoardRow(raw: unknown, path = '$.row'): BoardRow {
        about the world we would be making on the server's behalf, and the row's own `coins`
        may say the opposite two lines down. */
     marketCapUsd: measured(o.marketCapUsd, `${path}.marketCapUsd`, 'not_read_yet'),
+    /* Same reasoning as `marketCapUsd` one line up: the fallback covers a server that
+       does not know about this field yet, and "we have not learned it" is the only
+       honest thing to say on that server's behalf. */
+    priceChange24h: delta(o.priceChange24h, `${path}.priceChange24h`, 'not_read_yet'),
     firstSeenAt: instantAt(o.firstSeenAt, `${path}.firstSeenAt`, 'not_read_yet'),
     coins: decodeCoinLink(o.coins, `${path}.coins`),
     isNew: bool(o.isNew, `${path}.isNew`),
@@ -314,6 +324,9 @@ export function decodeRowPatch(raw: unknown, path = '$.patch'): RowPatch {
   if ('momentum' in f) fields['momentum'] = tone(f['momentum']);
   if ('marketCapUsd' in f) {
     fields['marketCapUsd'] = measured(f['marketCapUsd'], `${path}.fields.marketCapUsd`, 'not_read_yet');
+  }
+  if ('priceChange24h' in f) {
+    fields['priceChange24h'] = delta(f['priceChange24h'], `${path}.fields.priceChange24h`, 'not_read_yet');
   }
   if ('coins' in f) fields['coins'] = decodeCoinLink(f['coins'], `${path}.fields.coins`);
   return { id: str(o['id'], `${path}.id`), fields: fields as RowPatch['fields'] };

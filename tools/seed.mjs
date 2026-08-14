@@ -74,12 +74,19 @@
  * ★ WHAT THE PROJECTOR WILL FIND MISSING, and must project as an absence:
  *
  *   - public.asset has NO price, market-cap or liquidity column, deliberately:
- *     those are market readings, not properties of a coin. Until a market adapter
- *     writes them, every coin projects priceUsd/marketCapUsd as `no_market`,
- *     liquidityUsd as `not_reported`, marketCapBasis as null and `tradable` as
- *     false — `tradable` is decided by getting a quote, and there is nothing here
- *     to quote against. That is the fixture's own "minted but never traded"
- *     shape, and it is honest rather than a gap.
+ *     those are market readings, not properties of a coin. They live in
+ *     public.market_reading (0010), which the seed does NOT write — readings are
+ *     taken from a market, and inventing one would put a number on the board that
+ *     no venue ever said. Straight after `db:seed`, every coin therefore projects
+ *     every market figure as `not_read_yet`: nobody has looked. Run `pnpm db:market`
+ *     and they become whatever the venue actually says, which for eleven of these
+ *     twelve made-up addresses is `no_market` — minted, never traded — and for the
+ *     one real address is a real price.
+ *
+ *     `tradable` stays false either way, and not as a pessimistic default: it is
+ *     decided by asking a venue for a quote, the market reader's venue is
+ *     read-only, and 0010's `tradable_requires_a_quoting_venue` makes a `true`
+ *     with nobody's name behind it unwritable.
  *   - There is no summary column anywhere. The two summary lines are composed by
  *     the projector out of facts it can count (members, distinct authors,
  *     distinct sources, coin count, oldest mint time). That is the right place
@@ -1147,7 +1154,8 @@ async function main() {
 
   process.stderr.write(
     '\n  Domain facts only — no projection row and no internal row was written.\n' +
-      '  Next:  pnpm db:project     (derive the board)\n' +
+      '  Next:  pnpm db:market      (ask a venue what these coins are worth)\n' +
+      '         pnpm db:project     (derive the board)\n' +
       '         pnpm dev:read       (serve it as the app role)\n\n',
   );
 }

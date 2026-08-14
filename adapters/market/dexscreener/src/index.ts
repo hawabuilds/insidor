@@ -18,16 +18,18 @@ import type { Venue } from '@insidor/contracts/ports/venue.ts';
 import { mergeSpend, metered } from '@insidor/meter';
 import type { Price, PriceBook } from '@insidor/meter';
 
-import { MAX_ADDRESSES_PER_CALL } from './client.ts';
+import { MAX_ADDRESSES_PER_CALL, PAIRS_ENDPOINT, TOKENS_ENDPOINT, VENDOR } from './client.ts';
 import type { MarketClient } from './client.ts';
 import { toMarketState } from './to-market-state.ts';
 
 export const CHAIN: ChainId = chainId('solana');
 export const VENUE_ID: VenueId = venueId(CHAIN, 'pool');
-export const VENDOR = 'dexscreener';
+export { VENDOR };
 
+// The price-book key. One price covers both token endpoints because the vendor
+// bills neither, and splitting the key would only make the ledger harder to add
+// up. `source.endpoint` on the reading still records which of the two answered.
 const PAIRS = 'pairs';
-const ENDPOINT = 'GET /token-pairs/v1/{chain}/{address}';
 
 const price: Price = {
   vendor: VENDOR,
@@ -63,7 +65,13 @@ export function dexscreenerVenue(deps: MarketVenueDeps): Venue {
     );
 
     return {
-      value: toMarketState(raw.value, { asset, venue: VENUE_ID, observedAt: at, vendor: VENDOR, endpoint: ENDPOINT }),
+      value: toMarketState(raw.value, {
+        asset,
+        venue: VENUE_ID,
+        observedAt: at,
+        vendor: VENDOR,
+        endpoint: PAIRS_ENDPOINT,
+      }),
       spend: raw.spend,
     };
   };
@@ -116,8 +124,12 @@ export function dexscreenerVenue(deps: MarketVenueDeps): Venue {
                 asset,
                 venue: VENUE_ID,
                 observedAt: at,
+                // The batch endpoint, named as itself. A reading has to record
+                // which question was asked: the two endpoints do not return the
+                // same thing — this one answers with the top pair per token, so
+                // a `poolCount` from a batched read understates by design.
+                endpoint: TOKENS_ENDPOINT,
                 vendor: VENDOR,
-                endpoint: ENDPOINT,
               }),
             );
           }
@@ -143,7 +155,7 @@ function pairsFor(raw: unknown, address: string): unknown {
   };
 }
 
-export { httpClient, MAX_ADDRESSES_PER_CALL } from './client.ts';
+export { httpClient, CHAIN_SLUG, MAX_ADDRESSES_PER_CALL, PAIRS_ENDPOINT, RATE_LIMIT_PER_MIN, TOKENS_ENDPOINT } from './client.ts';
 export type { MarketClient, MarketClientConfig } from './client.ts';
 export { toMarketState, toPairView, pickPricePair, CURVE_DEX_IDS } from './to-market-state.ts';
 export type { MarketReadContext, PairView } from './to-market-state.ts';

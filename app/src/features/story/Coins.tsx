@@ -25,7 +25,7 @@ import type { BuyAction } from '../feed/index.ts';
 import { actionFor, actionLabel } from '../feed/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { formatPrice, formatUsd } from '../../shared/format/number.ts';
-import { Button, Num } from '../../shared/ui/index.ts';
+import { Button, Delta, Num } from '../../shared/ui/index.ts';
 import styles from './story.module.css';
 
 /** How long her `.ca-mini.copied` lime flash stays up. */
@@ -112,6 +112,13 @@ function CoinCard({
               with its reason rather than as $0. */}
           <span className={styles['miniK']}>liquidity</span>
           <Num rendered={formatUsd(coin.liquidityUsd)} showWord />
+        </div>
+        <div className={styles['miniRow']}>
+          {/* Per coin rather than per story, which is the only level it is true at — the
+              page renders each coin's own move beside its own ticker, so there is nothing
+              to average and nothing to pick. `<Delta>` colours by sign only. */}
+          <span className={styles['miniK']}>24h</span>
+          <Delta value={coin.priceChange24h} unit="percent" showWord />
         </div>
         <div className={styles['miniRow']}>
           {/* A mint time we could not confirm shows as pending, never as a fresh mint. */}

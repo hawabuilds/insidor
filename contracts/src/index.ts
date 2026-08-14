@@ -68,6 +68,8 @@ export { STORY_STATES } from './story.ts';
 export type {
   Asset,
   Depth,
+  MarketAbsenceReason,
+  MarketCapBasis,
   MarketClass,
   MarketState,
   MintTime,
@@ -79,6 +81,8 @@ export type {
   TransferRules,
 } from './asset.ts';
 export {
+  MARKET_ABSENCE_REASONS,
+  MARKET_CAP_BASES,
   MARKET_CLASSES,
   MINT_TIME_CONFIDENCES,
   MINT_TIME_SOURCES,
@@ -117,6 +121,7 @@ export type {
   ExplorePolicy,
   GroupPolicy,
   KineticsPolicy,
+  MarketPolicy,
   Policy,
   QualifyPolicy,
   RankPolicy,

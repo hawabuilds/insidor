@@ -25,6 +25,7 @@ const COIN: Coin = {
   marketCapUsd: known(100_000),
   marketCapBasis: 'fully-diluted',
   liquidityUsd: known(1_000),
+  priceChange24h: known(-1.5),
   tradable: true,
 };
 

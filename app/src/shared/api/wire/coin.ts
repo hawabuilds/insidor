@@ -12,7 +12,7 @@
  * amount of prop-drilling can produce a buy panel from it: there is nothing to buy with.
  */
 
-import type { Instant, Measured } from '../../format/measure.ts';
+import type { Delta, Instant, Measured } from '../../format/measure.ts';
 
 /** What the market says the cap is measured against. The venue tells us; we never guess. */
 export type MarketCapBasis = 'fully-diluted' | 'circulating';
@@ -39,6 +39,23 @@ export interface Coin {
   readonly marketCapBasis: MarketCapBasis | null;
   /** Absent on a bonding curve. Absence is not illiquidity, which is why it is Measured. */
   readonly liquidityUsd: Measured;
+
+  /**
+   * The trailing day's price move, as a SIGNED PERCENTAGE — −7.9 renders as "−7.9%".
+   *
+   * `Delta` and not `Measured`, and that is the whole reason the two types exist: this
+   * is the one field allowed to carry colour, and only by SIGN. `ui/Delta.tsx` takes no
+   * numeric prop, so the MAGNITUDE cannot influence the treatment — which is what stops
+   * `gain >= 150000 ? 'up' : 'down'` growing back in a render path, as it did in the
+   * build this replaces.
+   *
+   * Absent is ordinary and common: a coin minted forty minutes ago has no trailing day
+   * to have changed over, and a coin nobody has traded has no price to have moved. It
+   * is never a change of zero — zero is a claim that the price held, over a period
+   * nobody observed. It is also absent whenever the reading behind it is too old to be
+   * the current market; the server decides that, and this side only obeys.
+   */
+  readonly priceChange24h: Delta;
 
   /**
    * Whether a quote can actually be got for this coin right now. The server decides it by

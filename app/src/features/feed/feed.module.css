@@ -418,19 +418,26 @@
 
 /* ===== 5. the gain column (her change pills, index.css:231-233) =====
    Her pill: mono 11px/500, padding 3/7, radius 6, `min-width:52px` + right-aligned so +3.1%
-   and +142.7% share an edge and the column never jitters as figures change. `.up` / `.down`
-   are a 10% tint of lime / red with the text at full strength.
+   and +142.7% share an edge and the column never jitters as figures change. That geometry is
+   the load-bearing half and it is applied here, to whatever the cell contains.
 
-   ★ THE UP AND DOWN VARIANTS ARE NOT USED YET AND THAT IS THE POINT. Nothing in this system
-   records price history — not the projection, not the database, not the wire — so there is no
-   honest 24h gain to render. The cell shows an explicit absence in the pill's shape: a dash,
-   in her dim, with the reason on hover.
+   ★ THE COLOUR IS NOT APPLIED HERE, AND THAT IS THE POINT. The cell renders the shared
+   `<Delta>` primitive, which colours by SIGN and accepts no numeric prop at all — so the
+   SIZE of a move cannot reach the styling, and `gain >= 150000 ? 'up' : 'down'` has nowhere
+   to be written. The tint below is `currentColor` at 10%, so it follows whatever sign the
+   primitive decided and cannot be pointed at a magnitude even by someone editing this file.
 
-   What it must never do is fill itself from reach. Reach growth is not price gain, and
-   putting a number under a column head that says GAIN would be a lie in the single column a
-   user is most likely to trade on. When a price series exists, `.gainUp` / `.gainDn` are
-   already here and the only change is which class the cell is given. */
-.gain {
+   The absent branch renders `<Pending>` — a dash in her dim, with the reason on hover —
+   which through the same rule picks up a neutral grey rather than a direction. It is styled
+   by ELEMENT selector, the way `.act button` below is: a class name from another CSS module
+   is hashed separately and could not be named from here, and reaching for one would mean
+   giving the primitive a variant that only this column uses. Absence is
+   the ordinary state here: a coin minted this hour has no day behind it, several coins on
+   one story means no single move to show, and a reading too old to be current is withheld by
+   the server. What the cell must never do is fill itself from reach, which is on the row and
+   moves: reach growth is not price gain, and a number under a head that says GAIN is a lie
+   in the single column a user is most likely to trade on. */
+.gainCell > span {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
@@ -440,24 +447,7 @@
   min-width: 52px;
   text-align: right;
   font-weight: 500;
-}
-
-.gainUp {
-  color: var(--lime);
-  background: rgba(155, 240, 60, 0.1);
-}
-
-.gainDn {
-  color: var(--red);
-  background: rgba(255, 92, 110, 0.1);
-}
-
-/* Her `.nm-dash` (index.css:856) — the explicit dash-for-absent. No tint: a tinted pill reads
-   as a direction, and there is no direction here. */
-.gainNone {
-  color: var(--dim);
-  background: none;
-  cursor: help;
+  background: color-mix(in srgb, currentColor 10%, transparent);
 }
 
 /* ===== 8. the action cell =====

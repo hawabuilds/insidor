@@ -207,6 +207,44 @@ export interface ResolvePolicy {
   };
 }
 
+/* ── MARKET ───────────────────────────────────────────────────────────── */
+
+/**
+ * Reading a market, and how long a reading stays true.
+ *
+ * ★ `readingFreshnessMs` IS A THRESHOLD AND IS HERE FOR THE REASON THIS FILE EXISTS.
+ * It is the one number that decides whether a price on screen is presented as the
+ * current price or as an absence, and it is the kind of number that ends up typed
+ * into a projector as `5 * 60_000` and then quietly doubled by whoever was on call
+ * the night the reader fell behind. Written down here, changing it is a diff, and the
+ * board a user saw in March is answerable against the policy that was in force then.
+ *
+ * Five minutes, and the reasoning is the product's own clock rather than a round
+ * number: the measured median post-to-mint lag is under four minutes, so a coin can
+ * be minted, run, and peak inside one freshness window. A price older than that is
+ * not a slightly-late price on this product — it is a different coin's story. Longer
+ * hides a stall in the reader behind a number that still looks live; much shorter
+ * turns every ordinary gap between passes into a board full of dashes, and a board
+ * that is always dashes teaches people to ignore the dash.
+ */
+export interface MarketPolicy {
+  /**
+   * How old a reading may be and still be shown as the CURRENT market. Past this the
+   * projection publishes an absence with a reason and never the last number it holds:
+   * a stale price presented as live is the one market error a user acts on directly.
+   */
+  readonly readingFreshnessMs: number;
+  /**
+   * How many assets one market pass reads. A bound on the vendor, not a judgement
+   * about which assets matter — the pass takes the most recently seen first, because
+   * a coin nobody has seen for a day is not the coin anybody is about to buy.
+   *
+   * It is here rather than in the service because the binding budget on a free
+   * endpoint is its rate limit, and a rate limit spent is exactly as gone as money.
+   */
+  readonly maxAssetsPerPass: number;
+}
+
 /* ── RANK ─────────────────────────────────────────────────────────────── */
 
 export interface RankPolicy {
@@ -270,6 +308,7 @@ export interface Policy {
   readonly group: GroupPolicy;
   readonly qualify: QualifyPolicy;
   readonly resolve: ResolvePolicy;
+  readonly market: MarketPolicy;
   readonly rank: RankPolicy;
   readonly explore: ExplorePolicy;
   readonly budget: BudgetPolicy;
@@ -286,7 +325,11 @@ export interface Policy {
 /* Annotated as Policy before freezing, so every literal below is checked against the
    interface rather than inferred — an unknown key or a wrong unit fails here. */
 const POLICY_V1: Policy = {
-  version: 'policy.v1',
+  /* v2 adds `market`. Bumped by hand, as the field's own comment requires: the hash
+     already moved when the object grew a section, and a version string that did not
+     move with it would make two genuinely different policies indistinguishable to a
+     human reading a decision row. */
+  version: 'policy.v2',
 
   admit: {
     maxAgeMin: 240,
@@ -381,6 +424,11 @@ const POLICY_V1: Policy = {
       image: 0.15,
       declared: 0.05,
     },
+  },
+
+  market: {
+    readingFreshnessMs: 300_000, // five minutes
+    maxAssetsPerPass: 300,
   },
 
   rank: {

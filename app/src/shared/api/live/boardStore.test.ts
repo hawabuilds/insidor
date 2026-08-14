@@ -25,6 +25,10 @@ function row(id: string, reach: number): BoardRow {
     /* `coins` is 'none' here, so the honest cap is the matching absence. A stub row that
        claimed a number no coin backs would let a test pass over a rule it is not testing. */
     marketCapUsd: pending('not_minted'),
+    /* And the same absence for the gain, for the same reason: both are derived from
+       `coins`, so a stub that gave one a number and the other a dash would be a shape
+       the projector cannot produce. */
+    priceChange24h: pending('not_minted'),
     firstSeenAt: instant(1_700_000_000_000),
     coins: { kind: 'none' },
     isNew: false,

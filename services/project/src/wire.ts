@@ -104,6 +104,13 @@ export interface WireCoin {
   readonly marketCapUsd: WireMeasured;
   readonly marketCapBasis: MarketCapBasis | null;
   readonly liquidityUsd: WireMeasured;
+  /**
+   * The trailing day's price move, as a SIGNED PERCENTAGE. The app decodes this into
+   * `Delta` rather than `Measured` — the one field allowed to carry colour, and only
+   * by sign — which is why the shape is the same on the wire and the difference is on
+   * the far side of the decoder.
+   */
+  readonly priceChange24h: WireMeasured;
   readonly tradable: boolean;
 }
 
@@ -141,6 +148,15 @@ export interface WireBoardRow {
    * is the only place the choice is made.
    */
   readonly marketCapUsd: WireMeasured;
+  /**
+   * The story's coin's 24-hour price move — DERIVED from `coins`, exactly like the cap
+   * above and for the same reason. A story does not have a price to have changed; a
+   * coin does. Absent for every branch but `one`, and absent for `several` on purpose:
+   * averaging three rival tokens' moves is a number true of nothing, and showing the
+   * biggest riser is picking which coin is the real one and calling the pick a
+   * measurement. See projectPriceChange24h.
+   */
+  readonly priceChange24h: WireMeasured;
   readonly firstSeenAt: WireInstant;
   readonly coins: WireCoinLink;
   readonly isNew: boolean;

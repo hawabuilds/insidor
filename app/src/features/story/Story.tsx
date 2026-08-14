@@ -11,11 +11,14 @@
  *   - The buy affordance appears here through the same function the feed row uses, so the
  *     two surfaces cannot disagree about when a coin may be bought.
  *
- * ★ AND THE ONE THAT DECIDES THE LAYOUT. There is no market adapter, so price, market cap and
- * liquidity are genuinely unknown — most of the quick-stats strip is a dash. That is styled
- * as "not known yet" (her dashed grammar plus the reason word) rather than left to read as a
- * broken panel, and it is never, anywhere, filled in with a zero. The same rule decides the
- * chart card: there is no price series, so the card says so instead of drawing one.
+ * ★ AND THE ONE THAT DECIDES THE LAYOUT. Price, market cap, liquidity and the day's move are
+ * absent far more often than not — a coin minted this hour has no market to have any of them
+ * in, a story with several settled coins has no single figure to show, and a reading the
+ * server considers too old to be current is withheld rather than presented as live. So most
+ * of the quick-stats strip is a dash most of the time. That is styled as "not known yet"
+ * (her dashed grammar plus the reason word) rather than left to read as a broken panel, and
+ * it is never, anywhere, filled in with a zero. The same rule decides the chart card: no
+ * price SERIES reaches this client, so the card says so instead of drawing one.
  *
  * Fetch-on-mount rather than a router loader: there is one route parameter and no
  * server-side rendering, so a loader would be indirection with nothing to hide.
@@ -259,14 +262,19 @@ export function Story({ storyId, onBuy, isWatched, onToggleWatch }: StoryProps) 
         {/* ===== quick stats (her .qstats — one row, never two) ===== */}
         <section className={`${styles['panel']} ${styles['qstats']}`}>
           <Stat label="views" rendered={formatCount(story.reach)} />
-          {/* ★ "views 24h", not "24h". This is the only cell in the strip that carries a
-              SIGNED, COLOURED figure, and the three cells to its right are price, market cap
-              and liquidity — so a bare "24h" beside them reads as a price move, which is the
-              one quantity this product does not have and the feed row spends a whole comment
-              refusing to fake (see GAIN_UNAVAILABLE in FeedRow.tsx). The number is honest —
-              it is `reachDelta24h` off the wire, not derived from anything — but the label is
-              what says which quantity it is, and the label has to survive being read next to
-              a dollar sign. */}
+          {/* ★ "views 24h", not "24h", AND THE LABEL MATTERS MORE NOW THAN IT USED TO.
+              This is the only cell in the strip that carries a SIGNED, COLOURED figure, and
+              the three cells to its right are price, market cap and liquidity — so a bare
+              "24h" beside them reads as a price move. There now IS a 24-hour price move on
+              this page, per coin, in the panel below (Coins.tsx), which is what turns a
+              sloppy label from a vague risk into two quantities that look identical and
+              differ completely: reach growth is how many more people saw a story; the
+              coin's 24h is what its price did. The number here is honest — `reachDelta24h`
+              straight off the wire, derived from nothing — but only the label says which
+              quantity it is, and the label has to survive being read next to a dollar sign
+              and next to a real percentage two panels down. `unit` is left at its default
+              `count` for the same reason: this is a count of views, not a percentage, and
+              `<Delta>` prints the suffix the unit names. */}
           <DeltaStat label="views 24h" value={story.reachDelta24h} />
           <Stat label="age" rendered={formatAge(story.firstSeenAt, now)} />
           {/* No "sources" cell: the count is a chip in the header two lines up and the tab
@@ -283,10 +291,14 @@ export function Story({ storyId, onBuy, isWatched, onToggleWatch }: StoryProps) 
         {note === null ? null : <div className={styles['qsNote']}>{note}</div>}
 
         {/* ===== chart card (her .chartcard) =====
-            ★ There is no price history for any coin on this product, so this card does not
-            draw one. It carries the activity trace instead — real readings, straight off the
-            wire — and says on its face that it is not price. A drawn-from-nothing candle
-            chart is the single most convincing lie an interface like this can tell. */}
+            ★ NO PRICE SERIES REACHES THIS CLIENT, so this card does not draw one. Market
+            readings are now taken and kept — which is what the 24h figure beside each coin
+            comes from — but each one is a reading at an instant, and nothing projects them
+            onto the wire as a series. Two readings four minutes apart are not a chart, and
+            drawing a line through them would invent every point in between. So the card
+            carries the activity trace instead — real readings, straight off the wire — and
+            says on its face that it is not price. A drawn-from-nothing candle chart is the
+            single most convincing lie an interface like this can tell. */}
         <section className={`${styles['panel']} ${styles['chartcard']}`}>
           <div className={styles['chartTop']}>
             <div className={styles['chartTitle']}>
@@ -317,8 +329,8 @@ export function Story({ storyId, onBuy, isWatched, onToggleWatch }: StoryProps) 
           </div>
 
           <div className={styles['chartNote']}>
-            no price chart: nothing is recording prices for this story&apos;s coin. when a
-            market feed lands, a real series goes here — not before
+            no price chart: this line is mentions, not price. the 24h figure beside each coin
+            is a reading, not a series — a real one goes here when there is one, not before
           </div>
         </section>
 

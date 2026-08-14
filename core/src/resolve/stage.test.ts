@@ -80,6 +80,10 @@ function market(over: Partial<MarketState> = {}): MarketState {
     priceUsd: null,
     marketCapUsd: null,
     marketCapBasis: null,
+    // Absent for the same reason as the reserve below: a coin this young has no
+    // trailing day behind it. It is not a change of zero, and nothing gates on it
+    // either — resolve's gate is quotability.
+    priceChange24hPct: null,
     liquidityUsd: null, // a curve has none, and NOTHING gates on it
     depth: { kind: 'bonding-curve', progress: 0.4, slippageBpsAt: { '0.1': 20, '0.5': 60, '1.0': 120 } },
     mintedAt: { at: NOW - 25 * MINUTE, source: 'chain_rpc', confidence: 'exact', boundS: null },

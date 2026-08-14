@@ -22,14 +22,30 @@
  */
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
-import type { CensorReason, Fidelity, FingerprintKind, Millis, Rate } from '@insidor/contracts';
+import type {
+  CensorReason,
+  Fidelity,
+  FingerprintKind,
+  MarketAbsenceReason,
+  MarketCapBasis,
+  Millis,
+  Rate,
+} from '@insidor/contracts';
 import type { MatchEvidence } from '@insidor/contracts/story.ts';
 import type { Db } from '@insidor/store';
 
 import { coinCandidates } from './coins.ts';
 import { permalinkFor } from './permalinks.ts';
-import type { CoinFacts, MemberFacts, MemberRelation, ReachReading, StoryFacts } from './project.ts';
-import type { WireBoardRow, WireStory } from './wire.ts';
+import type {
+  CoinFacts,
+  CoinMarket,
+  MarketNumber,
+  MemberFacts,
+  MemberRelation,
+  ReachReading,
+  StoryFacts,
+} from './project.ts';
+import type { PendingReason, WireBoardRow, WireStory } from './wire.ts';
 
 /* ── the frame ────────────────────────────────────────────────────────── */
 
@@ -337,14 +353,10 @@ interface AssetRow {
  * what survives a cap is the coins closest to the post — the ordering the mint-lag evidence
  * actually has — rather than whatever the planner returned first.
  */
-async function loadCoinsInWindow(
-  db: Db,
-  storyIds: readonly string[],
-): Promise<ReadonlyMap<string, readonly CoinFacts[]>> {
-  const byStory = new Map<string, CoinFacts[]>();
-  if (storyIds.length === 0) return byStory;
+async function loadCoinsInWindow(db: Db, storyIds: readonly string[]): Promise<readonly AssetRow[]> {
+  if (storyIds.length === 0) return [];
 
-  const rows = await db.query<AssetRow>(
+  return db.query<AssetRow>(
     `select o.story_id,
             c.asset_key, c.address, c.venue_id, c.symbol, c.name, c.image_uri, c.minted_at
        from (
@@ -372,44 +384,178 @@ async function loadCoinsInWindow(
       DEFAULT_POLICY.resolve.maxCandidates,
     ],
   );
+}
 
+/** The retrieved coins, bucketed by story, each carrying whatever reading we hold. */
+function coinsByStory(
+  rows: readonly AssetRow[],
+  markets: ReadonlyMap<string, CoinMarket>,
+): ReadonlyMap<string, readonly CoinFacts[]> {
+  const byStory = new Map<string, CoinFacts[]>();
   for (const row of rows) {
     const bucket = byStory.get(row.story_id) ?? [];
-    bucket.push(toCoinFacts(row));
+    /* `?? null` and never a fabricated empty reading. A coin with no row in
+       public.market_reading has not been read, which is OUR state; an empty reading
+       would say the venue answered and had nothing, which is the world's. Those are
+       different sentences and projectCoin gives them different reasons. */
+    bucket.push(toCoinFacts(row, markets.get(row.asset_key) ?? null));
     byStory.set(row.story_id, bucket);
   }
   return byStory;
+}
+
+/* ── the market, which is a reading and not a property ────────────────── */
+
+interface MarketReadingRow {
+  asset_key: string;
+  taken_at: Date | string;
+  price_usd: number | null;
+  price_absent: MarketAbsenceReason | null;
+  market_cap_usd: number | null;
+  market_cap_absent: MarketAbsenceReason | null;
+  market_cap_basis: MarketCapBasis | null;
+  liquidity_usd: number | null;
+  liquidity_absent: MarketAbsenceReason | null;
+  price_change_24h_pct: number | null;
+  price_change_24h_absent: MarketAbsenceReason | null;
+  tradable: boolean;
+}
+
+/**
+ * The LATEST reading for each of these coins, and only the latest.
+ *
+ * `distinct on (asset_key) … order by asset_key, taken_at desc` walks
+ * `market_reading_latest_idx` backwards and stops at the first row per key, so the cost
+ * is one seek per coin rather than a scan of every reading a coin has ever had. The
+ * index is declared descending for exactly this; an ascending one would make the
+ * planner read the whole series and discard all but the last row of each.
+ *
+ * ★ NOTE WHAT IS NOT IN THE COLUMN LIST. `source_vendor` and `source_endpoint` are
+ * columns on this table and are not selected, deliberately: `source_vendor` names who
+ * we pay, and services/project throws WireLeakError on that string appearing at any
+ * depth of a payload — which would silently withhold the row from the board rather than
+ * fail loudly. A column that is not in the result set cannot reach a payload by
+ * accident, which is the cheapest version of this guarantee there is.
+ *
+ * ★ AND THERE IS NO FRESHNESS CLAUSE IN THIS QUERY, ON PURPOSE. Whether a reading is
+ * too old to publish is a judgement, judgements live in project.ts where a test can
+ * call them with two literals, and a `where taken_at > now() - interval …` here would
+ * be a second copy of that threshold living in a string literal — read from the
+ * database's clock rather than from the injected one, so the projection would stop
+ * being reproducible. The row is fetched with its instant; project.ts decides.
+ */
+async function loadMarketReadings(
+  db: Db,
+  assetKeys: readonly string[],
+): Promise<ReadonlyMap<string, CoinMarket>> {
+  const byAsset = new Map<string, CoinMarket>();
+  if (assetKeys.length === 0) return byAsset;
+
+  const rows = await db.query<MarketReadingRow>(
+    `select distinct on (asset_key)
+            asset_key, taken_at,
+            price_usd, price_absent,
+            market_cap_usd, market_cap_absent, market_cap_basis,
+            liquidity_usd, liquidity_absent,
+            price_change_24h_pct, price_change_24h_absent,
+            tradable
+       from public.market_reading
+      where asset_key = any($1::text[])
+      order by asset_key, taken_at desc`,
+    [assetKeys],
+  );
+
+  for (const row of rows) {
+    byAsset.set(row.asset_key, {
+      takenAt: toMillis(row.taken_at),
+      priceUsd: toMarketNumber(row.price_usd, row.price_absent, 'price_usd'),
+      marketCapUsd: toMarketNumber(row.market_cap_usd, row.market_cap_absent, 'market_cap_usd'),
+      marketCapBasis: row.market_cap_basis,
+      liquidityUsd: toMarketNumber(row.liquidity_usd, row.liquidity_absent, 'liquidity_usd'),
+      priceChange24h: toMarketNumber(
+        row.price_change_24h_pct,
+        row.price_change_24h_absent,
+        'price_change_24h_pct',
+      ),
+      tradable: row.tradable,
+    });
+  }
+  return byAsset;
+}
+
+/**
+ * The stored reason, as the reason the user is given.
+ *
+ * ★ AN EXPLICIT SWITCH AND NOT A PASS-THROUGH, even though all three strings are spelled
+ * the same on both sides. They are two different closed lists: contracts'
+ * MARKET_ABSENCE_REASONS is what a VENUE can say about a reading, and PendingReason is
+ * what the USER is told, which also has to cover states no reading exists for at all.
+ * Written as a switch, a fourth venue reason is a compile error here — the one place
+ * where somebody has to decide what a user should read — rather than a string that
+ * travels intact to decode.ts, fails `reasonOf`'s closed list, and silently becomes
+ * 'unavailable' in a browser.
+ *
+ * There is no branch that produces a zero from either side, and the row's own
+ * `*_xor_reason` constraints mean a value and a reason cannot both be missing — so a
+ * row that reached here with neither was written around the constraint and throws
+ * rather than defaulting to an answer nobody chose.
+ */
+function toMarketNumber(
+  value: number | null,
+  absent: MarketAbsenceReason | null,
+  column: string,
+): MarketNumber {
+  if (value !== null) return { known: true, amount: value };
+  if (absent === null) {
+    throw new TypeError(`a market reading arrived with neither a ${column} nor a reason for having none`);
+  }
+  const why: PendingReason =
+    absent === 'no_market' ? 'no_market' : absent === 'not_reported' ? 'not_reported' : 'unreadable';
+  return { known: false, why };
 }
 
 /**
  * A display label for a venue, chosen here for the same reason a source's label is: the
  * app never maps an internal id to a name. An id we have no label for falls back to a
  * capitalised form, which looks wrong enough to get fixed.
+ *
+ * ★ A Map, for exactly the reason `SOURCE_LABELS` below is one, and it has to be said
+ * twice because the trap is the same and it is invisible. `public.asset.venue_id` is an
+ * unconstrained `text` column — 0005 declares no CHECK on it — so its value is whatever
+ * the writer put there, and an object literal answers for its prototype as well as for
+ * its own keys. Indexed as one, a venue_id of `constructor` or `toString` returns a
+ * FUNCTION, so `??` never fires and a function is returned from something typed
+ * `string`. Nothing would throw here: the censor's walk skips a non-string non-object,
+ * JSON.stringify DROPS a function-valued key entirely, and the row would be stored and
+ * served with no `venueLabel` at all — failing in decode.ts, in a user's browser, as far
+ * from this line as it is possible to get. A Map has no inherited keys, so the fallback
+ * fires and the worst case is an ugly label rather than a missing field.
  */
-const VENUE_LABELS: Readonly<Record<string, string>> = {
-  pumpfun: 'Pump.fun',
-  raydium: 'Raydium',
-};
+const VENUE_LABELS: ReadonlyMap<string, string> = new Map([
+  ['pumpfun', 'Pump.fun'],
+  ['raydium', 'Raydium'],
+]);
 
 function venueLabel(venueId: string): string {
-  return VENUE_LABELS[venueId] ?? venueId.charAt(0).toUpperCase() + venueId.slice(1);
+  return VENUE_LABELS.get(venueId) ?? venueId.charAt(0).toUpperCase() + venueId.slice(1);
 }
 
 /**
- * One asset row as coin facts.
+ * One asset row, plus the latest market reading for it, as coin facts.
  *
- * ★ EVERY MARKET NUMBER IS ABSENT, AND ABSENT IS NOT ZERO. public.asset has no price, no
- * market cap and no liquidity column, deliberately — those are readings taken FROM a
- * market, not properties OF a coin, and a column for them would have to be either stale or
- * written by something that does not run yet. Until a market adapter writes them the
- * honest projection is null with the reason attached, which projectCoin turns into
- * `no_market` for the two prices and `not_reported` for liquidity. A zero here would read
- * as "worthless" on a row whose actual state is "nobody has traded it yet", and those are
- * opposite claims about the same coin.
+ * ★ THE MARKET ARRIVES AS A SEPARATE OBJECT AND IS ALLOWED TO BE MISSING. public.asset
+ * still has no price, no market cap and no liquidity column and it must not grow one —
+ * those are readings taken FROM a market, not properties OF a coin, so a column there
+ * would be either stale or overwritten, and public.asset IS granted to the app role,
+ * which would hand the browser's own connection a number that skipped the projection,
+ * the censor and the staleness rule. The reading lives in public.market_reading, which
+ * the app cannot read at all.
  *
- * `tradable: false` for the same reason and not as a pessimistic default: tradability is
- * decided by asking a venue for a quote, there is nothing here to quote against, and a
- * `true` we cannot back would put a Buy button in front of an order that cannot fill.
+ * ★ `market: null` IS A FACT, NOT A PLACEHOLDER. It says nobody has read this coin's
+ * market yet, which is different from the venue saying there is no market — and
+ * projectCoin gives the two different reasons on the wire. A zero for either would read
+ * as "worthless" on a row whose actual state is "nobody has traded it yet", and those
+ * are opposite claims about the same coin.
  *
  * ★ `minted_at` NULL STAYS NULL. It is never filled from `first_seen_at`, which is when WE
  * first read the row and can postdate the mint by hours. Mint time is the axis every
@@ -418,7 +564,7 @@ function venueLabel(venueId: string): string {
  * upside down. 0005's `unknown_iff_absent` constraint means a null here always travels
  * with a confidence of 'unknown', so the absence is already labelled at the source.
  */
-function toCoinFacts(row: AssetRow): CoinFacts {
+function toCoinFacts(row: AssetRow, market: CoinMarket | null): CoinFacts {
   return {
     /* The asset key — '<chain>:<address>' — is the one storable spelling of an asset and
        is unique by constraint, so a React key made from it is stable across frames. */
@@ -429,11 +575,7 @@ function toCoinFacts(row: AssetRow): CoinFacts {
     venueLabel: venueLabel(row.venue_id),
     imageUrl: row.image_uri,
     mintedAt: row.minted_at === null ? null : toMillis(row.minted_at),
-    priceUsd: null,
-    marketCapUsd: null,
-    marketCapBasis: null,
-    liquidityUsd: null,
-    tradable: false,
+    market,
   };
 }
 
@@ -607,15 +749,22 @@ export interface LoadWindow {
 }
 
 /**
- * Everything the projection needs, in five round trips regardless of how many stories
+ * Everything the projection needs, in six round trips regardless of how many stories
  * come back.
  *
- * Five and not five-per-story: every fetch after the first is one statement over an id
+ * Six and not six-per-story: every fetch after the first is one statement over an id
  * array. A per-story loop here would be a thousand queries inside a single transaction,
  * which holds a backend open for the whole frame — and the projector runs while ingest is
  * writing. The two coin reads are separate statements rather than one join because the
  * spans and the mint window are independent of each other: they only meet in coins.ts,
  * where the meeting is a pure function that a test can call with two literals.
+ *
+ * ★ THE SIXTH IS THE MARKET, AND IT IS A SEPARATE STATEMENT RATHER THAN A LATERAL JOIN
+ * ONTO THE COIN QUERY, on purpose. Joined in, it would have to be a LEFT join — an inner
+ * one would DELETE every coin nobody has read yet, which is most of them and is the
+ * population this product exists to serve, and it would delete them silently: the row
+ * would simply have fewer coins on it, with nothing anywhere saying why. Separating the
+ * two makes "no reading" a null in a Map lookup, which is a state with a name.
  */
 export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<readonly StoryFacts[]> {
   const storyRows = await loadStories(db, window.storiesSinceMs, window.limit);
@@ -629,7 +778,12 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<readon
     window.reachSinceMs,
   );
   const spans = await loadEntitySpans(db, storyIds);
-  const coins = await loadCoinsInWindow(db, storyIds);
+  const coinRows = await loadCoinsInWindow(db, storyIds);
+  /* Deduplicated: one coin can be in several stories' windows, and asking for its
+     reading once per story would multiply the largest statement here by the number of
+     rows on the board for no new information. */
+  const markets = await loadMarketReadings(db, [...new Set(coinRows.map((row) => row.asset_key))]);
+  const coins = coinsByStory(coinRows, markets);
 
   const byStory = new Map<string, MemberRow[]>();
   for (const row of memberRows) {

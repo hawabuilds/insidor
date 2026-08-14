@@ -23,30 +23,10 @@ import { memo } from 'react';
 import { useBoardRow } from '../../shared/api/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { formatCount, formatUsd } from '../../shared/format/number.ts';
-import { PENDING_GLYPH } from '../../shared/format/rendered.ts';
-import { Button, Num, Sparkline, Thumb } from '../../shared/ui/index.ts';
+import { Button, Delta, Num, Sparkline, Thumb } from '../../shared/ui/index.ts';
 import type { BuyAction } from './row-action.ts';
 import { actionLabel, rowAction } from './row-action.ts';
 import styles from './feed.module.css';
-
-/**
- * ★ WHY THE GAIN COLUMN IS ALWAYS A DASH TODAY.
- *
- * Nothing in this system records a price series. Not the projection, not the database, not
- * the wire — there is no field to read and no history to difference, so there is no 24h gain
- * that is true. The cell therefore renders an explicit absence rather than a number.
- *
- * The tempting fill is reach: it is right there on the row and it moves. It is also not the
- * same quantity. Reach growth is how many more people saw a story; gain is what a coin's
- * price did. Labelling the first as the second, under a column head that says GAIN, in the
- * one column a user is most likely to trade on, is the most expensive lie this board could
- * tell — so the honest dash stays until a price series exists.
- *
- * It does not go through `<Pending>` because it is not pending. `PendingReason` describes a
- * value that has not arrived YET ('reading', 'not reported'); this is a column with no source
- * behind it at all, and saying "reading" would promise a number that is not coming.
- */
-const GAIN_UNAVAILABLE = 'No price history is recorded yet, so there is no 24h gain to show.';
 
 export interface FeedRowProps {
   readonly id: string;
@@ -122,15 +102,24 @@ function FeedRowInner({ id, rank, now, onOpen, onBuy, onCompare, onCreate }: Fee
         <Num rendered={formatCount(row.reach)} />
       </div>
 
-      {/* 5 — gain 24h. See GAIN_UNAVAILABLE above. */}
-      <div className={styles['numCell']}>
-        <span
-          className={`${styles['gain']} ${styles['gainNone']}`}
-          title={GAIN_UNAVAILABLE}
-          aria-label={GAIN_UNAVAILABLE}
-        >
-          {PENDING_GLYPH}
-        </span>
+      {/* 5 — gain 24h. What the story's COIN'S price did over the last day, as a signed
+             percentage, and only when the story has exactly one settled coin: across
+             several, an average describes a portfolio nobody holds and the biggest riser
+             is a choice about which coin is real wearing a percentage sign. Absent is the
+             ordinary state — a coin minted this hour has no day behind it, and a reading
+             too old to be current is withheld by the server rather than shown as live.
+
+             `<Delta>` colours by SIGN and takes no numeric prop, so the size of the move
+             cannot influence the treatment. That is the structural version of not
+             writing `gain >= 150000 ? 'up' : 'down'` in a component again.
+
+             The tempting fill is reach: it is on the row and it moves. It is a different
+             quantity — how many more people saw a story, not what a coin's price did —
+             and labelling one as the other under a head that says GAIN, in the column a
+             user is most likely to trade on, is the most expensive lie this board could
+             tell. */}
+      <div className={`${styles['numCell']} ${styles['gainCell']}`}>
+        <Delta value={row.priceChange24h} unit="percent" />
       </div>
 
       {/* 6 — age. An unknown start time stays unknown: a dash, never "brand new", which is the

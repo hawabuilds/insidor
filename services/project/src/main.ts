@@ -20,6 +20,7 @@
  * is handed a connection that makes the wrong behaviour impossible.
  */
 
+import { DEFAULT_POLICY } from '@insidor/contracts';
 import { asDb, createPool, DB_ROLE, withTransaction } from '@insidor/store';
 
 import { loadStoryFacts, nextTick, previousBoardStoryIds, writeBoard, writeStories } from './db.ts';
@@ -89,7 +90,16 @@ async function main(): Promise<void> {
 
   try {
     const nowMs = Date.now();
-    const options: ProjectOptions = { nowMs, sparkWindowMs: SPARK_WINDOW_MS };
+    const options: ProjectOptions = {
+      nowMs,
+      sparkWindowMs: SPARK_WINDOW_MS,
+      /* Read from the policy rather than typed here, unlike the two windows above.
+         Those bound how much is fetched and how wide an axis is drawn; this one decides
+         whether a price is published as the current price or as a dash, which is a
+         judgement — and every threshold in this system lives in one hashed object so
+         that "what was this board judged against in March" has an answer. */
+      marketFreshnessMs: DEFAULT_POLICY.market.readingFreshnessMs,
+    };
 
     const result = await withTransaction(pool, async (db) => {
       const tick = await nextTick(db, VIEW_ID);

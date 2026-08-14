@@ -15,7 +15,7 @@
  * projects it to a three-valued enum, one way, forever. There is nothing here to threshold.
  */
 
-import type { Instant, Measured } from '../../format/measure.ts';
+import type { Delta, Instant, Measured } from '../../format/measure.ts';
 import type { CoinLink } from './coin.ts';
 
 /** A judgement, already made. Not re-derivable from anything else on the row. */
@@ -77,6 +77,25 @@ export interface BoardRow {
    */
   readonly marketCapUsd: Measured;
 
+  /**
+   * The story's coin's 24-hour price move, as a signed percentage — the GAIN column.
+   *
+   * ★ DERIVED FROM `coins` EXACTLY LIKE THE CAP ABOVE, and absent for every branch but
+   * `one` for the same reasons, which are worth restating because the temptations are
+   * different here. Across `several`, the AVERAGE of three rival tokens' moves
+   * describes a portfolio nobody holds, and the biggest riser is a choice about which
+   * coin is the real one wearing a percentage sign. This is the column a user is most
+   * likely to trade on, so it is the worst place in the product to make either.
+   *
+   * The other filling that must never happen is reach: it is right there on the row and
+   * it moves. Reach growth is how many more people saw a story; this is what a coin's
+   * price did. Labelling the first as the second, under a head that says GAIN, is the
+   * most expensive lie this board could tell.
+   *
+   * `Delta` and not `Measured`: it is the one field allowed to carry colour, by sign.
+   */
+  readonly priceChange24h: Delta;
+
   /** When the story began, so the row can show its age. Unknown stays unknown. */
   readonly firstSeenAt: Instant;
 
@@ -103,12 +122,12 @@ export interface BoardTick {
 /**
  * The fields a live patch is allowed to move. Order is not one of them.
  *
- * `marketCapUsd` is here because a cap moves with the market between frames and re-sending
- * the whole row to change one number is how a live channel becomes a refetch loop. It is
- * derived from `coins`, so a patch that moves `coins` has to move this too or the row will
- * show the previous coin's cap beside the new coin — the server sends them together, and
- * the decoder below cannot enforce that because a patch carrying only one of them is a
- * legitimate frame when only that one changed.
+ * `marketCapUsd` and `priceChange24h` are here because both move with the market between
+ * frames and re-sending the whole row to change one number is how a live channel becomes a
+ * refetch loop. Both are derived from `coins`, so a patch that moves `coins` has to move
+ * them too or the row will show the previous coin's figures beside the new coin — the
+ * server sends them together, and the decoder below cannot enforce that because a patch
+ * carrying only one of them is a legitimate frame when only that one changed.
  */
 export type PatchableField =
   | 'title'
@@ -118,6 +137,7 @@ export type PatchableField =
   | 'spark'
   | 'momentum'
   | 'marketCapUsd'
+  | 'priceChange24h'
   | 'coins';
 
 export interface RowPatch {

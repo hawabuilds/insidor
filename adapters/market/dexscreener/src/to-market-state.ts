@@ -39,26 +39,61 @@ export interface PairView {
   readonly priceUsd: number | null;
   readonly fdvUsd: number | null;
   readonly marketCapUsd: number | null;
+  /**
+   * The trailing day's price move, as a SIGNED PERCENTAGE. Read through `num` and
+   * not `nonNegative`: a negative here is the whole point of the field, and the guard
+   * that protects a reserve would silently delete every coin that fell.
+   *
+   * The vendor's own key is `priceChange.h24`. That word does not travel: `h24` is
+   * this vendor's spelling and naming our field after it would make a second vendor
+   * pretend it has an `h24` too, which is the failure the vocabulary gate exists for.
+   */
+  readonly priceChange24hPct: number | null;
   readonly pairCreatedAt: Millis | null;
   readonly isCurve: boolean;
 }
+
+/**
+ * A quantity that cannot be negative, read as unreadable when it is.
+ *
+ * `num` already rejects NaN and the infinities, and prices arrive from this
+ * vendor as STRINGS (`priceUsd: "0.01035"`) while sizes arrive as numbers — it
+ * handles both. What it does not do is know that a price below zero is not a
+ * price. A negative reading is a broken reading, and the only two answers this
+ * layer can give are "a number" and "nothing", so a broken one becomes nothing.
+ *
+ * That is a real loss of information — "unreadable" and "the vendor said
+ * nothing" arrive downstream in the same shape, because `MarketState` carries
+ * one nullable number per quantity and has nowhere to record which. It is the
+ * least-wrong of the three options: publishing a negative market cap is a lie,
+ * and coercing it to zero is the lie this whole file exists to prevent.
+ */
+const nonNegative = (v: unknown): number | null => {
+  const n = num(v);
+  return n === null || n < 0 ? null : n;
+};
 
 export function toPairView(raw: unknown): PairView {
   const p: Rec = rec(raw);
   const dexId = str(p.dexId);
 
   // The whole point, in one expression: ask whether the KEY is there before
-  // asking what its value is.
-  const liquidityUsd = missing(p, 'liquidity') ? null : num(rec(p.liquidity).usd);
+  // asking what its value is. `missing` first, so an absent object stays absent
+  // and a present-but-broken value becomes null on its own merits.
+  const liquidityUsd = missing(p, 'liquidity') ? null : nonNegative(rec(p.liquidity).usd);
 
   return {
     dexId,
     pairAddress: str(p.pairAddress),
     liquidityUsd,
-    priceUsd: num(p.priceUsd),
-    fdvUsd: num(p.fdv),
-    marketCapUsd: num(p.marketCap),
-    pairCreatedAt: num(p.pairCreatedAt),
+    priceUsd: nonNegative(p.priceUsd),
+    fdvUsd: nonNegative(p.fdv),
+    marketCapUsd: nonNegative(p.marketCap),
+    // `missing` first, for the same reason liquidity gets it: a pair with no
+    // `priceChange` object at all — a coin younger than the window — has no change
+    // to report, and that is a different fact from a change of zero.
+    priceChange24hPct: missing(p, 'priceChange') ? null : num(rec(p.priceChange).h24),
+    pairCreatedAt: nonNegative(p.pairCreatedAt),
     isCurve: dexId !== null && CURVE_DEX_IDS.has(dexId),
   };
 }
@@ -110,6 +145,12 @@ export function toMarketState(rawResponse: unknown, ctx: MarketReadContext): Mar
     // fully-diluted figure and a circulating one differ by orders of magnitude
     // on a fresh asset, and a Buy screen showing the wrong one is a lie.
     marketCapBasis: basis,
+
+    // Taken from the SAME pair the price came from, never from whichever pair
+    // happened to report one. A change is a change IN a price, and pairing it
+    // with a different pair's price is two numbers about two markets sitting in
+    // one row pretending to be about one.
+    priceChange24hPct: chosen?.priceChange24hPct ?? null,
 
     // Null on a curve, and null wherever the vendor simply did not report it.
     // NOTHING GATES ON THIS FIELD.

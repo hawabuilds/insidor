@@ -8,7 +8,13 @@ import assert from 'node:assert/strict';
 
 import { chainId, venueId } from '@insidor/contracts/ids.ts';
 
-import { CURVE_RESPONSE, DRAINED_RESPONSE, EMPTY_RESPONSE, POOLED_RESPONSE } from './__fixtures__/pairs.ts';
+import {
+  CURVE_RESPONSE,
+  DRAINED_RESPONSE,
+  EMPTY_RESPONSE,
+  LIVE_RESPONSE,
+  POOLED_RESPONSE,
+} from './__fixtures__/pairs.ts';
 import { pickPricePair, toMarketState, toPairView } from './to-market-state.ts';
 import type { MarketReadContext } from './to-market-state.ts';
 
@@ -45,6 +51,32 @@ test('a pooled pair reports its depth and how many pools back it', () => {
   assert.equal(pooled.depth.liquidityUsd, 42_000);
   assert.equal(pooled.depth.poolCount, 2);
   assert.equal(pooled.marketCapBasis, 'circulating');
+});
+
+test("the day's price move comes from the pair the price came from, and is signed", () => {
+  /* Two pools, two different h24 figures, and the deeper one is where the price is
+     read. Taking the other would put one market's price beside another market's
+     move in the same row, which is two claims about two things wearing one label. */
+  const pooled = toMarketState(POOLED_RESPONSE, ctx);
+  assert.equal(pooled.priceChange24hPct, 12.5);
+  assert.notEqual(pooled.priceChange24hPct, -3.1, 'the thinner pool decided the move');
+
+  /* And a fall stays a fall. The guard that turns a negative reserve into null must
+     never be pointed at this field: it would delete exactly the coins that dropped,
+     leaving a board on which nothing ever goes down. */
+  const live = toMarketState(LIVE_RESPONSE, ctx);
+  assert.equal(live.priceChange24hPct, -6.94);
+});
+
+test('a pair younger than a day reports no change, not a change of zero', () => {
+  /* CURVE_RESPONSE has no `priceChange` key at all — the same absence as its missing
+     `liquidity`, for the same reason: the concept does not exist for this pair yet.
+     A 0 here would say the price held for a day the coin has not been alive for. */
+  const curve = toMarketState(CURVE_RESPONSE, ctx);
+  assert.equal(curve.priceChange24hPct, null);
+  assert.notEqual(curve.priceChange24hPct, 0);
+
+  assert.equal(toMarketState(EMPTY_RESPONSE, ctx).priceChange24hPct, null);
 });
 
 test('this vendor can never supply a mint time', () => {

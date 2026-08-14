@@ -11,6 +11,7 @@ export type { ButtonTone } from './Button.tsx';
 export { Card, Tag } from './Card.tsx';
 export { CommandPalette } from './CommandPalette.tsx';
 export { Delta } from './Delta.tsx';
+export type { DeltaUnit } from './Delta.tsx';
 export { Num } from './Num.tsx';
 export { Pending } from './Pending.tsx';
 export { Sparkline } from './Sparkline.tsx';

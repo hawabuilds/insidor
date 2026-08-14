@@ -86,6 +86,24 @@ export const MARKET_CLASSES = ['bonding-curve', 'pool'] as const;
 export type MarketClass = (typeof MARKET_CLASSES)[number];
 
 /**
+ * Which quantity a market capitalisation is a capitalisation OF.
+ *
+ * An array and not a bare union, because this list is also a CHECK constraint in
+ * store/migrations/0010_market.sql and store/src/migrations.test.ts asserts the two
+ * are the same list. A CHECK that has drifted from its union is the worst kind of
+ * disagreement: it typechecks perfectly and fails at 3am on the first row of the kind
+ * nobody wrote a test for.
+ *
+ * The two differ by orders of magnitude on a young asset — a coin with 8% of its
+ * supply circulating is a $10M coin fully diluted and a $800k coin circulating — so
+ * the basis travels with every cap and is never guessed. `null` basis is only legal
+ * beside a `null` cap; see the biconditional in adapters/test/contract.
+ */
+export const MARKET_CAP_BASES = ['fully-diluted', 'circulating'] as const;
+
+export type MarketCapBasis = (typeof MARKET_CAP_BASES)[number];
+
+/**
  * What actually backs the price. The gates and the projection read THIS, never
  * `liquidityUsd` — the two market classes answer "can this be traded" in
  * structurally different ways, and flattening them is the bug described above.
@@ -130,7 +148,22 @@ export interface MarketState {
   readonly priceUsd: number | null;
   readonly marketCapUsd: number | null;
   /** The venue says which basis it used. We never guess, and never mix the two. */
-  readonly marketCapBasis: 'fully-diluted' | 'circulating' | null;
+  readonly marketCapBasis: MarketCapBasis | null;
+
+  /**
+   * Change in the unit price over the trailing day, as a SIGNED PERCENTAGE — −7.86
+   * means the price is 7.86% lower than it was a day ago. The unit is in the name
+   * because the two plausible spellings differ by a factor of a hundred and neither
+   * is self-evident from a number like `0.0786`.
+   *
+   * NULL is the ordinary case, not an error: a coin minted forty minutes ago has no
+   * trailing day to have changed over. It is emphatically not a change of zero —
+   * zero says the price held, which is a claim about a period nobody observed.
+   *
+   * It is a reading and not a difference we compute: nothing in this system stores a
+   * price series to difference, so this is what the venue reports or nothing at all.
+   */
+  readonly priceChange24hPct: number | null;
 
   /** NULL on a curve. Absence is not illiquidity. NOTHING GATES ON THIS. */
   readonly liquidityUsd: number | null;
@@ -147,6 +180,38 @@ export interface MarketState {
     readonly fetchedAt: Millis;
   };
 }
+
+/**
+ * Why a market number a reading tried to fill is not there.
+ *
+ * ★ THIS EXISTS BECAUSE A NULL WITH NO REASON IS INDISTINGUISHABLE FROM A NULL
+ * NOBODY EVER TRIED TO FILL. `MarketState` above carries one nullable number per
+ * quantity and has nowhere to record which of these happened — that is a tolerable
+ * loss in a value passing through memory and an intolerable one in a stored row,
+ * because the row outlives the call that made it and is the only surviving evidence
+ * of what the venue actually said. So the store keeps the reason beside the number,
+ * exactly as public.observation keeps a censor reason beside a rate, and 0010's
+ * `..._xor_reason` constraints make "null with no reason" unwritable.
+ *
+ * Three, and only these three, because they are the three a ROW can be in:
+ *
+ *   no_market     the venue reported no market for this asset at all. Minted, not
+ *                 yet traded — the common case here, not an edge case.
+ *   not_reported  a market exists and does not carry this number. A curve has no
+ *                 two-sided reserve to report a liquidity for; a coin an hour old
+ *                 has no trailing day to report a change over. Absence of the
+ *                 CONCEPT, which is not a value of zero.
+ *   unreadable    a value arrived and could not be read as this quantity — a
+ *                 negative reserve, a non-finite price.
+ *
+ * The two reasons deliberately NOT here are `not_minted` and `not_read_yet`. Both
+ * are statements about the ABSENCE OF A ROW, and a row cannot make them about
+ * itself. They are the projection's to make, from whether a reading exists at all
+ * and how old it is.
+ */
+export const MARKET_ABSENCE_REASONS = ['no_market', 'not_reported', 'unreadable'] as const;
+
+export type MarketAbsenceReason = (typeof MARKET_ABSENCE_REASONS)[number];
 
 /* ── quoting ──────────────────────────────────────────────────────────── */
 

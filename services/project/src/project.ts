@@ -50,6 +50,8 @@ import {
   instant,
   measured,
   WireLeakError,
+  type MarketCapBasis,
+  type PendingReason,
   type Tone,
   type WireBoardRow,
   type WireCoin,
@@ -124,7 +126,50 @@ export interface MemberFacts {
   readonly reach: readonly ReachReading[];
 }
 
-/** A coin, as facts. Every market number is nullable and null is never zero. */
+/**
+ * A market number, or the venue's own statement of why there is none.
+ *
+ * A two-branch union rather than `number | null`, for the reason `Rate` is one: a
+ * `number | null` is precisely the shape that lets a caller skip the absent case and
+ * get a plausible zero, and `.amount` does not typecheck here until the known branch
+ * has been proved. `why` is the venue's answer, carried rather than re-guessed — a
+ * curve reporting no reserve and a coin nobody has traded are different facts and the
+ * projection is not in a position to tell them apart on its own.
+ */
+export type MarketNumber =
+  | { readonly known: true; readonly amount: number }
+  | { readonly known: false; readonly why: PendingReason };
+
+/**
+ * The market reading a coin's numbers came from, or `null` when we hold none.
+ *
+ * ★ NULL HERE IS A DIFFERENT FACT FROM A READING FULL OF NULLS, and separating them is
+ * the whole reason this is a nested object rather than five more fields on CoinFacts.
+ * "Nobody has read this coin's market yet" is our state; "the venue says there is no
+ * market" is the world's. Flattened, both would arrive as a null price and the
+ * projection would have to pick one reason for both — and it would pick wrongly for
+ * whichever is less common, which on a board whose rows are minutes old is neither.
+ */
+export interface CoinMarket {
+  /**
+   * When the reading was TAKEN. Never `now`, never when the row was written.
+   * projectCoin refuses to publish a reading older than `marketFreshnessMs` as the
+   * current market, and this is the instant that decides it.
+   */
+  readonly takenAt: Millis;
+  readonly priceUsd: MarketNumber;
+  readonly marketCapUsd: MarketNumber;
+  /** Non-null exactly when the cap is known. Never guessed, never carried forward. */
+  readonly marketCapBasis: MarketCapBasis | null;
+  /** Absent on a bonding curve. Absence is not illiquidity — see the reason it carries. */
+  readonly liquidityUsd: MarketNumber;
+  /** The trailing day's move, as a signed percentage. A fall is a reading. */
+  readonly priceChange24h: MarketNumber;
+  /** Decided by asking a venue for a quote, never by comparing liquidity to a number. */
+  readonly tradable: boolean;
+}
+
+/** A coin, as facts. Every market number is absent-or-known and absent is never zero. */
 export interface CoinFacts {
   readonly coinId: string;
   readonly ticker: string | null;
@@ -134,13 +179,8 @@ export interface CoinFacts {
   readonly imageUrl: string | null;
   /** Unknown is normal and stays unknown. Never backfilled from first-seen. */
   readonly mintedAt: Millis | null;
-  readonly priceUsd: number | null;
-  readonly marketCapUsd: number | null;
-  readonly marketCapBasis: 'fully-diluted' | 'circulating' | null;
-  /** Absent on a bonding curve. Absence is not illiquidity, which is why it is nullable. */
-  readonly liquidityUsd: number | null;
-  /** Decided by asking for a quote, never by comparing liquidity to a number. */
-  readonly tradable: boolean;
+  /** The latest reading we hold for this coin. `null` means we hold none at all. */
+  readonly market: CoinMarket | null;
 }
 
 /**
@@ -186,6 +226,16 @@ export interface ProjectOptions {
   readonly nowMs: Millis;
   /** The window the spark's points cover. The client draws the axis from this. */
   readonly sparkWindowMs: number;
+  /**
+   * How old a market reading may be and still be published as the CURRENT market.
+   *
+   * ★ THIS IS THE ONLY OPTION HERE THAT ANYTHING BRANCHES ON, and it is not a number
+   * typed in this file: it arrives from Policy.market.readingFreshnessMs, so the board
+   * a user saw last month is answerable against the policy that was in force then.
+   * `sparkWindowMs` above only bounds how wide an axis is drawn; this one decides
+   * whether a price is a price or a dash, which is a judgement.
+   */
+  readonly marketFreshnessMs: number;
 }
 
 /* ── reach: a level, or an honest statement that we have none ─────────── */
@@ -370,7 +420,57 @@ export function projectFirstSeenAt(members: readonly MemberFacts[]): WireInstant
 
 /* ── coins ────────────────────────────────────────────────────────────── */
 
-export function projectCoin(facts: CoinFacts): WireCoin {
+/**
+ * ★ A READING WE HOLD, OR NOTHING — the staleness gate, and it is a gate.
+ *
+ * A market reading is true of an instant, not of a coin. Fifteen minutes after it was
+ * taken it is still a fact about that instant and is no longer an answer to "what is
+ * this worth now", which is the only question the board is asking. On a product whose
+ * measured post-to-mint lag is under four minutes, a coin can be minted, run and peak
+ * inside one freshness window — so an hour-old price is not a slightly-late price here,
+ * it is a different story about the same coin, and it is the one market error a user
+ * acts on directly because the row has a Buy button on it.
+ *
+ * So a stale reading is dropped whole and every figure becomes an absence, rather than
+ * the last number we happen to hold being shown beside a quiet caveat nobody reads.
+ * Dropping it WHOLE also matters: publishing the price but suppressing the cap, or
+ * keeping `tradable` alive past its reading, would put figures from two different
+ * instants in one row.
+ *
+ * The window is Policy.market.readingFreshnessMs, injected. Nothing here reads a clock:
+ * `options.nowMs` is an argument, which is what keeps this function a unit test.
+ */
+function currentMarket(market: CoinMarket | null, options: ProjectOptions): CoinMarket | null {
+  if (market === null) return null;
+  /* Only the upper side is checked. A reading stamped in the FUTURE is a clock problem
+     rather than a staleness one, and suppressing it here would hide the clock problem
+     behind a dash that looks exactly like every other dash on the board. */
+  return options.nowMs - market.takenAt > options.marketFreshnessMs ? null : market;
+}
+
+/**
+ * One market number onto the wire.
+ *
+ * `undefined` — no current reading at all — becomes `not_read_yet`, which is the true
+ * statement in both cases that produce it: nobody has read this coin's market, or the
+ * reading we hold is too old to be the current one. Neither is a claim about the coin.
+ *
+ * An absence that DID come from a reading keeps the venue's own reason, and that is the
+ * point of carrying it: `no_market` says the coin has never traded, `not_reported` says
+ * the market exists and has no such quantity to report — a curve has no two-sided
+ * reserve, a coin minutes old has no trailing day. Collapsing them, and then rejecting
+ * anything that came back zero, is how the build this replaces filtered out essentially
+ * the entire pre-graduation population, which is the only population we serve.
+ */
+function marketNumber(value: MarketNumber | undefined): WireMeasured {
+  if (value === undefined) return measured(null, 'not_read_yet');
+  return value.known ? measured(value.amount, 'unreadable') : measured(null, value.why);
+}
+
+export function projectCoin(facts: CoinFacts, options: ProjectOptions): WireCoin {
+  const market = currentMarket(facts.market, options) ?? undefined;
+  const marketCapUsd = marketNumber(market?.marketCapUsd);
+
   return {
     coinId: facts.coinId,
     /* An unknown ticker renders as nothing. It does NOT render as the address, or as
@@ -382,16 +482,21 @@ export function projectCoin(facts: CoinFacts): WireCoin {
     venueLabel: facts.venueLabel,
     imageUrl: nonEmpty(facts.imageUrl),
     mintedAt: instant(facts.mintedAt, 'not_read_yet'),
-    priceUsd: measured(facts.priceUsd, 'no_market'),
-    marketCapUsd: measured(facts.marketCapUsd, 'no_market'),
-    marketCapBasis: facts.marketCapBasis,
-    /* `not_reported` rather than `no_market`: a bonding curve has no two-sided reserve
-       to report, so the venue returns no liquidity object at all. Absence here is not
-       illiquidity, and the two must not share a spelling — coercing it to 0 and then
-       rejecting anything at 0 is how the previous build filtered out essentially the
-       entire pre-graduation population, which is the only population we serve. */
-    liquidityUsd: measured(facts.liquidityUsd, 'not_reported'),
-    tradable: facts.tradable,
+    priceUsd: marketNumber(market?.priceUsd),
+    marketCapUsd,
+    /* ★ A BASIS NEVER OUTLIVES ITS CAP, in either direction. A label with no number is
+       a description of nothing; a number with no label is a figure whose meaning is
+       missing, and the two bases differ by more than a factor of ten on a coin with
+       most of its supply still locked. Read off the projected cap rather than off the
+       facts, so a stale reading drops both together. */
+    marketCapBasis: marketCapUsd.v === null ? null : (market?.marketCapBasis ?? null),
+    liquidityUsd: marketNumber(market?.liquidityUsd),
+    priceChange24h: marketNumber(market?.priceChange24h),
+    /* ★ NO CURRENT READING MEANS NOT TRADABLE, and that is not derived from any number
+       above it. Tradability is a claim that a venue will quote this coin RIGHT NOW; the
+       only evidence for it is a quote, and a quote taken twenty minutes ago is not
+       evidence about now. Absence of a current quote is absence of the affordance. */
+    tradable: market?.tradable ?? false,
   };
 }
 
@@ -410,13 +515,16 @@ export function projectCoin(facts: CoinFacts): WireCoin {
  * the absence of the affordance. And structurally: a coin that is not in the payload
  * cannot be prop-drilled into a buy panel by anyone, ever, however the UI is rewritten.
  */
-export function projectCoins(candidates: readonly CoinCandidate[]): WireCoinLink {
+export function projectCoins(
+  candidates: readonly CoinCandidate[],
+  options: ProjectOptions,
+): WireCoinLink {
   if (candidates.length === 0) return { kind: 'none' };
 
   const confident = candidates.filter((candidate) => candidate.confident);
   if (confident.length === 0) return { kind: 'unsure', claimCount: candidates.length };
 
-  const coins = confident.map((candidate) => projectCoin(candidate.coin));
+  const coins = confident.map((candidate) => projectCoin(candidate.coin, options));
   const [first, second, ...rest] = coins;
   if (first === undefined) return { kind: 'none' };
   if (second === undefined) return { kind: 'one', coin: first };
@@ -471,9 +579,52 @@ export function projectCoins(candidates: readonly CoinCandidate[]): WireCoinLink
  * `no_single_coin`, this is its first caller and these two branches should take it.
  */
 export function projectMarketCap(coins: WireCoinLink): WireMeasured {
+  return fromTheOneCoin(coins, (coin) => coin.marketCapUsd);
+}
+
+/**
+ * ★ THE ROW'S 24-HOUR PRICE MOVE, WHICH IS THE STORY'S COIN'S PRICE MOVE, WHICH EXISTS
+ * ONLY WHEN THE STORY HAS EXACTLY ONE COIN.
+ *
+ * The same rule as the cap above, restated because the temptation is different and
+ * slightly stronger. A cap is at least additive-looking; a change is a percentage, and
+ * percentages invite an AVERAGE — which for `several` would be the mean of three rival
+ * tokens' moves, a number describing a portfolio nobody holds and which would sit under
+ * a column head reading GAIN, in the one column a user is most likely to trade on. The
+ * other tempting answer is the biggest riser, which is picking which coin is the real
+ * one and presenting the pick as a measurement — precisely the judgement the `unsure`
+ * and `several` branches exist to say we have not made.
+ *
+ *   `one`     → THAT COIN'S move, verbatim, absence and all. A coin with no trailing
+ *               day carries `not_reported` and arrives here unchanged.
+ *   `none`    → `not_minted`. No coin, so no price, so nothing to have changed.
+ *   `unsure`  → ABSENT. The payload carries no coin at all, by construction.
+ *   `several` → ABSENT. See above.
+ *
+ * `not_reported` for the last two is the same knowing compromise projectMarketCap
+ * makes: PendingReason has no member meaning "this story does not resolve to a single
+ * coin", and if it ever grows a `no_single_coin` these two branches take it together.
+ */
+export function projectPriceChange24h(coins: WireCoinLink): WireMeasured {
+  return fromTheOneCoin(coins, (coin) => coin.priceChange24h);
+}
+
+/**
+ * The four branches, written once.
+ *
+ * Both row-level market figures answer the same question — "does this story have one
+ * settled coin to borrow a number from?" — and a second copy of the switch is a second
+ * set of answers nobody compared. The reasons live here, in one place, which is what
+ * makes "the cap says not_minted and the gain says not_reported on the same row"
+ * unwritable rather than merely unlikely.
+ */
+function fromTheOneCoin(
+  coins: WireCoinLink,
+  read: (coin: WireCoin) => WireMeasured,
+): WireMeasured {
   switch (coins.kind) {
     case 'one':
-      return coins.coin.marketCapUsd;
+      return read(coins.coin);
     case 'none':
       return measured(null, 'not_minted');
     case 'unsure':
@@ -644,7 +795,7 @@ export function projectBoardRow(story: StoryFacts, options: ProjectOptions): Wir
   if (title === null) return null;
 
   const readings = representativeReach(story.members);
-  const coins = projectCoins(story.coins);
+  const coins = projectCoins(story.coins, options);
 
   const row: WireBoardRow = {
     id: story.storyId,
@@ -654,9 +805,11 @@ export function projectBoardRow(story: StoryFacts, options: ProjectOptions): Wir
     reach: projectReach(readings),
     spark: projectSpark(readings, options.sparkWindowMs),
     momentum: projectMomentum(readings),
-    /* Taken from the SAME `coins` value the row carries, not re-derived, so the cap and
-       the button can never disagree about how many coins this story has. */
+    /* Both taken from the SAME `coins` value the row carries, not re-derived, so the
+       two market cells and the button can never disagree about how many coins this
+       story has — a cap beside "6 coins claim this", or a gain beside a dash. */
     marketCapUsd: projectMarketCap(coins),
+    priceChange24h: projectPriceChange24h(coins),
     firstSeenAt: projectFirstSeenAt(story.members),
     coins,
     isNew: !story.wasOnPreviousBoard,
@@ -681,7 +834,7 @@ export function projectStory(story: StoryFacts, options: ProjectOptions): WireSt
   if (title === null) return null;
 
   const readings = representativeReach(story.members);
-  const coins = projectCoins(story.coins);
+  const coins = projectCoins(story.coins, options);
 
   const page: WireStory = {
     id: story.storyId,

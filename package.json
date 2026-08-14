@@ -19,6 +19,7 @@
     "db:migrate": "node tools/db.mjs migrate",
     "db:reset": "node tools/db.mjs reset",
     "db:seed": "node tools/db.mjs seed",
+    "db:market": "node tools/db.mjs market",
     "db:project": "node tools/db.mjs project",
     "db:psql": "node tools/db.mjs psql",
     "dev:runner": "node --experimental-strip-types services/runner/src/main.ts",

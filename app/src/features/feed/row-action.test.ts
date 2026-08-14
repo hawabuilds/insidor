@@ -26,6 +26,7 @@ function coin(ticker: string, tradable = true): Coin {
     marketCapUsd: known(120_000),
     marketCapBasis: 'fully-diluted',
     liquidityUsd: known(9_000),
+    priceChange24h: known(4.2),
     tradable,
   };
 }

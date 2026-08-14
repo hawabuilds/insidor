@@ -47,7 +47,7 @@
  * Pure, like project.ts: spans and coin rows in, a decision out. No clock, no database.
  */
 
-import type { CoinCandidate, CoinFacts } from './project.ts';
+import type { CoinCandidate, CoinFacts, ProjectOptions } from './project.ts';
 import { projectCoins } from './project.ts';
 import type { WireCoinLink } from './wire.ts';
 
@@ -143,6 +143,7 @@ export function coinCandidates(
 export function deriveCoinLink(
   spans: readonly string[],
   coins: readonly CoinFacts[],
+  options: ProjectOptions,
 ): WireCoinLink {
-  return projectCoins(coinCandidates(spans, coins));
+  return projectCoins(coinCandidates(spans, coins), options);
 }

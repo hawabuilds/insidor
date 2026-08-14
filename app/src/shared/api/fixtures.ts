@@ -99,6 +99,11 @@ const manyCoins = {
      is a choice about which coin is the real one dressed up as a measurement. Declining is
      the same refusal `unsure` makes, arriving through a different branch. */
   marketCapUsd: noValue('not_reported'),
+  /* And no 24h move either, for the same reason and with a stronger temptation: the three
+     coins moved +41.8%, -12.4% and not at all. The mean of those describes a portfolio
+     nobody holds; the biggest is a choice about which coin is the real one wearing a
+     percentage sign. Both would sit under a head reading GAIN. */
+  priceChange24h: noValue('not_reported'),
   firstSeenAt: at(T0 - 3 * HOUR - 14 * MIN),
   isNew: false,
   coins: {
@@ -117,6 +122,9 @@ const manyCoins = {
         marketCapBasis: 'fully-diluted',
         /* On a bonding curve there is no pool to report. Absence is not illiquidity. */
         liquidityUsd: noValue('not_reported'),
+        /* Up, and the row shows nothing: three coins claim this story, so there is no
+           single move to put in the GAIN column. See BoardRow.priceChange24h. */
+        priceChange24h: m(41.8),
         tradable: true,
       },
       {
@@ -131,6 +139,7 @@ const manyCoins = {
         marketCapUsd: m(38_000),
         marketCapBasis: 'fully-diluted',
         liquidityUsd: noValue('not_reported'),
+        priceChange24h: m(-12.4),
         tradable: true,
       },
       {
@@ -148,6 +157,10 @@ const manyCoins = {
         marketCapUsd: m(2_100),
         marketCapBasis: 'fully-diluted',
         liquidityUsd: m(900),
+        /* Nine minutes old, so there is no trailing day to have changed over. Absent, and
+           emphatically not 0 — zero would say it held flat through a day it did not exist
+           for, on the column a user is most likely to trade on. */
+        priceChange24h: noValue('not_reported'),
         tradable: false,
       },
     ],
@@ -171,6 +184,9 @@ const oneCoin = {
   /* One settled coin, so the row's cap IS that coin's cap — the same object, not a second
      reading of it. This is the only branch that carries a number. */
   marketCapUsd: m(186_400),
+  /* One settled coin, so the row's move IS that coin's move — the same object, not a
+     second reading of it. The only branch that carries a number. */
+  priceChange24h: m(23.6),
   firstSeenAt: at(T0 - 2 * HOUR - 41 * MIN),
   isNew: false,
   coins: {
@@ -187,6 +203,7 @@ const oneCoin = {
       marketCapUsd: m(186_400),
       marketCapBasis: 'fully-diluted',
       liquidityUsd: m(41_200),
+      priceChange24h: m(23.6),
       tradable: true,
     },
   },
@@ -213,6 +230,9 @@ const noCoin = {
   /* Nothing minted, so there is no market to have a number in. A different absence from
      the one below it, and it says so. */
   marketCapUsd: noValue('not_minted'),
+  /* Nothing minted, so no price anywhere to have moved. A different absence from the one
+     above it, and it says so. */
+  priceChange24h: noValue('not_minted'),
   firstSeenAt: at(T0 - 11 * MIN),
   isNew: true,
   coins: { kind: 'none' },
@@ -240,6 +260,7 @@ const unsure = {
   /* Six coins claim it and none is settled. The payload carries no coin at all, so there
      is not even a cap here to be tempted by — which is the union doing its job twice. */
   marketCapUsd: noValue('not_reported'),
+  priceChange24h: noValue('not_reported'),
   firstSeenAt: at(T0 - 47 * MIN),
   isNew: false,
   coins: { kind: 'unsure', claimCount: 6 },
@@ -266,6 +287,7 @@ const noReach = {
   /* Two coins, and one of them has no cap of its own. Even "the one we can read" would be
      a pick, so this is absent like every other multi-coin row. */
   marketCapUsd: noValue('not_reported'),
+  priceChange24h: noValue('not_reported'),
   firstSeenAt: at(T0 - 5 * HOUR - 8 * MIN),
   isNew: false,
   coins: {
@@ -283,6 +305,7 @@ const noReach = {
         marketCapUsd: m(9_100),
         marketCapBasis: 'fully-diluted',
         liquidityUsd: noValue('not_reported'),
+        priceChange24h: m(-3.2),
         tradable: true,
       },
       {
@@ -300,6 +323,10 @@ const noReach = {
         marketCapUsd: noValue('no_market'),
         marketCapBasis: null,
         liquidityUsd: noValue('no_market'),
+        /* No price at all, so nothing to have moved. `no_market` and not `not_reported`:
+           the first says nobody has bought it, the second would say a market exists and
+           does not publish the figure. */
+        priceChange24h: noValue('no_market'),
         tradable: false,
       },
     ],
@@ -344,6 +371,9 @@ const censored = {
      cap is known — the two absences are independent, and neither is allowed to infect the
      other with a zero. */
   marketCapUsd: m(1_040_000),
+  /* Down, while the row's activity graph is broken and its age unknown. Three absences and
+     two numbers on one row, none of them infecting another with a zero. */
+  priceChange24h: m(-8.1),
   firstSeenAt: noTime('not_read_yet'),
   isNew: false,
   coins: {
@@ -360,6 +390,7 @@ const censored = {
       marketCapUsd: m(1_040_000),
       marketCapBasis: 'circulating',
       liquidityUsd: m(218_000),
+      priceChange24h: m(-8.1),
       tradable: true,
     },
   },

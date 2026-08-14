@@ -1,0 +1,20 @@
+{
+  "name": "@insidor/market",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The market reader: asks a venue what a coin is worth right now and appends what it said, with the reason attached wherever there was no number.",
+  "main": "./src/main.ts",
+  "scripts": {
+    "start": "node src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/market-dexscreener": "workspace:*",
+    "@insidor/meter": "workspace:*",
+    "@insidor/store": "workspace:*",
+    "pg": "^8.16.0"
+  }
+}

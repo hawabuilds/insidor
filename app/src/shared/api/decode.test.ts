@@ -29,6 +29,7 @@ const CLEAN_ROW = {
   spark: { windowMs: 3_600_000, points: [{ atMs: 1, value: 3 }, { atMs: 2, value: null }] },
   momentum: 'rising',
   marketCapUsd: { v: 186_400 },
+  priceChange24h: { v: -7.9 },
   firstSeenAt: { at: 1_700_000_000_000 },
   coins: { kind: 'none' },
   isNew: true,
@@ -126,6 +127,45 @@ test('a patch that mentions no market cap leaves the field alone', () => {
      had. Writing a pending value here would blank the column on every unrelated patch. */
   const patch = decodeRowPatch({ id: 'st_01', fields: { reach: { v: 12 } } });
   assert.equal('marketCapUsd' in patch.fields, false);
+});
+
+test('a 24h move keeps its sign, and an absent one never becomes a flat zero', () => {
+  /* A fall is a reading. A guard that treated a negative as suspect would delete exactly
+     the coins that dropped, leaving a board on which nothing ever goes down. */
+  const fell = decodeBoardRow(CLEAN_ROW);
+  assert.deepEqual(fell.priceChange24h, { known: true, amount: -7.9 });
+
+  /* ★ AND THE ABSENT CASE IS THE ORDINARY ONE. `not_minted` is a story with no coin,
+     `not_reported` covers both a coin with no day behind it and a story with several
+     coins and no single move to show, `no_market` is a coin nobody has traded. A zero
+     would claim the price held over a period nobody observed, under a column head that
+     says GAIN — the single column a user is most likely to trade on. */
+  for (const why of ['not_minted', 'no_market', 'not_reported', 'not_read_yet'] as const) {
+    const row = decodeBoardRow({ ...CLEAN_ROW, priceChange24h: { v: null, why } });
+    assert.equal(row.priceChange24h.known, false);
+    assert.notDeepEqual(row.priceChange24h, { known: true, amount: 0 });
+    if (!row.priceChange24h.known) assert.equal(row.priceChange24h.pending, why);
+  }
+});
+
+test('a 24h move the server omitted is pending, never zero', () => {
+  const { priceChange24h: _omitted, ...withoutGain } = CLEAN_ROW;
+  const row = decodeBoardRow(withoutGain);
+  assert.equal(row.priceChange24h.known, false);
+  if (!row.priceChange24h.known) assert.equal(row.priceChange24h.pending, 'not_read_yet');
+});
+
+test('a live patch can move the 24h gain, and its absence with it', () => {
+  /* It is on the patchable list because a price moves between frames, and re-sending the
+     whole row to change one figure is how a live channel becomes a refetch loop. */
+  const moved = decodeRowPatch({ id: 'st_01', fields: { priceChange24h: { v: 12.5 } } });
+  assert.deepEqual(moved.fields.priceChange24h, { known: true, amount: 12.5 });
+
+  const gone = decodeRowPatch({
+    id: 'st_01',
+    fields: { priceChange24h: { v: null, why: 'not_read_yet' } },
+  });
+  assert.deepEqual(gone.fields.priceChange24h, { known: false, pending: 'not_read_yet' });
 });
 
 test('an unknown first-seen time decodes to pending, not to now', () => {

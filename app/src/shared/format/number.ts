@@ -80,3 +80,22 @@ export function formatDelta(m: Measured): Rendered {
   const sign = m.amount > 0 ? '+' : m.amount < 0 ? '-' : '';
   return value(`${sign}${compact(Math.abs(m.amount))}`);
 }
+
+/**
+ * A signed change that is ALREADY a percentage: -7.86 renders as "-7.9%".
+ *
+ * Separate from `formatPercent`, which takes a fraction in [0,1] and multiplies — and
+ * that is exactly why this exists rather than reusing it. The two spellings of "a
+ * percentage" differ by a factor of a hundred, both look plausible on a screen, and the
+ * one column where the mistake matters most is the one this formats. Wiring the wrong
+ * one in would render a 7.86% fall as 786%, or a coin that doubled as 2%.
+ *
+ * One decimal place at every magnitude, so the column does not reflow when 9.9 becomes
+ * 10.1. The sign is in the TEXT and not only in the colour, because colour alone is not
+ * a signal a colour-blind user can read.
+ */
+export function formatDeltaPercent(m: Measured): Rendered {
+  if (!m.known) return pendingRendered(m.pending);
+  const sign = m.amount > 0 ? '+' : m.amount < 0 ? '-' : '';
+  return value(`${sign}${Math.abs(m.amount).toFixed(1)}%`);
+}

@@ -6,6 +6,7 @@
  *   node tools/db.mjs migrate   apply store/migrations/*.sql, then make the app login user
  *   node tools/db.mjs reset     drop the database, recreate it, migrate  (destructive)
  *   node tools/db.mjs seed      domain facts only            (tools/seed.mjs)
+ *   node tools/db.mjs market    read markets, append rows    (services/market)
  *   node tools/db.mjs project   derive the wire projection   (services/project)
  *   node tools/db.mjs psql      an interactive shell in the container
  *
@@ -315,6 +316,31 @@ function run(argv, label) {
 const SEED = join(ROOT, 'tools', 'seed.mjs');
 
 /**
+ * The market reader's entrypoint. It runs as the SERVICE role too, and for the
+ * mirror-image reason the projector does: it must INSERT into public.market_reading,
+ * which the app role has no privilege on at all — 0010 writes no grant line, so the
+ * browser's connection cannot read a market reading, let alone write one.
+ *
+ * It goes BEFORE `project` in any sensible sequence — seed, market, project — because
+ * the projector reads the latest reading per coin and a projection run before the first
+ * read is a board of honest dashes.
+ */
+const MARKET = join(ROOT, 'services', 'market', 'src', 'main.ts');
+
+async function market() {
+  if (!existsSync(MARKET)) {
+    die(
+      `no market reader at ${MARKET}.\n` +
+        '  services/market is the one process that asks a venue what a coin is worth and\n' +
+        '  appends what it said to public.market_reading, with the reason attached wherever\n' +
+        '  there was no number. Until it runs, every market figure the projector publishes is\n' +
+        '  an absence — which is honest, and is also every figure on the board.',
+    );
+  }
+  await run(['--experimental-strip-types', MARKET], 'the market reader');
+}
+
+/**
  * The projector's entrypoint. It runs as the SERVICE role, because it is the one
  * process that must read public.observation in order to censor it — which is
  * exactly why the read service may not.
@@ -351,6 +377,7 @@ const COMMANDS = {
   migrate: () => migrate(),
   reset,
   seed: () => run([SEED], 'the seed'),
+  market,
   project,
   psql: async () => psql(),
 };

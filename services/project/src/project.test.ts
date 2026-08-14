@@ -30,6 +30,7 @@ import {
   projectFirstSeenAt,
   projectMarketCap,
   projectMomentum,
+  projectPriceChange24h,
   projectReach,
   projectReachDelta24h,
   projectSpark,
@@ -41,18 +42,28 @@ import {
 import type {
   CoinCandidate,
   CoinFacts,
+  CoinMarket,
+  MarketNumber,
   MemberFacts,
   ProjectOptions,
   ReachReading,
   StoryFacts,
 } from './project.ts';
 import { FORBIDDEN_KEYS, FORBIDDEN_SUBSTRINGS, WireLeakError } from './wire.ts';
+import type { PendingReason } from './wire.ts';
 
 const T0 = 1_755_079_200_000;
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
-const OPTIONS: ProjectOptions = { nowMs: T0, sparkWindowMs: 30 * MIN };
+/** Five minutes, the same window Policy.market.readingFreshnessMs carries. */
+const FRESHNESS = 5 * MIN;
+
+const OPTIONS: ProjectOptions = {
+  nowMs: T0,
+  sparkWindowMs: 30 * MIN,
+  marketFreshnessMs: FRESHNESS,
+};
 
 /* ── builders ─────────────────────────────────────────────────────────── */
 
@@ -84,6 +95,29 @@ function member(overrides: Partial<MemberFacts> = {}): MemberFacts {
   };
 }
 
+/** A number the venue gave us. */
+const got = (amount: number): MarketNumber => ({ known: true, amount });
+
+/** A number it did not, with the venue's own reason. Never a zero. */
+const none = (why: PendingReason): MarketNumber => ({ known: false, why });
+
+/**
+ * A fresh reading, priced, on a curve — so no reserve to report and a real price beside
+ * the absence. The default is deliberately the shape most of this product's coins are in.
+ */
+function market(overrides: Partial<CoinMarket> = {}): CoinMarket {
+  return {
+    takenAt: T0 - MIN,
+    priceUsd: got(0.000_186),
+    marketCapUsd: got(186_400),
+    marketCapBasis: 'fully-diluted',
+    liquidityUsd: none('not_reported'),
+    priceChange24h: got(23.6),
+    tradable: true,
+    ...overrides,
+  };
+}
+
 function coin(overrides: Partial<CoinFacts> = {}): CoinFacts {
   return {
     coinId: 'c_1',
@@ -93,14 +127,14 @@ function coin(overrides: Partial<CoinFacts> = {}): CoinFacts {
     venueLabel: 'A launchpad',
     imageUrl: null,
     mintedAt: T0 - 20 * MIN,
-    priceUsd: 0.000_186,
-    marketCapUsd: 186_400,
-    marketCapBasis: 'fully-diluted',
-    liquidityUsd: null,
-    tradable: true,
+    market: market(),
     ...overrides,
   };
 }
+
+/** A coin whose reading differs from the default in the ways named. */
+const priced = (overrides: Partial<CoinMarket>, facts: Partial<CoinFacts> = {}): CoinFacts =>
+  coin({ market: market(overrides), ...facts });
 
 function candidates(n: number, confident: boolean): CoinCandidate[] {
   return Array.from({ length: n }, (_unused, i) => ({
@@ -327,11 +361,11 @@ test('a censored reading is skipped by momentum, not counted as a flat step', ()
 /* ── coins: the union, and the branch that carries no coin ────────────── */
 
 test('no assets projects to none', () => {
-  assert.deepEqual(projectCoins([]), { kind: 'none' });
+  assert.deepEqual(projectCoins([], OPTIONS), { kind: 'none' });
 });
 
 test('six assets, none of them confident, projects to unsure carrying NO coin', () => {
-  const link = projectCoins(candidates(6, false));
+  const link = projectCoins(candidates(6, false), OPTIONS);
 
   assert.equal(link.kind, 'unsure');
   assert.deepEqual(link, { kind: 'unsure', claimCount: 6 });
@@ -345,13 +379,13 @@ test('six assets, none of them confident, projects to unsure carrying NO coin', 
 });
 
 test('one confident asset projects to one, with the coin', () => {
-  const link = projectCoins(candidates(1, true));
+  const link = projectCoins(candidates(1, true), OPTIONS);
   assert.equal(link.kind, 'one');
   assert.equal(link.kind === 'one' ? link.coin.ticker : null, 'TKR0');
 });
 
 test('three confident assets project to several, carrying all three', () => {
-  const link = projectCoins(candidates(3, true));
+  const link = projectCoins(candidates(3, true), OPTIONS);
 
   assert.equal(link.kind, 'several');
   assert.equal(link.kind === 'several' ? link.coins.length : 0, 3);
@@ -362,18 +396,28 @@ test('three confident assets project to several, carrying all three', () => {
 });
 
 test('a mixed set stands behind only the confident ones', () => {
-  const link = projectCoins([...candidates(2, true), ...candidates(4, false)]);
+  const link = projectCoins([...candidates(2, true), ...candidates(4, false)], OPTIONS);
   assert.equal(link.kind, 'several');
   assert.equal(link.kind === 'several' ? link.coins.length : 0, 2);
 });
 
 test('a coin with no market says so, and does not say it is worth zero', () => {
-  const link = projectCoins([
-    {
-      coin: coin({ priceUsd: null, marketCapUsd: null, liquidityUsd: null, tradable: false }),
-      confident: true,
-    },
-  ]);
+  const link = projectCoins(
+    [
+      {
+        coin: priced({
+          priceUsd: none('no_market'),
+          marketCapUsd: none('no_market'),
+          marketCapBasis: null,
+          liquidityUsd: none('not_reported'),
+          priceChange24h: none('no_market'),
+          tradable: false,
+        }),
+        confident: true,
+      },
+    ],
+    OPTIONS,
+  );
   assert.equal(link.kind, 'one');
   if (link.kind !== 'one') return;
 
@@ -387,7 +431,7 @@ test('a coin with no market says so, and does not say it is worth zero', () => {
 });
 
 test('an unknown mint time stays unknown rather than becoming freshly minted', () => {
-  const link = projectCoins([{ coin: coin({ mintedAt: null }), confident: true }]);
+  const link = projectCoins([{ coin: coin({ mintedAt: null }), confident: true }], OPTIONS);
   assert.equal(link.kind === 'one' ? link.coin.mintedAt.at : 'missing', null);
   assert.notDeepEqual(link.kind === 'one' ? link.coin.mintedAt : null, { at: OPTIONS.nowMs });
 });
@@ -398,7 +442,7 @@ test('an unknown mint time stays unknown rather than becoming freshly minted', (
    sum and a max are both single lines of code away, and both typecheck. */
 
 test('one settled coin lends the row its market cap, unchanged', () => {
-  const link = projectCoins([{ coin: coin({ marketCapUsd: 186_400 }), confident: true }]);
+  const link = projectCoins([{ coin: priced({ marketCapUsd: got(186_400) }), confident: true }], OPTIONS);
   assert.deepEqual(projectMarketCap(link), { v: 186_400 });
 });
 
@@ -406,7 +450,10 @@ test('one settled coin with no market lends the row that absence, not a zero', (
   /* The coin's own honest state travels through untouched. "Minted, nobody has traded it"
      is a different claim from "worth nothing", and this is the branch where confusing them
      would be most expensive: the row has a Buy button on it. */
-  const link = projectCoins([{ coin: coin({ marketCapUsd: null }), confident: true }]);
+  const link = projectCoins(
+    [{ coin: priced({ marketCapUsd: none('no_market'), marketCapBasis: null }), confident: true }],
+    OPTIONS,
+  );
   assert.deepEqual(projectMarketCap(link), { v: null, why: 'no_market' });
   assert.notDeepEqual(projectMarketCap(link), { v: 0 });
 });
@@ -420,7 +467,7 @@ test('★ an unsure story shows no cap, because there is no coin to take one fro
   /* The branch carries no coin at all, so this is not a refusal the projector has to
      remember to make — there is nothing here to read. The reason must not be `not_minted`:
      six coins do exist, and the row's own summary says so one cell away. */
-  const link = projectCoins(candidates(6, false));
+  const link = projectCoins(candidates(6, false), OPTIONS);
   assert.equal(link.kind, 'unsure');
   assert.deepEqual(projectMarketCap(link), { v: null, why: 'not_reported' });
   assert.notDeepEqual(projectMarketCap(link), { v: null, why: 'not_minted' });
@@ -434,11 +481,14 @@ test('★ several coins show NO cap: not the sum, not the largest, not the first
        sum     — 111,000: a market cap for a security nobody can hold.
        largest — 90,000:  picking which coin is the real one, presented as a measurement.
        first   — 1,000:   the same pick, made by the query planner instead of by us. */
-  const link = projectCoins([
-    { coin: coin({ coinId: 'c_a', ticker: 'AAA', marketCapUsd: 1_000 }), confident: true },
-    { coin: coin({ coinId: 'c_b', ticker: 'BBB', marketCapUsd: 90_000 }), confident: true },
-    { coin: coin({ coinId: 'c_c', ticker: 'CCC', marketCapUsd: 20_000 }), confident: true },
-  ]);
+  const link = projectCoins(
+    [
+      { coin: priced({ marketCapUsd: got(1_000) }, { coinId: 'c_a', ticker: 'AAA' }), confident: true },
+      { coin: priced({ marketCapUsd: got(90_000) }, { coinId: 'c_b', ticker: 'BBB' }), confident: true },
+      { coin: priced({ marketCapUsd: got(20_000) }, { coinId: 'c_c', ticker: 'CCC' }), confident: true },
+    ],
+    OPTIONS,
+  );
   assert.equal(link.kind, 'several');
 
   const cap = projectMarketCap(link);
@@ -454,8 +504,13 @@ test('the four branches do not all give the same absence', () => {
      "nothing was minted" from "we will not pick", which is the entire content of it. */
   const reasons = [
     projectMarketCap({ kind: 'none' }),
-    projectMarketCap(projectCoins(candidates(6, false))),
-    projectMarketCap(projectCoins([{ coin: coin({ marketCapUsd: null }), confident: true }])),
+    projectMarketCap(projectCoins(candidates(6, false), OPTIONS)),
+    projectMarketCap(
+      projectCoins(
+        [{ coin: priced({ marketCapUsd: none('no_market'), marketCapBasis: null }), confident: true }],
+        OPTIONS,
+      ),
+    ),
   ].map((m) => ('why' in m ? m.why : 'present'));
   assert.deepEqual(reasons, ['not_minted', 'not_reported', 'no_market']);
   assert.equal(new Set(reasons).size, 3);
@@ -470,7 +525,7 @@ test('the row takes its cap from the same coins value it publishes', () => {
   assert.deepEqual(several?.marketCapUsd, { v: null, why: 'not_reported' });
 
   const named = projectBoardRow(
-    story({ coins: [{ coin: coin({ marketCapUsd: 186_400 }), confident: true }] }),
+    story({ coins: [{ coin: priced({ marketCapUsd: got(186_400) }), confident: true }] }),
     OPTIONS,
   );
   assert.equal(named?.coins.kind, 'one');
@@ -479,6 +534,186 @@ test('the row takes its cap from the same coins value it publishes', () => {
   const bare = projectBoardRow(story({ coins: [] }), OPTIONS);
   assert.equal(bare?.coins.kind, 'none');
   assert.deepEqual(bare?.marketCapUsd, { v: null, why: 'not_minted' });
+});
+
+/* ── the market reading: absent, partial, and STALE ────────────────────
+   Four states a coin's market can be in, and the projection has to keep them apart:
+   no reading at all, a reading with holes in it, a reading that is too old to be true
+   any more, and a reading we stand behind. The third is the one with no visible symptom
+   — a stale number renders exactly like a live one — which is why it gets the most
+   assertions here. */
+
+test('★ a reading older than the freshness window is not published as the current market', () => {
+  /* One second past the window, and the numbers are real ones we genuinely read. They
+     still go, whole. On a product whose measured post-to-mint lag is under four minutes,
+     a coin can be minted, run and peak inside one window — so an hour-old price is not a
+     slightly-late price, it is a different story about the same coin, on a row with a
+     Buy button. */
+  const stale = priced({ takenAt: T0 - FRESHNESS - 1_000 });
+  const wire = projectCoin(stale, OPTIONS);
+
+  for (const field of [wire.priceUsd, wire.marketCapUsd, wire.liquidityUsd, wire.priceChange24h]) {
+    assert.deepEqual(field, { v: null, why: 'not_read_yet' });
+    assert.notDeepEqual(field, { v: 0 });
+  }
+  /* The number we are refusing to show is 186,400 and it is right there in the facts.
+     Named as a literal so an implementation that leaks it fails here by name. */
+  assert.notDeepEqual(wire.marketCapUsd, { v: 186_400 });
+  assert.notDeepEqual(wire.priceUsd, { v: 0.000_186 });
+  assert.equal(wire.marketCapBasis, null, 'a basis outlived the cap it describes');
+  /* ★ AND THE QUOTE GOES WITH IT. `tradable` is a claim that a venue will fill an order
+     RIGHT NOW; a quote taken an hour ago is not evidence about now, and leaving this
+     true would put a Buy button behind figures the row has already withdrawn. */
+  assert.equal(wire.tradable, false);
+});
+
+test('a reading inside the window is published whole, so the gate is a gate and not a wall', () => {
+  const fresh = projectCoin(priced({ takenAt: T0 - FRESHNESS + 1_000 }), OPTIONS);
+  assert.deepEqual(fresh.priceUsd, { v: 0.000_186 });
+  assert.deepEqual(fresh.marketCapUsd, { v: 186_400 });
+  assert.deepEqual(fresh.priceChange24h, { v: 23.6 });
+  assert.equal(fresh.marketCapBasis, 'fully-diluted');
+  assert.equal(fresh.tradable, true);
+});
+
+test('the freshness window is read from the options, not typed into the projection', () => {
+  /* The same facts, two policies. If this ever stops depending on the option, a threshold
+     has been written into the projection where nobody can answer what a board was judged
+     against last month. */
+  const facts = priced({ takenAt: T0 - 30 * MIN });
+  assert.deepEqual(projectCoin(facts, OPTIONS).priceUsd, { v: null, why: 'not_read_yet' });
+  assert.deepEqual(projectCoin(facts, { ...OPTIONS, marketFreshnessMs: HOUR }).priceUsd, {
+    v: 0.000_186,
+  });
+});
+
+test('a reading with liquidity and no price keeps both facts, and invents neither', () => {
+  /* A drained pool: the reserve is a real, measured zero and there is no price because
+     nothing has traded through it. Two different absences and one real zero on one coin
+     — a shape a single `number | null` per field could not carry, and the reason the
+     reasons are stored beside the numbers rather than re-guessed here. */
+  const wire = projectCoin(
+    priced({
+      priceUsd: none('no_market'),
+      marketCapUsd: none('no_market'),
+      marketCapBasis: null,
+      liquidityUsd: got(0),
+      priceChange24h: none('no_market'),
+      tradable: false,
+    }),
+    OPTIONS,
+  );
+
+  assert.deepEqual(wire.liquidityUsd, { v: 0 }, 'a measured zero was turned into an absence');
+  assert.deepEqual(wire.priceUsd, { v: null, why: 'no_market' });
+  assert.notDeepEqual(wire.priceUsd, { v: 0 });
+  assert.equal(wire.marketCapBasis, null);
+});
+
+test('★ tradable is false when liquidity is absent — and NOT because liquidity is absent', () => {
+  /* Both of these have no liquidity number and both are not tradable, and the two arrive
+     at it by completely different routes. contracts/src/asset.ts forbids the shortcut by
+     name: "Nothing anywhere may gate on liquidityUsd. The gate is quotability."
+
+     The proof that no such gate exists is the third case below: a curve with NO liquidity
+     at all IS tradable, because a venue said it would quote it. A projection that derived
+     the flag from the number would fail on that line, which is why it is here. */
+  const noReading = projectCoin(coin({ market: null }), OPTIONS);
+  assert.equal(noReading.tradable, false);
+  assert.deepEqual(noReading.liquidityUsd, { v: null, why: 'not_read_yet' });
+
+  const unquoted = projectCoin(
+    priced({ liquidityUsd: none('not_reported'), tradable: false }),
+    OPTIONS,
+  );
+  assert.equal(unquoted.tradable, false);
+
+  const quotedCurve = projectCoin(
+    priced({ liquidityUsd: none('not_reported'), tradable: true }),
+    OPTIONS,
+  );
+  assert.equal(
+    quotedCurve.tradable,
+    true,
+    'a curve with no reserve was refused a Buy affordance for having no reserve',
+  );
+  assert.deepEqual(quotedCurve.liquidityUsd, { v: null, why: 'not_reported' });
+});
+
+/* ── the row's 24h move: the same rule as the cap, one column over ────── */
+
+test('one settled coin lends the row its 24h move, unchanged and with its sign', () => {
+  const link = projectCoins([{ coin: priced({ priceChange24h: got(-7.9) }), confident: true }], OPTIONS);
+  assert.deepEqual(projectPriceChange24h(link), { v: -7.9 });
+});
+
+test('★ several coins show NO 24h move: not the mean, not the biggest, not the first', () => {
+  /* The three tempting answers, written out as literals so an implementation producing
+     one fails here by name rather than by a mysterious number. This is the column a user
+     is most likely to trade on, which is what makes it the worst place in the product to
+     turn a judgement into arithmetic.
+
+       mean    — +11.3%: the return of a portfolio nobody holds.
+       biggest — +48.0%: picking which coin is the real one, wearing a percentage sign.
+       first   — +48.0%: the same pick, made by the query planner instead of by us. */
+  const link = projectCoins(
+    [
+      { coin: priced({ priceChange24h: got(48) }, { coinId: 'c_a', ticker: 'AAA' }), confident: true },
+      { coin: priced({ priceChange24h: got(-12) }, { coinId: 'c_b', ticker: 'BBB' }), confident: true },
+      { coin: priced({ priceChange24h: got(-2) }, { coinId: 'c_c', ticker: 'CCC' }), confident: true },
+    ],
+    OPTIONS,
+  );
+  assert.equal(link.kind, 'several');
+
+  const gain = projectPriceChange24h(link);
+  assert.deepEqual(gain, { v: null, why: 'not_reported' });
+  assert.notDeepEqual(gain, { v: 34 / 3 }, 'the mean is the return of a portfolio nobody holds');
+  assert.notDeepEqual(gain, { v: 48 }, 'the biggest is a choice dressed as a fact');
+  assert.notDeepEqual(gain, { v: 0 });
+});
+
+test('an unsure story shows no 24h move, because there is no coin to take one from', () => {
+  const link = projectCoins(candidates(6, false), OPTIONS);
+  assert.equal(link.kind, 'unsure');
+  assert.deepEqual(projectPriceChange24h(link), { v: null, why: 'not_reported' });
+  assert.notDeepEqual(projectPriceChange24h(link), { v: null, why: 'not_minted' });
+});
+
+test('nothing minted has no price to have moved, and says not_minted', () => {
+  assert.deepEqual(projectPriceChange24h({ kind: 'none' }), { v: null, why: 'not_minted' });
+  assert.notDeepEqual(projectPriceChange24h({ kind: 'none' }), { v: 0 });
+});
+
+test('the cap and the 24h move agree, on the same row, about how many coins there are', () => {
+  /* Both are read off the SAME `coins` value, so a row can never show a cap beside a dash
+     for the gain, or the reverse — which would read as one of the two being broken rather
+     than as the refusal both of them are. */
+  for (const coins of [
+    story({ coins: [] }),
+    story({ coins: candidates(6, false) }),
+    story({ coins: candidates(3, true) }),
+    story({ coins: [{ coin: priced({ marketCapUsd: got(186_400), priceChange24h: got(9.1) }), confident: true }] }),
+  ]) {
+    const row = projectBoardRow(coins, OPTIONS);
+    const capAbsent = 'why' in (row?.marketCapUsd ?? {});
+    const gainAbsent = 'why' in (row?.priceChange24h ?? {});
+    assert.equal(capAbsent, gainAbsent, 'one market cell refused and the other did not');
+  }
+});
+
+test('a stale reading empties the row as well as the coin', () => {
+  /* End to end, because the row's figures are read off the projected coin rather than off
+     the facts — so if the staleness gate were applied in only one of the two places, the
+     row would keep publishing a number the coin panel had already withdrawn. */
+  const row = projectBoardRow(
+    story({ coins: [{ coin: priced({ takenAt: T0 - 2 * HOUR }), confident: true }] }),
+    OPTIONS,
+  );
+  assert.equal(row?.coins.kind, 'one');
+  assert.deepEqual(row?.marketCapUsd, { v: null, why: 'not_read_yet' });
+  assert.deepEqual(row?.priceChange24h, { v: null, why: 'not_read_yet' });
+  assert.notDeepEqual(row?.marketCapUsd, { v: 186_400 });
 });
 
 test('the story page carries no story-level market cap at all', () => {
@@ -501,16 +736,14 @@ function asset(symbol: string | null, name: string | null, mintedAt: number | nu
     name,
     address: `addr_${symbol ?? name ?? 'unnamed'}`,
     mintedAt,
-    priceUsd: null,
-    marketCapUsd: null,
-    marketCapBasis: null,
-    liquidityUsd: null,
-    tradable: false,
+    /* ★ NO READING AT ALL, which is what public.asset alone can tell us and is a
+       different fact from a reading that came back empty. Nobody has looked. */
+    market: null,
   });
 }
 
 /** The wire coin's own field list, read off a projected coin so it cannot drift from it. */
-const COIN_FIELDS: readonly string[] = Object.keys(projectCoin(coin()));
+const COIN_FIELDS: readonly string[] = Object.keys(projectCoin(coin(), OPTIONS));
 
 const SOUP_SPANS = ['throws the soup', 'kitchen goes silent', 'nine second clip'];
 const SOUP_COINS: readonly CoinFacts[] = [
@@ -529,6 +762,7 @@ test('a story that shares no word with any coin in its window links to nothing',
   const link = deriveCoinLink(
     ['bus pigeon', 'pigeon commute'],
     [asset('CHILL', 'chill', T0 - 2 * MIN), asset('LADLE', 'silent kitchen'), asset('SLIDE', 'roof slide', null)],
+    OPTIONS,
   );
   assert.deepEqual(link, { kind: 'none' });
 });
@@ -539,6 +773,7 @@ test('one coin whose name IS a span is the one coin we name', () => {
   const link = deriveCoinLink(
     ['refuses to dock', 'dock'],
     [asset('DOCK', 'refuses to dock'), asset('SOUP', 'soup')],
+    OPTIONS,
   );
   assert.equal(link.kind, 'one');
   assert.equal(link.kind === 'one' ? link.coin.ticker : null, 'DOCK');
@@ -556,6 +791,7 @@ test('three coins that each equal a span are all named, and all three are carrie
       asset('CHILL', 'chill', T0 - 9 * MIN),
       asset('CHILLGUY', 'chill guy (official)', null),
     ],
+    OPTIONS,
   );
 
   assert.equal(link.kind, 'several');
@@ -571,7 +807,7 @@ test('★ six coins that merely mention the story name none of them, and carry n
      not one of them IS a span, so there are six claims and no answer. If this ever projects
      to `one` or `several`, the equality test has become an overlap test and the row is
      confidently offering the wrong one of six coins. */
-  const link = deriveCoinLink(SOUP_SPANS, SOUP_COINS);
+  const link = deriveCoinLink(SOUP_SPANS, SOUP_COINS, OPTIONS);
 
   assert.deepEqual(link, { kind: 'unsure', claimCount: 6 });
 
@@ -618,7 +854,7 @@ test('a named coin with no mint time projects the absence, not a time we invente
   /* Mint time is the axis every ordering claim hangs on. Backfilled from first-seen — the
      only other time we hold — a post that came AFTER the mint reads as having come before,
      which inverts the one claim the product is making. */
-  const link = deriveCoinLink(['roof slide'], [asset('SLIDE', 'roof slide', null)]);
+  const link = deriveCoinLink(['roof slide'], [asset('SLIDE', 'roof slide', null)], OPTIONS);
 
   assert.equal(link.kind, 'one');
   assert.deepEqual(link.kind === 'one' ? link.coin.mintedAt : null, {
@@ -628,32 +864,72 @@ test('a named coin with no mint time projects the absence, not a time we invente
   assert.notDeepEqual(link.kind === 'one' ? link.coin.mintedAt : null, { at: OPTIONS.nowMs });
 });
 
-test('a derived coin has no market, and says so rather than saying zero', () => {
-  /* public.asset has no price, market-cap or liquidity column — those are readings taken
-     from a market, not properties of a coin, and nothing writes them yet. A zero here reads
-     as "worthless" on a coin whose actual state is "nobody has traded it", which are
-     opposite claims. `tradable` is false because tradability is decided by getting a quote
-     and there is nothing to quote against. */
-  const link = deriveCoinLink(['roof slide'], [asset('SLIDE', 'roof slide')]);
+test('a coin nobody has read says NOT READ YET, which is our state and not the market’s', () => {
+  /* ★ THE DISTINCTION THIS WHOLE SHAPE EXISTS FOR. public.asset still has no price,
+     market-cap or liquidity column — those are readings taken FROM a market, not
+     properties OF a coin — so a coin with no row in public.market_reading arrives with
+     `market: null`, and the honest thing to say about it is that we have not looked.
+
+     `no_market` would be a claim about the WORLD ("this coin has never traded") made
+     out of our own ignorance, and it is a claim a user can act on: it is the row that
+     reads as "too early, nobody is in yet". Only a venue that answered may say it. A
+     zero would be worse again — "worthless" about a coin nobody has priced. */
+  const link = deriveCoinLink(['roof slide'], [asset('SLIDE', 'roof slide')], OPTIONS);
+  assert.equal(link.kind, 'one');
+  if (link.kind !== 'one') return;
+
+  for (const field of [
+    link.coin.priceUsd,
+    link.coin.marketCapUsd,
+    link.coin.liquidityUsd,
+    link.coin.priceChange24h,
+  ]) {
+    assert.deepEqual(field, { v: null, why: 'not_read_yet' });
+    assert.notDeepEqual(field, { v: 0 });
+    assert.notDeepEqual(field, { v: null, why: 'no_market' });
+  }
+  assert.equal(link.coin.marketCapBasis, null);
+  /* No reading means no quote, and no quote means no Buy affordance. Not derived from
+     any number above it — there are no numbers above it. */
+  assert.equal(link.coin.tradable, false);
+});
+
+test('a coin the venue answered about keeps the venue’s own reasons', () => {
+  /* The other side of the test above: once a reading exists, the reasons stop being ours
+     and start being the market's. `no_market` for a price nobody has set, `not_reported`
+     for a reserve a curve has no concept of — two different absences on one coin, which
+     is exactly the pair a single spelling would destroy. */
+  const link = projectCoins(
+    [
+      {
+        coin: priced({
+          priceUsd: none('no_market'),
+          marketCapUsd: none('no_market'),
+          marketCapBasis: null,
+          liquidityUsd: none('not_reported'),
+          priceChange24h: none('no_market'),
+          tradable: false,
+        }),
+        confident: true,
+      },
+    ],
+    OPTIONS,
+  );
   assert.equal(link.kind, 'one');
   if (link.kind !== 'one') return;
 
   assert.deepEqual(link.coin.priceUsd, { v: null, why: 'no_market' });
-  assert.deepEqual(link.coin.marketCapUsd, { v: null, why: 'no_market' });
   assert.deepEqual(link.coin.liquidityUsd, { v: null, why: 'not_reported' });
-  assert.equal(link.coin.marketCapBasis, null);
-  assert.equal(link.coin.tradable, false);
-
+  assert.notDeepEqual(link.coin.liquidityUsd, link.coin.priceUsd);
   assert.notDeepEqual(link.coin.priceUsd, { v: 0 });
-  assert.notDeepEqual(link.coin.marketCapUsd, { v: 0 });
   assert.notDeepEqual(link.coin.liquidityUsd, { v: 0 });
 });
 
 test('a story with no spans links to nothing, whatever was minted in its window', () => {
   /* Not a degenerate case to paper over with a time-only fallback: a story we hold no
      phrase for is a story we cannot say a coin is named after. */
-  assert.deepEqual(deriveCoinLink([], SOUP_COINS), { kind: 'none' });
-  assert.deepEqual(deriveCoinLink(['   '], SOUP_COINS), { kind: 'none' });
+  assert.deepEqual(deriveCoinLink([], SOUP_COINS, OPTIONS), { kind: 'none' });
+  assert.deepEqual(deriveCoinLink(['   '], SOUP_COINS, OPTIONS), { kind: 'none' });
 });
 
 /* ── words ────────────────────────────────────────────────────────────── */
@@ -677,7 +953,7 @@ test('the summary counts in English, singular and plural', () => {
 });
 
 test('the unsure summary says the count and refuses to pick', () => {
-  const [, coins] = projectSummary(story(), projectCoins(candidates(6, false)));
+  const [, coins] = projectSummary(story(), projectCoins(candidates(6, false), OPTIONS));
   assert.equal(coins, '6 coins use this, and none of them is clearly the one.');
 });
 
@@ -819,7 +1095,7 @@ test('a projected board row carries no forbidden key and no forbidden substring'
   }
 });
 
-test('the row carries exactly the eleven public fields and no twelfth', () => {
+test('the row carries exactly the twelve public fields and no thirteenth', () => {
   const row = projectBoardRow(story(), OPTIONS);
   assert.deepEqual(Object.keys(row ?? {}).sort(), [
     'coins',
@@ -828,6 +1104,7 @@ test('the row carries exactly the eleven public fields and no twelfth', () => {
     'isNew',
     'marketCapUsd',
     'momentum',
+    'priceChange24h',
     'reach',
     'spark',
     'summary',

@@ -104,6 +104,16 @@ export function toMarketState(raw: unknown, ctx: ReadContext): MarketState {
     // curve. We record which basis it used rather than guessing one.
     marketCapBasis: reportedCap === null ? null : 'fully-diluted',
 
+    // ★ NULL, AND FOR A REASON THIS VENUE CANNOT ESCAPE. The price above is
+    // computed from the curve's CURRENT reserves; this venue publishes no
+    // history, and there is nothing here to difference against. Deriving one by
+    // storing a price and subtracting it later would be inventing a series
+    // inside an adapter, which is exactly the sort of number nobody can replay.
+    // A 0 would say the price held for a day — and a coin on a live curve is
+    // usually younger than a day, so it would be a claim about a period that
+    // did not exist.
+    priceChange24hPct: null,
+
     // NOT ZERO. NOT A GUESS. This venue has no reserve concept, and a number
     // here — any number — is what re-creates the survivorship filter.
     liquidityUsd: null,

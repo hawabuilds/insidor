@@ -234,6 +234,24 @@ importers:
         specifier: workspace:*
         version: link:../../store
 
+  services/market:
+    dependencies:
+      '@insidor/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@insidor/market-dexscreener':
+        specifier: workspace:*
+        version: link:../../adapters/market/dexscreener
+      '@insidor/meter':
+        specifier: workspace:*
+        version: link:../../adapters/meter/spend
+      '@insidor/store':
+        specifier: workspace:*
+        version: link:../../store
+      pg:
+        specifier: ^8.16.0
+        version: 8.23.0
+
   services/project:
     dependencies:
       '@insidor/contracts':

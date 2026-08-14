@@ -33,6 +33,10 @@ export const BOARD_ROW_FIELDS = [
      comment on BoardRow.marketCapUsd. It is on the allowlist because the board shows it;
      the rule about WHICH coin's cap it is lives in one place and it is not this one. */
   'marketCapUsd',
+  /* Derived from `coins` too, and on the allowlist for the same reason: the board shows
+     it. Which coin's move it is — and that there must be exactly one — is decided in
+     projectPriceChange24h, once, and it is not decided here. */
+  'priceChange24h',
   'firstSeenAt',
   'coins',
   'isNew',
@@ -65,6 +69,7 @@ export const COIN_FIELDS = [
   'marketCapUsd',
   'marketCapBasis',
   'liquidityUsd',
+  'priceChange24h',
   'tradable',
 ] as const;
 
