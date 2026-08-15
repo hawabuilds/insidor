@@ -60,11 +60,20 @@ function frame(over: Record<string, unknown> = {}): string {
 
 /* ── a fake socket, and a clock that only moves when a test says so ─────── */
 
+/**
+ * How long a connection must last, in this rig, before it is allowed to reset
+ * the backoff. Named rather than inlined because several tests need to say
+ * "long enough" and "not long enough" about the same number.
+ */
+const HEALTHY_AFTER_MS = 30_000;
+
 interface Rig {
   readonly stream: ReturnType<typeof createMintStream>;
   readonly notes: StreamNote[];
   /** Connections opened so far, newest last. */
   readonly opened: string[];
+  /** How many times a socket has been asked to close. */
+  closes(): number;
   tick(ms: number): void;
   /** Complete the pending connection. */
   connect(): void;
@@ -72,6 +81,16 @@ interface Rig {
   drop(why?: string): void;
   /** Run the scheduled reconnect, if one is pending. */
   runReconnect(): void;
+  /**
+   * ★ Every timer this stream has scheduled and not cancelled.
+   *
+   * The rig tracks the whole set rather than one `pending` slot because the
+   * stream now schedules two different kinds of timer — a reconnect and a
+   * handshake deadline — and a harness that can only remember the most recent
+   * one cannot tell a cancelled timer from an overwritten one. That is exactly
+   * the distinction a leak test has to make.
+   */
+  liveTimers(): number;
   now(): number;
 }
 
@@ -79,13 +98,20 @@ function rig(over: Partial<MintStreamOptions> = {}): Rig {
   let clock = T0;
   const notes: StreamNote[] = [];
   const opened: string[] = [];
+  let closed = 0;
   let handlers: StreamHandlers | null = null;
+  const timers = new Set<() => void>();
   let pending: (() => void) | null = null;
 
   const open = (url: string, h: StreamHandlers): StreamSocket => {
     opened.push(url);
     handlers = h;
-    return { send: () => undefined, close: () => undefined };
+    return {
+      send: () => undefined,
+      close: () => {
+        closed += 1;
+      },
+    };
   };
 
   const stream = createMintStream({
@@ -95,14 +121,28 @@ function rig(over: Partial<MintStreamOptions> = {}): Rig {
     decimals: 6,
     bufferLimit: 100,
     staleAfterMs: 60_000,
+    healthyAfterMs: HEALTHY_AFTER_MS,
     mintTimeOptions: CTX.mintTimeOptions,
     now: () => clock,
     reconnectDelayMs: () => 1_000,
     open,
     schedule: (fn) => {
-      pending = fn;
+      // A timer fires once and is then gone, which is what makes an uncancelled
+      // one visible: anything still in the set after a cycle completed is a
+      // handle nobody let go of.
+      const armed = (): void => {
+        timers.delete(armed);
+        if (pending === armed) pending = null;
+        fn();
+      };
+      timers.add(armed);
+      pending = armed;
       return () => {
-        pending = null;
+        timers.delete(armed);
+        // Only if it is still ours. Cancelling a reconnect must not silently
+        // discard a handshake deadline that was armed after it, or the rig would
+        // hide the very leak it exists to catch.
+        if (pending === armed) pending = null;
       };
     },
     note: (n) => notes.push(n),
@@ -113,6 +153,8 @@ function rig(over: Partial<MintStreamOptions> = {}): Rig {
     stream,
     notes,
     opened,
+    closes: () => closed,
+    liveTimers: () => timers.size,
     now: () => clock,
     tick: (ms) => {
       clock += ms;
@@ -415,6 +457,43 @@ test('★ a half-open socket is caught, and the hole starts at the last delivery
   );
 });
 
+test('★ a half-open socket is caught by live(), before a drain can claim its window', () => {
+  /*
+   * ORDERING, AND IT IS THE WHOLE OF THE HALF-OPEN FAILURE.
+   *
+   * The supervisor's read is gated on `live()` and only then drains. With the
+   * staleness check at drain alone, the read that DISCOVERED a dead socket had
+   * already been let through: `live()` answered yes, the drain then noticed the
+   * silence and tore the connection down, and the drain it returned was empty,
+   * unlimited and carried no outage — because an outage only closes when the
+   * replacement comes up. That is a clean page, and the supervisor writes its
+   * window as observed with `gap = false`, ending at the exact instant we
+   * concluded the socket was dead.
+   *
+   * So the question is asked before the answer is used. Nothing drains, the
+   * buffered events stay where they are, and the read fails — which is what a
+   * read over a window we cannot vouch for is supposed to do.
+   */
+  const r = rig({ staleAfterMs: 60_000 });
+  r.stream.start();
+  r.connect();
+  r.deliver(frame());
+  r.stream.drain(100);
+  r.deliver(frame({ mint: MINT_B }));
+
+  r.tick(61_000);
+  assert.equal(
+    r.stream.live(),
+    false,
+    'asked on its own, with no drain to prompt it, a silent socket is not live',
+  );
+  assert.equal(
+    r.stream.drain(100).events.length,
+    1,
+    'and the event buffered before the silence is still there for the read that succeeds',
+  );
+});
+
 test('a freshly opened socket is not stale, and a quiet one under the window is not either', () => {
   const r = rig({ staleAfterMs: 60_000 });
   r.stream.start();
@@ -504,9 +583,13 @@ test('★ a dead connection cannot tear down the one that replaced it', () => {
   assert.equal(r.stream.drain(10).events.length, 0, 'and a ghost cannot fill the buffer');
 });
 
-test('a delivered frame resets the backoff; an open that delivers nothing does not', () => {
+/* ── ★ not getting blocked by a service we do not pay for ───────────────── */
+
+test('★ a connection that LASTED resets the backoff; one that merely spoke does not', () => {
   // Resetting on `onOpen` would let a socket that opens and immediately closes
-  // retry at the base delay forever, which is a hot loop wearing a backoff.
+  // retry at the base delay forever, which is a hot loop wearing a backoff. So
+  // would resetting on the first frame — see the storm test below. What proves
+  // the far end is willing to keep us is that it kept us.
   const attempts: number[] = [];
   const r = rig({ reconnectDelayMs: (n) => (attempts.push(n), 1_000) });
   r.stream.start();
@@ -519,9 +602,67 @@ test('a delivered frame resets the backoff; an open that delivers nothing does n
 
   r.runReconnect();
   r.connect();
+  r.tick(HEALTHY_AFTER_MS - 1);
   r.deliver(frame());
   r.drop();
-  assert.deepEqual(attempts, [1, 2, 1], 'a frame proves the connection works');
+  assert.deepEqual(attempts, [1, 2, 3], 'one millisecond short of proven is not proven');
+
+  r.runReconnect();
+  r.connect();
+  r.tick(HEALTHY_AFTER_MS);
+  r.deliver(frame());
+  r.drop();
+  assert.deepEqual(attempts, [1, 2, 3, 1], 'a connection that lasted starts the count again');
+});
+
+test('★ accept, acknowledge, kick — the storm this service must never generate', () => {
+  /*
+   * The failure: the relay is free, unauthenticated, and blocks clients that
+   * reconnect in a loop. The first frame it sends on EVERY connection is its own
+   * subscribe acknowledgement, so a far end that accepts us, acks and then drops
+   * us — which is what a rate limit looks like from here — used to reset the
+   * retry counter on that ack. Measured before the fix: attempt=1 on all ten
+   * cycles, i.e. a reconnect every base delay, forever, with no account to
+   * appeal the block with.
+   *
+   * Not one mint arrives in this test. Nothing about the connection ever worked.
+   */
+  const ack = JSON.stringify({ message: 'Successfully subscribed to token creation events.' });
+  const attempts: number[] = [];
+  const r = rig({ reconnectDelayMs: (n) => (attempts.push(n), 1_000) });
+  r.stream.start();
+
+  for (let i = 0; i < 10; i++) {
+    r.connect();
+    r.deliver(ack);
+    r.tick(20);
+    r.drop('socket closed (1008)');
+    r.runReconnect();
+    r.tick(1_000);
+  }
+
+  assert.deepEqual(
+    attempts,
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    'the retry count must climb: an acknowledgement is not a working connection',
+  );
+});
+
+test('a socket that delivers real mints and dies inside the window still backs off', () => {
+  // The subtler half of the same rule. A relay that hands over one coin and
+  // hangs up is not a relay that is keeping us, and "it sent data" is not the
+  // question — "did it keep the connection" is.
+  const attempts: number[] = [];
+  const r = rig({ reconnectDelayMs: (n) => (attempts.push(n), 1_000) });
+  r.stream.start();
+  for (let i = 0; i < 5; i++) {
+    r.connect();
+    r.deliver(frame());
+    r.tick(20);
+    r.drop();
+    r.runReconnect();
+  }
+  assert.deepEqual(attempts, [1, 2, 3, 4, 5]);
 });
 
 test('stop() cancels the pending reconnect: a stopped stream stays stopped', () => {
@@ -549,6 +690,132 @@ test('an opener that throws is the same event as a close, and is retried', () =>
   assert.equal(r.stream.live(), false);
   boom = false;
   assert.doesNotThrow(() => r.runReconnect());
+});
+
+/* ── ★ surviving weeks, not minutes ─────────────────────────────────────── */
+
+test('★ a thousand reconnects leave no timer, no socket and no memory behind', () => {
+  /*
+   * The leak shape that kills a long run is one handle per reconnect: a timer
+   * armed on every attempt, a listener added on every connection, an array that
+   * only ever appends. This stream schedules two kinds of timer now — a
+   * reconnect and a handshake deadline — and either of them surviving its
+   * attempt would be a thousand live handles a day on a flapping socket.
+   *
+   * Measured rather than eyeballed, because the whole point is that a leak of
+   * one object per cycle is invisible in any single cycle.
+   */
+  const r = rig();
+  r.stream.start();
+  r.connect();
+  r.deliver(frame());
+  r.stream.drain(100);
+
+  for (let i = 0; i < 1_000; i++) {
+    r.drop();
+    r.runReconnect();
+    r.connect();
+    r.deliver(frame());
+    r.stream.drain(100);
+  }
+
+  assert.equal(r.liveTimers(), 0, 'every reconnect timer and handshake deadline was cancelled');
+  assert.equal(r.opened.length, 1_001, 'one connection per attempt, and not one more');
+  assert.equal(r.closes(), 1_000, 'and every retired socket was asked to close');
+  assert.equal(r.stream.drain(100).events.length, 0, 'nothing accumulated in the buffer');
+});
+
+test('★ a flapping socket cannot grow the outage list without bound', () => {
+  /*
+   * The caller only drains while the socket is live — a read taken during an
+   * outage would claim a window nobody was listening to — so a socket that is
+   * down at every read instant produces outages that nothing collects. Measured
+   * before the bound: five thousand flaps, five thousand retained objects, and
+   * one eventual drain handing the supervisor five thousand separate gaps to
+   * INSERT one at a time. A week of second-by-second flapping is six hundred
+   * thousand of them.
+   *
+   * What must NOT happen is that any of them is quietly forgotten: a hole we
+   * declared and then dropped is the one direction this file may not be wrong
+   * in. So they merge, and the merged window covers every one of them.
+   */
+  const r = rig();
+  r.stream.start();
+  r.connect();
+
+  const firstDropAt = r.now() + 100;
+  for (let i = 0; i < 5_000; i++) {
+    r.tick(100);
+    r.drop();
+    r.tick(1_000);
+    r.runReconnect();
+    r.connect();
+  }
+  const lastLiveAt = r.now();
+
+  const taken = r.stream.drain(10);
+  assert.ok(
+    taken.outages.length <= 64,
+    `the pending list is bounded, got ${taken.outages.length}`,
+  );
+
+  // And the bound cost coverage nothing: the union of what came back still
+  // spans every window we were down for.
+  let earliest = Number.POSITIVE_INFINITY;
+  let latest = Number.NEGATIVE_INFINITY;
+  for (const outage of taken.outages) {
+    earliest = Math.min(earliest, outage.fromMs);
+    latest = Math.max(latest, outage.toMs);
+  }
+  assert.equal(earliest, firstDropAt, 'the first hole is still declared');
+  assert.equal(latest, lastLiveAt, 'and so is the last');
+  assert.ok(
+    taken.outages.some((o) => /flapping/.test(o.detail)),
+    'and the merge says so, rather than reading as one long clean outage',
+  );
+
+  assert.deepEqual(r.stream.drain(10).outages, [], 'the list is emptied by the drain that took it');
+});
+
+test('★ a handshake that never completes is a close, not a permanent silence', () => {
+  /*
+   * The only failure in this file with no event behind it. `open` returned a
+   * socket; the far end accepted the TCP connection and never upgraded, or the
+   * route is black-holed. No `onOpen`, no `onClose`, ever — and Node's global
+   * WebSocket has no connect timeout, so nothing below will give up either.
+   *
+   * Measured before the deadline: no socket, no reconnect scheduled, and nothing
+   * that would ever schedule one. Permanently and silently dead, from the FIRST
+   * connect at boot onwards.
+   */
+  const r = rig({ staleAfterMs: 60_000 });
+  r.stream.start();
+  assert.equal(r.opened.length, 1);
+  assert.equal(r.stream.live(), false);
+
+  r.tick(60_001);
+  r.runReconnect(); // the deadline
+  assert.equal(r.stream.live(), false);
+  assert.ok(
+    r.notes.some((n) => String(n.fields['why']).includes('handshake did not complete')),
+    'and it says what happened, because a gap nobody can explain is a gap nobody trusts',
+  );
+
+  r.runReconnect(); // the retry the deadline scheduled
+  assert.equal(r.opened.length, 2, 'the process rescues itself rather than waiting to be restarted');
+  r.connect();
+  assert.equal(r.stream.live(), true);
+});
+
+test('a handshake deadline does not fire on a connection that completed', () => {
+  const r = rig({ staleAfterMs: 60_000 });
+  r.stream.start();
+  r.connect();
+  assert.equal(r.liveTimers(), 0, 'the deadline was cancelled the moment the socket came up');
+
+  r.tick(600_000);
+  r.deliver(frame());
+  assert.equal(r.stream.live(), true, 'a live socket is not killed by its own dead deadline');
 });
 
 test('the cursor marker moves with delivery and is not a place to resume from', () => {

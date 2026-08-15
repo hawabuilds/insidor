@@ -250,6 +250,11 @@ export function LiveRail() {
             {view.rows.map((row) => (
               <LaunchTapeRow key={row.key} row={row} />
             ))}
+            {/* The end of the list, said out loud when the list is not the end of the frame.
+                A scroller that simply stops claims its last row is the last mint. */}
+            {view.overflow === null ? null : (
+              <div className={styles['overflowNote']}>{view.overflow}</div>
+            )}
             {view.empty === null ? null : (
               <div className={styles['card']}>
                 <div className={styles['cardTitle']}>{view.empty.title}</div>

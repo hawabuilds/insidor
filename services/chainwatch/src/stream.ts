@@ -59,7 +59,17 @@ export interface StreamDrain {
 export interface MintStream {
   start(): void;
   stop(): void;
-  /** Delivering right now. A false answer here is a read that must not succeed. */
+  /**
+   * Delivering right now. A false answer here is a read that must not succeed.
+   *
+   * ★ AND IT MUST BE ASKED BEFORE `drain`, NOT AFTER. A transport is allowed to
+   * DISCOVER that it is not delivering at the moment it is asked — a half-open
+   * socket has no event to announce itself with, so the only way to notice is to
+   * check how long it has been silent, and the only sensible moment to check is
+   * when somebody wants events. A caller that drains first and asks afterwards
+   * gets an empty, clean-looking page over a window the transport has by then
+   * concluded was dark, and writes it as observed.
+   */
   live(): boolean;
   /** The instant the current live period began, or null while down. */
   liveSince(): Millis | null;

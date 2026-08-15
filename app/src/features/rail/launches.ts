@@ -58,7 +58,16 @@ export const POLL_MS = 6_000;
  */
 const STALE_AFTER_MS = 3 * POLL_MS;
 
-/** How many rows the rail keeps. A scroller, not an archive; the frame holds more. */
+/**
+ * How many rows the rail keeps. A scroller, not an archive; the frame holds more.
+ *
+ * ★ AND WHEN THE FRAME DOES HOLD MORE, THE RAIL SAYS SO — see `overflow` on RailView. A
+ * scroller that simply stops is a scroller whose last row reads as the last mint, and this
+ * cap is reached on any live morning (a six hour window is routinely forty rows and the
+ * projector's own cap is sixty). The dropped rows are the OLDEST, which is the safe
+ * direction for a rail about earliness, but "you are seeing part of it" is still a fact
+ * about what is on screen and it belongs on screen rather than in this comment.
+ */
 const MAX_ROWS = 30;
 
 const MS_PER_SECOND = 1_000;
@@ -111,7 +120,14 @@ export function launchAge(launch: Launch, now: Millis): { readonly age: Rendered
   if (age.kind === 'pending') return { age, label: pendingLabel(age.reason) };
   if (launch.mintedAtBoundS === null) return { age, label: `minted ${age.text} ago` };
 
-  const bound = formatDuration(launch.mintedAtBoundS * MS_PER_SECOND);
+  /* ★ THE BOUND IS ROUNDED UP, NEVER DOWN, and one second is its floor. `formatDuration`
+     floors — it is built for ages, where flooring is right — so a half-second bound would be
+     phrased "give or take 0s", which is the caveat deleted while the tilde stays on. That
+     reads as an exact time wearing an apology. The projector already floors this at one
+     second (`Math.max(1, Math.ceil(...))` in projectMintTime) so this cannot fire against
+     our own server; it fires against a server that does not, and stating a bound smaller
+     than it is claims a precision nobody has. */
+  const bound = formatDuration(Math.max(MS_PER_SECOND, launch.mintedAtBoundS * MS_PER_SECOND));
   return {
     age: value(`~${age.text}`),
     /* The bound is stated in words rather than only implied by the tilde, because a tilde
@@ -193,8 +209,24 @@ export interface RailView {
   readonly status: string;
   /** Whether the pip pulses and the pill goes lime. False whenever we are not current. */
   readonly live: boolean;
-  /** The header count, or an em dash when we do not have one. Never a stand-in zero. */
+  /**
+   * The header count, or an em dash when we do not have one. Never a stand-in zero.
+   *
+   * ★ IT COUNTS THE FRAME AND NOT THE RENDERED ROWS, and the difference is the whole
+   * reason this comment is long. The empty branch below reads this number out loud as a
+   * statement about the world — "no coins minted in the window" — so it is a claim about
+   * what the feed reported, not about how many nodes the scroller happens to hold. Reading
+   * it off the capped list made it silently become the second thing the moment a frame
+   * carried more than MAX_ROWS, which is most of the time on a live feed: forty-one mints
+   * came back and the header said thirty.
+   */
   readonly count: string;
+  /**
+   * One line at the end of the list when the frame carries more than the rail renders, or
+   * null when it does not. The bottom of a scroller that simply stops reads as the end of
+   * the mint stream, and that is a thing the rail would be saying without knowing it.
+   */
+  readonly overflow: string | null;
   readonly notice: RailNotice | null;
   readonly empty: RailEmpty | null;
 }
@@ -277,6 +309,7 @@ export function railView(input: RailInput): RailView {
       status: 'asking',
       live: false,
       count: '—',
+      overflow: null,
       notice: null,
       empty: {
         title: 'Reading the launches feed.',
@@ -288,12 +321,22 @@ export function railView(input: RailInput): RailView {
   const rows = feed === null ? [] : launchRows(feed.launches, now);
   const stale = lastOkAt === null || now - lastOkAt > STALE_AFTER_MS;
 
+  /* How many mints the frame actually carried, which is a different number from how many
+     the rail renders. Every count below is this one; `rows.length` is a fact about the DOM
+     and is never shown to anybody. */
+  const frameCount = feed === null ? null : feed.launches.length;
+  const overflow =
+    frameCount === null || frameCount <= rows.length
+      ? null
+      : `Showing the newest ${rows.length} of ${frameCount} on this frame. Older mints in the window are not listed.`;
+
   if (failed) {
     return {
       rows,
       status: 'not updating',
       live: false,
-      count: rows.length === 0 ? '—' : String(rows.length),
+      count: frameCount === null || frameCount === 0 ? '—' : String(frameCount),
+      overflow,
       notice: noticeFor(input.failure, rows.length > 0),
       empty: null,
     };
@@ -310,7 +353,8 @@ export function railView(input: RailInput): RailView {
       rows,
       status,
       live: false,
-      count: rows.length === 0 ? '0' : String(rows.length),
+      count: frameCount === null ? '—' : String(frameCount),
+      overflow,
       notice: {
         headline: 'The launches feed has gone quiet.',
         detail:
@@ -330,6 +374,7 @@ export function railView(input: RailInput): RailView {
          zero is honest on this rail: we asked, we got an answer, and the answer was that
          nothing has been minted in the window. */
       count: '0',
+      overflow: null,
       notice: null,
       empty: {
         title: 'No coins minted in the window.',
@@ -338,5 +383,13 @@ export function railView(input: RailInput): RailView {
     };
   }
 
-  return { rows, status, live: true, count: String(rows.length), notice: null, empty: null };
+  return {
+    rows,
+    status,
+    live: true,
+    count: frameCount === null ? '—' : String(frameCount),
+    overflow,
+    notice: null,
+    empty: null,
+  };
 }

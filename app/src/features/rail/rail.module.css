@@ -314,6 +314,23 @@
   margin-top: 2px;
 }
 
+/* ===== the end of the list =====
+   Deliberately quiet and deliberately NOT amber: nothing is degraded when the rail shows the
+   newest thirty of a larger frame, so it must not borrow .pausedBanner's treatment, which is
+   the rail's one signal that something is wrong. It is a caption on the scroller — dim, mono,
+   centred, and separated by a rule so it reads as the bottom of the list rather than as one
+   more row. Its job is only to stop the last tape row being mistaken for the last mint. */
+.overflowNote {
+  margin-top: 8px;
+  padding: 10px 4px 4px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 /* ===== the degraded-feed banner (index.css:116-120) =====
    Renamed from Hawa's .scoring-paused-banner: "scoring" is an internal score and the copy
    named a vendor — both forbidden on the wire and in the UI (fields.ts). The amber treatment

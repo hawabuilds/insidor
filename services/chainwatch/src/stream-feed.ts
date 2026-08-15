@@ -169,7 +169,20 @@ export function createStreamFeed(opts: StreamFeedOptions): MintFeed {
           continue;
         }
         blind.push({
-          kind: 'not_watching',
+          /*
+           * ★ Its own kind, and not `not_watching`, which is what it used to be.
+           *
+           * The gap_reason column is written as `${kind}: ${detail}` and the
+           * watchdog reads that prefix AS the kind. Under one label a socket that
+           * dropped mid-run, a redeploy and a stalled read loop are the same row
+           * to anything that filters, and they are not the same event: the
+           * restart window above is bounded by a process that was not there, and
+           * this one is bounded by a process that was there and was not being
+           * delivered to. Telling them apart is the difference between "we
+           * deployed" and "the transport is flapping", which is the only question
+           * anyone asks when a gap shows up twice in an hour.
+           */
+          kind: 'stream_disconnect',
           fromMs: outage.fromMs,
           toMs: outage.toMs,
           detail: outage.detail,

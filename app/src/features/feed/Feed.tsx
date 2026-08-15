@@ -81,12 +81,27 @@ export interface FeedProps {
   readonly onBuy: (action: BuyAction) => void;
 }
 
+/**
+ * ★ WHY "NO ROWS" IS NOT ONE STATE.
+ *
+ * An empty board has two causes and only one of them is the world's: the board was read and
+ * had nothing on it, or it could not be read at all. They must not render the same, and the
+ * second must never be rendered as the first — the sentence below used to say "This is an
+ * empty board, not a board that failed to load" over a board that had just failed to load,
+ * which is worse than saying nothing, because it denies the exact thing that happened.
+ *
+ * `launches.ts` states the same rule for the rail and is where the argument is written out
+ * in full. This is that rule, applied to the surface next to it.
+ */
+type ReadState = 'asking' | 'answered' | 'failed';
+
 export function Feed({ viewId, store, title, sub, onOpenStory, onBuy }: FeedProps) {
   const boardRef = useRef<HTMLDivElement | null>(null);
   const order = useBoardOrder();
   const meta = useBoardMeta();
   const [now, setNow] = useState(() => Date.now());
   const [pane, setPane] = useState<Pane>('stories');
+  const [read, setRead] = useState<ReadState>('asking');
 
   useFreezeWhileInteracting(boardRef, store);
 
@@ -98,14 +113,29 @@ export function Feed({ viewId, store, title, sub, onOpenStory, onBuy }: FeedProp
   }, []);
 
   /* The authoritative read. The live channel has no replay, so this is also what runs on
-     every reconnect and on every detected gap — see App.tsx, which owns that wiring. */
+     every reconnect and on every detected gap — see App.tsx, which owns that wiring.
+
+     ★ THE OUTCOME IS RECORDED RATHER THAN SWALLOWED. A failure still does not throw and
+     still does not blank rows we already hold — a stale board is worth looking at, which is
+     what the old comment here said and it was right about that. What it was wrong about is
+     that the transport status line covers the failure: that line reads "not streaming" on
+     every board ever rendered, because the live channel is unimplemented, so it says the
+     same thing whether the read landed or not and carries no information about this.
+     `read` is the missing half, and the empty state below is the only place it is used. */
   useEffect(() => {
     const ac = new AbortController();
+    setRead('asking');
     fetchBoard(viewId, ac.signal)
-      .then((tick) => store.reset(tick))
+      .then((tick) => {
+        if (ac.signal.aborted) return;
+        store.reset(tick);
+        setRead('answered');
+      })
       .catch(() => {
-        /* Left to the transport status line rather than an error boundary: a failed read
-           means the board is stale, and a stale board is still worth looking at. */
+        /* An aborted request is us leaving, not a failure of the board. Reporting it would
+           flash "could not be read" every time the view id changed. */
+        if (ac.signal.aborted) return;
+        setRead('failed');
       });
     return () => ac.abort();
   }, [viewId, store]);
@@ -178,9 +208,14 @@ export function Feed({ viewId, store, title, sub, onOpenStory, onBuy }: FeedProp
             ) : null}
           </div>
 
-          {/* A count, not a rank. How many rows the committed order carries. */}
+          {/* A count, not a rank. How many rows the committed order carries — and a dash
+              rather than a zero when no order has been committed to us, because "0 stories"
+              is a statement about the board and we do not have one to make it about. */}
           <div className={styles['tbarMeta']}>
-            <span className={styles['tbarCount']}>{order.length}</span> stories
+            <span className={styles['tbarCount']}>
+              {order.length === 0 && read !== 'answered' ? '—' : order.length}
+            </span>{' '}
+            stories
           </div>
         </div>
 
@@ -199,10 +234,29 @@ export function Feed({ viewId, store, title, sub, onOpenStory, onBuy }: FeedProp
           </div>
 
           {order.length === 0 ? (
+            /* ★ Three sentences for three different facts, and the middle one is the one
+               that used to be missing. Read them as a set: only the last is entitled to say
+               the board is empty, because only the last has been told so. */
             <div className={styles['noresult']}>
-              <b>Nothing is on the board yet.</b>
-              The board publishes stories once there are stories to publish. This is an empty
-              board, not a board that failed to load.
+              {read === 'asking' ? (
+                <>
+                  <b>Reading the board.</b>
+                  Nothing is shown until it answers. No placeholder rows and no invented
+                  stories — an empty table beats a table of shapes that never resolve.
+                </>
+              ) : read === 'failed' ? (
+                <>
+                  <b>The board could not be read.</b>
+                  The request failed, so this board is empty because we could not ask — not
+                  because nothing has been published. Reopen the screen to try again.
+                </>
+              ) : (
+                <>
+                  <b>Nothing is on the board yet.</b>
+                  The board publishes stories once there are stories to publish. This is an
+                  empty board, not a board that failed to load.
+                </>
+              )}
             </div>
           ) : (
             /* ★ order.map, and nothing between the array and the rows. No sort, no filter, no

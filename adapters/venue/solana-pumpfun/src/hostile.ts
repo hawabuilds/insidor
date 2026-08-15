@@ -42,8 +42,18 @@
  * zero-width joiners. The explicit second range is belt and braces — U+200B and
  * U+FEFF have moved category between Unicode revisions, and a check that depends
  * on which revision the runtime shipped is not a check.
+ *
+ * ★ AND `Default_Ignorable_Code_Point`, WITHOUT WHICH THE LOOKALIKE THIS FILE
+ * NAMES IN ITS HEADER STILL GETS THROUGH. The two categories above do not cover
+ * every character that draws as nothing: U+115F HANGUL CHOSEONG FILLER, U+1160
+ * HANGUL JUNGSEONG FILLER and U+17B4 KHMER VOWEL INHERENT AQ are Lo and Mn —
+ * letters and marks by category — and each measures zero pixels when rendered.
+ * "BᅟONK" and "BONK" are then two different stored strings that a person
+ * cannot tell apart on a list, which is exactly the "one coin impersonates
+ * another" failure described above. The property is Unicode's own answer to "is
+ * this drawn", so it does not need extending by hand the way a range does.
  */
-const INVISIBLE = /[\p{Cc}\p{Cf}\u200B-\u200F\u2060-\u206F\uFEFF]/gu;
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u200B-\u200F\u2060-\u206F\uFEFF]/gu;
 
 /** Base58 as the chain spells it: no 0, no O, no I, no l. */
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]+$/;
@@ -66,16 +76,46 @@ const ADDRESS_MAX = 44;
  *
  * NFC first, so two spellings of the same visible text do not survive as two
  * different stored values.
+ *
+ * ★ AND WHITESPACE BECOMES A SPACE BEFORE ANYTHING IS DELETED, WHICH IS THE ONE
+ * STEP WHOSE ORDER MATTERS. A newline is a control character AND a word
+ * separator, so a strip that runs first deletes it and turns "OFFICIAL\nUSDC"
+ * into "OFFICIALUSDC" — a name that reads as one word is a different name, and
+ * on this venue that is a free way to arrive at somebody else's spelling. The
+ * projection makes exactly this argument on the same two lines; the two doors
+ * now agree, so a name means the same thing whichever one you ask.
  */
 export function boundedText(value: unknown, maxChars: number): string | null {
   if (typeof value !== 'string' || value.length === 0) return null;
 
-  // Cap the raw input before normalising. NFC on a multi-megabyte string is work
-  // an attacker gets to choose the size of; the cap is generous enough that no
-  // honest value is touched by it.
-  const raw = value.length > maxChars * 8 ? value.slice(0, maxChars * 8) : value;
+  /*
+   * Cap the raw input before normalising. NFC on a multi-megabyte string is work
+   * an attacker gets to choose the size of; the cap is generous enough that no
+   * honest value is touched by it.
+   *
+   * ★ AND THIS SLICE IS THE ONE THAT HAS TO BE SURROGATE-SAFE, WHICH IS NOT
+   * OBVIOUS, BECAUSE THE FINAL CAP BELOW ALREADY IS. `slice` counts UTF-16
+   * units, so a cut at `maxChars * 8` can land between the halves of one astral
+   * character and leave a lone high surrogate. It is tempting to think the cap
+   * below removes it — it sits eight times further along than any survivor
+   * should — but the two steps in between DELETE characters: a name of a
+   * thousand zero-width spaces followed by emoji strips down to a dozen code
+   * points, the final cap never fires, and the lone surrogate is returned. That
+   * string is what the header promises this function never produces. It is not
+   * representable in UTF-8, so `pg` encodes it as U+FFFD and the coin is stored
+   * wearing a replacement glyph, and anything that JSON-encodes it into a
+   * `jsonb` column instead gets `invalid input syntax for type json` and loses
+   * the whole write. Dropping a trailing unpaired high surrogate costs one
+   * character off a cap nothing honest reaches.
+   */
+  let raw = value;
+  if (value.length > maxChars * 8) {
+    raw = value.slice(0, maxChars * 8);
+    const last = raw.charCodeAt(raw.length - 1);
+    if (last >= 0xd800 && last <= 0xdbff) raw = raw.slice(0, -1);
+  }
 
-  const cleaned = raw.normalize('NFC').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim();
+  const cleaned = raw.normalize('NFC').replace(/\s/gu, ' ').replace(INVISIBLE, '').replace(/ {2,}/gu, ' ').trim();
   if (cleaned.length === 0) return null;
 
   const points = Array.from(cleaned);

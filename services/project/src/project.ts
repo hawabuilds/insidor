@@ -1110,6 +1110,12 @@ function earliestMember(members: readonly MemberFacts[]): MemberFacts | null {
   return earliest;
 }
 
+/**
+ * Everything a browser draws as nothing, in one expression. See step 2 of `boundedText`
+ * for why the third property is here and why a hand-written list is not good enough.
+ */
+const UNRENDERABLE = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
+
 /** `null` for anything that is not a non-empty string, so `''` never reaches a component. */
 function nonEmpty(value: string | null): string | null {
   const trimmed = (value ?? '').trim();
@@ -1128,14 +1134,29 @@ function nonEmpty(value: string | null): string | null {
  *      also a control character — turns "line one\nline two" into "line onetwo", and a
  *      name that reads as one word is a different name.
  *
- *   2. WHAT IS LEFT OF THE CONTROL AND FORMAT CLASSES IS DELETED. `\p{Cc}` is the C0/C1
- *      controls; `\p{Cf}` is the format class, which is where the bidi overrides live.
- *      U+202E RIGHT-TO-LEFT OVERRIDE inside a token name does not affect that name
- *      alone — it reverses the visual order of the text AROUND it, so a coin can rewrite
- *      the label sitting beside it on the rail. Neither class is renderable content and
- *      both are removable without asking what they were for. The cost is real and
- *      accepted: ZERO WIDTH JOINER is in `Cf`, so a multi-part emoji comes apart into its
- *      pieces. A cosmetic loss on a name beats a name that can reorder its own row.
+ *   2. WHAT IS LEFT OF THE CONTROL, FORMAT AND DEFAULT-IGNORABLE CLASSES IS DELETED.
+ *      `\p{Cc}` is the C0/C1 controls; `\p{Cf}` is the format class, which is where the
+ *      bidi overrides live. U+202E RIGHT-TO-LEFT OVERRIDE inside a token name does not
+ *      affect that name alone — it reverses the visual order of the text AROUND it, so a
+ *      coin can rewrite the label sitting beside it on the rail. None of these classes is
+ *      renderable content and all are removable without asking what they were for. The
+ *      cost is real and accepted: ZERO WIDTH JOINER is in `Cf` and VARIATION SELECTOR-16
+ *      is default-ignorable, so a multi-part emoji comes apart into its pieces and a
+ *      glyph loses its colour presentation. A cosmetic loss on a name beats a name that
+ *      can reorder its own row or wear another coin's ticker.
+ *
+ *      ★ `\p{Default_Ignorable_Code_Point}` IS THE THIRD ONE AND IT IS NOT REDUNDANT.
+ *      Cc and Cf between them do NOT cover every character a browser draws as nothing.
+ *      U+115F HANGUL CHOSEONG FILLER, U+1160 HANGUL JUNGSEONG FILLER and U+17B4 KHMER
+ *      VOWEL INHERENT AQ are all category Lo or Mn — ordinary letters and marks, as far
+ *      as a category test is concerned — and every one of them measures ZERO PIXELS in
+ *      the rail's own font. `"BᅟONK"` and `"BONK"` are two different strings that
+ *      render to the same picture, which is the entire mechanism this step exists to
+ *      stop: on a rail of thirty coins, a lookalike ticker is a coin wearing another
+ *      coin's name, and no amount of care further down can undo it because by then the
+ *      two are visually the same word. The property is the right test rather than a
+ *      hand-written list because it is Unicode's own answer to "is this drawn", and a
+ *      list of code points is a list somebody has to remember to extend.
  *
  *   3. RUNS OF SPACES ARE COLLAPSED, which is what makes a name of four thousand spaces
  *      become empty rather than a four-thousand-character cell — and also tidies the gaps
@@ -1149,6 +1170,26 @@ function nonEmpty(value: string | null): string | null {
  * Capping happens LAST, so a ten-kilobyte string of invisible characters collapses to
  * nothing rather than to forty-eight characters of garbage with an ellipsis after it.
  *
+ * ★ AND THE CAP COUNTS CODE POINTS, NOT UTF-16 UNITS, WHICH IS NOT A NICETY — IT IS THE
+ * DIFFERENCE BETWEEN A TRUNCATED NAME AND A PROJECTION THAT CANNOT COMMIT.
+ *
+ * An astral character (every emoji, and most of the alphabets a token name reaches for)
+ * is TWO UTF-16 units in a JavaScript string and one character to everything else. A cut
+ * by `.slice(max)` can therefore land between the two halves of one character and leave a
+ * LONE SURROGATE on the end of the string. That string is not representable in UTF-8;
+ * `JSON.stringify` emits it as a bare `\ud83d` escape, and `writeLaunches` casts exactly
+ * that text to `jsonb`, where Postgres refuses it — `invalid input syntax for type json:
+ * Unicode low surrogate must follow a high surrogate`. The launches write shares ONE
+ * transaction with the board, so the whole run rolls back, and it rolls back again on
+ * every subsequent run for as long as the coin sits in the launches window. One token
+ * name of 24 emoji — free to mint, and ordinary on this venue without anybody meaning
+ * harm — freezes the entire read surface at the tick it was on.
+ *
+ * `Array.from` iterates code points, so the cut can only ever fall between characters.
+ * This is the same rule `hostile.ts` states one layer up, for the same reason, and the
+ * two now agree: a cap of 48 means 48 characters in both places, and neither can emit a
+ * string Postgres will not take.
+ *
  * An absent or all-junk string comes back as `''` — the empty string, not a placeholder
  * and not the address. `projectCoin` makes the same choice for the same reason: a coin
  * with no readable ticker renders as nothing, never as something that looks like one.
@@ -1156,19 +1197,32 @@ function nonEmpty(value: string | null): string | null {
 function boundedText(raw: string | null, max: number): string {
   if (raw === null) return '';
   const spaced = raw.replace(/\s/gu, ' ');
-  const stripped = spaced.replace(/[\p{Cc}\p{Cf}]/gu, '');
+  const stripped = spaced.replace(UNRENDERABLE, '');
   const collapsed = stripped.replace(/ {2,}/gu, ' ').trim();
   if (collapsed === '') return '';
+  const points = Array.from(collapsed);
+  if (points.length <= max) return collapsed;
   /* `trimTo` cuts at the last space when there is one, which is right for a sentence and
      wrong for a ticker — a 16-character cap on "MOON SAFE" would cut it to "MOON". So
      the cut is on characters here, and only the ellipsis is shared. */
-  return collapsed.length <= max ? collapsed : `${collapsed.slice(0, max).trimEnd()}…`;
+  return `${points.slice(0, max).join('').trimEnd()}…`;
 }
 
+/**
+ * Our own long text, cut at a word boundary.
+ *
+ * Code points again, and for the reason `boundedText` spells out at length: a story title
+ * quoted out of a post, or a post's excerpt, is somebody else's text too, and an excerpt
+ * that is 200 emoji with no space in it takes the `cut` branch below unchanged. A lone
+ * surrogate reaching `story_view.payload` fails the same jsonb cast in the same
+ * transaction. Slicing at `lastSpace` afterwards is safe on any measure: a space is one
+ * UTF-16 unit, so an index found at one can never sit inside a pair.
+ */
 function trimTo(text: string, max: number): string {
   const collapsed = text.replace(/\s+/g, ' ').trim();
-  if (collapsed.length <= max) return collapsed;
-  const cut = collapsed.slice(0, max);
+  const points = Array.from(collapsed);
+  if (points.length <= max) return collapsed;
+  const cut = points.slice(0, max).join('');
   const lastSpace = cut.lastIndexOf(' ');
   return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }

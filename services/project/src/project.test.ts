@@ -28,6 +28,7 @@ import {
   projectCoins,
   projectEvidence,
   projectFirstSeenAt,
+  projectLaunch,
   projectMarketCap,
   projectMomentum,
   projectPriceChange24h,
@@ -43,6 +44,7 @@ import type {
   CoinCandidate,
   CoinFacts,
   CoinMarket,
+  LaunchFacts,
   MarketNumber,
   MemberFacts,
   ProjectOptions,
@@ -1378,5 +1380,253 @@ test('a story page whose evidence is populated still carries no forbidden key or
     for (const bad of FORBIDDEN_SUBSTRINGS) {
       assert.equal(text.toLowerCase().includes(bad), false, `forbidden substring in value: ${text}`);
     }
+  }
+});
+
+/* ── ★ hostile token metadata, on the way to a browser ────────────────── */
+
+/**
+ * A LAUNCH IS THE ONE PAYLOAD IN THIS FILE WHOSE TEXT AN ATTACKER TYPED.
+ *
+ * A story's title and summary are written by our own qualify stage; a token's `symbol`
+ * and `name` are typed by whoever paid to mint the coin, which on this product means by
+ * someone who would like a rail position. Everything below is a value a mint can carry
+ * today, for nothing, and the assertion in each case is about what the PROJECTION does
+ * with it — the rail is the second door and it is tested from the other side.
+ *
+ * ★ THE FAILURE THAT MOTIVATED THIS BLOCK IS THE FOURTH ONE, AND IT WAS NOT AN INJECTION.
+ * `boundedText` capped by `.slice()`, which counts UTF-16 units, so a cut at 48 landed
+ * between the halves of one emoji and left a lone surrogate on the end of the name. That
+ * string cannot be encoded as UTF-8; `writeLaunches` hands `JSON.stringify` of the payload
+ * to a `jsonb` cast, Postgres answers `Unicode low surrogate must follow a high surrogate`,
+ * and because the launches write shares one transaction with the board the WHOLE
+ * projection rolls back — and rolls back again on every run for as long as the coin sits
+ * in the six-hour window. One token name of two dozen emoji, which is an ordinary name on
+ * this venue and needs no malice at all, froze the entire read surface at the tick it was
+ * on. That is the largest blast radius any single field on this wire has.
+ */
+
+function launchFacts(over: Partial<LaunchFacts> = {}): LaunchFacts {
+  return {
+    assetKey: 'solana:4kLmNq7wR2vTbYxEuHgJcZaPsDiOfQnXvMmZbCyVdRt8',
+    ticker: 'JERSEY',
+    name: 'jersey',
+    address: '4kLmNq7wR2vTbYxEuHgJcZaPsDiOfQnXvMmZbCyVdRt8',
+    venueLabel: 'Pump.fun',
+    mintedAt: T0 - 3 * MIN,
+    mintPrecision: 'bounded',
+    mintBoundS: 5,
+    market: null,
+    ...over,
+  };
+}
+
+/** Every string on a finished payload, at every depth. */
+function stringsOf(payload: unknown): string[] {
+  const found = { keys: [] as string[], strings: [] as string[] };
+  walk(payload, found);
+  return found.strings;
+}
+
+test('★ an astral name is cut between characters, so the frame can still be committed', () => {
+  /* 60 rockets is 60 characters and 120 UTF-16 units. A cut at 48 units would fall inside
+     the 24th one. `isWellFormed` is the whole assertion: an ill-formed string is one
+     Postgres refuses, and refusing it costs the board and the rail together. */
+  const launch = projectLaunch(launchFacts({ name: '\u{1F680}'.repeat(60) }), OPTIONS);
+  assert.equal(launch.name.isWellFormed(), true, 'a lone surrogate would fail the jsonb cast');
+  assert.equal([...launch.name].length, 49, '48 characters and the ellipsis that says so');
+  assert.equal(launch.name.endsWith('…'), true);
+});
+
+test('★ the cut lands between characters wherever the boundary happens to fall', () => {
+  /* The bug only showed up when the 48th unit was the FIRST half of a pair, so a single
+     length is not a test. Every offset from 40 to 60 puts the boundary somewhere different
+     inside the run, and one of them is the one that used to break. */
+  for (let lead = 0; lead <= 20; lead += 1) {
+    const name = `${'A'.repeat(lead)}${'\u{1F4A9}'.repeat(40)}`;
+    const launch = projectLaunch(launchFacts({ name, ticker: name }), OPTIONS);
+    assert.equal(launch.name.isWellFormed(), true, `name ill-formed with ${lead} leading letters`);
+    assert.equal(launch.ticker.isWellFormed(), true, `ticker ill-formed with ${lead} leading letters`);
+  }
+});
+
+test('★ the whole finished payload is serialisable, which is what the writer needs', () => {
+  /* `writeLaunches` casts `JSON.stringify(launch)` to jsonb. A well-formed name is not
+     enough on its own — the claim being made is about the payload, so it is asserted about
+     the payload.
+
+     ★ THE SINGLE LEADING LETTER IS THE TEST. Without it both caps land on an even offset,
+     every pair stays whole by luck, and the assertion passes against the broken code. One
+     character of padding is what pushes the boundary inside a pair. `JSON.parse` is NOT
+     the check — JavaScript round-trips a lone surrogate happily, which is exactly why this
+     survived to production; `isWellFormed` is the question Postgres actually asks. */
+  const launch = projectLaunch(
+    launchFacts({ name: `A${'\u{1F680}'.repeat(60)}`, ticker: `A${'\u{1F4A9}'.repeat(30)}` }),
+    OPTIONS,
+  );
+  for (const text of stringsOf(launch)) {
+    assert.equal(text.isWellFormed(), true, `ill-formed string on the wire: ${escape(text)}`);
+  }
+});
+
+test('the cap counts characters, so a name is as long as a person would say it is', () => {
+  /* 48 means 48 to a reader, to Postgres `left()` and to `hostile.ts` one layer up. It
+     used to mean 24 for a name made of emoji and 48 for a name made of letters. */
+  assert.equal([...projectLaunch(launchFacts({ name: 'A'.repeat(200) }), OPTIONS).name].length, 49);
+  assert.equal([...projectLaunch(launchFacts({ name: 'é'.repeat(200) }), OPTIONS).name].length, 49);
+  assert.equal([...projectLaunch(launchFacts({ name: '\u{1F680}'.repeat(200) }), OPTIONS).name].length, 49);
+});
+
+test('a ten-kilobyte name is a bounded name and not a ten-kilobyte row', () => {
+  const launch = projectLaunch(launchFacts({ name: 'A'.repeat(10_000) }), OPTIONS);
+  assert.equal(launch.name.length, 49);
+  const huge = projectLaunch(launchFacts({ name: 'B'.repeat(100_000) }), OPTIONS);
+  assert.equal(huge.name.length, 49);
+});
+
+test('★ markup is kept as text and is neither escaped nor stripped', () => {
+  /* Deliberately unchanged. Escaping here would produce `&lt;script&gt;` in the DATABASE,
+     which is a different string from the one the coin was minted with and which renders as
+     literal ampersands the day somebody puts it somewhere that escapes again. The rail
+     renders it as a text node, which is where the safety comes from; this only has to not
+     make it worse, and has to keep a name a person could recognise. */
+  const launch = projectLaunch(launchFacts({ name: '<script>alert(1)</script>', ticker: '<img src=x>' }), OPTIONS);
+  assert.equal(launch.name, '<script>alert(1)</script>');
+  assert.equal(launch.ticker, '<img src=x>');
+});
+
+test('a name that is a URI stays a name, and nothing on this wire can carry it', () => {
+  /* There is no field on a launch that becomes an href or a src — see the field list
+     asserted below — so a `javascript:` name is a name that reads oddly and nothing more.
+     The assertion worth making is the one about the field set, not about the string. */
+  const launch = projectLaunch(launchFacts({ name: 'javascript:alert(1)' }), OPTIONS);
+  assert.equal(launch.name, 'javascript:alert(1)');
+  assert.deepEqual(Object.keys(launch).sort(), [
+    'address',
+    'launchId',
+    'marketCapBasis',
+    'marketCapUsd',
+    'mintedAt',
+    'mintedAtBoundS',
+    'name',
+    'ticker',
+    'venueLabel',
+  ]);
+});
+
+test('★ a right-to-left override cannot reach the rail and reorder the row around it', () => {
+  const launch = projectLaunch(launchFacts({ ticker: 'SAFE‮kcatta', name: 'a‮b' }), OPTIONS);
+  assert.equal(launch.ticker, 'SAFEkcatta');
+  assert.equal(launch.name, 'ab');
+});
+
+test('★ a zero-width character cannot disguise one coin as another', () => {
+  /* The lookalike, which is the reason this strip exists at all: two different stored
+     strings that draw the same picture on a list of thirty coins. U+200B is Cf and was
+     always caught. U+115F, U+1160 and U+17B4 are Lo and Mn — letters and marks — and every
+     one of them measures zero pixels in the rail's own font, so the category test alone let
+     the impersonation through. */
+  const real = projectLaunch(launchFacts({ ticker: 'BONK' }), OPTIONS).ticker;
+  for (const invisible of ['​', 'ᅟ', 'ᅠ', '឴', 'ㅤ', 'ﾠ', '️']) {
+    const fake = projectLaunch(launchFacts({ ticker: `B${invisible}ONK` }), OPTIONS).ticker;
+    assert.equal(fake, real, `U+${invisible.codePointAt(0)?.toString(16).toUpperCase()} survived the strip`);
+  }
+});
+
+test('a ticker made only of invisible characters is no ticker, not a blank one', () => {
+  /* '' is what the rail reads as "this coin named no ticker", and it draws the dashed
+     placeholder tile for it. A string of fillers would instead take the solid tile and an
+     empty label, which says "this coin has a ticker" while showing nothing. */
+  assert.equal(projectLaunch(launchFacts({ ticker: 'ᅟㅤﾠ' }), OPTIONS).ticker, '');
+});
+
+test('a control character separates words rather than joining them', () => {
+  /* The one thing the strip must NOT do: a newline is a control character and also a word
+     separator, so deleting it outright turns two words into one word that was never a
+     name. */
+  assert.equal(projectLaunch(launchFacts({ name: 'line one\nline two' }), OPTIONS).name, 'line one line two');
+});
+
+test('an empty, blank or absent name is the empty string, never a stand-in', () => {
+  /* Not the address, not the ticker, not "Unknown". The rail renders '' as nothing, and
+     anything else here would look like the coin's actual name to a person. */
+  for (const raw of ['', '   ', '\t\n ', null]) {
+    const launch = projectLaunch(launchFacts({ name: raw, ticker: raw }), OPTIONS);
+    assert.equal(launch.name, '');
+    assert.equal(launch.ticker, '');
+  }
+});
+
+test('a name of four thousand spaces is empty, not a four-thousand-character cell', () => {
+  assert.equal(projectLaunch(launchFacts({ name: ' '.repeat(4_000) }), OPTIONS).name, '');
+});
+
+test('★ a truncation is visible as one, so a cut name is not read as the whole name', () => {
+  /* A coin apparently called "OFFICIAL SOLANA FOUNDATION TREASU" is a better impersonation
+     than the string it came from, because it reads as complete. */
+  const launch = projectLaunch(
+    launchFacts({ name: 'OFFICIAL SOLANA FOUNDATION TREASURY WALLET DO NOT SHARE' }),
+    OPTIONS,
+  );
+  assert.equal(launch.name.endsWith('…'), true);
+});
+
+test('★ our own vendor inside a token name costs that row and not the frame', () => {
+  /* Free to type, and it is the reason `main.ts` catches WireLeakError around this call
+     rather than letting it end the run. The name is somebody else's text; the check has to
+     hold over values and not only over keys. */
+  for (const bad of FORBIDDEN_SUBSTRINGS) {
+    assert.throws(
+      () => projectLaunch(launchFacts({ name: `a ${bad} coin` }), OPTIONS),
+      WireLeakError,
+      `a token named after "${bad}" was published`,
+    );
+  }
+});
+
+test('an internal word typed into a ticker is caught in the value, not only in a key', () => {
+  assert.throws(() => projectLaunch(launchFacts({ ticker: 'MEMESCORE' }), OPTIONS), WireLeakError);
+});
+
+test('a hostile launch that IS published carries no forbidden key and no forbidden substring', () => {
+  const launch = projectLaunch(
+    launchFacts({ name: '<b>Official</b> USDC — CA: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' }),
+    OPTIONS,
+  );
+  const found = { keys: [] as string[], strings: [] as string[] };
+  walk(launch, found);
+  for (const key of found.keys) {
+    assert.equal(FORBIDDEN_KEYS.includes(key.toLowerCase()), false, `forbidden key on the wire: ${key}`);
+  }
+  for (const text of found.strings) {
+    for (const bad of FORBIDDEN_SUBSTRINGS) {
+      assert.equal(text.toLowerCase().includes(bad), false, `forbidden substring in value: ${text}`);
+    }
+  }
+});
+
+test('a story quoted out of somebody else’s post is cut between characters too', () => {
+  /* `trimTo` had the same `.slice()` and lands in the same jsonb column by way of
+     `story_view.payload`. A post is somebody else's text as much as a token name is.
+
+     Both of its callers are exercised here: `displayTitle: null` makes the title a QUOTE of
+     the earliest post, and a permalink is what stops the member being dropped so its
+     EXCERPT is projected too. `trimTo` usually cuts at a space, which hides the bug; an
+     excerpt with no space in it takes the other branch, and an excerpt with no space in it
+     is what a wall of emoji is. The leading letter moves both caps onto an odd offset,
+     which is where the boundary falls inside a pair. */
+  const excerpt = `A${'\u{1F680}'.repeat(400)}`;
+  const page = projectStory(
+    story({
+      displayTitle: null,
+      members: [member({ excerpt, permalink: 'https://x.com/a/status/1' })],
+    }),
+    OPTIONS,
+  );
+  assert.notEqual(page, null);
+  assert.equal(page?.title.endsWith('…'), true, 'the title is a cut quote, so the cut is under test');
+  assert.equal(page?.evidence[0]?.excerpt.endsWith('…'), true, 'and so is the excerpt');
+  for (const text of stringsOf(page)) {
+    assert.equal(text.isWellFormed(), true, 'a lone surrogate would fail the story_view jsonb cast');
   }
 });

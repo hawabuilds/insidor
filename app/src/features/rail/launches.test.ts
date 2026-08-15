@@ -86,6 +86,17 @@ test('a bound smaller than a second is still stated, never rounded away to nothi
   assert.equal(label, 'minted about 3m ago, give or take 1s');
 });
 
+test('★ a fractional bound rounds UP, so the caveat is never deleted while the tilde stays', () => {
+  /* `formatDuration` floors, which is right for an age and wrong for a bound: half a second
+     phrased as "give or take 0s" is an exact time wearing an apology. Our own projector
+     floors this at one second, so this fires only against a server that does not — and the
+     safe direction for a bound is always wider than it is. */
+  const { age, label } = launchAge(launch({ mintedAtBoundS: 0.4 }), T0);
+  assert.equal(age.text, '~3m', 'still bounded, so still a tilde');
+  assert.equal(label, 'minted about 3m ago, give or take 1s');
+  assert.equal(label.includes('0s'), false);
+});
+
 /* ── the rows ─────────────────────────────────────────────────────────── */
 
 test('★ a coin with no market shows a dash, never $0', () => {
@@ -169,6 +180,37 @@ test('a frame with rows is live, counted, and carries no banner', () => {
   assert.equal(view.live, true);
   assert.equal(view.notice, null);
   assert.equal(view.empty, null);
+});
+
+test('★ the header count is the FRAME\'s, not the number of rows that fit', () => {
+  /* The regression this guards: the count was read off the capped render list, so a frame
+     of forty-one mints was announced as thirty — and the empty branch reads this number out
+     loud as a statement about the world ("no coins minted in the window"), which makes a
+     count that silently means "rows in the DOM" a claim about the market that is wrong. */
+  const many = Array.from({ length: 41 }, (_, i) => launch({ launchId: `solana:${i}` }));
+  const view = railView({ feed: { tick: 3, launches: many }, failure: null, lastOkAt: T0, now: T0 });
+  assert.equal(view.count, '41', 'the count is what the feed reported');
+  assert.ok(view.rows.length < many.length, 'and the rail still renders only what it holds');
+});
+
+test('★ a list shorter than its frame says so, so the last row is not read as the last mint', () => {
+  const many = Array.from({ length: 41 }, (_, i) => launch({ launchId: `solana:${i}` }));
+  const view = railView({ feed: { tick: 3, launches: many }, failure: null, lastOkAt: T0, now: T0 });
+  assert.notEqual(view.overflow, null);
+  assert.match(view.overflow ?? '', /Showing the newest 30 of 41/);
+  /* Not amber and not a fault: nothing is wrong, so it must not arrive as a notice. */
+  assert.equal(view.notice, null);
+});
+
+test('a frame that fits carries no overflow line at all', () => {
+  const view = railView({
+    feed: { tick: 3, launches: [launch(), launch({ launchId: 'solana:b' })] },
+    failure: null,
+    lastOkAt: T0,
+    now: T0,
+  });
+  assert.equal(view.overflow, null);
+  assert.equal(view.count, '2');
 });
 
 test('★ the status says when we last asked, and never says the feed is live', () => {

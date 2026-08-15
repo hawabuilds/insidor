@@ -17,6 +17,8 @@
 
 import type { Millis } from '@insidor/contracts';
 
+import type { CoverageWindow } from './coverage.ts';
+
 export interface MintCursor {
   readonly feedId: string;
   /** null on a cold start: we have never read this feed. */
@@ -31,14 +33,27 @@ export interface CursorStore {
   /**
    * Written only AFTER the mints from that read are persisted. See main.ts.
    *
-   * `coveredFromMs` is not decoration. There is no cursor table in the schema:
-   * the resume position is a column on the coverage row (`mint_coverage.cursor_ref`),
-   * because a position with no record of the window it closed is a claim we cannot
-   * check. So saving the cursor and declaring the window it completed are one
-   * write, and the caller has to say where that window started — the instant of
-   * the PREVIOUS successful read, not the instant this read began.
+   * `observed` is not decoration. There is no cursor table in the schema: the
+   * resume position is a column on the coverage row (`mint_coverage.cursor_ref`),
+   * because a position with no record of the window it closed is a claim we
+   * cannot check. So saving the cursor and declaring the windows it completed are
+   * one write.
+   *
+   * ★ WHY IT IS A LIST AND NOT A SINGLE `coveredFromMs`, which is what it was.
+   * A cycle's window is not always one interval. A push transport can report that
+   * its connection was down for part of the window it just answered for, and the
+   * cycle then covers the pieces either side of that hole and NOT the hole. Given
+   * one instant to start from, the only row this could write was the whole span —
+   * including the dark part, flagged `gap = false`, sitting on top of the gap row
+   * the same cycle had just written. The list is what makes the two kinds of row
+   * partition the timeline instead of contradicting each other; `observedSegments`
+   * in coverage.ts computes it.
+   *
+   * EMPTY IS A LEGAL ANSWER and means the holes swallowed the entire window —
+   * there is nothing this cycle may claim. The implementation must still record
+   * the resume position, and must not invent a window to hang it on.
    */
-  save(cursor: MintCursor, coveredFromMs: Millis): Promise<void>;
+  save(cursor: MintCursor, observed: readonly CoverageWindow[]): Promise<void>;
 }
 
 export function coldCursor(feedId: string): MintCursor {

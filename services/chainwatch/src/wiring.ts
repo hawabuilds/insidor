@@ -114,6 +114,17 @@ function createFeed(cfg: ChainwatchConfig, log: Logger): MintFeed {
     decimals: TOKEN_DECIMALS,
     bufferLimit: cfg.streamBufferLimit,
     staleAfterMs: cfg.streamStaleAfterMs,
+    // ★ How long a connection must last before its next failure retries at the
+    // base delay, and it is the backoff CEILING rather than a value of its own.
+    //
+    // A connection that dies faster than the longest we were ever prepared to
+    // wait has not proven the far end is willing to keep us, so retrying at the
+    // base delay would mean hammering harder than we had already decided was
+    // reasonable. Deriving it here rather than adding MINT_STREAM_HEALTHY_MS
+    // keeps one answer to "how hard do we retry" — the same argument that put
+    // `reconnectDelayMs` below on the supervisor's own schedule — and adds no
+    // required variable to an environment that is already deployed.
+    healthyAfterMs: cfg.backoffMaxMs,
     mintTimeOptions: {
       // Unused on this path — no two sources are being compared, because there
       // is only one — and stated rather than left to a default so the day a
@@ -226,7 +237,7 @@ function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
         return { feedId, position: latest.cursorRef, readAt: latest.toMs };
       },
 
-      save: async (cursor, coveredFromMs) => {
+      save: async (cursor, observed) => {
         if (cursor.readAt === null) {
           // Only a cold cursor has no read instant, and a cold cursor has closed
           // no window. Persisting one would write a coverage row asserting we
@@ -236,13 +247,41 @@ function buildRuntime(cfg: ChainwatchConfig, db: Db, log: Logger): Runtime {
               'land on claims a window this process never closed',
           );
         }
-        await assets.recordCoverage(
-          cfg.chain,
-          coveredFromMs,
-          cursor.readAt,
-          cursor.position,
-          null,
-        );
+
+        /*
+         * ★ Nothing to claim, and that is a legal outcome rather than an error.
+         * The cycle's whole window was declared dark by the gaps it recorded a
+         * moment ago — a socket that was down for the entire interval, say — and
+         * there is no observed row to hang the resume position on.
+         *
+         * Inventing one is exactly the bug this shape exists to remove: a row
+         * over that window with `gap = false` would say we watched it. So the
+         * position is dropped, which costs a diagnostic string and nothing else.
+         * The resume INSTANT is unaffected — `latestCoverage` reads `window_to`
+         * off the most recent row, and the gap rows this cycle wrote already
+         * carry it, because a gap is still a record of where we got to.
+         */
+        if (observed.length === 0) {
+          log.warn('cycle covered no observable time; position not recorded', {
+            feedId: cursor.feedId,
+            readAt: cursor.readAt,
+          });
+          return;
+        }
+
+        // The position goes on the LAST window only. It is the answer to "where
+        // had we got to when this cycle ended", and hanging that off an earlier
+        // segment would tie it to an interval it did not close.
+        const lastIndex = observed.length - 1;
+        for (const [index, window] of observed.entries()) {
+          await assets.recordCoverage(
+            cfg.chain,
+            window.fromMs,
+            window.toMs,
+            index === lastIndex ? cursor.position : null,
+            null,
+          );
+        }
       },
     },
 

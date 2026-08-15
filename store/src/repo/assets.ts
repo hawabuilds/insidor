@@ -214,12 +214,46 @@ export class PgAssetRepo implements AssetRepo {
     cursorRef: string | null,
     gap: { reason: string } | null,
   ): Promise<void> {
+    /*
+     * ★ THE CONFLICT CLAUSE IS A CLAIM, NOT A MERGE, AND IT MAY ONLY EVER MOVE
+     * ONE WAY: TOWARDS ADMITTING WE DID NOT SEE SOMETHING.
+     *
+     * Two writes landing on one `window_from` is not hypothetical — a live run
+     * against the real relay produced it on the first cycle after a restart,
+     * where the "stream was not connected" gap and the "no successful read for
+     * Nms" gap both start at the resume watermark and so share a key exactly.
+     *
+     * `gap` and `gap_reason` used to be absent from this SET list, and absent is
+     * not neutral. It meant an existing row won the claim while the incoming row
+     * still won `window_to`, so a gap recorded over a window that already had an
+     * observed row kept `gap = false` AND stretched that false row across the
+     * dark interval: the one arrangement that is strictly worse than dropping
+     * the write, because the record now asserts we watched precisely the seconds
+     * we missed, and nothing afterwards can tell that it is wrong. Verified
+     * against the live schema before this line existed: an observed [T, T+3s]
+     * followed by a gap [T, T+30s] left `gap = f`, `gap_reason = null`,
+     * `window_to = T+30s`.
+     *
+     * So the claim is OR-ed, never assigned. A window that has ever been
+     * declared dark stays dark, whichever order the two writes arrive in, and a
+     * later observation cannot quietly promote it back to watched. The reason
+     * travels with it — a gap row whose reason had been overwritten with null
+     * still censors the label, but nobody can find out why — and `cursor_ref`
+     * stops being clobbered to null by a gap write that never had a position to
+     * offer, which is how a resume position went missing from a row that had one.
+     *
+     * The direction this errs in is over-declaring darkness. That costs recall on
+     * labels; the other direction costs the truth of every outcome measured over
+     * the window, and buys back nothing.
+     */
     await this.#db.query(
       `insert into internal.mint_coverage (chain, window_from, window_to, cursor_ref, gap, gap_reason)
        values ($1,$2,$3,$4,$5,$6)
        on conflict (chain, window_from) do update set
          window_to  = greatest(internal.mint_coverage.window_to, excluded.window_to),
-         cursor_ref = excluded.cursor_ref`,
+         gap        = internal.mint_coverage.gap or excluded.gap,
+         gap_reason = coalesce(excluded.gap_reason, internal.mint_coverage.gap_reason),
+         cursor_ref = coalesce(excluded.cursor_ref, internal.mint_coverage.cursor_ref)`,
       [chain, toTimestamp(fromMs), toTimestamp(toMs), cursorRef, gap !== null, gap?.reason ?? null],
     );
   }
@@ -234,6 +268,24 @@ export class PgAssetRepo implements AssetRepo {
    * watched — which is a different fact from a watcher that restarted and lost its
    * place, and the caller has to be able to tell them apart: the first has no
    * earlier window to have missed, the second does, and that silence is a gap.
+   *
+   * ★ ORDERED BY `window_to`, NOT `window_from`. The question this answers is "how
+   * far did we get", and that is the latest END, not the latest START. The two are
+   * the same only while windows are contiguous and non-overlapping — which is the
+   * arrangement the gap work has just stopped being true: a long gap row now
+   * routinely spans several short observed rows, so the row that starts last and
+   * the row that ends last are different rows.
+   *
+   * Ordering by `window_from` was not dangerous, and that is worth stating plainly
+   * rather than overselling the fix: it can only ever return some existing row's
+   * `window_to`, which is never beyond the true frontier, so it resumes EARLY and
+   * re-reads. Re-reading is free; the opposite mistake — resuming past a window
+   * nothing recorded — is the unrecoverable one, because afterwards nothing can
+   * tell you which mints were never seen. It was imprecise, in the safe direction.
+   *
+   * The tiebreak matters because `cursor_ref` rides on the row: two rows can share
+   * a `window_to` after the OR-ing upsert above, and without it which position we
+   * resume from would depend on the planner.
    */
   async latestCoverage(
     chain: ChainId,
@@ -242,7 +294,7 @@ export class PgAssetRepo implements AssetRepo {
       `select window_to, cursor_ref
          from internal.mint_coverage
         where chain = $1
-        order by window_from desc
+        order by window_to desc, window_from desc
         limit 1`,
       [chain],
     );

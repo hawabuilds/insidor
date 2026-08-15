@@ -308,7 +308,10 @@ test('★ a reconnect between two reads becomes a blind window, and the mints st
 
   return feed.read(WARM, 100, new AbortController().signal).then((page) => {
     assert.equal(page.blind.length, 1);
-    assert.equal(page.blind[0]?.kind, 'not_watching');
+    // Its own kind, not `not_watching`: gap_reason is written as
+    // `${kind}: ${detail}` and the watchdog reads that prefix AS the kind, so a
+    // socket that dropped mid-run has to be filterable apart from a redeploy.
+    assert.equal(page.blind[0]?.kind, 'stream_disconnect');
     assert.equal(page.blind[0]?.fromMs, T0 - 20_000);
     assert.equal(page.blind[0]?.toMs, T0 - 8_000);
     assert.equal(page.blind[0]?.detail, outage.detail);
@@ -355,6 +358,45 @@ test('★ a read while the socket is down FAILS rather than returning an empty p
     (e: unknown) => {
       assert.match(String(e), /not connected/);
       assert.deepEqual(stream.drains, [], 'and the buffered mints are left where they are');
+    },
+  );
+});
+
+test('★ a socket that goes half-open between two reads gets no page at all', () => {
+  /*
+   * The nastiest failure this transport has, modelled at the seam where it
+   * matters. A half-open socket is TCP-alive and delivering nothing, so it is
+   * the transport's own staleness check — asked through `live()` — that notices,
+   * and the ONLY thing standing between that discovery and a coverage row is
+   * the order these two calls happen in.
+   *
+   * `live()` is therefore not a cached flag here: it reports the staleness the
+   * first time it is asked, exactly as the real stream does. If this feed ever
+   * drained first and asked afterwards, the page below would come back empty,
+   * clean, and covering a window nobody was listening to — and the supervisor
+   * would write it as observed with `gap = false`.
+   */
+  const clock = { now: T0 };
+  const stream = fakeStream();
+  let asked = 0;
+  stream.live = () => {
+    asked += 1;
+    // The socket was already silent; the question is what makes us notice.
+    stream.liveNow = false;
+    return false;
+  };
+
+  const { feed } = feedOf(stream, clock);
+  return feed.read(WARM, 100, new AbortController().signal).then(
+    () => assert.fail('a stream that has just been found dead must not report a covered window'),
+    (e: unknown) => {
+      assert.match(String(e), /not connected/);
+      assert.equal(asked, 1, 'liveness is consulted');
+      assert.deepEqual(
+        stream.drains,
+        [],
+        'and consulted BEFORE the drain, so the buffered mints are not spent on a page we discard',
+      );
     },
   );
 });

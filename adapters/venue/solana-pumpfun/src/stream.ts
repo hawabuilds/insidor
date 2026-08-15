@@ -47,6 +47,22 @@
  *   claims coverage we do not have, so events are dropped loudly and counted,
  *   and the caller turns that count into a recorded gap.
  *
+ *   A WEDGED HANDSHAKE. `open` returned, and then nothing: no `onOpen`, no
+ *   `onClose`, ever. A far end that accepts the TCP connection and never
+ *   upgrades produces this, and so does a black-holed route. It is the only
+ *   failure here with NO event behind it, which is why it needs a deadline — see
+ *   `connect`. Without one the stream sits with no socket, no reconnect
+ *   scheduled and nothing that will ever schedule one.
+ *
+ * ★ AND THE FAILURE THAT IS NOT OURS TO HAVE: A RECONNECT STORM. The relay is
+ * free, unauthenticated, and its operators owe us nothing; the documented
+ * response to a client that reconnects in a loop is a block, and there is no
+ * account to appeal it with. So the retry counter is only reset by a connection
+ * that has PROVEN itself by lasting — see `healthyAfterMs`. A frame alone does
+ * not prove it, because the first frame the relay sends is its own subscribe
+ * acknowledgement, and a far end that accepts us, acks and then kicks us would
+ * otherwise be retried at the base delay for ever.
+ *
  * Everything that touches a clock, a timer or a socket is injected, so the tests
  * drive a fake socket through every one of these without waiting for anything.
  */
@@ -103,6 +119,28 @@ const ADDRESS_MAX = 64;
  */
 const MAX_FRAME_BYTES = 64 * 1024;
 
+/**
+ * ★ How many separate outages may wait for a drain before they are merged into
+ * one, and why a bound is needed on a list the caller empties every cycle.
+ *
+ * The caller only drains while the socket is LIVE — a read taken during an
+ * outage would claim a window nobody was listening to, so the supervisor refuses
+ * it. A socket that flaps therefore produces outages that nothing collects,
+ * because at every read instant we happen to be down again. Five thousand flaps
+ * measured in a test produced five thousand retained objects and, far worse, one
+ * eventual drain handing the supervisor five thousand gaps to INSERT one at a
+ * time while the buffer behind it kept filling. A week of second-by-second
+ * flapping is six hundred thousand.
+ *
+ * Merging rather than dropping is the whole point. Dropping either end loses a
+ * hole we have already declared, which is the one direction this file is not
+ * allowed to be wrong in. The merged window spans from the earliest start to the
+ * latest end, so it also censors the brief live moments between them — that is
+ * over-censoring, it is visible in the reason string, and it is recoverable by
+ * anyone reading the log. Under-censoring is not.
+ */
+const MAX_PENDING_OUTAGES = 64;
+
 /* ── the ports: everything that is not pure ─────────────────────────────── */
 
 export interface StreamSocket {
@@ -125,6 +163,18 @@ export interface StreamOutage {
   readonly fromMs: Millis;
   /** Exclusive end. */
   readonly toMs: Millis;
+  /**
+   * ★ Carries WHY delivery stopped, and it has to survive this far.
+   *
+   * The three failures in the header are one window each by the time they reach
+   * the caller, and the window alone cannot tell them apart: a socket that
+   * closed with a code, a socket that went quiet with TCP still up, and a
+   * subscribe that failed all produce an interval. That distinction is the first
+   * question anyone asks of a recorded gap — a close code is the far end saying
+   * something, a silence is nobody saying anything, and they are answered
+   * differently. It is recorded once, at `markDown`, because that is the only
+   * moment it is known; reconstructing it from the width afterwards is guessing.
+   */
   readonly detail: string;
 }
 
@@ -150,11 +200,16 @@ export interface StreamDrain {
 export interface MintStream {
   start(): void;
   stop(): void;
-  /** Connected and subscribed right now. */
+  /**
+   * Connected and subscribed right now — and the moment a half-open socket is
+   * noticed, because that failure has no event to announce itself with. Asking
+   * is what makes it true, so a caller that drains before asking gets a page
+   * covering a window this stream has by then concluded was dark.
+   */
   live(): boolean;
   /** The instant the current live period began, or null while down. */
   liveSince(): Millis | null;
-  /** Take up to `limit` events. Also the moment a half-open socket is noticed. */
+  /** Take up to `limit` events. Also checks staleness, for a caller that skipped `live`. */
   drain(limit: number): StreamDrain;
   /** An opaque marker for the cursor. See the note where it is built. */
   position(): string;
@@ -177,8 +232,35 @@ export interface MintStreamOptions {
    * page, which would make every busy window a recorded gap for no reason.
    */
   readonly bufferLimit: number;
-  /** No delivery for this long, while nominally connected, is a dead socket. */
+  /**
+   * No delivery for this long, while nominally connected, is a dead socket.
+   *
+   * It is also the handshake deadline, because a socket that `open` returned and
+   * that has not called back is nominally connected and delivering nothing —
+   * the same question, asked of a connection one state earlier. Reusing the
+   * value rather than adding a second one keeps there being a single answer to
+   * "how long may this transport be silent before we stop believing it".
+   */
   readonly staleAfterMs: number;
+  /**
+   * ★ How long a connection must LAST before its next failure is allowed to
+   * retry at the base delay. The one thing standing between us and a block.
+   *
+   * The retry counter cannot be reset by a connection merely working, because
+   * every connection works for an instant — the relay accepts the socket,
+   * acknowledges the subscribe, and may then drop us because we are being rate
+   * limited. Resetting on that acknowledgement makes the backoff decorative: the
+   * measured behaviour was attempt=1 for ever, which is a reconnect roughly
+   * every base delay, indefinitely, against a free service with no account and
+   * no appeal.
+   *
+   * So the counter is reset by DURATION, which is the only evidence a client has
+   * that the far end is willing to keep it. The natural value is the backoff
+   * CEILING: if a connection dies faster than the longest we were ever prepared
+   * to wait before retrying, then retrying at the base delay means hammering
+   * harder than we had already decided was reasonable.
+   */
+  readonly healthyAfterMs: number;
   readonly mintTimeOptions: MintTimeOptions;
   readonly now: () => Millis;
   /**
@@ -305,14 +387,35 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
    * durable cursor, one layer up, which is the only thing that remembers it.
    */
   let downSince: Millis | null = null;
+  /**
+   * Why delivery stopped, for the outage currently open. Held beside `downSince`
+   * and cleared with it, because the two are one fact: an outage that knows when
+   * it started and not what started it is a row somebody has to guess about.
+   */
+  let downWhy: string | null = null;
   /** The last instant we can PROVE data was arriving. Drives staleness. */
   let lastDeliveredAt: Millis | null = null;
 
   let outages: StreamOutage[] = [];
+  /**
+   * How many outages the pending list has already swallowed by merging. Kept so
+   * the merged window can say how many separate failures it stands for, which is
+   * the difference between "the socket dropped once" and "the socket flapped two
+   * hundred times" — and those are answered differently.
+   */
+  let outagesMerged = 0;
   let dropped = 0;
   let delivered = 0;
   let attempt = 0;
   let cancelReconnect: (() => void) | null = null;
+  /**
+   * The deadline on a connection that has not called back yet. See `connect`.
+   *
+   * It is a timer created per connection ATTEMPT, which is exactly the shape of
+   * leak a process meant to run for weeks dies of, so every path out of the
+   * connecting state clears it: `markLive`, `markDown` and `stop`.
+   */
+  let cancelHandshake: (() => void) | null = null;
   /**
    * Which connection attempt is the live one.
    *
@@ -325,12 +428,51 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
    */
   let generation = 0;
 
+  /**
+   * Hand an outage to the pending list, merging rather than growing once the
+   * list is at its bound. See `MAX_PENDING_OUTAGES`.
+   */
+  const pushOutage = (outage: StreamOutage): void => {
+    outages.push(outage);
+    if (outages.length <= MAX_PENDING_OUTAGES) return;
+
+    // The union, computed without indexing so `noUncheckedIndexedAccess` has
+    // nothing to complain about and there is no assertion silencing anything.
+    let fromMs = outage.fromMs;
+    let toMs = outage.toMs;
+    for (const held of outages) {
+      if (held.fromMs < fromMs) fromMs = held.fromMs;
+      if (held.toMs > toMs) toMs = held.toMs;
+    }
+    outagesMerged += outages.length;
+    outages = [
+      {
+        fromMs,
+        toMs,
+        detail:
+          `mint stream was not delivering across ${outagesMerged} separate outages merged ` +
+          `into one window of ${toMs - fromMs}ms; the transport is flapping, and the brief ` +
+          'live moments between them are censored with it',
+      },
+    ];
+  };
+
   const markDown = (atMs: Millis, why: string): void => {
+    // A connection that is being retired is no longer waiting on its handshake,
+    // whichever way it left the connecting state.
+    cancelHandshake?.();
+    cancelHandshake = null;
+
     // The EARLIEST instant delivery stopped is the one that bounds the hole. A
     // socket that errors and then closes reports twice, and letting the second
     // one move the start forward would shrink a recorded gap on the strength of
-    // a duplicate event.
-    if (downSince === null) downSince = atMs;
+    // a duplicate event. The reason is kept from the same first report, for the
+    // same reason: 'socket error' followed by 'socket closed (1006)' is one
+    // event described twice, and the first description is the one that saw it.
+    if (downSince === null) {
+      downSince = atMs;
+      downWhy = why;
+    }
     liveAt = null;
     // Retire this connection: anything it fires from here is from a socket we
     // have already stopped counting on.
@@ -369,8 +511,14 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
   };
 
   const markLive = (atMs: Millis): void => {
+    // It handshaked. The deadline has done its job and must not outlive it.
+    cancelHandshake?.();
+    cancelHandshake = null;
+
     const from = downSince;
+    const why = downWhy;
     downSince = null;
+    downWhy = null;
     liveAt = atMs;
     // Start the staleness clock at the connection. Nothing has been delivered
     // yet, and treating that as "no data for ever" would declare a healthy
@@ -381,10 +529,10 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
     // Guarded on strict forward order because the coverage row it becomes has a
     // `window_to > window_from` check, and a zero-width outage is not a hole.
     if (from !== null && atMs > from) {
-      outages.push({
+      pushOutage({
         fromMs: from,
         toMs: atMs,
-        detail: `mint stream was not delivering for ${atMs - from}ms`,
+        detail: `mint stream was not delivering for ${atMs - from}ms (${why ?? 'cause not recorded'})`,
       });
     }
     opts.note({ msg: 'mint stream live', fields: { atMs, recoveredFromMs: from } });
@@ -409,10 +557,25 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
     // Arrival, not decode. Everything below can only make this later.
     const seenAt = opts.now();
     lastDeliveredAt = seenAt;
-    // A frame arrived, so the connection works. Resetting here rather than in
-    // `onOpen` is deliberate: a socket that opens and immediately closes would
-    // otherwise reset the backoff every cycle and retry in a hot loop.
-    attempt = 0;
+    /*
+     * ★ THE BACKOFF IS RESET BY A CONNECTION THAT LASTED, NOT BY ONE THAT SPOKE.
+     *
+     * Resetting in `onOpen` is obviously wrong — a socket that opens and closes
+     * immediately would retry at the base delay for ever. Resetting on the first
+     * FRAME looks like the fix and is the same bug wearing a disguise, because
+     * the first frame this relay sends is its own subscribe acknowledgement.
+     * That frame arrives on every connection it ever accepts, including the ones
+     * it is about to drop us from, so a far end that accepts, acks and kicks
+     * produced a measured attempt sequence of [1,1,1,1,…] — a reconnect roughly
+     * every base delay, for as long as the process runs. Against a free,
+     * unauthenticated relay that is how a client gets blocked, and there is no
+     * account to appeal it with.
+     *
+     * Duration is the only evidence a client has that the far end is willing to
+     * keep it. `liveAt` is null here only if data arrived before we considered
+     * ourselves live, and not resetting in that case is the safe direction.
+     */
+    if (liveAt !== null && seenAt - liveAt >= opts.healthyAfterMs) attempt = 0;
 
     if (data.length > MAX_FRAME_BYTES) {
       opts.note({ msg: 'oversized frame dropped', fields: { bytes: data.length } });
@@ -436,6 +599,11 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
 
   function connect(): void {
     cancelReconnect = null;
+    // Belt and braces: every path into `connect` has already been through
+    // `markDown`, which clears this. A deadline that outlived its attempt is one
+    // timer per reconnect, which is the leak shape that kills a long run.
+    cancelHandshake?.();
+    cancelHandshake = null;
     if (stopped) return;
     const mine = ++generation;
     const current = (): boolean => mine === generation && !stopped;
@@ -460,6 +628,39 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
           markDown(opts.now(), why);
         },
       });
+
+      /*
+       * ★ THE HANDSHAKE DEADLINE, and it is the only failure in this file with
+       * no event behind it.
+       *
+       * Every other way a connection dies arrives as a callback. This one is the
+       * absence of one: `open` returned a socket and the far end never completed
+       * the upgrade — it accepted the TCP connection and went quiet, or the
+       * route is black-holed and the kernel is still waiting. Node's global
+       * WebSocket has no connect timeout, so nothing below us will ever give up.
+       *
+       * Measured, that left the stream with no socket, no reconnect scheduled,
+       * and nothing that would ever schedule one: permanently and silently dead,
+       * from the FIRST connect at boot onwards, which is the failure this whole
+       * service exists to make impossible. `live()` answers false so the
+       * supervisor's reads fail and the health endpoint eventually goes red, but
+       * a red health endpoint only helps if something is watching it, and a
+       * process that can rescue itself should.
+       *
+       * Treated as a close, because that is what it is: we are not delivering.
+       * The retry then backs off like any other failure.
+       */
+      // `liveAt === null` because an opener that completes the handshake
+      // SYNCHRONOUSLY has already run `markLive` by the time we get here, and
+      // arming a deadline on a connection that is up would kill a healthy socket
+      // one stale-window later.
+      if (current() && liveAt === null) {
+        cancelHandshake = opts.schedule(() => {
+          cancelHandshake = null;
+          if (!current()) return;
+          markDown(opts.now(), `handshake did not complete within ${opts.staleAfterMs}ms`);
+        }, opts.staleAfterMs);
+      }
     } catch (e) {
       // The opener itself threw — a bad URL, an exhausted file descriptor. Same
       // event as a close: we are not delivering, and the retry is scheduled.
@@ -500,6 +701,10 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
       generation += 1;
       cancelReconnect?.();
       cancelReconnect = null;
+      // The handshake deadline holds a reference to this closure and, under a
+      // ref'd scheduler, would hold the process open past the loop's end.
+      cancelHandshake?.();
+      cancelHandshake = null;
       const dying = socket;
       socket = null;
       liveAt = null;
@@ -510,11 +715,39 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
       }
     },
 
-    live: () => liveAt !== null,
+    /*
+     * ★ THE STALENESS CHECK RUNS HERE, AND NOT ONLY AT DRAIN, BECAUSE THIS IS
+     * THE QUESTION THE SUPERVISOR ASKS FIRST.
+     *
+     * The caller's read is gated on `live()` and only then drains. With the
+     * check at drain alone, the read that DISCOVERS a half-open socket had
+     * already been let through: `live()` answered yes, the drain then noticed
+     * the silence and tore the connection down, and the drain it returned —
+     * empty, unlimited, with no outage on it, because an outage only closes when
+     * the replacement comes up — went back as a clean page. The supervisor
+     * writes that page's window as observed, with `gap = false`, ending at the
+     * very instant we concluded the socket was dead.
+     *
+     * Asking here makes that read FAIL instead, which is what a read taken over
+     * a window we cannot vouch for is supposed to do. The buffered events are
+     * not lost: nothing drained, so they go out on the first read that succeeds
+     * after the reconnect, on a page that also carries the outage.
+     *
+     * It is a query with a side effect, which is ugly, and the alternative is a
+     * timer — a second thing to cancel on shutdown and a second thing to fake in
+     * a test, for a question that only matters when somebody asks it.
+     */
+    live: () => {
+      checkStale(opts.now());
+      return liveAt !== null;
+    },
     liveSince: () => liveAt,
 
     drain(limit) {
       const nowMs = opts.now();
+      // Kept here as well as in `live()`. `drain` is a public entry point and a
+      // caller that reaches it another way must not get a page that outlives the
+      // connection behind it.
       checkStale(nowMs);
 
       const events = buffer.splice(0, Math.max(0, limit));
@@ -522,6 +755,7 @@ export function createMintStream(opts: MintStreamOptions): MintStream {
       delivered += events.length;
       dropped = 0;
       outages = [];
+      outagesMerged = 0;
       return taken;
     },
 
