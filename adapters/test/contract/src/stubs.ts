@@ -47,6 +47,16 @@ export function platformDeps(): PlatformDeps {
       now,
       handleOf: () => null,
     },
+    /* This source is the first whose real client has an HTTP body rather than a
+       `NotImplemented`, which makes the rule above matter more, not less: the
+       suite must exercise its capability declaration and its translation with
+       the network half replaced entirely. If a contract test ever needs these
+       to answer, whatever it is testing has leaked across that line. */
+    reddit: {
+      client: { listing: refuse('reddit:listing'), info: refuse('reddit:info') },
+      meter: m,
+      now,
+    },
   };
 }
 

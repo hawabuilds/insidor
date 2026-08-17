@@ -22,12 +22,17 @@
  * path, not a search URL, not the platform's home page. A citation that 404s is
  * strictly worse than an absent one: a missing row is a visible hole, whereas a user
  * who clicks a link and lands nowhere has learned that we make things up, and that
- * is not a lesson one working link later undoes. Reddit is in the seed and has no
- * adapter package yet, so reddit members cite nothing — which is the right answer
- * until somebody writes the adapter, and it is an argument for writing it rather
- * than for inventing a URL here.
+ * is not a lesson one working link later undoes.
+ *
+ * ★ THE REDDIT ROW USED TO BE THE ARGUMENT FOR THIS FILE'S RULE, AND NOW IT IS THE
+ * DEMONSTRATION OF IT. Three seeded story members are posts on that source, and for
+ * as long as no package owned its URL shape they cited nothing — correctly, and
+ * visibly. The fix was never a guessed URL here; it was somebody writing the
+ * adapter. Somebody did, so the entry below is one line and this file learned
+ * nothing new about any platform, which is the property it was built to keep.
  */
 
+import { SOURCE as REDDIT, postUrl as redditPostUrl } from '@insidor/platform-reddit';
 import { SOURCE as TIKTOK, postUrl as tiktokPostUrl } from '@insidor/platform-tiktok';
 import { SOURCE as X, postUrl as xPostUrl } from '@insidor/platform-x';
 
@@ -54,6 +59,15 @@ type PermalinkBuilder = (authorHandle: string, sourceItemId: string) => string;
 const BUILDERS: ReadonlyMap<string, PermalinkBuilder> = new Map<string, PermalinkBuilder>([
   [X, xPostUrl],
   [TIKTOK, tiktokPostUrl],
+  /* ★ Note what this row does NOT need to know, because that is the seam working.
+     That source stores its ids as fullnames — `t3_1a2b3c` — and its URL takes the
+     bare id, so a prefix has to be stripped somewhere. `ADDRESSABLE` below admits
+     the underscore, so the unstripped URL would have been built, shipped and
+     rendered without a complaint. The stripping happens inside that package, next
+     to the test that asserts the finished URL character for character, because it
+     is a fact about that platform's paths and this file is not allowed to hold
+     one. */
+  [REDDIT, redditPostUrl],
 ]);
 
 /**

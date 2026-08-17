@@ -11,6 +11,7 @@
     "@insidor/contracts": "workspace:*",
     "@insidor/market-dexscreener": "workspace:*",
     "@insidor/meter": "workspace:*",
+    "@insidor/platform-reddit": "workspace:*",
     "@insidor/platform-registry": "workspace:*",
     "@insidor/platform-replay": "workspace:*",
     "@insidor/platform-tiktok": "workspace:*",

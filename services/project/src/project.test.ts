@@ -1224,6 +1224,30 @@ test('a known source, a handle and the source’s own id build the link exactly'
     permalinkFor('tiktok', TIKTOK_HANDLE, '7460000000000000003'),
     'https://www.tiktok.com/@boatsofinstagram/video/7460000000000000003',
   );
+  /* ★ The three members this seam was written for. They cited nothing for as long as
+     no package owned that source's URL shape, which was correct and visible; the fix
+     was the adapter, not a guess here. Note the stored id is a fullname and the URL
+     takes the bare id — the prefix is stripped inside that package, because which
+     characters of an id are addressable is a fact about that platform. */
+  assert.equal(permalinkFor('reddit', 'dancing_gran', 't3_1a2b3c'), 'https://www.reddit.com/comments/1a2b3c');
+  assert.equal(permalinkFor('reddit', 'videoclips_daily', 't3_1a2b3d'), 'https://www.reddit.com/comments/1a2b3d');
+  assert.equal(permalinkFor('reddit', 'family_archive', 't3_1a2b3e'), 'https://www.reddit.com/comments/1a2b3e');
+});
+
+test('★ the three seeded members that used to cite nothing now survive the projection', () => {
+  /* This is the whole observable result of adding that adapter: projectEvidence drops
+     any member it cannot link to, so before there was a package that knew the shape,
+     the evidence list on that story was empty. The drop was right and stays; what
+     changed is that there is now an honest link to hand it. */
+  const cited = [
+    member({ itemId: 'it_dance_1', permalink: permalinkFor('reddit', 'dancing_gran', 't3_1a2b3c') }),
+    member({ itemId: 'it_dance_2', permalink: permalinkFor('reddit', 'videoclips_daily', 't3_1a2b3d') }),
+    member({ itemId: 'it_dance_3', permalink: permalinkFor('reddit', 'family_archive', 't3_1a2b3e') }),
+  ];
+  assert.deepEqual(
+    projectEvidence(cited).map((e) => e.evidenceId),
+    ['it_dance_1', 'it_dance_2', 'it_dance_3'],
+  );
 });
 
 test('the stored sigil is stripped once, here, and never doubled into the path', () => {
@@ -1235,13 +1259,17 @@ test('the stored sigil is stripped once, here, and never doubled into the path',
 });
 
 test('★ an unknown source yields no link, and the member is dropped rather than shown broken', () => {
-  /* reddit is in the seed and has no adapter package, so there is nothing that knows its
-     URL shape. The answer is no link — not a guessed path, not a home page, not a search.
-     A generic fallback host would put a citation on screen that goes nowhere. */
-  assert.equal(permalinkFor('reddit', 'dancing_gran', 't3_1a2b3c'), null);
-  assert.equal(permalinkFor('somethingnew', '@someone', '1'), null);
+  /* A source with no adapter package has nothing that knows its URL shape. The answer is
+     no link — not a guessed path, not a home page, not a search. A generic fallback host
+     would put a citation on screen that goes nowhere.
 
-  const dropped = member({ itemId: 'it_reddit', permalink: permalinkFor('reddit', 'dancing_gran', 't3_1a2b3c') });
+     This used to be spelled with `reddit`, which is the best possible demonstration of
+     the rule: the answer for that source was null right up until somebody wrote the
+     adapter, and then it became a real link without this file learning anything. */
+  assert.equal(permalinkFor('somethingnew', '@someone', '1'), null);
+  assert.equal(permalinkFor('instagram', 'someone', 'Cabcdef'), null);
+
+  const dropped = member({ itemId: 'it_unknown', permalink: permalinkFor('somethingnew', '@someone', '1') });
   assert.deepEqual(projectEvidence([dropped]), []);
   /* And the story page still projects — an unlinkable member costs its own row and
      nothing else. */
@@ -1327,10 +1355,11 @@ test('a mixed list keeps exactly the members that can be opened', () => {
   const evidence = projectEvidence([
     member({ itemId: 'it_x', permalink: permalinkFor('x', X_HANDLE, '1') }),
     member({ itemId: 'it_reddit', permalink: permalinkFor('reddit', 'dancing_gran', 't3_1a2b3c') }),
+    member({ itemId: 'it_unknown', permalink: permalinkFor('somethingnew', 'someone', '1') }),
     member({ itemId: 'it_tiktok', permalink: permalinkFor('tiktok', TIKTOK_HANDLE, '7460000000000000003') }),
     member({ itemId: 'it_nohandle', permalink: permalinkFor('x', null, '2') }),
   ]);
-  assert.deepEqual(evidence.map((e) => e.evidenceId), ['it_x', 'it_tiktok']);
+  assert.deepEqual(evidence.map((e) => e.evidenceId), ['it_x', 'it_reddit', 'it_tiktok']);
 });
 
 test('a surviving evidence entry carries the eight fields the wire requires, and no ninth', () => {

@@ -16,6 +16,8 @@
 
 import type { PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { SourceId } from '@insidor/contracts/ids.ts';
+import { redditPlatform } from '@insidor/platform-reddit';
+import type { RedditAdapterDeps } from '@insidor/platform-reddit';
 import { tiktokPlatform } from '@insidor/platform-tiktok';
 import type { TikTokAdapterDeps } from '@insidor/platform-tiktok';
 import { xPlatform } from '@insidor/platform-x';
@@ -24,11 +26,19 @@ import type { XAdapterDeps } from '@insidor/platform-x';
 export interface PlatformDeps {
   readonly x: XAdapterDeps;
   readonly tiktok: TikTokAdapterDeps;
+  /**
+   * The first source here whose client actually makes the request rather than
+   * describing it. Its deps are the same three as the others' — a client, the
+   * meter and an injected clock — because whether a client is real or a stub is
+   * not a fact this file is entitled to know.
+   */
+  readonly reddit: RedditAdapterDeps;
 }
 
 const BUILDERS = {
   x: (d: PlatformDeps) => xPlatform(d.x),
   tiktok: (d: PlatformDeps) => tiktokPlatform(d.tiktok),
+  reddit: (d: PlatformDeps) => redditPlatform(d.reddit),
 } as const;
 
 export type KnownSource = keyof typeof BUILDERS;

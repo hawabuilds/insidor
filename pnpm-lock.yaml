@@ -72,11 +72,26 @@ importers:
         specifier: workspace:*
         version: link:../../kit/vendor
 
+  adapters/platform/reddit:
+    dependencies:
+      '@insidor/contracts':
+        specifier: workspace:*
+        version: link:../../../contracts
+      '@insidor/meter':
+        specifier: workspace:*
+        version: link:../../meter/spend
+      '@insidor/vendor-kit':
+        specifier: workspace:*
+        version: link:../../kit/vendor
+
   adapters/platform/registry:
     dependencies:
       '@insidor/contracts':
         specifier: workspace:*
         version: link:../../../contracts
+      '@insidor/platform-reddit':
+        specifier: workspace:*
+        version: link:../reddit
       '@insidor/platform-tiktok':
         specifier: workspace:*
         version: link:../tiktok
@@ -131,6 +146,9 @@ importers:
       '@insidor/meter':
         specifier: workspace:*
         version: link:../../meter/spend
+      '@insidor/platform-reddit':
+        specifier: workspace:*
+        version: link:../../platform/reddit
       '@insidor/platform-registry':
         specifier: workspace:*
         version: link:../../platform/registry
@@ -260,6 +278,9 @@ importers:
       '@insidor/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@insidor/platform-reddit':
+        specifier: workspace:*
+        version: link:../../adapters/platform/reddit
       '@insidor/platform-tiktok':
         specifier: workspace:*
         version: link:../../adapters/platform/tiktok

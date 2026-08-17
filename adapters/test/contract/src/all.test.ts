@@ -17,6 +17,7 @@ import { venueRegistry } from '@insidor/venue-registry';
 
 import { conformance as xConformance } from '@insidor/platform-x/conformance.ts';
 import { conformance as tiktokConformance } from '@insidor/platform-tiktok/conformance.ts';
+import { conformance as redditConformance } from '@insidor/platform-reddit/conformance.ts';
 import { conformance as replayConformance, tape } from '@insidor/platform-replay/conformance.ts';
 import { replayPlatform } from '@insidor/platform-replay';
 import { conformance as pumpfunConformance } from '@insidor/venue-solana-pumpfun/conformance.ts';
@@ -33,6 +34,7 @@ const venues = venueRegistry(venueDeps());
 const PLATFORM_SAMPLES = new Map<string, readonly unknown[]>([
   [String(xConformance.source), xConformance.samples],
   [String(tiktokConformance.source), tiktokConformance.samples],
+  [String(redditConformance.source), redditConformance.samples],
 ]);
 
 interface VenueSamples {
