@@ -1004,6 +1004,17 @@ async function main() {
        items does not cascade into it and fire the append-only trigger, which
        would abort the whole transaction with "observation is append-only". */
     await client.query('truncate table public.observation');
+    /* public.market_reading, for the same reason and one migration later. It carries a
+       foreign key to public.asset AND the same append-only trigger, so deleting a seeded
+       asset cascades into a reading the trigger then refuses to delete — which aborted the
+       whole transaction the first time anyone ran `db:seed` after `db:market`. Truncating
+       ahead of the delete is the same move line 1006 already makes for observations.
+
+       Truncate rather than delete-by-key because a reading is a reading OF an asset: when
+       the asset goes there is nothing left for it to be a reading of. Keeping readings for
+       real (non-seeded) mints is not worth a second statement here — `db:market` refetches
+       them in one call, and a reading is a snapshot rather than a record we cannot rebuild. */
+    await client.query('truncate table public.market_reading');
     await client.query('delete from public.story_member where story_id = any($1)', [storyIds]);
     await client.query('delete from public.story where story_id = any($1)', [storyIds]);
     await client.query('delete from public.item_fingerprint where item_id = any($1)', [itemIds]);
@@ -1013,7 +1024,7 @@ async function main() {
     await client.query('delete from public.item where item_id = any($1)', [itemIds]);
     await client.query('delete from public.author where author_key = any($1)', [authorKeys]);
     await client.query('delete from public.asset where asset_key = any($1)', [assetKeys]);
-    process.stderr.write('  cleared previously seeded rows (observation truncated)\n');
+    process.stderr.write('  cleared previously seeded rows (observation + market_reading truncated)\n');
 
     await insertMany(
       client,

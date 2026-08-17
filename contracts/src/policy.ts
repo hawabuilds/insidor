@@ -176,6 +176,45 @@ export interface ResolvePolicy {
   readonly maxLagMs: number;
   /** Time-first retrieval: symbol is a scoring channel over this set, never the key. */
   readonly maxCandidates: number;
+  /**
+   * ★ WHICH WORDS OF A STORY ARE ALLOWED TO PUT A COIN IN THE RUNNING.
+   *
+   * A coin becomes a CANDIDATE for a story by sharing a normalised word with one of the
+   * story's phrases. Against 192 real mints, three words did all the damage: "the" put
+   * eleven strangers on the soup row, "his" five on the rooftop row, "a" four on the chill
+   * row. Zero false candidates came from a content word. The fix is not a stopword list —
+   * measured over the same 192 mints, only 4 of the 27 words above df 6 are stopwords and
+   * the other 23 are one spam campaign's vocabulary ("70m", "views", "3days", "brainer",
+   * all at df 15 because one campaign minted the same name fifteen times). A list catches
+   * 15% of the head and needs a human to keep catching it.
+   *
+   * So the test is DOCUMENT FREQUENCY: how many distinct assets already use this word. A
+   * word most of the market is already using cannot tell us who this story's coin is,
+   * whoever made it common and whatever it means.
+   *
+   *   ceiling K = max(candidateDfFloor, ceil(candidateDfFraction × corpusSize))
+   *   a word earns candidacy iff df(word) < K and word.length >= candidateMinTokenLength
+   *
+   * ★ WHY A FLOOR AND NOT A BARE PERCENTAGE. ceil(0.03 × N) rounds to 1 on a small corpus,
+   * and "drop every word carried by one asset" drops every word that could match anything.
+   * Measured at 13, 23 and 38 documents, a bare 2% ceiling made all six seeded stories
+   * project `none` — including the ferry story, whose single correct DOCK coin exists.
+   * `none` puts CREATE on the row, which tells a user to mint a coin that already exists.
+   * That is the error direction this whole rule is built to avoid, so the floor is the part
+   * that does the work and the fraction is only headroom for a corpus that grows.
+   */
+  readonly candidateDfFloor: number;
+  readonly candidateDfFraction: number;
+  /**
+   * A word this short is not an identifier. Measured: every false candidate traced to a
+   * one-character word was the article "a", and no true pair in the 33-pair truth set turns
+   * on a one-character word. It is deliberately 2 and not 4 — 19% of the real symbols in
+   * this corpus are three characters or fewer (CTB, COD, SOS, MOD, CA are real mints), so a
+   * minimum of 4 would eventually hide a real three-letter ticker, and hiding it produces
+   * CREATE-on-a-coin-that-exists. A coin whose WHOLE name is a short word is unaffected:
+   * the equality path skips this filter entirely.
+   */
+  readonly candidateMinTokenLength: number;
   /** Established assets, excluded by list rather than by a heuristic. */
   readonly majors: readonly AssetKey[];
   /** The probe size a quotability gate asks for, in USD. */
@@ -325,11 +364,14 @@ export interface Policy {
 /* Annotated as Policy before freezing, so every literal below is checked against the
    interface rather than inferred — an unknown key or a wrong unit fails here. */
 const POLICY_V1: Policy = {
-  /* v2 adds `market`. Bumped by hand, as the field's own comment requires: the hash
-     already moved when the object grew a section, and a version string that did not
-     move with it would make two genuinely different policies indistinguishable to a
-     human reading a decision row. */
-  version: 'policy.v2',
+  /* v2 adds `market`. v3 adds the three `candidate*` fields to `resolve` — the document
+     frequency ceiling that decides which of a story's own words are allowed to put a coin
+     in the running. Bumped by hand, as the field's own comment requires: the hash already
+     moved when the object grew a section, and a version string that did not move with it
+     would make two genuinely different policies indistinguishable to a human reading a
+     decision row. Any board built before this bump was built under a rule where the word
+     "the" was evidence, and the version string is the only thing that says so. */
+  version: 'policy.v3',
 
   admit: {
     maxAgeMin: 240,
@@ -411,6 +453,32 @@ const POLICY_V1: Policy = {
     minLagMs: 0,
     maxLagMs: 21_600_000, // six hours
     maxCandidates: 500,
+    /* SWEPT, not picked. Over the 205 assets currently in public.asset (192 real mints +
+       13 seeded), holding the candidate set of all six stories fixed against a hand-labelled
+       truth set of 33 pairs:
+
+         K = 24+   no-op: the most common word in the corpus is "the" at df 23.
+         K = 6..23 every story keeps its correct claimants; the soup row goes 17 → 6.
+         K = 5     drops "soup" (df 5, because the soup story's own five coins are what made
+                   it common) and takes five true claimants with it.
+         K = 3     drops "chill" and hides a coin the row would otherwise have NAMED.
+         K = 2     the chill row projects `none` while three CHILLGUY coins sit in the store.
+
+       6 is the bottom of the safe band, chosen at the bottom because the errors are not
+       symmetric: too loose inflates the claim count and the row says "unsure" and offers
+       nothing, while too tight says "none" and offers CREATE on a coin that already exists.
+
+       ★ WHAT WOULD CHANGE THESE NUMBERS, and it is a specific thing to watch for: a story's
+       own success raises its own word's df. All five assets carrying "soup" are the soup
+       story's coins. So this ceiling is also a cap on how many coins one moment may spawn
+       before the rule stops seeing any of them. If a real moment ever spawns more than K
+       coins, the answer is NOT to raise K — it is to bound the corpus in time (df over the
+       last N mints, or the last 24h) so a story's cluster stays small against a denominator
+       that no longer grows forever. At 205 documents that is not yet a live problem: "soup"
+       occurred zero times in 192 unrelated real mints. */
+    candidateDfFloor: 6,
+    candidateDfFraction: 0.03,
+    candidateMinTokenLength: 2,
     majors: [],
     probeNotionalUsd: 25,
     maxAllInBps: 1500,

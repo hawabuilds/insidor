@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 
 import type { CensorReason } from '@insidor/contracts';
 
-import { coinCandidates, deriveCoinLink, normalise } from './coins.ts';
+import { coinCandidates, deriveCoinLink, NO_CORPUS, normalise } from './coins.ts';
 import { orderByRecency } from './order.ts';
 import { permalinkFor } from './permalinks.ts';
 import {
@@ -747,6 +747,20 @@ function asset(symbol: string | null, name: string | null, mintedAt: number | nu
 /** The wire coin's own field list, read off a projected coin so it cannot drift from it. */
 const COIN_FIELDS: readonly string[] = Object.keys(projectCoin(coin(), OPTIONS));
 
+/**
+ * ★ EVERY COIN TEST BELOW PASSES `NO_CORPUS`, AND IT IS AN ASSERTION RATHER THAN A STUB.
+ *
+ * coins.ts drops a story's word from the candidate test once too many coins already carry
+ * it. `NO_CORPUS` is that measurement absent — the cold start, an empty store — and these
+ * are the rules that must hold with no statistics at all: the soup story still gathers six
+ * claimants and names none, the ferry story still names DOCK, the pigeon story still links
+ * to nothing. Passing a real corpus here would test the filter; passing none tests that the
+ * union underneath it did not move, which is the thing these tests were written for.
+ *
+ * The filter itself is measured in coins.test.ts, against the 205 assets in public.asset
+ * and 33 hand-labelled pairs. If a change makes THAT file fail and this one pass, the
+ * frequency ceiling moved. If it makes this one fail, the union moved.
+ */
 const SOUP_SPANS = ['throws the soup', 'kitchen goes silent', 'nine second clip'];
 const SOUP_COINS: readonly CoinFacts[] = [
   asset('SOUP', 'soup'),
@@ -764,6 +778,7 @@ test('a story that shares no word with any coin in its window links to nothing',
   const link = deriveCoinLink(
     ['bus pigeon', 'pigeon commute'],
     [asset('CHILL', 'chill', T0 - 2 * MIN), asset('LADLE', 'silent kitchen'), asset('SLIDE', 'roof slide', null)],
+    NO_CORPUS,
     OPTIONS,
   );
   assert.deepEqual(link, { kind: 'none' });
@@ -775,6 +790,7 @@ test('one coin whose name IS a span is the one coin we name', () => {
   const link = deriveCoinLink(
     ['refuses to dock', 'dock'],
     [asset('DOCK', 'refuses to dock'), asset('SOUP', 'soup')],
+    NO_CORPUS,
     OPTIONS,
   );
   assert.equal(link.kind, 'one');
@@ -793,6 +809,7 @@ test('three coins that each equal a span are all named, and all three are carrie
       asset('CHILL', 'chill', T0 - 9 * MIN),
       asset('CHILLGUY', 'chill guy (official)', null),
     ],
+    NO_CORPUS,
     OPTIONS,
   );
 
@@ -809,7 +826,7 @@ test('★ six coins that merely mention the story name none of them, and carry n
      not one of them IS a span, so there are six claims and no answer. If this ever projects
      to `one` or `several`, the equality test has become an overlap test and the row is
      confidently offering the wrong one of six coins. */
-  const link = deriveCoinLink(SOUP_SPANS, SOUP_COINS, OPTIONS);
+  const link = deriveCoinLink(SOUP_SPANS, SOUP_COINS, NO_CORPUS, OPTIONS);
 
   assert.deepEqual(link, { kind: 'unsure', claimCount: 6 });
 
@@ -831,7 +848,7 @@ test('★ overlapping a span is being in the running, never being named', () => 
   /* The single rule the previous behaviour got wrong. "soup" is inside "throws the soup",
      and a coin called SOUP is therefore worth considering — but 306 tokens can share that
      ticker and "worth considering" is not "this is the one". */
-  const [candidate, ...rest] = coinCandidates(['throws the soup'], [asset('SOUP', 'soup')]);
+  const [candidate, ...rest] = coinCandidates(['throws the soup'], [asset('SOUP', 'soup')], NO_CORPUS);
 
   assert.equal(rest.length, 0);
   assert.notEqual(candidate, undefined);
@@ -848,15 +865,15 @@ test('one normalisation, so the two halves cannot disagree about the same words'
   assert.equal(normalise('chill-guy (official)'), 'chill guy official');
   assert.equal(normalise('💀'), '');
 
-  assert.equal(coinCandidates(['throws the soup'], [asset('SOUPGATE', null)]).length, 0);
-  assert.equal(coinCandidates(['throws the soup'], [asset('SOUPGATE', 'soup gate')]).length, 1);
+  assert.equal(coinCandidates(['throws the soup'], [asset('SOUPGATE', null)], NO_CORPUS).length, 0);
+  assert.equal(coinCandidates(['throws the soup'], [asset('SOUPGATE', 'soup gate')], NO_CORPUS).length, 1);
 });
 
 test('a named coin with no mint time projects the absence, not a time we invented', () => {
   /* Mint time is the axis every ordering claim hangs on. Backfilled from first-seen — the
      only other time we hold — a post that came AFTER the mint reads as having come before,
      which inverts the one claim the product is making. */
-  const link = deriveCoinLink(['roof slide'], [asset('SLIDE', 'roof slide', null)], OPTIONS);
+  const link = deriveCoinLink(['roof slide'], [asset('SLIDE', 'roof slide', null)], NO_CORPUS, OPTIONS);
 
   assert.equal(link.kind, 'one');
   assert.deepEqual(link.kind === 'one' ? link.coin.mintedAt : null, {
@@ -876,7 +893,7 @@ test('a coin nobody has read says NOT READ YET, which is our state and not the m
      out of our own ignorance, and it is a claim a user can act on: it is the row that
      reads as "too early, nobody is in yet". Only a venue that answered may say it. A
      zero would be worse again — "worthless" about a coin nobody has priced. */
-  const link = deriveCoinLink(['roof slide'], [asset('SLIDE', 'roof slide')], OPTIONS);
+  const link = deriveCoinLink(['roof slide'], [asset('SLIDE', 'roof slide')], NO_CORPUS, OPTIONS);
   assert.equal(link.kind, 'one');
   if (link.kind !== 'one') return;
 
@@ -930,8 +947,8 @@ test('a coin the venue answered about keeps the venue’s own reasons', () => {
 test('a story with no spans links to nothing, whatever was minted in its window', () => {
   /* Not a degenerate case to paper over with a time-only fallback: a story we hold no
      phrase for is a story we cannot say a coin is named after. */
-  assert.deepEqual(deriveCoinLink([], SOUP_COINS, OPTIONS), { kind: 'none' });
-  assert.deepEqual(deriveCoinLink(['   '], SOUP_COINS, OPTIONS), { kind: 'none' });
+  assert.deepEqual(deriveCoinLink([], SOUP_COINS, NO_CORPUS, OPTIONS), { kind: 'none' });
+  assert.deepEqual(deriveCoinLink(['   '], SOUP_COINS, NO_CORPUS, OPTIONS), { kind: 'none' });
 });
 
 /* ── words ────────────────────────────────────────────────────────────── */

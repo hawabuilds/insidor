@@ -1,0 +1,2272 @@
+{
+  "$schema": "candidate-truth/1",
+  "builtAt": "2026-08-17T01:36:14.587Z",
+  "what": "A hand-labelled truth set for the CANDIDATE half of services/project/src/coins.ts, measured against the 205 rows in public.asset (13 written by tools/seed.mjs, 192 real PumpPortal mints). Every pair below is one the CURRENT rule admits. TRUE means a human would agree the coin is plausibly named after that story; FALSE means it matched on a common or accidental token.",
+  "howBuilt": {
+    "normalise": "text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()  — coins.ts, verbatim",
+    "candidateRule": "coin is a candidate iff any token of normalise(symbol) or normalise(name) is a token of any normalised span  — coins.ts coinCandidates, verbatim",
+    "confidentRule": "coin is confident iff normalise(symbol) or normalise(name) EQUALS a whole normalised span  — unchanged, and out of scope for any proposal",
+    "spansFrom": "public.item_fingerprint where kind='entitySpan', joined through public.story_member, deduplicated  — db.ts loadEntitySpans",
+    "mintWindow": "a.minted_at is null OR story has no min(item.posted_at) OR minted_at in [opensAt+minLagMs, opensAt+maxLagMs]  — db.ts loadCoinsInWindow",
+    "policy": {
+      "minLagMs": 0,
+      "maxLagMs": 21600000,
+      "maxCandidates": 500
+    },
+    "corpusSize": 205
+  },
+  "totals": {
+    "candidatePairs": 33,
+    "truePairs": 13,
+    "falsePairs": 20,
+    "precision": 0.3939
+  },
+  "caveats": [
+    "RECALL IS ONLY MEASURABLE ON SEEDED DATA. All 13 TRUE pairs are the 13 seeded assets. Not one of the 192 real mints is plausibly named after any of the six stories — the stories are invented and the mints are a real four-minute slice of pump.fun plus an hour-later slice. So this set measures PRECISION against real adversarial text and RECALL against fiction. A rule that loses a TRUE pair here is still broken; a rule that keeps all 13 has not been proven safe on real coins, because there are none to be safe on.",
+    "THE WINDOW IS DOING WORK THE TEXT RULE IS BEING CREDITED FOR. Fourteen further coins text-match a span and are removed only by the six-hour mint window: 11 more \"the\" matches for st_soup, GRANDMA for st_dance, \"just\" for st_chillguy, \"to\" for st_ferry. See windowSuppressed below. Judge a text proposal on that set too, or a later change to the window will reopen a hole this fixture says is closed.",
+    "THE WINDOWS ARE ANCHORED TO WHEN tools/seed.mjs LAST RAN. Seed times are relative to load time; the real mints are fixed instants. Re-running db:seed moves every story window and changes retrievedInWindow. The labelled pairs are pinned here so scoring stays reproducible regardless; `corpus` is included so a document-frequency proposal can be computed without a database.",
+    "Only the pairs under stories[].candidates carry hand labels. Anything in `corpus` that a NEW rule admits and that is not in that list is unlabelled and must be judged by hand before it counts either way."
+  ],
+  "stories": [
+    {
+      "storyId": "st_chillguy",
+      "spans": [
+        "chill",
+        "chillguy",
+        "just a chill guy"
+      ],
+      "windowOpensAt": "2026-08-14T13:41:00Z",
+      "retrievedInWindow": 126,
+      "candidateCount": 7,
+      "truePairs": 3,
+      "falsePairs": 4,
+      "precision": 0.4286,
+      "note": "The span \"just a chill guy\" contributes the stopwords \"a\" and \"just\". \"a\" admits four copies of one spam mint. \"just\" text-matches META / \"hacked slop, just quit bro\" — kept off only by the window. Note the seed asserts that st_pigeon and st_dance avoid stopwords deliberately and implies the others are fine; st_chillguy is not.",
+      "candidates": [
+        {
+          "assetKey": "solana:Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+          "ticker": "CHILLGUY",
+          "name": "Just a chill guy",
+          "mintedAt": "2026-08-14T16:33:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "chillguy",
+            "just",
+            "a",
+            "chill",
+            "guy"
+          ],
+          "confidentUnderCurrentRule": true,
+          "label": "TRUE",
+          "why": "Name normalises to exactly the span \"just a chill guy\". This is the coin the story produced."
+        },
+        {
+          "assetKey": "solana:7xKq2mNvB4pLdRtYwEjHnCzAgFsUiOpQvXmZbNcVdRt3",
+          "ticker": "CHILL",
+          "name": "chill",
+          "mintedAt": "2026-08-14T16:46:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "chill"
+          ],
+          "confidentUnderCurrentRule": true,
+          "label": "TRUE",
+          "why": "Ticker and name are exactly the span \"chill\". A second token off the same meme, which is the point of this story."
+        },
+        {
+          "assetKey": "solana:24dLRmSeZzvxDki3YAHSSTn59EbtiETwYVB6Q9UMpump",
+          "ticker": "alxcooks",
+          "name": "alex is a nazi",
+          "mintedAt": "2026-08-14T16:55:33.042+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "a"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"a\". Nothing about this coin refers to a cartoon dog in a sweater."
+        },
+        {
+          "assetKey": "solana:24dLcSpNncDXHCJs6j77asFABQNkxsfn69ecSn9dpump",
+          "ticker": "alxcooks",
+          "name": "alex is a nazi",
+          "mintedAt": "2026-08-14T16:57:01.522+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "a"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"a\". Nothing about this coin refers to a cartoon dog in a sweater."
+        },
+        {
+          "assetKey": "solana:24dLrVrwW6ETBk5j2pAtPRq8paKwnPabjGE64BJypump",
+          "ticker": "alxcooks",
+          "name": "alex is a nazi",
+          "mintedAt": "2026-08-14T16:58:12.633+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "a"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"a\". Nothing about this coin refers to a cartoon dog in a sweater."
+        },
+        {
+          "assetKey": "solana:24dMDxNGNvLweLpVgTaFoxDDFfonBcCSD1ZpKNuNpump",
+          "ticker": "alxcooks",
+          "name": "alex is a nazi",
+          "mintedAt": "2026-08-14T16:58:55.188+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "a"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"a\". Nothing about this coin refers to a cartoon dog in a sweater."
+        },
+        {
+          "assetKey": "solana:9mPxWq3nT8vKjRbYuEhGcZaFsDiOlQpXvNmZbCxVdRt7",
+          "ticker": "CHILLGUY",
+          "name": "chill guy (official)",
+          "mintedAt": null,
+          "origin": "seeded",
+          "matchedTokens": [
+            "chillguy",
+            "chill",
+            "guy"
+          ],
+          "confidentUnderCurrentRule": true,
+          "label": "TRUE",
+          "why": "Ticker \"CHILLGUY\" equals the span \"chillguy\". It is an impersonation — it declares a handle it does not own — but impersonating THIS meme is still being named after it."
+        }
+      ]
+    },
+    {
+      "storyId": "st_dance",
+      "spans": [
+        "grandma dance",
+        "nana"
+      ],
+      "windowOpensAt": "2026-08-14T11:47:00Z",
+      "retrievedInWindow": 128,
+      "candidateCount": 2,
+      "truePairs": 2,
+      "falsePairs": 0,
+      "precision": 1,
+      "note": "Two candidates, both TRUE, precision 1.00 — both spans are content words. The real mint GRANDMA (ticker and name both \"GRANDMA\", minted 2026-08-15T04:07:09Z) shares the content token \"grandma\" with the span \"grandma dance\" and is excluded ONLY by the six-hour mint window. Any proposal that widens the window admits it.",
+      "candidates": [
+        {
+          "assetKey": "solana:2nQwErTyUiPaSdFgHjKzXcVbNm1234567890QwEr",
+          "ticker": "GRANNY",
+          "name": "grandma dance",
+          "mintedAt": "2026-08-14T12:55:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "grandma",
+            "dance"
+          ],
+          "confidentUnderCurrentRule": true,
+          "label": "TRUE",
+          "why": "Name equals the span \"grandma dance\"."
+        },
+        {
+          "assetKey": "solana:5tYuIoPaSdFgHjKzXcVbNm0987654321TyUiOpAs",
+          "ticker": "NANA",
+          "name": "nana",
+          "mintedAt": "2026-08-14T13:35:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "nana"
+          ],
+          "confidentUnderCurrentRule": true,
+          "label": "TRUE",
+          "why": "Ticker and name equal the span \"nana\"."
+        }
+      ]
+    },
+    {
+      "storyId": "st_ferry",
+      "spans": [
+        "dock",
+        "refuses to dock"
+      ],
+      "windowOpensAt": "2026-08-14T14:14:00Z",
+      "retrievedInWindow": 126,
+      "candidateCount": 1,
+      "truePairs": 1,
+      "falsePairs": 0,
+      "precision": 1,
+      "note": "One candidate, one TRUE, precision 1.00. But the span \"refuses to dock\" contributes the token \"to\", which text-matches the real mint BOOGIE / \"SEND THIS MONKEY TO 1M\". That coin is kept off the row by the MINT WINDOW, not by the text rule. The text rule is as leaky here as it is on st_soup; the leak is merely hidden.",
+      "candidates": [
+        {
+          "assetKey": "solana:4kLmNq7wR2vTbYxEuHgJcZaPsDiOfQnXvMmZbCyVdRt8",
+          "ticker": "DOCK",
+          "name": "refuses to dock",
+          "mintedAt": "2026-08-14T14:20:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "dock",
+            "refuses",
+            "to"
+          ],
+          "confidentUnderCurrentRule": true,
+          "label": "TRUE",
+          "why": "Name equals the span \"refuses to dock\"; minted six minutes after the earliest post."
+        }
+      ]
+    },
+    {
+      "storyId": "st_pigeon",
+      "spans": [
+        "bus pigeon",
+        "pigeon commute"
+      ],
+      "windowOpensAt": "2026-08-14T16:44:00Z",
+      "retrievedInWindow": 119,
+      "candidateCount": 0,
+      "truePairs": 0,
+      "falsePairs": 0,
+      "precision": null,
+      "note": "Zero candidates, and correctly so — both spans are content words only (\"bus pigeon\", \"pigeon commute\") and nothing in the corpus shares a token with them. This is the one story the current rule gets exactly right, and it is right because its author avoided stopwords by hand.",
+      "candidates": []
+    },
+    {
+      "storyId": "st_rooftop",
+      "spans": [
+        "roof slide",
+        "slide from his roof"
+      ],
+      "windowOpensAt": null,
+      "retrievedInWindow": 205,
+      "candidateCount": 6,
+      "truePairs": 1,
+      "falsePairs": 5,
+      "precision": 0.1667,
+      "note": "THE WORST CASE FOR THE WINDOW, not for the text. This story has no member with a posted_at, so db.ts opens no window at all and all 205 assets are retrieved. The span \"slide from his roof\" then contributes \"from\" and \"his\", and \"his\" admits five copies of one spam mint. Precision 0.17.",
+      "candidates": [
+        {
+          "assetKey": "solana:8jHgFdSaQwErTyUPaSdFgHjKzXcVbNm112233QwEr",
+          "ticker": "SLIDE",
+          "name": "roof slide",
+          "mintedAt": "2026-08-14T10:55:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "slide",
+            "roof"
+          ],
+          "confidentUnderCurrentRule": true,
+          "label": "TRUE",
+          "why": "Name equals the span \"roof slide\"."
+        },
+        {
+          "assetKey": "solana:GcgSTxD3pRT8333WTXoTEk82zutGGoWTPPBnSdhbpump",
+          "ticker": "No value",
+          "name": "this is his first actual ca",
+          "mintedAt": "2026-08-15T03:17:57.796+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "his"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the pronoun \"his\". A trader announcing somebody's first contract address, unrelated to a rooftop slide."
+        },
+        {
+          "assetKey": "solana:HBtn6XaG7cCEiCoby4pjtiA7zaiBeXbwHz9u9S34pump",
+          "ticker": "No value",
+          "name": "this is his first actual ca",
+          "mintedAt": "2026-08-15T03:18:00.719+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "his"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the pronoun \"his\". A trader announcing somebody's first contract address, unrelated to a rooftop slide."
+        },
+        {
+          "assetKey": "solana:9E7N5Vzm6LpXy4mrvn7RKX2YKAvXZ2ANxToDh8p9pump",
+          "ticker": "No value",
+          "name": "this is his first actual ca",
+          "mintedAt": "2026-08-15T03:18:25.12+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "his"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the pronoun \"his\". A trader announcing somebody's first contract address, unrelated to a rooftop slide."
+        },
+        {
+          "assetKey": "solana:HX7vtsyQ6n9hYMrfAM9tPU2EgW8LqiMEDJGC8mB2pump",
+          "ticker": "No value",
+          "name": "this is his first actual ca",
+          "mintedAt": "2026-08-15T03:18:28.304+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "his"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the pronoun \"his\". A trader announcing somebody's first contract address, unrelated to a rooftop slide."
+        },
+        {
+          "assetKey": "solana:GGxuqhBTasQAM4ZZWAz2mx911wAFdHJHLpmA8kuupump",
+          "ticker": "No value",
+          "name": "this is his first actual ca",
+          "mintedAt": "2026-08-15T03:18:29.499+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "his"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the pronoun \"his\". A trader announcing somebody's first contract address, unrelated to a rooftop slide."
+        }
+      ]
+    },
+    {
+      "storyId": "st_soup",
+      "spans": [
+        "kitchen goes silent",
+        "nine second clip",
+        "throws the soup"
+      ],
+      "windowOpensAt": "2026-08-14T16:08:00Z",
+      "retrievedInWindow": 125,
+      "candidateCount": 17,
+      "truePairs": 6,
+      "falsePairs": 11,
+      "precision": 0.3529,
+      "note": "The reported regression. Six TRUE (the seeded coins), eleven FALSE, every FALSE on the single token \"the\" out of the span \"throws the soup\". The row reads \"17 coins claim this, none settled\" instead of \"6\".",
+      "candidates": [
+        {
+          "assetKey": "solana:So1PGkNb2mQ7vXcRtYuPaSdFgHjKzXcVbNm1111aaa",
+          "ticker": "SOUP",
+          "name": "soup",
+          "mintedAt": "2026-08-14T16:12:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "soup"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "TRUE",
+          "why": "Named \"soup\" and minted inside the window. Not confident (it is not equal to a whole span), which is correct — it is one of six."
+        },
+        {
+          "assetKey": "solana:So2GaTe9wErTyUPaSdFgHjKzXcVbNm2222bbbcccd",
+          "ticker": "SOUPGATE",
+          "name": "soup gate",
+          "mintedAt": "2026-08-14T16:17:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "soup"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "TRUE",
+          "why": "\"soup gate\" — the -gate suffix a person appends to this exact incident."
+        },
+        {
+          "assetKey": "solana:So3HoT7qWeRtYuPaSdFgHjKzXcVbNm3333cccddde",
+          "ticker": "HOTSOUP",
+          "name": "hot soup",
+          "mintedAt": "2026-08-14T16:24:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "soup"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "TRUE",
+          "why": "\"hot soup\" — same incident, different framing."
+        },
+        {
+          "assetKey": "solana:So4ChEf5rTyUiPaSdFgHjKzXcVbNm4444dddeeeff",
+          "ticker": "SOUPCHEF",
+          "name": "soup chef",
+          "mintedAt": "2026-08-14T16:31:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "soup"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "TRUE",
+          "why": "\"soup chef\" — names the chef in the clip."
+        },
+        {
+          "assetKey": "solana:So5ThE3tYuIoPaSdFgHjKzXcVbNm5555eeefffggg",
+          "ticker": "THESOUP",
+          "name": "the soup",
+          "mintedAt": "2026-08-14T16:39:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "the",
+            "soup"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "TRUE",
+          "why": "\"the soup\". Matches on \"the\" AND on \"soup\"; the second token is the one that earns it."
+        },
+        {
+          "assetKey": "solana:So6LaDy1yUiOpAsDfGhJkZxCvBnM6666fffggghhh",
+          "ticker": "LADLE",
+          "name": "silent kitchen",
+          "mintedAt": "2026-08-14T16:48:00+00:00",
+          "origin": "seeded",
+          "matchedTokens": [
+            "silent",
+            "kitchen"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "TRUE",
+          "why": "\"silent kitchen\" — carries two content tokens from the span \"kitchen goes silent\" and no stopword at all."
+        },
+        {
+          "assetKey": "solana:6LSJatNc9TzjvCkTahZUYtZHhBqjPjxMEsdUGiETpump",
+          "ticker": "Pepe",
+          "name": "Pepe The Hippo",
+          "mintedAt": "2026-08-14T16:55:18.007+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"Pepe The Hippo\" has nothing to do with a chef throwing soup."
+        },
+        {
+          "assetKey": "solana:3FddqWsiCVozhAu75GvLuM18pLBMhGLQe5UziekYpump",
+          "ticker": "MOD",
+          "name": "The Discord Mod",
+          "mintedAt": "2026-08-14T16:55:22.604+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"The Discord Mod\" has nothing to do with a chef throwing soup."
+        },
+        {
+          "assetKey": "solana:JB2ctXNo23WWoXiN8UHMeECcrFpXBGNrCz9todn8pump",
+          "ticker": "MOD",
+          "name": "The Discord Mod",
+          "mintedAt": "2026-08-14T16:55:23.637+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"The Discord Mod\" has nothing to do with a chef throwing soup."
+        },
+        {
+          "assetKey": "solana:2ede8LV63sm68QPyQRxHZrtxbTBBmUyrzshvdM8ipump",
+          "ticker": "BANDITS",
+          "name": "The Bandits",
+          "mintedAt": "2026-08-14T16:55:34.114+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"The Bandits\" has nothing to do with a chef throwing soup."
+        },
+        {
+          "assetKey": "solana:5P9tpTUhNYmjN6DWQzqNBiH26GcWqbNd6hUSrJaKpump",
+          "ticker": "MOD",
+          "name": "The Discord Mod",
+          "mintedAt": "2026-08-14T16:56:12.588+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"The Discord Mod\" has nothing to do with a chef throwing soup."
+        },
+        {
+          "assetKey": "solana:AyekPSuif8ST92idxq5QqiKyJav9DLfJMK4gRgjVpump",
+          "ticker": "MOD",
+          "name": "The Discord Mod",
+          "mintedAt": "2026-08-14T16:56:13.607+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"The Discord Mod\" has nothing to do with a chef throwing soup."
+        },
+        {
+          "assetKey": "solana:BozKTe5gEAXqD9f4JA98rPBW5wyqTKcz1KjNExH7pump",
+          "ticker": "CTB",
+          "name": "Crash The Beaver",
+          "mintedAt": "2026-08-14T16:56:18.847+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"Crash The Beaver\" has nothing to do with a chef throwing soup."
+        },
+        {
+          "assetKey": "solana:9hwQLSr9wGsSB5VLSB4DNwZ47D7hpHkhaKT63Wdcpump",
+          "ticker": "CA",
+          "name": "THE CA",
+          "mintedAt": "2026-08-14T16:56:49.142+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"THE CA\" has nothing to do with a chef throwing soup."
+        },
+        {
+          "assetKey": "solana:7ENKa3xaDiuZMHLcaSGi53LobDMC9YdcpnLcevH1pump",
+          "ticker": "EGON",
+          "name": "The Fake Human",
+          "mintedAt": "2026-08-14T16:57:02.468+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"The Fake Human\" has nothing to do with a chef throwing soup."
+        },
+        {
+          "assetKey": "solana:9rmgFp7DxLU43vMq4bcefAKqdxUTL76XnYCAxakspump",
+          "ticker": "MOD",
+          "name": "The Discord Mod",
+          "mintedAt": "2026-08-14T16:58:50.302+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"The Discord Mod\" has nothing to do with a chef throwing soup."
+        },
+        {
+          "assetKey": "solana:7QrQbbAKGDz4b7YzHXS633KqBPoJrp6VKzEEngUKpump",
+          "ticker": "INTURN",
+          "name": "The Inturn",
+          "mintedAt": "2026-08-14T16:58:54.071+00:00",
+          "origin": "real_mint",
+          "matchedTokens": [
+            "the"
+          ],
+          "confidentUnderCurrentRule": false,
+          "label": "FALSE",
+          "why": "Matched on the article \"the\" alone. \"The Inturn\" has nothing to do with a chef throwing soup."
+        }
+      ]
+    }
+  ],
+  "windowSuppressed": [
+    {
+      "storyId": "st_chillguy",
+      "ticker": "META",
+      "name": "hacked slop, just quit bro 😭",
+      "mintedAt": "2026-08-15T03:30:52.002Z",
+      "matchedTokens": [
+        "just"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_dance",
+      "ticker": "GRANDMA",
+      "name": "GRANDMA",
+      "mintedAt": "2026-08-15T04:07:09.860Z",
+      "matchedTokens": [
+        "grandma"
+      ],
+      "label": "FALSE",
+      "ambiguous": "The hardest call in the set. \"grandma\" is a content word, not a stopword, and this coin carries it as BOTH ticker and name — a document-frequency rule keeps it (df 2 of 205) and only the window removes it. A human shown \"Grandmother learns the dance, does it better\" and a coin called GRANDMA minted sixteen hours later would say \"possibly, but nothing here says so\". Labelled FALSE on that reading, and flagged because a defensible person could label it TRUE."
+    },
+    {
+      "storyId": "st_ferry",
+      "ticker": "BOOGIE",
+      "name": "SEND THIS MONKEY TO 1M",
+      "mintedAt": "2026-08-15T04:06:50.392Z",
+      "matchedTokens": [
+        "to"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "WRST",
+      "name": "The worst trader",
+      "mintedAt": "2026-08-15T03:18:05.491Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "jbilly54",
+      "name": "The 80 year old onboarder readddddddd",
+      "mintedAt": "2026-08-15T03:18:22.776Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "jbilly54",
+      "name": "The 80 year old onboarder readddddddd",
+      "mintedAt": "2026-08-15T03:18:22.956Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "jbilly54",
+      "name": "The 80 year old onboarder readddddddd",
+      "mintedAt": "2026-08-15T03:18:23.020Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "TUF",
+      "name": "the unfazed frog",
+      "mintedAt": "2026-08-15T04:06:38.187Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "BULLFROG",
+      "name": "The Unfazed Bullfrog",
+      "mintedAt": "2026-08-15T04:07:03.567Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "TUF",
+      "name": "the unfazed frog",
+      "mintedAt": "2026-08-15T04:07:05.392Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "READDDDDDDDDD",
+      "name": "the onboarder granny is live readddddd",
+      "mintedAt": "2026-08-15T04:07:47.280Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "READDDDDDDDDD",
+      "name": "the onboarder granny is live readddddd",
+      "mintedAt": "2026-08-15T04:07:52.382Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "READDDDDDDDDD",
+      "name": "the onboarder granny is live readddddd",
+      "mintedAt": "2026-08-15T04:07:57.343Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    },
+    {
+      "storyId": "st_soup",
+      "ticker": "Celebrity",
+      "name": "Traders are the new celebrities",
+      "mintedAt": "2026-08-15T04:15:14.923Z",
+      "matchedTokens": [
+        "the"
+      ],
+      "label": "FALSE"
+    }
+  ],
+  "tokenDocumentFrequency": {
+    "2": 11,
+    "the": 23,
+    "no": 20,
+    "3days": 15,
+    "70m": 15,
+    "brainer": 15,
+    "gus": 15,
+    "in": 15,
+    "is": 15,
+    "views": 15,
+    "goblin": 13,
+    "with": 12,
+    "crypto": 11,
+    "gringott": 11,
+    "integration": 11,
+    "fornite": 9,
+    "generator": 9,
+    "iq": 9,
+    "read": 9,
+    "skin": 9,
+    "test": 9,
+    "pepe": 8,
+    "this": 8,
+    "ca": 6,
+    "onboarder": 6,
+    "takeover": 6,
+    "trench": 6,
+    "a": 5,
+    "actual": 5,
+    "discord": 5,
+    "first": 5,
+    "his": 5,
+    "hnba": 5,
+    "mod": 5,
+    "sisyphus": 5,
+    "snow": 5,
+    "soup": 5,
+    "value": 5,
+    "alex": 4,
+    "alxcooks": 4
+  },
+  "documentFrequencyProbe": {
+    "ruleSwept": "drop span tokens with corpus df >= T, then apply the unchanged overlap test",
+    "tiedTokens": {
+      "the": 23,
+      "a": 5,
+      "his": 5,
+      "soup": 5,
+      "chill": 3,
+      "just": 2,
+      "to": 2,
+      "grandma": 2,
+      "guy": 2,
+      "chillguy": 2,
+      "dock": 1,
+      "nana": 1,
+      "dance": 1,
+      "slide": 1,
+      "roof": 1,
+      "kitchen": 1,
+      "silent": 1,
+      "refuses": 1
+    },
+    "sweep": [
+      {
+        "T": 2,
+        "trueKept": 5,
+        "falseKept": 0,
+        "precision": 1,
+        "trueLost": 8
+      },
+      {
+        "T": 3,
+        "trueKept": 7,
+        "falseKept": 0,
+        "precision": 1,
+        "trueLost": 6
+      },
+      {
+        "T": 4,
+        "trueKept": 8,
+        "falseKept": 0,
+        "precision": 1,
+        "trueLost": 5
+      },
+      {
+        "T": 5,
+        "trueKept": 8,
+        "falseKept": 0,
+        "precision": 1,
+        "trueLost": 5
+      },
+      {
+        "T": 6,
+        "trueKept": 13,
+        "falseKept": 9,
+        "precision": 0.5909,
+        "trueLost": 0
+      },
+      {
+        "T": 23,
+        "trueKept": 13,
+        "falseKept": 9,
+        "precision": 0.5909,
+        "trueLost": 0
+      },
+      {
+        "T": 24,
+        "trueKept": 13,
+        "falseKept": 20,
+        "precision": 0.3939,
+        "trueLost": 0
+      }
+    ],
+    "bestSafeSetting": {
+      "T": "anything in [6, 23]",
+      "precision": 0.5909,
+      "keeps": "all 13 TRUE",
+      "stillAdmits": "the four \"alex is a nazi\" pairs on \"a\" and the five \"this is his first actual ca\" pairs on \"his\""
+    }
+  },
+  "corpus": [
+    {
+      "assetKey": "solana:8jHgFdSaQwErTyUPaSdFgHjKzXcVbNm112233QwEr",
+      "ticker": "SLIDE",
+      "name": "roof slide",
+      "mintedAt": "2026-08-14T10:55:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:2nQwErTyUiPaSdFgHjKzXcVbNm1234567890QwEr",
+      "ticker": "GRANNY",
+      "name": "grandma dance",
+      "mintedAt": "2026-08-14T12:55:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:5tYuIoPaSdFgHjKzXcVbNm0987654321TyUiOpAs",
+      "ticker": "NANA",
+      "name": "nana",
+      "mintedAt": "2026-08-14T13:35:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:4kLmNq7wR2vTbYxEuHgJcZaPsDiOfQnXvMmZbCyVdRt8",
+      "ticker": "DOCK",
+      "name": "refuses to dock",
+      "mintedAt": "2026-08-14T14:20:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:So1PGkNb2mQ7vXcRtYuPaSdFgHjKzXcVbNm1111aaa",
+      "ticker": "SOUP",
+      "name": "soup",
+      "mintedAt": "2026-08-14T16:12:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:So2GaTe9wErTyUPaSdFgHjKzXcVbNm2222bbbcccd",
+      "ticker": "SOUPGATE",
+      "name": "soup gate",
+      "mintedAt": "2026-08-14T16:17:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:So3HoT7qWeRtYuPaSdFgHjKzXcVbNm3333cccddde",
+      "ticker": "HOTSOUP",
+      "name": "hot soup",
+      "mintedAt": "2026-08-14T16:24:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:So4ChEf5rTyUiPaSdFgHjKzXcVbNm4444dddeeeff",
+      "ticker": "SOUPCHEF",
+      "name": "soup chef",
+      "mintedAt": "2026-08-14T16:31:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+      "ticker": "CHILLGUY",
+      "name": "Just a chill guy",
+      "mintedAt": "2026-08-14T16:33:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:So5ThE3tYuIoPaSdFgHjKzXcVbNm5555eeefffggg",
+      "ticker": "THESOUP",
+      "name": "the soup",
+      "mintedAt": "2026-08-14T16:39:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:7xKq2mNvB4pLdRtYwEjHnCzAgFsUiOpQvXmZbNcVdRt3",
+      "ticker": "CHILL",
+      "name": "chill",
+      "mintedAt": "2026-08-14T16:46:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:So6LaDy1yUiOpAsDfGhJkZxCvBnM6666fffggghhh",
+      "ticker": "LADLE",
+      "name": "silent kitchen",
+      "mintedAt": "2026-08-14T16:48:00+00:00",
+      "origin": "seeded"
+    },
+    {
+      "assetKey": "solana:6LSJatNc9TzjvCkTahZUYtZHhBqjPjxMEsdUGiETpump",
+      "ticker": "Pepe",
+      "name": "Pepe The Hippo",
+      "mintedAt": "2026-08-14T16:55:18.007+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BdKYjFUnkuCfXx1i9gcZCEsrXFLgd1paqZVaHJaLCfDP",
+      "ticker": "BOOM",
+      "name": "BOOMCAt",
+      "mintedAt": "2026-08-14T16:55:20.051+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:3FddqWsiCVozhAu75GvLuM18pLBMhGLQe5UziekYpump",
+      "ticker": "MOD",
+      "name": "The Discord Mod",
+      "mintedAt": "2026-08-14T16:55:22.604+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:JB2ctXNo23WWoXiN8UHMeECcrFpXBGNrCz9todn8pump",
+      "ticker": "MOD",
+      "name": "The Discord Mod",
+      "mintedAt": "2026-08-14T16:55:23.637+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:3DHxZca12wiPsYjAnTwDn2KLjh5tn8TZPx3BqskApump",
+      "ticker": "VOLWAR",
+      "name": "Volatile Warrior",
+      "mintedAt": "2026-08-14T16:55:25.723+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:pWsJw1aovxP7sy1bLJnAVPJ89kKjnUz99UCQtqtpump",
+      "ticker": null,
+      "name": null,
+      "mintedAt": "2026-08-14T16:55:28.857+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:ENP1wa8UUKVEeK9ymLPpXRRsuDybgKzJZAtdx87npump",
+      "ticker": "COD",
+      "name": "CatOfDuty",
+      "mintedAt": "2026-08-14T16:55:32.961+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:24dLRmSeZzvxDki3YAHSSTn59EbtiETwYVB6Q9UMpump",
+      "ticker": "alxcooks",
+      "name": "alex is a nazi",
+      "mintedAt": "2026-08-14T16:55:33.042+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:2ede8LV63sm68QPyQRxHZrtxbTBBmUyrzshvdM8ipump",
+      "ticker": "BANDITS",
+      "name": "The Bandits",
+      "mintedAt": "2026-08-14T16:55:34.114+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:5DTiy8SxUQiavu3E5HCGWF3X5s45yGrqDDSDazPPpump",
+      "ticker": "DUNALD",
+      "name": "Dunald Trump",
+      "mintedAt": "2026-08-14T16:55:36.024+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:ERWXK45QUMjqDfMV6A4wonirEK17atMvEt2xTwxypump",
+      "ticker": "BirdChess",
+      "name": "BirdChess",
+      "mintedAt": "2026-08-14T16:55:36.654+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BSfru8jjzBSuWNTSfXp2ry8uUZHjrjK9VmBRKZzJpump",
+      "ticker": "COIN",
+      "name": "DUMP",
+      "mintedAt": "2026-08-14T16:55:38.37+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:2Pu9epxDvYqwZyy2CaAQDp2duDtww9b2zSJxwUw9pump",
+      "ticker": "Nugcat",
+      "name": "Chicken Nugget Cat",
+      "mintedAt": "2026-08-14T16:55:39.184+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:GxEvDgt97xmE2qUdMW8ir8Kn3WNa2VgEuCZ5HML3DtQq",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:55:41.243+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8PGHwMAjy2YWrBcBYUHKfhPi93XaVV1FSiUW9JtTJZL6",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:55:41.453+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BjnhKYSeqXUh8DDHysLv3Em4a6oiT3T13srANxeB1UD1",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:55:41.586+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4KhcxnqN51KvWBTCkZi5pyijv7SfzyBiisGsYaLG2syR",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:55:41.652+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:6FjghjoBy76KEjyfBJvLehfP7um9JNc1NhuizEoXApc5",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:55:41.777+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HHaH5LasKmqtHeCdEa1CtRuZExvZ43xevftErmZupump",
+      "ticker": "SXCAR",
+      "name": "SPACEX ROADSTER",
+      "mintedAt": "2026-08-14T16:55:44.929+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:5dRFtHibxsAcsv2f6b42JasJ8kRrUmBkn6bb3iBE327q",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:55:45.35+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:Hy3ykRKTmKNZ6Vr3gGpsdo9VQK6ViXi9EH66bDGPEaTy",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:55:45.744+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8VRMwLP4kfd9nkWHSWE9PPaRPhPJMTbQfCrxHBVspump",
+      "ticker": "RacDogCat",
+      "name": "RacDogCat",
+      "mintedAt": "2026-08-14T16:55:57.315+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:98z8dKsYXDUganE32GEkqWsthfFajYkaaNTRHyjqpump",
+      "ticker": "VOLMON",
+      "name": "Volatile Mongoose",
+      "mintedAt": "2026-08-14T16:55:58.903+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:DZfobhBnmondkz7GtSU4My3mKR6isHj8xBJwuj7xpMu9",
+      "ticker": "ORBITAL",
+      "name": "Orbital Computing",
+      "mintedAt": "2026-08-14T16:56:01.339+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:48Mb8potmbiLPjYHgo1fmH7HSn9dMVkybENGMjvV8mQw",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:56:01.945+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:EvVQ5gtQ36C2Bux3VdhiwoPtexXY8SjGMM5XXr2P1u3d",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:56:02.037+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:Ark6JhgcYHkPUs1qKDejwydrJNLDGy9LwXTc7KrN2wSv",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:56:02.149+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:E47Th4o1kEXGmsAdpSjTpafjucWwUsuGPzEPKebismNX",
+      "ticker": "Gringott",
+      "name": "GOBLIN 2 WITH CRYPTO INTEGRATION",
+      "mintedAt": "2026-08-14T16:56:02.256+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HLUN5KSYbtLrqChp1WUWNUEVC579xAxqAMCdFkzcpump",
+      "ticker": "Mithra",
+      "name": "Mithracoin",
+      "mintedAt": "2026-08-14T16:56:03.565+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4WUUFoZha1amE41wbHhNhsWwPG2B3hde3GGg2BZWpump",
+      "ticker": "ClankerMog",
+      "name": "Clanker Mogging",
+      "mintedAt": "2026-08-14T16:56:10.529+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:5P9tpTUhNYmjN6DWQzqNBiH26GcWqbNd6hUSrJaKpump",
+      "ticker": "MOD",
+      "name": "The Discord Mod",
+      "mintedAt": "2026-08-14T16:56:12.588+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:FpaR45CyaYjYK3DPMP9Au6xzpwKLqwEHz1L7HTTzpump",
+      "ticker": "Finn",
+      "name": "Finn",
+      "mintedAt": "2026-08-14T16:56:12.588+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:24dLVdt78oQuaHcRGmDc86ZuQTCCoigCwUxyAvgLpump",
+      "ticker": "NIGGER",
+      "name": "NIGGER",
+      "mintedAt": "2026-08-14T16:56:12.69+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:AyekPSuif8ST92idxq5QqiKyJav9DLfJMK4gRgjVpump",
+      "ticker": "MOD",
+      "name": "The Discord Mod",
+      "mintedAt": "2026-08-14T16:56:13.607+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:E7tKiY3ETkJnrj9coNdGyWTSohGAkv7G1g1hEixbpump",
+      "ticker": "pumpdog",
+      "name": "pumpdog",
+      "mintedAt": "2026-08-14T16:56:17.811+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:Ed5WLNhAbM9Xqnu7NWFAwjpWuu9nyhxbQukp1k3bpump",
+      "ticker": "ORBITAL",
+      "name": "Orbital Compute",
+      "mintedAt": "2026-08-14T16:56:18.018+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BozKTe5gEAXqD9f4JA98rPBW5wyqTKcz1KjNExH7pump",
+      "ticker": "CTB",
+      "name": "Crash The Beaver",
+      "mintedAt": "2026-08-14T16:56:18.847+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HRzueSSMGcNqi6qatgdJX8CcbFV5jLG9sy7Xjheo7Zdy",
+      "ticker": "PULY",
+      "name": "puly",
+      "mintedAt": "2026-08-14T16:56:24.261+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:2rH2PgrNUfzkbwKAGkEwGhtwKiHa4T9T1GXVrhJqPkkG",
+      "ticker": "pulymerket",
+      "name": "pulymerket",
+      "mintedAt": "2026-08-14T16:56:26.016+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:DNPjv7bWnvL3dXoGGtSTwnm2UcaCfCDsaptTcBnYpump",
+      "ticker": "POLYSCAM",
+      "name": "Polyscam",
+      "mintedAt": "2026-08-14T16:56:26.521+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:CpZ7x5qa8HFcU5Jm33fmr7kmPzhDUEi5gUNdvXwbEnh9",
+      "ticker": "pulymerket",
+      "name": "pulymerket",
+      "mintedAt": "2026-08-14T16:56:34.534+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HnHbbSCZmWS3uJith1R8ihxu5fJUTsdDTRSFoMdcpump",
+      "ticker": "EGON",
+      "name": "Egon Cholakian",
+      "mintedAt": "2026-08-14T16:56:39.649+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:C6G8TMDFb9mCQnGYn1NkbXXweJRbyYnAghGsJhBupump",
+      "ticker": "ORBITAL",
+      "name": "Orbital Compute",
+      "mintedAt": "2026-08-14T16:56:43.502+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:A8jYVotk42AKAY7iUbs7Q4NRMPrau8UDieMbwEbuJ5wn",
+      "ticker": "GOOGLYPOLY",
+      "name": "Googly Polymarket",
+      "mintedAt": "2026-08-14T16:56:43.914+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:G1x9QQS6xXqieSWJd4iJ6JqZjmNo2Pd5mEycJT5QiyE4",
+      "ticker": "Cupsey",
+      "name": "Josh Takami",
+      "mintedAt": "2026-08-14T16:56:43.963+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:6HMUARSEyC5PsjNCCiEbFeFe5h3c9R24SKqXpur9pump",
+      "ticker": "HNBA",
+      "name": "HumanoidNonbinaryBlackAssoc",
+      "mintedAt": "2026-08-14T16:56:45.59+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:9hwQLSr9wGsSB5VLSB4DNwZ47D7hpHkhaKT63Wdcpump",
+      "ticker": "CA",
+      "name": "THE CA",
+      "mintedAt": "2026-08-14T16:56:49.142+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:1327mWNhbMYt9BcYEUB8LJhr2Le1MeMGdLp9eDx8pump",
+      "ticker": "Organix",
+      "name": "Organix",
+      "mintedAt": "2026-08-14T16:56:49.377+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:H9VkAgocPQxA1zE58K7DRorsLk5oYGobeXEaTaFepump",
+      "ticker": "Snow Pepe",
+      "name": "Snow Pepe",
+      "mintedAt": "2026-08-14T16:56:49.858+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:6CvobFJeSkknj8UBg9TTvgSqNePVbv54w97dp973pump",
+      "ticker": "$WIMM",
+      "name": "WHERE IS MY MONEY?",
+      "mintedAt": "2026-08-14T16:56:52.013+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:FDcUnjGhRt1EZmWWtjuUAPW7SgCMgyttvXwcz3b4ba1Y",
+      "ticker": "pope",
+      "name": "pope",
+      "mintedAt": "2026-08-14T16:56:57.339+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:A2PTXDvCFU5pokg48ViRPzgwWJVjvfWRrEsqq95VrGhA",
+      "ticker": "HNBA",
+      "name": "HumanoidNonbinaryBlackAss",
+      "mintedAt": "2026-08-14T16:56:57.634+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:24dLcSpNncDXHCJs6j77asFABQNkxsfn69ecSn9dpump",
+      "ticker": "alxcooks",
+      "name": "alex is a nazi",
+      "mintedAt": "2026-08-14T16:57:01.522+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:9MBWCs5E3jhs3kXStMTLgUwCxpEj5jdsJUTLkgR6pump",
+      "ticker": "HNBA",
+      "name": "HumanoidNonbinaryBlackAssociatio",
+      "mintedAt": "2026-08-14T16:57:02.355+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:7ENKa3xaDiuZMHLcaSGi53LobDMC9YdcpnLcevH1pump",
+      "ticker": "EGON",
+      "name": "The Fake Human",
+      "mintedAt": "2026-08-14T16:57:02.468+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:3MpenMkVj5pcXv8BXiH7vAffC3PHtR1o8A4ZWHdDpump",
+      "ticker": "SOS",
+      "name": "Smart or Smarter",
+      "mintedAt": "2026-08-14T16:57:02.964+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:C6qnFGXf2TbUuvR4xKG7GzmTqejMrgoxsvXhTtbpump",
+      "ticker": "FTR",
+      "name": "flying tesla roadster",
+      "mintedAt": "2026-08-14T16:57:06.446+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:7Hagvno6iEJvmEJTeFdpx4q3RhrFmYLeKMo9JGRzpump",
+      "ticker": "BERINF",
+      "name": "Berserk Inferno",
+      "mintedAt": "2026-08-14T16:57:06.748+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:Gb7FLk3HUX4AW8pwCmdRzvdLmzyGo2xfJKAwm6mL6gny",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:57:10.127+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:9QG4ALN1dct5Avw97HnRDirTBXBV9rUwT6iSfcM3EZHh",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:57:10.149+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:3AsqMmiTjLGzoSSXezV1r79XA2v7xsP1orNspXuQma26",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:57:10.222+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:G8vL4gnZLjTmboJ33sy658RBWZjYFxJGAkAwCknDkbjU",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:57:10.274+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8va3976md3gPAS2HY1EyQpW83FrHLyciSDbggei7PyK1",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:57:10.344+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:2fZGgqQKTCKtRnKWAdxStKZt1Lhdu67wkrx3EcYiS5JX",
+      "ticker": "TAKEOVER",
+      "name": "TRENCH",
+      "mintedAt": "2026-08-14T16:57:23.359+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:N5zh6ZpoAKVUx61o5XnqSvsvWPsgQ5Uec2CFneipump",
+      "ticker": "OFM",
+      "name": "SPIKE IS DOUBLE FISTED",
+      "mintedAt": "2026-08-14T16:57:23.36+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4tLVrp4qeoFzZLCJzNRdDAdeop9J6raLcTkSgQoxpump",
+      "ticker": "$MUSK",
+      "name": "trillionaire musk",
+      "mintedAt": "2026-08-14T16:57:23.657+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:FRmoXiNxR2zfUqAiKEPi4XuGaMQs4ZNCPp4B6peLpump",
+      "ticker": "SNOWPE",
+      "name": "Snow Pepe",
+      "mintedAt": "2026-08-14T16:57:23.978+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:A2imjbeaQwiukfNWMGX7XRsoGRo5ymqVMQiSesYAxCNJ",
+      "ticker": "TAKEOVER",
+      "name": "TRENCH",
+      "mintedAt": "2026-08-14T16:57:24.665+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HeKDomAfhqCaEsKngrsoz6g2N6ffeW92NvDPSKpHpump",
+      "ticker": "SNOWPE",
+      "name": "Snow Pepe",
+      "mintedAt": "2026-08-14T16:57:24.901+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:J2heFXAthZAshMC9uTtMTkg4rbXFFsfLDTRwMm3CaKcm",
+      "ticker": "TAK3OVER",
+      "name": "TR3NCH",
+      "mintedAt": "2026-08-14T16:57:26.215+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:DF5EVNnbj62pRgGfYSSnakedxoH2y3x3dE1w3PvuJg9U",
+      "ticker": "TAKEOVER",
+      "name": "TRENCH",
+      "mintedAt": "2026-08-14T16:57:27.472+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8WWVszXmL5qZ6GSGz122idEatFrCHEnoEqo8H6jsPnfw",
+      "ticker": "SNEPE",
+      "name": "Snow Pepe",
+      "mintedAt": "2026-08-14T16:57:29.278+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:EUN15LeBo9ysyVSdB3JisCimqyLobBdPUPHjF5FFwuHJ",
+      "ticker": "TAKEOVER",
+      "name": "TRENCH",
+      "mintedAt": "2026-08-14T16:57:29.401+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:132nb1pR6cJhwAbkMt22oKHg3jPnmVJvbBqd4Lvwpump",
+      "ticker": "CAROLINA",
+      "name": "Carolina",
+      "mintedAt": "2026-08-14T16:57:29.496+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:EA2isfygLaGhttajk9jYK6NBzin6whDMWBvei75zpump",
+      "ticker": "$WIMM",
+      "name": "WHERE IS MY MONEY?",
+      "mintedAt": "2026-08-14T16:58:03.17+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:2i3b9SespDQnJEQtLB1nQ2eKYvWfNWW1KByAeBNg5obx",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:58:10.791+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:FfuhLWoJupBnJe4gBziiaP7zmm7a2u1deXf9eTKBjnNQ",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:58:10.792+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:E6d7svav8yB8QtUiEgcXszNyb2ftobNjqwCxMeetUoYw",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:58:10.843+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:7yuwe4Kp1s6kh3QamH1Qv2HPWH7KEP2bNQHGRh6HDmRX",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:58:10.957+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:6J7KNRZSS7L2U5cBQ3sYV6u6nptexb5sUM1EXPoMqAjf",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:58:10.973+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:24dLrVrwW6ETBk5j2pAtPRq8paKwnPabjGE64BJypump",
+      "ticker": "alxcooks",
+      "name": "alex is a nazi",
+      "mintedAt": "2026-08-14T16:58:12.633+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HBuwEUQAGYTz4ukXLLrofNvAqsA7UTDSm3VK925zpump",
+      "ticker": "Cursor",
+      "name": "Cursor",
+      "mintedAt": "2026-08-14T16:58:12.711+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:Grva5L7baGfkPsW6Xf7coEkbzcZF364zVuCANXHcpump",
+      "ticker": "ICEPE",
+      "name": "Ice Pepe",
+      "mintedAt": "2026-08-14T16:58:14.242+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:Gj3xwfcZdAHj11MgkPTGyi7syRgEr1BNBQJCVNZEpump",
+      "ticker": "Carolina",
+      "name": "pumpswap or she dies",
+      "mintedAt": "2026-08-14T16:58:16.281+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:jo7JZKStnD3PuAUvK7oQdeC59uw2BV1hTwMi5B7pump",
+      "ticker": "SEPE",
+      "name": "Nietzschean Snow Pepe",
+      "mintedAt": "2026-08-14T16:58:16.289+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:JavSDRBUinc4yWrSGgxhcTWKx2ZJRKdafWscwvNpump",
+      "ticker": "CAROLINA",
+      "name": "Justice For Carolina Molina",
+      "mintedAt": "2026-08-14T16:58:19.655+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:24dLyuKyVAU64vgsPgmmXT7kyxCYKxPq6vj2Zt9Ypump",
+      "ticker": "NIGGER",
+      "name": "NIGGER",
+      "mintedAt": "2026-08-14T16:58:21.098+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8dcgrvuXuXwy8BuWs8CiehV5WCHoCtWHhwf1QPgWpump",
+      "ticker": "HNBA",
+      "name": "TEAM SAID THIS LMFOA",
+      "mintedAt": "2026-08-14T16:58:21.902+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:6ZuM887xNN7w25aVjw4HgWrKSdeWGzm1uy994mYWpump",
+      "ticker": "HNBA",
+      "name": "TEAM SAID THIS LMFOA",
+      "mintedAt": "2026-08-14T16:58:22.019+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HzCbkWk8f5GR2EdUKLoeu1pF7XEPpJFksFdzUFzdpump",
+      "ticker": "FRONTRUN",
+      "name": "THEY CAN NAME NEW MODEL",
+      "mintedAt": "2026-08-14T16:58:24.695+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:6kFMDJ6bde8rSAUtaWEQ2wNrg8E2UyiK3yuo4pKLF7Nc",
+      "ticker": "ZUNC",
+      "name": "Zesty Unc",
+      "mintedAt": "2026-08-14T16:58:25.097+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4egXoAUvTWjPAoRT33GoEthCKouKE4MqPMAANNgdpump",
+      "ticker": "DUNNO",
+      "name": "DUNNO",
+      "mintedAt": "2026-08-14T16:58:30.207+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:A6cwDnM5UwjA9Ze5kqse4AsgTA3wXJzHJeLCuMjqpump",
+      "ticker": "FTR",
+      "name": "flying tesla roadster",
+      "mintedAt": "2026-08-14T16:58:32.153+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:DB32uyMWqG6AW6JgygjMu8uMzTPaD8ichDHpuXEzpump",
+      "ticker": "CUDDLELEO",
+      "name": "Cuddling Leopards",
+      "mintedAt": "2026-08-14T16:58:33.699+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:GByhi5inBW1cKYzi4od4iFCziaAD1eviVH84AYMbpump",
+      "ticker": "RECIEVE",
+      "name": "recieve",
+      "mintedAt": "2026-08-14T16:58:35.222+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:E3KoKs36X4NnrScEFbmZmtyFnpTGFRmJ7xY13pVZpump",
+      "ticker": "😾",
+      "name": "Pouting Cat",
+      "mintedAt": "2026-08-14T16:58:36.07+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8wCmXukijbnEeYw9ZVptsrganaFcbvZrZTExU23Xpump",
+      "ticker": null,
+      "name": "spullcheck",
+      "mintedAt": "2026-08-14T16:58:38.236+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:3Lx3ZBhb9ZKs2xEqzQadUtyzb1pbUh7A5jqEhr8KDFcU",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:58:39.462+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:Ei91LDWk4QRGPew7tHL2Y2TEkiuaN1Zg7YvuN4BArCVb",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:58:39.523+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:FWuavfRfyQasiAt1XBdcQnasvrjwcB2disyUjR8qqq2p",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:58:39.617+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HsMAHowxARLWeSR5VN4edvnqxz15REefDdLUMxs4RKZA",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:58:39.646+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BCz6LdB2pPyAqYqVTsN923G6dcCmhpvjP1E7e5xZHAGu",
+      "ticker": "Gus",
+      "name": "70M VIEWS IN 3DAYS NO BRAINER",
+      "mintedAt": "2026-08-14T16:58:39.734+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HF6sUfePq7PhmAn5fgRXBgH2pUWGPptf5sFYZ4jPgcSg",
+      "ticker": "Fumu",
+      "name": "Fumu",
+      "mintedAt": "2026-08-14T16:58:41.191+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8mtTLauYuiCmmao3tuaLNMJ7B9TN5t1VU4YeVdrWpump",
+      "ticker": "BSTK",
+      "name": "Bonkstrike",
+      "mintedAt": "2026-08-14T16:58:41.822+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:AzSyALMQHiW7WdCxnuNnoUwQHqR9UwwiNsBH7xiKpump",
+      "ticker": "r/",
+      "name": "r Pumpfun",
+      "mintedAt": "2026-08-14T16:58:45.475+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:5HxPTVJ7fcV56vv6nJpbiANwhN68ytr4cxL3VK15CZv8",
+      "ticker": "PEPE",
+      "name": "PEPE",
+      "mintedAt": "2026-08-14T16:58:46.293+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HEFRnNdcsrvKJeg6m1DL5YT6j71jmEcPcdi4zLc9pump",
+      "ticker": "Fumu",
+      "name": "Fumu",
+      "mintedAt": "2026-08-14T16:58:49.292+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:2ork9sB9JXvq5o35o1Wig14UkuEXXZ8SgKsQKUc2H575",
+      "ticker": "Fumu",
+      "name": "Fumu",
+      "mintedAt": "2026-08-14T16:58:50.078+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:9rmgFp7DxLU43vMq4bcefAKqdxUTL76XnYCAxakspump",
+      "ticker": "MOD",
+      "name": "The Discord Mod",
+      "mintedAt": "2026-08-14T16:58:50.302+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:ESrW52inHy9zocSsBcQ23Hu6hbg1QWmVcGfPdwXTGBfp",
+      "ticker": "TAKEOVER",
+      "name": "TRENCH",
+      "mintedAt": "2026-08-14T16:58:52.948+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:7QrQbbAKGDz4b7YzHXS633KqBPoJrp6VKzEEngUKpump",
+      "ticker": "INTURN",
+      "name": "The Inturn",
+      "mintedAt": "2026-08-14T16:58:54.071+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4LnvsncfGd5njknL2RD9CgtXCqYHnA85oD1HWL5oKS4R",
+      "ticker": "TAKEOVER",
+      "name": "TRENCH",
+      "mintedAt": "2026-08-14T16:58:54.28+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8mLsKTBv9XuLAQB4EjwPMjBW17nFNNdzGBpjUvCqpump",
+      "ticker": "AWB",
+      "name": "Ape With Banana",
+      "mintedAt": "2026-08-14T16:58:54.924+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:24dMDxNGNvLweLpVgTaFoxDDFfonBcCSD1ZpKNuNpump",
+      "ticker": "alxcooks",
+      "name": "alex is a nazi",
+      "mintedAt": "2026-08-14T16:58:55.188+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:9Wr1MXfSE5Kq1DLqAuhZ8LjjstHy1yxGfCZznYpyRGZ5",
+      "ticker": "TAK3OVER",
+      "name": "TR3NCH",
+      "mintedAt": "2026-08-14T16:58:55.93+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BXqAvWMriYCY6SofNY1bqc2E2FxanpssYu7euktRpump",
+      "ticker": "Fumu",
+      "name": "Fumu",
+      "mintedAt": "2026-08-14T16:58:56.358+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4gbfedUEeBY1AVmWo1cUUV4Nazx3RRhUKKLZNT2Mpump",
+      "ticker": "$FIH",
+      "name": "fih",
+      "mintedAt": "2026-08-15T03:16:45.81+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:iJNczZYKuQiVVq353afQQU3xuwrT7j9asQRrjpypump",
+      "ticker": "MCAT",
+      "name": "Monster Cat",
+      "mintedAt": "2026-08-15T03:17:19.376+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:H1ca9xUaJLa34Yi1Ejg6gb8ArDtVQ5XXnPdNjbsFpump",
+      "ticker": "$PANIC",
+      "name": "PANIC HAMSTER",
+      "mintedAt": "2026-08-15T03:17:19.807+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:E9wEKpqpVnravdWJ9Mwr7K9UA3qFX28TnbuzwQ6Upump",
+      "ticker": "SHITFOMO",
+      "name": "Shit Fomo",
+      "mintedAt": "2026-08-15T03:17:24.619+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:EPbVWgRDEkYTnKPJVKnkS4kVYyjWCF8ad2A9bRftoFTF",
+      "ticker": "IQ TEST READ",
+      "name": "牛来",
+      "mintedAt": "2026-08-15T03:17:36.629+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:CjkRao9ShF74J7L7H4HAuHd6kC7c91y56YuceZCkFTq7",
+      "ticker": "IQ TEST READ",
+      "name": "牛来",
+      "mintedAt": "2026-08-15T03:17:36.774+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HJzzRVWYbnfPRWbNuRPbfkHogFYYeCVuPv35xrdLs99z",
+      "ticker": "IQ TEST READ",
+      "name": "牛来",
+      "mintedAt": "2026-08-15T03:17:36.924+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4wTYVwyPCjXB5udkxcUFLJj34gNTzqqSuBjsDqqmoD91",
+      "ticker": "IQ TEST READ",
+      "name": "牛来",
+      "mintedAt": "2026-08-15T03:17:37.128+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:5uJrJVL7PjaELufU2PvN3kSXxf5SYPj3GJb4bMnAKd7G",
+      "ticker": "IQ TEST READ",
+      "name": "牛来",
+      "mintedAt": "2026-08-15T03:17:37.22+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:7fDwXTPrcJKMhoWSfkiRyAjtsbyLmm3rYNNgbHvnadA5",
+      "ticker": "IQ TEST READ",
+      "name": "牛来",
+      "mintedAt": "2026-08-15T03:17:37.448+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BbQQrP6fRFZoTsWFMtUVtQi8d3t1cUdNQmmajkXBW5Dt",
+      "ticker": "IQ TEST READ",
+      "name": "牛来",
+      "mintedAt": "2026-08-15T03:17:37.59+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:5br6xoXED8xnm7atNYN7eJj8RAjv2LfkXh1NGsRAkXSH",
+      "ticker": "IQ TEST READ",
+      "name": "牛来",
+      "mintedAt": "2026-08-15T03:17:37.705+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BcrH8o8C1LRi2sn1ZyB4RrBZeRtJkMyUJHLgLDN7KQnA",
+      "ticker": "IQ TEST READ",
+      "name": "牛来",
+      "mintedAt": "2026-08-15T03:17:37.85+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:58mjseEAJqSYhKQcCi6qrEEpFAQhcYcFBqHGcRB3pump",
+      "ticker": "SKIN",
+      "name": "Fornite Skin Generator",
+      "mintedAt": "2026-08-15T03:17:54.644+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8Q1ERMamJoyuCtouoGWTiEPFzZZcRHkgfhRdZ1hKpump",
+      "ticker": "SKIN",
+      "name": "Fornite Skin Generator",
+      "mintedAt": "2026-08-15T03:17:54.762+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BkJAX9r43gEdiMqHVSrrPqyBd8xaFinCo3rjo267pump",
+      "ticker": "SKIN",
+      "name": "Fornite Skin Generator",
+      "mintedAt": "2026-08-15T03:17:54.896+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:ADCZ5yzasXf4cA7JwocoUizg42m9CAqaKknLoAw1pump",
+      "ticker": "SKIN",
+      "name": "Fornite Skin Generator",
+      "mintedAt": "2026-08-15T03:17:56.368+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:62kwnA21MQeRjAW6AAAFs6TWMdCLXciCsUe5PnpZpump",
+      "ticker": "SKIN",
+      "name": "Fornite Skin Generator",
+      "mintedAt": "2026-08-15T03:17:56.473+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8JF2F1YniiDr1TR1CG1giC1yFottefKnUjcp1N6vpump",
+      "ticker": "SKIN",
+      "name": "Fornite Skin Generator",
+      "mintedAt": "2026-08-15T03:17:56.498+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:GcgSTxD3pRT8333WTXoTEk82zutGGoWTPPBnSdhbpump",
+      "ticker": "No value",
+      "name": "this is his first actual ca",
+      "mintedAt": "2026-08-15T03:17:57.796+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HBtn6XaG7cCEiCoby4pjtiA7zaiBeXbwHz9u9S34pump",
+      "ticker": "No value",
+      "name": "this is his first actual ca",
+      "mintedAt": "2026-08-15T03:18:00.719+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:2rCqHitKDC5mJQvFGwey9g95ei1RfXY39D3xrMV6pump",
+      "ticker": "WRST",
+      "name": "The worst trader",
+      "mintedAt": "2026-08-15T03:18:05.491+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:Cfn87B6oEgCv3Nc6MD2GcMybDDsGJuGGW17Px6YYpump",
+      "ticker": "Angels",
+      "name": "Angels",
+      "mintedAt": "2026-08-15T03:18:18.991+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:95X7TzBwDS8mMBg3Ua9f48kWBwxSN7pDU3GhZ4v4pump",
+      "ticker": "jbilly54",
+      "name": "The 80 year old onboarder readdd",
+      "mintedAt": "2026-08-15T03:18:22.776+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:AQUHB6KGxrAweJhTV12WCcTxZPqgmKYGypVwKavXpump",
+      "ticker": "jbilly54",
+      "name": "The 80 year old onboarder readdd",
+      "mintedAt": "2026-08-15T03:18:22.956+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:C6FNY4ZnHwcAjUM7nQbX5DusGuhqLXT6baiTKxBZpump",
+      "ticker": "jbilly54",
+      "name": "The 80 year old onboarder readdd",
+      "mintedAt": "2026-08-15T03:18:23.02+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:9E7N5Vzm6LpXy4mrvn7RKX2YKAvXZ2ANxToDh8p9pump",
+      "ticker": "No value",
+      "name": "this is his first actual ca",
+      "mintedAt": "2026-08-15T03:18:25.12+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:HX7vtsyQ6n9hYMrfAM9tPU2EgW8LqiMEDJGC8mB2pump",
+      "ticker": "No value",
+      "name": "this is his first actual ca",
+      "mintedAt": "2026-08-15T03:18:28.304+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:GGxuqhBTasQAM4ZZWAz2mx911wAFdHJHLpmA8kuupump",
+      "ticker": "No value",
+      "name": "this is his first actual ca",
+      "mintedAt": "2026-08-15T03:18:29.499+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:H7wLKHEBErLo4mWmotfyp6YSGzUJvXACajUif8VBpump",
+      "ticker": "SKIN",
+      "name": "Fornite Skin Generator",
+      "mintedAt": "2026-08-15T03:18:31.871+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4d7sJMvxqVPkEVttjjWnwZbk9R1SgfFt9yojwq4opump",
+      "ticker": "SKIN",
+      "name": "Fornite Skin Generator",
+      "mintedAt": "2026-08-15T03:18:31.936+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:76pYcso8xBDmAi3twCbA2QjGLshGWnwK3KWQRkq6pump",
+      "ticker": "SKIN",
+      "name": "Fornite Skin Generator",
+      "mintedAt": "2026-08-15T03:18:32.015+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:7mYtBhG4emFfj2iC4HtXk9CcfeU26RxdqpwBRtMypump",
+      "ticker": "STEE",
+      "name": "Stee",
+      "mintedAt": "2026-08-15T03:30:46.782+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:EKSoM77JWQX5zvFENDFQfTSGQsG2nq45LE2UyH42pump",
+      "ticker": "XTRA",
+      "name": "XTRA",
+      "mintedAt": "2026-08-15T03:30:48.415+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BQrxS7UQWosjqjsFCL4Wgo7YNDTvj65p1S58f9N8pump",
+      "ticker": "META",
+      "name": "hacked slop, just quit bro 😭",
+      "mintedAt": "2026-08-15T03:30:52.002+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:JA9fWzqQF5Nsvts32J1N6JC7rY42Sw64NMZkoyekpump",
+      "ticker": "LOOONG",
+      "name": "LOOOOOONG AURA",
+      "mintedAt": "2026-08-15T03:30:53.399+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:9aAjKFsNTqoK7wXdXKTU42BvaV1YKx5T9ggUrGAipump",
+      "ticker": "META",
+      "name": "Hows he been hacked all day",
+      "mintedAt": "2026-08-15T03:31:11.001+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:ALYeeuoQmTiqLd4BD8DiGY8F5Pc5Ky2ntWhYtQkcpump",
+      "ticker": "EVEREST",
+      "name": "$EVEREST",
+      "mintedAt": "2026-08-15T03:31:16.58+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4xXr2iwTnAKy9kzAitfQbctabBtfm1YNmCUTVD5jpump",
+      "ticker": "WWR",
+      "name": "WWR",
+      "mintedAt": "2026-08-15T03:31:18.142+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:FMxfqbt6YVGfXVdnJqAAf42JXUS5we2zuFmSHEzpump",
+      "ticker": "retired",
+      "name": "retired",
+      "mintedAt": "2026-08-15T03:31:20.741+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:Dksjvnp1yhhHDxu2Z9oRwnbdf5FcKfUWTkTU3rMWLTry",
+      "ticker": "SISYPHUS",
+      "name": "Keep Going",
+      "mintedAt": "2026-08-15T03:31:23.094+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8ft92A2PPBw2WiEeaGGnZa1QpF4kH8wK9ou6FVvUpump",
+      "ticker": "TUF",
+      "name": "the unfazed frog",
+      "mintedAt": "2026-08-15T04:06:38.187+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8MBrDtM4pfRZv6DaSydZtYkNfELJxJB1zwRebYpXpump",
+      "ticker": "BOOGIE",
+      "name": "SEND THIS MONKEY TO 1M",
+      "mintedAt": "2026-08-15T04:06:50.392+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:7qdyTwjpA4sv8CJonqXdDuxgWhFJgVpEErab2erwpump",
+      "ticker": "SISYPHUS",
+      "name": "ONGOD MILLY NARRA",
+      "mintedAt": "2026-08-15T04:06:59.408+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:DARwuks5y1GhH7kTw2mYnEDkUrhwQxUa87oR79hCpump",
+      "ticker": "SISYPHUS",
+      "name": "ONGOD MILLY NARRA",
+      "mintedAt": "2026-08-15T04:06:59.476+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4xp1KP9Z7oVYpSCpobRTmZaTKasykxty7nc7qZf6pump",
+      "ticker": "SISYPHUS",
+      "name": "ONGOD MILLY NARRA",
+      "mintedAt": "2026-08-15T04:06:59.553+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:4L7Lm3pmfCeXR4HsU5LrmukFp7PGKSkNByb3Wzsupump",
+      "ticker": "SISYPHUS",
+      "name": "ONGOD MILLY NARRA",
+      "mintedAt": "2026-08-15T04:06:59.621+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:AV9nRZHC2E66SvmpxCPD8N4jbWAsxTyzeFGwB4iZpump",
+      "ticker": "BULLFROG",
+      "name": "The Unfazed Bullfrog",
+      "mintedAt": "2026-08-15T04:07:03.567+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:AzzZeUTEXV7CL3aPqTDUE8Nqz34p6LA3f6Msp1FWpump",
+      "ticker": "greg",
+      "name": "greg",
+      "mintedAt": "2026-08-15T04:07:03.933+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:BQVmRmVKv8YHZCQVorwTnU7RmZy12YErMeR95ZWdKLDP",
+      "ticker": null,
+      "name": null,
+      "mintedAt": "2026-08-15T04:07:04.373+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:AvmEKA5KNdkLgssF3abdvcgKFkthMkxXffh9RqyGpump",
+      "ticker": "SOLANA",
+      "name": "Solana Gonna reach 500$",
+      "mintedAt": "2026-08-15T04:07:05.324+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:62e2XNetAkfj38twHXGxU2GP9pCJqfv5k2yskeDNpump",
+      "ticker": "TUF",
+      "name": "the unfazed frog",
+      "mintedAt": "2026-08-15T04:07:05.392+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8ryYuix5dpTMFMayixqj6dYqfBWiF22551gPMfKgpump",
+      "ticker": "UNHGOL",
+      "name": "goblin riding Tesla",
+      "mintedAt": "2026-08-15T04:07:07.907+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:469Ek9sKL3z5AwJvGJbQWQv6kwofGUVXA8DKwRZDBhKu",
+      "ticker": "GRANDMA",
+      "name": "GRANDMA",
+      "mintedAt": "2026-08-15T04:07:09.86+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:D5kkpbEpFKTmHwGpKH629HEcZw1kPNuixcnw5ETgpump",
+      "ticker": "JESTER",
+      "name": "Jestermaxxing",
+      "mintedAt": "2026-08-15T04:07:13.407+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:GLUUsJ3pDkBNQMts7QE6HVCoLmxhg8L3Eu549o2zpump",
+      "ticker": "UL",
+      "name": "Ulula",
+      "mintedAt": "2026-08-15T04:07:13.481+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:GqewP6hXm43pUwiSPGWdR56q6JvcuNLhYEXPcwXgpump",
+      "ticker": "UL",
+      "name": "Ulula",
+      "mintedAt": "2026-08-15T04:07:15.032+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:Uvv6UgGGh74uciXQVmjx9QmoJxx6KnDuK4epxThpump",
+      "ticker": "CHAMPION",
+      "name": "Aura Farming Champ",
+      "mintedAt": "2026-08-15T04:07:20.056+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:favEWonj5FVvvB7sUgsPjjwUZsVHPzybZxGc1T7pump",
+      "ticker": "FAFAFAF",
+      "name": "fafafaf",
+      "mintedAt": "2026-08-15T04:07:27.408+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:FoU8kaYCZLdnWwT56v6Qdji6M7XmG662azBZm2Fapump",
+      "ticker": "PORTA",
+      "name": "nigga u so fast wtf",
+      "mintedAt": "2026-08-15T04:07:30.556+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:61iU1tK1zvqFASgRGyUs6ee2BzWwJ6jLDnXajPGopump",
+      "ticker": "UL",
+      "name": "Ulula",
+      "mintedAt": "2026-08-15T04:07:35.16+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:GnoPLBk3qRuefoTqkR5t1KJN4bHJVCb8XFJTkd8upump",
+      "ticker": "UNHGOL",
+      "name": "goblin riding Tesla",
+      "mintedAt": "2026-08-15T04:07:40.877+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:J5hoUvMcr4acmtMJ6GxqYrkQJZaaEcKnaXkwhPoUpump",
+      "ticker": "CHAMPION",
+      "name": "Aura Farming Champ",
+      "mintedAt": "2026-08-15T04:07:47.035+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:B8BrNiFHHbaMnZ7f7xLiEo5UJJrza5MLRxpGjzLpump",
+      "ticker": "READDDDDDDDDD",
+      "name": "the onboarder granny is live rea",
+      "mintedAt": "2026-08-15T04:07:47.28+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:F5jhxe8V1LYe7GQAq6U8drpz3dFCV7sQwpwag3eDpump",
+      "ticker": "NUCCOM",
+      "name": "Nuclear Comet",
+      "mintedAt": "2026-08-15T04:07:47.472+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:AukpcgPL19WvjaVbF5dCyfgECvupotevsDEkb36epump",
+      "ticker": "READDDDDDDDDD",
+      "name": "the onboarder granny is live rea",
+      "mintedAt": "2026-08-15T04:07:52.382+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:CEuurwNiEU5v5Q5FyhaYryzNqeo6LMno2A5sSwkUpump",
+      "ticker": "Sookju",
+      "name": "Sookju",
+      "mintedAt": "2026-08-15T04:07:53.089+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:7gpYZsVpEa3LZ6rodNeaY22xJVsHeU9538U3CG9Ypump",
+      "ticker": "READDDDDDDDDD",
+      "name": "the onboarder granny is live rea",
+      "mintedAt": "2026-08-15T04:07:57.343+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:8Q71oe6G5Jo6pf37jg7envJbMHTLMPsL4nH22w37pump",
+      "ticker": "Clown",
+      "name": "Clown",
+      "mintedAt": "2026-08-15T04:08:01.106+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:EVAr3hbRefM7xCG6MuDaMSQvJsXRDXqKzXMJLs722obq",
+      "ticker": "Celebrity",
+      "name": "Traders are the new celebrities",
+      "mintedAt": "2026-08-15T04:15:14.923+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:CrAKWXFdJSbvMKFG1zbCbCgjXECDPYkRK2v2Cybfpump",
+      "ticker": "BILLIES",
+      "name": "FREE VAMP",
+      "mintedAt": "2026-08-15T04:15:16.653+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:7UZo3fRBgyyBdzFJzkom249YeQ6exATyuJGexFgUpump",
+      "ticker": "WARIII",
+      "name": "memecore",
+      "mintedAt": "2026-08-15T04:15:26.074+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:3LNikBa6RxZbXu8qrbYJogtyeiFw6S6sM34bFC3Ppump",
+      "ticker": "SDUCK",
+      "name": "Sailor Duck",
+      "mintedAt": "2026-08-15T04:15:27.101+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:5q7wAZnjbbD47rRo3PbiH4AJDYE8mcqDp58PMfHKpump",
+      "ticker": "CopeToad",
+      "name": "CopeToad",
+      "mintedAt": "2026-08-15T04:15:27.691+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:41tZ8ARQbJhh5N3ruXs1kASn8sgzbApkXiTasmNmpump",
+      "ticker": "Caterpie",
+      "name": "Caterpie",
+      "mintedAt": "2026-08-15T04:15:27.795+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:GtJqBQhtUz5c5P6ytVGoKDRPbLJNkjoCsvRcfDUQpump",
+      "ticker": "Sora",
+      "name": "レッサーパンダ",
+      "mintedAt": "2026-08-15T04:15:29.148+00:00",
+      "origin": "real_mint"
+    },
+    {
+      "assetKey": "solana:9mPxWq3nT8vKjRbYuEhGcZaFsDiOlQpXvNmZbCxVdRt7",
+      "ticker": "CHILLGUY",
+      "name": "chill guy (official)",
+      "mintedAt": null,
+      "origin": "seeded"
+    }
+  ]
+}

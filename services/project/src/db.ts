@@ -35,7 +35,8 @@ import type {
 import type { MatchEvidence } from '@insidor/contracts/story.ts';
 import type { Db } from '@insidor/store';
 
-import { coinCandidates } from './coins.ts';
+import { coinCandidates, corpusStats } from './coins.ts';
+import type { CorpusStats } from './coins.ts';
 import { permalinkFor } from './permalinks.ts';
 import type {
   CoinFacts,
@@ -302,6 +303,24 @@ async function loadEntitySpans(
   return byStory;
 }
 
+/**
+ * How many characters of somebody else's text may cross from Postgres into this process.
+ * Not a display length — TICKER/NAME_MAX_CHARS in project.ts is where what a user sees is
+ * decided, and it is a much smaller number applied where a test can call it with a literal.
+ *
+ * ★ IT IS APPLIED TO ALL THREE READS OF public.asset's TEXT, AND THAT IS NOT TIDINESS.
+ * `symbol` and `name` are unbounded `text` columns holding strings an attacker typed, and
+ * this projector runs inside a transaction while ingest is writing. But the reason it has
+ * to be the SAME cap in every one of them is coins.ts: the frequency ceiling is only safe
+ * while the words it counts are the words retrieval can match on. Truncate the corpus at
+ * 200 characters while retrieval reads the full string and the two disagree about what a
+ * coin's words ARE — a coin carrying the story's word at character 500 would be retrieved
+ * and matched while contributing nothing to that word's count, which is exactly the
+ * "measure over a narrower corpus than retrieval" failure `loadCorpusStats` is written to
+ * avoid, arriving through the string length instead of through the row set.
+ */
+const TRANSPORT_TEXT_CAP = 200;
+
 interface AssetRow {
   story_id: string;
   asset_key: string;
@@ -369,7 +388,10 @@ async function loadCoinsInWindow(db: Db, storyIds: readonly string[]): Promise<r
           group by m.story_id
        ) o
        cross join lateral (
-         select a.asset_key, a.address, a.venue_id, a.symbol, a.name, a.image_uri, a.minted_at
+         select a.asset_key, a.address, a.venue_id,
+                left(a.symbol, $5::int) as symbol,
+                left(a.name, $5::int)   as name,
+                a.image_uri, a.minted_at
            from public.asset a
           where o.opens_at is null
              or a.minted_at is null
@@ -384,7 +406,69 @@ async function loadCoinsInWindow(db: Db, storyIds: readonly string[]): Promise<r
       DEFAULT_POLICY.resolve.minLagMs,
       DEFAULT_POLICY.resolve.maxLagMs,
       DEFAULT_POLICY.resolve.maxCandidates,
+      TRANSPORT_TEXT_CAP,
     ],
+  );
+}
+
+interface CorpusRow {
+  symbol: string | null;
+  name: string | null;
+  assets: number;
+}
+
+/**
+ * ★ HOW COMMON EACH WORD ALREADY IS, MEASURED OVER EXACTLY THE TABLE RETRIEVAL READS.
+ *
+ * coins.ts drops a story's word from the candidate test once too many coins already use it
+ * — "the" is carried by 23 of the 205 assets in this store and cannot tell anybody which
+ * coin a story produced. This is where that count comes from, and three things about it are
+ * load-bearing:
+ *
+ *   1. IT IS public.asset, UNFILTERED — the same table, the same rows, no window. The
+ *      guarantee coins.ts relies on is an identity: a coin can only reach a row through a
+ *      word its own symbol or name contains, and containing that word is what put it in
+ *      this count. So df(word) is never smaller than the number of coins that word could
+ *      admit, and the filter can never lag the harm. Measure over a NARROWER corpus than
+ *      retrieval — a rolling window here while retrieval still reaches further back — and
+ *      that identity breaks silently: the count says a word is rare while the coins using
+ *      it are already on the row.
+ *
+ *   2. IT IS READ IN THE SAME TRANSACTION AS THE COINS, not from a table refreshed on a
+ *      schedule. A stored statistic is stale exactly when it matters most: a spam campaign
+ *      arrives as fifteen mints in ninety seconds, and a count from last night's refresh
+ *      calls its vocabulary rare for one whole frame. That is why there is no migration and
+ *      no `db:corpus` step here — the statistic has no state of its own to keep.
+ *
+ *   3. THE TOKENISING IS NOT DONE HERE. This returns raw symbols and names and coins.ts
+ *      splits them with the same `normalise` the test uses. A `regexp_split_to_table` in
+ *      this string would be a second spelling of "the same words", counting words the test
+ *      never sees and vice versa — and it would fail as a wrong number of coins on a row,
+ *      with nothing anywhere saying why.
+ *
+ * The `group by` is not an optimisation for its own sake: fifteen assets in this store are
+ * all called "70m views in 3days no brainer", so grouping identical pairs and carrying the
+ * count is both smaller on the wire and the exact arithmetic document frequency wants.
+ *
+ * WHEN THIS SCAN STOPS BEING FREE — it is one sequential pass over two text columns, which
+ * at 205 rows is nothing and at ten million is not — the move is an incrementally
+ * maintained count written by ingest in the same transaction that inserts the asset, so
+ * point 2 survives. It is NOT a nightly materialised view.
+ */
+async function loadCorpusStats(db: Db): Promise<CorpusStats> {
+  const rows = await db.query<CorpusRow>(
+    `select left(a.symbol, $1::int) as symbol,
+            left(a.name, $1::int)   as name,
+            count(*)::int as assets
+       from public.asset a
+      group by 1, 2`,
+    [TRANSPORT_TEXT_CAP],
+  );
+  /* `symbol` → `ticker` is the same rename toCoinFacts does one screen down. Doing it here
+     too means the corpus and the coins being counted against it are the same two fields
+     under the same two names, rather than two shapes a reader has to line up by hand. */
+  return corpusStats(
+    rows.map((row) => ({ ticker: row.symbol, name: row.name, assets: row.assets })),
   );
 }
 
@@ -735,6 +819,7 @@ function toStoryFacts(
   reach: ReadonlyMap<string, readonly ReachReading[]>,
   spans: readonly string[],
   coins: readonly CoinFacts[],
+  corpus: CorpusStats,
   wasOnPreviousBoard: boolean,
 ): StoryFacts {
   const memberFacts: MemberFacts[] = members.map((row) => ({
@@ -758,7 +843,7 @@ function toStoryFacts(
     distinctAuthors: story.distinct_authors,
     distinctSources: story.distinct_sources,
     members: memberFacts,
-    coins: coinCandidates(spans, coins),
+    coins: coinCandidates(spans, coins, corpus),
     wasOnPreviousBoard,
   };
 }
@@ -774,15 +859,22 @@ export interface LoadWindow {
 }
 
 /**
- * Everything the projection needs, in six round trips regardless of how many stories
+ * Everything the projection needs, in seven round trips regardless of how many stories
  * come back.
  *
- * Six and not six-per-story: every fetch after the first is one statement over an id
+ * Seven and not seven-per-story: every fetch after the first is one statement over an id
  * array. A per-story loop here would be a thousand queries inside a single transaction,
  * which holds a backend open for the whole frame — and the projector runs while ingest is
  * writing. The two coin reads are separate statements rather than one join because the
  * spans and the mint window are independent of each other: they only meet in coins.ts,
  * where the meeting is a pure function that a test can call with two literals.
+ *
+ * ★ THE SEVENTH IS THE CORPUS — one `group by` over public.asset, no window and no story
+ * ids, because the question it answers is about the market and not about any row. It is a
+ * whole-table read where every other statement here is narrowed, and that is the point:
+ * coins.ts only stays safe while the words it calls common are counted over exactly the
+ * rows retrieval can return. It reads inside the same transaction as the coins, so no coin
+ * can be on a row under a count that did not see it.
  *
  * ★ THE SIXTH IS THE MARKET, AND IT IS A SEPARATE STATEMENT RATHER THAN A LATERAL JOIN
  * ONTO THE COIN QUERY, on purpose. Joined in, it would have to be a LEFT join — an inner
@@ -804,6 +896,7 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<readon
   );
   const spans = await loadEntitySpans(db, storyIds);
   const coinRows = await loadCoinsInWindow(db, storyIds);
+  const corpus = await loadCorpusStats(db);
   /* Deduplicated: one coin can be in several stories' windows, and asking for its
      reading once per story would multiply the largest statement here by the number of
      rows on the board for no new information. */
@@ -824,6 +917,7 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<readon
       reach,
       spans.get(row.story_id) ?? [],
       coins.get(row.story_id) ?? [],
+      corpus,
       window.previousBoard.has(row.story_id),
     ),
   );
@@ -847,13 +941,6 @@ export interface LaunchWindow {
   readonly sinceMs: Millis;
   readonly limit: number;
 }
-
-/**
- * How many characters of somebody else's text may cross from Postgres into this process.
- * Not a display length — see the `left(…)` note below and TICKER/NAME_MAX_CHARS in
- * project.ts, which is where what a user sees is decided.
- */
-const TRANSPORT_TEXT_CAP = 200;
 
 /**
  * The most recently minted coins, newest first.
