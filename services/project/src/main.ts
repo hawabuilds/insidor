@@ -33,8 +33,10 @@ import {
   writeLaunches,
   writeStories,
 } from './db.ts';
+import { announceBoard } from './notify.ts';
 import { projectBoard, projectLaunch, projectStory } from './project.ts';
 import type { ProjectOptions } from './project.ts';
+import { countAnchors, windowIsOrdered } from './window.ts';
 import { WireLeakError } from './wire.ts';
 import type { WireLaunch, WireStory } from './wire.ts';
 
@@ -126,12 +128,35 @@ async function main(): Promise<void> {
 
     const result = await withTransaction(pool, async (db) => {
       const tick = await nextTick(db, VIEW_ID);
-      const facts = await loadStoryFacts(db, {
+      const load = await loadStoryFacts(db, {
         storiesSinceMs: nowMs - STORY_WINDOW_MS,
         reachSinceMs: nowMs - REACH_WINDOW_MS,
         limit: BOARD_LIMIT,
         previousBoard: await previousBoardStoryIds(db, VIEW_ID),
       });
+      const facts = load.stories;
+
+      /* ★ NAMED, ONE LINE PER STORY, BECAUSE THIS PROJECTOR CANNOT WRITE IT DOWN ANYWHERE
+         ELSE. A story with no post time on any member has its coin window hung on when WE
+         first read it, which is a weaker claim than the one every other row on the board
+         is making: the window reaches backwards past its own anchor precisely because we
+         cannot say the coin came after anything. That difference belongs in
+         internal.decisions as an `abstain` with a null `subject_origin`, and this process
+         cannot put it there — it holds the service credential, and 0001 grants the service
+         role SELECT on `internal` and no more. So it is printed, with the story named, and
+         the day this frame is reconstructed the run that built it says which rows were
+         retrieved against our own reading schedule. It reaches an operator; by the product
+         rule it must never reach the wire, and nothing below adds a field for it. */
+      for (const [storyId, retrieval] of load.coinWindows) {
+        if (windowIsOrdered(retrieval)) continue;
+        const reachMin = Math.round((retrieval.anchorMs - retrieval.fromMs) / MINUTE_MS);
+        console.warn(
+          `story ${storyId} carries no post time on any member: its coins were retrieved ` +
+            `against ${retrieval.anchor}, reaching ${reachMin} minutes before that anchor. ` +
+            `Nothing on this row may be read as "minted after the post".`,
+        );
+      }
+      const anchors = countAnchors(load.coinWindows.values());
 
       /* One frame, built in one pass, so `order` and `rows` cannot disagree. A story
          with nothing nameable in it is dropped here rather than given a placeholder
@@ -193,8 +218,21 @@ async function main(): Promise<void> {
       const launchTick = await nextLaunchTick(db, LAUNCH_FEED_ID);
       const launchRows = await writeLaunches(db, LAUNCH_FEED_ID, launchTick, launches);
 
+      /* ── the announcement ──
+         The last statement before commit, and INSIDE the transaction deliberately. Postgres
+         queues a notification at commit and discards it on rollback, so this can neither
+         announce a frame that is not yet selectable nor survive a projection that failed.
+         It carries the view id and the tick and nothing else; see notify.ts for why a
+         payload must never carry anything its reader could not already read.
+
+         It is not wrapped in a try/catch. A frame nobody is told about is a board that
+         stops updating in every browser until someone reloads — which is the failure this
+         whole wiring exists to remove, so it is not a failure worth committing around. */
+      await announceBoard(db, VIEW_ID, tick);
+
       return {
         tick,
+        anchors,
         boardRows,
         storyViews,
         considered: facts.length,
@@ -213,7 +251,10 @@ async function main(): Promise<void> {
     console.log(
       `projected view=${VIEW_ID} tick=${result.tick} ` +
         `board_row=${result.boardRows} story_view=${result.storyViews} ` +
-        `considered=${result.considered} skipped=${result.skipped} withheld=${result.withheld}`,
+        `considered=${result.considered} skipped=${result.skipped} withheld=${result.withheld} ` +
+        /* Two counts, always both printed, including when the second is zero. A field that
+           only appears when something is wrong is a field nobody knows the normal value of. */
+        `coin_window=post:${result.anchors.earliest_post}/sight:${result.anchors.first_sight}`,
     );
     console.log(
       `projected launches feed=${LAUNCH_FEED_ID} tick=${result.launchTick} ` +

@@ -7,11 +7,14 @@
     "candidateRule": "coin is a candidate iff any token of normalise(symbol) or normalise(name) is a token of any normalised span  — coins.ts coinCandidates, verbatim",
     "confidentRule": "coin is confident iff normalise(symbol) or normalise(name) EQUALS a whole normalised span  — unchanged, and out of scope for any proposal",
     "spansFrom": "public.item_fingerprint where kind='entitySpan', joined through public.story_member, deduplicated  — db.ts loadEntitySpans",
-    "mintWindow": "a.minted_at is null OR story has no min(item.posted_at) OR minted_at in [opensAt+minLagMs, opensAt+maxLagMs]  — db.ts loadCoinsInWindow",
+    "mintWindow": "AS THIS SET WAS LABELLED, and no longer what the code does: a.minted_at is null OR story has no min(item.posted_at) OR minted_at in [opensAt+minLagMs, opensAt+maxLagMs]  — db.ts loadCoinsInWindow at the time of labelling",
+    "mintWindowNow": "a.minted_at is null OR minted_at in [from, to], where [from, to] is coinWindow() in window.ts: [post+minLagMs, post+maxLagMs] when any member carries a post time, else [sight-firstSightLookbackMs+minLagMs, sight+maxLagMs] anchored on min(item.first_seen_at). The second disjunct of the labelled rule — 'the story has no post time, so match every row' — is gone; it retrieved all 205 assets for st_rooftop and none for anybody else.",
+    "windowChangeIsNotScoredHere": "The 33 pairs below stay PINNED as labelled, and the floors in coins.test.ts stay exactly what they were: that file scores the TEXT rule over these pairs and never applies a window, so a window change cannot move its numbers in either direction. What the change does move is which of these pairs retrieval reaches at all — measured on the live store, st_rooftop's five 'this is his first actual ca' pairs are minted 45h before that story's anchor and are now outside its window, so the row's candidate count falls 6 → 1 with SLIDE kept. That is a retrieval result and it is measured in a run, not asserted here.",
     "policy": {
       "minLagMs": 0,
       "maxLagMs": 21600000,
-      "maxCandidates": 500
+      "maxCandidates": 500,
+      "firstSightLookbackMs": "not a field when this set was labelled; 86400000 as of policy.v4"
     },
     "corpusSize": 205
   },

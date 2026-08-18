@@ -34,8 +34,10 @@ import {
   useFreezeWhileInteracting,
   USING_FIXTURES,
 } from '../../shared/api/index.ts';
+import { formatDuration } from '../../shared/format/duration.ts';
 import type { BuyAction } from './row-action.ts';
 import { FeedRow } from './FeedRow.tsx';
+import { readLink } from './link-status.ts';
 import styles from './feed.module.css';
 
 /** How often the age column re-reads the clock. Ages are coarse; a second is plenty. */
@@ -105,6 +107,10 @@ export function Feed({ viewId, store, title, sub, onOpenStory, onBuy }: FeedProp
 
   useFreezeWhileInteracting(boardRef, store);
 
+  /* Derived at render from the store's own facts and the clock this component already ticks,
+     so there is no second copy of "are we live" that can disagree with the store. */
+  const link = readLink(meta, now);
+
   /* The clock is state, ticked here and passed down, so that every row in one paint agrees
      on what time it is and a test can state the time. */
   useEffect(() => {
@@ -116,12 +122,12 @@ export function Feed({ viewId, store, title, sub, onOpenStory, onBuy }: FeedProp
      every reconnect and on every detected gap — see App.tsx, which owns that wiring.
 
      ★ THE OUTCOME IS RECORDED RATHER THAN SWALLOWED. A failure still does not throw and
-     still does not blank rows we already hold — a stale board is worth looking at, which is
-     what the old comment here said and it was right about that. What it was wrong about is
-     that the transport status line covers the failure: that line reads "not streaming" on
-     every board ever rendered, because the live channel is unimplemented, so it says the
-     same thing whether the read landed or not and carries no information about this.
-     `read` is the missing half, and the empty state below is the only place it is used. */
+     still does not blank rows we already hold — a stale board is worth looking at. What it
+     is NOT is something the transport status line covers: that line describes the live
+     channel, and "the channel is fine" and "this read succeeded" are different facts. A
+     board that failed its first read under a healthy green pip would be the same lie in a
+     new place. `read` is the missing half, and the empty state below is the only place it
+     is used. */
   useEffect(() => {
     const ac = new AbortController();
     setRead('asking');
@@ -182,20 +188,33 @@ export function Feed({ viewId, store, title, sub, onOpenStory, onBuy }: FeedProp
       <div className={`${styles['pane']} ${pane === 'stories' ? styles['paneOn'] : ''}`}>
         <div className={styles['tbar']}>
           <div className={styles['tbarMeta']}>
-            {/* ★ The pip only pulses when something is actually streaming. `connected` is
-                false today because the live channel is unimplemented, so it sits dim — a
-                pulsing green dot over a board that was read once and is not updating is the
-                cheapest lie available. */}
-            <span className={`${styles['lz']} ${meta.connected ? '' : styles['lzOff']}`} />
+            {/* ★ FOUR STATES, NOT TWO, AND THE TWO NEW ONES ARE THE POINT. The pip pulses
+                lime only while updates are actually arriving; it goes amber while the
+                channel is being reopened, and red and still once it has been down long
+                enough that these rows are a photograph rather than a board. A board that has
+                silently stopped receiving updates must not look identical to a quiet market,
+                and rows alone cannot tell those apart — so the difference is said in words.
+                link-status.ts owns which sentence is true; this renders it. */}
+            <span className={`${styles['lz']} ${link.status === 'off' ? styles['lzOff'] : ''} ${
+              link.status === 'reconnecting' ? styles['lzWait'] : ''
+            } ${link.status === 'stale' ? styles['lzDead'] : ''}`} />
             <span
-              title={
-                meta.connected
-                  ? 'Updates are arriving on the live channel.'
-                  : 'No live channel is connected, so this board was read once when the screen opened and is not updating on its own.'
-              }
+              className={link.status === 'stale' ? styles['lzDeadTxt'] : ''}
+              title={link.title}
+              role={link.status === 'stale' ? 'status' : undefined}
             >
-              {meta.connected ? 'live' : 'not streaming'}
+              {link.label}
             </span>
+            {/* When the board last moved. A measurement, not a status, and shown in every
+                state — it is what tells a reader whether "live" means anything is happening. */}
+            {meta.lastFrameAt === null ? null : (
+              <span
+                className={styles['fresh']}
+                title="How long ago the last committed frame arrived."
+              >
+                {formatDuration(now - meta.lastFrameAt)} ago
+              </span>
+            )}
             {meta.pendingCount > 0 ? (
               <button
                 type="button"

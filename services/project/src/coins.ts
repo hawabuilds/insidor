@@ -19,12 +19,14 @@
  *     measurement is never allowed to do: empty a row that had claimants. The statistic is
  *     counted over a table anybody can write to for the price of a mint, so "how common is
  *     this word" is a number an attacker moves — and the guard is what bounds what moving
- *     it can buy them. Retrieval is time-first where a time exists (db.ts opens the
- *     window at the story's earliest post), but time alone is not enough and never was: at
- *     the rate coins are minted, "the same minute as this story" contains dozens of coins
- *     about something else entirely. Text is what keeps a stranger's coin off a row. See
- *     st_pigeon in tools/seed.mjs, whose window contains another story's CHILL and which
- *     must still project `none`.
+ *     it can buy them. Retrieval is time-first and always bounded — window.ts opens the
+ *     window at the story's earliest post where one exists, and where none does it hangs a
+ *     bounded window on our own first sighting instead and marks the result as unable to
+ *     support an ordering — but time alone is not enough and never was: at the rate coins
+ *     are minted, "the same minute as this story" contains dozens of coins about something
+ *     else entirely. Text is what keeps a stranger's coin off a row. See st_pigeon in
+ *     tools/seed.mjs, whose window contains another story's CHILL and which must still
+ *     project `none`.
  *
  *   CONFIDENT — which coins we are willing to NAME.
  *     The coin's normalised symbol OR its normalised name is EQUAL to one of those spans.

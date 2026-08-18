@@ -33,9 +33,24 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Logger } from './log.ts';
 import { errorText } from './log.ts';
 import { handle, type Deps } from './routes.ts';
+import type { BoardStream } from './stream.ts';
 
 export interface ServerDeps extends Deps {
   readonly allowedOrigins: readonly string[];
+  /**
+   * The live channel, if this process has one.
+   *
+   * Optional because a stream needs a response that never finishes, and `handle` cannot
+   * express that: its `Reply` is a status and an already-serialised body, written and ended.
+   * That is a good shape for the three polled routes and the wrong shape for a stream, so
+   * the stream branches HERE, before `handle` is called, rather than `handle` growing a
+   * second return kind that every route would then have to be read against.
+   *
+   * Absent, every stream URL falls through to `handle` and gets an ordinary 404 — which is
+   * what routes.test.ts and server.test.ts exercise, and what a deployment with no listener
+   * should say rather than opening a socket nothing will ever write to.
+   */
+  readonly stream?: BoardStream;
 }
 
 /** Preflight lives 10 minutes. Long enough to stop the chatter, short enough to fix. */
@@ -53,12 +68,18 @@ export function createReadServer(deps: ServerDeps): Server {
        left unread can hold the socket open until it times out. */
     req.resume();
 
-    const base = {
-      'content-type': 'application/json; charset=utf-8',
+    /* The three headers every response carries, WITHOUT a content type — the stream's is
+       `text/event-stream` and the routes' is JSON. Split so that both paths get the same
+       CORS answer, the same `vary`, and the same `no-store` from one place: a stream served
+       with a different origin rule from the poll beside it is a CORS bug that only shows up
+       on reconnect. */
+    const shared = {
       'cache-control': 'no-store',
       vary: 'origin',
       ...corsHeaders(req, deps.allowedOrigins),
     };
+
+    const base = { 'content-type': 'application/json; charset=utf-8', ...shared };
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
@@ -69,6 +90,24 @@ export function createReadServer(deps: ServerDeps): Server {
       });
       res.end();
       return;
+    }
+
+    /* The live channel, matched before `handle` because a stream is a response that is
+       never finished and `handle`'s contract is a finished one. `match` returns null for
+       every other URL and for every method but GET, so nothing else changes shape. */
+    if (deps.stream !== undefined) {
+      const viewId = deps.stream.match(req.method ?? 'GET', req.url ?? '/');
+      if (viewId !== null) {
+        /* `attach` answers on the socket and never rejects; the catch is here so that a
+           future edit which makes it reject cannot become an unhandled rejection, which
+           main.ts turns into process exit — one bad request taking the read surface down. */
+        deps.stream.attach(res, viewId, shared).catch((e: unknown) => {
+          deps.log.error('stream failed to attach', { url: req.url, err: errorText(e) });
+          if (!res.headersSent) res.writeHead(500, base);
+          res.end('{"error":"server error"}');
+        });
+        return;
+      }
     }
 
     /* `handle` catches its own failures and answers 500 opaquely. This catch is for

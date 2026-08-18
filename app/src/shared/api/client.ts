@@ -14,6 +14,8 @@
  */
 
 import { notImplemented } from '../not-implemented.ts';
+import { createLiveChannel } from './live/channel.ts';
+import type { EventStreamFactory, LiveChannel, LiveHandlers } from './live/channel.ts';
 import type { BoardTick } from './wire/board.ts';
 import type { LaunchFeed } from './wire/launch.ts';
 import type { Story } from './wire/story.ts';
@@ -117,8 +119,8 @@ export async function fetchStory(storyId: string, signal?: AbortSignal): Promise
 /**
  * One frame of the launches rail.
  *
- * Polled, because there is no live channel for it — `openLiveChannel` covers the board and
- * is unimplemented besides. The caller owns the interval and says on screen when it last
+ * Polled, because there is no live channel for it — `openLiveChannel` covers the board only,
+ * and the rail's cadence is its own. The caller owns the interval and says on screen when it last
  * succeeded, so a rail that has stopped updating looks different from a market that has
  * gone quiet. `read` already sets `cache: 'no-store'`; every row here is stale within a
  * minute, so a cached one would be worse than no row.
@@ -157,26 +159,56 @@ export async function submitTrade(_intent: TradeIntent): Promise<TradeResult> {
 
 /* ── the live channel ─────────────────────────────────────────────────── */
 
-export interface LiveHandlers {
-  readonly onTick: (raw: unknown) => void;
-  readonly onPatch: (raw: unknown) => void;
-  /** Fired on every (re)subscribe, so the caller can refetch authoritatively. */
-  readonly onSubscribed: () => void;
-  readonly onDropped: () => void;
-}
-
-export interface LiveChannel {
-  close(): void;
-}
+/* The contract and the machinery both live in live/channel.ts, and are re-exported here so
+   that this file stays the app's single statement of what the network surface is. They moved
+   out of this file when the transport landed, for one reason: the implementation needs an
+   injectable EventSource to be testable without a browser, and a `client.ts → channel.ts →
+   client.ts` import cycle to fetch two interfaces back is a worse trade than a re-export. */
+export type { LiveChannel, LiveHandlers } from './live/channel.ts';
 
 /**
  * Open the live channel for one board view.
  *
- * Unimplemented on purpose: the transport is a broadcast channel over the websocket the
- * database already provides, and wiring it means picking up that client SDK. The shape is
- * fixed here first because `onSubscribed` is load-bearing — it is what forces the refetch
- * that the previous build's reconnect path skipped.
+ * The transport is Server-Sent Events against `GET /stream/board/:viewId` on the read
+ * service — chosen over a WebSocket because the channel is one-way and EventSource
+ * reconnects by itself, and the reconnect path is the one this product has already got
+ * wrong once. channel.ts holds that argument in full, along with the rule this whole wiring
+ * exists for: `onSubscribed` fires on EVERY subscribe, and the caller must turn it into an
+ * authoritative refetch, because broadcast has no replay.
+ *
+ * Two honest refusals rather than a channel that pretends:
+ *
+ *   - With no read endpoint configured, the board is sample data and there is nothing to
+ *     stream FROM. A channel that connected to nowhere and stayed quiet would be
+ *     indistinguishable on screen from a live market that had gone still.
+ *   - In an environment with no EventSource — a test runner, a server render — there is no
+ *     transport at all. App.tsx catches `NotImplemented` and leaves the status line saying
+ *     the board is not streaming, which is exactly what is true.
  */
-export function openLiveChannel(_viewId: string, _handlers: LiveHandlers): LiveChannel {
-  return notImplemented('openLiveChannel: broadcast subscription');
+export function openLiveChannel(viewId: string, handlers: LiveHandlers): LiveChannel {
+  if (USE_FIXTURES) {
+    return notImplemented('openLiveChannel: no read endpoint is configured, so there is nothing to stream');
+  }
+  const Source = globalThis.EventSource;
+  if (typeof Source !== 'function') {
+    return notImplemented('openLiveChannel: this environment has no EventSource');
+  }
+
+  /* The adapter, and the only place a DOM event type touches the live channel. `data` is
+     read off the event here so that channel.ts can be exercised against a plain object;
+     events without a data field (`open`, `error`) hand over an empty string. */
+  const open: EventStreamFactory = (url) => {
+    const source = new Source(url);
+    return {
+      addEventListener: (type, listener) => {
+        source.addEventListener(type, (event: Event) => {
+          const data = (event as MessageEvent<unknown>).data;
+          listener(typeof data === 'string' ? data : '');
+        });
+      },
+      close: () => source.close(),
+    };
+  };
+
+  return createLiveChannel(`${BASE}/stream/board/${encodeURIComponent(viewId)}`, handlers, open);
 }

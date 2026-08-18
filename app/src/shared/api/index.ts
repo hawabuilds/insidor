@@ -12,8 +12,9 @@ export type { Launch, LaunchFeed } from './wire/launch.ts';
 export type { Story, Evidence, DiscussionPost } from './wire/story.ts';
 export type { TradeQuote, TradeCost, TradeIntent, TradeResult } from './wire/trade.ts';
 
-export type { BoardMeta, BoardStore } from './live/boardStore.ts';
+export type { BoardMeta, BoardStore, LinkState } from './live/boardStore.ts';
 export { createBoardStore } from './live/boardStore.ts';
+export { createLiveHandlers } from './live/wiring.ts';
 export { useFreezeWhileInteracting } from './live/freeze.ts';
 export {
   BoardStoreProvider,
@@ -35,7 +36,10 @@ export {
 } from './client.ts';
 export type { LiveChannel, LiveHandlers } from './client.ts';
 
-/* The two decoders the live wiring needs, because a socket payload does not arrive through
-   `client.ts`. Everything else in decode.ts stays private to this directory: a feature that
-   can decode can also construct, and a hand-constructed wire object skips the censor. */
-export { WireLeakError, WireShapeError, decodeBoardTick, decodeRowPatch } from './decode.ts';
+/* The two failure types, so a screen can tell a bad payload from a bad connection.
+   ★ THE DECODERS THEMSELVES ARE NO LONGER EXPORTED. They were, because the live wiring needed
+   them and a socket payload does not arrive through `client.ts` — that wiring now lives in
+   `live/wiring.ts`, inside this directory, and imports them directly. So the last reason for
+   a feature to hold a decoder is gone, and with it the last way for one to construct a wire
+   object by hand and skip the censor. */
+export { WireLeakError, WireShapeError } from './decode.ts';

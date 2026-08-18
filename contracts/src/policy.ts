@@ -177,6 +177,69 @@ export interface ResolvePolicy {
   /** Time-first retrieval: symbol is a scoring channel over this set, never the key. */
   readonly maxCandidates: number;
   /**
+   * ★ HOW FAR BACK OF OUR OWN FIRST SIGHT OF A STORY IT IS WORTH LOOKING FOR ITS COIN,
+   * when not one of the story's members carried a post time.
+   *
+   * ★ IT IS A SEPARATE FIELD FROM maxLagMs AND MEASURES A COMPLETELY DIFFERENT THING.
+   * `maxLagMs` answers "how long after a post is a mint still plausibly from it" — a fact
+   * about how people behave. This answers "how late can OUR OWN READER be" — a fact about
+   * our crawl cadence, our queue depth and our backfill schedule. They are numerically
+   * close today and that is coincidence, not sharing. Folding them into one number would
+   * mean that changing the poll interval silently retunes a mint-plausibility rule, and
+   * nothing in the decision row would say so.
+   *
+   * ★ WHY IT EXISTS AT ALL, which is the honest part. Where a post time exists the window
+   * is an ORDERING claim: a coin minted before the post did not come from it. Where none
+   * exists there is nothing to order against, and the only clock left — when we first read
+   * the item — can be LATE by an unknown amount and can never be early. So a window hung
+   * on it is not an ordering claim at all; it is a bound on where it is worth LOOKING, and
+   * it therefore has to reach BACKWARDS as well as forwards. A forward-only window on a
+   * first-sight anchor would encode "we looked at 00:27, so nothing before 00:27 counts",
+   * which is exactly the "we saw it late, therefore it was posted late" conversion this
+   * number exists to refuse. Measured: it deletes the one correct coin the rooftop story
+   * has, and that row then offers CREATE for a coin that already exists.
+   *
+   * SWEPT, not picked, against the 205 assets in public.asset with the rooftop story
+   * (three members, not one post time between them, first sight 2026-08-17T00:27Z) as the
+   * only anchorless story in the set. Retrieval, and whether its one correct coin — SLIDE
+   * / "roof slide", minted 3h50m BEFORE we first saw the story — survives:
+   *
+   *     1h   10 rows   SLIDE LOST      row projects `none` → CREATE on a coin that exists
+   *     3h   12 rows   SLIDE LOST      same
+   *     4h   13 rows   kept, by 10 min of margin
+   *     6h   13 rows   kept
+   *    12h   13 rows   kept   ┐ identical row set: nothing at all was minted between
+   *    24h   13 rows   kept   ┘ 45h and 4h before this anchor
+   *    48h   89 rows   kept, and the five "this is his first actual ca" spam mints from
+   *                    45h earlier come back, which is the precision this bound buys
+   *
+   * ★ SO THE SAFE BAND IS [4h, 45h] AND THE VALUE IS SET NEAR THE TOP OF IT, WHICH IS THE
+   * OPPOSITE OF HOW candidateDfFloor BELOW IS SET. The errors point the other way here.
+   * Too WIDE retrieves strangers, the text rule counts them, `claimCount` inflates and the
+   * row says `unsure` and offers nothing — useless and safe. Too NARROW loses the story's
+   * only coin, the row says `none` and offers CREATE. Setting a bound at the edge of the
+   * band where the cheap failure lives is how you buy a little precision with the one
+   * error this product cannot afford. 24h sits 20h inside the near edge and 21h clear of
+   * the far cliff, and costs nothing measurable at either end.
+   *
+   * ★ WHAT WOULD MOVE IT, and it is not a re-sweep of this store. The quantity is how late
+   * our reader can be, so the evidence is `first_seen_at − posted_at` over items that HAVE
+   * both — measured over real ingest, not over seeded rows, which all carry a fabricated
+   * two minutes. `admit.maxAgeMin` (240) is the closest thing the system already states
+   * about it: an item older than four hours at first sight is not admitted at all, so for
+   * anything that came through admission our lateness is bounded by that. This is six
+   * times it, because backfill, a re-group and a replay all put items in the store without
+   * passing that gate, and being generous here costs `unsure` while being tight costs
+   * CREATE.
+   *
+   * ★ WHAT IT DOES NOT FIX. `maxCandidates` still caps the set, and in a real market — 23,
+   * 29, 22 and 42 mints in four consecutive minutes of the live slice in this store, so
+   * 1,500–2,500 an hour — a day-wide window holds far more than 500 rows and the cap, not
+   * this bound, decides what survives. What survives is then the coins closest to the
+   * anchor, which is the least-arbitrary prior available and is still only a prior.
+   */
+  readonly firstSightLookbackMs: number;
+  /**
    * ★ WHICH WORDS OF A STORY ARE ALLOWED TO PUT A COIN IN THE RUNNING.
    *
    * A coin becomes a CANDIDATE for a story by sharing a normalised word with one of the
@@ -370,8 +433,15 @@ const POLICY_V1: Policy = {
      moved when the object grew a section, and a version string that did not move with it
      would make two genuinely different policies indistinguishable to a human reading a
      decision row. Any board built before this bump was built under a rule where the word
-     "the" was evidence, and the version string is the only thing that says so. */
-  version: 'policy.v3',
+     "the" was evidence, and the version string is the only thing that says so.
+
+     v4 adds `resolve.firstSightLookbackMs` — the backward reach of the candidate window
+     for a story whose posts never carried a time. Bumped by hand for the same reason: a
+     board built under v3 retrieved EVERY asset in the store for such a story, because the
+     projector's "we cannot order this, so abstain" escape was spelled as a predicate that
+     is true for every row. Rows built before this bump were judged against a window that
+     was not a window, and the version string is the only thing that says so. */
+  version: 'policy.v4',
 
   admit: {
     maxAgeMin: 240,
@@ -453,6 +523,8 @@ const POLICY_V1: Policy = {
     minLagMs: 0,
     maxLagMs: 21_600_000, // six hours
     maxCandidates: 500,
+    firstSightLookbackMs: 86_400_000, // one day; the sweep and the asymmetry are on the field
+
     /* SWEPT, not picked. Over the 205 assets currently in public.asset (192 real mints +
        13 seeded), holding the candidate set of all six stories fixed against a hand-labelled
        truth set of 33 pairs:

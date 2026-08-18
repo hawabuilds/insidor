@@ -170,6 +170,39 @@
   animation: none;
 }
 
+/* Reconnecting: amber, and STILL PULSING, because something is genuinely happening — the
+   transport is retrying and the board is seconds behind at worst. A dot that stopped moving
+   here would read as broken, which at four seconds it is not. */
+.lzWait {
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber);
+  animation: pulse 1s infinite;
+}
+
+/* ★ The one that had no colour before. The channel is down and has not come back, so these
+   rows are a photograph of a board that has stopped being told what changed — which on a
+   screen full of live-looking numbers is the failure worth being loud about. Red, still, and
+   with a ring so it reads as a state rather than as a dot that happens to be dark. */
+.lzDead {
+  background: var(--red);
+  box-shadow: 0 0 0 3px rgba(255, 92, 110, 0.18);
+  animation: none;
+}
+
+/* The label beside the pip, when the channel is not delivering. Muted stays muted for `live`
+   and `not streaming`; a board that has stopped updating gets the word in red, because the
+   pip alone is six pixels and this is the sentence people actually read. */
+.lzDeadTxt {
+  color: var(--red);
+}
+
+/* How long ago a frame last arrived. Rendered whether or not the channel is healthy: it is
+   the fact that separates a quiet market from a stopped one, and it is a measurement rather
+   than a status, so it sits apart from the label in the dim colour. */
+.fresh {
+  color: var(--dim);
+}
+
 /* The held-frames pill, in her chip recipe: a 10% ion tint, a 35% ion border, ion text. */
 .pill {
   font-family: var(--mono);

@@ -45,8 +45,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BoardStoreProvider,
   createBoardStore,
-  decodeBoardTick,
-  decodeRowPatch,
+  createLiveHandlers,
   fetchBoard,
   openLiveChannel,
   USING_FIXTURES,
@@ -202,23 +201,21 @@ export function App() {
     return () => globalThis.removeEventListener('keydown', onKey);
   }, []);
 
-  /* The live channel. Unimplemented today; the wiring is written now so that when the
-     transport lands, the refetch-on-subscribe rule is already in place rather than being
-     something someone remembers to add. */
+  /* The live channel. The four handlers are built by `createLiveHandlers` rather than
+     written inline, because the refetch-on-every-subscribe rule is the one the previous
+     build broke and a rule needs a test rather than a comment — see live/wiring.ts and
+     live/wiring.test.ts, which assert against this exact code path.
+
+     `refetch` is stable (useCallback over a store that is useMemo'd once), so this effect
+     runs once per mount and the channel is not torn down on re-render. */
   useEffect(() => {
     try {
-      const channel = openLiveChannel(VIEW_ID, {
-        onTick: (raw) => boardStore.tick(decodeBoardTick(raw)),
-        onPatch: (raw) => boardStore.patch(decodeRowPatch(raw)),
-        onSubscribed: () => {
-          boardStore.setConnected(true);
-          refetch();
-        },
-        onDropped: () => boardStore.setConnected(false),
-      });
+      const channel = openLiveChannel(VIEW_ID, createLiveHandlers(boardStore, refetch));
       return () => channel.close();
     } catch (e: unknown) {
-      /* An unwritten transport is not a crash on first paint — the board still reads. */
+      /* No transport in this build — sample data, or an environment with no EventSource.
+         Not a crash on first paint: the board still reads, and the status line says it is
+         not streaming, which is true. */
       if (!(e instanceof NotImplemented)) throw e;
       boardStore.setConnected(false);
       return;

@@ -138,8 +138,14 @@ function json(status: number, value: unknown): Reply {
  * view and an empty board are different answers — a join would collapse them into
  * "no rows", and the caller would get a 404 for a view that exists and is simply
  * quiet, which on a board that shows what is happening right now is a lie.
+ *
+ * ★ EXPORTED FOR THE LIVE CHANNEL, AND FOR NO OTHER REASON. stream.ts pushes a frame by
+ * calling this — the same two statements, the same assembly, the same already-censored
+ * payload handed over verbatim. The alternative was a second frame-builder for the socket
+ * path, and two builders is two things that can disagree about what a board is. There is
+ * one, and both the poll and the stream go through it.
  */
-async function board(viewId: string, deps: Deps): Promise<Reply> {
+export async function board(viewId: string, deps: Deps): Promise<Reply> {
   const views = await deps.db.query(BOARD_VIEW_SQL, [viewId]);
   const view = views[0];
   if (view === undefined) return NOT_FOUND;

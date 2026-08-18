@@ -49,6 +49,8 @@ import type {
   StoryFacts,
 } from './project.ts';
 import type { PendingReason, WireBoardRow, WireLaunch, WireStory } from './wire.ts';
+import { coinWindow } from './window.ts';
+import type { CoinWindow, StoryClocks } from './window.ts';
 
 /* ── the frame ────────────────────────────────────────────────────────── */
 
@@ -128,6 +130,15 @@ interface MemberRow {
   /** The source's OWN id for the post. Half of what a permalink is derived from. */
   source_item_id: string;
   posted_at: Date | string | null;
+  /**
+   * When OUR READER pulled this row. NOT NULL in 0002 and always known, which is exactly
+   * what makes it tempting and exactly what makes it dangerous: it is a fact about our
+   * infrastructure, not about the world. Selected for ONE purpose — window.ts hangs a
+   * retrieval window on the minimum of it when a story has no post time at all — and it
+   * is deliberately not carried onto MemberFacts, because nothing downstream of that has
+   * a use for it that is not "quietly treat it as when this was posted".
+   */
+  first_seen_at: Date | string;
   body: string;
   media: unknown;
   handle: string | null;
@@ -155,11 +166,18 @@ interface MemberRow {
  * distance are deliberately NOT selected: they are the numbers that persuaded us, they
  * live on the group stage's row in the decision log, and a column that is not in the
  * result set cannot end up in a payload by accident.
+ *
+ * `i.first_seen_at` rides along for the coin window and for nothing else — see the column
+ * comment on MemberRow and window.ts. It is here rather than in a query of its own because
+ * this statement already returns every member of every story on the frame, so the two
+ * clocks the window chooses between arrive together and cannot be read as of different
+ * instants.
  */
 async function loadMembers(db: Db, storyIds: readonly string[]): Promise<readonly MemberRow[]> {
   if (storyIds.length === 0) return [];
   return db.query<MemberRow>(
-    `select m.story_id, m.item_id, i.source, i.source_item_id, i.posted_at, i.body, i.media,
+    `select m.story_id, m.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at,
+            i.body, i.media,
             a.handle, a.display_name, a.source_author_id,
             m.evidence_kind, m.carrier_kind, m.lineage_via
        from public.story_member m
@@ -340,20 +358,26 @@ interface AssetRow {
  * Retrieval is deliberately generous — it is allowed to return coins about something else
  * entirely, because the text step is what removes them and doing it in SQL would mean a
  * second spelling of `normalise` living in a string literal where no test can reach it.
+ * Generous is not the same as unbounded, which is what this statement used to be.
  *
- * ★ THE WINDOW OPENS AT THE EARLIEST TIME A MEMBER WAS POSTED, COMPUTED HERE FROM
- * public.item.posted_at — NOT read from public.story.earliest_post_at. That column is NOT
- * NULL, so for a story whose posts never carried a time (st_rooftop in the seed) it holds
- * the earliest FIRST-SEEN instead: a different clock, measuring when we read the item
- * rather than when a person posted it. Opening the window on that would compare a mint
- * time against our own reading schedule and drop coins for being older than the moment we
- * happened to look.
+ * ★ THE WINDOW ARRIVES AS DATA. Each story's two ends are computed by `coinWindow` in
+ * window.ts from the two clocks its members carry, and are passed in as parallel arrays
+ * rather than derived in SQL. That is a deliberate move OUT of this file. The choice of
+ * anchor is the only judgement in retrieval — it decides whether the resulting set can be
+ * read as an ordering claim at all — and the previous version made it inside the string
+ * literal below, as `o.opens_at is null or …`. Written that way it read like an abstention
+ * and behaved like `where true`: a story whose posts never carried a time matched EVERY
+ * ROW OF public.asset. Measured on this store before the fix, st_rooftop retrieved all 205
+ * assets while the five stories with post times retrieved 3 to 12 each. The abstention was
+ * right; spelling it as a predicate that is true for every row was not.
  *
- * THREE WAYS TO BE IN THE WINDOW, and the two exceptions are the interesting ones:
+ * THREE WAYS TO BE IN THE WINDOW became two, and the one that was deleted is the point:
  *
- *   1. `minted_at` falls inside [earliest post + minLag, earliest post + maxLag].
- *      A coin minted BEFORE the earliest post cannot have been minted from it — that is
- *      resolve's first and cheapest gate, and no amount of name similarity overturns it.
+ *   1. `minted_at` falls inside the story's [from, to]. Where that window is anchored on a
+ *      post time this is resolve's first and cheapest gate — a coin minted before the
+ *      earliest post cannot have been minted from it, and no amount of name similarity
+ *      overturns it. Where it is anchored on our own first sight it is NOT that gate and
+ *      must never be read as it; window.ts carries the tag that says which.
  *
  *   2. `minted_at is null` — the coin's mint time was never learned. It is invisible to a
  *      time-first query by construction, so excluding it here would mean an unknown mint
@@ -361,53 +385,71 @@ interface AssetRow {
  *      affordance (0005's G1 gate, decided elsewhere), not its place on the row. Those two
  *      consequences are different and must stay so.
  *
- *   3. The STORY has no known post time at all, in which case the gate has nothing to
- *      order and abstains rather than deciding. An ordering claim needs both ends; with
- *      one end missing, "the coin predates the story" is not false, it is unanswerable,
- *      and answering it anyway is how a story loses the only coin it has.
+ *      ★ THIS ARM IS STILL UNBOUNDED AND THAT IS A KNOWN, NAMED COST. Every coin with no
+ *      mint time is retrieved for every story, so at scale it is the `limit` and not the
+ *      window that holds it — one such asset exists in this store today. It is left alone
+ *      because the alternative is bounding it by `first_seen_at`, and a coin whose mint
+ *      time we never learned is exactly the coin whose first-seen time says least about
+ *      it. If it ever needs a bound, `countWithoutMintTime` further down this file is the
+ *      precedent for how to do it honestly: bound the LOOKING, never the ORDERING.
  *
- * The window's two ends are Policy.resolve's, not numbers typed here. The board and the
- * resolve stage have to be judged against the same window or "why is that coin on the row"
- * has two answers depending on which code path a reader follows.
+ *   3. (deleted) "the story has no post time, so match everything". The abstention it was
+ *      trying to express survives in window.ts, which hangs a BOUNDED window on the only
+ *      other clock and marks the result as unable to support an ordering. An ordering
+ *      claim needs both ends; with one end missing, "the coin predates the story" is not
+ *      false, it is unanswerable — and answering it anyway is how a story loses the only
+ *      coin it has. Refusing to answer it is not the same as refusing to narrow.
  *
- * The cap is a retrieval bound and nothing else. Ordered by mint time ascending so that
- * what survives a cap is the coins closest to the post — the ordering the mint-lag evidence
- * actually has — rather than whatever the planner returned first.
+ * ★ THE CAP IS ORDERED BY DISTANCE FROM THE ANCHOR, AND FOR A POST-ANCHORED WINDOW THAT
+ * IS THE SAME ORDER IT ALWAYS WAS. Every row of a post-anchored window has
+ * `minted_at >= anchor`, so `|minted_at − anchor|` ascending is `minted_at` ascending, row
+ * for row — the six existing stories retrieve a byte-identical set. It stops being the
+ * same order for a window that reaches backwards, and there `minted_at asc` would keep the
+ * 500 rows FURTHEST in the past, which is the arbitrary-slice-of-ancient-history failure
+ * the old escape had, merely at a smaller size. Nulls sort last under both, so the coins
+ * with no mint time are still the first thing a cap gives up.
  */
-async function loadCoinsInWindow(db: Db, storyIds: readonly string[]): Promise<readonly AssetRow[]> {
-  if (storyIds.length === 0) return [];
+async function loadCoinsInWindow(
+  db: Db,
+  windows: ReadonlyMap<string, CoinWindow>,
+): Promise<readonly AssetRow[]> {
+  if (windows.size === 0) return [];
+
+  /* Parallel arrays rather than a values list built by string concatenation: `unnest`
+     keeps this one statement over an id array — the shape every other read in this file
+     has — and keeps every story-derived value a bound parameter. Nothing here is
+     interpolated into SQL, which is a property this service is tested on rather than
+     promised. */
+  const storyIds: string[] = [];
+  const anchors: string[] = [];
+  const froms: string[] = [];
+  const tos: string[] = [];
+  for (const [storyId, window] of windows) {
+    storyIds.push(storyId);
+    anchors.push(new Date(window.anchorMs).toISOString());
+    froms.push(new Date(window.fromMs).toISOString());
+    tos.push(new Date(window.toMs).toISOString());
+  }
 
   return db.query<AssetRow>(
-    `select o.story_id,
+    `select w.story_id,
             c.asset_key, c.address, c.venue_id, c.symbol, c.name, c.image_uri, c.minted_at
-       from (
-         select m.story_id, min(i.posted_at) as opens_at
-           from public.story_member m
-           join public.item i using (item_id)
-          where m.story_id = any($1::text[])
-          group by m.story_id
-       ) o
+       from unnest($1::text[], $2::timestamptz[], $3::timestamptz[], $4::timestamptz[])
+              as w(story_id, anchor_at, from_at, to_at)
        cross join lateral (
          select a.asset_key, a.address, a.venue_id,
-                left(a.symbol, $5::int) as symbol,
-                left(a.name, $5::int)   as name,
+                left(a.symbol, $6::int) as symbol,
+                left(a.name, $6::int)   as name,
                 a.image_uri, a.minted_at
            from public.asset a
-          where o.opens_at is null
-             or a.minted_at is null
-             or (a.minted_at >= o.opens_at + ($2::double precision * interval '1 millisecond')
-                 and a.minted_at <= o.opens_at + ($3::double precision * interval '1 millisecond'))
-          order by a.minted_at asc nulls last, a.asset_key asc
-          limit $4
+          where a.minted_at is null
+             or (a.minted_at >= w.from_at and a.minted_at <= w.to_at)
+          order by abs(extract(epoch from (a.minted_at - w.anchor_at))) asc nulls last,
+                   a.asset_key asc
+          limit $5
        ) c
-      order by o.story_id, c.minted_at asc nulls last, c.asset_key asc`,
-    [
-      storyIds,
-      DEFAULT_POLICY.resolve.minLagMs,
-      DEFAULT_POLICY.resolve.maxLagMs,
-      DEFAULT_POLICY.resolve.maxCandidates,
-      TRANSPORT_TEXT_CAP,
-    ],
+      order by w.story_id, c.minted_at asc nulls last, c.asset_key asc`,
+    [storyIds, anchors, froms, tos, DEFAULT_POLICY.resolve.maxCandidates, TRANSPORT_TEXT_CAP],
   );
 }
 
@@ -848,6 +890,27 @@ function toStoryFacts(
   };
 }
 
+/**
+ * What one board load returns: the facts, and which clock each story's coin window hung
+ * on.
+ *
+ * ★ THE WINDOWS RIDE ALONGSIDE THE FACTS RATHER THAN INSIDE THEM, and that placement is
+ * the point. `StoryFacts` is what the projection reads, and everything on it exists to
+ * become part of an answer a user sees. Which clock we could anchor retrieval to is the
+ * system reasoning about itself — it must reach an operator and must never reach the wire
+ * — so it travels in a field the projection is not handed at all. The alternative, a tag
+ * on StoryFacts that project.ts is trusted not to read, is one careless `...story` away
+ * from the board.
+ */
+export interface StoryLoad {
+  readonly stories: readonly StoryFacts[];
+  /**
+   * story id → the window its coins were retrieved through. A story with no members is
+   * absent. Diagnostics for the run that produced the frame; never a payload field.
+   */
+  readonly coinWindows: ReadonlyMap<string, CoinWindow>;
+}
+
 export interface LoadWindow {
   /** Stories with member activity at or after this instant. */
   readonly storiesSinceMs: Millis;
@@ -856,6 +919,40 @@ export interface LoadWindow {
   readonly limit: number;
   /** The ids on the previous committed frame — the only input to `isNew`. */
   readonly previousBoard: ReadonlySet<string>;
+}
+
+/**
+ * The two clocks each story offers, minimised over its members.
+ *
+ * Derived from the rows `loadMembers` already returned rather than from a `group by` of
+ * its own, so the window and the members on the row are computed from ONE read of
+ * `public.item` — two statements could disagree if ingest committed a member between
+ * them, and a window computed as of a different instant than the members it was computed
+ * for is the kind of drift that shows up months later as one unexplainable row.
+ *
+ * ★ NEITHER MINIMUM IS READ FROM public.story. `earliest_post_at` there is NOT NULL only
+ * because `least()` ignores nulls, so for a story whose posts never carried a time it
+ * already holds a first-seen value under a post time's name, with nothing recording which
+ * clock it came from — and because both of its writers use `least()`, the value can only
+ * ever move backwards, so a member arriving later WITH a genuine post time cannot repair
+ * it. Recomputing here from `public.item` is the only way to know which clock is which.
+ */
+function storyClocks(members: readonly MemberRow[]): ReadonlyMap<string, StoryClocks> {
+  const byStory = new Map<string, { post: Millis | null; sight: Millis | null }>();
+  for (const row of members) {
+    const seen = byStory.get(row.story_id) ?? { post: null, sight: null };
+    const postedAt = row.posted_at === null ? null : toMillis(row.posted_at);
+    if (postedAt !== null && (seen.post === null || postedAt < seen.post)) seen.post = postedAt;
+    const sightAt = toMillis(row.first_seen_at);
+    if (seen.sight === null || sightAt < seen.sight) seen.sight = sightAt;
+    byStory.set(row.story_id, seen);
+  }
+
+  const clocks = new Map<string, StoryClocks>();
+  for (const [storyId, seen] of byStory) {
+    clocks.set(storyId, { earliestPostMs: seen.post, earliestSightMs: seen.sight });
+  }
+  return clocks;
 }
 
 /**
@@ -868,6 +965,12 @@ export interface LoadWindow {
  * writing. The two coin reads are separate statements rather than one join because the
  * spans and the mint window are independent of each other: they only meet in coins.ts,
  * where the meeting is a pure function that a test can call with two literals.
+ *
+ * ★ THE COIN WINDOW IS COMPUTED BETWEEN THE MEMBERS AND THE COINS, not inside either
+ * query. It needs the members (both of the clocks it chooses between live on
+ * `public.item`) and the coin read needs it, so it sits between them and costs no extra
+ * round trip. Which clock each story got comes back on the load, because a run that
+ * starts anchoring rows on our own reading schedule has to be visible from the outside.
  *
  * ★ THE SEVENTH IS THE CORPUS — one `group by` over public.asset, no window and no story
  * ids, because the question it answers is about the market and not about any row. It is a
@@ -883,9 +986,9 @@ export interface LoadWindow {
  * would simply have fewer coins on it, with nothing anywhere saying why. Separating the
  * two makes "no reading" a null in a Map lookup, which is a state with a name.
  */
-export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<readonly StoryFacts[]> {
+export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<StoryLoad> {
   const storyRows = await loadStories(db, window.storiesSinceMs, window.limit);
-  if (storyRows.length === 0) return [];
+  if (storyRows.length === 0) return { stories: [], coinWindows: new Map() };
 
   const storyIds = storyRows.map((row) => row.story_id);
   const memberRows = await loadMembers(db, storyIds);
@@ -895,7 +998,19 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<readon
     window.reachSinceMs,
   );
   const spans = await loadEntitySpans(db, storyIds);
-  const coinRows = await loadCoinsInWindow(db, storyIds);
+
+  /* A story with no members at all gets no window and therefore no coins. It has no
+     `entitySpan` fingerprints either — spans are read through the same story_member rows —
+     so coins.ts would link it to nothing whatever retrieval returned. Absent from the map
+     rather than present with a null window: there is no window, and a shape that can say
+     so is better than one that has to be checked for a sentinel. */
+  const coinWindows = new Map<string, CoinWindow>();
+  for (const [storyId, clocks] of storyClocks(memberRows)) {
+    const computed = coinWindow(clocks);
+    if (computed !== null) coinWindows.set(storyId, computed);
+  }
+
+  const coinRows = await loadCoinsInWindow(db, coinWindows);
   const corpus = await loadCorpusStats(db);
   /* Deduplicated: one coin can be in several stories' windows, and asking for its
      reading once per story would multiply the largest statement here by the number of
@@ -910,17 +1025,20 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<readon
     byStory.set(row.story_id, bucket);
   }
 
-  return storyRows.map((row) =>
-    toStoryFacts(
-      row,
-      byStory.get(row.story_id) ?? [],
-      reach,
-      spans.get(row.story_id) ?? [],
-      coins.get(row.story_id) ?? [],
-      corpus,
-      window.previousBoard.has(row.story_id),
+  return {
+    stories: storyRows.map((row) =>
+      toStoryFacts(
+        row,
+        byStory.get(row.story_id) ?? [],
+        reach,
+        spans.get(row.story_id) ?? [],
+        coins.get(row.story_id) ?? [],
+        corpus,
+        window.previousBoard.has(row.story_id),
+      ),
     ),
-  );
+    coinWindows,
+  };
 }
 
 /* ── launches: the mint stream, on its own axis ───────────────────────── */

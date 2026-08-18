@@ -58,7 +58,16 @@ const TRANSACTION_POOLER_PORT = '6543';
  * statements do not survive and a session advisory lock is released the moment the
  * statement that took it ends. Both of those are silent: the lock APPEARS to be
  * taken, the singleton guard APPEARS to hold, and two runners drain the same queue.
- * The app is read-only and stateless, so transaction mode is fine there.
+ *
+ * The app role is exempt because its POOL is read-only and stateless, and that
+ * exemption is narrower than it used to read. It once said "the app is read-only and
+ * stateless" full stop; that is no longer true of the credential. services/read now
+ * also holds a dedicated LISTEN connection on the same URL, and a LISTEN is session
+ * state — a transaction-mode pooler in front of it drops the subscription with no
+ * error and no event, exactly the way an idle pooled client does. That connection is
+ * opened directly with `new Client` and never through this factory, so this guard
+ * would not see it either way; see services/read/src/listen.ts, which owns the
+ * argument. Stated here so the exemption is not read as a claim about the role.
  */
 function assertSessionMode(role: DbRole, url: string): void {
   if (role === DB_ROLE.app) return;
