@@ -139,6 +139,46 @@ export class PgObservationRepo implements ObservationRepo {
   }
 
   /**
+   * Every reading of every counter, for a page of items, in one round trip.
+   *
+   * WHY IT EXISTS ALONGSIDE `series`. The port's shape is (one item, one counter),
+   * which is the right shape for differencing a rate. It is the wrong shape for a
+   * stage loop: DETECT and TRACK are handed a batch of up to a thousand items and
+   * need every kind on each of them, so the port's shape is `batch × kinds` round
+   * trips — two to six thousand queries to decide one pass. That is not a tuning
+   * detail; it is the difference between a loop that finishes inside its cadence
+   * and one that never does, and a loop that overruns its cadence silently starts
+   * skipping reads, which puts the read grid back under the control of load.
+   *
+   * Newest LAST within each item, which is the order both `DetectInput.observations`
+   * and `TrackInput.observations` document ("newest last"). The map is keyed by item
+   * so an item with no readings is an absent key rather than an empty array somebody
+   * has to remember is different from "we did not ask".
+   */
+  async seriesForItems(
+    itemIds: readonly ItemId[],
+    sinceMs: Millis,
+  ): Promise<ReadonlyMap<ItemId, readonly Observation[]>> {
+    const found = new Map<ItemId, Observation[]>();
+    if (itemIds.length === 0) return found;
+
+    const rows = await this.#db.query<ObservationRow>(
+      `${SELECT_OBSERVATION}
+        where item_id = any($1::text[]) and captured_at >= $2
+        order by item_id, captured_at asc`,
+      [[...itemIds], toTimestamp(sinceMs)],
+    );
+
+    for (const row of rows) {
+      const key = reBrand<ItemId>(row.item_id);
+      const list = found.get(key);
+      if (list === undefined) found.set(key, [toObservation(row)]);
+      else list.push(toObservation(row));
+    }
+    return found;
+  }
+
+  /**
    * Censoring rate by week, by reason.
    *
    * Kept next to the writes on purpose. A rising censoring rate is the earliest

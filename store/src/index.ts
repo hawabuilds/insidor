@@ -16,6 +16,7 @@ export type { MigrationFile, MigrateResult } from './migrate.ts';
 export { NotImplemented } from './not-implemented.ts';
 
 export { PgItemRepo } from './repo/items.ts';
+export { PgAuthorRepo } from './repo/authors.ts';
 export { PgObservationRepo } from './repo/observations.ts';
 export { PgStoryRepo } from './repo/stories.ts';
 /* Presentation is a column set, not a field set. The type is exported so the one

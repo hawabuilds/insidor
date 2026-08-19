@@ -60,6 +60,77 @@ export interface AdmitPolicy {
     readonly engagementBait: number;
     readonly threadContinuation: number;
   };
+  readonly roster: RosterPolicy;
+}
+
+/**
+ * The author prior's own thresholds — the shrinkage, the forgetting, and what the
+ * four outcome counts are worth relative to each other.
+ *
+ * ★ WHY THIS BLOCK EXISTS AT ALL. `admit.weights.authorRosterTier` is 0.3, the
+ * largest single weight in the admission score, and until this block existed the
+ * function that PRODUCES that number had nowhere to read a constant from. Every
+ * number below would otherwise have been typed into `core/src/admit/prior.ts`,
+ * which is the exact failure this file was created to end — and it would have been
+ * typed into the most adversarially interesting feature in the system, where a
+ * number nobody can find later is a number nobody can defend later.
+ */
+export interface RosterPolicy {
+  /**
+   * The `k` in `n/(n+k)`: how much observed history an account needs before its own
+   * record outweighs the population it was drawn from. At k = 10 an account's first
+   * ten admitted items buy it at most half the distance from the population mean.
+   *
+   * The failure it repairs is stated in prior.ts's own doc: without it "an account
+   * with one lucky item outranks an account with forty good ones", because a rate
+   * over one trial is 0 or 1 and nothing in between.
+   */
+  readonly shrinkageStrength: number;
+  /**
+   * How fast the roster forgets, as a half-life on the WEIGHT of an account's
+   * evidence — not on the score. Halving the weight pulls the account back toward
+   * the population mean rather than toward zero, which is the difference between
+   * "we no longer know" and "we now think they are bad".
+   *
+   * Ninety days, and the number is a choice rather than a measurement, so it is
+   * worth saying what it is a choice ABOUT: the regime. Nothing in this repository
+   * has measured how long an account's standing predicts its next item, because
+   * `internal.decisions` has never held a row. The closest stated half-lives are
+   * 21 days on the ranking model's recency weight and 12h on prior mass, and this
+   * quantity is slower than both — an account's standing is a fact about a person,
+   * not about a moment. Ninety days means a roster earned two years ago has decayed
+   * by a factor of about 250 and is, correctly, gone.
+   */
+  readonly halfLifeDays: number;
+  /**
+   * The shrink target: what an account we know nothing about is worth.
+   *
+   * ★ IT IS POLICY RATHER THAN AN INPUT FOR A STRUCTURAL REASON. `rosterTier()` sees
+   * ONE author's history, so it cannot compute a mean over the population — and the
+   * population mean is the fixed point of its own output, so the nightly job that
+   * computes it is downstream of the value it needs. Recomputed nightly against the
+   * corpus, exactly like `admit.quantile`'s bar, and frozen here between runs.
+   *
+   * It is deliberately not zero. Zero is a CLAIM that an unseen account is bad; an
+   * absence is not a claim about anything, and this is the value an absence gets.
+   */
+  readonly populationMean: number;
+  /**
+   * What each outcome in an account's history is worth, as a share of one admitted
+   * item's maximum credit. They sum to 1, so an account every one of whose items
+   * reached a resolved story scores exactly 1 before shrinkage.
+   *
+   * The ordering is the funnel's own: joining a story is common and cheap, a
+   * qualified story is rarer, and a resolved one is — in prior.ts's own words —
+   * "sparse and slow". Weighting them equally would let volume at the cheap end
+   * substitute for depth at the expensive end, which is precisely what an account
+   * farming this feature would buy.
+   */
+  readonly weights: {
+    readonly itemsJoinedStory: number;
+    readonly storiesQualified: number;
+    readonly storiesResolved: number;
+  };
 }
 
 /* ── TRACK ────────────────────────────────────────────────────────────── */
@@ -69,18 +140,73 @@ export interface TrackPolicy {
   readonly tierMinutes: readonly number[];
   /** Score bands that map an item onto a tier. Same length as tierMinutes − 1. */
   readonly tierCutoffs: readonly number[];
-  /**
-   * A fixed share of arrivals tracked on the full grid regardless of score, forever.
-   * This is the only unbiased history in the system: without it, a post's history
-   * length is decided by its early performance, which is the outcome.
+  /*
+   * ★ `track.holdoutRate` USED TO BE HERE AND HAS BEEN DELETED. It held 0.02, it was
+   * declared and never read, and every live call site — admit/stage.ts and
+   * track/holdout.ts — reads `explore.holdoutRate` instead.
+   *
+   * Two fields holding the same number with only one of them wired up is not a
+   * duplicate, it is a trap: whoever tunes the holdout will find this one first,
+   * change it, watch nothing happen, and eventually change the other one too — at
+   * which point the two disagree and the lane silently splits. holdout.ts is explicit
+   * that a hole in the unbiased record is the one failure that is NOT recoverable by
+   * re-enabling something later, so the field that cannot be reached is the field that
+   * has to go. `explore.holdoutRate` is the single source; this comment is the
+   * signpost for whoever comes looking for the deleted one.
    */
-  readonly holdoutRate: number;
   /** Backpressure sheds tiers from the top down and NEVER touches probation. */
   readonly shedFromTier: number;
   /** Stop re-reading after this, unless the item is in the holdout. */
   readonly maxTrackedHours: number;
   /** Consecutive censored reads before the lifecycle demotes a tier. */
   readonly flatReadsToDemote: number;
+
+  /*
+   * ── the lifecycle bars ──────────────────────────────────────────────
+   *
+   * `kinetics/lifecycle.ts` states that "every bar it consults — the margin, the
+   * agreement count per edge, the minimum dwell — comes from Policy.track, because a
+   * lifecycle bar is a spend decision." None of the three existed. A lifecycle state
+   * decides how often we pay to re-read an item and whether we stop paying at all, so
+   * these are spend thresholds wearing a state machine's clothes.
+   */
+
+  /**
+   * How far past its bar a reading must argue before it counts as arguing at all.
+   * Under this the reading is inside the noise, the proposal is recorded, and nothing
+   * is committed — which is what stops a state machine from flapping on a value that
+   * is oscillating across a threshold rather than crossing it.
+   */
+  readonly lifecycleMargin: number;
+  /**
+   * Consecutive agreeing readings required to move UP the heat order.
+   *
+   * ★ ASYMMETRIC WITH `agreeingToFall` ON PURPOSE, and the asymmetry is the file's own
+   * argument: entering `rising` is cheap to get wrong — it buys a few extra reads at
+   * the top of the grid — and leaving it is not, because leaving it stops us reading
+   * the item densely at exactly the moment the density was worth paying for.
+   */
+  readonly agreeingToRise: number;
+  /** Consecutive agreeing readings required to move DOWN the heat order. Higher. */
+  readonly agreeingToFall: number;
+  /**
+   * Consecutive agreeing readings required to enter `dormant`, which is terminal.
+   *
+   * Highest of the three, and it earns the extra field rather than sharing
+   * `agreeingToFall`: every other edge is recoverable by the next reading, and this
+   * one costs the item permanently. An item wrongly declared dormant is not demoted,
+   * it is gone — and its history stops at the length its early performance bought it,
+   * which is the exact conditioning the holdout lane exists to make measurable.
+   */
+  readonly agreeingToDormant: number;
+  /**
+   * How long a state must have been held before any transition out of it may commit,
+   * whatever the evidence says. The agreement counts bound how much noise it takes to
+   * move; this bounds how FAST it can move, which is a different failure — a burst of
+   * readings inside one minute can satisfy an agreement count without spanning enough
+   * real time to have observed anything.
+   */
+  readonly minLifecycleDwellMs: number;
 }
 
 /* ── DETECT and KINETICS ──────────────────────────────────────────────── */
@@ -103,18 +229,136 @@ export interface DetectPolicy {
   readonly etaSelfBar: number;
   readonly etaPopulationBar: number;
   /**
-   * A hard absolute floor beneath the relative test. An author's own baseline is
-   * under an adversary's control in both directions — depress it with filler, then
-   * buy engagement — and a gate an attacker can open by buying a hundred approvals
-   * is worse than no gate.
+   * ★ THE HARD ABSOLUTE FLOOR BENEATH THE RELATIVE TEST — PER COUNTER KIND.
+   *
+   * WHY THE FLOOR EXISTS: an author's own baseline is under an adversary's control in
+   * both directions — depress it with filler, then buy engagement — and a gate an
+   * attacker can open by buying a hundred approvals is worse than no gate. The
+   * relative tests live INSIDE this one, and it is checked before any baseline is
+   * consulted, so nothing an adversary can do to a baseline reaches it.
+   *
+   * ★ WHY IT IS NO LONGER A SINGLE SCALAR, which was a real defect. It shipped as
+   * `absoluteFloor: 50`, one number across all six counter kinds. But admit/stage.ts
+   * opens by forbidding exactly that shape: "`reach` means autoplay on one source and
+   * impressions on another, and on a third it does not exist at all". Fifty
+   * reproductions and fifty impressions are not the same claim, they are not the same
+   * order of magnitude, and a single number meant the floor was simultaneously
+   * unreachable for one kind and free for another.
+   *
+   * ★ WHY PER KIND AND NOT PER SOURCE, which is the harder half of the question. A
+   * per-source table is the thing this repository refuses everywhere else: it has to
+   * be re-derived every time a vendor changes, and it silently defines every source
+   * nobody has tuned as "undetectable". The source-specific part of the judgement is
+   * already carried, and carried better, by the POPULATION baseline — whose cohort is
+   * (source, hour of day) and whose expectation therefore already knows what a normal
+   * number looks like there. This floor has exactly one job left after that: be a
+   * quantity no baseline manipulation can move. A kind is the coarsest unit at which
+   * that job is still meaningful, and coarse is the point.
+   *
+   * ★ THE UNIT IS ARRIVALS IN `countWindowMin`, NOT A LEVEL. It is compared against
+   * the counter's DELTA over the window, so an old post with a large cumulative total
+   * and no current motion does not clear it. A floor on a level would be a floor on
+   * how big something already is, which is the opposite of what this stage sells.
+   *
+   * ★ WHAT WOULD MOVE THESE NUMBERS, and it is not taste. The distribution of window
+   * deltas per kind per source over real observations — which does not exist yet:
+   * `internal.decisions` has never held a row, so there is no measured distribution to
+   * set a percentile against. These are the shipped 50 re-expressed across the kinds
+   * in the ratios the counters' own meanings imply, and they are a starting point that
+   * is honest about being one. The moment a week of observations exists, each of these
+   * becomes a percentile of its own kind's window-delta distribution.
+   *
+   * ★ THE ALTERNATIVE THAT WAS CONSIDERED AND NOT TAKEN: a floor on `rate_LCB`, the
+   * Gamma-Poisson shrunk lower-bound arrival rate. It is the better quantity — it is
+   * already small-sample-corrected — and it is what the system design specifies. It is
+   * not used here because nothing in core computes it yet, its home is the wide item
+   * feature set, and a floor that reads a quantity no file produces is a floor that is
+   * silently never applied. When `rate_LCB` exists, this field moves onto it and the
+   * unit line above is the only thing that has to change.
    */
-  readonly absoluteFloor: number;
+  readonly absoluteFloorByKind: Readonly<Record<CounterKind, number>>;
   /** burst = fast/slow. Above this is bending upward. */
   readonly burstBar: number;
   /** Readings required before a baseline is usable at all. */
   readonly minBaselineReads: number;
   /** Which counter drives the burst statistic when several are present. */
   readonly preferredCounters: readonly CounterKind[];
+  /**
+   * ★ THE WINDOW A RATE BECOMES A COUNT OVER, and the unit `Baseline.expectation` is
+   * expressed in.
+   *
+   * `eta(count, expectation, dispersion)` takes "the arrivals observed in the window"
+   * and "the fitted mean for this subject in this window", and until this field
+   * existed no number in the system named that window. Without it `detect()` cannot
+   * turn a per-minute `Rate` into a count at all, and two implementers would have
+   * picked two different windows in two files, producing bars that mean different
+   * things on different days with nothing recording which.
+   *
+   * Twenty minutes, equal to `kinetics.fastTauMin`, and the equality is deliberate
+   * rather than incidental: `burst` is a statement about the fast leg's memory and
+   * `eta` is a statement about the count window, and the two are conjoined in the same
+   * gate. If they measured different stretches of time the conjunction would be a
+   * claim about no particular interval. They are separate fields so either can move,
+   * and this sentence is the note saying what breaks when only one does.
+   */
+  readonly countWindowMin: number;
+  /**
+   * ★ THE NEGATIVE-BINOMIAL DISPERSION PRIOR, PER COUNTER KIND. Variance is
+   * `μ + μ²/r`; Poisson is the limit as `r → ∞`.
+   *
+   * WHY A PRIOR AND NOT AN ESTIMATE: `minBaselineReads` is 2, and a dispersion cannot
+   * be estimated from two points. Something has to supply it, and the alternative to
+   * supplying it here is supplying it as a literal inside the fit. This is also the
+   * only reason `selfBaseline(rates, kind, …)` takes a kind at all — with one scalar
+   * that parameter would be dead.
+   *
+   * WHY PER KIND: the kinds are overdispersed for different reasons and to different
+   * degrees. `reach` arrives in cascades where one large-audience resharer drags the
+   * whole distribution, so it is the most overdispersed. `approval` and `retention`
+   * are one-tap actions by individuals and come closest to independent arrivals.
+   *
+   * ★ EVERY VALUE IS SET LOW, AND THE ASYMMETRY IS THE WHOLE ARGUMENT. Nothing here
+   * has been measured. But the error is one-directional: too LARGE an `r` asserts
+   * near-Poisson spread, and at a low baseline that manufactures certainty — a count
+   * of 12 against an expectation of 2 reads as one-in-a-million under Poisson and as
+   * one-in-a-hundred under `r = 1`. Low-baseline accounts are exactly the population
+   * an adversary can create for free, so an inflated `r` is a false-positive generator
+   * aimed at them. Too SMALL an `r` only makes us miss things. Erring toward
+   * overdispersion is erring toward silence, which is the affordable error.
+   */
+  readonly dispersionByKind: Readonly<Record<CounterKind, number>>;
+  /**
+   * The hard floor under any dispersion, including one estimated from a cohort.
+   * Below this the tail is so flat that nothing is ever surprising, and a baseline
+   * that cannot be surprised is not a detector — it is silence with extra steps.
+   */
+  readonly dispersionFloor: number;
+  /**
+   * How many trailing readings the self baseline is fitted on.
+   *
+   * ★ A COUNT OF READINGS AND NOT A DURATION, which is the non-obvious half. The read
+   * grid is geometric by design, so a fixed lookback window would hand a top-tier item
+   * twelve readings and a probation item one. The precision of the fit would then be a
+   * function of the tier, the tier is a function of the score, and the score is the
+   * outcome — the same conditioning `track/stage.ts` forbids in its own header, arriving
+   * through the back door of a baseline instead of through the scheduler.
+   */
+  readonly selfBaselineReads: number;
+  /**
+   * The `k` in `n/(n+k)`, shrinking the self baseline's expectation toward the
+   * population's. Same form and same value as `admit.roster.shrinkageStrength`, and
+   * deliberately a separate field: they are the same idea applied to two different
+   * quantities, and folding them into one number would mean retuning a detector by
+   * editing an author prior.
+   *
+   * ★ IT IS ALSO AN ADVERSARIAL BOUND, not only a small-sample repair. The self
+   * baseline is the leg an attacker can depress with filler posts. Shrinking it toward
+   * the cohort caps how far down it can be pushed: at `k = 10` an account with two
+   * trailing readings keeps only about a sixth of its own history's influence, so
+   * manufacturing a suspiciously quiet baseline costs ten real readings before it buys
+   * anything, and buys it against a cohort mean that the attacker does not control.
+   */
+  readonly baselineShrinkage: number;
 }
 
 /* ── GROUP ────────────────────────────────────────────────────────────── */
@@ -423,10 +667,99 @@ export interface RankPolicy {
   readonly ticksToLeave: number;
   readonly minDwellS: number;
   readonly maxPositionsMovedPerTick: number;
-  /** The escape hatch: a genuinely explosive entrant skips the dwell. */
+  /**
+   * The escape hatch: a genuinely explosive entrant skips the dwell.
+   *
+   * ★ IT IS A BAR ON `burst`, THE fast/slow RATIO, and the name is now honest about
+   * which quantity it means. The design note this comes from describes the hatch as a
+   * hard threshold on the shrunk arrival RATE, and those are two different numbers
+   * with two different units — a rate is per-minute and per-source, a ratio is
+   * unitless and comparable anywhere. The hatch is a claim that something is bending
+   * upward RIGHT NOW, made about subjects arriving from sources whose counters are
+   * not comparable to each other, so the only quantity that can carry a single
+   * threshold across all of them is the scale-free one. A rate bar would need a
+   * per-source constant re-derived every time a vendor changed, which is precisely
+   * what the ratio exists to avoid.
+   */
   readonly newEntrantBurst: number;
-  /** Board stability floor, as rank correlation between consecutive ticks. */
+  /**
+   * ★ BOARD STABILITY HAS THREE BARS, NOT ONE, AND THAT IS THE POINT OF MEASURING IT.
+   *
+   * Rank correlation between consecutive ticks is two-sided: too low and the board
+   * churns under the reader's cursor, too high and the ranker has stopped responding
+   * to anything. A frozen board and a healthy board are pixel-identical, so a single
+   * floor can never tell them apart and no screenshot ever will.
+   *
+   *   kendallTauFloor      0.90 — the target at a 20-second tick.
+   *   kendallTauUnusable   0.85 — below this the board cannot be read at all. A
+   *                               different alarm from missing the target, because
+   *                               one is a tuning note and the other is an outage.
+   *   kendallTauCeiling    0.98 — sustained above this, the ranker is dead and the
+   *                               board is a screenshot of a working system.
+   */
   readonly kendallTauFloor: number;
+  readonly kendallTauUnusable: number;
+  readonly kendallTauCeiling: number;
+  /**
+   * The share of board slots drawn from BELOW the cut, with the propensity recorded.
+   *
+   * ★ SEPARATE FROM explore.epsilon ON PURPOSE, and reusing that field here would be
+   * a silent bug rather than a tidy-up. `explore.epsilon` is a draw over ARRIVALS at
+   * admission; this is a draw over SLOTS on the board. Different populations,
+   * different budgets, and separately costed — the 2.8 points of realised precision
+   * epsilon is documented to cost is a statement about admissions and says nothing
+   * about feed quality. Sharing one number would also write a wrong `propensity` on
+   * every rank row, and a wrong propensity does not degrade a counterfactual
+   * estimate, it makes it undefined.
+   */
+  readonly exploreSlotShare: number;
+  /**
+   * How old the newest input behind a subject's heat may be before RANK refuses to
+   * rank it. Produces R5_features_stale, which is an ABSTAIN: a stale input is a
+   * missing input, and a missing input is not a claim that the subject went quiet.
+   *
+   * ★ NOT tickS. The tick is how often we recompute; this is how stale the thing we
+   * recompute FROM is allowed to be, and they differ by an order of magnitude on
+   * purpose. The densest re-read tier is `track.tierMinutes[0]` — four minutes — so
+   * anything under 240s would mark every subject on a perfectly healthy system stale.
+   * This is one tier-0 interval plus a minute of slack, so it fires on a reader that
+   * has stopped rather than on one that is merely between reads.
+   */
+  readonly maxFeatureAgeS: number;
+}
+
+/* ── FEATURES — the wide sets, which are not any one stage's ──────────── */
+
+/**
+ * The bars the WIDE feature builders read. They are separate from every stage block
+ * because a wide vector belongs to no stage: the same item vector is logged by ADMIT
+ * today and by whatever ranks items tomorrow, and hanging its constants off
+ * `admit.*` would mean moving them the day a second consumer appears.
+ */
+export interface FeaturesPolicy {
+  /**
+   * How many items a source's trailing sample must hold before a percentile computed
+   * against it is worth anything. Under this the percentile features are NULL, not
+   * 0.5 and not 0 — "we have not seen enough of this source to say where this sits"
+   * is an absence, and the corpus-size feature beside them is the reason.
+   */
+  readonly minCorpusItems: number;
+  /**
+   * The Gamma-Poisson prior an arrival rate is shrunk toward before its lower bound
+   * is taken. This is the `rate_LCB` every downstream heat score consumes, and the
+   * reason it exists is the small-sample problem: an item with one lucky reading
+   * outranks an item with an hour of evidence unless the estimate is shrunk.
+   */
+  readonly ratePrior: {
+    /** a₀ — the arrivals the prior is worth. */
+    readonly priorArrivals: number;
+    /** b₀ — the exposure the prior is worth, in minutes. */
+    readonly priorExposureMin: number;
+    /** The lower tail the bound is taken at. 0.10 is a one-sided 90% lower bound. */
+    readonly lcbQuantile: number;
+  };
+  /** What "recently" means in the story vector's arrival-share terms. */
+  readonly recentWindowMin: number;
 }
 
 /* ── EXPLORATION and BUDGET ───────────────────────────────────────────── */
@@ -474,6 +807,7 @@ export interface Policy {
   readonly resolve: ResolvePolicy;
   readonly market: MarketPolicy;
   readonly rank: RankPolicy;
+  readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
   readonly budget: BudgetPolicy;
   /**
@@ -512,8 +846,48 @@ const POLICY_V1: Policy = {
      bump was five numbers typed into core, which is the exact failure this file was
      created to end. Bumped by hand for the same reason as v3 and v4: any board built
      before this bump was built by a stage that could not join anything at all, and
-     the version string is the only thing that says so. */
-  version: 'policy.v5',
+     the version string is the only thing that says so.
+
+     v6 adds the four `rank` fields the board could not be committed without —
+     `kendallTauUnusable`, `kendallTauCeiling`, `exploreSlotShare`, `maxFeatureAgeS` —
+     and the whole `features` block the wide vectors read. Three of the seven R-codes
+     named a threshold that did not exist: `R5_features_stale` had no staleness bound
+     to be older than, `R6_explore_slot` had no slot budget of its own and would have
+     had to borrow ADMIT's draw over arrivals — a different population, a different
+     cost, and a wrong `propensity` on every rank row — and the stability metric had a
+     floor but not the ceiling its own file says is the half that catches a dead
+     ranker. Bumped by hand for the same reason as v3, v4 and v5: any board built
+     before this bump was built by a stage that could not rank anything at all, and
+     the version string is the only thing that says so.
+
+     v6 ALSO carries DETECT, TRACK and the author prior, which were built in the same
+     window and share the hash. One version string, one hash, one changelog entry —
+     splitting them into v6 and v7 would suggest a policy existed in between that never
+     judged a decision.
+
+       · DETECT gains `countWindowMin`, `dispersionByKind`, `dispersionFloor`,
+         `selfBaselineReads` and `baselineShrinkage`, and REPLACES `absoluteFloor` with
+         `absoluteFloorByKind`. `eta`'s two arguments are a count in a window and a mean
+         in that window, and no field named the window — so `Baseline.expectation` had no
+         unit, and two callers could have produced two different baselines from the same
+         history with nothing recording which. The scalar floor is replaced rather than
+         kept because 50 reproductions and 50 impressions are not the same claim, and
+         `admit/stage.ts`'s first rule forbids exactly that shape.
+
+       · TRACK gains the three lifecycle bars `kinetics/lifecycle.ts` says come from
+         `Policy.track` — `lifecycleMargin`, `agreeingToRise`/`agreeingToFall`/
+         `agreeingToDormant`, `minLifecycleDwellMs` — none of which existed, so
+         `T3_terminal` could not be produced at all. It LOSES `track.holdoutRate`, which
+         was declared, never read, and held a duplicate of `explore.holdoutRate`; the
+         note on TrackPolicy says why a second copy of that particular number is worse
+         than none.
+
+       · ADMIT gains the whole `admit.roster` block. `admit.weights.authorRosterTier`
+         is 0.3 — the largest weight in the admission score — and the function that
+         produces the number it multiplies had no field to read, no shrink target it
+         could see (it is handed one author and cannot compute a population mean), and
+         no way to weight four outcome counts against each other. */
+  version: 'policy.v6',
 
   admit: {
     maxAgeMin: 240,
@@ -530,15 +904,46 @@ const POLICY_V1: Policy = {
       engagementBait: -0.35,
       threadContinuation: -0.25,
     },
+    roster: {
+      shrinkageStrength: 10,
+      halfLifeDays: 90,
+      /* Not zero, and not the mean of any measured corpus yet, because no corpus of
+         author outcomes exists — `internal.decisions` has never held a row, so there
+         is nothing to average. It is set low enough that an unknown account cannot
+         ride this term into an admission on its own (0.3 × 0.15 = 0.045 of a score
+         whose bar is the 88th percentile of the day) and high enough that "we have
+         never seen you" is visibly not the same as "we have seen you fail". */
+      populationMean: 0.15,
+      weights: {
+        itemsJoinedStory: 0.2, // common and cheap
+        storiesQualified: 0.3,
+        storiesResolved: 0.5, // "sparse and slow" — prior.ts's own words
+      },
+    },
   },
 
   track: {
     tierMinutes: [4, 9, 14, 21, 30, 42, 58, 78],
     tierCutoffs: [0.9, 0.75, 0.6, 0.45, 0.3, 0.2, 0.1],
-    holdoutRate: 0.02,
+    /* holdoutRate deleted in v6 — see the note on TrackPolicy. explore.holdoutRate is
+       the single source, and it is the one every live call site already read. */
     shedFromTier: 0,
     maxTrackedHours: 168,
     flatReadsToDemote: 3,
+
+    lifecycleMargin: 0.1,
+    /* 2 / 4 / 6. The ordering is the cost of being wrong on each edge, and the edges
+       are not symmetric: entering `rising` buys a few extra reads, leaving it stops
+       the dense reading at the moment density was worth paying for, and entering
+       `dormant` ends the item's history at whatever length its early performance
+       bought — which is the one error that cannot be undone by the next reading. */
+    agreeingToRise: 2,
+    agreeingToFall: 4,
+    agreeingToDormant: 6,
+    /* Ten minutes. The top of the read grid is four, so a dwell of ten spans at
+       least two reads at every tier — which is what makes "consecutive readings
+       agreed" a statement about elapsed time rather than about queue depth. */
+    minLifecycleDwellMs: 600_000,
   },
 
   kinetics: {
@@ -552,10 +957,54 @@ const POLICY_V1: Policy = {
   detect: {
     etaSelfBar: 3,
     etaPopulationBar: 2.5,
-    absoluteFloor: 50,
+    /* Arrivals in countWindowMin, per kind. The old single `absoluteFloor: 50` is
+       spread across the kinds here in the ratios their own meanings imply, holding
+       `conversation` at the original 50 as the anchor:
+
+         reproduction   25   the thesis counter, and the rarest. Twenty-five people
+                             making their OWN version inside twenty minutes is not a
+                             busy afternoon on any source, it is an event.
+         conversation   50   the anchor — the shipped number, unchanged.
+         retention      50   a private, deliberate act; roughly conversation's rate.
+         rebroadcast   100   cheaper than a reproduction by exactly the authorship it
+                             does not create, so it takes more of them to say as much.
+         approval      250   one tap, the cheapest positive there is.
+         reach       5_000   impressions-like, and the kind where a shared number is
+                             least defensible — which is why it is last in
+                             preferredCounters and only ever drives the statistic when
+                             a source publishes nothing better.
+
+       Not swept. There is nothing to sweep against: no observation corpus exists. */
+    absoluteFloorByKind: {
+      reproduction: 25,
+      conversation: 50,
+      retention: 50,
+      rebroadcast: 100,
+      approval: 250,
+      reach: 5_000,
+    },
     burstBar: 1.35,
     minBaselineReads: 2,
+    /* rebroadcast and retention are absent on purpose. A rebroadcast creates no new
+       authored object — vocabulary.ts calls the distinction "the product thesis
+       expressed as a type" — and retention is invisible on most sources. Neither may
+       be the counter a burst claim rests on while a better one is present. */
     preferredCounters: ['reproduction', 'conversation', 'approval', 'reach'],
+    countWindowMin: 20, // equal to kinetics.fastTauMin; see the field's comment
+    /* All below 2, all unmeasured, all erring toward overdispersion because that error
+       costs silence and the other costs a false-positive generator pointed at exactly
+       the accounts an adversary can create for free. */
+    dispersionByKind: {
+      reach: 0.6, // cascades: one large-audience resharer drags the whole distribution
+      rebroadcast: 0.8,
+      reproduction: 1,
+      conversation: 1.2,
+      approval: 1.5, // one-tap acts by individuals: closest to independent arrivals
+      retention: 1.5,
+    },
+    dispersionFloor: 0.1,
+    selfBaselineReads: 12,
+    baselineShrinkage: 10,
   },
 
   group: {
@@ -682,6 +1131,36 @@ const POLICY_V1: Policy = {
     maxPositionsMovedPerTick: 5,
     newEntrantBurst: 3,
     kendallTauFloor: 0.9,
+    kendallTauUnusable: 0.85,
+    kendallTauCeiling: 0.98,
+    exploreSlotShare: 0.1,
+    maxFeatureAgeS: 300, // one tier-0 re-read interval (4 min) plus a minute of slack
+  },
+
+  features: {
+    /* Thirty is where a percentile stops being an anecdote. Under it the corpus terms
+       are null and `corpusItems` beside them says why — a percentile over four
+       samples is not a percentile, it is a rank with a decimal point on it. */
+    minCorpusItems: 30,
+    /* a₀ = 1 arrival over b₀ = 10 minutes: a prior mean of a tenth of an arrival a
+       minute, deliberately low. The prior is doing one job — stopping a brand-new
+       item with one lucky reading from outranking an item with an hour of evidence —
+       and b₀ is the number that does it, because b₀ is denominated in the same units
+       as the observation window and therefore sets how much a short window counts.
+
+       What it costs, measured against the read grid it will actually meet: a rate
+       observed over five minutes keeps about a quarter of its raw value once shrunk
+       and bounded; the SAME rate sustained for an hour keeps about five sixths of it.
+       That gap is not a side effect, it is the feature. b₀ sits at ten minutes so the
+       first tier-0 re-read — four minutes in — is visibly discounted rather than
+       trusted, which is the moment the small-sample error is largest and the moment
+       the board is most tempted to believe it. */
+    ratePrior: {
+      priorArrivals: 1,
+      priorExposureMin: 10,
+      lcbQuantile: 0.1,
+    },
+    recentWindowMin: 30,
   },
 
   explore: {

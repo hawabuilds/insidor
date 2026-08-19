@@ -8,6 +8,7 @@
  *   node tools/db.mjs seed      domain facts only            (tools/seed.mjs)
  *   node tools/db.mjs market    read markets, append rows    (services/market)
  *   node tools/db.mjs project   derive the wire projection   (services/project)
+ *   node tools/db.mjs decide    run the stages, write decisions (services/runner)
  *   node tools/db.mjs psql      an interactive shell in the container
  *
  * WHY THIS EXISTS ALONGSIDE store/src/migrate.ts. That one is the deployable
@@ -299,12 +300,14 @@ function quoteIdent(name) {
 
 /* ── the two child processes ──────────────────────────────────────────────── */
 
-function run(argv, label) {
+function run(argv, label, extraEnv = {}) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, argv, {
       cwd: ROOT,
       stdio: 'inherit',
-      env: { ...process.env, DATABASE_URL: databaseUrl() },
+      /* The caller's environment still wins: `extraEnv` is a floor, not an override,
+         so `SINGLETON_LOCK_NAME=... pnpm db:decide` does what it looks like it does. */
+      env: { ...extraEnv, ...process.env, DATABASE_URL: databaseUrl() },
     });
     child.on('exit', (code) => {
       if (code !== 0) die(`${label} exited with code ${code}`);
@@ -359,6 +362,59 @@ async function project() {
   await run(['--experimental-strip-types', PROJECTOR], 'the projector');
 }
 
+/**
+ * ★ THE DECISION LOG, FILLED FROM A LAPTOP.
+ *
+ * `internal.decisions` and `internal.labels` are the two tables in this system that
+ * cannot be backfilled: the decision happens in minutes and the answer arrives in
+ * days, and every feature you would try to recompute afterwards has moved by then.
+ * Until this command existed the only way to write a decision row was to boot the
+ * whole runner against a live pipeline, which is why the sequence behind
+ * `internal.decisions.id` had never been advanced — not once, on a database that had
+ * been up for three days.
+ *
+ * ★ IT RUNS THE REAL SERVICE, NOT A COPY OF IT. `services/runner/src/decide-once.ts`
+ * calls the same `withRuntime`, takes the same singleton advisory lock, records the
+ * same policy body under the same hash, and awaits the same seven `Loop` objects the
+ * supervisor drives in production. Anything this writes, the runner writes.
+ *
+ * WHY THE ENVIRONMENT IS ASSEMBLED HERE. `config.ts` is the only module in that
+ * service permitted to read `process.env`, and it refuses to start on a missing key
+ * rather than inventing a default — which is correct, and which means a laptop needs
+ * five variables set to run a one-shot. They are set here, once, with the values that
+ * are true of a one-shot: no heartbeat (there is nobody to page for a program that
+ * exits), and its own lock name, so this and a running runner refuse each other
+ * instead of both draining the same queue.
+ */
+const DECIDE = join(ROOT, 'services', 'runner', 'src', 'decide-once.ts');
+
+async function decide() {
+  if (!existsSync(DECIDE)) {
+    die(
+      `no one-shot decider at ${DECIDE}.\n` +
+        '  services/runner/src/decide-once.ts runs each stage loop exactly once over what is\n' +
+        '  already in the database and writes every Decision to internal.decisions. Until it\n' +
+        '  runs, the log is empty — and an empty decision log is not a system waiting to be\n' +
+        '  switched on, it is training data that never existed and cannot be bought.',
+    );
+  }
+  await run(['--experimental-strip-types', DECIDE], 'the one-shot decider', {
+    /* Never bound. `decide-once.ts` starts no health server — there is nothing to
+       probe in a program that exits — but `config.ts` requires the key and refuses a
+       default, which is the right rule and means a value has to be supplied. This one
+       satisfies the reader; no socket is opened at it. */
+    HEALTH_PORT: '9999',
+    SHUTDOWN_GRACE_MS: '1000',
+    /* ★ ITS OWN LOCK NAME, DIFFERENT FROM THE RUNNER'S ON PURPOSE. Sharing one would
+       mean this refuses to run whenever a runner is up, which is the safe direction
+       but the wrong reason: the guarantee that matters is that two DECIDERS do not
+       drain the same queue, and this and the runner both hold it against themselves.
+       Two copies of this command race each other and one loses, loudly. */
+    SINGLETON_LOCK_NAME: 'insidor-decide-once',
+    HEARTBEAT: 'off',
+  });
+}
+
 function psql() {
   assertDockerRunning();
   if (health() === 'missing') die(`container ${CONTAINER} is not running. Try:  pnpm db:up`);
@@ -379,6 +435,7 @@ const COMMANDS = {
   seed: () => run([SEED], 'the seed'),
   market,
   project,
+  decide,
   psql: async () => psql(),
 };
 

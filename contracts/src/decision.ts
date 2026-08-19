@@ -60,7 +60,13 @@ export interface Decision {
   readonly featureAsOf: Millis;
   readonly decidedAt: Millis;
   readonly subjectOrigin: Millis | null;
-  /** decidedAt − subjectOrigin, in seconds. Null when the origin is unknown. */
+  /**
+   * decidedAt − subjectOrigin, in WHOLE seconds. Null when the origin is unknown.
+   *
+   * Whole, because `internal.decisions.horizon_s` is an `integer` and the value in
+   * memory must be the value on disk — see `core/src/decide.ts`, which rounds it, and
+   * which explains why the sub-second part was never a measurement in the first place.
+   */
   readonly horizonS: number | null;
 
   readonly verdict: Verdict;

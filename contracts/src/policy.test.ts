@@ -35,8 +35,18 @@ test('the ambiguity margin is non-zero, or "no confident match" is unenforceable
 });
 
 test('the holdout is not zero — it is the only unbiased history in the system', () => {
-  assert.ok(DEFAULT_POLICY.track.holdoutRate > 0);
-  assert.equal(DEFAULT_POLICY.track.holdoutRate, DEFAULT_POLICY.explore.holdoutRate);
+  assert.ok(DEFAULT_POLICY.explore.holdoutRate > 0);
+});
+
+/**
+ * This used to assert that `track.holdoutRate` equalled `explore.holdoutRate`, which
+ * is the shape of test you write when two fields hold one number. The repair was to
+ * delete the field nothing read rather than to keep testing that the copy agreed, so
+ * what is asserted now is that the copy is gone: a second holdout rate would be found
+ * first by whoever tunes the lane, changed, and would silently do nothing.
+ */
+test('there is exactly one holdout rate, and it is the one every call site reads', () => {
+  assert.ok(!Object.hasOwn(DEFAULT_POLICY.track, 'holdoutRate'));
 });
 
 test('the tracking grid is strictly increasing, so a tier is always a longer wait', () => {

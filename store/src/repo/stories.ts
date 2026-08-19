@@ -242,6 +242,70 @@ export class PgStoryRepo implements StoryRepo {
   }
 
   /**
+   * The members of several stories in one round trip, keyed by story.
+   *
+   * The same argument as `ObservationRepo.seriesForItems`: QUALIFY is handed a batch
+   * of stories and every one of its gates is a count over that story's members, so
+   * the per-story shape is one query per subject and a loop that cannot hold its
+   * cadence. A story with no members is an absent key, not an empty array — those
+   * are different facts and only one of them is possible.
+   */
+  async membersForStories(
+    ids: readonly StoryId[],
+  ): Promise<ReadonlyMap<StoryId, readonly StoryMember[]>> {
+    const found = new Map<StoryId, StoryMember[]>();
+    if (ids.length === 0) return found;
+
+    const rows = await this.#db.query<MemberRow>(
+      `${SELECT_MEMBER}
+        where m.story_id = any($1::text[])
+        order by m.story_id, m.joined_at asc`,
+      [[...ids]],
+    );
+    for (const row of rows) {
+      const key = reBrand<StoryId>(row.story_id);
+      const list = found.get(key);
+      if (list === undefined) found.set(key, [toMember(row)]);
+      else list.push(toMember(row));
+    }
+    return found;
+  }
+
+  /**
+   * Which story each of these items already belongs to.
+   *
+   * ★ THIS IS HOW `GroupInput.lineage` GETS RESOLVED, and the reason it is a store
+   * query rather than something the stage does for itself is stated on the field:
+   * "`Item.reproductionOf` names an ITEM and `Story` carries no member list, so
+   * turning 'points at item X' into 'points into story S' is a store lookup. A stage
+   * that could do a lookup could do a fetch."
+   *
+   * Merged stories are followed exactly once, to the story that absorbed them. An
+   * item whose story was folded into another belongs to the survivor — pointing a
+   * new member at a merged shell would create a story nothing else can reach.
+   */
+  async storiesOfItems(ids: readonly ItemId[]): Promise<ReadonlyMap<ItemId, StoryId>> {
+    const found = new Map<ItemId, StoryId>();
+    if (ids.length === 0) return found;
+
+    const rows = await this.#db.query<{ item_id: string; story_id: string }>(
+      `select m.item_id, coalesce(s.merged_into, m.story_id) as story_id
+         from public.story_member m
+         join public.story s on s.story_id = m.story_id
+        where m.item_id = any($1::text[])
+        order by m.joined_at asc`,
+      [[...ids]],
+    );
+    // Oldest join wins: an item that seeded a story belongs to that story, and a
+    // later membership row is a merge artefact rather than a second home.
+    for (const row of rows) {
+      const key = reBrand<ItemId>(row.item_id);
+      if (!found.has(key)) found.set(key, reBrand<StoryId>(row.story_id));
+    }
+    return found;
+  }
+
+  /**
    * Point the loser at the winner. Both ids stay alive: decisions have already been
    * logged against the loser's id, and the decision log must never acquire a
    * dangling subject.

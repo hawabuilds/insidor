@@ -21,6 +21,7 @@
     "db:seed": "node tools/db.mjs seed",
     "db:market": "node tools/db.mjs market",
     "db:project": "node tools/db.mjs project",
+    "db:decide": "node tools/db.mjs decide",
     "db:psql": "node tools/db.mjs psql",
     "dev:runner": "node --experimental-strip-types services/runner/src/main.ts",
     "dev:chainwatch": "node --experimental-strip-types services/chainwatch/src/main.ts",

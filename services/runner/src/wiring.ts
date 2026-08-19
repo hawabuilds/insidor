@@ -16,28 +16,33 @@
  * Failure mode #2 of the build this replaces was two runners draining one claim
  * queue, and it produced double spend with no error anywhere.
  *
- * WHAT IS DELIBERATELY UNFINISHED, and why it is a `NotImplemented` rather than
- * a plausible stub: each `StageWork` below needs a specific store query and a
- * specific adapter call. Guessing at either would produce a service that runs
- * and does the wrong thing, which is strictly worse than one that runs and says
- * exactly which query is missing — that message lands in
- * `internal.stage_runs.err` through the ordinary finally path, so the skeleton
- * reports its own gaps in the same query that reports real failures.
+ * ★ THE STAGE WORK IS WIRED, AND IT IS WIRED AGAINST THE STORE. Every `pull`
+ * below reads rows we already hold; none of them calls a vendor. That is what
+ * makes the decision log fillable today rather than on the day the last adapter
+ * lands — and `internal.decisions` is one of the two tables SETUP.md says cannot
+ * be backfilled, so a day spent waiting for adapters is a day of training data
+ * that never existed. Which stage is wired and which still refuses, and the rule
+ * that decides, is argued in `work/stages.ts`.
  *
- * ADAPTERS ARE NOT IMPORTED YET. The workspace declares adapters as
- * `adapters/​*​/​*`, one package per vendor, and their package names are not
- * fixed at the time of writing. Each `pull` below names the adapter call that
- * belongs in it. Adding them is a dependency line and an import, not a redesign:
- * services may import everything, and the ports above do not change.
+ * ADAPTERS ARE STILL NOT IMPORTED. The store-backed pulls stand in for
+ * discovery, observation and the judge; where an input genuinely needs a vendor
+ * it arrives as its typed absence and the stage returns the verdict that names
+ * the absence. Adding a real adapter later replaces one `pull` and changes no
+ * other line in this service.
  */
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
-import type { StageName } from '@insidor/contracts';
+import type { Millis } from '@insidor/contracts';
 import type { DecisionRepo, StageRunRepo } from '@insidor/contracts/ports/store.ts';
 import {
   DB_ROLE,
+  PgAssetRepo,
+  PgAuthorRepo,
   PgDecisionRepo,
+  PgItemRepo,
+  PgObservationRepo,
   PgStageRunRepo,
+  PgStoryRepo,
   asDb,
   createPool,
   withAdvisoryLock,
@@ -47,28 +52,47 @@ import {
 import type { RunnerConfig } from './config.ts';
 import { advisoryLockKey, policyHash } from './hash.ts';
 import type { Logger } from './log.ts';
-import type { DecisionLog, LoopDeps, StageWork } from './loop.ts';
+import type { DecisionLog, LoopDeps } from './loop.ts';
 import type { StageRunRecorder } from './run-record.ts';
-import { NotImplemented } from './not-implemented.ts';
+import { storeWork, type StageRepos } from './work/stages.ts';
 
 export interface Runtime {
   readonly db: Db;
   readonly stageRuns: StageRunRecorder;
   readonly loopDeps: LoopDeps;
+  /** Partition maintenance and the unapplied sweep. See `maintain` below. */
+  readonly maintenance: Maintenance;
 }
 
 /**
- * A stage whose store queries and adapter calls are still to be written.
- * `hint` is the instruction to whoever opens this file next.
+ * The two calls on `PgDecisionRepo` that had no caller anywhere in the repository.
+ *
+ * They are a port rather than a direct use of the concrete class for the same reason
+ * everything else in this service is: the supervision machinery stays testable without
+ * a database. But the reason they exist AT ALL is worth stating, because both were
+ * documented as "the runner does this" and neither was ever called:
+ *
+ *   ensurePartition — `internal.decisions` is partitioned by day, and 0006 defines a
+ *   row landing in `decisions_default` as meaning "the partition-maintenance job
+ *   stopped running". With nothing calling this, EVERY row lands there — so on day one
+ *   a hundred percent of the log arrives in the signal that means the system is broken,
+ *   and the signal is worthless from then on.
+ *
+ *   sweepUnapplied — `applied_at IS NULL` is the whole payoff of writing the log before
+ *   performing the effect. `decisions_unapplied_idx` indexes it and nothing queried it,
+ *   which means the asymmetry bought a repair queue nobody could see. Counting it at
+ *   boot is the smallest honest version: a count that grows rather than drains is a
+ *   stage failing after it logged.
  */
-function unwired<Input>(stage: StageName, hint: string): StageWork<Input> {
-  return {
-    pull: () => Promise.reject(new NotImplemented(`${stage}.pull — ${hint}`)),
-    subjectId: () => {
-      throw new NotImplemented(`${stage}.subjectId`);
-    },
-    apply: () => Promise.reject(new NotImplemented(`${stage}.apply`)),
-  };
+/** `2026-08-19`. The width of an ISO date, which is what ensure_decision_partition takes. */
+const DATE_LENGTH = 10;
+const MS_PER_DAY = 86_400_000;
+
+export interface Maintenance {
+  /** Create today's and tomorrow's partitions. Idempotent; safe to call every day. */
+  ensurePartitions(now: Millis): Promise<readonly string[]>;
+  /** How many logged decisions never had their side effect land. */
+  countUnapplied(sinceMs: Millis, limit: number): Promise<number>;
 }
 
 /**
@@ -106,6 +130,15 @@ export async function withRuntime<T>(
       const decisionRepo: DecisionRepo = decisions;
       const stageRunRepo: StageRunRepo = new PgStageRunRepo(db);
 
+      const repos: StageRepos = {
+        items: new PgItemRepo(db),
+        authors: new PgAuthorRepo(db),
+        observations: new PgObservationRepo(db),
+        stories: new PgStoryRepo(db),
+        assets: new PgAssetRepo(db),
+        decisions,
+      };
+
       // The policy body lives in code and is hashed here, once, at boot. The
       // body is recorded under its hash before the first decision of that
       // version is written: a hash whose body nobody kept is not an audit
@@ -138,22 +171,48 @@ export async function withRuntime<T>(
         markApplied: (rowId, at) => decisionRepo.markApplied(rowId, at),
       };
 
+      const work = storeWork(repos, policy);
+
       const loopDeps: LoopDeps = {
         policy,
         policyHash: hash,
         decisions: decisionLog,
         log,
 
-        admit: unwired('admit', 'platform discover() via the adapter registry, then toItem()'),
-        track: unwired('track', 'claim the due queue FOR UPDATE SKIP LOCKED, then platform observe()'),
-        detect: unwired('detect', 'load each tracked item’s observation series and its baseline'),
-        group: unwired('group', 'load admitted items plus the open story candidates they share carriers with'),
-        qualify: unwired('qualify', 'load the story and its members, then call the judge adapter for a Judgement'),
-        resolve: unwired('resolve', 'time-first candidate query over asset, then the venue gates G1..G8'),
-        rank: unwired('rank', 'load resolved stories and their current board tick'),
+        admit: work.admit,
+        track: work.track,
+        detect: work.detect,
+        group: work.group,
+        qualify: work.qualify,
+        resolve: work.resolve,
+        rank: work.rank,
       };
 
-      return { value: await use({ db, stageRuns, loopDeps }) };
+      /**
+       * ★ THE PARTITION IS CREATED BEFORE THE FIRST DECISION OF THE DAY, NOT AFTER.
+       *
+       * Today's and tomorrow's, both, and tomorrow's is the one that matters: a runner
+       * that only ever creates today's has nothing in place at midnight, and the first
+       * rows of the new day land in `decisions_default` — which is the row the schema
+       * defines as "the partition-maintenance job stopped running". Creating a day
+       * ahead means the maintenance signal only ever fires when maintenance has
+       * genuinely stopped for more than a day.
+       */
+      const maintenance: Maintenance = {
+        ensurePartitions: async (now) => {
+          const made: string[] = [];
+          for (const offset of [0, MS_PER_DAY]) {
+            const day = new Date(now + offset).toISOString().slice(0, DATE_LENGTH);
+            await decisions.ensurePartition(day);
+            made.push(day);
+          }
+          return made;
+        },
+        countUnapplied: async (sinceMs, limit) =>
+          (await decisions.unapplied(sinceMs, limit)).length,
+      };
+
+      return { value: await use({ db, stageRuns, loopDeps, maintenance }) };
     });
 
     if (outcome === null) {

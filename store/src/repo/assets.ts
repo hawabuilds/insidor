@@ -200,6 +200,26 @@ export class PgAssetRepo implements AssetRepo {
   }
 
   /**
+   * Every chain we hold an asset on.
+   *
+   * ★ IT EXISTS SO NO SERVICE HAS TO NAME ONE. `mintedBetween` is keyed by chain, and
+   * a caller that has to supply a chain id has to get it from somewhere — which in
+   * practice means a chain's name typed into a service, which is the first step of the
+   * leak `tools/check-vocabulary.mjs` exists to stop one layer up. Asking the store
+   * which chains it actually holds keeps the name in the only place that has ever seen
+   * it: the rows themselves.
+   *
+   * Ordered so a caller iterating them does the same work in the same order twice,
+   * which matters when the caller is a loop whose output is a decision row.
+   */
+  async chains(): Promise<readonly ChainId[]> {
+    const rows = await this.#db.query<{ chain: string }>(
+      `select distinct chain from public.asset order by chain`,
+    );
+    return rows.map((row) => reBrand<ChainId>(row.chain));
+  }
+
+  /**
    * Record a window of the mint stream we actually observed.
    *
    * This is what makes "resolved / negative" assertable. A label may only say "no

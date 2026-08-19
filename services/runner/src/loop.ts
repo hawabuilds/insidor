@@ -13,6 +13,12 @@
  * from a repair. A side effect with no decision row is a permanent hole, and it
  * is correlated with failures, so it biases training exactly where bias hurts.
  *
+ * ★ THAT ORDERING IS NOT WRITTEN HERE ANY MORE. It lives in `commit.ts`, which
+ * owns all three steps and hands `apply` a `DecisionReceipt` that only a
+ * completed write can produce. This body cannot decide without committing,
+ * because it is never given the decider — only a thunk it passes straight in.
+ * See commit.ts for why that is a helper and not a `finally`.
+ *
  * WHY `apply` RUNS ON EVERY VERDICT, not only on `pass`: what a `drop` means
  * operationally is a product decision, and product decisions live in core and
  * store, never here. This service moves data; it does not interpret verdicts.
@@ -21,7 +27,13 @@
 import type { Decision, Millis, Policy, StageContext, StageName } from '@insidor/contracts';
 import type * as core from '@insidor/core';
 
+import { commitDecision, type DecisionLog, type DecisionReceipt } from './commit.ts';
 import { errorText, type Logger } from './log.ts';
+
+/* The log seam and the receipt are declared in commit.ts, next to the ordering
+   they exist to enforce. Re-exported here because this is the file a stage's
+   wiring reads to find out what it must supply. */
+export type { DecisionLog, DecisionReceipt } from './commit.ts';
 
 /* ── what a run reports ───────────────────────────────────────────────── */
 
@@ -56,27 +68,23 @@ export interface Loop {
 /* ── the two things a loop needs from the outside world ───────────────── */
 
 /**
- * The store side of the log-then-act asymmetry. `write` returns the row id so
- * `markApplied` can close it; a repo that cannot return the id cannot support
- * the asymmetry at all.
- */
-export interface DecisionLog {
-  write(decision: Decision): Promise<string>;
-  markApplied(rowId: string, at: Millis): Promise<void>;
-}
-
-/**
  * One stage's connection to everything outside core.
  *
  * `pull` is where an adapter call or a store query happens. `apply` is where
  * the result is persisted. Both are async; the decider between them is not,
  * and cannot be, which is the whole replay guarantee.
+ *
+ * ★ `apply` TAKES A RECEIPT AND NOT A DECISION, and that is the enforcement.
+ * A `DecisionReceipt` is unforgeable outside commit.ts, so an implementation of
+ * this interface CANNOT perform its side effect against a decision that was
+ * never written. The row is not something a stage remembers to log; it is the
+ * only thing that unlocks the effect.
  */
 export interface StageWork<Input> {
   pull(limit: number, ctx: LoopContext): Promise<readonly Input[]>;
   /** Stable, per subject. Seeds holdout and epsilon assignment deterministically. */
   subjectId(input: Input): string;
-  apply(input: Input, decision: Decision): Promise<void>;
+  apply(input: Input, receipt: DecisionReceipt): Promise<void>;
 }
 
 /**
@@ -139,8 +147,27 @@ export function makeStageLoop<Input>(spec: StageLoopSpec<Input>, deps: LoopDeps)
       for (const input of inputs) {
         if (ctx.signal.aborted) break;
 
-        const subjectId = spec.work.subjectId(input);
+        /*
+         * ★ INSIDE THE TRY, AND IT USED TO BE OUTSIDE IT.
+         *
+         * `StageWork.subjectId` is a plain sync method and nothing stops it throwing —
+         * `rankWork`'s throws NotImplemented on purpose, which is this repository's own
+         * proof that the interface permits it. Called above the `try`, one such subject
+         * took the WHOLE REMAINING BATCH down: the exception escaped `run()`, so every
+         * subject after it in the page was never decided and never logged, and the
+         * counts came back as a thrown run rather than as `failed: 1`. That is the
+         * "a partially-working stage hides" failure `LoopCounts.failed` exists to
+         * prevent, arriving three lines above the comment that promises it cannot.
+         *
+         * The id therefore starts as a placeholder and is replaced by the real one as
+         * the first statement in the block, so the catch below always has something to
+         * name — an unidentifiable subject is still a row in `firstError` and still a
+         * line in the log, which is the only way anybody finds out it exists.
+         */
+        let subjectId = '<subject id unavailable>';
         try {
+          subjectId = spec.work.subjectId(input);
+
           const stageCtx: StageContext = {
             // The clock is read HERE and handed in as a value. The decider
             // cannot ask what time it is, so a replay gets the same answer.
@@ -149,11 +176,18 @@ export function makeStageLoop<Input>(spec: StageLoopSpec<Input>, deps: LoopDeps)
             seed: `${spec.stage}:${subjectId}`,
           };
 
-          const decision = spec.decide(input, deps.policy, stageCtx);
-
-          const rowId = await deps.decisions.write(decision); // log …
-          await spec.work.apply(input, decision); //             … then act …
-          await deps.decisions.markApplied(rowId, ctx.now()); // … then mark
+          // Decide, log, act, mark — as one indivisible step this body cannot
+          // take apart. `spec.decide` is handed over as a thunk rather than
+          // called here, so there is no point in this file at which a Decision
+          // exists and has not been written.
+          const decision = await commitDecision(
+            {
+              input,
+              decide: () => spec.decide(input, deps.policy, stageCtx),
+              apply: spec.work.apply.bind(spec.work),
+            },
+            { decisions: deps.decisions, now: ctx.now },
+          );
 
           if (decision.verdict === 'pass') passed += 1;
         } catch (e) {
