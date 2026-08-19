@@ -39,6 +39,17 @@ export type StoryId = Branded<string, 'StoryId'>;
 /** A (story, asset) pairing under consideration by RESOLVE. */
 export type CandidateId = Branded<string, 'CandidateId'>;
 
+/**
+ * An (item, story) pairing under consideration by GROUP.
+ *
+ * GROUP is the one stage whose subject is a PAIR rather than a thing, because the
+ * question it answers is not "is this item any good" but "is this item part of that
+ * story". The id has to be the pair for the same reason `Decision.subjectKind` has a
+ * 'pair' member: the rows this stage writes are the training set for the match model,
+ * and a row keyed by the item alone cannot say which candidate it was about.
+ */
+export type PairId = Branded<string, 'PairId'>;
+
 /* ── where a market lives ──────────────────────────────────────────────── */
 
 /**
@@ -103,6 +114,21 @@ export function storyId(token: string): StoryId {
 /** A candidate is the pair it is about, so it is reproducible rather than allocated. */
 export function candidateId(story: StoryId, asset: AssetRef): CandidateId {
   return `${story}|${assetKey(asset)}` as CandidateId;
+}
+
+/**
+ * A pair is likewise the two things it is about, so it is reproducible rather than
+ * allocated: the same (item, story) pair scored twice produces the same subject id,
+ * and the second row is recognisable as a re-decision instead of a new subject.
+ *
+ * Neither component is re-asserted here, for the same reason `candidateId` does not
+ * re-assert its own: both arrive already constructed by the functions above, which
+ * is where the separator rules were enforced. `|` is the pair separator because
+ * `assertToken` forbids it inside a component, so it cannot occur in either half and
+ * the split is therefore unambiguous.
+ */
+export function pairId(item: ItemId, story: StoryId): PairId {
+  return `${item}|${story}` as PairId;
 }
 
 /** `<chain>:<address>` — the one storable spelling of an asset. */

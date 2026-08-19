@@ -135,12 +135,74 @@ export interface GroupPolicy {
   readonly similarityBars: Readonly<Record<string, number>>;
   /** Below this the pair goes to adjudication rather than to a guess. */
   readonly adjudicationBand: number;
+  /**
+   * The scalar bar a (item, story) pair must clear to be a join at all.
+   *
+   * Distinct from the per-kind distance bars above and not derivable from them:
+   * those decide whether a carrier is SHARED, this decides whether the shared
+   * evidence adds up to one thing. `M3_below_match_bar` had no field to read
+   * before this one existed.
+   */
+  readonly matchBar: number;
+  /**
+   * Hand-set weights over the match features, to be replaced by a logistic
+   * regression over the same features once there are a few hundred hand-labelled
+   * pairs. They live here rather than in match.ts so that the fit, when it
+   * happens, is a diff to this object — and so every decision row already carries
+   * a hash saying which weights judged it.
+   *
+   * The two exact-match carrier kinds share one weight because they share one
+   * evidential shape: an exact token present on both sides. Their difference in
+   * reliability is already carried by the persistence weight, which is what
+   * zeroes a symbol everybody mentions and leaves a template id alone.
+   */
+  readonly matchWeights: {
+    readonly imageCarrier: number;
+    readonly textCarrier: number;
+    /** formatId and entitySpan: exact string equality, free, and certain. */
+    readonly exactCarrier: number;
+    readonly lineage: number;
+    readonly representation: number;
+    readonly sourceAgreement: number;
+    readonly timeProximity: number;
+  };
+  /**
+   * At or below this a shared carrier is ambience rather than evidence, and the
+   * pair is `M5_generic_carrier` instead of a join.
+   *
+   * Zero is the honest value TODAY and not a placeholder: `carrierWeight()`
+   * returns exactly zero for a generic symbol and a positive number for
+   * everything else, and until the daily frequency table is actually being
+   * written there is no second thing the weight can prove. When that history
+   * exists, raising this floor is the whole edit.
+   */
+  readonly minCarrierWeight: number;
+  /**
+   * The scale time proximity decays over, as the denominator of an exponential:
+   * a pair separated by this much is worth about a third of a pair posted
+   * together. It is a scale rather than a cutoff because a hard window would
+   * make a story's oldest member stop attracting versions at a fixed age, which
+   * is a claim about memes nobody has evidence for.
+   */
+  readonly timeProximityTauMs: number;
   /** Term weighting: persistence over daily buckets, not raw document frequency. */
   readonly persistenceBuckets: number;
   readonly persistenceDfFloor: number;
   /** Promotion: what a candidate must show before anything downstream may look at it. */
   readonly promoteMinMembers: number;
   readonly promoteMinDistinctAuthors: number;
+  /**
+   * The third promotion clause, which promote.ts's header has always demanded and
+   * which had no field to read.
+   *
+   * It ships at one, and the reason is worth writing down rather than
+   * rediscovering: only one adapter currently has a live implementation, so a bar
+   * of two would mean nothing is ever promoted and every downstream stage would
+   * go quiet for a reason no reason code could name. One says "a single source is
+   * enough while a single source is all there is". Raising it to two is the right
+   * edit the day a second adapter runs, and this comment is the note that says so.
+   */
+  readonly promoteMinDistinctSources: number;
   /** Merge two stories when this share of one's carriers is present in the other. */
   readonly mergeCarrierOverlap: number;
   readonly maxMembersPerInterval: number;
@@ -440,8 +502,18 @@ const POLICY_V1: Policy = {
      board built under v3 retrieved EVERY asset in the store for such a story, because the
      projector's "we cannot order this, so abstain" escape was spelled as a predicate that
      is true for every row. Rows built before this bump were judged against a window that
-     was not a window, and the version string is the only thing that says so. */
-  version: 'policy.v4',
+     was not a window, and the version string is the only thing that says so.
+
+     v5 adds the five `group` fields the grouper could not be built without:
+     `matchBar`, `matchWeights`, `minCarrierWeight`, `timeProximityTauMs` and
+     `promoteMinDistinctSources`. Four of the ten M-codes named a threshold that did
+     not exist anywhere — `M3_below_match_bar` had no bar to be below, and
+     `M5_generic_carrier` had no floor to fall under — so the alternative to this
+     bump was five numbers typed into core, which is the exact failure this file was
+     created to end. Bumped by hand for the same reason as v3 and v4: any board built
+     before this bump was built by a stage that could not join anything at all, and
+     the version string is the only thing that says so. */
+  version: 'policy.v5',
 
   admit: {
     maxAgeMin: 240,
@@ -494,10 +566,36 @@ const POLICY_V1: Policy = {
     minShingles: 6,
     similarityBars: {},
     adjudicationBand: 0.05,
+    matchBar: 0.3,
+    /* Read these as "what would this signal alone be worth". Three properties are
+       deliberate and are asserted in core/src/group/stage.test.ts, because a weight
+       table with no properties is just seven numbers somebody typed:
+
+         · lineage is the largest, because it is the only signal where the SOURCE
+           says the two items are related. Everything else is us inferring it.
+         · every carrier weight alone clears matchBar, so the free tiers each carry
+           a join on their own and the paid tier is never a precondition for one.
+         · sourceAgreement + timeProximity together do NOT clear matchBar. Two posts
+           being close in time on a story that already spans sources is
+           corroboration, not identity, and a pair of coincidences must never add up
+           to a join by itself. That is the property that stops a busy hour from
+           merging everything posted during it. */
+    matchWeights: {
+      imageCarrier: 0.55,
+      textCarrier: 0.35,
+      exactCarrier: 0.4,
+      lineage: 0.6,
+      representation: 0.35,
+      sourceAgreement: 0.05,
+      timeProximity: 0.1,
+    },
+    minCarrierWeight: 0,
+    timeProximityTauMs: 21_600_000,
     persistenceBuckets: 14,
     persistenceDfFloor: 3,
     promoteMinMembers: 3,
     promoteMinDistinctAuthors: 2,
+    promoteMinDistinctSources: 1,
     mergeCarrierOverlap: 0.6,
     maxMembersPerInterval: 200,
   },

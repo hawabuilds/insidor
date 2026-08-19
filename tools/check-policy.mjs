@@ -37,6 +37,7 @@ const ALLOWED_FILES = {
   'core/src/policy.ts': 'the one place thresholds are allowed to be typed.',
   'core/src/math.ts': 'clamp01, logistic, percentile — the arithmetic itself, plus named unit constants.',
   'core/src/hash.ts': 'FNV-1a is defined by two specific constants. They are the algorithm, not a choice.',
+  'core/src/bits.ts': 'four bits to a hex digit, radix sixteen, and the midpoint of [0,1). Hex is a spelling, not a judgement — and one entry here keeps the two carrier tiers that consume it free of escapes.',
 };
 
 const isAllowedFile = (file) =>
