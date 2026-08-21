@@ -72,6 +72,37 @@ export interface Launch {
 }
 
 /**
+ * ★ THE STATE OF THE FEED THE ROWS CAME OFF — and the reason it exists is that the rail
+ * could not previously tell a quiet market from a dead transport.
+ *
+ * The poll loop's health and the mint feed's health are INDEPENDENT FACTS and both have to
+ * be sayable at once. On the store this shipped against, the rail's own pill read "updated
+ * 2s ago" with the pip lit, over coins last heard about 141 hours earlier — and both of
+ * those were true. Everything the rail already says is about OUR fetch loop; this is the
+ * first thing it can say about the world's contact with us.
+ *
+ * ★ THE JUDGEMENT ARRIVES MADE. `live` is decided server-side against a threshold in the
+ * policy, exactly like a market reading's staleness, and for the same reason: a bar is a
+ * number about our own machinery and the client is never handed one. There is no bar here
+ * to compare against and no gap count to reason from — only an instant, which is a fact
+ * about the world, and a boolean, which is the already-made call.
+ */
+export interface FeedSource {
+  /**
+   * When this feed was last actually heard from.
+   *
+   * ★ UNKNOWN AND OLD ARE DIFFERENT AND STAY DIFFERENT. The absent branch means nothing
+   * has EVER been observed on this feed — a watcher that has not run — which is not the
+   * same sentence as "we heard something, six days ago". `formatAge` already renders the
+   * two differently with no new formatter, so the rail gets the distinction for free as
+   * long as nothing collapses it here.
+   */
+  readonly lastHeardAt: Instant;
+  /** Whether the feed is being heard from now. Decided by the server, never re-derived. */
+  readonly live: boolean;
+}
+
+/**
  * One committed frame of the rail.
  *
  * `launches` is the order — newest mint first, decided by the projector and never sorted
@@ -82,4 +113,9 @@ export interface Launch {
 export interface LaunchFeed {
   readonly tick: number;
   readonly launches: readonly Launch[];
+  /**
+   * ★ ON THE FRAME, so it can never describe a different moment from the rows beside it.
+   * An empty `launches` array has two meanings and this is the field that separates them.
+   */
+  readonly source: FeedSource;
 }

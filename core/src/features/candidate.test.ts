@@ -39,6 +39,10 @@ const P = DEFAULT_POLICY;
 const STORY_FIXTURE: Story = {
   storyId: STORY,
   state: 'promoted',
+  /* Every decider in core is blind to this field; it is here because `Story` requires an
+     answer, and 'observed' is the narrow one — the origin a story assembled from real posts
+     carries, and the one that may never see an invented coin. */
+  origin: 'observed',
   createdAt: NOW - 40 * MINUTE,
   promotedAt: NOW - 35 * MINUTE,
   earliestPostAt: EARLIEST_POST,
@@ -60,6 +64,11 @@ function asset(address: string, originAt: number | null, over: Partial<Asset> = 
     key: assetKey(ref(address)),
     chain: CHAIN,
     venue: VENUE,
+    /* An asset only reaches a stage through the store's candidate retrieval, which admits
+       the origins that are a claim about the world and nothing else. So the representative
+       value in a fixture is an observed one; a 'fixture' row is unreachable here by
+       construction, and a test that wanted to prove that would have to test the query. */
+    origin: 'live_stream',
     mintedAt:
       originAt === null
         ? { at: null, source: 'none', confidence: 'unknown', boundS: null }

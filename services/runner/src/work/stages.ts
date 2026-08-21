@@ -727,11 +727,32 @@ function resolveWork(repos: StageRepos, policy: Policy): StageWork<ResolveInput>
 
         const candidates: ResolveInput['candidates'][number][] = [];
         for (const chain of chains) {
+          /* ★ THE STORY'S OWN ORIGIN GOES INTO RETRIEVAL, and it is passed rather than
+             assumed for the reason the parameter is required at all. This retrieval has
+             TWO subjects — a story and the coins it may be compared against — and the
+             version of it that named only the coin answered a different question: it
+             asked "is this coin observed", which has a constant for an answer, in place of
+             "may this coin be compared against this story", which does not.
+
+             What that cost, measured through this loop and read back out of the decision
+             log it wrote: every fixture story arrived at the gates with 43 candidates
+             where its window held 51–54, and st_pigeon arrived with 0 where its window
+             held 2 — logged, permanently, as `V3_no_candidates`. A stage that reports no
+             candidates for a subject that had candidates does not merely abstain; it
+             freezes a false negative into the append-only table every later recall number
+             is computed over, and this file's own comment above calls those abstains "the
+             training set".
+
+             The direction is safe in the half that matters. `coinOriginsVisibleTo` gives
+             an observed story exactly the list this call used to hardcode, so a fixture
+             still cannot reach a real story's candidate set — which is the journey the
+             repo method's header calls the furthest a fiction can travel here. */
           const assets = await repos.assets.mintedBetween(
             chain,
             from,
             to,
             policy.resolve.maxCandidates,
+            story.origin,
           );
           for (const asset of assets) {
             candidates.push({

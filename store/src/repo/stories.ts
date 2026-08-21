@@ -36,6 +36,8 @@ import type { TimestampColumn } from '../rows.ts';
 
 interface StoryRow {
   story_id: string;
+  /** The closed list of contracts' STORY_ORIGINS, spelled the same way by 0016's CHECK. */
+  origin: Story['origin'];
   created_at: TimestampColumn;
   earliest_post_at: TimestampColumn;
   promoted_at: TimestampColumn;
@@ -81,7 +83,7 @@ export interface StoryPresentation {
 }
 
 const SELECT_STORY = `
-  select story_id, created_at, earliest_post_at, promoted_at, last_member_at, state,
+  select story_id, origin, created_at, earliest_post_at, promoted_at, last_member_at, state,
          carriers, merged_into, member_count, distinct_authors, distinct_sources
     from public.story
 `;
@@ -107,13 +109,24 @@ export class PgStoryRepo implements StoryRepo {
    * `created_at` is never updated and `promoted_at` is never cleared: both are
    * clocks about events that already happened, and moving one backwards would make
    * an old story look new to every age feature downstream.
+   *
+   * ★ `origin` IS IN THE INSERT AND DELIBERATELY NOT IN THE UPDATE, and it belongs on
+   * that same list. It is a fact about how the row came to EXIST, so the row that exists
+   * already has the only true answer and this call is not in a position to correct it.
+   * Leaving it out of the SET is also the safe direction under a collision: an upsert
+   * carrying 'observed' cannot re-stamp a seeded story, and one carrying 'fixture' cannot
+   * turn a real story into one that may see invented coins. See coinOriginsVisibleTo —
+   * only the second of those is a live danger, and neither is reachable from here.
+   *
+   * Nothing coalesces it either. `origin` is NOT NULL with no default in 0016, so there is
+   * no null to fill in: a story either has an origin or was never written.
    */
   async upsert(story: Story): Promise<void> {
     await this.#db.query(
       `insert into public.story (
-         story_id, created_at, earliest_post_at, promoted_at, last_member_at, state,
+         story_id, origin, created_at, earliest_post_at, promoted_at, last_member_at, state,
          carriers, merged_into, member_count, distinct_authors, distinct_sources
-       ) values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12)
        on conflict (story_id) do update set
          earliest_post_at = least(public.story.earliest_post_at, excluded.earliest_post_at),
          last_member_at   = greatest(public.story.last_member_at, excluded.last_member_at),
@@ -126,6 +139,7 @@ export class PgStoryRepo implements StoryRepo {
          distinct_sources = excluded.distinct_sources`,
       [
         story.storyId,
+        story.origin,
         toTimestamp(story.createdAt),
         toTimestamp(story.earliestPostAt),
         toTimestamp(story.promotedAt),
@@ -317,6 +331,53 @@ export class PgStoryRepo implements StoryRepo {
    */
   async merge(from: StoryId, into: StoryId, at: Millis): Promise<void> {
     if (from === into) throw new TypeError('a story cannot be merged into itself');
+
+    /* ★ THE ONE PATH BY WHICH OBSERVED ITEMS COULD END UP UNDER A FIXTURE STORY'S
+       ALLOWLIST, closed here because there is nowhere downstream that could close it.
+       `origin` is a fact about how a row came to exist, so nothing updates it — the upsert
+       above leaves it alone on purpose. That immutability is right, and it is exactly what
+       makes this call dangerous: merging an observed story INTO a fixture one moves real
+       members under a row whose origin still says 'fixture', and `coinOriginsVisibleTo`
+       then lets that row name invented coins beside posts people actually wrote. The
+       survivor would be a fiction's provenance wrapped around observed content, which is
+       the pairing every origin rule in this repository exists to make unsayable.
+
+       ★ A THROW AND NOT A SILENT NARROWING. Re-stamping the survivor 'observed' would fix
+       the visibility and lie about the row: a story assembled by a seed did not become
+       something the world produced because another story was folded into it. And it would
+       be the first write in the system that moves an origin, which is the property 0016
+       and the asset upsert both spend their comments defending. So the merge is refused and
+       the caller decides — the two candidates for that decision are merging the other way
+       round, or not merging at all, and both are judgements above this layer.
+
+       THE OTHER DIRECTION IS ALLOWED AND IS NOT AN OVERSIGHT. A fixture merged into an
+       observed story leaves the survivor 'observed', so it sees observed coins only — the
+       demonstration members lose their demonstration coins. That is a demo showing less
+       than it meant to, which is the direction this vocabulary is built to fail in.
+
+       Nothing calls this yet. That is not a reason to leave it: `chains()` in the asset repo
+       makes the same argument about a read whose hole today's data happens not to walk
+       through, and the day a merge is wired is the day nobody is thinking about provenance. */
+    const origins = await this.#db.query<{ story_id: string; origin: Story['origin'] }>(
+      `select story_id, origin from public.story where story_id = any($1::text[])`,
+      [[from, into]],
+    );
+    const originOf = new Map(origins.map((row) => [row.story_id, row.origin]));
+    const fromOrigin = originOf.get(from);
+    const intoOrigin = originOf.get(into);
+    /* An absent row is a throw rather than a skipped check. A merge naming a story that is
+       not there is already wrong, and the version of this guard that shrugs at a missing
+       origin is the version that passes when the read failed. */
+    if (fromOrigin === undefined) throw new TypeError(`story ${from} does not exist to be merged`);
+    if (intoOrigin === undefined) throw new TypeError(`story ${into} does not exist to merge into`);
+    if (intoOrigin === 'fixture' && fromOrigin !== 'fixture') {
+      throw new TypeError(
+        `refusing to merge ${fromOrigin} story ${from} into fixture story ${into}: ` +
+          'the survivor keeps its fixture origin, which would let invented coins be named ' +
+          'beside observed posts. Merge the other way round, or not at all.',
+      );
+    }
+
     await this.#db.query(
       `update public.story
           set merged_into = $2, merged_at = $3, state = 'merged'
@@ -390,6 +451,7 @@ function toStory(row: StoryRow): Story {
   return {
     storyId: reBrand<StoryId>(row.story_id),
     state: row.state,
+    origin: row.origin,
     createdAt: toMillisRequired(row.created_at, 'created_at'),
     promotedAt: toMillis(row.promoted_at),
     earliestPostAt: toMillisRequired(row.earliest_post_at, 'earliest_post_at'),

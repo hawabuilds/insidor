@@ -224,6 +224,43 @@ export interface WireLaunch {
   readonly marketCapBasis: MarketCapBasis | null;
 }
 
+/**
+ * ★ THE STATE OF THE FEED BEHIND A FRAME — two keys, and the list is short on purpose.
+ *
+ * It exists because a healthy poll over a dead transport looks exactly like a healthy poll
+ * over a live one. On the store this was written against, the rail's own status pill read
+ * "updated 2s ago" with the pip lit — both TRUE — above coins last heard about 141 hours
+ * earlier. The client could not tell, because nothing had ever told it: the coverage log
+ * that knows the silence to the second lives in a schema the app role has no USAGE on.
+ *
+ * ★ WHAT IT DELIBERATELY DOES NOT CARRY, and the vocabulary is what enforces it. There is
+ * no threshold here — `threshold` is a forbidden key and the bar is ours, not the user's.
+ * There is no explanation of why we think the feed is stale — `reason` and `verdict` are
+ * forbidden too. And there is no gap count: a coverage gap is a fact about OUR watching,
+ * which is machinery. What crosses is the instant, which is a fact about the world's
+ * contact with us, and the already-made judgement, which is a boolean.
+ */
+export interface WireFeedSource {
+  /**
+   * When this feed was last actually heard from.
+   *
+   * ★ ABSENT IS A DIFFERENT FACT FROM OLD AND MUST STAY SO. `{ at: null }` means nothing
+   * has EVER been observed on this feed — a watcher that has never run. That is not the
+   * same sentence as "we heard something, six days ago", and a surface that collapsed
+   * them would tell a new deployment its feed had died.
+   */
+  readonly lastHeardAt: WireInstant;
+  /**
+   * Whether that instant is recent enough that the feed is being heard from now.
+   *
+   * ★ DECIDED SERVER-SIDE, exactly like `currentMarket`'s freshness gate and for the same
+   * reason: the bar is a judgement, it lives in one hashed policy object so that "what was
+   * this frame judged against in March" has an answer, and what crosses the wire is the
+   * labelled result rather than the ingredients to re-derive it.
+   */
+  readonly live: boolean;
+}
+
 export interface WireLaunchFeed {
   readonly tick: number;
   /**
@@ -235,6 +272,160 @@ export interface WireLaunchFeed {
    * spelling of it would be a second thing that can disagree.
    */
   readonly launches: readonly WireLaunch[];
+  /**
+   * ★ ON THE FRAME, NOT BESIDE IT. An empty `launches` array has two completely different
+   * meanings — a quiet market, or a transport that has been dead for six days — and this
+   * is the field that separates them. It travels with the rows so the two can never
+   * describe different moments.
+   */
+  readonly source: WireFeedSource;
+}
+
+/* ── the pairs screen: the mints that reached a market ────────────────── */
+
+/**
+ * ONE COIN A VENUE COULD PRICE.
+ *
+ * ★ IT IS NOT A `WireLaunch` WITH NUMBERS ADDED AND IT IS NOT A `WireCoin` WITH NUMBERS
+ * REMOVED. A launch says "this came into existence"; a pair says "somebody made a market
+ * in it". Those are different claims about different populations — 7 of 192 mints in this
+ * store ever crossed from the first to the second — so they are different payloads, and
+ * the difference is what makes the ratio on the head a real sentence rather than a filter.
+ *
+ * ★ NO `tradable`, AND NO `priceChange24h`, AND BOTH ABSENCES ARE STRUCTURAL.
+ * `tradable` is a claim that a venue will quote this coin right now, and the only evidence
+ * for it is a quote; the market reader declares `read` and not `trade`, so every reading
+ * behind this screen carries `tradable = false` by constraint rather than by pessimism.
+ * Carrying the field would put a false on the wire that a future editor could talk
+ * themselves into flipping. The 24-hour move is absent because a coin that reached a pool
+ * an hour ago has no trailing day, and a column of dashes teaches nobody anything.
+ *
+ * The consequence is the one that matters and it is the same one `WireLaunch` buys: no buy
+ * affordance can be assembled from a pair however the screen is later rewritten. `actionFor`
+ * takes a `CoinLink`, and a pair is not one.
+ *
+ * There is no `imageUrl` and no social link, for `WireLaunch`'s reason: a mint's image URI
+ * is a string typed by whoever made the coin, and rendering one is a request to an
+ * attacker-chosen host for every row that scrolls past.
+ */
+export interface WirePair {
+  /** The asset key, '<chain>:<address>'. A stable client key across frames. */
+  readonly pairId: string;
+  /** Observed, never an identifier — and bounded in length before it got here. */
+  readonly ticker: string;
+  readonly name: string;
+  /** The on-chain identifier. The screen truncates it; it is never a link. */
+  readonly address: string;
+  /** The VENUE the coin was first seen on. Never the feed we read it from. */
+  readonly venueLabel: string;
+  /**
+   * When the coin was MINTED — not when the pool opened, which nothing here knows.
+   *
+   * ★ READ THIS WITH `mintedAtBoundS` AND NOT ALONE, exactly as on `WireLaunch`. On a
+   * socket-fed pipeline it is the centre of an interval and the screen renders a "~".
+   */
+  readonly mintedAt: WireInstant;
+  /** Half-width of the mint-time bound, in SECONDS, or null when the instant is exact. */
+  readonly mintedAtBoundS: number | null;
+
+  /**
+   * ★ THE READING, AND THE INSTANT IT WAS TAKEN AT, TRAVELLING TOGETHER.
+   *
+   * `projectCoin` drops a reading older than `Policy.market.readingFreshnessMs` WHOLE, and
+   * that is right for the board, which has a Buy button on every row: a price a user is
+   * about to act on has to be current or it has to be a dash.
+   *
+   * This screen makes the opposite call DELIBERATELY, and it is allowed to because it has
+   * no trade affordance at all — see the two absent fields above. A 52-minute-old reading
+   * suppressed here is not caution, it is deletion: it turns the one screen that exists to
+   * say "six of these reached a market" into six names and eighteen dashes, and the
+   * sentence that made the screen worth building is unsupportable. So the number is
+   * published WITH the instant it was read at, and the screen states the age beside every
+   * figure. A stale reading that says it is stale is the honest form; a stale reading
+   * wearing no label is the only thing that is not allowed.
+   */
+  readonly readAt: WireInstant;
+  readonly priceUsd: WireMeasured;
+  readonly marketCapUsd: WireMeasured;
+  /** Non-null exactly when the cap is known. Never guessed, never carried forward. */
+  readonly marketCapBasis: MarketCapBasis | null;
+  /**
+   * ★ ABSENT ON A CURVE, AND ABSENCE IS NOT ILLIQUIDITY. A bonding curve has no two-sided
+   * reserve, so the venue reports no liquidity object at all and the reading carries
+   * `not_reported` — which is a different fact from `no_market` and stays different.
+   */
+  readonly liquidityUsd: WireMeasured;
+}
+
+/**
+ * ★ WHETHER THE ROWS OF THIS FRAME MAY BE LISTED AT ALL.
+ *
+ * A closed two-branch union rather than a flag, and the `withheld` branch carries NO rows
+ * and NO counts — the same shape, and the same argument, as `WireCoinLink`'s `unsure`
+ * branch. If the rows rode along under this tag they would be one prop-drill away from a
+ * table, and the whole point of a union is that the unsafe path does not exist.
+ *
+ * `withheld` is published when public.asset holds no record of where each row came from.
+ * Without that record a demo row and an observed one are the same row to every query in
+ * the system, so a screen whose heading says a venue priced these coins would be listing
+ * fictions under it. The honest answer is then no rows and a sentence saying why, which is
+ * what this branch is. It is NOT an error and it is NOT an empty market: those are the
+ * `shown` branch with a count of zero, and the three must stay distinguishable.
+ */
+export type WirePairListing =
+  | {
+      readonly listing: 'shown';
+      /**
+       * How many mints the window held. The denominator of the sentence on screen, and a
+       * real count rather than a stand-in — it comes from one statement with no limit on
+       * it, so it is a count and not a count under a cap.
+       */
+      readonly mintsInWindow: number;
+      /** How many of those a venue could price. The numerator. */
+      readonly withMarket: number;
+      /**
+       * How many had none. Computed in the SAME statement as the two above rather than
+       * subtracted afterwards, so the three cannot disagree about one population.
+       */
+      readonly withoutMarket: number;
+    }
+  | { readonly listing: 'withheld' };
+
+/**
+ * The head of the pairs screen: what the list covers, and what has been heard lately.
+ *
+ * ★ `lastMintHeardAt` IS A FACT ABOUT THE WORLD'S CONTACT WITH US AND IS NOT A STATUS.
+ * It is the newest instant covered by a window in which something was actually observed —
+ * never the newest window recorded, because a window recorded as a GAP advances while
+ * nothing was heard, and a freshness signal built on one would announce a feed live over
+ * precisely the interval we declared dark.
+ *
+ * Note what is NOT here, because this payload is policed by `assertNoInternalVocabulary`
+ * and by FORBIDDEN_KEYS below: no `reason` for the silence, no `threshold` it is measured
+ * against, no count of gaps, and no boolean verdict. Those are our machinery. What crosses
+ * is the instant; how long ago that was is arithmetic anybody can do, and what to say
+ * about it belongs to the screen.
+ */
+export interface WirePairHead {
+  /** How far back the list reaches, in milliseconds. The screen states it in words. */
+  readonly windowMs: number;
+  /** When a mint was last heard. Absent means nothing has ever been observed on this feed. */
+  readonly lastMintHeardAt: WireInstant;
+  readonly rows: WirePairListing;
+}
+
+export interface WirePairFeed {
+  readonly tick: number;
+  readonly head: WirePairHead;
+  /**
+   * Newest MINT first, in the order the projector committed — never newest pair, which is
+   * an ordering nothing in this system can derive.
+   *
+   * Empty whenever `head.rows.listing` is 'withheld', and the decoder on the far side does
+   * not read this array at all on that branch. The two cannot disagree because only one of
+   * them is ever consulted.
+   */
+  readonly pairs: readonly WirePair[];
 }
 
 /* ── the story page ───────────────────────────────────────────────────── */

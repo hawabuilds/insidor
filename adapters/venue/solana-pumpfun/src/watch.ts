@@ -72,6 +72,19 @@ export function toMintEvent(raw: unknown, ctx: WatchContext, chainMintMs: Millis
     key: assetKey(ref),
     chain: ctx.chain,
     venue: ctx.venue,
+    /*
+     * ★ 'backfill', NOT 'live_stream', AND THE DIFFERENCE IS LOAD-BEARING. This row came
+     * from a list endpoint: nobody was watching when the coin was made, we asked
+     * afterwards and it was there. The comment above about `observedMs` makes the same
+     * point from the mint-time side — the instant we fetched the page is the age of the
+     * request, not the age of the asset.
+     *
+     * Both are evidence about the WORLD, which is why both are on the observed allowlist
+     * and both may appear on a surface that lists coins. What a backfilled row must never
+     * do is stand as evidence that we were WATCHING, because that is the claim the
+     * coverage log makes and the claim a negative label rests on.
+     */
+    origin: 'backfill',
     mintedAt,
     symbol: str(r.symbol),
     name: str(r.name),

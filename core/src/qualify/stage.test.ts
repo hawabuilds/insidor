@@ -26,6 +26,7 @@ function story(over: Partial<Story> = {}): Story {
   return {
     storyId: STORY,
     state: 'promoted',
+    origin: 'observed',
     createdAt: NOW - 60 * MINUTE,
     promotedAt: NOW - 30 * MINUTE,
     earliestPostAt: NOW - 70 * MINUTE,

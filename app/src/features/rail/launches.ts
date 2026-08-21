@@ -8,7 +8,7 @@
  * other side). Anything left in the component is untestable by construction, so the rules
  * live out here where `launches.test.ts` can call them with literals.
  *
- * THE THREE RULES THIS FILE HOLDS:
+ * THE FOUR RULES THIS FILE HOLDS:
  *
  *   1. ★ A BOUNDED MINT TIME IS NEVER SHOWN AS A READING. A live mint feed reports when we
  *      HEARD about a coin; the mint happened at or shortly before that. So most ages here
@@ -24,15 +24,22 @@
  *
  *   3. ★ NOTHING IS INVENTED WHILE WAITING. No skeleton rows, no placeholder tickers, no
  *      count of zero standing in for a count we do not have.
+ *
+ *   4. ★ A DEAD FEED DOES NOT LOOK LIKE A QUIET ONE. Our poll loop's health and the mint
+ *      feed's health are INDEPENDENT, and for six days they disagreed in the worst possible
+ *      direction: the pill read "updated 2s ago" and the pip pulsed over coins last heard
+ *      about 141 hours earlier, and both of those were true. So there are two notice slots
+ *      and not one. Everything in rule 2 is a statement about OUR fetch loop; `sourceNotice`
+ *      is a statement about the world's contact with us, and neither can stand in for the
+ *      other.
  */
 
 import { ReadError } from '../../shared/api/index.ts';
-import type { Launch, LaunchFeed } from '../../shared/api/index.ts';
-import { formatAge, formatDuration } from '../../shared/format/duration.ts';
+import type { FeedSource, Launch, LaunchFeed } from '../../shared/api/index.ts';
+import { formatAge, mintAge } from '../../shared/format/duration.ts';
 import { instant } from '../../shared/format/measure.ts';
 import type { Millis } from '../../shared/format/measure.ts';
 import { formatUsd } from '../../shared/format/number.ts';
-import { pendingLabel, value } from '../../shared/format/rendered.ts';
 import type { Rendered } from '../../shared/format/rendered.ts';
 
 /** The feed the projector writes. `LAUNCH_FEED_ID` in services/project/src/main.ts. */
@@ -69,8 +76,6 @@ const STALE_AFTER_MS = 3 * POLL_MS;
  * about what is on screen and it belongs on screen rather than in this comment.
  */
 const MAX_ROWS = 30;
-
-const MS_PER_SECOND = 1_000;
 
 /** Enough of an address to recognise, never enough to mistake for the whole thing. */
 const ADDRESS_HEAD = 4;
@@ -112,28 +117,21 @@ export interface LaunchRow {
  *   - An exact mint time → the age plain. Only a chain confirmation earns this, and 0005's
  *     `exact_requires_real_source` is what stops anything else claiming it.
  *
- * `formatAge` already refuses a future origin (it returns `unreadable` rather than a
- * negative age), so a clock-skewed row arrives here as a dash and not as "-4s".
+ * ★ AND IT IS ONE RULE IN ONE PLACE, NOW THAT TWO SURFACES SHOW A MINT AGE. This function
+ * used to spell those three branches out itself, from before the pairs screen existed, and
+ * `shared/format/duration.ts` named the duplication as debt in its own comment rather than
+ * leaving it to be discovered. It is worth having been explicit about: the failure mode of
+ * two copies here is silent and asymmetric — the tilde quietly stops appearing on whichever
+ * screen was edited second, and a bounded estimate is then rendered as a reading on a
+ * product whose every ordering claim hangs on mint time. So this delegates, and `mintAge` is
+ * the only place the rule exists.
+ *
+ * The wrapper stays because the RAIL's row type is what it is: it takes a `Launch` and reads
+ * the two fields that belong together, so no call site anywhere can pass the instant without
+ * its bound.
  */
 export function launchAge(launch: Launch, now: Millis): { readonly age: Rendered; readonly label: string } {
-  const age = formatAge(launch.mintedAt, now);
-  if (age.kind === 'pending') return { age, label: pendingLabel(age.reason) };
-  if (launch.mintedAtBoundS === null) return { age, label: `minted ${age.text} ago` };
-
-  /* ★ THE BOUND IS ROUNDED UP, NEVER DOWN, and one second is its floor. `formatDuration`
-     floors — it is built for ages, where flooring is right — so a half-second bound would be
-     phrased "give or take 0s", which is the caveat deleted while the tilde stays on. That
-     reads as an exact time wearing an apology. The projector already floors this at one
-     second (`Math.max(1, Math.ceil(...))` in projectMintTime) so this cannot fire against
-     our own server; it fires against a server that does not, and stating a bound smaller
-     than it is claims a precision nobody has. */
-  const bound = formatDuration(Math.max(MS_PER_SECOND, launch.mintedAtBoundS * MS_PER_SECOND));
-  return {
-    age: value(`~${age.text}`),
-    /* The bound is stated in words rather than only implied by the tilde, because a tilde
-       is a hint and a user acting on the order of two events needs the number. */
-    label: `minted about ${age.text} ago, give or take ${bound}`,
-  };
+  return mintAge(launch.mintedAt, launch.mintedAtBoundS, now);
 }
 
 /**
@@ -228,6 +226,27 @@ export interface RailView {
    */
   readonly overflow: string | null;
   readonly notice: RailNotice | null;
+  /**
+   * ★ A SECOND, INDEPENDENT NOTICE SLOT, and its independence is the design point.
+   *
+   * `notice` above describes OUR FETCH LOOP — "stopped answering", "gone quiet", "could not
+   * be read" — which is why STALE_AFTER_MS is allowed to live in this file at all. This one
+   * describes THE WORLD'S CONTACT WITH US: how long it has been since anything reported a
+   * mint. The two are unrelated and both can be true at once, which is exactly the state
+   * that shipped — a perfectly healthy six-second poll, answering 200 every time, over a
+   * transport that had been silent for 141 hours.
+   *
+   * Making this a sixth branch of `notice` would have made the two mutually exclusive, and
+   * the one they would have hidden is the consequential one: a failing poll is our problem
+   * and self-correcting, while a dead mint feed means every age on screen is wrong about
+   * what "new" means.
+   *
+   * ★ IT IS NOT DERIVED FROM A THRESHOLD HERE. The server decides whether a feed is live,
+   * against a bar in the policy; this file reads `feed.source.live` and phrases it. A bar
+   * typed in the client would be a second answer to "is this feed dead", and the two would
+   * disagree the first time either moved.
+   */
+  readonly sourceNotice: RailNotice | null;
   readonly empty: RailEmpty | null;
 }
 
@@ -279,6 +298,62 @@ function noticeFor(failure: unknown, hasRows: boolean): RailNotice {
 }
 
 /**
+ * ★ WHAT THE FEED ITSELF IS DOING, said out loud, or null when it is being heard from.
+ *
+ * The fact this puts on screen is the one the rail had no way to state: that the coins
+ * listed under a heading saying NEW LAUNCHES were last heard about six days ago. It is
+ * gated on `source.live` — the server's own judgement, made against a bar in the policy —
+ * rather than on a duration compared here, so there is exactly one answer to "is this feed
+ * dead" in the whole system and the client is not holding a copy of the bar.
+ *
+ * ★ TWO SENTENCES, BECAUSE THERE ARE TWO FACTS AND COLLAPSING THEM WOULD LOSE THE USEFUL
+ * ONE. An absent instant means nothing has EVER been heard on this feed — nobody has
+ * started a watcher — and the answer to that is to go and start one. A present but old
+ * instant means we watched and the world went quiet, or the transport died, and the answer
+ * is to go and look. "No mints for a while" would cover both and help with neither.
+ * `formatAge` already distinguishes them, so this needs no formatter of its own.
+ *
+ * ★ AND IT NEVER HIDES THE ROWS. When there are rows, the detail says what they actually
+ * are — real coins, really minted, just not recent. Removing them would trade one untruth
+ * for another; the rail's grammar is "say what it is", never "show less".
+ *
+ * ★ IT TAKES `hasRows` BECAUSE THE TWO CASES NEED DIFFERENT SENTENCES, and the empty one is
+ * the sentence this whole change exists to make sayable. An empty rail already says "the
+ * feed answered and had nothing in it" — true, and on its own it reads as a quiet market.
+ * The one thing a reader needs is that the emptiness is OURS and not the market's, and no
+ * sentence written to cover both cases says that. `noticeFor` above splits on the same
+ * argument for the same reason.
+ */
+export function sourceNotice(
+  source: FeedSource,
+  hasRows: boolean,
+  now: Millis,
+): RailNotice | null {
+  if (source.live) return null;
+
+  const age = formatAge(source.lastHeardAt, now);
+  if (age.kind === 'pending') {
+    return {
+      headline: 'No coin mint has ever been heard on this feed.',
+      detail: hasRows
+        ? 'Nothing has watched for new coins yet, so what is listed is whatever the store ' +
+          'already held. It is not a record of what is being minted now.'
+        : 'Nothing has watched for new coins yet, so there is nothing for this rail to ' +
+          'list. That is a gap in what we are doing, not a quiet market.',
+    };
+  }
+  return {
+    headline: `No coin mint has been heard for ${age.text}.`,
+    detail: hasRows
+      ? 'This rail lists coins as they are minted, and nothing has reported one since ' +
+        'then. What is listed is real and is not new — read every age against that.'
+      : 'This rail lists coins as they are minted, and nothing has reported one since ' +
+        'then. It is empty because nothing is being heard, not because nothing is ' +
+        'being minted.',
+  };
+}
+
+/**
  * Everything the Launches tab shows, from the four things the component knows.
  *
  * Read the branches in order; each one is a different fact and none of them is a default:
@@ -311,6 +386,10 @@ export function railView(input: RailInput): RailView {
       count: '—',
       overflow: null,
       notice: null,
+      /* Null and not a "we do not know" banner. We have not read the feed yet, so we hold
+         no statement about it — and inventing one before the first response lands is the
+         same class of thing as a skeleton row. */
+      sourceNotice: null,
       empty: {
         title: 'Reading the launches feed.',
         text: 'Nothing is shown until it answers. No placeholder rows, no invented coins.',
@@ -320,6 +399,18 @@ export function railView(input: RailInput): RailView {
 
   const rows = feed === null ? [] : launchRows(feed.launches, now);
   const stale = lastOkAt === null || now - lastOkAt > STALE_AFTER_MS;
+
+  /* ★ COMPUTED ONCE, BEFORE THE LADDER, so every branch below carries it. It is a fact
+     about the feed and not about which branch we happen to be in: a failed poll on top of a
+     frame from a dead transport is both things at once, and the banner that matters most is
+     the one about the transport. */
+  const feedSource = feed === null ? null : sourceNotice(feed.source, rows.length > 0, now);
+  /* ★ THE PIP FOLLOWS THE SERVER. `live` used to mean only "the last read succeeded", and
+     rail.module.css already says why that is dangerous on its own — "a pulsing cyan dot
+     over a feed nobody is streaming is the cheapest lie in the app". A lit pip over a feed
+     the server has just told us is not live is that same lie with one more layer of
+     indirection, so both conditions have to hold. */
+  const sourceLive = feed !== null && feed.source.live;
 
   /* How many mints the frame actually carried, which is a different number from how many
      the rail renders. Every count below is this one; `rows.length` is a fact about the DOM
@@ -338,6 +429,7 @@ export function railView(input: RailInput): RailView {
       count: frameCount === null || frameCount === 0 ? '—' : String(frameCount),
       overflow,
       notice: noticeFor(input.failure, rows.length > 0),
+      sourceNotice: feedSource,
       empty: null,
     };
   }
@@ -361,6 +453,7 @@ export function railView(input: RailInput): RailView {
           'Nothing has come back for several attempts. What is listed is the last frame we ' +
           'read, and it is not being refreshed.',
       },
+      sourceNotice: feedSource,
       empty: null,
     };
   }
@@ -369,16 +462,25 @@ export function railView(input: RailInput): RailView {
     return {
       rows,
       status,
-      live: true,
+      live: sourceLive,
       /* A real zero, under a pill that says when we last asked. This is the one place a
          zero is honest on this rail: we asked, we got an answer, and the answer was that
          nothing has been minted in the window. */
       count: '0',
       overflow: null,
       notice: null,
+      /* ★ THE BRANCH THIS FIELD WAS BUILT FOR. "The feed answered and had nothing in it" is
+         a true sentence over a quiet market and a misleading one over a transport that
+         died six days ago, and until now the rail said it identically in both cases. The
+         banner is what makes the empty card mean the right thing. */
+      sourceNotice: feedSource,
       empty: {
         title: 'No coins minted in the window.',
-        text: 'The feed answered and had nothing in it. New mints appear here as they land.',
+        /* ★ "THE FEED" IS AVOIDED HERE ON PURPOSE, because there are now two of them on
+           this screen and the word had started doing both jobs: the endpoint we poll, which
+           answered, and the mint source, which has not been heard from. The source banner
+           owns the second sentence, so this one says only what WE did. */
+        text: 'We asked, and the window held no coins. New mints appear here as they land.',
       },
     };
   }
@@ -386,10 +488,11 @@ export function railView(input: RailInput): RailView {
   return {
     rows,
     status,
-    live: true,
+    live: sourceLive,
     count: frameCount === null ? '—' : String(frameCount),
     overflow,
     notice: null,
+    sourceNotice: feedSource,
     empty: null,
   };
 }

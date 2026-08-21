@@ -270,6 +270,90 @@ test('an unknown mint time decodes to pending, never to now and never to the epo
   if (!launch.mintedAt.known) assert.equal(launch.mintedAt.pending, 'not_read_yet');
 });
 
+/* ── ★ the feed's own state ───────────────────────────────────────────── */
+
+const CLEAN_FEED = {
+  tick: 3,
+  launches: [CLEAN_LAUNCH],
+  source: { lastHeardAt: { at: 1_700_000_000_000 }, live: true },
+};
+
+test('★ the feed state round-trips: the instant and the judgement, nothing added', () => {
+  const feed = decodeLaunchFeed(CLEAN_FEED);
+  assert.deepEqual(Object.keys(feed.source).sort(), ['lastHeardAt', 'live']);
+  assert.equal(feed.source.live, true);
+  assert.equal(feed.source.lastHeardAt.known, true);
+  if (feed.source.lastHeardAt.known) assert.equal(feed.source.lastHeardAt.at, 1_700_000_000_000);
+});
+
+test('★ a stale feed decodes as stale, with the instant intact so the age can be stated', () => {
+  const feed = decodeLaunchFeed({
+    ...CLEAN_FEED,
+    source: { lastHeardAt: { at: 1_699_000_000_000 }, live: false },
+  });
+  assert.equal(feed.source.live, false);
+  assert.equal(feed.source.lastHeardAt.known, true, 'the banner needs the instant to date itself');
+});
+
+test('★ a MISSING feed state is not-live, never a quiet default to healthy', () => {
+  /* The one defaulting decision in the decoder worth arguing. A server too old to send the
+     field is a server whose freshness we do not know, and the rail over it is exactly the
+     rail this field exists to stop — rows with nothing above them. So the absence resolves
+     to the honest statement and the failure lands on the side of saying too much. */
+  const feed = decodeLaunchFeed({ tick: 3, launches: [CLEAN_LAUNCH] });
+  assert.equal(feed.source.live, false);
+  assert.equal(feed.source.lastHeardAt.known, false);
+  if (!feed.source.lastHeardAt.known) {
+    assert.equal(feed.source.lastHeardAt.pending, 'not_read_yet');
+  }
+});
+
+test('★ a never-heard feed stays unknown, and is never backfilled from when we projected', () => {
+  /* The same mistake as backfilling a mint time from when we first looked: it would make a
+     feed nobody has ever watched read as one heard from a moment ago. */
+  const feed = decodeLaunchFeed({
+    ...CLEAN_FEED,
+    source: { lastHeardAt: { at: null, why: 'not_read_yet' }, live: false },
+  });
+  assert.equal(feed.source.lastHeardAt.known, false);
+});
+
+test('★ a truthy non-boolean cannot light the pip over a dead feed', () => {
+  /* `live` is read with a strict boolean check and never coerced. `'false'`, `1` and `{}`
+     are all truthy in JavaScript, and any of them slipping through would put a pulsing dot
+     over a transport nobody has heard from — the cheapest lie in the app, arriving through
+     a decoder rather than through a component. */
+  for (const bad of ['true', 1, {}, []]) {
+    assert.throws(
+      () => decodeLaunchFeed({ ...CLEAN_FEED, source: { lastHeardAt: { at: 1 }, live: bad } }),
+      WireShapeError,
+      `live: ${JSON.stringify(bad)} was accepted`,
+    );
+  }
+});
+
+test('★ the feed state is picked against an allowlist, so a threshold cannot ride along', () => {
+  /* A server that started sending the bar it judged against would be handing the client our
+     own machinery, and a client holding the bar can disagree with the server about the
+     answer. `threshold` is a forbidden key besides, so this throws before the pick — both
+     doors, and the assertion names which one it is relying on. */
+  assert.throws(
+    () =>
+      decodeLaunchFeed({
+        ...CLEAN_FEED,
+        source: { lastHeardAt: { at: 1 }, live: true, threshold: 900_000 },
+      }),
+    WireLeakError,
+  );
+
+  /* An innocuous extra key is not a leak, and is simply dropped rather than throwing. */
+  const feed = decodeLaunchFeed({
+    ...CLEAN_FEED,
+    source: { lastHeardAt: { at: 1 }, live: true, feedId: 'default' },
+  });
+  assert.deepEqual(Object.keys(feed.source).sort(), ['lastHeardAt', 'live']);
+});
+
 test('an empty ticker survives as an empty ticker, not as a shape error', () => {
   /* A coin that named no symbol is ordinary. It renders as nothing; it must not fail the
      frame, and it must not fall back to the address. */

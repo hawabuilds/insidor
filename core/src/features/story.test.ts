@@ -73,6 +73,7 @@ function lyingAggregate(over: Partial<Story> = {}): Story {
   return {
     storyId: STORY,
     state: 'promoted',
+    origin: 'observed',
     createdAt: CREATED,
     promotedAt: NOW - HOUR,
     // A minimum over ALL members, including ones that joined after asOf. It moves

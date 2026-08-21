@@ -26,7 +26,7 @@ import type { Asset, MintTime } from '../asset.ts';
 import type { Decision, StageName } from '../decision.ts';
 import type { AssetKey, AuthorKey, ChainId, ItemId, StoryId, VenueId } from '../ids.ts';
 import type { Policy } from '../policy.ts';
-import type { Story, StoryMember } from '../story.ts';
+import type { Story, StoryMember, StoryOrigin } from '../story.ts';
 import type {
   Author,
   CounterKind,
@@ -110,12 +110,27 @@ export interface AssetRepo {
    * ★ Candidate retrieval is TIME-FIRST. Symbol is a scoring channel over this set
    * and never the retrieval key — searching a vendor by symbol and then filtering by
    * time is the inversion that produces a plausible, wrong, expensive answer.
+   *
+   * ★ AND IT TAKES THE STORY'S ORIGIN, WHICH IS THE SECOND SUBJECT OF THIS QUESTION.
+   * This retrieval is not "which coins are real" — that has one answer and would be a
+   * constant. It is "which coins may be compared against THIS story", and a story has a
+   * provenance of its own. The implementation turns the origin into an allowlist through
+   * `coinOriginsVisibleTo`, which is directional: an observed story may see observed coins
+   * and nothing else, ever, while a fixture story may also see the fixtures it exists to
+   * demonstrate.
+   *
+   * It is a REQUIRED parameter and not an optional one with an observed-only default, for
+   * 0016's reason. A default here is a caller that never thought about provenance getting
+   * an answer anyway — and the answer it would get is the one that silently deletes a
+   * story's own coins, which is the branch that reports "no candidates" for a story that
+   * has three. A caller must say whose retrieval this is.
    */
   mintedBetween(
     chain: ChainId,
     fromMs: Millis,
     toMs: Millis,
     limit: number,
+    storyOrigin: StoryOrigin,
   ): Promise<readonly Asset[]>;
   setMintTime(key: AssetKey, mintedAt: MintTime): Promise<void>;
 }

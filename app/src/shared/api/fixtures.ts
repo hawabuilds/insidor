@@ -537,7 +537,152 @@ const LAUNCHES = [
  * looking at it that it is.
  */
 export function fixtureLaunches(): unknown {
-  return { tick: 1, launches: LAUNCHES };
+  return {
+    tick: 1,
+    launches: LAUNCHES,
+    /* ★ THE FIXTURE CLAIMS A LIVE FEED, and it has to, because the fixture's job is to show
+       the shape the rail takes when everything is working. A fixture that shipped
+       `live: false` would put the stale banner permanently over the demo, which is the
+       opposite error to the one this field exists to fix.
+
+       The instant is relative to T0 like every other time in this file, so the demo does not
+       decay into a six-day silence the week after it was written. And the whole file is
+       already governed by the SAMPLE DATA banner — this is a fixture declaring itself a
+       fixture on the wire, which is the same discipline `origin` now enforces in the
+       database. */
+    source: { lastHeardAt: at(T0 - MIN), live: true },
+  };
+}
+
+/* ── the pairs screen ─────────────────────────────────────────────────── */
+
+const DAY = 24 * HOUR;
+
+/**
+ * THE MINTS THAT REACHED A MARKET.
+ *
+ * ★ THERE ARE FOUR ROWS AND THE COUNTS BESIDE THEM SAY 192, WHICH IS THE POINT OF THE
+ * SCREEN AND NOT AN INCONSISTENCY. Almost nothing crosses from "minted" to "priced". A
+ * fixture with a full table under it would teach everyone who looked at it the opposite,
+ * and the screen would then be designed for a population that does not exist.
+ *
+ * Every row here is one of the decisions the vocabulary exists to enforce:
+ *
+ *   a pool with a reserve         → liquidity is a number
+ *   a bonding curve               → liquidity is `not_reported`, which is NOT illiquidity
+ *                                   and is NOT zero, next to a cap that is a number
+ *   a reading taken an hour ago   → shown, with its age beside it, because this screen has
+ *                                   no buy affordance and deleting it would leave nothing
+ *   no cap from the venue         → a dash with a reason, beside a price that is real
+ *   an empty ticker               → renders as nothing, never as the address
+ *   an exact mint time            → no "~"; every other row here is bounded and gets one
+ *
+ * The mints are days old and the head says nothing has been heard for six days, because
+ * that is the state this screen was built against: a screen that showed rows and said
+ * nothing about the silence behind them would be the same lie of omission the launches rail
+ * was fixed for.
+ */
+const PAIRS = [
+  {
+    pairId: 'solana:9pToadPoolA4bC6dE8fG0hJ2kL4mN6pQ8rS0tU',
+    ticker: 'CopeToad',
+    name: 'cope toad',
+    address: '9pToadPoolA4bC6dE8fG0hJ2kL4mN6pQ8rS0tU',
+    venueLabel: 'Pump.fun',
+    /* Bounded, like every mint a live socket reports: what was heard is the arrival, and
+       the mint happened at or shortly before it. The screen renders "~5d" and states the
+       bound in words. */
+    mintedAt: at(T0 - 5 * DAY - 21 * HOUR),
+    mintedAtBoundS: 5,
+    /* ★ AN HOUR OLD, AND SHOWN ANYWAY, WITH THE AGE ON SCREEN. The board would suppress
+       this reading whole — it has a Buy button on every row. This screen has none, so
+       suppressing it would turn "these four reached a market" into four names and twelve
+       dashes, and the sentence the screen exists to say would be unsupportable. */
+    readAt: at(T0 - 52 * MIN),
+    priceUsd: m(0.000_001_999),
+    marketCapUsd: m(1_903),
+    marketCapBasis: 'fully-diluted',
+    liquidityUsd: m(1_978),
+  },
+  {
+    pairId: 'solana:4kLoongCurveB6dE8fG0hJ2kL4mN6pQ8rS0tU2v',
+    ticker: 'LOOONG',
+    name: 'looong',
+    address: '4kLoongCurveB6dE8fG0hJ2kL4mN6pQ8rS0tU2v',
+    venueLabel: 'Pump.fun',
+    mintedAt: at(T0 - 5 * DAY - 22 * HOUR),
+    mintedAtBoundS: 5,
+    readAt: at(T0 - 52 * MIN),
+    priceUsd: m(0.000_001_88),
+    marketCapUsd: m(1_840),
+    marketCapBasis: 'fully-diluted',
+    /* ★ A CURVE HAS NO TWO-SIDED RESERVE, so the venue reports no liquidity object at all.
+       `not_reported` and never 0: zero says the pool is empty, which is a claim about a
+       pool that does not exist. It is also a different reason from `no_market` — this coin
+       plainly has a market, it is priced two lines up — and the tooltip says so. */
+    liquidityUsd: noValue('not_reported'),
+  },
+  {
+    pairId: 'solana:6mMcatNoCapC8fG0hJ2kL4mN6pQ8rS0tU2vW4x',
+    /* ★ EMPTY, AND IT STAYS EMPTY. An unknown ticker renders as nothing — never as the
+       address, never as the name, never as anything else that looks like a ticker to a
+       person deciding what to buy. */
+    ticker: '',
+    name: 'mcat',
+    address: '6mMcatNoCapC8fG0hJ2kL4mN6pQ8rS0tU2vW4x',
+    venueLabel: 'Raydium',
+    mintedAt: at(T0 - 5 * DAY - 22 * HOUR),
+    mintedAtBoundS: 5,
+    readAt: at(T0 - 52 * MIN),
+    priceUsd: m(0.000_001_591),
+    /* A price with no cap. The venue quoted the pool and reported no supply figure, so
+       there is nothing to multiply — that is `not_reported`, and the basis goes with it
+       rather than surviving alone as a label on nothing. */
+    marketCapUsd: noValue('not_reported'),
+    marketCapBasis: null,
+    liquidityUsd: m(1_620),
+  },
+  {
+    pairId: 'solana:3bStackExactD0hJ2kL4mN6pQ8rS0tU2vW4xY6z',
+    ticker: 'BSTK',
+    name: 'beanstalk',
+    address: '3bStackExactD0hJ2kL4mN6pQ8rS0tU2vW4xY6z',
+    venueLabel: 'Pump.fun',
+    /* ★ EXACT, because a chain confirmation landed for this one: the earliest signature
+       against the address is a reading and not an estimate, so there is no bound and the
+       age renders with no "~". It is the only row here entitled to that. */
+    mintedAt: at(T0 - 6 * DAY - 8 * HOUR),
+    mintedAtBoundS: null,
+    readAt: at(T0 - 52 * MIN),
+    priceUsd: m(0.000_003_034),
+    marketCapUsd: m(3_007),
+    marketCapBasis: 'fully-diluted',
+    liquidityUsd: m(3_143),
+  },
+];
+
+/**
+ * One frame of the pairs screen, as the server would send it.
+ *
+ * `pairs` is the committed order and the client never sorts, so the order here is the order
+ * on screen. It is MINT order, newest first — the only ordering this surface can claim,
+ * because nothing in this system knows when a pool opened. A fixture sorted by cap would
+ * quietly teach everyone looking at it that the screen ranks by size.
+ *
+ * The head is where the honesty lives. `lastMintHeardAt` is six days ago, so the screen says
+ * so above the rows; the counts say four of a hundred and ninety-two, which is the sentence
+ * worth putting on a screen and is roughly the real ratio measured against this store.
+ */
+export function fixturePairs(): unknown {
+  return {
+    tick: 1,
+    head: {
+      windowMs: 14 * DAY,
+      lastMintHeardAt: at(T0 - 5 * DAY - 21 * HOUR - 29 * MIN),
+      rows: { listing: 'shown', mintsInWindow: 192, withMarket: 4, withoutMarket: 188 },
+    },
+    pairs: PAIRS,
+  };
 }
 
 /* ── one story, in full ───────────────────────────────────────────────── */

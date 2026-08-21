@@ -8,7 +8,8 @@
 
 export type { BoardRow, BoardTick, RowPatch, Spark, SparkPoint, Tone } from './wire/board.ts';
 export type { Coin, CoinLink, MarketCapBasis } from './wire/coin.ts';
-export type { Launch, LaunchFeed } from './wire/launch.ts';
+export type { FeedSource, Launch, LaunchFeed } from './wire/launch.ts';
+export type { Pair, PairFeed, PairHead, PairListing } from './wire/pair.ts';
 export type { Story, Evidence, DiscussionPost } from './wire/story.ts';
 export type { TradeQuote, TradeCost, TradeIntent, TradeResult } from './wire/trade.ts';
 
@@ -29,6 +30,7 @@ export {
   USING_FIXTURES,
   fetchBoard,
   fetchLaunches,
+  fetchPairs,
   fetchQuote,
   fetchStory,
   openLiveChannel,

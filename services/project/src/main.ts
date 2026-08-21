@@ -21,7 +21,7 @@
  */
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
-import { asDb, createPool, DB_ROLE, withTransaction } from '@insidor/store';
+import { asDb, createPool, DB_ROLE, PgAssetRepo, withTransaction } from '@insidor/store';
 
 import {
   loadLaunchFacts,
@@ -34,7 +34,7 @@ import {
   writeStories,
 } from './db.ts';
 import { announceBoard } from './notify.ts';
-import { projectBoard, projectLaunch, projectStory } from './project.ts';
+import { projectBoard, projectFeedSource, projectLaunch, projectStory } from './project.ts';
 import type { ProjectOptions } from './project.ts';
 import { countAnchors, windowIsOrdered } from './window.ts';
 import { WireLeakError } from './wire.ts';
@@ -124,6 +124,11 @@ async function main(): Promise<void> {
          judgement — and every threshold in this system lives in one hashed object so
          that "what was this board judged against in March" has an answer. */
       marketFreshnessMs: DEFAULT_POLICY.market.readingFreshnessMs,
+      /* From the policy for the same reason, and it decides the same KIND of thing: not
+         how much is fetched, but whether what is on screen may present itself as current.
+         A feed silent for longer than this is published as not live, and the rail says so
+         above rows it keeps rather than hides. */
+      feedFreshnessMs: DEFAULT_POLICY.assets.feedFreshnessMs,
     };
 
     const result = await withTransaction(pool, async (db) => {
@@ -215,8 +220,37 @@ async function main(): Promise<void> {
         }
       }
 
+      /* ── when this feed was last actually heard from ──
+         ★ THE FACT THE RAIL COULD NOT STATE. The coverage log knows the silence to the
+         second and the app role has no USAGE on the schema it lives in — measured, not
+         assumed: `set role insidor_app; select … from internal.mint_coverage` answers
+         "permission denied for schema internal", and so does asking whether it has the
+         privilege. So this is the only process that can put the fact on the wire, and it
+         does it here, in the transaction that commits the frame the fact describes.
+
+         ★ THE MINIMUM ACROSS CHAINS, and the rule is written now rather than when it
+         starts to matter: a feed is only as live as its STALEST source. One chain still
+         answering does not make a rail current when another has been silent for a week,
+         and taking a max would let the healthy one hide the dead one — which is this
+         whole bug, one level up. A chain we have never heard anything from is `null` and
+         collapses the answer to `null`, because "we have heard nothing on one of these"
+         is exactly the state the absent branch describes.
+
+         The chain set comes from the store rather than from a constant here: `chains()`
+         exists so no service has to type a chain's name, which is the first step of the
+         leak the vocabulary gate stops one layer up. */
+      const assets = new PgAssetRepo(db);
+      let lastHeardAtMs: number | null = null;
+      let heardOnEvery = true;
+      for (const chain of await assets.chains()) {
+        const heard = await assets.lastHeardAt(chain);
+        if (heard === null) heardOnEvery = false;
+        else lastHeardAtMs = lastHeardAtMs === null ? heard : Math.min(lastHeardAtMs, heard);
+      }
+      const source = projectFeedSource(heardOnEvery ? lastHeardAtMs : null, options);
+
       const launchTick = await nextLaunchTick(db, LAUNCH_FEED_ID);
-      const launchRows = await writeLaunches(db, LAUNCH_FEED_ID, launchTick, launches);
+      const launchRows = await writeLaunches(db, LAUNCH_FEED_ID, launchTick, launches, source);
 
       /* ── the announcement ──
          The last statement before commit, and INSIDE the transaction deliberately. Postgres
@@ -245,6 +279,11 @@ async function main(): Promise<void> {
            because their mint time is unknown, and a rail quieter than the world has to be
            diagnosable from the run that made it quiet. */
         launchesWithoutMintTime: launchLoad.withoutMintTime,
+        /* Printed for the same reason `no_mint_time` is: an empty rail has to be
+           diagnosable from the run that emptied it. With the origin filter in place, "0
+           rows" and "the transport has been dead for six days" are the common pair, and an
+           operator reading this line should not have to open psql to tell them apart. */
+        source,
       };
     });
 
@@ -259,7 +298,15 @@ async function main(): Promise<void> {
     console.log(
       `projected launches feed=${LAUNCH_FEED_ID} tick=${result.launchTick} ` +
         `launch_row=${result.launchRows} withheld=${result.launchesWithheld} ` +
-        `no_mint_time=${result.launchesWithoutMintTime}`,
+        `no_mint_time=${result.launchesWithoutMintTime} ` +
+        /* Always both, including when the feed is healthy. A field that only appears when
+           something is wrong is a field nobody knows the normal value of. */
+        `feed_live=${String(result.source.live)} ` +
+        `last_heard=${
+          result.source.lastHeardAt.at === null
+            ? 'never'
+            : new Date(result.source.lastHeardAt.at).toISOString()
+        }`,
     );
   } finally {
     await pool.end();

@@ -17,10 +17,13 @@
  */
 
 import type { Millis } from '@insidor/contracts';
-import type { Asset, MintTime } from '@insidor/contracts/asset.ts';
+import { OBSERVED_ASSET_ORIGINS } from '@insidor/contracts/asset.ts';
+import type { Asset, AssetOrigin, MintTime } from '@insidor/contracts/asset.ts';
 import { parseAssetKey } from '@insidor/contracts/ids.ts';
 import type { AssetKey, AssetRef, ChainId, VenueId } from '@insidor/contracts/ids.ts';
 import type { AssetRepo } from '@insidor/contracts/ports/store.ts';
+import { coinOriginsVisibleTo } from '@insidor/contracts/story.ts';
+import type { StoryOrigin } from '@insidor/contracts/story.ts';
 
 import type { Db } from '../client.ts';
 import { reBrand, toMillis, toMillisRequired, toTimestamp } from '../rows.ts';
@@ -31,6 +34,7 @@ interface AssetRow {
   address: string;
   asset_key: string;
   venue_id: string;
+  origin: AssetOrigin;
   minted_at: TimestampColumn;
   minted_at_source: MintTime['source'];
   minted_at_conf: MintTime['confidence'];
@@ -61,11 +65,39 @@ const EXISTING_RANK =
   "(case public.asset.minted_at_conf when 'exact' then 2 when 'bounded' then 1 else 0 end)";
 
 const SELECT_ASSET = `
-  select chain, address, asset_key, venue_id, minted_at, minted_at_source, minted_at_conf,
-         minted_at_bound_s, symbol, name, image_uri, decimals, creator,
+  select chain, address, asset_key, venue_id, origin, minted_at, minted_at_source,
+         minted_at_conf, minted_at_bound_s, symbol, name, image_uri, decimals, creator,
          declared_social, first_seen_at
     from public.asset
 `;
+
+/**
+ * ★ THE ORIGINS THAT ARE A CLAIM ABOUT THE WORLD, as a bound parameter.
+ *
+ * A PARAMETER AND NOT AN INTERPOLATED LIST, and the distinction is the one this whole
+ * package is tested on: nothing here assembles SQL from a value. It is also why the list
+ * arrives from contracts rather than being typed into a string literal — a closed list
+ * spelled twice is a closed list that drifts, and this one is already spelled in
+ * contracts/src/asset.ts and in 0013's CHECK, with a test holding those two together.
+ *
+ * `= any(...)` rather than `<> all(...)`: an allowlist excludes a value added next year
+ * by default, a denylist admits it. On a predicate whose failure mode is publishing a
+ * fiction as an observation, default-exclude is the only defensible direction.
+ *
+ * ★ IT IS NOT THE LIST `mintedBetween` USES, AND THAT IS THE DISTINCTION THIS NOTE EXISTS
+ * TO KEEP. Two reads in this file remain on the constant and they have one thing in
+ * common: NEITHER HAS A STORY. `upsert` uses it to decide whether a stored origin already
+ * outranks an incoming one, which is a question about the row alone; `chains()` uses it to
+ * answer "which chains have we observed anything on", whose consumer is a live freshness
+ * banner. Both have exactly one subject, so a constant is the whole answer.
+ *
+ * `mintedBetween` has two. Its subject is a STORY being matched against coins, and it
+ * derives its allowlist from that story's own origin — see the method. Carrying this
+ * constant there cost six seeded stories every seeded coin they exist to demonstrate. The
+ * rule that tells the two cases apart is short: if the read has a story, the story decides;
+ * if it has none, this list does.
+ */
+const OBSERVED_ORIGINS: readonly string[] = [...OBSERVED_ASSET_ORIGINS];
 
 export class PgAssetRepo implements AssetRepo {
   readonly #db: Db;
@@ -84,12 +116,45 @@ export class PgAssetRepo implements AssetRepo {
     for (const asset of assets) {
       await this.#db.query(
         `insert into public.asset (
-           chain, address, asset_key, venue_id,
+           chain, address, asset_key, venue_id, origin,
            minted_at, minted_at_source, minted_at_conf, minted_at_bound_s,
            symbol, name, image_uri, decimals, creator, declared_social, first_seen_at
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
+         ) values ($1,$2,$3,$4,$17,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
          on conflict (chain, address) do update set
            venue_id = excluded.venue_id,
+           /*
+            * ★ ORIGIN ONLY EVER MOVES TOWARDS A CLAIM ABOUT THE WORLD, NEVER AWAY FROM
+            * ONE. The third rule in this file that may only travel in one direction, and
+            * it is the same shape as the other two: mint time only ever rises in
+            * confidence, and a coverage window only ever moves towards admitting we did
+            * not see something.
+            *
+            * The transition that must be impossible is a seed re-running over an asset
+            * the socket has already observed and relabelling it a fixture — which would
+            * take a real coin off the launches rail, silently, and leave no evidence
+            * that it had ever been there. So a stored origin that is already a claim
+            * about the world is never overwritten.
+            *
+            * The transition that IS allowed is the other one: a row we could not
+            * previously vouch for becomes an observation the moment a transport actually
+            * delivers it. Refusing that would keep a genuinely observed coin invisible
+            * forever because a demo once used its address.
+            *
+            * Two observed origins do not displace each other: which kind of contact we
+            * FIRST had is the fact, exactly as venue_id is "the market it was FIRST
+            * seen on" and first_seen_at is when we first looked.
+            *
+            * ★ SPELLED WITH THE ALLOWLIST AND NOTHING ELSE. The rule is "the incoming
+            * origin is a claim about the world and the stored one is not", which needs
+            * only the one list — so no value outside it is named here, in SQL, in a
+            * second place that could drift from contracts.
+            */
+           origin = case
+             when excluded.origin = any($18::text[])
+              and public.asset.origin <> all($18::text[])
+             then excluded.origin
+             else public.asset.origin
+           end,
            symbol   = excluded.symbol,
            name     = excluded.name,
            image_uri = excluded.image_uri,
@@ -120,6 +185,12 @@ export class PgAssetRepo implements AssetRepo {
           // against the rank already stored. Computed here rather than as a CASE
           // ladder in SQL so the ordering is one readable list.
           confidenceRank(asset.mintedAt.confidence),
+          /* $17, out of order because it was added after the other sixteen and
+             renumbering fifteen placeholders to keep them tidy is how an off-by-one
+             lands in a column somebody else's row depends on. The column list above
+             says where it goes. */
+          asset.origin,
+          OBSERVED_ORIGINS,
         ],
       );
     }
@@ -180,27 +251,70 @@ export class PgAssetRepo implements AssetRepo {
    * `minted_at_conf <> 'unknown'` is here rather than in core because it is the
    * same statement as the index predicate — a coin whose creation time we do not
    * know cannot be ordered against a post, so it is not a candidate at all.
+   *
+   * ★ AND `origin = any(...)` IS THE MOST CONSEQUENTIAL LINE IN THIS FILE. This is
+   * the retrieval that resolve scores and that a label is eventually written
+   * against, so a fixture admitted here does not merely appear on a screen — it
+   * becomes a training label about a coin that never existed, inside an
+   * append-only table, attached to a real story. Everything downstream would then
+   * be learning from our own demonstration data with nothing anywhere recording
+   * that it had. That is the furthest a fiction can travel in this system, and the
+   * predicate is what makes the journey impossible rather than unlikely.
+   *
+   * ★ THE LIST IS DERIVED FROM THE STORY AND IS NOT `OBSERVED_ORIGINS`, AND THAT
+   * CORRECTION IS WHY THIS PARAGRAPH EXISTS. The sentence above is right about the
+   * danger and was wrong about the predicate, in exactly the way the launches rail's
+   * fix was wrong when it was copied here: it names ONE subject. "Is this coin
+   * observed" has a constant for an answer. "May this coin be compared against THIS
+   * story" does not, because a story has a provenance of its own — and answering the
+   * first question in place of the second told the six seeded stories that their own
+   * seeded coins did not exist.
+   *
+   * Measured on this store, through this method, before the correction: every fixture
+   * story retrieved 43 candidates where its window held 51–54, and st_pigeon retrieved
+   * 0 where its window held 2 — which the runner wrote into an append-only decision log
+   * as `V3_no_candidates`, a permanent record asserting there was nothing to compare
+   * against for a story there was something to compare against. `none` is the branch
+   * that puts CREATE on a row one surface over, and here it is the branch that freezes a
+   * false negative into the training set. Both are the dangerous direction.
+   *
+   * So the allowlist is `coinOriginsVisibleTo(storyOrigin)` and it is DIRECTIONAL. An
+   * observed story still gets exactly the list this method used to hardcode — the
+   * paragraph above is untouched for that case, and a fixture reaching a real story's
+   * candidate set is still impossible. What changed is that a fixture story now gets the
+   * fixtures too, which is not a hole: a demonstration that names a demonstration coin is
+   * a demonstration, and the label it would eventually produce is a label about a story
+   * the same column marks as invented. The asymmetry is the rule; see contracts.
+   *
+   * The parameter is required rather than defaulted, for the reason 0016 gives the column
+   * itself: a caller that has not decided must fail rather than be handed the answer that
+   * quietly deletes a story's coins.
    */
   async mintedBetween(
     chain: ChainId,
     fromMs: Millis,
     toMs: Millis,
     limit: number,
+    storyOrigin: StoryOrigin,
   ): Promise<readonly Asset[]> {
     const rows = await this.#db.query<AssetRow>(
       `${SELECT_ASSET}
         where chain = $1
           and minted_at between $2 and $3
           and minted_at_conf <> 'unknown'
+          and origin = any($5::text[])
         order by minted_at asc
         limit $4`,
-      [chain, toTimestamp(fromMs), toTimestamp(toMs), limit],
+      /* Spread into a mutable array because it is about to be a bound parameter and
+         nothing here interpolates a value into SQL — the same rule the constant above
+         is written to obey, applied to a list that is now computed per call. */
+      [chain, toTimestamp(fromMs), toTimestamp(toMs), limit, [...coinOriginsVisibleTo(storyOrigin)]],
     );
     return rows.map(toAsset);
   }
 
   /**
-   * Every chain we hold an asset on.
+   * Every chain we hold an OBSERVED asset on.
    *
    * ★ IT EXISTS SO NO SERVICE HAS TO NAME ONE. `mintedBetween` is keyed by chain, and
    * a caller that has to supply a chain id has to get it from somewhere — which in
@@ -209,12 +323,35 @@ export class PgAssetRepo implements AssetRepo {
    * which chains it actually holds keeps the name in the only place that has ever seen
    * it: the rows themselves.
    *
+   * ★ AND `origin = any(...)` IS HERE BECAUSE THE ANSWER REACHES A LIVE SURFACE. This
+   * looks like the one read of this table where provenance could not matter — it returns
+   * chain names, not coins. It matters because of what the launches projector does with
+   * them: it asks `lastHeardAt` for EVERY chain this returns and takes the MINIMUM, so a
+   * chain we have never heard a mint on collapses the rail's freshness fact to "nothing
+   * has ever been heard on this feed". A seed that wrote one fixture on a second chain
+   * would therefore put a permanent "no coin mint has ever been heard" banner over a rail
+   * whose real feed was streaming — a fiction changing what a live surface says about the
+   * world, which is the whole class of bug 0013 exists to close, arriving through a column
+   * that is not even selected here.
+   *
+   * It fails in the safe direction (a banner too many, never a lit pip over a dead feed),
+   * and that is not a reason to leave it: an unfilterd read of this table is a hole whether
+   * or not today's data walks through it. The allowlist, for the reason it is an allowlist
+   * everywhere else — a denylist admits every origin added after it was written.
+   *
+   * The consequence for `mintedBetween`'s callers is only that they stop asking about a
+   * chain on which every candidate would have been filtered out anyway.
+   *
    * Ordered so a caller iterating them does the same work in the same order twice,
    * which matters when the caller is a loop whose output is a decision row.
    */
   async chains(): Promise<readonly ChainId[]> {
     const rows = await this.#db.query<{ chain: string }>(
-      `select distinct chain from public.asset order by chain`,
+      `select distinct chain
+         from public.asset
+        where origin = any($1::text[])
+        order by chain`,
+      [OBSERVED_ORIGINS],
     );
     return rows.map((row) => reBrand<ChainId>(row.chain));
   }
@@ -323,6 +460,44 @@ export class PgAssetRepo implements AssetRepo {
     return { toMs: toMillisRequired(row.window_to, 'window_to'), cursorRef: row.cursor_ref };
   }
 
+  /**
+   * When we last actually HEARD something on this chain's mint stream.
+   *
+   * ★ `and not gap` IS THE WHOLE CORRECTNESS ARGUMENT AND IT IS EASY TO MISS. The
+   * obvious move is to reuse `latestCoverage` above — it already returns the
+   * `window_to` of the most recent row, and on today's data the two answers are the
+   * same instant. Do not. `latestCoverage` orders across ALL rows INCLUDING gap rows,
+   * and it is right to: its question is "how far did we get, so where do we resume",
+   * and a gap row is still a record of where we got to.
+   *
+   * But a gap row's `window_to` ADVANCES WHILE NOTHING WAS HEARD. So a watcher that
+   * reconnects and immediately records a six-day gap [T, now] pushes `latestCoverage`
+   * to `now`, and a freshness signal built on it would announce the feed live over
+   * exactly the interval we had just declared dark. It would lie precisely when it
+   * matters, and it would do so on the one surface built to stop that.
+   *
+   * Two different questions — "where do I resume" and "when did we last hear
+   * anything" — so two reads. The divergence is not hypothetical: this store already
+   * holds nine gap rows beside its 133 observed ones.
+   *
+   * Null means nothing has EVER been observed on this chain, which is a different
+   * fact from "we heard nothing lately" and the caller has to keep them apart.
+   */
+  async lastHeardAt(chain: ChainId): Promise<Millis | null> {
+    const rows = await this.#db.query<{ last_heard_at: TimestampColumn }>(
+      `select max(window_to) as last_heard_at
+         from internal.mint_coverage
+        where chain = $1
+          and not gap`,
+      [chain],
+    );
+    /* `max()` over no rows is ONE row holding null, not zero rows — so "nothing was
+       ever observed" arrives as a null column, while "the table was not reached at
+       all" would arrive as a missing row. Both are the same answer to this question
+       and both have to collapse to it, which is what the `?? null` is for. */
+    return toMillis(rows[0]?.last_heard_at ?? null);
+  }
+
   /** True when any part of the window was not observed. Labels read this before resolving. */
   async hasCoverageGap(chain: ChainId, fromMs: Millis, toMs: Millis): Promise<boolean> {
     const rows = await this.#db.query<{ gap: boolean }>(
@@ -352,6 +527,7 @@ function toAsset(row: AssetRow): Asset {
     key: reBrand<AssetKey>(row.asset_key),
     chain: ref.chain,
     venue: reBrand<VenueId>(row.venue_id),
+    origin: row.origin,
     mintedAt: {
       at: toMillis(row.minted_at),
       source: row.minted_at_source,

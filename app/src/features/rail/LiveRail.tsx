@@ -14,8 +14,14 @@
  * ★ IT POLLS, AND IT SAYS SO. There is no live channel for launches — `openLiveChannel`
  * covers the board and is unimplemented besides — so the pill reads "updated 4s ago" and
  * never "feed live". rail.module.css makes the same argument about the pip: a pulsing cyan
- * dot over a feed nobody is streaming is the cheapest lie in the app. The pip lights when
- * the last read succeeded and goes out the moment it stops.
+ * dot over a feed nobody is streaming is the cheapest lie in the app.
+ *
+ * ★ AND THE PIP NOW ANSWERS TO TWO THINGS, NOT ONE. It used to light whenever the last read
+ * succeeded, which was true and insufficient: for six days it pulsed over a mint feed that
+ * had not been heard from in 141 hours, because our fetch loop was healthy the entire time.
+ * `railView` folds the server's own judgement about the feed into `live`, so the dot goes
+ * out when either half is untrue. The two facts are independent and the safe combination is
+ * the conjunction.
  *
  * ★ EVERY DECISION IS IN launches.ts, NOT HERE. This file fetches on an interval, holds
  * four pieces of state, and renders what `railView` returns. That is deliberate and it is
@@ -235,8 +241,26 @@ export function LiveRail() {
         ))}
       </div>
 
-      {/* The only amber surface in the rail, and it reads as degraded-but-not-broken, which
-          is exactly what a feed that stopped answering is. */}
+      {/* ★ TWO BANNERS, STACKED, AND THE ORDER IS THE POINT. The amber surface is the
+          rail's one signal that something is degraded-but-not-broken, and there are two
+          independent things it can be saying.
+
+          The SOURCE notice comes first because it is the more consequential of the two: a
+          failing poll is our problem and self-correcting, while a mint feed nobody has
+          heard from in six days means every age below is wrong about what "new" means. They
+          are not exclusive and neither substitutes for the other — the state that shipped
+          was a perfectly healthy poll over a dead transport, which produces exactly one of
+          these and not the other.
+
+          Both are `role="status"` rather than `alert`: this is a degradation a reader
+          should notice, not an interruption. */}
+      {onLaunches && view.sourceNotice !== null ? (
+        <div className={styles['pausedBanner']} role="status">
+          <b>{view.sourceNotice.headline}</b>
+          {view.sourceNotice.detail}
+        </div>
+      ) : null}
+
       {onLaunches && view.notice !== null ? (
         <div className={styles['pausedBanner']} role="status">
           <b>{view.notice.headline}</b>

@@ -31,6 +31,11 @@ function mint(address: string, seenAt: number): MintEvent {
       key: `solana:${address}` as MintEvent['asset']['key'],
       chain: 'solana' as MintEvent['asset']['chain'],
       venue: 'solana:pumpfun' as MintEvent['asset']['venue'],
+      /* What a push transport delivers, which is what this file is a test of. The value
+         is stamped by the venue adapter's stream decoder, not by this service — see the
+         note there on why the transport-agnostic side must not hold a table mapping a
+         configured transport name onto an origin. */
+      origin: 'live_stream',
       mintedAt,
       symbol: null,
       name: null,

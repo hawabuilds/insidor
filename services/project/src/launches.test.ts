@@ -25,7 +25,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { projectLaunch } from './project.ts';
+import { projectFeedSource, projectLaunch } from './project.ts';
 import type { CoinMarket, LaunchFacts, MarketNumber, ProjectOptions } from './project.ts';
 import { FORBIDDEN_KEYS, FORBIDDEN_SUBSTRINGS, WireLeakError } from './wire.ts';
 
@@ -34,10 +34,14 @@ const MIN = 60_000;
 /** Five minutes, the same window Policy.market.readingFreshnessMs carries. */
 const FRESHNESS = 5 * MIN;
 
+/** Fifteen minutes, the same bar Policy.assets.feedFreshnessMs carries. */
+const FEED_FRESHNESS = 15 * MIN;
+
 const OPTIONS: ProjectOptions = {
   nowMs: T0,
   sparkWindowMs: 30 * MIN,
   marketFreshnessMs: FRESHNESS,
+  feedFreshnessMs: FEED_FRESHNESS,
 };
 
 const known = (amount: number): MarketNumber => ({ known: true, amount });
@@ -289,5 +293,71 @@ test('★ nothing on a launch could build a buy affordance', () => {
   const keys = Object.keys(projectLaunch(facts({ market: market() }), OPTIONS));
   for (const field of ['priceUsd', 'liquidityUsd', 'priceChange24h', 'tradable', 'imageUrl']) {
     assert.equal(keys.includes(field), false, `${field} reached a launch payload`);
+  }
+});
+
+/* ── ★ the feed's own state: a dead transport is not a quiet market ───── */
+
+/**
+ * THE FAILURE THESE GUARD AGAINST, stated once. The rail's poll loop and the mint feed are
+ * independent, and for six days they disagreed in the worst direction: the pill read
+ * "updated 2s ago" over coins last heard about 141 hours earlier, and both were true. The
+ * rail had no field to say the second thing with. These tests are about that field.
+ */
+
+test('★ a feed heard from inside the bar is live, and carries the instant it was heard', () => {
+  const source = projectFeedSource(T0 - MIN, OPTIONS);
+  assert.deepEqual(source.lastHeardAt, { at: T0 - MIN });
+  assert.equal(source.live, true);
+});
+
+test('★ a feed silent past the bar is NOT live, and still says when it was last heard', () => {
+  /* The instant survives the judgement. A stale feed that published only `live: false`
+     would let a surface say "this is old" without being able to say how old, and "no mints
+     for a while" is not a sentence anybody can act on. */
+  const source = projectFeedSource(T0 - 141 * 60 * MIN, OPTIONS);
+  assert.deepEqual(source.lastHeardAt, { at: T0 - 141 * 60 * MIN });
+  assert.equal(source.live, false);
+});
+
+test('★ the bar is exactly the policy bar, not a number typed in the projector', () => {
+  /* At the boundary and one millisecond past it. If this ever disagrees with
+     Policy.assets.feedFreshnessMs, the frame a user saw stops being answerable against the
+     policy that was in force — which is the whole reason thresholds live in one object. */
+  assert.equal(projectFeedSource(T0 - FEED_FRESHNESS, OPTIONS).live, true);
+  assert.equal(projectFeedSource(T0 - FEED_FRESHNESS - 1, OPTIONS).live, false);
+});
+
+test('★ never heard is a DIFFERENT fact from heard-long-ago, and stays one', () => {
+  /* A watcher that has not been started and a watcher that died are different states with
+     different answers — start one, versus go and look at why it stopped. Collapsing them
+     would tell a fresh deployment its feed had died. */
+  const never = projectFeedSource(null, OPTIONS);
+  assert.deepEqual(never.lastHeardAt, { at: null, why: 'not_read_yet' });
+  assert.equal(never.live, false, 'silence we cannot date is not evidence of liveness');
+
+  const old = projectFeedSource(T0 - 6 * 24 * 60 * MIN, OPTIONS);
+  assert.notDeepEqual(never.lastHeardAt, old.lastHeardAt);
+});
+
+test('★ an instant in the future is not live, so a skewed clock cannot fake a live feed', () => {
+  /* `nowMs - at` goes negative, which passes any naive `silence < bar` test forever — a
+     feed that could never be declared dead. It fails closed instead: the reading is
+     published as it arrived and judged not live. */
+  const source = projectFeedSource(T0 + MIN, OPTIONS);
+  assert.deepEqual(source.lastHeardAt, { at: T0 + MIN });
+  assert.equal(source.live, false);
+});
+
+test('★ the payload carries the instant and the judgement, and no machinery at all', () => {
+  /* The vocabulary is what keeps this honest: a bar, a gap count or a sentence explaining
+     our reasoning would each be a number about US on a user's screen, and `threshold`,
+     `reason` and `verdict` are all forbidden keys. Two keys, no third. */
+  const source = projectFeedSource(T0 - 6 * 24 * 60 * MIN, OPTIONS);
+  assert.deepEqual(Object.keys(source).sort(), ['lastHeardAt', 'live']);
+
+  const flat = JSON.stringify(source).toLowerCase();
+  for (const word of [...FORBIDDEN_KEYS, ...FORBIDDEN_SUBSTRINGS]) {
+    assert.equal(flat.includes(word), false, `the feed source leaked ${word}`);
   }
 });

@@ -28,6 +28,8 @@ import {
   BOARD_VIEW_SQL,
   LAUNCH_ROWS_SQL,
   LAUNCH_VIEW_SQL,
+  PAIR_ROWS_SQL,
+  PAIR_VIEW_SQL,
   STORY_SQL,
   type Db,
   type Row,
@@ -185,6 +187,12 @@ async function story(storyId: string, deps: Deps): Promise<Reply> {
  * There is no `order` array in the reply. The board has one because rows arrive
  * individually over the live channel; launches are polled whole, so the array of payloads
  * is the order and a second spelling of it would be a second thing that can disagree.
+ *
+ * ★ `source` TRAVELS WITH THE ROWS, IN THIS REPLY, from the same view row. It is what
+ * makes an empty `launches` array readable: a quiet market and a transport that has been
+ * dead for six days produce the identical array, and only this field separates them. It is
+ * handed over as it was committed — this process cannot compute it and cannot check it,
+ * because the instant behind it comes from a schema its credential has no USAGE on.
  */
 async function launches(feedId: string, deps: Deps): Promise<Reply> {
   const views = await deps.db.query(LAUNCH_VIEW_SQL, [feedId]);
@@ -194,7 +202,76 @@ async function launches(feedId: string, deps: Deps): Promise<Reply> {
   const rows = await deps.db.query(LAUNCH_ROWS_SQL, [feedId]);
   return json(200, {
     tick: tickNumber(view['tick']),
+    source: sourceOf(view),
     launches: rows.map(payloadOf),
+  });
+}
+
+/**
+ * The committed feed state, passed through untouched.
+ *
+ * Same shape and same reasoning as `payloadOf`: `source jsonb not null` means the driver
+ * hands back a parsed value, and the only thing checked is that a value arrived at all. A
+ * view row carrying none must fail loudly rather than serialise to the literal `undefined`
+ * — which is not JSON, and which would reach the rail as a parse error rather than as the
+ * one field that tells it whether an empty list means anything.
+ *
+ * Nothing here reads inside it, and nothing here could have produced it.
+ */
+function sourceOf(row: Row): unknown {
+  const source = row['source'];
+  if (source === undefined) throw new TypeError('a projected frame arrived with no source');
+  return source;
+}
+
+/**
+ * The committed head, passed through untouched.
+ *
+ * Same shape and same reasoning as `payloadOf` one screen up: `head jsonb not null` means
+ * the driver hands back a parsed value, and the only thing checked is that a value arrived
+ * at all. A row that somehow carries none must fail loudly rather than serialise to the
+ * literal `undefined`, which is not JSON and would reach the client as a parse error with
+ * nothing to say.
+ *
+ * Nothing here reads inside it. The counts, the window and the last-heard instant were all
+ * decided by the projector, which holds a credential this process does not have.
+ */
+function headOf(row: Row): unknown {
+  const head = row['head'];
+  if (head === undefined) throw new TypeError('a projected frame arrived with no head');
+  return head;
+}
+
+/**
+ * GET /pairs/:feedId
+ *
+ * Two statements, no join, no logic — the same shape as the board and the rail, and for the
+ * same reasons. The payloads come back in the order the projector committed, which is mint
+ * order and NOT pair order: nothing in this system knows when a pool opened, so nothing
+ * here may imply it. Re-sorting them would put the product's ordering rule in the one
+ * package that must never hold one.
+ *
+ * ★ THE HEAD COMES OUT OF THE FIRST STATEMENT, BESIDE THE TICK. It says what window the
+ * list covers, when a mint was last heard, and whether these rows may be listed at all —
+ * and it is committed with the frame, so it cannot describe a different one. When it says
+ * the rows are withheld, `pair_row` holds none and this reply carries an empty array; the
+ * decoder does not read the array on that branch either. The two cannot disagree because
+ * only one of them is ever consulted.
+ *
+ * There is no `order` array in the reply, for the launches rail's reason: these are polled
+ * whole, so the array of payloads is the order and a second spelling of it would be a
+ * second thing that can be wrong.
+ */
+async function pairs(feedId: string, deps: Deps): Promise<Reply> {
+  const views = await deps.db.query(PAIR_VIEW_SQL, [feedId]);
+  const view = views[0];
+  if (view === undefined) return NOT_FOUND;
+
+  const rows = await deps.db.query(PAIR_ROWS_SQL, [feedId]);
+  return json(200, {
+    tick: tickNumber(view['tick']),
+    head: headOf(view),
+    pairs: rows.map(payloadOf),
   });
 }
 
@@ -227,6 +304,7 @@ export async function handle(method: string, rawUrl: string, deps: Deps): Promis
       if (head === 'board') return await board(param, deps);
       if (head === 'story') return await story(param, deps);
       if (head === 'launches') return await launches(param, deps);
+      if (head === 'pairs') return await pairs(param, deps);
     }
     return NOT_FOUND;
   } catch (e) {

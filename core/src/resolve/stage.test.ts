@@ -36,6 +36,8 @@ const LABELLED: Readonly<Record<string, number>> = { [VENUE]: 500 };
 const STORY_FIXTURE: Story = {
   storyId: STORY,
   state: 'promoted',
+  /* Blind to this field, like every decider in core. 'observed' is the narrow answer. */
+  origin: 'observed',
   createdAt: NOW - 40 * MINUTE,
   promotedAt: NOW - 35 * MINUTE,
   earliestPostAt: EARLIEST_POST,
@@ -57,6 +59,11 @@ function asset(address: string, mintedAtMs: number | null, over: Partial<Asset> 
     key: assetKey(ref(address)),
     chain: CHAIN,
     venue: VENUE,
+    /* An asset only reaches a stage through the store's candidate retrieval, which admits
+       the origins that are a claim about the world and nothing else. So the representative
+       value in a fixture is an observed one; a 'fixture' row is unreachable here by
+       construction, and a test that wanted to prove that would have to test the query. */
+    origin: 'live_stream',
     mintedAt:
       mintedAtMs === null
         ? { at: null, source: 'none', confidence: 'unknown', boundS: null }

@@ -653,6 +653,43 @@ export interface MarketPolicy {
   readonly maxAssetsPerPass: number;
 }
 
+/* ── ASSETS ───────────────────────────────────────────────────────────── */
+
+/**
+ * How long since we last heard anything from the feed that reports new assets, before
+ * that feed stops being described as live.
+ *
+ * ★ THIS IS A THRESHOLD AND IT IS HERE FOR THE SAME REASON `readingFreshnessMs` IS. It
+ * is the number that decides whether a rail headed "coins as they are minted" is allowed
+ * to look current, and it is exactly the kind of number that ends up typed into a
+ * projector as `10 * 60_000` and quietly doubled by whoever was on call the night the
+ * watcher fell over. Written down here, changing it is a diff, and the rail a user saw
+ * in March is answerable against the policy that was in force then.
+ *
+ * ★ THE FLOOR IS ARGUED, NOT TYPED. The mint watcher's transport already carries its own
+ * "this socket is dead" bar (MINT_STREAM_STALE_MS in .env.example, ninety seconds), and
+ * a projector that declared a feed dead while the transport still considered it alive
+ * would be two processes disagreeing out loud on one screen. So this must sit at or
+ * above that bar. Fifteen minutes is well clear of it and is chosen against the product's
+ * own clock rather than as a round number: the rail's window is six hours wide, so a feed
+ * silent for a quarter of an hour has already missed the interval a user would call
+ * "now", while a market genuinely quiet for fifteen minutes is a market this feed has
+ * nothing to say about either way. Much shorter turns every ordinary reconnect into a
+ * banner, and a banner that is always up is a banner nobody reads.
+ *
+ * ★ AND WHY THE JUDGEMENT IS MADE SERVER-SIDE. The same argument `currentMarket` makes:
+ * a threshold is our machinery, the client must never be handed one, and what crosses the
+ * wire is the already-labelled result. The app receives "the feed is not live" and the
+ * instant behind it; it does not receive the bar, and so cannot re-derive it.
+ */
+export interface AssetPolicy {
+  /**
+   * How stale the last observation on an asset feed may be while that feed is still
+   * published as live. Past this the projection says so, and the surface says so.
+   */
+  readonly feedFreshnessMs: number;
+}
+
 /* ── RANK ─────────────────────────────────────────────────────────────── */
 
 export interface RankPolicy {
@@ -806,6 +843,7 @@ export interface Policy {
   readonly qualify: QualifyPolicy;
   readonly resolve: ResolvePolicy;
   readonly market: MarketPolicy;
+  readonly assets: AssetPolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -887,7 +925,17 @@ const POLICY_V1: Policy = {
          produces the number it multiplies had no field to read, no shrink target it
          could see (it is handed one author and cannot compute a population mean), and
          no way to weight four outcome counts against each other. */
-  version: 'policy.v6',
+
+  /* v7 adds `assets.feedFreshnessMs` — the bar past which the feed of new assets stops
+     being described as live. Bumped by hand for the same reason as v3 through v6, and the
+     reason is sharper here than usual: before this bump there was no bar at all, so a rail
+     over a transport that had been silent for a hundred and forty-one hours rendered
+     exactly as a rail over a transport that answered a second ago. Nothing was wrong with
+     any individual row; the screen simply had no way to say that nothing had arrived in
+     six days, and a dead feed is not a quiet market. Any frame committed before this bump
+     was committed by a projector that could not make the distinction, and the version
+     string is the only thing that says so. */
+  version: 'policy.v7',
 
   admit: {
     maxAgeMin: 240,
@@ -1116,6 +1164,15 @@ const POLICY_V1: Policy = {
   market: {
     readingFreshnessMs: 300_000, // five minutes
     maxAssetsPerPass: 300,
+  },
+
+  assets: {
+    /* Fifteen minutes. Deliberately NOT the same number as market.readingFreshnessMs
+       above, and the two must not be merged: five minutes is how long a PRICE stays true,
+       which is a statement about one coin's market, and this is how long a SILENCE stays
+       ordinary, which is a statement about a transport. They are different quantities
+       measured over different things and they happen to share a unit. */
+    feedFreshnessMs: 900_000,
   },
 
   rank: {

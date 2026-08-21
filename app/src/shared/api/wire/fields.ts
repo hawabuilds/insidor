@@ -84,6 +84,56 @@ export const LAUNCH_FIELDS = [
   'marketCapBasis',
 ] as const;
 
+/**
+ * The state of the feed a launches frame came off. TWO fields, and the list is the point.
+ *
+ * There is no threshold here and there cannot be one: `threshold` is on FORBIDDEN_KEYS
+ * below, a bar is a number about our own machinery, and a client holding the bar could
+ * re-derive the judgement and disagree with the server about it. There is no coverage-gap
+ * count either — a gap is a fact about OUR watching. What is picked is an instant, which is
+ * a fact about the world, and a boolean that is the judgement already made.
+ */
+export const FEED_SOURCE_FIELDS = ['lastHeardAt', 'live'] as const;
+
+/**
+ * The pairs screen's row. TWELVE fields, and what is absent is the point.
+ *
+ * There is no `tradable` and no `priceChange24h`, so no buy affordance can be assembled
+ * from a pair at runtime even if a server started sending those keys — `pick` drops them
+ * before any component sees them. There is no `imageUrl` either, for LAUNCH_FIELDS' reason:
+ * a mint's image URI is a string an attacker chose, and a rendered `<img src>` is a request
+ * to a host of their choosing for every row that scrolls past.
+ *
+ * `readAt` is the honest half of the three figures beside it and is never dropped: this
+ * screen publishes a reading with its age rather than suppressing a stale one, which is only
+ * defensible while the age travels with it and reaches the screen.
+ */
+export const PAIR_FIELDS = [
+  'pairId',
+  'ticker',
+  'name',
+  'address',
+  'venueLabel',
+  'mintedAt',
+  'mintedAtBoundS',
+  'readAt',
+  'priceUsd',
+  'marketCapUsd',
+  'marketCapBasis',
+  'liquidityUsd',
+] as const;
+
+/**
+ * The head of a pairs frame: the window, the last-heard instant, and the listing union.
+ *
+ * ★ THE COUNTS ARE INSIDE `rows` AND NOT LISTED HERE, which is what makes them unreachable
+ * on the withheld branch. They are picked by `decodePairFeed` only after the tag has been
+ * read, so a server that sent a count alongside `listing: 'withheld'` would have it dropped
+ * rather than rendered — and a count over a population that may contain fictions is exactly
+ * the number this screen must not print.
+ */
+export const PAIR_HEAD_FIELDS = ['windowMs', 'lastMintHeardAt', 'rows'] as const;
+
 export const COIN_FIELDS = [
   'coinId',
   'ticker',

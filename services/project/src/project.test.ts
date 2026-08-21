@@ -61,10 +61,14 @@ const HOUR = 60 * MIN;
 /** Five minutes, the same window Policy.market.readingFreshnessMs carries. */
 const FRESHNESS = 5 * MIN;
 
+/** Fifteen minutes, the same bar Policy.assets.feedFreshnessMs carries. */
+const FEED_FRESHNESS = 15 * MIN;
+
 const OPTIONS: ProjectOptions = {
   nowMs: T0,
   sparkWindowMs: 30 * MIN,
   marketFreshnessMs: FRESHNESS,
+  feedFreshnessMs: FEED_FRESHNESS,
 };
 
 /* ── builders ─────────────────────────────────────────────────────────── */

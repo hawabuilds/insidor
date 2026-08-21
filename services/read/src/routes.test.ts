@@ -237,9 +237,20 @@ const JERSEY = {
   marketCapBasis: null,
 };
 
+/**
+ * The feed's own state, as the projector committed it onto the view row.
+ *
+ * ★ THE STALE ONE IS USED BY THE EMPTY-FEED TEST BELOW ON PURPOSE. An empty `launches`
+ * array with a live source and an empty one with a six-day silence are the same array and
+ * completely different answers, and this service's job is to make sure the second fact
+ * survives the trip.
+ */
+const LIVE_SOURCE = { lastHeardAt: { at: 1_755_079_260_000 }, live: true };
+const DEAD_SOURCE = { lastHeardAt: { at: 1_754_571_341_000 }, live: false };
+
 test('the launches feed is the tick and the payloads, in the committed order', async () => {
   const { deps, calls } = fakeDb({
-    [LAUNCH_VIEW_SQL]: [{ tick: '9' }],
+    [LAUNCH_VIEW_SQL]: [{ tick: '9', source: LIVE_SOURCE }],
     /* Deliberately not in mint order or alphabetical order: the driver returns them in
        whatever `order by "position"` produced, and this service must hand that back
        untouched. A re-sort here would be the product's ordering rule living in the one
@@ -249,7 +260,7 @@ test('the launches feed is the tick and the payloads, in the committed order', a
 
   const reply = await handle('GET', '/launches/default', deps);
   assert.equal(reply.status, 200);
-  assert.deepEqual(JSON.parse(reply.body), { tick: 9, launches: [JERSEY, DOCK] });
+  assert.deepEqual(JSON.parse(reply.body), { tick: 9, source: LIVE_SOURCE, launches: [JERSEY, DOCK] });
 
   assert.deepEqual(
     calls.map((c) => c.sql),
@@ -261,7 +272,7 @@ test('the launches feed is the tick and the payloads, in the committed order', a
 
 test('a launch payload is returned verbatim — no envelope, no added field, none dropped', async () => {
   const { deps } = fakeDb({
-    [LAUNCH_VIEW_SQL]: [{ tick: 1 }],
+    [LAUNCH_VIEW_SQL]: [{ tick: 1, source: LIVE_SOURCE }],
     [LAUNCH_ROWS_SQL]: [{ payload: JERSEY }],
   });
   const body = JSON.parse((await handle('GET', '/launches/default', deps)).body) as {
@@ -280,10 +291,16 @@ test('a feed that exists with no mints is an empty rail, not a 404', async () =>
   /* The distinction the whole endpoint turns on. A quiet market and an unreachable feed
      look identical if both answer 404, and the rail would show a transport error over a
      market that is simply quiet. */
-  const { deps } = fakeDb({ [LAUNCH_VIEW_SQL]: [{ tick: '4' }], [LAUNCH_ROWS_SQL]: [] });
+  const { deps } = fakeDb({ [LAUNCH_VIEW_SQL]: [{ tick: '4', source: DEAD_SOURCE }], [LAUNCH_ROWS_SQL]: [] });
   const reply = await handle('GET', '/launches/default', deps);
   assert.equal(reply.status, 200);
-  assert.deepEqual(JSON.parse(reply.body), { tick: 4, launches: [] });
+  assert.deepEqual(JSON.parse(reply.body), {
+    tick: 4,
+    /* ★ THE POINT OF THE WHOLE FIELD. The array is empty either way; only this says
+       whether that means a quiet market or a transport nobody has heard from in six days. */
+    source: DEAD_SOURCE,
+    launches: [],
+  });
 });
 
 test('a launches feed that has never been projected is 404 and never asks for its rows', async () => {
@@ -295,7 +312,7 @@ test('a launches feed that has never been projected is 404 and never asks for it
 });
 
 test('a launch row with no payload is a 500, not the literal undefined', async () => {
-  const { deps } = fakeDb({ [LAUNCH_VIEW_SQL]: [{ tick: '1' }], [LAUNCH_ROWS_SQL]: [{}] });
+  const { deps } = fakeDb({ [LAUNCH_VIEW_SQL]: [{ tick: '1', source: LIVE_SOURCE }], [LAUNCH_ROWS_SQL]: [{}] });
   const reply = await handle('GET', '/launches/default', deps);
   assert.equal(reply.status, 500);
   assert.doesNotThrow(() => JSON.parse(reply.body), 'every body this service sends is JSON');
@@ -330,7 +347,7 @@ test('★ a path parameter reaches the driver as a PARAMETER, never interpolated
 
 test('★ a hostile feed id reaches the driver as a PARAMETER on the launches path too', async () => {
   const hostile = "default'; drop table public.launch_row; --";
-  const { deps, calls } = fakeDb({ [LAUNCH_VIEW_SQL]: [{ tick: '1' }], [LAUNCH_ROWS_SQL]: [] });
+  const { deps, calls } = fakeDb({ [LAUNCH_VIEW_SQL]: [{ tick: '1', source: LIVE_SOURCE }], [LAUNCH_ROWS_SQL]: [] });
 
   await handle('GET', `/launches/${encodeURIComponent(hostile)}`, deps);
 
@@ -423,4 +440,39 @@ test('the failure detail is logged server-side, so an opaque 500 is still debugg
   assert.equal(logged.length, 1);
   assert.equal(logged[0]?.fields?.['err'], 'permission denied for table observation');
   assert.equal(logged[0]?.fields?.['url'], '/board/main');
+});
+
+test('★ the feed state travels with the rows, verbatim, from the same view row', async () => {
+  /* One statement, one frame, one answer. Fetched separately it could describe a different
+     projection from the rows on screen, which is two spellings of one thing that can
+     disagree — and the disagreement would land exactly where it hurts, on a rail claiming
+     to be current. */
+  const { deps, calls } = fakeDb({
+    [LAUNCH_VIEW_SQL]: [{ tick: '12', source: DEAD_SOURCE }],
+    [LAUNCH_ROWS_SQL]: [{ payload: DOCK }],
+  });
+  const body = JSON.parse((await handle('GET', '/launches/default', deps)).body) as {
+    source: unknown;
+  };
+
+  assert.deepEqual(body.source, DEAD_SOURCE, 'passed through untouched, not re-derived');
+  assert.deepEqual(
+    calls.map((c) => c.sql),
+    [LAUNCH_VIEW_SQL, LAUNCH_ROWS_SQL],
+    'still exactly two statements — the feed state came off the frame, not a third read',
+  );
+  assert.match(LAUNCH_VIEW_SQL, /select tick, source from public\.launch_view/);
+});
+
+test('a view row with no feed state is a 500, not a rail with nothing above it', async () => {
+  /* `source jsonb not null` means this cannot happen against our own schema, and if it
+     somehow does the honest answer is a failure rather than `undefined` — which is not JSON
+     and would reach the rail as a parse error, or worse, decode to a silently live feed. */
+  const { deps } = fakeDb({
+    [LAUNCH_VIEW_SQL]: [{ tick: '3' }],
+    [LAUNCH_ROWS_SQL]: [{ payload: DOCK }],
+  });
+  const reply = await handle('GET', '/launches/default', deps);
+  assert.equal(reply.status, 500);
+  assert.doesNotThrow(() => JSON.parse(reply.body), 'every body this service sends is JSON');
 });

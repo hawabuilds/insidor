@@ -23,15 +23,19 @@ import type { Instant, Measured, Delta, PendingReason } from '../format/measure.
 import { instantFrom, measuredFrom } from '../format/measure.ts';
 import type { BoardRow, BoardTick, RowPatch, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinLink, MarketCapBasis } from './wire/coin.ts';
-import type { Launch, LaunchFeed } from './wire/launch.ts';
+import type { FeedSource, Launch, LaunchFeed } from './wire/launch.ts';
+import type { Pair, PairFeed, PairHead, PairListing } from './wire/pair.ts';
 import type { DiscussionPost, Evidence, Story } from './wire/story.ts';
 import type { TradeCost, TradeQuote } from './wire/trade.ts';
 import {
   BOARD_ROW_FIELDS,
   COIN_FIELDS,
+  FEED_SOURCE_FIELDS,
   FORBIDDEN_KEYS,
   FORBIDDEN_SUBSTRINGS,
   LAUNCH_FIELDS,
+  PAIR_FIELDS,
+  PAIR_HEAD_FIELDS,
   STORY_FIELDS,
 } from './wire/fields.ts';
 
@@ -402,6 +406,158 @@ export function decodeLaunchFeed(raw: unknown, path = '$'): LaunchFeed {
     launches: arr(o['launches'], `${path}.launches`).map((l, i) =>
       decodeLaunch(l, `${path}.launches[${i}]`),
     ),
+    source: decodeFeedSource(o['source'], `${path}.source`),
+  };
+}
+
+/**
+ * The state of the feed this frame came off.
+ *
+ * ★ A MISSING `source` IS `live: false` AND AN UNKNOWN INSTANT — never a quiet default to
+ * healthy, and this is the one defaulting decision in the file worth arguing. A server too
+ * old to send the field is a server whose freshness we genuinely do not know, and the rail
+ * over it is exactly the rail this whole change exists to stop: rows with nothing above
+ * them. So the absence resolves to the honest statement, which makes the banner appear and
+ * the pip go out, and the failure lands on the side of saying too much rather than too
+ * little.
+ *
+ * `live` is read with `bool` and never coerced. A truthy string would otherwise light the
+ * pip over a dead feed, which is the cheapest lie in the app arriving through a decoder.
+ */
+function decodeFeedSource(raw: unknown, path: string): FeedSource {
+  if (raw === null || raw === undefined) {
+    return { lastHeardAt: instantFrom(null, 'not_read_yet'), live: false };
+  }
+  const o = pick(obj(raw, path), FEED_SOURCE_FIELDS);
+  return {
+    /* Unknown stays unknown. It is NOT backfilled from the moment this frame was
+       projected, which is when WE ran — the same mistake as backfilling a mint time from
+       when we first looked, and it would make a feed nobody has ever watched read as one
+       heard from a second ago. */
+    lastHeardAt: instantAt(o.lastHeardAt, `${path}.lastHeardAt`, 'not_read_yet'),
+    live: bool(o.live, `${path}.live`),
+  };
+}
+
+/* ── pairs ────────────────────────────────────────────────────────────── */
+
+/**
+ * A whole number of things, which is what the three figures in the pairs head are.
+ *
+ * ★ STRICTER THAN `int` ON PURPOSE, AND THE STRICTNESS IS THE MISSING-DATA RULE AGAIN.
+ * These are read out loud as a sentence — "6 of 192 mints have a market" — so a fractional
+ * or negative one is not a number to round, it is a payload that has stopped meaning what
+ * the sentence claims. A shape error here is loud at the boundary; a `-1` rendered into
+ * that sentence is a confident lie about a population.
+ */
+function wholeCount(v: unknown, path: string): number {
+  if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) throw new WireShapeError(path, v);
+  return v;
+}
+
+/**
+ * One pair.
+ *
+ * Assert first, pick second, exactly like `decodeLaunch` and for the same reason — a leak
+ * already dropped by the pick is a leak nobody fixes at the source. This payload earns the
+ * assert as much as the rail's does: `ticker` and `name` are free text somebody chose while
+ * minting a coin, and a vendor's name inside a token name is free to type.
+ */
+export function decodePair(raw: unknown, path = '$.pair'): Pair {
+  assertNoInternalVocabulary(raw, path);
+  const o = pick(obj(raw, path), PAIR_FIELDS);
+  return {
+    pairId: str(o.pairId, `${path}.pairId`),
+    ticker: str(o.ticker, `${path}.ticker`),
+    name: str(o.name, `${path}.name`),
+    address: str(o.address, `${path}.address`),
+    venueLabel: str(o.venueLabel, `${path}.venueLabel`),
+    /* Unknown stays unknown and is never backfilled. The fallback fires only when the
+       server sent no reason at all, and "we have not learned it" is the only thing that can
+       honestly be said on such a server's behalf. */
+    mintedAt: instantAt(o.mintedAt, `${path}.mintedAt`, 'not_read_yet'),
+    mintedAtBoundS: boundSeconds(o.mintedAtBoundS),
+    /* ★ `unreadable` AND NOT `not_read_yet`. A row is on this screen BECAUSE a reading
+       exists for it, so "we have not read it" is the one thing that cannot be true here —
+       an absent instant means the one we were sent did not make sense, and the screen must
+       not offer the reassuring reason for the alarming state. */
+    readAt: instantAt(o.readAt, `${path}.readAt`, 'unreadable'),
+    priceUsd: measured(o.priceUsd, `${path}.priceUsd`, 'no_market'),
+    marketCapUsd: measured(o.marketCapUsd, `${path}.marketCapUsd`, 'no_market'),
+    marketCapBasis: decodeBasis(o.marketCapBasis),
+    /* `not_reported` is the right fallback for liquidity specifically: a bonding curve has
+       no two-sided reserve to report, which is the common case here and is a different fact
+       from having no market at all. */
+    liquidityUsd: measured(o.liquidityUsd, `${path}.liquidityUsd`, 'not_reported'),
+  };
+}
+
+/**
+ * Whether the rows of this frame may be listed, and the counts when they may.
+ *
+ * ★ AN UNKNOWN TAG IS A SHAPE ERROR AND NOT A QUIET 'shown'. Defaulting either way is a
+ * decision about whether to put unverified rows under a heading that says a venue priced
+ * them, and that decision is not this function's to make on a server's behalf. The caller
+ * already has an error state that says the screen could not be read, which is true.
+ */
+function decodePairListing(raw: unknown, path: string): PairListing {
+  const o = obj(raw, path);
+  const listing = str(o['listing'], `${path}.listing`);
+  switch (listing) {
+    case 'withheld':
+      /* No counts read, not even to keep them around. A count over a population that may
+         hold fictions is precisely the number this branch exists to refuse to print. */
+      return { listing: 'withheld' };
+    case 'shown':
+      return {
+        listing: 'shown',
+        mintsInWindow: wholeCount(o['mintsInWindow'], `${path}.mintsInWindow`),
+        withMarket: wholeCount(o['withMarket'], `${path}.withMarket`),
+        withoutMarket: wholeCount(o['withoutMarket'], `${path}.withoutMarket`),
+      };
+    default:
+      throw new WireShapeError(`${path}.listing`, listing);
+  }
+}
+
+function decodePairHead(raw: unknown, path: string): PairHead {
+  const o = pick(obj(raw, path), PAIR_HEAD_FIELDS);
+  return {
+    windowMs: int(o.windowMs, `${path}.windowMs`),
+    /* Absent means nothing has ever been heard on this feed. `not_read_yet` is the honest
+       reason for that and it is a different sentence from "the feed reports no mints" —
+       `formatAge` renders the pending glyph with its reason, so the screen distinguishes
+       "never watched" from "watched, long ago" with no new formatter. */
+    lastMintHeardAt: instantAt(o.lastMintHeardAt, `${path}.lastMintHeardAt`, 'not_read_yet'),
+    rows: decodePairListing(o.rows, `${path}.rows`),
+  };
+}
+
+/**
+ * One frame of the pairs screen.
+ *
+ * ★ THE ROWS ARE NOT READ AT ALL ON THE WITHHELD BRANCH. Not filtered, not emptied
+ * afterwards — never decoded. The projector already commits an empty array under that tag
+ * and writes no rows, so this is the third of three independent layers saying the same
+ * thing, and it is the one that holds if a server ever sends both. Nothing downstream can
+ * reach a row that was not supposed to be listed, because nothing downstream is handed one.
+ *
+ * Every row that IS decoded is decoded, and one unreadable row throws the whole frame
+ * rather than being skipped — the same call `decodeBoardTick` and `decodeLaunchFeed` make.
+ * A list silently one row short is wrong in a way nobody can see, and the caller already
+ * has an error state that says so out loud.
+ */
+export function decodePairFeed(raw: unknown, path = '$'): PairFeed {
+  assertNoInternalVocabulary(raw, path);
+  const o = obj(raw, path);
+  const head = decodePairHead(o['head'], `${path}.head`);
+  return {
+    tick: int(o['tick'], `${path}.tick`),
+    head,
+    pairs:
+      head.rows.listing === 'withheld'
+        ? []
+        : arr(o['pairs'], `${path}.pairs`).map((p, i) => decodePair(p, `${path}.pairs[${i}]`)),
   };
 }
 

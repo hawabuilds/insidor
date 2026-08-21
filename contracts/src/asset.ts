@@ -50,6 +50,107 @@ export interface MintTime {
   readonly boundS: number | null;
 }
 
+/* ── where the row came from ──────────────────────────────────────────── */
+
+/**
+ * ★ HOW THIS ROW CAME TO BE HERE — what kind of contact with the world produced it.
+ *
+ * THIS IS NOT `MintTimeSource` AND THE TWO ARE NOT INTERCHANGEABLE. The four sources
+ * above answer "where did the TIME come from", which is a claim about the pedigree of
+ * ONE FIELD. This answers "how did the ROW get into the table", which is a claim about
+ * the row's relationship to reality. They are orthogonal, and the proof is in the data
+ * rather than in the argument: a seed writing demonstration fixtures spans all four
+ * mint-time sources — 'vendor_field' on some, 'chain_rpc' and 'issuer_api' on others,
+ * 'none' on one — while the live socket writes only 'vendor_field'. So 'vendor_field'
+ * means "invented OR observed" and the other three mean "invented" only by an accident
+ * of which fixtures happen to exist this week. It cannot be made into a discriminator.
+ *
+ * ★ WHY THIS EXISTS AT ALL, stated as the bug it closes. A rail headed NEW LAUNCHES
+ * served six coins that a seed script had written, under a heading asserting they had
+ * just been minted, while 192 genuinely observed mints sat in the same table and never
+ * appeared. Nothing was broken and nothing crashed: demonstration rows and observed
+ * rows were the same row to every query in the system, because nothing anywhere recorded
+ * the difference. The app has carried a permanent SAMPLE DATA banner over its fixtures
+ * since the beginning for exactly this reason; that discipline had never reached the
+ * database.
+ *
+ * ★ AND WHY IT IS A COLUMN AND NOT A SIDE TABLE. A row's origin is a property of the
+ * row, is known at the instant of the INSERT, and has to be unforgeable-by-omission. A
+ * join to a side table is a join a query can forget; a not-null column with no default
+ * is one every writer must answer, and a writer that does not answer fails loudly on its
+ * next run rather than quietly inheriting the convenient value.
+ *
+ * Each value names a KIND OF CONTACT. None of them names a vendor, a process, or a
+ * venue — those would be answers to different questions and would rot at a different
+ * rate.
+ */
+export const ASSET_ORIGINS = [
+  /**
+   * A push transport delivered this as it happened: we were connected and we heard it.
+   * The instant is an arrival bounded by the observation lag, which is exactly why such
+   * a row is ('vendor_field','bounded') and why that pair says nothing about origin.
+   */
+  'live_stream',
+  /**
+   * A listing or REST read returned it after the fact. Nobody was watching when it
+   * happened; we asked later and it was there.
+   *
+   * ★ A DIFFERENT FACT FROM 'live_stream', AND THE DIFFERENCE IS LOAD-BEARING. A
+   * backfilled row is evidence about the world but NOT evidence that we were watching,
+   * so it must never be allowed to make a coverage log look covered.
+   */
+  'backfill',
+  /**
+   * A person typed it in. Real, believed, and traceable to a human rather than to a
+   * transport — kept distinct from 'backfill' because the failure modes are opposite: a
+   * transport fails systematically and a person fails one row at a time.
+   */
+  'operator',
+  /**
+   * Written by a seed or a demonstration tool. NEVER a claim about the world. This is
+   * the value that makes a demo row sayable as what it is, and the value every surface
+   * asserting observation must exclude.
+   */
+  'fixture',
+  /**
+   * ★ THE ROW PREDATES THIS COLUMN AND NO EVIDENCE RECOVERS ITS ORIGIN. Written by the
+   * one-time backfill in store/migrations/0013_asset_origin.sql and by NOTHING ELSE,
+   * EVER — store/src/migrations.test.ts asserts that no writer in the repository types
+   * this string.
+   *
+   * It is deliberately NOT an "unknown" escape hatch, and three things keep it from
+   * becoming one. The column has no default, so nobody inherits it. The name states a
+   * historical fact rather than a state a new row could be in. And every surface that
+   * asserts observation is an ALLOWLIST over the three origins above, so writing this
+   * value costs you the row — the incentive runs in the safe direction.
+   *
+   * The alternative was to fold unclassifiable rows into 'live_stream', which is the
+   * whole bug rebuilt inside the mechanism meant to fix it.
+   */
+  'unrecorded',
+] as const;
+
+export type AssetOrigin = (typeof ASSET_ORIGINS)[number];
+
+/**
+ * The origins that are a CLAIM ABOUT THE WORLD — the ones a surface may present as
+ * something that actually happened.
+ *
+ * ★ IT IS AN ALLOWLIST AND THAT IS THE WHOLE POINT. The tempting spelling is
+ * `origin <> 'fixture'`, which is a denylist, and a denylist admits every value added
+ * after it was written — including 'unrecorded', which is precisely the value meaning
+ * "we cannot vouch for this". A sixth origin arriving in a year is excluded by default
+ * and included only by someone editing this line, which is the correct direction for a
+ * rule whose failure mode is publishing a fiction as an observation.
+ *
+ * Note that 'backfill' IS here: a coin retrieved after the fact was still really minted.
+ * What a backfilled row must not do is claim we were WATCHING, and that is a claim about
+ * coverage rather than about the row.
+ */
+export const OBSERVED_ASSET_ORIGINS = ['live_stream', 'backfill', 'operator'] as const;
+
+export type ObservedAssetOrigin = (typeof OBSERVED_ASSET_ORIGINS)[number];
+
 /* ── the asset ────────────────────────────────────────────────────────── */
 
 export interface Asset {
@@ -58,6 +159,15 @@ export interface Asset {
   readonly chain: ChainId;
   /** The market it was first seen on. Assets migrate venues; this is where it began. */
   readonly venue: VenueId;
+
+  /**
+   * What kind of contact with the world produced this row. See ASSET_ORIGINS.
+   *
+   * There is no default here and there is none in the schema either: a writer that has
+   * not thought about this fails, rather than silently certifying whatever it wrote as
+   * an observation.
+   */
+  readonly origin: AssetOrigin;
 
   readonly mintedAt: MintTime;
 

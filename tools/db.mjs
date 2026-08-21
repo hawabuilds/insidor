@@ -8,6 +8,7 @@
  *   node tools/db.mjs seed      domain facts only            (tools/seed.mjs)
  *   node tools/db.mjs market    read markets, append rows    (services/market)
  *   node tools/db.mjs project   derive the wire projection   (services/project)
+ *   node tools/db.mjs pairs     derive the pairs projection  (services/project)
  *   node tools/db.mjs decide    run the stages, write decisions (services/runner)
  *   node tools/db.mjs psql      an interactive shell in the container
  *
@@ -363,6 +364,37 @@ async function project() {
 }
 
 /**
+ * The pairs projector, which is a SECOND entrypoint into the same package and not a
+ * flag on the first.
+ *
+ * The board suppresses a market reading older than the policy's freshness window
+ * entirely, because every board row carries a Buy button on it. The pairs screen
+ * publishes the reading it holds together with the instant it was taken at, and says
+ * the age beside every figure — it has no trade affordance, so suppressing there
+ * would delete the evidence rather than protect anybody.
+ *
+ * Both calls are right for their own screen. The reason they are two PROCESSES is
+ * that one process holding both rules would sooner or later hold one options object
+ * with a mode field on it, and then the board's five minutes would be a parameter
+ * somebody could pass differently. Run it after `market`, for the reason `project`
+ * gives: the projection reads the latest reading per coin, and a run before the first
+ * market pass has nothing to read.
+ */
+const PAIR_PROJECTOR = join(ROOT, 'services', 'project', 'src', 'pairs-main.ts');
+
+async function pairs() {
+  if (!existsSync(PAIR_PROJECTOR)) {
+    die(
+      `no pairs projector at ${PAIR_PROJECTOR}.\n` +
+        '  It writes public.pair_view / public.pair_row: the mints that reached a market,\n' +
+        '  the count of how few of them there are, and when a mint was last heard. Until it\n' +
+        '  runs, GET /pairs/:feedId answers 404 and the screen says so.',
+    );
+  }
+  await run(['--experimental-strip-types', PAIR_PROJECTOR], 'the pairs projector');
+}
+
+/**
  * ★ THE DECISION LOG, FILLED FROM A LAPTOP.
  *
  * `internal.decisions` and `internal.labels` are the two tables in this system that
@@ -435,6 +467,7 @@ const COMMANDS = {
   seed: () => run([SEED], 'the seed'),
   market,
   project,
+  pairs,
   decide,
   psql: async () => psql(),
 };

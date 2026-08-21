@@ -14,6 +14,7 @@
  * holds has no INSERT on the schema that holds one.
  */
 
+import { OBSERVED_ASSET_ORIGINS } from '@insidor/contracts/asset.ts';
 import type { Db } from '@insidor/store';
 
 import { numberOf, reasonOf } from './reading.ts';
@@ -42,6 +43,46 @@ export interface AssetRow {
  * the list and silently make "we never learned when this was minted" mean "we will
  * never read its price either". The tiebreak is the key, so two runs with nothing
  * changed read the same coins rather than reshuffling under the cap.
+ *
+ * ★ AND `origin = any(...)` IS HERE BECAUSE THIS IS THE ONE PLACE A FICTION LEAVES THE
+ * DATABASE AND TOUCHES THE OUTSIDE WORLD. Every other allowlist in this repository stops
+ * an invented row reaching a screen. This one stops it reaching a VENDOR: whatever this
+ * statement returns is chunked into `read.states` and sent to dexscreener as a list of
+ * addresses to price. A row the database records as written by a seed is not a coin, and
+ * asking a real venue what it is worth is a category error before it is anything else.
+ *
+ * ★ IT IS THE SAME MECHANISM AS THE LAUNCHES RAIL, AND THAT IS WHY THE ORDER MATTERS.
+ * The seed stamps `first_seen_at` at load time, so its fixtures are always the NEWEST rows
+ * in the table — and this statement's ordering is `first_seen_at desc`. Measured on this
+ * store: the thirteen fixtures occupy ranks 1 through 56 of 248, so they are not merely
+ * inside the cap, they are the FIRST thing it buys. `MAX_ADDRESSES_PER_CALL` chunks in
+ * order, which makes them the first call of the pass. The endpoint behind this is
+ * rate-limited at about eleven sequential calls, so on any store where the asset count
+ * exceeds `maxAssetsPerPass` the fictions are spent first and real coins are the ones
+ * dropped at the bound. The bug is latent at 248 rows and structural at 301.
+ *
+ * ★ AND ONE OF THEM CAME BACK PRICED, WHICH IS THE PART THAT IS NOT MERELY WASTE.
+ * `solana:Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump` is in the seed's fixture list AND
+ * is a real mainnet address, so the vendor answered it: this store holds a
+ * `public.market_reading` row carrying a genuine $12.1M market cap and $1.27M of
+ * liquidity, taken live, filed against an asset whose `origin` says it was invented. That
+ * row is real data wearing a fiction's provenance, and it is exactly the pairing every
+ * origin filter in this repository exists to make unsayable — arriving from the direction
+ * nobody was watching, because the fiction went OUT rather than a fiction coming in.
+ *
+ * ★ THERE IS NO STORY HERE, SO THE CONSTANT IS THE WHOLE ANSWER — and that is the line
+ * between this filter and the one `mintedBetween` had to give up. This statement's subject
+ * is a coin alone: "is this row a claim about the world" has one answer and it is
+ * `OBSERVED_ASSET_ORIGINS`. A read whose subject is a STORY has two subjects and must
+ * derive its list from the story instead; carrying a constant into one of those is the
+ * bug 0016 was written to close. If the read has a story, the story decides; if it has
+ * none, this list does.
+ *
+ * A fixture keeps whatever absence it already had, which is the correct and honest
+ * outcome: nothing has read this coin, because it is not a coin. The allowlist rather than
+ * `<> 'fixture'` for the reason it is an allowlist everywhere else — a denylist admits
+ * every origin invented after it was written, `unrecorded` included, and "we cannot vouch
+ * for this row" is not a licence to spend money asking a vendor about it.
  */
 export async function assetsToRead(
   db: Db,
@@ -52,9 +93,13 @@ export async function assetsToRead(
     `select chain, address
        from public.asset
       where chain = $1
+        and origin = any($3::text[])
       order by first_seen_at desc, asset_key asc
       limit $2`,
-    [chain, limit],
+    /* A bound parameter and never an interpolated list, the rule this whole file holds
+       to. The list arrives from contracts, where 0013's CHECK is held to it by a test,
+       rather than being typed into the string above as a fifth copy of one closed list. */
+    [chain, limit, [...OBSERVED_ASSET_ORIGINS]],
   );
 }
 

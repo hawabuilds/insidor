@@ -13,7 +13,7 @@
 
 import type { Instant, Millis } from './measure.ts';
 import type { Rendered } from './rendered.ts';
-import { pendingRendered, value } from './rendered.ts';
+import { pendingLabel, pendingRendered, value } from './rendered.ts';
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -44,6 +44,62 @@ export function formatAge(origin: Instant, now: Millis): Rendered {
   const elapsed = now - origin.at;
   if (elapsed < 0) return pendingRendered('unreadable');
   return value(formatDuration(elapsed));
+}
+
+/**
+ * ★ HOW OLD A MINT IS, AND WHETHER WE ARE ENTITLED TO STATE IT PRECISELY.
+ *
+ * This lives here, in the leaf, because TWO surfaces show a mint age — the launches rail and
+ * the pairs screen — and mint time is the axis every ordering claim in this product hangs
+ * on. Two spellings of this rule would agree on the day they were written, and the drift
+ * would surface as an estimate rendered as a reading on whichever screen was edited second.
+ *
+ * ★ BOTH SURFACES GO THROUGH THIS ONE. `features/rail/launches.ts` used to spell the same
+ * three branches inline in `launchAge`, from before there was a second caller; it now
+ * delegates here and keeps only the wrapper that reads the two fields off a `Launch`, so no
+ * call site can pass the instant without its bound. The duplication was named here as debt
+ * rather than left to be noticed, because its failure mode is silent and asymmetric: the "~"
+ * quietly stops appearing on whichever screen was edited second, and a bounded estimate is
+ * then rendered as a reading.
+ *
+ * Three outcomes, and the middle one is the common one on a socket-fed pipeline:
+ *
+ *   - No mint time at all → the pending glyph with its reason. NOT "0s", which would read as
+ *     brand new and promote the coins we know least about to the top of a list whose whole
+ *     subject is earliness.
+ *   - A bounded mint time → the age with a "~" in front of it and the bound spelled out in
+ *     words. The tilde is doing real work: without it an interval whose half-width is twenty
+ *     seconds displays identically to a chain-confirmed reading, and somebody downstream
+ *     compares it against a post timestamp to the second.
+ *   - An exact mint time → the age plain. Only a chain confirmation earns this, and the
+ *     store's `exact_requires_real_source` constraint is what stops anything else claiming
+ *     it.
+ *
+ * `formatAge` already refuses a future origin, so a clock-skewed row arrives as a dash and
+ * not as "-4s".
+ *
+ * ★ THE BOUND IS ROUNDED UP, NEVER DOWN, and one second is its floor. `formatDuration`
+ * floors — it is built for ages, where flooring is right — so a half-second bound would be
+ * phrased "give or take 0s", which is the caveat deleted while the tilde stays on, and that
+ * reads as an exact time wearing an apology. The projector already floors this at one second
+ * so it cannot fire against our own server; it fires against one that does not.
+ */
+export function mintAge(
+  mintedAt: Instant,
+  boundS: number | null,
+  now: Millis,
+): { readonly age: Rendered; readonly label: string } {
+  const age = formatAge(mintedAt, now);
+  if (age.kind === 'pending') return { age, label: pendingLabel(age.reason) };
+  if (boundS === null) return { age, label: `minted ${age.text} ago` };
+
+  const bound = formatDuration(Math.max(SECOND, boundS * SECOND));
+  return {
+    age: value(`~${age.text}`),
+    /* The bound is stated in words rather than only implied by the tilde, because a tilde is
+       a hint and a user acting on the order of two events needs the number. */
+    label: `minted about ${age.text} ago, give or take ${bound}`,
+  };
 }
 
 /**

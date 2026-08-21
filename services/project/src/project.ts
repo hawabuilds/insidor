@@ -57,9 +57,14 @@ import {
   type WireCoin,
   type WireCoinLink,
   type WireEvidence,
+  type WireFeedSource,
   type WireInstant,
   type WireLaunch,
   type WireMeasured,
+  type WirePair,
+  type WirePairFeed,
+  type WirePairHead,
+  type WirePairListing,
   type WireSpark,
   type WireSparkPoint,
   type WireStory,
@@ -255,6 +260,16 @@ export interface ProjectOptions {
    * whether a price is a price or a dash, which is a judgement.
    */
   readonly marketFreshnessMs: number;
+  /**
+   * How long a feed of new coins may be silent before it stops being published as live.
+   *
+   * The SECOND option here that something branches on, and it arrives the same way the
+   * first does — from Policy.assets.feedFreshnessMs, never typed in this file. The two are
+   * deliberately separate numbers measuring different things: one is how long a PRICE
+   * stays true, which is about a coin's market, and this is how long a SILENCE stays
+   * ordinary, which is about a transport. They happen to share a unit and nothing else.
+   */
+  readonly feedFreshnessMs: number;
 }
 
 /* ── reach: a level, or an honest statement that we have none ─────────── */
@@ -719,7 +734,21 @@ export interface LaunchFacts {
  * UNREADABLE rather than as a bare instant. An estimate whose error we cannot state is
  * not a better answer than no answer — it is the same answer with the caveat deleted.
  */
-function projectMintTime(facts: LaunchFacts): {
+interface MintTimeFacts {
+  readonly mintedAt: Millis | null;
+  readonly mintPrecision: MintTimeConfidence;
+  readonly mintBoundS: number | null;
+}
+
+/*
+ * ★ THE PARAMETER IS THE THREE COLUMNS AND NOT `LaunchFacts`, so that the pairs screen
+ * below goes through this exact function rather than through a second copy of the rule.
+ * `LaunchFacts` and `PairFacts` both satisfy it structurally. A duplicated mint-time rule
+ * is the one duplication this file cannot afford: the two copies would agree on the day
+ * they were written and the drift would show up as an estimate rendered as a reading on
+ * whichever surface was edited second.
+ */
+function projectMintTime(facts: MintTimeFacts): {
   readonly mintedAt: WireInstant;
   readonly mintedAtBoundS: number | null;
 } {
@@ -775,6 +804,232 @@ export function projectLaunch(facts: LaunchFacts, options: ProjectOptions): Wire
 
   assertNoInternalVocabulary(launch, `$.launch_row[${facts.assetKey}]`);
   return launch;
+}
+
+/**
+ * ★ WHETHER THE FEED BEHIND THIS FRAME IS STILL BEING HEARD FROM.
+ *
+ * The fact this publishes is the one the launches rail had no way to state: a poll loop
+ * can be perfectly healthy over a transport that died six days ago, and on the store this
+ * was written against it was — the pill read "updated 2s ago" above coins last heard about
+ * 141 hours earlier, and both halves of that were true. Two independent facts, and the
+ * screen could only say one of them.
+ *
+ * ★ `lastHeardAt` IS "WHEN DID WE LAST HEAR ANYTHING", NOT "HOW FAR DID WE GET". Those are
+ * different questions and the caller has to have asked the right one — see
+ * `PgAssetRepo.lastHeardAt`, which excludes gap rows precisely because a gap row's end
+ * advances while nothing was heard, so a watcher that reconnects and declares six dark
+ * days would otherwise push this instant to now and announce the feed live over exactly
+ * the interval we had just declared dark.
+ *
+ * THREE OUTCOMES, and the first two are different sentences:
+ *
+ *   never heard    → absent, `not_read_yet`, and NOT live. Nothing has ever been observed
+ *                    on this feed. A watcher that has not started yet is a different state
+ *                    from a watcher that stopped, and folding them together would tell a
+ *                    fresh deployment its feed had died.
+ *   heard, stale   → the instant, and NOT live. The rows on the frame are still true; they
+ *                    are simply not new, and the surface says so beside them rather than
+ *                    hiding them. Removing real rows because they are old trades one lie
+ *                    for another.
+ *   heard, recent  → the instant, and live.
+ *
+ * ★ A FUTURE INSTANT IS NOT LIVE. A clock skewed forward would otherwise make a feed
+ * unfalsifiably live — `at > nowMs` produces a negative silence, which passes any
+ * `silence < bar` test forever. It is published as the reading it is and judged dead,
+ * which is the direction that costs a banner rather than the direction that hides one.
+ */
+export function projectFeedSource(
+  lastHeardAtMs: Millis | null,
+  options: ProjectOptions,
+): WireFeedSource {
+  const at = instant(lastHeardAtMs, 'not_read_yet');
+  if (at.at === null) {
+    /* Never heard from. `live: false` is not a judgement about the world — it is a refusal
+       to assert liveness we have no evidence for, which is the same direction every
+       absence in this file fails in. */
+    return { lastHeardAt: at, live: false };
+  }
+  const silenceMs = options.nowMs - at.at;
+  const source: WireFeedSource = {
+    lastHeardAt: at,
+    live: silenceMs >= 0 && silenceMs <= options.feedFreshnessMs,
+  };
+  /* Run for the same reason every other payload here is: this one carries no free text
+     today, and the assertion is what keeps that true when somebody adds a field. */
+  assertNoInternalVocabulary(source, '$.launch_view.source');
+  return source;
+}
+
+/* ── pairs: the mints that reached a market ───────────────────────────── */
+
+/**
+ * A coin some venue could price, as facts.
+ *
+ * Not `CoinFacts` and not `LaunchFacts`. A pair is a coin with a reading that HAS a price —
+ * the reading is not an optional decoration here, it is the membership test — so `readAt`
+ * and the three figures are required fields rather than a nullable `market` object. That is
+ * the type saying what the SQL says: `loadPairFacts` inner-joins the latest reading and
+ * requires `price_absent is null`, so a row that reached this function has a price by
+ * construction and there is no branch here that has to invent one.
+ *
+ * `marketCapUsd` and `liquidityUsd` stay `MarketNumber` and are routinely absent even so: a
+ * bonding curve reports no reserve, which is `not_reported` and is a different fact from
+ * `no_market`. The venue's own reason is carried rather than re-guessed.
+ */
+export interface PairFacts {
+  /** '<chain>:<address>'. Unique by constraint, so it is a stable client key. */
+  readonly assetKey: string;
+  /** ★ ATTACKER-CONTROLLED, BOTH. Typed by whoever minted the coin; bounded on the way out. */
+  readonly ticker: string | null;
+  readonly name: string | null;
+  /** The on-chain identifier. Also raw text, also bounded. */
+  readonly address: string;
+  /** Already a label, chosen from a Map in db.ts. Never an id passed through. */
+  readonly venueLabel: string;
+  /** Unknown is normal and stays unknown. Never backfilled from first_seen_at. */
+  readonly mintedAt: Millis | null;
+  /** Named `precision` and not `confidence`: `confidence` is a forbidden key on the wire. */
+  readonly mintPrecision: MintTimeConfidence;
+  /** Half-width of the bound, in SECONDS. Required by 0005 when the precision is bounded. */
+  readonly mintBoundS: number | null;
+  /** When the reading was TAKEN. Never now, never when the row was written. */
+  readonly readAt: Millis;
+  readonly priceUsd: MarketNumber;
+  readonly marketCapUsd: MarketNumber;
+  readonly marketCapBasis: MarketCapBasis | null;
+  readonly liquidityUsd: MarketNumber;
+}
+
+/**
+ * The three numbers behind the sentence at the top of the screen.
+ *
+ * They arrive from ONE statement over ONE population, which is the only reason it is safe
+ * to put them beside each other in a sentence. Two statements would be two moments, and
+ * "6 of 192" assembled from two moments is a ratio of two different things.
+ */
+export interface PairCounts {
+  readonly mintsInWindow: number;
+  readonly withMarket: number;
+  readonly withoutMarket: number;
+}
+
+/**
+ * ★ ONE PAIR, FINISHED — AND NOTE WHAT THIS FUNCTION IS NOT GIVEN.
+ *
+ * There is no `ProjectOptions` parameter, so there is no `nowMs` and no
+ * `marketFreshnessMs`, so this function CANNOT apply the board's staleness gate even if
+ * somebody wanted it to. That is deliberate and it is the whole divergence stated as a
+ * signature: `projectCoin` drops a reading older than the policy window WHOLE because the
+ * board has a Buy button and a price a user is about to act on must be current or absent.
+ * This screen has no trade affordance — `WirePair` carries no `tradable` and no
+ * `priceUsd`-adjacent action — so suppressing an hour-old reading here would delete the
+ * only evidence the screen exists to show, and replace six real rows with eighteen dashes.
+ *
+ * The honest treatment is the one the product rule already names: a stale reading SAYS it
+ * is stale. `readAt` travels with the figures and the screen renders the age beside them.
+ * Nothing is suppressed and nothing is presented as current.
+ *
+ * Throws WireLeakError if anything in the payload is internal vocabulary — which on this
+ * payload means a vendor's name inside a token name somebody typed, and that is free to do.
+ * The caller drops the one row rather than the frame.
+ */
+export function projectPair(facts: PairFacts): WirePair {
+  const marketCapUsd = marketNumber(facts.marketCapUsd);
+  const mint = projectMintTime(facts);
+
+  const pair: WirePair = {
+    pairId: facts.assetKey,
+    /* An unknown ticker renders as nothing. It does NOT fall back to the address, or to the
+       name, or to anything else that would look like a ticker to a person. */
+    ticker: boundedText(facts.ticker, TICKER_MAX_CHARS),
+    name: boundedText(facts.name, NAME_MAX_CHARS),
+    address: boundedText(facts.address, ADDRESS_MAX_CHARS),
+    venueLabel: facts.venueLabel,
+    mintedAt: mint.mintedAt,
+    mintedAtBoundS: mint.mintedAtBoundS,
+    /* `unreadable` is the reason a broken instant degrades to, not `not_read_yet`: a row
+       reached this function BECAUSE we hold a reading for it, so "we have not read it" is
+       the one thing that cannot be true here. */
+    readAt: instant(facts.readAt, 'unreadable'),
+    priceUsd: marketNumber(facts.priceUsd),
+    marketCapUsd,
+    /* A basis never outlives its cap, in either direction — read off the projected cap and
+       not off the facts, so the two can never be published apart. */
+    marketCapBasis: marketCapUsd.v === null ? null : facts.marketCapBasis,
+    liquidityUsd: marketNumber(facts.liquidityUsd),
+  };
+
+  assertNoInternalVocabulary(pair, `$.pair_row[${facts.assetKey}]`);
+  return pair;
+}
+
+/**
+ * The head of the frame: what the list covers, and when a mint was last heard.
+ *
+ * `counts` is null exactly when the rows are withheld, and the union below is what makes
+ * that unsayable any other way — there is no shape of this function's output that carries a
+ * count of coins it refused to list, because a count over a population containing fictions
+ * is not the count the sentence on screen would be claiming.
+ */
+export function projectPairHead(input: {
+  readonly windowMs: number;
+  readonly lastMintHeardAt: Millis | null;
+  readonly counts: PairCounts | null;
+}): WirePairHead {
+  const rows: WirePairListing =
+    input.counts === null
+      ? { listing: 'withheld' }
+      : {
+          listing: 'shown',
+          mintsInWindow: input.counts.mintsInWindow,
+          withMarket: input.counts.withMarket,
+          withoutMarket: input.counts.withoutMarket,
+        };
+
+  const head: WirePairHead = {
+    windowMs: input.windowMs,
+    /* ★ `not_read_yet` AND NOT `not_reported`. An absent instant here means nothing has ever
+       been observed on this feed — we have never heard a mint — which is a statement about
+       our own contact with the world and not about the world having no mints in it. The two
+       render as different sentences on the far side, and they must. */
+    lastMintHeardAt: instant(input.lastMintHeardAt, 'not_read_yet'),
+    rows,
+  };
+
+  /* ★ THE HEAD GOES THROUGH THE CENSOR TOO, and it has to for a reason specific to where it
+     is stored rather than for symmetry with the row beside it. 0014 puts `head` on
+     public.pair_view, which is granted to the app role, and its own column comment promises
+     the value is "already censored" — a promise nothing kept until this line. Every other
+     payload committed onto a granted table runs this: `projectPair` does, `projectBoardRow`
+     does, and `projectFeedSource` runs it while carrying no free text at all, saying in as
+     many words that "the assertion is what keeps that true when somebody adds a field".
+
+     This payload is the one most likely to acquire that field. It is the sentence above the
+     table, so the pressure on it is always to explain — a `reason` for the withholding, a
+     `threshold` the silence was measured against, a `verdict` about the feed. All three are
+     FORBIDDEN_KEYS, all three would be our machinery on a user's screen, and all three would
+     have been published silently. */
+  assertNoInternalVocabulary(head, '$.pair_view.head');
+  return head;
+}
+
+/**
+ * One whole frame.
+ *
+ * ★ THE WITHHELD BRANCH DROPS THE ROWS HERE, AT THE PROJECTION, and not at the screen.
+ * A frame that carried rows under a `withheld` head would be a frame whose two halves
+ * disagree, and the half that got rendered would be whichever one a component happened to
+ * read. So the array is emptied where the decision is made, the write puts nothing in
+ * public.pair_row, and the decoder on the far side does not look at it. Three layers, one
+ * answer.
+ */
+export function projectPairFeed(
+  tick: number,
+  head: WirePairHead,
+  pairs: readonly WirePair[],
+): WirePairFeed {
+  return { tick, head, pairs: head.rows.listing === 'withheld' ? [] : pairs };
 }
 
 /* ── words ────────────────────────────────────────────────────────────── */

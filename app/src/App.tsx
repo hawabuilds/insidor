@@ -11,7 +11,11 @@
  *
  * ★ NAV MAPPING. Her nav has five items; three of them have a screen behind them today:
  *     Trending  → the board            (#/)          — this is the ranked story board
- *     New Pairs → nothing yet          (#/new-pairs) — honest empty state, see NOT_BUILT
+ *     New Pairs → the pairs screen     (#/new-pairs) — the mints that reached a market. The
+ *                                                      nav keeps her label; the screen's own
+ *                                                      heading does not say "new", because
+ *                                                      nothing here knows when a pool opened
+ *                                                      and a pair age is not derivable.
  *     Stories   → the board, for now   (#/stories)   — same board; the grouped view that
  *                                                      belongs here does not exist yet, and a
  *                                                      dead nav item is worse than a shared one
@@ -54,6 +58,7 @@ import { NotImplemented } from './shared/not-implemented.ts';
 import { CommandPalette } from './shared/ui/index.ts';
 import { Feed } from './features/feed/index.ts';
 import type { BuyAction } from './features/feed/index.ts';
+import { Pairs } from './features/pairs/index.ts';
 import { LiveRail } from './features/rail/index.ts';
 import { Story } from './features/story/index.ts';
 import { TradePanel } from './features/trade/index.ts';
@@ -324,16 +329,16 @@ export function App() {
               />
             ) : null}
 
-            {route.kind === 'newPairs' ? (
-              <>
-                <ViewHead title="New Pairs" sub="Coins in the first hours after they are minted." />
-                <NotBuilt
-                  headline="Nothing is watching for new coins yet."
-                  needs="New Pairs lists coins in the order they are minted, so it needs a feed of mints and a first quote for each one. Neither is connected."
-                  note="needs: a mint feed, and a venue that will quote a coin that is minutes old"
-                />
-              </>
-            ) : null}
+            {/* ★ THE NAV ITEM STILL SAYS "NEW PAIRS" AND THE SCREEN DOES NOT, WHICH IS
+                DELIBERATE. The route stays because a link somebody has is a link that should
+                keep working, and the label stays because that is the word in her nav — but
+                the heading a user reads once they are here says what the screen actually
+                holds. Nothing in this system knows when a pool opened, so nothing here is
+                entitled to call a pair new; what it can say is that these are the mints a
+                venue could price, and how few of them there are. `Pairs` owns its own head
+                for that reason: the honest title is a property of the screen, not of the
+                shell that routed to it. */}
+            {route.kind === 'newPairs' ? <Pairs /> : null}
 
             {route.kind === 'tokens' ? (
               <>

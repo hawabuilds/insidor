@@ -7,18 +7,19 @@
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  ASSET_ORIGINS,
   CENSOR_REASONS,
   MARKET_ABSENCE_REASONS,
   MARKET_CAP_BASES,
   MINT_TIME_SOURCES,
 } from '@insidor/contracts';
-import { STORY_STATES } from '@insidor/contracts/story.ts';
+import { STORY_ORIGINS, STORY_STATES } from '@insidor/contracts/story.ts';
 
 import { loadMigrations } from './migrate.ts';
 
@@ -158,6 +159,131 @@ test('a vendor-supplied mint time can never claim to be exact', () => {
   assert.match(read('0005_assets.sql'), /exact_requires_real_source/);
 });
 
+/* ── provenance ───────────────────────────────────────────────────────── */
+
+test('★ an asset cannot be written without saying where it came from', () => {
+  /* The single most important line in 0013, asserted rather than trusted. A
+     `default 'live_stream'` would mean every existing writer keeps compiling, the seed
+     keeps inserting, and the new column silently certifies fictions as observations —
+     the bug reintroduced by the mechanism meant to fix it. With no default, the next
+     seed run fails loudly until someone types 'fixture'.
+
+     Same shape as the `population` test above, and for the same reason: omitting the
+     value has to be a failed INSERT, not a habit. */
+  const sql = stripComments(read('0013_asset_origin.sql'));
+
+  const notNull = /alter\s+column\s+origin\s+set\s+not\s+null/;
+  assert.match(sql, notNull, 'origin must end up not null');
+
+  /* Aimed at the DDL that could grant one, and at nothing else. A looser grep for
+     "origin … default" matches the column COMMENT, which says in words that there is no
+     default — a check that fails on the sentence documenting the rule is a check somebody
+     deletes. Both spellings are covered: the clause on ADD COLUMN, and a later
+     ALTER COLUMN … SET DEFAULT. */
+  assert.equal(
+    /(add|alter)\s+column\s+origin\b[^;]*\bdefault\b/.test(sql),
+    false,
+    'origin must have no default: a writer that has not decided has to fail, not inherit',
+  );
+});
+
+test('★ a story cannot be written without saying where it came from either', () => {
+  /* 0016, held to 0013's discipline by the same two assertions, because the failure it
+     prevents is the more dangerous of the two. An asset with a default certifies a fiction
+     as an observation on a rail; a STORY with `default 'observed'` would certify one as an
+     observation in the rule that decides which coins a row may name — and the value that
+     asks no questions would be the one that makes an invented coin reachable from a real
+     moment. With no default, a writer that has not decided fails its INSERT. */
+  const sql = stripComments(read('0016_story_origin.sql'));
+
+  assert.match(sql, /alter\s+column\s+origin\s+set\s+not\s+null/, 'origin must end up not null');
+  assert.equal(
+    /(add|alter)\s+column\s+origin\b[^;]*\bdefault\b/.test(sql),
+    false,
+    'origin must have no default: a writer that has not decided has to fail, not inherit',
+  );
+
+  /* The backfill names the seeded stories one id at a time, from the seed's own list, and
+     what it does not reach is called 'observed' — which is the NARROW value here, the one
+     that lets a row see the least. That direction is the whole argument; a "simplification"
+     to `set origin = 'fixture'` would hand every unplaceable story the permissive list. */
+  const flat = sql.replace(/\s+/g, ' ');
+  assert.match(flat, /set origin = 'fixture' where story_id in \(/);
+  assert.match(flat, /set origin = 'observed' where origin is null/);
+});
+
+test('★ the backfill labels rows by evidence, and never by a convenient default', () => {
+  /* 0013's three claims, each asserted by the predicate that carries it. The failure
+     being guarded against is somebody later "simplifying" the backfill into a single
+     `set origin = 'live_stream'`, which would relabel thirteen fictions as observations
+     in one statement and leave nothing behind saying it had happened. */
+  const sql = stripComments(read('0013_asset_origin.sql')).replace(/\s+/g, ' ');
+
+  assert.match(
+    sql,
+    /set origin = 'fixture' where asset_key in \(/,
+    "the fixtures are named, one key at a time, from the seed's own list",
+  );
+  assert.match(
+    sql,
+    /set origin = 'live_stream' where origin is null and venue_id =/,
+    'the observed rows are claimed by a predicate, not by being whatever was left',
+  );
+  assert.match(
+    sql,
+    /set origin = 'unrecorded' where origin is null/,
+    'what no evidence reaches is said to be unreached, never folded into an observation',
+  );
+});
+
+test("★ 'unrecorded' is written by the backfill and by nothing else in the repository", () => {
+  /* THE GUARD THAT KEEPS A FIFTH VALUE FROM BECOMING AN ESCAPE HATCH.
+     The standing objection to any "we do not know" member of a closed list is that it
+     stops the column being answerable: a writer under time pressure types the value that
+     asks no questions. Three things prevent that here — the column has no default, every
+     surface asserting observation is an allowlist so the value costs a row its
+     visibility, and this test, which says out loud that the string appears in exactly one
+     migration and in the vocabulary that defines it.
+
+     A grep, and honest about being one. It stops an accident, which is the right threat
+     model; an adversary with commit access has better options. */
+  const roots = ['adapters', 'app', 'contracts', 'core', 'services', 'store', 'tools'];
+  const exts = new Set(['.ts', '.tsx', '.mts', '.mjs', '.js', '.sql']);
+  const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+  /* The three files allowed to name it: the migration that writes it, the vocabulary that
+     declares it, and this test, which has to be able to spell the string in order to
+     forbid it. Named individually rather than by directory, so a second file in any of
+     those directories is still caught. */
+  const allowed = new Set([
+    join(repo, 'store', 'migrations', '0013_asset_origin.sql'),
+    join(repo, 'contracts', 'src', 'asset.ts'),
+    join(repo, 'store', 'src', 'migrations.test.ts'),
+  ]);
+
+  const offenders: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!exts.has(entry.name.slice(entry.name.lastIndexOf('.')))) continue;
+      if (allowed.has(full)) continue;
+      if (readFileSync(full, 'utf8').includes("'unrecorded'")) offenders.push(full);
+    }
+  };
+  for (const root of roots) walk(join(repo, root));
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "'unrecorded' is a fact about rows that predate the origin column. Nothing new may claim it.",
+  );
+});
+
 test('a stage run records an outcome distinct from an error', () => {
   assert.match(read('0008_runs.sql'), /outcome in \('ok', 'empty', 'error'\)/);
 });
@@ -189,6 +315,16 @@ test('the schema and the vocabulary agree on every closed list', () => {
   ].sort());
   assert.deepEqual([...checkedValues(read('0010_market.sql'), 'market_cap_basis')].sort(), [
     ...MARKET_CAP_BASES,
+  ].sort());
+  assert.deepEqual([...checkedValues(read('0013_asset_origin.sql'), 'origin')].sort(), [
+    ...ASSET_ORIGINS,
+  ].sort());
+  /* The story's own origin, which is a SHORTER list than the asset's and must stay one: the
+     five asset origins name kinds of transport, and nothing pushes a story at us. A drift
+     that quietly widened this to ASSET_ORIGINS would give `coinOriginsVisibleTo` values its
+     fall-through has never been reasoned about. */
+  assert.deepEqual([...checkedValues(read('0016_story_origin.sql'), 'origin')].sort(), [
+    ...STORY_ORIGINS,
   ].sort());
   /* All four reason columns, not just the first: they are four separate CHECKs and
      four separate opportunities for one of them to be edited alone. */

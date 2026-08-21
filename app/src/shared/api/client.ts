@@ -18,9 +18,16 @@ import { createLiveChannel } from './live/channel.ts';
 import type { EventStreamFactory, LiveChannel, LiveHandlers } from './live/channel.ts';
 import type { BoardTick } from './wire/board.ts';
 import type { LaunchFeed } from './wire/launch.ts';
+import type { PairFeed } from './wire/pair.ts';
 import type { Story } from './wire/story.ts';
 import type { TradeIntent, TradeQuote, TradeResult } from './wire/trade.ts';
-import { decodeBoardTick, decodeLaunchFeed, decodeStory, decodeTradeQuote } from './decode.ts';
+import {
+  decodeBoardTick,
+  decodeLaunchFeed,
+  decodePairFeed,
+  decodeStory,
+  decodeTradeQuote,
+} from './decode.ts';
 
 /** A failure of the transport, as opposed to a failure of the payload. Callers show these differently. */
 export class ReadError extends Error {
@@ -64,8 +71,14 @@ const USE_FIXTURES = import.meta.env?.DEV === true && BASE === '';
 export const USING_FIXTURES = USE_FIXTURES;
 
 async function readFixture(path: string): Promise<unknown> {
-  const { fixtureBoard, fixtureLaunches, fixtureStory } = await import('./fixtures.ts');
+  const { fixtureBoard, fixtureLaunches, fixturePairs, fixtureStory } = await import('./fixtures.ts');
   if (path.startsWith('/board/')) return fixtureBoard();
+  /* The pairs screen gets a branch for the launches rail's reason: without one, the default
+     dev experience — no VITE_READ_URL — would show that screen's failure state on every
+     load, and a failure state that is always on is a failure state nobody reads. What comes
+     back is a raw wire payload and goes through `decodePairFeed` like anything off the
+     network, so a fixture cannot hold a shape the server could never send. */
+  if (path.startsWith('/pairs/')) return fixturePairs();
   /* The launches rail gets a branch rather than the 501 below, because without one the
      default dev experience — no VITE_READ_URL — would show the rail's ERROR state on every
      load, and an error state that is always on is an error state nobody reads. What comes
@@ -127,6 +140,22 @@ export async function fetchStory(storyId: string, signal?: AbortSignal): Promise
  */
 export async function fetchLaunches(feedId: string, signal?: AbortSignal): Promise<LaunchFeed> {
   return decodeLaunchFeed(await read(`/launches/${encodeURIComponent(feedId)}`, signal));
+}
+
+/**
+ * One frame of the pairs screen: the mints that reached a market.
+ *
+ * Polled, like the launches rail and for the same reason — `openLiveChannel` covers the
+ * board only — but at nothing like the same cadence: this screen's rows change when a coin
+ * gets a pool, not when one is minted, and the market pass that would notice runs on its
+ * own schedule. The caller owns the interval and says on screen when it last succeeded, so
+ * a screen that has stopped updating looks different from a market where nothing has
+ * happened. `read` already sets `cache: 'no-store'`; a cached frame here would carry a
+ * `readAt` age that is wrong by however long it sat in the cache, which is the one number
+ * on this screen that must not drift.
+ */
+export async function fetchPairs(feedId: string, signal?: AbortSignal): Promise<PairFeed> {
+  return decodePairFeed(await read(`/pairs/${encodeURIComponent(feedId)}`, signal));
 }
 
 /**

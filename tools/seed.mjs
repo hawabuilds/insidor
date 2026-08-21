@@ -47,6 +47,13 @@
  *     text is what keeps a coin minted in the same minute as an unrelated story
  *     out of that story's list.
  *
+ *     ★ AND PROVENANCE COMES BEFORE BOTH. Retrieval only ever returns coins whose
+ *     origin is compatible with the story's own — which is why every story row
+ *     below is written with origin='fixture'. These six stories are inventions and
+ *     may therefore be compared against the thirteen invented coins here; a story
+ *     assembled from posts people actually made may never see one of them. The
+ *     rule is contracts' coinOriginsVisibleTo and it is asymmetric on purpose.
+ *
  *   CONFIDENT (which coins we are willing to name)
  *     the asset's normalised `symbol` OR normalised `name` is EQUAL to one of
  *     those spans. Equal, not overlapping. "soup" overlapping "throws the soup"
@@ -410,6 +417,24 @@ const STORIES = [
     ],
     assets: [
       {
+        /* ★ THIS ONE IS A REAL MAINNET ADDRESS, AND IT IS THE EXCEPTION THE FILE HEADER
+           DOES NOT COVER. The `origin: 'fixture'` note below says every asset here is "a
+           coin that has never existed, with an address nobody minted". That is true of the
+           other twelve and false of this one — it is the actual CHILLGUY mint, copied in so
+           the demo row would look like the thing it is demonstrating.
+
+           It stayed harmless only while nothing carried a seeded address off this machine.
+           When the market pass read the whole asset table unfiltered it sent this address
+           to dexscreener, which answered — and a genuine $12.1M market cap with $1.27M of
+           liquidity was written into public.market_reading against a row whose origin says
+           it was invented. Real data wearing a fiction's provenance, which is the pairing
+           every origin rule here exists to prevent, arriving from the direction nobody was
+           watching: the fiction went OUT rather than a fiction coming in.
+
+           `assetsToRead` now filters on origin, so this address is never sent anywhere. The
+           address is left real because the row is honest about being a fixture in the one
+           place that governs anything — the column — and because swapping it for an invented
+           one would delete the evidence of why that filter exists. */
         address: 'Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump',
         venue: 'pumpfun', symbol: 'CHILLGUY', name: 'Just a chill guy',
         minted: 22 * MIN, source: 'issuer_api', conf: 'exact', boundS: null,
@@ -927,6 +952,17 @@ function build() {
     const earliestPostMs = postedAll.length > 0 ? Math.max(...postedAll) : oldestFirstSeen;
     stories.push({
       storyId: story.id,
+      /* ★ THE ROW SAYS WHAT IT IS, exactly as the asset rows below do. Every story this
+         file writes is an invention: six moments that never happened, assembled from posts
+         nobody made, stamped relative to whenever the seed happened to run.
+
+         It is not only a label. public.story.origin is what the coin-candidate retrieval
+         derives its allowlist FROM — a fixture story may be compared against fixture coins,
+         an observed story may never be — so this line is what lets these six stories see
+         the thirteen coins written twenty lines below, and what keeps a real story from
+         ever seeing them. Delete it and the next run fails on its INSERT (0016 gives the
+         column no default) rather than quietly certifying six inventions as findings. */
+      origin: 'fixture',
       createdAt: ago(oldestFirstSeen),
       earliestPostAt: ago(earliestPostMs),
       promotedAt: ago(Math.max(earliestPostMs - 6 * MIN, 0)),
@@ -957,6 +993,20 @@ function build() {
         creator: asset.creator,
         declaredSocial: JSON.stringify(asset.social),
         firstSeenAt: ago(asset.minted === null ? 30 * MIN : Math.max(asset.minted - 1 * MIN, 0)),
+        /* ★ THE ROW SAYS WHAT IT IS. Every asset this file writes is an invention — a
+           coin that has never existed, with an address nobody minted, stamped relative to
+           whenever the seed happened to run.
+
+           Before public.asset.origin existed, that was true and unsayable: these rows and
+           the mints captured from a live socket were the same row to every query in the
+           system, and because the seed anchors to load time they were always the NEWEST
+           rows, so a rail asking for the newest mints in a six hour window returned
+           nothing but fiction under a heading that said NEW LAUNCHES.
+
+           The column has no default precisely so this line has to exist. If it is ever
+           deleted, the next run of this script fails on its INSERT rather than quietly
+           certifying six invented coins as things that happened. */
+        origin: 'fixture',
       });
     }
   }
@@ -1071,10 +1121,10 @@ async function main() {
     await insertMany(
       client,
       'public.story',
-      ['story_id', 'created_at', 'earliest_post_at', 'promoted_at', 'last_member_at',
+      ['story_id', 'origin', 'created_at', 'earliest_post_at', 'promoted_at', 'last_member_at',
        'state', 'carriers', 'display_title', 'thumb_uri'],
       data.stories.map((s) => [
-        s.storyId, s.createdAt, s.earliestPostAt, s.promotedAt, s.lastMemberAt,
+        s.storyId, s.origin, s.createdAt, s.earliestPostAt, s.promotedAt, s.lastMemberAt,
         s.state, s.carriers, s.displayTitle, s.thumbUri,
       ]),
     );
@@ -1091,7 +1141,12 @@ async function main() {
         m.representationSimilarity, m.representationSpace, m.adjudicatedBy, m.adjudicatedAt,
       ]),
     );
-    process.stderr.write(`  ${data.stories.length} stories, ${data.members.length} memberships\n`);
+    /* Named in the output rather than merely counted, for the reason the asset line below
+       gives: the whole point of the column is that these rows are sayable as what they are. */
+    process.stderr.write(
+      `  ${data.stories.length} stories  (origin=fixture — every one invented), ` +
+        `${data.members.length} memberships\n`,
+    );
 
     /* Counted in SQL from the rows just written, never carried in from the
        constants above. `distinct_authors` is breadth: 0004's note that one author
@@ -1118,16 +1173,19 @@ async function main() {
     await insertMany(
       client,
       'public.asset',
-      ['chain', 'address', 'asset_key', 'venue_id', 'minted_at', 'minted_at_source',
+      ['chain', 'address', 'asset_key', 'venue_id', 'origin', 'minted_at', 'minted_at_source',
        'minted_at_conf', 'minted_at_bound_s', 'symbol', 'name', 'image_uri', 'decimals',
        'creator', 'declared_social', 'first_seen_at'],
       data.assets.map((a) => [
-        a.chain, a.address, a.assetKey, a.venueId, a.mintedAt, a.mintedAtSource,
+        a.chain, a.address, a.assetKey, a.venueId, a.origin, a.mintedAt, a.mintedAtSource,
         a.mintedAtConf, a.mintedAtBoundS, a.symbol, a.name, a.imageUri, a.decimals,
         a.creator, a.declaredSocial, a.firstSeenAt,
       ]),
     );
-    process.stderr.write(`  ${data.assets.length} assets\n`);
+    /* Named in the output, not merely counted. The whole point of the column is that these
+       rows are sayable as what they are, and a run that prints "13 assets" beside a run
+       that captured 192 real ones is the ambiguity this change exists to remove. */
+    process.stderr.write(`  ${data.assets.length} assets  (origin=fixture — every one invented)\n`);
 
     await insertMany(
       client,
@@ -1163,11 +1221,27 @@ async function main() {
     await client.end();
   }
 
+  /* ★ `db:market` IS NOT ON THIS LIST ANY MORE, AND SAYING WHY IS THE POINT OF THE LINE
+     THAT REPLACED IT. It used to read "ask a venue what these coins are worth", which was
+     advice to send thirteen invented addresses to a real market vendor — and one of them,
+     the CHILLGUY fixture, is a real mainnet address, so the vendor answered it with a
+     genuine $12.1M market cap that was then filed against a row whose origin says
+     'fixture'. Real data wearing a fiction's provenance.
+
+     `assetsToRead` now filters on origin, so the command is not merely unnecessary here,
+     it is a no-op over everything this seed just wrote. Leaving it in the list would be a
+     next step that appears to fail: an operator runs it, sees `asked=0` against a store
+     they just put thirteen coins in, and concludes the market reader is broken.
+
+     It stays a real command for a store with observed mints in it, which is why it is
+     named in the sentence rather than deleted from the tool. */
   process.stderr.write(
     '\n  Domain facts only — no projection row and no internal row was written.\n' +
-      '  Next:  pnpm db:market      (ask a venue what these coins are worth)\n' +
-      '         pnpm db:project     (derive the board)\n' +
-      '         pnpm dev:read       (serve it as the app role)\n\n',
+      '  Next:  pnpm db:project     (derive the board)\n' +
+      '         pnpm dev:read       (serve it as the app role)\n' +
+      '\n  Not db:market — these coins are fixtures, and the market reader only asks a\n' +
+      '  vendor about rows whose origin is a claim about the world. It is the right\n' +
+      '  command for a store fed by db:chainwatch, and a no-op over everything above.\n\n',
   );
 }
 

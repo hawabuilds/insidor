@@ -61,12 +61,13 @@ export {
 } from './vocabulary.ts';
 
 /* ── stories ──────────────────────────────────────────────────────────── */
-export type { MatchEvidence, Story, StoryMember, StoryState } from './story.ts';
-export { STORY_STATES } from './story.ts';
+export type { MatchEvidence, Story, StoryMember, StoryOrigin, StoryState } from './story.ts';
+export { coinOriginsVisibleTo, STORY_ORIGINS, STORY_STATES } from './story.ts';
 
 /* ── assets and markets ───────────────────────────────────────────────── */
 export type {
   Asset,
+  AssetOrigin,
   Depth,
   MarketAbsenceReason,
   MarketCapBasis,
@@ -75,17 +76,20 @@ export type {
   MintTime,
   MintTimeConfidence,
   MintTimeSource,
+  ObservedAssetOrigin,
   TradeCost,
   TradeCostCode,
   TradeQuote,
   TransferRules,
 } from './asset.ts';
 export {
+  ASSET_ORIGINS,
   MARKET_ABSENCE_REASONS,
   MARKET_CAP_BASES,
   MARKET_CLASSES,
   MINT_TIME_CONFIDENCES,
   MINT_TIME_SOURCES,
+  OBSERVED_ASSET_ORIGINS,
   TRADE_COST_CODES,
 } from './asset.ts';
 
@@ -115,6 +119,7 @@ export { REASON_CODES, isReasonCode, reasonPrefix } from './reasons.ts';
 /* ── policy ───────────────────────────────────────────────────────────── */
 export type {
   AdmitPolicy,
+  AssetPolicy,
   BudgetPolicy,
   DeepReadonly,
   DetectPolicy,

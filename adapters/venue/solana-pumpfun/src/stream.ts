@@ -345,6 +345,27 @@ export function toStreamMintEvent(
     key: assetKey(ref),
     chain: ctx.chain,
     venue: ctx.venue,
+    /*
+     * ★ THE ROW SAYS HOW WE CAME TO KNOW IT, and this file is the only place in the
+     * pipeline that can honestly answer. A push transport delivered this event while we
+     * were connected: we heard it happen. That is a different fact from the listing path
+     * in watch.ts, which asks after the fact and learns that something already happened,
+     * and it is a different fact again from a fixture, which is not a claim about the
+     * world at all.
+     *
+     * ★ IT IS STAMPED HERE AND NOT IN THE SERVICE'S SINK, deliberately. The mint watcher
+     * is transport-agnostic by design — its own composition root says so — so a sink that
+     * mapped a configured transport name onto an origin would be a table of correspondences
+     * living one layer away from the thing it describes, and a new transport would inherit
+     * whatever the table said last. Here the answer is structural: this function exists
+     * BECAUSE a socket pushed a frame at us, so it cannot be wrong about that, and a second
+     * decoder added tomorrow has to answer for itself.
+     *
+     * Note that this says nothing about the mint TIME, which is ('vendor_field','bounded')
+     * on this path — an arrival instant bounded by the observation lag. The two facts are
+     * orthogonal and that orthogonality is the whole reason the column exists.
+     */
+    origin: 'live_stream',
     mintedAt,
     symbol: boundedText(r.symbol, SYMBOL_MAX),
     name: boundedText(r.name, NAME_MAX),

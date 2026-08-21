@@ -22,12 +22,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { ReadError } from '../../shared/api/index.ts';
-import type { Launch } from '../../shared/api/index.ts';
-import { launchAge, launchRows, railView } from './launches.ts';
+import type { FeedSource, Launch, LaunchFeed } from '../../shared/api/index.ts';
+import { launchAge, launchRows, railView, sourceNotice } from './launches.ts';
 
 const T0 = 1_755_079_200_000;
 const SECOND = 1_000;
 const MIN = 60 * SECOND;
+const DAY = 24 * 60 * MIN;
 
 function launch(over: Partial<Launch> = {}): Launch {
   return {
@@ -43,6 +44,25 @@ function launch(over: Partial<Launch> = {}): Launch {
     ...over,
   };
 }
+
+/**
+ * A frame, with a feed that is being heard from.
+ *
+ * ★ THE DEFAULT IS A LIVE SOURCE, and that is deliberate: every test below this line was
+ * written before the rail could tell a quiet market from a dead transport, and each one is
+ * asserting something about the OTHER axis — the poll loop, the count, the ordering. Giving
+ * them a live feed keeps them asking exactly the question they were written to ask. The
+ * tests that care about the source say so by passing one.
+ */
+function feed(tick: number, launches: readonly Launch[], source?: FeedSource): LaunchFeed {
+  return { tick, launches, source: source ?? { lastHeardAt: { known: true, at: T0 - 20 * SECOND }, live: true } };
+}
+
+/** A feed the server has judged not live, last heard six days ago. The state that shipped. */
+const DEAD_SOURCE: FeedSource = {
+  lastHeardAt: { known: true, at: T0 - 6 * DAY },
+  live: false,
+};
 
 /* ── ★ the age, and what we are entitled to claim about it ────────────── */
 
@@ -170,7 +190,7 @@ test('before the first read there are no rows, no count and no invented card', (
 
 test('a frame with rows is live, counted, and carries no banner', () => {
   const view = railView({
-    feed: { tick: 4, launches: [launch(), launch({ launchId: 'solana:b' })] },
+    feed: feed(4, [launch(), launch({ launchId: 'solana:b' })]),
     failure: null,
     lastOkAt: T0 - 4 * SECOND,
     now: T0,
@@ -188,14 +208,14 @@ test('★ the header count is the FRAME\'s, not the number of rows that fit', ()
      loud as a statement about the world ("no coins minted in the window"), which makes a
      count that silently means "rows in the DOM" a claim about the market that is wrong. */
   const many = Array.from({ length: 41 }, (_, i) => launch({ launchId: `solana:${i}` }));
-  const view = railView({ feed: { tick: 3, launches: many }, failure: null, lastOkAt: T0, now: T0 });
+  const view = railView({ feed: feed(3, many), failure: null, lastOkAt: T0, now: T0 });
   assert.equal(view.count, '41', 'the count is what the feed reported');
   assert.ok(view.rows.length < many.length, 'and the rail still renders only what it holds');
 });
 
 test('★ a list shorter than its frame says so, so the last row is not read as the last mint', () => {
   const many = Array.from({ length: 41 }, (_, i) => launch({ launchId: `solana:${i}` }));
-  const view = railView({ feed: { tick: 3, launches: many }, failure: null, lastOkAt: T0, now: T0 });
+  const view = railView({ feed: feed(3, many), failure: null, lastOkAt: T0, now: T0 });
   assert.notEqual(view.overflow, null);
   assert.match(view.overflow ?? '', /Showing the newest 30 of 41/);
   /* Not amber and not a fault: nothing is wrong, so it must not arrive as a notice. */
@@ -204,7 +224,7 @@ test('★ a list shorter than its frame says so, so the last row is not read as 
 
 test('a frame that fits carries no overflow line at all', () => {
   const view = railView({
-    feed: { tick: 3, launches: [launch(), launch({ launchId: 'solana:b' })] },
+    feed: feed(3, [launch(), launch({ launchId: 'solana:b' })]),
     failure: null,
     lastOkAt: T0,
     now: T0,
@@ -216,14 +236,14 @@ test('a frame that fits carries no overflow line at all', () => {
 test('★ the status says when we last asked, and never says the feed is live', () => {
   /* There is no live channel behind this — it is a poll — and a pill reading "feed live"
      over a six second interval is the same lie rail.module.css refuses for the pip. */
-  const view = railView({ feed: { tick: 1, launches: [launch()] }, failure: null, lastOkAt: T0 - 4 * SECOND, now: T0 });
+  const view = railView({ feed: feed(1, [launch()]), failure: null, lastOkAt: T0 - 4 * SECOND, now: T0 });
   assert.equal(view.status, 'updated 4s ago');
   assert.equal(view.status.includes('live'), false);
   assert.equal(view.status.includes('stream'), false);
 });
 
 test('★ an empty frame is a real zero under an empty card — a quiet market, not a fault', () => {
-  const view = railView({ feed: { tick: 7, launches: [] }, failure: null, lastOkAt: T0, now: T0 });
+  const view = railView({ feed: feed(7, []), failure: null, lastOkAt: T0, now: T0 });
   assert.deepEqual(view.rows, []);
   assert.equal(view.count, '0', 'we asked, we got an answer, and the answer was none');
   assert.equal(view.live, true);
@@ -266,7 +286,7 @@ test('a failure on top of rows we hold keeps the rows and says they are not upda
      rows were real when they were read; what has changed is that they are no longer being
      refreshed, and that is what the banner says. */
   const view = railView({
-    feed: { tick: 4, launches: [launch()] },
+    feed: feed(4, [launch()]),
     failure: new ReadError('/launches/default', 503),
     lastOkAt: T0 - 8 * SECOND,
     now: T0,
@@ -281,7 +301,7 @@ test('★ a frame nobody has been able to refresh stops claiming to be live', ()
      last frame in place, and a rail that kept pulsing through it would be claiming currency
      it does not have. */
   const view = railView({
-    feed: { tick: 4, launches: [launch()] },
+    feed: feed(4, [launch()]),
     failure: null,
     lastOkAt: T0 - 5 * MIN,
     now: T0,
@@ -289,6 +309,128 @@ test('★ a frame nobody has been able to refresh stops claiming to be live', ()
   assert.equal(view.live, false);
   assert.notEqual(view.notice, null);
   assert.equal(view.rows.length, 1, 'the rows are still true, they are just not fresh');
+});
+
+/* ── ★ a dead feed does not look like a quiet one ─────────────────────── */
+
+/**
+ * THE STATE THAT SHIPPED, AS A TEST. The poll loop answered 200 every six seconds, the pill
+ * read "updated 2s ago", the pip pulsed — all true — over a mint feed that had not been
+ * heard from in 141 hours. Every assertion below is about keeping those two facts separate
+ * and both sayable.
+ */
+
+test('★ a live feed carries no source banner, so the banner means something', () => {
+  const view = railView({ feed: feed(4, [launch()]), failure: null, lastOkAt: T0, now: T0 });
+  assert.equal(view.sourceNotice, null);
+  assert.equal(view.live, true);
+});
+
+test('★ a healthy poll over a dead feed says so, and the pip goes out', () => {
+  /* The exact combination that was unsayable: nothing is wrong with our fetching, so the
+     fetch-loop notice is correctly null — and if that were the only slot, the rail would
+     have nothing to say at all. */
+  const view = railView({
+    feed: feed(4, [launch()], DEAD_SOURCE),
+    failure: null,
+    lastOkAt: T0,
+    now: T0,
+  });
+  assert.equal(view.notice, null, 'our fetch loop is fine and must not claim otherwise');
+  assert.notEqual(view.sourceNotice, null, 'and the feed behind it is not');
+  assert.match(view.sourceNotice?.headline ?? '', /No coin mint has been heard for 6d\./);
+  assert.equal(view.live, false, 'a lit pip over a feed the server calls dead is the old lie');
+  assert.equal(view.status, 'updated 0s ago', 'the poll still says what the poll did');
+});
+
+test('★ the rows are KEPT and stated, never hidden, when the feed is stale', () => {
+  /* Hiding them would trade one untruth for another. These coins are real and really were
+     minted; what is false is the heading's implication that they are new, and the banner is
+     what fixes that. */
+  const view = railView({
+    feed: feed(4, [launch(), launch({ launchId: 'solana:b' })], DEAD_SOURCE),
+    failure: null,
+    lastOkAt: T0,
+    now: T0,
+  });
+  assert.equal(view.rows.length, 2, 'the rows are true, they are just not new');
+  assert.equal(view.count, '2');
+  assert.equal(view.empty, null);
+  assert.match(view.sourceNotice?.detail ?? '', /is real and is not new/);
+});
+
+test('★ an empty rail over a dead feed stops reading as a quiet market', () => {
+  /* The branch the whole change exists for. This is the true state of the store after the
+     provenance filter landed: no observed coin inside the window, because nothing has been
+     observed for six days. The empty card alone said "the feed answered and had nothing in
+     it", which is true and, on its own, deeply misleading. */
+  const view = railView({ feed: feed(7, [], DEAD_SOURCE), failure: null, lastOkAt: T0, now: T0 });
+  assert.equal(view.count, '0', 'still a real zero — we asked and the answer was none');
+  assert.notEqual(view.empty, null, 'the honest empty card stays');
+  assert.notEqual(view.sourceNotice, null, 'and now it is qualified');
+  assert.equal(view.live, false);
+
+  /* ★ THE SENTENCE THIS WHOLE CHANGE EXISTS TO MAKE SAYABLE. "The feed answered and had
+     nothing in it" is true and, alone, reads as a quiet market. The banner has to name
+     whose emptiness it is. */
+  assert.match(
+    view.sourceNotice?.detail ?? '',
+    /empty because nothing is being heard, not because nothing is being minted/,
+  );
+});
+
+test('★ an empty stale rail and a populated stale rail do not get the same sentence', () => {
+  /* One sentence covering both cases would have to be vague enough to be useless in each.
+     With rows, the reader needs to know the rows are old; with none, the reader needs to
+     know the silence is ours. */
+  const withRows = sourceNotice(DEAD_SOURCE, true, T0);
+  const withNone = sourceNotice(DEAD_SOURCE, false, T0);
+  assert.equal(withRows?.headline, withNone?.headline, 'the fact is the same fact');
+  assert.notEqual(withRows?.detail, withNone?.detail, 'what it means for the reader is not');
+});
+
+test('★ both banners can be shown at once, because both facts can be true at once', () => {
+  /* A failed poll on top of a frame from a dead transport. Making source staleness a sixth
+     branch of `notice` would have made these mutually exclusive, and the one that would
+     have been hidden is the consequential one. */
+  const view = railView({
+    feed: feed(4, [launch()], DEAD_SOURCE),
+    failure: new ReadError('/launches/default', 503),
+    lastOkAt: T0 - 8 * SECOND,
+    now: T0,
+  });
+  assert.match(view.notice?.headline ?? '', /stopped answering/);
+  assert.match(view.sourceNotice?.headline ?? '', /No coin mint has been heard/);
+});
+
+test('★ never heard from is a different sentence than heard six days ago', () => {
+  /* Two different actions: start a watcher, versus find out why one stopped. */
+  const never = sourceNotice({ lastHeardAt: { known: false, pending: 'not_read_yet' }, live: false }, true, T0);
+  assert.match(never?.headline ?? '', /has ever been heard/);
+  assert.match(never?.detail ?? '', /Nothing has watched for new coins yet/);
+
+  const old = sourceNotice(DEAD_SOURCE, true, T0);
+  assert.notEqual(never?.headline, old?.headline);
+});
+
+test('★ the rail never re-derives the judgement, it reads the one the server made', () => {
+  /* A bar typed in this file would be a second answer to "is this feed dead", and the two
+     would disagree the first time either moved. The instant here is ancient and the server
+     says live; the rail believes the server. That is the contract — and it is what keeps
+     the threshold in the policy where a frame stays answerable against it. */
+  const trusted = sourceNotice({ lastHeardAt: { known: true, at: T0 - 30 * DAY }, live: true }, true, T0);
+  assert.equal(trusted, null);
+});
+
+test('★ a stale feed never puts a threshold or a duration bar on the screen', () => {
+  /* The sentences are about the world — how long since anything reported a mint — and
+     never about our machinery. A bar, a gap count, or "we consider a feed dead after N
+     minutes" would each be a number about US, and the wire vocabulary forbids all three. */
+  const notice = sourceNotice(DEAD_SOURCE, true, T0);
+  const shown = `${notice?.headline ?? ''} ${notice?.detail ?? ''}`.toLowerCase();
+  for (const word of ['threshold', 'stale', 'gap', 'coverage', 'policy', 'projector', 'poll']) {
+    assert.equal(shown.includes(word), false, `the source banner leaked "${word}"`);
+  }
 });
 
 /* ── ★ the component, greped ──────────────────────────────────────────── */
@@ -315,6 +457,21 @@ test('★ the rail renders token metadata as TEXT: no markup, no link, no image'
   assert.equal(/\bsrc\s*=/.test(RAIL_TSX), false, 'no <img>, so no request to a chosen host');
   assert.equal(/\bwindow\.open\b/.test(RAIL_TSX), false);
   assert.equal(/\binnerHTML\b/.test(RAIL_TSX), false);
+});
+
+test('★ the component renders BOTH notice slots, and the source one first', () => {
+  /* The rail has exactly one amber surface, and a component that rendered only `notice`
+     would leave `sourceNotice` computed, tested, and invisible — which is the specific way
+     this whole change could ship and do nothing. A grep is a poor tool and it is the only
+     one available without a DOM, so it is aimed at the two things that matter: that both
+     fields reach the JSX, and that the source one is written first, because a dead feed
+     matters more than a slow request. */
+  assert.ok(RAIL_TSX.includes('view.sourceNotice'), 'the source banner is not rendered');
+  assert.ok(RAIL_TSX.includes('view.notice'), 'the fetch-loop banner is not rendered');
+  assert.ok(
+    RAIL_TSX.indexOf('view.sourceNotice') < RAIL_TSX.indexOf('view.notice'),
+    'the source banner must come first: it is the more consequential of the two',
+  );
 });
 
 test('the rail makes no product judgement of its own', () => {

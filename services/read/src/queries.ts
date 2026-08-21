@@ -69,8 +69,21 @@ export const STORY_SQL = 'select payload from public.story_view where story_id =
  * to hold no mints. A launches rail that showed a transport error over a quiet market
  * would be the one failure the rail exists to avoid — an empty list and a broken feed
  * have to look different on screen, so they have to be different answers here.
+ *
+ * ★ `source` IS SELECTED HERE AND NOT FETCHED SEPARATELY, and that is the point of it
+ * being a column on this table. It carries when the mint feed was last heard from and
+ * whether it is believed live — the sentence that turns an empty rail from a mute fact
+ * into an informative one, because "nothing was minted in the last six hours" and "nothing
+ * has reported a mint since Tuesday" are different answers and the rail has to be able to
+ * give the right one. Read in a second request it could describe a different frame from
+ * the one on screen, which is two spellings of one thing that can disagree.
+ *
+ * It is opaque here exactly like `payload`: this service does not look inside it, and it
+ * could not have computed it — the instant comes from a coverage log in a schema the app
+ * credential has no USAGE on, and the liveness bar is a policy threshold this process has
+ * never seen. Both facts were decided once, by the projector, and are handed over intact.
  */
-export const LAUNCH_VIEW_SQL = 'select tick from public.launch_view where feed_id = $1';
+export const LAUNCH_VIEW_SQL = 'select tick, source from public.launch_view where feed_id = $1';
 
 /**
  * `asset_key` is NOT selected. The board's equivalent selects `story_id` because the wire
@@ -83,3 +96,35 @@ export const LAUNCH_VIEW_SQL = 'select tick from public.launch_view where feed_i
  */
 export const LAUNCH_ROWS_SQL =
   'select payload from public.launch_row where feed_id = $1 order by "position" asc';
+
+/**
+ * The pairs frame: the tick, and the head the projector committed alongside it.
+ *
+ * ★ `head` IS SELECTED HERE AND NOT FETCHED SEPARATELY, and that is the point of it being
+ * a column on this table. It carries how wide the window is, when a mint was last heard,
+ * and the mints-to-markets counts — the sentence printed above the list. Read in a second
+ * request it could describe a different frame from the one on screen, and a screen showing
+ * rows from one projection under a count from another is two spellings of one thing that
+ * can disagree. One statement, one frame, one sentence.
+ *
+ * It is opaque here exactly like `payload`: this service does not look inside it, does not
+ * know what a count means, and could not compute one — it holds the app credential, which
+ * has no privilege on public.asset's readings and no USAGE on the schema the coverage log
+ * lives in.
+ *
+ * Existence is still the 404 test, for the reason the board's and the rail's are: a feed id
+ * with no row here has never been projected, which is a different fact from a feed whose
+ * window held no coin that reached a market. The second is a legitimate and common answer —
+ * it is the true answer on the store this was written against — and it has to be
+ * distinguishable from the first on screen, so it is a different answer here.
+ */
+export const PAIR_VIEW_SQL = 'select tick, head from public.pair_view where feed_id = $1';
+
+/**
+ * `asset_key` is NOT selected, for LAUNCH_ROWS_SQL's reason: there is no separate `order`
+ * array on this wire, so the array of payloads IS the order, and a column that is not in
+ * the result set cannot reach a response by accident. `position` is quoted because POSITION
+ * is a SQL keyword and quoting removes the question.
+ */
+export const PAIR_ROWS_SQL =
+  'select payload from public.pair_row where feed_id = $1 order by "position" asc';

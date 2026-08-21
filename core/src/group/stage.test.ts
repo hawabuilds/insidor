@@ -74,6 +74,7 @@ function story(over: Partial<Story> = {}): Story {
   return {
     storyId: storyId('aaa1'),
     state: 'candidate',
+    origin: 'observed',
     createdAt: NOW - 3 * HOUR,
     promotedAt: null,
     earliestPostAt: NOW - 3 * HOUR,
