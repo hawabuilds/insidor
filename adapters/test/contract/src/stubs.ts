@@ -33,19 +33,38 @@ const refuse = (endpoint: string) => async (): Promise<never> => {
   throw new NotImplemented(endpoint, 'the conformance suite never reaches a vendor');
 };
 
+/**
+ * ★ EVERY SOURCE IS SUPPLIED `configured`, DELIBERATELY, AND THAT IS WHAT THIS
+ * SUITE IS FOR.
+ *
+ * `PlatformDeps` can now say a source is dormant or misconfigured, and the
+ * registry's own tests exercise those. Here every source is present, because the
+ * conformance suite's question is "does this adapter honour its declaration" and
+ * an adapter that was never built cannot answer it. A source quietly supplied as
+ * dormant here would drop out of `platforms.all()` and its whole contract would
+ * stop running, silently, with a green tick — which is the failure mode the
+ * registered-but-no-samples test at the top of all.test.ts exists to prevent,
+ * arriving through the other door.
+ */
 export function platformDeps(): PlatformDeps {
   const m = meter();
   return {
     x: {
-      client: { search: refuse('x:search'), lookup: refuse('x:lookup') },
-      meter: m,
-      now,
+      kind: 'configured',
+      deps: {
+        client: { search: refuse('x:search'), lookup: refuse('x:lookup') },
+        meter: m,
+        now,
+      },
     },
     tiktok: {
-      client: { runDiscovery: refuse('tiktok:discover'), runObserve: refuse('tiktok:observe') },
-      meter: m,
-      now,
-      handleOf: () => null,
+      kind: 'configured',
+      deps: {
+        client: { runDiscovery: refuse('tiktok:discover'), runObserve: refuse('tiktok:observe') },
+        meter: m,
+        now,
+        handleOf: () => null,
+      },
     },
     /* This source is the first whose real client has an HTTP body rather than a
        `NotImplemented`, which makes the rule above matter more, not less: the
@@ -53,9 +72,12 @@ export function platformDeps(): PlatformDeps {
        the network half replaced entirely. If a contract test ever needs these
        to answer, whatever it is testing has leaked across that line. */
     reddit: {
-      client: { listing: refuse('reddit:listing'), info: refuse('reddit:info') },
-      meter: m,
-      now,
+      kind: 'configured',
+      deps: {
+        client: { listing: refuse('reddit:listing'), info: refuse('reddit:info') },
+        meter: m,
+        now,
+      },
     },
   };
 }

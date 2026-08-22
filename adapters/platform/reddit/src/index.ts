@@ -166,6 +166,9 @@ export {
   VENDOR,
 } from './capabilities.ts';
 export { httpClient, decodeListing, parseQuota, RedditNotConfigured } from './client.ts';
+/* What this source needs from the environment, declared beside the client that
+   consumes it. The registry reads it; nothing central holds a copy to drift from. */
+export { CREDENTIALS, clientConfig } from './credentials.ts';
 export type { ListingPage, ListingRequest, QuotaReading, RedditClient, RedditClientConfig } from './client.ts';
 export { toListingRequest } from './discover.ts';
 /* The citation link. Exported from the barrel because the projector — which

@@ -19,12 +19,14 @@ import type { EventStreamFactory, LiveChannel, LiveHandlers } from './live/chann
 import type { BoardTick } from './wire/board.ts';
 import type { LaunchFeed } from './wire/launch.ts';
 import type { PairFeed } from './wire/pair.ts';
+import type { SourceFeed } from './wire/source.ts';
 import type { Story } from './wire/story.ts';
 import type { TradeIntent, TradeQuote, TradeResult } from './wire/trade.ts';
 import {
   decodeBoardTick,
   decodeLaunchFeed,
   decodePairFeed,
+  decodeSourceFeed,
   decodeStory,
   decodeTradeQuote,
 } from './decode.ts';
@@ -71,7 +73,8 @@ const USE_FIXTURES = import.meta.env?.DEV === true && BASE === '';
 export const USING_FIXTURES = USE_FIXTURES;
 
 async function readFixture(path: string): Promise<unknown> {
-  const { fixtureBoard, fixtureLaunches, fixturePairs, fixtureStory } = await import('./fixtures.ts');
+  const { fixtureBoard, fixtureLaunches, fixturePairs, fixtureSources, fixtureStory } =
+    await import('./fixtures.ts');
   if (path.startsWith('/board/')) return fixtureBoard();
   /* The pairs screen gets a branch for the launches rail's reason: without one, the default
      dev experience — no VITE_READ_URL — would show that screen's failure state on every
@@ -85,6 +88,12 @@ async function readFixture(path: string): Promise<unknown> {
      back is a raw wire payload and goes through `decodeLaunchFeed` like anything off the
      network, so a fixture cannot hold a shape the server could never send. */
   if (path.startsWith('/launches/')) return fixtureLaunches();
+  /* The indicator gets a branch for the same reason, and it is the sharpest case of it: with
+     no branch the shell would poll, get a 501, and show "not updating" in the nav on every
+     dev load — a permanent broken-looking corner over sample data that is working perfectly.
+     What comes back is a raw wire payload and goes through `decodeSourceFeed` like anything
+     off the network. */
+  if (path.startsWith('/sources/')) return fixtureSources();
   if (path.startsWith('/story/')) {
     const id = decodeURIComponent(path.slice('/story/'.length));
     const story = fixtureStory(id);
@@ -156,6 +165,22 @@ export async function fetchLaunches(feedId: string, signal?: AbortSignal): Promi
  */
 export async function fetchPairs(feedId: string, signal?: AbortSignal): Promise<PairFeed> {
   return decodePairFeed(await read(`/pairs/${encodeURIComponent(feedId)}`, signal));
+}
+
+/**
+ * One frame of the source indicator.
+ *
+ * Polled, and at nothing like the rail's cadence. What this reports changes when somebody
+ * adds a credential or a vendor starts erroring — on a deploy's clock, not a market's — so a
+ * six-second poll would be a request every six seconds for an answer that changes twice a
+ * month. The caller owns the interval and says in the corner when it last succeeded, so an
+ * indicator that has stopped updating looks different from a pipeline that has stopped
+ * ingesting. `read` already sets `cache: 'no-store'`; a cached frame here would be the one
+ * thing worse than no frame, because this is the field that tells the rest of the app whether
+ * to trust its own emptiness.
+ */
+export async function fetchSources(viewId: string, signal?: AbortSignal): Promise<SourceFeed> {
+  return decodeSourceFeed(await read(`/sources/${encodeURIComponent(viewId)}`, signal));
 }
 
 /**

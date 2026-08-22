@@ -58,6 +58,7 @@ import type {
   WireLaunch,
   WirePair,
   WirePairHead,
+  WireSourceHealth,
   WireStory,
 } from './wire.ts';
 import { coinWindow } from './window.ts';
@@ -981,6 +982,12 @@ function toCoinFacts(row: AssetRow, market: CoinMarket | null): CoinFacts {
  * `sourceLabel` — failing in decode.ts, in the user's browser, as far from this line as
  * it is possible to get. A Map has no inherited keys, so the fallback fires.
  */
+/* ★ EXPORTED FOR THE SOURCE INDICATOR, AND FOR NO OTHER REASON. That surface needs a
+   display name per source and the wire's rule is that the SERVER chooses it — the app never
+   maps an id to a label, because that mapping is where a newly added platform silently
+   renders as its raw id in front of a user. Exporting this keeps the mapping at one, which
+   is the whole point of it; a second copy in the indicator's entrypoint would be a second
+   answer to "what is this platform called". */
 const SOURCE_LABELS: ReadonlyMap<string, string> = new Map([
   ['x', 'X'],
   ['tiktok', 'TikTok'],
@@ -989,7 +996,7 @@ const SOURCE_LABELS: ReadonlyMap<string, string> = new Map([
   ['instagram', 'Instagram'],
 ]);
 
-function sourceLabel(source: string): string {
+export function sourceLabel(source: string): string {
   return SOURCE_LABELS.get(source) ?? source.charAt(0).toUpperCase() + source.slice(1);
 }
 
@@ -1955,4 +1962,59 @@ export async function writePairs(
     written += 1;
   }
   return written;
+}
+
+/* ── which sources we ingest from are answering ───────────────────────── */
+
+/**
+ * The next frame number for the source indicator.
+ *
+ * A third nine-line function rather than a parameterised first one, for the reason
+ * `nextLaunchTick` gives at length: generalising over the projections means passing a table
+ * name and a key column as strings, and a table name arriving as a string is the one habit
+ * this file must never start. The moment a statement is assembled from an identifier, "is
+ * every parameter parameterised" stops being answerable by reading.
+ */
+export async function nextSourceTick(db: Db, viewId: string): Promise<number> {
+  const rows = await db.query<{ tick: string }>(
+    `select tick::text as tick from public.source_view where view_id = $1`,
+    [viewId],
+  );
+  const current = rows[0];
+  return current === undefined ? 1 : Number(current.tick) + 1;
+}
+
+/**
+ * Commit one indicator frame.
+ *
+ * ★ ONE STATEMENT, BECAUSE THE WHOLE FRAME IS ONE VALUE. Unlike the board, the rail and the
+ * pairs screen there is no row table here: three to five sources, in an order the projector
+ * already decided, read whole on every poll. A row-per-source table would buy per-row
+ * patching and pagination that nothing will ever use, and would cost a second statement
+ * whose result set could describe a different moment from the tick beside it. 0014's
+ * `pair_view.head` made the same call for the same reason.
+ *
+ * ★ AND IT IS WRITTEN EVEN WHEN THE ARRAY IS EMPTY, which is the point of writing it
+ * unconditionally. `GET /sources/:viewId` answers 404 when there is no row, which means
+ * "this indicator has never been projected" — a real fact, and a different one from "we
+ * projected, and we ingest from nothing". Skipping the insert on an empty run would collapse
+ * the two, and the shell would show a transport failure over a pipeline that is merely
+ * switched off.
+ */
+export async function writeSources(
+  db: Db,
+  viewId: string,
+  tick: number,
+  sources: readonly WireSourceHealth[],
+): Promise<number> {
+  await db.query(
+    `insert into public.source_view (view_id, tick, projected_at, sources)
+     values ($1, $2, now(), $3::jsonb)
+     on conflict (view_id) do update
+       set tick = excluded.tick,
+           projected_at = excluded.projected_at,
+           sources = excluded.sources`,
+    [viewId, tick, JSON.stringify(sources)],
+  );
+  return sources.length;
 }

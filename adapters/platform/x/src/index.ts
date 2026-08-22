@@ -107,6 +107,9 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
 
 export { CAPABILITIES, FIDELITY, PRICES, SOURCE, VENDOR } from './capabilities.ts';
 export { httpClient } from './client.ts';
+/* What this source needs from the environment, declared beside the client that
+   consumes it. The registry reads it; nothing central holds a copy to drift from. */
+export { CREDENTIALS, clientConfig } from './credentials.ts';
 export type { XClient, XClientConfig } from './client.ts';
 export { toSearchQuery } from './discover.ts';
 /* The citation link. Exported from the barrel because the projector — which must

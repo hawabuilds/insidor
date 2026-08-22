@@ -1,5 +1,11 @@
 /**
- * The runner process: seven supervised loops, one Node process, one deployable.
+ * The runner process: eight supervised loops, one Node process, one deployable.
+ *
+ * Seven of them are the decision stages. The eighth is discovery, which decides
+ * nothing and is supervised for exactly the same reason they are — a loop that stops
+ * finishing must be visible within one cadence, whether or not it was making
+ * judgements. See loops/discover.ts for why it does not go through the shared stage
+ * body, and config.ts for why `discover` is deliberately not a StageName.
  *
  * This file does four things and nothing else — load configuration, build the
  * runtime, start the loops, and shut them down cleanly. There is no logic here
@@ -27,6 +33,7 @@ import { withRuntime } from './wiring.ts';
 
 import { admitLoop } from './loops/admit.ts';
 import { detectLoop } from './loops/detect.ts';
+import { discoverLoop } from './loops/discover.ts';
 import { groupLoop } from './loops/group.ts';
 import { qualifyLoop } from './loops/qualify.ts';
 import { rankLoop } from './loops/rank.ts';
@@ -49,7 +56,14 @@ async function main(): Promise<void> {
   // The ONE read of process.env in this service. Throws, loudly, listing every
   // missing key, before anything is opened.
   const cfg = loadRunnerConfig(process.env);
-  log.info('booting', { host: cfg.host, healthPort: cfg.healthPort, heartbeat: cfg.heartbeat.kind });
+  log.info('booting', {
+    host: cfg.host,
+    healthPort: cfg.healthPort,
+    heartbeat: cfg.heartbeat.kind,
+    /* Printed on every boot including the ordinary one. A field that appears only
+       when something is off is a field nobody knows the normal value of. */
+    discovery: cfg.discovery.kind,
+  });
 
   // Everything runs INSIDE the runtime callback, because the singleton advisory
   // lock lives exactly as long as the session that holds it. Returning from here
@@ -74,6 +88,19 @@ async function main(): Promise<void> {
     };
 
     const loops: readonly Loop[] = [
+      /* ★ FIRST IN THE LIST AND LAST TO START (see its offset). It is the only loop
+         that talks to a vendor, and it is the one that must run whether any source is
+         live or not: with none configured it declares that plainly, records it, and
+         returns — which is what keeps "we ingest from nothing" a visible state rather
+         than an absence of log lines. */
+      discoverLoop({
+        platforms: runtime.platforms,
+        store: runtime.store,
+        discovery: cfg.discovery,
+        policy: runtime.loopDeps.policy,
+        log,
+        watch: runtime.watch,
+      }),
       admitLoop(runtime.loopDeps),
       trackLoop(runtime.loopDeps),
       detectLoop(runtime.loopDeps),

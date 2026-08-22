@@ -690,6 +690,77 @@ export interface AssetPolicy {
   readonly feedFreshnessMs: number;
 }
 
+/* ── INGEST ───────────────────────────────────────────────────────────── */
+
+/**
+ * How long a source we ingest FROM may be silent before it stops being described as
+ * answering.
+ *
+ * ★ A SEPARATE NUMBER FROM `assets.feedFreshnessMs` AND THEY MUST NOT BE MERGED, for the
+ * reason that file already gives about `market.readingFreshnessMs`: these measure different
+ * things and happen to share a unit. `feedFreshnessMs` is about ONE transport reporting
+ * coin mints on a socket, where a ninety-second stale bar already exists downstream and
+ * fifteen minutes is generously clear of it. This is about a set of PAID, POLLED APIs whose
+ * pass intervals are a cost decision, not a transport property — and a bar tight enough to
+ * fire on a deliberately infrequent pass turns "we chose to spend less" into "this is
+ * broken", which is the exact conflation the three-way source state exists to prevent.
+ *
+ * ★ THE FLOOR IS ARGUED, NOT TYPED, and it is the same argument `feedFreshnessMs` makes.
+ * The runner's own staleness rule is three cadences (`STALE_AFTER_CADENCES` in
+ * services/runner/src/health.ts, `staleCadences` in the watchdog), and the stage cadences
+ * this repository's own configuration examples use are measured in tens of seconds — so
+ * three cadences is single-digit minutes. This must sit well above that, or the projector
+ * would call a source dead while the loop that reads it still considers itself healthy, and
+ * two processes would disagree out loud on one screen.
+ *
+ * ★ THE CEILING IS THE PRODUCT'S CLOCK. Half an hour is chosen against what this board
+ * claims to be: a story that started thirty minutes ago and was never fetched is a story
+ * the board is silently missing, and on a product whose whole pitch is earliness that is
+ * already past any interval a user would call "now". Much longer and the indicator agrees
+ * that a source is live through an outage long enough to have cost us the thing we sell;
+ * much shorter and every ordinary gap between paid passes lights a fault, and an indicator
+ * that is always red is an indicator nobody looks at.
+ *
+ * ★ AND WHY THE JUDGEMENT IS MADE SERVER-SIDE. The same argument `currentMarket` and
+ * `projectFeedSource` both make: a threshold is our machinery, the client is never handed
+ * one, and what crosses the wire is the already-labelled result. The app receives the word
+ * "failing" and the instant behind it; it does not receive the bar, so it cannot re-derive
+ * the call and disagree with us about it.
+ */
+export interface IngestPolicy {
+  /**
+   * How long since a configured source last answered, past which it is published as
+   * failing rather than live. Nothing here is admitted or rejected by it; it decides one
+   * word on one indicator, and that word is the difference between "nobody turned this on"
+   * and "you are paying for this and it is broken".
+   */
+  readonly sourceFreshnessMs: number;
+  /**
+   * Consecutive failed calls at which a configured source is called failing rather
+   * than unlucky.
+   *
+   * ★ WHY THE FRESHNESS BAR ABOVE IS NOT ENOUGH ON ITS OWN, which is the only
+   * interesting thing about there being two numbers here. `sourceFreshnessMs` catches
+   * the SLOW shapes — a source whose calls hang, or one nobody is asking any more
+   * because the loop that asks it died — precisely because neither of those ever
+   * produces an error to count. It cannot catch the FAST shape: a wrong key is
+   * refused on every single call, instantly, and would go on reading as live for the
+   * whole freshness window while answering nothing. That window is half an hour, and
+   * half an hour of a lit indicator over a source that answered nothing is the exact
+   * lie the indicator exists to stop telling.
+   *
+   * Three, because one is a blip and two is a coincidence — and because the count is
+   * reset by any success, so three in a row means nothing has worked since the last
+   * thing that did. Lower and one flaky minute turns the indicator red; higher and a
+   * credential that is simply wrong takes longer to say so than it needs to.
+   *
+   * What would change it: the real consecutive-failure distribution of a source that
+   * is up. Nothing has run yet, so this is a judgement rather than a measurement, and
+   * `internal.source_health` is where the measurement will come from.
+   */
+  readonly failingAfterFailures: number;
+}
+
 /* ── RANK ─────────────────────────────────────────────────────────────── */
 
 export interface RankPolicy {
@@ -844,6 +915,7 @@ export interface Policy {
   readonly resolve: ResolvePolicy;
   readonly market: MarketPolicy;
   readonly assets: AssetPolicy;
+  readonly ingest: IngestPolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -935,7 +1007,23 @@ const POLICY_V1: Policy = {
      six days, and a dead feed is not a quiet market. Any frame committed before this bump
      was committed by a projector that could not make the distinction, and the version
      string is the only thing that says so. */
-  version: 'policy.v7',
+
+  /* v8 adds `ingest.sourceFreshnessMs` — the bar past which a source we ingest FROM stops
+     being described as answering. Bumped by hand, and the reason is v7's reason pointed at
+     a different input: before this bump there was no bar at all for a social source, so a
+     board fed by one live source and a board fed by three rendered identically. Nothing was
+     wrong with any individual row; the screen simply had no way to say that two thirds of
+     what feeds it was dark, and a board missing two sources is not a quiet world. Any frame
+     committed before this bump was committed by a projector that could not make the
+     distinction, and the version string is the only thing that says so. */
+
+  /* v8 ALSO carries `ingest.failingAfterFailures`, added in the same window and sharing
+     the hash. One version string, one hash, one changelog entry — splitting them into v8
+     and v9 would suggest a policy existed in between that never judged a decision. It is
+     the other half of the distinction above: the freshness bar catches a source that went
+     quiet, and this catches one that is refusing every call as fast as we can make it.
+     Without it a wrong credential reads as live for a full freshness window. */
+  version: 'policy.v8',
 
   admit: {
     maxAgeMin: 240,
@@ -1173,6 +1261,17 @@ const POLICY_V1: Policy = {
        ordinary, which is a statement about a transport. They are different quantities
        measured over different things and they happen to share a unit. */
     feedFreshnessMs: 900_000,
+  },
+
+  ingest: {
+    /* Thirty minutes. Deliberately NOT the same number as assets.feedFreshnessMs above,
+       and the two must not be merged: fifteen minutes is how long a SOCKET may be silent
+       before its transport is presumed dead, and this is how long a POLLED, PAID API may go
+       unanswered before we stop claiming it is feeding the board. The first is bounded
+       below by another process's own stale bar; the second is bounded below by how rarely
+       we choose to spend money, which is a different quantity entirely. */
+    sourceFreshnessMs: 1_800_000,
+    failingAfterFailures: 3,
   },
 
   rank: {

@@ -10,7 +10,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { BOARD_ROW_FIELDS, LAUNCH_FIELDS } from './wire/fields.ts';
+import { BOARD_ROW_FIELDS, LAUNCH_FIELDS, SOURCE_HEALTH_FIELDS } from './wire/fields.ts';
 import {
   WireLeakError,
   WireShapeError,
@@ -20,6 +20,7 @@ import {
   decodeLaunch,
   decodeLaunchFeed,
   decodeRowPatch,
+  decodeSourceFeed,
 } from './decode.ts';
 
 const CLEAN_ROW = {
@@ -382,6 +383,116 @@ test('one unreadable launch fails the frame rather than being quietly skipped', 
      an error state that says so out loud, which is the better place for this to land. */
   assert.throws(
     () => decodeLaunchFeed({ tick: 1, launches: [CLEAN_LAUNCH, { ...CLEAN_LAUNCH, ticker: 7 }] }),
+    WireShapeError,
+  );
+});
+
+/* ── the source indicator ─────────────────────────────────────────────── */
+
+const CLEAN_SOURCES = {
+  tick: 4,
+  sources: [
+    { sourceId: 'reddit', label: 'Reddit', state: 'live', lastHeardAt: { at: 1_700_000_000_000 } },
+    { sourceId: 'x', label: 'X', state: 'dormant', lastHeardAt: { at: null, why: 'not_read_yet' } },
+    { sourceId: 'tiktok', label: 'TikTok', state: 'failing', lastHeardAt: { at: 1_699_000_000_000 } },
+  ],
+};
+
+test('the source payload decodes to exactly its allowlist and nothing else', () => {
+  const feed = decodeSourceFeed(CLEAN_SOURCES);
+  assert.equal(feed.tick, 4);
+  assert.equal(feed.sources.length, 3);
+  for (const source of feed.sources) {
+    assert.deepEqual(Object.keys(source).sort(), [...SOURCE_HEALTH_FIELDS].sort());
+  }
+});
+
+test('the three states survive decoding, and the order is the server\'s', () => {
+  /* The order is not sorted by severity anywhere on the path — a pip that moves when a state
+     moves cannot be read at a glance, so the failing source stays third. */
+  const feed = decodeSourceFeed(CLEAN_SOURCES);
+  assert.deepEqual(feed.sources.map((s) => s.state), ['live', 'dormant', 'failing']);
+  assert.deepEqual(feed.sources.map((s) => s.sourceId), ['reddit', 'x', 'tiktok']);
+});
+
+test('an absent last-answered instant stays absent and never becomes a time', () => {
+  /* "Has never answered" is a different fact from "answered a while ago", and it is the fact
+     that points at a credential that never worked rather than one that stopped. */
+  const dormant = decodeSourceFeed(CLEAN_SOURCES).sources[1];
+  assert.equal(dormant?.lastHeardAt.known, false);
+});
+
+test('★ an unrecognised state is a shape error, never a default', () => {
+  /* Every default is worse than refusing. `live` would light a healthy pip over a state we
+     cannot read; `failing` would raise an alarm the server never asked for; dropping the
+     source would leave a shorter row that still looks complete. */
+  assert.throws(
+    () =>
+      decodeSourceFeed({
+        tick: 1,
+        sources: [{ ...CLEAN_SOURCES.sources[0], state: 'degraded' }],
+      }),
+    WireShapeError,
+  );
+});
+
+test('★ a machinery key on a source payload is fatal, and an innocuous one is dropped', () => {
+  /* This is the payload under the most pressure in the system to explain itself, because it
+     is the thing on screen that says something is wrong. `reason` is the first thing anybody
+     reaches for and it is forbidden. */
+  assert.throws(
+    () =>
+      decodeSourceFeed({
+        tick: 1,
+        sources: [{ ...CLEAN_SOURCES.sources[0], reason: 'upstream 503' }],
+      }),
+    WireLeakError,
+  );
+
+  const feed = decodeSourceFeed({
+    tick: 1,
+    sources: [{ ...CLEAN_SOURCES.sources[0], vendorHost: 'somewhere' }],
+  });
+  assert.deepEqual(Object.keys(feed.sources[0] ?? {}).sort(), [...SOURCE_HEALTH_FIELDS].sort());
+});
+
+test('★ a reseller\'s name in a LABEL is fatal, because the platform is ours to show and they are not', () => {
+  /* The sharp edge of this surface. "X" and "TikTok" are what a user is told; who we buy
+     their data from is commercially ours. The censor matches forbidden substrings against
+     values, so this throws here rather than reaching a tooltip. */
+  assert.throws(
+    () =>
+      decodeSourceFeed({
+        tick: 1,
+        sources: [{ ...CLEAN_SOURCES.sources[0], label: 'TikTok (apify)' }],
+      }),
+    WireLeakError,
+  );
+});
+
+test('★ a missing `sources` key is a shape error, NOT an empty list', () => {
+  /* An empty array is a real and load-bearing answer — it means nothing is ingesting — so
+     manufacturing one from a server that did not send the field would publish that answer on
+     the server\'s behalf, and the shell would put "nothing is ingesting" over a pipeline
+     nobody had asked about. Absence of the field is absence of knowledge; absence of entries
+     is knowledge. */
+  assert.throws(() => decodeSourceFeed({ tick: 1 }), WireShapeError);
+});
+
+test('an empty source list decodes cleanly, because it is the answer that matters most', () => {
+  assert.deepEqual(decodeSourceFeed({ tick: 1, sources: [] }).sources, []);
+});
+
+test('one unreadable source fails the frame rather than being quietly skipped', () => {
+  /* An indicator silently one pip short is wrong in the one way nobody can see, and it would
+     be wrong in the worst direction: the pip most likely to fail to decode is the one
+     carrying something unusual, which is the one carrying the fault. */
+  assert.throws(
+    () =>
+      decodeSourceFeed({
+        tick: 1,
+        sources: [CLEAN_SOURCES.sources[0], { ...CLEAN_SOURCES.sources[1], label: 7 }],
+      }),
     WireShapeError,
   );
 });

@@ -25,6 +25,7 @@ import type { BoardRow, BoardTick, RowPatch, Spark, SparkPoint, Tone } from './w
 import type { Coin, CoinLink, MarketCapBasis } from './wire/coin.ts';
 import type { FeedSource, Launch, LaunchFeed } from './wire/launch.ts';
 import type { Pair, PairFeed, PairHead, PairListing } from './wire/pair.ts';
+import type { SourceFeed, SourceHealth, SourceState } from './wire/source.ts';
 import type { DiscussionPost, Evidence, Story } from './wire/story.ts';
 import type { TradeCost, TradeQuote } from './wire/trade.ts';
 import {
@@ -36,6 +37,7 @@ import {
   LAUNCH_FIELDS,
   PAIR_FIELDS,
   PAIR_HEAD_FIELDS,
+  SOURCE_HEALTH_FIELDS,
   STORY_FIELDS,
 } from './wire/fields.ts';
 
@@ -436,6 +438,83 @@ function decodeFeedSource(raw: unknown, path: string): FeedSource {
        heard from a second ago. */
     lastHeardAt: instantAt(o.lastHeardAt, `${path}.lastHeardAt`, 'not_read_yet'),
     live: bool(o.live, `${path}.live`),
+  };
+}
+
+/* ── which sources we ingest from are answering ───────────────────────── */
+
+/**
+ * The state word, narrowed against the closed union.
+ *
+ * ★ AN UNRECOGNISED WORD THROWS, AND EVERY ALTERNATIVE IS WORSE. `reasonOf` above maps an
+ * unknown pending word to `unreadable` because a pending value has an honest catch-all;
+ * this one does not. Defaulting to `live` would light a healthy pip over a state we cannot
+ * read — the cheapest lie in the app, arriving through a decoder. Defaulting to `failing`
+ * would raise an alarm the server never asked for and send somebody looking for a fault
+ * that does not exist. Dropping the source would remove a pip and leave a shorter row that
+ * still looks complete.
+ *
+ * So it is a shape error: the frame is refused whole, the caller keeps whatever it last
+ * read, and the surface says out loud that it is not updating. That is the one response
+ * that claims nothing.
+ */
+function sourceState(v: unknown, path: string): SourceState {
+  if (v === 'live' || v === 'dormant' || v === 'failing') return v;
+  throw new WireShapeError(`${path}.state`, v);
+}
+
+/**
+ * One source on the indicator.
+ *
+ * Assert first, pick second, exactly like `decodeLaunch` and for the same reason: a leak the
+ * pick already dropped is a leak nobody fixes at the source. This payload earns the assert as
+ * much as any — the pressure on an indicator is always to explain itself, and the explanation
+ * it reaches for first is the vendor's own error text, which names the reseller behind a
+ * platform in a string a user can read.
+ */
+function decodeSourceHealth(raw: unknown, path: string): SourceHealth {
+  assertNoInternalVocabulary(raw, path);
+  const o = pick(obj(raw, path), SOURCE_HEALTH_FIELDS);
+  return {
+    sourceId: str(o.sourceId, `${path}.sourceId`),
+    /* Read with `str` and never coerced. A label the server failed to choose must not become
+       the literal "undefined" in the nav, and it must not fall back to `sourceId` here — the
+       app deriving a display name from an id is the exact rule this wire exists to prevent,
+       and a fallback in a decoder is how that rule gets broken quietly. */
+    label: str(o.label, `${path}.label`),
+    state: sourceState(o.state, path),
+    /* Unknown stays unknown, and is never backfilled from the moment the frame was projected
+       — which is when WE ran. A source that has never once answered would otherwise read as
+       one heard from a second ago, which is the same class of mistake as backfilling a mint
+       time from when we first looked. */
+    lastHeardAt: instantAt(o.lastHeardAt, `${path}.lastHeardAt`, 'not_read_yet'),
+  };
+}
+
+/**
+ * One frame of the indicator.
+ *
+ * ★ A MISSING `sources` KEY IS A SHAPE ERROR AND NOT AN EMPTY ARRAY, and this is the one
+ * defaulting decision here worth arguing. An empty array is a real and load-bearing answer —
+ * it means nothing is ingesting — so quietly manufacturing one from a server that simply did
+ * not send the field would publish that answer on the server's behalf, and the surface would
+ * then put "nothing is ingesting" over a pipeline nobody had asked about. Absence of the
+ * field is absence of knowledge; absence of entries is knowledge.
+ *
+ * Every source is decoded and one unreadable source throws the whole frame rather than being
+ * skipped — the same call `decodeBoardTick` and `decodeLaunchFeed` make. An indicator
+ * silently one pip short is an indicator that is wrong in the one way nobody can see, and it
+ * would be wrong in the worst direction: the pip most likely to fail to decode is the one
+ * carrying something unusual, which is the one carrying the fault.
+ */
+export function decodeSourceFeed(raw: unknown, path = '$'): SourceFeed {
+  assertNoInternalVocabulary(raw, path);
+  const o = obj(raw, path);
+  return {
+    tick: int(o['tick'], `${path}.tick`),
+    sources: arr(o['sources'], `${path}.sources`).map((entry, i) =>
+      decodeSourceHealth(entry, `${path}.sources[${i}]`),
+    ),
   };
 }
 

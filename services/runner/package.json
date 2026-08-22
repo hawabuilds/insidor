@@ -13,6 +13,9 @@
   "dependencies": {
     "@insidor/contracts": "workspace:*",
     "@insidor/core": "workspace:*",
-    "@insidor/store": "workspace:*"
+    "@insidor/meter": "workspace:*",
+    "@insidor/platform-registry": "workspace:*",
+    "@insidor/store": "workspace:*",
+    "@insidor/vendor-kit": "workspace:*"
   }
 }

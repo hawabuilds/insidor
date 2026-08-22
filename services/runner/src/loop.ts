@@ -28,6 +28,7 @@ import type { Decision, Millis, Policy, StageContext, StageName } from '@insidor
 import type * as core from '@insidor/core';
 
 import { commitDecision, type DecisionLog, type DecisionReceipt } from './commit.ts';
+import type { SupervisedName } from './config.ts';
 import { errorText, type Logger } from './log.ts';
 
 /* The log seam and the receipt are declared in commit.ts, next to the ordering
@@ -58,7 +59,15 @@ export interface LoopContext {
 }
 
 export interface Loop {
-  readonly stage: StageName;
+  /**
+   * ★ `SupervisedName` AND NOT `StageName`, because this process supervises one thing
+   * that decides nothing. Discovery asks vendors what exists; it writes no decision
+   * row and therefore has no business in the decision vocabulary, whose members are
+   * enumerated in a CHECK constraint on `internal.decisions`. It is still supervised —
+   * "did it finish" is asked of it exactly as of the seven — and `stage_runs.stage` is
+   * free text for precisely this reason. See SUPERVISED_TASKS in config.ts.
+   */
+  readonly stage: SupervisedName;
   readonly everyMs: number;
   /** Startup stagger. Seven loops all firing at t=0 convoy on the same pool. */
   readonly offsetMs: number;

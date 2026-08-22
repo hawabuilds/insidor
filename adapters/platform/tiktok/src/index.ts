@@ -149,5 +149,8 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
 
 export { CAPABILITIES, FIDELITY, PRICES, SOURCE, VENDOR } from './capabilities.ts';
 export { httpClient, postUrl } from './client.ts';
+/* What this source needs from the environment, declared beside the client that
+   consumes it. The registry reads it; nothing central holds a copy to drift from. */
+export { CREDENTIALS, clientConfig } from './credentials.ts';
 export type { TikTokClient, TikTokClientConfig } from './client.ts';
 export { toItem, toCounters, formatIds } from './to-item.ts';

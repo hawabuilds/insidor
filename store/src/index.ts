@@ -28,4 +28,8 @@ export { PgDecisionRepo, featureHash } from './repo/decisions.ts';
 export { PgLabelRepo } from './repo/labels.ts';
 export type { LabelKey } from './repo/labels.ts';
 export { PgStageRunRepo } from './repo/runs.ts';
+/* Per-source health. Written by whoever calls a source, read by the projector — the
+   two halves of the one fact the app cannot fetch for itself, because both of its
+   ingredients live where the app's role has no USAGE. */
+export { PgSourceHealthRepo } from './repo/sources.ts';
 export type { StageRunClose } from './repo/runs.ts';

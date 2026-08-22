@@ -128,3 +128,25 @@ export const PAIR_VIEW_SQL = 'select tick, head from public.pair_view where feed
  */
 export const PAIR_ROWS_SQL =
   'select payload from public.pair_row where feed_id = $1 order by "position" asc';
+
+/**
+ * The indicator frame: which sources we ingest from are answering.
+ *
+ * ★ ONE STATEMENT AND NO ROW TABLE, unlike every other surface in this file. There are three
+ * to five sources, the projector already decided their order, and the whole set is read on
+ * every poll — so the frame IS the payload and a second statement would only add a result
+ * set that could describe a different moment from the tick beside it.
+ *
+ * Existence is still the 404 test, for the reason the board's, the rail's and the pairs
+ * screen's all are, and here the distinction it preserves is the sharpest in the file: a
+ * view id with no row has never been projected, while a row carrying an EMPTY array is a
+ * real and deliberate answer meaning we ingest from nothing at all. The first is a pipeline
+ * that has not run; the second is a pipeline nobody has turned on. They produce identical
+ * screens unless they are different answers here, and telling those two apart is the entire
+ * point of the surface this feeds.
+ *
+ * It is opaque exactly like `payload` and `head`: this process does not look inside it and
+ * could not have produced it. The three-way call is made against a record in a schema the
+ * app credential has no USAGE on, and against a bar in a policy this process has never seen.
+ */
+export const SOURCE_VIEW_SQL = 'select tick, sources from public.source_view where view_id = $1';

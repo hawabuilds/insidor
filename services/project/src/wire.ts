@@ -281,6 +281,96 @@ export interface WireLaunchFeed {
   readonly source: WireFeedSource;
 }
 
+/* ── which sources we ingest from are answering ───────────────────────── */
+
+/**
+ * THE THREE-WAY CALL, ALREADY MADE.
+ *
+ * ★ A CLOSED ENUM AND NOT A BOOLEAN, AND THE THIRD MEMBER IS THE ENTIRE POINT.
+ * `WireFeedSource.live` is a boolean because the mint transport has exactly two states we
+ * can distinguish: heard from recently, or not. A source we buy has three, and two of them
+ * are both "dark" while demanding opposite responses from a human:
+ *
+ *   live     — configured, and it answered inside the bar in the policy.
+ *   dormant  — nobody turned it on. THIS IS NOT A FAULT. It is a sentence about a decision
+ *              somebody made, and rendering it the way a failure is rendered would put a
+ *              permanent alarm over a product working exactly as configured.
+ *   failing  — configured, and it is not answering. THIS IS A FAULT, and it is the one the
+ *              boolean could never say: "you are paying for this and it is broken" is a
+ *              different sentence from "you have not turned this on", and a surface that
+ *              spells them the same way is a surface on which a paid outage is invisible
+ *              for as long as it lasts.
+ *
+ * ★ THE JUDGEMENT CROSSES, NOT THE INGREDIENTS. There is no `lastErrorAt` here, no attempt
+ * count, no HTTP status, no vendor message and no bar to compare against — the same
+ * argument `WireFeedSource` makes and for the same reason. A client holding the bar could
+ * re-derive the call and disagree with us about it, and a client holding an error string
+ * would be rendering a vendor's 500 body to a user. What the screen is entitled to say is
+ * "not responding"; what the vendor said is ours.
+ */
+export type WireSourceState = 'live' | 'dormant' | 'failing';
+
+/**
+ * ONE SOURCE, AS THE INDICATOR IN THE CORNER READS IT.
+ *
+ * Four fields, and every one of them had to argue its way on.
+ *
+ * ★ `label` IS CHOSEN BY THE SERVER AND THE APP NEVER DERIVES ONE. This is the rule
+ * `WireBoardRow.sourceLabel` already states: the app never maps an internal source id to a
+ * display name, because that mapping is exactly where a newly added platform silently
+ * renders as its raw id in front of a user. The mapping lives in one Map in db.ts.
+ *
+ * ★ AND THE LABEL IS THE PLATFORM, NEVER THE VENDOR BEHIND IT. "X" and "TikTok" are what a
+ * user is told; who resells us their data is commercially ours and is on
+ * FORBIDDEN_SUBSTRINGS in both directions, so `assertNoInternalVocabulary` throws on it —
+ * in a VALUE, not only in a key. The censor is what makes that structural rather than
+ * remembered.
+ *
+ * ★ `sourceId` IS HERE ONLY SO THE CLIENT HAS A STABLE RENDER KEY. It is never rendered and
+ * never mapped; a source whose label we somehow lack is a bug in db.ts, not something the
+ * component should paper over by printing the id.
+ */
+export interface WireSourceHealth {
+  /** The internal source key. A React key and nothing else — never displayed. */
+  readonly sourceId: string;
+  /** The display string, chosen here. Bounded in length before it got onto the wire. */
+  readonly label: string;
+  /** The already-made call. The client renders it; it never re-derives it. */
+  readonly state: WireSourceState;
+  /**
+   * When this source last answered us.
+   *
+   * ★ ABSENT IS A DIFFERENT FACT FROM OLD AND STAYS SO, exactly as on `WireFeedSource`.
+   * `{ at: null }` means this source has never once answered — a credential that has never
+   * worked, or one supplied five minutes ago — which is not the same sentence as "it
+   * answered, three hours ago, and has not since". The surface says the two differently and
+   * gets that for free as long as nothing here collapses them.
+   *
+   * It is carried on the DORMANT branch too, and deliberately: a source that was turned off
+   * this morning has a real last-heard instant, and hiding it would make "we switched this
+   * off" and "this never worked" identical again one level down.
+   */
+  readonly lastHeardAt: WireInstant;
+}
+
+/**
+ * One committed frame of the indicator.
+ *
+ * ★ AN EMPTY `sources` ARRAY IS A REAL ANSWER AND MEANS SOMETHING PRECISE: we ingest from
+ * nothing at all. It is not a loading state and it is not a failure — the surface reads it
+ * as "nothing is ingesting", which on a board full of rows is the most important sentence
+ * on the screen. Nothing downstream may treat it as "no data yet".
+ *
+ * There is no `order` array beside it, for `WireLaunchFeed`'s reason: this is polled whole,
+ * so the array IS the order and a second spelling of it would be a second thing that can
+ * disagree. The order is decided once, by the projector, and is stable across frames so the
+ * pips do not shuffle under a reader's eye between polls.
+ */
+export interface WireSourceFeed {
+  readonly tick: number;
+  readonly sources: readonly WireSourceHealth[];
+}
+
 /* ── the pairs screen: the mints that reached a market ────────────────── */
 
 /**

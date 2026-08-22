@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@insidor/contracts": "workspace:*",
+    "@insidor/core": "workspace:*",
     "@insidor/platform-reddit": "workspace:*",
     "@insidor/platform-tiktok": "workspace:*",
     "@insidor/platform-x": "workspace:*",

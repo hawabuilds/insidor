@@ -98,6 +98,9 @@ importers:
       '@insidor/platform-x':
         specifier: workspace:*
         version: link:../x
+      '@insidor/vendor-kit':
+        specifier: workspace:*
+        version: link:../../kit/vendor
 
   adapters/platform/replay:
     dependencies:
@@ -278,6 +281,9 @@ importers:
       '@insidor/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@insidor/core':
+        specifier: workspace:*
+        version: link:../../core
       '@insidor/platform-reddit':
         specifier: workspace:*
         version: link:../../adapters/platform/reddit
@@ -312,9 +318,18 @@ importers:
       '@insidor/core':
         specifier: workspace:*
         version: link:../../core
+      '@insidor/meter':
+        specifier: workspace:*
+        version: link:../../adapters/meter/spend
+      '@insidor/platform-registry':
+        specifier: workspace:*
+        version: link:../../adapters/platform/registry
       '@insidor/store':
         specifier: workspace:*
         version: link:../../store
+      '@insidor/vendor-kit':
+        specifier: workspace:*
+        version: link:../../adapters/kit/vendor
 
   services/watchdog:
     dependencies:

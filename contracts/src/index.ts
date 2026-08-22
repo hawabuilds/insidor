@@ -64,6 +64,10 @@ export {
 export type { MatchEvidence, Story, StoryMember, StoryOrigin, StoryState } from './story.ts';
 export { coinOriginsVisibleTo, STORY_ORIGINS, STORY_STATES } from './story.ts';
 
+/* ── how a source is doing ────────────────────────────────────────────── */
+export type { SourceConfiguration, SourceHealth, SourceState } from './source.ts';
+export { SOURCE_CONFIGURATIONS, SOURCE_STATES } from './source.ts';
+
 /* ── assets and markets ───────────────────────────────────────────────── */
 export type {
   Asset,
@@ -125,6 +129,7 @@ export type {
   DetectPolicy,
   ExplorePolicy,
   GroupPolicy,
+  IngestPolicy,
   KineticsPolicy,
   MarketPolicy,
   Policy,
@@ -180,6 +185,7 @@ export type {
   LabelStatus,
   ObservationRepo,
   PolicyRepo,
+  SourceHealthRepo,
   StageRunOutcome,
   StageRunRepo,
   Store,

@@ -42,6 +42,15 @@
  *
  * The buy drawer is opened with a `BuyAction`, which is the only branch of the row-action
  * union carrying a confirmed coin. There is no state here that can hold an unsure match.
+ *
+ * ★ THE SECOND PIECE OF MACHINERY IS THE SOURCE INDICATOR, and it is here rather than on a
+ * screen because it describes ALL of them. Which of our inputs are answering is not a fact
+ * about the board, or the rail, or the pairs screen — it is the fact that decides what an
+ * empty one of any of them means, so it belongs to the shell that contains them all. One
+ * hook holds one frame and two elements render it: the corner of the nav says WHICH source
+ * is dark, and the banner below the nav says what that means for everything underneath. Both
+ * come from features/sources; this file makes no decision about either, and holds no state
+ * for them beyond the one call.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -60,6 +69,7 @@ import { Feed } from './features/feed/index.ts';
 import type { BuyAction } from './features/feed/index.ts';
 import { Pairs } from './features/pairs/index.ts';
 import { LiveRail } from './features/rail/index.ts';
+import { SourceBanner, SourceStatus, useSourceHealth } from './features/sources/index.ts';
 import { Story } from './features/story/index.ts';
 import { TradePanel } from './features/trade/index.ts';
 import { MintAlerts, Watchlist, createWatchStore } from './features/watchlist/index.ts';
@@ -161,6 +171,12 @@ export function App() {
   const [alerts, setAlerts] = useState(() => watchStore.alerts());
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [walletNote, setWalletNote] = useState(false);
+  /* ★ ONE FRAME, TWO PLACES. The corner of the nav and the sentence under it are two
+     renderings of the same read, so they cannot disagree — two fetches would be two frames,
+     and the pair could show a lit pip above a banner saying nothing is answering. Every
+     decision behind both lives in features/sources/sources.ts; this line is the whole of
+     the shell's involvement. */
+  const sources = useSourceHealth();
 
   const refetch = useCallback(() => {
     fetchBoard(VIEW_ID)
@@ -275,6 +291,15 @@ export function App() {
         </button>
 
         <div className={styles['navright']}>
+          {/* ★ THE TOP CORNER, WHICH IS WHERE IT WAS ASKED FOR AND ALSO WHERE IT BELONGS.
+              It sits to the LEFT of Connect, in the slot `.walletNote` already occupies at
+              already-proven metrics. It is first in this group because it is a fact about
+              everything below it, and last would put it against the edge of the window
+              where a narrow viewport clips it first.
+
+              It draws its own chrome from features/sources/sources.module.css rather than
+              from this file: the shell owns the slot, the feature owns what goes in it. */}
+          <SourceStatus view={sources} />
           {/* ★ Not a disabled button. There is no wallet behind this yet, and a greyed-out
               control says "this exists, you just may not have it" and invites waiting. It is
               live, it is pressable, and pressing it tells the truth. */}
@@ -292,6 +317,18 @@ export function App() {
           </button>
         </div>
       </nav>
+
+      {/* ★ WHEN NOTHING IS FEEDING THIS, THE SHELL SAYS SO IN WORDS, above every route.
+          Six pixels of dark shape in the corner says WHICH source is out; it cannot carry
+          "everything you are about to read is missing its inputs". An empty board and a
+          board nobody is feeding are the same picture, and this is the sentence that
+          separates them — which is the same job the launches rail's source banner and the
+          coverage log both do, arriving on the surface that had no defence at all.
+
+          It is ABOVE the fixture bar deliberately. Both are amber and both are true at once
+          in a dev build, and of the two, "nothing is ingesting" is the one that changes what
+          every row below means. */}
+      <SourceBanner view={sources} />
 
       {/* Every number below is invented. This says so, permanently and without a dismiss
           control — a banner the user can close is a banner that is absent in the screenshot

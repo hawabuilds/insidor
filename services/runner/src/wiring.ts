@@ -24,16 +24,33 @@
  * that never existed. Which stage is wired and which still refuses, and the rule
  * that decides, is argued in `work/stages.ts`.
  *
- * ADAPTERS ARE STILL NOT IMPORTED. The store-backed pulls stand in for
- * discovery, observation and the judge; where an input genuinely needs a vendor
+ * THE SEVEN STAGES ARE STILL WIRED AGAINST THE STORE. Their store-backed pulls
+ * stand in for observation and the judge; where an input genuinely needs a vendor
  * it arrives as its typed absence and the stage returns the verdict that names
- * the absence. Adding a real adapter later replaces one `pull` and changes no
- * other line in this service.
+ * the absence. Replacing one with a real adapter changes one `pull` and no other
+ * line in this service.
+ *
+ * ★ THE ADAPTERS ARE NOW IMPORTED — FOR DISCOVERY ONLY, AND THROUGH ONE CALL.
+ * `resolvePlatforms` takes the environment slice that config.ts captured at boot
+ * and returns the sources that could be built AND the ones that could not, with the
+ * reason. It cannot throw for a missing credential, so ZERO LIVE SOURCES BOOTS
+ * NORMALLY: the process starts, the health rows say what is dark and why, and the
+ * discovery loop runs over an empty set. That is the whole activation story — a
+ * credential in the environment is the only thing that turns a source on, and its
+ * absence is a displayed state rather than an outage.
+ *
+ * ★ AND EVERY LIVE ADAPTER IS WRAPPED BEFORE IT LEAVES THIS FILE. `watchedRegistry`
+ * is applied here, at the one place a registry is constructed, rather than at each
+ * call site — a loop written later would otherwise reach for the unwrapped registry,
+ * because that is what the registry function returns, and its calls would work
+ * perfectly while the health record said the source had never answered.
  */
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
-import type { Millis } from '@insidor/contracts';
-import type { DecisionRepo, StageRunRepo } from '@insidor/contracts/ports/store.ts';
+import type { Item, Millis } from '@insidor/contracts';
+import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
+import { inMemoryMeter } from '@insidor/meter';
+import { resolvePlatforms, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
   DB_ROLE,
   PgAssetRepo,
@@ -41,6 +58,7 @@ import {
   PgDecisionRepo,
   PgItemRepo,
   PgObservationRepo,
+  PgSourceHealthRepo,
   PgStageRunRepo,
   PgStoryRepo,
   asDb,
@@ -54,6 +72,7 @@ import { advisoryLockKey, policyHash } from './hash.ts';
 import type { Logger } from './log.ts';
 import type { DecisionLog, LoopDeps } from './loop.ts';
 import type { StageRunRecorder } from './run-record.ts';
+import { declareSources, watchedRegistry, type WatchDeps } from './sources.ts';
 import { storeWork, type StageRepos } from './work/stages.ts';
 
 export interface Runtime {
@@ -62,6 +81,12 @@ export interface Runtime {
   readonly loopDeps: LoopDeps;
   /** Partition maintenance and the unapplied sweep. See `maintain` below. */
   readonly maintenance: Maintenance;
+  /** Live sources, already wrapped so every call records its own outcome. */
+  readonly platforms: PlatformRegistry;
+  /** What `watched` needs, exposed so the discovery loop re-declares each pass. */
+  readonly watch: WatchDeps;
+  /** Where arrivals land. Narrow on purpose: discovery may write items and nothing else. */
+  readonly store: (items: readonly Item[]) => Promise<number>;
 }
 
 /**
@@ -128,7 +153,18 @@ export async function withRuntime<T>(
       const db = asDb(pool);
       const decisions = new PgDecisionRepo(db);
       const decisionRepo: DecisionRepo = decisions;
-      const stageRunRepo: StageRunRepo = new PgStageRunRepo(db);
+
+      /* ★ ASSIGNED DIRECTLY RATHER THAN THROUGH A LAMBDA, and that is what carries the
+         widening. `StageRunRecorder.open` takes a `SupervisedName` — wider than the
+         seven, because discovery is supervised and is not a decision stage — while
+         `PgStageRunRepo.open` takes a `StageName`. A method parameter is bivariant in
+         TypeScript, so the repository satisfies the wider port with nothing cast and
+         nothing silenced; the column it writes to is free text, which is why the
+         widening is safe at the database as well as at the type. chainwatch relies on
+         exactly this and argues it at length. A wrapping lambda would have had to cast
+         its own argument, which is the version that hides the decision. */
+      const stageRuns: StageRunRecorder = new PgStageRunRepo(db);
+      const sourceHealth: SourceHealthRepo = new PgSourceHealthRepo(db);
 
       const repos: StageRepos = {
         items: new PgItemRepo(db),
@@ -148,21 +184,6 @@ export async function withRuntime<T>(
       await decisions.recordPolicy(hash, policy, `runner boot on ${cfg.host}`);
       log.info('policy loaded', { policyHash: hash });
 
-      const stageRuns: StageRunRecorder = {
-        open: (stage, host, startedAt) => stageRunRepo.open(stage, host, startedAt),
-        // `result` carries a compression ratio this port computes for its own
-        // logging; the repository recomputes what it stores from itemsIn and
-        // itemsOut, so the extra field is ignored rather than invented.
-        close: (runId, result) =>
-          stageRunRepo.close(runId, {
-            outcome: result.outcome,
-            err: result.err,
-            itemsIn: result.itemsIn,
-            itemsOut: result.itemsOut,
-            durationMs: result.durationMs,
-          }),
-      };
-
       // Log first, act, then mark: `write` returns the row id the side effect is
       // stamped against, and nothing else in this service is allowed to reorder
       // those three.
@@ -172,6 +193,50 @@ export async function withRuntime<T>(
       };
 
       const work = storeWork(repos, policy);
+
+      /* ── the sources ────────────────────────────────────────────────────
+         Everything below is construction, and none of it can fail the boot. */
+
+      const watch: WatchDeps = { health: sourceHealth, now: () => Date.now(), log };
+
+      const runtimeDeps: PlatformRuntime = {
+        meter: inMemoryMeter({
+          dailyCapUsd: policy.budget.dailyUsd,
+          softStop: policy.budget.softStopFraction,
+          now: () => Date.now(),
+        }),
+        now: () => Date.now(),
+        /* Read off `globalThis` HERE and nowhere below. Every adapter takes it as a
+           dep precisely so that no package under adapters/ can reach the network from
+           a unit test; this is the one file entitled to hand over the real one. */
+        fetch: globalThis.fetch,
+        /**
+         * ★ NO HANDLE LOOKUP YET, AND SAYING SO IS THE POINT.
+         *
+         * One source addresses posts by URL, so re-reading one needs the author's
+         * handle. We hold that on the author row, but there is no synchronous read for
+         * it and this signature is synchronous — an adapter cannot await a database.
+         * Returning null means those posts are SKIPPED rather than requested under a
+         * guessed URL, which is the honest failure: a wrong URL costs a paid run and
+         * returns nothing, and the run would look like the source having nothing to
+         * say. What changes it is a warmed handle cache loaded per pass and closed
+         * over here; until then this is a stated absence rather than a silent one.
+         */
+        handles: () => null,
+      };
+
+      const platforms = watchedRegistry(resolvePlatforms(cfg.sourceEnv, runtimeDeps), watch);
+
+      /* ★ WRITTEN AT BOOT AND NOT ONLY PER PASS. The dormant/failing distinction has to
+         be true on a deploy where discovery is switched off entirely, and it has to be
+         true within seconds of a restart rather than at the end of the first cadence —
+         otherwise a fresh process spends five minutes with an indicator that says
+         nothing at all about sources it already knows everything about. */
+      await declareSources(platforms, watch);
+      log.info('sources resolved', {
+        live: platforms.all().map((a) => String(a.id)),
+        dark: platforms.absent().map((a) => `${a.source}:${a.configuration}`),
+      });
 
       const loopDeps: LoopDeps = {
         policy,
@@ -212,7 +277,17 @@ export async function withRuntime<T>(
           (await decisions.unapplied(sinceMs, limit)).length,
       };
 
-      return { value: await use({ db, stageRuns, loopDeps, maintenance }) };
+      return {
+        value: await use({
+          db,
+          stageRuns,
+          loopDeps,
+          maintenance,
+          platforms,
+          watch,
+          store: (items: readonly Item[]) => repos.items.upsert(items),
+        }),
+      };
     });
 
     if (outcome === null) {

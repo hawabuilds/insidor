@@ -24,8 +24,9 @@
 
 import type { Asset, MintTime } from '../asset.ts';
 import type { Decision, StageName } from '../decision.ts';
-import type { AssetKey, AuthorKey, ChainId, ItemId, StoryId, VenueId } from '../ids.ts';
+import type { AssetKey, AuthorKey, ChainId, ItemId, SourceId, StoryId, VenueId } from '../ids.ts';
 import type { Policy } from '../policy.ts';
+import type { SourceConfiguration, SourceHealth } from '../source.ts';
 import type { Story, StoryMember, StoryOrigin } from '../story.ts';
 import type {
   Author,
@@ -226,6 +227,43 @@ export interface StageRunRepo {
   openLongerThan(ms: number, now: Millis): Promise<readonly { stage: StageName; startedAt: Millis }[]>;
 }
 
+/**
+ * Per-source operational health: what configuration says, and what the calls did.
+ *
+ * ★ THREE WRITES AND NOT ONE `upsert(SourceHealth)`, because the three facts have
+ * three different owners and merging them loses the one that matters. `declare` is
+ * written by the process holding the environment and is the ONLY way `dormant` can
+ * ever be recorded — nothing observable about a source that is never called tells
+ * you whether anybody meant to call it. `recordSuccess` and `recordFailure` are
+ * written by whoever made the call, and neither may touch `configuration`: a
+ * source answering does not prove somebody configured it deliberately, and a source
+ * erroring must never be allowed to rewrite itself as unconfigured, which would
+ * turn every outage into "nobody turned this on".
+ *
+ * A whole-record upsert would let any one of the three clobber the other two, and
+ * the direction it would clobber in is always the same: toward the state that looks
+ * like nothing is wrong.
+ */
+export interface SourceHealthRepo {
+  /**
+   * Record what the environment says about this source. Idempotent; `configuredAt`
+   * moves only when the configuration itself changed, so it answers "since when has
+   * this been off" rather than "when did we last boot".
+   */
+  declare(
+    source: SourceId,
+    configuration: SourceConfiguration,
+    detail: string | null,
+    at: Millis,
+  ): Promise<void>;
+  /** A call that worked. Resets the consecutive-failure count to zero. */
+  recordSuccess(source: SourceId, at: Millis): Promise<void>;
+  /** A call that did not. `reason` is the vendor's message, kept whole. */
+  recordFailure(source: SourceId, at: Millis, reason: string): Promise<void>;
+  /** Every source we have ever declared. The projector's one read. */
+  all(): Promise<readonly SourceHealth[]>;
+}
+
 /* ── everything a service is handed ───────────────────────────────────── */
 
 export interface Store {
@@ -240,4 +278,5 @@ export interface Store {
   readonly labels: LabelRepo;
   readonly policies: PolicyRepo;
   readonly stageRuns: StageRunRepo;
+  readonly sourceHealth: SourceHealthRepo;
 }

@@ -554,6 +554,50 @@ export function fixtureLaunches(): unknown {
   };
 }
 
+/* ── which sources we ingest from are answering ───────────────────────── */
+
+/**
+ * THE INDICATOR, SHOWING ALL THREE STATES AT ONCE — which is the whole reason this fixture
+ * exists rather than three cheerful green pips.
+ *
+ * ★ IT DELIBERATELY DOES NOT CLAIM A HEALTHY PIPELINE, and that is the opposite call from
+ * `fixtureLaunches`, which claims a live feed on purpose. The rail's fixture has to show the
+ * shape the rail takes when everything works, because its failure states are already
+ * reachable by unplugging the endpoint. This one is the reverse: the three states are the
+ * entire product of the surface, two of them are visually distinct from each other in ways
+ * that are easy to get wrong, and an all-green fixture would mean nobody looked at the two
+ * that matter until the day one of them was true.
+ *
+ * So each entry is one of the decisions this surface exists to enforce:
+ *
+ *   live, heard a minute ago    → the only pip that pulses, and the only one that is filled
+ *   dormant, NEVER heard        → the quiet one. Nobody turned it on, nobody failed, and it
+ *                                 must not look like the one below it. The absent instant is
+ *                                 the honest case for a source that has never run.
+ *   failing, heard hours ago    → the loud one. Turned on, not answering. It carries a REAL
+ *                                 last-answered instant, because "answered three hours ago
+ *                                 and has not since" is a different sentence from "has never
+ *                                 answered", and the two must stay distinguishable.
+ *
+ * The order is alphabetical by source key, which is the order the projector commits, so the
+ * fixture cannot teach anybody that the list is sorted by severity — it is not, deliberately,
+ * because pips that move when a state moves cannot be read at a glance.
+ *
+ * ★ AND THE LABELS ARE PLATFORMS, NEVER WHO WE BUY THEM FROM. Two of these three arrive
+ * through a reseller whose name is on FORBIDDEN_SUBSTRINGS; putting one here would throw at
+ * the decoder, in the dev build, which is exactly where that mistake should be caught.
+ */
+export function fixtureSources(): unknown {
+  return {
+    tick: 1,
+    sources: [
+      { sourceId: 'reddit', label: 'Reddit', state: 'live', lastHeardAt: at(T0 - MIN) },
+      { sourceId: 'tiktok', label: 'TikTok', state: 'failing', lastHeardAt: at(T0 - 3 * HOUR) },
+      { sourceId: 'x', label: 'X', state: 'dormant', lastHeardAt: noTime('not_read_yet') },
+    ],
+  };
+}
+
 /* ── the pairs screen ─────────────────────────────────────────────────── */
 
 const DAY = 24 * HOUR;

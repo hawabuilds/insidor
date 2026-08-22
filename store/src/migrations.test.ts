@@ -18,6 +18,7 @@ import {
   MARKET_ABSENCE_REASONS,
   MARKET_CAP_BASES,
   MINT_TIME_SOURCES,
+  SOURCE_CONFIGURATIONS,
 } from '@insidor/contracts';
 import { STORY_ORIGINS, STORY_STATES } from '@insidor/contracts/story.ts';
 
@@ -325,6 +326,17 @@ test('the schema and the vocabulary agree on every closed list', () => {
      fall-through has never been reasoned about. */
   assert.deepEqual([...checkedValues(read('0016_story_origin.sql'), 'origin')].sort(), [
     ...STORY_ORIGINS,
+  ].sort());
+  /* ★ THE ONE WHOSE THIRD MEMBER IS THE WHOLE POINT. `dormant` and `misconfigured` are two
+     kinds of dark that demand opposite responses — a person deciding to pay for something
+     versus a person being woken up — and the cheapest way to lose that distinction is for
+     one of the two spellings of the list to be edited alone. Dropping a member from the
+     CHECK would make the writer fail on a state the code still produces; dropping one from
+     the vocabulary would make `toConfiguration` in repo/sources.ts refuse a row the database
+     happily holds, from inside `all()`, which takes the whole indicator down rather than one
+     pip. Pinned here so neither edit can happen by itself. */
+  assert.deepEqual([...checkedValues(read('0018_source_health.sql'), 'configuration')].sort(), [
+    ...SOURCE_CONFIGURATIONS,
   ].sort());
   /* All four reason columns, not just the first: they are four separate CHECKs and
      four separate opportunities for one of them to be edited alone. */

@@ -96,6 +96,24 @@ export const LAUNCH_FIELDS = [
 export const FEED_SOURCE_FIELDS = ['lastHeardAt', 'live'] as const;
 
 /**
+ * One source on the indicator. FOUR fields, and the list is doing two jobs at once.
+ *
+ * ★ WHAT IS ABSENT IS THE POINT, AND THIS IS THE PAYLOAD MOST UNDER PRESSURE TO GROW ONE.
+ * It is the thing in the corner that says something is wrong, so every instinct is to let it
+ * explain itself — a `reason` for the failure, a `threshold` the silence was measured
+ * against, a `verdict` about the vendor, a count of how many attempts failed, the vendor's
+ * own message. Every one of those is on FORBIDDEN_KEYS or FORBIDDEN_SUBSTRINGS below, and
+ * every one of them would have been published without a word if the pick did not stop it.
+ * The explanation a user is owed is the state itself.
+ *
+ * ★ AND `lastHeardAt` IS THE ONE MEASUREMENT THAT EARNS ITS PLACE, because it is a fact
+ * about the world's contact with us rather than about our own machinery — and because
+ * without it "has never answered" and "answered three hours ago" collapse into one dark pip,
+ * which is the distinction the whole surface exists to make.
+ */
+export const SOURCE_HEALTH_FIELDS = ['sourceId', 'label', 'state', 'lastHeardAt'] as const;
+
+/**
  * The pairs screen's row. TWELVE fields, and what is absent is the point.
  *
  * There is no `tradable` and no `priceChange24h`, so no buy affordance can be assembled

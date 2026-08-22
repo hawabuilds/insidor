@@ -60,3 +60,22 @@ export { rank } from './rank/stage.ts';
 export { commitBoard, committed } from './rank/hysteresis.ts';
 export type { BoardSlot, TickScore } from './rank/hysteresis.ts';
 export { kendallTau, stabilityState } from './rank/stability.ts';
+
+/**
+ * ★ AND THEN THIRTEEN, for a function that decides no verdict and writes no row —
+ * so it is argued here rather than appearing in a diff as one more line.
+ *
+ * `sourceState` is not a stage. It answers "is this source live, dormant or
+ * failing", which is a fact about OUR OWN machinery rather than about the world,
+ * and by the rule stated for `kendallTau` above that is exactly the kind of thing
+ * core computes and no screen re-derives. It is here for the reason everything
+ * else here is here: it turns on two thresholds, and a threshold typed into the
+ * process that displays it is a threshold nobody can find later.
+ *
+ * It has two callers with nothing else in common — the process that CALLS the
+ * sources, which needs to know whether it is running on nothing, and the process
+ * that DRAWS them. Neither may hold its own copy of the rule: two spellings of a
+ * three-way call drift, and they drift toward `live`, because that is the branch
+ * nobody notices being wrong.
+ */
+export { liveCount, sourceState } from './sources/state.ts';

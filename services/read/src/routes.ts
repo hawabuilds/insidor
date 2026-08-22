@@ -30,6 +30,7 @@ import {
   LAUNCH_VIEW_SQL,
   PAIR_ROWS_SQL,
   PAIR_VIEW_SQL,
+  SOURCE_VIEW_SQL,
   STORY_SQL,
   type Db,
   type Row,
@@ -276,6 +277,56 @@ async function pairs(feedId: string, deps: Deps): Promise<Reply> {
 }
 
 /**
+ * The committed set of sources, passed through untouched.
+ *
+ * Same shape and same reasoning as `payloadOf`, `sourceOf` and `headOf`: `sources jsonb not
+ * null` means the driver hands back a parsed value, and the only thing checked is that a
+ * value arrived at all. A frame carrying none must fail loudly rather than serialise to the
+ * literal `undefined`, which is not JSON and would reach the shell as a parse error instead
+ * of as the one field that says whether anything is feeding the board.
+ *
+ * ★ IT IS NOT CHECKED FOR BEING AN ARRAY, AND CERTAINLY NOT FOR BEING A NON-EMPTY ONE. An
+ * empty array is the most important answer this endpoint can give — it means we ingest from
+ * nothing — and a well-meant "if it is empty, treat it as missing" here would turn the one
+ * state the whole feature exists to surface into a 500. Shape is the client's boundary to
+ * enforce, and it does, against an allowlist this process has never seen.
+ */
+function sourcesOf(row: Row): unknown {
+  const sources = row['sources'];
+  if (sources === undefined) throw new TypeError('a projected frame arrived with no sources');
+  return sources;
+}
+
+/**
+ * GET /sources/:viewId
+ *
+ * ★ ONE STATEMENT, WHICH IS WHY THIS ROUTE LOOKS SHORTER THAN THE OTHERS RATHER THAN
+ * SIMPLER. The other three surfaces are a frame plus a row table; this one is a frame whose
+ * payload IS the whole answer, because there are three to five sources and the projector
+ * already committed their order. A second statement would buy nothing and would cost the one
+ * thing that matters here — a result set that could describe a different moment from the
+ * tick beside it.
+ *
+ * Existence is the 404 test, and the distinction it holds open is the sharpest one this
+ * service draws. A view id with no row has never been projected: the pipeline has not run.
+ * A row carrying an EMPTY array has been projected and says we ingest from nothing: the
+ * pipeline is switched off. Both produce a board with no new stories on it, they demand
+ * completely different responses from whoever is looking, and only the difference between a
+ * 404 and a 200 keeps them apart from here on down.
+ *
+ * Nothing in this function reads inside the payload, and nothing here could have produced
+ * it: the three-way call is made against a record in a schema this credential has no USAGE
+ * on, and against a bar in a policy this process has never seen.
+ */
+async function sources(viewId: string, deps: Deps): Promise<Reply> {
+  const views = await deps.db.query(SOURCE_VIEW_SQL, [viewId]);
+  const view = views[0];
+  if (view === undefined) return NOT_FOUND;
+
+  return json(200, { tick: tickNumber(view['tick']), sources: sourcesOf(view) });
+}
+
+/**
  * The whole router.
  *
  * Every throw below this line — a driver error, a broken projection, a permission
@@ -305,6 +356,7 @@ export async function handle(method: string, rawUrl: string, deps: Deps): Promis
       if (head === 'story') return await story(param, deps);
       if (head === 'launches') return await launches(param, deps);
       if (head === 'pairs') return await pairs(param, deps);
+      if (head === 'sources') return await sources(param, deps);
     }
     return NOT_FOUND;
   } catch (e) {

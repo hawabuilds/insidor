@@ -41,7 +41,16 @@
  * post count would, a match score would not.
  */
 
-import type { Fidelity, FingerprintKind, MintTimeConfidence, Millis, Rate } from '@insidor/contracts';
+import type {
+  Fidelity,
+  FingerprintKind,
+  MintTimeConfidence,
+  Millis,
+  Policy,
+  Rate,
+  SourceHealth,
+} from '@insidor/contracts';
+import { sourceState } from '@insidor/core';
 
 import { orderByRecency } from './order.ts';
 import type { Orderable } from './order.ts';
@@ -65,6 +74,8 @@ import {
   type WirePairFeed,
   type WirePairHead,
   type WirePairListing,
+  type WireSourceFeed,
+  type WireSourceHealth,
   type WireSpark,
   type WireSparkPoint,
   type WireStory,
@@ -859,6 +870,117 @@ export function projectFeedSource(
      today, and the assertion is what keeps that true when somebody adds a field. */
   assertNoInternalVocabulary(source, '$.launch_view.source');
   return source;
+}
+
+/* ── which sources we ingest from are answering ───────────────────────── */
+
+/**
+ * The two things this projection needs besides the record itself.
+ *
+ * ★ NOT `ProjectOptions`, DELIBERATELY, and it is `pairs-main.ts`'s argument repeated. That
+ * type carries `marketFreshnessMs` — the five-minute window inside which a price may be
+ * published as current — and a source indicator has no business anywhere near it. A single
+ * options object shared by both would sooner or later grow a "which surface is this" field,
+ * and then the board's five minutes would be a parameter somebody could pass differently.
+ *
+ * ★ AND IT CARRIES THE WHOLE `Policy` RATHER THAN THE TWO NUMBERS, which is the opposite of
+ * what `ProjectOptions` does and is deliberate for one reason: `sourceState` in core is the
+ * one place that decides what a source's state is, and pulling its inputs out here would be
+ * a second, silent copy of WHICH bars that rule reads — which drifts the moment the rule
+ * grows a third. The rule takes a policy; this passes a policy.
+ */
+export interface SourceOptions {
+  /** Injected, never read from the clock: a projection has to be reproducible. */
+  readonly nowMs: Millis;
+  /** Whatever was in force for this frame. Read only by `sourceState`, never here. */
+  readonly policy: Policy;
+}
+
+/**
+ * How long a source's display label may be.
+ *
+ * The indicator is a corner of a 58px nav and the whole cluster has to stay under about
+ * 140px with three sources in it, so this is a layout bound rather than a safety one —
+ * `boundedText` is doing the safety work regardless, and every label we actually ship
+ * ("X", "TikTok", "Reddit", "Instagram") is well inside it. It exists so that a source key
+ * somebody adds later cannot silently push the Connect button off the edge of the screen.
+ */
+const SOURCE_LABEL_MAX_CHARS = 12;
+
+/**
+ * ONE SOURCE, PROJECTED.
+ *
+ * ★ THE THREE-WAY CALL IS NOT MADE HERE. It is made by `sourceState` in core, which is the
+ * one place in the system that decides it, and this file calls that rather than spelling a
+ * second version of the ladder. Core's own header states the failure that would follow from
+ * two spellings, and it is worth repeating because it is not symmetric: the branch two
+ * copies drift toward is always `live`, because `live` is the branch nobody notices being
+ * wrong. The process that DOES the calling asks the same function.
+ *
+ * ★ WHAT THIS FILE DOES DECIDE IS WHAT MAY BE SAID OUT LOUD, and that is the whole of its
+ * job here. `SourceHealth` carries two pieces of operator text — `configurationDetail`,
+ * which names environment variables, and `lastFailureReason`, which is a vendor's own
+ * message kept whole and therefore names both the reseller and, often, us. NEITHER IS READ
+ * ON ANY PATH BELOW. What crosses is a label, a word, and an instant. A failure reason shown
+ * to a user is "not responding"; what the vendor actually said stays in a schema the
+ * browser's role has no USAGE on.
+ *
+ * ★ AND THE INSTANT IS DERIVED FROM THE SAME FIELD THE STATE IS, so the word and the time
+ * beside it cannot disagree. Both read `lastSuccessAt`, and both treat a non-finite value as
+ * an absence — `instant()` degrades it to the pending form and `sourceState` returns failing
+ * on it, so a corrupt row produces "has never answered, and that is a fault" rather than a
+ * green pip with a dash under it.
+ *
+ * ★ THE LABEL GOES THROUGH `boundedText` LIKE A TOKEN NAME, even though it comes from a Map
+ * we wrote. The Map has a fallback branch for a source key it does not know, and that key is
+ * a database value; the day one arrives from somewhere less careful than the registry, the
+ * difference between a bounded label and an unbounded one is the difference between a
+ * truncated pip and a nav with the Connect button pushed off the right of the screen.
+ * `boundedText` also strips control and bidi characters, which is what stops a label
+ * reordering the text around it. A label that bounds to the empty string is a source that
+ * cannot be named on a surface; the caller drops it and says so, rather than rendering a
+ * nameless pip or inventing a placeholder — a placeholder is a fiction, and a fiction is
+ * labelled a fiction or it is not shown.
+ */
+export function projectSourceHealth(
+  health: SourceHealth,
+  label: string,
+  options: SourceOptions,
+): WireSourceHealth {
+  const projected: WireSourceHealth = {
+    sourceId: health.source,
+    label: boundedText(label, SOURCE_LABEL_MAX_CHARS),
+    state: sourceState(health, options.nowMs, options.policy),
+    /* `not_read_yet` and not `not_reported`: a source that has never answered is one we have
+       not yet heard from, which is a statement about our contact with it. `not_reported`
+       would claim the source has no such concept, which is a claim about the source. */
+    lastHeardAt: instant(health.lastSuccessAt, 'not_read_yet'),
+  };
+  assertNoInternalVocabulary(projected, `$.source_view[${health.source}]`);
+  return projected;
+}
+
+/**
+ * One committed frame of the indicator.
+ *
+ * ★ IT DOES NOT SORT, AND THE REFUSAL IS THE DECISION. The obvious sort is "problems
+ * first", and it is wrong here: this is a row of three pips a reader glances at many times
+ * a day, and an order that changes when a state changes means the pip under the cursor is
+ * not the pip that was there a second ago. The order is the caller's declared order and it
+ * is stable across every frame, so a reader learns the positions once and afterwards reads
+ * the SHAPES rather than the labels. That is what makes a six-pixel indicator legible at a
+ * glance instead of something you have to stop and parse.
+ *
+ * ★ AN EMPTY ARRAY IS COMMITTED HAPPILY AND MEANS SOMETHING PRECISE: we ingest from nothing
+ * at all. It is not a missing frame — the read service answers 404 for that, which is a
+ * different fact — and it is not a loading state. The surface reads it as "nothing is
+ * ingesting", which over a board full of rows is the most important sentence on the screen.
+ */
+export function projectSourceFeed(
+  tick: number,
+  sources: readonly WireSourceHealth[],
+): WireSourceFeed {
+  return { tick, sources: [...sources] };
 }
 
 /* ── pairs: the mints that reached a market ───────────────────────────── */

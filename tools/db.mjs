@@ -9,6 +9,7 @@
  *   node tools/db.mjs market    read markets, append rows    (services/market)
  *   node tools/db.mjs project   derive the wire projection   (services/project)
  *   node tools/db.mjs pairs     derive the pairs projection  (services/project)
+ *   node tools/db.mjs sources   derive the source indicator  (services/project)
  *   node tools/db.mjs decide    run the stages, write decisions (services/runner)
  *   node tools/db.mjs psql      an interactive shell in the container
  *
@@ -190,6 +191,54 @@ $$;
 grant insidor_app to ${APP_USER};
 `;
 
+/**
+ * What the browser's role can actually reach, read back from the catalogue.
+ *
+ * ★ COUNTED, NEVER TYPED, AND THAT IS THE WHOLE REASON THIS IS A FUNCTION. The line
+ * below used to read "select on six public tables, nothing else". It was written when
+ * six was true and was never touched again; by 0017 the real number was fourteen, so
+ * the one sentence in this tool that describes the app role's blast radius had been
+ * quietly wrong for five migrations. A number typed into a summary goes stale the next
+ * time somebody adds a `grant select` line — and every one of those lines is written by
+ * hand precisely BECAUSE forgetting must fail closed, which means they arrive one at a
+ * time and nobody thinks to come back here.
+ *
+ * A summary of a security boundary that nobody can trust is worse than no summary: it
+ * is the sentence an operator reads instead of checking. Asked of the catalogue it
+ * cannot drift, and it costs one query on a command that has just run migrations.
+ *
+ * ★ AND "NOTHING ELSE" IS MEASURED TOO, not asserted. The interesting half of the claim
+ * is not how many tables the app can read; it is that it can do nothing but read. So
+ * every privilege is counted, not only SELECT, and anything beyond SELECT is named in
+ * the line rather than silently folded into a reassuring total.
+ *
+ * `count(distinct table_name)` because the catalogue records a grant per privilege per
+ * grantor, so one table can appear more than once for one privilege.
+ */
+async function appGrants(client) {
+  const { rows } = await client.query(
+    `select privilege_type, count(distinct table_name)::int as tables
+       from information_schema.role_table_grants
+      where grantee = 'insidor_app' and table_schema = 'public'
+      group by privilege_type
+      order by privilege_type`,
+  );
+  return rows;
+}
+
+function appReach(rows) {
+  const select = rows.find((r) => r.privilege_type === 'SELECT')?.tables ?? 0;
+  const beyond = rows.filter((r) => r.privilege_type !== 'SELECT');
+  const read = `select on ${select} public table${select === 1 ? '' : 's'}`;
+  /* Loud rather than tidy. A write privilege on the browser's role is not a detail to
+     mention in passing — it is the thing 0001 arranged the whole role split to prevent,
+     and the operator running migrations is the last person positioned to catch it. */
+  if (beyond.length === 0) return `${read}, nothing else`;
+  return `${read}, AND ${beyond
+    .map((r) => `${r.privilege_type} on ${r.tables}`)
+    .join(', ')} — the app role should only ever read; check the newest migration`;
+}
+
 async function migrate({ quiet = false } = {}) {
   const client = await connect();
   try {
@@ -247,7 +296,7 @@ async function migrate({ quiet = false } = {}) {
     step(ran === 0 ? 'schema already current' : `${ran} migration${ran === 1 ? '' : 's'} applied`);
 
     await client.query(APP_LOGIN);
-    step(`✓ login user ${APP_USER} → group role insidor_app (select on six public tables, nothing else)`);
+    step(`✓ login user ${APP_USER} → group role insidor_app (${appReach(await appGrants(client))})`);
   } finally {
     await client.end();
   }
@@ -395,6 +444,35 @@ async function pairs() {
 }
 
 /**
+ * The source indicator, which is a THIRD entrypoint into the same package.
+ *
+ * It answers one question — which of the sources we ingest from are answering — and it is
+ * separate for a reason the other two do not have: it reads a table the ingest side owns,
+ * on a schedule nobody else keeps. What it reports changes when somebody adds a credential
+ * or a vendor starts erroring, not when the market moves, so bolting it onto the board's
+ * run would either project it hundreds of times an hour for nothing or let a change on
+ * somebody else's table stop the board from projecting at all.
+ *
+ * It can be run at any point and needs neither `seed` nor `market`: it reads nothing the
+ * other two write. Run it after `migrate` and the indicator stops saying it has never been
+ * projected; run it before the ingest side exists and it honestly publishes an empty frame,
+ * which the app reads as "nothing is ingesting" — true, on a machine where nothing is.
+ */
+const SOURCE_PROJECTOR = join(ROOT, 'services', 'project', 'src', 'sources-main.ts');
+
+async function sources() {
+  if (!existsSync(SOURCE_PROJECTOR)) {
+    die(
+      `no source projector at ${SOURCE_PROJECTOR}.\n` +
+        '  It writes public.source_view: per source, a display label, the three-way state and\n' +
+        '  when it was last heard from. Until it runs, GET /sources/:viewId answers 404 and the\n' +
+        '  corner of the nav says nothing has recorded which sources are answering.',
+    );
+  }
+  await run(['--experimental-strip-types', SOURCE_PROJECTOR], 'the source projector');
+}
+
+/**
  * ★ THE DECISION LOG, FILLED FROM A LAPTOP.
  *
  * `internal.decisions` and `internal.labels` are the two tables in this system that
@@ -413,10 +491,18 @@ async function pairs() {
  * WHY THE ENVIRONMENT IS ASSEMBLED HERE. `config.ts` is the only module in that
  * service permitted to read `process.env`, and it refuses to start on a missing key
  * rather than inventing a default — which is correct, and which means a laptop needs
- * five variables set to run a one-shot. They are set here, once, with the values that
+ * six variables set to run a one-shot. They are set here, once, with the values that
  * are true of a one-shot: no heartbeat (there is nobody to page for a program that
- * exits), and its own lock name, so this and a running runner refuse each other
- * instead of both draining the same queue.
+ * exits), its own lock name, so this and a running runner refuse each other instead
+ * of both draining the same queue, and discovery off.
+ *
+ * ★ AND WHY EVERY ONE OF THEM HAS TO BE LISTED HERE RATHER THAN DEFAULTED THERE. The
+ * day `DISCOVER` became required, this command stopped working — it assembles its own
+ * environment and had no line for the new key, so `pnpm db:decide` failed at config
+ * load with a message about a variable nobody running it had ever heard of. That is
+ * the standing cost of "silence must be chosen", and it is the right cost: the fix is
+ * one line here declaring the choice, never a default over there that would let a
+ * production runner ingest nothing and look healthy doing it.
  */
 const DECIDE = join(ROOT, 'services', 'runner', 'src', 'decide-once.ts');
 
@@ -444,6 +530,19 @@ async function decide() {
        Two copies of this command race each other and one loses, loudly. */
     SINGLETON_LOCK_NAME: 'insidor-decide-once',
     HEARTBEAT: 'off',
+    /* ★ OFF, AND IT IS A TRUE DECLARATION RATHER THAN A CONVENIENCE. This command runs
+       the seven DECISION loops over what is already in the database; `decide-once.ts`
+       does not construct the discovery loop at all. Declaring `on` here would be a
+       claim this program cannot honour, and leaving it unset is refused by `config.ts`
+       on purpose — a defaulted-off discovery is a pipeline that runs, reports healthy
+       and ingests nothing. Off is the honest answer for a program that exits.
+
+       It does NOT make the sources dark: `withRuntime` still resolves them from the
+       environment and still writes `internal.source_health`, so a laptop that has
+       filled in a credential block sees the indicator light up after this command
+       exactly as it would under the real runner. What is switched off is the asking,
+       not the accounting. */
+    DISCOVER: 'off',
   });
 }
 
@@ -468,6 +567,7 @@ const COMMANDS = {
   market,
   project,
   pairs,
+  sources,
   decide,
   psql: async () => psql(),
 };

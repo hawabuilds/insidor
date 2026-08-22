@@ -22,6 +22,7 @@ import {
   BOARD_VIEW_SQL,
   LAUNCH_ROWS_SQL,
   LAUNCH_VIEW_SQL,
+  SOURCE_VIEW_SQL,
   STORY_SQL,
   type Row,
 } from './queries.ts';
@@ -475,4 +476,70 @@ test('a view row with no feed state is a 500, not a rail with nothing above it',
   const reply = await handle('GET', '/launches/default', deps);
   assert.equal(reply.status, 500);
   assert.doesNotThrow(() => JSON.parse(reply.body), 'every body this service sends is JSON');
+});
+
+/* ── the source indicator ─────────────────────────────────────────────── */
+
+const SOURCES = [
+  { sourceId: 'reddit', label: 'Reddit', state: 'live', lastHeardAt: { at: 1_700_000_000_000 } },
+  { sourceId: 'x', label: 'X', state: 'dormant', lastHeardAt: { at: null, why: 'not_read_yet' } },
+];
+
+test('★ an EMPTY source list is a 200, not a 404 and not a 500', async () => {
+  /* THE MOST IMPORTANT TEST IN THIS FILE FOR THIS SURFACE. An empty array means "we ingest
+     from nothing", which is a real, deliberate, load-bearing answer — it is what turns an
+     empty board from a statement about the world into a statement about us. A well-meant
+     "no sources, so treat it as missing" anywhere on this path would turn the one state the
+     whole feature exists to surface into an error page. */
+  const { deps } = fakeDb({ [SOURCE_VIEW_SQL]: [{ tick: '4', sources: [] }] });
+  const reply = await handle('GET', '/sources/default', deps);
+
+  assert.equal(reply.status, 200);
+  assert.deepEqual(JSON.parse(reply.body), { tick: 4, sources: [] });
+});
+
+test('a view id that has never been projected is a 404, which is a different fact', async () => {
+  /* "The pipeline has not run" and "the pipeline is switched off" produce the same board and
+     demand completely different responses. From here down, the only thing keeping them apart
+     is the difference between a 404 and a 200 carrying an empty array. */
+  const { deps } = fakeDb({});
+  const reply = await handle('GET', '/sources/default', deps);
+  assert.equal(reply.status, 404);
+});
+
+test('the states travel verbatim, from one statement, and nothing re-derives them', async () => {
+  const { deps, calls } = fakeDb({ [SOURCE_VIEW_SQL]: [{ tick: '9', sources: SOURCES }] });
+  const body = JSON.parse((await handle('GET', '/sources/default', deps)).body) as {
+    tick: number;
+    sources: unknown;
+  };
+
+  assert.equal(body.tick, 9);
+  assert.deepEqual(body.sources, SOURCES, 'passed through untouched');
+  assert.deepEqual(
+    calls.map((c) => c.sql),
+    [SOURCE_VIEW_SQL],
+    'exactly one statement: the frame IS the payload, so a second read could only disagree',
+  );
+  assert.match(SOURCE_VIEW_SQL, /select tick, sources from public\.source_view/);
+});
+
+test('a frame with no source list is a 500, not a nav with nothing in it', async () => {
+  /* `sources jsonb not null` means this cannot happen against our own schema, and if it
+     somehow does the honest answer is a failure rather than `undefined` — which is not JSON,
+     and which would reach the shell as a parse error rather than as the one field that says
+     whether anything is feeding the board. */
+  const { deps } = fakeDb({ [SOURCE_VIEW_SQL]: [{ tick: '3' }] });
+  const reply = await handle('GET', '/sources/default', deps);
+  assert.equal(reply.status, 500);
+  assert.doesNotThrow(() => JSON.parse(reply.body), 'every body this service sends is JSON');
+});
+
+test('a view id is a parameter here too, never interpolated', async () => {
+  const hostile = "default'; drop table public.source_view; --";
+  const { deps, calls } = fakeDb({});
+  await handle('GET', `/sources/${encodeURIComponent(hostile)}`, deps);
+
+  assert.equal(calls[0]?.sql, SOURCE_VIEW_SQL, 'byte-identical to the constant');
+  assert.deepEqual(calls[0]?.params, [hostile]);
 });

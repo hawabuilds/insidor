@@ -15,7 +15,9 @@
  *     a queryable state rather than an inference.
  */
 
-import type { Millis, StageName } from '@insidor/contracts';
+import type { Millis } from '@insidor/contracts';
+
+import type { SupervisedName } from './config.ts';
 
 export type RunOutcome = 'ok' | 'empty' | 'error';
 
@@ -31,14 +33,25 @@ export interface StageRunResult {
 }
 
 /**
- * `stage` is a StageName, not a plain string: `StageRunRepo.open` in contracts
- * takes StageName, and this service only ever supervises the seven. Another
- * writer that puts a non-stage name in the same table — chainwatch does, under
- * its own name — needs that widening to happen in the contract, not to be
- * asserted away at this seam.
+ * ★ `stage` IS A `SupervisedName` AND NOT A `StageName`, AND THAT WIDENING IS A
+ * DECISION RATHER THAN A CONVENIENCE.
+ *
+ * It used to be StageName, on the argument that "this service only ever supervises
+ * the seven". That stopped being true when discovery arrived: discovery is
+ * supervised, writes run rows, and is NOT a decision stage — `Decision.stage` is
+ * typed from STAGE_NAMES and `internal.decisions` enumerates those seven in a CHECK,
+ * so putting `discover` in that union would add a member no decision can ever carry.
+ *
+ * `internal.stage_runs.stage` is free text on purpose and chainwatch already writes
+ * to it under its own name; the ★ in services/chainwatch/src/wiring.ts argues the
+ * same widening at length and asks which side is wrong. This is the answer for this
+ * service: the RUN vocabulary is wider than the DECISION vocabulary, the port that
+ * records runs takes the wider one, and `StageRunRepo` in contracts is left alone —
+ * widening it there would let a caller pass a non-stage into a repository that also
+ * serves the decision log.
  */
 export interface StageRunRecorder {
-  open(stage: StageName, host: string, startedAt: Millis): Promise<string>;
+  open(stage: SupervisedName, host: string, startedAt: Millis): Promise<string>;
   close(runId: string, result: StageRunResult): Promise<void>;
 }
 

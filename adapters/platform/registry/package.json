@@ -11,9 +11,11 @@
     "@insidor/contracts": "workspace:*",
     "@insidor/platform-reddit": "workspace:*",
     "@insidor/platform-tiktok": "workspace:*",
-    "@insidor/platform-x": "workspace:*"
+    "@insidor/platform-x": "workspace:*",
+    "@insidor/vendor-kit": "workspace:*"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
   }
 }

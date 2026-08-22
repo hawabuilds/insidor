@@ -1,0 +1,253 @@
+/* THE SOURCE INDICATOR — the tiny corner of the nav, in Hawa's chrome.
+ *
+ * ★ NOTHING HERE IS A NEW VISUAL LANGUAGE. The container is `.walletNote`'s recipe from
+ *   App.module.css (mono 11px, --muted, a 8% white hairline over a 3% white fill, radius 8),
+ *   because that element already occupies this exact slot at these exact metrics and is the
+ *   nav's established treatment for "a quiet fact rather than a control". The micro-type is
+ *   the rail's `.status` size — 10px, --dim — which is this app's settled way of saying "a
+ *   fact ABOUT a surface rather than a value IN it". The banner is the app's single amber
+ *   surface, unchanged, at the shell margins `.fixtureBar` already uses.
+ *
+ * ★ AND THE PIPS ARE NOT COLOURED DOTS. Every state carries a SHAPE — filled disc, hollow
+ *   ring, diamond — because roughly one man in twelve cannot separate the red from the lime,
+ *   and because every screenshot pasted into a document is greyscale for everybody. The
+ *   mapping from state to shape is decided in sources.ts, not here, so that a test with no
+ *   DOM can assert the three are distinct; this file only draws them. If you change a rule
+ *   below, the thing to preserve is that the three remain distinguishable with the colour
+ *   removed — `sources.test.ts` asserts that each class declares a non-colour property, and
+ *   the assertion is there because the obvious refactor is three dots in three colours.
+ *
+ * ★ THE BRAND DOT IS DELIBERATELY NOT REUSED. `.dot` in App.module.css is 8px of --ion with
+ *   a 12px glow and it always glows, because it is a logo. A pip that borrowed it would be
+ *   lit whatever the pipeline was doing, which is the one thing this element must never be.
+ */
+
+/* Her pip pulse (index.css:99). Declared HERE and not taken from tokens.css, for the reason
+   feed.module.css and rail.module.css both record: CSS Modules scopes the animation NAME in
+   a module file, so a reference to the global `pulse` compiles to a name with no keyframes
+   behind it and the motion is silently dropped. Six such references shipped doing nothing
+   before that was noticed. */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* The cluster. A row of pips, pinned into `.navright` to the LEFT of the Connect button —
+   the slot `.walletNote` already occupies, which is literally the top corner the owner
+   asked for. `flex: none` so it never steals width from `.navsearch`, which is the only
+   elastic child of the nav. */
+.sources {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+}
+
+/* One source. `position: relative` is the anchor for the detail below it; `tabindex` is set
+   in the component, so this is a real focus target and the global `:focus-visible` ring in
+   tokens.css applies to it unchanged. */
+.src {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  /* A cursor that says "there is more here" without promising a click. Nothing in this
+     cluster is clickable: the nav says WHICH, and the banner under it says what it means. */
+  cursor: help;
+}
+
+/* The base pip. 8px rather than the rail's 6 because a HOLLOW ring at 6px with a 1.5px
+   border has a 3px hole and reads as a smudge; the shapes have to survive being small, and
+   8px is where the ring stops being ambiguous. `box-sizing: border-box` is global, so the
+   ring's border eats into the 8px rather than adding to it and all three shapes align on
+   the same baseline. */
+.pip {
+  width: 8px;
+  height: 8px;
+  flex: none;
+}
+
+/* LIVE — a filled disc, glowing, pulsing on her 2s cycle. The only solid shape and the only
+   one that moves. Motion is the strongest signal available and it is spent on the one state
+   that means "this is happening right now". */
+.disc {
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 8px var(--lime);
+  animation: pulse 2s infinite;
+}
+
+/* DORMANT — an outline, and nothing else. No fill, no glow, no motion, and no red.
+   ★ THIS IS THE STATE THE WHOLE FILE EXISTS TO GET RIGHT. Nobody has failed here; somebody
+   made a decision, and a product working exactly as configured must not look broken. Hollow
+   is the honest metaphor — there is nothing in it because nothing was put in it — and it is
+   the quietest thing on the row, which is what a non-fault deserves. --dim and not --muted
+   so it sits below the labels beside it rather than competing with them. */
+.ring {
+  border-radius: 50%;
+  background: transparent;
+  border: 1.5px solid var(--dim);
+  box-shadow: none;
+  animation: none;
+}
+
+/* FAILING — a diamond, red, still, with a soft ring around it.
+   ★ THE SHAPE IS DOING THE WORK, NOT THE COLOUR. It is the only shape on the row with
+   corners, so it is findable in peripheral vision and it survives greyscale; the red and the
+   halo are confirmation for the readers who can use them, not the signal itself. Still and
+   not pulsing, deliberately: motion means "something is happening", and what is happening
+   here is nothing. That is the same argument feed.module.css makes about `.lzDead`, and the
+   `rgba(255, 92, 110, 0.18)` halo is copied from it verbatim so the two read as one
+   vocabulary. Slightly smaller than 8px because a square gains about 40% across the diagonal
+   when it is turned, and at 8px it would out-size the other two. */
+.diamond {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--red);
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 3px rgba(255, 92, 110, 0.18);
+  animation: none;
+}
+
+/* ★ THE MOTION STOPS WHEN OUR OWN READ STOPS, and only the motion. A pulsing dot claims
+   "right now", and a state we have not been able to refresh for three polls is not a claim
+   about right now. The pip keeps its SHAPE and its colour, because the state we last read is
+   still the last true thing we know and blanking it would throw away information because a
+   later request failed — the rail's grammar, "say what it is", never "show less". The note
+   beside the row is what says how old the claim is. */
+.stalled .disc {
+  animation: none;
+  box-shadow: none;
+}
+
+/* The label. The server chose this string and this app never derives one; it is rendered as
+   text and is bounded before it gets here. */
+.label {
+  color: var(--dim);
+}
+
+/* A failing source gets its word in red as well as its shape, for feed.module.css's reason
+   about `.lzDeadTxt`: the pip is seven pixels and the label is the part people actually
+   read. It is redundant with the shape on purpose — redundancy is what makes it legible to
+   somebody who cannot use either channel on its own. */
+.labelFailing {
+  color: var(--red);
+}
+
+/* The dash-with-a-cause, and the "not updating" line. `.walletNote`'s recipe at the rail's
+   `.status` scale: this is a fact about our own check rather than about any source, so it
+   sits apart from the pips in the dimmest treatment available. */
+.note {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 3px 7px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* ★ THE DETAIL, ON HOVER AND ON KEYBOARD FOCUS — and the focus half is why this exists at
+   all rather than a plain `title`. A native tooltip appears on hover and NEVER on focus, so
+   a `title` alone would put the whole explanation behind a mouse. `:focus-within` is what
+   makes the sentence reachable by tab, and the `aria-label` in the component is what makes
+   it reachable by a screen reader. All three carry the same string, chosen in sources.ts.
+
+   `pointer-events: none` so the tooltip cannot swallow a click aimed at the nav underneath
+   it, and `visibility` alongside `opacity` so it is not a focusable, hoverable invisible
+   rectangle sitting over the page when it is closed. */
+.tip {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 60;
+  max-width: 260px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s var(--ease);
+}
+
+.src:hover .tip,
+.src:focus-within .tip,
+.note:hover .tip,
+.note:focus-within .tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ★ RESPONSIVE, AND THE INDICATOR OUTLIVES THE WALLET NOTE. App.module.css drops
+   `.navsearch` at 1180px and `.walletNote` at 760px. At 760 this keeps its pips and drops
+   only the WORDS: a reader who has learned the three positions can still read three shapes,
+   and the sentence is still one tap away in the tooltip. The cluster leaves entirely only
+   below 560px, where the brand and the Connect button have the width to themselves. */
+@media (max-width: 760px) {
+  .label,
+  .note {
+    display: none;
+  }
+
+  .sources {
+    gap: 7px;
+  }
+}
+
+@media (max-width: 560px) {
+  .sources {
+    display: none;
+  }
+}
+
+/* ★ THE SHELL'S BANNER. The app's one amber surface, unchanged, at the margins `.fixtureBar`
+   already uses — same 12% fill, same 35% border, same mono 11px. It is reused rather than
+   redrawn for the reason Pairs.tsx gives when it imports the rail's stylesheet for one
+   class: amber is this app's single "degraded but not broken" signal, and a second amber
+   would dilute the one that already means something.
+ *
+ * ★ IT IS NOT WHAT THE PIPS ARE. A pip is a continuously-displayed STATE in three values;
+ * this is a sentence, shown only when one is genuinely owed. Painting the nav amber instead
+ * would make DORMANT — an explicitly non-fault state — look like a fault, which is the exact
+ * confusion the three states exist to end.
+ *
+ * `role="status"` and never `alert`, in the component: this is a degradation a reader should
+ * notice, not an interruption. */
+.banner {
+  margin: 12px 26px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 176, 32, 0.12);
+  border: 1px solid rgba(255, 176, 32, 0.35);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.banner b {
+  color: #ffe8b0;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+}
