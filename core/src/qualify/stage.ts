@@ -35,6 +35,24 @@ import { isGenericTicker } from './generic-tickers.ts';
 import { nameabilityCap, subjectSpecificity } from './nameability.ts';
 import { distinctAuthors, distinctSources, freeJoinShare } from './rules.ts';
 
+/**
+ * The stage's identity, copied onto every row it writes. See `admit/stage.ts` for the
+ * full argument: `DECIDER` moves when the rule changes, `FEATURE_SET` when the vector's
+ * shape does.
+ *
+ * ★ IT IS THE FALLBACK, NOT THE ANSWER. `decide()` below writes `scorer.id` when a
+ * learned scorer is configured and this constant only when none is — so `DECIDER`
+ * spells what judged the row on the day no model existed, and the log distinguishes
+ * the two eras without anybody having to remember when the switch happened. The gated
+ * rows keep `DECIDER` regardless, and the invariant that makes that legible is shared
+ * with RESOLVE and RANK: wherever `score` is null, no scorer decided.
+ *
+ * ★ AND IT STAYS `rule:` EVEN THOUGH A LANGUAGE MODEL IS CONSULTED HERE. The judge's
+ * answer arrives as an INPUT and the deterministic caps run after it and may only lower
+ * it, so what decided is still this rule; `Judgement.judgeId` is where the model's
+ * identity is recorded. Spelling this `judge:...` would credit the model for refusals it
+ * did not make and hide the caps from anyone reading the log.
+ */
 export const NAME = 'qualify' as const;
 export const FEATURE_SET: FeatureSetId = 'story.qualify.v1';
 export const DECIDER = 'rule:qualify@1';

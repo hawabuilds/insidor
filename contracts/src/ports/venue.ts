@@ -31,6 +31,15 @@ import type { AssetRef, ChainId, VenueId } from '../ids.ts';
 import type { Millis } from '../vocabulary.ts';
 import type { Budget, Metered } from './meter.ts';
 
+/**
+ * What a venue can actually do, declared rather than discovered.
+ *
+ * Five capabilities and not one interface, because no venue has all five and a venue
+ * that stubbed the ones it lacks would answer a question it cannot answer. The
+ * declaration is DOUBLE: this array on `Venue.capabilities` says what is claimed, and
+ * the optional sub-ports below say what is implemented. A caller must check both — the
+ * array is what a planner reads before spending, the port is what it calls.
+ */
 export const VENUE_CAPABILITIES = ['watch', 'read', 'assess', 'trade', 'create'] as const;
 
 export type VenueCapability = (typeof VENUE_CAPABILITIES)[number];
@@ -54,6 +63,13 @@ export interface VenueWatch {
   since(cursor: string | null, budget: Budget): Promise<Metered<MintPage>>;
 }
 
+/**
+ * A page of mints AND the interval it is a page OF. The second half is the point: an
+ * empty `events` array means nothing without `coveredFrom`/`coveredTo`, because "no
+ * mints happened" and "we did not look" are the same empty array. Coverage recorded
+ * from these two fields is what later turns a label into `censored` rather than a
+ * false negative.
+ */
 export interface MintPage {
   readonly events: readonly MintEvent[];
   readonly cursor: string;
@@ -114,6 +130,13 @@ export interface Signer {
   sign(payload: Uint8Array): Promise<Uint8Array>;
 }
 
+/**
+ * What came back from submitting. `confirmedAt` and `filledOut` are nullable because
+ * `submitted` is a real, common, long-lived state — a receipt is not a settlement, and
+ * treating one as the other is how a fill gets counted that never happened. `ref` is
+ * opaque and stays opaque: parsing it would put a chain's transaction format into a
+ * layer that is not allowed to know chains exist.
+ */
 export interface TradeReceipt {
   readonly asset: AssetRef;
   readonly venue: VenueId;
@@ -125,6 +148,16 @@ export interface TradeReceipt {
   readonly status: 'submitted' | 'confirmed' | 'failed' | 'expired';
 }
 
+/**
+ * One market, as the set of things it can do. The four sub-ports are OPTIONAL and that
+ * is the design: a venue we can watch and read but not trade is a first-class venue,
+ * not a broken one, and the type says so instead of a runtime `notImplemented` throw.
+ *
+ * `enabled` and `adjudicatedLabels` are both about not throwing history away. A venue
+ * turned off keeps its rows, so its old labels stay joinable; a venue below the label
+ * floor still produces decisions, but they are capped at `unsure` because a score
+ * calibrated on other venues is not a score here.
+ */
 export interface Venue {
   readonly id: VenueId;
   readonly chain: ChainId;

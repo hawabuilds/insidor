@@ -95,6 +95,11 @@ export const WALLET_FAILURES = [
 
 export type WalletFailure = (typeof WALLET_FAILURES)[number];
 
+/**
+ * The state names, as a list, so a caller can enumerate them. The argument for why there
+ * are seven and why none of them collapses is on `WalletState` below — read that one;
+ * this array exists only so the union has a runtime spelling.
+ */
 export const WALLET_STATES = [
   'unavailable',
   'disconnected',

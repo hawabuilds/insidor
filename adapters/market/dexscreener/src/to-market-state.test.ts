@@ -1,6 +1,28 @@
 /**
  * Two fixtures, one distinction, and the most expensive bug in the previous
  * build sits exactly between them.
+ *
+ * ★ NAME THE BUG, SO NOBODY HAS TO REDISCOVER IT. `CURVE_RESPONSE` has no
+ * `liquidity` key; `DRAINED_RESPONSE` has one set to zero. The build this
+ * replaces read both as 0 and then filtered on it. A bonding-curve pair has no
+ * two-sided reserve to report, so every pre-graduation coin looked drained, was
+ * filtered out as low quality, and the product's entire reason for existing —
+ * seeing a thing early — was removed by a quality filter that had quietly become
+ * a survivorship filter. Nothing errored. The board simply only ever showed
+ * coins that had already made it.
+ *
+ * So the first test is the whole file in one line, and the rest of the tests are
+ * the same distinction wearing other clothes: a price change absent because the
+ * pair has not lived a day is not a change of zero; a mint time this vendor
+ * cannot supply is `unknown`, not the epoch; a token it has never heard of
+ * returns nulls, not a row of zeros. Any assertion here that starts passing
+ * because a mapper learned to default is a regression, not a simplification.
+ *
+ * WHY THESE LIVE BESIDE THE MAPPERS RATHER THAN IN THE CONFORMANCE SUITE. The
+ * suite asserts the rule every venue must obey. This file asserts what THIS
+ * vendor does — which pool the price is read from, which venue ids count as
+ * curves — and those are claims about dexscreener that would be meaningless
+ * anywhere else.
  */
 
 import test from 'node:test';

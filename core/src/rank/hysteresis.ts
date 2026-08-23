@@ -54,6 +54,24 @@ import type { Millis } from '@insidor/contracts/vocabulary.ts';
 
 import { MS_PER_SECOND } from '../math.ts';
 
+/**
+ * One place on the board — and THE MEMORY the header argues the board must have. These
+ * three fields are all of it: without them `commitBoard` sees only the current instant
+ * and cannot be anything but a sort.
+ *
+ * Two counters and not one because they count for two different populations against two
+ * different bars: `ticksBelow` accrues only on a COMMITTED row that keeps failing, and
+ * `ticksAbove` only on a BENCHED row that keeps qualifying. Each is zeroed the moment a
+ * row changes side. A single signed counter would carry a row's benched history into its
+ * committed life and let one tick above pay for one tick below, which is precisely the
+ * cancellation the asymmetry exists to prevent. `enteredAt` is the clock the minimum
+ * dwell is measured from — stamped on entry, then never touched again.
+ *
+ * ★ AND THE CONSEQUENCE OF LOSING THEM: this struct is the caller's to persist between
+ * ticks. Hand `commitBoard` a freshly-built slot each tick and every rule here still
+ * runs, still typechecks and does nothing — every counter reads zero forever, and the
+ * board flickers exactly as if this file did not exist.
+ */
 export interface BoardSlot {
   readonly subjectId: string;
   readonly score: number;

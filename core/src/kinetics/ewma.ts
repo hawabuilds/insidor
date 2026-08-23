@@ -20,6 +20,15 @@
 
 import type { Millis } from '@insidor/contracts/vocabulary.ts';
 
+/**
+ * An average AND the instant it is current as of. The second field is what makes this a
+ * continuous-time average rather than a discrete one: decay is computed from the elapsed
+ * gap, so an irregular sampling grid does not bias the result.
+ *
+ * Store the value without the timestamp and the only thing left to decay by is "one
+ * step", which silently reweights an item read every minute against one read every hour
+ * — mechanically favouring whatever the scheduler happened to sample most.
+ */
 export interface Ewma {
   readonly value: number;
   /** The instant of the most recent sample folded in. Decay is measured from here. */

@@ -50,6 +50,19 @@ import { carrierWeight } from './persistence.ts';
 import { imageHashDistance } from './phash.ts';
 import { hammingHex } from './simhash.ts';
 
+/**
+ * One shared carrier, with how close it matched and what that match is WORTH.
+ *
+ * The weight is on the match rather than left to the caller because "these two share a
+ * carrier" is not evidence on its own — a symbol every member of a corpus mentions is
+ * shared by everything and means nothing. Keeping the weight beside the carrier makes
+ * it impossible to count presence and forget value, which is a mistake this codebase has
+ * already made once at the merge sweep (see `group/merge.ts`).
+ *
+ * `distance` is null for exact-match kinds and that is not "distance zero": an exact
+ * carrier has no metric at all, and a null says so rather than implying a perfect score
+ * on a scale that does not exist here.
+ */
 export interface CarrierMatch {
   readonly carrier: Fingerprint;
   /** Hamming-style distance for hash carriers; null for exact-match kinds. */

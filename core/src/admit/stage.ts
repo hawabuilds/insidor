@@ -38,6 +38,20 @@ import { MS_PER_MINUTE, clamp01, safeRatio } from '../math.ts';
 import { isExploreDraw, isHoldout } from '../track/holdout.ts';
 import { engagementBait, threadContinuation } from './bait.ts';
 
+/**
+ * ★ THE STAGE'S IDENTITY. All three are copied onto every row this stage writes, and
+ * both versioned ones are cheap to bump and unrecoverable to have not bumped.
+ *
+ * `DECIDER` answers "what made this call". Change what the rule DOES without moving
+ * the `@n` and two different deciders become indistinguishable in the log forever —
+ * there is no other column that separates them, because the policy hash moves only
+ * when a threshold moves, not when the logic around it does.
+ *
+ * `FEATURE_SET` names a SHAPE, not a stage. Add, drop or repurpose a key in `extract`
+ * below and this must move with it, or a training job pools two different vectors
+ * under one name and the model gets worse with nothing to point at. See
+ * `group/stage.ts`, where exactly that bump was made and argued.
+ */
 export const NAME = 'admit' as const;
 export const FEATURE_SET: FeatureSetId = 'item.admit.v1';
 export const DECIDER = 'rule:admit@1';

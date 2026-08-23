@@ -86,6 +86,7 @@ export function sourceId(token: string): SourceId {
   return assertToken(token, 'sourceId') as SourceId;
 }
 
+/** Registers an opaque chain token, supplied by an adapter. Never a chain name here. */
 export function chainId(token: string): ChainId {
   return assertToken(token, 'chainId') as ChainId;
 }
@@ -95,10 +96,21 @@ export function venueId(chain: ChainId, market: string): VenueId {
   return `${chain}${SEP}${assertToken(market, 'venueId')}` as VenueId;
 }
 
+/**
+ * Source-qualified, because a raw source item id is only unique within its source and
+ * two of them will eventually collide. Qualifying is not cosmetic: the collision would
+ * merge two unrelated items into one row and there would be nothing anomalous to find.
+ */
 export function itemId(source: SourceId, sourceItemId: string): ItemId {
   return `${source}${SEP}${assertToken(sourceItemId, 'itemId')}` as ItemId;
 }
 
+/**
+ * The account, qualified by its source, and built from the STABLE id rather than the
+ * handle. Handles are renamed and re-issued to different people; keying breadth on one
+ * would let a rename split one author into two and inflate the count the whole product
+ * claim rests on.
+ */
 export function authorKey(source: SourceId, stableAuthorId: string): AuthorKey {
   return `${source}${SEP}${assertToken(stableAuthorId, 'authorKey')}` as AuthorKey;
 }

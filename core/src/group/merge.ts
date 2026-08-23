@@ -36,6 +36,17 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 import { safeRatio } from '../math.ts';
 import { carrierMatches, weightOf, type CarrierCorpus } from './carriers.ts';
 
+/**
+ * A proposed fold of one story into another. A PLAN and not the act: this file decides,
+ * something in store/ executes, and separating them is what lets the decision be logged
+ * and replayed without a database.
+ *
+ * ★ THE TWO FIELDS ARE NOT INTERCHANGEABLE and the type cannot stop you swapping them,
+ * because both are a `Story`. `planMerge` decides the direction by `earliestPostAt` for
+ * the reason argued at the top of this file; anything that constructs a `MergePlan` by
+ * hand — a test fixture, a repair script — inherits the obligation and gets no compiler
+ * help with it. That is the one thing to check when reading a caller of this type.
+ */
 export interface MergePlan {
   readonly into: Story;
   readonly from: Story;

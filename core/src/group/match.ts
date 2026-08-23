@@ -188,6 +188,21 @@ export interface CarrierChannel {
   readonly byKind: Readonly<Record<FingerprintKind, CarrierKindDetail>>;
 }
 
+/**
+ * The free tier's whole contribution to one pair, as a struct rather than a number.
+ *
+ * It returns a struct because a bare weight cannot answer the question the caller
+ * actually has to answer afterwards: WHY this pair scored what it did. `best` is the
+ * carrier the join would be recorded on, `byKind` is what fired and what did not, and
+ * `sharedCount` separates "shared nothing" from "shared something worthless". Collapse
+ * this to a number and `M3_below_match_bar` and `M5_generic_carrier` become the same
+ * row — which is the difference between "the grouper is quiet" and "the generic-carrier
+ * rule is eating a third of the traffic", and only one of those is actionable.
+ *
+ * `corpus` defaults to empty on purpose: with no document frequencies every carrier is
+ * weighed at its base weight, which is a degradation and not a failure. The persistence
+ * table accrues forward only, so this path is the normal one until it has filled.
+ */
 export function carrierChannel(
   item: Item,
   story: Story,
@@ -345,6 +360,19 @@ export function timeGapMs(item: Item, story: Story): number | null {
   return 0;
 }
 
+/**
+ * The time gap as a channel in [0,1], decaying exponentially with `timeProximityTauMs`.
+ *
+ * WHY A DECAY AND NOT A WINDOW: a window is a cliff, and a cliff makes the join depend
+ * on which side of a threshold a clock we do not control happened to land. Two items
+ * posted a second apart across the boundary would get opposite answers. A decay makes
+ * lateness cost score continuously, so time can lose to strong carrier evidence rather
+ * than veto it — which is what lets a story keep accreting versions for days.
+ *
+ * Null propagates from `timeGapMs`, and must keep propagating: a missing post time is
+ * an absent channel, and scoring it as a proximity of zero would penalise every source
+ * that omits the field.
+ */
 export function timeProximity(item: Item, story: Story, p: Policy): number | null {
   const gapMs = timeGapMs(item, story);
   if (gapMs === null) return null;
@@ -555,6 +583,27 @@ function strongestPairFirst(a: MatchResult, b: MatchResult): number {
   return a.story.storyId < b.story.storyId ? -1 : 1;
 }
 
+/**
+ * Turns a scored block into ONE outcome, and it is the only place the pair decision is
+ * actually made — `carrierChannel` and `timeProximity` only measure.
+ *
+ * ★ THE ORDER OF THE TESTS IS THE DESIGN AND IT IS NOT INTERCHANGEABLE. The bar runs
+ * before the band. Ask about the margin first and every quiet block — where the best
+ * candidate is far below the bar and the runner-up is right behind it — becomes
+ * `ambiguous` and goes to a human, who then reads two pairs that were both obviously no.
+ * The adjudication queue is a scarce, expensive resource; filling it with rejections is
+ * how it stops being read at all.
+ *
+ * ★ AND `ambiguous` IS NOT `rejected`. A margin inside `adjudicationBand` means our own
+ * ordering is inside its own noise. Joining to the higher of two indistinguishable
+ * stories would not be more accurate — it would be exactly as accurate and no longer
+ * able to say it was a guess, which is the one thing that makes the pair worth labelling
+ * later.
+ *
+ * Sorting goes through `strongestPairFirst` rather than a score comparator so the
+ * ranking is a total order: ties broken by story id mean the same block produces the
+ * same answer on replay, whatever order the candidates arrived in.
+ */
 export function adjudicate(results: readonly MatchResult[], p: Policy): MatchOutcome {
   if (results.length === 0) return { kind: 'empty' };
 

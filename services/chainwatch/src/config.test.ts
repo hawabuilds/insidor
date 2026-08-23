@@ -1,3 +1,33 @@
+/**
+ * The property under test is not "config parses". It is "config REFUSES".
+ *
+ * ★ AND THE REFUSALS THAT MATTER HERE ARE RELATIONAL, which is what separates this file
+ * from the other config tests in the workspace. COVERAGE_TOLERANCE_MS,
+ * MINT_STREAM_BUFFER_LIMIT and MINT_STREAM_STALE_MS are each plausible at almost any
+ * value on their own; they are wrong only in relation to POLL_INTERVAL_MS and PAGE_LIMIT.
+ * A tolerance at or below the poll interval — or a staleness window at or below it —
+ * marks every ordinary quiet cycle as a hole. A buffer smaller than a page can never fail
+ * to look full, so every busy window reports an overflow that did not happen.
+ *
+ * All three land in the same place: a coverage log full of gaps nobody caused, which is
+ * worse than no coverage log, because a real gap stops being visible in it. Nothing at run
+ * time notices — the process is healthy, the rows are written, the numbers have simply
+ * stopped meaning anything. There is no other check anywhere that reads these five
+ * variables together, so if these tests go, the pairing goes with them.
+ *
+ * The two no-default cases are here for the reasons config.ts gives, restated as tests so
+ * the reasons survive a refactor: a chain inferred from whatever a feed happened to return
+ * files this watcher's coverage under somebody else's chain (and cannot be inferred at all
+ * on a cycle that saw no mints), and a defaulted MINT_OBSERVATION_LAG_S lets whoever last
+ * edited a constant decide whether the pre-mint ordering gate measures anything.
+ *
+ * ★ THE LAST TEST IS THE ONE TO KEEP IF THE REST GO. "Every problem is reported at once"
+ * is the difference between one boot and one restart per wrong variable, and it is easy to
+ * break by accident: any validation that THROWS where it should push onto `problems`
+ * truncates the report to the first fault found. config.ts defers `chainId()` past the
+ * report for exactly that reason, and this test is what would catch the next one.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

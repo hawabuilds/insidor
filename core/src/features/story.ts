@@ -48,6 +48,11 @@ import type { Millis } from '@insidor/contracts/vocabulary.ts';
 import { MS_PER_MINUTE, clamp01, safeRatio } from '../math.ts';
 import { distinctAuthors, distinctSources, freeJoinShare } from '../qualify/rules.ts';
 
+/**
+ * Keyed on the SUBJECT and not on a stage — see `features/candidate.ts` for the argument.
+ * A story vector is logged by QUALIFY today and by anything that scores a story later,
+ * and one name over one shape is what keeps those from becoming two shapes over two.
+ */
 export const FEATURE_SET: FeatureSetId = 'story.wide.v1';
 
 const PRESENT = 1;

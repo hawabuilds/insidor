@@ -891,6 +891,18 @@ export interface ExplorePolicy {
   readonly fullFidelityDays: number;
 }
 
+/**
+ * Spend, as one daily cap AND a line per capability — deliberately not one pot.
+ *
+ * A single daily number is spent in arrival order, which means the cheapest, most
+ * numerous calls consume it first and the pipeline dies from the far end: discovery
+ * exhausts the day, nothing is judged, nothing is quoted, and the board is empty for a
+ * reason no dashboard shows. Per-capability lines make the failure local — discovery
+ * stops and everything downstream of what was already discovered still completes.
+ *
+ * `softStopFraction` is the other half of that: stopping a vendor AT its line strands
+ * work in flight, so the stop lands early enough to finish what was started.
+ */
 export interface BudgetPolicy {
   readonly dailyUsd: number;
   readonly discoveryUsdPerDay: number;

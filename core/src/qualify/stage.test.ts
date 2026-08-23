@@ -1,6 +1,20 @@
 /**
  * What QUALIFY must be true of. Most of these assert that a confident judge does not
  * get its way — which is the only reason the stage is shaped the way it is.
+ *
+ * The rule being held is an ORDERING, and an ordering is the kind of thing no type can
+ * enforce: the deterministic caps run AFTER the judge's score and may only lower it.
+ * Reorder those two and the code still compiles, still returns a number in [0,1], and
+ * still looks correct in review — the only thing that changes is that a model can argue
+ * its way past a rule whose inputs are ours. The cap test is written to fail in exactly
+ * that case: it pins `score === 0.5`, the cap, against a weighted sum of 0.71 that would
+ * otherwise have carried the story past the bar.
+ *
+ * ★ AND TWO TESTS ARE ABOUT ABSENCE, NOT DISAGREEMENT. A story the judge never saw and a
+ * story the judge declined are different populations, so they are `abstain` with a named
+ * reason rather than `drop`. If those two ever collapse into one verdict, the stage's
+ * recall becomes unmeasurable — an outage and a rejection would be the same row — and
+ * nothing downstream would report an error, because both are perfectly valid decisions.
  */
 
 import { strict as assert } from 'node:assert';

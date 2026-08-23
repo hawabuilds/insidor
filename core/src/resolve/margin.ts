@@ -22,6 +22,12 @@ export interface Separation {
   readonly margin: number | null;
 }
 
+/**
+ * Bundles the two scores with their difference, so `isConfident` cannot be called with
+ * a margin somebody computed at the call site. The subtraction is trivial; doing it in
+ * one place is what guarantees the `null`-means-no-second case is handled identically
+ * everywhere, and that case is the one a caller writing `best - second` gets wrong.
+ */
 export function separation(best: number, second: number | null): Separation {
   return { best, second, margin: second === null ? null : best - second };
 }

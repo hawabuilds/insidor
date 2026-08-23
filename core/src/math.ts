@@ -39,6 +39,12 @@ export function clamp01(x: number): number {
   return x;
 }
 
+/**
+ * The general form. NaN goes to `lo` rather than propagating — the same trade `clamp01`
+ * makes, and for the same reason: every caller here is bounding a score, and a NaN score
+ * sorts unpredictably and is invisible in the decision row, whereas a floored one is
+ * merely wrong in a direction somebody can see.
+ */
 export function clamp(x: number, lo: number, hi: number): number {
   if (Number.isNaN(x)) return lo;
   return x < lo ? lo : x > hi ? hi : x;
@@ -179,10 +185,15 @@ export function gammaQuantile(p: number, shape: number, rate: number): number {
  * regularized incomplete beta, which needs a log-gamma. Every one of those carries
  * bare numeric constants that are the ALGORITHM rather than a judgement — the Lanczos
  * coefficients are not a threshold anybody may tune, and no amount of product thinking
- * makes them different numbers. `tools/check-policy.mjs` exempts exactly one file for
- * exactly that reason, and this is it. Putting them in `poisson.ts` fails CI, and
+ * makes them different numbers. `tools/check-policy.mjs` names this file on its
+ * allowlist for exactly that reason. Putting them in `poisson.ts` fails CI, and
  * correctly: the check cannot tell a fitted constant from a bar, so the rule is
  * positional and the position is here.
+ *
+ * (The allowlist has since grown to `hash.ts` and `bits.ts` as well, on the same
+ * argument — an algorithm's own constants are not judgements. It is still a SHORT list
+ * that costs a reason per entry, which is what keeps "exempt by design" from becoming
+ * "exempt because it was easier".)
  *
  * ★ AND WHY EVERY ONE OF THEM RETURNS A LOGARITHM. The quantity being computed is an
  * upper-tail probability, and an interesting one underflows to exactly 0 in double

@@ -12,6 +12,14 @@
 
 import type { StoryMember } from '@insidor/contracts/story.ts';
 
+/**
+ * How many different people made a version of this. The single most load-bearing number
+ * in the product's claim, which is why it counts DISTINCT `authorKey` and not members.
+ *
+ * `authorKey` is source-qualified and built from a stable account id, never a handle —
+ * so a renamed account stays one author here rather than splitting into two and
+ * inflating the count that every breadth gate downstream is expressed in.
+ */
 export function distinctAuthors(members: readonly StoryMember[]): number {
   const seen = new Set<string>();
   for (const m of members) seen.add(m.authorKey);

@@ -18,6 +18,12 @@
 import type { MediaRef } from '../vocabulary.ts';
 import type { Budget, Metered } from './meter.ts';
 
+/**
+ * A vector AND the space it lives in. The two travel together and must never be
+ * separated: a cosine between vectors from different spaces is a perfectly well-formed
+ * number that means nothing, and the failure is silent — it looks like a similarity and
+ * ranks like noise. Carrying `space` on the value is what lets a consumer refuse.
+ */
 export interface Embedding {
   /** Opaque space id, e.g. 'text.v2'. Vectors from different spaces never compare. */
   readonly space: string;
@@ -25,6 +31,13 @@ export interface Embedding {
   readonly values: Float32Array;
 }
 
+/**
+ * The port, with its shape DECLARED on the interface rather than discovered from a
+ * response. `space`, `dimensions` and `maxBatch` are readable before any call is made,
+ * which is what lets a caller size a batch and check a bar's calibration without
+ * spending money to find out. A port that only revealed its space in the reply would
+ * make "is this bar valid here" a question you can only answer after paying.
+ */
 export interface EmbedPort {
   readonly id: string;
   readonly space: string;

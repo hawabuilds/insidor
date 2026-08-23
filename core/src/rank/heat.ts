@@ -37,6 +37,24 @@ export interface HeatInputs {
   readonly ageMin: number;
 }
 
+/**
+ * The ranking score: rate × √burst × quality, compressed by `alpha`, divided by age.
+ *
+ * ★ WHY BURST IS UNDER A SQUARE ROOT rather than entering linearly. Burst is a RATIO of
+ * two decays, so it is unbounded above — a lull followed by any activity at all produces
+ * an enormous fast/slow — and multiplying by it directly lets one such item take the top
+ * of the board away from something with an hour of consistent evidence behind it. The
+ * root keeps burst as a strong tiebreaker while making the rate the thing that decides.
+ *
+ * ★ AND WHY AGE IS A DIVISOR AND NOT A MULTIPLIER. `t0Min` shifts the curve so that a
+ * minutes-old item is not dividing by something near zero, which would be an infinity
+ * rather than a very fresh item. Age decays what is already there; it never manufactures
+ * heat from nothing, which is what an additive freshness bonus would do.
+ *
+ * `base <= 0` short-circuits to 0 rather than falling into `Math.pow`, because a
+ * fractional exponent over a negative base is NaN, and a NaN reaching `Decision.score`
+ * would sort unpredictably and be invisible in the row.
+ */
 export function heat(o: HeatInputs, p: Policy): number {
   const base = o.rateLcbNorm * Math.sqrt(Math.max(o.burst, 0)) * o.quality;
   if (base <= 0) return 0;

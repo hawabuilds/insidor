@@ -21,6 +21,19 @@ import type { StoryId } from '../ids.ts';
 import type { MediaRef } from '../vocabulary.ts';
 import type { Budget, Metered } from './meter.ts';
 
+/**
+ * One story, packaged for the judge — and note what is NOT here: the story object, its
+ * members, its carriers, its scores. Only the text and media somebody chose to send.
+ *
+ * The selection and truncation are the CALLER's, deliberately. Which members to include
+ * is a spend decision and a leakage decision at once, and hiding it inside the adapter
+ * would make the prompt's actual contents depend on a vendor package's internals — so a
+ * replay would reconstruct a different prompt from the same story and get a different
+ * answer with nothing recorded to explain the difference.
+ *
+ * `distinctAuthors` and `distinctSources` ride along because they are breadth, and
+ * breadth is the one thing about a story the text itself cannot show.
+ */
 export interface JudgeSubject {
   readonly storyId: StoryId;
   /** Member text, already selected and truncated by the caller. */

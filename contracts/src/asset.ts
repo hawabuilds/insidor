@@ -33,6 +33,13 @@ export const MINT_TIME_SOURCES = [
 
 export type MintTimeSource = (typeof MINT_TIME_SOURCES)[number];
 
+/**
+ * How well we know when this thing was minted. `bounded` is the member that earns its
+ * place: it says "somewhere in this window", which is the honest answer when the only
+ * evidence is the earliest signature we happened to index. Collapsing it into `exact`
+ * would make an age comparison look sound when it is not, and collapsing it into
+ * `unknown` would throw away a bound that is often good enough to rank on.
+ */
 export const MINT_TIME_CONFIDENCES = ['exact', 'bounded', 'unknown'] as const;
 
 export type MintTimeConfidence = (typeof MINT_TIME_CONFIDENCES)[number];
@@ -191,6 +198,12 @@ export interface Asset {
 
 /* ── what a market looks like right now ───────────────────────────────── */
 
+/**
+ * The two structurally different ways a market can exist. Not a cosmetic distinction:
+ * a curve has no pooled reserve to quote against and a pool has no progress along
+ * anything, so "how deep is this" is a different question with a different answer in
+ * each. `Depth` below is the union that keeps them from being answered the same way.
+ */
 export const MARKET_CLASSES = ['bonding-curve', 'pool'] as const;
 
 export type MarketClass = (typeof MARKET_CLASSES)[number];
@@ -250,6 +263,21 @@ export interface TransferRules {
   readonly failedChecks: readonly string[];
 }
 
+/**
+ * One READING of one market at one instant, from one vendor. Not "the state of the
+ * market" — the state of what a named endpoint said when we asked it.
+ *
+ * ★ EVERY QUANTITY ON IT IS NULLABLE AND THAT IS NOT DEFENSIVENESS. Each null is a
+ * different absence with a different meaning: a curve has no `liquidityUsd`, a
+ * forty-minute-old coin has no `priceChange24hPct`, a vendor that omits a field has no
+ * cap basis. Substituting a zero for any of them turns "we do not know" into a claim
+ * about the world — a zero liquidity reads as drained, a zero 24h change reads as flat
+ * — and both are exactly the readings a gate would act on.
+ *
+ * `source` is on the value and not left to the caller for the same reason. Two vendors
+ * disagreeing is routine; a disagreement you cannot attribute is a bug report nobody
+ * can act on.
+ */
 export interface MarketState {
   readonly asset: AssetRef;
   readonly venue: VenueId;
@@ -325,6 +353,15 @@ export type MarketAbsenceReason = (typeof MARKET_ABSENCE_REASONS)[number];
 
 /* ── quoting ──────────────────────────────────────────────────────────── */
 
+/**
+ * Every kind of thing that can take money out of a trade, as a closed list.
+ *
+ * Closed on purpose: a `TradeQuote` renders its `costs` array and nothing else, so a
+ * cost with no code here has nowhere to be displayed and cannot quietly become part of
+ * a total the user never sees itemised. Adding a chain or a venue whose fee does not
+ * fit one of these is a decision somebody makes here, in a diff, rather than a string
+ * an adapter invents at runtime.
+ */
 export const TRADE_COST_CODES = [
   'network',
   'priority',
@@ -337,6 +374,13 @@ export const TRADE_COST_CODES = [
 
 export type TradeCostCode = (typeof TRADE_COST_CODES)[number];
 
+/**
+ * One line on the confirm sheet. Both `amountUsd` and `bps` are nullable because some
+ * costs are only knowable as one or the other — a network fee is an amount and has no
+ * meaningful rate, price impact is a rate and has no amount until the size is fixed —
+ * and a quote that filled in the missing half by inventing a notional would be showing
+ * the user a number no venue ever quoted.
+ */
 export interface TradeCost {
   readonly code: TradeCostCode;
   readonly label: string;

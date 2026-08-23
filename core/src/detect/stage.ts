@@ -77,6 +77,16 @@ import type { Baseline } from './baseline.ts';
 import { burst } from './burst.ts';
 import { eta } from './poisson.ts';
 
+/**
+ * The stage's identity, copied onto every row it writes. See `admit/stage.ts` for the
+ * full argument: `DECIDER` moves when the rule changes, `FEATURE_SET` moves when the
+ * vector's shape changes, and nothing else in the row can tell either apart.
+ *
+ * `item.detect.v1` is shared with nothing. It is tempting to reuse `item.admit.v1`
+ * because both are keyed on an item — do not. The two vectors are built from different
+ * inputs at different instants, and one name over two shapes is the single most
+ * expensive silent bug a training pipeline has.
+ */
 export const NAME = 'detect' as const;
 export const FEATURE_SET: FeatureSetId = 'item.detect.v1';
 export const DECIDER = 'rule:detect@1';
@@ -84,6 +94,17 @@ export const DECIDER = 'rule:detect@1';
 const PRESENT = 1;
 const ABSENT = 0;
 
+/**
+ * Everything this stage may see. Every read has already happened; nothing is fetched.
+ *
+ * ★ ALL FOUR STATISTICAL INPUTS ARE NULLABLE AND THAT IS THE DEGRADATION PATH, not a
+ * convenience. A missing EWMA means we have not seen enough of this item yet; a missing
+ * baseline means this item or its cohort has too little history to be compared against.
+ * Both are ordinary, both are frequent on exactly the young items this product is about,
+ * and both must produce a NAMED abstention rather than a comparison against a fabricated
+ * expectation. Default any of them to zero and every brand-new item becomes infinitely
+ * atypical — the loudest possible false positive, arriving in bulk.
+ */
 export interface DetectInput {
   readonly item: Item;
   /** Newest last. Each carries its own Rate, censored or measured. */

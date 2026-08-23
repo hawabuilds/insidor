@@ -45,6 +45,15 @@ import type { Millis } from '@insidor/contracts/vocabulary.ts';
 
 import { MS_PER_MINUTE, clamp } from '../math.ts';
 
+/**
+ * When to read this item next, and the tier that decision came from.
+ *
+ * The tier is returned as well as the instant because the caller has to store it: the
+ * "never move more than one tier per read" rule below is a comparison against the
+ * PREVIOUS tier, and a caller that kept only `dueAt` has thrown away the one value that
+ * makes the rule computable. It would still schedule, still look right, and the damping
+ * would silently do nothing.
+ */
 export interface Schedule {
   readonly tier: number;
   readonly dueAt: Millis;

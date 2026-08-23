@@ -49,6 +49,13 @@ export interface ItemRepo {
   dueForObservation(now: Millis, limit: number): Promise<readonly Item[]>;
 }
 
+/**
+ * Accounts, and OUR standing for them. `setRosterTier` is a write and not a read for a
+ * reason: the tier is recomputed offline from our own history, never taken from a
+ * source's follower count. A tier sourced from the platform would be a feature the
+ * platform can move, and a model fitted on it would be fitted on someone else's product
+ * decisions.
+ */
 export interface AuthorRepo {
   upsert(authors: readonly Author[]): Promise<number>;
   byKey(key: AuthorKey): Promise<Author | null>;
@@ -56,6 +63,15 @@ export interface AuthorRepo {
   setRosterTier(key: AuthorKey, tier: number): Promise<void>;
 }
 
+/**
+ * The counter readings, as a series rather than a current value.
+ *
+ * There is no `set` and no update anywhere on this port. A rate is a DIFFERENCE of two
+ * readings, so a reading corrected in place would silently change a rate that was
+ * already published and already decided on, and no replay would ever be able to
+ * reproduce the original decision. Corrections are new rows; `latest` is a query, not a
+ * column.
+ */
 export interface ObservationRepo {
   /** Append-only. A reading is never corrected in place; a correction is a new row. */
   append(observations: readonly Observation[]): Promise<number>;
@@ -145,10 +161,34 @@ export interface CoverageRepo {
 
 /* ── the learning substrate ───────────────────────────────────────────── */
 
+/**
+ * FOUR statuses, and the header above explains why collapsing any of them into a
+ * negative destroys the training set. Restated here because this is the line somebody
+ * edits: `pending` is not "no", `censored` is not "no", and `unresolvable` is not
+ * "pending forever" — `LabelRepo.due` selects on `pending` alone, so `unresolvable` is
+ * the only thing that takes a subject that can never be settled out of the queue
+ * without pretending it was settled.
+ */
 export const LABEL_STATUSES = ['pending', 'resolved', 'censored', 'unresolvable'] as const;
 
 export type LabelStatus = (typeof LABEL_STATUSES)[number];
 
+/**
+ * The outcome side of the ledger: what actually happened to a subject a decision was
+ * made about, measured over a declared window.
+ *
+ * ★ ITS KEY IS FIVE COLUMNS, NOT ONE — subject kind and id, label name, label VERSION
+ * and window days, exactly as in the primary key of `internal.labels`. Carrying the
+ * version and the window in the key is what lets the definition of "did well" be revised
+ * without destroying the rows fitted under the old one, and what stops a seven-day
+ * measurement and a thirty-day measurement of the same subject from overwriting each
+ * other. Drop any component from the key and the table starts averaging measurements
+ * that were never of the same quantity.
+ *
+ * `subjectKind`/`subjectId` are typed from Decision on purpose: they are the join back
+ * to the decision that is being scored, and a divergence in spelling would produce a
+ * join that quietly matches nothing.
+ */
 export interface Label {
   readonly subjectKind: Decision['subjectKind'];
   readonly subjectId: string;

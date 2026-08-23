@@ -62,6 +62,17 @@ export type Fidelity =
   | { readonly kind: 'fuzzed' } // deliberately perturbed at the source
   | { readonly kind: 'absent' }; // the source has no such concept. NOT zero.
 
+/**
+ * One reading of one counter, with the two things that make it interpretable: how much
+ * to trust it, and when WE looked.
+ *
+ * A bare number would be the whole bug this vocabulary exists to prevent. Three
+ * different absences — not read, rounded past the point of usefulness, and the source
+ * has no such concept — all flatten to the same `0` if the reading is a number, and a
+ * zero downstream reads as cooling, which demotes exactly the items that are
+ * accelerating. Carrying them separately is what lets `kinetics/rate.ts` refuse to
+ * publish rather than publish a floor.
+ */
 export interface Counter {
   /** null means "not read this time". Absence of the CONCEPT is Fidelity.absent. */
   readonly value: number | null;
@@ -72,6 +83,11 @@ export interface Counter {
   readonly lagMs?: number;
 }
 
+/**
+ * Whatever counters a source actually exposes. `Partial` is load-bearing: no source has
+ * all six, and a total record would force every adapter to invent the ones it lacks.
+ * A missing key means "this source does not report that"; it never means zero.
+ */
 export type CounterSet = Readonly<Partial<Record<CounterKind, Counter>>>;
 
 /* ── rate: the type that makes "we learned nothing" unignorable ────────── */
@@ -117,10 +133,21 @@ export type Rate =
       readonly lastLevel: number | null;
     };
 
+/**
+ * The two constructors exist so no caller ever writes the union literally. Building
+ * `{ kind: 'measured', ... }` by hand is how a computed-from-nothing rate acquires the
+ * shape of a measurement; going through a named function means the decision to CLAIM a
+ * rate is a call somebody made, and greppable.
+ *
+ * `overMs` is kept rather than divided out because a rate over thirty seconds and the
+ * same rate over an hour are not equally believable, and the consumer needs to be able
+ * to tell.
+ */
 export function measuredRate(perMin: number, overMs: number, level: number): Rate {
   return { kind: 'measured', perMin, overMs, level };
 }
 
+/** The refusal, and it is not an error path — see CENSOR_REASONS for what it means. */
 export function censoredRate(reason: CensorReason, lastLevel: number | null): Rate {
   return { kind: 'censored', reason, lastLevel };
 }
@@ -136,6 +163,12 @@ export interface StoredRate {
   readonly censored: CensorReason | null;
 }
 
+/**
+ * The one-way door to the row shape. There is deliberately no inverse: reading a
+ * StoredRate back into a Rate would be the point at which a caller could skip the
+ * censored case, and the whole reason the union exists is that the compiler will not
+ * let them skip it on the way in.
+ */
 export function toStoredRate(rate: Rate): StoredRate {
   return rate.kind === 'measured'
     ? { ratePerMin: rate.perMin, censored: null }
@@ -153,6 +186,15 @@ export const FINGERPRINT_KINDS = [
 
 export type FingerprintKind = (typeof FINGERPRINT_KINDS)[number];
 
+/**
+ * A carrier: one comparable trace of an item, of a stated kind.
+ *
+ * `kind` is part of the identity and not a label. Two keys of different kinds are never
+ * compared even if the strings match — a text shingle that happens to spell the same
+ * characters as a format id is a coincidence, and joining on it would produce a story
+ * nobody can explain. `bits` is present only for the kinds that support a DISTANCE, and
+ * its absence is what tells a consumer that exact match is the only question it may ask.
+ */
 export interface Fingerprint {
   readonly kind: FingerprintKind;
   /** Opaque. Comparable ONLY against the same kind. */
@@ -161,6 +203,12 @@ export interface Fingerprint {
   readonly bits?: number;
 }
 
+/**
+ * A pointer to media, never the bytes. Core is pure and cannot fetch, so anything that
+ * needs to look at the pixels — the perceptual hash, an image embedding — happens in an
+ * adapter and arrives as a Fingerprint or an Embedding. The dimensions are nullable
+ * because a source that does not report them must say so rather than guess.
+ */
 export interface MediaRef {
   readonly kind: 'image' | 'video' | 'audio';
   readonly uri: string;

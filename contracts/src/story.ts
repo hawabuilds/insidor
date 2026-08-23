@@ -138,6 +138,17 @@ export type MatchEvidence =
   /** A human decided. Rare, and the source of the labels the model is fit on. */
   | { readonly kind: 'adjudicated'; readonly by: string; readonly at: Millis };
 
+/**
+ * One item's membership in one story, carrying the EVIDENCE for that membership rather
+ * than just the fact of it.
+ *
+ * The evidence is stored per member and not per story because the tiers degrade
+ * independently: a story can be half joined on free carriers and half on a paid
+ * representation, and a member row that recorded only "joined" would make that
+ * distinction unrecoverable. It is also what makes the join auditable after the fact —
+ * a story that looks wrong can be asked which tier put each item in it — and it is the
+ * shape the pair model is later fit on.
+ */
 export interface StoryMember {
   readonly storyId: StoryId;
   readonly itemId: ItemId;
@@ -149,6 +160,18 @@ export interface StoryMember {
   readonly evidence: MatchEvidence;
 }
 
+/**
+ * The story row itself: state, provenance, the clocks, and the breadth counts every
+ * downstream bar is expressed in.
+ *
+ * ★ EVERY NUMBER ON IT IS DERIVED FROM MEMBERS AND NONE OF THEM IS A DISPLAY VALUE. The
+ * counts are denormalised so a bar can be evaluated without loading the membership, and
+ * the clocks are minimised or maximised out of it — which is why QUALIFY uses
+ * `lastMemberAt` directly as its `featureAsOf`, and RESOLVE and GROUP fold it into
+ * theirs. Recompute one of these over a different population than the members and the
+ * lookahead check in `decide()` still passes while the feature it is guarding has
+ * already leaked.
+ */
 export interface Story {
   readonly storyId: StoryId;
   readonly state: StoryState;

@@ -41,6 +41,16 @@ import { MS_PER_MINUTE, MS_PER_SECOND, safeRatio } from '../math.ts';
 import { candidateLagMs, gateDepth, runGates, type ResolveCandidate } from '../resolve/gates.ts';
 import { temporalScore } from '../resolve/score.ts';
 
+/**
+ * Keyed on the SUBJECT and not on a stage, unlike the narrow sets in each stage file.
+ *
+ * A wide vector does not belong to whoever happens to log it today. This one rides on
+ * RESOLVE's row now and would ride on whatever else scores a candidate later; naming it
+ * `candidate.resolve.wide` would mean the same shape copied under a second name the
+ * first time that happened, and then the two copies drifting with nothing to notice.
+ * The bump rule is the same as everywhere: change which keys this builder returns and
+ * the `.v1` moves with it.
+ */
 export const FEATURE_SET: FeatureSetId = 'candidate.wide.v1';
 
 const PRESENT = 1;

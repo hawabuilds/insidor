@@ -62,6 +62,18 @@ import { MS_PER_SECOND } from '../math.ts';
 import { isExploreDraw } from '../track/holdout.ts';
 import { heat, type HeatInputs } from './heat.ts';
 
+/**
+ * The stage's identity, copied onto every row it writes. See `admit/stage.ts` for the
+ * full argument: `DECIDER` moves when the rule changes, `FEATURE_SET` when the vector's
+ * shape does, and `DECIDER` is the fallback `decide()` uses only while no learned scorer
+ * is configured — with the shared invariant that wherever `score` is null, no scorer
+ * decided, so a stale-feature abstain stays attributed to the rule.
+ *
+ * `subject.rank.v1` is keyed on SUBJECT and not on a noun, because RANK scores stories
+ * and candidates through the same vector. That is the whole reason a board can order the
+ * two against each other; naming the set after either one would make the shared shape
+ * look like an accident and invite a second, divergent copy.
+ */
 export const NAME = 'rank' as const;
 export const FEATURE_SET: FeatureSetId = 'subject.rank.v1';
 export const DECIDER = 'rule:rank@1';
@@ -69,6 +81,16 @@ export const DECIDER = 'rule:rank@1';
 const PRESENT = 1;
 const ABSENT = 0;
 
+/**
+ * Everything this stage may see. Every read has already happened; nothing is fetched.
+ *
+ * ★ AND NOTE WHAT IS ABSENT: any other subject. RANK scores ONE subject against ONE
+ * incumbent, and there is nowhere in this shape to put a competitor's score. That is
+ * `rank/heat.ts`'s candidate isolation expressed as a type — a score that could see the
+ * rest of the tick would make a past board impossible to reproduce, and reproducing a
+ * past board is the only way to answer "why was this in slot three an hour ago". The
+ * whole-tick view lives in `commitBoard`, on purpose, one layer up.
+ */
 export interface RankInput {
   readonly subjectId: string;
   readonly subjectKind: 'story' | 'candidate';

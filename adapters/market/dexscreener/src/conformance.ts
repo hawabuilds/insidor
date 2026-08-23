@@ -1,4 +1,24 @@
-/** What this package hands the shared conformance suite. */
+/**
+ * What this package hands the shared conformance suite.
+ *
+ * It is a plain object rather than a typed import from the suite, because the
+ * suite imports every adapter and an adapter that imported the suite back would
+ * be a cycle. The suite types this structurally at the point of use.
+ *
+ * ★ WHERE A VENUE DIFFERS FROM A PLATFORM HERE. A platform hands over raw
+ * recorded payloads and lets the suite drive the adapter. A venue hands over
+ * `MarketState`s that THIS PACKAGE'S OWN MAPPERS have already produced — the
+ * translation happens on the lines below — because the venue port is a shape and
+ * the suite has no business knowing that this particular vendor spells depth
+ * `liquidity.usd`. The suite checks the result and nothing about how it was made.
+ *
+ * Which means this list IS the venue's test surface, and a state dropped from it
+ * is not a shorter test run: it is a market shape the contract silently stops
+ * covering. The one rule that contract exists to hold — absent is not zero — can
+ * only ever be exercised by the states that carry an absence, so the curve and
+ * empty entries are load-bearing however redundant they look beside the pooled
+ * one.
+ */
 
 import { CURVE_RESPONSE, EMPTY_RESPONSE, LIVE_RESPONSE, POOLED_RESPONSE } from './__fixtures__/pairs.ts';
 import { toMarketState } from './to-market-state.ts';

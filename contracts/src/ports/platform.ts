@@ -28,6 +28,20 @@ export const DISCOVERY_MODES = ['keyword', 'hashtag', 'feed', 'catalog', 'accoun
  */
 export type DiscoveryMode = (typeof DISCOVERY_MODES)[number];
 
+/**
+ * What a source can do, DECLARED by its adapter rather than inferred from what it
+ * happened to return.
+ *
+ * ★ THE POINT OF DECLARING IT IS `absent`. Inference cannot tell "this source has no
+ * such counter" from "this source did not report it this time", and those two produce
+ * opposite correct behaviour: one is a permanent structural fact a feature must be
+ * built around, the other is a transient gap that must degrade a single decision. An
+ * adapter is the only thing that knows which, so it is required to say, and the two
+ * lists together are what let core refuse to score an absence as zero.
+ *
+ * `fidelity` is per counter and not per source because a single payload routinely
+ * rounds one field and not another.
+ */
 export interface Capabilities {
   readonly source: SourceId;
   /** Counters this source exposes at all. */
@@ -75,6 +89,22 @@ export interface Discovered {
   readonly hasMore: boolean;
 }
 
+/**
+ * THE SOURCE PORT — everything the system is allowed to know about where items come
+ * from, behind one interface with no vendor noun anywhere in it.
+ *
+ * ★ THE BOUNDARY IS `toItem`, AND IT IS THE ONLY FUNCTION IN THE SYSTEM PERMITTED TO
+ * KNOW A SOURCE'S FIELD NAMES. Everything past it speaks the shared vocabulary. That
+ * is what makes a second source an adapter and not a rewrite, and it is why the clock
+ * is injected rather than called: an adapter that read its own clock would make a
+ * recorded fixture unreplayable, and fixtures are how adapters are tested without
+ * spending money.
+ *
+ * `baselineKey` is the other half of the same idea from the opposite direction. The
+ * adapter knows what "the same kind of post at this hour" means for its source; core
+ * only ever asks whether two keys are equal. Without it, every core feature would have
+ * to be an absolute count, and absolute counts from two sources are not comparable.
+ */
 export interface PlatformAdapter {
   readonly id: SourceId;
   readonly capabilities: Capabilities;

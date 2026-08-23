@@ -17,6 +17,13 @@ export const BILLING_UNITS = ['per-item-returned', 'per-call', 'per-run', 'flat'
 
 export type BillingUnit = (typeof BILLING_UNITS)[number];
 
+/**
+ * One billable call, recorded where it happened. It carries BOTH `units` and `usd`
+ * rather than just the dollars: the dollars are what core reasons about, and the units
+ * are the only way to tell a price change from a volume change afterwards. A bill that
+ * doubled is a different investigation depending on which of the two moved, and a record
+ * holding only the total cannot answer it.
+ */
 export interface Spend {
   /** Opaque vendor token. Never appears in core/ or in any projection. */
   readonly vendor: string;
@@ -48,6 +55,14 @@ export interface Budget {
   readonly deadline: Millis;
 }
 
+/**
+ * The running tally, held by the service and written to by adapters.
+ *
+ * `record` is called BEFORE the value is returned, and that ordering is the whole
+ * reliability of the number: a spend recorded after the return is a spend that goes
+ * missing whenever the caller throws, and the calls that throw are not a random sample —
+ * they cluster on exactly the vendors and the hours you most want the figure for.
+ */
 export interface Meter {
   /** Called by the adapter, once per billable call, before the value is returned. */
   record(spend: Spend): void;

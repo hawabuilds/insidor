@@ -44,6 +44,16 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { Millis } from '@insidor/contracts/vocabulary.ts';
 
+/**
+ * The five states an item's activity can be in. DECLARATION ORDER, and it carries no
+ * meaning — `fresh` first because that is where an item starts, and nothing else.
+ *
+ * ★ DO NOT USE THIS LIST TO COMPARE TWO STATES. Temperature order is `HEAT_ORDER`
+ * below, and it is a different sequence for a reason argued there. Anything that asks
+ * "is this transition a rise or a fall" from an index into THIS array gets the wrong
+ * answer for the pairs involving `fresh`, and gets it silently — the transition still
+ * commits, just with the asymmetric bar applied in the wrong direction.
+ */
 export const LIFECYCLE_STATES = ['fresh', 'rising', 'steady', 'cooling', 'dormant'] as const;
 
 export type LifecycleState = (typeof LIFECYCLE_STATES)[number];

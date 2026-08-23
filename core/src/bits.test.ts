@@ -2,6 +2,23 @@
  * The bit arithmetic under both free carrier tiers. Every claim here is algebra over
  * inputs constructed in this file — none of it needs a database, and none of it
  * pretends to.
+ *
+ * WHY IT IS THIS THOROUGH FOR SIXTY LINES OF SOURCE. `bits.ts` is hand-rolled twice
+ * over: it decodes hex with charCode arithmetic instead of `parseInt` and counts bits
+ * with a SWAR reduction instead of shift-and-test, both because it is the innermost
+ * loop of the pair decision. Speed bought with arithmetic is only worth having if the
+ * arithmetic is right, so the last test keeps the obvious spelling alive as an oracle
+ * and cross-checks the fast path against it exhaustively over single digits and
+ * randomly up to a 256-bit hash. Optimise `bits.ts` again and that test is the only
+ * thing standing between the change and a silently wrong distance.
+ *
+ * ★ AND THE FAILURES IT GUARDS ARE SILENT ONES. Nothing here throws in production if
+ * it regresses — a hash function that stops spreading a trailing edit, or a distance
+ * that quietly compares across widths, produces JOINS THAT ARE MERELY WRONG. Two of
+ * these tests are not examples but records: the avalanche test found a real defect and
+ * is the reason `bits.ts` has a finalizer, and `isHexHash('my nana learns the dance')`
+ * is a value a live adapter actually handed us. Weakening either bound turns a test
+ * that once caught something into decoration.
  */
 
 import { strict as assert } from 'node:assert';

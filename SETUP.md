@@ -20,16 +20,32 @@ corepack enable
 corepack use pnpm@11
 ```
 
+**Docker**, but only for the database. Everything else in this repository runs without it —
+`pnpm check` is green on a clone with no Docker installed at all, because nothing under
+`contracts/`, `core/`, `adapters/` or `app/` touches Postgres. You need Docker at the point
+you want rows.
+
 ## First run
 
 ```bash
 pnpm install
-cp .env.example .env.local     # fill in what you have; missing keys fail loudly at boot
-pnpm check                     # typecheck, the three rule-checkers, boundaries, tests
+cp .env.example .env.local     # see below — this works unedited
+pnpm check                     # typecheck, five rule-checkers, boundaries, tests
 ```
 
-`pnpm check` should end green. If it does not, that is a real failure — nothing here is
-expected to be broken on a fresh clone.
+`pnpm check` should end green on a fresh clone, with no database, no Docker and no keys.
+If it does not, that is a real failure — nothing here is expected to be broken.
+
+**`.env.example` is copyable as-is.** The database block is filled in with the
+local-dev-only credentials from `docker-compose.yml`, so `db:up && db:migrate && db:seed`
+works with nothing typed in. Every credential below that is blank, and blank is a supported
+permanent state — not a TODO. A source with no key is *dormant*: the process boots, the
+loops run, the board renders, and the indicator in the corner of the nav says which sources
+are off.
+
+The one state that is a fault is a **half-filled** block, because that is somebody believing
+a source is running when it is not. It reads as *failing*, naming the variable that is
+missing, rather than as "you have not turned this on".
 
 ## What the checks are
 
@@ -41,16 +57,135 @@ each fails CI:
 | `pnpm check:vocabulary` | A platform, chain or vendor word appearing in `contracts/` or `core/`. This is what keeps adding a platform a one-folder change instead of a rewrite. |
 | `pnpm check:purity` | `Date.now`, `Math.random`, `fetch` or `await` inside `core/`. Purity is what makes it possible to replay a past decision under a new rule and see what would have changed. |
 | `pnpm check:policy` | A bare number in `core/` outside `policy.ts`. Every threshold lives in one file, so tuning is a diff rather than an archaeology exercise. |
-| `pnpm check:boundaries` | `core` importing an adapter, or the app importing `core`. |
+| `pnpm check:app-vocabulary` | Our internal words — `narrative`, `cluster`, `candidate` — reaching the app. The app cannot *name* a score, which is the first half of "the system's reasoning never goes on screen". |
+| `pnpm check:python` | Python drifting outside `ml/train/`. Python trains and never serves; a `.py` on the request path is a runtime we would then have to deploy. |
+| `pnpm check:boundaries` | `core` importing an adapter, or the app importing `core` — plus a probe that writes a real violation and fails if the checker did not catch it. |
+
+`pnpm check` runs all six, then `pnpm test`.
 
 If a check blocks something you need to do, the check is probably right. Come and argue
 about it rather than adding an exception — an exception added quietly is how the last build
 ended up with a product decision living in a folder named after an API client.
 
+## The database, in the order you actually run it
+
+Every `db:` command, in the order a newcomer runs them. All of them are `node tools/db.mjs
+<cmd>`; the header of that file is the long version.
+
+| # | Command | What it does | Needs |
+|---|---|---|---|
+| 1 | `pnpm db:up` | Starts the Postgres container and waits for it to report **healthy** — it does not return the moment Docker accepts the command, because a migration against a still-starting server fails in a way that reads like a broken migration. | Docker running |
+| 2 | `pnpm db:migrate` | Applies `store/migrations/*.sql` in order, one transaction each, recorded in `internal.schema_migration`. Ends by creating the **login user** `insidor_app_user` and granting it `insidor_app` and nothing else. | step 1 |
+| 3 | `pnpm db:seed` | Six stories written as domain facts only — `author`, `item`, `observation`, `story`, `story_member`, `asset`. It writes **no** projection row and **no** internal row, on purpose. | step 2 |
+| 4 | `pnpm db:project` | Derives the board: reads the domain rows, censors once, upserts finished JSON into `public.board_row` / `public.story_view`. Runs as the *service* role, because it is the one process that must read `public.observation` in order to censor it. | step 3 |
+| 5 | `pnpm db:sources` | Derives `public.source_view` — per source, a label, the three-way state, and when it was last heard from. Needs neither `seed` nor `market`; it reads the table the ingest side owns. | step 2 |
+| 6 | `pnpm db:pairs` | Derives `public.pair_view` / `public.pair_row` — the mints that reached a market. A **second entrypoint**, not a flag on `db:project`: the board suppresses a stale market reading because every row carries a Buy button, and the pairs screen publishes it with its age because it has no trade affordance. | step 3 |
+| 7 | `pnpm db:market` | Asks DexScreener what a coin is worth and appends to `public.market_reading`, with the reason attached wherever there was no number. **Free, no key.** Until it runs, every market figure on the board is an absence — which is honest, and is also every figure. | network |
+| 8 | `pnpm db:decide` | Runs each stage loop once over what is already in the database and writes every `Decision` to `internal.decisions`. | step 3 |
+| 9 | `pnpm db:label` | Grades the decisions whose horizon has closed and appends the answer to `internal.labels` — resolved, censored, unresolvable, or nothing at all while the window is still open. | step 8 |
+
+Two more, off the happy path:
+
+- `pnpm db:psql` — an interactive shell in the container.
+- `pnpm db:reset` — **destructive.** Drops the database, recreates it, migrates. It shouts
+  before it does it, because `public.observation` is append-only and is not backfillable.
+  Locally that is only seeded rows; anywhere else it is the thing you cannot buy back.
+
+A short version, from nothing to a board with data behind it:
+
+```bash
+pnpm db:up && pnpm db:migrate && pnpm db:seed
+pnpm db:project && pnpm db:sources
+pnpm dev:read      # the read service, port 8787, connects as the app role
+pnpm dev:app       # with VITE_READ_URL=http://localhost:8787
+```
+
+### Why the read service gets its own database user
+
+`pnpm db:migrate` creates `insidor_app_user` and grants it `insidor_app` — SELECT on the
+public tables and the projection, **no** USAGE on `internal`, **no** USAGE on `raw`, **no**
+grant on `public.observation`.
+
+Run the read service as that user even locally. This is the second half of the product's
+central claim: the first half is the wire types, which mean the app cannot *name* a score;
+this half is that the connection the read service holds cannot *reach* one. If it ever grows
+a query that would leak, it gets `permission denied` from Postgres rather than a rendered
+number. Running it as the owner locally would leave that guarantee untested everywhere
+except production, which is the one place nobody wants to find out.
+
+## What runs today, and what needs a key
+
+**Be clear about the state of this: the system runs on free data, it cannot discover stories
+without a post source, and every algorithm in it is proven on seeded data rather than on
+live traffic.** All three of those are worth reading twice before you plan a day around it.
+
+Free, no key, no account, works right now:
+
+| | |
+|---|---|
+| The web app | `pnpm dev:app` with no backend at all — fixtures behind a permanent banner |
+| The wallet | A browser extension if you have one; no key, no account |
+| Postgres | The container, with the credentials already in `.env.example` |
+| Market readings | DexScreener. No key. Metered at `usd: 0` — the call happened and the ledger says so at a price of zero |
+| The mint stream | PumpPortal's websocket, `wss://pumpportal.fun/api/data`. No key |
+| Everything under `check` | 27 packages typecheck, six checkers, 1658 tests |
+
+Free, but needs a free registration:
+
+| | |
+|---|---|
+| **Reddit** | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`. No card, no plan, no per-post billing. This is **the only post source you can turn on for nothing**, and therefore the only way the pipeline discovers a story without a bill. The adapter refuses to construct with the placeholder user-agent still in it, because discovering Reddit's rule as a ban three weeks later is far worse. |
+
+Needs a paid key, and is dormant until it has one:
+
+| | |
+|---|---|
+| **X** | `X_API_KEY`. Billed per post returned, minimum one per request — a call that returns nothing still costs, which is why nothing in the adapter retries. |
+| **TikTok** | `APIFY_TOKEN` plus **two** actor ids. Billed per run: a run that finds nothing costs the same as one that finds a thousand posts. Cannot be used for a blind historical run at all — the adapter refuses that query. |
+| **The judge** | `ANTHROPIC_API_KEY`, bounded by `DAILY_BUDGET_USD` (default 5). When the cap is hit the stage *pauses* rather than quietly running up a bill. |
+| **Embeddings** | `EMBEDDING_API_KEY`. Grouping needs real sentence embeddings; the previous build used word counting under that name, which is why 91% of its stories held a single post by a single author. |
+| **Mint times** | `SOLANA_RPC_URL`, `HELIUS_API_KEY`. Every outcome label hangs on this being right. |
+
+And one switch that is neither:
+
+**`DISCOVER=off` is the default and it has to be declared.** It is not the same question as
+"which sources are live" — that is answered by the credential blocks and nothing else. This
+switch decides whether we ask *any* of them. Merging the two would make turning discovery
+off for an afternoon indistinguishable from losing every credential. With `DISCOVER=on` you
+must also give `DISCOVER_TERMS`; an empty list is refused rather than treated as off,
+because a discovery loop with nothing to look for runs, reports success, and ingests
+nothing.
+
+### What "proven on seeded data" means concretely
+
+After `db:seed`, the database holds **6 stories, 21 items, 786 observations and 13 invented
+coins** — and `public.market_reading` is **empty**, so every market figure the projector
+publishes is an absence with a reason. That is not a gap in the seed; it is the seed
+refusing to state a price no venue ever said.
+
+The seed deliberately writes no projection row and no internal row. A seed that wrote the
+board would prove nothing — the claim being tested is the whole chain:
+
+```
+seed writes facts → services/project derives the wire JSON → services/read selects it
+as the app role and returns it verbatim
+```
+
+If the seed wrote the board, the middle arrow would be untested and the leak guarantee
+would be a comment.
+
+The pipeline does not run end to end yet. About a third of the logic is written — the parts
+that are easy to get wrong and expensive to fix later. The rest is signatures with a
+`notImplemented` body and a comment naming what goes there. One test is skipped on purpose,
+in `ml/serve`: there is no trained model to check parity against, because `internal.labels`
+has not held enough rows to train one. It gates promotion (`M6_parity_missing`) rather than
+passing quietly.
+
 ## Running things
 
 ```bash
-pnpm dev:app          # the web app
+pnpm dev:app          # the web app, port 5173
+pnpm dev:read         # the read service, port 8787 — connects as the app role
 pnpm dev:runner       # the pipeline loops
 pnpm dev:chainwatch   # the mint websocket
 pnpm test             # colocated tests, node:test, no framework
@@ -105,10 +240,6 @@ Nothing in the browser holds a key. Signing happens inside the wallet; the adapt
 surface is `connect`, `disconnect`, the account reference, and `sign(bytes) => bytes` — which
 nothing in the app calls, and `wallet/src/dependency-graph.test.ts` fails if a chain library
 or wallet SDK ever appears in the app's dependency graph.
-
-The pipeline does not run end to end yet. About a third of the logic is written — the parts that are
-easy to get wrong and expensive to fix later. The rest is signatures with a
-`notImplemented` body and a comment naming what goes there.
 
 ## Where to start
 

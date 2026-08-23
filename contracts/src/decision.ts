@@ -18,6 +18,15 @@ import type { FeatureSetId, FeatureVector } from './features.ts';
 import type { Millis } from './vocabulary.ts';
 import type { ReasonCode } from './reasons.ts';
 
+/**
+ * The seven stages that write a decision row, in pipeline order.
+ *
+ * This list is not private: `internal.decisions.stage` enumerates the same seven in a
+ * CHECK constraint, so adding a member here without a migration produces inserts the
+ * database refuses at runtime rather than a typecheck error at build time. Membership
+ * is the test of "does this step judge a subject?", not "is this step part of the
+ * run" — see `services/runner/src/config.ts` on why `discover` is deliberately absent.
+ */
 export const STAGE_NAMES = [
   'admit',
   'track',
@@ -28,8 +37,10 @@ export const STAGE_NAMES = [
   'rank',
 ] as const;
 
+/** The name of a stage, derived from the list so the two can never drift apart. */
 export type StageName = (typeof STAGE_NAMES)[number];
 
+/** The four answers a stage may give. `Verdict` below says why the fourth exists. */
 export const VERDICTS = ['pass', 'hold', 'drop', 'abstain'] as const;
 
 /**
@@ -38,11 +49,31 @@ export const VERDICTS = ['pass', 'hold', 'drop', 'abstain'] as const;
  */
 export type Verdict = (typeof VERDICTS)[number];
 
+/**
+ * What the decision is ABOUT. Four kinds rather than three because GROUP judges a
+ * PAIR — the thing being decided is (item, story), not either one alone — and a pair
+ * decision recorded against the item would lose which story it was weighed against,
+ * which is the half that makes the row trainable.
+ *
+ * `(subjectKind, subjectId)` is the join key between `internal.decisions` and
+ * `internal.labels`, and both tables CHECK these four spellings. A fifth kind is a
+ * migration, not a type edit.
+ */
 export type SubjectKind = 'item' | 'story' | 'pair' | 'candidate';
 
 /** Which randomisation lane produced this decision, if any. */
 export type ExploreArm = 'epsilon' | 'holdout' | null;
 
+/**
+ * One row of the audit log: a stage, a subject, an answer, and everything needed to
+ * ask later whether the answer was right.
+ *
+ * Every field is written at decision time and none is ever back-filled. That is the
+ * point of the type: a Decision assembled after the outcome is known would be a
+ * measurement of itself, so the shape gives a later reader nowhere to put one. Core
+ * never constructs this literally either — `core/src/decide.ts` is the single
+ * constructor, which is why the derived fields below cannot be got wrong per stage.
+ */
 export interface Decision {
   readonly stage: StageName;
   readonly subjectKind: SubjectKind;

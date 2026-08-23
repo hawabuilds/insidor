@@ -54,6 +54,16 @@ import { isTerminal, type LifecycleReading } from '../kinetics/lifecycle.ts';
 import { MS_PER_HOUR, MS_PER_MINUTE } from '../math.ts';
 import { nextRead, type Schedule } from './schedule.ts';
 
+/**
+ * The stage's identity, copied onto every row it writes. See `admit/stage.ts` for the
+ * full argument; the short form is that `DECIDER` must move when the RULE changes and
+ * `FEATURE_SET` must move when the vector's SHAPE changes, because nothing else in the
+ * row distinguishes either.
+ *
+ * It bites hardest here. TRACK writes far more rows than any other stage — one per
+ * re-read decision per item — so an unbumped version pollutes the largest table in the
+ * system, and the pollution is invisible until somebody fits on it.
+ */
 export const NAME = 'track' as const;
 export const FEATURE_SET: FeatureSetId = 'item.track.v1';
 export const DECIDER = 'rule:track@1';
@@ -61,6 +71,18 @@ export const DECIDER = 'rule:track@1';
 const PRESENT = 1;
 const ABSENT = 0;
 
+/**
+ * Everything this stage may see. Every read has already happened; nothing is fetched.
+ *
+ * ★ THREE OF THESE FIELDS ARE CARRIED IN RATHER THAN DERIVED, AND EACH FOR THE SAME
+ * REASON: they are STATE ACROSS READINGS, and this stage sees one reading. `lifecycle`,
+ * `censoredReadStreak` and `isHeldBack` all describe the item's history or its lane, and
+ * a stage that recomputed any of them from the current pass would be substituting an
+ * instant for a series. The individual consequences differ — flapping on the terminal
+ * edge, a demotion that forgets it was already demoting, a holdout item that stops being
+ * a holdout — but the shape of the mistake is identical, and none of the three fails
+ * loudly.
+ */
 export interface TrackInput {
   readonly item: Item;
   /** The readings so far, newest last. Rates carry their own censoring. */

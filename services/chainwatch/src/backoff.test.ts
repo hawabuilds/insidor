@@ -1,3 +1,30 @@
+/**
+ * Backoff, asserted at exact numbers rather than in ranges.
+ *
+ * That is only possible because `backoffDelayMs` takes its randomness as an argument. The
+ * tests pin both ends of the equal-jitter band by passing 0 and ~1, so the width of the
+ * band is a fact here and not a statistical hope. The day someone reaches for
+ * `Math.random()` inside backoff.ts, every assertion below has to soften into a range and
+ * stops holding the property it was written for — that injected `random` parameter is not
+ * a purity gesture, it is what makes this file possible.
+ *
+ * The three failures being held:
+ *
+ *   - A RETRY THAT IS INSTANT. `lower > 0` is asserted at the smallest jitter, not implied.
+ *     The failure this watcher actually meets is a rate limit rather than a hard outage,
+ *     and a near-zero retry against a rate limit is how a throttle becomes a ban. This is
+ *     the assertion that would disappear first if the jitter scheme were changed to full
+ *     jitter, which is the alternative backoff.ts explains it rejected.
+ *   - A DELAY THAT STOPS BEING A NUMBER. attempt 2,000 is asserted finite. Without the
+ *     exponent cap, `2 ** attempt` reaches Infinity, the ceiling arithmetic yields NaN, and
+ *     a NaN handed to a timer is coerced to zero — so the overflow does not show up as a
+ *     crash, it shows up as the instant retry above, during exactly the long outage where
+ *     the delay mattered most.
+ *   - A HEALTHY CALLER BEING SLOWED. attempt 0 and negative attempts return 0. "Not
+ *     failing" is not a backoff situation, and a base delay applied to a working loop is a
+ *     permanent tax nobody would think to look for.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

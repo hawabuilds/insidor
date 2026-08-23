@@ -44,6 +44,16 @@
 
 import type { Policy } from '@insidor/contracts/policy.ts';
 
+/**
+ * One tier's ask for this interval: how many reads are due, and whether they are the
+ * holdout's.
+ *
+ * `isHeldBack` is on the DEMAND rather than looked up per item because shedding is
+ * decided per tier, in bulk, under pressure — and the holdout has to be protected at the
+ * same granularity the decision is made at. Held-back items are the only unbiased
+ * history the system has; shedding them is the failure this whole file exists to prevent
+ * and, unlike the other two costs, it is invisible until somebody tries to train.
+ */
 export interface ReadDemand {
   readonly tier: number;
   readonly dueCount: number;

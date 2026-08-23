@@ -35,6 +35,19 @@ import { candidateLagMs, gateDepth, runGates, type ResolveCandidate } from './ga
 import { isConfident, separation } from './margin.ts';
 import { candidateScore } from './score.ts';
 
+/**
+ * The stage's identity, copied onto every row it writes. See `admit/stage.ts` for the
+ * full argument: `DECIDER` moves when the rule changes, `FEATURE_SET` when the vector's
+ * shape does. `DECIDER` is the FALLBACK — `decide()` below writes `scorer.id` whenever a
+ * learned scorer is configured — so this constant is what says "no model existed yet".
+ *
+ * ★ AND NOTE WHICH ROWS KEEP `DECIDER` EVEN WHEN A SCORER IS LOADED: exactly the ones
+ * that carry `score: null` — nothing to score, and everything eliminated by a gate. The
+ * rule is "if no score was computed, no scorer decided", and it is worth keeping true.
+ * Attributing a gate's refusal to a model that was never consulted would credit it with
+ * decisions it had no part in, and would quietly corrupt the comparison against the rule
+ * it is meant to be replacing.
+ */
 export const NAME = 'resolve' as const;
 export const FEATURE_SET: FeatureSetId = 'candidate.resolve.v1';
 export const DECIDER = 'rule:resolve@1';
