@@ -258,6 +258,18 @@ importers:
         specifier: workspace:*
         version: link:../../adapters/venue/solana-pumpfun
 
+  services/label:
+    dependencies:
+      '@insidor/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@insidor/store':
+        specifier: workspace:*
+        version: link:../../store
+      pg:
+        specifier: ^8.16.0
+        version: 8.23.0
+
   services/market:
     dependencies:
       '@insidor/contracts':

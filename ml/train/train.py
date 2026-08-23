@@ -1,6 +1,9 @@
 """Fit the model. Run by hand, weekly, on a laptop.
 
 INPUT   <in>/dataset.parquet, <in>/manifest.json   (from build_dataset.py)
+        ★ and only the rows whose `split` is 'train'. The wall in time was placed
+          by the builder; this file does not get to move it, and the `test` and
+          `purged` rows are never fitted on.
 OUTPUT  <out>/model.txt         LightGBM's native booster text
         <out>/train_meta.json   the params actually used, plus row counts
 
@@ -93,8 +96,29 @@ def main() -> None:
     args = p.parse_args()
 
     manifest = json.loads((args.src / "manifest.json").read_text(encoding="utf-8"))
-    df = pd.read_parquet(args.src / "dataset.parquet")
+    full = pd.read_parquet(args.src / "dataset.parquet")
     names: list[str] = manifest["featureNames"]
+
+    # ★ FIT ON THE TRAIN SIDE OF THE WALL, AND NOTHING ELSE.
+    #
+    # build_dataset.py already decided the split, in time order, and wrote it into
+    # the parquet. Fitting on the whole frame — which this file used to do — trains
+    # on the holdout and turns evaluate.py's report into a description of the
+    # model's own memory. The `purged` rows are excluded for the third time here:
+    # their label windows cross the wall, so they carry test-period outcome
+    # information into anything fitted on them.
+    #
+    # A dataset with no `split` column came from a builder that did not decide one,
+    # and there is no safe assumption to make about it — refusing beats guessing
+    # that the whole frame is training data.
+    if "split" not in full.columns:
+        raise SystemExit(
+            "dataset.parquet has no `split` column. It was built before the split was decided "
+            "at build time; rebuild it with build_dataset.py rather than training on all of it."
+        )
+    df = full[full["split"] == "train"]
+    if df.empty:
+        raise SystemExit("the train split is empty. build_dataset.py should have refused; do not train.")
 
     overrides = json.loads(args.params.read_text(encoding="utf-8")) if args.params else {}
     for locked in LOCKED:
@@ -113,13 +137,20 @@ def main() -> None:
                 "rowCount": int(len(df)),
                 "positiveCount": int(df["y"].astype(bool).sum()),
                 "featureNames": names,
+                "trainedOnSplit": "train",
+                "splitRows": {
+                    str(k): int(v) for k, v in full["split"].value_counts().to_dict().items()
+                },
                 "manifest": manifest,
             },
             indent=2,
         ),
         encoding="utf-8",
     )
-    print(f"trained on {len(df)} rows, {int(df['y'].astype(bool).sum())} positive, {len(names)} features")
+    print(
+        f"trained on {len(df)} rows of the `train` split "
+        f"({len(full)} in the dataset), {int(df['y'].astype(bool).sum())} positive, {len(names)} features"
+    )
 
 
 if __name__ == "__main__":

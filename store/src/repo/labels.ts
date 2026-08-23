@@ -167,6 +167,90 @@ export class PgLabelRepo implements LabelRepo {
     );
   }
 
+  /**
+   * ★ WRITE A SETTLED OUTCOME, ONCE, AND NEVER OVERWRITE ONE.
+   *
+   * WHY THIS EXISTS BESIDE `upsert`, WHICH CAN ALSO INSERT. Because `upsert` can also
+   * REPLACE, and replacing a settled row is the one thing this table must not do. A row
+   * here is a claim about a window that has already closed; the window does not reopen,
+   * so the claim does not change. When our own evidence improves — a coverage gap
+   * backfilled, a market series that arrived late — the honest record is a NEW ROW at
+   * the next revision (see `labelVersion` in contracts), not a quiet edit that destroys
+   * the fact that we could not tell before. `on conflict do nothing` makes the
+   * distinction structural: a second labeller run over the same closed window is a
+   * no-op rather than a rewrite, so running twice cannot churn and cannot double-count.
+   *
+   * It refuses `pending` for the same reason `open()` refuses everything else: the two
+   * writes have opposite invariants, and one method that did both would be one method
+   * whose contract is "whatever the caller passed".
+   *
+   * Returns whether this call is the one that wrote the row. False means somebody got
+   * there first — which is the correct outcome of a race and not an error, but a caller
+   * counting what it wrote must not count it.
+   */
+  async record(label: Label): Promise<boolean> {
+    if (label.status === 'pending') {
+      throw new TypeError('record() writes settled rows; use open() for a pending one');
+    }
+    const rows = await this.#db.query<{ written: number }>(
+      `insert into internal.labels (
+         subject_kind, subject_id, label_name, label_version, window_days,
+         origin_ts, resolves_at, status, value, y, censor_reason,
+         population, source, first_signal_at, computed_at
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       on conflict (subject_kind, subject_id, label_name, label_version, window_days)
+       do nothing
+       returning 1 as written`,
+      [
+        label.subjectKind,
+        label.subjectId,
+        label.labelName,
+        label.labelVersion,
+        label.windowDays,
+        toTimestamp(label.originMs),
+        toTimestamp(label.resolvesAtMs),
+        label.status,
+        label.value,
+        label.y,
+        label.censorReason,
+        label.population,
+        label.source,
+        toTimestamp(label.firstSignalMs),
+        toTimestamp(label.computedAtMs),
+      ],
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * Every row this labeller has ever written about these subjects under one label name,
+   * in one round trip.
+   *
+   * ★ DELIBERATELY UNFILTERED BY STATUS AND BY VERSION, for the reason `bySubject` gives
+   * and one more. The caller's question is "what do we already know about this subject",
+   * and the answer has to include the censored and unresolvable rows: they are precisely
+   * the ones a later run may supersede, and a read that hid them would make every run
+   * write revision 1 again and collide with itself forever.
+   *
+   * `subject_kind` is a parameter rather than a filter derived from the ids because the
+   * primary key leads with it — the same id string under two kinds is two subjects, and
+   * asking for one kind at a time is what lets this ride the key instead of scanning.
+   */
+  async bySubjectKeys(
+    subjectKind: Label['subjectKind'],
+    subjectIds: readonly string[],
+    labelName: string,
+  ): Promise<readonly Label[]> {
+    if (subjectIds.length === 0) return [];
+    const rows = await this.#db.query<LabelRow>(
+      `${SELECT_LABEL}
+        where subject_kind = $1 and subject_id = any($2::text[]) and label_name = $3
+        order by subject_id, label_version`,
+      [subjectKind, subjectIds, labelName],
+    );
+    return rows.map(toLabel);
+  }
+
   /** Windows that have closed and are waiting to be graded. The nightly labeller's work queue. */
   async due(nowMs: Millis, limit: number): Promise<readonly Label[]> {
     const rows = await this.#db.query<LabelRow>(

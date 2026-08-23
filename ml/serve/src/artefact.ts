@@ -38,6 +38,17 @@ export interface TrainingWindow {
 /** What the model was graded against. Never inferred; always written down. */
 export interface LabelSpec {
   readonly name: string;
+  /**
+   * ★ THE DEFINITION, NOT A ROW'S `label_version` COLUMN VALUE.
+   *
+   * `internal.labels.label_version` does two jobs — it names what was measured AND
+   * distinguishes a re-measurement of the same window, spelled `v1`, `v1.r2` (see
+   * `contracts/src/label.ts`). A training set legitimately spans several revisions
+   * of ONE definition, because a revision is the same measurement taken again
+   * after our own evidence improved, so there is no single column value to copy
+   * here. `build_dataset.py` writes the definition, which is the thing that makes
+   * two models comparable or not.
+   */
   readonly version: string;
   readonly windowDays: number;
 }

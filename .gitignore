@@ -11,3 +11,13 @@ __pycache__/
 
 # pnpm workspace links created during scaffolding
 */node_modules/
+
+# The training scratch directory. Datasets and models are rebuilt, never reviewed.
+var/
+
+# The parity MEASUREMENT, written by ml/serve/src/parity.test.ts on every run.
+# Not committed: it is a fact about one runtime on one machine at one moment, and
+# a committed copy would go stale while looking authoritative. The FIXTURES it
+# measures (fixtures/parity.json, fixtures/walker-parity.json) are committed —
+# an oracle that has to be regenerated to run is an oracle that does not run.
+ml/serve/fixtures/parity-measured.json

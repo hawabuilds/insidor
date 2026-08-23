@@ -131,6 +131,7 @@ export type {
   GroupPolicy,
   IngestPolicy,
   KineticsPolicy,
+  LabelPolicy,
   MarketPolicy,
   Policy,
   QualifyPolicy,
@@ -192,3 +193,14 @@ export type {
   StoryRepo,
 } from './ports/store.ts';
 export { LABEL_STATUSES, STAGE_RUN_OUTCOMES } from './ports/store.ts';
+
+/* ── how an outcome is corrected without being edited ─────────────────── */
+export type { LabelRevision } from './label.ts';
+export {
+  FIRST_REVISION,
+  LABEL_PEAK_MULTIPLE,
+  labelVersion,
+  latestRevisionOf,
+  nextRevision,
+  parseLabelVersion,
+} from './label.ts';

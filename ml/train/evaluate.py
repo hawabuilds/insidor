@@ -175,13 +175,45 @@ def report(wf: pd.DataFrame, manifest: dict, budget: int) -> str:
             f"p90 {s.quantile(0.90):.3f} · worst {s.min():.3f} ({len(s)} days)"
         )
 
+    def split_line(name: str) -> str:
+        s = (manifest.get("splits") or {}).get(name)
+        if not s or not s["rows"]:
+            return f"- `{name}` — empty"
+        return (
+            f"- `{name}` — {s['rows']} rows, {s['positives']} positive / {s['negatives']} negative, "
+            f"base rate {s['baseRate']:.3%}, decided {s['decidedFrom'][:10]} .. {s['decidedTo'][:10]}"
+        )
+
+    census = manifest.get("labelCensus") or {}
+    by_status = census.get("byStatus") or {}
+    rate = census.get("censoredRate")
+
     return "\n".join(
         [
             f"# {manifest['stage']} — walk-forward evaluation",
             "",
             f"**Population.** {manifest['population']}",
-            f"**Label.** {manifest['label']['name']} {manifest['label']['version']}, "
-            f"{manifest['label']['windowDays']}-day window, sources: {', '.join(manifest['labelSources'])}",
+            "",
+            "**The build-time split** (temporal, purged; walk-forward below re-splits per day):",
+            split_line("train"),
+            split_line("purged"),
+            split_line("test"),
+            "",
+            "**What the training query excluded.** Stated, because a dataset that drops its hard",
+            "cases quietly scores beautifully and generalises to nothing.",
+            f"- no label row at all — {by_status.get('absent', 0)}",
+            f"- pending, window still running — {by_status.get('pending', 0)} (NOT negatives)",
+            f"- censored, window not observed — {by_status.get('censored', 0)}"
+            + (f" ({rate:.1%} of labelled)" if isinstance(rate, (int, float)) else ""),
+            f"- unresolvable — {by_status.get('unresolvable', 0)}",
+            "",
+            # The definition and the revision spread, not one version string. Two
+            # revisions are the same measurement taken twice and pool; two
+            # definitions do not, and a report that printed only "v1" could not
+            # say which of the two it was looking at.
+            f"**Label.** {manifest['label']['name']} {manifest['label']['definition']}, "
+            f"{manifest['label']['windowDays']}-day window, revisions "
+            f"{manifest['label']['revisions']}, sources: {', '.join(manifest['labelSources'])}",
             f"**Window.** {len(wf)} test days, one day per split, purge "
             f"{manifest['trainingWindow']['purgeDays']} days.",
             f"**Feature set.** {manifest['featureSet']} ({len(manifest['featureNames'])} features), "
@@ -211,6 +243,11 @@ def main() -> None:
     p.add_argument("--budget", type=int, default=20, help="board slots; precision is measured over these")
     p.add_argument("--train-days", type=int, default=90)
     p.add_argument("--min-test-days", type=int, default=60)
+    p.add_argument(
+        "--allow-thin",
+        action="store_true",
+        help="write a report over fewer than --min-test-days. Types the exception into the shell history.",
+    )
     args = p.parse_args()
 
     manifest = json.loads((args.src / "manifest.json").read_text(encoding="utf-8"))
@@ -219,11 +256,27 @@ def main() -> None:
     df["label_resolves_at"] = pd.to_datetime(df["label_resolves_at"], utc=True)
 
     wf = evaluate(df, manifest["featureNames"], args.rounds, args.budget, args.train_days)
-    if len(wf) < args.min_test_days:
-        print(
-            f"WARNING: {len(wf)} test days, fewer than the {args.min_test_days} this evaluation is "
-            "meant to aggregate over. Read the distribution, not the median."
+
+    # ★ A THIN EVALUATION IS A REFUSAL, NOT A WARNING.
+    #
+    # This used to print a WARNING and write the report anyway. A warning on stdout
+    # above a report that looks exactly like a real one is not a control: the report
+    # is the artefact people read, it gets pasted into a decision, and the warning
+    # stays in a terminal nobody scrolled back through. Every metric here is a
+    # DISTRIBUTION across test days — p10, median, p90 — and a distribution over
+    # three days is three numbers wearing the word "median".
+    #
+    # --allow-thin exists because there is a legitimate use (watching a pipeline
+    # come alive), and it puts the exception in the shell history and on the face
+    # of the report rather than in a comment.
+    if len(wf) < args.min_test_days and not args.allow_thin:
+        raise SystemExit(
+            f"{len(wf)} test days, fewer than the {args.min_test_days} this evaluation aggregates over. "
+            "No report written: a distribution over this many days is not a distribution. "
+            "Pass --allow-thin to write one anyway, and read it as an anecdote."
         )
+    if len(wf) < args.min_test_days:
+        print(f"THIN: {len(wf)} test days, below {args.min_test_days}. This report is an anecdote.")
 
     args.out.mkdir(parents=True, exist_ok=True)
     wf.to_csv(args.out / "walkforward.csv", index=False)

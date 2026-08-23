@@ -1,0 +1,18 @@
+{
+  "name": "@insidor/label",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The outcome labeller: grades decisions whose horizon has closed and appends the answer to internal.labels. Never edits a settled row.",
+  "main": "./src/main.ts",
+  "scripts": {
+    "start": "node src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/store": "workspace:*",
+    "pg": "^8.16.0"
+  }
+}

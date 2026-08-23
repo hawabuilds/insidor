@@ -126,7 +126,14 @@ module.exports = {
        the filesystem rather than the index — so a developer who has run `pnpm build` once
        gets a bundled copy of the whole app cruised as if it were source, reported as an
        orphan forever. Warnings nobody can action are how a real one gets scrolled past. */
-    exclude: { path: '\\.test\\.ts$|(^|/)dist/' },
+    /* …and the Python virtualenv, for exactly the same reason. `ml/train/README.md`
+       tells you to create it at `ml/train/.venv`, it is gitignored, and it contains
+       JavaScript — sklearn ships an HTML repr helper, pip vendors an emscripten
+       worker. This tool walks the filesystem rather than the index, so following
+       the documented setup instructions added two permanent orphan warnings that
+       no developer could action. Warnings nobody can action are how a real one
+       gets scrolled past. */
+    exclude: { path: '\\.test\\.ts$|(^|/)dist/|(^|/)\\.venv/' },
 
     /**
      * ★ WITHOUT THIS BLOCK EVERY BOUNDARY RULE SILENTLY PASSES.

@@ -12,9 +12,34 @@
 # Installed into a local virtualenv, by hand, on a laptop, weekly. No container,
 # no scheduler, no CI secret, no GPU, no notebook server, no deploy target.
 
+# ★ TWO OF THESE ARE PINNED EXACTLY AND THE REST ARE FLOORS, AND THE LINE BETWEEN
+# THEM IS "does this library's output cross into TypeScript".
+#
+#   lightgbm      its `dump_model()` IS the artefact the serving walker reads.
+#                 A dump-format change is a silent re-interpretation of every
+#                 threshold and default direction. Pinned.
+#   scikit-learn  its isotonic knots ARE the calibrator that ships, and the
+#                 TypeScript side refits one daily with no Python near it. Pinned,
+#                 and now measured against: ml/train/make_parity_oracle.py writes
+#                 sklearn's own answers and parity.test.ts asserts agreement.
+#   the rest      never cross. pandas shapes a frame, pyarrow writes a parquet,
+#                 numpy does arithmetic that stays in this directory. Floors, so a
+#                 new Python release does not make the whole file uninstallable.
+#
+# WHY THE FLOORS ARE NOT THE OLD PINS: on Python 3.14 — the only interpreter on
+# this machine — pandas 2.2.3, numpy 2.1.3, pyarrow 17.0.0 and scikit-learn 1.5.2
+# have no wheels and build from source against a setuptools that no longer ships
+# pkg_resources. The pinned file could not be installed at all, which is how it
+# stayed unexecuted. A pin that cannot be installed protects nothing.
+#
+# scikit-learn's pin moved 1.5.2 → 1.9.0 for that reason. That is a real change to
+# a boundary library and it is only safe because the oracle now exists: if 1.9.0's
+# PAVA disagreed with isotonic.ts, parity.test.ts would fail. Before today nothing
+# would have noticed.
+
 lightgbm==4.5.0        # the trainer. Three seconds on tens of thousands of rows.
-scikit-learn==1.5.2    # isotonic calibration only; the serving side reimplements it
-pandas==2.2.3
-pyarrow==17.0.0        # parquet, the format the dataset crosses in
-numpy==2.1.3
-psycopg[binary]==3.2.3 # reads internal.decisions and internal.labels. Read-only role.
+scikit-learn==1.9.0    # isotonic calibration only; the serving side reimplements it
+pandas>=2.2
+pyarrow>=17            # parquet, the format the dataset crosses in
+numpy>=2.1
+psycopg[binary]>=3.2   # reads internal.decisions and internal.labels. Read-only role.

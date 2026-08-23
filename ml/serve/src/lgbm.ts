@@ -244,12 +244,44 @@ function compileNode(raw: unknown, at: string, featureCount: number): CompiledNo
   return {
     kind: 'split',
     feature,
-    threshold,
+    threshold: unclampThreshold(threshold),
     missing: parseMissing(n['missing_type'], at),
     defaultLeft,
     left: compileNode(n['left_child'], `${at}.left`, featureCount),
     right: compileNode(n['right_child'], `${at}.right`, featureCount),
   };
+}
+
+/** LightGBM's `Common::AvoidInf` clamp, and the only value it ever emits. */
+const AVOID_INF = 1e300;
+
+/**
+ * ★ `dump_model()` IS LOSSY, AND THIS IS THE ONE PLACE IT MATTERS.
+ *
+ * LightGBM builds a "missing versus not" node — everything present goes one way,
+ * NaN goes the other — as a split whose threshold is literally `inf`. The native
+ * `model.txt` stores `inf`. The JSON dump does not: it passes every threshold
+ * through `Common::AvoidInf`, which clamps anything at or above 1e300 to exactly
+ * 1e300. This walker reads the JSON dump, so it reads 1e300 and asks `v <= 1e300`
+ * — which is false for +inf and for the handful of doubles above 1e300, sending
+ * those rows down the branch LightGBM never sends them down.
+ *
+ * Verified on a real booster rather than reasoned about: the same model answered
+ * identically for 1e10, 1e300, 1e300+1ulp and +inf, while this walker diverged by
+ * 0.0027 on the +1ulp row alone; `model.txt` for that node reads `threshold=inf`
+ * where the dump reads `1e+300`.
+ *
+ * Reversing the clamp is the faithful reading, not a special case. A genuine
+ * threshold is the midpoint of two observed feature values, so a real 1e300
+ * threshold requires real features near 1e300 — and if that ever happened, the
+ * feature is broken in a way no calibration survives. The direction of the error
+ * matters too: leaving it clamped mis-routes an infinity SILENTLY, and an
+ * infinite feature value is exactly what a division by a zero counter produces.
+ */
+function unclampThreshold(threshold: number): number {
+  if (threshold >= AVOID_INF) return Number.POSITIVE_INFINITY;
+  if (threshold <= -AVOID_INF) return Number.NEGATIVE_INFINITY;
+  return threshold;
 }
 
 function parseMissing(raw: unknown, at: string): MissingKind {
@@ -268,13 +300,41 @@ function parseMissing(raw: unknown, at: string): MissingKind {
 /* ── prediction ───────────────────────────────────────────────────────── */
 
 /**
- * LightGBM's own zero band. Not an epsilon we chose — `kZeroThreshold` in
- * `include/LightGBM/meta.h`. A value inside it counts as zero for a Zero-missing
- * split, and the row then takes the default branch rather than comparing.
+ * LightGBM's own zero band. Not an epsilon we chose — `kZeroThreshold`. A value
+ * inside it counts as zero for a Zero-missing split, and the row then takes the
+ * default branch rather than comparing.
+ *
+ * ★ `Math.fround`, NOT THE LITERAL 1e-35, AND THE DIFFERENCE IS OBSERVABLE.
+ * LightGBM declares it `const double kZeroThreshold = 1e-35f;` — a FLOAT literal
+ * widened to double. The nearest float32 to 1e-35 is 1.0000000180025095e-35,
+ * which is strictly greater than the double 1e-35 this file used to carry, so a
+ * narrow shell of values sat inside LightGBM's band and outside ours.
+ *
+ * Two independent facts pin it, and neither is "the test went green": the
+ * float32 round-trip of 1e-35 is 1.0000000180025095e-35 in both languages, and
+ * LightGBM's own model dump emits a split threshold of exactly that value — a
+ * number it could only have produced from the constant itself. On the oracle
+ * this was worth up to 0.029 in probability space.
  */
-const ZERO_BAND = 1e-35;
+const ZERO_BAND = Math.fround(1e-35);
 
-const isZero = (v: number): boolean => v > -ZERO_BAND && v <= ZERO_BAND;
+/**
+ * ★ CLOSED AT BOTH ENDS. LightGBM's `Tree::IsZero` is
+ * `fval >= -kZeroThreshold && fval <= kZeroThreshold` — inclusive on both sides.
+ *
+ * This was written `v > -ZERO_BAND && v <= ZERO_BAND`: closed above, open below.
+ * The asymmetry is invisible to inspection and to any sampled row, because no
+ * real value lands on −1e-35 by chance. It is not invisible to the oracle: on
+ * `fixtures/walker-parity.json`, six of 2,624 rows disagreed with LightGBM by up
+ * to 0.168 in probability space, and every one of them carried exactly −1e-35 in
+ * a split feature. Nothing else in the fixture diverged — not +1e-35, not
+ * ±1e-36, not ±1e-34 — which is what identifies this as the boundary comparison
+ * rather than the band's magnitude.
+ *
+ * It only bites a `missing_type=Zero` model, which `train.py` does not produce
+ * today. The walker accepts one, so the walker must be right about one.
+ */
+const isZero = (v: number): boolean => v >= -ZERO_BAND && v <= ZERO_BAND;
 
 /**
  * Transcribed from LightGBM's `Tree::NumericalDecision`. The order of the three

@@ -11,6 +11,7 @@
  *   node tools/db.mjs pairs     derive the pairs projection  (services/project)
  *   node tools/db.mjs sources   derive the source indicator  (services/project)
  *   node tools/db.mjs decide    run the stages, write decisions (services/runner)
+ *   node tools/db.mjs label     grade the closed horizons, write outcomes (services/label)
  *   node tools/db.mjs psql      an interactive shell in the container
  *
  * WHY THIS EXISTS ALONGSIDE store/src/migrate.ts. That one is the deployable
@@ -546,6 +547,48 @@ async function decide() {
   });
 }
 
+/**
+ * ★ THE OTHER HALF OF `decide`. The half that finds out whether any of it was right.
+ *
+ * `decide` writes what we chose; this writes what happened. SETUP.md has said from the
+ * first week that these are the two tables that cannot be backfilled, and until this
+ * command existed only one of them had a way to be written at all — the system had made
+ * two thousand decisions across six stages and had never once been told an outcome.
+ *
+ * IT RUNS THE REAL SERVICE. `services/label/src/main.ts` is the same program a scheduler
+ * would run nightly; there is no laptop variant of it and no flag that makes it write
+ * differently. Anything this writes, the nightly run writes.
+ *
+ * WHY IT NEEDS NO ENVIRONMENT BLOCK, UNLIKE `decide`. The labeller has no health port, no
+ * heartbeat, no singleton lock and no discovery: its idempotence is structural — a
+ * settled row is inserted with `on conflict do nothing` and a resolved one is never
+ * re-graded — so two copies racing produce one row rather than a corrupted queue. There
+ * is nothing to declare because there is nothing that could be silently defaulted wrong.
+ *
+ * ★ AND ZERO RESOLVED IS THE EXPECTED ANSWER ON A YOUNG DATABASE, WHICH IS WHY THE
+ * REPORT PRINTS EVERY STATE INCLUDING THE ZEROES. The horizon is thirty days. Every
+ * subject decided about in the last month is legitimately PENDING — no row, and never a
+ * zero — and a command that printed nothing in that case would be indistinguishable from
+ * one that had crashed.
+ *
+ * Pass through anything after the command: `pnpm db:label --dry-run`, `--limit=100`.
+ */
+const LABELLER = join(ROOT, 'services', 'label', 'src', 'main.ts');
+
+async function label() {
+  if (!existsSync(LABELLER)) {
+    die(
+      `no labeller at ${LABELLER}.\n` +
+        '  services/label grades the decisions whose horizon has closed and appends the answer\n' +
+        '  to internal.labels — resolved, censored, unresolvable, or nothing at all while the\n' +
+        '  window is still open. Until it runs, every decision in the log is a bet nobody ever\n' +
+        '  settled, and a decision log with no outcomes beside it is not a system waiting to be\n' +
+        '  switched on; it is training data that never existed and cannot be bought later.',
+    );
+  }
+  await run(['--experimental-strip-types', LABELLER, ...process.argv.slice(3)], 'the labeller');
+}
+
 function psql() {
   assertDockerRunning();
   if (health() === 'missing') die(`container ${CONTAINER} is not running. Try:  pnpm db:up`);
@@ -569,6 +612,7 @@ const COMMANDS = {
   pairs,
   sources,
   decide,
+  label,
   psql: async () => psql(),
 };
 

@@ -901,6 +901,123 @@ export interface BudgetPolicy {
   readonly softStopFraction: number;
 }
 
+/* ── OUTCOMES ─────────────────────────────────────────────────────────── */
+
+/**
+ * ★ WHAT AN OUTCOME IS, AS NUMBERS. The half of the learning loop that settles days
+ * after the decision it grades.
+ *
+ * WHY THESE ARE IN POLICY AND NOT IN THE LABELLER. Every field below is a bar that
+ * decides what a row in `internal.labels` MEANS, and the labeller is not the only thing
+ * that will ever want to know: a backfill, an audit of the censoring rate, and the
+ * eventual re-derivation of the bar by quantile all need the same numbers, and three
+ * copies of a threshold is three chances to grade two populations under one name.
+ *
+ * ★ AND WHY `definition` LIVES IN THIS BLOCK RATHER THAN IN THE CODE THAT WRITES IT.
+ * It is the string stored in `internal.labels.label_version`, and it names exactly the
+ * numbers beside it. Move any threshold in this block WITHOUT moving `definition` and
+ * you have two different measurements sharing one name, pooled by every consumer, with
+ * nothing on disk that can tell them apart afterwards — the same failure as an
+ * un-bumped policy version, one layer down and much harder to see, because the rows
+ * look fine individually. Keeping the string in the same object as the numbers makes
+ * the omission visible in the diff.
+ */
+export interface LabelPolicy {
+  /**
+   * The stored `label_version` these numbers constitute. See above: this moves whenever
+   * anything else in this block moves.
+   */
+  readonly definition: string;
+
+  /**
+   * ★ THE HORIZON. How long after a subject's own clock the outcome window stays open.
+   *
+   * EVIDENCE, AND THE TWO NUMBERS THAT ARE CONSTANTLY CONFUSED WITH IT. Our own
+   * measurement puts the median post-to-peak at about SIX DAYS, and 0% of large coins
+   * peak within an hour of the post. Six days is therefore the MEDIAN, not the window:
+   * a window closed at the median grades half the population before it finished
+   * happening, and every one of those rows enters training as a small number that is
+   * not a small outcome but no outcome at all. Thirty days is roughly five times the
+   * median, which puts the great majority of the mass inside the window, and it is the
+   * figure the architecture already committed to.
+   *
+   * The other number in the same neighbourhood is the post-to-asset median of 3.8
+   * MINUTES — the front of the pipeline, not the back. It bounds how quickly a subject
+   * acquires something to measure; it says nothing about when that thing is done moving.
+   *
+   * The cost of the choice, stated: a thirty-day horizon means a decision made today
+   * cannot enter a training set for a month, and for the first month of live running
+   * the resolved population is empty by construction. That is the correct shape. The
+   * alternative — a short window so that rows appear sooner — buys rows by mislabelling
+   * them, and there is no later repair for a table full of them.
+   */
+  readonly windowDays: number;
+
+  /**
+   * ★ WHAT COUNTS AS A PEAK: the bar `y` is taken at, as a multiple of the first price
+   * we ever observed for the asset inside the window.
+   *
+   * EVIDENCE. On 866 labelled coins from the previous build's measurement, winners had
+   * a median peak of 18× and losers 1.19×. A bar at 5× sits far above the body of the
+   * loser distribution and far below the winner median, so it is not sitting on top of
+   * either mode — which is what makes it robust to being slightly wrong.
+   *
+   * ★ IT IS A BOOTSTRAP VALUE AND IT IS SUPPOSED TO MOVE. The research instruction is
+   * to set this by quantile so positives land at 1–3% of admissions and to recompute it
+   * monthly, and neither is possible until a resolved population exists — which is what
+   * the labeller is for. When it moves, `definition` moves with it, because a row graded
+   * at 5× and a row graded at 12× are not the same measurement.
+   */
+  readonly peakMultipleThreshold: number;
+
+  /**
+   * ★ THE WASH-TRADE GUARD, half one: how close to the maximum a reading has to be to
+   * count as supporting it.
+   *
+   * Ported unchanged from the previous build's peak-multiple query, where it was one of
+   * two choices singled out as the reason that measurement separated cleanly. A single
+   * print at ten times the surrounding prices is not a peak, it is somebody trading with
+   * themselves, and a measurement that cannot tell those apart teaches a model to chase
+   * the second one.
+   */
+  readonly peakSupportFraction: number;
+
+  /**
+   * ★ THE WASH-TRADE GUARD, half two: how many readings within `peakSupportFraction` of
+   * the maximum are required before the maximum may be called a peak.
+   *
+   * Two, and the reason is that one is exactly the number a wash trade produces. A
+   * maximum standing alone is still recorded — as a CENSORED lower bound, not as a
+   * resolved measurement and not as a zero — because "the only evidence we have is one
+   * print we do not believe" is a statement about our evidence, not about the coin.
+   */
+  readonly minPeakSupportReadings: number;
+
+  /**
+   * ★ HOW MUCH COVERAGE LOSS MAKES AN OBSERVATION CENSORED.
+   *
+   * The fraction of the outcome window that the coverage log must positively account
+   * for before a measurement over it may be called resolved. Below this, the window was
+   * partly unwatched: whatever peak we measured is a LOWER BOUND on one we may have
+   * missed, and the row is censored carrying that bound.
+   *
+   * WHY IT IS NOT 1.0. The coverage log records contiguous observed windows written on
+   * reconnect, so the boundary between two of them is a sub-second seam that is real,
+   * routine, and not a period during which anything could have been missed. A bar at
+   * exactly 1.0 would censor essentially every window over a healthy stream, and a
+   * censoring rate that is always 100% is the same as no censoring signal at all —
+   * which matters, because a RISING censoring rate is the earliest sign the pipeline is
+   * rotting and it can only rise from somewhere. 0.99 over a thirty-day window admits
+   * about seven hours of seam and refuses anything larger.
+   *
+   * ★ THIS IS THE SECOND OF TWO TESTS, NEVER THE ONLY ONE. A window any part of which
+   * the watcher DECLARED dark is censored outright whatever this fraction says: a
+   * declared gap is knowledge that we were not looking, and no amount of coverage
+   * elsewhere in the window buys it back.
+   */
+  readonly minCoveredFraction: number;
+}
+
 /* ── the whole thing ──────────────────────────────────────────────────── */
 
 export interface Policy {
@@ -920,6 +1037,11 @@ export interface Policy {
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
   readonly budget: BudgetPolicy;
+  /**
+   * The other half of the loop. Every stage above decides; this block is what says
+   * whether the decision was right, and under which definition of right.
+   */
+  readonly labels: LabelPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
    * the one field that makes "a rule today, a model tomorrow" a swap rather than a
@@ -1023,7 +1145,24 @@ const POLICY_V1: Policy = {
      the other half of the distinction above: the freshness bar catches a source that went
      quiet, and this catches one that is refusing every call as fast as we can make it.
      Without it a wrong credential reads as live for a full freshness window. */
-  version: 'policy.v8',
+
+  /* v9 adds the whole `labels` block — the first thresholds in this file that describe an
+     OUTCOME rather than a decision. Bumped by hand for the reason v3 through v8 give, and
+     with one addition that is particular to this block: before this bump the horizon, the
+     bar that turns a peak into a `y`, and the coverage loss that makes an observation
+     censored all lived nowhere at all. `internal.labels.window_days` is a per-row column
+     with only `check (window_days > 0)`, so whoever wrote the row chose the window, and
+     two runs under two windows would have produced rows that are indistinguishable on
+     disk and are not the same measurement. Nothing was wrong with any individual row; the
+     table simply had no way to say what it had been graded against.
+
+     ★ AND THE `labels.definition` FIELD IS PART OF THE SAME ARGUMENT ONE LAYER DOWN. The
+     policy version says which thresholds judged a DECISION; `labels.definition` says which
+     thresholds graded an OUTCOME, and it is stored on every label row. Any label written
+     before this bump — there are none — would have been graded against numbers that were
+     not written down anywhere, and the definition string is the only thing that would say
+     so. */
+  version: 'policy.v9',
 
   admit: {
     maxAgeMin: 240,
@@ -1334,6 +1473,18 @@ const POLICY_V1: Policy = {
     judgeUsdPerDay: 2,
     quoteUsdPerDay: 1,
     softStopFraction: 0.9,
+  },
+
+  /* The numbers whose reasons are on `LabelPolicy` above. Read them there; every one of
+     them carries the measurement it came from, and none of them is a round number chosen
+     because it looked reasonable. */
+  labels: {
+    definition: 'v1',
+    windowDays: 30,
+    peakMultipleThreshold: 5,
+    peakSupportFraction: 0.9,
+    minPeakSupportReadings: 2,
+    minCoveredFraction: 0.99,
   },
 
   scorers: {

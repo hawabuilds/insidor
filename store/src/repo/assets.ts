@@ -511,6 +511,65 @@ export class PgAssetRepo implements AssetRepo {
     // absence here, and that direction is the safe one.
     return rows[0]?.gap !== false;
   }
+
+  /**
+   * ★ HOW MUCH OF A WINDOW WE CAN POSITIVELY ACCOUNT FOR HAVING WATCHED, in milliseconds.
+   *
+   * WHY THIS EXISTS BESIDE `hasCoverageGap` RATHER THAN INSIDE IT. They answer two
+   * different questions and only one of them is a boolean. `hasCoverageGap` asks "was
+   * darkness ever DECLARED over this window" — it is `bool_or(gap)` over overlapping
+   * rows, and a single declared gap makes it true no matter how much else was observed.
+   * That is the right shape for a claim we already know is broken.
+   *
+   * It has one blind spot, stated in its own comment's neighbourhood and worth stating
+   * again because a labeller walks straight into it: a window overlapped by ONE observed
+   * row covering ten percent of it comes back `false` — no gap. The method asks whether
+   * any overlapping row declared darkness, not whether the window is fully tiled by
+   * observed ones. A watcher that simply stopped writing rows, rather than writing an
+   * explicit gap row on reconnect, leaves a hole that is invisible to it.
+   *
+   * So this measures the other half: the total length of the window that observed,
+   * non-gap rows actually cover. Divided by the window's own length by the caller, it is
+   * the covered FRACTION, and `Policy.labels.minCoveredFraction` is the bar it is held
+   * against. Together the two reads say "nobody declared darkness AND we can account for
+   * essentially all of it", which is the only pair of facts that makes a resolved
+   * negative — "nothing happened and we were watching" — an honest claim.
+   *
+   * ★ `range_agg` AND NOT `sum(least(...) - greatest(...))`, WHICH IS THE OBVIOUS
+   * VERSION AND IS WRONG. Coverage rows are keyed `(chain, window_from)` and nothing in
+   * the schema stops two of them overlapping — a resumed watcher that re-reads a little
+   * of what it already had writes exactly that. Summing clipped lengths double-counts
+   * the overlap and can report more coverage than the window is long, which reads as
+   * "fully watched" for a window that was not. The union is computed first, then
+   * measured.
+   *
+   * WHAT BREAKS IF THIS IS CHANGED CARELESSLY: it errs toward LESS coverage today (a
+   * seam between two rows counts as uncovered), and that direction costs recall on
+   * labels. Making it err the other way costs the truth of every outcome measured over
+   * the window, and buys back nothing — the same trade `recordCoverage` makes when it
+   * ORs the gap flag instead of assigning it.
+   */
+  async coveredMs(chain: ChainId, fromMs: Millis, toMs: Millis): Promise<Millis> {
+    if (toMs <= fromMs) return 0 as Millis;
+    const rows = await this.#db.query<{ covered_s: string | number | null }>(
+      `with clipped as (
+         select tstzrange(greatest(window_from, $2::timestamptz),
+                          least(window_to, $3::timestamptz), '[)') as span
+           from internal.mint_coverage
+          where chain = $1
+            and not gap
+            and window_to > $2::timestamptz
+            and window_from < $3::timestamptz
+       ), merged as (
+         select unnest(range_agg(span)) as span from clipped
+       )
+       select coalesce(sum(extract(epoch from (upper(span) - lower(span)))), 0) as covered_s
+         from merged`,
+      [chain, toTimestamp(fromMs), toTimestamp(toMs)],
+    );
+    const seconds = Number(rows[0]?.covered_s ?? 0);
+    return (Number.isFinite(seconds) ? Math.round(seconds * 1000) : 0) as Millis;
+  }
 }
 
 /** Higher wins. 'unknown' is zero, so it can never displace a timestamp we already have. */
