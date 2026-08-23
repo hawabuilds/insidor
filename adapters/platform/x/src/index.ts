@@ -105,13 +105,20 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
   };
 }
 
-export { CAPABILITIES, FIDELITY, PRICES, SOURCE, VENDOR } from './capabilities.ts';
+export { billedUnits, CAPABILITIES, FIDELITY, PRICES, SOURCE, VENDOR } from './capabilities.ts';
 export { httpClient } from './client.ts';
+/* The typed "we were never configured to call this source". Exported so a caller
+   failing closed can tell it from an outage without parsing a message — the registry
+   already turns it into `misconfigured`, and this is how anything else checks. */
+export { XNotConfigured } from './client.ts';
 /* What this source needs from the environment, declared beside the client that
    consumes it. The registry reads it; nothing central holds a copy to drift from. */
 export { CREDENTIALS, clientConfig } from './credentials.ts';
 export type { XClient, XClientConfig } from './client.ts';
-export { toSearchQuery } from './discover.ts';
+/* The rendering, and the proof that the vendor applied it. `CutoffNotHonoured` is
+   exported because it is the one failure on this source that must never be retried
+   or swallowed: it means a blind historical run stopped being blind. */
+export { CutoffNotHonoured, toSearchQuery } from './discover.ts';
 /* The citation link. Exported from the barrel because the projector — which must
    never know a URL shape — is the caller, and it asks this package by name. */
 export { postUrl } from './permalink.ts';

@@ -11,6 +11,8 @@
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/wallet": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

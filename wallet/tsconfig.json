@@ -1,0 +1,19 @@
+{
+  /* One compiler config lives at the root; this file only says which files are ours.
+     rootDir is load-bearing here for the same reason it is in contracts and core: it makes
+     `import '../../app/src/x.ts'` a typecheck error (TS6059), which is the hole pnpm's
+     package boundary cannot close on its own.
+
+     ★ NO "DOM" IN `lib`, DELIBERATELY, EVEN THOUGH THIS PACKAGE RUNS IN A BROWSER. Nothing
+     here may depend on a browser global being typed, because the whole adapter has to be
+     drivable by a test with no DOM and no network. `discovery.ts` is the one file that
+     reads `globalThis`, and it reads it through a structural cast rather than through the
+     DOM lib — so adding "DOM" here would not enable anything, and would quietly permit the
+     next file to reach for `window`, `localStorage` or `fetch` without anyone noticing. */
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "noEmit": true
+  },
+  "include": ["src"]
+}

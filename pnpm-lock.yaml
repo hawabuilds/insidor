@@ -200,6 +200,12 @@ importers:
 
   app:
     dependencies:
+      '@insidor/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@insidor/wallet':
+        specifier: workspace:*
+        version: link:../wallet
       react:
         specifier: ^19.2.0
         version: 19.2.8
@@ -364,6 +370,12 @@ importers:
       '@types/pg':
         specifier: ^8.15.0
         version: 8.21.0
+
+  wallet:
+    dependencies:
+      '@insidor/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
 packages:
 

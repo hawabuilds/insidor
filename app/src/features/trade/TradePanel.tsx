@@ -19,6 +19,15 @@
  * priced — every figure is a dash with its reason), and one plain statement of why no order
  * can be placed.
  *
+ * ★ A CONNECTED WALLET CHANGES ONE SENTENCE HERE AND NOTHING ELSE. The list of what is
+ * missing gets one item shorter, because it genuinely is one item shorter — that is a fact
+ * about the world, which is the test everything on screen has to pass. It is emphatically
+ * not a step towards a form: no field appears, no control becomes pressable, and
+ * `submitTrade` still throws. A wallet is the cheapest of the three things this path needs
+ * and the only one that lives in a browser; the two that remain are a venue that will price
+ * the coin and a service that can submit and confirm what was signed, and neither of those
+ * gets closer because somebody pressed Connect.
+ *
  * WHEN A VENUE LANDS, the machinery to restore it is all still here and none of it needs to
  * be redesigned: `quote-state.ts` holds the expiry state machine (`settle`, `hasExpired`,
  * `QuoteState`, `LiveQuote`) and its rules — a quote is never cached across a render, because
@@ -30,6 +39,13 @@
  */
 
 import type { BuyAction } from '../feed/index.ts';
+/* ★ The app's ONE spelling of "shorten an opaque reference for the eye", and the header on
+   `truncateRef` names this panel as the reason it is exported. It was not being used here:
+   this file had its own `slice(0, 6)…slice(-4)`, which cuts UTF-16 units rather than code
+   points and can therefore leave half a character behind — the exact drift that header warns
+   about, on the one screen where the reference identifies what a person is about to spend
+   money on. */
+import { truncateRef } from '../wallet/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { formatPrice, formatUsd } from '../../shared/format/number.ts';
 import { Num } from '../../shared/ui/index.ts';
@@ -38,9 +54,40 @@ import styles from './trade.module.css';
 export interface TradePanelProps {
   readonly action: BuyAction;
   readonly onClose: () => void;
+  /**
+   * Whether a wallet is connected. It changes ONE SENTENCE and adds no control — see the
+   * note above `NEEDS`. Passed in as a boolean rather than as a `WalletState`, because the
+   * only thing this panel is entitled to know is whether one of the three missing pieces has
+   * arrived; which of seven wallet states we are in is the nav's business.
+   */
+  readonly walletConnected: boolean;
 }
 
-export function TradePanel({ action, onClose }: TradePanelProps) {
+/**
+ * ★ THE ONE THING A CONNECTED WALLET CHANGES ON THIS SCREEN, AND IT IS A SENTENCE.
+ *
+ * Both spellings say trading is not connected, because it is not. What differs is the list
+ * of what is missing, and it differs because the list got shorter by exactly one item — that
+ * is a fact about the world and it is allowed on screen. What is NOT allowed is any
+ * consequence of it: no amount field appears, no button becomes pressable, no estimate
+ * arrives. Connecting a wallet changes what the app knows, not what it offers.
+ *
+ * The two items that remain are both server-side and neither is close: a venue that will
+ * price this coin, and something that can submit what a wallet signed and then tell
+ * `submitted` from `filled`. `shared/api/client.ts` names the third — an idempotency key
+ * minted before the first signature — and none of the three gets closer because a browser
+ * gained a wallet.
+ */
+const NEEDS = {
+  without:
+    'needs: a venue that will price this coin, a wallet, and a service that can submit and ' +
+    'confirm what it signs',
+  with:
+    'your wallet is connected — still needs: a venue that will price this coin, and a ' +
+    'service that can submit and confirm what your wallet signs',
+} as const;
+
+export function TradePanel({ action, onClose, walletConnected }: TradePanelProps) {
   const { coin } = action;
   /* A fixed instant rather than a ticking clock: nothing on this panel counts down any more
      (the countdown belonged to a live quote's expiry), and a 1s interval that only re-renders
@@ -61,8 +108,10 @@ export function TradePanel({ action, onClose }: TradePanelProps) {
         </button>
       </div>
 
+      {/* The whole value is carried in `title` so it can be read and copied; the short form
+          is for the eye. A reference is a reference — it is never put where a name goes. */}
       <span className={styles['address']} title={coin.address}>
-        {coin.address.slice(0, 6)}…{coin.address.slice(-4)}
+        {truncateRef(coin.address)}
       </span>
 
       <div className={styles['mini']}>
@@ -94,7 +143,7 @@ export function TradePanel({ action, onClose }: TradePanelProps) {
         and no button to press. This panel exists to show which coin the board matched and
         what we know about it.
         <span className={styles['notLiveNeeds']}>
-          needs: a venue that will quote this coin, a wallet, and a signer
+          {walletConnected ? NEEDS.with : NEEDS.without}
         </span>
       </div>
 

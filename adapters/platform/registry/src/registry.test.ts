@@ -49,12 +49,22 @@ const runtime: PlatformRuntime = {
 
 /* ── environments, named for the situation they represent ─────────────── */
 
-/** Every credential every source needs, so all three build. */
+/**
+ * Every credential every source needs, so all three build.
+ *
+ * ★ THE ACTOR IDS ARE IN THE API SPELLING, WITH A TILDE, AND THAT IS NOT COSMETIC.
+ * They used to be written `actor/discover` here, back when no client validated
+ * anything — and that is the console spelling, which would put an extra segment in a
+ * request path and produce a 404 that reads exactly like a retired actor. The client
+ * now refuses it at construction, so these values are what a correctly configured
+ * environment actually looks like rather than what an unchecked one could get away
+ * with. `a constructor that refuses a bad actor id` below asserts the other half.
+ */
 const ALL: Record<string, string> = {
   X_API_KEY: 'x-key',
   APIFY_TOKEN: 'scrape-token',
-  TIKTOK_DISCOVERY_ACTOR_ID: 'actor/discover',
-  TIKTOK_OBSERVE_ACTOR_ID: 'actor/observe',
+  TIKTOK_DISCOVERY_ACTOR_ID: 'insidor~discover',
+  TIKTOK_OBSERVE_ACTOR_ID: 'insidor~observe',
   REDDIT_CLIENT_ID: 'client-id',
   REDDIT_CLIENT_SECRET: 'client-secret',
   REDDIT_USER_AGENT: 'script:com.insidor.adapter:v0.1.0 (by /u/insidor_bot)',
@@ -150,6 +160,48 @@ test('a constructor that refuses a bad credential is misconfigured, not a crash'
   assert.equal(reddit.configuration, 'misconfigured');
   // and the other two are untouched.
   assert.deepEqual(ids(registry.all()), ['tiktok', 'x']);
+});
+
+test('★ a constructor that refuses a bad actor id is misconfigured, not a crash', () => {
+  // The two PAID sources can now reach this verdict too, which until their HTTP
+  // bodies landed they could not: their constructors ignored their config entirely,
+  // so the only road to `misconfigured` was a half-filled environment. A well-formed
+  // environment holding a WRONG value had nowhere to be reported.
+  //
+  // It matters most on this source because a plausible-but-wrong actor id does not
+  // fail — it runs, IS BILLED, and returns a dataset in a shape we cannot read.
+  const env = { ...ALL, TIKTOK_DISCOVERY_ACTOR_ID: 'clockworks/tiktok-scraper' };
+  let registry: PlatformRegistry | undefined;
+  assert.doesNotThrow(() => {
+    registry = resolvePlatforms(env, runtime);
+  });
+  assert.ok(registry !== undefined);
+
+  const tiktok = registry.absent().find((a) => a.source === 'tiktok');
+  assert.ok(tiktok !== undefined, 'a source whose constructor threw must appear as absent');
+  assert.equal(tiktok.configuration, 'misconfigured');
+  assert.ok(
+    tiktok.detail.some((d) => d.includes('TIKTOK_DISCOVERY_ACTOR_ID')),
+    'the detail must name the variable the operator has to edit',
+  );
+  // and the other two are untouched: one bad value never takes the process down.
+  assert.deepEqual(ids(registry.all()), ['reddit', 'x']);
+});
+
+test('★ a credential with a stray newline is misconfigured on every paid source', () => {
+  // A value pasted with a trailing newline is the ordinary way this happens, and a
+  // newline in a header value means the request that goes out is not the request the
+  // code wrote. It has to read as a fault somebody can fix, not as an outage.
+  for (const [variable, source] of [
+    ['X_API_KEY', 'x'],
+    ['APIFY_TOKEN', 'tiktok'],
+  ] as const) {
+    const registry = resolvePlatforms({ ...ALL, [variable]: 'value-with-a\nnewline' }, runtime);
+    const absence = registry.absent().find((a) => a.source === source);
+    assert.ok(absence !== undefined, `${source} constructed with a malformed credential`);
+    assert.equal(absence.configuration, 'misconfigured');
+    assert.ok(absence.detail.some((d) => d.includes(variable)));
+  }
 });
 
 test('a placeholder credential left from .env.example is a fault, not a credential', () => {

@@ -5,5 +5,10 @@ packages:
   - 'store'
   - 'ml/serve'
   - 'services/*'
+  # The browser wallet adapter. Top level rather than under adapters/*, because the app is
+  # allowed to import it and is forbidden — by .dependency-cruiser.cjs — from importing
+  # anything under adapters/. That rule is right and is not widened for this; the package is
+  # pinned down by its own rule instead. See `wallet-imports-only-contracts`.
+  - 'wallet'
   - 'app'
   - 'eval'

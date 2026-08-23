@@ -79,6 +79,33 @@ shape the server could not send. They compile out of a production build — `imp
 is a literal the bundler folds, so the module and its data are dropped, and there is no flag
 that can turn sample data on in front of a user.
 
+### The wallet
+
+`Connect` in the top corner talks to a wallet extension if this browser has one. It needs no
+key, no account and no configuration to run, and **connecting one changes nothing about what
+you can do** — there is no venue that will price a coin here and no service that could submit
+what a wallet signed, so the buy panel still says trading is not connected. What changes is
+what the app knows.
+
+Seven states, and the three people confuse are deliberately three different sentences:
+
+| What you see | What it means |
+|---|---|
+| **no wallet found** | No extension is answering. The ordinary case, not a fault — press Connect again if you have just installed one, since extensions inject themselves after we look. |
+| **you cancelled** | You dismissed your wallet's prompt. Nothing went wrong and nothing was shared. |
+| **different network** | Connected, but to a network this build cannot trade on. Both names are in the tooltip. |
+
+`VITE_WALLET_NETWORK` names the network this deployment's venues trade on. **Leave it unset
+unless you mean it.** Unset, the app makes no claim about the network at all: it reports what
+the wallet said and never tells anybody they are on the wrong one, because a guessed network
+name would tell somebody with a correctly-configured wallet that they are wrong. Set it and
+`different network` becomes reachable.
+
+Nothing in the browser holds a key. Signing happens inside the wallet; the adapter's whole
+surface is `connect`, `disconnect`, the account reference, and `sign(bytes) => bytes` — which
+nothing in the app calls, and `wallet/src/dependency-graph.test.ts` fails if a chain library
+or wallet SDK ever appears in the app's dependency graph.
+
 The pipeline does not run end to end yet. About a third of the logic is written — the parts that are
 easy to get wrong and expensive to fix later. The rest is signatures with a
 `notImplemented` body and a comment naming what goes there.

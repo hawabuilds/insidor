@@ -5,14 +5,28 @@
  * ★ THIS IS THE SOURCE WHERE "ADDING A CREDENTIAL TURNS IT ON" WAS NOT TRUE, AND THIS
  * FILE IS WHERE THAT STOPS BEING A SURPRISE.
  *
- * `.env.example` offers exactly one variable for this source. `TikTokClientConfig`
- * wants FOUR fields, and until now the other three had no variable, no default, and
- * no constant anywhere in the package. Supplying the token alone therefore produced a
- * client that constructed happily and could not run anything — the worst of the three
- * possible states, because it looks configured. Declaring all four here means the
- * shortfall is answered at boot, by name, as a `misconfigured` reading: somebody
- * turned this on and got it wrong, which is a fault, and is deliberately NOT the same
- * reading as the source nobody turned on.
+ * `.env.example` used to offer exactly one variable for this source while
+ * `TikTokClientConfig` wanted FOUR fields, and the other three had no variable, no
+ * default and no constant anywhere in the package. Supplying the token alone therefore
+ * produced a client that constructed happily and could not run anything — the worst of
+ * the three possible states, because it looks configured. All four are declared here
+ * now, so the shortfall is answered at boot, by name, as a `misconfigured` reading:
+ * somebody turned this on and got it wrong, which is a fault, and is deliberately NOT
+ * the same reading as the source nobody turned on.
+ *
+ * ★ AND THIS IS THE ONLY SOURCE WITH THREE SECRETS, which is what makes that split
+ * matter here more than anywhere else: a token with no actor ids, or actor ids with no
+ * token, is the likeliest half-filled block in the whole environment. Note the actor
+ * ids are not secrets — they are public store identifiers — but they carry
+ * `fallback: null` anyway, because in `readCredentials` that one field means both "no
+ * honest default exists" AND "count this in the dormant-versus-misconfigured
+ * judgement", and both are true of them.
+ *
+ * ★ WHAT THIS FILE STILL DOES NOT DO IS CHECK A VALUE'S CONTENT. Whether an actor id
+ * is written in the API's tilde form rather than the console's slash form is vendor
+ * knowledge and lives in `httpClient`, which throws `TikTokNotConfigured`. Restating
+ * it here would be two spellings of one predicate, and they drift in the direction
+ * where this file is laxer than the constructor.
  *
  * ★ WHY THE ACTOR IDS ARE CONFIGURATION AND NOT CODE CONSTANTS. They identify which
  * third-party scraper we run, and that is a commercial choice with a price attached

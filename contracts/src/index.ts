@@ -167,6 +167,16 @@ export type {
 } from './ports/venue.ts';
 export { VENUE_CAPABILITIES } from './ports/venue.ts';
 
+export type {
+  AccountRef,
+  NetworkRef,
+  Wallet,
+  WalletFailure,
+  WalletState,
+  WalletStateKind,
+} from './ports/wallet.ts';
+export { WALLET_FAILURES, WALLET_STATES } from './ports/wallet.ts';
+
 export type { JudgeOutcome, JudgePort, JudgeSubject } from './ports/judge.ts';
 export type { EmbedPort, Embedding } from './ports/embed.ts';
 

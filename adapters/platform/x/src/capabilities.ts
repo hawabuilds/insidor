@@ -80,3 +80,28 @@ export const PRICES: PriceBook = {
   [`${VENDOR}:${SEARCH}`]: price(SEARCH, 0.00015),
   [`${VENDOR}:${LOOKUP}`]: price(LOOKUP, 0.00015),
 };
+
+/**
+ * ★ THE FLOOR THIS VENDOR CHARGES PER REQUEST, WHICH THE LEDGER USED TO MISS.
+ *
+ * The price above is per item returned, and reporting the count of returned items as
+ * the billed units is the obvious reading of that — and it is wrong at the bottom of
+ * the range. The vendor states a minimum: "$0.00015 per request (even if no data
+ * returned)", and "if the API returns 0 or 1 tweet, you will be charged 15 credits",
+ * which is one item's price either way.
+ *
+ * So a call that returns nothing booked $0.00 against a real charge. That
+ * understatement is not evenly spread: it lands entirely on the calls that come back
+ * empty, which is the TRACKING path — where a deleted post returning nothing is
+ * ordinary, and where most of this source's money is spent. The one record whose
+ * whole job is to be factual was therefore quietly optimistic in exactly the place
+ * the budget binds.
+ *
+ * It lives here, beside the price it corrects, because it is a fact about how this
+ * vendor bills — the same kind of fact as `usdPerUnit` — rather than something
+ * either call path invented. Both call paths use it, so there is one definition.
+ */
+export const MIN_BILLED_UNITS = 1;
+
+/** Units to report for a call that returned `returned` items. Never below the floor. */
+export const billedUnits = (returned: number): number => Math.max(returned, MIN_BILLED_UNITS);

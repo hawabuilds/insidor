@@ -53,6 +53,20 @@ const PROBES = [
     expectRule: 'contracts-is-a-leaf',
     why: 'contracts must depend on nothing at all, builtins included',
   },
+  /*
+   * The wallet package is the one thing the app is allowed to construct that is not
+   * contracts, so it is the one route by which the app could reach the logic. `app` cannot
+   * import `core` directly — that is probed by the architecture as a whole — but nothing
+   * stops `wallet` from importing it, and then the app reaches core THROUGH the package
+   * added to respect the boundary. The rule that forbids it was added at the same time as
+   * the package; this is what proves the rule is being read.
+   */
+  {
+    file: 'wallet/src/__probe_boundary.ts',
+    source: "import { decide } from '@insidor/core';\nexport const probe = decide;\n",
+    expectRule: 'wallet-imports-only-contracts',
+    why: 'the app must not be able to reach the logic through the wallet',
+  },
 ];
 
 function cruise(target) {

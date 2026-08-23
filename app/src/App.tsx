@@ -51,9 +51,24 @@
  * is dark, and the banner below the nav says what that means for everything underneath. Both
  * come from features/sources; this file makes no decision about either, and holds no state
  * for them beyond the one call.
+ *
+ * ★ THE THIRD PIECE OF MACHINERY IS THE WALLET, AND THE ONLY THING TO KNOW ABOUT IT IS THAT
+ * CONNECTING ONE CHANGES NOTHING ABOUT WHAT CAN BE DONE. It changes what the app KNOWS, not
+ * what it OFFERS. There is one control, it is in the corner where it always was, and no
+ * state of it makes any other control appear anywhere — the buy panel still says trading is
+ * not connected, because it still is not: there is no venue that will price a coin here, and
+ * no service that could submit and confirm what a wallet signed. If a wallet connection ever
+ * causes a new affordance to show up, that is a bug and not a feature.
+ *
+ * The shell holds ONE frame of wallet state, for the reason it holds one frame of source
+ * health: the corner and the buy panel both read it, and two subscriptions would be two
+ * frames that can disagree. The adapter itself is constructed in main.tsx and arrives here
+ * as a prop — nothing in this file, or under features/, imports it.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import type { Wallet } from '@insidor/contracts/ports/wallet.ts';
 
 import {
   BoardStoreProvider,
@@ -72,6 +87,7 @@ import { LiveRail } from './features/rail/index.ts';
 import { SourceBanner, SourceStatus, useSourceHealth } from './features/sources/index.ts';
 import { Story } from './features/story/index.ts';
 import { TradePanel } from './features/trade/index.ts';
+import { Connect, useWalletState } from './features/wallet/index.ts';
 import { MintAlerts, Watchlist, createWatchStore } from './features/watchlist/index.ts';
 import styles from './App.module.css';
 
@@ -155,7 +171,17 @@ function NotBuilt({ headline, needs, note }: { headline: string; needs: string; 
   );
 }
 
-export function App() {
+export interface AppProps {
+  /**
+   * The wallet, as an interface. The shell never learns which implementation this is, and
+   * there is no branch anywhere below that asks: every state it can be in is declared in the
+   * shared vocabulary and rendered by features/wallet. Swapping the adapter is a change to
+   * main.tsx and to nothing that renders.
+   */
+  readonly wallet: Wallet;
+}
+
+export function App({ wallet }: AppProps) {
   /* One store per app lifetime. Created here rather than at module scope so a test can
      mount two Apps without them sharing a board.
 
@@ -170,7 +196,11 @@ export function App() {
   const [now, setNow] = useState(() => Date.now());
   const [alerts, setAlerts] = useState(() => watchStore.alerts());
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [walletNote, setWalletNote] = useState(false);
+  /* ★ ONE FRAME, TWO READERS — the corner of the nav and the buy panel. The same argument as
+     the source indicator below: two subscriptions would be two frames, and the pair could
+     show a connected account above a panel still listing a wallet among the things it
+     lacks. */
+  const walletState = useWalletState(wallet);
   /* ★ ONE FRAME, TWO PLACES. The corner of the nav and the sentence under it are two
      renderings of the same read, so they cannot disagree — two fetches would be two frames,
      and the pair could show a lit pip above a banner saying nothing is answering. Every
@@ -300,21 +330,17 @@ export function App() {
               It draws its own chrome from features/sources/sources.module.css rather than
               from this file: the shell owns the slot, the feature owns what goes in it. */}
           <SourceStatus view={sources} />
-          {/* ★ Not a disabled button. There is no wallet behind this yet, and a greyed-out
-              control says "this exists, you just may not have it" and invites waiting. It is
-              live, it is pressable, and pressing it tells the truth. */}
-          {walletNote ? (
-            <span className={styles['walletNote']} role="status">
-              no wallet is wired up yet
-            </span>
-          ) : null}
-          <button
-            type="button"
-            className={styles['walletBtn']}
-            onClick={() => setWalletNote((v) => !v)}
-          >
-            Connect
-          </button>
+          {/* ★ STILL NOT A DISABLED BUTTON, AND NOW FOR A BETTER REASON. It used to be live
+              because there was nothing behind it and a greyed control invites waiting for
+              something that is not coming. There is something behind it now, and it stays
+              live in six of its seven states for a second reason: "no wallet found" is the
+              commonest state there is, extensions inject themselves into the page after we
+              have looked, and pressing the button looks again. The one state that makes it
+              inert is the wallet's own prompt being open — which is exactly what her
+              `:disabled` treatment was reserved for. All of that is decided in
+              features/wallet/wallet-view.ts; this line is the whole of the shell's
+              involvement. */}
+          <Connect wallet={wallet} state={walletState} />
         </div>
       </nav>
 
@@ -418,7 +444,11 @@ export function App() {
           put into this state, so this drawer cannot open for a coin we have not named. */}
       {buying === null ? null : (
         <aside className={styles['drawer']} aria-label="buy">
-          <TradePanel action={buying} onClose={() => setBuying(null)} />
+          <TradePanel
+            action={buying}
+            onClose={() => setBuying(null)}
+            walletConnected={walletState.kind === 'connected'}
+          />
         </aside>
       )}
 

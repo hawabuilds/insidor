@@ -1,0 +1,155 @@
+/* THE WALLET CORNER, in Hawa's chrome. Her recipes, one directory in from where they were.
+ *
+ * ★ NOTHING HERE IS A NEW VISUAL LANGUAGE. `.walletBtn` and `.walletNote` are lifted
+ *   verbatim from App.module.css (her index.css:73-77) — the one lighter-cyan-into-ion
+ *   gradient in the nav, and the quiet mono capsule that has always sat to its left. They
+ *   moved because the shell owns the SLOT and the feature owns what goes in it, which is
+ *   exactly the split `features/sources` already uses for the indicator beside them. The
+ *   chip and the warn tone are new; both are built from tokens that already existed.
+ *
+ * ★ AND `:disabled` IS FINALLY USED, FOR THE ONE CASE IT WAS RESERVED FOR. The comment that
+ *   travelled with this rule said her `.wallet-btn:disabled` "stays reserved for a wallet
+ *   that genuinely exists and is mid-connect". That moment now exists: the wallet's own
+ *   prompt is open and a second press would open a second one. Every other state leaves the
+ *   button live — including "no wallet found", where pressing it looks again, which is the
+ *   designed answer to an extension that injected itself late. A greyed control in that
+ *   state would say "this exists, wait for it" and invite waiting for something that is not
+ *   coming, which is the mistake the original comment was written to prevent.
+ *
+ * ★ THE ACCOUNT CHIP IS MONO AND IS NOT A NAME. It carries a truncated reference and the
+ *   whole value only on hover; it is not a heading, not a display name, and never occupies
+ *   the button's label. Mono because it is a reference and every reference in this app is
+ *   mono, and `user-select: all` so one click selects the whole thing to copy — the
+ *   truncation is for the eye, not a restriction on what can be taken.
+ */
+
+.wallet {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+/* The live region. It has no appearance of its own — `display: contents` makes the box
+   disappear and its child participate in `.wallet`'s flex row directly, so the layout is
+   identical to having no wrapper. It exists solely so a screen reader has something to watch
+   that is present in every state, including the two states with nothing to say. See
+   Connect.tsx. */
+.live {
+  display: contents;
+}
+
+/* Her wallet button, verbatim. */
+.walletBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: #001318;
+  background: linear-gradient(180deg, #5fe8ff, #3de0ff);
+  border-radius: 10px;
+  padding: 8px 15px;
+  transition: 0.15s;
+  white-space: nowrap;
+}
+
+.walletBtn:hover {
+  box-shadow: 0 0 16px rgba(61, 224, 255, 0.45);
+}
+
+/* The reserved treatment, now earned. Dimmed and inert, and it lasts as long as the
+   wallet's prompt is open and not one moment longer. */
+.walletBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* The quiet capsule, verbatim from where it was. `position: relative` is the anchor for the
+   detail below it, exactly as `.src` is in sources.module.css. */
+.walletNote {
+  position: relative;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 5px 9px;
+  white-space: nowrap;
+  /* "There is more here", without promising a click. Nothing in this capsule is clickable. */
+  cursor: help;
+}
+
+/* ★ WARN IS AMBER AND NEVER RED. Her amber family is the one hue reserved for
+   degraded-but-not-broken, and everything this element can say is that at worst: a wallet
+   that would not answer, a network that does not match. Red is for a loss, and nobody here
+   has lost anything. "You cancelled" and "no wallet found" never reach this class at all —
+   they are facts, not warnings, and they keep the quiet treatment above. */
+.walletWarn {
+  color: var(--ink-2);
+  border-color: rgba(255, 176, 32, 0.35);
+  background: rgba(255, 176, 32, 0.12);
+}
+
+/* The account chip. See the header: a reference, never a name. */
+.chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: var(--bg2);
+  border-radius: 8px;
+  padding: 5px 9px;
+  white-space: nowrap;
+  user-select: all;
+}
+
+/* ★ THE DETAIL, ON HOVER AND ON KEYBOARD FOCUS — and the focus half is why this exists
+   rather than a plain `title`. A native tooltip appears on hover and NEVER on focus, so a
+   `title` alone puts the whole explanation behind a mouse. Copied from sources.module.css
+   deliberately: two elements in the same six pixels of nav behaving differently is worse
+   than one duplicated rule. `pointer-events: none` so it cannot swallow a click aimed at the
+   nav underneath, and `visibility` alongside `opacity` so it is not a focusable invisible
+   rectangle sitting over the page when closed. */
+.tip {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 60;
+  max-width: 280px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+  white-space: normal;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s var(--ease);
+}
+
+.walletNote:hover .tip,
+.walletNote:focus-within .tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ★ RESPONSIVE, AND THE BUTTON OUTLIVES EVERYTHING BESIDE IT. At 760 the note and the chip
+   go — the same breakpoint at which `.walletNote` has always gone — and the control stays,
+   because a control you cannot reach on a phone is worse than a sentence you cannot read.
+   The sentence is still one tap away once the button is pressed, since every state
+   re-renders the note when the viewport allows it. */
+@media (max-width: 760px) {
+  .walletNote,
+  .chip {
+    display: none;
+  }
+}

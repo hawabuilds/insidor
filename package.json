@@ -15,7 +15,7 @@
     "check:policy": "node tools/check-policy.mjs",
     "check:app-vocabulary": "node tools/check-app-vocabulary.mjs",
     "check:python": "node tools/check-python.mjs",
-    "check:boundaries": "depcruise --config .dependency-cruiser.cjs contracts core adapters store services app eval ml && node tools/check-boundaries-probe.mjs",
+    "check:boundaries": "depcruise --config .dependency-cruiser.cjs contracts core adapters store services wallet app eval ml && node tools/check-boundaries-probe.mjs",
     "check": "pnpm typecheck && pnpm check:vocabulary && pnpm check:purity && pnpm check:policy && pnpm check:app-vocabulary && pnpm check:python && pnpm check:boundaries && pnpm test",
     "db:up": "node tools/db.mjs up",
     "db:migrate": "node tools/db.mjs migrate",

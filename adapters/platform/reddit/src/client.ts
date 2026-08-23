@@ -47,6 +47,9 @@ import { Buffer } from 'node:buffer';
 
 import type { Millis } from '@insidor/contracts';
 import { arr, rec, str, VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
+/* The one definition of "is this a number in a header", shared with the two paid
+   clients. See `parseQuota` below for why it moved out of this file. */
+import { quotaFrom } from '@insidor/vendor-kit/http.ts';
 
 import { VENDOR } from './capabilities.ts';
 
@@ -276,15 +279,22 @@ function requireUserAgent(value: string): string {
 /* ── pure helpers, exported because they are worth testing without a socket ── */
 
 /**
- * The one spelling of a number we will accept from a header. Anchored, decimal,
- * optionally signed. Deliberately narrower than `Number`, for the reason below.
+ * Which of this vendor's headers carries which part of the window. It is the only
+ * one of our three that publishes any of them, which is what makes its readings
+ * better than the published constant: they are measured, by the party doing the
+ * rationing.
  */
-const DECIMAL = /^[+-]?\d+(?:\.\d+)?$/;
+const QUOTA_HEADERS = {
+  used: 'x-ratelimit-used',
+  remaining: 'x-ratelimit-remaining',
+  resetSeconds: 'x-ratelimit-reset',
+} as const;
 
 /**
  * Header names are case-insensitive; `Headers.get` already handles that.
  *
- * ★ `Number('')` IS 0, AND THAT IS THE BUG THIS FUNCTION EXISTS NOT TO HAVE.
+ * ★ `Number('')` IS 0, AND THAT IS THE BUG THE READER UNDERNEATH THIS EXISTS NOT
+ * TO HAVE.
  *
  * A header that is PRESENT AND BLANK — which is what an edge emits when it
  * rewrites a response it did not generate — went through `Number` and came back
@@ -293,30 +303,19 @@ const DECIMAL = /^[+-]?\d+(?:\.\d+)?$/;
  * entire argument is that we do not fabricate them, and it is the same shape as
  * the `reach: 0` that `capabilities.ts` spends thirty lines refusing. Whoever
  * eventually paces on this reading would stop dead on a source that was fine.
- * `Number` is equally happy to read `'0x10'` as 16 and `'1e3'` as 1000, neither
- * of which is a spelling this vendor uses, so a match against the ONE spelling
- * it does use is both the fix and the tighter contract.
+ *
+ * ★ AND THAT PREDICATE NOW LIVES IN THE KIT RATHER THAN HERE, because two more
+ * paid clients need it and three private copies of "is this a number in a header"
+ * is exactly how a fixed bug comes back on the source nobody re-tested. This
+ * function stays — it is where this vendor's HEADER NAMES live, which is genuinely
+ * per-vendor knowledge, and it keeps the three-field shape its callers read.
  *
  * Null means "we do not have a reading", which is a different fact from every
  * number including zero, and the caller already treats it as one.
  */
 export function parseQuota(headers: Headers): QuotaReading {
-  const read = (name: string): number | null => {
-    const raw = headers.get(name);
-    if (raw === null) return null;
-    const trimmed = raw.trim();
-    // The vendor sends these as decimals ("97.0"). Anything else means the
-    // header is not what we think it is, and a guess about the remaining quota
-    // is worse than knowing we do not have one.
-    if (!DECIMAL.test(trimmed)) return null;
-    const n = Number(trimmed);
-    return Number.isFinite(n) ? n : null;
-  };
-  return {
-    used: read('x-ratelimit-used'),
-    remaining: read('x-ratelimit-remaining'),
-    resetSeconds: read('x-ratelimit-reset'),
-  };
+  const reading = quotaFrom(headers, QUOTA_HEADERS);
+  return { used: reading.used, remaining: reading.remaining, resetSeconds: reading.resetSeconds };
 }
 
 const quotaNote = (quota: QuotaReading): string =>

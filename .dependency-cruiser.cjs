@@ -61,6 +61,33 @@ module.exports = {
       from: { path: '^store/' },
       to: { path: '^(core|adapters|services|app|eval|ml)/' },
     },
+    /**
+     * ★ THE WALLET PACKAGE, PINNED DOWN THE DAY IT WAS ADDED.
+     *
+     * It is not under `adapters/` for one reason: the app is allowed to construct a wallet
+     * and is forbidden from importing anything under `adapters/` by the rule below. That
+     * rule is correct — it is the wall that stops internal scoring reaching a screen — and
+     * the answer to a package that needs to sit on the other side of it is a new rule, never
+     * a carve-out in that one.
+     *
+     * So this is an ADDITION rather than an exception, and it is written the same way
+     * `adapters-import-only-contracts` is: the constraint is "no other workspace package",
+     * not "nothing at all", because this package is an I/O edge like any other adapter. Its
+     * dependency list is currently exactly `@insidor/contracts` and
+     * `wallet/src/dependency-graph.test.ts` fails if that changes — which is the check that
+     * actually keeps a chain library out of the browser bundle. This rule keeps the
+     * ARCHITECTURE honest; that test keeps the BUNDLE honest. Both are needed.
+     */
+    {
+      name: 'wallet-imports-only-contracts',
+      comment:
+        'The wallet adapter translates a browser extension into our vocabulary. If it could ' +
+        'reach core, the app would reach core through it and the rule below would be ' +
+        'defeated by the very package added to respect it.',
+      severity: 'error',
+      from: { path: '^wallet/' },
+      to: { path: '^(core|adapters|store|services|app|eval|ml)/' },
+    },
     {
       name: 'app-cannot-reach-the-logic',
       comment:

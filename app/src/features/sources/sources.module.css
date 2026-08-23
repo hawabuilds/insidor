@@ -1,7 +1,7 @@
 /* THE SOURCE INDICATOR — the tiny corner of the nav, in Hawa's chrome.
  *
  * ★ NOTHING HERE IS A NEW VISUAL LANGUAGE. The container is `.walletNote`'s recipe from
- *   App.module.css (mono 11px, --muted, a 8% white hairline over a 3% white fill, radius 8),
+ *   features/wallet/wallet.module.css (mono 11px, --muted, a 8% white hairline over a 3% white fill, radius 8),
  *   because that element already occupies this exact slot at these exact metrics and is the
  *   nav's established treatment for "a quiet fact rather than a control". The micro-type is
  *   the rail's `.status` size — 10px, --dim — which is this app's settled way of saying "a
@@ -38,8 +38,8 @@
 }
 
 /* The cluster. A row of pips, pinned into `.navright` to the LEFT of the Connect button —
-   the slot `.walletNote` already occupies, which is literally the top corner the owner
-   asked for. `flex: none` so it never steals width from `.navsearch`, which is the only
+   the slot `.walletNote` (features/wallet) already occupies, which is literally the top
+   corner the owner asked for. `flex: none` so it never steals width from `.navsearch`, which is the only
    elastic child of the nav. */
 .sources {
   display: flex;
@@ -198,7 +198,7 @@
 }
 
 /* ★ RESPONSIVE, AND THE INDICATOR OUTLIVES THE WALLET NOTE. App.module.css drops
-   `.navsearch` at 1180px and `.walletNote` at 760px. At 760 this keeps its pips and drops
+   `.navsearch` at 1180px and features/wallet drops `.walletNote` at 760px. At 760 this keeps its pips and drops
    only the WORDS: a reader who has learned the three positions can still read three shapes,
    and the sentence is still one tap away in the tooltip. The cluster leaves entirely only
    below 560px, where the brand and the Connect button have the width to themselves. */

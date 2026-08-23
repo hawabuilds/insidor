@@ -1,0 +1,18 @@
+{
+  "name": "@insidor/wallet",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The browser wallet adapter. Connection and account reference only; no chain library, no submission, no key. One dependency — the vocabulary — and a dependency list that must stay exactly this length.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*.ts": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*"
+  }
+}

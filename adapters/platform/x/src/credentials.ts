@@ -15,13 +15,20 @@
  * host no fallback would make every correctly configured deploy read as broken until
  * somebody also pasted a URL they had no reason to know.
  *
- * ★ THE CLIENT IS STILL A SIGNATURE. `httpClient` here throws `NotImplemented` on
- * both verbs, and that is deliberately NOT this file's problem: nothing below decides
- * whether the source works, only whether it was configured. The distinction matters
- * because the two failures want different answers — a not-implemented body is our
- * work to finish, a missing key is somebody's to supply — and a source configured
- * today will report `failing` with an honest reason until the body lands, rather than
- * silently reading as dormant and looking like nobody's fault.
+ * ★ THIS FILE ASKS "WAS IT SUPPLIED", NEVER "IS IT ANY GOOD", AND NOW THAT THE CLIENT
+ * MAKES REAL REQUESTS THAT SPLIT IS LOAD-BEARING RATHER THAN THEORETICAL.
+ *
+ * Whether a key is well formed — not empty, no whitespace that would forge a header,
+ * a base URL that is really http(s) — is vendor knowledge, and it lives in
+ * `httpClient`, which throws `XNotConfigured` at construction. It is NOT restated
+ * here, for the reason the reddit adapter's copy of this header gives: two spellings
+ * of one predicate drift, and the direction they drift in is the one where this file
+ * is LAXER than the constructor and reports a source ready that cannot be built.
+ *
+ * The registry builds every adapter inside a `try`, so both roads — nothing supplied,
+ * and something supplied that will not work — arrive at `services/runner/src/sources.ts`
+ * as the same `misconfigured` shape with a different reason attached. One state,
+ * reached two ways, and no duplicated check between them.
  */
 
 import type { CredentialSpec, CredentialValues } from '@insidor/vendor-kit';
