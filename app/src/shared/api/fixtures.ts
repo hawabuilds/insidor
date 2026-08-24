@@ -805,7 +805,7 @@ const DISCUSSION = [
   },
   {
     postId: 'd2',
-    authorLabel: 'zain',
+    authorLabel: 'merc',
     text: 'six minutes from clip to mint. that is about the median we measured.',
     postedAt: at(T0 - 26 * MIN),
   },

@@ -504,7 +504,7 @@ const STORIES = [
         /* Neither the bits nor the words matched; a person looked and said yes.
            Rare on purpose — these are the rows a model is later fit on. */
         body: 'that soup video is from a restaurant two streets away, I recognise the tiles',
-        evidence: { kind: 'adjudicated', by: 'analyst:zain', atAgo: 12 * MIN },
+        evidence: { kind: 'adjudicated', by: 'analyst:merc', atAgo: 12 * MIN },
       },
     ],
     assets: [
