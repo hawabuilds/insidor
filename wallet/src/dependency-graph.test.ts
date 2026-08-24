@@ -35,7 +35,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -66,13 +66,71 @@ const isAllowed = (specifier: string): boolean =>
   specifier.startsWith('@insidor/contracts') ||
   ALLOWED_SPECIFIERS.includes(specifier);
 
+/** Never this repository's source, by the same list the `tools/` walk keeps. */
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'coverage']);
+
+/**
+ * ★ THE ONE NAME ANOTHER TOOL PUTS IN THESE TREES AND TAKES BACK OUT AGAIN.
+ *
+ * `tools/check-boundaries-probe.mjs` proves the boundary checker is not blind the only way that
+ * works: it writes a deliberate violation — `wallet/src/__probe_boundary.ts`, importing
+ * `@insidor/core` — cruises it, requires the violation to be reported, and deletes it. That file
+ * is on disk for about six hundred milliseconds of every `pnpm check`.
+ *
+ * A walk that reads whatever is in the directory at that instant reads it, and this test then
+ * fails naming an import nobody wrote: another checker's scaffolding, reported as the wallet's
+ * dependency. Within one `pnpm check` the two phases are sequenced by `&&` and cannot overlap,
+ * but nothing makes them mutually exclusive across processes — a second run of the toolchain in
+ * the same tree, or a `pnpm test` started while a check is in its boundary phase, puts that
+ * window inside this walk. It was seen once in three runs, which is the worst rate a check can
+ * have: often enough to be noticed, rare enough to be re-run rather than believed.
+ *
+ * So the walk reads the source and not the disk. `__probe` is scaffolding by the same convention
+ * that makes `__fixtures__` scaffolding, and nothing a person writes is named this.
+ *
+ * ★ NOTHING ELSE MAY BE ADDED HERE. This is the one name in the repository that appears and
+ * disappears on its own. Every other file under these trees is somebody's, and a file this walk
+ * skips is a file this check does not read — so an exclusion list that grows is this check going
+ * quietly blind, which is exactly the failure the probe above exists to catch elsewhere.
+ */
+const isScaffolding = (name: string): boolean => name.startsWith('__probe');
+
+/**
+ * Every .ts/.tsx file under `dir`, in a fixed order.
+ *
+ * One `readdirSync(…, { withFileTypes: true })` rather than a `statSync` per entry, because the
+ * separate stat is the same race a second time: an entry listed and then removed before it is
+ * stat'd throws ENOENT, and the test dies with a filesystem error instead of an assertion — the
+ * same flake wearing a different hat. Sorted with a plain comparison rather than `localeCompare`,
+ * which is ICU-dependent: two runs that disagree about the order of the tree cannot be compared.
+ */
 function sourcesUnder(dir: string, into: string[] = []): readonly string[] {
-  for (const name of readdirSync(dir)) {
+  const entries = [...readdirSync(dir, { withFileTypes: true })];
+  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  for (const entry of entries) {
+    const { name } = entry;
+    if (name.startsWith('.') || SKIP_DIRS.has(name) || isScaffolding(name)) continue;
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) sourcesUnder(full, into);
+    if (entry.isDirectory()) sourcesUnder(full, into);
     else if (/\.(ts|tsx)$/.test(name)) into.push(full);
   }
   return into;
+}
+
+/**
+ * Both trees, each required to be there on its own.
+ *
+ * One count across the pair cannot tell a walk that read both packages from a walk that read the
+ * app and silently missed the wallet: eighty-three app files clear any floor ten wallet files
+ * could set. So each tree is floored separately, and either one going quiet fails here rather
+ * than passing as a green tick over half the code the check claims to have read.
+ */
+function walkedSources(): readonly string[] {
+  const wallet = sourcesUnder(join(ROOT, 'wallet', 'src'));
+  const app = sourcesUnder(join(ROOT, 'app', 'src'));
+  assert.ok(wallet.length >= 5, `the walk found ${wallet.length} files in wallet/src and must be reading the package`);
+  assert.ok(app.length >= 35, `the walk found ${app.length} files in app/src and must be reading the package`);
+  return [...wallet, ...app];
 }
 
 /**
@@ -143,10 +201,7 @@ test('★ 2 — gaining a wallet added no third-party package to the app', () =>
 });
 
 test('★ 3 — no file in either package imports anything outside the allowlist', () => {
-  const files = [...sourcesUnder(join(ROOT, 'wallet', 'src')), ...sourcesUnder(join(ROOT, 'app', 'src'))];
-  assert.ok(files.length > 40, 'the walk must actually be reading both packages');
-
-  for (const file of files) {
+  for (const file of walkedSources()) {
     for (const specifier of bareImports(readFileSync(file, 'utf8'))) {
       assert.ok(
         isAllowed(specifier),
@@ -164,10 +219,7 @@ test('★ 4 — and nothing anywhere names a wallet, chain or signing library', 
     ...Object.keys(manifest('app').dependencies ?? {}),
     ...Object.keys(manifest('app').devDependencies ?? {}),
   ];
-  const imported = [
-    ...sourcesUnder(join(ROOT, 'wallet', 'src')),
-    ...sourcesUnder(join(ROOT, 'app', 'src')),
-  ].flatMap((file) => bareImports(readFileSync(file, 'utf8')));
+  const imported = walkedSources().flatMap((file) => bareImports(readFileSync(file, 'utf8')));
 
   for (const specifier of [...declared, ...imported]) {
     for (const fragment of FORBIDDEN_FRAGMENTS) {
