@@ -4,6 +4,9 @@
  * `story/` cannot start depending on the shape of a feed cell.
  */
 
+export { BoardProvenanceBanner } from './BoardProvenance.tsx';
+export { provenanceNotice } from './board-provenance.ts';
+export type { ProvenanceNotice } from './board-provenance.ts';
 export { Feed } from './Feed.tsx';
 export type { FeedProps } from './Feed.tsx';
 export { actionFor, actionLabel, rowAction } from './row-action.ts';

@@ -49,6 +49,15 @@ import {
   withDatabase,
 } from './lib/pgclient.mjs';
 
+/* ★ THE POLICY CEILING, READ RATHER THAN COPIED. `decide` has to hand the runner a
+   DAILY_BUDGET_USD, and `config.ts` fails the boot if that number is above
+   `budget.dailyUsd` — so a literal here would be a second copy of a policy number that
+   silently becomes wrong the day policy is lowered, recreating in a new place exactly
+   the bug the `decide` header below is about. Imported, it cannot drift and cannot
+   exceed the ceiling. Node strips the types; `tools/` is outside the boundary graph, so
+   this is a read of the vocabulary, not a service reaching across a layer. */
+import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
+
 const MIGRATIONS_DIR = join(ROOT, 'store', 'migrations');
 const CONTAINER = 'insidor-db';
 const HEALTH_TIMEOUT_MS = 60_000;
@@ -367,6 +376,58 @@ function run(argv, label, extraEnv = {}) {
   });
 }
 
+/**
+ * ★ THE ONE PLACE A NEW REQUIRED RUNNER VARIABLE HAS TO BE DECLARED.
+ *
+ * `services/runner/src/config.ts` refuses to invent a default for anything, which is the
+ * right rule — a defaulted `DISCOVER` is a pipeline that reports healthy and ingests
+ * nothing, and a defaulted `SPEND` is somebody's card. The standing cost is that every
+ * short-lived command built on that service has to declare the whole set.
+ *
+ * That cost was being paid PER COMMAND, and it had already gone wrong twice: the day
+ * `DISCOVER` became required `pnpm db:decide` broke at config load, and the day `SPEND`
+ * and `DAILY_BUDGET_USD` arrived it broke again, identically. Its header named the
+ * pattern and asked the next person to remember. The third command — the source declarer
+ * — then broke on exactly the same two keys before it had ever been committed, which is
+ * about as clear a demonstration as one gets that remembering is not the mechanism.
+ *
+ * So the floor is written once, here, and each command overrides only what is genuinely
+ * ITS OWN: a health port nobody binds and a lock name that says which program is
+ * holding it. When the next required key lands, one line here fixes every command at
+ * once instead of one line per command discovered one failure at a time.
+ *
+ * WHAT BREAKS IF THIS IS CHANGED CARELESSLY: `SPEND` is the line that costs money.
+ * These are commands people run to look around, so `dry` is the only defensible value —
+ * it prices every call against the same price books the live path bills against and
+ * contacts nobody. Someone who genuinely wants a billed one-shot sets `SPEND=live` in
+ * the environment, where `run()` lets the caller win. A `live` default here would be the
+ * one failure this repository cannot apologise its way out of.
+ */
+function oneShotRunnerEnv() {
+  return {
+    SHUTDOWN_GRACE_MS: '1000',
+    HEARTBEAT: 'off',
+    /* ★ OFF, AND IT IS A TRUE DECLARATION RATHER THAN A CONVENIENCE. None of these
+       commands constructs the discovery loop at all, so declaring `on` would be a claim
+       they cannot honour. Leaving it unset is refused by config.ts on purpose.
+
+       It does NOT make the sources dark: `withRuntime` still resolves them from the
+       environment and still writes `internal.source_health`, so a laptop that has
+       filled in a credential block sees the indicator light up exactly as it would
+       under the real runner. What is switched off is the asking, not the accounting. */
+    DISCOVER: 'off',
+    /* Dry. See the paragraph above about what breaks. */
+    SPEND: 'dry',
+    /* Carried even in dry mode on purpose: the dry run reports what WOULD have been
+       refused, and one that ignored the cap would report a day costing ninety cents
+       while hiding that the ninth pass was the one that paused. The policy ceiling
+       itself, because these commands have no business inventing an operator's tighter
+       belt — a laptop looking at its own costs should see the full picture policy
+       permits, and anything smaller would be a fiction about the deployment. */
+    DAILY_BUDGET_USD: String(DEFAULT_POLICY.budget.dailyUsd),
+  };
+}
+
 const SEED = join(ROOT, 'tools', 'seed.mjs');
 
 /**
@@ -455,13 +516,36 @@ async function pairs() {
  * somebody else's table stop the board from projecting at all.
  *
  * It can be run at any point and needs neither `seed` nor `market`: it reads nothing the
- * other two write. Run it after `migrate` and the indicator stops saying it has never been
- * projected; run it before the ingest side exists and it honestly publishes an empty frame,
- * which the app reads as "nothing is ingesting" — true, on a machine where nothing is.
+ * other two write.
+ *
+ * ★ AND IT IS TWO PROGRAMS, NOT ONE, WHICH IS THE FIX FOR A REAL AND VERY CONFUSING BUG.
+ *
+ * The projector reads `internal.source_health` and deliberately reads no credential —
+ * `sources-main.ts` argues why at length, and the argument is correct. But nothing in the
+ * documented first run WROTE that table: only a booted runner did. So `pnpm db:sources`,
+ * run in the order SETUP.md gives, reported `source_view=0 declared=0` and the corner of
+ * the nav showed NO PIPS AT ALL — not three dormant ones saying nobody has turned these
+ * on, which is what SETUP.md promises and what was true. An unbuilt-looking feature, on a
+ * clone where the feature works.
+ *
+ * So the declaration runs first, in a process that holds the credentials, and the
+ * projection second, in one that must not. Two processes because that split is the whole
+ * design of the indicator; one command because a newcomer should not have to know that.
  */
+const SOURCE_DECLARER = join(ROOT, 'services', 'runner', 'src', 'declare-sources.ts');
 const SOURCE_PROJECTOR = join(ROOT, 'services', 'project', 'src', 'sources-main.ts');
 
 async function sources() {
+  if (!existsSync(SOURCE_DECLARER)) {
+    die(
+      `no source declarer at ${SOURCE_DECLARER}.\n` +
+        '  It writes internal.source_health from the environment: every source this machine\n' +
+        '  knows about, including the ones with no credential, which are DORMANT rather than\n' +
+        '  absent. Without it the projector below has nothing to read and publishes an empty\n' +
+        '  indicator, which reads as "this feature does not work" rather than "nobody has\n' +
+        '  turned any source on".',
+    );
+  }
   if (!existsSync(SOURCE_PROJECTOR)) {
     die(
       `no source projector at ${SOURCE_PROJECTOR}.\n` +
@@ -470,6 +554,16 @@ async function sources() {
         '  corner of the nav says nothing has recorded which sources are answering.',
     );
   }
+
+  await run(['--experimental-strip-types', SOURCE_DECLARER], 'the source declarer', {
+    ...oneShotRunnerEnv(),
+    /* Never bound — this program starts no health server — but config.ts requires the
+       key. Distinct from `decide`'s anyway, so the two are legible in a process list. */
+    HEALTH_PORT: '9998',
+    /* Its own lock, so this and a running runner do not refuse each other. See the
+       header of declare-sources.ts. */
+    SINGLETON_LOCK_NAME: 'insidor-declare-sources',
+  });
   await run(['--experimental-strip-types', SOURCE_PROJECTOR], 'the source projector');
 }
 
@@ -492,10 +586,10 @@ async function sources() {
  * WHY THE ENVIRONMENT IS ASSEMBLED HERE. `config.ts` is the only module in that
  * service permitted to read `process.env`, and it refuses to start on a missing key
  * rather than inventing a default — which is correct, and which means a laptop needs
- * six variables set to run a one-shot. They are set here, once, with the values that
+ * eight variables set to run a one-shot. They are set here, once, with the values that
  * are true of a one-shot: no heartbeat (there is nobody to page for a program that
  * exits), its own lock name, so this and a running runner refuse each other instead
- * of both draining the same queue, and discovery off.
+ * of both draining the same queue, discovery off, and the wallet in dry mode.
  *
  * ★ AND WHY EVERY ONE OF THEM HAS TO BE LISTED HERE RATHER THAN DEFAULTED THERE. The
  * day `DISCOVER` became required, this command stopped working — it assembles its own
@@ -504,6 +598,14 @@ async function sources() {
  * the standing cost of "silence must be chosen", and it is the right cost: the fix is
  * one line here declaring the choice, never a default over there that would let a
  * production runner ingest nothing and look healthy doing it.
+ *
+ * It then happened a SECOND time, identically, when `SPEND` and `DAILY_BUDGET_USD`
+ * arrived with the spend meter. Twice is a pattern worth naming for whoever adds the
+ * next required key: this command is the second place that has to change, it is not
+ * covered by any test that would go red, and the only thing standing between a new
+ * required variable and a broken `pnpm db:decide` is somebody reading this paragraph.
+ * If you are here because the command just failed at config load, add the line — and
+ * if the new key is another switch over money, `dry` is the value that belongs here.
  */
 const DECIDE = join(ROOT, 'services', 'runner', 'src', 'decide-once.ts');
 
@@ -518,32 +620,18 @@ async function decide() {
     );
   }
   await run(['--experimental-strip-types', DECIDE], 'the one-shot decider', {
+    ...oneShotRunnerEnv(),
     /* Never bound. `decide-once.ts` starts no health server — there is nothing to
        probe in a program that exits — but `config.ts` requires the key and refuses a
        default, which is the right rule and means a value has to be supplied. This one
        satisfies the reader; no socket is opened at it. */
     HEALTH_PORT: '9999',
-    SHUTDOWN_GRACE_MS: '1000',
     /* ★ ITS OWN LOCK NAME, DIFFERENT FROM THE RUNNER'S ON PURPOSE. Sharing one would
        mean this refuses to run whenever a runner is up, which is the safe direction
        but the wrong reason: the guarantee that matters is that two DECIDERS do not
        drain the same queue, and this and the runner both hold it against themselves.
        Two copies of this command race each other and one loses, loudly. */
     SINGLETON_LOCK_NAME: 'insidor-decide-once',
-    HEARTBEAT: 'off',
-    /* ★ OFF, AND IT IS A TRUE DECLARATION RATHER THAN A CONVENIENCE. This command runs
-       the seven DECISION loops over what is already in the database; `decide-once.ts`
-       does not construct the discovery loop at all. Declaring `on` here would be a
-       claim this program cannot honour, and leaving it unset is refused by `config.ts`
-       on purpose — a defaulted-off discovery is a pipeline that runs, reports healthy
-       and ingests nothing. Off is the honest answer for a program that exits.
-
-       It does NOT make the sources dark: `withRuntime` still resolves them from the
-       environment and still writes `internal.source_health`, so a laptop that has
-       filled in a credential block sees the indicator light up after this command
-       exactly as it would under the real runner. What is switched off is the asking,
-       not the accounting. */
-    DISCOVER: 'off',
   });
 }
 
@@ -589,9 +677,34 @@ async function label() {
   await run(['--experimental-strip-types', LABELLER, ...process.argv.slice(3)], 'the labeller');
 }
 
+/**
+ * An interactive shell in the container.
+ *
+ * ★ IT NEEDS A REAL TERMINAL, AND IT NOW SAYS SO IN ITS OWN WORDS. `docker exec -it`
+ * allocates a TTY, and with no terminal attached — a CI step, a pipe, an agent running
+ * commands — Docker refuses with `the input device is not a TTY` and exit 1. That
+ * message names a Docker flag nobody typed, on a command whose documentation says only
+ * "an interactive shell", so the reasonable reading is that the container is broken.
+ *
+ * The check is on `stdin.isTTY` rather than on the failure, because the useful thing to
+ * say is what to run INSTEAD, and after the fact we only know that something went wrong.
+ * Exit 1 either way: a shell that could not be opened did not open.
+ */
 function psql() {
   assertDockerRunning();
   if (health() === 'missing') die(`container ${CONTAINER} is not running. Try:  pnpm db:up`);
+
+  if (!process.stdin.isTTY) {
+    die(
+      'pnpm db:psql opens an INTERACTIVE shell and there is no terminal attached, so\n' +
+        '  docker would refuse this with "the input device is not a TTY". Nothing is wrong\n' +
+        '  with the container or the database.\n\n' +
+        '  To run one statement without a terminal:\n' +
+        `    docker exec ${CONTAINER} psql -U insidor -d insidor -c 'select 1'\n\n` +
+        '  To get the shell, run pnpm db:psql from a terminal.',
+    );
+  }
+
   const res = spawnSync(
     'docker',
     ['exec', '-it', CONTAINER, 'psql', '-U', 'insidor', '-d', 'insidor'],

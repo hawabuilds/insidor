@@ -22,6 +22,7 @@ import type { Millis, SourceConfiguration, SourceHealth } from '@insidor/contrac
 import type { SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
 import type { PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { PlatformRegistry, SourceAbsence } from '@insidor/platform-registry';
+import { BudgetRefused } from '@insidor/vendor-kit';
 import type { SourceId } from '@insidor/contracts/ids.ts';
 
 import type { Logger } from './log.ts';
@@ -95,18 +96,24 @@ const deps = (health: SourceHealthRepo): WatchDeps => ({ health, now: () => NOW,
 
 /* ── adapters ──────────────────────────────────────────────────────────── */
 
-function adapterOf(source: string, behaviour: { fails?: string } = {}): PlatformAdapter {
+function adapterOf(
+  source: string,
+  behaviour: { fails?: string; refuses?: boolean } = {},
+): PlatformAdapter {
   return {
     id: sourceId(source),
     capabilities: { source: sourceId(source), discovery: ['keyword'] } as unknown as PlatformAdapter['capabilities'],
     discover: async () => {
+      if (behaviour.refuses === true) throw new BudgetRefused(source, 'discover', 'soft stop reached');
       if (behaviour.fails !== undefined) throw new Error(behaviour.fails);
       return { value: { items: [], cursor: null, hasMore: false }, spend: [] } as never;
     },
     observe: async () => {
+      if (behaviour.refuses === true) throw new BudgetRefused(source, 'observe', 'soft stop reached');
       if (behaviour.fails !== undefined) throw new Error(behaviour.fails);
       return { value: new Map(), spend: [] } as never;
     },
+    estimate: () => ({ vendor: source, endpoint: 'discover', unit: 'per-call', estUnits: 1, usd: 0 }),
     toItem: () => ({}) as never,
     baselineKey: () => source,
   };
@@ -257,4 +264,48 @@ test('the absences pass through untouched — there is no call to record', async
     ['x'],
   );
   assert.equal(registry.all().length, 0);
+});
+
+/* ── our own refusal is not the vendor's outage ────────────────────────── */
+
+test('★ a budget refusal is NOT recorded as a source failure', async () => {
+  /* The meter throws BEFORE the request leaves the process, so there is no call whose
+     outcome this could be. Recording it would write our own decision into the column
+     whose entire purpose is to say what somebody else's server did — and three refused
+     passes would then drive `consecutive_failures` past the failing bar and paint a
+     working source red, sending somebody to look for an outage that is an invoice. */
+  const health = fakeRepo();
+  const adapter = watched(adapterOf('x', { refuses: true }), deps(health));
+
+  await assert.rejects(() => adapter.discover(query, budget), BudgetRefused);
+
+  const rows = await health.all();
+  assert.equal(rows.length, 0, 'a refusal wrote a health row; it must write none');
+});
+
+test('★ and a real vendor failure still is', async () => {
+  /* The other half, asserted in the same file, because the value of the first test is
+     entirely in the contrast: a rule that suppressed BOTH would be indistinguishable
+     from health recording being broken. */
+  const health = fakeRepo();
+  const adapter = watched(adapterOf('x', { fails: 'gateway timeout' }), deps(health));
+
+  await assert.rejects(() => adapter.discover(query, budget));
+
+  const row = (await health.all())[0];
+  assert.ok(row, 'a vendor failure wrote no health row');
+  assert.equal(row.consecutiveFailures, 1);
+});
+
+test('an estimate records nothing at all — a dry run must not look like a healthy ingest', () => {
+  /* A dry run consists of nothing but estimates. If the wrapper recorded them, every
+     source would end the pass marked as answering, and the board would report a healthy
+     ingest on a run that contacted nobody. */
+  const health = fakeRepo();
+  const adapter = watched(adapterOf('x'), deps(health));
+
+  const estimated = adapter.estimate({ kind: 'discover', query });
+
+  assert.equal(estimated.usd, 0);
+  assert.equal(health.rows.size, 0, 'estimating wrote a health row');
 });

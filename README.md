@@ -11,6 +11,12 @@ source, and every algorithm in it is proven on seeded data rather than live traf
 third of the logic is written — the parts that are easy to get wrong and expensive to fix
 later. `SETUP.md` says exactly what runs today and what needs a key.
 
+**And what the board shows today:** six hand-written stories from `pnpm db:seed`, under a
+permanent notice on the board saying so. The notice is derived from the origin of the rows
+on each frame rather than hardcoded, so it disappears by itself once a discovered story is
+projected. The market figures and the mints in the launches rail are real and free; the
+stories are not real yet, and the screen says which is which.
+
 This file is a lookup, not an explanation. The directory name answers the question.
 
 ## The vocabulary and the rules

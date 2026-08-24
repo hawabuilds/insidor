@@ -147,6 +147,7 @@ export type {
   Discovered,
   DiscoveryMode,
   DiscoveryQuery,
+  PlannedCall,
   PlatformAdapter,
 } from './ports/platform.ts';
 export { DISCOVERY_MODES } from './ports/platform.ts';
@@ -180,7 +181,17 @@ export { WALLET_FAILURES, WALLET_STATES } from './ports/wallet.ts';
 export type { JudgeOutcome, JudgePort, JudgeSubject } from './ports/judge.ts';
 export type { EmbedPort, Embedding } from './ports/embed.ts';
 
-export type { BillingUnit, Budget, Meter, Metered, Spend } from './ports/meter.ts';
+export type {
+  BillingUnit,
+  Budget,
+  BudgetLine,
+  Meter,
+  Metered,
+  CostEstimate,
+  Spend,
+  SpendLedger,
+  SpendTotals,
+} from './ports/meter.ts';
 export { BILLING_UNITS } from './ports/meter.ts';
 
 export type {

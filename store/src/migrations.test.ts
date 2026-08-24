@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ASSET_ORIGINS,
+  BILLING_UNITS,
   CENSOR_REASONS,
   MARKET_ABSENCE_REASONS,
   MARKET_CAP_BASES,
@@ -338,6 +339,15 @@ test('the schema and the vocabulary agree on every closed list', () => {
   assert.deepEqual([...checkedValues(read('0018_source_health.sql'), 'configuration')].sort(), [
     ...SOURCE_CONFIGURATIONS,
   ].sort());
+  /* The billing KIND on a spend row. Pinned for a reason particular to this one: units of
+     different kinds do not add up, and the column exists so a reader can refuse to add
+     them. A CHECK that drifted narrower would reject rows for a vendor the code can
+     already bill; one that drifted wider would let a kind into the ledger that
+     `toBillingUnit` in repo/spend.ts then refuses on the way out — from inside the read
+     that seeds the meter at boot, which fails the boot rather than one row. */
+  assert.deepEqual([...checkedValues(read('0019_spend.sql'), 'unit')].sort(), [
+    ...BILLING_UNITS,
+  ].sort());
   /* All four reason columns, not just the first: they are four separate CHECKs and
      four separate opportunities for one of them to be edited alone. */
   for (const column of [
@@ -352,4 +362,31 @@ test('the schema and the vocabulary agree on every closed list', () => {
       `${column} has drifted from MARKET_ABSENCE_REASONS`,
     );
   }
+});
+
+test('★ the spend ledger is append-only, like the decision log', () => {
+  /* A spend row is evidence of a charge that has already left somebody's card, and an
+     UPDATE here would be editing it after the fact. The direction it would be edited in
+     is always the same — toward a day that looks affordable — which is exactly the
+     property that makes a cap stop binding without anything throwing. */
+  const spend = read('0019_spend.sql');
+  assert.match(spend, /create trigger spend_append_only/);
+  assert.match(spend, /before update or delete on internal\.spend/);
+});
+
+test('★ a spend row records WHEN THE CALL HAPPENED, never when the row landed', () => {
+  /* `at` is the column the daily total is grouped by. A `default now()` on it would make
+     the day boundary a property of when the write-behind sink drained, so a burst of
+     spending either side of midnight would be attributed to whichever day the database
+     happened to see it — and a cap seeded from that is a cap over the wrong population.
+     `recorded_at` is the column that may default, and it is a different question. */
+  const sql = stripComments(read('0019_spend.sql'));
+  const atLine = sql.split('\n').find((line) => line.trimStart().startsWith('at '));
+  assert.ok(atLine, 'internal.spend has no `at` column');
+  assert.match(atLine, /not null/);
+  assert.equal(
+    /default/.test(atLine),
+    false,
+    '`at` must have no default: the caller has to say when the call happened',
+  );
 });

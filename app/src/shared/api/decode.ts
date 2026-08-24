@@ -21,12 +21,20 @@
 
 import type { Instant, Measured, Delta, PendingReason } from '../format/measure.ts';
 import { instantFrom, measuredFrom } from '../format/measure.ts';
-import type { BoardRow, BoardTick, RowPatch, Spark, SparkPoint, Tone } from './wire/board.ts';
+import type {
+  BoardProvenance,
+  BoardRow,
+  BoardTick,
+  RowPatch,
+  Spark,
+  SparkPoint,
+  Tone,
+} from './wire/board.ts';
 import type { Coin, CoinLink, MarketCapBasis } from './wire/coin.ts';
 import type { FeedSource, Launch, LaunchFeed } from './wire/launch.ts';
 import type { Pair, PairFeed, PairHead, PairListing } from './wire/pair.ts';
 import type { SourceFeed, SourceHealth, SourceState } from './wire/source.ts';
-import type { DiscussionPost, Evidence, Story } from './wire/story.ts';
+import type { DiscussionPost, Evidence, Story, StoryProvenance } from './wire/story.ts';
 import type { TradeCost, TradeQuote } from './wire/trade.ts';
 import {
   BOARD_ROW_FIELDS,
@@ -312,6 +320,40 @@ export function decodeBoardTick(raw: unknown, path = '$'): BoardTick {
     tick: int(o['tick'], `${path}.tick`),
     order: arr(o['order'], `${path}.order`).map((id, i) => str(id, `${path}.order[${i}]`)),
     rows: arr(o['rows'], `${path}.rows`).map((r, i) => decodeBoardRow(r, `${path}.rows[${i}]`)),
+    provenance: decodeBoardProvenance(o['provenance'], `${path}.provenance`),
+  };
+}
+
+/**
+ * Where the stories on this frame came from.
+ *
+ * ★ AN ABSENT OR UNREADABLE FIELD RESOLVES TO `unstated` AND NEVER TO `observed`, and this
+ * is the one defaulting decision in this function worth arguing about. It is
+ * `decodeFeedSource`'s rule, applied to the more dangerous field: `observed` is the value
+ * that makes the app say NOTHING, so defaulting to it would mean a server that forgot to
+ * send provenance publishes six invented stories as observations — which is precisely the
+ * failure the field was added to stop, arriving through the decoder that was supposed to
+ * be the last line of defence.
+ *
+ * So an unknown `kind` is `unstated` too, rather than a throw. A frame is not worth
+ * discarding over a discriminator this decoder has not been taught yet — the rows are
+ * still the rows — and `unstated` renders a banner, so the failure is loud without being
+ * fatal.
+ *
+ * The counts are read with `int` and refused rather than coerced: a `seeded` branch whose
+ * numbers did not arrive as numbers has nothing to say, and a banner reading "NaN of 6"
+ * would send somebody looking for a bug in the wrong package.
+ */
+function decodeBoardProvenance(raw: unknown, path: string): BoardProvenance {
+  if (raw === null || raw === undefined) return { kind: 'unstated' };
+  const o = obj(raw, path);
+  if (o['kind'] === 'observed') return { kind: 'observed' };
+  if (o['kind'] !== 'seeded') return { kind: 'unstated' };
+  return {
+    kind: 'seeded',
+    seededStories: int(o['seededStories'], `${path}.seededStories`),
+    totalStories: int(o['totalStories'], `${path}.totalStories`),
+    connectSourceLabel: str(o['connectSourceLabel'], `${path}.connectSourceLabel`),
   };
 }
 
@@ -684,7 +726,24 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     discussion: arr(o.discussion, `${path}.discussion`).map((d, i) =>
       decodeDiscussionPost(d, `${path}.discussion[${i}]`),
     ),
+    provenance: decodeStoryProvenance(o.provenance, `${path}.provenance`),
   };
+}
+
+/**
+ * Whether this story happened.
+ *
+ * ★ ABSENT OR UNREADABLE RESOLVES TO `unstated`, NEVER TO `observed` — `decodeBoardTick`'s
+ * rule, applied to the page. `observed` is the value that makes the app say nothing, so
+ * defaulting to it would let a server that forgot the field publish an invented story as a
+ * real one, through the decoder that is supposed to be the last line of defence.
+ */
+function decodeStoryProvenance(raw: unknown, path: string): StoryProvenance {
+  if (raw === null || raw === undefined) return { kind: 'unstated' };
+  const o = obj(raw, path);
+  if (o['kind'] === 'observed') return { kind: 'observed' };
+  if (o['kind'] !== 'seeded') return { kind: 'unstated' };
+  return { kind: 'seeded', connectSourceLabel: str(o['connectSourceLabel'], `${path}.connectSourceLabel`) };
 }
 
 function decodeCost(raw: unknown, path: string): TradeCost {

@@ -15,9 +15,14 @@
  */
 
 import type { CounterSet, Item, Millis } from '@insidor/contracts';
-import type { Budget, Meter, Metered } from '@insidor/contracts/ports/meter.ts';
-import type { DiscoveryQuery, Discovered, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { mergeSpend, metered } from '@insidor/meter';
+import type { Budget, Meter, Metered, CostEstimate } from '@insidor/contracts/ports/meter.ts';
+import type {
+  DiscoveryQuery,
+  Discovered,
+  PlannedCall,
+  PlatformAdapter,
+} from '@insidor/contracts/ports/platform.ts';
+import { mergeSpend, metered, estimateFor } from '@insidor/meter';
 import type { PriceBook } from '@insidor/meter';
 import { discovered } from '@insidor/vendor-kit';
 
@@ -82,6 +87,29 @@ export function redditPlatform(deps: RedditAdapterDeps): PlatformAdapter {
         value: discovered(result.value.items, result.value.cursor, result.value.hasMore),
         spend: result.spend,
       };
+    },
+
+    /**
+     * What a call would cost, without making it. On this source, nothing.
+     *
+     * ★ AND IT STILL RETURNS A COUNT OF UNITS, WHICH IS THE ONLY REASON THIS METHOD
+     * IS WORTH HAVING HERE. The dollars are zero and always will be; the units are a
+     * true count of the REQUESTS a pass would make, and requests are what this vendor
+     * actually rations — roughly a hundred a minute, with a ban for abuse that is
+     * permanent and unappealable. So the estimate answers the question that binds on a
+     * free source even though the number it puts in the dollar column is zero.
+     *
+     * ★ WHICH ALSO MEANS A CALLER CHOOSING FREE-BEFORE-PAID GETS THE RIGHT ANSWER BY
+     * ARITHMETIC RATHER THAN BY A LIST OF SOURCE NAMES. `usd === 0` is what makes this
+     * source go first, and it stays true if the terms change, which a hardcoded list
+     * would not.
+     */
+    estimate(call: PlannedCall): CostEstimate {
+      if (call.kind === 'discover') return estimateFor(prices, VENDOR, LISTING, 1);
+      /* One request per batch, counted the way `observe` batches, because the request
+         is the rationed unit. A count of ids would overstate the quota pressure by the
+         batch size — a hundredfold on this source. */
+      return estimateFor(prices, VENDOR, INFO, chunk(call.sourceItemIds, batchSize).length);
     },
 
     async observe(

@@ -32,4 +32,8 @@ export { PgStageRunRepo } from './repo/runs.ts';
    two halves of the one fact the app cannot fetch for itself, because both of its
    ingredients live where the app's role has no USAGE. */
 export { PgSourceHealthRepo } from './repo/sources.ts';
+/* The spend ledger. Read once at boot to seed the meter's tally and written behind
+   every recorded call — which is the whole of "a restart is not a fresh day's budget".
+   Without this export the cap in policy means "per process lifetime". */
+export { PgSpendRepo } from './repo/spend.ts';
 export type { StageRunClose } from './repo/runs.ts';

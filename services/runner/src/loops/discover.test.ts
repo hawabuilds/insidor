@@ -36,6 +36,7 @@ import assert from 'node:assert/strict';
 
 import { DEFAULT_POLICY, sourceId } from '@insidor/contracts';
 import type { Item, Millis, SourceConfiguration, SourceHealth } from '@insidor/contracts';
+import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { PlatformRegistry, SourceAbsence } from '@insidor/platform-registry';
 
@@ -101,6 +102,26 @@ function watchDeps(): { readonly deps: WatchDeps; readonly declared: Declared[] 
   return { deps, declared };
 }
 
+/**
+ * A meter that permits everything.
+ *
+ * These tests are about what the LOOP reports, not about what the wallet allows, and a
+ * meter that could refuse would make a pass that was paused indistinguishable from one
+ * that found nothing — which is exactly the collapse the loop's counts exist to prevent.
+ */
+const openMeter = (): Meter => ({
+  record: () => undefined,
+  spentUsd: () => 0,
+  mayspend: () => true,
+  line: () => ({
+    capUsd: Number.POSITIVE_INFINITY,
+    spentUsd: 0,
+    stopAtUsd: Number.POSITIVE_INFINITY,
+    remainingUsd: Number.POSITIVE_INFINITY,
+    unrecordedUsd: 0,
+  }),
+});
+
 const context = (): LoopContext => ({
   signal: new AbortController().signal,
   now: () => NOW,
@@ -121,6 +142,8 @@ function loopWith(discovery: { readonly kind: 'off' } | { readonly kind: 'on'; r
     store,
     discovery,
     policy: DEFAULT_POLICY,
+    meter: openMeter(),
+    mode: 'live',
     log,
     watch: watch.deps,
   });
@@ -198,6 +221,8 @@ test('a declaration that throws does not take the pass down with it', async () =
     store,
     discovery: { kind: 'off' },
     policy: DEFAULT_POLICY,
+    meter: openMeter(),
+    mode: 'live',
     log,
     watch: {
       health: {

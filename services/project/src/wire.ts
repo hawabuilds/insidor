@@ -162,10 +162,61 @@ export interface WireBoardRow {
   readonly isNew: boolean;
 }
 
+/**
+ * ★ WHERE THE STORIES ON THIS FRAME CAME FROM — the frame's own provenance, not the row's.
+ *
+ * THE BUG THIS CLOSES, in the owner's words on being shown the board: "everything is just
+ * a placeholder". He was right. `pnpm db:seed` writes six hand-written stories, the
+ * projector publishes them, and the app renders them under a heading reading **Trending**
+ * with a live pip beside it. Nothing on that screen said they were invented. That is the
+ * one product rule this repository has — a fiction is labelled a fiction or it is not
+ * shown — failing on the first surface anybody looks at.
+ *
+ * The rows themselves were never the problem: `public.story.origin` has existed since
+ * 0016 and the coin retrieval already refuses to name an invented coin under a real
+ * moment. What was missing was a sentence about the WHOLE BOARD, and no row could carry
+ * it — a per-row badge would say "this one is made up" six times and still leave the
+ * reader to work out that the answer is "all of them, and there is nothing else yet".
+ *
+ * ★ WHY IT IS A COUNT AND A KIND RATHER THAN A FINISHED SENTENCE. The same reason
+ * `WireSourceHealth` is a three-way enum rather than a string: the judgement is made
+ * server-side and the wording is the app's. A sentence on the wire is a sentence nobody
+ * can restyle, translate or shorten without a projector deploy.
+ *
+ * ★ AND WHY `observed` HAS NO COUNTS. Because the notice must switch itself off, and a
+ * shape that can only say "there is nothing to announce" is a shape that cannot be
+ * rendered by mistake. The moment one story assembled from real posts reaches the frame,
+ * this becomes `{ kind: 'observed' }`, the app has nothing to draw, and the banner
+ * disappears with no code change and no flag — which was the requirement.
+ */
+export type WireBoardProvenance =
+  | { readonly kind: 'observed' }
+  | {
+      readonly kind: 'seeded';
+      /** How many stories on this frame were written by `pnpm db:seed`. */
+      readonly seededStories: number;
+      /** How many stories are on the frame in total. Equal to the above while nothing real exists. */
+      readonly totalStories: number;
+      /**
+       * The post source that costs nothing to turn on, named so the notice can say what
+       * to do about it. A display label from `sourceLabel`, never a source key: it is the
+       * same string the pip in the corner of the nav uses, and the two saying different
+       * words for one source is how somebody ends up looking for a second thing to fix.
+       */
+      readonly connectSourceLabel: string;
+    };
+
 export interface WireBoardTick {
   readonly tick: number;
   readonly order: readonly string[];
   readonly rows: readonly WireBoardRow[];
+  /**
+   * ★ ON THE FRAME, NOT BESIDE IT — `WireLaunchFeed.source`'s argument, unchanged. A board
+   * of six seeded rows and a board of six real ones are the same array of six rows, and
+   * this is the only field that separates them. Travelling with the rows is what stops the
+   * app pairing this frame's stories with the previous frame's provenance.
+   */
+  readonly provenance: WireBoardProvenance;
 }
 
 /* ── the launches rail ────────────────────────────────────────────────── */
@@ -544,6 +595,29 @@ export interface WireDiscussionPost {
   readonly postedAt: WireInstant;
 }
 
+/**
+ * ★ WHERE THIS ONE STORY CAME FROM.
+ *
+ * The board's `WireBoardProvenance` closed this hole on the list; a reader who clicked a
+ * row landed on a page with the same six invented numbers and nothing over them. Two
+ * surfaces, one fiction, and the notice was on only one of them.
+ *
+ * ★ IT REVERSES A DECISION THAT IS WRITTEN DOWN, so here is why. `StoryRow.origin` in
+ * db.ts says the column "is never projected — a story does not tell a user how it was
+ * assembled", and that sentence is still exactly right about HOW: which posts joined,
+ * what matched them, how confident anything was. None of that is here or ever will be.
+ * What travels is the one bit a reader is entitled to before believing a number —
+ * whether this thing happened. "Assembled from observed posts" versus "typed into a seed
+ * file" is not our reasoning about the world; it is a fact about whether there is a world
+ * behind the row at all.
+ *
+ * No counts, unlike the board's: a page is one story, so "how many" has one answer and
+ * printing it would be furniture.
+ */
+export type WireStoryProvenance =
+  | { readonly kind: 'observed' }
+  | { readonly kind: 'seeded'; readonly connectSourceLabel: string };
+
 export interface WireStory {
   readonly id: string;
   readonly title: string;
@@ -557,6 +631,14 @@ export interface WireStory {
   readonly coins: WireCoinLink;
   readonly evidence: readonly WireEvidence[];
   readonly discussion: readonly WireDiscussionPost[];
+  /**
+   * ★ ON THE PAGE, because the page is reachable without the board. A story link survives
+   * being shared, bookmarked and opened cold, and every one of those arrives without a
+   * board frame to borrow a provenance from. A page that could only be honest when it was
+   * clicked through from the list would be dishonest in exactly the case where the reader
+   * has the least context.
+   */
+  readonly provenance: WireStoryProvenance;
 }
 
 /* ── the censor ───────────────────────────────────────────────────────── */

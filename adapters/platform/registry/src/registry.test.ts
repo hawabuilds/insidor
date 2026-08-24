@@ -33,6 +33,15 @@ const meter: Meter = {
   record: (_spend: Spend) => undefined,
   spentUsd: () => 0,
   mayspend: () => true,
+  /* An unbounded line. These tests are about which sources CONSTRUCT, and a meter that
+     could refuse would make a construction failure and a budget refusal share a symptom. */
+  line: () => ({
+    capUsd: Number.POSITIVE_INFINITY,
+    spentUsd: 0,
+    stopAtUsd: Number.POSITIVE_INFINITY,
+    remainingUsd: Number.POSITIVE_INFINITY,
+    unrecordedUsd: 0,
+  }),
 };
 
 /** Throws if called. No test here makes a request, and one that did would say so. */

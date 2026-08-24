@@ -28,6 +28,14 @@ import {
 } from './queries.ts';
 import { handle, type Deps } from './routes.ts';
 
+/**
+ * What a board frame says about where its stories came from, in the shape the projector
+ * commits. Every test in this file is about routing, ticks or leakage rather than about
+ * provenance, so they all use the branch that makes the app say nothing — a fixture
+ * announcing itself seeded would put a claim into assertions that are not checking it.
+ */
+const OBSERVED = { kind: 'observed' } as const;
+
 interface Call {
   readonly sql: string;
   readonly params: readonly unknown[];
@@ -88,7 +96,7 @@ test('health answers 200 without touching the database', async () => {
 });
 
 test('anything but GET is 405, and never reaches a query', async () => {
-  const { deps, calls } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '7' }] });
+  const { deps, calls } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '7', provenance: OBSERVED }] });
   for (const method of ['POST', 'PUT', 'DELETE', 'PATCH']) {
     const reply = await handle(method, '/board/main', deps);
     assert.equal(reply.status, 405, method);
@@ -109,7 +117,7 @@ test('a malformed percent escape is the caller\'s error, not ours', async () => 
 
 test('the board assembles tick, order and rows from the projection', async () => {
   const { deps, calls } = fakeDb({
-    [BOARD_VIEW_SQL]: [{ tick: '412' }],
+    [BOARD_VIEW_SQL]: [{ tick: '412', provenance: OBSERVED }],
     [BOARD_ROWS_SQL]: [
       { story_id: 'st_ferry', payload: FERRY },
       { story_id: 'st_pigeon', payload: PIGEON },
@@ -122,6 +130,9 @@ test('the board assembles tick, order and rows from the projection', async () =>
     tick: 412,
     order: ['st_ferry', 'st_pigeon'],
     rows: [FERRY, PIGEON],
+    /* The frame's own statement about where its stories came from, handed over from the
+       view row exactly as the projector committed it. See queries.ts. */
+    provenance: { kind: 'observed' },
   });
 
   assert.deepEqual(
@@ -136,7 +147,7 @@ test('order and rows keep the projector\'s committed position', async () => {
      service must not re-sort — the ordering IS the ranking, and re-deriving it here
      would put a product decision in the wrong package. */
   const { deps } = fakeDb({
-    [BOARD_VIEW_SQL]: [{ tick: 1 }],
+    [BOARD_VIEW_SQL]: [{ tick: 1, provenance: OBSERVED }],
     [BOARD_ROWS_SQL]: [
       { story_id: 'st_c', payload: { id: 'st_c' } },
       { story_id: 'st_a', payload: { id: 'st_a' } },
@@ -150,14 +161,14 @@ test('order and rows keep the projector\'s committed position', async () => {
 test('a bigint tick arrives from the driver as a string and leaves as a JSON number', async () => {
   /* The client's int() checks `typeof === 'number'`, so a string here is a hard
      WireShapeError on the far side and the whole tick is dropped. */
-  const { deps } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '9007199254740991' }], [BOARD_ROWS_SQL]: [] });
+  const { deps } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '9007199254740991', provenance: OBSERVED }], [BOARD_ROWS_SQL]: [] });
   const body = JSON.parse((await handle('GET', '/board/main', deps)).body) as { tick: unknown };
   assert.equal(typeof body.tick, 'number');
   assert.equal(body.tick, 9_007_199_254_740_991);
 });
 
 test('a tick too large for a JSON number is refused rather than rounded', async () => {
-  const { deps } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '9223372036854775807' }], [BOARD_ROWS_SQL]: [] });
+  const { deps } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '9223372036854775807', provenance: OBSERVED }], [BOARD_ROWS_SQL]: [] });
   const reply = await handle('GET', '/board/main', deps);
   assert.equal(reply.status, 500, 'silently losing digits would make the gap detector lie');
 });
@@ -171,10 +182,10 @@ test('an unknown board view is 404 and never asks for its rows', async () => {
 });
 
 test('a view that exists with no rows is an empty board, not a 404', async () => {
-  const { deps } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '3' }], [BOARD_ROWS_SQL]: [] });
+  const { deps } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '3', provenance: OBSERVED }], [BOARD_ROWS_SQL]: [] });
   const reply = await handle('GET', '/board/main', deps);
   assert.equal(reply.status, 200, 'a quiet board is a fact; a missing view is a different fact');
-  assert.deepEqual(JSON.parse(reply.body), { tick: 3, order: [], rows: [] });
+  assert.deepEqual(JSON.parse(reply.body), { tick: 3, order: [], rows: [], provenance: OBSERVED });
 });
 
 /* ── the story ────────────────────────────────────────────────────────── */
@@ -331,7 +342,7 @@ test('★ a driver failure on the launches path says nothing about the schema ei
 
 test('★ a path parameter reaches the driver as a PARAMETER, never interpolated', async () => {
   const hostile = "main'; drop table public.board_row; --";
-  const { deps, calls } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '1' }], [BOARD_ROWS_SQL]: [] });
+  const { deps, calls } = fakeDb({ [BOARD_VIEW_SQL]: [{ tick: '1', provenance: OBSERVED }], [BOARD_ROWS_SQL]: [] });
 
   await handle('GET', `/board/${encodeURIComponent(hostile)}`, deps);
 

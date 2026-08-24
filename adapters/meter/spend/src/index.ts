@@ -11,20 +11,31 @@
  * chose rather than a cycle nobody did. Deep imports (`@insidor/meter/units.ts`)
  * work and are the better choice inside a file that needs one corner.
  *
- * ★ `inMemoryMeter` IS EXPORTED BESIDE `metered` DELIBERATELY, AND IT IS NOT A
- * TEST DOUBLE. As of this writing it is the ONLY implementation of the Meter
- * port in the repository, and the runner and the market service both run on it —
- * `in-memory.ts` describes a store-backed sibling, which is the intended shape
- * and is not written yet. So anyone reading "in-memory" as "for tests" and hiding
- * this export behind a test-only path takes two live services with it, and the
- * consequence of the gap it names is worth stating plainly here: this ledger dies
- * with its process, so a daily cap is only enforced for as long as the process
- * lives. A restart is a fresh day's budget.
+ * ── ★ WHICH METER TO REACH FOR, BECAUSE BOTH ARE EXPORTED AND THEY DIFFER IN
+ *      THE ONE PROPERTY THAT MATTERS ──────────────────────────────────────
+ *
+ *   openDurableMeter   A LONG-LIVED PROCESS USES THIS, ALWAYS. It reads today's
+ *                      ledger at boot and writes behind every record, so the daily
+ *                      cap bounds a DAY. Without it the cap bounds a process
+ *                      lifetime, and a supervisor restarting a crashing process
+ *                      hands out the whole budget once per crash — each allocation
+ *                      individually enforced, the invoice a multiple of the cap.
+ *
+ *   inMemoryMeter      The tally engine underneath it, and the right choice on its
+ *                      own for something that does not outlive its own pass: a
+ *                      one-shot CLI, the conformance suite, a unit test. It is NOT a
+ *                      test double, so anyone reading "in-memory" as "for tests" and
+ *                      hiding it behind a test-only path takes real callers with it.
+ *
+ * The rule is the shape of the process, not the taste of the author: if it has a
+ * supervisor, it needs the durable one.
  */
 
 export { metered, mergeSpend, freeSpend } from './meter.ts';
 export type { Billed, CallSpec } from './meter.ts';
-export { BillingMismatch, priceKey, priceOf, UnpricedCall, usdFor } from './units.ts';
+export { BillingMismatch, priceKey, priceOf, estimateFor, UnpricedCall, usdFor } from './units.ts';
 export type { Price, PriceBook } from './units.ts';
-export { inMemoryMeter } from './in-memory.ts';
+export { dayStart, inMemoryMeter } from './in-memory.ts';
 export type { InMemoryMeter, InMemoryMeterOptions } from './in-memory.ts';
+export { openDurableMeter } from './durable.ts';
+export type { DurableMeter, DurableMeterOptions } from './durable.ts';

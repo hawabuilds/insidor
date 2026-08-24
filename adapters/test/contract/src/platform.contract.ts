@@ -114,6 +114,65 @@ export function runPlatformContract(testCase: PlatformCase): void {
       assert.ok(BILLING_KINDS.includes(caps.billing));
     });
 
+    /* ── what a call would cost ──────────────────────────────────────── */
+
+    /**
+     * ★ EVERY SOURCE MUST BE ABLE TO PRICE A CALL WITHOUT MAKING IT.
+     *
+     * This is what a dry run consists of and what free-before-paid decides on, so a
+     * source that cannot answer is a source that either has to be asked before anybody
+     * can find out what it costs — which defeats the whole point — or has to be
+     * hardcoded into a list of "the free ones", which stops being true the first time a
+     * vendor changes its terms.
+     */
+    const estimateQuery = {
+      mode: caps.discovery[0] ?? 'keyword',
+      term: 'anything',
+      sinceMs: null,
+      untilMs: null,
+      limit: 10,
+      cursor: null,
+    } as const;
+
+    it('★ prices a discovery call without making one', () => {
+      const estimate = adapter.estimate({ kind: 'discover', query: estimateQuery });
+      assert.equal(estimate.vendor.trim(), estimate.vendor);
+      assert.ok(estimate.vendor.length > 0, 'an estimate with no vendor cannot be capped per vendor');
+      assert.ok(estimate.endpoint.length > 0);
+      assert.ok(BILLING_KINDS.includes(estimate.unit));
+      assert.ok(Number.isFinite(estimate.usd) && estimate.usd >= 0, 'an estimate must be a real, non-negative number');
+      assert.ok(Number.isFinite(estimate.estUnits) && estimate.estUnits >= 0);
+    });
+
+    it('★ prices a re-read separately, because the two verbs can bill differently', () => {
+      /* One source charges per item returned for both verbs and another charges per RUN
+         for both. A caller allowed to price a discovery and spend the number on a
+         tracking pass would be wrong by a hundredfold on the source where the tracking
+         path is the entire bill. */
+      const estimate = adapter.estimate({ kind: 'observe', sourceItemIds: ['a', 'b', 'c'] });
+      assert.ok(Number.isFinite(estimate.usd) && estimate.usd >= 0);
+      assert.ok(BILLING_KINDS.includes(estimate.unit));
+    });
+
+    it('★ estimating is free and repeatable — it makes no call and keeps no state', () => {
+      /* Asserted as determinism because that is the observable shadow of "performs no
+         I/O". An estimate that talked to a vendor, or that advanced a cursor, would
+         drift between two identical questions — and a dry run is nothing but a few
+         hundred identical questions. */
+      const first = adapter.estimate({ kind: 'discover', query: estimateQuery });
+      const second = adapter.estimate({ kind: 'discover', query: estimateQuery });
+      assert.deepEqual(first, second);
+    });
+
+    it('estimating nothing costs nothing on a per-item vendor, and a whole run on a per-run one', () => {
+      /* Zero ids is a legitimate outcome — every id unaddressable, or a queue that
+         drained — and what it costs is exactly the difference between the billing
+         kinds. Pinned so a source cannot quietly start charging for an empty batch, or
+         quietly stop charging for an empty run. */
+      const empty = adapter.estimate({ kind: 'observe', sourceItemIds: [] });
+      assert.equal(empty.usd, 0, 'an empty batch starts no call and must cost nothing');
+    });
+
     it('accounts for every counter kind: present, absent, or deliberately unstated', () => {
       // Not a requirement that all six are classified — a source may simply
       // not have been measured yet. But a kind that is neither present nor

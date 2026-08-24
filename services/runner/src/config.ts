@@ -22,6 +22,10 @@
  * `DISCOVER` is the second variable built to that shape, for the same reason: a
  * defaulted-off discovery is a pipeline that runs, reports healthy and ingests
  * nothing, which is the seven-hour silent failure this service is shaped around.
+ * `SPEND` is the third, and it is the one where a default is worst in BOTH
+ * directions: defaulted to `live` it spends somebody's money because they did not
+ * know there was a switch, and defaulted to `dry` it is that same silent failure
+ * wearing a different hat.
  *
  * ── ★ AND A THIRD JOB, ADDED WITH THE PLATFORM SOURCES ─────────────────────
  *
@@ -45,6 +49,7 @@
  */
 
 import { hostname } from 'node:os';
+import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { StageName } from '@insidor/contracts';
 import { credentialSpecs } from '@insidor/platform-registry';
 import type { CredentialEnv } from '@insidor/vendor-kit';
@@ -127,6 +132,52 @@ export type DiscoveryConfig =
       readonly terms: readonly string[];
     };
 
+/**
+ * ★ WHETHER THIS PROCESS MAY SPEND MONEY, AND HOW MUCH.
+ *
+ * The third variable built to HEARTBEAT's shape, and the one with the sharpest reason.
+ * You either declare `SPEND=live` and accept an invoice, or you declare `SPEND=dry`
+ * and get a process that resolves every source, renders every query, prices every call
+ * against the same price books the live path bills against, prints the total — and
+ * contacts nobody. A default here would be the worst kind: defaulted to `live` it
+ * spends somebody's money because they did not know there was a switch, and defaulted
+ * to `dry` it is the seven-hour silent failure this service is shaped around wearing a
+ * different hat. So it is declared, like the other two.
+ *
+ * ── ★ WHY `dailyBudgetUsd` IS READ HERE AT ALL, GIVEN THAT THRESHOLDS LIVE IN
+ *      POLICY ──────────────────────────────────────────────────────────────
+ *
+ * Because it is not a threshold, it is a WALLET. `budget.dailyUsd` in policy answers
+ * "what may this system ever spend in a day", which is a product judgement, hashed
+ * onto every decision, and correctly frozen in code. This answers "what may THIS
+ * DEPLOYMENT spend", which is a fact about whose card is on file — and two people
+ * running the same code with different amounts of money is not two policies.
+ *
+ * ★ AND IT MAY ONLY EVER LOWER THE POLICY CEILING, NEVER RAISE IT. The boot fails,
+ * naming both numbers, if it is set higher. That is what keeps the two honest: policy
+ * remains the maximum any deployment may spend and the number a decision row is judged
+ * against, and this is the operator's tighter belt inside it. Without the check the
+ * environment could quietly overrule a frozen policy, and the hash on the decision row
+ * would attest to a cap that was not in force.
+ *
+ * The variable existed before this and was read by NOTHING — it sat in `.env.example`
+ * beside a sentence promising that the judge would pause when it was reached, and
+ * neither half was true. A dead knob that reads like a live one is worse than no knob,
+ * because somebody sets it to five and believes they are capped at five.
+ */
+export type SpendConfig =
+  | {
+      readonly kind: 'dry';
+      /**
+       * Carried even in dry mode, because the dry run reports what WOULD have been
+       * refused. A dry run that ignored the cap would tell a person their day costs
+       * ninety cents when the ninth pass would have been paused — which is the one
+       * thing they are running it to find out.
+       */
+      readonly dailyBudgetUsd: number;
+    }
+  | { readonly kind: 'live'; readonly dailyBudgetUsd: number };
+
 export interface RunnerConfig {
   /** Session mode (port 5432). Transaction mode cannot hold the singleton lock. */
   readonly databaseUrl: string;
@@ -142,6 +193,8 @@ export interface RunnerConfig {
   readonly singletonLockName: string;
   readonly heartbeat: HeartbeatConfig;
   readonly discovery: DiscoveryConfig;
+  /** Whether a vendor may be contacted, and the wallet if one may. See `SpendConfig`. */
+  readonly spend: SpendConfig;
   /**
    * The platform credentials, as a snapshot taken here and passed forward.
    *
@@ -202,6 +255,36 @@ function reader(env: Env, problems: string[]) {
       const n = Number(raw);
       if (!Number.isInteger(n) || n < min || n > max) {
         problems.push(`${key} must be an integer in [${min}, ${max}], got ${JSON.stringify(raw)}`);
+        return min;
+      }
+      return n;
+    },
+    /**
+     * A number that may have a fractional part, for money.
+     *
+     * ★ SEPARATE FROM `int` BECAUSE ROUNDING A BUDGET IS NOT A NEUTRAL ACT. A cap
+     * typed as `0.50` read through `int` fails the boot on a value that is perfectly
+     * sensible, and a version that rounded it would round UP as readily as down —
+     * which is a person asking for fifty cents and being given a dollar. It also
+     * refuses a non-finite value explicitly: `Number('')` is 0 and `Number('abc')` is
+     * NaN, and NaN compares false against every cap, so a typo would produce a meter
+     * that permits every call rather than one that refuses them.
+     *
+     * On failure it returns `min` rather than `max`: every reader here returns a value
+     * so the remaining problems can still be collected, and the one it returns must be
+     * the one that cannot cause spending if a caller ever ignored the thrown error.
+     */
+    money(key: string, min: number, max: number): number {
+      const raw = env[key];
+      if (raw === undefined || raw.trim() === '') {
+        problems.push(`${key} is required and was not set`);
+        return min;
+      }
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < min || n > max) {
+        problems.push(
+          `${key} must be a number in [${min}, ${max}] — dollars per day — got ${JSON.stringify(raw)}`,
+        );
         return min;
       }
       return n;
@@ -280,6 +363,25 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     discovery = { kind: 'on', terms };
   }
 
+  /* ── the wallet ──────────────────────────────────────────────────────────
+     Read whichever mode is declared, because a dry run reports what would have been
+     refused and needs the same number to do it. */
+  const spendMode = r.choice('SPEND', ['dry', 'live'] as const);
+
+  /**
+   * ★ THE CEILING IS THE POLICY NUMBER AND THE ENVIRONMENT MAY ONLY GO LOWER.
+   *
+   * `max` is `DEFAULT_POLICY.budget.dailyUsd`, so `DAILY_BUDGET_USD=50` against a
+   * policy of 3 fails the boot naming both figures rather than quietly overruling a
+   * frozen policy — which would leave the hash on every decision row attesting to a
+   * cap that was not in force. The floor is not zero: a cap of zero refuses every call
+   * forever, which is what `SPEND=dry` is for and is a different, clearer statement.
+   * The smallest real charge in this system is $0.00015, so a cent is the smallest
+   * budget that can buy anything at all.
+   */
+  const dailyBudgetUsd = r.money('DAILY_BUDGET_USD', 0.01, DEFAULT_POLICY.budget.dailyUsd);
+  const spend: SpendConfig = { kind: spendMode, dailyBudgetUsd };
+
   if (problems.length > 0) throw new ConfigError(problems);
 
   return {
@@ -290,6 +392,7 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     singletonLockName,
     heartbeat,
     discovery,
+    spend,
     sourceEnv: platformEnv(env),
   };
 }

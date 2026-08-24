@@ -24,6 +24,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts';
 import { asDb, createPool, DB_ROLE, PgAssetRepo, withTransaction } from '@insidor/store';
 
 import {
+  FREE_POST_SOURCE_LABEL,
   loadLaunchFacts,
   loadStoryFacts,
   nextLaunchTick,
@@ -34,7 +35,14 @@ import {
   writeStories,
 } from './db.ts';
 import { announceBoard } from './notify.ts';
-import { projectBoard, projectFeedSource, projectLaunch, projectStory } from './project.ts';
+import {
+  projectBoard,
+  projectBoardProvenance,
+  projectStoryProvenance,
+  projectFeedSource,
+  projectLaunch,
+  projectStory,
+} from './project.ts';
 import type { ProjectOptions } from './project.ts';
 import { countAnchors, windowIsOrdered } from './window.ts';
 import { WireLeakError } from './wire.ts';
@@ -180,7 +188,14 @@ async function main(): Promise<void> {
       let skipped = 0;
       for (const story of facts) {
         try {
-          const page = projectStory(story, options);
+          const page = projectStory(
+            story,
+            options,
+            /* The page's own answer, from the same story rows the facts came from — not
+               borrowed from the frame, because a story page is reachable by a shared link
+               with no frame in sight. See projectStoryProvenance. */
+            projectStoryProvenance(load.origins.get(story.storyId), FREE_POST_SOURCE_LABEL),
+          );
           if (page === null) skipped += 1;
           else pages.push(page);
         } catch (error: unknown) {
@@ -190,7 +205,12 @@ async function main(): Promise<void> {
         }
       }
 
-      const boardRows = await writeBoard(db, VIEW_ID, tick, board.rows);
+      /* ★ COMPUTED FROM THE ORIGINS OF THE STORIES THAT ACTUALLY REACHED THE FRAME, and
+         from `board.order` rather than from `facts`, so a story that was withheld or that
+         had nothing nameable in it is not counted in a sentence about what is on screen.
+         See projectBoardProvenance, and 0021 for why it rides on the view row. */
+      const provenance = projectBoardProvenance(load.origins, board.order, FREE_POST_SOURCE_LABEL);
+      const boardRows = await writeBoard(db, VIEW_ID, tick, board.rows, provenance);
       const storyViews = await writeStories(db, pages);
 
       /* ── the launches rail ──

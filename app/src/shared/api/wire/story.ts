@@ -65,4 +65,30 @@ export interface Story {
   readonly coins: CoinLink;
   readonly evidence: readonly Evidence[];
   readonly discussion: readonly DiscussionPost[];
+  /**
+   * ★ WHETHER THIS STORY HAPPENED.
+   *
+   * The board carries the same statement about a whole frame; a reader who clicked a row
+   * used to land here, on the same six invented numbers, with nothing over them. Two
+   * surfaces, one fiction, a notice on only one of them.
+   *
+   * It is on the PAGE and not borrowed from the board because this page is reachable
+   * without one — a shared link, a bookmark, a cold open — and a page that could only be
+   * honest when clicked through from the list would be dishonest exactly where the reader
+   * has the least context.
+   *
+   * It is not "how this story was assembled", which stays ours: no member weights, no
+   * match confidence, nothing about what joined what. Only whether there is a world behind
+   * the row.
+   */
+  readonly provenance: StoryProvenance;
 }
+
+/**
+ * ★ `unstated` IS NOT `observed`, for the reason the board's copy gives at length: an
+ * absent field must never resolve to the answer that makes the app say nothing.
+ */
+export type StoryProvenance =
+  | { readonly kind: 'observed' }
+  | { readonly kind: 'seeded'; readonly connectSourceLabel: string }
+  | { readonly kind: 'unstated' };

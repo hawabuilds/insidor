@@ -410,6 +410,23 @@ export function fixtureBoard(): unknown {
     tick: 1,
     order: ['st_pigeon', 'st_chillguy', 'st_soup', 'st_ferry', 'st_rooftop', 'st_dance'],
     rows: ROWS,
+    /* ★ THE FIXTURE CLAIMS AN OBSERVED BOARD, which looks like the wrong call for a file
+       of invented rows and is the same decision `fixtureLaunches` makes about `live: true`,
+       for the same reason: this fixture's job is to show the shape the board takes when
+       everything is working.
+
+       The alternative is worse in a specific way. `seeded` renders a banner reading "these
+       are demonstration rows — connect a post source" — advice that is simply wrong here,
+       because this build has NO BACKEND AT ALL and connecting a source would change
+       nothing about what is on screen. It would sit directly under the SAMPLE DATA banner,
+       which already says everything below it is made up, in the same amber, saying a
+       narrower and less true version of it. Two stacked amber bars is how the one that
+       matters stops being read.
+
+       Nothing is being hidden: `USING_FIXTURES` is a literal the bundler folds, this whole
+       module is dropped from a production build, and the banner above it is permanent and
+       has no dismiss control. */
+    provenance: { kind: 'observed' },
   };
 }
 
@@ -806,5 +823,12 @@ export function fixtureStory(storyId: string): unknown | null {
     reachDelta24h: m(402_000),
     evidence: EVIDENCE,
     discussion: DISCUSSION,
+    /* `observed`, for the reason `fixtureBoard` gives at length: this file's job is to show
+       the shape the page takes when everything works, and the SAMPLE DATA banner above it
+       already says every number here is invented. A second amber bar under it, saying a
+       narrower version of the same thing and telling the reader to connect a source that
+       would change nothing in a build with no backend, is how the one that matters stops
+       being read. */
+    provenance: { kind: 'observed' },
   };
 }

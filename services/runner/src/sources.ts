@@ -35,16 +35,33 @@
  * still returns its value, because losing a page of items to a bookkeeping failure
  * would be the recording mechanism causing the outage it exists to report.
  *
- * ★ AND `toItem` / `baselineKey` ARE PASSED THROUGH UNTOUCHED. They are pure
- * translation over data we already hold; recording a "successful call" for them would
- * make a source look alive on the strength of parsing its own past payloads.
+ * ★ AND `toItem` / `baselineKey` / `estimate` ARE PASSED THROUGH UNTOUCHED. All three are
+ * pure functions over data we already hold; recording a "successful call" for them
+ * would make a source look alive on the strength of parsing its own past payloads. On
+ * `estimate` the point is sharper than on the other two: a dry run consists of nothing
+ * BUT estimates, so a wrapper that recorded them would end a dry run with every source
+ * marked as answering — a health board reporting a healthy ingest on a run that
+ * contacted nobody.
+ *
+ * ── ★ AND ONE ERROR THAT IS NOT A SOURCE FAILURE ────────────────────────────
+ *
+ * `BudgetRefused` is thrown by our own meter, BEFORE the request leaves the process.
+ * The vendor was never contacted, so it cannot have failed, and recording it against
+ * the source's health would write our own decision into a column whose entire purpose
+ * is to say what somebody else's server did. The consequence is not cosmetic: three
+ * refusals in a row would drive `consecutive_failures` past `failingAfterFailures` and
+ * paint the source red, so a working source would be reported broken on precisely the
+ * days the budget is tight — and the operator would go looking for an outage that is
+ * actually an invoice. It is re-thrown unchanged; the caller records the pause.
  */
 
 import { sourceId } from '@insidor/contracts';
 import type { Item, Millis } from '@insidor/contracts';
+import type { CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import type { SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
-import type { PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
+import type { PlannedCall, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
+import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from './log.ts';
 
@@ -91,6 +108,13 @@ export function watched(adapter: PlatformAdapter, deps: WatchDeps): PlatformAdap
     try {
       value = await call();
     } catch (e) {
+      /* ★ OUR OWN REFUSAL IS NOT THE VENDOR'S OUTAGE. See the header. The meter threw
+         before the request went out, so there is no call whose outcome this could be —
+         and writing one would let a tight budget spend three passes turning a healthy
+         source red. It escapes with the health record untouched, which is what leaves
+         the last-success instant saying the true thing: this source last answered when
+         it last answered, and today we did not ask. */
+      if (e instanceof BudgetRefused) throw e;
       const at = deps.now();
       await record(deps, () => deps.health.recordFailure(id, at, reason(e)), label);
       throw e;
@@ -104,6 +128,10 @@ export function watched(adapter: PlatformAdapter, deps: WatchDeps): PlatformAdap
     capabilities: adapter.capabilities,
     discover: (query, budget) => around(() => adapter.discover(query, budget)),
     observe: (ids, budget) => around(() => adapter.observe(ids, budget)),
+    /* Pure arithmetic over the adapter's own price book. No call, no outcome, nothing
+       to record — and recording one would end a dry run with every source marked as
+       having answered. */
+    estimate: (call: PlannedCall): CostEstimate => adapter.estimate(call),
     toItem: (raw: unknown, at: Millis): Item => adapter.toItem(raw, at),
     baselineKey: (item: Item, at: Millis): string => adapter.baselineKey(item, at),
   };

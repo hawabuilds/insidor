@@ -913,3 +913,28 @@
 .failed {
   color: var(--red);
 }
+
+/* ===== seeded-story notice =====
+   The SAME amber recipe as the board's .provenanceBar, the shell's .fixtureBar and the
+   sources banner. Amber is what this app means by "degraded but not broken", and a fifth
+   treatment would dilute the one signal that already means something. Margin-bottom
+   rather than -top: this sits above the identity panel inside the page's own column,
+   where the shell's bars sit above the whole route. */
+.provenanceBar {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 176, 32, 0.12);
+  border: 1px solid rgba(255, 176, 32, 0.35);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.provenanceBar b {
+  color: #ffe8b0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

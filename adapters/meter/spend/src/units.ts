@@ -15,7 +15,7 @@
  * on it is a guess, and this field makes the guess visible.
  */
 
-import type { BillingUnit } from '@insidor/contracts/ports/meter.ts';
+import type { BillingUnit, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 
 export interface Price {
   readonly vendor: string;
@@ -82,4 +82,28 @@ export function usdFor(price: Price, units: number): number {
     throw new RangeError(`${priceKey(price.vendor, price.endpoint)}: units must be finite and >= 0`);
   }
   return price.unit === 'flat' ? 0 : price.usdPerUnit * units;
+}
+
+/**
+ * What a call WOULD cost, priced from the same book that will bill it.
+ *
+ * ★ THE POINT IS THAT IT IS THE SAME BOOK. A dry run whose estimate came from
+ * anywhere but the price book the live path uses is a dry run that answers a
+ * different question from the one asked, and the divergence would appear exactly
+ * when a rate was updated in one place — which is the moment somebody is checking
+ * the estimate against an invoice and concluding the meter is broken.
+ *
+ * ★ AND IT THROWS `UnpricedCall` RATHER THAN RETURNING ZERO for a call with no
+ * entry. An unpriced call is not a free call, and a dry run that silently reported
+ * $0.00 for a vendor nobody had priced would be a budget answer made out of a
+ * missing row — the same failure as writing a zero where a counter does not exist.
+ */
+export function estimateFor(
+  book: PriceBook,
+  vendor: string,
+  endpoint: string,
+  estUnits: number,
+): CostEstimate {
+  const price = priceOf(book, vendor, endpoint);
+  return { vendor, endpoint, unit: price.unit, estUnits, usd: usdFor(price, estUnits) };
 }

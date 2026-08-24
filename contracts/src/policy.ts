@@ -902,6 +902,27 @@ export interface ExplorePolicy {
  *
  * `softStopFraction` is the other half of that: stopping a vendor AT its line strands
  * work in flight, so the stop lands early enough to finish what was started.
+ *
+ * ── ★ WHICH OF THESE NUMBERS ACTUALLY REFUSES A CALL ───────────────────────
+ *
+ * `dailyUsd`, `perSourceUsdPerDay` and `softStopFraction`. Those three are handed to
+ * the meter and consulted by `mayspend` BEFORE the request leaves the process, so a
+ * call past the line is not made. The four per-capability lines are NOT enforced:
+ * they are constructed into a `Budget`, handed to every adapter, and read by none of
+ * them. That is written here rather than left to be discovered because a number that
+ * looks like a cap and is not is worse than no number — somebody will lower
+ * `judgeUsdPerDay` believing they have bounded the judge.
+ *
+ * ── ★ AND WHY THE DAILY NUMBER IS SMALL ────────────────────────────────────
+ *
+ * It is sized so that a person with no money can start this system, walk away for an
+ * hour, and come back to a bill they could have absorbed by accident. The measured
+ * worst case for one paid source at the shipped cadence is about $4.31 a day (287
+ * discovery passes, one page each, at a page of 100 posts at $0.00015). A cap of 12
+ * therefore never binds on that configuration — it is a cap in the sense that a door
+ * frame is a door. A cap of 3 binds, and the failure it produces when it binds is a
+ * thin board with a recorded reason, which is recoverable. The failure a loose cap
+ * produces is an invoice, which is not.
  */
 export interface BudgetPolicy {
   readonly dailyUsd: number;
@@ -909,8 +930,55 @@ export interface BudgetPolicy {
   readonly observeUsdPerDay: number;
   readonly judgeUsdPerDay: number;
   readonly quoteUsdPerDay: number;
+  /**
+   * ★ THE LINE ONE SOURCE MAY SPEND, so the first vendor asked cannot eat the day.
+   *
+   * This is the field that makes the paragraph above true rather than aspirational.
+   * The per-capability lines describe an intent no code could enforce — an adapter
+   * receives a `Budget` and no adapter reads it — whereas this number is passed to
+   * the meter as a per-vendor cap and is consulted by `mayspend` before every request.
+   *
+   * The failure it prevents is specific and is the one a small budget meets first:
+   * sources are asked in one order, every pass, and without a per-source line the
+   * source at the front of that order spends the whole day and the ones behind it
+   * are refused every call from mid-morning onward — which reads on the board as two
+   * dead sources rather than as one expensive one.
+   */
+  readonly perSourceUsdPerDay: number;
   /** Stop spending on a vendor at this share of its line, leaving room to finish. */
   readonly softStopFraction: number;
+  /**
+   * ★ FREE BEFORE PAID: ask the sources that cost nothing first, every pass.
+   *
+   * A POLICY AND NOT AN OPTIMISATION, which is why it is a field here rather than a
+   * sort somebody added to a loop. Ordering decides who gets refused when the cap
+   * binds, and the two orders produce opposite products from the same budget: asked
+   * cheapest-first, a day that runs out of money has already taken everything the
+   * free sources had and loses only the paid tail; asked in registry order, the paid
+   * source drains the line before the free one is reached and the day loses the half
+   * that was never going to cost anything. The second is strictly worse and is what
+   * you get by default, because registry order is declaration order.
+   *
+   * Turning it off is legitimate — it is how you check whether a paid source is
+   * actually earning its line — and that is why it is a switch and not a constant.
+   */
+  readonly freeSourcesFirst: boolean;
+  /**
+   * ★ AND THE STRONGER HALF: do not pay for a term a free source already answered.
+   *
+   * `freeSourcesFirst` only reorders; this skips. When a free source returns items
+   * for a term, the paid sources are not asked for that term at all in the same pass,
+   * and the skip is RECORDED — `deferred`, with the source that covered it — so it is
+   * never mistaken for a paid source that was asked and had nothing.
+   *
+   * ★ THE COST IS REAL AND IS STATED HERE SO IT IS NOT DISCOVERED LATER. Two sources
+   * do not hold the same posts. Skipping the paid one because the free one answered
+   * loses whatever only the paid one had, and on a term where the free source is
+   * chatty and the paid source is where the signal actually lives, that is most of the
+   * value. It ships ON because the owner's constraint is money rather than coverage,
+   * and the day that inverts, this is the first field to turn off.
+   */
+  readonly paidOnlyWhenFreeIsEmpty: boolean;
 }
 
 /* ── OUTCOMES ─────────────────────────────────────────────────────────── */
@@ -1174,7 +1242,30 @@ const POLICY_V1: Policy = {
      before this bump — there are none — would have been graded against numbers that were
      not written down anywhere, and the definition string is the only thing that would say
      so. */
-  version: 'policy.v9',
+
+  /* v10 is the first bump in this file that LOWERS a threshold rather than adding one,
+     and the first whose subject is what the system is allowed to spend rather than what
+     it is allowed to believe. It changes `budget.dailyUsd` from 12 to 3 and adds three
+     fields: `perSourceUsdPerDay`, `freeSourcesFirst` and `paidOnlyWhenFreeIsEmpty`.
+
+     Bumped by hand for the reason v3 through v9 give, and with one addition particular
+     to this block. The other bumps all say "a stage could not do X before this"; this
+     one says the opposite — every stage could do X, and the numbers describing what it
+     would cost were not connected to anything. `dailyUsd: 12` was passed to the meter
+     and never bound, because the configuration that could reach it costs under five
+     dollars a day; the four per-capability lines were handed to adapters that do not
+     read them. So a decision made before this bump was made by a process whose spending
+     was bounded by its own cadence and by nothing else, and a decision made after it was
+     made by one that will stop and say it stopped. Those are not the same system, and
+     the version string is the only thing on a decision row that says which one produced
+     it.
+
+     ★ AND THE TWO BOOLEANS ARE POLICY AND NOT PLUMBING, which is why they are here and
+     not in a service. They decide WHICH SOURCE gets asked and which gets skipped, so
+     two runs under the same terms and the same budget can hold different posts
+     depending on them. A board built with `paidOnlyWhenFreeIsEmpty` on saw a different
+     world from one built with it off, and nothing else on the row would say so. */
+  version: 'policy.v10',
 
   admit: {
     maxAgeMin: 240,
@@ -1478,13 +1569,30 @@ const POLICY_V1: Policy = {
     fullFidelityDays: 90,
   },
 
+  /* Every number here is enforced or is marked as not enforced on the interface above.
+     The three that refuse a call are `dailyUsd`, `perSourceUsdPerDay` and
+     `softStopFraction`; the four per-capability lines describe an intent no adapter
+     reads. Read the ★ block on BudgetPolicy before moving any of them. */
   budget: {
-    dailyUsd: 12,
+    /* 3, not 12. At the shipped cadence one paid source costs about $0.86 a day and
+       cannot exceed $4.31, so 12 could never bind and 3 can — which is the whole
+       difference between a cap and a comment. It is also the number a person who is
+       low on funds can lose without it mattering. */
+    dailyUsd: 3,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
     quoteUsdPerDay: 1,
+    /* 1.5 — half the day, so a single source cannot take the whole line and leave the
+       others refused from mid-morning. With one source configured this never binds and
+       `dailyUsd` is the only ceiling; with two it is what keeps them both alive. */
+    perSourceUsdPerDay: 1.5,
     softStopFraction: 0.9,
+    /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
+       is the one with a coverage cost, stated on its field, and is the first thing to
+       turn off the day the constraint becomes coverage instead. */
+    freeSourcesFirst: true,
+    paidOnlyWhenFreeIsEmpty: true,
   },
 
   /* The numbers whose reasons are on `LabelPolicy` above. Read them there; every one of

@@ -17,12 +17,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { CensorReason } from '@insidor/contracts';
+import type { StoryOrigin } from '@insidor/contracts/story.ts';
+
+/**
+ * What a story page says about itself when it is a real one. Every projectStory test below
+ * is about titles, censoring, coins or evidence rather than about provenance, so they all
+ * use the branch the app renders nothing for — a fixture announcing itself seeded would put
+ * a claim into assertions that are not checking it. The provenance branches have their own
+ * tests at the end of this file.
+ */
+const OBSERVED_STORY = { kind: 'observed' } as const;
 
 import { coinCandidates, deriveCoinLink, NO_CORPUS, normalise } from './coins.ts';
 import { orderByRecency } from './order.ts';
 import { permalinkFor } from './permalinks.ts';
 import {
   projectBoard,
+  projectBoardProvenance,
+  projectStoryProvenance,
   projectBoardRow,
   projectCoin,
   projectCoins,
@@ -725,7 +737,7 @@ test('a stale reading empties the row as well as the coin', () => {
 test('the story page carries no story-level market cap at all', () => {
   /* The page renders the coins themselves, each with its own cap. A roll-up there would be
      a second spelling of a number already on screen — and a dash beside three real caps. */
-  const page = projectStory(story({ coins: candidates(3, true) }), OPTIONS);
+  const page = projectStory(story({ coins: candidates(3, true) }), OPTIONS, OBSERVED_STORY);
   assert.equal('marketCapUsd' in (page ?? {}), false);
 });
 
@@ -983,7 +995,7 @@ test('the unsure summary says the count and refuses to pick', () => {
 test('a story with no title and nothing to quote is not projected at all', () => {
   const nameless = story({ displayTitle: null, members: [member({ excerpt: '   ' })] });
   assert.equal(projectBoardRow(nameless, OPTIONS), null);
-  assert.equal(projectStory(nameless, OPTIONS), null);
+  assert.equal(projectStory(nameless, OPTIONS, OBSERVED_STORY), null);
 });
 
 test('a story with no title falls back to quoting its earliest post, not to a placeholder', () => {
@@ -1012,7 +1024,7 @@ test('every relation is a sentence and none of them is a number', () => {
 /* ── evidence ─────────────────────────────────────────────────────────── */
 
 test('a member with no link is dropped rather than cited without one', () => {
-  const page = projectStory(story({ members: [member({ permalink: null })] }), OPTIONS);
+  const page = projectStory(story({ members: [member({ permalink: null })] }), OPTIONS, OBSERVED_STORY);
   assert.deepEqual(page?.evidence, []);
 });
 
@@ -1020,6 +1032,7 @@ test('a member with a link becomes checkable evidence', () => {
   const page = projectStory(
     story({ members: [member({ permalink: 'https://example.com/p/1' })] }),
     OPTIONS,
+    OBSERVED_STORY,
   );
   const first = page?.evidence[0];
   assert.equal(first?.permalink, 'https://example.com/p/1');
@@ -1136,8 +1149,13 @@ test('the row carries exactly the twelve public fields and no thirteenth', () =>
   ]);
 });
 
-test('the story page is the row minus isNew, plus the change, the evidence and the discussion', () => {
-  const page = projectStory(story(), OPTIONS);
+test('the story page is the row minus isNew, plus the change, the evidence, the discussion and its provenance', () => {
+  /* An exact list, because a field that exists gets rendered eventually. `provenance` was
+     added deliberately and is the only field here that is not a fact about the story's
+     subject — it is the fact about whether the subject happened, which a reader needs
+     before believing any of the others. Anything else appearing in this list is a leak
+     until somebody argues otherwise in this comment. */
+  const page = projectStory(story(), OPTIONS, OBSERVED_STORY);
   assert.deepEqual(Object.keys(page ?? {}).sort(), [
     'coins',
     'discussion',
@@ -1145,6 +1163,7 @@ test('the story page is the row minus isNew, plus the change, the evidence and t
     'firstSeenAt',
     'id',
     'momentum',
+    'provenance',
     'reach',
     'reachDelta24h',
     'spark',
@@ -1160,7 +1179,7 @@ test('a vendor name inside free text stops the story being published', () => {
      the whole board tick dies in a browser, after the value has already been served. */
   const leaky = story({ displayTitle: 'Everything is fine, says dexscreener' });
   assert.throws(() => projectBoardRow(leaky, OPTIONS), WireLeakError);
-  assert.throws(() => projectStory(leaky, OPTIONS), WireLeakError);
+  assert.throws(() => projectStory(leaky, OPTIONS, OBSERVED_STORY), WireLeakError);
 });
 
 test('★ one leaky story costs one row, not the whole frame', () => {
@@ -1277,7 +1296,7 @@ test('★ an unknown source yields no link, and the member is dropped rather tha
   assert.deepEqual(projectEvidence([dropped]), []);
   /* And the story page still projects — an unlinkable member costs its own row and
      nothing else. */
-  const page = projectStory(story({ members: [dropped] }), OPTIONS);
+  const page = projectStory(story({ members: [dropped] }), OPTIONS, OBSERVED_STORY);
   assert.deepEqual(page?.evidence, []);
 });
 
@@ -1414,6 +1433,7 @@ test('a story page whose evidence is populated still carries no forbidden key or
       ],
     }),
     OPTIONS,
+    OBSERVED_STORY,
   );
   assert.equal(page?.evidence.length, 2);
 
@@ -1672,6 +1692,7 @@ test('a story quoted out of somebody else’s post is cut between characters too
       members: [member({ excerpt, permalink: 'https://x.com/a/status/1' })],
     }),
     OPTIONS,
+    OBSERVED_STORY,
   );
   assert.notEqual(page, null);
   assert.equal(page?.title.endsWith('…'), true, 'the title is a cut quote, so the cut is under test');
@@ -1679,4 +1700,94 @@ test('a story quoted out of somebody else’s post is cut between characters too
   for (const text of stringsOf(page)) {
     assert.equal(text.isWellFormed(), true, 'a lone surrogate would fail the story_view jsonb cast');
   }
+});
+
+/* ── ★ the frame's provenance ─────────────────────────────────────────────
+   The projector's half of "a fiction is labelled a fiction or it is not shown". The
+   seeded rows are worth publishing — the alternative is an empty board, which is the
+   state five migrations have gone into distinguishing from a broken one — but publishing
+   them unannounced under a heading reading `Trending` was the rule failing on the first
+   surface anybody opens. */
+
+test('★ a board of seeded stories announces itself, and names the free source', () => {
+  const origins = new Map<string, StoryOrigin>([
+    ['st_a', 'fixture'],
+    ['st_b', 'fixture'],
+  ]);
+
+  const provenance = projectBoardProvenance(origins, ['st_a', 'st_b'], 'Reddit');
+  assert.equal(provenance.kind, 'seeded');
+  assert.deepEqual(provenance, {
+    kind: 'seeded',
+    seededStories: 2,
+    totalStories: 2,
+    connectSourceLabel: 'Reddit',
+  });
+});
+
+test('★ one observed story is not enough to be announced as seeded — it is counted', () => {
+  /* The mixed frame, which is the first thing that exists after a real source is
+     connected. The banner has to keep appearing while any fiction is on the board, and it
+     has to say how many — telling a reader that the real row they just watched arrive is
+     invented is the same class of error in the other direction. */
+  const origins = new Map<string, StoryOrigin>([
+    ['st_a', 'fixture'],
+    ['st_b', 'observed'],
+    ['st_c', 'fixture'],
+  ]);
+  const provenance = projectBoardProvenance(origins, ['st_a', 'st_b', 'st_c'], 'Reddit');
+  assert.deepEqual(provenance, {
+    kind: 'seeded',
+    seededStories: 2,
+    totalStories: 3,
+    connectSourceLabel: 'Reddit',
+  });
+});
+
+test('★ the notice switches ITSELF off when the board becomes real', () => {
+  /* The requirement, asserted: no code change, no flag, no deploy. A frame whose stories
+     were all assembled from observed posts carries the branch the app renders nothing
+     for, and that is the whole mechanism. */
+  const origins = new Map<string, StoryOrigin>([
+    ['st_a', 'observed'],
+    ['st_b', 'observed'],
+  ]);
+  assert.deepEqual(projectBoardProvenance(origins, ['st_a', 'st_b'], 'Reddit'), {
+    kind: 'observed',
+  });
+});
+
+test('★ the count is over the FRAME, not over the table', () => {
+  /* A database that still holds six old fixtures under a board showing nothing but real
+     rows must not keep the banner up: it would be a permanent warning about rows nobody
+     can see, which is how a banner gets ignored and then deleted. Only the ids on the
+     frame are counted, so a fixture the board did not retrieve contributes nothing. */
+  const origins = new Map<string, StoryOrigin>([
+    ['st_on_frame', 'observed'],
+    ['st_old_fixture', 'fixture'],
+  ]);
+  assert.deepEqual(projectBoardProvenance(origins, ['st_on_frame'], 'Reddit'), {
+    kind: 'observed',
+  });
+});
+
+test('an empty board states nothing rather than announcing a fiction', () => {
+  assert.deepEqual(projectBoardProvenance(new Map(), [], 'Reddit'), { kind: 'observed' });
+});
+
+test('★ a seeded story page announces itself, and a discovered one does not', () => {
+  /* The page's own answer. It is NOT derived from the frame, because a story link opened
+     cold has no frame — see projectStoryProvenance. */
+  assert.deepEqual(projectStoryProvenance('fixture', 'Reddit'), {
+    kind: 'seeded',
+    connectSourceLabel: 'Reddit',
+  });
+  assert.deepEqual(projectStoryProvenance('observed', 'Reddit'), { kind: 'observed' });
+});
+
+test('a story whose origin never arrived is not stamped as a fiction', () => {
+  /* The narrow default, matching projectBoardProvenance: the failure being avoided is a
+     new origin silently putting "this is made up" over every real story. The opposite
+     mistake is caught by STORY_ORIGINS being pinned to the schema in migrations.test.ts. */
+  assert.deepEqual(projectStoryProvenance(undefined, 'Reddit'), { kind: 'observed' });
 });

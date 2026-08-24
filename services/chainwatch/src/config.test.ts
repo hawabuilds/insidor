@@ -165,3 +165,34 @@ test('every problem is reported at once, not one per restart', () => {
     assert.match(text, /MINT_STREAM_STALE_MS/);
   }
 });
+
+/* ── the chain side stays free ─────────────────────────────────────────── */
+
+test('★ this process needs no paid credential, and a complete environment proves it', () => {
+  /* The mint stream is the default path and it must stay keyless: one websocket to a
+     free relay, no card, no plan, no metered call anywhere in this process. Asserted by
+     construction rather than by reading the config — `complete` is the environment the
+     tests boot on, and if a paid key were ever required, THIS test fails first because
+     the boot would refuse an environment that has none. */
+  const cfg = loadChainwatchConfig(complete);
+  assert.ok(cfg.databaseUrl.length > 0);
+
+  for (const paid of ['SOLANA_RPC_URL', 'HELIUS_API_KEY', 'ANTHROPIC_API_KEY', 'X_API_KEY']) {
+    assert.equal(
+      Object.hasOwn(complete, paid),
+      false,
+      `${paid} has been added to the environment this process boots on`,
+    );
+  }
+});
+
+test('★ a paid RPC, if one is ever supplied, must not become required', () => {
+  /* The direction that matters. Supplying a key may enrich a mint time; its ABSENCE
+     must never be an error, a retry, or a wait — a mint time we cannot confirm is
+     recorded as the stream's own bound with its own confidence, which is a fact, and a
+     paid dependency on the hot path of a first run is how a free system stops being
+     free without anybody deciding to. */
+  const withKey = { ...complete, SOLANA_RPC_URL: 'https://rpc.invalid', HELIUS_API_KEY: 'k' };
+  assert.doesNotThrow(() => loadChainwatchConfig(withKey), 'a supplied key broke the boot');
+  assert.doesNotThrow(() => loadChainwatchConfig(complete), 'the absence of a key broke the boot');
+});

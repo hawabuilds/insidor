@@ -80,7 +80,7 @@ import {
 } from './shared/api/index.ts';
 import { NotImplemented } from './shared/not-implemented.ts';
 import { CommandPalette } from './shared/ui/index.ts';
-import { Feed } from './features/feed/index.ts';
+import { BoardProvenanceBanner, Feed } from './features/feed/index.ts';
 import type { BuyAction } from './features/feed/index.ts';
 import { Pairs } from './features/pairs/index.ts';
 import { LiveRail } from './features/rail/index.ts';
@@ -368,6 +368,19 @@ export function App({ wallet }: AppProps) {
           we never learned.
         </div>
       ) : null}
+
+      {/* ★ THE SAME CLAIM ABOUT THE DATABASE THAT THE BAR ABOVE MAKES ABOUT THE BUNDLE, and
+          it is the one that was missing. The bar above only ever appears when there is no
+          backend at all; with a backend attached and a freshly seeded database, six invented
+          stories rendered under `Trending` with nothing over them. This says so, and says it
+          out of the frame's own provenance rather than out of a flag here — so it goes away
+          on its own the moment a real story is projected, and cannot be turned off early.
+
+          Gated on `showsBoard` because it is a sentence about the BOARD's rows. The pairs
+          and launches screens read different tables and are entitled to their own answer;
+          borrowing this one would be this frame's provenance printed over somebody else's
+          rows, which is the mistake `WireBoardTick.provenance` rides on the frame to avoid. */}
+      {showsBoard ? <BoardProvenanceBanner /> : null}
 
       {/* main-left + permanent live feed right (never hides). Her layout, her comment. */}
       <div className={styles['shell']}>

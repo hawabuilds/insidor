@@ -26,6 +26,7 @@ import type { Asset, MintTime } from '../asset.ts';
 import type { Decision, StageName } from '../decision.ts';
 import type { AssetKey, AuthorKey, ChainId, ItemId, SourceId, StoryId, VenueId } from '../ids.ts';
 import type { Policy } from '../policy.ts';
+import type { SpendLedger } from './meter.ts';
 import type { SourceConfiguration, SourceHealth } from '../source.ts';
 import type { Story, StoryMember, StoryOrigin } from '../story.ts';
 import type {
@@ -319,4 +320,11 @@ export interface Store {
   readonly policies: PolicyRepo;
   readonly stageRuns: StageRunRepo;
   readonly sourceHealth: SourceHealthRepo;
+  /**
+   * The durable half of the money path. Declared in `ports/meter.ts` beside the
+   * synchronous `Meter` it outlives, and listed here because it is a table like every
+   * other member of this bag — a service that holds a Store holds the ledger that
+   * makes its daily cap survive a restart.
+   */
+  readonly spend: SpendLedger;
 }

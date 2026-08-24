@@ -19,8 +19,13 @@
 
 import type { CounterSet, Item, Millis } from '@insidor/contracts';
 import type { SourceId } from '@insidor/contracts/ids.ts';
-import type { Budget, Metered } from '@insidor/contracts/ports/meter.ts';
-import type { DiscoveryQuery, Discovered, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
+import type { Budget, Metered, CostEstimate } from '@insidor/contracts/ports/meter.ts';
+import type {
+  DiscoveryQuery,
+  Discovered,
+  PlannedCall,
+  PlatformAdapter,
+} from '@insidor/contracts/ports/platform.ts';
 import { freeSpend } from '@insidor/meter';
 import { discovered } from '@insidor/vendor-kit';
 
@@ -101,6 +106,21 @@ export function replayPlatform(tape: Tape, opts: ReplayOptions): ReplayPlatform 
         value: discovered(page, hasMore ? String(next) : null, hasMore),
         spend: freeSpend(VENDOR, 'discover', opts.now()),
       };
+    },
+
+    /**
+     * A replay costs nothing, and it estimates nothing.
+     *
+     * ★ IT IS BUILT BY HAND RATHER THAN THROUGH A PRICE BOOK, for the reason the
+     * spends are: this source HAS no price book, because it has no vendor. Giving it
+     * one — even one full of zeroes — would make a recording look like something that
+     * could be billed, and the shape of the mistake that follows is a replay quietly
+     * consuming a budget line during an eval run. `flat` with zero units is the same
+     * declaration `freeSpend` makes on the paths that actually run, and the two agree
+     * on purpose: a dry run over a tape and a live run over a tape both say $0.00.
+     */
+    estimate(_call: PlannedCall): CostEstimate {
+      return { vendor: VENDOR, endpoint: 'replay', unit: 'flat', estUnits: 0, usd: 0 };
     },
 
     /**

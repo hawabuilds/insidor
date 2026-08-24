@@ -47,7 +47,8 @@ export interface Db {
  * two have to stay distinguishable, because an empty board is a legitimate answer
  * and an unknown view is not.
  */
-export const BOARD_VIEW_SQL = 'select tick from public.board_view where view_id = $1';
+export const BOARD_VIEW_SQL =
+  'select tick, provenance from public.board_view where view_id = $1';
 
 /**
  * `position` is quoted because POSITION is a SQL keyword. Postgres does accept it

@@ -39,6 +39,7 @@ import { Delta, Num, Sparkline, Thumb } from '../../shared/ui/index.ts';
 import { Coins } from './Coins.tsx';
 import { Discussion } from './Discussion.tsx';
 import { EvidenceList } from './Evidence.tsx';
+import { storyNotice } from './story-provenance.ts';
 import styles from './story.module.css';
 
 const CLOCK_MS = 1_000;
@@ -205,9 +206,26 @@ export function Story({ storyId, onBuy, isWatched, onToggleWatch }: StoryProps) 
   const liquidity = coinFigure(story.coins, (c) => c.liquidityUsd);
   const note = marketNote(story.coins, [price, cap, liquidity]);
 
+  const provenance = storyNotice(story.provenance);
+
   return (
     <div className={styles['tp2']}>
       <div className={styles['tp2Main']}>
+        {/* ★ ABOVE THE HEADER, because it changes what every number under it means. The
+            board carries the same notice over its list; this is the half that was missing,
+            and without it a reader who clicked a seeded row landed on a page of invented
+            view counts, invented accounts and invented posts with nothing over them.
+
+            Same amber, same permanence, no dismiss control — see BoardProvenance.tsx. It
+            comes off the page's own payload, so a story opened from a shared link with no
+            board in sight is exactly as honest as one clicked through from the list. */}
+        {provenance === null ? null : (
+          <div className={styles['provenanceBar']} role="status">
+            <b>{provenance.headline}</b>
+            {provenance.detail}
+          </div>
+        )}
+
         {/* ===== identity header (her .tid) ===== */}
         <section className={`${styles['panel']} ${styles['tid']}`}>
           <div className={styles['tidIco']}>

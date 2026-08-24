@@ -55,6 +55,7 @@ export const STORY_FIELDS = [
   'coins',
   'evidence',
   'discussion',
+  'provenance',
 ] as const;
 
 /**

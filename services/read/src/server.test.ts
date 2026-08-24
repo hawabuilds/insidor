@@ -20,7 +20,7 @@ import { createBoardStream } from './stream.ts';
 const ORIGIN = 'http://localhost:5173';
 
 const ANSWERS: Readonly<Record<string, readonly Row[]>> = {
-  [BOARD_VIEW_SQL]: [{ tick: '412' }],
+  [BOARD_VIEW_SQL]: [{ tick: '412', provenance: { kind: 'observed' } }],
   [BOARD_ROWS_SQL]: [{ story_id: 'st_ferry', payload: { id: 'st_ferry', isNew: false } }],
   [STORY_SQL]: [{ payload: { id: 'st_ferry', evidence: [], discussion: [] } }],
 };
@@ -57,6 +57,7 @@ test('a board request answers JSON with no-store and the configured origin', asy
       tick: 412,
       order: ['st_ferry'],
       rows: [{ id: 'st_ferry', isNew: false }],
+      provenance: { kind: 'observed' },
     });
   } finally {
     await close();
@@ -187,7 +188,12 @@ test('a stream is served with the event-stream type, the same CORS answer, and n
     }
     const frame = /event: frame\ndata: (.*)\n\n/.exec(seen);
     assert.ok(frame?.[1]);
-    assert.deepEqual(JSON.parse(frame[1]), { tick: 412, order: ['st_ferry'], rows: [{ id: 'st_ferry', isNew: false }] });
+    assert.deepEqual(JSON.parse(frame[1]), {
+      tick: 412,
+      order: ['st_ferry'],
+      rows: [{ id: 'st_ferry', isNew: false }],
+      provenance: { kind: 'observed' },
+    });
 
     await reader.cancel();
   } finally {

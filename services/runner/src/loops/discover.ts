@@ -32,13 +32,14 @@
  */
 
 import type { Item, Policy } from '@insidor/contracts';
+import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { DiscoveryConfig } from '../config.ts';
 import type { Logger } from '../log.ts';
 import type { Loop, LoopContext, LoopCounts } from '../loop.ts';
 import { declareSources, type WatchDeps } from '../sources.ts';
-import { discoverPass, type DiscoveryPlan } from '../work/discover.ts';
+import { discoverPass, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
 
 /**
  * Five minutes.
@@ -63,11 +64,27 @@ const EVERY_MS = 300_000;
  */
 const OFFSET_MS = 45_000;
 
+/**
+ * Passes in a day at this cadence, used only to turn one pass's estimate into a daily
+ * figure for the dry run. Approximate by construction — the supervisor adds jitter and
+ * a failing pass backs off — and rounding it down would understate a bill, so it is the
+ * plain quotient and the field it feeds is named `wouldSpendUsdPerDay` rather than
+ * `willSpend`.
+ */
+const PASSES_PER_DAY = Math.floor(86_400_000 / EVERY_MS);
+
+/** Cents are not enough: the smallest real charge in this system is $0.00015. */
+const USD_PLACES = 4;
+
 export interface DiscoverLoopDeps {
   readonly platforms: PlatformRegistry;
   readonly store: (items: readonly Item[]) => Promise<number>;
   readonly discovery: DiscoveryConfig;
   readonly policy: Policy;
+  /** The ledger. Read before every call so a refusal can be recorded with its numbers. */
+  readonly meter: Meter;
+  /** Whether this process may contact a vendor at all. See `SpendConfig`. */
+  readonly mode: DiscoverMode;
   readonly log: Logger;
   readonly watch: WatchDeps;
 }
@@ -98,13 +115,18 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
         return { in: 0, out: 0, failed: 0, firstError: null };
       }
 
-      const plan: DiscoveryPlan = { terms: deps.discovery.terms };
+      /* The cadence travels WITH the terms rather than being read again inside the
+         pass, because it is what makes the term rotate — see `termFor`. Two spellings
+         of a cadence is how a rotation silently stops rotating. */
+      const plan: DiscoveryPlan = { terms: deps.discovery.terms, cadenceMs: EVERY_MS };
 
       const result = await discoverPass({
         platforms: deps.platforms,
         store: deps.store,
         plan,
         policy: deps.policy,
+        meter: deps.meter,
+        mode: deps.mode,
         log,
         now: ctx.now,
         signal: ctx.signal,
@@ -116,18 +138,49 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
          follows for feed liveness. `dark` beside `answered` is what makes "one source
          answered" legible as either "two are off" or "two are broken". */
       log.info('discovery pass', {
+        mode: deps.mode,
         asked: result.asked,
         answered: result.answered,
         failed: result.failed,
         unasked: result.unasked,
         dark: result.dark,
+        /* ★ PRINTED EVERY PASS, INCLUDING WHEN THEY ARE ZERO, for the reason above: a
+           field that appears only when something is wrong is a field nobody knows the
+           normal value of. `paused` beside `answered` is what makes an empty board
+           legible as "we ran out of money" rather than as "the internet was quiet". */
+        paused: result.paused,
+        planned: result.planned,
+        deferred: result.deferred,
         itemsSeen: result.itemsSeen,
         itemsStored: result.itemsStored,
+        estimatedUsd: Number(result.estimatedUsd.toFixed(USD_PLACES)),
       });
+
+      /**
+       * ★ A DRY RUN PRINTS THE TOTAL AS ITS OWN LINE, and prints it even at zero.
+       *
+       * It is the answer to the question the mode exists to ask, and burying it inside
+       * the pass line above would mean the first thing a new person runs answers "what
+       * will this cost me" in a field they have to go looking for. At zero it is the
+       * more useful line of the two: it says the configuration is safe, rather than
+       * saying nothing and leaving the reader to conclude the run did not work.
+       */
+      if (deps.mode === 'dry') {
+        log.info('DRY RUN — no vendor was contacted', {
+          sourcesPriced: result.planned,
+          wouldSpendUsdPerPass: Number(result.estimatedUsd.toFixed(USD_PLACES)),
+          wouldSpendUsdPerDay: Number((result.estimatedUsd * PASSES_PER_DAY).toFixed(USD_PLACES)),
+          passesPerDay: PASSES_PER_DAY,
+        });
+      }
 
       return {
         in: result.itemsSeen,
         out: result.itemsStored,
+        /* ★ A PAUSE IS NOT A FAILURE AND MUST NOT REACH THIS FIELD. `failed` drives the
+           run row's outcome to 'error' and the supervisor's backoff; a budget stop is
+           the system working, and reporting it as an error would slow the cadence of a
+           loop that is behaving correctly and page somebody about an invoice. */
         failed: result.failed,
         firstError: result.firstError,
       };

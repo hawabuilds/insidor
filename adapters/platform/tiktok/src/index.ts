@@ -21,9 +21,14 @@
  */
 
 import type { CounterSet, Item, Millis } from '@insidor/contracts';
-import type { Budget, Meter, Metered } from '@insidor/contracts/ports/meter.ts';
-import type { DiscoveryQuery, Discovered, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { mergeSpend, metered } from '@insidor/meter';
+import type { Budget, Meter, Metered, CostEstimate } from '@insidor/contracts/ports/meter.ts';
+import type {
+  DiscoveryQuery,
+  Discovered,
+  PlannedCall,
+  PlatformAdapter,
+} from '@insidor/contracts/ports/platform.ts';
+import { mergeSpend, metered, estimateFor } from '@insidor/meter';
 import type { PriceBook } from '@insidor/meter';
 import { discovered } from '@insidor/vendor-kit';
 
@@ -74,6 +79,28 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
       // whether there was more. `false` is what the vendor supports saying, not a
       // guess about the feed.
       return { value: discovered(result.value, null, false), spend: result.spend };
+    },
+
+    /**
+     * What a call would cost, without making it.
+     *
+     * ★ THE UNIT IS THE RUN, AND THAT MAKES THIS SOURCE'S ESTIMATE THE MOST DIFFERENT OF
+     * THE THREE. A discovery run costs the same whether it returns nothing or a
+     * thousand posts, so the estimate does not depend on `query.limit` at all — it is one
+     * run, flat. Quoting it per item would price a per-run vendor with per-item
+     * arithmetic, which is the exact leak `BillingMismatch` exists to make impossible
+     * on the live path, and a dry run is where it would otherwise sneak back in.
+     *
+     * ★ AND UNADDRESSABLE IDS ARE EXCLUDED BEFORE COUNTING. Re-reading here needs the
+     * author's handle, and ids we hold no handle for are skipped rather than guessed —
+     * so they start no run and cost nothing. An estimate that counted them would report a
+     * bill for work that will not happen, and on a source where every run is a fixed
+     * charge that overstatement is the whole number.
+     */
+    estimate(call: PlannedCall): CostEstimate {
+      if (call.kind === 'discover') return estimateFor(prices, VENDOR, DISCOVER, 1);
+      const runs = chunk(addressable(call.sourceItemIds, deps.handleOf), batchSize).length;
+      return estimateFor(prices, VENDOR, OBSERVE, runs);
     },
 
     async observe(

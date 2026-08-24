@@ -50,6 +50,7 @@ import type {
   Rate,
   SourceHealth,
 } from '@insidor/contracts';
+import type { StoryOrigin } from '@insidor/contracts/story.ts';
 import { sourceState } from '@insidor/core';
 
 import { orderByRecency } from './order.ts';
@@ -62,6 +63,8 @@ import {
   type MarketCapBasis,
   type PendingReason,
   type Tone,
+  type WireBoardProvenance,
+  type WireStoryProvenance,
   type WireBoardRow,
   type WireCoin,
   type WireCoinLink,
@@ -1350,7 +1353,11 @@ export function projectBoardRow(story: StoryFacts, options: ProjectOptions): Wir
  * on screen — and on a `several` story it would be a dash sitting next to three real caps,
  * which reads as a bug rather than as a refusal.
  */
-export function projectStory(story: StoryFacts, options: ProjectOptions): WireStory | null {
+export function projectStory(
+  story: StoryFacts,
+  options: ProjectOptions,
+  provenance: WireStoryProvenance,
+): WireStory | null {
   const title = projectTitle(story);
   if (title === null) return null;
 
@@ -1372,6 +1379,10 @@ export function projectStory(story: StoryFacts, options: ProjectOptions): WireSt
     /* There is no discussion table. An empty list says "nobody has said anything here",
        which is true, and it is the only honest thing to send until the table exists. */
     discussion: [],
+    /* Handed in rather than derived, because `StoryFacts` deliberately does not carry the
+       origin — see `StoryRow.origin` in db.ts. The caller reads it off the same story rows
+       the facts came from, so the page and the board cannot disagree about one story. */
+    provenance,
   };
 
   assertNoInternalVocabulary(page, `$.story_view[${story.storyId}]`);
@@ -1424,6 +1435,61 @@ export function projectBoard(
     if (row !== null) rows.push(row);
   }
   return { order: rows.map((row) => row.id), rows, withheld };
+}
+
+/**
+ * What kind of stories this frame is made of.
+ *
+ * ★ THE COUNT IS OVER THE FRAME AND NOT OVER THE TABLE. `origins` holds exactly the
+ * stories that were loaded for this board, so the answer describes what is on screen. A
+ * count over `public.story` would keep the banner up for a database that still holds six
+ * old fixtures under a board showing nothing but real rows — a permanent warning about
+ * rows nobody can see, which is how a banner gets ignored and then removed.
+ *
+ * Any story of an origin this function does not know about counts as observed. That is
+ * the narrow direction, and it is deliberate: the failure it prevents is a new origin
+ * being introduced and every real story silently gaining a "this is made up" banner. The
+ * opposite mistake — a new KIND of fiction going unannounced — is caught by `STORY_ORIGINS`
+ * being a closed list pinned to the schema by `store/src/migrations.test.ts`, so a third
+ * member cannot arrive without somebody editing the vocabulary and reading this.
+ *
+ * ★ `connectSourceLabel` IS A PARAMETER AND NOT A CONSTANT IN THIS FILE, for a boring
+ * structural reason worth stating so nobody "tidies" it: the label comes from
+ * `sourceLabel` in db.ts, and db.ts imports THIS file. Reaching back for it would close an
+ * import cycle. The caller supplies it — see `FREE_POST_SOURCE_LABEL` in db.ts, which is
+ * where the map from a source key to the words a user reads already lives.
+ */
+export function projectBoardProvenance(
+  origins: ReadonlyMap<string, StoryOrigin>,
+  onFrame: readonly string[],
+  connectSourceLabel: string,
+): WireBoardProvenance {
+  let seeded = 0;
+  for (const storyId of onFrame) {
+    if (origins.get(storyId) === 'fixture') seeded += 1;
+  }
+  if (seeded === 0) return { kind: 'observed' };
+  return { kind: 'seeded', seededStories: seeded, totalStories: onFrame.length, connectSourceLabel };
+}
+
+/**
+ * The same question asked of ONE story, for its own page.
+ *
+ * ★ IT EXISTS SEPARATELY BECAUSE THE PAGE IS REACHABLE WITHOUT THE BOARD. A story link
+ * survives being shared, bookmarked and opened cold, and none of those arrive with a board
+ * frame whose provenance the page could borrow. Deriving the page's answer from the
+ * frame's would make the page honest only when it was clicked through from the list —
+ * dishonest in precisely the case where the reader has the least context.
+ *
+ * An origin this function does not recognise counts as observed, which is the same narrow
+ * default `projectBoardProvenance` takes and is chosen for the same reason: a new origin
+ * must not silently stamp "this is made up" across every real story.
+ */
+export function projectStoryProvenance(
+  origin: StoryOrigin | undefined,
+  connectSourceLabel: string,
+): WireStoryProvenance {
+  return origin === 'fixture' ? { kind: 'seeded', connectSourceLabel } : { kind: 'observed' };
 }
 
 /* ── helpers ──────────────────────────────────────────────────────────── */

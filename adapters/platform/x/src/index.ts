@@ -10,13 +10,18 @@
  */
 
 import type { CounterSet, Item, Millis } from '@insidor/contracts';
-import type { Budget, Meter, Metered } from '@insidor/contracts/ports/meter.ts';
-import type { DiscoveryQuery, Discovered, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { mergeSpend, metered } from '@insidor/meter';
+import type { Budget, Meter, Metered, CostEstimate } from '@insidor/contracts/ports/meter.ts';
+import type {
+  DiscoveryQuery,
+  Discovered,
+  PlannedCall,
+  PlatformAdapter,
+} from '@insidor/contracts/ports/platform.ts';
+import { mergeSpend, metered, estimateFor } from '@insidor/meter';
 import type { PriceBook } from '@insidor/meter';
 import { discovered } from '@insidor/vendor-kit';
 
-import { CAPABILITIES, LOOKUP, PRICES, SEARCH, SOURCE, VENDOR } from './capabilities.ts';
+import { billedUnits, CAPABILITIES, LOOKUP, PRICES, SEARCH, SOURCE, VENDOR } from './capabilities.ts';
 import type { XClient } from './client.ts';
 import { searchPage } from './discover.ts';
 import { chunk, observeBatch } from './observe.ts';
@@ -55,6 +60,36 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
         value: discovered(result.value.items, result.value.cursor, result.value.hasMore),
         spend: result.spend,
       };
+    },
+
+    /**
+     * What a call would cost, without making it.
+     *
+     * ★ IT IS PRICED PESSIMISTICALLY AND THE DIRECTION IS THE POINT. A discovery call
+     * sends no page-size parameter — this vendor chooses how many posts come back —
+     * so the only number we can honestly reserve against is the ceiling we would
+     * accept, `query.limit`. The real page is usually a fifth of that, which means a
+     * dry run over this source estimates HIGH. A budget answer that is too large makes
+     * somebody buy a smaller plan than they needed; one that is too small makes them
+     * buy nothing and find out from an invoice. Only one of those is recoverable.
+     *
+     * ★ AND THE FLOOR IS APPLIED, because this vendor charges for a request that
+     * returns nothing. Quoting a re-read of one deleted post at $0.00 would understate
+     * exactly the path where this source's money goes — see MIN_BILLED_UNITS.
+     */
+    estimate(call: PlannedCall): CostEstimate {
+      if (call.kind === 'discover') {
+        return estimateFor(prices, VENDOR, SEARCH, billedUnits(call.query.limit));
+      }
+      /* Batched the same way `observe` batches, and each batch floored the same way,
+         so the estimate is the sum of the calls that would actually be made rather than
+         one call's price multiplied by a count. On a vendor with a per-request floor
+         those two differ, and they differ most on the small batches. */
+      const estUnits = chunk(call.sourceItemIds, batchSize).reduce(
+        (units, batch) => units + billedUnits(batch.length),
+        0,
+      );
+      return estimateFor(prices, VENDOR, LOOKUP, estUnits);
     },
 
     async observe(

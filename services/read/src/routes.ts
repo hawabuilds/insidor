@@ -123,6 +123,21 @@ function textColumn(raw: unknown, column: string): string {
  * payload must fail loudly rather than serialise to the literal `undefined`, which
  * is not JSON and would reach the client as a parse error with no explanation.
  */
+/**
+ * A `not null` jsonb column, passed through untouched.
+ *
+ * The same contract as `payloadOf` and the same reason for existing: the driver hands
+ * back a parsed value, and the only thing checked is that a value arrived. A column the
+ * schema declares NOT NULL arriving as `undefined` means the projection is broken, and it
+ * must fail loudly rather than serialise to the literal `undefined` — which is not JSON
+ * and reaches the client as a parse error with nothing in it to explain itself.
+ */
+function columnOf(row: Row, column: string): unknown {
+  const value = row[column];
+  if (value === undefined) throw new TypeError(`a projected view row arrived with no ${column}`);
+  return value;
+}
+
 function payloadOf(row: Row): unknown {
   const payload = row['payload'];
   if (payload === undefined) throw new TypeError('a projected row arrived with no payload');
@@ -158,6 +173,13 @@ export async function board(viewId: string, deps: Deps): Promise<Reply> {
     tick: tickNumber(view['tick']),
     order: rows.map((r) => textColumn(r['story_id'], 'story_id')),
     rows: rows.map(payloadOf),
+    /* ★ FROM THE VIEW ROW, IN THIS REPLY, WITH THE ROWS IT DESCRIBES — the same argument
+       `launches` makes about `source` below. A board of six seeded stories and a board of
+       six real ones are the same array of six payloads, and this is the only field that
+       tells them apart. Handed over as it was committed: this process cannot compute it,
+       because `public.story.origin` is not something it reads and the judgement was made
+       once, by the projector, against the frame it was committing. */
+    provenance: columnOf(view, 'provenance'),
   });
 }
 

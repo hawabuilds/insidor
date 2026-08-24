@@ -9,7 +9,6 @@
   "scripts": {
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
-    "lint": "eslint .",
     "check:vocabulary": "node tools/check-vocabulary.mjs",
     "check:purity": "node tools/check-purity.mjs",
     "check:policy": "node tools/check-policy.mjs",
@@ -28,15 +27,14 @@
     "db:decide": "node tools/db.mjs decide",
     "db:label": "node tools/db.mjs label",
     "db:psql": "node tools/db.mjs psql",
-    "dev:runner": "node --experimental-strip-types services/runner/src/main.ts",
-    "dev:chainwatch": "node --experimental-strip-types services/chainwatch/src/main.ts",
+    "dev:runner": "HEALTH_PORT=8080 SINGLETON_LOCK_NAME=insidor.runner node --env-file-if-exists=.env.local --experimental-strip-types services/runner/src/main.ts",
+    "dev:chainwatch": "node --env-file-if-exists=.env.local --experimental-strip-types services/chainwatch/src/main.ts",
     "dev:read": "pnpm --filter @insidor/read dev",
     "dev:app": "pnpm --filter @insidor/app dev"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "dependency-cruiser": "^17.0.0",
-    "eslint": "^10.0.0",
     "typescript": "^5.9.3"
   }
 }

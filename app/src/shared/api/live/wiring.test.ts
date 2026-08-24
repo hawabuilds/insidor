@@ -39,7 +39,7 @@ function row(id: string): BoardRow {
 }
 
 function frame(n: number): BoardTick {
-  return { tick: n, order: ['a'], rows: [row('a')] };
+  return { tick: n, order: ['a'], rows: [row('a')], provenance: { kind: 'observed' } };
 }
 
 interface Harness {

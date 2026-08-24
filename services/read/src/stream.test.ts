@@ -79,7 +79,9 @@ function fakeDb(views: readonly string[] = ['default']): FakeDb {
     async query(sql, params) {
       db.calls.push(sql);
       const viewId = String(params[0]);
-      if (sql === BOARD_VIEW_SQL) return views.includes(viewId) ? [{ tick: String(db.tick) }] : [];
+      if (sql === BOARD_VIEW_SQL) return views.includes(viewId)
+          ? [{ tick: String(db.tick), provenance: { kind: 'observed' } }]
+          : [];
       if (sql === BOARD_ROWS_SQL) return [{ story_id: 'st_ferry', payload: { id: 'st_ferry' } }];
       return [];
     },
@@ -193,6 +195,13 @@ test('a published frame carries the committed board and reaches only that view',
       tick: 41,
       order: ['st_ferry'],
       rows: [{ id: 'st_ferry' }],
+      /* ★ THE PUSHED FRAME CARRIES PROVENANCE TOO, and this line is the check that it
+         cannot stop doing so. The poll path and the stream path go through the same
+         `board()` for exactly this reason; a socket frame that dropped the field would
+         decode as `unstated` and drop a banner over a healthy board — or, if the default
+         were ever loosened, quietly re-certify seeded stories as observed on every live
+         update while the first fetch got it right. */
+      provenance: { kind: 'observed' },
     });
     assert.doesNotMatch(theirs.text(), /event: frame/, 'a frame reached a view that did not change');
   } finally {

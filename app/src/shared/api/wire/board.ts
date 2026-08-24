@@ -113,10 +113,54 @@ export interface BoardRow {
  * sortable-table library in this package: importing one invites back the thing that was
  * banned.
  */
+/**
+ * WHERE THE STORIES ON THIS FRAME CAME FROM.
+ *
+ * ★ THE BUG THIS CLOSES. `pnpm db:seed` writes six hand-written stories. The board
+ * rendered them under a heading reading **Trending**, with a live pip and a market cap
+ * column, and nothing on the screen said they were invented. "Everything is just a
+ * placeholder" was the correct reading of that screen, and there was no way to reach it
+ * except by knowing.
+ *
+ * ★ THE SERVER DECIDES, THIS TYPE ONLY CARRIES IT. Which is the point: the app cannot
+ * look at a row and work out whether it is real, because `origin` is not on the row and
+ * never will be. The judgement is made once, by the projector, against the frame it is
+ * committing — so the notice cannot be switched off here, and it switches ITSELF off the
+ * moment a story assembled from real posts reaches the board.
+ */
+export type BoardProvenance =
+  /** Every story on the frame came from observed posts. There is nothing to announce. */
+  | { readonly kind: 'observed' }
+  | {
+      /** At least one story on the frame was written by the seed. */
+      readonly kind: 'seeded';
+      readonly seededStories: number;
+      readonly totalStories: number;
+      /** The post source that costs nothing to connect, in the words the nav's pips use. */
+      readonly connectSourceLabel: string;
+    }
+  /**
+   * The frame did not say. A server too old to send the field, or one whose projection
+   * predates it.
+   *
+   * ★ IT IS NOT FOLDED INTO `observed`, and that is the whole reason it exists. `observed`
+   * means "we checked, and these are real" — the one answer that must never be reachable
+   * by an absence. A missing field means we do not know, and the honest render of not
+   * knowing is a line of text saying so, not a silently trustworthy board.
+   */
+  | { readonly kind: 'unstated' };
+
 export interface BoardTick {
   readonly tick: number;
   readonly order: readonly string[];
   readonly rows: readonly BoardRow[];
+  /**
+   * ★ ON THE FRAME, WITH THE ROWS IT DESCRIBES. A board of six seeded stories and a board
+   * of six real ones are the same array of six rows; this is the only field between them.
+   * Travelling with the rows is what stops this frame's stories being shown under the
+   * previous frame's provenance.
+   */
+  readonly provenance: BoardProvenance;
 }
 
 /**

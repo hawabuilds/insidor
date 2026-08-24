@@ -17,7 +17,7 @@
 
 import type { Item, CounterKind, CounterSet, Fidelity, Millis } from '../vocabulary.ts';
 import type { SourceId } from '../ids.ts';
-import type { Budget, BillingUnit, Metered } from './meter.ts';
+import type { Budget, BillingUnit, Metered, CostEstimate } from './meter.ts';
 
 export const DISCOVERY_MODES = ['keyword', 'hashtag', 'feed', 'catalog', 'account'] as const;
 
@@ -90,6 +90,20 @@ export interface Discovered {
 }
 
 /**
+ * A call described rather than made, so it can be priced.
+ *
+ * ★ A UNION AND NOT TWO METHODS, because the two verbs bill differently on the same
+ * vendor — one source charges per item returned for a search and per item returned for
+ * a re-read, another charges per RUN for both — and a caller pricing "a call" must be
+ * made to say which verb it means. Two methods would let a caller price a discovery
+ * and spend the number on a tracking pass, which is a hundredfold error on the source
+ * where the tracking path is the whole bill.
+ */
+export type PlannedCall =
+  | { readonly kind: 'discover'; readonly query: DiscoveryQuery }
+  | { readonly kind: 'observe'; readonly sourceItemIds: readonly string[] };
+
+/**
  * THE SOURCE PORT — everything the system is allowed to know about where items come
  * from, behind one interface with no vendor noun anywhere in it.
  *
@@ -111,6 +125,32 @@ export interface PlatformAdapter {
 
   /** Costs money. The budget is handed in and never read from a global. */
   discover(query: DiscoveryQuery, budget: Budget): Promise<Metered<Discovered>>;
+
+  /**
+   * ★ WHAT THIS CALL WOULD COST, WITHOUT MAKING IT. Synchronous, pure, and the only
+   * method on this port that touches no network by construction.
+   *
+   * WHY IT IS ON THE PORT AND NOT A HELPER SOMEWHERE ABOVE IT. The price book, the
+   * vendor token, the endpoint name and the billing unit all live inside the adapter,
+   * and every one of them is a vendor word this repository forbids anywhere else. A
+   * caller that wanted to price a call would have to import a price book and know
+   * which endpoint a `keyword` discovery renders into — which is the adapter's own
+   * secret, and is how the build this replaces ended up pricing a per-run vendor
+   * through a per-item table. So the adapter is asked, and it answers in dollars.
+   *
+   * ★ IT BUYS TWO THINGS THAT ARE ONE THING. A DRY RUN — resolve what would be asked,
+   * add up what it would cost, call nobody — and FREE-BEFORE-PAID, which needs to know
+   * which sources are free BEFORE deciding what order to ask them in. Both are
+   * questions about a call that has not happened, and neither is answerable from
+   * `capabilities.billing`, which gives the unit and not the rate.
+   *
+   * ★ IT MUST NEVER PERFORM I/O, AND MUST NEVER RECORD A SPEND. An estimate that recorded
+   * would put a projection into the one ledger whose whole value is that every row is
+   * a call somebody actually made — the same rule `public.asset.origin` enforces one
+   * layer up. It returns a `CostEstimate`, which is a different type from `Spend` precisely so
+   * that mistake does not typecheck.
+   */
+  estimate(call: PlannedCall): CostEstimate;
 
   /** The tracking path: re-read by id. Keys absent from the map were not returned. */
   observe(

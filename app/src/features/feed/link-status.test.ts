@@ -17,7 +17,7 @@ import { RECONNECT_GRACE_MS, readLink } from './link-status.ts';
 const NOW = 1_700_000_000_000;
 
 function meta(link: LinkState, changedAt = NOW): BoardMeta {
-  return { tick: 7, frozen: false, pendingCount: 0, link, linkChangedAt: changedAt, lastFrameAt: NOW };
+  return { tick: 7, frozen: false, pendingCount: 0, link, linkChangedAt: changedAt, lastFrameAt: NOW, provenance: { kind: 'observed' } };
 }
 
 test('no transport at all reads as a snapshot, not as a failure', () => {

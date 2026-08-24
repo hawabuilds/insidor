@@ -17,7 +17,7 @@
  * ordering rules are readable without knowing hooks.
  */
 
-import type { BoardRow, BoardTick, RowPatch } from '../wire/board.ts';
+import type { BoardProvenance, BoardRow, BoardTick, RowPatch } from '../wire/board.ts';
 
 export type Listener = () => void;
 
@@ -64,6 +64,20 @@ export interface BoardMeta {
    * can contradict the word "live".
    */
   readonly lastFrameAt: number | null;
+  /**
+   * Where the stories on the last applied frame came from.
+   *
+   * ★ NULL MEANS NO FRAME HAS BEEN APPLIED, which is a different fact from a frame that
+   * did not state its provenance — that one arrives as `{ kind: 'unstated' }` and is worth
+   * saying out loud. Collapsing the two would put a banner over an empty board during the
+   * first fetch of every page load, which is a warning about nothing and trains people to
+   * ignore the one that matters.
+   *
+   * It lives on meta rather than beside `order` because it changes on exactly the same
+   * events the tick does, and a second subscription for one enum would re-render the whole
+   * shell on every row patch.
+   */
+  readonly provenance: BoardProvenance | null;
 }
 
 export interface BoardStore {
@@ -125,6 +139,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
    * the zeroing. See the stamp in `applyTick`.
    */
   let lastFrameTick = -1;
+  let provenance: BoardProvenance | null = null;
   let held: BoardTick | null = null;
   let heldCount = 0;
 
@@ -136,7 +151,7 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
   /* A cached meta object, because useSyncExternalStore compares snapshots by identity and a
      fresh object every read is an infinite render loop. It is replaced only when something
      in it actually changed. */
-  let meta: BoardMeta = { tick: 0, frozen: false, pendingCount: 0, link: 'idle', linkChangedAt: 0, lastFrameAt: null };
+  let meta: BoardMeta = { tick: 0, frozen: false, pendingCount: 0, link: 'idle', linkChangedAt: 0, lastFrameAt: null, provenance: null };
 
   function emit(set: Set<Listener> | undefined): void {
     if (!set) return;
@@ -144,14 +159,18 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
   }
 
   function refreshMeta(): void {
-    const next: BoardMeta = { tick: tickNo, frozen, pendingCount: heldCount, link, linkChangedAt, lastFrameAt };
+    const next: BoardMeta = { tick: tickNo, frozen, pendingCount: heldCount, link, linkChangedAt, lastFrameAt, provenance };
     if (
       next.tick === meta.tick &&
       next.frozen === meta.frozen &&
       next.pendingCount === meta.pendingCount &&
       next.link === meta.link &&
       next.linkChangedAt === meta.linkChangedAt &&
-      next.lastFrameAt === meta.lastFrameAt
+      next.lastFrameAt === meta.lastFrameAt &&
+      /* By identity, like every other field here. `applyTick` assigns a new object per
+         frame, so this is a cheap "did a frame land" test rather than a value comparison —
+         and a frame that landed is a frame whose provenance the shell should re-read. */
+      next.provenance === meta.provenance
     ) {
       return;
     }
@@ -189,6 +208,11 @@ export function createBoardStore(options: BoardStoreOptions = {}): BoardStore {
     /* `order` gets a new array reference ONLY here. That is what lets the list component
        subscribe to ordering alone and ignore every value change. */
     order = next.order;
+    /* ★ SET FROM THE FRAME BEING APPLIED, never merged with what was there. Provenance is
+       a statement about THESE rows, so a frame that says `observed` must be able to clear
+       a `seeded` that came before it — that is how the notice switches itself off the
+       moment the first real story is projected, with no code change and no flag. */
+    provenance = next.provenance;
     held = null;
     heldCount = 0;
     emit(orderListeners);

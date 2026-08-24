@@ -53,6 +53,7 @@ import type {
 } from './project.ts';
 import type {
   PendingReason,
+  WireBoardProvenance,
   WireBoardRow,
   WireFeedSource,
   WireLaunch,
@@ -1000,6 +1001,23 @@ export function sourceLabel(source: string): string {
   return SOURCE_LABELS.get(source) ?? source.charAt(0).toUpperCase() + source.slice(1);
 }
 
+/**
+ * The post source that can be turned on for nothing, in the words a user reads.
+ *
+ * ★ WHY IT IS HERE AND NOT IN `contracts/src/policy.ts` WITH THE OTHER SETTINGS.
+ * `contracts/` may not contain a platform name at all — `pnpm check:vocabulary` fails the
+ * build on one, and that rule is what keeps adding a platform a one-folder change instead
+ * of a rewrite. So "which source is free" cannot live beside the thresholds. It lives
+ * here, in the one package already entitled to name a platform, one line under the map
+ * that turns a source key into the words a user reads — so the board's banner and the pip
+ * in the corner of the nav cannot end up calling one source two different things.
+ *
+ * WHAT BREAKS IF THIS IS CHANGED CARELESSLY: it is the only actionable half of the seeded
+ * board notice. Point it at a source that bills and the notice tells a newcomer to go and
+ * spend money in order to see one real row, which is the opposite of what it is for.
+ */
+export const FREE_POST_SOURCE_LABEL = sourceLabel('reddit');
+
 /** Handle first, then a display name, then the source's own id. Never our author key. */
 function authorLabel(row: MemberRow): string {
   const handle = (row.handle ?? '').trim();
@@ -1147,6 +1165,22 @@ export interface StoryLoad {
    * absent. Diagnostics for the run that produced the frame; never a payload field.
    */
   readonly coinWindows: ReadonlyMap<string, CoinWindow>;
+  /**
+   * story id → what kind of contact with the world produced it.
+   *
+   * ★ RETURNED FOR THE FRAME AND NEVER FOR THE ROW, and the distinction is the whole
+   * reason this is safe to expose. `StoryRow.origin` says it is "never projected — a
+   * story does not tell a user how it was assembled", and that stays true: nothing here
+   * puts an origin on a `WireBoardRow`, and per-story provenance is still not a thing
+   * this wire can carry.
+   *
+   * What the FRAME says is a different and much coarser sentence — "every story you are
+   * looking at was written by the seed" — and it is one the board owed its reader and had
+   * no way to say. Six hand-written stories under a heading reading `Trending` is a
+   * fiction presented as an observation, which is the one product rule this repository
+   * has. `projectBoardProvenance` is the only consumer.
+   */
+  readonly origins: ReadonlyMap<string, StoryOrigin>;
 }
 
 export interface LoadWindow {
@@ -1231,7 +1265,7 @@ function storyClocks(members: readonly MemberRow[]): ReadonlyMap<string, StoryCl
  */
 export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<StoryLoad> {
   const storyRows = await loadStories(db, window.storiesSinceMs, window.limit);
-  if (storyRows.length === 0) return { stories: [], coinWindows: new Map() };
+  if (storyRows.length === 0) return { stories: [], coinWindows: new Map(), origins: new Map() };
 
   const storyIds = storyRows.map((row) => row.story_id);
   const memberRows = await loadMembers(db, storyIds);
@@ -1287,6 +1321,7 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<StoryL
       ),
     ),
     coinWindows,
+    origins: storyOrigins,
   };
 }
 
@@ -1476,13 +1511,21 @@ export async function writeBoard(
   viewId: string,
   tick: number,
   rows: readonly WireBoardRow[],
+  provenance: WireBoardProvenance,
 ): Promise<number> {
+  /* ★ ON THE VIEW ROW, WHICH IS THE ROW THAT GOES FIRST. Provenance is a statement about
+     the frame, so it commits with the frame or not at all — see 0021. A required
+     parameter rather than an optional one for the reason the column has no default: a
+     caller that has not decided what this board is made of must fail to compile, not
+     inherit the answer that means "there is nothing to warn about". */
   await db.query(
-    `insert into public.board_view (view_id, tick, projected_at)
-     values ($1, $2, now())
+    `insert into public.board_view (view_id, tick, projected_at, provenance)
+     values ($1, $2, now(), $3::jsonb)
      on conflict (view_id) do update
-       set tick = excluded.tick, projected_at = excluded.projected_at`,
-    [viewId, tick],
+       set tick = excluded.tick,
+           projected_at = excluded.projected_at,
+           provenance = excluded.provenance`,
+    [viewId, tick, JSON.stringify(provenance)],
   );
 
   await db.query(`delete from public.board_row where view_id = $1 and story_id <> all($2::text[])`, [

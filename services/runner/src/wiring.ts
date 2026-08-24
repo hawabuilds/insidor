@@ -48,8 +48,9 @@
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { Item, Millis } from '@insidor/contracts';
+import type { DurableMeter } from '@insidor/meter';
 import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
-import { inMemoryMeter } from '@insidor/meter';
+import { openDurableMeter } from '@insidor/meter';
 import { resolvePlatforms, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
   DB_ROLE,
@@ -59,6 +60,7 @@ import {
   PgItemRepo,
   PgObservationRepo,
   PgSourceHealthRepo,
+  PgSpendRepo,
   PgStageRunRepo,
   PgStoryRepo,
   asDb,
@@ -87,6 +89,13 @@ export interface Runtime {
   readonly watch: WatchDeps;
   /** Where arrivals land. Narrow on purpose: discovery may write items and nothing else. */
   readonly store: (items: readonly Item[]) => Promise<number>;
+  /**
+   * The wallet. Exposed so the discovery loop can consult it BEFORE a call and record
+   * a refusal with its numbers — a pause that says only "paused" is indistinguishable
+   * from "we chose not to ask" a week later, when the question is whether the cap was
+   * too low or the vendor was down.
+   */
+  readonly meter: DurableMeter;
 }
 
 /**
@@ -199,12 +208,73 @@ export async function withRuntime<T>(
 
       const watch: WatchDeps = { health: sourceHealth, now: () => Date.now(), log };
 
+      /**
+       * ★ THE METER IS DURABLE, AND THAT IS THE DIFFERENCE BETWEEN A DAILY CAP AND A
+       * PER-PROCESS-LIFETIME CAP.
+       *
+       * `openDurableMeter` reads today's ledger out of `internal.spend` before it
+       * exists, so a process that boots into a day where $2.80 of a $3.00 line is
+       * already gone gets $0.20 and not $3.00. Without that read, `main.ts` exiting on
+       * an uncaught exception under any restarting supervisor hands out the whole
+       * budget once per crash — each allocation individually enforced, the invoice a
+       * multiple of the number in policy. It is the single failure mode where a cap
+       * that genuinely refuses still fails to bound a bill.
+       *
+       * ★ AND IT IS AWAITED HERE, BEFORE ANY LOOP EXISTS. A meter that filled itself
+       * in later would spend the first calls of every boot against a budget it had not
+       * checked — and the first calls of a boot are exactly what a crash loop consists
+       * of. A failed read fails the boot, which is the correct direction: a process
+       * that cannot find out what it has already spent must not start spending.
+       */
+      const meter = await openDurableMeter({
+        ledger: new PgSpendRepo(db),
+        /* ★ THE LOWER OF THE TWO, ALWAYS. Policy is the ceiling any deployment may
+           reach; the environment is this operator's tighter belt inside it. config.ts
+           already refuses a value above the policy line at boot, so this `min` is the
+           belt-and-braces spelling of a rule that is enforced there — and it is written
+           out rather than assumed so that removing the check in config.ts cannot
+           silently raise the cap here. */
+        dailyCapUsd: Math.min(cfg.spend.dailyBudgetUsd, policy.budget.dailyUsd),
+        /* ★ THE PER-SOURCE LINE, WHICH THE OLD WIRING SUPPORTED AND NEVER PASSED. One
+           undifferentiated pot is spent in the order sources happen to be declared, so
+           whichever source is asked first drains the day and the ones behind it are
+           refused from mid-morning — which reads on the board as two dead sources
+           rather than as one expensive one.
+
+           It is the DEFAULT line rather than a map of named ones because the vendor
+           token is an adapter's secret and this file holds source ids: the registry
+           that could translate between them is built below, with this meter already in
+           hand. A default is also the better rule — a source added next year gets a
+           ceiling by existing rather than by somebody remembering to add it to a map,
+           and the source nobody remembers is exactly the one that would have none. */
+        defaultVendorCapUsd: policy.budget.perSourceUsdPerDay,
+        softStop: policy.budget.softStopFraction,
+        now: () => Date.now(),
+        /* Reported, not acted on. A write that failed means the NEXT process will not
+           know about these dollars; refusing calls over it would let a database blip
+           stop the ingest, which is the monitoring taking down the thing it monitors. */
+        onWriteFailure: (spend, error) =>
+          log.error('a spend could not be persisted; the next process will not see it', {
+            vendor: spend.vendor,
+            endpoint: spend.endpoint,
+            usd: spend.usd,
+            err: error instanceof Error ? error.message : String(error),
+          }),
+      });
+
+      log.info('wallet opened', {
+        mode: cfg.spend.kind,
+        dailyCapUsd: Math.min(cfg.spend.dailyBudgetUsd, policy.budget.dailyUsd),
+        perSourceCapUsd: policy.budget.perSourceUsdPerDay,
+        /* ★ WHAT TODAY HAS ALREADY COST, PRINTED AT BOOT. On a first boot it is zero
+           and says the ledger is reachable; on the fourth restart of a crash loop it is
+           the number that tells somebody what is happening, and it is the one line that
+           could not exist before the ledger was durable. */
+        spentTodayUsd: meter.openedWith.totalUsd,
+      });
+
       const runtimeDeps: PlatformRuntime = {
-        meter: inMemoryMeter({
-          dailyCapUsd: policy.budget.dailyUsd,
-          softStop: policy.budget.softStopFraction,
-          now: () => Date.now(),
-        }),
+        meter,
         now: () => Date.now(),
         /* Read off `globalThis` HERE and nowhere below. Every adapter takes it as a
            dep precisely so that no package under adapters/ can reach the network from
@@ -285,6 +355,7 @@ export async function withRuntime<T>(
           maintenance,
           platforms,
           watch,
+          meter,
           store: (items: readonly Item[]) => repos.items.upsert(items),
         }),
       };
