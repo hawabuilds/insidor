@@ -1,0 +1,389 @@
+.page {
+  padding-bottom: calc(var(--tabbar-space) + 80px);
+}
+
+.top {
+  padding: 14px 12px 4px;
+}
+
+.back {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+
+.note {
+  margin: 14px var(--gutter);
+  color: var(--text-3);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* ── from narrative ────────────────────────────────────────────────── */
+
+.from {
+  display: block;
+  margin: 0 var(--gutter);
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+
+.fromHead {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-3);
+}
+
+.fromTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 2px 0 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+}
+
+.fromTitle > span {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.fromPost {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-top: 10px;
+}
+
+.fromPostText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.fromBy {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.fromBy b {
+  color: var(--text-2);
+}
+
+/* ── coin head ─────────────────────────────────────────────────────── */
+
+.coinHead {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 18px var(--gutter) 0;
+}
+
+.coinHead h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.name {
+  font-size: 13.5px;
+  color: var(--text-3);
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 12px var(--gutter) 0;
+}
+
+.chip {
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.chipBold {
+  color: var(--text-1);
+}
+
+.chipBlue {
+  background: var(--blue-wash);
+  color: var(--blue-300);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.address {
+  margin: 8px var(--gutter) 0;
+  padding: 5px 9px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  word-break: break-all;
+}
+
+.curve {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px var(--gutter) 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.curveTrack {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.curveFill {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+}
+
+/* ── price ─────────────────────────────────────────────────────────── */
+
+.priceRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px var(--gutter) 4px;
+}
+
+.priceRow > div:first-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.price {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.change {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.tf {
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.up {
+  color: var(--up);
+}
+
+.down {
+  color: var(--down);
+}
+
+.cap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.capN {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.liq {
+  padding: 2px 7px;
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+/* ── chart ─────────────────────────────────────────────────────────── */
+
+.chart {
+  display: block;
+  width: calc(100% - 2 * var(--gutter));
+  height: 190px;
+  margin: 8px var(--gutter) 0;
+}
+
+.tfRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px var(--gutter);
+}
+
+.tfs,
+.kinds {
+  display: flex;
+  gap: 4px;
+}
+
+.tfButton {
+  padding: 6px 11px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.tfOn {
+  background: var(--up-wash);
+  color: var(--up);
+}
+
+.kinds {
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.kinds button {
+  width: 30px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+}
+
+.kinds .kindOn {
+  background: var(--input);
+  color: var(--text-1);
+}
+
+/* ── trades and info ───────────────────────────────────────────────── */
+
+.trades {
+  width: calc(100% - 2 * var(--gutter));
+  margin: 4px var(--gutter);
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.trades th {
+  padding: 10px 0 8px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.trades th:last-child,
+.trades td:last-child {
+  text-align: right;
+}
+
+.trades td {
+  padding: 9px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-weight: 700;
+  vertical-align: top;
+}
+
+.trades small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.dim {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.info {
+  margin: 4px var(--gutter);
+}
+
+.info > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 14px;
+}
+
+.info dt {
+  color: var(--text-3);
+  flex: none;
+}
+
+.info dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+  min-width: 0;
+}
+
+/* ── the floating buy and sell bar ─────────────────────────────────── */
+
+.tradeBar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 2 * var(--gutter));
+  max-width: calc(480px - 2 * var(--gutter));
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 35;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--r-card);
+  background: rgb(13 13 16 / 88%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-panel);
+}
+
+/* Trador's trade bar: the buy side as a green wash with green text, matching the sell side. */
+.tradeBar .buyWash {
+  background: var(--up-wash);
+  color: var(--up);
+  box-shadow: none;
+}

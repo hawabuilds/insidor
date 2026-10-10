@@ -12,6 +12,7 @@
 import { Feed } from './features/feed/Feed.tsx';
 import { NarrativePage } from './features/narrative/NarrativePage.tsx';
 import { Narratives } from './features/narratives/Narratives.tsx';
+import { TokenPage } from './features/token/TokenPage.tsx';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { tabOf, type Route } from './shared/route.ts';
 import { useRoute } from './shared/useRoute.ts';
@@ -25,6 +26,8 @@ function Screen({ route }: { route: Route }) {
       return <Feed onCreate={() => soon('Creating a coin')} />;
     case 'narratives':
       return <Narratives onCreate={() => soon('Creating a coin')} />;
+    case 'coin':
+      return <TokenPage key={`${route.sample}:${route.storyId}:${route.coinId}`} storyId={route.storyId} coinId={route.coinId} sample={route.sample} />;
     case 'story':
       return <NarrativePage key={`${route.sample}:${route.storyId}`} storyId={route.storyId} sample={route.sample} onCreate={() => soon('Creating a coin')} />;
     case 'search':
