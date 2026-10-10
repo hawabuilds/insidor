@@ -1,0 +1,118 @@
+/**
+ * THE PHONE APP'S TOKENS — Trador's layout language in Insidor blue.
+ *
+ * Every colour, radius and face the phone app uses is named here and nowhere else; the CSS
+ * modules only ever say `var(--…)`. Values are the owner's spec; the structure (neutral greys,
+ * one brand scale, a price pair that means only price) is Trador's `brand-tokens.css`.
+ *
+ * Three rules, carried over because they are what make the screen readable at a glance:
+ *
+ *   1. ★ GREEN AND RED MEAN PRICE AND NOTHING ELSE. Green is the buy side and a price going
+ *      up; red is the sell side and a price going down. Blue is every other action. The
+ *      moment green also means "primary button", a rising price stops being readable.
+ *   2. ★ COLOUR NEVER CARRIES MEANING ALONE. Direction always ships with a ▲/▼ glyph.
+ *   3. ★ AMBER IS A WARNING ABOUT THE DATA, never decoration — it is the "Sample data" bar.
+ *
+ * Dark only: there is no light theme. A second palette is a second thing to keep honest for
+ * a surface nobody reads prices on.
+ */
+
+:root {
+  /* Grounds. Neutral, no hue — so the only colour on screen is colour that means something. */
+  --bg: #0a0a0c;
+  --card: #131317;
+  --popup: #0d0d10;
+  --input: #0f0f13;
+  --hover: #1c1c21;
+
+  --border: #26262c;
+  --border-subtle: #1a1a1f;
+
+  --text-1: #f4f4f6;
+  --text-2: #a1a1aa;
+  --text-3: #7a7a85;
+  --text-4: #4a4a54;
+
+  /* Insidor blue. 500 is the action colour: buttons, the active tab underline, selected pills. */
+  --blue: #2f7bff;
+  --blue-400: #5293ff; /* links */
+  --blue-300: #74a9ff; /* view sparklines and accent text */
+  --blue-200: #a9caff;
+  --blue-wash: rgb(47 123 255 / 16%);
+  --blue-glow: rgb(47 123 255 / 45%);
+
+  /* The price pair. See rule 1. */
+  --up: #4ade80;
+  --up-ink: #07130c; /* text on the green buy button */
+  --up-wash: rgb(74 222 128 / 14%);
+  --up-glow: rgb(74 222 128 / 30%);
+  --down: #ef454a;
+  --down-wash: rgb(239 69 74 / 15%);
+
+  --amber: #f5a524;
+  --amber-wash: rgb(245 165 36 / 12%);
+
+  --scrim: rgb(6 6 8 / 62%);
+
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-wordmark: 'Montserrat', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --r-card: 18px;
+  --r-control: 14px;
+  --r-pill: 11px;
+
+  /* Flat rows, 22px gutters. A row is a line on the page, not a card on it. */
+  --gutter: 22px;
+
+  /* Room the floating tab bar takes at the bottom, so the last row can scroll clear of it. */
+  --tabbar-space: calc(96px + env(safe-area-inset-bottom));
+
+  --shadow-panel: 0 18px 50px rgb(0 0 0 / 55%), 0 0 0 1px var(--border-subtle);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: var(--font);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  font-feature-settings: 'tnum' 1;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* The app is a phone column. On a wider screen it stays one, centred, rather than stretching
+   rows into lines nobody can read across. */
+#root {
+  max-width: 480px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  position: relative;
+}

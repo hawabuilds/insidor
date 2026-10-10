@@ -1,0 +1,316 @@
+/**
+ * Styles for the shared pieces in this directory. Every value is a token from tokens.css or a
+ * size; no colour is written here except the platforms' own badge colours.
+ */
+
+/* ── thumbnails and badges ─────────────────────────────────────────── */
+
+.thumb {
+  position: relative;
+  flex: none;
+  display: inline-block;
+}
+
+.thumbImg,
+.thumbEmpty {
+  width: 100%;
+  height: 100%;
+  border-radius: 13px;
+  display: block;
+  object-fit: cover;
+}
+
+.thumbEmpty {
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  color: var(--text-4);
+}
+
+.round {
+  border-radius: 50%;
+}
+
+.thumbLetter {
+  color: var(--text-2);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.badge {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: #000;
+}
+
+.badge-x,
+.badge-tiktok {
+  background: #000;
+}
+
+.badge-youtube {
+  background: #ff0033;
+}
+
+.badge-reddit {
+  background: #ff4500;
+}
+
+.badge-instagram {
+  background: linear-gradient(45deg, #f58529, #dd2a7b 55%, #8134af);
+}
+
+/* ── sparkline ─────────────────────────────────────────────────────── */
+
+.spark {
+  display: block;
+  flex: none;
+}
+
+.sparkEmpty {
+  display: inline-block;
+  flex: none;
+  text-align: center;
+  color: var(--text-4);
+}
+
+.pending {
+  color: var(--text-3);
+}
+
+/* ── notice ────────────────────────────────────────────────────────── */
+
+.notice {
+  margin: 10px var(--gutter) 6px;
+  padding: 10px 12px;
+  border-radius: var(--r-control);
+  background: var(--amber-wash);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.notice b {
+  color: var(--amber);
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+/* ── buttons ───────────────────────────────────────────────────────── */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: transform 0.12s ease, background-color 0.12s ease;
+}
+
+.button:active {
+  transform: scale(0.97);
+}
+
+.small {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.large {
+  height: 52px;
+  padding: 0 20px;
+  border-radius: var(--r-control);
+  font-size: 16px;
+}
+
+.primary {
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 8px 22px -8px var(--blue-glow);
+}
+
+.buy {
+  background: var(--up);
+  color: var(--up-ink);
+  box-shadow: 0 8px 22px -10px var(--up-glow);
+}
+
+.sell {
+  background: var(--down-wash);
+  color: var(--down);
+}
+
+.quiet {
+  background: var(--card);
+  color: var(--text-1);
+}
+
+/* ── underline tabs ────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 var(--gutter);
+}
+
+.tabsSpread .tab {
+  flex: 1;
+}
+
+.tab {
+  position: relative;
+  padding: 12px 10px 13px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tabOn {
+  color: var(--text-1);
+  font-weight: 700;
+}
+
+.tabOn::after {
+  content: '';
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--blue);
+}
+
+/* ── modal ─────────────────────────────────────────────────────────── */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--scrim);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.modal {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  padding: 22px 18px 16px;
+  border-radius: 22px;
+  background: var(--popup);
+  box-shadow: var(--shadow-panel);
+  outline: none;
+}
+
+.modalClose {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  color: var(--text-2);
+}
+
+.modalTitle {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.modalSub {
+  margin: 4px 0 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* ── toast ─────────────────────────────────────────────────────────── */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  max-width: calc(100% - 44px);
+  padding: 11px 16px;
+  border-radius: var(--r-control);
+  background: var(--popup);
+  box-shadow: var(--shadow-panel);
+  font-size: 13.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.toast b {
+  color: var(--text-1);
+}
+
+/* ── tab bar ───────────────────────────────────────────────────────── */
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.tabbarPill {
+  pointer-events: auto;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgb(13 13 16 / 82%);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  box-shadow: var(--shadow-panel);
+}
+
+.tabbarItem {
+  width: 50px;
+  height: 46px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+}
+
+.tabbarOn {
+  color: var(--text-1);
+  background: var(--input);
+  box-shadow: inset 0 0 0 1px var(--border-subtle), 0 6px 18px -8px var(--blue-glow);
+}
