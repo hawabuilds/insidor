@@ -14,7 +14,7 @@
     "check:policy": "node tools/check-policy.mjs",
     "check:app-vocabulary": "node tools/check-app-vocabulary.mjs",
     "check:python": "node tools/check-python.mjs",
-    "check:boundaries": "depcruise --config .dependency-cruiser.cjs contracts core adapters store services wallet app eval ml && node tools/check-boundaries-probe.mjs",
+    "check:boundaries": "depcruise --config .dependency-cruiser.cjs contracts core adapters store services wallet app mobile eval ml && node tools/check-boundaries-probe.mjs",
     "check": "pnpm typecheck && pnpm check:vocabulary && pnpm check:purity && pnpm check:policy && pnpm check:app-vocabulary && pnpm check:python && pnpm check:boundaries && pnpm test",
     "db:up": "node tools/db.mjs up",
     "db:migrate": "node tools/db.mjs migrate",
@@ -30,7 +30,8 @@
     "dev:runner": "HEALTH_PORT=8080 SINGLETON_LOCK_NAME=insidor.runner node --env-file-if-exists=.env.local --experimental-strip-types services/runner/src/main.ts",
     "dev:chainwatch": "node --env-file-if-exists=.env.local --experimental-strip-types services/chainwatch/src/main.ts",
     "dev:read": "pnpm --filter @insidor/read dev",
-    "dev:app": "pnpm --filter @insidor/app dev"
+    "dev:app": "pnpm --filter @insidor/app dev",
+    "dev:mobile": "pnpm --filter @insidor/mobile dev"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

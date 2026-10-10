@@ -67,6 +67,16 @@ const PROBES = [
     expectRule: 'wallet-imports-only-contracts',
     why: 'the app must not be able to reach the logic through the wallet',
   },
+  /*
+   * The phone app is the newest route to a screen, and its rule was written the day the
+   * package was. A rule nobody has seen fire is a rule nobody knows is being read.
+   */
+  {
+    file: 'mobile/src/__probe_boundary.ts',
+    source: "import { decide } from '@insidor/core';\nexport const probe = decide;\n",
+    expectRule: 'mobile-cannot-reach-the-logic',
+    why: 'the phone app must not be able to reach the logic',
+  },
 ];
 
 function cruise(target) {

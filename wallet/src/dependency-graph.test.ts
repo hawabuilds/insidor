@@ -30,7 +30,8 @@
  *      list of what we are afraid of, and the two fail differently.
  *
  * It lives in this package rather than in the app because this is the package that would
- * grow the dependency. It reads the app's files because the app is where the bundle is.
+ * grow the dependency. It reads the app's files because the app is where the bundle is — and
+ * the phone app's too, since `mobile/` is a second bundle under the same rule.
  */
 
 import { test } from 'node:test';
@@ -128,9 +129,11 @@ function sourcesUnder(dir: string, into: string[] = []): readonly string[] {
 function walkedSources(): readonly string[] {
   const wallet = sourcesUnder(join(ROOT, 'wallet', 'src'));
   const app = sourcesUnder(join(ROOT, 'app', 'src'));
+  const mobile = sourcesUnder(join(ROOT, 'mobile', 'src'));
   assert.ok(wallet.length >= 5, `the walk found ${wallet.length} files in wallet/src and must be reading the package`);
   assert.ok(app.length >= 35, `the walk found ${app.length} files in app/src and must be reading the package`);
-  return [...wallet, ...app];
+  assert.ok(mobile.length >= 3, `the walk found ${mobile.length} files in mobile/src and must be reading the package`);
+  return [...wallet, ...app, ...mobile];
 }
 
 /**
@@ -200,7 +203,19 @@ test('★ 2 — gaining a wallet added no third-party package to the app', () =>
   ]);
 });
 
-test('★ 3 — no file in either package imports anything outside the allowlist', () => {
+/**
+ * The phone app's dependencies are a SUBSET of the desktop app's, never a superset. It may
+ * drop a package it has no use for — it has no wallet screen yet — but anything it adds is a
+ * third-party package in a browser bundle that the test above was written to make visible.
+ */
+test('★ 2b — the phone app adds no third-party package the desktop app does not have', () => {
+  const allowed = ['@insidor/contracts', '@insidor/wallet', 'react', 'react-dom'];
+  for (const name of Object.keys(manifest('mobile').dependencies ?? {})) {
+    assert.ok(allowed.includes(name), `mobile depends on "${name}", which the desktop app does not`);
+  }
+});
+
+test('★ 3 — no file in any of the three packages imports anything outside the allowlist', () => {
   for (const file of walkedSources()) {
     for (const specifier of bareImports(readFileSync(file, 'utf8'))) {
       assert.ok(
@@ -218,6 +233,8 @@ test('★ 4 — and nothing anywhere names a wallet, chain or signing library', 
     ...Object.keys(manifest('wallet').devDependencies ?? {}),
     ...Object.keys(manifest('app').dependencies ?? {}),
     ...Object.keys(manifest('app').devDependencies ?? {}),
+    ...Object.keys(manifest('mobile').dependencies ?? {}),
+    ...Object.keys(manifest('mobile').devDependencies ?? {}),
   ];
   const imported = walkedSources().flatMap((file) => bareImports(readFileSync(file, 'utf8')));
 

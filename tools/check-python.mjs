@@ -17,7 +17,7 @@ import path from 'node:path';
 import { ROOT, walk, read, blankNonCode, locate, Report } from './lib/source.mjs';
 
 const PYTHON_HOME = 'ml/train/';
-const PRODUCTION = ['contracts', 'core', 'adapters', 'store', 'services', 'ml/serve', 'ml/label', 'app/src'];
+const PRODUCTION = ['contracts', 'core', 'adapters', 'store', 'services', 'ml/serve', 'ml/label', 'app/src', 'mobile/src'];
 const SHELL_OUT = [
   { re: /\bchild_process\b/g, name: 'child_process' },
   { re: /\bspawn(?:Sync)?\s*\(/g, name: 'spawn(' },

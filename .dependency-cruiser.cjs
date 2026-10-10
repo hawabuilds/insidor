@@ -97,6 +97,30 @@ module.exports = {
       from: { path: '^app/' },
       to: { path: '^(core|adapters|ml)/' },
     },
+    /**
+     * ★ THE PHONE APP, UNDER THE SAME WALL AS THE DESKTOP ONE — AND A HIGHER ONE.
+     *
+     * A second browser package is a second route to a screen, so it gets its own rule rather
+     * than a widened `^app/` pattern: a rule whose `from` quietly matched two packages would
+     * be one edit away from matching neither. Written positively, like the adapter rules,
+     * and it names more than the desktop rule does — `store` and `services` as well — because
+     * this package was born after the read service existed and has no reason ever to reach
+     * past it. `app` and `eval` are named too: copying a decoder out of the desktop package
+     * is a choice made in a review, importing one is a coupling made by autocomplete.
+     *
+     * What it may reach is `@insidor/contracts` and `@insidor/wallet`, exactly as the
+     * desktop app may. The probe in tools/check-boundaries-probe.mjs proves this rule is read.
+     */
+    {
+      name: 'mobile-cannot-reach-the-logic',
+      comment:
+        'The phone app renders what the read service serves. It must not import core, ' +
+        'adapters, store, services or another package\'s source — that is what stops ' +
+        'internal scoring reaching a screen.',
+      severity: 'error',
+      from: { path: '^mobile/' },
+      to: { path: '^(core|adapters|ml|store|services|app|eval)/' },
+    },
     {
       name: 'eval-cannot-reach-vendors',
       comment:

@@ -11,4 +11,7 @@ packages:
   # pinned down by its own rule instead. See `wallet-imports-only-contracts`.
   - 'wallet'
   - 'app'
+  # The phone app. A second browser package under the same wall as app/: it may import the
+  # vocabulary and the wallet port and nothing else, by its own rule in .dependency-cruiser.cjs.
+  - 'mobile'
   - 'eval'

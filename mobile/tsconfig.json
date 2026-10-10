@@ -1,0 +1,14 @@
+{
+  /* The same compiler config as app/: tsc checks, Vite bundles, and nothing emits. The three
+     overrides are the app's three, for the app's reasons — DOM libs, jsx, and vite/client
+     types for import.meta.env. `node` is for the colocated .test.ts files, which run under
+     Node's type stripping like every other test in the repository. */
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client", "node"],
+    "noEmit": true
+  },
+  "include": ["src", "vite.config.ts"]
+}

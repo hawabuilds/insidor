@@ -1,6 +1,7 @@
 /**
  * THE APP VOCABULARY GATE — Wall D. Fails if an internal-machinery word, an internal name
- * for a user-facing thing, a vendor name, or a spend word appears anywhere in app/src.
+ * for a user-facing thing, a vendor name, or a spend word appears anywhere in app/src or
+ * mobile/src. Both are browser packages and a word that leaks through either is in public.
  * Also fails on a numeric comparison against a literal of 100 or more inside a component,
  * because a threshold in a component is a product judgement made by whoever was typing.
  *
@@ -25,7 +26,9 @@
 
 import { walk, read, blankNonCode, locate, inComment, identifiers, forms, Report } from './lib/source.mjs';
 
-const SCANNED = 'app/src';
+/* Every package that ships to a browser. A new one is added here the day it is created, or
+   it is a screen this wall does not stand in front of. */
+const SCANNED = ['app/src', 'mobile/src'];
 const EXTS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.html'];
 
 const BANNED = {
@@ -104,10 +107,10 @@ const COMPARISON_FLOOR = 100;
 
 const report = new Report(
   'check-app-vocabulary',
-  'app/src speaks the public wire vocabulary only — no internal machinery, no stage names, no pipeline vendor, no spend, no thresholds',
+  'app/src and mobile/src speak the public wire vocabulary only — no internal machinery, no stage names, no pipeline vendor, no spend, no thresholds',
 );
 
-for (const file of walk(SCANNED, EXTS)) {
+for (const file of SCANNED.flatMap((dir) => [...walk(dir, EXTS)])) {
   /* Colocated tests are skipped: a test that asserts a leak is rejected must name the leak,
      and that naming is the assertion, not a use. */
   if (/\.test\.[jt]sx?$/.test(file)) continue;
