@@ -19,7 +19,7 @@ import type { Price, PriceBook } from '@insidor/meter';
 
 import type { JudgeClient, Usage } from './client.ts';
 import { PROMPT_SET_SHA, PROMPTS } from './prompts.ts';
-import { allUnavailable, toOutcomes } from './to-judgement.ts';
+import { NO_FRAME, allUnavailable, lookedAtFor, toOutcomes } from './to-judgement.ts';
 
 export const VENDOR = 'anthropic';
 export const MODEL = 'claude-haiku-4-5';
@@ -84,10 +84,15 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
     promptId: promptId(),
     maxBatch: deps.maxBatch,
 
-    async judge(subjects: readonly JudgeSubject[], _budget: Budget): Promise<Metered<readonly JudgeOutcome[]>> {
+    async judge(asked: readonly JudgeSubject[], _budget: Budget): Promise<Metered<readonly JudgeOutcome[]>> {
       const judgedAt = deps.now();
       const outcomes: JudgeOutcome[] = [];
       const spends = [];
+
+      /* A subject the judge cannot look at is never sent, so it is never paid for. It
+         comes back unavailable, in its place, and QUALIFY abstains on it. */
+      const subjects = asked.filter((s) => lookedAtFor(s) !== null);
+      const unseen = allUnavailable(asked.filter((s) => lookedAtFor(s) === null), NO_FRAME);
 
       for (let i = 0; i < subjects.length; i += deps.maxBatch) {
         const batch = subjects.slice(i, i + deps.maxBatch);
@@ -123,8 +128,16 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
         );
       }
 
+      /* Back into the order asked, as the port promises. Both lists kept that order, so a
+         merge by position is exact; a judged outcome carries no story id to key on. */
+      const sent = outcomes[Symbol.iterator]();
+      const skipped = unseen[Symbol.iterator]();
+      const inOrder = asked.map((s): JudgeOutcome => {
+        const next = lookedAtFor(s) === null ? skipped.next() : sent.next();
+        return next.done ? { kind: 'unavailable', storyId: s.storyId, detail: 'no outcome' } : next.value;
+      });
       return {
-        value: outcomes,
+        value: inOrder,
         spend: mergeSpend(
           spends,
           { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call', estUnits: 1, at: judgedAt },
@@ -135,7 +148,7 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
   };
 }
 
-export { allUnavailable, toJudgement, toOutcomes } from './to-judgement.ts';
+export { NO_FRAME, allUnavailable, lookedAtFor, toJudgement, toOutcomes } from './to-judgement.ts';
 export type { JudgementContext } from './to-judgement.ts';
 export { PROMPTS, PROMPT_NAMES, PROMPT_SET_SHA } from './prompts.ts';
 export type { Prompt, PromptName } from './prompts.ts';

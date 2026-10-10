@@ -74,6 +74,7 @@ export const REASON_CODES = {
   Q7_name_unspecific: 'the proposed name does not distinguish this story from its neighbours',
   Q8_score_below_bar: 'scored under the qualification bar',
   Q9_judged_not_coinable: 'our gates passed; the judge said there is nothing to name',
+  Q10_judge_unsure: 'judged coinable, but less sure than the bar for what the judge looked at',
 
   /* ── RESOLVE gates, in the order they cost money ─────────────────────── */
   G1_mint_time_unknown: 'the asset’s origin time is not known to a usable confidence',
