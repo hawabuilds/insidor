@@ -50,6 +50,10 @@ import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { Item, Millis } from '@insidor/contracts';
 import type { DurableMeter } from '@insidor/meter';
 import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
+import type { Policy } from '@insidor/contracts/policy.ts';
+import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
+import type { Meter } from '@insidor/contracts/ports/meter.ts';
+import { JudgeNotConfigured, anthropicJudge, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openDurableMeter } from '@insidor/meter';
 import { resolvePlatforms, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
@@ -57,6 +61,7 @@ import {
   PgAssetRepo,
   PgAuthorRepo,
   PgDecisionRepo,
+  PgJudgementRepo,
   PgItemRepo,
   PgObservationRepo,
   PgSourceHealthRepo,
@@ -98,6 +103,62 @@ export interface Runtime {
   readonly meter: DurableMeter;
 }
 
+
+/**
+ * The judge port for this process, or null when it is dormant.
+ *
+ * ★ THE ONLY PLACE THE REAL `fetch` REACHES THE JUDGE, for the reason `runtimeDeps` below
+ * gives for the platforms: every adapter takes it as a dependency so no test can reach
+ * the network, and this file is the one entitled to hand over the real one.
+ */
+function buildJudge(cfg: RunnerConfig, meter: Meter, policy: Policy, log: Logger): JudgePort | null {
+  const setup = cfg.judge;
+  if (setup.state === 'dormant' || setup.state === 'misconfigured') {
+    log.info('judge dormant: QUALIFY will abstain on every story (Q1_unjudged)', {
+      set: 'ANTHROPIC_API_KEY and JUDGE_MODEL to turn it on',
+    });
+    return null;
+  }
+  const price = priceFor(setup.model);
+  if (price === null) {
+    throw new JudgeNotConfigured('JUDGE_MODEL', `is ${JSON.stringify(setup.model)}, which has no price in prices.ts`);
+  }
+  const client: JudgeClient =
+    setup.state === 'configured'
+      ? httpClient({
+          apiKey: setup.apiKey,
+          baseUrl: setup.baseUrl,
+          model: setup.model,
+          maxOutputTokens: policy.judge.maxOutputTokens,
+          effort: price.effort,
+          timeoutMs: policy.judge.timeoutMs,
+          maxAttempts: policy.judge.maxAttempts,
+          backoffMs: policy.judge.backoffMs,
+          maxWaitMs: policy.judge.maxWaitMs,
+          maxFrameBytes: policy.judge.maxFrameBytes,
+          fetch: globalThis.fetch,
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        })
+      : {
+          judge: () => Promise.reject(new JudgeNotConfigured('ANTHROPIC_API_KEY', 'is not set; this judge can only price calls')),
+          frame: () => Promise.reject(new JudgeNotConfigured('ANTHROPIC_API_KEY', 'is not set; this judge can only price calls')),
+        };
+  log.info('judge resolved', {
+    state: setup.state,
+    model: setup.model,
+    mode: cfg.spend.kind,
+    usdPerMillionInput: price.usdPerMillionInput,
+    usdPerMillionOutput: price.usdPerMillionOutput,
+  });
+  return anthropicJudge({
+    client,
+    meter,
+    now: () => Date.now(),
+    model: setup.model,
+    policy: policy.judge,
+    maxBatch: policy.qualify.batchSize,
+  });
+}
 /**
  * The two calls on `PgDecisionRepo` that had no caller anywhere in the repository.
  *
@@ -201,8 +262,6 @@ export async function withRuntime<T>(
         markApplied: (rowId, at) => decisionRepo.markApplied(rowId, at),
       };
 
-      const work = storeWork(repos, policy);
-
       /* ── the sources ────────────────────────────────────────────────────
          Everything below is construction, and none of it can fail the boot. */
 
@@ -271,6 +330,23 @@ export async function withRuntime<T>(
            the number that tells somebody what is happening, and it is the one line that
            could not exist before the ledger was durable. */
         spentTodayUsd: meter.openedWith.totalUsd,
+      });
+
+      /* ── the judge ──────────────────────────────────────────────────────
+         Built after the meter, because every judge call is metered against it. Four
+         states (config.ts has already failed the boot on the two that are faults):
+           dormant      no judge; QUALIFY abstains with Q1 on every story
+           priced       SPEND=dry with a model and no key: estimates only. The client it
+                        holds refuses to run, and the dry run never asks it to.
+           configured   the real client. In SPEND=dry it is still never called. */
+      const judge = buildJudge(cfg, meter, policy, log);
+      const work = storeWork(repos, policy, {
+        judge,
+        judgements: new PgJudgementRepo(db),
+        meter,
+        mode: cfg.spend.kind,
+        policy,
+        log: log.child({ step: 'judge' }),
       });
 
       const runtimeDeps: PlatformRuntime = {

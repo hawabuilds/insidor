@@ -16,7 +16,7 @@
  *
  *   `DetectInput.self` is `Baseline | null` and detect() answers a null with
  *   `D1_insufficient_history` → abstain. `QualifyInput.judgement` is `Judgement | null`
- *   and qualify() answers a null with `Q1_unjudged` → abstain. `GroupInput.corpus` is
+ *   and qualify() answers a null with one of four named abstains (Q1, Q11–Q13). `GroupInput.corpus` is
  *   documented "Empty is the honest day-one state". `ResolveInput.venueLabelCounts`
  *   empty is `V4_venue_cold_start` → abstain, which resolve/stage.ts says is "enforced
  *   here rather than remembered". Every one of those is a real, correct, replayable
@@ -74,6 +74,7 @@ import type {
   TrackInput,
 } from '../loop.ts';
 import { NotImplemented } from '../not-implemented.ts';
+import { judgeStories, type JudgingDeps } from './judge.ts';
 
 /* ── operational constants ────────────────────────────────────────────────
    Cadences, page sizes and lookbacks — how much is fetched, never what is decided.
@@ -642,7 +643,7 @@ function groupWork(repos: StageRepos): StageWork<GroupInput> {
 
 /* ── QUALIFY ──────────────────────────────────────────────────────────── */
 
-function qualifyWork(repos: StageRepos): StageWork<QualifyInput> {
+function qualifyWork(repos: StageRepos, judging: JudgingDeps): StageWork<QualifyInput> {
   return {
     async pull(limit, ctx) {
       const now = ctx.now();
@@ -654,22 +655,36 @@ function qualifyWork(repos: StageRepos): StageWork<QualifyInput> {
       if (stories.length === 0) return [];
 
       const members = await repos.stories.membersForStories(stories.map((s) => s.storyId));
+      const withMembers = stories.map((story) => ({ story, members: members.get(story.storyId) ?? [] }));
 
-      return stories.map((story) => ({
-        story,
-        members: members.get(story.storyId) ?? [],
-        /* ★ NULL AND NEVER AN EMPTY JUDGEMENT, which the field's own doc insists on.
-           The judge call happens in an adapter and is the only per-subject spend in
-           the pipeline; it has not been made, so there is no judgement. QUALIFY
-           answers a null with `Q1_unjudged` → ABSTAIN, which is "we never asked" and
-           is a different population from "we asked and it said no" (`Q9`). Fabricating
-           an empty judgement would merge the two and make every later recall number
-           over this stage a lie. */
-        judgement: null,
-        unjudged: 'not_asked',
-        /* No call, no cost. A judge cost of zero here is a fact, not a default. */
-        judgeCostUsd: 0,
-      }));
+      /* ★ THE JUDGE CALL HAPPENS HERE, IN PULL, AND NOWHERE IN CORE. The judgement — or the
+         named reason there is none — arrives at QUALIFY as data, which is what keeps the
+         stage replayable with no network and no key. See work/judge.ts for who is asked,
+         when, and what each absence means. */
+      const judged = await judgeStories(
+        withMembers,
+        async (toAsk) => {
+          const ids = toAsk.flatMap((s) => s.members.map((m) => m.itemId));
+          const found = await repos.items.byIds(ids);
+          return new Map([...found].map(([id, item]) => [String(id), item]));
+        },
+        judging,
+        now,
+      );
+
+      return withMembers.map(({ story, members: own }) => {
+        const j = judged.get(story.storyId);
+        return {
+          story,
+          members: own,
+          /* ★ NULL AND NEVER AN EMPTY JUDGEMENT, which the field's own doc insists on, and
+             when null, `unjudged` says which of the four absences it is. */
+          judgement: j?.judgement ?? null,
+          unjudged: j?.unjudged ?? 'not_asked',
+          /* What THIS pass spent. A judgement read back from the record is free now. */
+          judgeCostUsd: j?.judgeCostUsd ?? 0,
+        };
+      });
     },
 
     subjectId: (input) => input.story.storyId,
@@ -894,13 +909,13 @@ export interface StoreWork {
   readonly rank: StageWork<RankInput>;
 }
 
-export function storeWork(repos: StageRepos, policy: Policy): StoreWork {
+export function storeWork(repos: StageRepos, policy: Policy, judging: JudgingDeps): StoreWork {
   return {
     admit: admitWork(repos, policy),
     track: trackWork(repos, policy),
     detect: detectWork(repos),
     group: groupWork(repos),
-    qualify: qualifyWork(repos),
+    qualify: qualifyWork(repos, judging),
     resolve: resolveWork(repos, policy),
     rank: rankWork(),
   };
