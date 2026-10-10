@@ -11,7 +11,7 @@ import type { JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 
 import { PROMPTS, PROMPT_SET_SHA } from './prompts.ts';
 import { allUnavailable, toJudgement, toOutcomes } from './to-judgement.ts';
-import { RATES, usdOf } from './index.ts';
+import { MODEL_PRICES, usdOf } from './index.ts';
 
 const AT = 1_800_000_000_000;
 const CTX = { judgeId: 'judge:test@0', promptId: 'coinability@0', judgedAt: AT, costUsdPerSubject: 0.001 };
@@ -92,8 +92,10 @@ test('prompts load from files and hash to a stable set id', () => {
   assert.notEqual(PROMPTS.system.sha, PROMPTS['coinability-core'].sha);
 });
 
-test('cost comes from token counts, not from an average', () => {
-  assert.equal(usdOf({ inputTokens: 1_000_000, outputTokens: 0 }), RATES.usdPerMillionInput);
-  assert.equal(usdOf({ inputTokens: 0, outputTokens: 1_000_000 }), RATES.usdPerMillionOutput);
-  assert.equal(usdOf({ inputTokens: 0, outputTokens: 0 }), 0);
+test('cost comes from token counts, at the configured model rates', () => {
+  const haiku = MODEL_PRICES['claude-haiku-4-5'];
+  assert.ok(haiku);
+  assert.equal(usdOf(haiku, { inputTokens: 1_000_000, outputTokens: 0 }), haiku.usdPerMillionInput);
+  assert.equal(usdOf(haiku, { inputTokens: 0, outputTokens: 1_000_000 }), haiku.usdPerMillionOutput);
+  assert.equal(usdOf(haiku, { inputTokens: 0, outputTokens: 0 }), 0);
 });

@@ -487,6 +487,46 @@ export interface QualifyPolicy {
   readonly batchSize: number;
 }
 
+/* ── JUDGE ────────────────────────────────────────────────────────────── */
+
+/**
+ * ★ HOW THE JUDGE IS CALLED: its transport, its cost estimate, and when a story is asked
+ * again. Every number the judge adapter and the runner's judging step use, so neither
+ * holds a bare literal (tools/check-policy.mjs) and every decision row carries the hash
+ * of the settings it was judged under.
+ *
+ * The money itself is NOT here. What may be spent is `budget.dailyUsd` and
+ * `budget.perSourceUsdPerDay`, enforced by the meter before every call; these numbers
+ * only shape the call and the estimate it is checked against.
+ */
+export interface JudgePolicy {
+  /** Tries per batch, the first included. A small bound: each retry is a wait and, on some errors, a charge. */
+  readonly maxAttempts: number;
+  /** The wait before the first retry. Doubles on each one after. */
+  readonly backoffMs: number;
+  /** The longest any single wait may be, whatever a retry-after header asks for. */
+  readonly maxWaitMs: number;
+  /** One request's wall-clock ceiling. */
+  readonly timeoutMs: number;
+  /** `max_tokens` on the request. Also the output side of the pessimistic estimate. */
+  readonly maxOutputTokens: number;
+  /** For the pre-call estimate only: characters per input token, set low so the estimate runs high. */
+  readonly charsPerToken: number;
+  /** For the pre-call estimate only: input tokens one video frame costs. */
+  readonly tokensPerFrame: number;
+  /** A frame larger than this is not sent; the story is unavailable rather than judged blind. */
+  readonly maxFrameBytes: number;
+  /** Member texts sent per story, and the characters kept of each. */
+  readonly maxTextsPerStory: number;
+  readonly maxCharsPerText: number;
+  /**
+   * ★ WHEN A JUDGED STORY IS ASKED AGAIN: once its member count has grown by at least
+   * this share since the judgement on record. A story is judged once, and a restart
+   * reads that record rather than asking again.
+   */
+  readonly rejudgeGrowth: number;
+}
+
 /* ── RESOLVE ──────────────────────────────────────────────────────────── */
 
 export interface ResolvePolicy {
@@ -1122,6 +1162,7 @@ export interface Policy {
   readonly detect: DetectPolicy;
   readonly group: GroupPolicy;
   readonly qualify: QualifyPolicy;
+  readonly judge: JudgePolicy;
   readonly resolve: ResolvePolicy;
   readonly market: MarketPolicy;
   readonly assets: AssetPolicy;
@@ -1475,6 +1516,27 @@ const POLICY_V1: Policy = {
       authorBreadth: 0.15,
     },
     batchSize: 10,
+  },
+
+  judge: {
+    maxAttempts: 3,
+    backoffMs: 2_000,
+    maxWaitMs: 30_000,
+    timeoutMs: 60_000,
+    /* Ten answers of a yes/no, a short name, a number and a few short strings each fit in
+       well under this. Set with room so a long answer is not cut off mid-JSON, which
+       would make the whole batch unavailable. */
+    maxOutputTokens: 2_048,
+    /* Typical English runs about four characters a token; three makes the estimate the
+       meter checks against run high, which is the safe direction. */
+    charsPerToken: 3,
+    /* A ~1.15 megapixel image is about 1,600 input tokens (width × height / 750). */
+    tokensPerFrame: 1_600,
+    maxFrameBytes: 5_000_000,
+    maxTextsPerStory: 8,
+    maxCharsPerText: 400,
+    /* Half again as many members. A story of 4 is asked again at 6, a story of 20 at 30. */
+    rejudgeGrowth: 0.5,
   },
 
   resolve: {

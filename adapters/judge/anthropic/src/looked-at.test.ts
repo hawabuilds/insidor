@@ -12,6 +12,7 @@ import type { Budget } from '@insidor/contracts/ports/meter.ts';
 import type { JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { MediaRef } from '@insidor/contracts/vocabulary.ts';
 import { inMemoryMeter } from '@insidor/meter';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import type { JudgeClient } from './client.ts';
 import { NO_FRAME, anthropicJudge, lookedAtFor, toOutcomes } from './index.ts';
@@ -34,6 +35,10 @@ test('text, or a still image, is judged against the text bar', () => {
   assert.equal(lookedAtFor(subject('b', [media('image', 'blob://img')])), 'text');
 });
 
+test('a video cover sent as an image with a duration is a video frame', () => {
+  assert.equal(lookedAtFor(subject('b2', [{ ...media('image', 'https://cdn/cover.jpg'), durationMs: 12_000 }])), 'videoFrame');
+});
+
 test('a video with a frame to show is judged against the frame bar', () => {
   assert.equal(lookedAtFor(subject('c', [media('video', 'blob://frame')])), 'videoFrame');
 });
@@ -54,28 +59,37 @@ test('the judgement records what was sent, not what the model claims it saw', ()
 });
 
 test('an unseeable video is not sent to the model, and outcomes keep the order asked', async () => {
-  const sent: unknown[] = [];
+  const sent: string[] = [];
   const client: JudgeClient = {
-    judge: async ({ payload }) => {
-      sent.push(...(payload as readonly JudgeSubject[]));
+    judge: async ({ subjects }) => {
+      sent.push(...subjects.map((s) => String(s.storyId)));
       return {
-        answers: (payload as readonly JudgeSubject[]).map((s) => ({ storyId: String(s.storyId), coinable: true, proposedName: 'frog', confidence: 0.8 })),
+        answers: subjects.map((s) => ({ storyId: String(s.storyId), coinable: true, proposedName: 'frog', confidence: 0.8 })),
         usage: { inputTokens: 10, outputTokens: 10 },
       };
     },
+    /* The mp4 is not a picture, so it has no frame; the cover is. */
+    frame: async (uri) => (uri.endsWith('.mp4') ? null : { mediaType: 'image/jpeg', base64: 'AAAA' }),
   };
   const judge = anthropicJudge({
     client,
     meter: inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT }),
     now: () => AT,
+    model: 'claude-haiku-4-5',
+    policy: DEFAULT_POLICY.judge,
     maxBatch: 10,
   });
-  const asked = [subject('f'), subject('g', [media('video', '')]), subject('h', [media('video', 'blob://frame')])];
+  const asked = [
+    subject('f'),
+    subject('g', [media('video', '')]),
+    subject('h', [media('video', 'https://cdn/frame.jpg')]),
+    subject('i', [media('video', 'https://cdn/clip.mp4')]),
+  ];
 
   const { value } = await judge.judge(asked, BUDGET);
 
-  assert.deepEqual(sent.map((s) => String((s as JudgeSubject).storyId)), [String(storyId('f')), String(storyId('h'))]);
-  assert.deepEqual(value.map((o) => o.kind), ['judged', 'unavailable', 'judged']);
+  assert.deepEqual(sent, [String(storyId('f')), String(storyId('h'))]);
+  assert.deepEqual(value.map((o) => o.kind), ['judged', 'unavailable', 'judged', 'unavailable']);
   assert.equal(value[0]?.kind === 'judged' ? value[0].judgement.lookedAt : null, 'text');
   assert.equal(value[2]?.kind === 'judged' ? value[2].judgement.lookedAt : null, 'videoFrame');
 });
