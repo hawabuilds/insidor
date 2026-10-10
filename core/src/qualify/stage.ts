@@ -54,8 +54,8 @@ import { distinctAuthors, distinctSources, freeJoinShare } from './rules.ts';
  * did not make and hide the caps from anyone reading the log.
  */
 export const NAME = 'qualify' as const;
-export const FEATURE_SET: FeatureSetId = 'story.qualify.v1';
-export const DECIDER = 'rule:qualify@1';
+export const FEATURE_SET: FeatureSetId = 'story.qualify.v2';
+export const DECIDER = 'rule:qualify@2';
 
 const PRESENT = 1;
 const ABSENT = 0;
@@ -96,6 +96,8 @@ export function extract(input: QualifyInput, ctx: StageContext): FeatureVector {
     judgeCoinable: judgement ? (judgement.coinable ? PRESENT : ABSENT) : null,
     judgeConfidence: judgement?.confidence ?? null,
     judgeAlternates: judgement ? judgement.alternateNames.length : null,
+    // v2: what the judge was shown, which decides the confidence bar. ABSENT when unjudged.
+    judgeSawVideoFrame: judgement ? (judgement.lookedAt === 'videoFrame' ? PRESENT : ABSENT) : null,
 
     // our channel — computed from our own data, never from the judge's prose
     nameProposed: proposed ? PRESENT : ABSENT,
@@ -116,7 +118,19 @@ export function gate(f: FeatureVector, p: Policy): ReasonCode | null {
   if (f.nameIsGeneric === PRESENT) return 'Q5_generic_name';
   if ((f.nameLen ?? 0) < p.qualify.minNameLen) return 'Q6_name_too_short';
   if ((f.nameSpecificity ?? 0) < p.qualify.minSpecificity) return 'Q7_name_unspecific';
+  if (f.judgeCoinable === PRESENT && (f.judgeConfidence ?? 0) < confidenceBar(f, p)) return 'Q10_judge_unsure';
   return null;
+}
+
+/**
+ * The bar a "coinable" answer's confidence must clear, chosen by what the judge looked at.
+ *
+ * Last of the gates on purpose: it reads the judge's self-report, so it runs only after
+ * every rule whose inputs are ours, and only on a YES — a confident NO is left to Q9. A
+ * missing judgement never gets here; Q1 abstains first.
+ */
+function confidenceBar(f: FeatureVector, p: Policy): number {
+  return f.judgeSawVideoFrame === PRESENT ? p.qualify.minJudgeConfidence.videoFrame : p.qualify.minJudgeConfidence.text;
 }
 
 /* ── score: only reached when every gate passed ───────────────────────── */

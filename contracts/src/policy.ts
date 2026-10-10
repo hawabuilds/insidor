@@ -23,6 +23,7 @@
 import type { AssetKey } from './ids.ts';
 import type { CounterKind } from './vocabulary.ts';
 import type { Scorers } from './features.ts';
+import type { JudgeEvidence } from './judgement.ts';
 
 /** Readonly all the way down, so a nested object cannot be edited through a reference. */
 export type DeepReadonly<T> = T extends (infer U)[]
@@ -464,6 +465,18 @@ export interface QualifyPolicy {
   readonly passScore: number;
   /** The cap the judge cannot argue with: it runs after the model and only lowers. */
   readonly nameabilityCapFloor: number;
+  /**
+   * ★ THE LEAST CONFIDENCE A "COINABLE" ANSWER MUST CARRY, PER WHAT THE JUDGE LOOKED AT.
+   *
+   * Read only when the judge said coinable, and only after the gates above have passed —
+   * confidence is self-reported and is never a gate on its own (see judgement.ts). Below
+   * the bar the story drops with `Q10_judge_unsure`. A missing judgement never reaches
+   * this: it abstains with `Q1_unjudged` first.
+   *
+   * Keyed by EVIDENCE (`JudgeEvidence`), not by source, because the difference between
+   * the two bars is what the judge could see, and a source name has no place here.
+   */
+  readonly minJudgeConfidence: Readonly<Record<JudgeEvidence, number>>;
   readonly weights: {
     readonly judgeConfidence: number;
     readonly specificity: number;
@@ -1435,6 +1448,26 @@ const POLICY_V1: Policy = {
     authorBreadthFull: 12,
     passScore: 0.55,
     nameabilityCapFloor: 0.4,
+    /* FROM A BACKTEST OF THE PREVIOUS BUILD, docs/meme-score-comparison.md and, in the
+       old repo, docs/rescore-threshold-analysis.md: 629 narratives from the text-led
+       source, scored after the fact with that build's coinability prompt. At or above 0.70
+       a coin with a matching name was later found 72.9% of the time (207 narratives);
+       below it, 1.9% (422). Above 0.70 the rate was flat, so a higher bar only cut volume.
+
+       WHAT IT DID NOT PROVE. It measured "a coin with a matching name was launched", not
+       whether that coin did well. It matched loosely, on the old model's own suggested
+       ticker, which builds part of the gap into the method. It judged one post, not a
+       story, on a different prompt and a different 0–1 scale from this judge's
+       confidence. So 0.70 is a starting point carried over, not a calibration of this
+       judge; measure it again once the judge runs.
+
+       videoFrame is NOT CALIBRATED. The old backtest had no usable video judgements (they
+       were capped, not judged). 0.75 is a placeholder, set stricter than text on purpose,
+       until there is data. */
+    minJudgeConfidence: {
+      text: 0.7,
+      videoFrame: 0.75,
+    },
     weights: {
       judgeConfidence: 0.4,
       specificity: 0.3,

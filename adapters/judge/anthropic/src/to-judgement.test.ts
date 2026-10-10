@@ -25,13 +25,13 @@ const subject = (token: string): JudgeSubject => ({
 });
 
 test('a malformed answer is an absent judgement, never a negative one', () => {
-  assert.equal(toJudgement({}, CTX), null);
-  assert.equal(toJudgement(null, CTX), null);
-  assert.equal(toJudgement({ coinable: 'maybe' }, CTX), null);
+  assert.equal(toJudgement({}, CTX, 'text'), null);
+  assert.equal(toJudgement(null, CTX, 'text'), null);
+  assert.equal(toJudgement({ coinable: 'maybe' }, CTX, 'text'), null);
 });
 
 test('a well-formed answer carries the name and the confidence through', () => {
-  const j = toJudgement({ coinable: true, proposedName: '  chill guy  ', confidence: 0.82 }, CTX);
+  const j = toJudgement({ coinable: true, proposedName: '  chill guy  ', confidence: 0.82 }, CTX, 'text');
   assert.ok(j);
   assert.equal(j.coinable, true);
   assert.equal(j.proposedName, 'chill guy');
@@ -43,20 +43,20 @@ test('a well-formed answer carries the name and the confidence through', () => {
 });
 
 test('the judge prose is never inlined — only a blob key, or nothing', () => {
-  const j = toJudgement({ coinable: true, rationale: 'a long paragraph of reasoning' }, CTX);
+  const j = toJudgement({ coinable: true, rationale: 'a long paragraph of reasoning' }, CTX, 'text');
   assert.ok(j);
   assert.equal(j.rationaleRef, null);
   assert.equal(JSON.stringify(j).includes('long paragraph'), false);
 });
 
 test('a confidence outside the scale is clamped, not trusted', () => {
-  assert.equal(toJudgement({ coinable: true, confidence: 1.7 }, CTX)?.confidence, 1);
-  assert.equal(toJudgement({ coinable: true, confidence: -3 }, CTX)?.confidence, 0);
-  assert.equal(toJudgement({ coinable: true }, CTX)?.confidence, 0);
+  assert.equal(toJudgement({ coinable: true, confidence: 1.7 }, CTX, 'text')?.confidence, 1);
+  assert.equal(toJudgement({ coinable: true, confidence: -3 }, CTX, 'text')?.confidence, 0);
+  assert.equal(toJudgement({ coinable: true }, CTX, 'text')?.confidence, 0);
 });
 
 test('a coinable-false answer is a real judgement, distinct from a missing one', () => {
-  const j = toJudgement({ coinable: false, proposedName: null, confidence: 0.9 }, CTX);
+  const j = toJudgement({ coinable: false, proposedName: null, confidence: 0.9 }, CTX, 'text');
   assert.ok(j, 'a negative answer is still an answer');
   assert.equal(j.coinable, false);
   assert.equal(j.proposedName, null);

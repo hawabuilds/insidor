@@ -80,6 +80,7 @@ function judgement(over: Partial<Judgement> = {}): Judgement {
     judgedAt: NOW - MINUTE,
     coinable: true,
     confidence: 0.9,
+    lookedAt: 'text',
     proposedName: 'small hippo',
     alternateNames: [],
     subjectSpans: ['a small hippo yawning', 'the small hippo again'],
@@ -189,10 +190,62 @@ test('a nameable cross-source story passes, and the decision is auditable', () =
 
   assert.equal(d.verdict, 'pass');
   assert.equal(d.reason, 'Q0_coinable');
-  assert.equal(d.decider, 'rule:qualify@1');
-  assert.equal(d.featureSet, 'story.qualify.v1');
+  assert.equal(d.decider, 'rule:qualify@2');
+  assert.equal(d.featureSet, 'story.qualify.v2');
   assert.equal(d.policyHash, 'test-policy-hash');
   assert.equal(d.costUsd, 0.0004);
   assert.equal(d.features.isCrossSource, 1);
   assert.ok(d.featureAsOf <= d.decidedAt, 'no lookahead');
+});
+
+/* ── the confidence bar, per what the judge looked at ─────────────────── */
+
+const BAR = DEFAULT_POLICY.qualify.minJudgeConfidence;
+const STEP = 0.01;
+
+test('a text judgement just above its bar passes', () => {
+  const d = qualify(input({ judgement: judgement({ lookedAt: 'text', confidence: BAR.text + STEP }) }), DEFAULT_POLICY, CTX);
+  assert.equal(d.verdict, 'pass');
+  assert.equal(d.reason, 'Q0_coinable');
+});
+
+test('a text judgement just below its bar is dropped as unsure', () => {
+  const d = qualify(input({ judgement: judgement({ lookedAt: 'text', confidence: BAR.text - STEP }) }), DEFAULT_POLICY, CTX);
+  assert.equal(d.verdict, 'drop');
+  assert.equal(d.reason, 'Q10_judge_unsure');
+  assert.equal(d.score, null, 'a gate decided, so there is no score to report');
+});
+
+test('a video-frame judgement just above its bar passes', () => {
+  const d = qualify(input({ judgement: judgement({ lookedAt: 'videoFrame', confidence: BAR.videoFrame + STEP }) }), DEFAULT_POLICY, CTX);
+  assert.equal(d.verdict, 'pass');
+  assert.equal(d.features.judgeSawVideoFrame, 1);
+});
+
+test('a video-frame judgement just below its bar is dropped as unsure', () => {
+  const d = qualify(input({ judgement: judgement({ lookedAt: 'videoFrame', confidence: BAR.videoFrame - STEP }) }), DEFAULT_POLICY, CTX);
+  assert.equal(d.verdict, 'drop');
+  assert.equal(d.reason, 'Q10_judge_unsure');
+});
+
+test('the bar follows what the judge looked at: one confidence, two answers', () => {
+  assert.ok(BAR.text < BAR.videoFrame, 'the uncalibrated frame bar is the stricter one');
+  const between = (BAR.text + BAR.videoFrame) / 2;
+  const asText = qualify(input({ judgement: judgement({ lookedAt: 'text', confidence: between }) }), DEFAULT_POLICY, CTX);
+  const asFrame = qualify(input({ judgement: judgement({ lookedAt: 'videoFrame', confidence: between }) }), DEFAULT_POLICY, CTX);
+  assert.equal(asText.verdict, 'pass');
+  assert.equal(asFrame.reason, 'Q10_judge_unsure');
+});
+
+test('a missing judgement abstains; it never reaches the confidence bar and is never dropped', () => {
+  const d = qualify(input({ judgement: null }), DEFAULT_POLICY, CTX);
+  assert.equal(d.verdict, 'abstain');
+  assert.equal(d.reason, 'Q1_unjudged');
+  assert.equal(d.features.judgeSawVideoFrame, null);
+  assert.equal(d.features.judgeConfidence, null);
+});
+
+test('a NO is never "unsure", whatever its confidence: the bar reads only coinable answers, and Q9 drops the rest', () => {
+  const d = qualify(input({ judgement: judgement({ coinable: false, confidence: BAR.text - STEP }) }), DEFAULT_POLICY, CTX);
+  assert.equal(d.reason, 'Q9_judged_not_coinable');
 });

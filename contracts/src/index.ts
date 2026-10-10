@@ -98,7 +98,8 @@ export {
 } from './asset.ts';
 
 /* ── judgement ────────────────────────────────────────────────────────── */
-export type { Judgement } from './judgement.ts';
+export type { Judgement, JudgeEvidence } from './judgement.ts';
+export { JUDGE_EVIDENCE } from './judgement.ts';
 
 /* ── features and deciders ────────────────────────────────────────────── */
 export type { FeatureSetId, FeatureVector, Scorer, Scorers, Shadow } from './features.ts';

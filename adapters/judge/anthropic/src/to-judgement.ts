@@ -11,7 +11,7 @@
  * populations, and merging them poisons every recall number downstream.
  */
 
-import type { Judgement } from '@insidor/contracts';
+import type { Judgement, JudgeEvidence } from '@insidor/contracts';
 import type { StoryId } from '@insidor/contracts/ids.ts';
 import type { JudgeOutcome, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import { arr, bool, num, rec, str } from '@insidor/vendor-kit';
@@ -31,8 +31,25 @@ export interface JudgementContext {
   readonly costUsdPerSubject: number;
 }
 
+/**
+ * What the judge will be looking at for this subject, or null when it cannot look at all.
+ *
+ * Any video member means the judge is shown a frame, and the stricter bar applies. A video
+ * member with no frame to show is NOT judged as if it were text: the old build scored that
+ * case at a fixed 0.4, which is a missing input dressed as a reading. Here it is null, the
+ * subject is never sent, and it comes back `unavailable` — so QUALIFY abstains.
+ */
+export function lookedAtFor(subject: JudgeSubject): JudgeEvidence | null {
+  const videos = subject.media.filter((m) => m.kind === 'video');
+  if (videos.length === 0) return 'text';
+  return videos.some((m) => m.uri.trim() !== '') ? 'videoFrame' : null;
+}
+
+/** Said on every subject `lookedAtFor` refuses. */
+export const NO_FRAME = 'a video member with no frame the judge could look at';
+
 /** @returns null when the payload is not usable. A malformed answer is an absent one. */
-export function toJudgement(raw: unknown, ctx: JudgementContext): Judgement | null {
+export function toJudgement(raw: unknown, ctx: JudgementContext, lookedAt: JudgeEvidence): Judgement | null {
   const r = rec(raw);
   const coinable = bool(r.coinable);
   if (coinable === null) return null;
@@ -47,6 +64,8 @@ export function toJudgement(raw: unknown, ctx: JudgementContext): Judgement | nu
     coinable,
     // A model that returns 1.7 has misunderstood the scale, not become certain.
     confidence: confidence === null ? 0 : clamp01(confidence),
+    // Ours, from what we sent — never the model's claim about what it saw.
+    lookedAt,
     // Trimmed, never rewritten: the name is meant to be what people in the
     // posts call the thing, and editing it here would silently change the
     // genericity and specificity checks core runs against it.
@@ -82,11 +101,13 @@ export function toOutcomes(
   }
 
   return subjects.map((subject): JudgeOutcome => {
+    const lookedAt = lookedAtFor(subject);
+    if (lookedAt === null) return { kind: 'unavailable', storyId: subject.storyId as StoryId, detail: NO_FRAME };
     const answer = byStory.get(String(subject.storyId));
     if (answer === undefined) {
       return { kind: 'unavailable', storyId: subject.storyId as StoryId, detail: 'no answer for this subject' };
     }
-    const judgement = toJudgement(answer, ctx);
+    const judgement = toJudgement(answer, ctx, lookedAt);
     if (judgement === null) {
       return { kind: 'unavailable', storyId: subject.storyId as StoryId, detail: 'answer did not parse' };
     }
