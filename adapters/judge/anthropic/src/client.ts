@@ -251,6 +251,10 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
     async judge(request) {
       const body = JSON.stringify(buildRequestBody(config, request));
       let lastNote = 'no attempt was made';
+      /* The status of the last attempt when the vendor answered it, undefined when the
+         last attempt got no answer at all. Carried on the final error, because an answered
+         error is not billed and a lost reply may have been. */
+      let lastStatus: number | undefined;
       let wait = 0;
       for (let n = 0; n < config.maxAttempts; n += 1) {
         if (n > 0) await config.sleep(wait);
@@ -263,6 +267,7 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
           res = await attempt(body);
         } catch (error) {
           lastNote = `request failed: ${messageOf(error)}`;
+          lastStatus = undefined;
           continue;
         }
         if (res.status >= 200 && res.status < 300) {
@@ -280,10 +285,11 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
           throw new VendorUnavailable(VENDOR, MESSAGES_ENDPOINT, `answered ${res.status}: ${snippet(res.text)}`, res.status);
         }
         lastNote = `answered ${res.status}`;
+        lastStatus = res.status;
         const asked = retryAfterMs(res.headers);
         if (asked !== null) wait = Math.min(config.maxWaitMs, asked);
       }
-      throw new VendorUnavailable(VENDOR, MESSAGES_ENDPOINT, `gave up after ${config.maxAttempts} attempts: ${lastNote}`);
+      throw new VendorUnavailable(VENDOR, MESSAGES_ENDPOINT, `gave up after ${config.maxAttempts} attempts: ${lastNote}`, lastStatus);
     },
 
     async frame(uri) {

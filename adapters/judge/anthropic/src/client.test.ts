@@ -243,3 +243,19 @@ test('a model with no price cannot build a judge', () => {
     /no price/,
   );
 });
+
+test('an error the vendor answered is recorded at $0; a lost reply is charged the estimate', async () => {
+  const answered = fakeFetch(Array.from({ length: P.maxAttempts }, () => () => json(529, { type: 'error' })));
+  const meterA = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT });
+  const judgeA = anthropicJudge({ client: httpClient(config(answered.fetch)), meter: meterA, now: () => AT, model: 'claude-haiku-4-5', policy: P, maxBatch: 10 });
+  const a = await judgeA.judge([subject('a')], BUDGET);
+  assert.equal(a.value[0]?.kind, 'unavailable');
+  assert.equal(meterA.spentUsd(), 0, 'nothing was billed, so nothing is booked');
+
+  const lost = fakeFetch(Array.from({ length: P.maxAttempts }, () => () => { throw new DOMException('timeout', 'TimeoutError'); }));
+  const meterB = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT });
+  const judgeB = anthropicJudge({ client: httpClient(config(lost.fetch)), meter: meterB, now: () => AT, model: 'claude-haiku-4-5', policy: P, maxBatch: 10 });
+  const b = await judgeB.judge([subject('a')], BUDGET);
+  assert.equal(b.value[0]?.kind, 'unavailable');
+  assert.ok(meterB.spentUsd() > 0, 'a reply that may have been billed is booked at the estimate');
+});

@@ -23,10 +23,10 @@ import type { JudgePolicy } from '@insidor/contracts/policy.ts';
 import type { Budget, CostEstimate, Meter, Metered, Spend } from '@insidor/contracts/ports/meter.ts';
 import type { JudgeOutcome, JudgePort, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import { mergeSpend, metered } from '@insidor/meter';
-import { BudgetRefused } from '@insidor/vendor-kit';
+import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
 import type { PriceBook } from '@insidor/meter';
 
-import type { Frame, JudgeClient, Usage } from './client.ts';
+import type { Frame, JudgeClient, JudgeResponse, Usage } from './client.ts';
 import { VENDOR } from './client.ts';
 import { PROMPT_SET_SHA, PROMPTS } from './prompts.ts';
 import { priceFor, usdForTokens, type ModelPrice } from './prices.ts';
@@ -59,6 +59,12 @@ export interface AnthropicJudgeDeps {
   readonly policy: JudgePolicy;
   /** Subjects per call. A cost/latency tradeoff, so it arrives from policy. */
   readonly maxBatch: number;
+}
+
+/** A batch's result inside the meter: the reply, or the vendor error that came with a status. */
+interface Attempted {
+  readonly response: JudgeResponse | null;
+  readonly refusedWith: VendorUnavailable | null;
 }
 
 /** A per-call price book for one batch, priced at its own estimate. */
@@ -140,19 +146,35 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
         const spec = { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
         let answered: readonly JudgeOutcome[];
         try {
-          const call = await metered(deps.meter, bookFor(usd), spec, async () => {
-            const response = await deps.client.judge({
-              system: SYSTEM,
-              instructions: INSTRUCTIONS,
-              subjects: batch,
-              frames,
-            });
-            // The vendor itemises its own charge in tokens, so the ledger records
-            // what was actually spent rather than the estimate.
-            return { value: response, units: 1, usdActual: usdOf(price, response.usage) };
+          const call = await metered<Attempted>(deps.meter, bookFor(usd), spec, async () => {
+            try {
+              const response = await deps.client.judge({
+                system: SYSTEM,
+                instructions: INSTRUCTIONS,
+                subjects: batch,
+                frames,
+              });
+              // The vendor itemises its own charge in tokens, so the ledger records
+              // what was actually spent rather than the estimate.
+              return { value: { response, refusedWith: null }, units: 1, usdActual: usdOf(price, response.usage) };
+            } catch (error) {
+              /* ★ AN ERROR THE VENDOR ANSWERED IS NOT BILLED, AND IS RECORDED AT $0.
+                 This vendor does not charge for a request it answered with an error
+                 status (429, 5xx, 529, a 4xx), so charging the estimate for one would
+                 book money that never left — and during an outage, enough of it to pause
+                 the judge for the rest of the day. A failure with NO status (a timeout,
+                 a dropped socket) is different: the request may have been processed and
+                 only the reply lost, so it is rethrown and `metered` charges the
+                 estimate, the safe side. */
+              if (error instanceof VendorUnavailable && error.status !== undefined) {
+                return { value: { response: null, refusedWith: error }, units: 0, usdActual: 0 };
+              }
+              throw error;
+            }
           });
           spends.push(call.spend);
-          answered = toOutcomes(batch, call.value.answers, {
+          if (call.value.response === null) throw call.value.refusedWith ?? new Error('judge: no reply and no error');
+          answered = toOutcomes(batch, call.value.response.answers, {
             judgeId: judgeId(deps.model),
             promptId: promptId(),
             judgedAt,
