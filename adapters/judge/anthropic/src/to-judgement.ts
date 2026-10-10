@@ -32,17 +32,33 @@ export interface JudgementContext {
 }
 
 /**
+ * The frame the judge would be shown for this subject, or null when it has no video.
+ *
+ * ★ PLATFORMS SPELL "A FRAME OF A VIDEO" THREE WAYS, so this does not trust `kind` alone.
+ * One sends a video's cover as an `image` that carries a duration; one sends `video` whose
+ * uri is the preview image; one sends `video` whose uri is the video file itself. So a
+ * member is video when it is `video`, or an `image` with a duration — and whether its uri is
+ * really a picture is found out by `client.frame()`, which refuses anything that is not one.
+ */
+export function frameUriFor(subject: JudgeSubject): string | null | undefined {
+  const video = subject.media.filter((m) => m.kind === 'video' || (m.kind === 'image' && m.durationMs !== null));
+  if (video.length === 0) return undefined;
+  return video.find((m) => m.uri.trim() !== '')?.uri ?? null;
+}
+
+/**
  * What the judge will be looking at for this subject, or null when it cannot look at all.
  *
  * Any video member means the judge is shown a frame, and the stricter bar applies. A video
  * member with no frame to show is NOT judged as if it were text: the old build scored that
  * case at a fixed 0.4, which is a missing input dressed as a reading. Here it is null, the
- * subject is never sent, and it comes back `unavailable` — so QUALIFY abstains.
+ * subject is never sent, and it comes back `unavailable` — so QUALIFY abstains. A still
+ * image is not sent at all; the text bar applies.
  */
 export function lookedAtFor(subject: JudgeSubject): JudgeEvidence | null {
-  const videos = subject.media.filter((m) => m.kind === 'video');
-  if (videos.length === 0) return 'text';
-  return videos.some((m) => m.uri.trim() !== '') ? 'videoFrame' : null;
+  const uri = frameUriFor(subject);
+  if (uri === undefined) return 'text';
+  return uri === null ? null : 'videoFrame';
 }
 
 /** Said on every subject `lookedAtFor` refuses. */

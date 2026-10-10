@@ -9,148 +9,186 @@
  * A call that fails produces `unavailable` outcomes, never negative ones. The
  * stage abstains on those with a named reason rather than deciding blind, and
  * "we did not ask" stays distinguishable from "the answer was no".
+ *
+ * ★ EVERY CALL IS METERED, AND PRICED BEFORE IT IS MADE. `estimate()` works out a
+ * pessimistic cost from the prompt's length, the frames, and the output ceiling, at the
+ * configured model's rates (`prices.ts`). The meter checks that estimate against the
+ * daily cap and the vendor line BEFORE the request leaves; afterwards it records what the
+ * vendor's token counts say the call actually cost. A call refused for money throws
+ * `BudgetRefused` from `metered()` and is not made.
  */
 
 import type { Millis } from '@insidor/contracts';
-import type { Budget, Meter, Metered } from '@insidor/contracts/ports/meter.ts';
+import type { JudgePolicy } from '@insidor/contracts/policy.ts';
+import type { Budget, CostEstimate, Meter, Metered, Spend } from '@insidor/contracts/ports/meter.ts';
 import type { JudgeOutcome, JudgePort, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import { mergeSpend, metered } from '@insidor/meter';
-import type { Price, PriceBook } from '@insidor/meter';
+import { BudgetRefused } from '@insidor/vendor-kit';
+import type { PriceBook } from '@insidor/meter';
 
-import type { JudgeClient, Usage } from './client.ts';
+import type { Frame, JudgeClient, Usage } from './client.ts';
+import { VENDOR } from './client.ts';
 import { PROMPT_SET_SHA, PROMPTS } from './prompts.ts';
-import { NO_FRAME, allUnavailable, lookedAtFor, toOutcomes } from './to-judgement.ts';
+import { priceFor, usdForTokens, type ModelPrice } from './prices.ts';
+import { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, toOutcomes } from './to-judgement.ts';
 
-export const VENDOR = 'anthropic';
-export const MODEL = 'claude-haiku-4-5';
+export { VENDOR } from './client.ts';
 const ENDPOINT = 'judge';
 
-/**
- * Published rates, in dollars per million tokens. Vendor facts, so they live in
- * the vendor's folder — and they carry the date they were checked, because the
- * constants they replace were stale in the expensive direction and paused work
- * at a third of affordable throughput.
- */
-export const RATES = {
-  usdPerMillionInput: 1.0,
-  usdPerMillionOutput: 5.0,
-  measuredAt: '2026-08-05',
-} as const;
-
-export const usdOf = (usage: Usage): number =>
-  (usage.inputTokens / 1e6) * RATES.usdPerMillionInput +
-  (usage.outputTokens / 1e6) * RATES.usdPerMillionOutput;
+/** The two prompt halves exactly as loaded and hashed. */
+const SYSTEM = PROMPTS.system.text;
+const INSTRUCTIONS = `${PROMPTS['coinability-core'].text}\n\n${PROMPTS['subject-vs-story'].text}`;
 
 /**
- * A per-call price is still declared, even though every call reports its own
- * exact cost: the meter refuses an unpriced call rather than estimating one,
- * and the recorded average is what a budget projection can be built from.
+ * The id recorded on every Decision this judge contributes to. It names the model
+ * AND the prompt set, because a prompt edit or a model change changes the answers,
+ * and an unversioned judge makes every judgement before and after look identical.
  */
-const price: Price = {
-  vendor: VENDOR,
-  endpoint: ENDPOINT,
-  unit: 'per-call',
-  usdPerUnit: 0.00127,
-  unitName: 'batched call',
-  measuredAt: RATES.measuredAt,
-};
+export const judgeId = (model: string): string => `judge:${VENDOR}/${model}@${PROMPT_SET_SHA}`;
+export const promptId = (): string => `coinability@${PROMPT_SET_SHA}`;
 
-export const PRICES: PriceBook = { [`${VENDOR}:${ENDPOINT}`]: price };
+/** What the vendor's own token counts say a call cost. */
+export const usdOf = (price: ModelPrice, usage: Usage): number => usdForTokens(price, usage.inputTokens, usage.outputTokens);
 
 export interface AnthropicJudgeDeps {
   readonly client: JudgeClient;
   readonly meter: Meter;
   readonly now: () => Millis;
+  /** From JUDGE_MODEL, already checked against the price book. */
+  readonly model: string;
+  readonly policy: JudgePolicy;
   /** Subjects per call. A cost/latency tradeoff, so it arrives from policy. */
   readonly maxBatch: number;
-  readonly prices?: PriceBook;
 }
 
+/** A per-call price book for one batch, priced at its own estimate. */
+const bookFor = (usd: number): PriceBook => ({
+  [`${VENDOR}:${ENDPOINT}`]: {
+    vendor: VENDOR,
+    endpoint: ENDPOINT,
+    unit: 'per-call',
+    usdPerUnit: usd,
+    unitName: 'batched judge call',
+    measuredAt: 'estimated per call from token rates in prices.ts',
+  },
+});
+
 /**
- * The id recorded on every Decision this judge contributes to. It names the
- * model AND the prompt set, because a prompt edit changes the answers and an
- * unversioned prompt makes every judgement before and after it look identical
- * in the log.
+ * A pessimistic token estimate for one batch: every character of the request at
+ * `charsPerToken`, a frame at `tokensPerFrame`, and the full output ceiling.
  */
-export const judgeId = (): string => `judge:${VENDOR}/${MODEL}@${PROMPT_SET_SHA}`;
-export const promptId = (): string => `coinability@${PROMPT_SET_SHA}`;
+export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubject[]): Usage {
+  const chars = SYSTEM.length + INSTRUCTIONS.length + JSON.stringify(subjects.map((s) => s.texts)).length;
+  const frames = subjects.filter((s) => lookedAtFor(s) === 'videoFrame').length;
+  return {
+    inputTokens: Math.ceil(chars / policy.charsPerToken) + frames * policy.tokensPerFrame,
+    outputTokens: policy.maxOutputTokens,
+  };
+}
 
 export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
-  const prices = deps.prices ?? PRICES;
+  const price = priceFor(deps.model);
+  if (price === null) throw new RangeError(`judge: no price for model ${deps.model} in prices.ts`);
   if (deps.maxBatch < 1) throw new RangeError('judge: batch size must be at least 1');
+  const batches = (subjects: readonly JudgeSubject[]): JudgeSubject[][] => {
+    const out: JudgeSubject[][] = [];
+    for (let i = 0; i < subjects.length; i += deps.maxBatch) out.push(subjects.slice(i, i + deps.maxBatch));
+    return out;
+  };
+  const estimateUsd = (batch: readonly JudgeSubject[]): number => usdOf(price, estimateTokens(deps.policy, batch));
 
   return {
-    id: judgeId(),
+    id: judgeId(deps.model),
     promptId: promptId(),
     maxBatch: deps.maxBatch,
 
+    estimate(subjects): CostEstimate {
+      const parts = batches(subjects);
+      return {
+        vendor: VENDOR,
+        endpoint: ENDPOINT,
+        unit: 'per-call',
+        estUnits: parts.length,
+        usd: parts.reduce((sum, b) => sum + estimateUsd(b), 0),
+      };
+    },
+
     async judge(asked: readonly JudgeSubject[], _budget: Budget): Promise<Metered<readonly JudgeOutcome[]>> {
       const judgedAt = deps.now();
-      const outcomes: JudgeOutcome[] = [];
-      const spends = [];
 
-      /* A subject the judge cannot look at is never sent, so it is never paid for. It
-         comes back unavailable, in its place, and QUALIFY abstains on it. */
-      const subjects = asked.filter((s) => lookedAtFor(s) !== null);
-      const unseen = allUnavailable(asked.filter((s) => lookedAtFor(s) === null), NO_FRAME);
+      /* Frames first, and before any money moves. A subject whose video has no frame we
+         can show is never sent, so it is never paid for: it comes back unavailable. */
+      const frames = new Map<string, Frame>();
+      const unseen = new Set<string>();
+      for (const s of asked) {
+        const uri = frameUriFor(s);
+        if (uri === undefined) continue;
+        const frame = uri === null ? null : await deps.client.frame(uri);
+        if (frame === null) unseen.add(String(s.storyId));
+        else frames.set(String(s.storyId), frame);
+      }
+      const subjects = asked.filter((s) => !unseen.has(String(s.storyId)));
 
-      for (let i = 0; i < subjects.length; i += deps.maxBatch) {
-        const batch = subjects.slice(i, i + deps.maxBatch);
+      const outcomes = new Map<string, JudgeOutcome>();
+      for (const s of asked.filter((x) => unseen.has(String(x.storyId)))) {
+        outcomes.set(String(s.storyId), { kind: 'unavailable', storyId: s.storyId, detail: NO_FRAME });
+      }
 
-        const call = await metered(
-          deps.meter,
-          prices,
-          { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call', estUnits: 1, at: judgedAt },
-          async () => {
+      const spends: Spend[] = [];
+      for (const batch of batches(subjects)) {
+        const usd = estimateUsd(batch);
+        const spec = { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
+        let answered: readonly JudgeOutcome[];
+        try {
+          const call = await metered(deps.meter, bookFor(usd), spec, async () => {
             const response = await deps.client.judge({
-              system: PROMPTS.system.text,
-              instructions: `${PROMPTS['coinability-core'].text}\n\n${PROMPTS['subject-vs-story'].text}`,
-              payload: batch,
+              system: SYSTEM,
+              instructions: INSTRUCTIONS,
+              subjects: batch,
+              frames,
             });
-            return {
-              value: response,
-              units: 1,
-              // The vendor itemises its own charge in tokens, so the ledger
-              // records what was actually spent rather than an average.
-              usdActual: usdOf(response.usage),
-            };
-          },
-        );
-
-        spends.push(call.spend);
-        outcomes.push(
-          ...toOutcomes(batch, call.value.answers, {
-            judgeId: judgeId(),
+            // The vendor itemises its own charge in tokens, so the ledger records
+            // what was actually spent rather than the estimate.
+            return { value: response, units: 1, usdActual: usdOf(price, response.usage) };
+          });
+          spends.push(call.spend);
+          answered = toOutcomes(batch, call.value.answers, {
+            judgeId: judgeId(deps.model),
             promptId: promptId(),
             judgedAt,
             costUsdPerSubject: batch.length === 0 ? 0 : call.spend.usd / batch.length,
-          }),
-        );
+          });
+        } catch (error) {
+          /* A refusal for money is not ours to swallow: the caller records it as a pause.
+             Anything else — the vendor down, out of retries — is unavailability. The
+             meter has already recorded the estimate for a call that went out and failed. */
+          if (error instanceof BudgetRefused) throw error;
+          answered = allUnavailable(batch, error instanceof Error ? error.message : String(error));
+        }
+        batch.forEach((s, i) => {
+          const o = answered[i];
+          if (o !== undefined) outcomes.set(String(s.storyId), o);
+        });
       }
 
-      /* Back into the order asked, as the port promises. Both lists kept that order, so a
-         merge by position is exact; a judged outcome carries no story id to key on. */
-      const sent = outcomes[Symbol.iterator]();
-      const skipped = unseen[Symbol.iterator]();
-      const inOrder = asked.map((s): JudgeOutcome => {
-        const next = lookedAtFor(s) === null ? skipped.next() : sent.next();
-        return next.done ? { kind: 'unavailable', storyId: s.storyId, detail: 'no outcome' } : next.value;
-      });
       return {
-        value: inOrder,
-        spend: mergeSpend(
-          spends,
-          { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call', estUnits: 1, at: judgedAt },
-          'per-call',
+        /* In the order asked, as the port promises. */
+        value: asked.map(
+          (s) => outcomes.get(String(s.storyId)) ?? { kind: 'unavailable', storyId: s.storyId, detail: 'no outcome' },
         ),
+        spend: mergeSpend(spends, { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call', estUnits: 1, at: judgedAt }, 'per-call'),
       };
     },
   };
 }
 
-export { NO_FRAME, allUnavailable, lookedAtFor, toJudgement, toOutcomes } from './to-judgement.ts';
+export { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, toJudgement, toOutcomes } from './to-judgement.ts';
 export type { JudgementContext } from './to-judgement.ts';
 export { PROMPTS, PROMPT_NAMES, PROMPT_SET_SHA } from './prompts.ts';
 export type { Prompt, PromptName } from './prompts.ts';
-export { httpClient } from './client.ts';
-export type { JudgeClient, JudgeClientConfig, JudgeResponse, Usage } from './client.ts';
+export { ANSWER_SCHEMA, JudgeNotConfigured, buildRequestBody, decodeReply, httpClient } from './client.ts';
+export type { Frame, JudgeClient, JudgeClientConfig, JudgeRequest, JudgeResponse, Usage } from './client.ts';
+export { MODEL_PRICES, PRICES_READ_AT, priceFor, usdForTokens } from './prices.ts';
+export type { ModelPrice } from './prices.ts';
+export { API_KEY, BASE_URL, DEFAULT_BASE_URL, MODEL, readJudgeSetup } from './credentials.ts';
+export type { JudgeSetup } from './credentials.ts';

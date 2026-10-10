@@ -11,6 +11,15 @@ News, events and arguments are "no subject", taught as worked pairs in `subject-
 that teach it; `src/news-contrasts.test.ts` fails if a prompt edit drops one. The fixture answers
 are hand-written, not recorded — see the follow-ups in `docs/meme-score-comparison.md`.
 
+## Configuration and money
+
+`ANTHROPIC_API_KEY` and `JUDGE_MODEL` (no default; it must be a model in `src/prices.ts`). With
+neither set the judge is dormant; with only the model it can price a dry run; with only the
+key the boot fails. Every call is estimated first (`estimate()`, no I/O), checked by the meter
+against the daily cap and the vendor line, and recorded at what the token counts say it cost.
+Retries, timeouts and the output ceiling are in `Policy.judge`. `src/client.ts` is the only
+file that touches the network.
+
 ## What breaks here
 
 - **A prompt moving into a template literal.** It stops being diffable, stops being the instruction

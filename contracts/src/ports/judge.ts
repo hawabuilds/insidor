@@ -19,7 +19,7 @@
 import type { Judgement } from '../judgement.ts';
 import type { StoryId } from '../ids.ts';
 import type { MediaRef } from '../vocabulary.ts';
-import type { Budget, Metered } from './meter.ts';
+import type { Budget, CostEstimate, Metered } from './meter.ts';
 
 /**
  * One story, packaged for the judge — and note what is NOT here: the story object, its
@@ -58,4 +58,13 @@ export interface JudgePort {
     subjects: readonly JudgeSubject[],
     budget: Budget,
   ): Promise<Metered<readonly JudgeOutcome[]>>;
+
+  /**
+   * What judging these subjects WOULD cost, worked out without asking. Pessimistic.
+   *
+   * ★ NO I/O AND NO SPEND, like `PlatformAdapter.estimate`. It is what lets the runner
+   * price a dry run, and consult the budget BEFORE a call, without the judge being able
+   * to reach the network to answer.
+   */
+  estimate(subjects: readonly JudgeSubject[]): CostEstimate;
 }
