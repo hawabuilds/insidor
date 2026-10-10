@@ -31,7 +31,8 @@
     "dev:chainwatch": "node --env-file-if-exists=.env.local --experimental-strip-types services/chainwatch/src/main.ts",
     "dev:read": "pnpm --filter @insidor/read dev",
     "dev:app": "pnpm --filter @insidor/app dev",
-    "dev:mobile": "pnpm --filter @insidor/mobile dev"
+    "dev:mobile": "pnpm --filter @insidor/mobile dev",
+    "judge:record": "node --env-file-if-exists=.env.local --experimental-strip-types tools/judge-record.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
