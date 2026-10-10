@@ -127,6 +127,12 @@ const FILE_EXEMPTIONS = {
     words: [...Object.values(BANNED).flat()],
     why: 'this file IS the wall: it carries the allowlist of public fields and the list of internal words the decoder throws on. It must name them to reject them. Nothing in it renders; if a component imports a word from here, the component still fails this check.',
   },
+  /* The phone app's copy of the same wall, for the same reason. It is a copy because mobile/
+     may not import app/; it is exempt because it, too, must name a word to reject it. */
+  'mobile/src/shared/api/wire/fields.ts': {
+    words: [...Object.values(BANNED).flat()],
+    why: 'the phone app\'s copy of app/src/shared/api/wire/fields.ts — the same wall, naming the same words in order to reject them.',
+  },
 };
 
 /** A component that compares against a big number is a component making a product call. */
