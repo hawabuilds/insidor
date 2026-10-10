@@ -1,7 +1,7 @@
 /**
  * ONE STORY AS A CARD — the feed's card and the Narratives list's card are this component.
  *
- * A fixed 96px picture on the left with the platform badge on its corner (the feed only: a
+ * A fixed 84x98 portrait picture on the left, its top level with the title's, with the platform badge on its corner (the feed only: a
  * narrative spans several sites, so the Narratives list passes no platform). Beside it the
  * title, who posted it and how long ago, a purple views line and the views figure on the
  * title row, and the plain-English description under them. Across the bottom of the card,
@@ -54,7 +54,7 @@ export function StoryRow({
   return (
     <article className={styles['card']} onClick={handlers.open}>
       <div className={styles['body']}>
-        <Thumb url={item.thumbUrl} size={96} radius={14} platform={platform} platformLabel={platformLabel} />
+        <Thumb url={item.thumbUrl} width={84} height={98} radius={14} platform={platform} platformLabel={platformLabel} />
         <div className={styles['content']}>
           {/* A grid, so nothing on the title row can overlap anything else: title, views
               line and count on the first row; who posted it and when under the title and

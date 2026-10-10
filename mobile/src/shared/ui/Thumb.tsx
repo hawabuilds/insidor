@@ -14,6 +14,8 @@ import styles from './ui.module.css';
 export function Thumb({
   url,
   size = 48,
+  width = size,
+  height = size,
   radius = 13,
   platform = null,
   platformLabel = '',
@@ -22,6 +24,9 @@ export function Thumb({
 }: {
   url: string | null;
   size?: number;
+  /** A box that is not square: both default to `size`. */
+  width?: number;
+  height?: number;
   /** Corner radius of a square picture, in px. Ignored when `round`. */
   radius?: number;
   platform?: Platform | null;
@@ -31,12 +36,12 @@ export function Thumb({
   letter?: string | null;
 }) {
   return (
-    <span className={styles['thumb']} style={{ width: size, height: size, minWidth: size, minHeight: size, flexBasis: size }}>
+    <span className={styles['thumb']} style={{ width, height, minWidth: width, minHeight: height, flexBasis: width }}>
       {url !== null ? (
         <img className={`${styles['thumbImg']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }} src={url} alt="" loading="lazy" />
       ) : (
         <span className={`${styles['thumbEmpty']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }}>
-          {letter !== null ? <span className={styles['thumbLetter']}>{letter}</span> : <ImageIcon size={Math.round(size * 0.42)} />}
+          {letter !== null ? <span className={styles['thumbLetter']}>{letter}</span> : <ImageIcon size={Math.round(Math.min(width, height) * 0.42)} />}
         </span>
       )}
       {platform !== null ? <PlatformBadge platform={platform} label={platformLabel} /> : null}
