@@ -16,6 +16,7 @@ import {
   ASSET_ORIGINS,
   BILLING_UNITS,
   CENSOR_REASONS,
+  JUDGE_EVIDENCE,
   MARKET_ABSENCE_REASONS,
   MARKET_CAP_BASES,
   MINT_TIME_SOURCES,
@@ -29,6 +30,9 @@ const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'migr
 
 const read = (filename: string): string =>
   readFileSync(join(MIGRATIONS_DIR, filename), 'utf8').toLowerCase();
+
+/** As written, for the one closed list with a capital in it: a CHECK compares case-sensitively. */
+const readAsWritten = (filename: string): string => readFileSync(join(MIGRATIONS_DIR, filename), 'utf8');
 
 /**
  * Comments in these files discuss the very statements the checks below forbid —
@@ -348,6 +352,12 @@ test('the schema and the vocabulary agree on every closed list', () => {
   assert.deepEqual([...checkedValues(read('0019_spend.sql'), 'unit')].sort(), [
     ...BILLING_UNITS,
   ].sort());
+  /* What the judge looked at decides QUALIFY's confidence bar; a CHECK that drifted from
+     the vocabulary would refuse a judgement the code can produce, or let one in that
+     repo/judgements.ts then refuses on the way out. */
+  assert.deepEqual([...checkedValues(readAsWritten('0022_judgement.sql'), 'looked_at')].sort(), [
+    ...JUDGE_EVIDENCE,
+  ].sort());
   /* All four reason columns, not just the first: they are four separate CHECKs and
      four separate opportunities for one of them to be edited alone. */
   for (const column of [
@@ -362,6 +372,13 @@ test('the schema and the vocabulary agree on every closed list', () => {
       `${column} has drifted from MARKET_ABSENCE_REASONS`,
     );
   }
+});
+
+test('★ the judgement record is append-only, and the app role is not granted it', () => {
+  const sql = read('0022_judgement.sql');
+  assert.match(sql, /create trigger judgement_append_only/);
+  assert.match(sql, /before update or delete on internal\.judgement/);
+  assert.equal(/grant[^;]*insidor_app\b/.test(stripComments(sql)), false);
 });
 
 test('★ the spend ledger is append-only, like the decision log', () => {
