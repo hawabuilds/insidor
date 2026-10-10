@@ -41,7 +41,7 @@ const TABS = [
   { key: 'popular', label: 'Popular' },
 ] as const;
 
-export function Feed({ onCreate }: { onCreate: (row: BoardRow) => void }) {
+export function Feed({ onCreate }: { onCreate: (row: BoardRow, sample: boolean) => void }) {
   const [tab, setTab] = useState<FeedTab>('fyp');
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [panel, setPanel] = useState(false);
@@ -67,6 +67,7 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow) => void }) {
   const shownUncounted = applyFilters(view.uncounted, leads, filters, now);
   const hidden = shown.unknown + shownUncounted.unknown;
 
+  const notice = boardNotice(USING_FIXTURES, tick?.provenance ?? null);
   const quickSite = filters.sites.length === 1 ? filters.sites[0] : null;
   const row = (r: BoardRow) => {
     const lead = leads.get(r.id) ?? null;
@@ -81,7 +82,7 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow) => void }) {
         handlers={{
           open: () => (window.location.hash = hrefFor({ screen: 'story', storyId: r.id, sample: false })),
           viewCoins: () => (window.location.hash = hrefFor({ screen: 'story', storyId: r.id, sample: false })),
-          create: () => onCreate(r),
+          create: () => onCreate(r, notice !== null),
           buy: (ticker) => soon(`Buying $${ticker}`),
         }}
       />
@@ -139,7 +140,7 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow) => void }) {
         ) : null}
       </div>
 
-      <Notice notice={boardNotice(USING_FIXTURES, tick?.provenance ?? null)} />
+      <Notice notice={notice} />
 
       {board.state === 'loading' ? <p className={styles['empty']}>Reading the board.</p> : null}
       {board.state === 'failed' ? (

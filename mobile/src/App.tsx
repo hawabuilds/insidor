@@ -9,6 +9,8 @@
  * reached from, and light that tab, so the bar always says where "back" leads.
  */
 
+import { useState } from 'react';
+import { CreateCoin, type CreateFrom } from './features/create/CreateCoin.tsx';
 import { Feed } from './features/feed/Feed.tsx';
 import { NarrativePage } from './features/narrative/NarrativePage.tsx';
 import { Narratives } from './features/narratives/Narratives.tsx';
@@ -16,20 +18,27 @@ import { TokenPage } from './features/token/TokenPage.tsx';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { tabOf, type Route } from './shared/route.ts';
 import { useRoute } from './shared/useRoute.ts';
-import { ComingSoonProvider, useComingSoon } from './shared/ui/ComingSoon.tsx';
+import { noticeFor } from './shared/story-source.ts';
+import { ComingSoonProvider } from './shared/ui/ComingSoon.tsx';
 import { TabBar } from './shared/ui/TabBar.tsx';
 
-function Screen({ route }: { route: Route }) {
-  const soon = useComingSoon();
+function Screen({ route, create }: { route: Route; create: (from: CreateFrom) => void }) {
   switch (route.screen) {
     case 'feed':
-      return <Feed onCreate={() => soon('Creating a coin')} />;
+      return <Feed onCreate={(row, sample) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, sample })} />;
     case 'narratives':
-      return <Narratives onCreate={() => soon('Creating a coin')} />;
+      return <Narratives onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, sample: true })} />;
     case 'coin':
       return <TokenPage key={`${route.sample}:${route.storyId}:${route.coinId}`} storyId={route.storyId} coinId={route.coinId} sample={route.sample} />;
     case 'story':
-      return <NarrativePage key={`${route.sample}:${route.storyId}`} storyId={route.storyId} sample={route.sample} onCreate={() => soon('Creating a coin')} />;
+      return (
+        <NarrativePage
+          key={`${route.sample}:${route.storyId}`}
+          storyId={route.storyId}
+          sample={route.sample}
+          onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, sample: route.sample || noticeFor(s, false) !== null })}
+        />
+      );
     case 'search':
     case 'calls':
     case 'wallet':
@@ -41,12 +50,15 @@ function Screen({ route }: { route: Route }) {
 
 export function App() {
   const route = useRoute();
+  /* The create modal sits over whichever screen opened it, so it lives here, above them. */
+  const [creating, setCreating] = useState<CreateFrom | null>(null);
   return (
     <ComingSoonProvider>
       <main>
-        <Screen route={route} />
+        <Screen route={route} create={setCreating} />
       </main>
       <TabBar current={tabOf(route)} />
+      {creating !== null ? <CreateCoin key={creating.title} from={creating} onClose={() => setCreating(null)} /> : null}
     </ComingSoonProvider>
   );
 }
