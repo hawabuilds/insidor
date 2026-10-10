@@ -15,6 +15,17 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import './shared/ui/tokens.css';
 
+/* The service worker is registered in production builds only. Registering is not asking —
+   it shows no prompt — but in dev it would sit between Vite and the page and serve a stale
+   shell after every edit. See public/sw.js for what it does and, mostly, what it refuses to. */
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error: unknown) => {
+      console.warn('service worker registration failed', error);
+    });
+  });
+}
+
 const container = document.getElementById('root');
 if (!container) throw new Error('main: #root is missing from index.html');
 

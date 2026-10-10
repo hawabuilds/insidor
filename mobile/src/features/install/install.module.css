@@ -1,0 +1,53 @@
+.bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 2 * var(--gutter));
+  max-width: calc(480px - 2 * var(--gutter));
+  bottom: calc(86px + env(safe-area-inset-bottom));
+  z-index: 38;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-panel);
+}
+
+.icon {
+  flex: none;
+  border-radius: 10px;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+
+.text b {
+  font-size: 14px;
+  color: var(--text-1);
+}
+
+.inline {
+  display: inline;
+  vertical-align: -2px;
+  color: var(--blue-300);
+}
+
+.close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+}

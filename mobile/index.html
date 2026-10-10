@@ -12,6 +12,15 @@
     <meta name="color-scheme" content="dark" />
     <title>Insidor</title>
 
+    <!-- Add to Home Screen. The manifest is what makes an installed Insidor open as an app
+         rather than a tab; the apple-* tags are what iOS reads instead of parts of it. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0a0a0c" />
+    <link rel="icon" type="image/png" href="/icons/favicon-64.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Insidor" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
     <!-- The three faces the design names. Inter for everything, Montserrat 700 for the
          wordmark only, JetBrains Mono for addresses. The fallback stacks in tokens.css are
          what render if this origin is unreachable. -->

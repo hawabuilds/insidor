@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { CreateCoin, type CreateFrom } from './features/create/CreateCoin.tsx';
 import { Feed } from './features/feed/Feed.tsx';
+import { InstallPrompt } from './features/install/InstallPrompt.tsx';
 import { NarrativePage } from './features/narrative/NarrativePage.tsx';
 import { Narratives } from './features/narratives/Narratives.tsx';
 import { TokenPage } from './features/token/TokenPage.tsx';
@@ -57,6 +58,7 @@ export function App() {
       <main>
         <Screen route={route} create={setCreating} />
       </main>
+      {route.screen === 'feed' ? <InstallPrompt /> : null}
       <TabBar current={tabOf(route)} />
       {creating !== null ? <CreateCoin key={creating.title} from={creating} onClose={() => setCreating(null)} /> : null}
     </ComingSoonProvider>
