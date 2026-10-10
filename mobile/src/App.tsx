@@ -10,6 +10,7 @@
  */
 
 import { Feed } from './features/feed/Feed.tsx';
+import { NarrativePage } from './features/narrative/NarrativePage.tsx';
 import { Narratives } from './features/narratives/Narratives.tsx';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { tabOf, type Route } from './shared/route.ts';
@@ -24,6 +25,8 @@ function Screen({ route }: { route: Route }) {
       return <Feed onCreate={() => soon('Creating a coin')} />;
     case 'narratives':
       return <Narratives onCreate={() => soon('Creating a coin')} />;
+    case 'story':
+      return <NarrativePage key={`${route.sample}:${route.storyId}`} storyId={route.storyId} sample={route.sample} onCreate={() => soon('Creating a coin')} />;
     case 'search':
     case 'calls':
     case 'wallet':

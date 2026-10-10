@@ -12,14 +12,16 @@ import styles from './ui.module.css';
 
 const SHOW_FOR_MS = 1_800;
 
-const Ctx = createContext<(what: string) => void>(() => undefined);
+type Toast = { readonly headline: string; readonly detail: string };
+
+const Ctx = createContext<(t: Toast) => void>(() => undefined);
 
 export function ComingSoonProvider({ children }: { children: ReactNode }) {
-  const [what, setWhat] = useState<string | null>(null);
+  const [what, setWhat] = useState<Toast | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const show = useCallback((label: string) => {
+  const show = useCallback((t: Toast) => {
     if (timer.current !== null) clearTimeout(timer.current);
-    setWhat(label);
+    setWhat(t);
     timer.current = setTimeout(() => setWhat(null), SHOW_FOR_MS);
   }, []);
   useEffect(() => () => {
@@ -30,8 +32,8 @@ export function ComingSoonProvider({ children }: { children: ReactNode }) {
       {children}
       {what !== null ? (
         <div className={styles['toast']} role="status" aria-live="polite">
-          <b>Coming soon</b>
-          <span>{what}</span>
+          <b>{what.headline}</b>
+          <span>{what.detail}</span>
         </div>
       ) : null}
     </Ctx.Provider>
@@ -40,5 +42,12 @@ export function ComingSoonProvider({ children }: { children: ReactNode }) {
 
 /** `soon('Buying')` shows the toast. Returns nothing and starts nothing. */
 export function useComingSoon(): (what: string) => void {
-  return useContext(Ctx);
+  const show = useContext(Ctx);
+  return useCallback((what: string) => show({ headline: 'Coming soon', detail: what }), [show]);
+}
+
+/** The same toast for something that did happen — "Link copied". Never for a trade. */
+export function useToast(): (headline: string, detail?: string) => void {
+  const show = useContext(Ctx);
+  return useCallback((headline: string, detail = '') => show({ headline, detail }), [show]);
 }

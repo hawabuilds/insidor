@@ -1,0 +1,276 @@
+.page {
+  padding-bottom: calc(var(--tabbar-space) + 76px);
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px 6px 12px;
+}
+
+.back {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--text-1);
+}
+
+.topRight {
+  display: flex;
+  gap: 8px;
+}
+
+.round {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  color: var(--text-1);
+}
+
+.starred {
+  color: var(--blue-300);
+  background: var(--blue-wash);
+}
+
+.head {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 4px var(--gutter) 0;
+}
+
+.headText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.kicker {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.headText h1 {
+  margin: 1px 0 3px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.meta,
+.coinMeta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.age {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.views {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 14px var(--gutter) 0;
+}
+
+.views > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.viewsN {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.viewsL {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.summary {
+  margin: 10px var(--gutter) 6px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.section {
+  padding: 4px 0;
+}
+
+.section small {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.coin {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px var(--gutter);
+}
+
+.coin:active {
+  background: var(--hover);
+}
+
+.coinText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ticker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.label {
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.label-biggest {
+  background: var(--card);
+  color: var(--text-2);
+}
+
+.label-first {
+  background: var(--blue-wash);
+  color: var(--blue-300);
+}
+
+.mcap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.mcapN {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.mcapL {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.more {
+  margin: 6px var(--gutter) 0;
+  color: var(--blue-400);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.note,
+.empty {
+  margin: 16px var(--gutter);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.post {
+  display: block;
+  padding: 10px var(--gutter);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.postHead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+}
+
+/* The badge sits inline here, not pinned to a picture's corner. */
+.postHead > span:first-child {
+  position: static;
+  width: 22px;
+  height: 22px;
+  border-width: 0;
+}
+
+.postText {
+  display: block;
+  margin-top: 5px;
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+.stats {
+  margin: 6px var(--gutter);
+}
+
+.stats > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 14px;
+}
+
+.stats dt {
+  color: var(--text-3);
+}
+
+.stats dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* ── the bottom bar, above the tab bar ─────────────────────────────── */
+
+.bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  z-index: 35;
+  display: flex;
+  gap: 10px;
+  padding: 10px var(--gutter);
+  background: linear-gradient(to bottom, transparent, var(--bg) 28%);
+}
+
+.call {
+  flex: 1;
+}
+
+.primary {
+  flex: 1.6;
+}
