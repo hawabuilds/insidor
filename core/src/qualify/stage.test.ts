@@ -26,7 +26,7 @@ import type { Judgement } from '@insidor/contracts/judgement.ts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Story, StoryMember } from '@insidor/contracts/story.ts';
 
-import { qualify, type QualifyInput } from './stage.ts';
+import { qualify, worthJudging, type QualifyInput } from './stage.ts';
 
 const STORY = storyId('7f3a');
 const SOURCE_A = sourceId('srca');
@@ -95,6 +95,7 @@ function input(over: Partial<QualifyInput> = {}): QualifyInput {
     story: story(),
     members: MEMBERS,
     judgement: judgement(),
+    unjudged: 'not_asked',
     judgeCostUsd: 0.0004,
     ...over,
   };
@@ -190,7 +191,7 @@ test('a nameable cross-source story passes, and the decision is auditable', () =
 
   assert.equal(d.verdict, 'pass');
   assert.equal(d.reason, 'Q0_coinable');
-  assert.equal(d.decider, 'rule:qualify@2');
+  assert.equal(d.decider, 'rule:qualify@3');
   assert.equal(d.featureSet, 'story.qualify.v2');
   assert.equal(d.policyHash, 'test-policy-hash');
   assert.equal(d.costUsd, 0.0004);
@@ -248,4 +249,33 @@ test('a missing judgement abstains; it never reaches the confidence bar and is n
 test('a NO is never "unsure", whatever its confidence: the bar reads only coinable answers, and Q9 drops the rest', () => {
   const d = qualify(input({ judgement: judgement({ coinable: false, confidence: BAR.text - STEP }) }), DEFAULT_POLICY, CTX);
   assert.equal(d.reason, 'Q9_judged_not_coinable');
+});
+
+/* ── no judgement, and why ───────────────────────────────────────────── */
+
+test('each reason for having no judgement abstains with its own code, never a drop', () => {
+  const cases = [
+    ['not_asked', 'Q1_unjudged'],
+    ['unavailable', 'Q11_judge_unavailable'],
+    ['budget', 'Q12_judge_budget_paused'],
+    ['dry_run', 'Q13_judge_dry_run'],
+  ] as const;
+  for (const [unjudged, reason] of cases) {
+    const d = qualify(input({ judgement: null, unjudged }), DEFAULT_POLICY, CTX);
+    assert.equal(d.verdict, 'abstain', unjudged);
+    assert.equal(d.reason, reason, unjudged);
+  }
+});
+
+test('the cheap gates come first: a one-author story is dropped, not left waiting for a judge', () => {
+  const d = qualify(input({ judgement: null, members: [member(1), member(1), member(1)] }), DEFAULT_POLICY, CTX);
+  assert.equal(d.verdict, 'drop');
+  assert.equal(d.reason, 'Q2_single_author');
+});
+
+test('worthJudging says yes only when every gate that needs no judge passes', () => {
+  assert.equal(worthJudging({ story: story(), members: MEMBERS }, DEFAULT_POLICY, CTX), true);
+  assert.equal(worthJudging({ story: story({ state: 'candidate', promotedAt: null }), members: MEMBERS }, DEFAULT_POLICY, CTX), false);
+  assert.equal(worthJudging({ story: story(), members: [member(1), member(1), member(1)] }, DEFAULT_POLICY, CTX), false);
+  assert.equal(worthJudging({ story: story(), members: [member(1), member(2, SOURCE_B)] }, DEFAULT_POLICY, CTX), false);
 });

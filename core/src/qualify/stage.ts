@@ -24,7 +24,7 @@
 
 import type { Decision, StageContext } from '@insidor/contracts/decision.ts';
 import type { FeatureSetId, FeatureVector } from '@insidor/contracts/features.ts';
-import type { Judgement } from '@insidor/contracts/judgement.ts';
+import type { JudgeAbsence, Judgement } from '@insidor/contracts/judgement.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { ReasonCode } from '@insidor/contracts/reasons.ts';
 import type { Story, StoryMember } from '@insidor/contracts/story.ts';
@@ -55,7 +55,7 @@ import { distinctAuthors, distinctSources, freeJoinShare } from './rules.ts';
  */
 export const NAME = 'qualify' as const;
 export const FEATURE_SET: FeatureSetId = 'story.qualify.v2';
-export const DECIDER = 'rule:qualify@2';
+export const DECIDER = 'rule:qualify@3';
 
 const PRESENT = 1;
 const ABSENT = 0;
@@ -66,6 +66,12 @@ export interface QualifyInput {
   readonly members: readonly StoryMember[];
   /** null when the judge was not called or failed. NOT an empty judgement. */
   readonly judgement: Judgement | null;
+  /**
+   * Why `judgement` is null, when it is. Ignored when a judgement is present. Each
+   * absence abstains with its own reason, so a paused budget, an outage and a dry run
+   * stay three different rows (see `JudgeAbsence`).
+   */
+  readonly unjudged: JudgeAbsence;
   /** What the judge call cost us. Metered by the adapter, passed as data. */
   readonly judgeCostUsd: number;
 }
@@ -109,17 +115,50 @@ export function extract(input: QualifyInput, ctx: StageContext): FeatureVector {
 
 /* ── hard gates: rules the judge cannot argue with ────────────────────── */
 
-export function gate(f: FeatureVector, p: Policy): ReasonCode | null {
+/**
+ * The gates that need no judge: is the story promoted, and is it broad enough.
+ *
+ * ★ THEY RUN BEFORE THE JUDGE IS EVEN CONSULTED, and the runner asks this same function
+ * whether a story is worth a paid call (`worthJudging`). A story that will be dropped for
+ * having one author is never sent, and is dropped as `Q2` rather than abstaining as
+ * unjudged forever. One function, so the runner's "worth asking" and this stage's gates
+ * cannot drift apart.
+ */
+function cheapGate(f: FeatureVector, p: Policy): ReasonCode | null {
   if (f.isPromoted === ABSENT) return 'S0_not_applicable';
-  if (f.judgePresent === ABSENT) return 'Q1_unjudged';
   if ((f.distinctAuthors ?? 0) < p.qualify.minDistinctAuthors) return 'Q2_single_author';
   if ((f.memberCount ?? 0) < p.qualify.minMembers) return 'Q3_too_thin';
+  return null;
+}
+
+const ABSENCE_REASON: Readonly<Record<JudgeAbsence, ReasonCode>> = {
+  not_asked: 'Q1_unjudged',
+  unavailable: 'Q11_judge_unavailable',
+  budget: 'Q12_judge_budget_paused',
+  dry_run: 'Q13_judge_dry_run',
+};
+
+/** Every reason that means "we have no answer", as opposed to "the answer was no". */
+const ABSTAINS: ReadonlySet<ReasonCode> = new Set<ReasonCode>(['S0_not_applicable', ...Object.values(ABSENCE_REASON)]);
+
+export function gate(f: FeatureVector, p: Policy, unjudged: JudgeAbsence = 'not_asked'): ReasonCode | null {
+  const cheap = cheapGate(f, p);
+  if (cheap !== null) return cheap;
+  if (f.judgePresent === ABSENT) return ABSENCE_REASON[unjudged];
   if (f.nameProposed === ABSENT) return 'Q4_unnameable';
   if (f.nameIsGeneric === PRESENT) return 'Q5_generic_name';
   if ((f.nameLen ?? 0) < p.qualify.minNameLen) return 'Q6_name_too_short';
   if ((f.nameSpecificity ?? 0) < p.qualify.minSpecificity) return 'Q7_name_unspecific';
   if (f.judgeCoinable === PRESENT && (f.judgeConfidence ?? 0) < confidenceBar(f, p)) return 'Q10_judge_unsure';
   return null;
+}
+
+/**
+ * Whether this story is worth a judge call at all: true only when every gate that needs
+ * no judge passes. The runner calls this before spending anything.
+ */
+export function worthJudging(input: Pick<QualifyInput, 'story' | 'members'>, p: Policy, ctx: StageContext): boolean {
+  return cheapGate(extract({ ...input, judgement: null, unjudged: 'not_asked', judgeCostUsd: 0 }, ctx), p) === null;
 }
 
 /**
@@ -166,11 +205,12 @@ export function qualify(input: QualifyInput, p: Policy, ctx: StageContext): Deci
   // core NEVER imports ml/. This one line is "a rule today, a model tomorrow".
   const scorer = p.scorers.qualify;
 
-  const blocked = gate(f, p);
+  const blocked = gate(f, p, input.unjudged);
   if (blocked !== null) {
-    // ABSTAIN, not drop, when we simply never asked. The two are different
-    // populations, and merging them poisons every recall number downstream.
-    const neverAsked = blocked === 'Q1_unjudged' || blocked === 'S0_not_applicable';
+    // ABSTAIN, not drop, when we have no answer. "We could not ask" and "the answer
+    // was no" are different populations, and merging them poisons every recall
+    // number downstream.
+    const neverAsked = ABSTAINS.has(blocked);
     return makeDecision(
       {
         ...base,
