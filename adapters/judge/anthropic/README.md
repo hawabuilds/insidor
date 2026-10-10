@@ -6,6 +6,11 @@ returns evidence. Whether a story qualifies is decided in `core/qualify`.
 Prompts live in `prompts/*.txt`, never in code. They are hashed at load and the hash goes into the
 decider string on every decision the judge contributes to.
 
+News, events and arguments are "no subject", taught as worked pairs in `subject-vs-story.txt`.
+`fixtures/news-contrasts.json` lists each pair, the answer it should get, and the prompt lines
+that teach it; `src/news-contrasts.test.ts` fails if a prompt edit drops one. The fixture answers
+are hand-written, not recorded — see the follow-ups in `docs/meme-score-comparison.md`.
+
 ## What breaks here
 
 - **A prompt moving into a template literal.** It stops being diffable, stops being the instruction

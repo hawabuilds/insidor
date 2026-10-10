@@ -22,6 +22,42 @@ Worked contrasts:
   posts: a character from a game appearing in edits by many accounts
   subject: the character. Name it as the posts name it, not as the publisher does.
 
+News, events and arguments are the commonest posts with a clear story and no subject.
+Each pair below is the same name twice: once as news, once as a subject. Learn the
+difference, not the names.
+
+  posts: reports and reactions about Biden tapes on classified documents
+  story: a news event
+  subject: NONE. Not coinable.
+  posts: Biden edited into the same joke by many accounts, memed AS a character
+  subject: Biden. Coinable.
+
+  posts: "Messi's team lost the final", with reactions
+  story: a sports result
+  subject: NONE. Not coinable.
+  posts: one Messi photo or moment reposted and remixed as a meme
+  subject: Messi. Coinable.
+
+  posts: "Therapy industry criticised as ineffective", with people agreeing and arguing
+  story: an argument
+  subject: NONE. Not coinable.
+
+  posts: "K-pop industry faces criticism", with reactions
+  story: an argument
+  subject: NONE. Not coinable. A named idol in these posts is still not the subject of
+           them; fans reposting that idol's own moment would be.
+
+  posts: "Apple and LG leak new HomeKit features", reposted by tech accounts
+  story: product news
+  subject: NONE. Not coinable, even though Apple is a specific name. A company named in
+           a headline is not a meme.
+
+  posts: "Stray Kids unveil single" passed around as an announcement
+  story: a press release
+  subject: NONE. Not coinable.
+  posts: fans reposting a Stray Kids member's moment, edits, the same joke about them
+  subject: the member or the group, named as fans name them (STRAY). Coinable.
+
 When the story is clear and the subject is not, say there is no subject. A story with no
 subject is a normal and frequent outcome. It is not a failure to be avoided, and a
 labelling run where almost everything has a subject is wrong.

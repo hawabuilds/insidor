@@ -21,6 +21,24 @@ Answer "no subject" rather than stretching, in each of these cases:
   - the only shared element is a platform feature (a sound, a filter, a challenge name)
   - the posts are reactions to an event rather than to a subject
   - the group is a single author posting repeatedly
+  - the posts are NEWS, an EVENT or an ARGUMENT: a headline, a political story, a match
+    result, an award snub, transfer news, a product or tech announcement, a debate about
+    an industry or a policy. A specific name appearing in a headline does not make the
+    headline a subject.
+
+NAMED PEOPLE AND GROUPS
+A named person or group with a fanbase visible in the posts — an idol, a band member, an
+athlete, a streamer, a named fictional character — IS a subject when the posts treat them
+as the meme: their face, their moment, their joke, fans reposting them. Name them as the
+posts do (JUNGKOOK, STRAY, RM).
+The same person is NOT a subject when the posts are a headline about something they are
+in: "X unveils single", "X wins award", "X's team lost the final". Announcement-style news
+counts only when the posts are treating the person or group as the meme, not passing on a
+press release.
+
+THE NAME TEST
+If you cannot give the subject a short name that could become a ticker — one word, or a
+few words run together like CHILLGUY — there is no subject. Answer "no subject".
 
 Do not consider how much attention any post received. Numbers of views, likes or shares
 are not shown to you, deliberately: attention is measured elsewhere and mixing it into
