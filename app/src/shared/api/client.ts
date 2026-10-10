@@ -54,14 +54,21 @@ const BASE = (import.meta.env?.['VITE_READ_URL'] as string | undefined) ?? '';
  * Both halves of that condition matter. `import.meta.env.DEV` is a literal the bundler
  * replaces, so in a production build this is `false && ...` and the whole branch — plus the
  * dynamic import of `fixtures.ts`, plus the fixtures themselves — is dropped from the output.
- * There is no runtime flag that can turn sample data on in front of a user.
+ * There is no runtime flag that can turn sample data on in front of a user. The one build-time
+ * switch that can is `VITE_SAMPLE_DATA=on`, set deliberately on a deploy (sample-switch.ts).
  *
  * The payloads still go through `read`'s caller and therefore through `decode.ts`, exactly
  * like a network response. Fixtures that bypassed the decoder could hold shapes the server
  * can never send, and every screen designed against them would be designed against a wire
  * format that does not exist.
  */
-const USE_FIXTURES = import.meta.env?.DEV === true && BASE === '';
+const USE_FIXTURES =
+  (import.meta.env?.DEV === true && BASE === '') ||
+  /* ★ THE PRODUCTION EXCEPTION, AND THE ONLY ONE: a build configured with
+     VITE_SAMPLE_DATA=on (see sample-switch.ts; vite.config.ts fails the build if it is set
+     beside VITE_READ_URL). Kept inline as a literal comparison so the bundler still folds it
+     and drops the fixtures from every build that does not set it. */
+  import.meta.env?.VITE_SAMPLE_DATA === 'on';
 
 /**
  * Exported so the shell can SAY it is showing sample data.

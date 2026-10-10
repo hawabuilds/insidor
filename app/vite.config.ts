@@ -9,10 +9,12 @@
  * remembered to configure.
  */
 
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
+import { sampleSwitchProblem } from './src/shared/api/sample-switch.ts';
+
+const config = {
   plugins: [react()],
   build: {
     /* The board is a table of numbers; a source map is what makes a production bug in the
@@ -23,4 +25,13 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+};
+
+export default defineConfig(({ mode }) => {
+  /* The sample-data switch is checked here, before anything is built, so a misconfigured
+     deploy fails in its build log rather than going live. loadEnv reads the .env files
+     and the deploy's own environment. */
+  const problem = sampleSwitchProblem(loadEnv(mode, process.cwd(), 'VITE_'));
+  if (problem !== null) throw new Error(`build refused: ${problem}`);
+  return config;
 });
