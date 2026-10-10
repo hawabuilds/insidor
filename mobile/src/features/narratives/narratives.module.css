@@ -1,0 +1,67 @@
+.screen {
+  padding-bottom: var(--tabbar-space);
+}
+
+.header {
+  padding: 22px var(--gutter) 4px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.header p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-3);
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  padding: 16px var(--gutter) 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.filter {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-control);
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  color: var(--text-2);
+}
+
+.segments {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  border-radius: var(--r-control);
+  background: var(--card);
+}
+
+.segment {
+  border-radius: 11px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.segmentOn {
+  background: var(--input);
+  color: var(--text-1);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--border-subtle), 0 6px 16px -8px var(--blue-glow);
+}
+
+.empty {
+  margin: 28px var(--gutter);
+  color: var(--text-3);
+  font-size: 14px;
+}

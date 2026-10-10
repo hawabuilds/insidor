@@ -10,6 +10,7 @@
  */
 
 import { Feed } from './features/feed/Feed.tsx';
+import { Narratives } from './features/narratives/Narratives.tsx';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { tabOf, type Route } from './shared/route.ts';
 import { useRoute } from './shared/useRoute.ts';
@@ -21,6 +22,8 @@ function Screen({ route }: { route: Route }) {
   switch (route.screen) {
     case 'feed':
       return <Feed onCreate={() => soon('Creating a coin')} />;
+    case 'narratives':
+      return <Narratives onCreate={() => soon('Creating a coin')} />;
     case 'search':
     case 'calls':
     case 'wallet':
