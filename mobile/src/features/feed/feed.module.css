@@ -37,8 +37,8 @@
 }
 
 .filterOn {
-  background: var(--blue-wash);
-  color: var(--blue-200);
+  background: var(--brand-wash);
+  color: var(--brand-200);
 }
 
 .quick {
@@ -68,9 +68,9 @@
 }
 
 .quickOn {
-  background: var(--blue-wash);
+  background: var(--brand-wash);
   color: var(--text-1);
-  box-shadow: inset 0 0 0 1px rgb(47 123 255 / 35%);
+  box-shadow: inset 0 0 0 1px rgb(153 69 255 / 35%);
 }
 
 /* ── the filter panel ──────────────────────────────────────────────── */
@@ -109,7 +109,7 @@
 }
 
 .reset {
-  color: var(--blue-400);
+  color: var(--brand-400);
   font-weight: 700;
   font-size: 14px;
 }
@@ -141,9 +141,9 @@
 }
 
 .pillOn {
-  background: var(--blue-wash);
-  color: var(--blue-200);
-  box-shadow: inset 0 0 0 1px rgb(47 123 255 / 35%);
+  background: var(--brand-wash);
+  color: var(--brand-200);
+  box-shadow: inset 0 0 0 1px rgb(153 69 255 / 35%);
 }
 
 .show {

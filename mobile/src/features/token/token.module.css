@@ -127,9 +127,9 @@
   color: var(--text-1);
 }
 
-.chipBlue {
-  background: var(--blue-wash);
-  color: var(--blue-300);
+.chipBrand {
+  background: var(--brand-wash);
+  color: var(--brand-300);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -174,7 +174,7 @@
 .curveFill {
   display: block;
   height: 100%;
-  background: var(--blue);
+  background: var(--brand);
 }
 
 /* ── price ─────────────────────────────────────────────────────────── */

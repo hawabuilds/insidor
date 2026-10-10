@@ -14,6 +14,7 @@ import styles from './ui.module.css';
 export function Thumb({
   url,
   size = 48,
+  radius = 13,
   platform = null,
   platformLabel = '',
   round = false,
@@ -21,6 +22,8 @@ export function Thumb({
 }: {
   url: string | null;
   size?: number;
+  /** Corner radius of a square picture, in px. Ignored when `round`. */
+  radius?: number;
   platform?: Platform | null;
   platformLabel?: string;
   round?: boolean;
@@ -30,9 +33,9 @@ export function Thumb({
   return (
     <span className={styles['thumb']} style={{ width: size, height: size }}>
       {url !== null ? (
-        <img className={`${styles['thumbImg']} ${round ? styles['round'] : ''}`} src={url} alt="" loading="lazy" />
+        <img className={`${styles['thumbImg']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }} src={url} alt="" loading="lazy" />
       ) : (
-        <span className={`${styles['thumbEmpty']} ${round ? styles['round'] : ''}`}>
+        <span className={`${styles['thumbEmpty']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }}>
           {letter !== null ? <span className={styles['thumbLetter']}>{letter}</span> : <ImageIcon size={Math.round(size * 0.42)} />}
         </span>
       )}

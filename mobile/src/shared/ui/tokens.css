@@ -1,5 +1,5 @@
 /**
- * THE PHONE APP'S TOKENS — Trador's layout language in Insidor blue.
+ * THE PHONE APP'S TOKENS — Trador's layout language and Trador's purple.
  *
  * Every colour, radius and face the phone app uses is named here and nowhere else; the CSS
  * modules only ever say `var(--…)`. Values are the owner's spec; the structure (neutral greys,
@@ -8,7 +8,7 @@
  * Three rules, carried over because they are what make the screen readable at a glance:
  *
  *   1. ★ GREEN AND RED MEAN PRICE AND NOTHING ELSE. Green is the buy side and a price going
- *      up; red is the sell side and a price going down. Blue is every other action. The
+ *      up; red is the sell side and a price going down. Purple is every other action. The
  *      moment green also means "primary button", a rising price stops being readable.
  *   2. ★ COLOUR NEVER CARRIES MEANING ALONE. Direction always ships with a ▲/▼ glyph.
  *   3. ★ AMBER IS A WARNING ABOUT THE DATA, never decoration — it is the "Sample data" bar.
@@ -33,13 +33,14 @@
   --text-3: #7a7a85;
   --text-4: #4a4a54;
 
-  /* Insidor blue. 500 is the action colour: buttons, the active tab underline, selected pills. */
-  --blue: #2f7bff;
-  --blue-400: #5293ff; /* links */
-  --blue-300: #74a9ff; /* view sparklines and accent text */
-  --blue-200: #a9caff;
-  --blue-wash: rgb(47 123 255 / 16%);
-  --blue-glow: rgb(47 123 255 / 45%);
+  /* Trador purple. 500 is the action colour: buttons, the active tab underline, selected
+     pills. Green and red stay reserved for price (rule 1); purple never means up or down. */
+  --brand: #9945ff;
+  --brand-400: #a96bff; /* links */
+  --brand-300: #b688ff; /* view sparklines and accent text */
+  --brand-200: #cdaeff;
+  --brand-wash: rgb(153 69 255 / 16%);
+  --brand-glow: rgb(153 69 255 / 45%);
 
   /* The price pair. See rule 1. */
   --up: #4ade80;

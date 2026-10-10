@@ -57,7 +57,7 @@
   background: var(--input);
   color: var(--text-1);
   font-weight: 700;
-  box-shadow: inset 0 0 0 1px var(--border-subtle), 0 6px 16px -8px var(--blue-glow);
+  box-shadow: inset 0 0 0 1px var(--border-subtle), 0 6px 16px -8px var(--brand-glow);
 }
 
 .empty {

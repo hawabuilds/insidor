@@ -1,17 +1,36 @@
-.row {
-  padding: 16px var(--gutter) 18px;
-  border-bottom: 1px solid var(--border-subtle);
+/* One story as a card. 22px gutters, 12px between cards, no strip or stripe of colour on
+   any edge: a card is a fact, and colour on this screen is reserved for meaning. */
+
+.card {
+  --badge-ring: var(--input);
+  margin: 0 var(--gutter) 12px;
+  padding: 18px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--border-subtle);
+  background: var(--input);
   cursor: pointer;
 }
 
-.row:active {
-  background: var(--hover);
+.card:active {
+  background: var(--popup);
+}
+
+/* The picture on the left; everything else beside it, not under it. */
+.body {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
 }
 
 .top {
   display: flex;
-  align-items: center;
-  gap: 14px;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .head {
@@ -53,9 +72,13 @@
   flex: none;
 }
 
+.top > svg,
+.top > span:not(.views) {
+  margin-top: 4px;
+}
+
 .views {
   flex: none;
-  min-width: 52px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -76,14 +99,15 @@
 }
 
 .summary {
-  margin: 10px 0 0 62px;
+  margin: 10px 0 0;
   font-size: 14.5px;
   line-height: 1.45;
   color: var(--text-2);
 }
 
+/* Across the bottom of the card: the coin status, and at most one button. */
 .foot {
-  margin: 12px 0 0 62px;
+  margin-top: 16px;
   min-height: 36px;
   display: flex;
   align-items: center;

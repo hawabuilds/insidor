@@ -1,7 +1,7 @@
 /**
- * The small views line on a row, always in blue.
+ * The small views line on a row, always in purple.
  *
- * Blue and never green or red, because this is a line of VIEWS, not of price: green and red
+ * Purple and never green or red, because this is a line of VIEWS, not of price: green and red
  * mean price on this screen and nothing else (tokens.css, rule 1). A views line drawn green
  * would read as a coin going up.
  *
@@ -82,7 +82,7 @@ export function Sparkline({
           <polyline
             key={i}
             fill="none"
-            stroke="var(--blue-300)"
+            stroke="var(--brand-300)"
             strokeWidth={1.6}
             strokeLinejoin="round"
             strokeLinecap="round"

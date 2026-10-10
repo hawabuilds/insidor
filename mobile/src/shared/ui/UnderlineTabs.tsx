@@ -1,5 +1,5 @@
 /**
- * Tabs with a blue underline under the current one. Used by the feed, the narrative page and
+ * Tabs with a purple underline under the current one. Used by the feed, the narrative page and
  * the token page. Switching changes content in place; it never navigates.
  */
 
