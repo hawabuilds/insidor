@@ -15,10 +15,12 @@
  * preview deployment cannot reach production data through a rewrite nobody remembered.
  */
 
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
+import { sampleSwitchProblem } from './src/shared/api/sample-switch.ts';
+
+const config = {
   plugins: [react()],
   build: {
     sourcemap: true,
@@ -28,4 +30,12 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
   },
+};
+
+export default defineConfig(({ mode }) => {
+  /* The sample-data switch is checked before anything is built, so a misconfigured deploy
+     fails in its build log rather than going live. */
+  const problem = sampleSwitchProblem(loadEnv(mode, process.cwd(), 'VITE_'));
+  if (problem !== null) throw new Error(`build refused: ${problem}`);
+  return config;
 });

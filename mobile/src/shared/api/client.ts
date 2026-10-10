@@ -16,10 +16,11 @@
  *      endpoint for them yet, so they are sample data whatever the build points at, and they
  *      say so. ★ In a production build they do not exist at all — `SAMPLE_SCREENS` is a
  *      literal the bundler folds, the fixtures module is dropped, and the screen says it is
- *      coming soon. Sample data never reaches a user by way of a deploy.
+ *      coming soon — UNLESS the deploy sets VITE_SAMPLE_DATA=on on purpose, the one switch
+ *      that ships sample data, always behind the notice (sample-switch.ts).
  *
  * WHAT BREAKS IF THIS IS CHANGED CARELESSLY: both flags must stay tied to
- * `import.meta.env.DEV`. A runtime switch that could turn sample data on is how a screenshot
+ * `import.meta.env.DEV` or the deliberate VITE_SAMPLE_DATA build switch. A runtime switch that could turn sample data on is how a screenshot
  * of invented market caps ends up in front of somebody as if it were the market.
  */
 
@@ -47,14 +48,19 @@ export const BOARD_VIEW = 'default';
 
 const BASE = (import.meta.env?.['VITE_READ_URL'] as string | undefined) ?? '';
 const DEV = import.meta.env?.DEV === true;
+/* ★ THE PRODUCTION EXCEPTION, AND THE ONLY ONE: a build configured with VITE_SAMPLE_DATA=on
+   (sample-switch.ts; vite.config.ts fails the build if it is set beside VITE_READ_URL).
+   Kept as a literal comparison so the bundler folds it and drops the fixtures from every
+   build that does not set it. */
+const SAMPLE = import.meta.env?.VITE_SAMPLE_DATA === 'on';
 
-const USE_FIXTURES = DEV && BASE === '';
+const USE_FIXTURES = (DEV && BASE === '') || SAMPLE;
 
 /** True when the feed is dev fixtures rather than the read service. The shell must say so. */
 export const USING_FIXTURES = USE_FIXTURES;
 
 /** True when the sample-only screens may render at all. False in every production build. */
-export const SAMPLE_SCREENS = DEV;
+export const SAMPLE_SCREENS = DEV || SAMPLE;
 
 async function readFixture(path: string): Promise<unknown> {
   const { fixtureBoard, fixtureStory } = await import('./fixtures.ts');
