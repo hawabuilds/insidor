@@ -7,8 +7,12 @@
 
 .thumb {
   position: relative;
-  flex: none;
-  display: inline-block;
+  /* A fixed box that never shrinks, whatever the row around it does. The size comes in
+     inline (Thumb's `size`), and min-width/min-height pin it in browsers that would
+     otherwise squeeze a flex child below its width. */
+  display: block;
+  flex: 0 0 auto;
+  flex-shrink: 0;
 }
 
 .thumbImg,

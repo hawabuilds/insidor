@@ -31,7 +31,7 @@ export function Thumb({
   letter?: string | null;
 }) {
   return (
-    <span className={styles['thumb']} style={{ width: size, height: size }}>
+    <span className={styles['thumb']} style={{ width: size, height: size, minWidth: size, minHeight: size, flexBasis: size }}>
       {url !== null ? (
         <img className={`${styles['thumbImg']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }} src={url} alt="" loading="lazy" />
       ) : (

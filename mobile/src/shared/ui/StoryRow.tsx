@@ -1,7 +1,7 @@
 /**
  * ONE STORY AS A CARD — the feed's card and the Narratives list's card are this component.
  *
- * An 88px picture on the left with the platform badge on its corner (the feed only: a
+ * A fixed 96px picture on the left with the platform badge on its corner (the feed only: a
  * narrative spans several sites, so the Narratives list passes no platform). Beside it the
  * title, who posted it and how long ago, a purple views line and the views figure on the
  * title row, and the plain-English description under them. Across the bottom of the card,
@@ -54,30 +54,34 @@ export function StoryRow({
   return (
     <article className={styles['card']} onClick={handlers.open}>
       <div className={styles['body']}>
-        <Thumb url={item.thumbUrl} size={88} radius={14} platform={platform} platformLabel={platformLabel} />
+        <Thumb url={item.thumbUrl} size={96} radius={14} platform={platform} platformLabel={platformLabel} />
         <div className={styles['content']}>
+          {/* A grid, so nothing on the title row can overlap anything else: title, views
+              line and count on the first row; who posted it and when under the title and
+              the line, never squeezed beside the count — a handle broken mid-word on a
+              narrow phone reads as two different accounts. */}
           <div className={styles['top']}>
-            <div className={styles['head']}>
-              <a
-                className={styles['title']}
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handlers.open();
-                }}
-              >
-                {item.title}
-              </a>
-              <div className={styles['byline']}>
-                {byline}
-                <Value r={formatAge(item.firstSeenAt, now)} className={styles['age']} />
-              </div>
-            </div>
-            <Sparkline points={item.spark.points} windowMs={item.spark.windowMs} width={44} label={`Views over time for ${item.title}`} />
+            <a
+              className={styles['title']}
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handlers.open();
+              }}
+            >
+              {item.title}
+            </a>
+            <span className={styles['spark']}>
+              <Sparkline points={item.spark.points} windowMs={item.spark.windowMs} width={44} label={`Views over time for ${item.title}`} />
+            </span>
             <div className={styles['views']}>
               <Value r={views} className={styles['viewsN']} />
               <span className={styles['viewsL']}>views</span>
+            </div>
+            <div className={styles['byline']}>
+              {byline}
+              <Value r={formatAge(item.firstSeenAt, now)} className={styles['age']} />
             </div>
           </div>
           <p className={styles['summary']}>{item.summary.join(' ')}</p>
