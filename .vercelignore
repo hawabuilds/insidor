@@ -1,0 +1,18 @@
+# What a Vercel deploy uploads from this repo. The apps are static builds; nothing else is
+# needed, and some of what is here must never leave this machine.
+#
+# Env files first: a local .env.local holds database credentials, and app/.env.local or
+# mobile/.env.local would point a public build at a local read service. Build settings for a
+# deploy live in the Vercel project, never in an uploaded file.
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+
+node_modules
+**/node_modules
+**/dist
+.vercel
+**/.venv
+var
