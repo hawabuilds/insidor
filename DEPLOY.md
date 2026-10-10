@@ -21,7 +21,7 @@ DATABASE_URL_INTERNAL=postgresql://postgres:PASSWORD@db.xxxx.supabase.co:5432/po
 Then, **skipping `db:up`**:
 
 ```bash
-pnpm db:migrate     # 21 migrations
+pnpm db:migrate     # 22 migrations
 pnpm db:seed
 pnpm db:project && pnpm db:sources
 ```

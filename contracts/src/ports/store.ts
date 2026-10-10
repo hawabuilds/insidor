@@ -24,6 +24,7 @@
 
 import type { Asset, MintTime } from '../asset.ts';
 import type { Decision, StageName } from '../decision.ts';
+import type { Judgement } from '../judgement.ts';
 import type { AssetKey, AuthorKey, ChainId, ItemId, SourceId, StoryId, VenueId } from '../ids.ts';
 import type { Policy } from '../policy.ts';
 import type { SpendLedger } from './meter.ts';
@@ -303,6 +304,25 @@ export interface SourceHealthRepo {
   recordFailure(source: SourceId, at: Millis, reason: string): Promise<void>;
   /** Every source we have ever declared. The projector's one read. */
   all(): Promise<readonly SourceHealth[]>;
+}
+
+/* ── judgements ──────────────────────────────────────────────────────── */
+
+/** A judgement on record, with the size of the story when it was given. */
+export interface RecordedJudgement {
+  readonly judgement: Judgement;
+  readonly memberCount: number;
+}
+
+/**
+ * The judge's answers, kept so a story is judged once and a restart does not ask again.
+ * Append-only; the newest row per story is the one in force. Only answers are written:
+ * an unavailable, refused or dry-run call is not a judgement and has no row.
+ */
+export interface JudgementRepo {
+  record(storyId: StoryId, memberCount: number, judgement: Judgement): Promise<void>;
+  /** The newest judgement per story, for the stories that have one. */
+  latest(storyIds: readonly StoryId[]): Promise<ReadonlyMap<StoryId, RecordedJudgement>>;
 }
 
 /* ── everything a service is handed ───────────────────────────────────── */
