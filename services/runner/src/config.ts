@@ -51,6 +51,7 @@
 import { hostname } from 'node:os';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { StageName } from '@insidor/contracts';
+import { readJudgeSetup, type JudgeSetup } from '@insidor/judge-anthropic';
 import { credentialSpecs } from '@insidor/platform-registry';
 import type { CredentialEnv } from '@insidor/vendor-kit';
 
@@ -221,6 +222,13 @@ export interface RunnerConfig {
    * what activation-by-configuration means.
    */
   readonly sourceEnv: CredentialEnv;
+  /**
+   * ★ THE JUDGE, AS ONE OF FOUR STATES (see adapters/judge/anthropic/src/credentials.ts).
+   * Dormant is a supported permanent state, like a source with no key. Two states fail the
+   * boot, naming the variable: a key with no model (there is no default model), and
+   * SPEND=live with a model but no key — a live process told to judge that cannot.
+   */
+  readonly judge: JudgeSetup;
 }
 
 export class ConfigError extends Error {
@@ -382,6 +390,21 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
   const dailyBudgetUsd = r.money('DAILY_BUDGET_USD', 0.01, DEFAULT_POLICY.budget.dailyUsd);
   const spend: SpendConfig = { kind: spendMode, dailyBudgetUsd };
 
+  /* ── the judge ───────────────────────────────────────────────────────────── */
+  const judge = readJudgeSetup(env);
+  if (judge.state === 'misconfigured') {
+    problems.push(
+      `${judge.variable} ${judge.note}. Set both ANTHROPIC_API_KEY and JUDGE_MODEL to turn the ` +
+        'judge on, or neither to leave it dormant.',
+    );
+  }
+  if (judge.state === 'priced' && spendMode === 'live') {
+    problems.push(
+      'SPEND=live with JUDGE_MODEL set and no ANTHROPIC_API_KEY: the judge cannot be called. ' +
+        'Set the key, or unset JUDGE_MODEL to leave the judge dormant.',
+    );
+  }
+
   if (problems.length > 0) throw new ConfigError(problems);
 
   return {
@@ -394,5 +417,6 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     discovery,
     spend,
     sourceEnv: platformEnv(env),
+    judge,
   };
 }

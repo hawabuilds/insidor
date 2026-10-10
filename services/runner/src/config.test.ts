@@ -261,3 +261,18 @@ test('★ .env.example carries no key, so a copy of it cannot spend even set to 
     assert.equal(env[key] ?? '', '', `${key} ships with a value in .env.example`);
   }
 });
+
+/* ── the judge ────────────────────────────────────────────────────────── */
+
+test('★ the judge is dormant when neither value is set, and that is not a fault', () => {
+  assert.equal(loadRunnerConfig(complete).judge.state, 'dormant');
+});
+
+test('★ a judge key with no model fails the boot: there is no default model', () => {
+  assert.throws(() => loadRunnerConfig({ ...complete, ANTHROPIC_API_KEY: 'k' }), /JUDGE_MODEL/);
+});
+
+test('★ a dry run can price the judge with only a model, and a live run cannot run on one', () => {
+  assert.equal(loadRunnerConfig({ ...complete, SPEND: 'dry', JUDGE_MODEL: 'claude-haiku-4-5' }).judge.state, 'priced');
+  assert.throws(() => loadRunnerConfig({ ...complete, SPEND: 'live', JUDGE_MODEL: 'claude-haiku-4-5' }), /ANTHROPIC_API_KEY/);
+});

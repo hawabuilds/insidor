@@ -13,6 +13,7 @@
   "dependencies": {
     "@insidor/contracts": "workspace:*",
     "@insidor/core": "workspace:*",
+    "@insidor/judge-anthropic": "workspace:*",
     "@insidor/meter": "workspace:*",
     "@insidor/platform-registry": "workspace:*",
     "@insidor/store": "workspace:*",
