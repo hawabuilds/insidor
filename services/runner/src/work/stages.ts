@@ -666,6 +666,7 @@ function qualifyWork(repos: StageRepos): StageWork<QualifyInput> {
            an empty judgement would merge the two and make every later recall number
            over this stage a lie. */
         judgement: null,
+        unjudged: 'not_asked',
         /* No call, no cost. A judge cost of zero here is a fact, not a default. */
         judgeCostUsd: 0,
       }));

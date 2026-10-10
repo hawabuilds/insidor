@@ -38,6 +38,23 @@ import type { Millis } from './vocabulary.ts';
 export const JUDGE_EVIDENCE = ['text', 'videoFrame'] as const;
 export type JudgeEvidence = (typeof JUDGE_EVIDENCE)[number];
 
+/**
+ * WHY A STORY REACHED QUALIFY WITHOUT A JUDGEMENT, as a closed list.
+ *
+ * Four different facts that all look like "no judgement", and each gets its own abstain
+ * reason so the log can tell them apart a week later — whether the cap was too low, the
+ * vendor was down, or nobody had switched spending on:
+ *
+ *   not_asked    the judge was never called for this story (nothing wired, or not yet)
+ *   unavailable  it was called and gave nothing usable: timeout, error, bad reply, no frame
+ *   budget       the call was not made because the daily cap or the vendor line was reached
+ *   dry_run      SPEND=dry: the call was priced and not sent
+ *
+ * None of them is a "no". They all abstain.
+ */
+export const JUDGE_ABSENCES = ['not_asked', 'unavailable', 'budget', 'dry_run'] as const;
+export type JudgeAbsence = (typeof JUDGE_ABSENCES)[number];
+
 export interface Judgement {
   /** Opaque, versioned: 'judge:<name>@<version>'. Written into Decision.decider. */
   readonly judgeId: string;

@@ -65,7 +65,7 @@ export const REASON_CODES = {
 
   /* ── QUALIFY — is there a nameable, coinable thing here? ─────────────── */
   Q0_coinable: 'nameable, specific, and judged coinable',
-  Q1_unjudged: 'the judge was never called or failed; we abstain rather than guess',
+  Q1_unjudged: 'the judge was never asked about this story; we abstain rather than guess',
   Q2_single_author: 'fewer distinct authors than the floor',
   Q3_too_thin: 'fewer members than the floor',
   Q4_unnameable: 'no name was proposed',
@@ -75,6 +75,9 @@ export const REASON_CODES = {
   Q8_score_below_bar: 'scored under the qualification bar',
   Q9_judged_not_coinable: 'our gates passed; the judge said there is nothing to name',
   Q10_judge_unsure: 'judged coinable, but less sure than the bar for what the judge looked at',
+  Q11_judge_unavailable: 'the judge was asked and gave nothing usable; we abstain rather than guess',
+  Q12_judge_budget_paused: 'the judge call was not made because the spending cap was reached',
+  Q13_judge_dry_run: 'SPEND=dry: the judge call was priced and not sent',
 
   /* ── RESOLVE gates, in the order they cost money ─────────────────────── */
   G1_mint_time_unknown: 'the asset’s origin time is not known to a usable confidence',

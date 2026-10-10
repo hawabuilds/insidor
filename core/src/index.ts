@@ -53,7 +53,7 @@ export { admit } from './admit/stage.ts';
 export { track } from './track/stage.ts';
 export { detect } from './detect/stage.ts';
 export { group } from './group/stage.ts';
-export { qualify } from './qualify/stage.ts';
+export { qualify, worthJudging } from './qualify/stage.ts';
 export { resolve } from './resolve/stage.ts';
 export { rank } from './rank/stage.ts';
 
