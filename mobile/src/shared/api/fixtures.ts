@@ -22,8 +22,10 @@
  *
  * The stories follow the designs. The names, handles and numbers are invented; the
  * addresses start with SAMPLE so none of them can be mistaken for, or pasted as, a real
- * coin. Images are absent on purpose: a placeholder tile is the honest render of a picture
- * we do not have, and borrowing a real photo would put somebody else's post in a fixture.
+ * coin. Each story's picture is a free-licence (CC0 or public domain) stock photo of its
+ * subject, served from public/sample/ and credited in public/sample/CREDITS.md — never a
+ * screenshot of a real post and never a recognisable person, so nothing here borrows
+ * somebody else's post. Coins have no image; their tile shows the ticker's first letter.
  */
 
 const MIN = 60_000;
@@ -141,6 +143,8 @@ const GERALD = coin({ id: 'c_gerald', ticker: 'GERALD', name: 'Porch Frog Gerald
 interface StorySpec {
   readonly id: string;
   readonly title: string;
+  /** A file in public/sample/, credited in public/sample/CREDITS.md. */
+  readonly image: string;
   readonly summary: readonly [string, string];
   readonly reach: unknown;
   readonly reachDelta: unknown;
@@ -156,7 +160,7 @@ function story(s: StorySpec): Record<string, unknown> {
     id: s.id,
     title: s.title,
     summary: s.summary,
-    thumbUrl: null,
+    thumbUrl: `/sample/${s.image}`,
     reach: s.reach,
     reachDelta24h: s.reachDelta,
     spark: s.spark,
@@ -187,6 +191,7 @@ function board(s: Record<string, unknown>): Record<string, unknown> {
 const FEED_STORIES: readonly Record<string, unknown>[] = [
   story({
     id: 'st_goose',
+    image: 'goose.jpg',
     title: 'Goose Steals Ice Cream',
     summary: ["A goose snatched a kid's ice cream cone at a park", 'and ran off with it while the whole family chased it.'],
     reach: m(41_200), reachDelta: m(41_200), spark: curve(41_200, 12 * MIN, 2.4), momentum: 'rising',
@@ -195,6 +200,7 @@ const FEED_STORIES: readonly Record<string, unknown>[] = [
   }),
   story({
     id: 'st_reaper',
+    image: 'reaper.jpg',
     title: 'Grim Reaper On Hospital Roof',
     summary: ['A man dressed as the Grim Reaper climbed onto a hospital roof and scared patients.', "He'd already been caught stealing kitty litter months earlier."],
     reach: m(74_000), reachDelta: m(74_000), spark: curve(74_000, 20 * MIN, 2.2), momentum: 'rising',
@@ -203,6 +209,7 @@ const FEED_STORIES: readonly Record<string, unknown>[] = [
   }),
   story({
     id: 'st_dogbus',
+    image: 'dog-bus.jpg',
     title: 'Dog Rides The Bus Alone',
     summary: ['A dog gets on the same bus every morning by itself,', 'rides two stops to the park, and gets off.'],
     reach: m(58_000), reachDelta: m(58_000), spark: curve(58_000, 24 * MIN, 2), momentum: 'rising',
@@ -211,6 +218,7 @@ const FEED_STORIES: readonly Record<string, unknown>[] = [
   }),
   story({
     id: 'st_librarycat',
+    image: 'library-cat.jpg',
     title: 'Library Cat Gets A Name Tag',
     summary: ['A town library gave its resident cat a name tag and a job title,', 'and people keep visiting just to see it.'],
     reach: m(36_000), reachDelta: m(36_000), spark: curve(36_000, 30 * MIN, 1.6), momentum: 'steady',
@@ -219,6 +227,7 @@ const FEED_STORIES: readonly Record<string, unknown>[] = [
   }),
   story({
     id: 'st_ferry',
+    image: 'ferry.jpg',
     title: 'Harbor Last Horn',
     summary: ['A ferry captain blew his horn one last time before retiring,', 'and every boat in the harbour blew theirs back.'],
     reach: m(2_440_000), reachDelta: m(1_100_000), spark: curve(2_440_000, 4 * HOUR, 0.6), momentum: 'steady',
@@ -227,6 +236,7 @@ const FEED_STORIES: readonly Record<string, unknown>[] = [
   }),
   story({
     id: 'st_jimothy',
+    image: 'raccoon.jpg',
     title: 'Jimothy Heads To DC',
     summary: ['The White House posted a raccoon in a red cap sprinting down a path,', 'captioned "Jimothy on the way to Washington".'],
     reach: m(681_000), reachDelta: m(512_000), spark: curve(681_000, 6 * HOUR, 1.4), momentum: 'rising',
@@ -235,6 +245,7 @@ const FEED_STORIES: readonly Record<string, unknown>[] = [
   }),
   story({
     id: 'st_seal',
+    image: 'seal.jpg',
     title: 'Seal Keeps The Sunglasses',
     summary: ['A seal grabbed the sunglasses a tourist dropped on the dock', 'and has been wearing them on the rocks ever since.'],
     reach: m(1_200_000), reachDelta: m(900_000), spark: curve(1_200_000, 3 * HOUR, 1.3), momentum: 'rising',
@@ -243,6 +254,7 @@ const FEED_STORIES: readonly Record<string, unknown>[] = [
   }),
   story({
     id: 'st_frog',
+    image: 'frog.jpg',
     title: 'Porch Frog Gerald',
     summary: ['The same frog turns up on one porch every time it rains.', 'The owner named him Gerald and posts every visit.'],
     reach: m(740_000), reachDelta: m(300_000), spark: curve(740_000, 5 * HOUR, 1), momentum: 'cooling',
@@ -253,6 +265,7 @@ const FEED_STORIES: readonly Record<string, unknown>[] = [
      a dash with a reason — never as 0 views, never as "brand new". */
   story({
     id: 'st_troll',
+    image: 'troll.jpg',
     title: 'Bridge Troll Statue Gets A Hat',
     summary: ['Someone has been knitting seasonal hats for the troll statue under the bridge,', 'and nobody knows who.'],
     reach: noValue('not_reported'), reachDelta: noValue('not_reported'),
@@ -273,6 +286,7 @@ function posts(spec: readonly (readonly [string, string])[], newestAgo: number, 
 const NARRATIVES: readonly Record<string, unknown>[] = [
   story({
     id: 'nr_jimothy',
+    image: 'raccoon.jpg',
     title: 'Jimothy',
     summary: ['The White House posted a raccoon in a red cap sprinting down a path, captioned "Jimothy on the way to Washington".', 'People are reposting it with their own edits.'],
     reach: m(3_300_000), reachDelta: m(2_100_000), spark: curve(3_300_000, 6 * HOUR, 1.6), momentum: 'rising',
@@ -285,6 +299,7 @@ const NARRATIVES: readonly Record<string, unknown>[] = [
   }),
   story({
     id: 'nr_ferry',
+    image: 'ferry.jpg',
     title: 'Ferry Horn',
     summary: ["A retiring ferry captain's last horn, answered by every boat in the harbour.", 'People are posting it from different angles.'],
     reach: m(4_100_000), reachDelta: m(1_900_000), spark: curve(4_100_000, 4 * HOUR, 0.6), momentum: 'steady',
@@ -298,6 +313,7 @@ const NARRATIVES: readonly Record<string, unknown>[] = [
   }),
   story({
     id: 'nr_reaper',
+    image: 'reaper.jpg',
     title: 'Grim Reaper',
     summary: ['A man in a Grim Reaper costume on a hospital roof,', 'the same guy caught stealing kitty litter months ago.'],
     reach: m(1_100_000), reachDelta: m(1_100_000), spark: curve(1_100_000, 2 * HOUR, 1.8), momentum: 'rising',
@@ -306,6 +322,7 @@ const NARRATIVES: readonly Record<string, unknown>[] = [
   }),
   story({
     id: 'nr_gerald',
+    image: 'frog.jpg',
     title: 'Gerald',
     summary: ['A frog shows up on the same porch every rainstorm.', 'The owner named him Gerald and posts every visit.'],
     reach: m(920_000), reachDelta: m(240_000), spark: curve(920_000, 5 * HOUR, 0.9), momentum: 'cooling',
