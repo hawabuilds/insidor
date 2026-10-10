@@ -39,7 +39,7 @@
 .inline {
   display: inline;
   vertical-align: -2px;
-  color: var(--blue-300);
+  color: var(--brand-300);
 }
 
 .close {

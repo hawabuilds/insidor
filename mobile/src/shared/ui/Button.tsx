@@ -1,7 +1,7 @@
 /**
  * The phone app's buttons. Four looks, and which one is a statement:
  *
- *   primary  blue   — every action that is not a trade
+ *   primary  purple — every action that is not a trade
  *   buy      green  — buying, and only buying (tokens.css, rule 1)
  *   sell     red    — selling, as a wash with red text, never a red fill
  *   quiet    grey   — reading: "View coins", "Make a call"

@@ -48,7 +48,7 @@
 }
 
 .inputs input:focus {
-  box-shadow: inset 0 0 0 1px var(--blue);
+  box-shadow: inset 0 0 0 1px var(--brand);
 }
 
 .tickerInput {
@@ -103,7 +103,7 @@
 }
 
 .presetOn {
-  background: var(--blue);
+  background: var(--brand);
   color: #fff;
 }
 

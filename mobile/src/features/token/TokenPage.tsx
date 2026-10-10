@@ -122,7 +122,7 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
         <span className={styles['chip']}>SOL</span>
         <span className={`${styles['chip']} ${styles['chipBold']}`}>{coin.venueLabel}</span>
         {labels.map((l) => (
-          <span key={l} className={`${styles['chip']} ${styles['chipBlue']}`}>{l}</span>
+          <span key={l} className={`${styles['chip']} ${styles['chipBrand']}`}>{l}</span>
         ))}
       </div>
       <button type="button" className={styles['address']} onClick={() => void copy()} aria-label={`Copy address ${coin.address}`}>

@@ -33,8 +33,8 @@
 }
 
 .starred {
-  color: var(--blue-300);
-  background: var(--blue-wash);
+  color: var(--brand-300);
+  background: var(--brand-wash);
 }
 
 .head {
@@ -162,8 +162,8 @@
 }
 
 .label-first {
-  background: var(--blue-wash);
-  color: var(--blue-300);
+  background: var(--brand-wash);
+  color: var(--brand-300);
 }
 
 .mcap {
@@ -187,7 +187,7 @@
 
 .more {
   margin: 6px var(--gutter) 0;
-  color: var(--blue-400);
+  color: var(--brand-400);
   font-size: 14px;
   font-weight: 700;
 }

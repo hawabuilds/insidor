@@ -1,7 +1,7 @@
 /**
  * THE NARRATIVE PAGE — one story, on one phone screen.
  *
- * Header facts (picture, name, posts and sites, age, total views with the blue views line, the
+ * Header facts (picture, name, posts and sites, age, total views with the purple views line, the
  * plain-English summary), then Coins / Posts / Calls / Stats, then a bottom bar. Everything on
  * it is a published field of `Story`; nothing is computed here except the BIGGEST and FIRST
  * labels, which `coin-facts.ts` claims only when they are provably true.

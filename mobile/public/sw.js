@@ -15,7 +15,7 @@
  * Bump CACHE when the precached files change; the activate step deletes every other cache.
  */
 
-const CACHE = 'insidor-shell-v1';
+const CACHE = 'insidor-shell-v2';
 const PRECACHE = [
   '/manifest.webmanifest',
   '/icons/icon-192.png',

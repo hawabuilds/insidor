@@ -1,9 +1,12 @@
 /**
- * ONE STORY AS A FLAT ROW — the feed's row and the Narratives list's row are this component.
+ * ONE STORY AS A CARD — the feed's card and the Narratives list's card are this component.
  *
- * Picture, title, who posted it and how long ago, a blue views line, the views figure, one
- * line of plain English, then the coin status on the left and at most one button on the
- * right. Every figure goes through `Value`, so an absence is a dash with its reason.
+ * An 88px picture on the left with the platform badge on its corner (the feed only: a
+ * narrative spans several sites, so the Narratives list passes no platform). Beside it the
+ * title, who posted it and how long ago, a purple views line and the views figure on the
+ * title row, and the plain-English description under them. Across the bottom of the card,
+ * the coin status on the left and at most one button on the right. Every figure goes
+ * through `Value`, so an absence is a dash with its reason.
  *
  * The button is decided by `coinStatus` and nothing here can add one: an unsure match renders
  * its sentence and no button at all. Buy and Create do not trade or mint — they reach the
@@ -49,34 +52,37 @@ export function StoryRow({
   const views = formatCount(item.reach);
 
   return (
-    <article className={styles['row']} onClick={handlers.open}>
-      <div className={styles['top']}>
-        <Thumb url={item.thumbUrl} platform={platform} platformLabel={platformLabel} />
-        <div className={styles['head']}>
-          <a
-            className={styles['title']}
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handlers.open();
-            }}
-          >
-            {item.title}
-          </a>
-          <div className={styles['byline']}>
-            {byline}
-            <Value r={formatAge(item.firstSeenAt, now)} className={styles['age']} />
+    <article className={styles['card']} onClick={handlers.open}>
+      <div className={styles['body']}>
+        <Thumb url={item.thumbUrl} size={88} radius={14} platform={platform} platformLabel={platformLabel} />
+        <div className={styles['content']}>
+          <div className={styles['top']}>
+            <div className={styles['head']}>
+              <a
+                className={styles['title']}
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handlers.open();
+                }}
+              >
+                {item.title}
+              </a>
+              <div className={styles['byline']}>
+                {byline}
+                <Value r={formatAge(item.firstSeenAt, now)} className={styles['age']} />
+              </div>
+            </div>
+            <Sparkline points={item.spark.points} windowMs={item.spark.windowMs} width={44} label={`Views over time for ${item.title}`} />
+            <div className={styles['views']}>
+              <Value r={views} className={styles['viewsN']} />
+              <span className={styles['viewsL']}>views</span>
+            </div>
           </div>
-        </div>
-        <Sparkline points={item.spark.points} windowMs={item.spark.windowMs} label={`Views over time for ${item.title}`} />
-        <div className={styles['views']}>
-          <Value r={views} className={styles['viewsN']} />
-          <span className={styles['viewsL']}>views</span>
+          <p className={styles['summary']}>{item.summary.join(' ')}</p>
         </div>
       </div>
-
-      <p className={styles['summary']}>{item.summary.join(' ')}</p>
 
       <div className={styles['foot']}>
         <span className={styles['status']}>{status.line}</span>
