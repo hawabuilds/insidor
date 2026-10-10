@@ -11,7 +11,7 @@
      inline (Thumb's `size`), and min-width/min-height pin it in browsers that would
      otherwise squeeze a flex child below its width. */
   display: block;
-  flex: 0 0 auto;
+  flex: none;
   flex-shrink: 0;
 }
 
