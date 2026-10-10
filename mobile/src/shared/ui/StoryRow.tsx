@@ -1,0 +1,104 @@
+/**
+ * ONE STORY AS A FLAT ROW — the feed's row and the Narratives list's row are this component.
+ *
+ * Picture, title, who posted it and how long ago, a blue views line, the views figure, one
+ * line of plain English, then the coin status on the left and at most one button on the
+ * right. Every figure goes through `Value`, so an absence is a dash with its reason.
+ *
+ * The button is decided by `coinStatus` and nothing here can add one: an unsure match renders
+ * its sentence and no button at all. Buy and Create do not trade or mint — they reach the
+ * Coming-soon toast through the callbacks the screen passes in.
+ */
+
+import type { ReactNode } from 'react';
+import type { Story, BoardRow } from '../api/index.ts';
+import { coinStatus, type CoinAction } from '../coin-status.ts';
+import { formatAge } from '../format/duration.ts';
+import { formatCount } from '../format/number.ts';
+import type { Platform } from '../platform.ts';
+import { Button } from './Button.tsx';
+import { Sparkline } from './Sparkline.tsx';
+import { Thumb } from './Thumb.tsx';
+import { Value } from './Value.tsx';
+import styles from './row.module.css';
+
+export interface RowHandlers {
+  readonly open: () => void;
+  readonly viewCoins: () => void;
+  readonly create: () => void;
+  readonly buy: (ticker: string) => void;
+}
+
+export function StoryRow({
+  item,
+  now,
+  byline,
+  platform,
+  platformLabel,
+  handlers,
+}: {
+  item: BoardRow | Story;
+  now: number;
+  /** Under the title, before the age: a handle on the feed, "9 posts on X, TikTok" on Narratives. */
+  byline: ReactNode;
+  platform: Platform | null;
+  platformLabel: string;
+  handlers: RowHandlers;
+}) {
+  const status = coinStatus(item.coins);
+  const views = formatCount(item.reach);
+
+  return (
+    <article className={styles['row']} onClick={handlers.open}>
+      <div className={styles['top']}>
+        <Thumb url={item.thumbUrl} platform={platform} platformLabel={platformLabel} />
+        <div className={styles['head']}>
+          <a
+            className={styles['title']}
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handlers.open();
+            }}
+          >
+            {item.title}
+          </a>
+          <div className={styles['byline']}>
+            {byline}
+            <Value r={formatAge(item.firstSeenAt, now)} className={styles['age']} />
+          </div>
+        </div>
+        <Sparkline points={item.spark.points} windowMs={item.spark.windowMs} label={`Views over time for ${item.title}`} />
+        <div className={styles['views']}>
+          <Value r={views} className={styles['viewsN']} />
+          <span className={styles['viewsL']}>views</span>
+        </div>
+      </div>
+
+      <p className={styles['summary']}>{item.summary.join(' ')}</p>
+
+      <div className={styles['foot']}>
+        <span className={styles['status']}>{status.line}</span>
+        <ActionButton action={status.action} handlers={handlers} />
+      </div>
+    </article>
+  );
+}
+
+/** At most one button, and never one the coin status did not ask for. */
+function ActionButton({ action, handlers }: { action: CoinAction | null; handlers: RowHandlers }) {
+  if (action === null) return null;
+  const tap = (fn: () => void) => (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    fn();
+  };
+  switch (action.kind) {
+    case 'create':
+      return <Button look="primary" onClick={tap(handlers.create)}>Create coin</Button>;
+    case 'buy':
+      return <Button look="buy" onClick={tap(() => handlers.buy(action.coin.ticker))}>Buy ${action.coin.ticker}</Button>;
+    case 'view':
+      return <Button look="quiet" onClick={tap(handlers.viewCoins)}>View coins</Button>;
+  }
+}

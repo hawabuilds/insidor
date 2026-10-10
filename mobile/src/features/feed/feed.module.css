@@ -1,0 +1,181 @@
+.screen {
+  padding-bottom: var(--tabbar-space);
+}
+
+.header {
+  height: 64px;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 var(--gutter) 6px;
+}
+
+.wordmark {
+  font-family: var(--font-wordmark);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 0.2em;
+}
+
+/* ── the filter button and site pills ──────────────────────────────── */
+
+.filterRow {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  padding: 12px 0 8px var(--gutter);
+}
+
+.filterButton {
+  flex: none;
+  width: 40px;
+  height: 36px;
+  border-radius: var(--r-pill);
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  color: var(--text-2);
+}
+
+.filterOn {
+  background: var(--blue-wash);
+  color: var(--blue-200);
+}
+
+.quick {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-right: var(--gutter);
+  scrollbar-width: none;
+}
+
+.quick::-webkit-scrollbar {
+  display: none;
+}
+
+.quickPill {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--card);
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.quickOn {
+  background: var(--blue-wash);
+  color: var(--text-1);
+  box-shadow: inset 0 0 0 1px rgb(47 123 255 / 35%);
+}
+
+/* ── the filter panel ──────────────────────────────────────────────── */
+
+.panelScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: var(--scrim);
+}
+
+.panel {
+  position: absolute;
+  z-index: 31;
+  top: calc(100% + 2px);
+  left: var(--gutter);
+  right: var(--gutter);
+  max-width: 310px;
+  padding: 18px 16px 16px;
+  border-radius: var(--r-card);
+  background: var(--popup);
+  box-shadow: var(--shadow-panel);
+}
+
+.panelHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.panelHead h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.reset {
+  color: var(--blue-400);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.panel h3 {
+  margin: 14px 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.pill {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card);
+  color: var(--text-2);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.pillOn {
+  background: var(--blue-wash);
+  color: var(--blue-200);
+  box-shadow: inset 0 0 0 1px rgb(47 123 255 / 35%);
+}
+
+.show {
+  width: 100%;
+  margin-top: 18px;
+}
+
+/* ── lists and their empty states ──────────────────────────────────── */
+
+.group {
+  margin: 18px var(--gutter) 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.empty {
+  margin: 28px var(--gutter);
+  color: var(--text-3);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.empty p {
+  margin: 0 0 12px;
+}
+
+.hidden {
+  margin: 16px var(--gutter);
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.45;
+}

@@ -11,7 +11,7 @@
 import { pendingLabel, type Rendered } from '../format/rendered.ts';
 import styles from './ui.module.css';
 
-export function Value({ r, className }: { r: Rendered; className?: string }) {
+export function Value({ r, className }: { r: Rendered; className?: string | undefined }) {
   if (r.kind === 'value') return <span className={className}>{r.text}</span>;
   const why = pendingLabel(r.reason);
   return (

@@ -9,14 +9,18 @@
  * reached from, and light that tab, so the bar always says where "back" leads.
  */
 
+import { Feed } from './features/feed/Feed.tsx';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { tabOf, type Route } from './shared/route.ts';
 import { useRoute } from './shared/useRoute.ts';
-import { ComingSoonProvider } from './shared/ui/ComingSoon.tsx';
+import { ComingSoonProvider, useComingSoon } from './shared/ui/ComingSoon.tsx';
 import { TabBar } from './shared/ui/TabBar.tsx';
 
 function Screen({ route }: { route: Route }) {
+  const soon = useComingSoon();
   switch (route.screen) {
+    case 'feed':
+      return <Feed onCreate={() => soon('Creating a coin')} />;
     case 'search':
     case 'calls':
     case 'wallet':

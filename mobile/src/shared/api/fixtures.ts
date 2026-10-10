@@ -36,7 +36,9 @@ const T0 = Date.now();
 
 const m = (v: number): unknown => ({ v });
 const noValue = (why: string): unknown => ({ v: null, why });
-const ago = (ms: number): unknown => ({ at: T0 - ms });
+/* Half a minute further back than asked, so an age written as "2m" reads "2m" on first paint
+   rather than flooring to "1m" in the milliseconds between this module loading and rendering. */
+const ago = (ms: number): unknown => ({ at: T0 - ms - 30_000 });
 const noTime = (why: string): unknown => ({ at: null, why });
 
 /**
