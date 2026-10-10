@@ -1,0 +1,93 @@
+{
+  "about": "The news-versus-subject contrasts the prompts teach. Each case is a story the judge could be asked about, the answer it should give, and the prompt lines that teach that answer. `answer` is HAND-WRITTEN in the judge's output format, NOT a recording of a model: the client has never made a call. When it can, replace each `answer` with a recorded one and set `answerSource` to `recorded`. See docs/meme-score-comparison.md, follow-ups.",
+  "cases": [
+    {
+      "id": "biden-news", "side": "news", "pair": "biden",
+      "texts": ["Biden tapes about classified documents released", "new details in the Biden classified documents tapes", "what the Biden tapes mean for the documents case"],
+      "expect": { "coinable": false },
+      "promptMustContain": ["Biden tapes on classified documents", "a news event"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": false, "proposedName": null, "confidence": 0.85 }
+    },
+    {
+      "id": "biden-subject", "side": "subject", "pair": "biden",
+      "texts": ["biden as the guy who forgot where he parked", "every biden edit today is the same joke", "biden walking into the wrong room again lmao"],
+      "expect": { "coinable": true },
+      "promptMustContain": ["memed AS a character"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": true, "proposedName": "biden", "confidence": 0.8 }
+    },
+    {
+      "id": "messi-news", "side": "news", "pair": "messi",
+      "texts": ["Messi's team lost the final 2-1", "heartbreak for Messi as his side lose the final", "full time: Messi's team beaten in the final"],
+      "expect": { "coinable": false },
+      "promptMustContain": ["Messi's team lost the final", "a sports result"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": false, "proposedName": null, "confidence": 0.85 }
+    },
+    {
+      "id": "messi-subject", "side": "subject", "pair": "messi",
+      "texts": ["messi staring at the trophy is my new reaction pic", "messi stare edit #4", "me looking at my bank account (messi stare)"],
+      "expect": { "coinable": true },
+      "promptMustContain": ["reposted and remixed as a meme"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": true, "proposedName": "messi", "confidence": 0.8 }
+    },
+    {
+      "id": "therapy-argument", "side": "news",
+      "texts": ["Therapy industry criticised as ineffective", "honestly the therapy industry criticism is fair", "therapy industry is ineffective? hard disagree"],
+      "expect": { "coinable": false },
+      "promptMustContain": ["Therapy industry criticised as ineffective", "an argument"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": false, "proposedName": null, "confidence": 0.9 }
+    },
+    {
+      "id": "kpop-argument", "side": "news",
+      "texts": ["K-pop industry faces criticism over schedules", "the k-pop industry criticism is overdue", "K-pop industry faces backlash, idols speak out"],
+      "expect": { "coinable": false },
+      "promptMustContain": ["K-pop industry faces criticism"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": false, "proposedName": null, "confidence": 0.85 }
+    },
+    {
+      "id": "apple-product-news", "side": "news",
+      "texts": ["Apple and LG leak new HomeKit features", "leak: HomeKit features coming from Apple and LG", "Apple LG HomeKit leak, here is everything"],
+      "expect": { "coinable": false },
+      "promptMustContain": ["Apple and LG leak new HomeKit features", "product news", "even though Apple is a specific name"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": false, "proposedName": null, "confidence": 0.85 }
+    },
+    {
+      "id": "stray-announcement", "side": "news", "pair": "stray",
+      "texts": ["Stray Kids unveil single, out Friday", "BREAKING: Stray Kids unveil new single", "Stray Kids announce single release date"],
+      "expect": { "coinable": false },
+      "promptMustContain": ["Stray Kids unveil single", "a press release", "not passing on a"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": false, "proposedName": null, "confidence": 0.75 }
+    },
+    {
+      "id": "stray-subject", "side": "subject", "pair": "stray",
+      "texts": ["felix doing the stray kids wave again i cannot", "stray kids wave edit compilation", "everyone doing the stray kids wave on the tube"],
+      "expect": { "coinable": true },
+      "promptMustContain": ["fans reposting a Stray Kids member's moment", "(STRAY)"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": true, "proposedName": "STRAY", "confidence": 0.75 }
+    },
+    {
+      "id": "fan-idol-subject", "side": "subject",
+      "texts": ["jungkook's face when the mic cut out", "jungkook mic face edit", "me when my alarm goes off (jungkook mic face)"],
+      "expect": { "coinable": true },
+      "promptMustContain": ["(JUNGKOOK, STRAY, RM)", "IS a subject when the posts treat them"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": true, "proposedName": "jungkook", "confidence": 0.8 }
+    },
+    {
+      "id": "unnameable", "side": "news",
+      "texts": ["what a week for the markets", "markets had a week", "this week in markets, thread"],
+      "expect": { "coinable": false },
+      "promptMustContain": ["one word, or a", "few words run together like CHILLGUY"],
+      "answerSource": "hand-written",
+      "answer": { "coinable": false, "proposedName": null, "confidence": 0.9 }
+    }
+  ]
+}
