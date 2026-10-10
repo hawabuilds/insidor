@@ -61,6 +61,34 @@ const BANNED = {
 const KIND_OF = new Map();
 for (const [kind, words] of Object.entries(BANNED)) for (const w of words) KIND_OF.set(w, kind);
 
+/**
+ * ★ ONE BANNED WORD THAT IS ALSO THE PRODUCT'S NAME FOR SOMETHING, AND WHERE IT MAY APPEAR.
+ *
+ * "Narratives" is what the user sees: a tab, a list heading, a label over a page. It is the
+ * product's own word for a group of viral posts about one thing, chosen by the owner, and it
+ * is a fact about the world in the sense the one product rule means — the posts are about one
+ * thing whether or not we exist. It is NOT the pipeline's grouping stage, and no score, stage
+ * name or join decision travels with it.
+ *
+ * It was banned because the pipeline used the same word internally, and the desktop shell
+ * renamed its nav item to "Stories" to satisfy this check (see the header of app/src/App.tsx).
+ * The owner has since decided the user-facing name is "Narratives". So the word is allowed in
+ * the browser packages, and ONLY this word: every other entry in BANNED stays banned.
+ *
+ * What did not move: `narrative` is still in FORBIDDEN_KEYS in both packages' wire/fields.ts,
+ * so a payload KEY by that name is still a leak and still throws at the decoder. The
+ * allowance is for words a person reads, not for fields the server sends.
+ *
+ * Scoped by directory rather than global, so a third package added to SCANNED does not
+ * inherit it without somebody deciding it should.
+ */
+const SCOPED_ALLOWANCES = new Map([
+  ['narrative', ['app/src/', 'mobile/src/']],
+]);
+
+const allowedHere = (form, file) =>
+  SCOPED_ALLOWANCES.get(form)?.some((dir) => file.startsWith(dir)) ?? false;
+
 const WHY = {
   'internal machinery':
     'the client must have nothing to threshold. A judgement is projected into a closed enum once, server-side, and never re-derived here.',
@@ -133,7 +161,7 @@ for (const file of SCANNED.flatMap((dir) => [...walk(dir, EXTS)])) {
     const { line, col } = locate(raw, offset);
     for (const form of forms(word)) {
       if (!KIND_OF.has(form)) continue;
-      if (exemptLines.get(line)?.has(form) || fileExempt.has(form)) continue;
+      if (exemptLines.get(line)?.has(form) || fileExempt.has(form) || allowedHere(form, file)) continue;
       report.add({
         file, line, col, width: word.length,
         message: `banned word "${form}" in \`${word}\` — ${KIND_OF.get(form)}`,

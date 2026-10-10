@@ -64,7 +64,7 @@ each fails CI:
 | `pnpm check:vocabulary` | A platform, chain or vendor word appearing in `contracts/` or `core/`. This is what keeps adding a platform a one-folder change instead of a rewrite. |
 | `pnpm check:purity` | `Date.now`, `Math.random`, `fetch` or `await` inside `core/`. Purity is what makes it possible to replay a past decision under a new rule and see what would have changed. |
 | `pnpm check:policy` | A bare number in `core/` outside `policy.ts`. Every threshold lives in one file, so tuning is a diff rather than an archaeology exercise. |
-| `pnpm check:app-vocabulary` | Our internal words — `narrative`, `cluster`, `candidate` — reaching the app. The app cannot *name* a score, which is the first half of "the system's reasoning never goes on screen". |
+| `pnpm check:app-vocabulary` | Our internal words — `cluster`, `candidate`, `score` — reaching `app/` or `mobile/`. (`narrative` is allowed in those two, as the product's name for a group of posts; it is still banned as a payload key.) The app cannot *name* a score, which is the first half of "the system's reasoning never goes on screen". |
 | `pnpm check:python` | Python drifting outside `ml/train/`. Python trains and never serves; a `.py` on the request path is a runtime we would then have to deploy. |
 | `pnpm check:boundaries` | `core` importing an adapter, or the app importing `core` — plus a probe that writes a real violation and fails if the checker did not catch it. |
 

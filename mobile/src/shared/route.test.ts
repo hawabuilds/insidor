@@ -5,7 +5,7 @@ import { hrefFor, parseRoute, tabOf, type Route } from './route.ts';
 
 const EVERY: readonly Route[] = [
   { screen: 'feed' },
-  { screen: 'stories' },
+  { screen: 'narratives' },
   { screen: 'search' },
   { screen: 'calls' },
   { screen: 'wallet' },
@@ -34,5 +34,5 @@ test('anything unreadable lands on the feed rather than an error screen', () => 
 
 test('a story lights the tab of the list it came from', () => {
   assert.equal(tabOf({ screen: 'story', storyId: 'x', sample: false }), 'feed');
-  assert.equal(tabOf({ screen: 'coin', storyId: 'x', coinId: 'y', sample: true }), 'stories');
+  assert.equal(tabOf({ screen: 'coin', storyId: 'x', coinId: 'y', sample: true }), 'narratives');
 });

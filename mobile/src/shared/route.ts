@@ -18,11 +18,11 @@
  * or the reverse, is a link that lands somewhere else.
  */
 
-export type Tab = 'feed' | 'stories' | 'search' | 'calls' | 'wallet';
+export type Tab = 'feed' | 'narratives' | 'search' | 'calls' | 'wallet';
 
 export type Route =
   | { readonly screen: 'feed' }
-  | { readonly screen: 'stories' }
+  | { readonly screen: 'narratives' }
   | { readonly screen: 'story'; readonly storyId: string; readonly sample: boolean }
   | { readonly screen: 'coin'; readonly storyId: string; readonly coinId: string; readonly sample: boolean }
   | { readonly screen: 'search' }
@@ -59,7 +59,7 @@ export function parseRoute(hash: string): Route {
   switch (head) {
     case undefined:
       return FEED;
-    case 'stories':
+    case 'narratives':
     case 'search':
     case 'calls':
     case 'wallet':
@@ -88,7 +88,7 @@ export function tabOf(route: Route): Tab {
   switch (route.screen) {
     case 'story':
     case 'coin':
-      return route.sample ? 'stories' : 'feed';
+      return route.sample ? 'narratives' : 'feed';
     default:
       return route.screen;
   }
