@@ -445,7 +445,9 @@ function fingerprints(text: string): readonly Fingerprint[] {
   for (const key of shingles(text)) {
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ kind: 'textShingle', key, bits: 64 });
+    // Phrases, not a hash: the runner folds them into one SimHash (core/group/text-carrier.ts)
+    // before storing, because the hash's weights come from a corpus no adapter can see.
+    out.push({ kind: 'textShingle', key });
   }
   return out;
 }

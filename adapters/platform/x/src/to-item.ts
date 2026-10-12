@@ -80,7 +80,9 @@ function fingerprints(r: Rec, text: string): readonly Fingerprint[] {
     const tag = str(rec(h).text);
     if (tag !== null) out.push({ kind: 'entitySpan', key: hashtagKey(tag) });
   }
-  for (const key of shingles(text)) out.push({ kind: 'textShingle', key, bits: 64 });
+  // Phrases, not a hash: the runner folds them into one SimHash (core/group/text-carrier.ts)
+  // before storing, because the hash's weights come from a corpus no adapter can see.
+  for (const key of shingles(text)) out.push({ kind: 'textShingle', key });
 
   // Perceptual image hashing happens in the media pipeline, after download.
   // Emitting a placeholder hash here would poison the free carrier join, which

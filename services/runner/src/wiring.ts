@@ -52,6 +52,7 @@ import type { DurableMeter } from '@insidor/meter';
 import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
+import { withTextHash } from '@insidor/core';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openDurableMeter } from '@insidor/meter';
@@ -432,7 +433,10 @@ export async function withRuntime<T>(
           platforms,
           watch,
           meter,
-          store: (items: readonly Item[]) => repos.items.upsert(items),
+          /* The adapter's text phrases are folded into one hash before storing: the store
+             keeps only hashes, and the hash's weights are core's to compute. */
+          store: (items: readonly Item[]) =>
+            repos.items.upsert(items.map((item) => withTextHash(item, policy))),
         }),
       };
     });
