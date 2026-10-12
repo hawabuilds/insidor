@@ -176,33 +176,55 @@ export class PgItemRepo implements ItemRepo {
   }
 
   /**
-   * The posts TRACK may spend a read on, NEWEST FIRST: those ADMIT passed, and those in a
-   * promoted story.
+   * The posts TRACK may spend a read on, NEWEST FIRST: the posts that are on screen.
+   *
+   *   - in a promoted story — the narratives, whose cards and pages show their views;
+   *   - on the For You or Popular feed — a catch-all post inside the feed window whose
+   *     newest score, judged alone, clears the bar (`bars`, from policy, by what the judge
+   *     looked at). The same rule the projector applies (core's `postScore`), in SQL so the
+   *     queue is one query.
+   *
+   * Everything else keeps the one reading taken when discovery found it, and no more.
+   * Re-reads are the expensive part of the day; a post nobody can see is not worth one.
    *
    * ★ NEWEST FIRST because reads are budgeted and views move fastest in a post's first
-   * hours. Oldest first — the order `admittedSince` returns — would spend a tight budget on
-   * posts that are days old and leave the minutes-old ones unread.
+   * hours. Oldest first would spend a tight budget on posts that are days old.
    *
-   * ★ AND PROMOTED-STORY MEMBERS EVEN IF ADMIT DROPPED THEM. Those posts are the cards on the
-   * board, and every view count and sparkline on a card is read from them. ADMIT's day-one
-   * bar turns most new accounts away, which is right for deciding what to watch and wrong
-   * for leaving a card on screen with a dash where its views should be.
+   * What this no longer includes, said so it is not rediscovered as a bug: posts ADMIT
+   * passed, and with them ADMIT's holdout lane. Tracking every admitted post cost several
+   * times the daily budget; see the cost note on Policy.track.maxTrackedHours.
    */
-  async trackable(at: Millis, limit: number): Promise<readonly Item[]> {
+  async trackable(
+    at: Millis,
+    limit: number,
+    feed: { readonly sinceMs: Millis; readonly textBar: number; readonly videoFrameBar: number },
+  ): Promise<readonly Item[]> {
     const rows = await this.#db.query<ItemRow>(
       `${SELECT_ITEM}
         where first_seen_at >= $1
           and (
-            exists (select 1 from internal.decisions d
-                     where d.subject_kind = 'item' and d.subject_id = public.item.item_id
-                       and d.stage = 'admit' and d.verdict = 'pass')
-            or exists (select 1 from public.story_member m
-                         join public.story s on s.story_id = m.story_id
-                        where m.item_id = public.item.item_id and s.state = 'promoted')
+            exists (select 1 from public.story_member m
+                      join public.story s on s.story_id = m.story_id
+                     where m.item_id = public.item.item_id and s.state = 'promoted' and s.merged_into is null)
+            or (
+              coalesce(posted_at, first_seen_at) >= $3
+              and exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id)
+              and exists (
+                    select 1 from (
+                      select pj.coinable, pj.confidence, pj.looked_at
+                        from internal.post_judgement pj
+                       where pj.item_id = public.item.item_id
+                       order by pj.judged_at desc, pj.id desc
+                       limit 1
+                    ) latest
+                     where latest.coinable
+                       and latest.confidence >= case latest.looked_at when 'videoFrame' then $5::float8 else $4::float8 end
+                  )
+            )
           )
         order by first_seen_at desc
         limit $2`,
-      [toTimestamp(at), limit],
+      [toTimestamp(at), limit, toTimestamp(feed.sinceMs), feed.textBar, feed.videoFrameBar],
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => this.#toItem(row, fingerprints));

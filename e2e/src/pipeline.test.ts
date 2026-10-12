@@ -272,7 +272,7 @@ before(async () => {
     maxCalls: null,
     deadline: NOW + MINUTE,
   });
-  await storeArrivals({ authors: new PgAuthorRepo(db), items: new PgItemRepo(db) }, DEFAULT_POLICY, () => clock)(
+  await storeArrivals({ authors: new PgAuthorRepo(db), items: new PgItemRepo(db), observations: new PgObservationRepo(db) }, DEFAULT_POLICY, () => clock)(
     page.value.items,
     page.value.authors,
     'all',
@@ -352,7 +352,7 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   assert.equal(second.failed, 0, second.firstError ?? '');
   assert.equal(lookups, 2);
   const readings = await db.query<{ n: number }>(`select count(distinct captured_at)::int as n from public.observation`);
-  assert.equal(readings[0]?.n, 2, 'two readings of the story\'s posts');
+  assert.equal(readings[0]?.n, 3, 'the reading discovery paid for, then two re-reads');
 
   /* 5. Each catch-all post scored alone, against a recorded judge reply: the moment's posts
      clear the bar, the weather post does not. */
