@@ -967,6 +967,17 @@ export interface OriginPolicy {
    * `viral_after_launch`: kept and shown, never counted as where the coin came from.
    */
   readonly launchAllowanceMs: number;
+  /**
+   * A creator-linked post by an account with at least this many followers, saying something
+   * rather than showing a subject, is an influencer's or founder's statement — `influencer_origin`.
+   * ★ UNCALIBRATED: a first guess, to be read against the gold set before RESOLVE is switched on.
+   */
+  readonly influencerFollowers: number;
+  /**
+   * A creator-linked post with a nameable subject and at least this much reach is the viral
+   * meme the coin came from — `linked_by_creator`. ★ UNCALIBRATED, as above.
+   */
+  readonly viralReach: number;
 }
 
 /**
@@ -1593,8 +1604,9 @@ const POLICY_V1: Policy = {
      v23 adds `backfill.searchResultCap`, for the one search back for its name.
 
      v24 adds `origin.launchAllowanceMs`: an origin is posted before the coin, with ten
-     minutes' grace; later is `viral_after_launch`. */
-  version: 'policy.v24',
+     minutes' grace; later is `viral_after_launch`. v25 adds `origin.influencerFollowers` and
+     `origin.viralReach`, the creator-link check's two bars (uncalibrated). */
+  version: 'policy.v25',
 
   admit: {
     maxAgeMin: 240,
@@ -1949,6 +1961,8 @@ const POLICY_V1: Policy = {
 
   origin: {
     launchAllowanceMs: 600_000, // ten minutes
+    influencerFollowers: 50_000,
+    viralReach: 50_000,
   },
 
   rising: {
