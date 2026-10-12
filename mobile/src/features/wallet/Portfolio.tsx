@@ -59,7 +59,7 @@ export interface WhoAmI {
 const shortAddress = (a: string): string => (a.length <= 12 ? a : `${a.slice(0, 5)}…${a.slice(-5)}`);
 
 export function Portfolio({
-  who, data, points, range, onRange, scrubbed, onScrub, copied, onCopy, actions, notice, footer = null,
+  who, data, points, range, onRange, scrubbed, onScrub, copied, onCopy, actions, notice, menu,
 }: {
   who: WhoAmI;
   data: PortfolioData | null;
@@ -74,7 +74,8 @@ export function Portfolio({
   /** Send and Receive, as the screen decides to offer them. */
   actions: ReactNode;
   notice: ReactNode;
-  footer?: ReactNode;
+  /** The profile menu's gear, top right of the header. */
+  menu: ReactNode;
 }) {
   const read = data !== null && data.kind === 'read' ? data : null;
   const change = points === null ? null : windowChange(points);
@@ -93,6 +94,7 @@ export function Portfolio({
               </button>
             </div>
           </div>
+          {menu}
         </div>
 
         <div className={styles['value']}>
@@ -177,7 +179,6 @@ export function Portfolio({
           <p className={styles['foot']}>Unclaimed creator fees {read.created.unclaimedFeesSol.known ? `${read.created.unclaimedFeesSol.amount.toLocaleString('en-US', { maximumFractionDigits: 4 })} SOL` : '—'}</p>
         </>
       ) : null}
-      {footer}
     </div>
   );
 }
