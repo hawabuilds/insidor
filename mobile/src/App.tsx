@@ -29,9 +29,9 @@ import { TabBar } from './shared/ui/TabBar.tsx';
 function Screen({ route, create }: { route: Route; create: (from: CreateFrom) => void }) {
   switch (route.screen) {
     case 'feed':
-      return <Feed onCreate={(row, sample) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, sample })} />;
+      return <Feed onCreate={(row, sample) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, sample, storyId: row.id })} />;
     case 'narratives':
-      return <Narratives onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, sample: true })} />;
+      return <Narratives onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, sample: true, storyId: s.id })} />;
     case 'coin':
       return <TokenPage key={`${route.sample}:${route.storyId}:${route.coinId}`} storyId={route.storyId} coinId={route.coinId} sample={route.sample} />;
     case 'story':
@@ -40,7 +40,7 @@ function Screen({ route, create }: { route: Route; create: (from: CreateFrom) =>
           key={`${route.sample}:${route.storyId}`}
           storyId={route.storyId}
           sample={route.sample}
-          onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, sample: route.sample || noticeFor(s, false) !== null })}
+          onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, sample: route.sample || noticeFor(s, false) !== null, storyId: s.id })}
         />
       );
     case 'wallet':

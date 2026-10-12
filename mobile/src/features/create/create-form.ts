@@ -30,3 +30,29 @@ export function suggestTicker(name: string): string {
 
 /** Dev-buy presets, in SOL. A menu of amounts, not advice about any of them. */
 export const DEV_BUY_PRESETS: readonly number[] = [0.5, 1, 2];
+
+/** The presets that fit under the launchpad's cap, in SOL: a preset above it is not offered. */
+export function presetsWithin(maxDevBuyLamports: bigint): readonly number[] {
+  return DEV_BUY_PRESETS.filter((sol) => BigInt(Math.round(sol * 1e9)) <= maxDevBuyLamports);
+}
+
+/**
+ * The ticker check, in words, about what Insidor has seen — never a claim about every coin ever.
+ * Unknown is said as unknown.
+ */
+export function tickerLine(ticker: string, seen: number | null): string {
+  if (ticker === '') return 'Pick a ticker.';
+  if (seen === null) return `Whether $${ticker} is taken couldn't be checked.`;
+  if (seen === 0) return `You'd be first: no coin Insidor has seen uses $${ticker}.`;
+  return `${seen.toLocaleString('en-US')} coin${seen === 1 ? '' : 's'} Insidor has seen already use${seen === 1 ? 's' : ''} $${ticker}.`;
+}
+
+/** A fee rate from the chain, in words: 30 basis points is "0.30% of every trade". */
+export function feeRate(bps: number): string {
+  return `${(bps / 100).toFixed(2)}% of every trade`;
+}
+
+/** A share of the supply from the chain, in words: 17 basis points is "0.17% of supply". */
+export function supplyShare(bps: number): string {
+  return `${(bps / 100).toFixed(2)}% of supply`;
+}
