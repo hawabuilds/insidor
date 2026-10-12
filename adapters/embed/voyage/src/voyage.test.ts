@@ -9,7 +9,7 @@ import { test } from 'node:test';
 
 import type { Meter, Spend } from '@insidor/contracts/ports/meter.ts';
 import type { MediaRef } from '@insidor/contracts/vocabulary.ts';
-import { VendorShapeError } from '@insidor/vendor-kit';
+import { VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
 
 import { BAD_INDEX, TWO_IMAGES } from './__fixtures__/replies.ts';
 import { DIMENSIONS, SPACE, readReply, voyageEmbed } from './index.ts';
@@ -65,4 +65,35 @@ test('a video is not sent at all, and comes back null — not consulted, never "
   const result = await port.embedMedia!([video], { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: 1 });
   assert.deepEqual(result.value, [null]);
   assert.equal(calls, 0);
+});
+
+test('★ one picture the vendor cannot fetch is null; the rest of the batch is still embedded', async () => {
+  const dead = 'https://example.invalid/dead.jpg';
+  const port = voyageEmbed({
+    client: {
+      embed: async ({ inputs }) => {
+        if (inputs.some((i) => 'imageUrl' in i && i.imageUrl === dead)) throw new VendorUnavailable('voyage', 'embed', 'responded 400', 400);
+        const one = Float32Array.from({ length: DIMENSIONS }, (_, k) => (k === 0 ? 1 : 0));
+        return { vectors: inputs.map(() => one), totalTokens: 1_000 * inputs.length };
+      },
+    },
+    meter: meter(),
+    now: () => 0,
+  });
+  const urls = ['a', 'b', 'dead', 'c'].map((n) => image(n === 'dead' ? dead : `https://example.invalid/${n}.jpg`));
+  const result = await port.embedMedia!(urls, { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: 1 });
+  assert.equal(result.value[2], null);
+  assert.deepEqual(result.value.map((v) => v !== null), [true, true, false, true]);
+});
+
+test('a batch refused in full is still an outage, never a column of nulls', async () => {
+  const port = voyageEmbed({
+    client: { embed: async () => { throw new VendorUnavailable('voyage', 'embed', 'responded 400', 400); } },
+    meter: meter(),
+    now: () => 0,
+  });
+  await assert.rejects(
+    port.embedMedia!([image('https://example.invalid/a.jpg'), image('https://example.invalid/b.jpg')], { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: 1 }),
+    VendorUnavailable,
+  );
 });
