@@ -176,3 +176,9 @@
   font-weight: 700;
   white-space: nowrap;
 }
+
+.origin {
+  color: var(--brand-400);
+  font-weight: 700;
+  text-decoration: none;
+}

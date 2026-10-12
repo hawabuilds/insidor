@@ -70,6 +70,23 @@ select n.address, n.ticker as symbol, n.name, a.image_uri, n.launched_at as mint
  order by n.launched_at desc nulls last
  limit $2`;
 
+/* Past narratives (0038) by name, or by the ticker of one of their coins. */
+export const HISTORY_SEARCH_SQL = `
+select h.narrative_id, h.title, h.origin_post, h.origin_gap, h.first_coin_at, h.peak_market_cap_usd
+  from public.history_narrative h
+ where h.title ilike $1 escape '\\'
+    or exists (select 1 from public.history_coin c join public.coin_name n on n.address = c.address
+                where c.narrative_id = h.narrative_id and upper(n.ticker) = $2)
+ order by h.peak_market_cap_usd desc nulls last
+ limit $3`;
+
+/* Which listed coins a past narrative names, and that narrative, so a coin shows where it came from. */
+export const HISTORY_BY_COIN_SQL = `
+select c.address, h.narrative_id, h.title, h.origin_post, h.origin_gap, h.first_coin_at, h.peak_market_cap_usd
+  from public.history_coin c
+  join public.history_narrative h on h.narrative_id = c.narrative_id
+ where c.address = any($1)`;
+
 /* Pictures we already hold for coins a source listed: the metadata's own link, read by chainwatch. */
 export const ASSET_IMAGES_SQL = `
 select address, image_uri from public.asset where chain = 'solana' and address = any($1) and image_uri is not null`;
@@ -169,6 +186,29 @@ function storyHit(row: Row): StoryHit | null {
   };
 }
 
+/** A past narrative as the Search tab shows it: its timeline, with a typed reason for any gap. */
+function pastNarrative(r: Row) {
+  const post = r['origin_post'] === null || r['origin_post'] === undefined ? null : rec(r['origin_post']);
+  const firstCoin = r['first_coin_at'] instanceof Date ? r['first_coin_at'].getTime() : null;
+  return {
+    storyId: null,
+    narrativeId: str(r['narrative_id']),
+    title: str(r['title']) ?? '',
+    thumbUrl: null,
+    live: false,
+    firstPostAt: instant(post === null ? null : num(post['postedAt']), 'not_reported'),
+    firstCoinAt: instant(firstCoin, 'not_reported'),
+    peakMarketCapUsd: measured(typeof r['peak_market_cap_usd'] === 'number' ? r['peak_market_cap_usd'] : null, 'not_read_yet'),
+    originPost: post === null ? null : {
+      authorLabel: str(post['authorLabel']) ?? '',
+      permalink: str(post['permalink']),
+      postedAt: instant(num(post['postedAt']), 'not_reported'),
+      afterLaunch: post['afterLaunch'] === true,
+    },
+    originGap: str(r['origin_gap']),
+  };
+}
+
 /** Why there is no first coin: none was minted, or we have not finished looking. */
 function firstCoinWhy(kind: string): string {
   return kind === 'none' ? 'not_minted' : 'not_read_yet';
@@ -218,8 +258,9 @@ export function createSearch(deps: SearchDeps) {
     const like = likePattern(term);
     const ticker = term.toUpperCase();
 
-    const [storyRows, postRows, assetRows, answers] = await Promise.all([
+    const [storyRows, historyRows, postRows, assetRows, answers] = await Promise.all([
       deps.db.query(STORY_SEARCH_SQL, [like, ticker, LIVE_VIEW, p.storiesShown + 1]),
+      deps.db.query(HISTORY_SEARCH_SQL, [like, ticker, p.storiesShown + 1]),
       deps.db.query(POST_SEARCH_SQL, [like, p.postsShown + 1]),
       deps.db.query(ASSET_SEARCH_SQL, [ticker, p.coinsShown, term]),
       Promise.allSettled(deps.sources.map((s) => s.source.search(term))),
@@ -240,6 +281,8 @@ export function createSearch(deps: SearchDeps) {
         firstPostAt: instant(s.earliestPostAt, 'not_read_yet'),
         firstCoinAt: instant(firstCoin, s.settled.length === 0 ? firstCoinWhy(s.coinsKind) : 'not_reported'),
         peakMarketCapUsd: s === peakFor && peak !== null ? peak : measured(null, s.settled.length === 0 ? firstCoinWhy(s.coinsKind) : 'not_read_yet'),
+        originPost: null,
+        originGap: null,
       };
     });
 
@@ -281,8 +324,26 @@ export function createSearch(deps: SearchDeps) {
     });
     const listed = new Set(read.flatMap((r) => r.hits.map((h) => h.address)));
     const merged = mergeHits([...read.map((r) => r.hits), ours]);
-    const matched = new Map(shownStories.flatMap((s) => s.settled.map((c) => [c.address, { storyId: s.storyId, title: s.title, coinId: c.coinId }] as const)));
+    const matched = new Map<string, { storyId: string | null; title: string }>(shownStories.flatMap((s) => s.settled.map((c) => [c.address, { storyId: s.storyId, title: s.title }] as const)));
     const ranked = [...merged].sort((a, b) => (b.marketCapUsd ?? -1) - (a.marketCapUsd ?? -1)).slice(0, p.coinsShown);
+
+    /* A listed coin a past narrative names shows that narrative too, even when the term did not
+       match the narrative's own name: today's market cap and where it came from, together. */
+    const past = new Map<string, ReturnType<typeof pastNarrative>>();
+    for (const r of historyRows) {
+      const n = pastNarrative(r);
+      if (n.narrativeId !== null) past.set(n.narrativeId, n);
+    }
+    if (ranked.length > 0) {
+      for (const r of await deps.db.query(HISTORY_BY_COIN_SQL, [ranked.map((h) => h.address)])) {
+        const n = pastNarrative(r);
+        const a = str(r['address']);
+        if (n.narrativeId === null || a === null) continue;
+        if (!past.has(n.narrativeId)) past.set(n.narrativeId, n);
+        if (!matched.has(a)) matched.set(a, { storyId: null, title: n.title });
+      }
+    }
+    const pastShown = [...past.values()].slice(0, Math.max(0, p.storiesShown - narratives.length));
 
     const curves = new Map<string, Measured>();
     if (deps.curveProgress !== null) {
@@ -343,7 +404,7 @@ export function createSearch(deps: SearchDeps) {
 
     return json(200, {
       term,
-      narratives: { capped: stories.length > p.storiesShown, items: narratives },
+      narratives: { capped: stories.length > p.storiesShown || narratives.length + past.size > p.storiesShown, items: [...narratives, ...pastShown] },
       posts: { capped: postRows.length > p.postsShown || posts.length > p.postsShown, items: posts.slice(0, p.postsShown) },
       coins,
     });

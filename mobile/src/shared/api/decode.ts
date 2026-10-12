@@ -28,7 +28,7 @@ import type { Coin, CoinLink, CoinOrigin, MarketCapBasis } from './wire/coin.ts'
 import type { RisingFeed, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
-import type { SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
+import type { OriginGap, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 import {
   BOARD_ROW_FIELDS,
   COIN_FIELDS,
@@ -556,6 +556,7 @@ export function decodeCoinMarket(raw: unknown, path = '$.market'): CoinMarket {
 /* ── search ───────────────────────────────────────────────────────────── */
 
 const venueOf = (v: unknown): 'curve' | 'pool' | null => (v === 'curve' || v === 'pool' ? v : null);
+const GAPS: readonly OriginGap[] = ['not_searched_yet', 'origin_not_found', 'possibly_deleted', 'tiktok_not_searchable'];
 
 /**
  * The Search tab's reply. Only the fields named here are read, so a post that somehow arrived
@@ -570,14 +571,24 @@ export function decodeSearch(raw: unknown, path = '$'): SearchResults {
   const narratives = arr(n['items'], `${path}.narratives.items`).map((x, i): SearchNarrative => {
     const q = `${path}.narratives.items[${i}]`;
     const r = obj(x, q);
+    const post = r['originPost'] === null || r['originPost'] === undefined ? null : obj(r['originPost'], `${q}.originPost`);
+    const gap = GAPS.find((g) => g === r['originGap']) ?? null;
     return {
-      storyId: str(r['storyId'], `${q}.storyId`),
+      storyId: optStr(r['storyId']),
       title: str(r['title'], `${q}.title`),
       thumbUrl: optStr(r['thumbUrl']),
       live: bool(r['live'], `${q}.live`),
       firstPostAt: instantAt(r['firstPostAt'], `${q}.firstPostAt`, 'not_read_yet'),
       firstCoinAt: instantAt(r['firstCoinAt'], `${q}.firstCoinAt`, 'not_read_yet'),
       peakMarketCapUsd: measured(r['peakMarketCapUsd'], `${q}.peakMarketCapUsd`, 'not_read_yet'),
+      originPost: post === null ? null : {
+        authorLabel: str(post['authorLabel'], `${q}.originPost.authorLabel`),
+        permalink: optStr(post['permalink']),
+        postedAt: instantAt(post['postedAt'], `${q}.originPost.postedAt`, 'not_reported'),
+        afterLaunch: post['afterLaunch'] === true,
+      },
+      /* A past narrative with neither a post nor a known gap says "not searched yet", never nothing. */
+      originGap: post === null && r['storyId'] === null ? (gap ?? 'not_searched_yet') : gap,
     };
   });
   const posts = arr(p['items'], `${path}.posts.items`).map((x, i): SearchPost => {
@@ -616,7 +627,7 @@ export function decodeSearch(raw: unknown, path = '$'): SearchResults {
             venue,
             /* Progress belongs to a curve; on anything else it is not shown at all. */
             curveProgress: venue === 'curve' ? measured(r['curveProgress'], `${q}.curveProgress`, 'not_read_yet') : null,
-            matched: m === null ? null : { storyId: str(m['storyId'], `${q}.matched.storyId`), title: str(m['title'], `${q}.matched.title`) },
+            matched: m === null ? null : { storyId: optStr(m['storyId']), title: str(m['title'], `${q}.matched.title`) },
           };
         }),
       };
