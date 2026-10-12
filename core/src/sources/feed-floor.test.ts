@@ -7,28 +7,45 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { effectiveFloor, laneTargets, nextFloor, startFloors } from './feed-floor.ts';
+import { effectiveFloor, laneTargets, nextFloor, sentFloors, slowLaneDue, startFloors } from './feed-floor.ts';
 
 const P = DEFAULT_POLICY;
 
-test('a 30-minute window sends half the base floor, and never less than the effective minimum', () => {
-  assert.equal(effectiveFloor(1_000, P), 500);
-  assert.equal(effectiveFloor(100, P), 50);
-  assert.equal(effectiveFloor(10, P), 50, 'a base below the minimum is lifted to it first');
-  assert.equal(effectiveFloor(10_000_000, P), P.feed.floorMax * 0.5);
+const at = (all: number, slow = all): { all: number; media: number; slow: number } => ({ all, media: all, slow });
+
+test('a 10-minute window sends a sixth of the base floor, and never less than the effective minimum', () => {
+  assert.equal(effectiveFloor('all', at(1_200), P), 200);
+  assert.equal(effectiveFloor('all', at(100), P), P.feed.effectiveFloorMin);
+  assert.equal(effectiveFloor('all', at(10), P), P.feed.effectiveFloorMin, 'a base below the minimum is lifted to it first');
+  assert.equal(effectiveFloor('all', at(10_000_000), P), Math.round(P.feed.floorMax / 6));
 });
 
-test('★ the targets spend the catch-all share of the day and split a quarter to media', () => {
-  // $1 a day, $0.00015 a post, a pass every five minutes.
-  const t = laneTargets(1, 0.00015, 288, P);
-  const perPass = (1 * P.feed.budgetShare) / 0.00015 / 288;
-  assert.ok(Math.abs(t.all + t.media - perPass) < 1e-9);
-  assert.ok(Math.abs(t.media / perPass - P.feed.mediaShare) < 1e-9);
-  assert.ok(Math.abs((t.all + t.media) * 288 * 0.00015 - P.feed.budgetShare) < 1e-9, 'a day at target is the share, exactly');
+test('★ the slow lane sends its own floor in full, and never less than 5x what the main lane sends', () => {
+  assert.equal(effectiveFloor('slow', at(1_200, 5_000), P), 5_000, 'six hours is past the full window: no scaling');
+  assert.equal(effectiveFloor('slow', at(1_200, 100), P), 200 * P.feed.slow.floorMultiple, 'adapted low, held at 5x main');
+  assert.equal(effectiveFloor('slow', at(10_000_000, 10_000_000), P), P.feed.floorMax);
+  assert.deepEqual(sentFloors(at(1_200, 5_000), P), { all: 200, media: 200, slow: 5_000 });
+});
+
+test('★ the targets spend the catch-all share of the day: a fifth on the slow lane, a quarter of the rest to media', () => {
+  // $1 a day, $0.00015 a post, a pass every two minutes, the slow lane every fifteen.
+  const t = laneTargets(1, 0.00015, 720, P);
+  const posts = (1 * P.feed.budgetShare) / 0.00015;
+  const main = (posts * (1 - P.feed.slow.share)) / 720;
+  assert.ok(Math.abs(t.all + t.media - main) < 1e-9);
+  assert.ok(Math.abs(t.media / main - P.feed.mediaShare) < 1e-9);
+  assert.ok(Math.abs(t.slow * 96 - posts * P.feed.slow.share) < 1e-9);
+  assert.ok(Math.abs(((t.all + t.media) * 720 + t.slow * 96) * 0.00015 - P.feed.budgetShare) < 1e-9, 'a day at target is the share, exactly');
+});
+
+test('the slow lane is due on the first pass, then every fifteen minutes', () => {
+  assert.equal(slowLaneDue(0, null, P), true);
+  assert.equal(slowLaneDue(P.feed.slow.everyMs - 1, 0, P), false);
+  assert.equal(slowLaneDue(P.feed.slow.everyMs, 0, P), true);
 });
 
 test('a free source or no passes has no target rather than an infinite one', () => {
-  assert.deepEqual(laneTargets(1, 0, 288, P), { all: 0, media: 0 });
+  assert.deepEqual(laneTargets(1, 0, 720, P), { all: 0, media: 0, slow: 0 });
 });
 
 test('★ a lane that returned nothing lowers its floor by 40% at once, never below the minimum', () => {
@@ -50,6 +67,6 @@ test('the floors never pass the ceiling', () => {
   assert.equal(nextFloor(P.feed.floorMax, 99, 1, false, P).floor, P.feed.floorMax);
 });
 
-test('both lanes start where policy says', () => {
-  assert.deepEqual(startFloors(P), { all: P.feed.startFloor, media: P.feed.mediaStartFloor });
+test('every lane starts where policy says; the slow lane at 5x the main start', () => {
+  assert.deepEqual(startFloors(P), { all: P.feed.startFloor, media: P.feed.mediaStartFloor, slow: P.feed.startFloor * P.feed.slow.floorMultiple });
 });

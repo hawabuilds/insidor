@@ -18,35 +18,66 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { FeedLane } from '@insidor/contracts/ports/platform.ts';
 
+import { MS_PER_DAY } from '../math.ts';
+
 export type LaneFloors = Readonly<Record<FeedLane, number>>;
 
 export function startFloors(p: Policy): LaneFloors {
-  return { all: p.feed.startFloor, media: p.feed.mediaStartFloor };
+  return { all: p.feed.startFloor, media: p.feed.mediaStartFloor, slow: p.feed.startFloor * p.feed.slow.floorMultiple };
+}
+
+/** How far back a lane looks, in minutes. */
+export function laneWindowMin(lane: FeedLane, p: Policy): number {
+  return lane === 'slow' ? p.feed.slow.windowMin : p.feed.windowMin;
 }
 
 /**
- * The floor actually sent: the base scaled down for a window shorter than the full one,
- * because a younger post has had less time to collect approvals.
+ * The floor actually sent for one lane: the base scaled down for a window shorter than the
+ * full one, because a younger post has had less time to collect approvals. The slow lane's
+ * is never below `slow.floorMultiple` × what the main lane sends, so it keeps asking for
+ * the posts that kept going however low its own floor has adapted.
  */
-export function effectiveFloor(base: number, p: Policy): number {
+export function effectiveFloor(lane: FeedLane, floors: LaneFloors, p: Policy): number {
+  const scaled = scaledFloor(floors[lane], laneWindowMin(lane, p), p);
+  if (lane !== 'slow') return scaled;
+  return Math.min(Math.max(scaled, scaledFloor(floors.all, p.feed.windowMin, p) * p.feed.slow.floorMultiple), p.feed.floorMax);
+}
+
+function scaledFloor(base: number, windowMin: number, p: Policy): number {
   const f = p.feed;
   const kept = Math.min(Math.max(base, f.floorMin), f.floorMax);
-  const scaled = Math.round(kept * Math.min(f.windowMin / f.fullWindowMin, 1));
+  const scaled = Math.round(kept * Math.min(windowMin / f.fullWindowMin, 1));
   return Math.min(Math.max(scaled, f.effectiveFloorMin), f.floorMax);
+}
+
+/** Every lane's sent floor. */
+export function sentFloors(floors: LaneFloors, p: Policy): LaneFloors {
+  return { all: effectiveFloor('all', floors, p), media: effectiveFloor('media', floors, p), slow: effectiveFloor('slow', floors, p) };
 }
 
 /**
  * Posts per pass each lane is aimed at, so that a day of passes spends the catch-all's
- * share of the daily budget and no more.
+ * share of the daily budget and no more. The slow lane runs on its own, slower clock, so
+ * its per-pass target is its share over its own passes.
  *
  * @param usdPerPost what the source bills for one post returned
- * @param passesPerDay how many discovery passes a day holds at the current cadence
+ * @param passesPerDay how many main discovery passes a day holds at the current cadence
  */
 export function laneTargets(dailyCapUsd: number, usdPerPost: number, passesPerDay: number, p: Policy): LaneFloors {
-  if (usdPerPost <= 0 || passesPerDay <= 0) return { all: 0, media: 0 };
-  const perPass = (dailyCapUsd * p.feed.budgetShare) / usdPerPost / passesPerDay;
+  if (usdPerPost <= 0 || passesPerDay <= 0) return { all: 0, media: 0, slow: 0 };
+  const posts = (dailyCapUsd * p.feed.budgetShare) / usdPerPost;
+  const perPass = (posts * (1 - p.feed.slow.share)) / passesPerDay;
   const media = perPass * p.feed.mediaShare;
-  return { all: perPass - media, media };
+  const slowPassesPerDay = MS_PER_DAY / p.feed.slow.everyMs;
+  return { all: perPass - media, media, slow: (posts * p.feed.slow.share) / slowPassesPerDay };
+}
+
+/**
+ * Whether the slow lane is due on a pass at `now`, given when it last ran (null: never in
+ * this process, so it runs on the first pass after a start).
+ */
+export function slowLaneDue(now: number, lastRanAt: number | null, p: Policy): boolean {
+  return lastRanAt === null || now - lastRanAt >= p.feed.slow.everyMs;
 }
 
 export type FloorMove = 'empty' | 'held_other_lane_empty' | 'raised' | 'lowered' | 'held';

@@ -354,7 +354,15 @@ test('the schema and the vocabulary agree on every closed list', () => {
   assert.deepEqual([...checkedValues(read('0023_item_origin.sql'), 'origin')].sort(), [
     ...ITEM_ORIGINS,
   ].sort());
-  assert.deepEqual([...checkedValues(read('0024_feed_floor.sql'), 'lane')].sort(), [...FEED_LANES].sort());
+  /* The lane CHECKs were first written in 0024 and 0025 and are both replaced by 0030, so
+     0030 is the list that holds — each of its two. */
+  for (const table of ['feed_floor', 'item_found_by']) {
+    const sql = stripComments(read('0030_slow_lane.sql'))
+      .split(';')
+      .find((statement) => statement.includes(`${table}_lane_check check`));
+    assert.ok(sql, `0030 does not re-add ${table}'s lane check`);
+    assert.deepEqual([...checkedValues(sql, 'lane')].sort(), [...FEED_LANES].sort());
+  }
   /* ★ THE ONE WHOSE THIRD MEMBER IS THE WHOLE POINT. `dormant` and `misconfigured` are two
      kinds of dark that demand opposite responses — a person deciding to pay for something
      versus a person being woken up — and the cheapest way to lose that distinction is for
@@ -384,7 +392,6 @@ test('the schema and the vocabulary agree on every closed list', () => {
   assert.deepEqual([...checkedValues(readAsWritten('0025_post_judgement.sql'), 'looked_at')].sort(), [
     ...JUDGE_EVIDENCE,
   ].sort());
-  assert.deepEqual([...checkedValues(read('0025_post_judgement.sql'), 'lane')].sort(), [...FEED_LANES].sort());
   /* All four reason columns, not just the first: they are four separate CHECKs and
      four separate opportunities for one of them to be edited alone. */
   for (const column of [

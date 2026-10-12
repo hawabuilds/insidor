@@ -14,12 +14,12 @@ import { test } from 'node:test';
 import type { Item, Millis } from '@insidor/contracts';
 import { authorKey, itemId, sourceId } from '@insidor/contracts/ids.ts';
 import type { Budget, CostEstimate, Meter, Metered } from '@insidor/contracts/ports/meter.ts';
-import type { Capabilities, Discovered, DiscoveryMode, DiscoveryQuery, PlatformAdapter, PlannedCall } from '@insidor/contracts/ports/platform.ts';
+import type { Capabilities, Discovered, DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter, PlannedCall } from '@insidor/contracts/ports/platform.ts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { Logger } from '../log.ts';
-import { discoverPass, type DiscoveryPlan } from './discover.ts';
+import { MAIN_LANES, discoverPass, type DiscoveryPlan } from './discover.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
 const CADENCE_MS = 300_000;
@@ -98,7 +98,7 @@ function floorsStore(initial: Record<string, number> = {}) {
   return { held, floors: async () => ({ ...held }), set: async (lane: string, floor: number) => void (held[lane] = floor) };
 }
 
-function run(adapter: PlatformAdapter, mode: 'live' | 'dry', floors = floorsStore(), terms: readonly string[] = []) {
+function run(adapter: PlatformAdapter, mode: 'live' | 'dry', floors = floorsStore(), terms: readonly string[] = [], lanes?: readonly FeedLane[]) {
   const plan: DiscoveryPlan = { terms, cadenceMs: CADENCE_MS };
   return discoverPass({
     platforms: registry(adapter),
@@ -112,6 +112,7 @@ function run(adapter: PlatformAdapter, mode: 'live' | 'dry', floors = floorsStor
     signal: new AbortController().signal,
     floors,
     dailyCapUsd: 1,
+    ...(lanes === undefined ? {} : { lanes }),
   });
 }
 
@@ -128,7 +129,7 @@ test('★ with no terms, a source with a catch-all search is asked both lanes, w
     assert.equal(q.filter?.originalsOnly, true);
   }
   assert.deepEqual(seen.map((q) => q.filter?.mediaOnly), [false, true]);
-  assert.equal(seen[0]?.filter?.minApproval, 50, 'the start floor of 100, halved for a 30-minute window');
+  assert.equal(seen[0]?.filter?.minApproval, DEFAULT_POLICY.feed.effectiveFloorMin, 'the start floor of 100 is 17 for a 10-minute window, lifted to the minimum');
 });
 
 test('★ a dry run prices a whole day and asks nobody', async () => {
@@ -140,7 +141,7 @@ test('★ a dry run prices a whole day and asks nobody', async () => {
   const passes = 86_400_000 / CADENCE_MS;
   assert.ok(Math.abs(day.targetUsd - 1 * DEFAULT_POLICY.feed.budgetShare) < 1e-9, `at target: ${day.targetUsd}`);
   assert.ok(
-    Math.abs(day.worstUsd - 2 * DEFAULT_POLICY.feed.pageLimit * DEFAULT_POLICY.feed.maxPagesPerLane * USD_PER_POST * passes) < 1e-9,
+    Math.abs(day.worstUsd - DEFAULT_POLICY.feed.pageLimit * DEFAULT_POLICY.feed.maxPagesPerLane * USD_PER_POST * (2 * passes + 96)) < 1e-9,
     `worst: ${day.worstUsd}`,
   );
   assert.equal(result.planned, 2);
@@ -170,7 +171,18 @@ test('a dry run leaves the floors where they were', async () => {
 test('a stored floor is the one sent on the next pass', async () => {
   const seen: DiscoveryQuery[] = [];
   await run(feedSource({ all: 10, media: 3 }, seen), 'live', floorsStore({ all: 2_000, media: 400 }));
-  assert.deepEqual(seen.map((q) => q.filter?.minApproval), [1_000, 200]);
+  assert.deepEqual(seen.map((q) => q.filter?.minApproval), [333, 67], 'a sixth of each, for a 10-minute window');
+});
+
+test('★ when the slow lane is due it looks back six hours, at five times the main floor at least', async () => {
+  const seen: DiscoveryQuery[] = [];
+  const floors = floorsStore({ all: 2_000, media: 400, slow: 100 });
+  await run(feedSource({ all: 10, media: 3 }, seen), 'live', floors, [], [...MAIN_LANES, 'slow']);
+  assert.equal(seen.length, 3);
+  const slow = seen[2];
+  assert.equal(slow?.sinceMs, NOW - 6 * 60 * 60_000);
+  assert.equal(slow?.filter?.mediaOnly, false);
+  assert.equal(slow?.filter?.minApproval, 333 * 5, 'its own floor adapted low; held at 5x what the main lane sends');
 });
 
 test('DISCOVER_TERMS are extra searches on top of the catch-all, not instead of it', async () => {

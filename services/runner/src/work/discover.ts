@@ -68,7 +68,7 @@ import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
 import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { effectiveFloor, laneTargets, nextFloor, startFloors, type LaneFloors } from '@insidor/core';
+import { effectiveFloor, laneTargets, laneWindowMin, nextFloor, sentFloors, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -288,16 +288,16 @@ export function queryFor(adapter: PlatformAdapter, term: string, now: Millis): D
  * anything at or after it (the adapter's cutoff check), which on a live search cannot
  * happen and would be worth knowing about if it did.
  */
-export function feedQueryFor(lane: FeedLane, baseFloor: number, now: Millis, policy: Policy): DiscoveryQuery {
+export function feedQueryFor(lane: FeedLane, floors: LaneFloors, now: Millis, policy: Policy): DiscoveryQuery {
   return {
     mode: 'catchall',
     term: '',
-    sinceMs: (now - policy.feed.windowMin * MS_PER_MINUTE) as Millis,
+    sinceMs: (now - laneWindowMin(lane, policy) * MS_PER_MINUTE) as Millis,
     untilMs: now,
     limit: policy.feed.pageLimit,
     cursor: null,
     filter: {
-      minApproval: effectiveFloor(baseFloor, policy),
+      minApproval: effectiveFloor(lane, floors, policy),
       mediaOnly: lane === 'media',
       lang: policy.feed.lang,
       originalsOnly: true,
@@ -353,6 +353,11 @@ export interface DiscoverDeps {
   };
   /** The day's hard cap — the lower of the environment's and policy's. Sets each lane's target. */
   readonly dailyCapUsd: number;
+  /**
+   * The catch-all lanes asked this pass. The slow lane runs on its own clock
+   * (`feed.slow.everyMs`), so the loop says when it is due. Absent: the two main lanes.
+   */
+  readonly lanes?: readonly FeedLane[];
   /** Aborted on SIGTERM. A pass that ignores it delays every deploy by a vendor call. */
   readonly signal: AbortSignal;
 }
@@ -451,7 +456,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
        keyword. Then the optional term on top. */
     const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null }[] = [];
     if (adapter.capabilities.discovery.includes('catchall')) {
-      for (const lane of FEED_LANES) asks.push({ query: feedQueryFor(lane, floors[lane], now, deps.policy), lane });
+      for (const lane of deps.lanes ?? MAIN_LANES) asks.push({ query: feedQueryFor(lane, floors, now, deps.policy), lane });
     }
     if (term !== null) {
       const query = queryFor(adapter, term, now);
@@ -495,6 +500,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
   /* What a day of catch-all search costs on each source that has it — on every pass, dry
      or live, so a dry run answers the question before anything is spent. */
   const passesPerDay = MS_PER_DAY / Math.max(deps.plan.cadenceMs, 1);
+  const slowPassesPerDay = MS_PER_DAY / deps.policy.feed.slow.everyMs;
+  const pages = deps.policy.feed.maxPagesPerLane;
   const feedDays: FeedDay[] = [];
   for (const source of new Set(plans.filter((p) => p.lane !== null).map((p) => p.source))) {
     const lanes = plans.filter((p) => p.source === source && p.lane !== null);
@@ -502,20 +509,23 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     if (sample === undefined) continue;
     const usdPerPost = sample.estimate.estUnits > 0 ? sample.estimate.usd / sample.estimate.estUnits : 0;
     const targets = laneTargets(deps.dailyCapUsd, usdPerPost, passesPerDay, deps.policy);
+    /* A page costs the same on every lane; the slow lane is priced at its own cadence
+       whether or not it is due this pass, so every pass reports the same day. */
+    const usdPerPage = sample.estimate.usd;
     const day: FeedDay = {
       source,
       floors: { ...floors },
-      sentFloors: { all: effectiveFloor(floors.all, deps.policy), media: effectiveFloor(floors.media, deps.policy) },
+      sentFloors: sentFloors(floors, deps.policy),
       targets,
-      targetUsd: (targets.all + targets.media) * usdPerPost * passesPerDay,
-      worstUsd: lanes.reduce((sum, p) => sum + p.estimate.usd, 0) * deps.policy.feed.maxPagesPerLane * passesPerDay,
+      targetUsd: ((targets.all + targets.media) * passesPerDay + targets.slow * slowPassesPerDay) * usdPerPost,
+      worstUsd: usdPerPage * pages * (MAIN_LANES.length * passesPerDay + slowPassesPerDay),
     };
     feedDays.push(day);
     deps.log.info(deps.mode === 'dry' ? 'DRY RUN — a day of catch-all search, priced' : 'catch-all search, priced', {
       source,
       floors: day.floors,
       sentFloors: day.sentFloors,
-      postsPerPassTarget: { all: round(targets.all), media: round(targets.media) },
+      postsPerPassTarget: { all: round(targets.all), media: round(targets.media), slow: round(targets.slow) },
       dayAtTargetUsd: round(day.targetUsd),
       dayWorstCaseUsd: round(day.worstUsd),
       dailyCapUsd: deps.dailyCapUsd,
@@ -797,5 +807,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     feedDays,
   };
 }
+
+/** The lanes asked on every pass. The slow lane is added when it is due. */
+export const MAIN_LANES: readonly FeedLane[] = FEED_LANES.filter((lane) => lane !== 'slow');
 
 const round = (n: number): number => Math.round(n * 10_000) / 10_000;
