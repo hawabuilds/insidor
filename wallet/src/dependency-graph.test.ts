@@ -60,6 +60,10 @@ const FORBIDDEN_FRAGMENTS = [
 const ALLOWED_SPECIFIERS = [
   'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client',
   '@insidor/wallet',
+  /* The sign-in with X the phone app uses: the wallet port, implemented in its own package —
+     the one place the vendor's SDK may be imported (test 5). Named without the vendor's name,
+     so the fragment ban in test 4 still covers every file here. */
+  '@insidor/wallet-embedded',
 ];
 
 const isAllowed = (specifier: string): boolean =>
@@ -204,12 +208,12 @@ test('★ 2 — gaining a wallet added no third-party package to the app', () =>
 });
 
 /**
- * The phone app's dependencies are a SUBSET of the desktop app's, never a superset. It may
- * drop a package it has no use for — it has no wallet screen yet — but anything it adds is a
- * third-party package in a browser bundle that the test above was written to make visible.
+ * The phone app's dependencies are the desktop app's, plus exactly one: the embedded wallet
+ * (wallet-embedded/), which brings sign-in with X. Anything else it adds is a third-party
+ * package in a browser bundle that the test above was written to make visible.
  */
-test('★ 2b — the phone app adds no third-party package the desktop app does not have', () => {
-  const allowed = ['@insidor/contracts', '@insidor/wallet', 'react', 'react-dom'];
+test('★ 2b — the phone app adds no third-party package beyond the embedded wallet', () => {
+  const allowed = ['@insidor/contracts', '@insidor/wallet', '@insidor/wallet-embedded', 'react', 'react-dom'];
   for (const name of Object.keys(manifest('mobile').dependencies ?? {})) {
     assert.ok(allowed.includes(name), `mobile depends on "${name}", which the desktop app does not`);
   }
@@ -245,6 +249,29 @@ test('★ 4 — and nothing anywhere names a wallet, chain or signing library', 
         `"${specifier}" matches "${fragment}". A library that can build or send a ` +
           `transaction must not be reachable from the browser bundle: submission, ` +
           `confirmation and idempotency belong to a service that survives a closed tab.`,
+      );
+    }
+  }
+});
+
+/**
+ * ★ 5 — THE ONE PACKAGE THE WALLET VENDOR'S SDK MAY ENTER, AND WHAT IT MAY TAKE FROM IT.
+ *
+ * wallet-embedded/ implements the wallet port with an embedded wallet and sign-in with X, and it
+ * is the only package allowed the vendor's SDK. Its own dependencies are pinned, and its files
+ * may import the SDK's main entry and nothing else of the vendor's — not the chain entry, which
+ * would bring a chain library into the bundle, and not any other wallet or chain package.
+ */
+test('★ 5 — the embedded wallet imports the vendor\'s sign-in and nothing chain-shaped', () => {
+  const pkg = manifest('wallet-embedded');
+  assert.deepEqual(Object.keys(pkg.dependencies ?? {}).sort(), ['@insidor/contracts', '@privy-io/react-auth']);
+  const files = sourcesUnder(join(ROOT, 'wallet-embedded', 'src'));
+  assert.ok(files.length >= 3, `the walk found ${files.length} files in wallet-embedded/src`);
+  for (const file of files) {
+    for (const specifier of bareImports(readFileSync(file, 'utf8'))) {
+      assert.ok(
+        ['react', 'react/jsx-runtime', '@privy-io/react-auth'].includes(specifier) || specifier.startsWith('@insidor/contracts') || specifier.startsWith('node:'),
+        `${relative(ROOT, file)} imports "${specifier}"; only the vendor's sign-in entry is allowed here`,
       );
     }
   }

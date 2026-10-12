@@ -88,6 +88,20 @@ module.exports = {
       from: { path: '^wallet/' },
       to: { path: '^(core|adapters|store|services|app|eval|ml)/' },
     },
+    /**
+     * The embedded-wallet implementation of the same port: the one package allowed to import the
+     * wallet vendor's SDK (wallet/src/dependency-graph.test.ts keeps that to this package). Held
+     * to the wallet package's wall for the wallet package's reason.
+     */
+    {
+      name: 'wallet-embedded-imports-only-contracts',
+      comment:
+        'The embedded wallet translates a vendor SDK into our wallet port. If it could reach ' +
+        'core, the phone app would reach core through it.',
+      severity: 'error',
+      from: { path: '^wallet-embedded/' },
+      to: { path: '^(core|adapters|store|services|app|eval|ml|wallet)/' },
+    },
     {
       name: 'app-cannot-reach-the-logic',
       comment:
@@ -109,7 +123,8 @@ module.exports = {
      * is a choice made in a review, importing one is a coupling made by autocomplete.
      *
      * What it may reach is `@insidor/contracts` and `@insidor/wallet`, exactly as the
-     * desktop app may. The probe in tools/check-boundaries-probe.mjs proves this rule is read.
+     * desktop app may, and `@insidor/wallet-embedded`, the sign-in with X the phone app uses.
+     * The probe in tools/check-boundaries-probe.mjs proves this rule is read.
      */
     {
       name: 'mobile-cannot-reach-the-logic',
