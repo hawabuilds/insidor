@@ -23,30 +23,13 @@
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import { asDb, createPool, DB_ROLE, PgAssetRepo, withTransaction } from '@insidor/store';
 
-import {
-  FREE_POST_SOURCE_LABEL,
-  loadLaunchFacts,
-  loadStoryFacts,
-  nextLaunchTick,
-  nextTick,
-  previousBoardStoryIds,
-  writeBoard,
-  writeLaunches,
-  writeStories,
-} from './db.ts';
+import { loadLaunchFacts, nextLaunchTick, writeLaunches } from './db.ts';
+import { projectStoryFrame } from './frame.ts';
 import { announceBoard } from './notify.ts';
-import {
-  projectBoard,
-  projectBoardProvenance,
-  projectStoryProvenance,
-  projectFeedSource,
-  projectLaunch,
-  projectStory,
-} from './project.ts';
+import { projectFeedSource, projectLaunch } from './project.ts';
 import type { ProjectOptions } from './project.ts';
-import { countAnchors, windowIsOrdered } from './window.ts';
 import { WireLeakError } from './wire.ts';
-import type { WireLaunch, WireStory } from './wire.ts';
+import type { WireLaunch } from './wire.ts';
 
 /** The board the app asks for. `VIEW_ID` in app/src/App.tsx is this string. */
 const VIEW_ID = 'default';
@@ -140,78 +123,12 @@ async function main(): Promise<void> {
     };
 
     const result = await withTransaction(pool, async (db) => {
-      const tick = await nextTick(db, VIEW_ID);
-      const load = await loadStoryFacts(db, {
+      const frame = await projectStoryFrame(db, VIEW_ID, options, {
         storiesSinceMs: nowMs - STORY_WINDOW_MS,
         reachSinceMs: nowMs - REACH_WINDOW_MS,
         limit: BOARD_LIMIT,
-        previousBoard: await previousBoardStoryIds(db, VIEW_ID),
       });
-      const facts = load.stories;
-
-      /* ★ NAMED, ONE LINE PER STORY, BECAUSE THIS PROJECTOR CANNOT WRITE IT DOWN ANYWHERE
-         ELSE. A story with no post time on any member has its coin window hung on when WE
-         first read it, which is a weaker claim than the one every other row on the board
-         is making: the window reaches backwards past its own anchor precisely because we
-         cannot say the coin came after anything. That difference belongs in
-         internal.decisions as an `abstain` with a null `subject_origin`, and this process
-         cannot put it there — it holds the service credential, and 0001 grants the service
-         role SELECT on `internal` and no more. So it is printed, with the story named, and
-         the day this frame is reconstructed the run that built it says which rows were
-         retrieved against our own reading schedule. It reaches an operator; by the product
-         rule it must never reach the wire, and nothing below adds a field for it. */
-      for (const [storyId, retrieval] of load.coinWindows) {
-        if (windowIsOrdered(retrieval)) continue;
-        const reachMin = Math.round((retrieval.anchorMs - retrieval.fromMs) / MINUTE_MS);
-        console.warn(
-          `story ${storyId} carries no post time on any member: its coins were retrieved ` +
-            `against ${retrieval.anchor}, reaching ${reachMin} minutes before that anchor. ` +
-            `Nothing on this row may be read as "minted after the post".`,
-        );
-      }
-      const anchors = countAnchors(load.coinWindows.values());
-
-      /* One frame, built in one pass, so `order` and `rows` cannot disagree. A story
-         with nothing nameable in it is dropped here rather than given a placeholder
-         title — see projectTitle. A story whose payload would leak is withheld by
-         projectBoard and named below, so the hole is one row and not the whole frame. */
-      const board = projectBoard(facts, options);
-      for (const storyId of board.withheld) {
-        console.warn(`story ${storyId} was withheld from the board: its payload would have leaked`);
-      }
-
-      /* A story page that cannot be projected must not take the whole frame down with
-         it. The likeliest cause is a vendor name inside text a person typed, which is
-         one story's problem; the board keeps its other rows and the count is printed so
-         the hole is visible rather than quiet. */
-      const pages: WireStory[] = [];
-      let skipped = 0;
-      for (const story of facts) {
-        try {
-          const page = projectStory(
-            story,
-            options,
-            /* The page's own answer, from the same story rows the facts came from — not
-               borrowed from the frame, because a story page is reachable by a shared link
-               with no frame in sight. See projectStoryProvenance. */
-            projectStoryProvenance(load.origins.get(story.storyId), FREE_POST_SOURCE_LABEL),
-          );
-          if (page === null) skipped += 1;
-          else pages.push(page);
-        } catch (error: unknown) {
-          if (!(error instanceof WireLeakError)) throw error;
-          skipped += 1;
-          console.warn(`story ${story.storyId} was not projected: ${error.message}`);
-        }
-      }
-
-      /* ★ COMPUTED FROM THE ORIGINS OF THE STORIES THAT ACTUALLY REACHED THE FRAME, and
-         from `board.order` rather than from `facts`, so a story that was withheld or that
-         had nothing nameable in it is not counted in a sentence about what is on screen.
-         See projectBoardProvenance, and 0021 for why it rides on the view row. */
-      const provenance = projectBoardProvenance(load.origins, board.order, FREE_POST_SOURCE_LABEL);
-      const boardRows = await writeBoard(db, VIEW_ID, tick, board.rows, provenance);
-      const storyViews = await writeStories(db, pages);
+      const { tick } = frame;
 
       /* ── the launches rail ──
          In the SAME transaction as the board, and not because the two frames depend on each
@@ -285,13 +202,7 @@ async function main(): Promise<void> {
       await announceBoard(db, VIEW_ID, tick);
 
       return {
-        tick,
-        anchors,
-        boardRows,
-        storyViews,
-        considered: facts.length,
-        skipped,
-        withheld: board.withheld.length,
+        ...frame,
         launchTick,
         launchRows,
         launchesWithheld,

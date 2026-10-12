@@ -1,0 +1,25 @@
+{
+  "name": "@insidor/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The pipeline end to end against a real schema in an in-process Postgres: posts in, a story on the board out. No network, no key, no spend.",
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/core": "workspace:*",
+    "@insidor/judge-anthropic": "workspace:*",
+    "@insidor/meter": "workspace:*",
+    "@insidor/platform-replay": "workspace:*",
+    "@insidor/project": "workspace:*",
+    "@insidor/read": "workspace:*",
+    "@insidor/runner": "workspace:*",
+    "@insidor/store": "workspace:*"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.16"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  }
+}

@@ -15,3 +15,6 @@ packages:
   # vocabulary and the wallet port and nothing else, by its own rule in .dependency-cruiser.cjs.
   - 'mobile'
   - 'eval'
+  # The pipeline end to end, as a test. Its own package so no service has to depend on
+  # another service, or on an in-process database, to be tested.
+  - 'e2e'
