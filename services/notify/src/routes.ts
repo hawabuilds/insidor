@@ -65,7 +65,7 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
     const alerts = rows.map((r) => {
       const facts = (typeof r.facts === 'string' ? JSON.parse(r.facts) : r.facts) as Record<string, unknown>;
       const at = new Date(r.at).getTime();
-      return { id: r.id, kind: r.kind, title: r.title, body: r.body, href: r.href, at, unread: at > seenAt, symbol: typeof facts['symbol'] === 'string' ? facts['symbol'] : null, rank: typeof facts['rank'] === 'string' ? facts['rank'] : null };
+      return { id: r.id, kind: r.kind, title: r.title, body: r.body, href: r.href, at, unread: at > seenAt, symbol: typeof facts['symbol'] === 'string' ? facts['symbol'] : null, rank: typeof facts['rank'] === 'string' ? facts['rank'] : null, season: typeof facts['season'] === 'number' ? facts['season'] : null };
     });
     return json(200, { unread: alerts.filter((a) => a.unread).length, alerts });
   }

@@ -31,7 +31,15 @@ export type Route =
   | { readonly screen: 'alerts' }
   | { readonly screen: 'portfolio' }
   /* How Insidor works, from the profile menu: part of the Portfolio tab. */
-  | { readonly screen: 'learn' };
+  | { readonly screen: 'learn' }
+  /* A person, by handle or id; their followers or following. */
+  | { readonly screen: 'profile'; readonly key: string }
+  | { readonly screen: 'follows'; readonly key: string; readonly which: 'followers' | 'following' }
+  | { readonly screen: 'leaderboard' }
+  | { readonly screen: 'alert-settings' }
+  /* The Portfolio menu's wallet screens: linked wallets, and importing one. */
+  | { readonly screen: 'wallets' }
+  | { readonly screen: 'import' };
 
 const FEED: Route = { screen: 'feed' };
 
@@ -59,6 +67,12 @@ export function parseRoute(hash: string): Route {
     return FEED;
   }
   if (!sample && head === 'token' && id !== undefined && sub === undefined) return { screen: 'token', coinId: id };
+  if (!sample && head === 'alerts' && id === 'settings' && sub === undefined) return { screen: 'alert-settings' };
+  if (!sample && head === 'u' && id !== undefined && coinId === undefined) {
+    if (sub === undefined) return { screen: 'profile', key: id };
+    if (sub === 'followers' || sub === 'following') return { screen: 'follows', key: id, which: sub };
+    return FEED;
+  }
   if (sample || id !== undefined) return FEED;
 
   switch (head) {
@@ -69,6 +83,9 @@ export function parseRoute(hash: string): Route {
     case 'alerts':
     case 'portfolio':
     case 'learn':
+    case 'leaderboard':
+    case 'wallets':
+    case 'import':
       return { screen: head };
     /* The tabs' old names: a link saved before a rename still opens the tab. */
     case 'wallet':
@@ -91,6 +108,12 @@ export function hrefFor(route: Route): string {
       return `#/${route.sample ? 'sample/' : ''}story/${enc(route.storyId)}/coin/${enc(route.coinId)}`;
     case 'token':
       return `#/token/${enc(route.coinId)}`;
+    case 'profile':
+      return `#/u/${enc(route.key)}`;
+    case 'follows':
+      return `#/u/${enc(route.key)}/${route.which}`;
+    case 'alert-settings':
+      return '#/alerts/settings';
     default:
       return `#/${route.screen}`;
   }
@@ -104,7 +127,14 @@ export function tabOf(route: Route): Tab {
       return route.sample ? 'narratives' : 'feed';
     case 'token':
       return 'search';
+    case 'alert-settings':
+      return 'alerts';
     case 'learn':
+    case 'profile':
+    case 'follows':
+    case 'leaderboard':
+    case 'wallets':
+    case 'import':
       return 'portfolio';
     default:
       return route.screen;

@@ -75,3 +75,15 @@ export const SAMPLE_WALLET: Notice = {
   headline: 'Sample data',
   detail: 'This is not your wallet. It is a public wallet recorded on 12 October 2026, shown so the screen can be seen without signing in.',
 };
+
+/** People and alerts with no service connected: sample people, made up, none of them real. */
+export const PEOPLE_SAMPLE_NOTICE: Notice = {
+  headline: 'Sample data',
+  detail: 'The social and alert services are not connected, so these people, comments, ranks and alerts are made up.',
+};
+
+/** A wallet joined for viewing: real, read from the chain, and not one Insidor trades from. */
+export const LINKED_WALLET: Notice = {
+  headline: 'View only',
+  detail: 'A wallet you linked. Insidor reads it from the chain and never holds its key; Send and trading use your Insidor wallet.',
+};

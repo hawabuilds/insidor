@@ -1,0 +1,151 @@
+/* The comment thread: Trador's comment cards, in Insidor's tokens. */
+
+.thread {
+  padding: 4px var(--gutter) 16px;
+}
+
+.note {
+  margin: 8px 0;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.group {
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 4px 0;
+}
+
+.reply {
+  margin-left: 42px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.main {
+  min-width: 0;
+  flex: 1;
+}
+
+.by {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.by a {
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.age {
+  color: var(--text-3);
+}
+
+.body {
+  margin: 4px 0 0;
+  font-size: 14.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.proof,
+.link {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.proof {
+  background: var(--up-wash);
+  color: var(--up);
+}
+
+.link {
+  background: var(--card);
+  color: var(--text-2);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.actions button {
+  color: inherit;
+  font: inherit;
+}
+
+.actions .liked {
+  color: var(--down);
+}
+
+.composer {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.replying {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.replying button {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.field {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--input);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.composerRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.quiet {
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.post {
+  height: 38px;
+  padding: 0 18px;
+  border-radius: 19px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+}

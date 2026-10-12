@@ -152,6 +152,19 @@ export const BellIcon = (p: IconProps) => (
   </Stroke>
 );
 
+export const UserIcon = (p: IconProps) => (
+  <Stroke {...p}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+  </Stroke>
+);
+
+export const TrophyIcon = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M8 4h8v5a4 4 0 0 1-8 0V4ZM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7" />
+  </Stroke>
+);
+
 export const LockIcon = (p: IconProps) => (
   <Stroke {...p}>
     <rect x="4.5" y="10.5" width="15" height="10" rx="2" />

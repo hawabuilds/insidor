@@ -382,3 +382,19 @@ export async function fetchHolding(mint: string, wallet: string, signal?: AbortS
 export async function submitTrade(_coinId: string, _side: 'buy' | 'sell'): Promise<never> {
   return notImplemented('submitTrade: wallet signing and confirmation polling');
 }
+
+/**
+ * The one way the social and alert services are reached (shared/api/people.ts builds on it):
+ * here, because this file is the only one allowed to touch the network. The sign-in token rides
+ * as a bearer header and nowhere else. Replies are returned whole, with their status, for
+ * people.ts to read.
+ */
+export async function peopleRequest(url: string, method: string, token: string | null, body?: unknown): Promise<{ readonly ok: boolean; readonly status: number; readonly json: unknown }> {
+  const response = await fetch(url, {
+    method,
+    cache: 'no-store',
+    headers: { accept: 'application/json', ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...(token === null ? {} : { authorization: `Bearer ${token}` }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  return { ok: response.ok, status: response.status, json: await response.json().catch(() => ({})) };
+}

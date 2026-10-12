@@ -1,0 +1,290 @@
+/* Profiles, rank cards, the leaderboard and the rank-up screen: Trador's, in Insidor's tokens. */
+
+.screen {
+  padding: 12px var(--gutter) var(--tabbar-space);
+}
+
+.back {
+  width: 40px;
+  height: 40px;
+  margin-left: -8px;
+  display: grid;
+  place-items: center;
+  color: var(--text-1);
+}
+
+.badge {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* Trador's glow: the blur grows with the badge. */
+.glow_quant { filter: drop-shadow(0 0 calc(var(--badge) / 8) rgb(153 69 255 / 45%)); }
+.glow_wolf { filter: drop-shadow(0 0 calc(var(--badge) / 6.4) rgb(153 69 255 / 65%)); }
+.glow_goat { filter: drop-shadow(0 0 calc(var(--badge) / 5.3) rgb(181 122 255 / 90%)); }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 3px;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.headText {
+  min-width: 0;
+  flex: 1;
+}
+
+.name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.handle {
+  color: var(--text-3);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.bio {
+  margin: 12px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.counts {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--text-3);
+}
+
+.counts a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.counts b {
+  color: var(--text-1);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.follow,
+.ghost {
+  flex: 1;
+  height: 40px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.follow {
+  background: var(--brand);
+  color: #fff;
+}
+
+.ghost {
+  background: var(--card);
+  color: var(--text-1);
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+
+.cardText b {
+  display: block;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.cardText span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.section {
+  margin: 22px 0 8px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.note {
+  color: var(--text-3);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  color: var(--text-1);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.rowText {
+  min-width: 0;
+  flex: 1;
+}
+
+.rowText b {
+  display: block;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowText span {
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.position {
+  width: 26px;
+  color: var(--text-3);
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.me {
+  background: var(--card);
+  border-radius: 12px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.rep {
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  margin: 6px 0 4px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.bioField {
+  width: 100%;
+  min-height: 80px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--input);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+/* The rank-up: Trador's full screen moment. */
+.rankUp {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(8 8 10 / 92%);
+  text-align: center;
+  animation: rise 0.25s ease-out;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: scale(0.97); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rankUp { animation: none; }
+}
+
+.rankUpInner {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 320px;
+}
+
+.season {
+  margin-top: 8px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.rankUpTitle {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.rankUpLine {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 15px;
+}
+
+.share {
+  width: 100%;
+  height: 48px;
+  margin-top: 14px;
+  border-radius: 24px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  text-decoration: none;
+}
+
+.notNow {
+  height: 44px;
+  color: var(--text-3);
+  font-size: 15px;
+  font-weight: 700;
+}

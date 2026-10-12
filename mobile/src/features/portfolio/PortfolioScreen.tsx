@@ -15,11 +15,11 @@
  * build with TRADING on, never as a disabled button.
  */
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 
 import { SAMPLE_SCREENS, fetchPortfolio, fetchWalletHistory, loadSamplePortfolio, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
 import { useLoad } from '../../shared/hooks.ts';
-import { SAMPLE_WALLET } from '../../shared/notice.ts';
+import { LINKED_WALLET, SAMPLE_WALLET } from '../../shared/notice.ts';
 import { tradingOn } from '../../shared/trading.ts';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
@@ -39,12 +39,20 @@ const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as s
 /** The address of the recorded sample wallet; shown only with the "Sample data" notice. */
 const SAMPLE_ADDRESS = '86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY';
 
-function Loaded({ who, load, history, canAct, exportKey, leave }: {
+function Loaded({ who, load, history, canAct, sample = false, ownAddress, exportKey, profileKey = null, linked = [], switcher = null, leave }: {
   who: WhoAmI;
   load: (signal: AbortSignal) => Promise<PortfolioData>;
   history: (signal: AbortSignal, range: ChartRange) => Promise<readonly BalancePoint[]>;
   canAct: boolean;
   exportKey: (() => void) | null;
+  /** The demo's recorded wallet: labelled as sample data. */
+  sample?: boolean;
+  /** The signed-in person's own wallet, for the menu's card, whichever wallet is shown. */
+  ownAddress?: string;
+  profileKey?: string | null;
+  linked?: readonly string[];
+  /** The strip that picks which wallet is shown, when there is more than one. */
+  switcher?: React.ReactNode;
   leave: { readonly label: string; readonly run: () => void };
 }) {
   const [range, setRange] = useState<ChartRange>('1w');
@@ -77,6 +85,7 @@ function Loaded({ who, load, history, canAct, exportKey, leave }: {
 
   return (
     <>
+      {switcher}
       <Portfolio
         who={who}
         data={portfolio}
@@ -88,14 +97,16 @@ function Loaded({ who, load, history, canAct, exportKey, leave }: {
         copied={copied}
         onCopy={() => void copy()}
         actions={actions}
-        notice={canAct ? null : <div className={box['sampleNotice']}><Notice notice={SAMPLE_WALLET} /></div>}
+        notice={sample ? <div className={box['sampleNotice']}><Notice notice={SAMPLE_WALLET} /></div> : !canAct ? <div className={box['sampleNotice']}><Notice notice={LINKED_WALLET} /></div> : null}
         menu={
           <ProfileMenu
             name={who.name ?? who.handle ?? 'Your wallet'}
             subtitle={who.handle !== null ? `@${who.handle}` : canAct ? 'Signed in' : 'Sample data'}
-            address={who.address}
+            address={ownAddress ?? who.address}
             onCopy={() => void copy()}
             exportKey={exportKey}
+            profileKey={profileKey}
+            linked={linked}
             leave={leave}
           />
         }
@@ -116,6 +127,12 @@ function Arrow({ up = false }: { up?: boolean }) {
 
 export function PortfolioScreen() {
   const { wallet, state } = useWallet();
+  const linkedKey = useSyncExternalStore(
+    (l) => (wallet === null ? () => undefined : wallet.subscribe(l)),
+    () => (wallet === null ? '' : wallet.linkedWallets().join(',')),
+  );
+  const linked = linkedKey === '' ? [] : linkedKey.split(',');
+  const [viewing, setViewing] = useState<string | null>(null);
   const toast = useToast();
   /* The provider's own window; we hear only whether it opened. */
   const exportKey = () => {
@@ -126,14 +143,33 @@ export function PortfolioScreen() {
 
   if (state.kind === 'connected' || state.kind === 'wrong-network') {
     const id = wallet?.identity() ?? null;
-    const who: WhoAmI = { name: id?.name ?? null, handle: id?.handle ?? null, pictureUrl: id?.pictureUrl ?? null, address: state.account };
+    const shown = viewing !== null && linked.includes(viewing) ? viewing : state.account;
+    const own = shown === state.account;
+    const who: WhoAmI = own
+      ? { name: id?.name ?? null, handle: id?.handle ?? null, pictureUrl: id?.pictureUrl ?? null, address: state.account }
+      : { name: 'Linked wallet', handle: null, pictureUrl: null, address: shown };
+    const switcher =
+      linked.length === 0 ? null : (
+        <div className={box['switcher']} role="group" aria-label="Wallet shown">
+          {[state.account, ...linked].map((a) => (
+            <button key={a} type="button" aria-pressed={a === shown} className={a === shown ? box['walletOn'] : box['wallet']} onClick={() => setViewing(a)}>
+              {a === state.account ? 'Insidor wallet' : `Linked ${a.slice(0, 4)}…${a.slice(-4)}`}
+            </button>
+          ))}
+        </div>
+      );
     return (
       <Loaded
+        key={shown}
         who={who}
-        canAct
-        load={(signal) => fetchPortfolio(state.account, '24h', signal)}
-        history={(signal, range) => fetchWalletHistory(state.account, range, signal)}
+        canAct={own}
+        load={(signal) => fetchPortfolio(shown, '24h', signal)}
+        history={(signal, range) => fetchWalletHistory(shown, range, signal)}
         exportKey={exportKey}
+        ownAddress={state.account}
+        profileKey={id?.handle ?? null}
+        linked={linked}
+        switcher={switcher}
         leave={{ label: 'Sign out', run: () => void wallet?.disconnect() }}
       />
     );
@@ -148,7 +184,7 @@ export function PortfolioScreen() {
     },
   };
   if (SAMPLE_SCREENS) {
-    return <Loaded who={{ name: 'Sample wallet', handle: null, pictureUrl: null, address: SAMPLE_ADDRESS }} canAct={false} load={() => loadSamplePortfolio()} history={async () => []} exportKey={null} leave={leaveDemo} />;
+    return <Loaded who={{ name: 'Sample wallet', handle: null, pictureUrl: null, address: SAMPLE_ADDRESS }} canAct={false} sample load={() => loadSamplePortfolio()} history={async () => []} exportKey={null} leave={leaveDemo} />;
   }
   return (
     <section className={box['screen']}>

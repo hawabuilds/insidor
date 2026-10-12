@@ -31,15 +31,17 @@ import { watchlist } from '../../shared/watchlist.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { useComingSoon, useToast } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon, ShareIcon, StarIcon } from '../../shared/ui/icons.tsx';
+import { Modal } from '../../shared/ui/Modal.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformBadge } from '../../shared/ui/PlatformMark.tsx';
 import { Sparkline } from '../../shared/ui/Sparkline.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { Comments } from '../comments/Comments.tsx';
 import styles from './narrative.module.css';
 
-type Section = 'coins' | 'posts' | 'calls' | 'stats';
+type Section = 'coins' | 'posts' | 'comments' | 'stats';
 
 /** How many coins show before "See all". */
 const FIRST_COINS = 3;
@@ -142,7 +144,7 @@ function Body({ story, sample, onCreate }: { story: Story; sample: boolean; onCr
         tabs={[
           { key: 'coins', label: <>Coins <small>{coins.length > 0 ? coins.length : ''}</small></> },
           { key: 'posts', label: <>Posts <small>{posts}</small></> },
-          { key: 'calls', label: 'Calls' },
+          { key: 'comments', label: 'Comments' },
           { key: 'stats', label: 'Stats' },
         ]}
       />
@@ -150,7 +152,7 @@ function Body({ story, sample, onCreate }: { story: Story; sample: boolean; onCr
       <div className={styles['section']}>
         {section === 'coins' ? <Coins story={story} sample={sample} coins={coins} line={status.line} now={now} /> : null}
         {section === 'posts' ? <Posts story={story} sample={sample} now={now} /> : null}
-        {section === 'calls' ? <p className={styles['note']}>Calls are coming soon: what people say this narrative will do, and whether they were right.</p> : null}
+        {section === 'comments' ? <Comments subject={`story:${story.id}`} holdersOf="this narrative" /> : null}
         {section === 'stats' ? <Stats story={story} sample={sample} now={now} /> : null}
       </div>
 
@@ -220,8 +222,14 @@ function Coins({ story, sample, coins, line, now }: {
 }
 
 function Posts({ story, sample, now }: { story: Story; sample: boolean; now: number }) {
+  const [open, setOpen] = useState<{ id: string; author: string } | null>(null);
   return (
     <>
+      {open !== null ? (
+        <Modal title="Comments" subtitle={`On ${open.author}'s post`} onClose={() => setOpen(null)}>
+          <Comments subject={`post:${open.id}`} holdersOf="this narrative" />
+        </Modal>
+      ) : null}
       {story.evidence.map((e) => {
         const platform = platformOf(e.sourceLabel);
         const body = (
@@ -235,12 +243,23 @@ function Posts({ story, sample, now }: { story: Story; sample: boolean; now: num
           </>
         );
         /* A sample post has no real page to link to, so it is not a link. */
+        const talk = (
+          <button type="button" className={styles['postComments']} onClick={() => setOpen({ id: e.evidenceId, author: e.authorLabel })}>
+            Comments
+          </button>
+        );
         return sample ? (
-          <div key={e.evidenceId} className={styles['post']}>{body}</div>
+          <div key={e.evidenceId}>
+            <div className={styles['post']}>{body}</div>
+            {talk}
+          </div>
         ) : (
-          <a key={e.evidenceId} className={styles['post']} href={e.permalink} target="_blank" rel="noopener noreferrer">
-            {body}
-          </a>
+          <div key={e.evidenceId}>
+            <a className={styles['post']} href={e.permalink} target="_blank" rel="noopener noreferrer">
+              {body}
+            </a>
+            {talk}
+          </div>
         );
       })}
     </>

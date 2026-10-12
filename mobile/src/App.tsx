@@ -14,10 +14,20 @@
  * to sign in.
  */
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CreateCoin, type CreateFrom } from './features/create/CreateCoin.tsx';
 import { Feed } from './features/feed/Feed.tsx';
 import { Learn } from './features/learn/Learn.tsx';
+import { AlertSettings } from './features/alerts/AlertSettings.tsx';
+import { AlertsScreen } from './features/alerts/AlertsScreen.tsx';
+import { FollowList } from './features/people/FollowList.tsx';
+import { Leaderboard } from './features/people/Leaderboard.tsx';
+import { ProfileScreen } from './features/people/ProfileScreen.tsx';
+import { RankUp } from './features/people/RankUp.tsx';
+import { ImportScreen } from './features/portfolio/ImportScreen.tsx';
+import { WalletsScreen } from './features/portfolio/WalletsScreen.tsx';
+import { PEOPLE_SAMPLE, fetchAlerts, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
+import { useWatchlist } from './shared/hooks.ts';
 import { InstallPrompt } from './features/install/InstallPrompt.tsx';
 import { NarrativePage } from './features/narrative/NarrativePage.tsx';
 import { Narratives } from './features/narratives/Narratives.tsx';
@@ -36,7 +46,7 @@ import { noticeFor } from './shared/story-source.ts';
 import { ComingSoonProvider } from './shared/ui/ComingSoon.tsx';
 import { TabBar } from './shared/ui/TabBar.tsx';
 
-function Screen({ route, create }: { route: Route; create: (from: CreateFrom) => void }) {
+function Screen({ route, create, onAlertsSeen }: { route: Route; create: (from: CreateFrom) => void; onAlertsSeen: () => void }) {
   switch (route.screen) {
     case 'feed':
       return <Feed onCreate={(row, sample) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, sample, storyId: row.id })} />;
@@ -62,7 +72,19 @@ function Screen({ route, create }: { route: Route; create: (from: CreateFrom) =>
     case 'learn':
       return <Learn />;
     case 'alerts':
-      return <ComingSoonScreen which={route.screen} />;
+      return <AlertsScreen onSeen={onAlertsSeen} />;
+    case 'alert-settings':
+      return <AlertSettings />;
+    case 'profile':
+      return <ProfileScreen key={route.key} profileKey={route.key} />;
+    case 'follows':
+      return <FollowList key={`${route.key}:${route.which}`} profileKey={route.key} which={route.which} />;
+    case 'leaderboard':
+      return <Leaderboard />;
+    case 'wallets':
+      return <WalletsScreen />;
+    case 'import':
+      return <ImportScreen />;
     default:
       return <ComingSoonScreen which="narratives" />;
   }
@@ -70,7 +92,7 @@ function Screen({ route, create }: { route: Route; create: (from: CreateFrom) =>
 
 export function App() {
   const route = useRoute();
-  const { state } = useWallet();
+  const { wallet, state } = useWallet();
   const [entered, setEntered] = useState(hasEntered);
   const signedIn = state.kind === 'connected';
   /* Once signed in, this browser is held rather than shown the door while its session comes back. */
@@ -85,6 +107,31 @@ export function App() {
   }
   /* The create modal sits over whichever screen opened it, so it lives here, above them. */
   const [creating, setCreating] = useState<CreateFrom | null>(null);
+  const watched = useWatchlist();
+  const [unread, setUnread] = useState(0);
+  const inside = signedIn || (!SIGN_IN_CONFIGURED && entered);
+
+  /* Who is asking, for the social and alert services: the sign-in's signed token, read when sent. */
+  useEffect(() => setTokenSource(() => wallet?.sessionToken() ?? null), [wallet]);
+  /* Signed in: the profile is brought up to date from the sign-in, once per session. */
+  useEffect(() => {
+    if (signedIn && !PEOPLE_SAMPLE) void syncMe().catch(() => undefined);
+  }, [signedIn]);
+  /* The narratives starred here are mirrored for alerts sent while the app is closed. */
+  const watchedKey = watched.join(',');
+  useEffect(() => {
+    if (signedIn && !PEOPLE_SAMPLE) void syncWatch(watchedKey === '' ? [] : watchedKey.split(',')).catch(() => undefined);
+  }, [signedIn, watchedKey]);
+  /* The bell's count, read every minute while the app is open. */
+  const readUnread = useCallback(() => {
+    void fetchAlerts().then((a) => setUnread(a.unread), () => undefined);
+  }, []);
+  useEffect(() => {
+    if (!inside) return;
+    readUnread();
+    const t = setInterval(readUnread, 60_000);
+    return () => clearInterval(t);
+  }, [inside, readUnread]);
   /* After every hook, so the hooks run the same way whichever screen is shown. */
   const gate = gateFor({ configured: SIGN_IN_CONFIGURED, state, entered });
   if (gate === 'holding') return <Holding />;
@@ -102,10 +149,11 @@ export function App() {
   return (
     <ComingSoonProvider>
       <main>
-        <Screen route={route} create={setCreating} />
+        <Screen route={route} create={setCreating} onAlertsSeen={() => setUnread(0)} />
       </main>
       {route.screen === 'feed' ? <InstallPrompt /> : null}
-      <TabBar current={tabOf(route)} />
+      <TabBar current={tabOf(route)} unread={unread} />
+      <RankUp signedIn={inside} />
       {creating !== null ? <CreateCoin key={creating.title} from={creating} onClose={() => setCreating(null)} /> : null}
     </ComingSoonProvider>
   );
