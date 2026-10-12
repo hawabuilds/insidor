@@ -1,0 +1,39 @@
+.screen {
+  padding: 12px var(--gutter) var(--tabbar-space);
+}
+
+.back {
+  width: 40px;
+  height: 40px;
+  margin-left: -8px;
+  display: grid;
+  place-items: center;
+  color: var(--text-1);
+}
+
+.title {
+  margin: 6px 0 18px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.part {
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+
+.part h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.part p {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}

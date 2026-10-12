@@ -29,7 +29,9 @@ export type Route =
   /* A coin opened from search: no narrative around it, so none in the route. */
   | { readonly screen: 'token'; readonly coinId: string }
   | { readonly screen: 'calls' }
-  | { readonly screen: 'wallet' };
+  | { readonly screen: 'wallet' }
+  /* How Insidor works, from the profile menu: part of the Wallet tab. */
+  | { readonly screen: 'learn' };
 
 const FEED: Route = { screen: 'feed' };
 
@@ -66,6 +68,7 @@ export function parseRoute(hash: string): Route {
     case 'search':
     case 'calls':
     case 'wallet':
+    case 'learn':
       return { screen: head };
     default:
       return FEED;
@@ -96,6 +99,8 @@ export function tabOf(route: Route): Tab {
       return route.sample ? 'narratives' : 'feed';
     case 'token':
       return 'search';
+    case 'learn':
+      return 'wallet';
     default:
       return route.screen;
   }
