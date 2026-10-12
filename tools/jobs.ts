@@ -66,7 +66,10 @@ interface StageStatus {
 }
 type Status = Record<string, StageStatus>;
 
+/* One database address for the job and every stage: the pilot opens its pool by the internal
+   role's name, and on Railway this service holds only the address the runner holds. */
 const url = process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'];
+const stageEnv = { ...process.env, ...(url === undefined ? {} : { DATABASE_URL_INTERNAL: url }) };
 const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-jobs' });
 const files = new PgJobFileRepo(asDb(pool));
 const abs = (path: string) => join(ROOT, path);
@@ -102,7 +105,7 @@ async function readStatus(): Promise<Status> {
 
 function runStage(args: readonly string[], log: string[]): Promise<number> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, ['--experimental-strip-types', ...args], { cwd: ROOT, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['--experimental-strip-types', ...args], { cwd: ROOT, env: stageEnv, stdio: ['ignore', 'pipe', 'pipe'] });
     const keep = (chunk: Buffer, to: NodeJS.WriteStream) => {
       to.write(chunk);
       log.push(chunk.toString('utf8'));
