@@ -422,8 +422,10 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   for (const p of fypReply.posts) {
     assert.ok((p.reach.v ?? 0) > 0, `views on ${p.id}`);
     assert.ok(p.permalink?.startsWith('https://x.com/'), `a link on ${p.id}`);
-    assert.equal(p.coins, null);
-    assert.equal(p.storyId, null);
+    /* No coin and no search for one in this run: a dash, or the narrative's own "none". */
+    const kind = (p.coins as { kind?: string } | null)?.kind;
+    assert.ok(kind === 'pending' || kind === 'none', `the coin line on ${p.id} is ${String(kind)}`);
+    if (kind === 'pending') assert.equal(p.storyId, null);
   }
   const popularReply = JSON.parse((await handle('GET', '/rising/popular', read)).body) as { posts: { reach: { v: number } }[] };
   const views = popularReply.posts.map((p) => p.reach.v);

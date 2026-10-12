@@ -44,6 +44,8 @@ export interface CreateFrom {
   readonly title: string;
   readonly reach: Measured;
   readonly thumbUrl: string | null;
+  /** The post it is made from, when it is made from one post: it goes in the coin's description. */
+  readonly link?: string | null;
   /** True when the server labels the story behind it as written by hand; the modal carries that label too. */
   readonly labelled: boolean;
 }
@@ -192,7 +194,7 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
     }
     let mint = '';
     const done = await confirmBuilt(async () => {
-      const built = await buildLaunchTx({ wallet: account, name: name.trim(), symbol: ticker, description: `From ${from.title}`, imageDataUrl, devBuyLamports: devLamports.toString() });
+      const built = await buildLaunchTx({ wallet: account, name: name.trim(), symbol: ticker, description: from.link ? `From ${from.link}` : `From ${from.title}`, imageDataUrl, devBuyLamports: devLamports.toString() });
       if (built.kind === 'blocked') return built;
       mint = built.mint;
       return { kind: 'ready', transaction: built.transaction };

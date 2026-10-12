@@ -44,7 +44,14 @@ const TABS = [
   { key: 'popular', label: 'Popular' },
 ] as const;
 
-export function Feed({ onCreate }: { onCreate: (row: BoardRow, labelled: boolean) => void }) {
+export function Feed({
+  onCreate,
+  onCreatePost,
+}: {
+  onCreate: (row: BoardRow, labelled: boolean) => void;
+  /** Create from a single post: its picture and link, never a name we made up. */
+  onCreatePost: (post: RisingPost) => void;
+}) {
   const [tab, setTab] = useState<FeedTab>('fyp');
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [panel, setPanel] = useState(false);
@@ -93,7 +100,15 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow, labelled: boolean
           if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId });
           else if (p.permalink !== null) window.open(p.permalink, '_blank', 'noopener');
         },
-        buy: (ticker) => soon(`Buying $${ticker}`),
+        /* A post's coin is always its narrative's, so its page opens with the narrative on top. */
+        buy: (coin) =>
+          (window.location.hash = hrefFor(
+            p.storyId !== null ? { screen: 'coin', storyId: p.storyId, coinId: coin.coinId } : { screen: 'token', coinId: coin.coinId },
+          )),
+        create: () => onCreatePost(p),
+        viewCoins: () => {
+          if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId });
+        },
       }}
     />
   );

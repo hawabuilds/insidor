@@ -6,14 +6,20 @@
  * and views line. Tapping it opens the post where it was posted, or its narrative when it
  * has one.
  *
- * ★ NO COIN WORDS AND NO BUTTON UNLESS THE POST CARRIES A CONFIDENT COIN. A single post makes
- * no claim about coins either way — not "no coin yet", which would be a coin statement too.
- * The footer appears only when the post is part of a narrative with exactly one coin, and
- * then it is that narrative's own status and button.
+ * ★ EVERY CARD HAS A COIN LINE, AND IT IS THE SERVER'S ANSWER, NOT OURS (`coinStatus`):
+ *
+ *   one      → "$TICKER" and the coin's market cap when it has been read, and Buy, which opens
+ *              the coin's page — only ever a narrative's confident coin (the decoder refuses a
+ *              coin without its narrative)
+ *   none     → "No coin yet" and Create, which opens the Create sheet with the post's picture
+ *              and link; the post's name was searched and nothing came back
+ *   pending  → a dash with its reason: nobody has searched yet, so neither claim is made
+ *   unsure   → the sentence saying we cannot tell, and NO button — never Buy on an unsure match
+ *   several  → how many, and View coins, which opens the narrative
  */
 
-import type { RisingPost } from '../api/index.ts';
-import { coinStatus } from '../coin-status.ts';
+import type { Coin, RisingPost } from '../api/index.ts';
+import { coinStatus, oneCoinLine, type CoinAction } from '../coin-status.ts';
 import { formatAge } from '../format/duration.ts';
 import { formatCount } from '../format/number.ts';
 import { platformOf } from '../platform.ts';
@@ -25,12 +31,17 @@ import styles from './row.module.css';
 
 export interface PostHandlers {
   readonly open: () => void;
-  readonly buy: (ticker: string) => void;
+  /** Opens the coin's own page. */
+  readonly buy: (coin: Coin) => void;
+  /** Opens the Create sheet from this post. */
+  readonly create: () => void;
+  /** Opens the narrative whose coins these are. */
+  readonly viewCoins: () => void;
 }
 
 export function PostRow({ post, now, handlers }: { post: RisingPost; now: number; handlers: PostHandlers }) {
-  const status = post.coin === null ? null : coinStatus({ kind: 'one', coin: post.coin });
-  const action = status?.action ?? null;
+  const status = coinStatus(post.coins);
+  const line = post.coins.kind === 'one' ? oneCoinLine(post.coins.coin) : status.line;
 
   return (
     <article className={styles['card']} onClick={handlers.open}>
@@ -72,22 +83,27 @@ export function PostRow({ post, now, handlers }: { post: RisingPost; now: number
         </div>
       </div>
 
-      {status !== null ? (
-        <div className={styles['foot']}>
-          <span className={styles['status']}>{status.line}</span>
-          {action !== null && action.kind === 'buy' ? (
-            <Button
-              look="buy"
-              onClick={(e: { stopPropagation: () => void }) => {
-                e.stopPropagation();
-                handlers.buy(action.coin.ticker);
-              }}
-            >
-              Buy ${action.coin.ticker}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+      <div className={styles['foot']}>
+        <span className={styles['status']}>{line}</span>
+        <ActionButton action={status.action} handlers={handlers} />
+      </div>
     </article>
   );
+}
+
+/** At most one button, and never one the coin status did not ask for. */
+function ActionButton({ action, handlers }: { action: CoinAction | null; handlers: PostHandlers }) {
+  if (action === null) return null;
+  const tap = (fn: () => void) => (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    fn();
+  };
+  switch (action.kind) {
+    case 'create':
+      return <Button look="primary" onClick={tap(handlers.create)}>Create coin</Button>;
+    case 'buy':
+      return <Button look="buy" onClick={tap(() => handlers.buy(action.coin))}>Buy ${action.coin.ticker}</Button>;
+    case 'view':
+      return <Button look="quiet" onClick={tap(handlers.viewCoins)}>View coins</Button>;
+  }
 }

@@ -130,10 +130,9 @@ export interface FilteredPosts {
  * The feed filters applied to single posts. The site comes from the post's own label, the
  * views and the age from its own facts.
  *
- * ★ THE COIN FILTER CANNOT SAY "NO COIN" ABOUT A POST. A post carries a coin only through a
- * narrative with one confident match; one without says nothing about coins at all. So "has a
- * coin" keeps posts with one and counts the rest as unknown, and "no coin" drops posts with
- * one and counts the rest as unknown — never as a match.
+ * ★ THE COIN FILTER SAYS "NO COIN" ONLY ABOUT A POST WHOSE NAME WAS SEARCHED. `none` is "no
+ * coin"; `one`, `several` and `unsure` are "has a coin" (coins exist, as on a narrative); a post
+ * not searched yet (`pending`) is counted as unknown under either — never as a match.
  */
 export function applyPostFilters(posts: readonly RisingPost[], f: FeedFilters, now: number): FilteredPosts {
   const kept: RisingPost[] = [];
@@ -147,7 +146,8 @@ export function applyPostFilters(posts: readonly RisingPost[], f: FeedFilters, n
       if (!post.postedAt.known || now - post.postedAt.at < 0) posted = 'unknown';
       else posted = now - post.postedAt.at <= f.posted.withinMs ? 'keep' : 'drop';
     }
-    const coin: Match = f.coin === 'any' ? 'keep' : post.coin !== null ? (f.coin === 'has' ? 'keep' : 'drop') : 'unknown';
+    const coin: Match =
+      f.coin === 'any' ? 'keep' : post.coins.kind === 'pending' ? 'unknown' : (f.coin === 'none') === (post.coins.kind === 'none') ? 'keep' : 'drop';
     const answers = [site, views, posted, coin];
     if (answers.includes('drop')) continue;
     if (answers.includes('unknown')) {

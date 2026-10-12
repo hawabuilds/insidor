@@ -15,15 +15,24 @@
  * many saw it and when we read that, and the views line. Never the score, never anything
  * TRACK or the judge computed.
  *
- * ★ A COIN ONLY THROUGH A CONFIDENT NARRATIVE. A single post carries no coin of its own.
- * When it belongs to a promoted story whose board row, in THIS frame, names exactly one coin
- * (`coins.kind === 'one'`), the row carries that story's id and that coin, so the Buy button
- * it puts on screen is the board's own confident answer. Any other link — none, unsure,
- * several — and the row carries no coin and no story id at all, so nothing can be assembled
- * into a button. See docs/rising-posts-plan.md, adjusted by this rule.
+ * ★ EVERY ROW SAYS WHERE ITS COIN STANDS, AND A COIN ONLY EVER COMES THROUGH A NARRATIVE.
+ * `coins` is never null; it is one of these, decided in `postCoins` below:
  *
- * What breaks if changed carelessly: the coin is read from the board rows committed in the
- * same projection run. Reading it from anywhere else would let a post offer Buy on a coin
+ *   the post's promoted story names one coin, several, or is unsure → that story's own link,
+ *                                       with its story id (if the read has a story, the story
+ *                                       decides) — so a Buy button is the board's confident
+ *                                       answer and nothing else;
+ *   the post's name was searched (internal.coin_lookup) and nothing came back → `none`;
+ *   it was searched and launchpad coins came back → `unsure` with that count: coins exist,
+ *                                       and nothing has said which, if any, is this post's;
+ *   the post's story was searched and has none → `none`;
+ *   nothing searched yet                → `pending`, a dash — never "no coin yet", which
+ *                                       would be a claim about the world we had not checked.
+ *
+ * A search never puts a coin on a post: the one-coin link only ever comes from a story's row.
+ *
+ * What breaks if changed carelessly: the story's link is read from the board rows committed in
+ * the same projection run. Reading it from anywhere else would let a post offer Buy on a coin
  * the narrative's own row has since stopped naming.
  */
 
@@ -60,10 +69,10 @@ export interface WireRisingPost {
   /** When the view count above was read, so its age travels with it. */
   readonly readAt: WireInstant;
   readonly spark: WireSpark;
-  /** The narrative this post is part of — only when that narrative has one confident coin. */
+  /** The narrative this post is part of — only when `coins` below is that narrative's own link. */
   readonly storyId: string | null;
-  /** That narrative's one coin, or null. Never `none`, `unsure` or `several`. */
-  readonly coins: Extract<WireCoinLink, { kind: 'one' }> | null;
+  /** Where the post's coin stands. `one` and `several` only ever arrive with `storyId`. */
+  readonly coins: WireCoinLink;
 }
 
 interface RisingRow {
@@ -125,6 +134,39 @@ async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingR
   );
 }
 
+/**
+ * Which posts have had their name searched for coins, and how many launchpad coins came back.
+ * A post with no row has not been searched. `term` is not selected: the name is the judge's.
+ */
+async function loadPostLookups(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, PostLookup>> {
+  if (itemIds.length === 0) return new Map();
+  const rows = await db.query<{ subject_id: string; found: number }>(
+    `select subject_id, found from internal.coin_lookup where subject_kind = 'post' and subject_id = any($1::text[])`,
+    [[...itemIds]],
+  );
+  return new Map(rows.map((r) => [r.subject_id, { found: Number(r.found) }]));
+}
+
+/** A finished search for a post's name: how many launchpad coins it returned. */
+export interface PostLookup {
+  readonly found: number;
+}
+
+/** The row's coin line and the story it came from, by the rule in the header. */
+export function postCoins(
+  storyLink: WireCoinLink | undefined,
+  lookup: PostLookup | null,
+): { readonly coins: WireCoinLink; readonly fromStory: boolean } {
+  if (storyLink !== undefined && (storyLink.kind === 'one' || storyLink.kind === 'several' || storyLink.kind === 'unsure')) {
+    return { coins: storyLink, fromStory: true };
+  }
+  if (lookup !== null) {
+    return { coins: lookup.found === 0 ? { kind: 'none' } : { kind: 'unsure', claimCount: lookup.found }, fromStory: false };
+  }
+  if (storyLink !== undefined && storyLink.kind === 'none') return { coins: storyLink, fromStory: true };
+  return { coins: { kind: 'pending' }, fromStory: false };
+}
+
 function authorLabelOf(row: RisingRow): string {
   const handle = (row.handle ?? '').trim();
   if (handle !== '') return handle.startsWith('@') ? handle : `@${handle}`;
@@ -146,10 +188,11 @@ export function projectRisingPost(
   readings: readonly ReachReading[],
   coinsByStory: ReadonlyMap<string, WireCoinLink>,
   sparkWindowMs: number,
+  lookup: PostLookup | null = null,
 ): WireRisingPost {
   const latest = readings[readings.length - 1];
   const link = row.story_id === null ? undefined : coinsByStory.get(row.story_id);
-  const confident = link !== undefined && link.kind === 'one' ? link : null;
+  const coin = postCoins(link, lookup);
   const handle = (row.handle ?? '').trim().replace(/^@/, '');
   const picture = pictureOf(row.media);
   const post: WireRisingPost = {
@@ -164,8 +207,8 @@ export function projectRisingPost(
     reach: projectReach(readings),
     readAt: instant(latest?.atMs ?? null, 'not_read_yet'),
     spark: projectSpark(readings, sparkWindowMs),
-    storyId: confident === null ? null : row.story_id,
-    coins: confident,
+    storyId: coin.fromStory ? row.story_id : null,
+    coins: coin.coins,
   };
   assertNoInternalVocabulary(post, `$.rising[${row.item_id}]`);
   return post;
@@ -189,8 +232,9 @@ export async function buildRising(
     (row) => postScore({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy) === 'passes',
   );
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
+  const lookups = await loadPostLookups(db, rows.map((row) => row.item_id));
   const posts = rows.map((row) => ({
-    post: projectRisingPost(row, reach.get(row.item_id) ?? [], coinsByStory, sparkWindowMs),
+    post: projectRisingPost(row, reach.get(row.item_id) ?? [], coinsByStory, sparkWindowMs, lookups.get(row.item_id) ?? null),
     at: toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0,
   }));
 

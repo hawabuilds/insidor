@@ -382,15 +382,14 @@ export function sampleNarrativeIds(): readonly string[] {
 
 /**
  * The sample feeds of single posts: each sample feed story's one post, with that story's
- * picture, views and line. A coin only when the sample story names exactly one — the same
- * rule the server applies — and never otherwise. The "Sample data" notice covers these as it
+ * picture, views and line. Each carries its sample story's coin link and id — the same rule
+ * the server applies when a post is part of a narrative. The "Sample data" notice covers these as it
  * covers the board.
  */
 export function fixtureRising(feed: 'fyp' | 'popular'): unknown {
   const posts = FEED_STORIES.map((s) => {
     const lead = (s['evidence'] as readonly Record<string, unknown>[])[0] ?? {};
     const coins = s['coins'] as { kind: string };
-    const confident = coins.kind === 'one';
     return {
       id: `${String(s['id'])}:post`,
       sourceLabel: lead['sourceLabel'],
@@ -403,8 +402,9 @@ export function fixtureRising(feed: 'fyp' | 'popular'): unknown {
       reach: s['reach'],
       readAt: s['firstSeenAt'],
       spark: s['spark'],
-      storyId: confident ? s['id'] : null,
-      coins: confident ? coins : null,
+      /* The story decides: its own link, with its id, unless it has not been searched. */
+      storyId: coins.kind === 'pending' ? null : s['id'],
+      coins,
     };
   });
   const at = (p: Record<string, unknown>): number => ((p['postedAt'] as { at?: number }).at ?? 0);

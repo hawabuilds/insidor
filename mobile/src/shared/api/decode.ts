@@ -471,24 +471,20 @@ function decodeStoryProvenance(raw: unknown, path: string): StoryProvenance {
 /**
  * One post on the For You or Popular feed.
  *
- * ★ THE COIN RULE IS ENFORCED HERE AS WELL AS ON THE SERVER. A post may carry a coin only as
- * a confident (`one`) link, and only together with the story id of the narrative that link
- * belongs to. A `none`, `unsure` or `several` link, a coin without a story, or a story without
- * a coin is a server sending something a single post must never carry, and it throws
- * `WireLeakError` — the row is not shown with the coin quietly dropped.
+ * ★ THE COIN RULE IS ENFORCED HERE AS WELL AS ON THE SERVER. A post may carry a coin (`one`)
+ * or coins (`several`) only together with the story id of the narrative that link belongs to;
+ * one without is a server sending something a single post must never carry, and it throws
+ * `WireLeakError` — the row is not shown with a coin of unknown standing. A row projected before
+ * every post carried a coin line has `coins: null`, and that reads as `pending`: not searched
+ * is the only thing such a row can be said to know.
  */
 export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
   assertNoInternalVocabulary(raw, path);
   const o = pick(obj(raw, path), RISING_POST_FIELDS);
   const storyId = optStr(o.storyId);
-  let coin: Coin | null = null;
-  if (o.coins !== null && o.coins !== undefined) {
-    const link = decodeCoinLink(o.coins, `${path}.coins`);
-    if (link.kind !== 'one') throw new WireLeakError(`${path}.coins (a ${link.kind} link on a single post)`);
-    coin = link.coin;
-  }
-  if ((coin === null) !== (storyId === null)) {
-    throw new WireLeakError(`${path}.storyId (a coin and its narrative travel together or not at all)`);
+  const coins: CoinLink = o.coins === null || o.coins === undefined ? { kind: 'pending' } : decodeCoinLink(o.coins, `${path}.coins`);
+  if ((coins.kind === 'one' || coins.kind === 'several') && storyId === null) {
+    throw new WireLeakError(`${path}.coins (a ${coins.kind} link on a post with no narrative)`);
   }
   return {
     id: str(o.id, `${path}.id`),
@@ -504,7 +500,7 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     readAt: instantAt(o.readAt, `${path}.readAt`, 'not_read_yet'),
     spark: decodeSpark(o.spark, `${path}.spark`),
     storyId,
-    coin,
+    coins,
   };
 }
 

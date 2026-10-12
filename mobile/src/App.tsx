@@ -49,7 +49,12 @@ import { TabBar } from './shared/ui/TabBar.tsx';
 function Screen({ route, create, onAlertsSeen }: { route: Route; create: (from: CreateFrom) => void; onAlertsSeen: () => void }) {
   switch (route.screen) {
     case 'feed':
-      return <Feed onCreate={(row, labelled) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, labelled, storyId: row.id })} />;
+      return (
+        <Feed
+          onCreate={(row, labelled) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, labelled, storyId: row.id })}
+          onCreatePost={(p) => create({ title: p.excerpt, reach: p.reach, thumbUrl: p.thumbUrl, labelled: false, storyId: p.storyId, link: p.permalink })}
+        />
+      );
     case 'narratives':
       return <Narratives onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, labelled: noticeFor(s) !== null, storyId: s.id })} />;
     case 'coin':
