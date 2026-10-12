@@ -36,7 +36,7 @@ import { coinOriginsVisibleTo } from '@insidor/contracts/story.ts';
 import type { MatchEvidence, StoryOrigin } from '@insidor/contracts/story.ts';
 import type { Db } from '@insidor/store';
 
-import { coinCandidates, corpusStats } from './coins.ts';
+import { coinCandidates, corpusStats, orderedOnly } from './coins.ts';
 import type { CorpusStats } from './coins.ts';
 import { permalinkFor } from './permalinks.ts';
 import type {
@@ -62,7 +62,7 @@ import type {
   WireSourceHealth,
   WireStory,
 } from './wire.ts';
-import { coinWindow } from './window.ts';
+import { coinWindow, windowIsOrdered } from './window.ts';
 import type { CoinWindow, StoryClocks } from './window.ts';
 
 /* ── the frame ────────────────────────────────────────────────────────── */
@@ -1119,6 +1119,7 @@ function toStoryFacts(
   coins: readonly CoinFacts[],
   corpus: CorpusStats,
   wasOnPreviousBoard: boolean,
+  windowOrdered: boolean,
 ): StoryFacts {
   const memberFacts: MemberFacts[] = members.map((row) => ({
     itemId: row.item_id,
@@ -1141,7 +1142,7 @@ function toStoryFacts(
     distinctAuthors: story.distinct_authors,
     distinctSources: story.distinct_sources,
     members: memberFacts,
-    coins: coinCandidates(spans, coins, corpus),
+    coins: orderedOnly(coinCandidates(spans, coins, corpus), windowOrdered),
     wasOnPreviousBoard,
   };
 }
@@ -1308,6 +1309,10 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<StoryL
     byStory.set(row.story_id, bucket);
   }
 
+  /* The stories whose window starts at or after their first post. Only these may link a coin
+     with confidence — see `orderedOnly`. */
+  const ordered = new Set([...coinWindows].filter(([, w]) => windowIsOrdered(w)).map(([id]) => id));
+
   return {
     stories: storyRows.map((row) =>
       toStoryFacts(
@@ -1318,6 +1323,7 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<StoryL
         coins.get(row.story_id) ?? [],
         corpusFor(corpora, row.origin),
         window.previousBoard.has(row.story_id),
+        ordered.has(row.story_id),
       ),
     ),
     coinWindows,
