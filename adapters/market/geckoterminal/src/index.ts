@@ -19,7 +19,7 @@
 
 import { VendorUnavailable } from '@insidor/vendor-kit';
 
-import type { CoinSearch } from '@insidor/contracts/ports/coin-search.ts';
+import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
 
 import { aggregate, primaryPool, readCandles, readPools, readTrades, type Candle, type Pool, type Trade } from './read.ts';
 import { readSearch, SEARCH_PAGE } from './search.ts';
@@ -85,7 +85,17 @@ export interface CoinMarket {
 export interface MarketData extends CoinSearch {
   /** The coin's primary pool, its candles for one view, and its latest trades. */
   coin(mint: string, timeframe: Timeframe): Promise<CoinMarket>;
+  /**
+   * One page of the launchpad's pools — on its curve, or bonded — by 24-hour volume. A listing,
+   * not a census: the vendor serves at most `LISTING_PAGES` pages, so what it returns is a lower
+   * bound on the coins trading there, never the count of them.
+   */
+  launchpadPools(venue: 'curve' | 'pool', page: number): Promise<readonly CoinSearchHit[]>;
 }
+
+/** The vendor serves this many pages of a listing and no more. */
+export const LISTING_PAGES = 10;
+const LISTING_DEX: Record<'curve' | 'pool', string> = { curve: 'pump-fun', pool: 'pumpswap' };
 
 /** A search answer is kept a minute: the same name typed twice costs one request. */
 const SEARCH_KEEP_MS = 60_000;
@@ -143,6 +153,11 @@ export function geckoterminal(config: GeckoConfig): MarketData {
         readSearch(await get(`/search/pools?query=${encodeURIComponent(key)}&network=solana&page=1`)),
       );
       return { hits, capped: hits.length >= SEARCH_PAGE };
+    },
+
+    async launchpadPools(venue, page) {
+      if (!Number.isInteger(page) || page < 1 || page > LISTING_PAGES) throw new RangeError(`page must be 1..${LISTING_PAGES}`);
+      return readSearch(await get(`/networks/solana/dexes/${LISTING_DEX[venue]}/pools?page=${page}&sort=h24_volume_usd_desc`));
     },
 
     async coin(mint, timeframe) {

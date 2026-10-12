@@ -42,6 +42,9 @@ export interface CoinSearch {
 export interface CoinStanding {
   readonly bonded: boolean;
   readonly marketCapUsd: number | null;
+  /** What the source calls it, when it says. */
+  readonly name?: string | null;
+  readonly ticker?: string | null;
 }
 
 export interface CoinStandings {
