@@ -26,7 +26,7 @@ test('★ a run waits for the execution to finish, then returns its rows and wha
 
 test('★ a failed execution throws; it is never an empty result', async () => {
   const { c } = client([STARTED, FAILED]);
-  await assert.rejects(c.run('select 1'), /QUERY_STATE_FAILED/);
+  await assert.rejects(c.run('select 1'), /QUERY_STATE_FAILED: table not found/);
 });
 
 test('a run still pending past its ceiling is abandoned, not read as empty', async () => {
