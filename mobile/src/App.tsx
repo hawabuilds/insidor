@@ -17,6 +17,7 @@
 import { useState } from 'react';
 import { CreateCoin, type CreateFrom } from './features/create/CreateCoin.tsx';
 import { Feed } from './features/feed/Feed.tsx';
+import { Learn } from './features/learn/Learn.tsx';
 import { InstallPrompt } from './features/install/InstallPrompt.tsx';
 import { NarrativePage } from './features/narrative/NarrativePage.tsx';
 import { Narratives } from './features/narratives/Narratives.tsx';
@@ -58,6 +59,8 @@ function Screen({ route, create }: { route: Route; create: (from: CreateFrom) =>
       return <Search />;
     case 'token':
       return <SearchedToken key={route.coinId} coinId={route.coinId} />;
+    case 'learn':
+      return <Learn />;
     case 'calls':
       return <ComingSoonScreen which={route.screen} />;
     default:

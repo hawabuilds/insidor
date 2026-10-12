@@ -9,6 +9,7 @@ const EVERY: readonly Route[] = [
   { screen: 'search' },
   { screen: 'calls' },
   { screen: 'wallet' },
+  { screen: 'learn' },
   { screen: 'story', storyId: 'goose', sample: false },
   { screen: 'story', storyId: 'jimothy', sample: true },
   { screen: 'coin', storyId: 'jimothy', coinId: 'c1', sample: true },
@@ -40,4 +41,5 @@ test('a story lights the tab of the list it came from', () => {
 
 test('a coin opened from search lights Search, where back leads', () => {
   assert.equal(tabOf({ screen: 'token', coinId: 'solana:A' }), 'search');
+  assert.equal(tabOf({ screen: 'learn' }), 'wallet', 'How Insidor works is reached from the Wallet tab');
 });
