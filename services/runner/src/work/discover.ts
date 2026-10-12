@@ -187,8 +187,8 @@ export interface DiscoverPassResult {
   readonly firstError: string | null;
   /**
    * ★ WHAT A DAY OF CATCH-ALL SEARCH COSTS AT THIS CADENCE, per source that has it: at the
-   * lanes' targets (what the floors steer toward) and at worst (every lane returning a
-   * full page every pass). Computed on dry and live passes alike, so a dry run answers
+   * lanes' targets (what the floors steer toward) and at worst (every lane returning
+   * `feed.maxPagesPerLane` full pages every pass). Computed on dry and live passes alike, so a dry run answers
    * "what will a day cost" before anything is spent. Both before the hard daily cap, which
    * stops the worst case at the cap.
    */
@@ -508,7 +508,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       sentFloors: { all: effectiveFloor(floors.all, deps.policy), media: effectiveFloor(floors.media, deps.policy) },
       targets,
       targetUsd: (targets.all + targets.media) * usdPerPost * passesPerDay,
-      worstUsd: lanes.reduce((sum, p) => sum + p.estimate.usd, 0) * passesPerDay,
+      worstUsd: lanes.reduce((sum, p) => sum + p.estimate.usd, 0) * deps.policy.feed.maxPagesPerLane * passesPerDay,
     };
     feedDays.push(day);
     deps.log.info(deps.mode === 'dry' ? 'DRY RUN — a day of catch-all search, priced' : 'catch-all search, priced', {
@@ -650,6 +650,23 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       items = result.value.items;
       authors = result.value.authors;
       hasMore = result.value.hasMore;
+
+      /* ★ MORE PAGES, ONLY FOR A CATCH-ALL LANE, ONLY WHILE EACH PAGE CAME BACK FULL, and
+         each one checked against the paced line before it is asked for — the earlier build's
+         paging. A short page means the window is exhausted; a refused check means the line
+         is, for now. Either way the lane stops with what it has. */
+      let cursor = result.value.cursor;
+      for (let page = 2; lane !== null && page <= deps.policy.feed.maxPagesPerLane; page += 1) {
+        if (cursor === null || !hasMore || items.length < (page - 1) * query.limit) break;
+        if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) break;
+        if (deps.signal.aborted) break;
+        const next = await adapter.discover({ ...query, cursor }, budget);
+        estimatedUsd += estimate.usd;
+        items = [...items, ...next.value.items];
+        authors = [...authors, ...next.value.authors];
+        hasMore = next.value.hasMore;
+        cursor = next.value.cursor;
+      }
     } catch (e) {
       /**
        * ★ OUR OWN REFUSAL IS NOT A VENDOR FAILURE, AND IS CAUGHT SEPARATELY.

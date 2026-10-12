@@ -869,6 +869,14 @@ export interface FeedPolicy {
    * checked against before the call, since a source picks its own page size.
    */
   readonly pageLimit: number;
+  /**
+   * Pages per lane per pass, at most — the earlier build's three. A lane asks for its next
+   * page only when the one before came back FULL and the source says there is more; a short
+   * page means the window is exhausted. Each page is checked against the posts supplier's
+   * paced line before it is asked for, so the line, not this number, is the limit on a busy
+   * day.
+   */
+  readonly maxPagesPerLane: number;
 }
 
 /**
@@ -1475,8 +1483,12 @@ const POLICY_V1: Policy = {
      v17 raises `budget.dailyUsd` from 3 to 21 with a line per supplier (`supplierLines`) and
      paces every line over the day (`paceAheadMs`) — the owner's caps from the earlier build,
      approved 2026-10-12. Re-reads go to the top 60 rows of each feed and to promoted
-     narratives only, every 6 / 15 / 30 minutes by view rate, for 24 hours. */
-  version: 'policy.v17',
+     narratives only, every 6 / 15 / 30 minutes by view rate, for 24 hours.
+
+     v18 adds `feed.maxPagesPerLane` (up to 3 full pages per catch-all lane per pass, the
+     posts line still the limit) and `judge.postBatchMaxOutputTokens` (800 per batch of
+     single posts, so the judge line is reserved near the real cost). */
+  version: 'policy.v18',
 
   admit: {
     maxAgeMin: 240,
@@ -1800,6 +1812,7 @@ const POLICY_V1: Policy = {
     mediaShare: 0.25,
     lang: 'en',
     pageLimit: 20,
+    maxPagesPerLane: 3,
   },
 
   rising: {
