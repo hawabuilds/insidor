@@ -38,7 +38,8 @@ export function loadNotifyConfig(env: Env): NotifyConfig {
   if (appId === null) throw new Error('PRIVY_APP_ID (or VITE_PRIVY_APP_ID) is not set: nobody could be signed in.');
   const helius = trimmed(env, 'HELIUS_API_KEY');
   const origins = (trimmed(env, 'NOTIFY_ALLOWED_ORIGINS') ?? '').split(',').map((s) => s.trim()).filter((s) => s !== '');
-  const port = Number(trimmed(env, 'NOTIFY_PORT') ?? DEFAULT_PORT);
+  /* NOTIFY_PORT locally, where several services share one .env.local; PORT where a host assigns one (Railway). */
+  const port = Number(trimmed(env, 'NOTIFY_PORT') ?? trimmed(env, 'PORT') ?? DEFAULT_PORT);
   return {
     port: Number.isInteger(port) && port > 0 && port < 65_536 ? port : DEFAULT_PORT,
     databaseUrl,

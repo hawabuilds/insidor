@@ -1,5 +1,9 @@
 # Deploying — Vercel, Supabase, and the one piece that needs a real process
 
+> **2026-10-13: the deploy is Railway + Vercel — see `docs/deploy-railway-vercel.md`** for the
+> order, every variable by service, DNS, Privy, health, spend and the off switches. The notes
+> below are the earlier reasoning about what fits where; where they disagree, the new file wins.
+
 **You do not need Docker.** It appears in `SETUP.md` for one reason: to give you a
 Postgres on a laptop. If you already have a hosted Postgres, skip it entirely.
 

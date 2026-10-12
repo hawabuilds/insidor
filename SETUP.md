@@ -114,11 +114,10 @@ pnpm dev:read      # terminal 1 — the read service, port 8787, connects as the
 pnpm dev:app       # terminal 2 — the web app, port 5173
 ```
 
-**That `app/.env.local` line is not optional and is easy to miss.** It is gitignored, so a
-fresh clone does not have it, and without it `pnpm dev:app` serves
-`app/src/shared/api/fixtures.ts` behind the **sample data** banner — a perfectly good
-screen that has nothing to do with the database you just filled. If you ran the whole
-sequence and the app still says *sample data*, this is why.
+**There is no sample data in the app any more.** Without `VITE_READ_URL`, `pnpm dev:app`
+reads `/api/read` on its own origin, which the dev server forwards to the read service on
+port 8787 — so with the read service down the board says it could not read, never anything
+made up.
 
 ### Why the read service gets its own database user
 
@@ -392,10 +391,8 @@ so the screen doubles as the argument for the vocabulary:
 | Ferry captain | One confident match → Buy |
 | Cartoon dog | Three tokens, one meme → Compare |
 
-The fixtures go through `decode.ts` exactly like a network response, so they cannot hold a
-shape the server could not send. They compile out of a production build — `import.meta.env.DEV`
-is a literal the bundler folds, so the module and its data are dropped, and there is no flag
-that can turn sample data on in front of a user.
+Those recorded stories now live with the tests only (`src/test-fixtures`), and a test in each
+app fails if anything the app imports can reach them. No build, dev or production, shows them.
 
 ### The wallet
 

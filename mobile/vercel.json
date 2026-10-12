@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd .. && corepack enable && pnpm install --frozen-lockfile",
+  "buildCommand": "cd .. && pnpm --filter @insidor/mobile build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/api/:service(read|trade|social|notify)/:path*", "destination": "/api/proxy?service=:service&path=:path*" }
+  ],
+  "headers": [
+    { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }, { "key": "Service-Worker-Allowed", "value": "/" }] },
+    { "source": "/manifest.webmanifest", "headers": [{ "key": "Content-Type", "value": "application/manifest+json" }] }
+  ],
+  "functions": { "api/proxy.js": { "maxDuration": 60 } }
+}
