@@ -15,8 +15,11 @@
  * the first stage. So a job stopped halfway, or redeployed, starts from what was saved and does
  * not pay for a picture twice — and the results are still there after the container is gone.
  *
- * ★ IT EXITS 0, ALWAYS, AND A FINISHED STAGE IS NEVER RUN AGAIN. Railway restarts a service on a
- * failed exit; a job that failed its last stage would otherwise be restarted ten times. A stage
+ * ★ IT EXITS 0, ALWAYS, AND A FINISHED STAGE IS NOT RUN AGAIN — unless a stage before it ran in
+ * this job, because each stage reads what the ones before it wrote: pairs read the pictures,
+ * the eval reads both. A report made before the pictures finished is not a finished report.
+ * Railway restarts a service on a failed exit; a job that failed its last stage would otherwise
+ * be restarted ten times. A stage
  * that fails is retried once, recorded as failed in jobs/status.json, and the next stage runs.
  * A redeploy reads the status and skips what is done, so a finished job exits at once.
  *
@@ -128,12 +131,14 @@ async function run(): Promise<void> {
   const status = await readStatus();
   const putStatus = async () => files.put(STATUS, `${JSON.stringify(status, null, 1)}\n`);
 
+  let earlierRan = false;
   for (const stage of STAGES) {
-    if (status[stage.name]?.state === 'done') {
+    if (status[stage.name]?.state === 'done' && !earlierRan) {
       console.log(`${stage.name}: done before, skipped`);
       continue;
     }
     current = stage.name;
+    earlierRan = true;
     const startedAt = new Date().toISOString();
     const log: string[] = [];
     let exit = 1;
