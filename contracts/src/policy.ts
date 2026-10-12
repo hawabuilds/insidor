@@ -1038,6 +1038,22 @@ export interface TradePolicy {
 }
 
 /**
+ * The Wallet tab (services/read, GET /wallet/:address): read-only chain data, cached and paced
+ * so free RPC and parsing tiers last.
+ */
+export interface WalletPolicy {
+  /** One wallet's answer is kept this long. */
+  readonly keepMs: number;
+  /** Reads one client may make per `windowMs`. */
+  readonly perClient: number;
+  readonly windowMs: number;
+  /** Most coins shown, biggest value first; the rest are counted, not listed. */
+  readonly holdingsShown: number;
+  /** Recent transactions read for buy history. Older buys are not seen, and the screen says so. */
+  readonly signaturesRead: number;
+}
+
+/**
  * The Search tab: a person's term, searched live against the market data sources and our own
  * rows. No new table; every answer is held in memory for `keepMs`.
  */
@@ -1513,6 +1529,7 @@ export interface Policy {
   readonly universe: UniversePolicy;
   readonly search: SearchPolicy;
   readonly trade: TradePolicy;
+  readonly wallet: WalletPolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -1724,8 +1741,10 @@ const POLICY_V1: Policy = {
 
      v30 adds `universe.history`: the pilot's alive bar and its total spend cap.
 
-     v31 adds `trade`: the per-trade cap, slippage, the platform fee (off) and the probe size. */
-  version: 'policy.v31',
+     v31 adds `trade`: the per-trade cap, slippage, the platform fee (off) and the probe size.
+
+     v32 adds `wallet`: the Wallet tab's cache, per-client limit, list length and history depth. */
+  version: 'policy.v32',
 
   admit: {
     maxAgeMin: 240,
@@ -2128,6 +2147,15 @@ const POLICY_V1: Policy = {
     maxSlippageBps: 1_500,
     platformFeeBps: 0,
     probeSol: 0.001,
+  },
+
+  wallet: {
+    keepMs: 30_000,
+    perClient: 30,
+    windowMs: 60_000,
+    holdingsShown: 50,
+    /* 200 transactions: two parse calls of a hundred, well inside a free parsing tier. */
+    signaturesRead: 200,
   },
 
   search: {

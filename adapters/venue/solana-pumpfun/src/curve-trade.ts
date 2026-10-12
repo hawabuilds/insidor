@@ -134,3 +134,13 @@ export async function buildCurve(rpcUrl: string, quote: CurveQuote, user: string
 export function payerOf(signedBase64: string): string {
   return VersionedTransaction.deserialize(Buffer.from(signedBase64, 'base64')).message.staticAccountKeys[0]?.toBase58() ?? '';
 }
+
+/**
+ * A creator's unclaimed fees, in lamports, from both of the launchpad's programs (the curve and
+ * its pool): what sits in their creator vaults above rent, read from the chain. Not "earned to
+ * date" — fees already claimed are gone from the vault, and this does not pretend otherwise.
+ */
+export async function unclaimedCreatorFees(rpcUrl: string, creator: string): Promise<bigint> {
+  const { online } = sdk(rpcUrl);
+  return BigInt((await online.getCreatorVaultBalanceBothPrograms(new PublicKey(creator))).toString());
+}

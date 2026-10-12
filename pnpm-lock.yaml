@@ -288,6 +288,9 @@ importers:
 
   e2e:
     dependencies:
+      '@insidor/chain-portfolio':
+        specifier: workspace:*
+        version: link:../adapters/chain/portfolio
       '@insidor/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -437,6 +440,9 @@ importers:
 
   services/read:
     dependencies:
+      '@insidor/chain-portfolio':
+        specifier: workspace:*
+        version: link:../../adapters/chain/portfolio
       '@insidor/contracts':
         specifier: workspace:*
         version: link:../../contracts
