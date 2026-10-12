@@ -51,8 +51,9 @@ export const CAPABILITIES: Capabilities = {
   absent: [],
   fidelity: FIDELITY,
   discovery: ['keyword', 'account', 'catchall'],
-  /** The lookup endpoint takes up to this many ids in one request. */
-  observeBatchSize: 100,
+  /** The lookup endpoint takes up to this many ids in one request. 50, not 100: the vendor
+      answers 400 "max 50 tweet_ids per request" above it (measured 2026-10-12). */
+  observeBatchSize: 50,
   /** A reproduction here is a first-class object with its own author and id. */
   lineage: true,
   /** Billed per item returned — the vendor's own header says so. */
