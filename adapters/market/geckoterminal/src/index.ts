@@ -8,6 +8,11 @@
  * refresh that fails serves the last good answer rather than none. Two people opening one coin
  * cost one call.
  *
+ * ★ AND IT STAYS UNDER THE LIMIT RATHER THAN FINDING IT. At most `CALLS_PER_MINUTE` requests go
+ * out in any minute; past that, a kept answer is served however old, and with none kept the
+ * part is unread. Candles and trades are read separately, so a refusal of one never costs the
+ * other.
+ *
  * What breaks if changed carelessly: `token=<mint>` on the candle request. It tells the vendor
  * which side of the pool to price, so a pool listed as SOL/COIN is never read inverted.
  */
@@ -34,6 +39,9 @@ const CANDLES: Record<Timeframe, { readonly unit: 'minute' | 'hour'; readonly ag
 const POOL_KEEP_MS = 120_000;
 const TRADES_KEEP_MS = 12_000;
 const CANDLE_LIMIT = 300;
+/** Under the free API's limit for one address, with room for the pool lookups. */
+const CALLS_PER_MINUTE = 25;
+const MINUTE_MS = 60_000;
 
 export interface GeckoConfig {
   readonly baseUrl: string;
@@ -44,8 +52,9 @@ export interface GeckoConfig {
 
 export interface CoinMarket {
   readonly pool: Pool | null;
-  readonly candles: readonly Candle[];
-  readonly trades: readonly Trade[];
+  /** Null when they could not be read — never an empty list, which means no trades yet. */
+  readonly candles: readonly Candle[] | null;
+  readonly trades: readonly Trade[] | null;
 }
 
 export interface MarketData {
@@ -55,6 +64,16 @@ export interface MarketData {
 
 export function geckoterminal(config: GeckoConfig): MarketData {
   const kept = new Map<string, { at: number; value: unknown; pending?: Promise<unknown> }>();
+  const sent: number[] = [];
+
+  /** Whether one more request fits in this minute; if it does, it is counted. */
+  function admit(): boolean {
+    const now = config.now();
+    while (sent.length > 0 && now - (sent[0] ?? 0) >= MINUTE_MS) sent.shift();
+    if (sent.length >= CALLS_PER_MINUTE) return false;
+    sent.push(now);
+    return true;
+  }
 
   /* Kept for `keepMs`; one request in flight per key; on failure, the last good answer. */
   async function cached<T>(key: string, keepMs: number, load: () => Promise<T>): Promise<T> {
@@ -75,6 +94,7 @@ export function geckoterminal(config: GeckoConfig): MarketData {
   }
 
   async function get(path: string): Promise<unknown> {
+    if (!admit()) throw new VendorUnavailable(VENDOR, path.split('?')[0] ?? path, 'held back: this minute\'s requests are spent');
     let response: Response;
     try {
       response = await config.fetch(`${config.baseUrl.replace(/\/+$/, '')}${path}`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(config.timeoutMs) });
@@ -90,13 +110,15 @@ export function geckoterminal(config: GeckoConfig): MarketData {
       const pool = await cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1`))));
       if (pool === null) return { pool: null, candles: [], trades: [] };
       const spec = CANDLES[timeframe];
+      const part = <T>(read: Promise<T>): Promise<T | null> => read.catch(() => null);
       const [candles, trades] = await Promise.all([
+        part(
         cached(`candles:${pool.address}:${timeframe}`, spec.keepMs, async () => {
           const raw = await get(`/networks/solana/pools/${pool.address}/ohlcv/${spec.unit}?aggregate=${spec.aggregate}&limit=${CANDLE_LIMIT}&token=${mint}&currency=usd`);
           const rows = readCandles(raw);
           return spec.mergeMs === null ? rows : aggregate(rows, spec.mergeMs);
-        }),
-        cached(`trades:${pool.address}`, TRADES_KEEP_MS, async () => readTrades(await get(`/networks/solana/pools/${pool.address}/trades`), mint)),
+        })),
+        part(cached(`trades:${pool.address}`, TRADES_KEEP_MS, async () => readTrades(await get(`/networks/solana/pools/${pool.address}/trades`), mint))),
       ]);
       return { pool, candles, trades };
     },
