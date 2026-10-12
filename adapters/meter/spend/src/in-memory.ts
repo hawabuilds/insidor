@@ -91,6 +91,11 @@ export interface InMemoryMeter extends Meter {
   readonly entries: () => readonly Spend[];
   /** Discards yesterday. Called on record, and available to tests. */
   readonly rollover: (at: number) => void;
+  /**
+   * Replaces what today held before this process's own entries — what OTHER processes have
+   * spent, re-read from the ledger. See `refresh` in durable.ts, the only caller.
+   */
+  readonly reopen: (opening: SpendTotals) => void;
 }
 
 const DAY_MS = 86_400_000;
@@ -164,6 +169,10 @@ export function inMemoryMeter(opts: InMemoryMeterOptions): InMemoryMeter {
   return {
     entries: () => entries,
     rollover,
+    reopen: (next) => {
+      rollover(opts.now());
+      opening = next;
+    },
     spentUsd,
 
     /**

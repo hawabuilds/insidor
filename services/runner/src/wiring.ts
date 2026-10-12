@@ -51,12 +51,13 @@ import type { Author, Item, Millis } from '@insidor/contracts';
 import type { DurableMeter } from '@insidor/meter';
 import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
+import { vendorLines } from './vendor-lines.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import { JudgeNotConfigured, VENDOR as JUDGE_VENDOR, anthropicJudge, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
+import { JudgeNotConfigured, anthropicJudge, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openDurableMeter } from '@insidor/meter';
-import { VENDOR as EMBED_VENDOR, httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
-import { SUPPLIER_VENDORS, resolvePlatforms, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
+import { httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
+import { resolvePlatforms, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
   DB_ROLE,
   PgAssetRepo,
@@ -352,14 +353,7 @@ export async function withRuntime<T>(
         /* ★ ONE LINE PER SUPPLIER, the owner's caps (Policy.budget.supplierLines), mapped
            here from role to the vendor that bills under it. Every line is paced over the
            UTC day — see `paceAheadMs`. */
-        perVendorCapUsd: {
-          [SUPPLIER_VENDORS.posts]: policy.budget.supplierLines.posts,
-          /* The short-video source is fetched through the scraping service, so both bill as one
-             vendor: its line is the video line and the scraping line together. */
-          [SUPPLIER_VENDORS.video]: policy.budget.supplierLines.video + policy.budget.supplierLines.actors,
-          [JUDGE_VENDOR]: policy.budget.supplierLines.judge,
-          [EMBED_VENDOR]: policy.budget.supplierLines.embeddings,
-        },
+        perVendorCapUsd: vendorLines(policy),
         paceAheadMs: policy.budget.paceAheadMs,
         softStop: policy.budget.softStopFraction,
         now: () => Date.now(),
@@ -385,6 +379,17 @@ export async function withRuntime<T>(
            could not exist before the ledger was durable. */
         spentTodayUsd: meter.openedWith.totalUsd,
       });
+
+      /* ★ THE LINES ARE SHARED WITH ANY ONE-OFF PAID JOB (tools/jobs.ts), which writes to the same
+         ledger. Re-read it on a timer so what the job spends counts here too; see `refresh` in
+         the meter. Unref'd: it must never be what keeps a stopping runner alive. */
+      setInterval(() => {
+        meter.refresh().catch((error: unknown) =>
+          log.warn('the spend ledger could not be re-read; keeping the last balance', {
+            err: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }, policy.budget.ledgerRefreshMs).unref();
 
       /* ── the judge ──────────────────────────────────────────────────────
          Built after the meter, because every judge call is metered against it. Four
