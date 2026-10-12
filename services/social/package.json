@@ -1,0 +1,29 @@
+{
+  "name": "@insidor/social",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "People: profiles from sign-in, follows, comments with proof links, likes only from holders, and Trador's ranks earned from them.",
+  "main": "./src/main.ts",
+  "exports": {
+    ".": "./src/routes.ts",
+    "./*.ts": "./src/*.ts"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=../../.env.local src/main.ts",
+    "dev": "node --watch --env-file-if-exists=../../.env.local src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/chain-portfolio": "workspace:*",
+    "@insidor/contracts": "workspace:*",
+    "@insidor/core": "workspace:*",
+    "@insidor/identity-privy": "workspace:*",
+    "@insidor/venue-solana-pumpfun": "workspace:*",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.0"
+  }
+}

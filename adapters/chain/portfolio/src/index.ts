@@ -101,6 +101,13 @@ export function portfolioReader(config: PortfolioConfig) {
     async signatures(owner: string, limit: number): Promise<readonly string[]> {
       return readSignatures(await rpc('getSignaturesForAddress', [owner, { limit }]));
     },
+    /** Whether a transaction moved the given coin in any account: a proof link's check. False for a failed or unknown transaction. */
+    async txTouchesMint(signature: string, mint: string): Promise<boolean> {
+      const reply = rec(await rpc('getTransaction', [signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 }]));
+      const meta = rec(rec(reply.result).meta);
+      if (meta.err !== null && meta.err !== undefined) return false;
+      return [...arr(meta.preTokenBalances), ...arr(meta.postTokenBalances)].some((b) => str(rec(b).mint) === mint);
+    },
     /** Parsed transactions, at most a hundred a call. Empty when no parse endpoint is configured. */
     async parse(signatures: readonly string[]): Promise<readonly ParsedTx[]> {
       if (config.parseUrl === null || signatures.length === 0) return [];

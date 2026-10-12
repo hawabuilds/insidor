@@ -15,6 +15,7 @@
     "@insidor/project": "workspace:*",
     "@insidor/read": "workspace:*",
     "@insidor/runner": "workspace:*",
+    "@insidor/social": "workspace:*",
     "@insidor/store": "workspace:*"
   },
   "devDependencies": {
