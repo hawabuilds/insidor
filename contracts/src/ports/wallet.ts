@@ -219,4 +219,14 @@ export interface Wallet {
   signAndSendTransaction(payload: Uint8Array): Promise<SendOutcome>;
   /** The signed-in person's name, handle and picture from their sign-in account; null when there is none. */
   identity(): WalletIdentity | null;
+  /**
+   * Show the person their wallet's private key in the wallet provider's own secure window, to copy
+   * into another wallet. ★ THE KEY NEVER COMES BACK HERE: it is drawn in the provider's window, on
+   * the provider's domain, and this resolves only with whether that window was shown. There is
+   * deliberately no method that takes a key in: importing one would mean our code holding it.
+   */
+  showKeyExport(): Promise<KeyExportOutcome>;
 }
+
+/** Whether the provider's export window was shown. Never the key, never any text from it. */
+export type KeyExportOutcome = 'shown' | 'unavailable' | 'failed';

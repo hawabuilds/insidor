@@ -279,6 +279,8 @@ export function browserWallet(config: BrowserWalletConfig): Wallet {
     signAndSendTransaction: async () => ({ kind: 'unavailable' as const }),
     /* An injected wallet has an address and nothing about who holds it. */
     identity: () => null,
+    /* A browser extension wallet keeps its own key and its own export; there is nothing to show from here. */
+    showKeyExport: async () => 'unavailable',
 
     signer: (): Signer | null => {
       if (state.kind !== 'connected') return null;

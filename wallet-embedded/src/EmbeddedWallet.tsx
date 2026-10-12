@@ -7,10 +7,11 @@
  * address. Everything the app sees goes through the wallet port; nothing here is exported for a
  * screen to call.
  *
- * ★ NO KEY EVER. The vendor offers exporting the embedded wallet's key and importing a key; this
- * package uses neither, and there is no screen for either. The address is read from the user's
- * linked accounts (the embedded wallet is the one the vendor itself created), so the vendor's
- * chain entry point, and a chain library with it, is never loaded.
+ * ★ NO KEY EVER. Export opens the vendor's own window, which draws the key in a frame on the
+ * vendor's domain; our code is handed nothing and passes nothing on. Import is not here at all:
+ * the vendor's only import call takes the key as text from the app, which would put it in our
+ * code. The address is read from the user's linked accounts (the embedded wallet is the one the
+ * vendor itself created).
  *
  * What breaks if changed carelessly: the error code. The sign-in's own "the person closed it"
  * is `refused`; every other code is `failed` with no detail. Passing the vendor's code through
@@ -18,7 +19,7 @@
  */
 
 import { PrivyProvider, useLogin, usePrivy } from '@privy-io/react-auth';
-import { useCreateWallet, useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
+import { useCreateWallet, useExportWallet, useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
 import { useEffect, useRef, type ReactNode } from 'react';
 
 import type { Bridge } from './store.ts';
@@ -80,6 +81,7 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
 
   /* Signing: the vendor's Solana wallet for this address. Signs only; sending is the caller's. */
   const { signTransaction } = useSignTransaction();
+  const { exportWallet } = useExportWallet();
   const signer = wallets.find((w) => w.address === address) ?? null;
 
   useEffect(() => {
@@ -89,6 +91,7 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
          different route through the provider, and is not what Trador runs. */
       signIn: (via) => login(via === undefined ? undefined : { loginMethods: [via === 'x' ? 'twitter' : 'google'] }),
       signOut: () => logout(),
+      showExport: () => (address === null ? Promise.reject(new Error('no embedded wallet')) : exportWallet({ address })),
       signTransaction: async (payload) => {
         if (signer === null) throw new Error('no embedded wallet to sign with');
         const { signedTransaction } = await signTransaction({ transaction: payload, wallet: signer, chain: 'solana:mainnet' });
@@ -96,7 +99,7 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
       },
     });
     return () => bridge.actions(null);
-  }, [bridge, login, logout, signer, signTransaction]);
+  }, [bridge, login, logout, signer, signTransaction, exportWallet, address]);
 
   /* Who signed in, as the vendor reports it: the X account, or the Google account's name. A
      Google email is never passed on — it is not a name, and nothing here needs it. */

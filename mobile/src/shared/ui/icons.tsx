@@ -145,6 +145,13 @@ export const CapIcon = (p: IconProps) => (
   </Stroke>
 );
 
+export const LockIcon = (p: IconProps) => (
+  <Stroke {...p}>
+    <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
+    <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+  </Stroke>
+);
+
 export const LogoutIcon = (p: IconProps) => (
   <Stroke {...p}>
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />

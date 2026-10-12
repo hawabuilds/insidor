@@ -37,6 +37,8 @@ export interface Actions {
   /** Opens the vendor's sign-in — the chosen method, or all of them. Its outcome arrives through `Bridge.signInEnded`. */
   signIn(via?: SignInVia): void;
   signOut(): Promise<void>;
+  /** Opens the vendor's own export window for the embedded wallet. Resolves when it closes; carries nothing back. */
+  showExport(): Promise<unknown>;
   /** The vendor's signature on a transaction, from the embedded wallet. The key stays in the vendor's wallet. */
   signTransaction(payload: Uint8Array): Promise<Uint8Array>;
 }
@@ -119,6 +121,16 @@ export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {})
     },
     signer: () => null,
     identity: () => (snap.signedIn ? snap.identity ?? null : null),
+    /* Whatever the vendor's call resolves with is dropped here: the port answers with a word, never a value. */
+    async showKeyExport() {
+      if (current.kind !== 'connected' || act === null) return 'unavailable';
+      try {
+        await act.showExport();
+        return 'shown';
+      } catch {
+        return 'failed';
+      }
+    },
     async signAndSendTransaction(payload): Promise<SendOutcome> {
       const actions = act;
       const broadcast = options.broadcast;
