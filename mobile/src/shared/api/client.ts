@@ -266,6 +266,97 @@ export async function buildTransfer(t: { readonly wallet: string; readonly to: s
   return r.ok && typeof tx === 'string' && tx !== '' ? { kind: 'ready', transaction: tx } : { kind: 'blocked', why: said(r.body, 'This could not be prepared just now.') };
 }
 
+/* ── creating a coin (services/trade /launch, services/read /ticker) ───── */
+
+export interface LaunchRules {
+  readonly open: boolean;
+  readonly creatorFeeBps: number;
+  readonly protocolFeeBps: number;
+  readonly maxDevBuyLamports: string;
+}
+
+export interface LaunchPreview {
+  readonly costs: readonly { readonly key: 'network' | 'rent' | 'launchpad'; readonly lamports: number }[];
+  readonly totalLamports: number;
+  readonly balanceLamports: number;
+  readonly devBuy: { readonly lamports: number; readonly tokensOut: string; readonly supplyBps: number } | null;
+  readonly creatorFeeBps: number;
+}
+
+/** The launchpad's rules now, read from the chain by the trade service; null when they could not be read. */
+export async function fetchLaunchRules(signal?: AbortSignal): Promise<LaunchRules | null> {
+  const r = await trade('/launch/rules', {}, signal);
+  const b = r.body;
+  return r.ok && typeof b['open'] === 'boolean' && typeof b['creatorFeeBps'] === 'number' && typeof b['protocolFeeBps'] === 'number' && typeof b['maxDevBuyLamports'] === 'string'
+    ? { open: b['open'], creatorFeeBps: b['creatorFeeBps'], protocolFeeBps: b['protocolFeeBps'], maxDevBuyLamports: b['maxDevBuyLamports'] }
+    : null;
+}
+
+/** What this launch would cost, measured on the chain; or why it cannot be made. */
+export async function previewLaunch(p: { readonly wallet: string; readonly name: string; readonly symbol: string; readonly devBuyLamports: string }, signal?: AbortSignal): Promise<{ readonly kind: 'preview'; readonly preview: LaunchPreview } | { readonly kind: 'refused'; readonly why: string }> {
+  const r = await trade('/launch/preview', { method: 'POST', body: JSON.stringify(p) }, signal);
+  const costs = r.body['costs'];
+  if (!r.ok || !Array.isArray(costs)) return { kind: 'refused', why: said(r.body, 'The launch could not be priced just now.') };
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  const dev = r.body['devBuy'];
+  return {
+    kind: 'preview',
+    preview: {
+      costs: costs.flatMap((c) => {
+        const o = typeof c === 'object' && c !== null ? (c as Record<string, unknown>) : {};
+        return o['key'] === 'network' || o['key'] === 'rent' || o['key'] === 'launchpad' ? [{ key: o['key'], lamports: num(o['lamports']) }] : [];
+      }),
+      totalLamports: num(r.body['totalLamports']),
+      balanceLamports: num(r.body['balanceLamports']),
+      devBuy: typeof dev === 'object' && dev !== null ? { lamports: num((dev as Record<string, unknown>)['lamports']), tokensOut: String((dev as Record<string, unknown>)['tokensOut'] ?? '0'), supplyBps: num((dev as Record<string, unknown>)['supplyBps']) } : null,
+      creatorFeeBps: num(r.body['creatorFeeBps']),
+    },
+  };
+}
+
+/** The launch, its metadata stored and its transaction built and simulated — or why not, with nothing to sign. */
+export async function buildLaunchTx(p: { readonly wallet: string; readonly name: string; readonly symbol: string; readonly description: string; readonly imageDataUrl: string; readonly devBuyLamports: string }): Promise<{ readonly kind: 'ready'; readonly transaction: string; readonly mint: string } | { readonly kind: 'blocked'; readonly why: string }> {
+  const r = await trade('/launch/build', { method: 'POST', body: JSON.stringify({ ...p, links: {} }) });
+  const tx = r.body['transaction'];
+  const mint = r.body['mint'];
+  return r.ok && typeof tx === 'string' && typeof mint === 'string' ? { kind: 'ready', transaction: tx, mint } : { kind: 'blocked', why: said(r.body, 'The launch could not be prepared just now.') };
+}
+
+/** After the create landed: record it against its narrative, so it shows "Created on Insidor". */
+export async function confirmLaunch(p: { readonly wallet: string; readonly signature: string; readonly mint: string; readonly storyId: string | null }): Promise<boolean> {
+  const r = await trade('/launch/confirm', { method: 'POST', body: JSON.stringify(p) });
+  return r.ok && r.body['recorded'] === true;
+}
+
+/** How many coins Insidor has seen with this ticker; null when it could not be read. */
+export async function fetchTickerSeen(ticker: string, signal?: AbortSignal): Promise<number | null> {
+  if (USE_FIXTURES) return null;
+  try {
+    const raw = await read(`/ticker/${encodeURIComponent(ticker)}`, signal);
+    const seen = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>)['seen'] : null;
+    return typeof seen === 'number' ? seen : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A picture by its address, as a data URL to upload; null when it cannot be read (a host may refuse). */
+export async function imageAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Send what the person signed. */
 export async function sendSigned(signedBase64: string): Promise<{ readonly ok: true; readonly ref: string } | { readonly ok: false; readonly why: string }> {
   const r = await trade('/send', { method: 'POST', body: JSON.stringify({ transaction: signedBase64 }) });

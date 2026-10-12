@@ -8,6 +8,7 @@ export type { Coin, CoinLink } from './wire/coin.ts';
 export type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 export type { DiscussionPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 export type { RisingFeed, RisingFeedId, RisingPost } from './wire/rising.ts';
+export type { LaunchPreview, LaunchRules } from './client.ts';
 export type { BuildResult, Holding as TradeHolding, TradeQuote, TradeVenue } from './wire/trade.ts';
 export type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 export type { OriginGap, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
@@ -21,7 +22,13 @@ export {
   fetchCoinMarket,
   fetchNarratives,
   fetchRising,
+  buildLaunchTx,
   buildTrade,
+  confirmLaunch,
+  fetchLaunchRules,
+  fetchTickerSeen,
+  imageAsDataUrl,
+  previewLaunch,
   buildTransfer,
   fetchPortfolio,
   fetchWalletHistory,
