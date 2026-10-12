@@ -7,7 +7,7 @@ import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-se
 import { SILENT } from './log.ts';
 import type { Row } from './queries.ts';
 import { handle } from './routes.ts';
-import { ASSET_SEARCH_SQL, createSearch, normaliseTerm, POST_SEARCH_SQL, STORY_SEARCH_SQL, type NamedSearch } from './search.ts';
+import { ASSET_SEARCH_SQL, createSearch, normaliseTerm, POST_SEARCH_SQL, STORY_SEARCH_SQL, TICKER_COUNT_SQL, type NamedSearch } from './search.ts';
 
 const POLICY = DEFAULT_POLICY.search;
 
@@ -159,4 +159,10 @@ test('★ a coin a search returned opens as a token page for a while; an address
   assert.equal((await handle('GET', '/coin/solana%3AQ/market?tf=1h', deps)).status, 404);
   h.tick(POLICY.openableMs);
   assert.equal((await handle('GET', '/coin/solana%3AA/market?tf=1h', deps)).status, 404);
+});
+
+test('the ticker check counts the coins we have seen with it, and nothing more', async () => {
+  const { search } = harness({ rows: { [TICKER_COUNT_SQL]: [{ n: 3 }] } });
+  assert.deepEqual(body(await search.ticker('$jim', 'c1')), { ticker: 'jim', seen: 3 });
+  assert.equal((await search.ticker('', 'c1')).status, 400);
 });

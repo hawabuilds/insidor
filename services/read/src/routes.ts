@@ -427,6 +427,7 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
     if (deps.search !== undefined) {
       if (segments.length === 1 && head === 'search') return await deps.search.search(new URLSearchParams(rawUrl.split('?')[1] ?? '').get('q'), client);
       if (segments.length === 2 && head === 'coin' && param !== undefined) return (await deps.search.facts(param)) ?? NOT_FOUND;
+      if (segments.length === 2 && head === 'ticker' && param !== undefined) return await deps.search.ticker(param, client);
     }
 
     if (segments.length === 2 && param !== undefined) {
