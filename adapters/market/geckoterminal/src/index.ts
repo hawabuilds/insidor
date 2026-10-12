@@ -39,11 +39,32 @@ const CANDLES: Record<Timeframe, { readonly unit: 'minute' | 'hour'; readonly ag
 const POOL_KEEP_MS = 120_000;
 const TRADES_KEEP_MS = 12_000;
 const CANDLE_LIMIT = 300;
-/** Under the free API's limit for one address, with room for the pool lookups. */
-const CALLS_PER_MINUTE = 25;
+/**
+ * Requests a minute, by plan: under the free API's limit for one address, with room for the
+ * pool lookups; the same under a demo key (whose limit is the free one's); and well under a
+ * paid key's.
+ */
+const CALLS_PER_MINUTE: Record<GeckoPlan, number> = { free: 25, demo: 25, pro: 250 };
 const MINUTE_MS = 60_000;
 
+/**
+ * The free API needs no key. With a CoinGecko key the same paths are asked of its on-chain API
+ * instead — a demo key at the public host, a paid one at the pro host — with the key in a header.
+ */
+export type GeckoPlan = 'free' | 'demo' | 'pro';
+
+export const BASE_URLS: Record<GeckoPlan, string> = {
+  free: 'https://api.geckoterminal.com/api/v2',
+  demo: 'https://api.coingecko.com/api/v3/onchain',
+  pro: 'https://pro-api.coingecko.com/api/v3/onchain',
+};
+
+const KEY_HEADER: Record<Exclude<GeckoPlan, 'free'>, string> = { demo: 'x-cg-demo-api-key', pro: 'x-cg-pro-api-key' };
+
 export interface GeckoConfig {
+  readonly plan?: GeckoPlan;
+  /** Required for `demo` and `pro`; never sent on `free`. */
+  readonly apiKey?: string;
   readonly baseUrl: string;
   readonly fetch: typeof globalThis.fetch;
   readonly timeoutMs: number;
@@ -63,6 +84,9 @@ export interface MarketData {
 }
 
 export function geckoterminal(config: GeckoConfig): MarketData {
+  const plan: GeckoPlan = config.plan !== undefined && config.plan !== 'free' && (config.apiKey ?? '') !== '' ? config.plan : 'free';
+  const headers: Record<string, string> = { accept: 'application/json' };
+  if (plan !== 'free') headers[KEY_HEADER[plan]] = config.apiKey ?? '';
   const kept = new Map<string, { at: number; value: unknown; pending?: Promise<unknown> }>();
   const sent: number[] = [];
 
@@ -70,7 +94,7 @@ export function geckoterminal(config: GeckoConfig): MarketData {
   function admit(): boolean {
     const now = config.now();
     while (sent.length > 0 && now - (sent[0] ?? 0) >= MINUTE_MS) sent.shift();
-    if (sent.length >= CALLS_PER_MINUTE) return false;
+    if (sent.length >= CALLS_PER_MINUTE[plan]) return false;
     sent.push(now);
     return true;
   }
@@ -97,7 +121,7 @@ export function geckoterminal(config: GeckoConfig): MarketData {
     if (!admit()) throw new VendorUnavailable(VENDOR, path.split('?')[0] ?? path, 'held back: this minute\'s requests are spent');
     let response: Response;
     try {
-      response = await config.fetch(`${config.baseUrl.replace(/\/+$/, '')}${path}`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(config.timeoutMs) });
+      response = await config.fetch(`${config.baseUrl.replace(/\/+$/, '')}${path}`, { headers, signal: AbortSignal.timeout(config.timeoutMs) });
     } catch (error) {
       throw new VendorUnavailable(VENDOR, path.split('?')[0] ?? path, `request failed: ${error instanceof Error ? error.message : 'unknown'}`);
     }

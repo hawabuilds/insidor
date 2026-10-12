@@ -156,7 +156,14 @@ async function main(): Promise<void> {
   const chain = cfg.rpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.rpcUrl, fetch: globalThis.fetch });
   const curves = new Map<string, { at: number; progress: number | null }>();
   const market = {
-    market: geckoterminal({ baseUrl: cfg.marketDataUrl, fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS, now: Date.now }),
+    market: geckoterminal({
+      plan: cfg.marketData.plan,
+      ...(cfg.marketData.apiKey === null ? {} : { apiKey: cfg.marketData.apiKey }),
+      baseUrl: cfg.marketData.baseUrl,
+      fetch: globalThis.fetch,
+      timeoutMs: MARKET_TIMEOUT_MS,
+      now: Date.now,
+    }),
     curveProgress:
       chain === null
         ? null
