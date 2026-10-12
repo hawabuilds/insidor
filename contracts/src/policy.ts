@@ -1010,6 +1010,15 @@ export interface UniversePolicy {
     readonly checksPerPass: number;
     readonly deletesPerPass: number;
   };
+  /**
+   * The history pilot: coins still alive today, grouped into narratives, each narrative's origin
+   * found once and kept forever (tools/history-pilot.ts). Alive means a market cap today of at
+   * least `aliveMarketCapUsd`; the whole pilot may spend at most `pilotUsd`.
+   */
+  readonly history: {
+    readonly aliveMarketCapUsd: number;
+    readonly pilotUsd: number;
+  };
 }
 
 /**
@@ -1694,8 +1703,10 @@ const POLICY_V1: Policy = {
 
      v28 adds `search`: the Search tab's cache, per-client limit and list lengths.
 
-     v29 adds `universe.keep`: every coin for fourteen days, then only the coins that matter. */
-  version: 'policy.v29',
+     v29 adds `universe.keep`: every coin for fourteen days, then only the coins that matter.
+
+     v30 adds `universe.history`: the pilot's alive bar and its total spend cap. */
+  version: 'policy.v30',
 
   admit: {
     maxAgeMin: 240,
@@ -2082,6 +2093,11 @@ const POLICY_V1: Policy = {
       /* 300 a minute: ten calls of thirty, so ~42,000 launches a day are asked about in under three hours. */
       checksPerPass: 300,
       deletesPerPass: 1_000,
+    },
+    history: {
+      aliveMarketCapUsd: 100_000,
+      /* $25: the founders' cap for the whole pilot, every paid call counted against it. */
+      pilotUsd: 25,
     },
   },
 

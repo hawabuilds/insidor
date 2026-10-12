@@ -113,3 +113,5 @@ export type { FloorMove, LaneFloors } from './sources/feed-floor.ts';
 export { checkCreatorLink, decideOrigin, earliestByReproduction, matchCandidates, namesCoin } from './origin/check.ts';
 export type { Candidate, CoinFacts, CreatorCheck, CreatorLink, MatchResult, OriginDecision, PostFacts } from './origin/check.ts';
 export { mergeHits } from './search/merge.ts';
+export { biggestFirst, groupCoins } from './history/group.ts';
+export type { HistoryCoin, HistoryNarrative, PicturePair } from './history/group.ts';
