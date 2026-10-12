@@ -63,6 +63,7 @@ import {
   PgAuthorRepo,
   PgDecisionRepo,
   PgBackfillRepo,
+  PgCoinUniverseRepo,
   PgFeedFloorRepo,
   PgImageEmbeddingRepo,
   PgImagePairRepo,
@@ -85,6 +86,8 @@ import { storeArrivals } from './work/arrivals.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
+import { type UniverseDeps } from './work/universe.ts';
+import { fetchMetadata } from '@insidor/venue-solana-pumpfun';
 import { advisoryLockKey, policyHash } from './hash.ts';
 import type { Logger } from './log.ts';
 import type { DecisionLog, LoopDeps } from './loop.ts';
@@ -119,6 +122,8 @@ export interface Runtime {
   readonly embedImages: () => Promise<unknown>;
   /** Follow promoted stories' quotes back to where they started. See work/backfill.ts. */
   readonly backfill: () => Promise<BackfillResult>;
+  /** The coin universe loop's dependencies. See work/universe.ts. */
+  readonly universe: Omit<UniverseDeps, 'now'>;
 }
 
 
@@ -514,6 +519,41 @@ export async function withRuntime<T>(
               log: log.child({ step: 'embed-images' }),
               now: () => Date.now() as Millis,
             }),
+          universe: {
+            coins: new PgCoinUniverseRepo(db),
+            metadata: {
+              read: (uri) =>
+                fetchMetadata(uri, {
+                  gateway: cfg.metadataGateway,
+                  fetch: globalThis.fetch,
+                  timeoutMs: policy.universe.metadataTimeoutMs,
+                  maxBytes: policy.universe.metadataMaxBytes,
+                }),
+            },
+            platforms,
+            items: repos.items,
+            authors: repos.authors,
+            postScores: new PgPostJudgementRepo(db),
+            images: new PgImageEmbeddingRepo(db),
+            store: storeArrivals(repos, policy, () => Date.now() as Millis),
+            postJudge,
+            embed:
+              cfg.embeddings.state === 'configured'
+                ? voyageEmbed({
+                    client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
+                    meter,
+                    now: () => Date.now() as Millis,
+                  })
+                : null,
+            pairs:
+              judge === null
+                ? null
+                : { judge, pairs: new PgImagePairRepo(db), mode: cfg.spend.kind, policy, log: log.child({ step: 'image-pairs' }), now: () => Date.now() as Millis },
+            meter,
+            mode: cfg.spend.kind,
+            policy,
+            log,
+          },
           backfill: () =>
             backfillStories({
               platforms,

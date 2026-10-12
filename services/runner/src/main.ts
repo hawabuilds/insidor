@@ -34,6 +34,7 @@ import { withRuntime } from './wiring.ts';
 import { admitLoop } from './loops/admit.ts';
 import { detectLoop } from './loops/detect.ts';
 import { discoverLoop } from './loops/discover.ts';
+import { universeLoop } from './loops/universe.ts';
 import { groupLoop } from './loops/group.ts';
 import { qualifyLoop } from './loops/qualify.ts';
 import { rankLoop } from './loops/rank.ts';
@@ -180,6 +181,9 @@ async function main(): Promise<void> {
           runtime.loopDeps.policy.budget.supplierLines.posts,
         ),
       }),
+      /* Every new coin's metadata, and where it came from. Its own loop so a slow gateway
+         never holds up the search. */
+      universeLoop(runtime.universe),
       admitLoop(runtime.loopDeps),
       trackLoop(runtime.loopDeps),
       detectLoop(runtime.loopDeps),

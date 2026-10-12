@@ -18,6 +18,7 @@
     "@insidor/meter": "workspace:*",
     "@insidor/platform-registry": "workspace:*",
     "@insidor/store": "workspace:*",
-    "@insidor/vendor-kit": "workspace:*"
+    "@insidor/vendor-kit": "workspace:*",
+    "@insidor/venue-solana-pumpfun": "workspace:*"
   }
 }

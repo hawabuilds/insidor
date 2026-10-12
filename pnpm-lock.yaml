@@ -425,6 +425,9 @@ importers:
       '@insidor/vendor-kit':
         specifier: workspace:*
         version: link:../../adapters/kit/vendor
+      '@insidor/venue-solana-pumpfun':
+        specifier: workspace:*
+        version: link:../../adapters/venue/solana-pumpfun
 
   services/watchdog:
     dependencies:

@@ -85,7 +85,7 @@ export type SupervisedStage = (typeof SUPERVISED_STAGES)[number];
  * writes to it under its own name; see the ★ in services/chainwatch/src/wiring.ts,
  * which is the same widening argued at length.
  */
-export const SUPERVISED_TASKS = ['discover'] as const;
+export const SUPERVISED_TASKS = ['discover', 'universe'] as const;
 
 export type SupervisedTask = (typeof SUPERVISED_TASKS)[number];
 
@@ -243,6 +243,11 @@ export interface RunnerConfig {
    * vectors and GROUP groups them on the free tiers. The key is the only thing to set.
    */
   readonly embeddings: { readonly state: 'dormant' } | { readonly state: 'configured'; readonly apiKey: string; readonly baseUrl: string };
+  /**
+   * The IPFS gateway coin metadata is read through, by content id. Ours to choose — never the
+   * host a coin's creator named. `METADATA_GATEWAY`; a public gateway when unset.
+   */
+  readonly metadataGateway: string;
 }
 
 export class ConfigError extends Error {
@@ -438,5 +443,6 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
             apiKey: (env['VOYAGE_API_KEY'] ?? '').trim(),
             baseUrl: (env['VOYAGE_API_BASE'] ?? '').trim() || 'https://api.voyageai.com',
           },
+    metadataGateway: (env['METADATA_GATEWAY'] ?? '').trim() || 'https://ipfs.io',
   };
 }
