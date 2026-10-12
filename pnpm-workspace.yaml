@@ -22,13 +22,15 @@ packages:
   # The pipeline end to end, as a test. Its own package so no service has to depend on
   # another service, or on an in-process database, to be tested.
   - 'e2e'
-# Install scripts from the wallet vendor's dependency tree. None is run: none is needed for a
-# browser bundle, and an install script is code from a package we did not choose directly.
+# Install scripts from the wallet vendor's and the launchpad SDK's dependency trees. None is run:
+# none is needed (bigint-buffer has a pure-JS fallback), and an install script is code from a
+# package we did not choose directly.
 # `strictDepBuilds: false` because pnpm 11.0.0 fails the install over scripts that are listed
 # here as not to run; an unlisted package's scripts still never run without approval.
 strictDepBuilds: false
 allowBuilds:
   '@reown/appkit': false
+  bigint-buffer: false
   bufferutil: false
   keccak: false
   utf-8-validate: false

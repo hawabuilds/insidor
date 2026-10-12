@@ -10,10 +10,16 @@
   "dependencies": {
     "@insidor/contracts": "workspace:*",
     "@insidor/meter": "workspace:*",
-    "@insidor/vendor-kit": "workspace:*"
+    "@insidor/vendor-kit": "workspace:*",
+    "@nirholas/pump-sdk": "2.0.0",
+    "@solana/web3.js": "1.98.4",
+    "bn.js": "5.2.3"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.2.0"
   }
 }
