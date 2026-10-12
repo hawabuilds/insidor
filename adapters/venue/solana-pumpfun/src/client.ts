@@ -30,10 +30,28 @@
  * is decided for every path including this one.
  */
 
-import { arr, num, rec, NotImplemented, VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
+import { arr, num, rec, str, NotImplemented, VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
+
+import { readCurveAccount, type CurveAccount } from './curve-account.ts';
 
 const VENDOR_RPC = 'solana-rpc';
 const OLDEST_LABEL = 'POST rpc getTransactionsForAddress';
+const CURVE_LABEL = 'POST rpc getAccountInfo';
+
+/** One JSON-RPC call. An RPC error is unavailable, never an empty answer. */
+async function rpc(config: SolanaVenueClientConfig, method: string, params: unknown[], label: string): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await config.fetch(config.rpcUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+  } catch (error) {
+    throw new VendorUnavailable(VENDOR_RPC, label, `request failed: ${error instanceof Error ? error.message : 'unknown'}`);
+  }
+  if (!response.ok) throw new VendorUnavailable(VENDOR_RPC, label, `responded ${response.status}`, response.status);
+  const body = await response.json();
+  const error = rec(body).error;
+  if (error !== undefined && error !== null) throw new VendorUnavailable(VENDOR_RPC, label, `rpc error: ${JSON.stringify(error).slice(0, 200)}`);
+  return body;
+}
 
 /**
  * The block time, in seconds, of an address's oldest transaction, from one oldest-first
@@ -66,6 +84,8 @@ export interface ChainClient {
   oldestSignatureBlockTime(address: string): Promise<number | null>;
   /** Token program flags: mint and freeze authority, transfer hooks and fees. */
   tokenAccountState(address: string): Promise<unknown>;
+  /** A coin's curve account by its address; null when the address holds no curve. */
+  curveAccount(address: string): Promise<CurveAccount | null>;
 }
 
 export interface SolanaVenueClientConfig {
@@ -116,6 +136,16 @@ export function chainClient(config: SolanaVenueClientConfig): ChainClient {
       }
       if (!response.ok) throw new VendorUnavailable(VENDOR_RPC, OLDEST_LABEL, `responded ${response.status}`, response.status);
       return readOldestBlockTime(await response.json());
+    },
+    curveAccount: async (address) => {
+      const raw = await rpc(config, 'getAccountInfo', [address, { encoding: 'base64' }], CURVE_LABEL);
+      const value = rec(rec(raw).result).value;
+      if (value === null || value === undefined) return null;
+      const v = rec(value);
+      const data = arr(v.data)[0];
+      const owner = str(v.owner);
+      if (typeof data !== 'string' || owner === null) throw new VendorShapeError(VENDOR_RPC, 'result.value', 'has no data or owner');
+      return readCurveAccount(Buffer.from(data, 'base64'), owner);
     },
     tokenAccountState: async (_address) => {
       // POST {rpcUrl} getAccountInfo [address, { encoding: 'jsonParsed' }]
