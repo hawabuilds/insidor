@@ -26,7 +26,7 @@ const SWAP = 'POST /swap/v1/swap';
 export const NATIVE = 'So11111111111111111111111111111111111111112';
 
 export interface JupiterConfig {
-  /** `https://api.jup.ag` with a key; `https://lite-api.jup.ag` without one. */
+  /** `https://api.jup.ag`; with a key, less rate limited. */
   readonly baseUrl: string;
   readonly apiKey: string | null;
   readonly fetch: typeof globalThis.fetch;

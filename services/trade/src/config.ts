@@ -44,7 +44,9 @@ export function loadTradeConfig(env: Env): TradeConfig {
     trading: trimmed(env, 'TRADING') === 'on',
     allowlist: new Set(list),
     rpcUrl: heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
-    jupiter: { baseUrl: jupiterKey === null ? 'https://lite-api.jup.ag' : 'https://api.jup.ag', apiKey: jupiterKey },
+    /* One host, key or not (Trador's finding, and lite-api answered 503 on 2026-10-12): keyless
+       is served but rate limited, so JUPITER_API_KEY is recommended for more than one person. */
+    jupiter: { baseUrl: trimmed(env, 'JUPITER_API_URL') ?? 'https://api.jup.ag', apiKey: jupiterKey },
     allowedOrigins: origins.length > 0 ? origins : DEV_ORIGINS,
   };
 }
