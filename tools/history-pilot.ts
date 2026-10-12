@@ -35,11 +35,11 @@ import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { biggestFirst, groupCoins, type HistoryCoin } from '../core/src/history/group.ts';
 import { duneClient, fillParameters } from '../adapters/history/dune/src/index.ts';
 import { dexscreenerQuotes, dexscreenerStandings } from '../adapters/market/dexscreener/src/index.ts';
-import { inMemoryMeter } from '../adapters/meter/spend/src/index.ts';
 import { assetFromSearch, chainClient, fetchMetadata } from '../adapters/venue/solana-pumpfun/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgAssetRepo, PgCoinUniverseRepo, PgHistoryRepo } from '../store/src/index.ts';
 import { runPilot, type PilotCoin } from '../services/runner/src/work/history-pilot.ts';
 import { pilotPorts } from './lib/pilot-ports.ts';
+import { openSharedMeter } from './lib/shared-meter.ts';
 import { geckoterminal, LISTING_PAGES } from '../adapters/market/geckoterminal/src/index.ts';
 
 const P = DEFAULT_POLICY;
@@ -383,7 +383,8 @@ async function run(): Promise<void> {
   const pool = createPool(DB_ROLE.internal, { applicationName: 'insidor-history-pilot' });
   const history = new PgHistoryRepo(asDb(pool));
   const left = Math.max(0, H.pilotUsd - (await history.spent()));
-  const meter = inMemoryMeter({ dailyCapUsd: left, softStop: 1, now: Date.now });
+  /* What is left of the pilot's total, AND the owner's daily lines shared with the live runner. */
+  const { meter, close } = await openSharedMeter(left);
   const reserve = {
     pictures: 2 * VOYAGE_USD_PER_IMAGE,
     confirm: PAIR_USD,
@@ -392,6 +393,7 @@ async function run(): Promise<void> {
   };
   const log = { info: (m: string, f?: object) => console.log(m, f ?? ''), warn: (m: string, f?: object) => console.warn(m, f ?? ''), error: (m: string, f?: object) => console.error(m, f ?? ''), child: () => log };
   const result = await runPilot(coins, { ports: pilotPorts({ out: OUT, meter, policy: P, env: process.env }), reserve, history, policy: P, log: log as never, now: () => Date.now() as never });
+  await close();
   await pool.end();
   console.log(result.stopped === 'cap' ? `Stopped at the cap: $${result.spentUsd.toFixed(4)} spent in total, ${result.remaining} left. Run again after raising the cap.` : `Done: $${result.spentUsd.toFixed(4)} spent in total.`, result);
 }
