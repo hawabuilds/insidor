@@ -53,9 +53,9 @@ import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/st
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import { JudgeNotConfigured, anthropicJudge, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
+import { JudgeNotConfigured, VENDOR as JUDGE_VENDOR, anthropicJudge, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openDurableMeter } from '@insidor/meter';
-import { resolvePlatforms, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
+import { SUPPLIER_VENDORS, resolvePlatforms, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
   DB_ROLE,
   PgAssetRepo,
@@ -315,6 +315,15 @@ export async function withRuntime<T>(
            ceiling by existing rather than by somebody remembering to add it to a map,
            and the source nobody remembers is exactly the one that would have none. */
         defaultVendorCapUsd: policy.budget.perSourceUsdPerDay,
+        /* ★ ONE LINE PER SUPPLIER, the owner's caps (Policy.budget.supplierLines), mapped
+           here from role to the vendor that bills under it. Every line is paced over the
+           UTC day — see `paceAheadMs`. */
+        perVendorCapUsd: {
+          [SUPPLIER_VENDORS.posts]: policy.budget.supplierLines.posts,
+          [SUPPLIER_VENDORS.video]: policy.budget.supplierLines.video,
+          [JUDGE_VENDOR]: policy.budget.supplierLines.judge,
+        },
+        paceAheadMs: policy.budget.paceAheadMs,
         softStop: policy.budget.softStopFraction,
         now: () => Date.now(),
         /* Reported, not acted on. A write that failed means the NEXT process will not

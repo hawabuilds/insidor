@@ -501,26 +501,27 @@ test('a proposal that changes restarts the count rather than inheriting it', () 
 
 /* ── the age floor ────────────────────────────────────────────────────── */
 
-test('★ a young post is read on its view-rate tier: hot 2 minutes, warm 8, cold 20', () => {
+test('★ a young post is read on its view-rate tier: hot 6 minutes, warm 15, cold 30', () => {
   const young = (velocityRank: 'hot' | 'warm' | 'cold' | null, sinceMin: number) =>
     track(input({ item: item({ postedAt: NOW - 20 * MINUTE, firstSeenAt: NOW - 20 * MINUTE }), lastReadAt: NOW - sinceMin * MINUTE, velocityRank }), P, CTX);
-  assert.equal(young('hot', 3).verdict, 'pass');
-  assert.equal(young('warm', 3).reason, 'T6_not_due');
-  assert.equal(young('warm', 9).verdict, 'pass');
-  assert.equal(young('cold', 9).reason, 'T6_not_due');
-  assert.equal(young('cold', 21).verdict, 'pass');
-  assert.equal(young(null, 9).verdict, 'pass', 'no rate yet is warm, not cold');
-  assert.equal(young(null, 3).reason, 'T6_not_due');
+  assert.equal(young('hot', 7).verdict, 'pass');
+  assert.equal(young('warm', 7).reason, 'T6_not_due');
+  assert.equal(young('warm', 16).verdict, 'pass');
+  assert.equal(young('cold', 16).reason, 'T6_not_due');
+  assert.equal(young('cold', 31).verdict, 'pass');
+  assert.equal(young(null, 16).verdict, 'pass', 'no rate yet is warm, not cold');
+  assert.equal(young(null, 7).reason, 'T6_not_due');
 });
 
-test('★ an old post is held to the tier its age allows, whatever its score', () => {
-  const day = 24 * 60 * MINUTE;
-  const old = input({ item: item({ postedAt: NOW - 2 * day, firstSeenAt: NOW - 2 * day }), lastReadAt: NOW - 5 * MINUTE });
+test('★ an older post is held to the tier its age allows, and never read faster than cold', () => {
+  const hours = 20 * 60 * MINUTE;
+  const old = input({ item: item({ postedAt: NOW - hours, firstSeenAt: NOW - hours }), lastReadAt: NOW - 25 * MINUTE });
   const d = track(old, P, CTX);
-  const expected = P.track.ageTierMinutes.filter((m) => 2 * day - 5 * MINUTE >= m * MINUTE).length;
+  const expected = P.track.ageTierMinutes.filter((m) => hours - 25 * MINUTE >= m * MINUTE).length;
   assert.equal(d.features['ageFloorTier'], expected);
   assert.equal(d.features['scheduledTier'], expected);
-  assert.equal(d.reason, 'T6_not_due', 'a two-day-old post is not re-read five minutes later');
+  assert.equal(d.reason, 'T6_not_due', 'its tier says 30 at most, and cold is 30: not yet at 25 minutes');
+  assert.equal(d.features['scheduledIntervalMin'], Math.max(P.track.tierMinutes[expected] ?? 0, P.track.velocityMinutes.cold));
 });
 
 test('the holdout ignores the age floor, as it ignores every other ladder', () => {

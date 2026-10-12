@@ -440,11 +440,6 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
       const page = await repos.items.trackable(
         now - policy.track.maxTrackedHours * MS_PER_HOUR,
         limit * PULL_OVERSCAN,
-        {
-          sinceMs: (now - policy.rising.windowMs) as Millis,
-          textBar: policy.qualify.minJudgeConfidence.text,
-          videoFrameBar: policy.qualify.minJudgeConfidence.videoFrame,
-        },
       );
       const items = await undecided(repos, 'track', page, (i) => i.itemId, limit, now);
       if (items.length === 0) return [];
