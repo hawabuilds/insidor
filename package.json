@@ -32,6 +32,10 @@
     "dev:read": "pnpm --filter @insidor/read dev",
     "dev:app": "pnpm --filter @insidor/app dev",
     "dev:mobile": "pnpm --filter @insidor/mobile dev",
+    "dev:social": "pnpm --filter @insidor/social dev",
+    "dev:notify": "pnpm --filter @insidor/notify dev",
+    "phone": "pnpm --filter @insidor/mobile build && pnpm --filter @insidor/mobile preview",
+    "tunnel": "cloudflared tunnel --no-autoupdate --url http://localhost:5174",
     "judge:record": "node --env-file-if-exists=.env.local --experimental-strip-types tools/judge-record.ts"
   },
   "devDependencies": {
