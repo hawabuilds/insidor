@@ -59,13 +59,13 @@
  *      rendering rounds outward.
  */
 
-import type { Item, Millis } from '@insidor/contracts';
+import type { Author, Item, Millis } from '@insidor/contracts';
 import type { DiscoveryQuery } from '@insidor/contracts/ports/platform.ts';
 import { NotImplemented } from '@insidor/vendor-kit';
 
 import { billedUnits, CAPABILITIES, SOURCE } from './capabilities.ts';
 import type { XClient } from './client.ts';
-import { toItem } from './to-item.ts';
+import { toAuthor, toItem } from './to-item.ts';
 
 /**
  * The vendor's own warning, honoured: "please don't use
@@ -186,6 +186,7 @@ export async function searchPage(
   at: Millis,
 ): Promise<{
   readonly items: readonly Item[];
+  readonly authors: readonly Author[];
   readonly cursor: string | null;
   readonly hasMore: boolean;
   readonly units: number;
@@ -193,7 +194,9 @@ export async function searchPage(
   const page = await client.search(toSearchQuery(query), query.cursor);
   // A client-side slice, which is safe because it caps how much of an already-paid-for
   // page we translate rather than filtering for correctness.
-  const items = page.items.slice(0, query.limit).map((raw) => toItem(raw, at));
+  const raws = page.items.slice(0, query.limit);
+  const items = raws.map((raw) => toItem(raw, at));
+  const authors = raws.flatMap((raw) => toAuthor(raw, at) ?? []);
 
   /* Checked on the translated items rather than the raw payloads, because `toItem` is
      the only file allowed to know which field carries the timestamp — and checking a
@@ -210,6 +213,7 @@ export async function searchPage(
 
   return {
     items,
+    authors,
     cursor: page.cursor,
     // The vendor said so, or it did not. We never infer it from a page size — this
     // vendor documents that a page can be short without being last.

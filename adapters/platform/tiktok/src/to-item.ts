@@ -10,7 +10,7 @@
  * why they differ per field within the same object.
  */
 
-import type { Counter, CounterSet, Fingerprint, Item, MediaRef, Millis } from '@insidor/contracts';
+import type { Author, Counter, CounterSet, Fingerprint, Item, MediaRef, Millis } from '@insidor/contracts';
 import { authorKey, itemId } from '@insidor/contracts/ids.ts';
 import { arr, hashtagKey, num, rec, secondsToMillis, shingles, str } from '@insidor/vendor-kit';
 import type { Rec } from '@insidor/vendor-kit';
@@ -145,5 +145,27 @@ export function toItem(raw: unknown, at: Millis): Item {
 
     formatIds: formatIds(r),
     rawRef: `${SOURCE}/${id}.json`,
+  };
+}
+
+/**
+ * The account behind one post, as the same payload describes it.
+ *
+ * Keyed as `toItem` keys the post, by the numeric account id. The handle is `uniqueId` —
+ * the @name in the post's URL — not `nickname`, which is a display name anybody can set to
+ * anything and which appears in no link. Null when the payload names no account id.
+ */
+export function toAuthor(raw: unknown, at: Millis): Author | null {
+  const author = rec(rec(raw).author);
+  const id = str(author.id);
+  if (id === null) return null;
+  const handle = (str(author.uniqueId) ?? '').replace(/^@+/, '').trim();
+  return {
+    authorKey: authorKey(SOURCE, id),
+    source: SOURCE,
+    firstSeenAt: at,
+    handle: handle === '' ? null : handle,
+    audience: null,
+    rosterTier: null,
   };
 }

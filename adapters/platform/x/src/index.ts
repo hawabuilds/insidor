@@ -57,7 +57,7 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
       );
 
       return {
-        value: discovered(result.value.items, result.value.cursor, result.value.hasMore),
+        value: discovered(result.value.items, result.value.authors, result.value.cursor, result.value.hasMore),
         spend: result.spend,
       };
     },

@@ -31,7 +31,7 @@
  * something is wrong, the other two still ran, and both facts are in the row.
  */
 
-import type { Item, Policy } from '@insidor/contracts';
+import type { Author, Item, Policy } from '@insidor/contracts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
@@ -78,7 +78,7 @@ const USD_PLACES = 4;
 
 export interface DiscoverLoopDeps {
   readonly platforms: PlatformRegistry;
-  readonly store: (items: readonly Item[]) => Promise<number>;
+  readonly store: (items: readonly Item[], authors: readonly Author[]) => Promise<number>;
   readonly discovery: DiscoveryConfig;
   readonly policy: Policy;
   /** The ledger. Read before every call so a refusal can be recorded with its numbers. */

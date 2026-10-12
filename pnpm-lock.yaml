@@ -248,9 +248,9 @@ importers:
       '@insidor/meter':
         specifier: workspace:*
         version: link:../adapters/meter/spend
-      '@insidor/platform-replay':
+      '@insidor/platform-x':
         specifier: workspace:*
-        version: link:../adapters/platform/replay
+        version: link:../adapters/platform/x
       '@insidor/project':
         specifier: workspace:*
         version: link:../services/project

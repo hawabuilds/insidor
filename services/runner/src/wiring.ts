@@ -47,12 +47,11 @@
  */
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
-import type { Item, Millis } from '@insidor/contracts';
+import type { Author, Item, Millis } from '@insidor/contracts';
 import type { DurableMeter } from '@insidor/meter';
 import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
-import { withTextHash } from '@insidor/core';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openDurableMeter } from '@insidor/meter';
@@ -76,6 +75,7 @@ import {
 } from '@insidor/store';
 
 import type { RunnerConfig } from './config.ts';
+import { storeArrivals } from './work/arrivals.ts';
 import { advisoryLockKey, policyHash } from './hash.ts';
 import type { Logger } from './log.ts';
 import type { DecisionLog, LoopDeps } from './loop.ts';
@@ -94,7 +94,7 @@ export interface Runtime {
   /** What `watched` needs, exposed so the discovery loop re-declares each pass. */
   readonly watch: WatchDeps;
   /** Where arrivals land. Narrow on purpose: discovery may write items and nothing else. */
-  readonly store: (items: readonly Item[]) => Promise<number>;
+  readonly store: (items: readonly Item[], authors: readonly Author[]) => Promise<number>;
   /**
    * The wallet. Exposed so the discovery loop can consult it BEFORE a call and record
    * a refusal with its numbers — a pause that says only "paused" is indistinguishable
@@ -433,10 +433,7 @@ export async function withRuntime<T>(
           platforms,
           watch,
           meter,
-          /* The adapter's text phrases are folded into one hash before storing: the store
-             keeps only hashes, and the hash's weights are core's to compute. */
-          store: (items: readonly Item[]) =>
-            repos.items.upsert(items.map((item) => withTextHash(item, policy))),
+          store: storeArrivals(repos, policy),
         }),
       };
     });

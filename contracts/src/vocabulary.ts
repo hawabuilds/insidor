@@ -220,9 +220,14 @@ export interface MediaRef {
 /* ── AUTHOR ───────────────────────────────────────────────────────────── */
 
 /**
- * What we know about the account, not who they are. There is deliberately no
- * handle and no display name here: both are mutable, both are re-issued to other
- * people, and neither may ever be a join key.
+ * What we know about the account, not who they are. There is deliberately no display
+ * name here, and the handle is never a key: handles are renamed and re-issued to other
+ * people, so `authorKey` is the stable id and nothing joins on `handle`.
+ *
+ * ★ THE HANDLE IS HERE ANYWAY, BECAUSE IT IS HOW A POST IS CITED. It is the account's own
+ * public name as the source showed it when we read the post — a fact about the world, and
+ * the half of a permalink the post id cannot supply. Without it a story page can link to
+ * none of its posts, and a claim nobody can check is a claim we do not print.
  *
  * `audience` is a Counter rather than a number for the same reason every other
  * count is — some sources round it, some hide it, and one of them fuzzes it.
@@ -231,6 +236,11 @@ export interface Author {
   readonly authorKey: AuthorKey;
   readonly source: SourceId;
   readonly firstSeenAt: Millis;
+  /**
+   * The public handle as last seen, without any leading '@'. null when the source gave
+   * none. Shown and linked, never joined on.
+   */
+  readonly handle: string | null;
   /** Follower-like size, with its fidelity. null when the source exposes none. */
   readonly audience: Counter | null;
   /**

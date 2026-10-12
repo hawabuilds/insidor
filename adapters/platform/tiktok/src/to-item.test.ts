@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 
 import { DEGRADED, STITCH, WITH_SOUND } from './__fixtures__/posts.ts';
 import { CAPABILITIES } from './capabilities.ts';
-import { toItem } from './to-item.ts';
+import { toAuthor, toItem } from './to-item.ts';
 
 const AT = 1_800_000_000_000;
 
@@ -62,4 +62,15 @@ test('a payload with no stats object yields null counters, not zeros', () => {
   assert.equal(item.counters.reach?.value, null);
   assert.equal(item.postedAt, null);
   assert.equal(item.authorKey, 'tiktok:unknown');
+});
+
+test('★ the handle is uniqueId, the @name in the post URL, never the free-text nickname', () => {
+  const author = toAuthor(WITH_SOUND, AT);
+  assert.ok(author);
+  assert.equal(author.handle, 'someone');
+  assert.equal(author.authorKey, toItem(WITH_SOUND, AT).authorKey);
+});
+
+test('a payload with no usable author object has no author row', () => {
+  assert.equal(toAuthor(DEGRADED, AT), null);
 });

@@ -15,7 +15,7 @@
  * from a measurement.
  */
 
-import type { Item, CounterKind, CounterSet, Fidelity, Millis } from '../vocabulary.ts';
+import type { Author, Item, CounterKind, CounterSet, Fidelity, Millis } from '../vocabulary.ts';
 import type { SourceId } from '../ids.ts';
 import type { Budget, BillingUnit, Metered, CostEstimate } from './meter.ts';
 
@@ -84,6 +84,11 @@ export interface DiscoveryQuery {
 
 export interface Discovered {
   readonly items: readonly Item[];
+  /**
+   * The accounts behind `items`, one per author key, as the same response described them.
+   * Stored before the items so a post's author row carries its handle from the first read.
+   */
+  readonly authors: readonly Author[];
   readonly cursor: string | null;
   /** True when the vendor said there is more, not when we guessed there is. */
   readonly hasMore: boolean;

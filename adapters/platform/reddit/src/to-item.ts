@@ -54,7 +54,7 @@
  * exactly what an edge is for.
  */
 
-import type { Counter, CounterSet, Fingerprint, Item, MediaRef, Millis } from '@insidor/contracts';
+import type { Author, Counter, CounterSet, Fingerprint, Item, MediaRef, Millis } from '@insidor/contracts';
 import { authorKey, itemId } from '@insidor/contracts/ids.ts';
 import { arr, bool, num, rec, secondsToMillis, shingles, str } from '@insidor/vendor-kit';
 import type { Rec } from '@insidor/vendor-kit';
@@ -530,5 +530,23 @@ export function toItem(raw: unknown, at: Millis): Item {
     formatIds: [],
 
     rawRef: rawRefFor(community, fullname),
+  };
+}
+
+/**
+ * The account behind one post. On this source the username is both the stable id and the
+ * handle (see `stableAuthorId`), so the two fields carry the same string. A deleted or
+ * unnamed account has no row: the shared unknown sentinel is not anybody's handle.
+ */
+export function toAuthor(raw: unknown, at: Millis): Author | null {
+  const id = stableAuthorId(rec(raw));
+  if (id === UNKNOWN_AUTHOR) return null;
+  return {
+    authorKey: authorKey(SOURCE, id),
+    source: SOURCE,
+    firstSeenAt: at,
+    handle: id,
+    audience: null,
+    rosterTier: null,
   };
 }

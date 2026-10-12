@@ -8,7 +8,7 @@
  * test rather than a sentence in a vendor file.
  */
 
-import type { Counter, CounterSet, Fingerprint, Item, MediaRef, Millis } from '@insidor/contracts';
+import type { Author, Counter, CounterSet, Fingerprint, Item, MediaRef, Millis } from '@insidor/contracts';
 import { authorKey, itemId } from '@insidor/contracts/ids.ts';
 import { arr, cashtagKey, dateToMillis, hashtagKey, num, rec, shingles, str } from '@insidor/vendor-kit';
 import type { Rec } from '@insidor/vendor-kit';
@@ -144,5 +144,28 @@ export function toItem(raw: unknown, at: Millis): Item {
     formatIds: [],
 
     rawRef: `${SOURCE}/${id}.json`,
+  };
+}
+
+/**
+ * The account behind one post, as the same payload describes it.
+ *
+ * Keyed exactly as `toItem` keys the post — the numeric account id — so the two rows meet.
+ * The handle is `userName`, the name in the post's URL; a leading '@' is stripped here,
+ * once, because a stored sigil would put it in the link. Null when the payload names no
+ * account id: an author we cannot key is not a row worth writing.
+ */
+export function toAuthor(raw: unknown, at: Millis): Author | null {
+  const author = rec(rec(raw).author);
+  const id = str(author.id) ?? str(author.id_str);
+  if (id === null) return null;
+  const handle = (str(author.userName) ?? str(author.screen_name) ?? '').replace(/^@+/, '').trim();
+  return {
+    authorKey: authorKey(SOURCE, id),
+    source: SOURCE,
+    firstSeenAt: at,
+    handle: handle === '' ? null : handle,
+    audience: null,
+    rosterTier: null,
   };
 }

@@ -103,7 +103,12 @@ export function replayPlatform(tape: Tape, opts: ReplayOptions): ReplayPlatform 
       const hasMore = next < tape.items.length;
 
       return {
-        value: discovered(page, hasMore ? String(next) : null, hasMore),
+        value: discovered(
+          page,
+          tape.authors.filter((a) => page.some((item) => item.authorKey === a.authorKey)),
+          hasMore ? String(next) : null,
+          hasMore,
+        ),
         spend: freeSpend(VENDOR, 'discover', opts.now()),
       };
     },
@@ -158,6 +163,6 @@ export function replayPlatform(tape: Tape, opts: ReplayOptions): ReplayPlatform 
   };
 }
 
-export { decodeItem, decodeTape, readingsFor, TapeMiss, assertTapeHonoursCapabilities } from './tape.ts';
+export { decodeAuthor, decodeItem, decodeTape, readingsFor, TapeMiss, assertTapeHonoursCapabilities } from './tape.ts';
 export type { Tape, TapeReading } from './tape.ts';
 export { loadTape } from './load.ts';
