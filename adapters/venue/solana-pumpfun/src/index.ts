@@ -28,8 +28,8 @@ import { toMarketState, toReserves } from './read.ts';
 import { execute, quoteBuy } from './trade.ts';
 import { toMintEvent } from './watch.ts';
 
-export const CHAIN: ChainId = chainId('solana');
-export const VENUE_ID: VenueId = venueId(CHAIN, 'pumpfun');
+export { CHAIN, VENUE_ID } from './ids.ts';
+import { CHAIN, VENUE_ID } from './ids.ts';
 export const VENDOR = 'pumpfun';
 export const RPC_VENDOR = 'chain-rpc';
 
@@ -315,3 +315,5 @@ export type { CoinMetadata, MetadataFetchConfig, MetadataRead } from './metadata
 /* A curve read straight from its account: reserves, and progress as the launchpad measures it. */
 export { INITIAL_REAL_TOKEN_UNITS, PROGRAM_ID, curveProgressOf, readCurveAccount } from './curve-account.ts';
 export type { CurveAccount } from './curve-account.ts';
+/* A coin found by searching, as a row for the coin universe — a candidate, `origin: 'backfill'`. */
+export { assetFromSearch } from './search-asset.ts';

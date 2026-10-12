@@ -434,6 +434,12 @@ importers:
       '@insidor/judge-anthropic':
         specifier: workspace:*
         version: link:../../adapters/judge/anthropic
+      '@insidor/market-dexscreener':
+        specifier: workspace:*
+        version: link:../../adapters/market/dexscreener
+      '@insidor/market-geckoterminal':
+        specifier: workspace:*
+        version: link:../../adapters/market/geckoterminal
       '@insidor/meter':
         specifier: workspace:*
         version: link:../../adapters/meter/spend

@@ -87,7 +87,13 @@ import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type UniverseDeps } from './work/universe.ts';
-import { fetchMetadata } from '@insidor/venue-solana-pumpfun';
+import { chainClient, fetchMetadata } from '@insidor/venue-solana-pumpfun';
+import { dexscreenerSearch } from '@insidor/market-dexscreener';
+import { geckoterminal } from '@insidor/market-geckoterminal';
+import { lookUpCoins } from './work/coin-lookup.ts';
+
+/** A coin search is abandoned after this long; the next pass asks again. */
+const SEARCH_TIMEOUT_MS = 8_000;
 import { advisoryLockKey, policyHash } from './hash.ts';
 import type { Logger } from './log.ts';
 import type { DecisionLog, LoopDeps } from './loop.ts';
@@ -124,6 +130,8 @@ export interface Runtime {
   readonly backfill: () => Promise<BackfillResult>;
   /** The coin universe loop's dependencies. See work/universe.ts. */
   readonly universe: Omit<UniverseDeps, 'now'>;
+  /** Coins we never saw minted, looked up by a narrative's or post's name. See work/coin-lookup.ts. */
+  readonly lookUpCoins: () => Promise<unknown>;
 }
 
 
@@ -554,6 +562,19 @@ export async function withRuntime<T>(
             policy,
             log,
           },
+          lookUpCoins: () =>
+            lookUpCoins({
+              coins: new PgCoinUniverseRepo(db),
+              assets: repos.assets,
+              sources: [
+                dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS }),
+                geckoterminal({ ...cfg.marketData, fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS, now: Date.now }),
+              ],
+              chain: cfg.chainRpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.chainRpcUrl, fetch: globalThis.fetch }),
+              policy,
+              log: log.child({ step: 'coin-lookup' }),
+              now: () => Date.now() as Millis,
+            }),
           backfill: () =>
             backfillStories({
               platforms,
