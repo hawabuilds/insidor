@@ -9,7 +9,8 @@
 
 import type { Instant, Measured } from '../../format/measure.ts';
 
-export type MarketTimeframe = '1m' | '5m' | '1h' | '6h';
+/** Trador's six views. */
+export type MarketTimeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1D';
 
 export interface Candle {
   readonly t: number;
@@ -25,6 +26,8 @@ export interface MarketTrade {
   readonly side: 'buy' | 'sell';
   readonly tokenAmount: Measured;
   readonly usd: Measured;
+  /** What one token went for in this trade, as the source reported it. */
+  readonly priceUsd: Measured;
   readonly at: Instant;
 }
 

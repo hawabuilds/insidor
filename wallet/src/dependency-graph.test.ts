@@ -64,6 +64,10 @@ const ALLOWED_SPECIFIERS = [
      the one place the vendor's SDK may be imported (test 5). Named without the vendor's name,
      so the fragment ban in test 4 still covers every file here. */
   '@insidor/wallet-embedded',
+  /* The coin chart, Trador's: a canvas drawing library with no network and no keys, added so
+     the token page pans, zooms and scrubs like Trador's does. Nothing in it builds, signs or
+     sends, and the fragment ban in test 4 still applies to it. */
+  'lightweight-charts',
 ];
 
 const isAllowed = (specifier: string): boolean =>
@@ -213,7 +217,7 @@ test('★ 2 — gaining a wallet added no third-party package to the app', () =>
  * package in a browser bundle that the test above was written to make visible.
  */
 test('★ 2b — the phone app adds no third-party package beyond the embedded wallet', () => {
-  const allowed = ['@insidor/contracts', '@insidor/wallet', '@insidor/wallet-embedded', 'react', 'react-dom'];
+  const allowed = ['@insidor/contracts', '@insidor/wallet', '@insidor/wallet-embedded', 'lightweight-charts', 'react', 'react-dom'];
   for (const name of Object.keys(manifest('mobile').dependencies ?? {})) {
     assert.ok(allowed.includes(name), `mobile depends on "${name}", which the desktop app does not`);
   }

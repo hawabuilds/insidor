@@ -12,18 +12,18 @@
 import { useEffect, useState } from 'react';
 import { fetchCoinMarket, fetchSearchedCoin, type CoinMarket, type MarketTimeframe, type SearchedCoin } from '../../shared/api/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
-import { formatCount, formatUsd } from '../../shared/format/number.ts';
+import type { Measured } from '../../shared/format/measure.ts';
+import { formatCount } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { BackIcon, CandleIcon, CopyIcon, LineChartIcon } from '../../shared/ui/icons.tsx';
+import { BackIcon, CopyIcon } from '../../shared/ui/icons.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { TradeBar } from '../trade/TradeBar.tsx';
-import { CandleChart } from './CandleChart.tsx';
-import { PriceChart } from './PriceChart.tsx';
-import { directionOf } from './direction.ts';
-import { chartNote, MARKET_POLL_MS, shortAddress, TIMEFRAMES, Trades, tradesNote } from './TokenPage.tsx';
+import { defaultTimeframe } from './chart-data.ts';
+import { CoinChart } from './CoinChart.tsx';
+import { MARKET_POLL_MS, shortAddress, Trades, tradesNote } from './TokenPage.tsx';
 import styles from './token.module.css';
 
 export function SearchedToken({ coinId }: { coinId: string }) {
@@ -42,11 +42,13 @@ export function SearchedToken({ coinId }: { coinId: string }) {
   );
 }
 
+/** A search result carries no price or 24-hour move of its own; with no candles either, both are a dash. */
+const NOT_LISTED: Measured = { known: false, pending: 'not_reported' };
+
 function Body({ coin }: { coin: SearchedCoin }) {
   const now = useNow();
   const toast = useToast();
-  const [tf, setTf] = useState<MarketTimeframe>('1h');
-  const [kind, setKind] = useState<'line' | 'candles'>('line');
+  const [tf, setTf] = useState<MarketTimeframe>(() => defaultTimeframe({ onCurve: coin.venue === 'curve', launchedAt: coin.launchedAt.known ? coin.launchedAt.at : null, now: Date.now() }));
   const [section, setSection] = useState<'trades' | 'info'>('trades');
   const [loaded, reload] = useLoad(`market:search:${coin.coinId}:${tf}`, (signal) => fetchCoinMarket(coin.coinId, tf, signal));
   useEffect(() => {
@@ -55,7 +57,6 @@ function Body({ coin }: { coin: SearchedCoin }) {
   }, [reload]);
   const market: CoinMarket | null = loaded.state === 'ready' ? loaded.value : null;
   const read = market?.kind === 'read' ? market : null;
-  const series = read?.candles?.map((c) => c.c) ?? [];
   const progress = read?.curveProgress?.known ? Math.round(read.curveProgress.amount * 1000) / 10 : null;
   const venue = read?.venue ?? coin.venue;
   const ticker = coin.ticker ?? '—';
@@ -97,33 +98,7 @@ function Body({ coin }: { coin: SearchedCoin }) {
         </div>
       ) : null}
 
-      <div className={styles['priceRow']}>
-        <div className={styles['cap']}>
-          <span className={styles['kicker']}>Market cap</span>
-          <Value r={formatUsd(coin.marketCapUsd)} className={styles['capN']} />
-        </div>
-      </div>
-
-      {series.length > 1 ? (
-        kind === 'line' ? <PriceChart series={series} direction={directionOf(series)} /> : <CandleChart candles={read?.candles ?? []} />
-      ) : (
-        <p className={styles['note']}>{chartNote(loaded.state, market)}</p>
-      )}
-      {market !== null ? (
-        <div className={styles['tfRow']}>
-          <div className={styles['tfs']}>
-            {TIMEFRAMES.map((t) => (
-              <button key={t} type="button" className={`${styles['tfButton']} ${t === tf ? styles['tfOn'] : ''}`} onClick={() => setTf(t)}>
-                {t.toUpperCase()}
-              </button>
-            ))}
-          </div>
-          <div className={styles['kinds']}>
-            <button type="button" className={kind === 'line' ? styles['kindOn'] : ''} aria-label="Line chart" aria-pressed={kind === 'line'} onClick={() => setKind('line')}><LineChartIcon size={16} /></button>
-            <button type="button" className={kind === 'candles' ? styles['kindOn'] : ''} aria-label="Candle chart" aria-pressed={kind === 'candles'} onClick={() => setKind('candles')}><CandleIcon size={16} /></button>
-          </div>
-        </div>
-      ) : null}
+      <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={NOT_LISTED} change24h={NOT_LISTED} cap={coin.marketCapUsd} liquidity={null} />
 
       <UnderlineTabs
         label="Coin"
