@@ -55,7 +55,7 @@ import { candidateId, pairId } from '@insidor/contracts/ids.ts';
 import type { ItemId, StoryId } from '@insidor/contracts/ids.ts';
 import type { Decision, Item, ItemOrigin, Millis, Observation, Policy } from '@insidor/contracts';
 import type { Story } from '@insidor/contracts/story.ts';
-import { afterMembership, joinMember, joinTarget, presentationFor, seedStory } from '@insidor/core';
+import { afterMembership, joinMember, joinTarget, owesASeed, presentationFor, seedStory } from '@insidor/core';
 import type {
   PgAssetRepo,
   PgAuthorRepo,
@@ -583,6 +583,14 @@ function groupWork(repos: StageRepos, policy: Policy): StageWork<GroupInput> {
          it would be scored against its own story every pass and, the day a second story
          shared one of its carriers, could land in both. */
       const homes = await repos.stories.storiesOfItems(page.map((i) => i.itemId));
+
+      /* ★ EVERY POST, NOT ONLY WHAT ADMIT LET IN, and that is deliberate. ADMIT answers
+         "is this post worth spending money to TRACK" against a day-one bar most new
+         posts cannot clear. GROUP spends nothing, and the product's premise is the second
+         and third version of a moment — exactly the posts from unknown accounts that a
+         tracking budget turns away. Gating GROUP on ADMIT would leave a fresh deployment
+         grouping roughly the one post in eight that the explore and holdout lanes let
+         through. The money gate for stories is promotion, then the judge's budget. */
       const homeless = page.filter((i) => !homes.has(i.itemId));
       const items = [...(await undecided(repos, 'group', homeless, (i) => i.itemId, limit, now))]
         /* Oldest first, so an original seeds its story before the copies in the same page
@@ -658,8 +666,9 @@ function groupWork(repos: StageRepos, policy: Policy): StageWork<GroupInput> {
     subjectId: (input) => input.item.itemId,
 
     /**
-     * A `pass` is a join and writes a `public.story_member` row; `M6_no_candidate_block`
-     * seeds a new candidate story with this post as its first member. After either, the
+     * A `pass` is a join and writes a `public.story_member` row. A post no story claimed —
+     * `M6`, and also `M3`/`M5`, see `owesASeed` — seeds a new candidate story with itself
+     * as the first member. After either, the
      * story is read back and PROMOTED if it now clears the breadth bar — promotion is what
      * QUALIFY, and so the judge, look at, and it happens here because membership is the
      * only thing that can change the answer.
@@ -669,8 +678,8 @@ function groupWork(repos: StageRepos, policy: Policy): StageWork<GroupInput> {
      * input changed between decide and apply, and writing a member then would record a
      * reason nobody decided.
      *
-     * `M3_below_match_bar`, `M4_ambiguous_match`, `M5_generic_carrier` and
-     * `M9_member_cap` owe nothing: none of them adds a member.
+     * `M4_ambiguous_match` and `M9_member_cap` owe nothing: the first waits for a person,
+     * the second for room.
      */
     async apply(input, receipt) {
       const { decision } = receipt;
@@ -687,7 +696,7 @@ function groupWork(repos: StageRepos, policy: Policy): StageWork<GroupInput> {
         return;
       }
 
-      if (decision.reason === 'M6_no_candidate_block') {
+      if (owesASeed(decision.reason)) {
         const { story, member } = seedStory(input.item, at);
         await repos.stories.upsert(story);
         await repos.stories.addMembers([member]);

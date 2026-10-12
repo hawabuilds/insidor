@@ -12,7 +12,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Story } from '@insidor/contracts/story.ts';
 import type { Fingerprint, Item } from '@insidor/contracts/vocabulary.ts';
 
-import { afterMembership, carriersWith, joinMember, seedStory } from './membership.ts';
+import { afterMembership, carriersWith, joinMember, owesASeed, seedStory } from './membership.ts';
 import { joinTarget, type GroupInput } from './stage.ts';
 
 const NOW = 1_700_000_000_000;
@@ -134,4 +134,13 @@ test('a story already promoted keeps the time it was promoted', () => {
   const earlier = NOW - 30 * MINUTE;
   const promoted = story({ state: 'promoted', promotedAt: earlier, memberCount: 9, distinctAuthors: 9 });
   assert.equal(afterMembership(promoted, item('p2'), DEFAULT_POLICY, NOW).promotedAt, earlier);
+});
+
+test('★ a post no story claimed starts its own; an ambiguous or capped one waits', () => {
+  assert.equal(owesASeed('M6_no_candidate_block'), true);
+  assert.equal(owesASeed('M3_below_match_bar'), true, 'below the bar against every open story is homeless, not lost');
+  assert.equal(owesASeed('M5_generic_carrier'), true);
+  assert.equal(owesASeed('M4_ambiguous_match'), false);
+  assert.equal(owesASeed('M9_member_cap'), false);
+  assert.equal(owesASeed('M0_carrier_join'), false);
 });
