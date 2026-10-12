@@ -33,3 +33,20 @@ export interface CoinSearch {
   /** Coins on the launchpad matching a term, newest market first; `capped` when the source cut the list. */
   search(term: string): Promise<{ readonly hits: readonly CoinSearchHit[]; readonly capped: boolean }>;
 }
+
+/**
+ * Where a coin stands in its market right now, from a source that lists it: whether it has left
+ * its launchpad curve for a pool, and its market cap. Used to decide which old coins are worth
+ * keeping — never shown as a peak, because "now" is all a batch lookup can say.
+ */
+export interface CoinStanding {
+  readonly bonded: boolean;
+  readonly marketCapUsd: number | null;
+}
+
+export interface CoinStandings {
+  /** How many addresses one call may ask about. */
+  readonly batch: number;
+  /** Each listed address's standing. An address the source does not list is absent from the map. */
+  standings(addresses: readonly string[]): Promise<ReadonlyMap<string, CoinStanding>>;
+}

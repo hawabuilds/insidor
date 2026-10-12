@@ -88,8 +88,9 @@ import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type UniverseDeps } from './work/universe.ts';
 import { chainClient, fetchMetadata } from '@insidor/venue-solana-pumpfun';
-import { dexscreenerSearch } from '@insidor/market-dexscreener';
+import { dexscreenerSearch, dexscreenerStandings } from '@insidor/market-dexscreener';
 import { geckoterminal } from '@insidor/market-geckoterminal';
+import { keepCoins } from './work/coin-keep.ts';
 import { lookUpCoins } from './work/coin-lookup.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
@@ -132,6 +133,8 @@ export interface Runtime {
   readonly universe: Omit<UniverseDeps, 'now'>;
   /** Coins we never saw minted, looked up by a narrative's or post's name. See work/coin-lookup.ts. */
   readonly lookUpCoins: () => Promise<unknown>;
+  /** Old coins asked about once, and the ones that do not matter deleted. See work/coin-keep.ts. */
+  readonly keepCoins: () => Promise<unknown>;
 }
 
 
@@ -573,6 +576,14 @@ export async function withRuntime<T>(
               chain: cfg.chainRpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.chainRpcUrl, fetch: globalThis.fetch }),
               policy,
               log: log.child({ step: 'coin-lookup' }),
+              now: () => Date.now() as Millis,
+            }),
+          keepCoins: () =>
+            keepCoins({
+              coins: new PgCoinUniverseRepo(db),
+              standings: dexscreenerStandings({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS }),
+              policy,
+              log: log.child({ step: 'coin-keep' }),
               now: () => Date.now() as Millis,
             }),
           backfill: () =>

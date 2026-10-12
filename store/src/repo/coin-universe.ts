@@ -53,6 +53,47 @@ export interface NamingPost {
   readonly text: string;
 }
 
+/** A coin a market source answered about: listed or not, bonded or not, its market cap now. */
+export interface StandingRow {
+  readonly assetKey: string;
+  readonly listed: boolean;
+  readonly bonded: boolean;
+  readonly marketCapUsd: number | null;
+}
+
+/** An old coin to ask about. */
+export interface AgedCoin {
+  readonly assetKey: string;
+  readonly address: string;
+}
+
+/*
+ * ★ THE COINS NEVER DELETED, IN ONE SPELLING, used by both the ask and the sweep so they cannot
+ * disagree. `a` is public.asset; `named` is every coin a narrative's page or a post names.
+ *   - anything not from the mint stream or a search: seeds and the team's own entries;
+ *   - a coin with a market reading: that history is append-only and points at the coin;
+ *   - a coin with a found origin or an origin post, which includes the gold set (`found_by_team`)
+ *     and posts that went viral after launch;
+ *   - a coin a narrative or a post names on screen.
+ */
+const NAMED_COINS = `named as (
+  select v.payload #>> '{coins,coin,coinId}' as k from public.story_view v where v.payload #>> '{coins,kind}' = 'one'
+  union
+  select c ->> 'coinId' from public.story_view v
+   cross join lateral jsonb_array_elements(case when jsonb_typeof(v.payload #> '{coins,coins}') = 'array'
+                                               then v.payload #> '{coins,coins}' else '[]'::jsonb end) c
+  union
+  select r.payload #>> '{coins,coin,coinId}' from public.rising_row r where r.payload #>> '{coins,kind}' = 'one'
+)`;
+const KEPT_ALWAYS = `(
+  a.origin not in ('live_stream', 'backfill')
+  or exists (select 1 from public.market_reading m where m.chain = a.chain and m.address = a.address)
+  or exists (select 1 from internal.coin_origin o where o.asset_key = a.asset_key
+              and (o.post_item_id is not null
+                   or o.status in ('linked_by_creator', 'matched_by_insidor', 'found_by_team', 'influencer_origin', 'viral_after_launch')))
+  or exists (select 1 from named n where n.k = a.asset_key)
+)`;
+
 /** Statuses a later post could change, so they are looked at once more. */
 const RECHECKED: readonly OriginStatus[] = ['unlinked', 'account_only', 'promo_only'];
 
@@ -216,6 +257,68 @@ export class PgCoinUniverseRepo {
   /** Searches since an instant — the day's count for the cap. */
   async lookupsSince(at: Millis): Promise<number> {
     const rows = await this.#db.query<{ n: string | number }>(`select count(*) as n from internal.coin_lookup where looked_at >= $1`, [toTimestamp(at)]);
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  /**
+   * Coins past the keep-everything window that have not been asked about, oldest first. A coin
+   * that is always kept is never asked about: there is nothing its answer could change.
+   */
+  async agedUnasked(firstSeenBefore: Millis, limit: number): Promise<readonly AgedCoin[]> {
+    const rows = await this.#db.query<{ asset_key: string; address: string }>(
+      `with ${NAMED_COINS}
+       select a.asset_key, a.address
+         from public.asset a
+        where a.origin in ('live_stream', 'backfill') and a.first_seen_at < $1
+          and not exists (select 1 from internal.coin_standing s where s.asset_key = a.asset_key)
+          and not ${KEPT_ALWAYS}
+        order by a.first_seen_at asc
+        limit $2`,
+      [toTimestamp(firstSeenBefore), limit],
+    );
+    return rows.map((r) => ({ assetKey: r.asset_key, address: r.address }));
+  }
+
+  /** What a source answered, for each coin asked about. The highest cap seen is kept, never lowered. */
+  async recordStandings(rows: readonly StandingRow[], at: Millis): Promise<void> {
+    if (rows.length === 0) return;
+    await this.#db.query(
+      `insert into internal.coin_standing (asset_key, listed, bonded, peak_market_cap_usd, checked_at)
+       select * from unnest($1::text[], $2::boolean[], $3::boolean[], $4::double precision[], array_fill($5::timestamptz, array[cardinality($1::text[])]))
+       on conflict (asset_key) do update set
+         listed = internal.coin_standing.listed or excluded.listed,
+         bonded = internal.coin_standing.bonded or excluded.bonded,
+         peak_market_cap_usd = greatest(internal.coin_standing.peak_market_cap_usd, excluded.peak_market_cap_usd),
+         checked_at = excluded.checked_at`,
+      [rows.map((r) => r.assetKey), rows.map((r) => r.listed), rows.map((r) => r.bonded), rows.map((r) => r.marketCapUsd), toTimestamp(at)],
+    );
+  }
+
+  /**
+   * ★ DELETE THE OLD COINS THAT DO NOT MATTER: past the window, asked about, not bonded, and either
+   * listed nowhere or seen only below the bar — and not one of the coins always kept. Their metadata and origin rows go
+   * with them (on delete cascade). A coin not yet asked about is never deleted. Returns how many.
+   */
+  async sweep(firstSeenBefore: Millis, marketCapUsd: number, limit: number): Promise<number> {
+    const rows = await this.#db.query<{ n: string | number }>(
+      `with ${NAMED_COINS},
+       doomed as (
+         select a.asset_key
+           from public.asset a
+           join internal.coin_standing s on s.asset_key = a.asset_key
+          where a.origin in ('live_stream', 'backfill') and a.first_seen_at < $1
+            and not s.bonded
+            /* Not listed: nobody traded it. Listed with no cap reported: unknown, so kept — an
+               absence is never read as "below the bar". */
+            and (not s.listed or s.peak_market_cap_usd < $2)
+            and not ${KEPT_ALWAYS}
+          order by a.first_seen_at asc
+          limit $3
+       ),
+       gone as (delete from public.asset a using doomed d where a.asset_key = d.asset_key returning 1)
+       select count(*) as n from gone`,
+      [toTimestamp(firstSeenBefore), marketCapUsd, limit],
+    );
     return Number(rows[0]?.n ?? 0);
   }
 
