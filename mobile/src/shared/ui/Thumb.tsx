@@ -3,8 +3,11 @@
  *
  * A missing picture is a tile with an image glyph — the honest render of a picture we do not
  * have — never a borrowed one. The platform badge sits on the bottom-right corner when the
- * caller knows the platform, and is simply absent when it does not.
+ * caller knows the platform, and is simply absent when it does not. A picture that fails to
+ * load is a missing picture: it falls back to the same tile, never a broken-image box.
  */
+
+import { useState } from 'react';
 
 import type { Platform } from '../platform.ts';
 import { ImageIcon } from './icons.tsx';
@@ -35,10 +38,12 @@ export function Thumb({
   /** For a coin with no image: its first letter, which is a fact, rather than a stock icon. */
   letter?: string | null;
 }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const shown = url !== null && failed !== url ? url : null;
   return (
     <span className={styles['thumb']} style={{ width, height, minWidth: width, minHeight: height, flexBasis: width }}>
-      {url !== null ? (
-        <img className={`${styles['thumbImg']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }} src={url} alt="" loading="lazy" />
+      {shown !== null ? (
+        <img className={`${styles['thumbImg']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }} src={shown} alt="" loading="lazy" onError={() => setFailed(shown)} />
       ) : (
         <span className={`${styles['thumbEmpty']} ${round ? styles['round'] : ''}`} style={round ? undefined : { borderRadius: radius }}>
           {letter !== null ? <span className={styles['thumbLetter']}>{letter}</span> : <ImageIcon size={Math.round(Math.min(width, height) * 0.42)} />}
