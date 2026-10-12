@@ -327,8 +327,10 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   const resolved = await loops.resolve.run(ctx);
   assert.equal(resolved.failed, 0, resolved.firstError ?? '');
 
-  /* 4. TRACK. Dry first: every read is priced and none is sent. */
-  clock = (NOW + MINUTE) as Millis;
+  /* 4. TRACK. Discovery's own reading, ten minutes ago, counts as a read: with no view rate
+     yet each post sits on the warm tier (15 minutes), so it is due five minutes from now.
+     Dry first: every read is priced and none is sent. */
+  clock = (NOW + 6 * MINUTE) as Millis;
   const dry = await loops.track.run(ctx);
   assert.equal(dry.failed, 0, dry.firstError ?? '');
   assert.equal(dry.out, 4, 'the four posts of the promoted story are due a read; the unrelated post is not tracked');
@@ -340,14 +342,14 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
 
   /* Live, against the recorded client: one batched lookup for all four posts. */
   trackMode = 'live';
-  clock = (NOW + 2 * MINUTE) as Millis;
+  clock = (NOW + 7 * MINUTE) as Millis;
   const first = await loops.track.run(ctx);
   assert.equal(first.failed, 0, first.firstError ?? '');
   assert.equal(lookups, 1, 'four due reads, one call');
 
-  /* No view rate yet after one reading, so each post sits on the warm tier: read again
-     eight minutes on. */
-  clock = (NOW + 11 * MINUTE) as Millis;
+  /* After the first re-read each post's rate is measured against the discovery reading
+     and ranked; with four posts one is hot and the rest warm (15 minutes): read again. */
+  clock = (NOW + 23 * MINUTE) as Millis;
   const second = await loops.track.run(ctx);
   assert.equal(second.failed, 0, second.firstError ?? '');
   assert.equal(lookups, 2);

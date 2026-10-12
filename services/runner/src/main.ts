@@ -168,7 +168,13 @@ async function main(): Promise<void> {
         watch: runtime.watch,
         floors: runtime.feedFloors,
         scorePosts: runtime.scorePosts,
-        dailyCapUsd: Math.min(cfg.spend.dailyBudgetUsd, runtime.loopDeps.policy.budget.dailyUsd),
+        /* The catch-all's targets are set from the posts supplier's line — search and re-reads
+           share it — never above the day's cap. */
+        dailyCapUsd: Math.min(
+          cfg.spend.dailyBudgetUsd,
+          runtime.loopDeps.policy.budget.dailyUsd,
+          runtime.loopDeps.policy.budget.supplierLines.posts,
+        ),
       }),
       admitLoop(runtime.loopDeps),
       trackLoop(runtime.loopDeps),

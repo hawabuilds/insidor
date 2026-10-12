@@ -1107,6 +1107,27 @@ export interface BudgetPolicy {
   /** Stop spending on a vendor at this share of its line, leaving room to finish. */
   readonly softStopFraction: number;
   /**
+   * ★ ONE LINE PER SUPPLIER, BY WHAT IT DOES FOR US — the owner's caps from the earlier
+   * build. Named by role because contracts may not name a vendor; the runner maps each role
+   * to the adapter that bills under it. A supplier with no line here is bounded by
+   * `perSourceUsdPerDay`, and every line by `dailyUsd`.
+   *
+   *   posts       the post source we search and re-read (75,000 posts a day at its price)
+   *   judge       the language model behind QUALIFY and the per-post score
+   *   video       the short-video source
+   *   actors      a scraping service, for any use beyond the short-video source
+   *   embeddings  the image embedding service (Part 1)
+   */
+  readonly supplierLines: { readonly posts: number; readonly judge: number; readonly video: number; readonly actors: number; readonly embeddings: number };
+  /**
+   * ★ PACE EVERY LINE EVENLY OVER THE DAY. At a moment `t` into the UTC day a line may have
+   * spent at most `line × (t + paceAheadMs) / 24h`. Without it a busy morning spends the
+   * whole day by breakfast and the afternoon's posts — the ones a user opening the app at
+   * teatime sees — are never read. `paceAheadMs` is the head start, so the first pass after
+   * midnight is not refused for having nothing banked yet.
+   */
+  readonly paceAheadMs: number;
+  /**
    * ★ FREE BEFORE PAID: ask the sources that cost nothing first, every pass.
    *
    * A POLICY AND NOT AN OPTIMISATION, which is why it is a field here rather than a
@@ -1449,8 +1470,13 @@ const POLICY_V1: Policy = {
 
      v16 lowers `track.maxTrackedHours` from 168 to 48, and TRACK now re-reads only posts on
      screen (in a narrative, or on the For You and Popular feeds); everything else keeps the
-     one reading taken at discovery. A post's history after this bump is at most two days. */
-  version: 'policy.v16',
+     one reading taken at discovery. A post's history after this bump is at most two days.
+
+     v17 raises `budget.dailyUsd` from 3 to 21 with a line per supplier (`supplierLines`) and
+     paces every line over the day (`paceAheadMs`) — the owner's caps from the earlier build,
+     approved 2026-10-12. Re-reads go to the top 60 rows of each feed and to promoted
+     narratives only, every 6 / 15 / 30 minutes by view rate, for 24 hours. */
+  version: 'policy.v17',
 
   admit: {
     maxAgeMin: 240,
@@ -1491,17 +1517,17 @@ const POLICY_V1: Policy = {
     /* Under an hour old: every 4 minutes. Then 9, 14, 21, 30, 42 and 58 minutes as the post
        passes 1h, 3h, 6h, 12h, 1 day and 2 days; past 4 days, every 78. */
     ageTierMinutes: [60, 180, 360, 720, 1440, 2880, 5760],
-    /* The earlier build's snapshotter: first 3 hours, top 20% by view rate every 2 min,
-       next 40% every 8, the rest every 20. */
+    /* The earlier build's snapshotter tiers, at the owner's paid intervals: first 3 hours,
+       top 20% by view rate every 6 min, next 40% every 15, the rest every 30. After the first
+       3 hours nothing is read more often than the cold tier. */
     youngWindowMin: 180,
     velocityShares: { hot: 0.2, warm: 0.4 },
-    velocityMinutes: { hot: 2, warm: 8, cold: 20 },
+    velocityMinutes: { hot: 6, warm: 15, cold: 30 },
     /* holdoutRate deleted in v6 — see the note on TrackPolicy. explore.holdoutRate is
        the single source, and it is the one every live call site already read. */
     shedFromTier: 0,
-    /* 48 hours, down from a week. A post's views move in its first day or two; reading
-       every on-screen post for seven days cost more than the whole daily budget. */
-    maxTrackedHours: 48,
+    /* 24 hours. A post's views move in its first day; the owner's caps pay for a day. */
+    maxTrackedHours: 24,
     flatReadsToDemote: 3,
 
     lifecycleMargin: 0.1,
@@ -1778,7 +1804,8 @@ const POLICY_V1: Policy = {
 
   rising: {
     windowMs: 86_400_000, // a day
-    maxRows: 100,
+    /* 60: the rows on each feed, and so the posts on it that are re-read. */
+    maxRows: 60,
     postsPerPass: 20,
   },
 
@@ -1844,7 +1871,9 @@ const POLICY_V1: Policy = {
        cannot exceed $4.31, so 12 could never bind and 3 can — which is the whole
        difference between a cap and a comment. It is also the number a person who is
        low on funds can lose without it mattering. */
-    dailyUsd: 3,
+    /* 21, with a line per supplier: the owner's caps from the earlier build, approved
+       2026-10-12 to replace the $3 starter cap. Every line is paced over the day. */
+    dailyUsd: 21,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
@@ -1854,6 +1883,9 @@ const POLICY_V1: Policy = {
        `dailyUsd` is the only ceiling; with two it is what keeps them both alive. */
     perSourceUsdPerDay: 1.5,
     softStopFraction: 0.9,
+    supplierLines: { posts: 11.25, judge: 6, video: 2, actors: 1, embeddings: 1 },
+    paceAheadMs: 3_600_000, // an hour's head start
+
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
        is the one with a coverage cost, stated on its field, and is the first thing to
        turn off the day the constraint becomes coverage instead. */

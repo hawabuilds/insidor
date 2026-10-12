@@ -158,9 +158,11 @@ function plan(input: TrackInput, p: Policy): Plan {
   /* ★ THE AGE FLOOR, applied last so it can only slow a post down. The holdout is exempt:
      it is on the full grid for its whole life, whatever its age. */
   const floor = input.isHeldBack ? 0 : ageFloorTier(ageAtLastRead(input), p);
-  if (planned.schedule.tier >= floor) return planned;
-  const minutes = p.track.tierMinutes[floor] ?? 0;
-  return { ...planned, schedule: { tier: floor, dueAt: input.lastReadAt + minutes * MS_PER_MINUTE } };
+  const tier = Math.max(planned.schedule.tier, floor);
+  /* ★ AND NEVER FASTER THAN THE COLD TIER once the first hours are over: a paid re-read of
+     an older post is worth no more than one of a cold young one. */
+  const minutes = Math.max(p.track.tierMinutes[tier] ?? 0, input.isHeldBack ? 0 : p.track.velocityMinutes.cold);
+  return { ...planned, schedule: { tier, dueAt: input.lastReadAt + minutes * MS_PER_MINUTE } };
 }
 
 /** The score ladder and flat-read demotion, as they were before age was considered. */

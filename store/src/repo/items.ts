@@ -179,26 +179,22 @@ export class PgItemRepo implements ItemRepo {
    * The posts TRACK may spend a read on, NEWEST FIRST: the posts that are on screen.
    *
    *   - in a promoted story — the narratives, whose cards and pages show their views;
-   *   - on the For You or Popular feed — a catch-all post inside the feed window whose
-   *     newest score, judged alone, clears the bar (`bars`, from policy, by what the judge
-   *     looked at). The same rule the projector applies (core's `postScore`), in SQL so the
-   *     queue is one query.
+   *   - a row on the For You or Popular feed as the projector last committed it
+   *     (`public.rising_row`, `rising.maxRows` per feed).
    *
-   * Everything else keeps the one reading taken when discovery found it, and no more.
-   * Re-reads are the expensive part of the day; a post nobody can see is not worth one.
+   * Everything else keeps the readings discovery already paid for and no more. A post that
+   * clears the score but has fallen off both feeds is no longer on screen and is no longer
+   * re-read. Re-reads are the expensive part of the day; a post nobody can see is not
+   * worth one.
    *
    * ★ NEWEST FIRST because reads are budgeted and views move fastest in a post's first
    * hours. Oldest first would spend a tight budget on posts that are days old.
    *
    * What this no longer includes, said so it is not rediscovered as a bug: posts ADMIT
    * passed, and with them ADMIT's holdout lane. Tracking every admitted post cost several
-   * times the daily budget; see the cost note on Policy.track.maxTrackedHours.
+   * times the daily budget.
    */
-  async trackable(
-    at: Millis,
-    limit: number,
-    feed: { readonly sinceMs: Millis; readonly textBar: number; readonly videoFrameBar: number },
-  ): Promise<readonly Item[]> {
+  async trackable(at: Millis, limit: number): Promise<readonly Item[]> {
     const rows = await this.#db.query<ItemRow>(
       `${SELECT_ITEM}
         where first_seen_at >= $1
@@ -206,25 +202,11 @@ export class PgItemRepo implements ItemRepo {
             exists (select 1 from public.story_member m
                       join public.story s on s.story_id = m.story_id
                      where m.item_id = public.item.item_id and s.state = 'promoted' and s.merged_into is null)
-            or (
-              coalesce(posted_at, first_seen_at) >= $3
-              and exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id)
-              and exists (
-                    select 1 from (
-                      select pj.coinable, pj.confidence, pj.looked_at
-                        from internal.post_judgement pj
-                       where pj.item_id = public.item.item_id
-                       order by pj.judged_at desc, pj.id desc
-                       limit 1
-                    ) latest
-                     where latest.coinable
-                       and latest.confidence >= case latest.looked_at when 'videoFrame' then $5::float8 else $4::float8 end
-                  )
-            )
+            or exists (select 1 from public.rising_row r where r.item_id = public.item.item_id)
           )
         order by first_seen_at desc
         limit $2`,
-      [toTimestamp(at), limit, toTimestamp(feed.sinceMs), feed.textBar, feed.videoFrameBar],
+      [toTimestamp(at), limit],
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => this.#toItem(row, fingerprints));

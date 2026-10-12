@@ -68,6 +68,7 @@ import type { RedditAdapterDeps } from '@insidor/platform-reddit';
 import {
   CREDENTIALS as TIKTOK_CREDENTIALS,
   SOURCE as TIKTOK_SOURCE,
+  VENDOR as TIKTOK_VENDOR,
   clientConfig as tiktokClientConfig,
   httpClient as tiktokHttpClient,
   tiktokPlatform,
@@ -75,11 +76,20 @@ import {
 import type { TikTokAdapterDeps } from '@insidor/platform-tiktok';
 import {
   CREDENTIALS as X_CREDENTIALS,
+  VENDOR as X_VENDOR,
   clientConfig as xClientConfig,
   httpClient as xHttpClient,
   xPlatform,
 } from '@insidor/platform-x';
 import type { XAdapterDeps } from '@insidor/platform-x';
+
+/**
+ * Which vendor bills for each post-source role in `Policy.budget.supplierLines`. Here,
+ * beside the adapters, because policy may not name a vendor and the runner should not have
+ * to import every adapter to learn one. The short-video source bills through a scraping
+ * service, so that service's line is the `video` line while it is the only use of it.
+ */
+export const SUPPLIER_VENDORS = { posts: X_VENDOR, video: TIKTOK_VENDOR } as const;
 
 /* ── what a source is supplied with, or why it is not ─────────────────── */
 
