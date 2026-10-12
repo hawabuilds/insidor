@@ -94,6 +94,7 @@ export const COIN_FIELDS = [
   'liquidityUsd',
   'priceChange24h',
   'tradable',
+  'origin',
 ] as const;
 
 /**

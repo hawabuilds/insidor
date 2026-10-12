@@ -39,6 +39,7 @@ import {
   projectCoin,
   projectCoins,
   projectEvidence,
+  projectCoinOrigin,
   projectEarliestPost,
   projectFirstSeenAt,
   projectLaunch,
@@ -1850,4 +1851,20 @@ test('a story whose origin never arrived is not stamped as a fiction', () => {
      new origin silently putting "this is made up" over every real story. The opposite
      mistake is caught by STORY_ORIGINS being pinned to the schema in migrations.test.ts. */
   assert.deepEqual(projectStoryProvenance(undefined, 'Reddit'), { kind: 'observed' });
+});
+
+test('★ a coin\'s origin is shown only with how we know it; a post after launch says so, and nothing else becomes a line', () => {
+  const post = { authorLabel: '@pusholder', permalink: 'https://x.com/pusholder/status/1', postedAt: T0 };
+  assert.deepEqual(projectCoinOrigin({ status: 'viral_after_launch', post, postOffsetMs: 20 * 86_400_000 }), {
+    kind: 'afterLaunch',
+    post: { authorLabel: '@pusholder', permalink: 'https://x.com/pusholder/status/1', postedAt: { at: T0 } },
+    offset: { v: 20 * 86_400_000 },
+  });
+  assert.equal(projectCoinOrigin({ status: 'matched_by_insidor', post, postOffsetMs: -HOUR }).kind, 'matchedByInsidor');
+  assert.equal(projectCoinOrigin({ status: 'linked_by_creator', post, postOffsetMs: -HOUR }).kind, 'linkedByCreator');
+  for (const status of ['unlinked', 'promo_only', 'account_only'] as const) {
+    assert.deepEqual(projectCoinOrigin({ status, post: null, postOffsetMs: null }), { kind: 'unknown', why: 'not_reported' }, `${status} is a dash, never "no origin"`);
+  }
+  assert.deepEqual(projectCoinOrigin(null), { kind: 'unknown', why: 'not_read_yet' });
+  assert.deepEqual(projectCoinOrigin({ status: 'not_checked_yet', post: null, postOffsetMs: null }), { kind: 'unknown', why: 'not_read_yet' });
 });

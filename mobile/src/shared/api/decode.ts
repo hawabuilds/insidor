@@ -24,7 +24,7 @@
 import type { Instant, Measured, Delta, Millis, PendingReason } from '../format/measure.ts';
 import { instantFrom, measuredFrom } from '../format/measure.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
-import type { Coin, CoinLink, MarketCapBasis } from './wire/coin.ts';
+import type { Coin, CoinLink, CoinOrigin, MarketCapBasis } from './wire/coin.ts';
 import type { RisingFeed, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, Story, StoryProvenance } from './wire/story.ts';
 import {
@@ -217,6 +217,29 @@ function decodeBasis(v: unknown): MarketCapBasis | null {
   return v === 'fully-diluted' || v === 'circulating' ? v : null;
 }
 
+const ORIGIN_KINDS = ['linkedByCreator', 'matchedByInsidor', 'foundByTeam', 'influencer', 'afterLaunch'] as const;
+
+/**
+ * A coin's origin. Absent (an older server) or a kind we do not know is `unknown` — a dash —
+ * never a post: "where this came from" is the one claim here that needs the server's proof.
+ */
+function decodeCoinOrigin(v: unknown, path: string): CoinOrigin {
+  if (v === null || v === undefined) return { kind: 'unknown', pending: 'not_read_yet' };
+  const o = obj(v, path);
+  const kind = ORIGIN_KINDS.find((k) => k === o['kind']);
+  if (kind === undefined) return { kind: 'unknown', pending: reasonOf(o['why'] ?? 'not_read_yet') };
+  const post = obj(o['post'], `${path}.post`);
+  return {
+    kind,
+    post: {
+      authorLabel: str(post['authorLabel'], `${path}.post.authorLabel`),
+      permalink: optStr(post['permalink']),
+      postedAt: instantAt(post['postedAt'], `${path}.post.postedAt`, 'not_reported'),
+    },
+    offset: measured(o['offset'], `${path}.offset`, 'not_reported'),
+  };
+}
+
 export function decodeCoin(raw: unknown, path = '$.coin'): Coin {
   const o = pick(obj(raw, path), COIN_FIELDS);
   return {
@@ -240,6 +263,7 @@ export function decodeCoin(raw: unknown, path = '$.coin'): Coin {
        that may hold a number. */
     priceChange24h: delta(o.priceChange24h, `${path}.priceChange24h`, 'not_reported'),
     tradable: bool(o.tradable, `${path}.tradable`),
+    origin: decodeCoinOrigin(o.origin, `${path}.origin`),
   };
 }
 

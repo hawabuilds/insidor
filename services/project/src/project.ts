@@ -41,6 +41,7 @@
  * post count would, a match score would not.
  */
 
+import type { OriginStatus } from '@insidor/contracts/origin.ts';
 import type {
   Fidelity,
   FingerprintKind,
@@ -67,6 +68,7 @@ import {
   type WireStoryProvenance,
   type WireBoardRow,
   type WireCoin,
+  type WireCoinOrigin,
   type WireCoinLink,
   type WireEvidence,
   type WireFeedSource,
@@ -225,6 +227,18 @@ export interface CoinFacts {
   readonly mintedAt: Millis | null;
   /** The latest reading we hold for this coin. `null` means we hold none at all. */
   readonly market: CoinMarket | null;
+  /** Where it came from, as the coin universe found it. `null` means it has not been checked. */
+  readonly origin?: CoinOriginFacts | null;
+}
+
+/**
+ * A coin's origin status and the post it is about — never the reasoning that got there.
+ * `postOffsetMs` is the post's time minus the coin's launch: negative before, positive after.
+ */
+export interface CoinOriginFacts {
+  readonly status: OriginStatus;
+  readonly post: { readonly authorLabel: string; readonly permalink: string | null; readonly postedAt: Millis | null } | null;
+  readonly postOffsetMs: number | null;
 }
 
 /**
@@ -585,8 +599,35 @@ export function projectCoin(facts: CoinFacts, options: ProjectOptions): WireCoin
        only evidence for it is a quote, and a quote taken twenty minutes ago is not
        evidence about now. Absence of a current quote is absence of the affordance. */
     tradable: market?.tradable ?? false,
+    origin: projectCoinOrigin(facts.origin ?? null),
   };
 }
+
+/**
+ * ★ WHERE A COIN CAME FROM, SAID ONLY WITH HOW WE KNOW. A status that names a post carries the
+ * post and how long before the coin (or, for `afterLaunch`, after) it was made. Every other
+ * status — not checked, nothing found, only promotion, only an account — is a dash with its
+ * reason: none of them is a fact about the world worth a line of its own, and none of them
+ * may read as "no origin exists".
+ */
+export function projectCoinOrigin(origin: CoinOriginFacts | null): WireCoinOrigin {
+  if (origin === null || origin.status === 'not_checked_yet') return { kind: 'unknown', why: 'not_read_yet' };
+  const named = ORIGIN_KIND[origin.status];
+  if (named === undefined || origin.post === null) return { kind: 'unknown', why: 'not_reported' };
+  return {
+    kind: named,
+    post: { authorLabel: origin.post.authorLabel, permalink: origin.post.permalink, postedAt: instant(origin.post.postedAt, 'not_reported') },
+    offset: measured(origin.postOffsetMs, 'not_reported'),
+  };
+}
+
+const ORIGIN_KIND: Partial<Record<OriginStatus, Exclude<WireCoinOrigin['kind'], 'unknown'>>> = {
+  linked_by_creator: 'linkedByCreator',
+  matched_by_insidor: 'matchedByInsidor',
+  found_by_team: 'foundByTeam',
+  influencer_origin: 'influencer',
+  viral_after_launch: 'afterLaunch',
+};
 
 /**
  * The row's button, as a closed union with nothing left for the client to decide.

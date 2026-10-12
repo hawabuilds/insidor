@@ -17,7 +17,21 @@
  * the wire changes, both copies change in the same commit.
  */
 
-import type { Delta, Instant, Measured } from '../../format/measure.ts';
+import type { Delta, Instant, Measured, PendingReason } from '../../format/measure.ts';
+
+/**
+ * Where a coin came from, said only with how we know it. `afterLaunch` is the post that went
+ * viral AFTER the coin existed — shown as "Went viral after launch", never as the origin.
+ * `offset` is the post's time minus the coin's launch: negative before, positive after.
+ * `unknown` is a dash with its reason: not checked, or nothing confident — never "no origin".
+ */
+export type CoinOrigin =
+  | { readonly kind: 'unknown'; readonly pending: PendingReason }
+  | {
+      readonly kind: 'linkedByCreator' | 'matchedByInsidor' | 'foundByTeam' | 'influencer' | 'afterLaunch';
+      readonly post: { readonly authorLabel: string; readonly permalink: string | null; readonly postedAt: Instant };
+      readonly offset: Measured;
+    };
 
 /** What the market says the cap is measured against. The venue tells us; we never guess. */
 export type MarketCapBasis = 'fully-diluted' | 'circulating';
@@ -68,6 +82,8 @@ export interface Coin {
    * is not tradable renders its market numbers and no buy affordance.
    */
   readonly tradable: boolean;
+  /** Where the coin came from, with how we know. See `CoinOrigin`. */
+  readonly origin: CoinOrigin;
 }
 
 /**

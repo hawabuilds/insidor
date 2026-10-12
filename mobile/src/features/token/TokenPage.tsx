@@ -17,7 +17,7 @@ import { useState } from 'react';
 import { USING_FIXTURES, type Coin, type Story } from '../../shared/api/index.ts';
 import { coinLabels } from '../../shared/coin-facts.ts';
 import { settledCoins } from '../../shared/coin-status.ts';
-import { formatAge } from '../../shared/format/duration.ts';
+import { formatAge, formatDuration } from '../../shared/format/duration.ts';
 import { formatChangePercent, formatCount, formatPrice, formatUsd } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -117,6 +117,8 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
           <span className={styles['name']}>{coin.name}</span>
         </div>
       </div>
+
+      <Origin origin={coin.origin} sample={sample} now={now} />
 
       <div className={styles['chips']}>
         <span className={styles['chip']}>SOL</span>
@@ -247,5 +249,50 @@ function Info({ coin, now }: { coin: Coin; now: number }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/** Each origin says how we know it. "Went viral after launch" is never where the coin came from. */
+const ORIGIN_LABEL: Record<Exclude<Coin['origin']['kind'], 'unknown'>, string> = {
+  linkedByCreator: 'Linked by creator',
+  matchedByInsidor: 'Matched by Insidor',
+  foundByTeam: 'Found by the Insidor team',
+  influencer: 'From an influencer or founder',
+  afterLaunch: 'Went viral after launch',
+};
+
+/**
+ * Where the coin came from: the post, who posted it, and how long before the coin it was —
+ * or, for a post that went viral after launch, how long after. Not checked, or nothing
+ * confident, is a dash with its reason; never "no origin".
+ */
+function Origin({ origin, sample, now }: { origin: Coin['origin']; sample: boolean; now: number }) {
+  if (origin.kind === 'unknown') {
+    return (
+      <div className={styles['from']}>
+        <span className={styles['kicker']}>Where it came from</span>
+        <Value r={formatAge({ known: false, pending: origin.pending }, now)} />
+      </div>
+    );
+  }
+  const offset = origin.offset.known ? origin.offset.amount : null;
+  const when = offset === null ? null : `posted ${formatDuration(Math.abs(offset))} ${offset < 0 ? 'before' : 'after'} the coin`;
+  const body = (
+    <>
+      <span className={styles['fromHead']}>
+        <span className={styles['kicker']}>{ORIGIN_LABEL[origin.kind]}</span>
+        {origin.post.permalink !== null && !sample ? <ChevronIcon size={16} /> : null}
+      </span>
+      <span className={styles['fromTitle']}>
+        <b>{origin.post.authorLabel}</b>
+        {when === null ? <Value r={formatAge(origin.post.postedAt, now)} /> : <span>{when}</span>}
+      </span>
+    </>
+  );
+  /* A sample post has no real page to link to, so it is not a link. */
+  return origin.post.permalink !== null && !sample ? (
+    <a className={styles['from']} href={origin.post.permalink} target="_blank" rel="noopener noreferrer">{body}</a>
+  ) : (
+    <div className={styles['from']}>{body}</div>
   );
 }

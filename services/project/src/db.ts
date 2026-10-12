@@ -21,6 +21,7 @@
  * the ingredients, and what it leaves behind is the finished answer.
  */
 
+import type { OriginStatus } from '@insidor/contracts/origin.ts';
 import { DEFAULT_POLICY, OBSERVED_ASSET_ORIGINS } from '@insidor/contracts';
 import type {
   CensorReason,
@@ -41,6 +42,7 @@ import type { CorpusStats } from './coins.ts';
 import { permalinkFor } from './permalinks.ts';
 import type {
   CoinFacts,
+  CoinOriginFacts,
   CoinMarket,
   LaunchFacts,
   MarketNumber,
@@ -751,10 +753,11 @@ function corpusFor(
   return corpus;
 }
 
-/** The retrieved coins, bucketed by story, each carrying whatever reading we hold. */
+/** The retrieved coins, bucketed by story, each carrying whatever reading and origin we hold. */
 function coinsByStory(
   rows: readonly AssetRow[],
   markets: ReadonlyMap<string, CoinMarket>,
+  origins: ReadonlyMap<string, CoinOriginFacts> = new Map(),
 ): ReadonlyMap<string, readonly CoinFacts[]> {
   const byStory = new Map<string, CoinFacts[]>();
   for (const row of rows) {
@@ -763,10 +766,47 @@ function coinsByStory(
        public.market_reading has not been read, which is OUR state; an empty reading
        would say the venue answered and had nothing, which is the world's. Those are
        different sentences and projectCoin gives them different reasons. */
-    bucket.push(toCoinFacts(row, markets.get(row.asset_key) ?? null));
+    bucket.push({ ...toCoinFacts(row, markets.get(row.asset_key) ?? null), origin: origins.get(row.asset_key) ?? null });
     byStory.set(row.story_id, bucket);
   }
   return byStory;
+}
+
+/* ── where a coin came from ───────────────────────────────────────────── */
+
+/**
+ * Each coin's origin status (internal.coin_origin) and the post it is about, as a display
+ * handle and a link built from what we hold. The status's reason is NOT selected: it is our
+ * reasoning, and a column not in the result set cannot reach a payload. A coin with no row
+ * is absent — not checked — and projects as a dash, never as "no origin".
+ */
+async function loadCoinOrigins(db: Db, assetKeys: readonly string[]): Promise<ReadonlyMap<string, CoinOriginFacts>> {
+  const out = new Map<string, CoinOriginFacts>();
+  if (assetKeys.length === 0) return out;
+  const rows = await db.query<{
+    asset_key: string; status: OriginStatus; post_offset_ms: string | number | null;
+    source: string | null; source_item_id: string | null; posted_at: Date | string | null; handle: string | null;
+  }>(
+    `select o.asset_key, o.status, o.post_offset_ms, i.source, i.source_item_id, i.posted_at, a.handle
+       from internal.coin_origin o
+       left join public.item i on i.item_id = o.post_item_id
+       left join public.author a on a.author_key = i.author_key
+      where o.asset_key = any($1::text[])`,
+    [[...assetKeys]],
+  );
+  for (const r of rows) {
+    const handle = (r.handle ?? '').trim();
+    out.set(r.asset_key, {
+      status: r.status,
+      post: r.source === null ? null : {
+        authorLabel: handle === '' ? r.source : handle.startsWith('@') ? handle : `@${handle}`,
+        permalink: permalinkFor(r.source, r.handle, r.source_item_id),
+        postedAt: r.posted_at === null ? null : toMillis(r.posted_at),
+      },
+      postOffsetMs: r.post_offset_ms === null ? null : Number(r.post_offset_ms),
+    });
+  }
+  return out;
 }
 
 /* ── the market, which is a reading and not a property ────────────────── */
@@ -1306,8 +1346,9 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<StoryL
   /* Deduplicated: one coin can be in several stories' windows, and asking for its
      reading once per story would multiply the largest statement here by the number of
      rows on the board for no new information. */
-  const markets = await loadMarketReadings(db, [...new Set(coinRows.map((row) => row.asset_key))]);
-  const coins = coinsByStory(coinRows, markets);
+  const coinKeys = [...new Set(coinRows.map((row) => row.asset_key))];
+  const markets = await loadMarketReadings(db, coinKeys);
+  const coins = coinsByStory(coinRows, markets, await loadCoinOrigins(db, coinKeys));
 
   const byStory = new Map<string, MemberRow[]>();
   for (const row of memberRows) {
