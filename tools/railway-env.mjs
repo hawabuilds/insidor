@@ -9,7 +9,8 @@
  * run, so a person's keys are moved by that person.
  *
  * Built here, not read: DATABASE_URL_PEOPLE (your DATABASE_URL_APP with insidor_people_user and
- * PEOPLE_DB_PASSWORD), the switches (SPEND=dry to start — switched to live after a clean dry pass,
+ * PEOPLE_DB_PASSWORD), the switches (SPEND=dry the FIRST time only — a runner already switched to
+ * live is never put back to dry by running this again,
  * DISCOVER=on, DAILY_BUDGET_USD=21, NOTIFY=on, TRADING=on) and chainwatch's tuning numbers
  * (from .env.example). TRADING_ALLOWLIST is sent only if it is a real wallet address.
  */
@@ -63,6 +64,14 @@ const SERVICES = {
     DAILY_BUDGET_USD: '21',
   },
 };
+
+/* A runner that already has SPEND keeps it: rerunning this to change a key must not stop spending. */
+const current = spawnSync('railway', ['variables', '--service', 'runner', '--json'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+try {
+  if (JSON.parse(current.stdout || '{}').SPEND) delete SERVICES.runner.SPEND;
+} catch {
+  /* Unknown: keep the dry default, the safe side. */
+}
 
 const check = process.argv.includes('--check');
 let problems = 0;
