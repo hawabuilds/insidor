@@ -25,10 +25,10 @@
  */
 
 import { notImplemented } from '../not-implemented.ts';
-import { decodeBoardTick, decodeRisingFeed, decodeStory } from './decode.ts';
+import { decodeBoardTick, decodeNarratives, decodeRisingFeed, decodeStory } from './decode.ts';
 import type { BoardTick } from './wire/board.ts';
 import type { RisingFeed, RisingFeedId } from './wire/rising.ts';
-import type { Story } from './wire/story.ts';
+import type { NarrativesList, Story } from './wire/story.ts';
 
 /** A failure of the transport, as opposed to a failure of the payload. */
 export class ReadError extends Error {
@@ -66,6 +66,10 @@ export const SAMPLE_SCREENS = DEV || SAMPLE;
 async function readFixture(path: string): Promise<unknown> {
   const { fixtureBoard, fixtureRising, fixtureStory } = await import('./fixtures.ts');
   if (path.startsWith('/board/')) return fixtureBoard();
+  if (path.startsWith('/narratives/')) {
+    const { sampleNarrativeIds } = await import('./fixtures.ts');
+    return { tick: 1, stories: sampleNarrativeIds().map((id) => fixtureStory(id)), provenance: { kind: 'observed' } };
+  }
   if (path === '/rising/fyp' || path === '/rising/popular') return fixtureRising(path.slice('/rising/'.length) as RisingFeedId);
   if (path.startsWith('/story/')) {
     const story = fixtureStory(decodeURIComponent(path.slice('/story/'.length)));
@@ -97,20 +101,13 @@ export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Pro
   return decodeRisingFeed(await read(`/rising/${encodeURIComponent(feed)}`, signal));
 }
 
-export async function fetchStory(storyId: string, signal?: AbortSignal): Promise<Story> {
-  return decodeStory(await read(`/story/${encodeURIComponent(storyId)}`, signal));
+/** The Narratives list: the board's stories as whole pages, in the board's order. */
+export async function fetchNarratives(viewId: string, signal?: AbortSignal): Promise<NarrativesList> {
+  return decodeNarratives(await read(`/narratives/${encodeURIComponent(viewId)}`, signal));
 }
 
-/**
- * The Narratives list. Sample only: there is no read route for it yet.
- *
- * Decoded like anything off the network, so a sample cannot hold a shape the server could
- * never send and the screen is designed against the real wire.
- */
-export async function loadSampleNarratives(): Promise<readonly Story[]> {
-  if (!SAMPLE_SCREENS) return notImplemented('loadSampleNarratives: no read route for narratives yet');
-  const { sampleNarrativeIds, fixtureStory } = await import('./fixtures.ts');
-  return sampleNarrativeIds().map((id, i) => decodeStory(fixtureStory(id), `$.narratives[${i}]`));
+export async function fetchStory(storyId: string, signal?: AbortSignal): Promise<Story> {
+  return decodeStory(await read(`/story/${encodeURIComponent(storyId)}`, signal));
 }
 
 /** One page reached from the Narratives list. Never touches the network. */

@@ -65,6 +65,14 @@ export const BOARD_ROWS_SQL =
 export const STORY_SQL = 'select payload from public.story_view where story_id = $1';
 
 /**
+ * The Narratives list: every story on a board, as its whole page, in the board's committed
+ * order. A board row whose story has no projected page yet is left out rather than sent half
+ * — the list links to the page, and a row that opens a 404 is worse than one not shown.
+ */
+export const NARRATIVES_SQL =
+  'select s.payload from public.board_row r join public.story_view s on s.story_id = r.story_id where r.view_id = $1 order by r."position" asc';
+
+/**
  * Existence, again, and for the same reason as the board's: a feed id with no row here
  * has never been projected, which is a different fact from a feed whose window happens
  * to hold no mints. A launches rail that showed a transport error over a quiet market

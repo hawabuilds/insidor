@@ -33,6 +33,7 @@ import {
   PAIR_ROWS_SQL,
   PAIR_VIEW_SQL,
   SOURCE_VIEW_SQL,
+  NARRATIVES_SQL,
   STORY_SQL,
   type Db,
   type Row,
@@ -183,6 +184,21 @@ export async function board(viewId: string, deps: Deps): Promise<Reply> {
        once, by the projector, against the frame it was committing. */
     provenance: columnOf(view, 'provenance'),
   });
+}
+
+/**
+ * GET /narratives/:viewId
+ *
+ * The board's stories as whole pages, in the board's order, with the same `tick` and
+ * `provenance` the board carries — so the Narratives tab can say what kind of stories these
+ * are exactly as the feed does. A view never projected is a 404, as for the board.
+ */
+async function narratives(viewId: string, deps: Deps): Promise<Reply> {
+  const views = await deps.db.query(BOARD_VIEW_SQL, [viewId]);
+  const view = views[0];
+  if (view === undefined) return NOT_FOUND;
+  const rows = await deps.db.query(NARRATIVES_SQL, [viewId]);
+  return json(200, { tick: tickNumber(view['tick']), stories: rows.map(payloadOf), provenance: columnOf(view, 'provenance') });
 }
 
 /**
@@ -388,6 +404,7 @@ export async function handle(method: string, rawUrl: string, deps: Deps): Promis
     if (segments.length === 2 && param !== undefined) {
       if (head === 'board') return await board(param, deps);
       if (head === 'story') return await story(param, deps);
+      if (head === 'narratives') return await narratives(param, deps);
       if (head === 'launches') return await launches(param, deps);
       if (head === 'rising') return await rising(param, deps);
       if (head === 'pairs') return await pairs(param, deps);

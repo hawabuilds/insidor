@@ -25,6 +25,7 @@ import {
   RISING_ROWS_SQL,
   RISING_VIEW_SQL,
   SOURCE_VIEW_SQL,
+  NARRATIVES_SQL,
   STORY_SQL,
   type Row,
 } from './queries.ts';
@@ -599,4 +600,16 @@ test('a feed that has never been projected is 404 and never asks for its rows', 
   const { deps, calls } = fakeDb({});
   assert.equal((await handle('GET', '/rising/fyp', deps)).status, 404);
   assert.deepEqual(calls.map((c) => c.sql), [RISING_VIEW_SQL]);
+});
+
+test('★ the narratives list is the board\'s stories as whole pages, in board order, with the board\'s provenance', async () => {
+  const { deps, calls } = fakeDb({
+    [BOARD_VIEW_SQL]: [{ tick: '9', provenance: OBSERVED }],
+    [NARRATIVES_SQL]: [{ payload: FERRY }, { payload: PIGEON }],
+  });
+  const reply = await handle('GET', '/narratives/default', deps);
+  assert.equal(reply.status, 200);
+  assert.deepEqual(JSON.parse(reply.body), { tick: 9, stories: [FERRY, PIGEON], provenance: { kind: 'observed' } });
+  assert.deepEqual(calls.map((c) => c.sql), [BOARD_VIEW_SQL, NARRATIVES_SQL]);
+  assert.equal((await handle('GET', '/narratives/nope', fakeDb({}).deps)).status, 404, 'a view never projected is a 404');
 });

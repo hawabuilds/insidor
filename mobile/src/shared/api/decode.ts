@@ -26,7 +26,7 @@ import { instantFrom, measuredFrom } from '../format/measure.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinLink, CoinOrigin, MarketCapBasis } from './wire/coin.ts';
 import type { RisingFeed, RisingPost } from './wire/rising.ts';
-import type { DiscussionPost, EarliestPost, Evidence, Story, StoryProvenance } from './wire/story.ts';
+import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import {
   BOARD_ROW_FIELDS,
   COIN_FIELDS,
@@ -321,6 +321,15 @@ export function decodeBoardRow(raw: unknown, path = '$.row'): BoardRow {
     firstSeenAt: instantAt(o.firstSeenAt, `${path}.firstSeenAt`, 'not_read_yet'),
     coins: decodeCoinLink(o.coins, `${path}.coins`),
     isNew: bool(o.isNew, `${path}.isNew`),
+  };
+}
+
+export function decodeNarratives(raw: unknown, path = '$'): NarrativesList {
+  const o = obj(raw, path);
+  return {
+    tick: int(o['tick'], `${path}.tick`),
+    stories: arr(o['stories'], `${path}.stories`).map((s, i) => decodeStory(s, `${path}.stories[${i}]`)),
+    provenance: decodeBoardProvenance(o['provenance'], `${path}.provenance`),
   };
 }
 
