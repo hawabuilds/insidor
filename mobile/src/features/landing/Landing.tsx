@@ -10,7 +10,11 @@
  * live universe by forty times; a figure on the front door that is wrong is worse than none.
  *
  * In a build with no sign-in, "Join now" goes straight in and says why, as Trador's demo mode
- * does — never a button that opens nothing. The iOS app is a label, not a disabled button.
+ * does — never a button that opens nothing. While sign-in is still starting, the door says
+ * "Loading" where the button will be, rather than offering one that cannot work yet. The iOS app
+ * is a label, not a disabled button.
+ *
+ * This is the only place anyone signs in (shared/sign-in.ts is the gate in front of the app).
  */
 
 import { useState } from 'react';
@@ -20,10 +24,11 @@ import { Modal } from '../../shared/ui/Modal.tsx';
 import { XMark } from '../../shared/ui/icons.tsx';
 import styles from './landing.module.css';
 
-export function Landing({ onEnter }: { onEnter: () => void }) {
+export function Landing({ configured, onEnter }: { configured: boolean; onEnter: () => void }) {
   const { wallet, state } = useWallet();
   const [open, setOpen] = useState(false);
-  const canSignIn = wallet !== null && state.kind !== 'unavailable';
+  const starting = configured && (wallet === null || state.kind === 'unavailable');
+  const signingIn = configured && state.kind === 'connecting';
 
   return (
     <div className={styles['page']}>
@@ -46,13 +51,17 @@ export function Landing({ onEnter }: { onEnter: () => void }) {
         </p>
 
         <div className={styles['actions']}>
-          <button type="button" className={styles['join']} onClick={() => (canSignIn ? setOpen(true) : onEnter())}>
-            Join now <Arrow />
-          </button>
+          {starting ? <span className={styles['waiting']}>Loading</span> : signingIn ? <span className={styles['waiting']}>Finish signing in in the window that opened</span> : (
+            <button type="button" className={styles['join']} onClick={() => (configured ? setOpen(true) : onEnter())}>
+              Join now <Arrow />
+            </button>
+          )}
           <span className={styles['ios']} aria-label="iOS app coming soon">
             <Apple /> Coming soon
           </span>
-          {!canSignIn ? <p className={styles['demo']}>Sign-in isn't set up in this build: set VITE_PRIVY_APP_ID for real login.</p> : null}
+          {configured && state.kind === 'refused' ? <p className={styles['demo']}>You closed sign-in. Join now to try again.</p> : null}
+          {configured && state.kind === 'failed' ? <p className={styles['demo']}>Sign-in didn't finish. Join now to try again.</p> : null}
+          {!configured ? <p className={styles['demo']}>Sign-in isn't set up in this build: set VITE_PRIVY_APP_ID for real login.</p> : null}
         </div>
       </div>
 
@@ -81,6 +90,15 @@ export function Landing({ onEnter }: { onEnter: () => void }) {
           <p className={styles['small']}>A wallet is created for you on the way in. Nothing to install, nothing to pay.</p>
         </Modal>
       ) : null}
+    </div>
+  );
+}
+
+/** A returning person's session coming back: the mark, pulsing, and nothing to press. */
+export function Holding() {
+  return (
+    <div className={styles['holding']} role="status" aria-label="Loading">
+      <Mark />
     </div>
   );
 }
