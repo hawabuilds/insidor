@@ -26,6 +26,7 @@
 import { notImplemented } from '../not-implemented.ts';
 import { decodeBoardTick, decodeCoinMarket, decodeNarratives, decodeRisingFeed, decodeSearch, decodeSearchedCoin, decodeStory } from './decode.ts';
 import type { SearchedCoin, SearchResults } from './wire/search.ts';
+import type { BuildResult, Holding, TradeQuote, TradeVenue } from './wire/trade.ts';
 import type { CoinMarket, MarketTimeframe } from './wire/market.ts';
 import type { BoardTick } from './wire/board.ts';
 import type { RisingFeed, RisingFeedId } from './wire/rising.ts';
@@ -168,6 +169,80 @@ export async function loadSampleStory(storyId: string): Promise<Story> {
   const raw = fixtureStory(storyId);
   if (raw === null) throw new ReadError(`/sample/story/${storyId}`, 404);
   return decodeStory(raw);
+}
+
+/* ── trading (services/trade) ──────────────────────────────────────────
+   A separate service, at VITE_TRADE_URL. Unset, every call below says trading is unavailable
+   and none touches the network. The service itself refuses everything unless TRADING is on. */
+
+const TRADE = (import.meta.env?.['VITE_TRADE_URL'] as string | undefined) ?? '';
+
+async function trade(path: string, init: RequestInit = {}, signal?: AbortSignal): Promise<{ readonly ok: boolean; readonly status: number; readonly body: Record<string, unknown> }> {
+  if (TRADE === '') return { ok: false, status: 503, body: { error: 'Trading is not connected.' } };
+  const response = await fetch(`${TRADE}${path}`, {
+    ...init,
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    cache: 'no-store',
+    ...(signal ? { signal } : {}),
+  });
+  let body: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = await response.json();
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) body = parsed as Record<string, unknown>;
+  } catch {
+    body = {};
+  }
+  return { ok: response.ok, status: response.status, body };
+}
+
+const said = (body: Record<string, unknown>, fallback: string): string => (typeof body['error'] === 'string' ? body['error'] : fallback);
+
+/** Where a coin can be traded now: its curve, its pool, nowhere, or "could not tell". */
+export async function fetchTradeVenue(mint: string, signal?: AbortSignal): Promise<TradeVenue> {
+  const r = await trade(`/venue/${encodeURIComponent(mint)}`, {}, signal);
+  const kind = r.body['kind'];
+  return r.ok && (kind === 'curve' || kind === 'pool' || kind === 'none') ? kind : 'unavailable';
+}
+
+/** A quote, or the server's reason there is none. */
+export async function fetchTradeQuote(
+  q: { readonly mint: string; readonly side: 'buy' | 'sell'; readonly amount: string; readonly wallet: string; readonly slippageBps: number },
+  signal?: AbortSignal,
+): Promise<{ readonly kind: 'quote'; readonly quote: TradeQuote } | { readonly kind: 'refused'; readonly why: string }> {
+  const params = new URLSearchParams({ mint: q.mint, side: q.side, amount: q.amount, wallet: q.wallet, slippageBps: String(q.slippageBps) });
+  const r = await trade(`/quote?${params}`, {}, signal);
+  const raw = r.body['quote'];
+  if (!r.ok || typeof raw !== 'object' || raw === null) return { kind: 'refused', why: said(r.body, 'No price could be read just now.') };
+  const o = raw as Record<string, unknown>;
+  const text = (k: string) => (typeof o[k] === 'string' && /^\d+$/.test(o[k] as string) ? (o[k] as string) : null);
+  const [inAmount, outAmount, bound] = [text('inAmount'), text('outAmount'), text('bound')];
+  if ((o['venue'] !== 'curve' && o['venue'] !== 'pool') || inAmount === null || outAmount === null || bound === null) {
+    return { kind: 'refused', why: 'The price came back unreadable.' };
+  }
+  const impact = typeof o['priceImpactPct'] === 'number' && Number.isFinite(o['priceImpactPct']) ? o['priceImpactPct'] : null;
+  return { kind: 'quote', quote: { venue: o['venue'], side: q.side, inAmount, outAmount, bound, slippageBps: typeof o['slippageBps'] === 'number' ? o['slippageBps'] : q.slippageBps, priceImpactPct: impact, sent: raw } };
+}
+
+/** The quote as an unsigned, simulated transaction — or the reason it would fail, and nothing to sign. */
+export async function buildTrade(quote: TradeQuote, wallet: string): Promise<BuildResult> {
+  const r = await trade('/build', { method: 'POST', body: JSON.stringify({ quote: quote.sent, wallet }) });
+  const tx = r.body['transaction'];
+  return r.ok && typeof tx === 'string' && tx !== '' ? { kind: 'ready', transaction: tx } : { kind: 'blocked', why: said(r.body, 'This trade could not be prepared just now.') };
+}
+
+/** Send what the person signed. */
+export async function sendSigned(signedBase64: string): Promise<{ readonly ok: true; readonly ref: string } | { readonly ok: false; readonly why: string }> {
+  const r = await trade('/send', { method: 'POST', body: JSON.stringify({ transaction: signedBase64 }) });
+  const sig = r.body['signature'];
+  return r.ok && typeof sig === 'string' ? { ok: true, ref: sig } : { ok: false, why: said(r.body, 'The network did not take it. Nothing was spent; try again.') };
+}
+
+/** How much of a coin the wallet holds, for Sell. Null when it could not be read. */
+export async function fetchHolding(mint: string, wallet: string, signal?: AbortSignal): Promise<Holding | null> {
+  const r = await trade(`/balance?${new URLSearchParams({ mint, wallet })}`, {}, signal);
+  const amount = r.body['amount'];
+  const decimals = r.body['decimals'];
+  return r.ok && typeof amount === 'string' && /^\d+$/.test(amount) && typeof decimals === 'number' ? { amount, decimals } : null;
 }
 
 /**

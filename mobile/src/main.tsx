@@ -16,6 +16,8 @@ import { createRoot } from 'react-dom/client';
 import { EmbeddedWalletProvider, embeddedWallet } from '@insidor/wallet-embedded';
 
 import { App } from './App.tsx';
+import { toBase64 } from './features/trade/order-flow.ts';
+import { sendSigned } from './shared/api/index.ts';
 import { WalletProvider } from './shared/wallet.tsx';
 import './shared/ui/tokens.css';
 
@@ -34,7 +36,8 @@ const container = document.getElementById('root');
 if (!container) throw new Error('main: #root is missing from index.html');
 
 const appId = (import.meta.env.VITE_PRIVY_APP_ID ?? '').trim();
-const { wallet, bridge } = embeddedWallet();
+/* The wallet signs; the trade service sends what it signed (features/trade). */
+const { wallet, bridge } = embeddedWallet({ broadcast: (signed) => sendSigned(toBase64(signed)) });
 const app = (
   <WalletProvider wallet={wallet}>
     <App />

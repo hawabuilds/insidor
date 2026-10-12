@@ -3,9 +3,10 @@
  * said about the coin (or what chainwatch recorded), and its market read live — price history,
  * the latest trades, and how far along its curve it is.
  *
- * ★ NO NARRATIVE AND NO BUY. A search result is a coin with that name and nothing more, so this
- * page names no narrative and offers nothing to trade. A coin that IS a narrative's is reached
- * from that narrative, where its page says so (TokenPage.tsx).
+ * ★ NO NARRATIVE. A search result is a coin with that name and nothing more, so this page names
+ * no narrative. It is a page the person opened themselves, so once trading is on it offers Buy
+ * and Sell like any coin with somewhere to trade (features/trade/TradeBar.tsx) — and "Can't be
+ * traded right now" for one without, never a broken button.
  */
 
 import { useEffect, useState } from 'react';
@@ -18,6 +19,7 @@ import { BackIcon, CandleIcon, CopyIcon, LineChartIcon } from '../../shared/ui/i
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { TradeBar } from '../trade/TradeBar.tsx';
 import { CandleChart } from './CandleChart.tsx';
 import { PriceChart } from './PriceChart.tsx';
 import { directionOf } from './direction.ts';
@@ -142,7 +144,11 @@ function Body({ coin }: { coin: SearchedCoin }) {
         </dl>
       ) : null}
 
-      <p className={styles['note']}>Opened from search. This coin is not matched to a narrative here, so it can't be traded from this page.</p>
+      <TradeBar
+        mint={coin.address}
+        ticker={ticker}
+        off={<p className={styles['note']}>Opened from search. Buying and selling are coming soon.</p>}
+      />
     </>
   );
 }
