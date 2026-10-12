@@ -266,10 +266,12 @@
   "createdAtSheet": "2026-06-30T07:30",
   "creatorLink": "https://x.com/PhilPrints666/status/2071843595192275324?s=20",
   "origin": {
-   "kind": "post",
+   "kind": "afterLaunch",
    "platform": "x",
    "url": "https://x.com/kimchi1x/status/2080050311725756531",
-   "postId": "2080050311725756531"
+   "postId": "2080050311725756531",
+   "postedAt": "2026-07-22T22:00:14.438Z",
+   "afterMintMs": 1956601438
   },
   "features": {
    "has_character": true,
@@ -1190,7 +1192,7 @@
   "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
   "labelledOn": "2026-10-12",
   "createdAt": "2026-07-14T16:08:12.000Z",
-  "split": "tune"
+  "split": "holdout"
  },
  {
   "id": "bt2:50",
@@ -1777,7 +1779,7 @@
   "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
   "labelledOn": "2026-10-12",
   "createdAt": "2026-07-24T21:27:53.000Z",
-  "split": "holdout"
+  "split": "tune"
  },
  {
   "id": "bt2:73",
@@ -4769,7 +4771,7 @@
   "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
   "labelledOn": "2026-10-12",
   "createdAt": "2026-07-28T11:46:34.000Z",
-  "split": "tune"
+  "split": "holdout"
  },
  {
   "id": "bt2:193",
@@ -5082,10 +5084,12 @@
   "createdAtSheet": "2026-07-02T19:40",
   "creatorLink": null,
   "origin": {
-   "kind": "post",
+   "kind": "afterLaunch",
    "platform": "x",
    "url": "https://x.com/boardyai/status/2076102489464504608",
-   "postId": "2076102489464504608"
+   "postId": "2076102489464504608",
+   "postedAt": "2026-07-12T00:33:00.264Z",
+   "afterMintMs": 798740264
   },
   "features": {
    "has_character": true,
@@ -5175,7 +5179,7 @@
   "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
   "labelledOn": "2026-10-12",
   "createdAt": "2026-07-28T00:05:26.000Z",
-  "split": "holdout"
+  "split": "tune"
  },
  {
   "id": "bt2:210",
@@ -6790,6 +6794,36 @@
   "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
   "labelledOn": "2026-10-12",
   "createdAt": "2026-07-16T05:59:29.000Z",
+  "split": "tune"
+ },
+ {
+  "id": "bt2:276",
+  "sheet": "backtest2",
+  "rowId": 276,
+  "mint": "AGpsaUA2cZnhUFeFDKAiv2TXZc1UWqnaijf6ms2ypump",
+  "ticker": "BIGTROUT",
+  "name": "The Big Trout",
+  "description": null,
+  "createdAtSheet": "2026-06-30T20:22",
+  "creatorLink": "https://x.com/i/communities/2036253353169072478",
+  "origin": {
+   "kind": "afterLaunch",
+   "platform": "x",
+   "url": "https://x.com/pusholder/status/2079311468231545077",
+   "postId": "2079311468231545077",
+   "postedAt": "2026-07-20T21:04:20.422Z",
+   "afterMintMs": 1734084422
+  },
+  "features": {
+   "has_character": true,
+   "works_as_photo": true,
+   "funny_not_serious": true,
+   "others_copying": false,
+   "crypto_noticed": true
+  },
+  "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
+  "labelledOn": "2026-10-12",
+  "createdAt": "2026-06-30T19:22:56.000Z",
   "split": "tune"
  },
  {
@@ -12844,7 +12878,7 @@
   "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
   "labelledOn": "2026-10-12",
   "createdAt": "2026-06-29T18:39:16.000Z",
-  "split": "holdout"
+  "split": "tune"
  },
  {
   "id": "bt3:83",
@@ -16686,7 +16720,7 @@
   "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
   "labelledOn": "2026-10-12",
   "createdAt": "2026-07-22T19:37:45.000Z",
-  "split": "tune"
+  "split": "holdout"
  },
  {
   "id": "bt3:224",
@@ -17805,7 +17839,7 @@
   "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
   "labelledOn": "2026-10-12",
   "createdAt": "2026-06-01T21:25:31.000Z",
-  "split": "holdout"
+  "split": "tune"
  },
  {
   "id": "bt3:265",
@@ -19399,10 +19433,12 @@
   "createdAtSheet": "2026-06-13T22:02",
   "creatorLink": "https://x.com/aureon_sol",
   "origin": {
-   "kind": "post",
+   "kind": "afterLaunch",
    "platform": "x",
    "url": "https://x.com/robinhoodapp/status/2075672977497035108",
-   "postId": "2075672977497035108"
+   "postId": "2075672977497035108",
+   "postedAt": "2026-07-10T20:06:16.631Z",
+   "afterMintMs": 2329641631
   },
   "features": {
    "one_word": true,
@@ -19446,7 +19482,7 @@
   "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
   "labelledOn": "2026-10-12",
   "createdAt": "2026-06-23T20:14:38.000Z",
-  "split": "tune"
+  "split": "holdout"
  },
  {
   "id": "bt3:325",
@@ -21169,10 +21205,12 @@
   "createdAtSheet": "2026-06-22T17:49",
   "creatorLink": "https://x.com/the_szn_/status/2069092156032119067",
   "origin": {
-   "kind": "post",
+   "kind": "afterLaunch",
    "platform": "x",
    "url": "https://x.com/whitehouse/status/2069124520661696843",
-   "postId": "2069124520661696843"
+   "postId": "2069124520661696843",
+   "postedAt": "2026-06-22T18:25:02.857Z",
+   "afterMintMs": 7712857
   },
   "features": {
    "one_word": true,
@@ -21550,10 +21588,12 @@
   "createdAtSheet": "2026-05-31T16:14",
   "creatorLink": "https://x.com/i/communities/2028973691997175894",
   "origin": {
-   "kind": "post",
+   "kind": "afterLaunch",
    "platform": "x",
    "url": "https://x.com/dexerto/status/2061413468549324819",
-   "postId": "2061413468549324819"
+   "postId": "2061413468549324819",
+   "postedAt": "2026-06-01T11:44:04.769Z",
+   "afterMintMs": 74113769
   },
   "features": {
    "one_word": true,
@@ -21567,7 +21607,7 @@
   "labelledBy": "Insidor founders (the sheets do not record which founder labelled which row)",
   "labelledOn": "2026-10-12",
   "createdAt": "2026-05-31T15:08:51.000Z",
-  "split": "tune"
+  "split": "holdout"
  },
  {
   "id": "bt3:403",
@@ -21988,10 +22028,12 @@
   "createdAtSheet": "2026-06-26T10:34",
   "creatorLink": "https://x.com/i/communities/1976064496490733790",
   "origin": {
-   "kind": "post",
+   "kind": "afterLaunch",
    "platform": "x",
    "url": "https://x.com/elonmusk/status/2074740539874775163",
-   "postId": "2074740539874775163"
+   "postId": "2074740539874775163",
+   "postedAt": "2026-07-08T06:21:06.178Z",
+   "afterMintMs": 32561221178
   },
   "features": {
    "one_word": false,

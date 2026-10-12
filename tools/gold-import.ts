@@ -26,7 +26,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
+import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { expandShortLink } from '../adapters/platform/tiktok/src/short-link.ts';
+import { postTimeFromId as tiktokPostTime } from '../adapters/platform/tiktok/src/post-time.ts';
+import { postTimeFromId as xPostTime } from '../adapters/platform/x/src/post-time.ts';
 import { chainClient } from '../adapters/venue/solana-pumpfun/src/client.ts';
 import { assignSplit, type CoinOrigin, type GoldCoin, type OriginPlatform } from '../eval/src/gold/coin-origins.ts';
 import { readFirstSheet, type Cell } from './lib/xlsx.ts';
@@ -280,11 +283,14 @@ function repairFromCsv(drafts: readonly Draft[], csvPath: string): Draft[] {
  * the import: a duplicate is a labelling question, not something to resolve by keeping the
  * first one read.
  */
-const CONFLICTS: Readonly<Record<string, string>> = {
-  AGpsaUA2cZnhUFeFDKAiv2TXZc1UWqnaijf6ms2ypump:
-    'BIGTROUT is backtest2 row 276 (viral: x.com/pusholder/status/2079311468231545077) and backtest3 row 74 (no viral origin). ' +
-    'The founders\' rule: viral only if that post came before the mint. It did not — posted 2026-07-20 21:04 UTC (from its id), ' +
-    'minted 2026-06-30 19:22 UTC (first transaction on the chain), 20 days earlier. Both copies are left out.',
+const CONFLICTS: Readonly<Record<string, { readonly keep: string; readonly why: string }>> = {
+  AGpsaUA2cZnhUFeFDKAiv2TXZc1UWqnaijf6ms2ypump: {
+    keep: 'bt2:276',
+    why:
+      'BIGTROUT is backtest2 row 276 (viral: x.com/pusholder/status/2079311468231545077) and backtest3 row 74 (no viral origin). ' +
+      'That post was made 2026-07-20 21:04 UTC (from its id), 20 days after the mint (2026-06-30 19:22 UTC, first transaction on the chain). ' +
+      'The founders\' rule: one copy, backtest2\'s, labelled viral after launch — the post kept, never counted as the origin.',
+  },
 };
 
 async function pool<T, R>(items: readonly T[], run: (item: T) => Promise<R>): Promise<R[]> {
@@ -312,12 +318,14 @@ async function main(): Promise<void> {
   let drafts = [...readSheet(bt2, 'backtest2'), ...readSheet(bt3, 'backtest3')];
   if (recoverCsv !== undefined) drafts = repairFromCsv(drafts, recoverCsv);
   const dropped: string[] = [];
-  for (const [mint, why] of Object.entries(CONFLICTS)) {
+  for (const [mint, { keep, why }] of Object.entries(CONFLICTS)) {
     const copies = drafts.filter((d) => d.mint === mint);
     if (copies.length === 0) continue;
+    if (!copies.some((d) => d.id === keep)) throw new Error(`conflict ${mint}: ${keep} is not one of its rows`);
+    const gone = copies.filter((d) => d.id !== keep);
     note(`- conflict: ${why}`);
-    dropped.push(`${copies.map((d) => d.id).join(' and ')} (${copies[0]?.ticker}): ${why}`);
-    drafts = drafts.filter((d) => d.mint !== mint);
+    dropped.push(`${gone.map((d) => d.id).join(', ')} (${copies[0]?.ticker}) removed as a copy of ${keep}: ${why}`);
+    drafts = drafts.filter((d) => !gone.includes(d));
   }
   /* A coin on two rows. When both labels agree, the backtest3 copy is kept — that sheet was not
      damaged, and it has two more Y/N columns — and the other is logged as a duplicate. When they
@@ -378,7 +386,20 @@ async function main(): Promise<void> {
   }
 
   /* Every coin's created time, from its first transaction on the chain. */
+  /* `--reuse`: a coin's first transaction does not move, so times already written are read
+     back rather than asked for again. Only coins without one are read from the chain. */
+  const known = new Map<string, number>();
+  if (process.argv.includes('--reuse')) {
+    try {
+      const previous = JSON.parse(readFileSync(new URL('../eval/src/gold/coin-origins.json', import.meta.url), 'utf8')) as readonly GoldCoin[];
+      for (const c of previous) known.set(c.mint, Date.parse(c.createdAt) / 1_000);
+    } catch {
+      /* nothing written yet: every coin is read */
+    }
+  }
   const times = await pool(drafts, async (d) => {
+    const cached = known.get(d.mint);
+    if (cached !== undefined) return cached;
     for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
       try {
         await new Promise((r) => setTimeout(r, SPACING_MS));
@@ -396,6 +417,8 @@ async function main(): Promise<void> {
   });
 
   const off: string[] = [];
+  const afterLaunch: string[] = [];
+  const hours = (ms: number): string => (ms >= 2 * DAY_MS ? `${(ms / DAY_MS).toFixed(1)} days` : `${(ms / 3_600_000).toFixed(1)} hours`);
   const coins: Omit<GoldCoin, 'split'>[] = drafts.map((d, i) => {
     const seconds = times[i];
     if (seconds === null || seconds === undefined) throw new Error(`${d.id} ${d.mint}: no transactions on the chain`);
@@ -410,6 +433,20 @@ async function main(): Promise<void> {
     if (origin.kind === 'post' && full !== undefined) origin = { ...origin, url: full, postId: postIdOf('tiktok', full) ?? '' };
     if (origin.kind === 'post') origin = { ...origin, url: cleanUrl(origin.url) };
     if (origin.kind === 'post' && origin.postId === '') throw new Error(`${d.id}: origin ${origin.url} has no post id`);
+    /* ★ AN ORIGIN IS POSTED BEFORE THE COIN, with `origin.launchAllowanceMs` of grace. Read from
+       the post's id; a platform whose ids carry no time (Instagram) cannot be checked, and says so. */
+    if (origin.kind === 'post') {
+      const postedMs = origin.platform === 'x' ? xPostTime(origin.postId) : origin.platform === 'tiktok' ? tiktokPostTime(origin.postId) : null;
+      const afterMintMs = postedMs === null ? null : postedMs - seconds * 1_000;
+      if (postedMs === null) {
+        note(`- ${d.id} (${d.ticker}): origin on ${origin.platform}; its post time cannot be read from the link, so it is not checked against the mint.`);
+      } else if (afterMintMs !== null && afterMintMs > DEFAULT_POLICY.origin.launchAllowanceMs) {
+        afterLaunch.push(`| ${d.id} | ${d.ticker} | ${origin.url} | ${new Date(postedMs).toISOString().slice(0, 16).replace('T', ' ')} | ${createdAt.slice(0, 16).replace('T', ' ')} | ${hours(afterMintMs)} |`);
+        origin = { kind: 'afterLaunch', platform: origin.platform, url: origin.url, postId: origin.postId, postedAt: new Date(postedMs).toISOString(), afterMintMs };
+      } else if (afterMintMs !== null && afterMintMs > 0) {
+        note(`- ${d.id} (${d.ticker}): origin posted ${Math.round(afterMintMs / 1_000)}s after the mint, inside the ${DEFAULT_POLICY.origin.launchAllowanceMs / 60_000}-minute allowance; it stays the origin.`);
+      }
+    }
     const { rawOrigin: _r, ...rest } = d;
     return { ...rest, origin, createdAt };
   });
@@ -427,7 +464,9 @@ async function main(): Promise<void> {
   };
   const viralCoins = coins.filter((c) => c.origin.kind !== 'none');
   const creatorWasOrigin = viralCoins.filter((c) => c.origin.kind === 'post' && samePost(c.creatorLink, c.origin.url));
+  const creatorWasLatePost = viralCoins.filter((c) => c.origin.kind === 'afterLaunch' && samePost(c.creatorLink, c.origin.url));
   note(`- the creator's link was the origin post on ${creatorWasOrigin.length} of ${viralCoins.length} viral coins (repaired links): ${creatorWasOrigin.map((c) => c.id).join(', ')}.`);
+  note(`- of the ${viralCoins.filter((c) => c.origin.kind === 'afterLaunch').length} viral after launch, the creator's link was that post on ${creatorWasLatePost.length}${creatorWasLatePost.length > 0 ? `: ${creatorWasLatePost.map((c) => c.id).join(', ')}` : ''}.`);
 
   const split = assignSplit(coins);
   const gold: GoldCoin[] = coins.map((c) => ({ ...c, split: split.get(c.id) ?? 'tune' }));
@@ -457,6 +496,14 @@ async function main(): Promise<void> {
     '## Every fix, row by row',
     '',
     ...log,
+    '',
+    `## Viral after launch (${afterLaunch.length}): the post came after the coin, so it is kept but never counted as the origin`,
+    '',
+    `The founders' rule: an origin is posted before the mint, with ${DEFAULT_POLICY.origin.launchAllowanceMs / 60_000} minutes' grace for same-moment launches. Post times are read from each post's id.`,
+    '',
+    '| coin | ticker | post | posted (UTC) | minted (UTC) | after the mint |',
+    '|---|---|---|---|---|---|',
+    ...afterLaunch,
     '',
     `## Coins whose sheet date is off from the chain by more than a day (${off.length})`,
     '',
