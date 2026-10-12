@@ -22,6 +22,17 @@ export const PLATFORMS: readonly { readonly key: Platform; readonly label: strin
   { key: 'instagram', label: 'Instagram' },
 ];
 
+/**
+ * ★ THE PLATFORMS A FILTER OFFERS, FOR NOW: X and TikTok. The others stay above, so their marks
+ * still draw on a post and turning one back on is adding its key here. Kept in the app rather than
+ * in contracts/src/policy.ts because that file may not name a platform (check-vocabulary), and
+ * the app may not reach it by name (check-app-vocabulary).
+ */
+export const SHOWN_PLATFORMS: readonly Platform[] = ['x', 'tiktok'];
+
+/** What the filter pills and the filter panel list. */
+export const FILTER_PLATFORMS = PLATFORMS.filter((p) => SHOWN_PLATFORMS.includes(p.key));
+
 export function platformOf(sourceLabel: string): Platform | null {
   const wanted = sourceLabel.trim().toLowerCase();
   return PLATFORMS.find((p) => p.label.toLowerCase() === wanted)?.key ?? null;
