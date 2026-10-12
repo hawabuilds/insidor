@@ -200,6 +200,13 @@ export const CandleIcon = (p: IconProps) => (
   </Stroke>
 );
 
+/** A play triangle, filled: drawn over a video's preview picture so it reads as a video. */
+export const PlayIcon = (p: IconProps) => (
+  <Stroke {...p} strokeWidth={1.5}>
+    <path d="M8.5 5.5v13l10-6.5z" fill="currentColor" />
+  </Stroke>
+);
+
 export const PlusIcon = (p: IconProps) => (
   <Stroke {...p}>
     <path d="M12 5v14M5 12h14" />

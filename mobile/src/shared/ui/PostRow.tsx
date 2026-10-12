@@ -37,6 +37,7 @@ export function PostRow({ post, now, handlers }: { post: RisingPost; now: number
       <div className={styles['body']}>
         <Thumb
           url={post.thumbUrl}
+          video={post.thumbIsVideo}
           width={84}
           height={98}
           radius={14}

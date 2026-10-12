@@ -35,6 +35,21 @@
   border-radius: 50%;
 }
 
+.play {
+  /* Centred on the picture, small enough to leave it readable: a still of a video, marked. */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  padding: 7px;
+  border-radius: 50%;
+  background: var(--scrim);
+  color: var(--text-1);
+  pointer-events: none;
+}
+
 .thumbLetter {
   color: var(--text-2);
   font-weight: 700;

@@ -34,10 +34,10 @@ const READINGS = [
   { atMs: 1_755_079_780_000, fidelity: 'quantized' as const, rate: { kind: 'measured' as const, perMin: 75, overMs: 480_000, level: 5_600 } },
 ];
 
-test('★ the row is the twelve facts and nothing else', () => {
+test('★ the row is the thirteen facts and nothing else', () => {
   const post = projectRisingPost(ROW, READINGS, new Map(), 1_800_000);
   assert.deepEqual(Object.keys(post).sort(), [
-    'authorLabel', 'coins', 'excerpt', 'id', 'permalink', 'postedAt', 'reach', 'readAt', 'sourceLabel', 'spark', 'storyId', 'thumbUrl',
+    'authorLabel', 'coins', 'excerpt', 'id', 'permalink', 'postedAt', 'reach', 'readAt', 'sourceLabel', 'spark', 'storyId', 'thumbIsVideo', 'thumbUrl',
   ]);
   assert.equal(post.authorLabel, '@hippofan');
   assert.equal(post.permalink, 'https://x.com/hippofan/status/1900000000000000001');
@@ -64,6 +64,42 @@ test('a post in no narrative has no coin and no story id', () => {
   const post = projectRisingPost({ ...ROW, story_id: null }, READINGS, new Map(), 1_800_000);
   assert.equal(post.coins, null);
   assert.equal(post.storyId, null);
+});
+
+test('★ an X video shows its preview picture, flagged as a video; a photo is not flagged', () => {
+  const video = projectRisingPost(
+    { ...ROW, media: [{ kind: 'video', uri: 'https://pbs.twimg.com/amplify_video_thumb/1/img/a.jpg', width: 720, height: 1280, durationMs: 10_005 }] },
+    READINGS, new Map(), 1_800_000,
+  );
+  assert.equal(video.thumbUrl, 'https://pbs.twimg.com/amplify_video_thumb/1/img/a.jpg');
+  assert.equal(video.thumbIsVideo, true);
+  const photo = projectRisingPost(ROW, READINGS, new Map(), 1_800_000);
+  assert.equal(photo.thumbUrl, 'https://example.invalid/a.jpg');
+  assert.equal(photo.thumbIsVideo, false);
+});
+
+test('a TikTok cover (an image with a duration) is a video preview; no media is no picture', () => {
+  const cover = projectRisingPost(
+    { ...ROW, source: 'tiktok', media: [{ kind: 'image', uri: 'https://example.invalid/cover.jpg', width: null, height: null, durationMs: 15_000 }] },
+    READINGS, new Map(), 1_800_000,
+  );
+  assert.equal(cover.thumbUrl, 'https://example.invalid/cover.jpg');
+  assert.equal(cover.thumbIsVideo, true);
+  const none = projectRisingPost({ ...ROW, media: [] }, READINGS, new Map(), 1_800_000);
+  assert.equal(none.thumbUrl, null);
+  assert.equal(none.thumbIsVideo, false);
+});
+
+test('a Reddit video file is never used as a picture; its preview still is, with the play flag', () => {
+  const file = { kind: 'video', uri: 'https://v.redd.it/abc/DASH_720.mp4?source=fallback', width: 720, height: 1280, durationMs: 9_000 };
+  const onlyFile = projectRisingPost({ ...ROW, source: 'reddit', media: [file] }, READINGS, new Map(), 1_800_000);
+  assert.equal(onlyFile.thumbUrl, null, 'an <img> cannot show an mp4: the empty tile is the honest render');
+  const withStill = projectRisingPost(
+    { ...ROW, source: 'reddit', media: [file, { kind: 'image', uri: 'https://preview.redd.it/abc.jpg', width: 720, height: 1280, durationMs: null }] },
+    READINGS, new Map(), 1_800_000,
+  );
+  assert.equal(withStill.thumbUrl, 'https://preview.redd.it/abc.jpg');
+  assert.equal(withStill.thumbIsVideo, true);
 });
 
 test('no handle means no link, never a guessed one; no reading means a dash with a reason', () => {
