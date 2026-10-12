@@ -58,3 +58,62 @@ export function dexscreenerStandings(config: { readonly baseUrl: string; readonl
     },
   };
 }
+
+/** A coin's price now, in dollars and in SOL, and how it moved. Every number may be missing. */
+export interface CoinQuote {
+  readonly priceUsd: number | null;
+  readonly priceSol: number | null;
+  readonly marketCapUsd: number | null;
+  readonly change: { readonly h1: number | null; readonly h6: number | null; readonly h24: number | null };
+}
+
+const numText = (v: unknown): number | null => {
+  const n = typeof v === 'string' ? Number(v) : num(v);
+  return n === null || !Number.isFinite(n) ? null : n;
+};
+
+/** One quote per coin, from its deepest pool. A coin the reply does not list is absent. */
+export function readQuotes(raw: unknown): ReadonlyMap<string, CoinQuote> {
+  const best = new Map<string, { liquidity: number; quote: CoinQuote }>();
+  for (const p of arr(raw)) {
+    const r = rec(p);
+    const address = str(rec(r.baseToken).address);
+    if (str(r.chainId) !== 'solana' || address === null) continue;
+    const liquidity = num(rec(r.liquidity).usd) ?? -1;
+    const held = best.get(address);
+    if (held !== undefined && held.liquidity >= liquidity) continue;
+    const change = rec(r.priceChange);
+    best.set(address, {
+      liquidity,
+      quote: {
+        priceUsd: numText(r.priceUsd),
+        priceSol: numText(r.priceNative),
+        marketCapUsd: num(r.marketCap) ?? num(r.fdv),
+        change: { h1: num(change.h1), h6: num(change.h6), h24: num(change.h24) },
+      },
+    });
+  }
+  return new Map([...best].map(([a, b]) => [a, b.quote]));
+}
+
+/** Prices for many coins, a batch a call. Throws on an outage; never answers "no prices". */
+export function dexscreenerQuotes(config: { readonly baseUrl: string; readonly fetch: typeof globalThis.fetch; readonly timeoutMs: number }) {
+  return {
+    batch: TOKENS_BATCH,
+    async quotes(addresses: readonly string[]): Promise<ReadonlyMap<string, CoinQuote>> {
+      const out = new Map<string, CoinQuote>();
+      for (let i = 0; i < addresses.length; i += TOKENS_BATCH) {
+        const slice = addresses.slice(i, i + TOKENS_BATCH);
+        let response: Response;
+        try {
+          response = await config.fetch(`${config.baseUrl.replace(/\/+$/, '')}/tokens/v1/solana/${slice.map(encodeURIComponent).join(',')}`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(config.timeoutMs) });
+        } catch (error) {
+          throw new VendorUnavailable('dexscreener', TOKENS_ENDPOINT, `request failed: ${error instanceof Error ? error.message : 'unknown'}`);
+        }
+        if (!response.ok) throw new VendorUnavailable('dexscreener', TOKENS_ENDPOINT, `responded ${response.status}`, response.status);
+        for (const [a, q] of readQuotes(await response.json())) out.set(a, q);
+      }
+      return out;
+    },
+  };
+}
