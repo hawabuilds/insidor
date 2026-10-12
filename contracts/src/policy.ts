@@ -1118,8 +1118,20 @@ export interface RisingPolicy {
   readonly windowMs: number;
   /** Rows per feed. */
   readonly maxRows: number;
-  /** Posts sent to the judge per discovery pass, newest first. The rest wait for the next. */
+  /**
+   * Posts sent to the judge per discovery pass, newest first. The rest wait for the next.
+   * Above what one pass brings in, so the queue drains: at 20 a pass that found 180 posts left
+   * 160 unscored for good. The judge's own line (`budget.supplierLines.judge`, paced over the
+   * day) is what bounds the cost; a post the line cannot afford waits, hidden.
+   */
   readonly postsPerPass: number;
+  /**
+   * ★ THE JUDGE'S OWN NAME TEST, HELD BY CODE. The prompt says a subject has a short name that
+   * could become a ticker — "one word, or a few words run together". A single-post "yes" whose
+   * proposed name is longer than this many words is a headline described, not a subject named
+   * ("Kacey Musgraves dog shot response"), and does not reach the feed. No name at all fails too.
+   */
+  readonly maxNameWords: number;
 }
 
 export interface IngestPolicy {
@@ -1846,7 +1858,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v37',
+  version: 'policy.v38',
 
   admit: {
     maxAgeMin: 240,
@@ -2331,7 +2343,8 @@ const POLICY_V1: Policy = {
     windowMs: 86_400_000, // a day
     /* 60: the rows on each feed, and so the posts on it that are re-read. */
     maxRows: 60,
-    postsPerPass: 20,
+    postsPerPass: 200,
+    maxNameWords: 3,
   },
 
   rank: {

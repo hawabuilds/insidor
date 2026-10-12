@@ -77,6 +77,7 @@ interface RisingRow {
   coinable: boolean;
   confidence: number;
   looked_at: 'text' | 'videoFrame';
+  proposed_name: string | null;
   story_id: string | null;
 }
 
@@ -95,13 +96,13 @@ async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingR
   return db.query<RisingRow>(
     `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media,
             a.handle, a.display_name, a.source_author_id,
-            j.coinable, j.confidence, j.looked_at,
+            j.coinable, j.confidence, j.looked_at, j.proposed_name,
             s.story_id
        from internal.item_found_by f
        join public.item i on i.item_id = f.item_id
        join public.author a on a.author_key = i.author_key
        join lateral (
-              select pj.coinable, pj.confidence, pj.looked_at
+              select pj.coinable, pj.confidence, pj.looked_at, pj.proposed_name
                 from internal.post_judgement pj
                where pj.item_id = i.item_id
                order by pj.judged_at desc, pj.id desc
@@ -180,7 +181,7 @@ export async function buildRising(
 ): Promise<RisingFrame> {
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const rows = (await loadCandidates(db, sinceMs)).filter(
-    (row) => postScore({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at }, policy) === 'passes',
+    (row) => postScore({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy) === 'passes',
   );
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
   const posts = rows.map((row) => ({

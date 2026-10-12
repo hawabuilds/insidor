@@ -8,6 +8,11 @@
  * ★ THREE ANSWERS. A post with no judgement has not been scored, and it WAITS: it is never
  * shown as if it had passed, and never counted as a failure either — a dry run, a paused
  * budget and a judge outage all leave a post waiting, and none of them is a judgement.
+ *
+ * ★ AND THE NAME TEST. A "yes" must also name its subject in at most `rising.maxNameWords`
+ * words, the prompt's own rule ("a short name that could become a ticker"). The judge broke it
+ * on live posts — a political headline passed as "Kacey Musgraves dog shot response" — and a
+ * rule the model can skip is held here, where it cannot.
  */
 
 import type { Judgement } from '@insidor/contracts/judgement.ts';
@@ -15,8 +20,13 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 
 export type PostScore = 'passes' | 'below' | 'waiting';
 
-export function postScore(judgement: Pick<Judgement, 'coinable' | 'confidence' | 'lookedAt'> | null, p: Policy): PostScore {
+/** Words in a proposed name: runs of letters or digits. "J-HOPE" is two, "CHILLGUY" one. */
+const wordsIn = (name: string): number => name.split(/[^\p{L}\p{N}]+/u).filter((w) => w !== '').length;
+
+export function postScore(judgement: Pick<Judgement, 'coinable' | 'confidence' | 'lookedAt' | 'proposedName'> | null, p: Policy): PostScore {
   if (judgement === null) return 'waiting';
   if (!judgement.coinable) return 'below';
+  const words = wordsIn(judgement.proposedName ?? '');
+  if (words === 0 || words > p.rising.maxNameWords) return 'below';
   return judgement.confidence >= p.qualify.minJudgeConfidence[judgement.lookedAt] ? 'passes' : 'below';
 }
