@@ -72,6 +72,12 @@ importers:
         specifier: workspace:*
         version: link:../../kit/vendor
 
+  adapters/market/geckoterminal:
+    dependencies:
+      '@insidor/vendor-kit':
+        specifier: workspace:*
+        version: link:../../kit/vendor
+
   adapters/meter/spend:
     dependencies:
       '@insidor/contracts':
