@@ -255,18 +255,29 @@ function lastReadAt(item: Item, observations: readonly Observation[]): Millis {
 }
 
 /**
- * Consecutive newest-first readings that produced no usable rate.
+ * Consecutive newest-first READINGS that produced no usable rate.
  *
  * A streak, not a count: `flatReadsToDemote` is about a RUN of silence, because one
  * censored reading in the middle of a live series is a hiccup and three in a row is
  * the source having changed shape under us. Counting all of them instead would demote
  * an item for something that stopped happening an hour ago.
+ *
+ * ★ A READING IS EVERY COUNTER CAPTURED AT ONE INSTANT, not one observation row. This used
+ * to count rows, and a post's first read writes one row per counter — six on X — every one
+ * censored `no_prior` because there is nothing yet to difference against. That single read
+ * counted as six flat reads, past `flatReadsToDemote`, and every post was demoted a tier
+ * the moment it was first read. A reading with any measured rate ends the streak, and so
+ * does a first reading: `no_prior` is the absence of a past, not evidence of silence.
  */
 function censoredStreak(observations: readonly Observation[]): number {
+  const readings = new Map<number, Observation[]>();
+  for (const o of observations) readings.set(o.capturedAt, [...(readings.get(o.capturedAt) ?? []), o]);
+  const newestFirst = [...readings.entries()].sort((a, b) => b[0] - a[0]);
+
   let streak = 0;
-  for (let i = observations.length - 1; i >= 0; i -= 1) {
-    const o = observations[i];
-    if (o === undefined || o.rate.kind !== 'censored') break;
+  for (const [, rows] of newestFirst) {
+    if (rows.some((o) => o.rate.kind === 'measured')) break;
+    if (rows.some((o) => o.rate.kind === 'censored' && o.rate.reason === 'no_prior')) break;
     streak += 1;
   }
   return streak;
