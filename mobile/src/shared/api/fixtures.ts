@@ -424,3 +424,60 @@ export function fixtureRising(feed: 'fyp' | 'popular'): unknown {
         });
   return { tick: 1, posts: ordered };
 }
+
+/* ── a coin's market (sample) ───────────────────────────────────────── */
+
+/** Every sample coin by id, wherever it appears. */
+function sampleCoins(): Map<string, Record<string, unknown>> {
+  const out = new Map<string, Record<string, unknown>>();
+  for (const s of BY_ID.values()) {
+    const link = s['coins'] as { kind: string; coin?: Record<string, unknown>; coins?: Record<string, unknown>[] };
+    for (const c of [...(link.coin ? [link.coin] : []), ...(link.coins ?? [])]) out.set(String(c['coinId']), c);
+  }
+  return out;
+}
+
+/** A small deterministic generator, so one coin draws the same sample chart every time. */
+function seeded(text: string): () => number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    return ((h ^= h >>> 16) >>> 0) / 4294967296;
+  };
+}
+
+const STEP: Record<string, number> = { '1m': MIN, '5m': 5 * MIN, '1h': HOUR, '6h': 6 * HOUR };
+
+/**
+ * A sample coin's market, as the read service would send it: 48 candles ending at its price
+ * (the one-minute view drifts down and the rest up, so both colours show), four trades with no
+ * transaction — a made-up signature is one copy-paste from being looked up as real — and, for
+ * a coin under $69K, curve progress. An unknown coin is `unavailable`, never an empty market.
+ */
+export function fixtureMarket(coinId: string, timeframe: string): unknown {
+  const coin = sampleCoins().get(coinId);
+  const price = (coin?.['priceUsd'] as { v?: number } | undefined)?.v;
+  if (coin === undefined || price === undefined) return { kind: 'unavailable', timeframe };
+  const rand = seeded(`${coinId}:${timeframe}`);
+  const drift = timeframe === '1m' ? -0.012 : 0.03;
+  const step = STEP[timeframe] ?? MIN;
+  const closes: number[] = [price];
+  for (let i = 1; i < 48; i += 1) closes.push((closes[i - 1] ?? price) / (1 + drift + (rand() - 0.5) * 0.06));
+  closes.reverse();
+  const candles = closes.map((c, i) => {
+    const o = closes[i - 1] ?? c;
+    return { t: T0 - (closes.length - i) * step, o, h: Math.max(o, c) * 1.01, l: Math.min(o, c) * 0.99, c };
+  });
+  const trade = (side: 'buy' | 'sell', agoMs: number, tokens: number, usd: number) => ({ tx: null, side, tokenAmount: m(tokens), usd: m(usd), at: ago(agoMs) });
+  const mcap = (coin['marketCapUsd'] as { v?: number } | undefined)?.v ?? 0;
+  return {
+    kind: 'read',
+    timeframe,
+    venue: mcap < 69_000 ? 'curve' : 'pool',
+    candles,
+    trades: [trade('buy', 12_000, 1_200_000, 5.16), trade('sell', 41_000, 640_000, 2.75), trade('buy', MIN, 4_800_000, 20.6), trade('buy', 2 * MIN, 800_000, 3.44)],
+    curveProgress: mcap < 69_000 ? m(Math.round((0.05 + rand() * 0.4) * 1000) / 1000) : null,
+  };
+}

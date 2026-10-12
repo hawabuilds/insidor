@@ -12,6 +12,7 @@ test('counts read the way the designs write them', () => {
   assert.equal(compact(1_000_000), '1M');
   assert.equal(compact(999), '999');
   assert.equal(formatUsd(known(4_310)).text, '$4.3K');
+  assert.equal(formatUsd(known(0.000035)).text, '<$0.01', 'a real amount under a cent is never $0');
 });
 
 test('rounding never produces a four-digit figure in the smaller unit', () => {

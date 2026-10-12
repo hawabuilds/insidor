@@ -5,6 +5,7 @@
 
 export type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 export type { Coin, CoinLink } from './wire/coin.ts';
+export type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 export type { DiscussionPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 export type { RisingFeed, RisingFeedId, RisingPost } from './wire/rising.ts';
 
@@ -14,9 +15,11 @@ export {
   SAMPLE_SCREENS,
   USING_FIXTURES,
   fetchBoard,
+  fetchCoinMarket,
   fetchNarratives,
   fetchRising,
   fetchStory,
+  loadSampleMarket,
   loadSampleStory,
   submitTrade,
 } from './client.ts';

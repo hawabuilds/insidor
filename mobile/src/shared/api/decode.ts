@@ -27,6 +27,7 @@ import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } fr
 import type { Coin, CoinLink, CoinOrigin, MarketCapBasis } from './wire/coin.ts';
 import type { RisingFeed, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
+import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import {
   BOARD_ROW_FIELDS,
   COIN_FIELDS,
@@ -507,5 +508,44 @@ export function decodeRisingFeed(raw: unknown, path = '$'): RisingFeed {
   return {
     tick: int(o['tick'], `${path}.tick`),
     posts: arr(o['posts'], `${path}.posts`).map((p, i) => decodeRisingPost(p, `${path}.posts[${i}]`)),
+  };
+}
+
+const MARKET_TIMEFRAMES: readonly MarketTimeframe[] = ['1m', '5m', '1h', '6h'];
+
+/**
+ * A coin's market. A candle missing a number is dropped, never drawn at zero; a trade with an
+ * unknown side is dropped, never coloured as either.
+ */
+export function decodeCoinMarket(raw: unknown, path = '$.market'): CoinMarket {
+  assertNoInternalVocabulary(raw, path);
+  const o = obj(raw, path);
+  const timeframe = MARKET_TIMEFRAMES.find((t) => t === o['timeframe']) ?? '1m';
+  if (o['kind'] !== 'read') return { kind: 'unavailable', timeframe };
+  const candles: Candle[] | null = o['candles'] === null ? null : arr(o['candles'], `${path}.candles`).flatMap((c) => {
+    const r = obj(c, `${path}.candles[]`);
+    const [t, op, h, l, cl] = [r['t'], r['o'], r['h'], r['l'], r['c']];
+    return [t, op, h, l, cl].every((v) => typeof v === 'number' && Number.isFinite(v)) ? [{ t: t as number, o: op as number, h: h as number, l: l as number, c: cl as number }] : [];
+  });
+  const trades: MarketTrade[] | null = o['trades'] === null ? null : arr(o['trades'], `${path}.trades`).flatMap((t, i) => {
+    const r = obj(t, `${path}.trades[${i}]`);
+    const side = r['side'] === 'buy' || r['side'] === 'sell' ? r['side'] : null;
+    if (side === null) return [];
+    return [{
+      tx: optStr(r['tx']),
+      side,
+      tokenAmount: measured(r['tokenAmount'], `${path}.trades[${i}].tokenAmount`, 'not_reported'),
+      usd: measured(r['usd'], `${path}.trades[${i}].usd`, 'not_reported'),
+      at: instantAt(r['at'], `${path}.trades[${i}].at`, 'not_reported'),
+    }];
+  });
+  const venue = o['venue'] === 'curve' || o['venue'] === 'pool' ? o['venue'] : null;
+  return {
+    kind: 'read',
+    timeframe,
+    venue,
+    candles,
+    trades,
+    curveProgress: o['curveProgress'] === null || o['curveProgress'] === undefined ? null : measured(o['curveProgress'], `${path}.curveProgress`, 'not_reported'),
   };
 }
