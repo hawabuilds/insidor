@@ -17,6 +17,7 @@ import { NarrativePage } from './features/narrative/NarrativePage.tsx';
 import { Narratives } from './features/narratives/Narratives.tsx';
 import { TokenPage } from './features/token/TokenPage.tsx';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
+import { WalletScreen } from './features/wallet/WalletScreen.tsx';
 import { tabOf, type Route } from './shared/route.ts';
 import { useRoute } from './shared/useRoute.ts';
 import { noticeFor } from './shared/story-source.ts';
@@ -40,9 +41,10 @@ function Screen({ route, create }: { route: Route; create: (from: CreateFrom) =>
           onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, sample: route.sample || noticeFor(s, false) !== null })}
         />
       );
+    case 'wallet':
+      return <WalletScreen />;
     case 'search':
     case 'calls':
-    case 'wallet':
       return <ComingSoonScreen which={route.screen} />;
     default:
       return <ComingSoonScreen which="narratives" />;

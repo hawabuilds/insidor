@@ -1,8 +1,8 @@
 # @insidor/mobile — the phone app
 
 A separate web app for phones, next to the desktop app in `app/`. Same wall: it may import
-`@insidor/contracts` and `@insidor/wallet` and nothing else, and it reads data only from the
-read service (`services/read`).
+`@insidor/contracts`, `@insidor/wallet` and `@insidor/wallet-embedded` (sign-in with X) and
+nothing else, and it reads data only from the read service (`services/read`).
 
 ```bash
 pnpm dev:mobile          # http://localhost:5174
@@ -32,10 +32,21 @@ when the server says the board is `observed`.
 |---|---|
 | For you (feed) | the read service, or dev fixtures |
 | Narrative page, from the feed | the read service, or dev fixtures |
-| Narratives list and its pages | sample only — there is no read route yet. Absent from a production build |
-| Token page | the coin's fields from the wire; price history, trades and curve progress are sample only and say "not available yet" against the read service |
+| Narratives list and its pages | `GET /narratives/default`, or dev fixtures |
+| Token page | the coin's fields from the wire; price history, trades and curve progress from `GET /coin/:id/market` |
 | Create coin | a form; the button says Coming soon |
-| Search, Calls, Wallet | Coming soon |
+| Wallet | sign in with X; shows your embedded Solana wallet's address |
+| Search, Calls | Coming soon |
 
 Buy, Sell and Create do nothing but show "Coming soon". `submitTrade` is unimplemented and
 nothing calls it; `src/screen-rules.test.ts` fails if anything does.
+
+## The wallet and the trading flag
+
+| Variable | What it does |
+|---|---|
+| `VITE_PRIVY_APP_ID` | Sign-in with X and an embedded Solana wallet. Unset: the Wallet tab says sign-in isn't set up. The app's id only; there is no secret in the browser. The vendor's dashboard must list each origin the app is served from and have X sign-in enabled. |
+| `VITE_TRADING` | Exactly `on` lets the app ask to trade. Unset or anything else: no trade path at all. Even on, the server decides who may trade and how much. |
+
+Signing in changes no other screen: a connected wallet never makes a button appear. No key is
+ever imported, exported or seen — there is no screen for either.

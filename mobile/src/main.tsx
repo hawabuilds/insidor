@@ -4,15 +4,19 @@
  * No root error boundary, for the desktop app's reason: a white screen with a stack trace is
  * a bug somebody fixes, and a friendly root-level apology is a bug that ships.
  *
- * No wallet is composed here, unlike `app/src/main.tsx`. The phone app has no wallet screen
- * yet — the Wallet tab says so — and a wallet constructed with nothing to show it would be a
- * connection the user could not see or end.
+ * The wallet is composed here: sign-in with X and an embedded Solana wallet, through
+ * @insidor/wallet-embedded, when the build carries `VITE_PRIVY_APP_ID`. Without it the wallet is
+ * `unavailable` and the Wallet tab says so. Screens get the port (shared/wallet.tsx), never the
+ * vendor.
  */
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { EmbeddedWalletProvider, embeddedWallet } from '@insidor/wallet-embedded';
+
 import { App } from './App.tsx';
+import { WalletProvider } from './shared/wallet.tsx';
 import './shared/ui/tokens.css';
 
 /* The service worker is registered in production builds only. Registering is not asking —
@@ -29,8 +33,14 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 const container = document.getElementById('root');
 if (!container) throw new Error('main: #root is missing from index.html');
 
-createRoot(container).render(
-  <StrictMode>
+const appId = (import.meta.env.VITE_PRIVY_APP_ID ?? '').trim();
+const { wallet, bridge } = embeddedWallet();
+const app = (
+  <WalletProvider wallet={wallet}>
     <App />
-  </StrictMode>,
+  </WalletProvider>
+);
+
+createRoot(container).render(
+  <StrictMode>{appId === '' ? app : <EmbeddedWalletProvider appId={appId} bridge={bridge}>{app}</EmbeddedWalletProvider>}</StrictMode>,
 );
