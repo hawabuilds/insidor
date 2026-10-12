@@ -26,7 +26,12 @@ import { TIMEFRAMES } from '@insidor/market-geckoterminal';
 import type { Db } from './queries.ts';
 import type { Logger } from './log.ts';
 
-export const ASSET_SQL = 'select chain, address from public.asset where asset_key = $1';
+/* A coin we hold: its full row, or the name index (0037) once the keep rule has deleted that. */
+export const ASSET_SQL = `
+select chain, address from public.asset where asset_key = $1
+union all
+select 'solana', address from public.coin_name where split_part($1, ':', 1) = 'solana' and address = split_part($1, ':', 2)
+limit 1`;
 
 export interface MarketDeps {
   readonly db: Db;

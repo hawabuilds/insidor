@@ -2,7 +2,8 @@
  * ★ THE COIN UNIVERSE'S KEEP RULE: every coin for fourteen days; after that, only the coins that
  * matter. Bonded, seen above the bar, named by a narrative or a post, with a found origin, in the
  * gold set, or priced by us — kept. Never traded, or small and on the curve — deleted, with its
- * metadata. An outage deletes nothing.
+ * metadata. An outage deletes nothing. A deleted coin is still found by name: the name index
+ * (0037) keeps every coin the mint stream or a search saw, forever, and nothing else.
  *
  * Real schema (PGlite), the real step. The market source is a stand-in.
  */
@@ -15,6 +16,8 @@ import type { CoinStanding, CoinStandings } from '@insidor/contracts/ports/coin-
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Logger } from '@insidor/runner/src/log.ts';
 import { keepCoins } from '@insidor/runner/src/work/coin-keep.ts';
+import { ASSET_SQL } from '@insidor/read/src/market.ts';
+import { ASSET_FACTS_SQL, ASSET_SEARCH_SQL } from '@insidor/read/src/search.ts';
 import { PgCoinUniverseRepo } from '@insidor/store';
 import type { Db } from '@insidor/store';
 
@@ -131,4 +134,21 @@ test('a coin is asked about once; the next pass asks nothing and deletes nothing
   const m = market();
   assert.deepEqual(await run(m), { asked: 0, deleted: 0 });
   assert.equal(m.asked.length, 0);
+});
+
+test('★ a deleted coin is still found by its ticker or name, and still opens, from the name index', async () => {
+  assert.equal((await held()).has(key('small')), false);
+  const byTicker = await db.query<{ address: string }>(ASSET_SEARCH_SQL, ['X', 50, 'nothing']);
+  assert.ok(byTicker.some((r) => r.address === address('small')));
+  const byName = await db.query<{ address: string; image_uri: string | null }>(ASSET_SEARCH_SQL, ['NOTHING', 50, 'Small']);
+  assert.deepEqual(byName.map((r) => r.address), [address('small')]);
+  const facts = await db.query<{ name: string }>(ASSET_FACTS_SQL, [address('small')]);
+  assert.equal(facts[0]?.name, 'small');
+  const market = await db.query<{ address: string }>(ASSET_SQL, [key('small')]);
+  assert.equal(market[0]?.address, address('small'), 'its market still loads live');
+});
+
+test('a seed is never in the name index: a fiction is not a coin anyone can find', async () => {
+  const seeded = await db.query(`select 1 from public.coin_name where address = $1`, [address('seeded')]);
+  assert.equal(seeded.length, 0);
 });
