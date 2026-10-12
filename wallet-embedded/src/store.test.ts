@@ -7,12 +7,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { embeddedWallet } from './store.ts';
+import { embeddedWallet, type Broadcast } from './store.ts';
 
-function setup() {
-  const { wallet, bridge } = embeddedWallet();
+function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<Uint8Array> } = {}) {
+  const { wallet, bridge } = embeddedWallet(opts.broadcast === undefined ? {} : { broadcast: opts.broadcast });
   const calls: string[] = [];
-  bridge.actions({ signIn: () => void calls.push('signIn'), signOut: async () => void calls.push('signOut') });
+  bridge.actions({
+    signIn: () => void calls.push('signIn'),
+    signOut: async () => void calls.push('signOut'),
+    signTransaction: opts.sign ?? (async (p) => {
+      calls.push('sign');
+      return new Uint8Array([...p, 9]);
+    }),
+  });
   bridge.snapshot({ ready: true, signedIn: false, address: null });
   return { wallet, bridge, calls };
 }
@@ -73,4 +80,35 @@ test('a throwing subscriber does not starve the others', () => {
   wallet.subscribe((s) => void seen.push(s.kind));
   bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111' });
   assert.deepEqual(seen, ['connected']);
+});
+
+test('★ sign and send: signed by the wallet, sent by the caller, and the signature comes back', async () => {
+  const sent: number[][] = [];
+  const { wallet, bridge, calls } = setup({ broadcast: async (signed) => { sent.push([...signed]); return { ok: true, ref: 'SIG' }; } });
+  assert.deepEqual(await wallet.signAndSendTransaction(new Uint8Array([1])), { kind: 'unavailable' }, 'not connected: nothing to sign with');
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1' });
+  assert.deepEqual(await wallet.signAndSendTransaction(new Uint8Array([1, 2])), { kind: 'sent', ref: 'SIG' });
+  assert.deepEqual(sent, [[1, 2, 9]]);
+  assert.deepEqual(calls, ['sign']);
+});
+
+test('★ a person declining is refused, not failed; and nothing is sent', async () => {
+  let sends = 0;
+  const { wallet, bridge } = setup({
+    broadcast: async () => { sends += 1; return { ok: true, ref: 'x' }; },
+    sign: async () => { throw new Error('User rejected the request'); },
+  });
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1' });
+  assert.deepEqual(await wallet.signAndSendTransaction(new Uint8Array([1])), { kind: 'refused' });
+  assert.equal(sends, 0);
+});
+
+test('signed but not taken by the network says why; with no way to send, there is no signing at all', async () => {
+  const declined = setup({ broadcast: async () => ({ ok: false, why: 'Blockhash expired.' }) });
+  declined.bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1' });
+  assert.deepEqual(await declined.wallet.signAndSendTransaction(new Uint8Array([1])), { kind: 'not-sent', why: 'Blockhash expired.' });
+  const nowhere = setup();
+  nowhere.bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1' });
+  assert.deepEqual(await nowhere.wallet.signAndSendTransaction(new Uint8Array([1])), { kind: 'unavailable' });
+  assert.deepEqual(nowhere.calls, [], 'never asked to sign');
 });

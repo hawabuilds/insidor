@@ -173,6 +173,20 @@ export type WalletState =
  * submission, confirmation and idempotency exist in a service. Its narrowness is the proof
  * that capability, not custody, is what this side ever holds.
  */
+/**
+ * What came of asking the person to sign a transaction and send it.
+ *
+ * A refusal is the person's answer, never an error. `not-sent` is signed but not taken by the
+ * network, with a sentence the person can act on. `unavailable` is a wallet that cannot sign
+ * transactions here at all — the caller shows no button rather than one that fails.
+ */
+export type SendOutcome =
+  | { readonly kind: 'sent'; readonly ref: string }
+  | { readonly kind: 'refused' }
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'not-sent'; readonly why: string }
+  | { readonly kind: 'failed'; readonly code: WalletFailure };
+
 export interface Wallet {
   /** The current state. Synchronous and cheap; safe to call on every render. */
   state(): WalletState;
@@ -184,4 +198,10 @@ export interface Wallet {
   disconnect(): Promise<void>;
   /** A signer for the connected account, or null. See the note above. */
   signer(): Signer | null;
+  /**
+   * Ask the person to sign a transaction someone else built and checked, then send it. Never
+   * rejects. The transaction arrives unsigned and already simulated; the wallet adds only the
+   * signature, and the key never leaves it.
+   */
+  signAndSendTransaction(payload: Uint8Array): Promise<SendOutcome>;
 }

@@ -18,6 +18,7 @@
  */
 
 import { PrivyProvider, useLogin, usePrivy } from '@privy-io/react-auth';
+import { useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
 import { useEffect, type ReactNode } from 'react';
 
 import type { Bridge } from './store.ts';
@@ -54,10 +55,23 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
   );
   const address = embedded !== undefined && 'address' in embedded && typeof embedded.address === 'string' ? embedded.address : null;
 
+  /* Signing: the vendor's Solana wallet for this address. Signs only; sending is the caller's. */
+  const { wallets } = useWallets();
+  const { signTransaction } = useSignTransaction();
+  const signer = wallets.find((w) => w.address === address) ?? null;
+
   useEffect(() => {
-    bridge.actions({ signIn: () => login(), signOut: () => logout() });
+    bridge.actions({
+      signIn: () => login(),
+      signOut: () => logout(),
+      signTransaction: async (payload) => {
+        if (signer === null) throw new Error('no embedded wallet to sign with');
+        const { signedTransaction } = await signTransaction({ transaction: payload, wallet: signer, chain: 'solana:mainnet' });
+        return signedTransaction;
+      },
+    });
     return () => bridge.actions(null);
-  }, [bridge, login, logout]);
+  }, [bridge, login, logout, signer, signTransaction]);
 
   useEffect(() => {
     bridge.snapshot({ ready, signedIn: authenticated, address });

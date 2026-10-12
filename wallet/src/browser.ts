@@ -275,6 +275,9 @@ export function browserWallet(config: BrowserWalletConfig): Wallet {
      * no signer, because a signature for a network we cannot trade on is a signature nobody
      * can honour and we should not be collecting it.
      */
+    /* An injected wallet does not sign transactions for Insidor yet: no button, not a broken one. */
+    signAndSendTransaction: async () => ({ kind: 'unavailable' as const }),
+
     signer: (): Signer | null => {
       if (state.kind !== 'connected') return null;
       const accountRef = state.account;
