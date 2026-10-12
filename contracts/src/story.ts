@@ -136,7 +136,19 @@ export type MatchEvidence =
       readonly space: string;
     }
   /** A human decided. Rare, and the source of the labels the model is fit on. */
-  | { readonly kind: 'adjudicated'; readonly by: string; readonly at: Millis };
+  | { readonly kind: 'adjudicated'; readonly by: string; readonly at: Millis }
+  /**
+   * The same name AND likely the same subject: the judge's name for the post matches the
+   * story's, and its picture is over the `likely` bar — or borderline and confirmed "yes" by
+   * the judge (`confirmed`). Neither half alone is evidence of membership.
+   */
+  | {
+      readonly kind: 'nameImage';
+      readonly name: string;
+      readonly similarity: number;
+      readonly space: string;
+      readonly confirmed: boolean;
+    };
 
 /**
  * One item's membership in one story, carrying the EVIDENCE for that membership rather

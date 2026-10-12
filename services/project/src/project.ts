@@ -141,6 +141,10 @@ export type MemberRelation =
   | { readonly kind: 'carrier'; readonly carrier: FingerprintKind }
   | { readonly kind: 'lineage'; readonly via: 'reproduction' | 'rebroadcast' }
   | { readonly kind: 'representation' }
+  /** The same picture, edited — an image embedding so close it is the same image. */
+  | { readonly kind: 'picture' }
+  /** The same name, and likely the same subject in the picture. */
+  | { readonly kind: 'nameImage' }
   | { readonly kind: 'adjudicated' };
 
 /** One post inside a story, with everything needed to show it and nothing more. */
@@ -1181,6 +1185,10 @@ export function relationText(relation: MemberRelation): string {
         : 'A repost of an earlier post.';
     case 'representation':
       return 'Says much the same thing as the rest.';
+    case 'picture':
+      return 'Uses the same picture, edited.';
+    case 'nameImage':
+      return 'Names the same thing, with a picture of the same subject.';
     case 'adjudicated':
       return 'A person confirmed this belongs here.';
   }
