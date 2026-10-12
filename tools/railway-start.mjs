@@ -3,6 +3,7 @@
  * Railway services differ only in that word (railway/<service>.json).
  *
  *   node tools/railway-start.mjs runner | chainwatch | read | trade | social | notify | project
+ *   (or with no word: the service named by Railway's RAILWAY_SERVICE_NAME)
  *
  * ★ RAILWAY'S PORT, EACH SERVICE'S OWN NAME FOR IT. Railway gives every service PORT and checks
  * health on it. The runner and chainwatch answer /health on HEALTH_PORT; read and trade listen on
@@ -23,7 +24,9 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..');
-const service = process.argv[2] ?? '';
+/* The word on the command line, or the Railway service's own name — so one root railway.json
+   serves all seven, each starting as what Railway calls it. */
+const service = process.argv[2] ?? process.env['RAILWAY_SERVICE_NAME'] ?? '';
 const port = process.env['PORT'] ?? '';
 
 const MAIN = {
