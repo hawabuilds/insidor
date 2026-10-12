@@ -21,7 +21,7 @@ const AT = 1_800_000_000_000 as Millis;
 const SINCE = (AT - 30 * 60_000) as Millis;
 
 const feed = (over: Partial<DiscoveryQuery> = {}): DiscoveryQuery => ({
-  mode: 'feed',
+  mode: 'catchall',
   term: '',
   sinceMs: SINCE,
   untilMs: AT,

@@ -19,7 +19,11 @@ import type { Author, Item, CounterKind, CounterSet, Fidelity, Millis } from '..
 import type { SourceId } from '../ids.ts';
 import type { Budget, BillingUnit, Metered, CostEstimate } from './meter.ts';
 
-export const DISCOVERY_MODES = ['keyword', 'hashtag', 'feed', 'catalog', 'account'] as const;
+export const DISCOVERY_MODES = ['keyword', 'hashtag', 'feed', 'catalog', 'account', 'catchall'] as const;
+/* `feed` is ONE stream the source names — a community's newest posts — and takes a term.
+   `catchall` is "whatever is moving, whatever it is about": no term, bounded only by a
+   `FeedFilter`. They were briefly one mode, and a catch-all query then reached sources
+   whose `feed` needs a community name and was refused as a failure. */
 
 /**
  * Discovery verbs do not line up across sources, and pretending they do is worse
@@ -81,7 +85,7 @@ export interface DiscoveryQuery {
   readonly limit: number;
   readonly cursor: string | null;
   /**
-   * Narrows a `feed` query — "whatever is moving, whatever it is about" — to something a
+   * Narrows a `catchall` query — "whatever is moving, whatever it is about" — to something a
    * budget can pay for. Absent on every other mode.
    *
    * ★ A COST CONTROL AT THE VENDOR, NOT A JUDGEMENT. `minApproval` is how many approvals a
