@@ -40,6 +40,14 @@ test('a query parameter is a plain value or a number, never SQL', () => {
   assert.throws(() => fillParameters('{{missing}}', {}), /no value/);
 });
 
+test('a refusal carries Dune\'s own reason', async () => {
+  const c = duneClient({
+    apiKey: 'test', baseUrl: 'https://dune.example', timeoutMs: 1_000, pollMs: 100, sleep: async () => undefined,
+    fetch: (async () => new Response(JSON.stringify({ error: 'Invalid performance tier' }), { status: 400 })) as unknown as typeof fetch,
+  });
+  await assert.rejects(c.run('select 1'), /400: Invalid performance tier/);
+});
+
 test('no engine tier is sent unless one is asked for', async () => {
   const bodies: unknown[] = [];
   const replies: unknown[] = [STARTED, DONE, RESULTS];
