@@ -47,4 +47,4 @@ export { PgSourceHealthRepo } from './repo/sources.ts';
 export { PgSpendRepo } from './repo/spend.ts';
 export type { StageRunClose } from './repo/runs.ts';
 export { PgHistoryRepo } from './repo/history.ts';
-export type { HistoryGap, HistoryOriginPost, PastNarrative } from './repo/history.ts';
+export type { HistoryGap, HistoryOriginPost, PastNarrative, PendingNarrative, SpendRow, SpendStep } from './repo/history.ts';
