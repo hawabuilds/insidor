@@ -87,6 +87,9 @@ select c.address, h.narrative_id, h.title, h.origin_post, h.origin_gap, h.first_
   join public.history_narrative h on h.narrative_id = c.narrative_id
  where c.address = any($1)`;
 
+/* The ticker check on Create: how many coins we have seen with this ticker (0037's name index). */
+export const TICKER_COUNT_SQL = `select count(*)::int as n, min(launched_at) as first from public.coin_name where upper(ticker) = upper($1)`;
+
 /* Pictures we already hold for coins a source listed: the metadata's own link, read by chainwatch. */
 export const ASSET_IMAGES_SQL = `
 select address, image_uri from public.asset where chain = 'solana' and address = any($1) and image_uri is not null`;
@@ -424,6 +427,18 @@ export function createSearch(deps: SearchDeps) {
       const reply = await run(term, now);
       kept.set(key, { at: now, reply });
       return reply;
+    },
+
+    /**
+     * GET /ticker/:symbol — how many coins Insidor has seen use this ticker. Only what we have seen:
+     * the screen says "among the coins Insidor has seen", never "nobody has".
+     */
+    async ticker(raw: string, client: string): Promise<SearchReply> {
+      const symbol = raw.trim().replace(/^\$+/, '');
+      if (symbol === '' || symbol.length > 10) return json(400, { error: 'bad request' });
+      if (!allow(client, deps.now())) return json(429, { error: 'slow down' });
+      const rows = await deps.db.query(TICKER_COUNT_SQL, [symbol]);
+      return json(200, { ticker: symbol, seen: Number(rows[0]?.['n'] ?? 0) });
     },
 
     /** A coin a recent search returned, by address; null when none did. Widens the market route by exactly this. */
