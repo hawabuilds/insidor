@@ -958,6 +958,31 @@ export interface BackfillPolicy {
 }
 
 /**
+ * ★ THE COIN UNIVERSE: every new coin indexed, its metadata read, its origin checked. Every
+ * number bounds how much one pass may do; the supplier lines bound what it may spend.
+ */
+export interface UniversePolicy {
+  /** Coins whose metadata is read per pass, newest first, and how many at once. */
+  readonly metadataPerPass: number;
+  readonly metadataConcurrency: number;
+  /** A metadata read is abandoned after this long, or this many bytes. */
+  readonly metadataTimeoutMs: number;
+  readonly metadataMaxBytes: number;
+  /** Reads of a document the gateway could not serve, before it is left unread. */
+  readonly metadataAttempts: number;
+  /** Coins whose origin is checked per pass, newest first. */
+  readonly checksPerPass: number;
+  /** How far back a coin is still picked up, by when we first saw it. */
+  readonly lookbackMs: number;
+  /** How long before a coin's launch a post we hold may be its origin. */
+  readonly matchWindowMs: number;
+  /** Posts naming a coin compared per check, oldest first. */
+  readonly candidatesPerCoin: number;
+  /** An `unlinked`, `account_only` or `promo_only` coin is looked at once more after this. */
+  readonly recheckAfterMs: number;
+}
+
+/**
  * The rules that decide a coin's origin status (contracts/src/origin.ts).
  */
 export interface OriginPolicy {
@@ -1407,6 +1432,7 @@ export interface Policy {
   readonly rising: RisingPolicy;
   readonly backfill: BackfillPolicy;
   readonly origin: OriginPolicy;
+  readonly universe: UniversePolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -1605,8 +1631,10 @@ const POLICY_V1: Policy = {
 
      v24 adds `origin.launchAllowanceMs`: an origin is posted before the coin, with ten
      minutes' grace; later is `viral_after_launch`. v25 adds `origin.influencerFollowers` and
-     `origin.viralReach`, the creator-link check's two bars (uncalibrated). */
-  version: 'policy.v25',
+     `origin.viralReach`, the creator-link check's two bars (uncalibrated).
+
+     v26 adds `universe`: how many new coins a pass reads and checks, and how far back. */
+  version: 'policy.v26',
 
   admit: {
     maxAgeMin: 240,
@@ -1963,6 +1991,21 @@ const POLICY_V1: Policy = {
     launchAllowanceMs: 600_000, // ten minutes
     influencerFollowers: 50_000,
     viralReach: 50_000,
+  },
+
+  universe: {
+    /* 80 a pass at a pass a minute is 115,000 a day: several times the launchpad's busiest
+       day, so the queue drains rather than grows. */
+    metadataPerPass: 80,
+    metadataConcurrency: 8,
+    metadataTimeoutMs: 8_000,
+    metadataMaxBytes: 16_384, // a document is a few hundred bytes
+    metadataAttempts: 3,
+    checksPerPass: 80,
+    lookbackMs: 604_800_000, // a week
+    matchWindowMs: 172_800_000, // two days before launch
+    candidatesPerCoin: 20,
+    recheckAfterMs: 86_400_000, // a day
   },
 
   rising: {
