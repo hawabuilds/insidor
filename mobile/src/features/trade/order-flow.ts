@@ -66,7 +66,15 @@ export async function confirmOrder(
     readonly decode: (base64: string) => Uint8Array;
   },
 ): Promise<ConfirmOutcome> {
-  const built = await deps.build(quote);
+  return confirmBuilt(() => deps.build(quote), deps);
+}
+
+/** Any transaction the server builds and simulates — a trade, a send — signed only if it passed. */
+export async function confirmBuilt(
+  build: () => Promise<BuildResult>,
+  deps: { readonly signAndSend: (payload: Uint8Array) => Promise<SendOutcome>; readonly decode: (base64: string) => Uint8Array },
+): Promise<ConfirmOutcome> {
+  const built = await build();
   if (built.kind === 'blocked') return { kind: 'blocked', why: built.why };
   const sent = await deps.signAndSend(deps.decode(built.transaction));
   switch (sent.kind) {

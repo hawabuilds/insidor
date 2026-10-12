@@ -28,6 +28,7 @@ import type { Coin, CoinLink, CoinOrigin, MarketCapBasis } from './wire/coin.ts'
 import type { RisingFeed, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
+import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { OriginGap, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 import {
   BOARD_ROW_FIELDS,
@@ -651,5 +652,58 @@ export function decodeSearchedCoin(raw: unknown, path = '$.coin'): SearchedCoin 
     marketCapUsd: measured(r['marketCapUsd'], `${path}.marketCapUsd`, 'not_reported'),
     launchedAt: instantAt(r['launchedAt'], `${path}.launchedAt`, 'not_reported'),
     venue: venueOf(r['venue']),
+  };
+}
+
+/* ── the Wallet tab ───────────────────────────────────────────────────── */
+
+const PORTFOLIO_RANGES: readonly PortfolioRange[] = ['1h', '6h', '24h'];
+
+export function decodePortfolio(raw: unknown, path = '$'): Portfolio {
+  assertNoInternalVocabulary(raw, path);
+  const o = obj(raw, path);
+  if (o['kind'] !== 'read') return { kind: 'unavailable' };
+  const holdings = arr(o['holdings'], `${path}.holdings`).map((x, i): Holding => {
+    const q = `${path}.holdings[${i}]`;
+    const r = obj(x, q);
+    const p = obj(r['profit'], `${q}.profit`);
+    const n = r['story'] === null || r['story'] === undefined ? null : obj(r['story'], `${q}.story`);
+    const amount = str(r['amount'], `${q}.amount`);
+    if (!/^\d+$/.test(amount)) throw new WireShapeError(`${q}.amount`, amount);
+    return {
+      coinId: str(r['coinId'], `${q}.coinId`),
+      address: str(r['address'], `${q}.address`),
+      ticker: optStr(r['ticker']),
+      name: optStr(r['name']),
+      imageUrl: optStr(r['imageUrl']),
+      amount,
+      decimals: int(r['decimals'], `${q}.decimals`),
+      valueUsd: measured(r['valueUsd'], `${q}.valueUsd`, 'not_reported'),
+      change: measured(r['change'], `${q}.change`, 'not_reported'),
+      /* A number only when the server says it knows; anything else is the dash. */
+      profit: p['kind'] === 'known' && typeof p['sol'] === 'number' && Number.isFinite(p['sol'])
+        ? { kind: 'known', sol: p['sol'], partial: p['partial'] === true }
+        : { kind: 'none', why: p['why'] === 'history_unread' ? 'history_unread' : 'no_buy_history' },
+      story: n === null ? null : { storyId: str(n['storyId'], `${q}.story.storyId`), title: str(n['title'], `${q}.story.title`) },
+    };
+  });
+  const c = obj(o['created'], `${path}.created`);
+  const created = arr(c['coins'], `${path}.created.coins`).map((x, i): CreatedCoin => {
+    const q = `${path}.created.coins[${i}]`;
+    const r = obj(x, q);
+    return { coinId: str(r['coinId'], `${q}.coinId`), address: str(r['address'], `${q}.address`), name: optStr(r['name']), ticker: optStr(r['ticker']), marketCapUsd: measured(r['marketCapUsd'], `${q}.marketCapUsd`, 'not_reported') };
+  });
+  return {
+    kind: 'read',
+    address: str(o['address'], `${path}.address`),
+    range: PORTFOLIO_RANGES.find((r) => r === o['range']) ?? '24h',
+    solBalance: measured(o['solBalance'], `${path}.solBalance`, 'not_reported'),
+    totalUsd: measured(o['totalUsd'], `${path}.totalUsd`, 'not_reported'),
+    totalSol: measured(o['totalSol'], `${path}.totalSol`, 'not_reported'),
+    holdings,
+    notShown: typeof o['notShown'] === 'number' ? o['notShown'] : 0,
+    unpriced: typeof o['unpriced'] === 'number' ? o['unpriced'] : 0,
+    historyDepth: typeof o['historyDepth'] === 'number' ? o['historyDepth'] : 0,
+    created: { unclaimedFeesSol: measured(c['unclaimedFeesSol'], `${path}.created.unclaimedFeesSol`, 'not_reported'), coins: created },
   };
 }
