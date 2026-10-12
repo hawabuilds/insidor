@@ -31,6 +31,7 @@ import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { CandleChart } from './CandleChart.tsx';
 import { PriceChart } from './PriceChart.tsx';
 import { directionOf } from './direction.ts';
 import styles from './token.module.css';
@@ -67,6 +68,7 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
   const soon = useComingSoon();
   const toast = useToast();
   const [tf, setTf] = useState<MarketTimeframe>('1h');
+  const [kind, setKind] = useState<'line' | 'candles'>('line');
   const [section, setSection] = useState<Section>('trades');
   /* The market: read now, then again every MARKET_POLL_MS while the page is open. */
   const [loaded, reload] = useLoad(`market:${sample}:${coin.coinId}:${tf}`, (signal) =>
@@ -167,7 +169,11 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
 
       <Notice notice={noticeFor(story, sample)} />
 
-      {series.length > 1 ? <PriceChart series={series} direction={directionOf(series)} /> : <p className={styles['note']}>{chartNote(loaded.state, market)}</p>}
+      {series.length > 1 ? (
+        kind === 'line' ? <PriceChart series={series} direction={directionOf(series)} /> : <CandleChart candles={read?.candles ?? []} />
+      ) : (
+        <p className={styles['note']}>{chartNote(loaded.state, market)}</p>
+      )}
       {market !== null ? (
         <>
           <div className={styles['tfRow']}>
@@ -179,8 +185,8 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
               ))}
             </div>
             <div className={styles['kinds']}>
-              <button type="button" className={styles['kindOn']} aria-label="Line chart"><LineChartIcon size={16} /></button>
-              <button type="button" aria-label="Candle chart" onClick={() => soon('Candle charts')}><CandleIcon size={16} /></button>
+              <button type="button" className={kind === 'line' ? styles['kindOn'] : ''} aria-label="Line chart" aria-pressed={kind === 'line'} onClick={() => setKind('line')}><LineChartIcon size={16} /></button>
+              <button type="button" className={kind === 'candles' ? styles['kindOn'] : ''} aria-label="Candle chart" aria-pressed={kind === 'candles'} onClick={() => setKind('candles')}><CandleIcon size={16} /></button>
             </div>
           </div>
         </>
