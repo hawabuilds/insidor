@@ -68,8 +68,20 @@ export interface JudgeResponse {
   readonly usage: Usage;
 }
 
+/** The same-subject answer about two pictures. Null when the reply carried no usable one. */
+export type SameSubjectAnswer = 'yes' | 'no' | 'unsure';
+
+export interface SameSubjectRequest {
+  readonly a: Frame;
+  readonly b: Frame;
+  readonly prompt: string;
+  readonly maxOutputTokens: number;
+}
+
 export interface JudgeClient {
   judge(request: JudgeRequest): Promise<JudgeResponse>;
+  /** Show both pictures with the same-subject prompt. Optional: a client without it is never asked. */
+  sameSubject?(request: SameSubjectRequest): Promise<{ readonly answer: SameSubjectAnswer | null; readonly usage: Usage }>;
   /** Read a video frame to show the judge, or null when there is no usable image at `uri`. */
   frame(uri: string): Promise<Frame | null>;
 }
@@ -213,6 +225,34 @@ export function decodeReply(body: unknown): JudgeResponse {
   }
 }
 
+/* ── the same-subject question ────────────────────────────────────────── */
+
+export const SAME_SUBJECT_SCHEMA = {
+  type: 'object',
+  properties: { answer: { type: 'string', enum: ['yes', 'no', 'unsure'] } },
+  required: ['answer'],
+  additionalProperties: false,
+} as const;
+
+/** The answer out of a reply, or null for anything short of one of the three words. Usage always. */
+export function decodeSameSubject(body: unknown): { readonly answer: SameSubjectAnswer | null; readonly usage: Usage } {
+  const r = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+  const u = (typeof r['usage'] === 'object' && r['usage'] !== null ? r['usage'] : {}) as Record<string, unknown>;
+  const usage: Usage = { inputTokens: count(u['input_tokens']), outputTokens: count(u['output_tokens']) };
+  if (r['stop_reason'] !== 'end_turn') return { answer: null, usage };
+  const blocks = Array.isArray(r['content']) ? r['content'] : [];
+  const text = blocks
+    .map((b) => (typeof b === 'object' && b !== null && (b as Record<string, unknown>)['type'] === 'text' ? (b as Record<string, unknown>)['text'] : null))
+    .filter((t): t is string => typeof t === 'string')
+    .join('');
+  try {
+    const answer = (JSON.parse(text) as Record<string, unknown> | null)?.['answer'];
+    return { answer: answer === 'yes' || answer === 'no' || answer === 'unsure' ? answer : null, usage };
+  } catch {
+    return { answer: null, usage };
+  }
+}
+
 /* ── the client ───────────────────────────────────────────────────────── */
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504, 529]);
@@ -247,9 +287,9 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
     return { status: response.status, headers: response.headers, text: await response.text() };
   };
 
-  return {
-    async judge(request) {
-      const body = JSON.stringify(buildRequestBody(config, request));
+  /** POST one body, with the policy's retries, and return the parsed reply. */
+  const send = async (payload: Record<string, unknown>): Promise<unknown> => {
+      const body = JSON.stringify(payload);
       let lastNote = 'no attempt was made';
       /* The status of the last attempt when the vendor answered it, undefined when the
          last attempt got no answer at all. Carried on the final error, because an answered
@@ -279,7 +319,7 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
                charges the estimate rather than recording a call that cost nothing. */
             throw new VendorShapeError(VENDOR, 'body', `is not JSON: ${snippet(res.text)}`);
           }
-          return decodeReply(parsed);
+          return parsed;
         }
         if (!RETRYABLE.has(res.status)) {
           throw new VendorUnavailable(VENDOR, MESSAGES_ENDPOINT, `answered ${res.status}: ${snippet(res.text)}`, res.status);
@@ -290,6 +330,33 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
         if (asked !== null) wait = Math.min(config.maxWaitMs, asked);
       }
       throw new VendorUnavailable(VENDOR, MESSAGES_ENDPOINT, `gave up after ${config.maxAttempts} attempts: ${lastNote}`, lastStatus);
+  };
+
+  return {
+    async judge(request) {
+      return decodeReply(await send(buildRequestBody(config, request)));
+    },
+
+    async sameSubject(request) {
+      const parsed = await send({
+        model: config.model,
+        max_tokens: request.maxOutputTokens,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: request.a.mediaType, data: request.a.base64 } },
+              { type: 'image', source: { type: 'base64', media_type: request.b.mediaType, data: request.b.base64 } },
+              { type: 'text', text: request.prompt },
+            ],
+          },
+        ],
+        output_config: {
+          format: { type: 'json_schema', schema: SAME_SUBJECT_SCHEMA },
+          ...(config.effort === null ? {} : { effort: config.effort }),
+        },
+      });
+      return decodeSameSubject(parsed);
     },
 
     async frame(uri) {

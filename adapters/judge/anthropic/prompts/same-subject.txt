@@ -1,0 +1,13 @@
+You are shown two images from two different social media posts.
+
+Question: is the main character or subject in these two images the same?
+
+"The same" means the same specific thing — the same person, animal, object, character or scene — even if one image is cropped, captioned, filtered, recoloured, put on a new background, turned into a drawing, a cartoon or fan art, or shown from a different angle.
+
+It does NOT mean the same kind of thing. Two different raccoons are not the same subject. Two different people in the same costume are not the same subject. Two unrelated photos that share a style, a meme template or a caption format are not the same subject.
+
+Answer "yes" only when you would bet the two images show the same specific subject.
+Answer "no" when they clearly show different subjects.
+Answer "unsure" when you cannot tell — for example one image is unreadable, the subject is too small, or the resemblance is only general.
+
+Reply with JSON only: {"answer": "yes"} or {"answer": "no"} or {"answer": "unsure"}.

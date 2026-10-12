@@ -48,6 +48,9 @@ export type JudgeOutcome =
   /** The call failed or the answer did not parse. Distinct from "judged not coinable". */
   | { readonly kind: 'unavailable'; readonly storyId: StoryId; readonly detail: string };
 
+/** The three answers to the same-subject question. Only `yes` is evidence. */
+export type SameSubjectAnswer = 'yes' | 'no' | 'unsure';
+
 export interface JudgePort {
   /** Opaque, versioned id written into the Judgement and thence into the decision log. */
   readonly id: string;
@@ -67,4 +70,14 @@ export interface JudgePort {
    * to reach the network to answer.
    */
   estimate(subjects: readonly JudgeSubject[]): CostEstimate;
+
+  /**
+   * Is the main subject of these two pictures the same? GROUP asks this only about a pair
+   * whose image similarity is borderline, and only "yes" counts as evidence. Null when either
+   * picture could not be read or the reply carried no usable answer — nothing was learned.
+   * Optional: a judge without it is never asked, and a borderline pair simply does not join.
+   */
+  readonly sameSubjectPromptId?: string;
+  sameSubject?(a: MediaRef, b: MediaRef, budget: Budget): Promise<Metered<SameSubjectAnswer | null>>;
+  estimateSameSubject?(): CostEstimate;
 }

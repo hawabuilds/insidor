@@ -27,6 +27,7 @@ export { PgAssetRepo } from './repo/assets.ts';
 export { PgDecisionRepo, featureHash } from './repo/decisions.ts';
 export { PgFeedFloorRepo } from './repo/feed-floor.ts';
 export { PgImageEmbeddingRepo } from './repo/image-embeddings.ts';
+export { PgImagePairRepo } from './repo/image-pairs.ts';
 export type { ImageMatch, UnembeddedImage } from './repo/image-embeddings.ts';
 export { PgJudgementRepo, PgPostJudgementRepo } from './repo/judgements.ts';
 export { PgLabelRepo } from './repo/labels.ts';

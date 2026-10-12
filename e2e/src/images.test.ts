@@ -8,7 +8,7 @@ import { before, test } from 'node:test';
 
 import type { Item, Millis } from '@insidor/contracts';
 import { authorKey, itemId, sourceId, storyId } from '@insidor/contracts/ids.ts';
-import { PgImageEmbeddingRepo, PgItemRepo, PgStoryRepo } from '@insidor/store';
+import { PgImageEmbeddingRepo, PgImagePairRepo, PgItemRepo, PgStoryRepo } from '@insidor/store';
 import type { Db } from '@insidor/store';
 
 import { migratedDb } from './db.ts';
@@ -61,4 +61,12 @@ test('★ a new post\'s best similarity is read per story from that story\'s pic
   assert.ok(Math.abs(match.similarity - 0.8) < 1e-4, `cosine ${match.similarity}`);
   assert.equal(match.memberUri, 'https://example.invalid/raccoon.jpg');
   assert.equal(best.has(storyId('s-none')), false, 'a story with no pictures is absent, never zero');
+});
+
+test('★ a pair answer is found whichever way round it is asked, and counted for the day', async () => {
+  const pairs = new PgImagePairRepo(db);
+  await pairs.record('https://example.invalid/b.jpg', 'https://example.invalid/a.jpg', 'same-subject@1', 'yes', 'judge:test', NOW, 0.004);
+  assert.equal(await pairs.answer('https://example.invalid/a.jpg', 'https://example.invalid/b.jpg', 'same-subject@1'), 'yes');
+  assert.equal(await pairs.answer('https://example.invalid/a.jpg', 'https://example.invalid/b.jpg', 'same-subject@2'), null, 'a reworded prompt asks again');
+  assert.equal(await pairs.countSince((NOW - 60_000) as Millis), 1);
 });

@@ -21,19 +21,22 @@
 import type { Millis } from '@insidor/contracts';
 import type { JudgePolicy } from '@insidor/contracts/policy.ts';
 import type { Budget, CostEstimate, Meter, Metered, Spend } from '@insidor/contracts/ports/meter.ts';
-import type { JudgeOutcome, JudgePort, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
+import type { JudgeOutcome, JudgePort, JudgeSubject, SameSubjectAnswer } from '@insidor/contracts/ports/judge.ts';
+import type { MediaRef } from '@insidor/contracts/vocabulary.ts';
 import { mergeSpend, metered } from '@insidor/meter';
 import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
 import type { PriceBook } from '@insidor/meter';
 
 import type { Frame, JudgeClient, JudgeResponse, Usage } from './client.ts';
 import { VENDOR } from './client.ts';
-import { PROMPT_SET_SHA, PROMPTS } from './prompts.ts';
+import { PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT } from './prompts.ts';
 import { priceFor, usdForTokens, type ModelPrice } from './prices.ts';
 import { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, toOutcomes } from './to-judgement.ts';
 
 export { VENDOR } from './client.ts';
 const ENDPOINT = 'judge';
+/** The same-subject question, booked under its own endpoint so a day's pair checks are countable. */
+const PAIR_ENDPOINT = 'same-subject';
 
 /** The two prompt halves exactly as loaded and hashed. */
 const SYSTEM = PROMPTS.system.text;
@@ -68,13 +71,13 @@ interface Attempted {
 }
 
 /** A per-call price book for one batch, priced at its own estimate. */
-const bookFor = (usd: number): PriceBook => ({
-  [`${VENDOR}:${ENDPOINT}`]: {
+const bookFor = (usd: number, endpoint: string = ENDPOINT): PriceBook => ({
+  [`${VENDOR}:${endpoint}`]: {
     vendor: VENDOR,
-    endpoint: ENDPOINT,
+    endpoint,
     unit: 'per-call',
     usdPerUnit: usd,
-    unitName: 'batched judge call',
+    unitName: endpoint === ENDPOINT ? 'batched judge call' : 'same-subject question',
     measuredAt: 'estimated per call from token rates in prices.ts',
   },
 });
@@ -102,6 +105,12 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
     return out;
   };
   const estimateUsd = (batch: readonly JudgeSubject[]): number => usdOf(price, estimateTokens(deps.policy, batch));
+  /** Two pictures, the prompt, and the small answer budget — the most a pair can cost. */
+  const pairEstimateUsd = (): number =>
+    usdOf(price, {
+      inputTokens: 2 * deps.policy.tokensPerFrame + Math.ceil(SAME_SUBJECT_PROMPT.text.length / deps.policy.charsPerToken),
+      outputTokens: deps.policy.pairMaxOutputTokens,
+    });
 
   return {
     id: judgeId(deps.model),
@@ -117,6 +126,42 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
         estUnits: parts.length,
         usd: parts.reduce((sum, b) => sum + estimateUsd(b), 0),
       };
+    },
+
+    sameSubjectPromptId: `same-subject@${SAME_SUBJECT_PROMPT.sha}`,
+
+    estimateSameSubject(): CostEstimate {
+      return { vendor: VENDOR, endpoint: PAIR_ENDPOINT, unit: 'per-call', estUnits: 1, usd: pairEstimateUsd() };
+    },
+
+    /**
+     * Both pictures read first, before any money moves: a pair with an unreadable picture is
+     * never sent and comes back null. Billed on the tokens the vendor reports; an error the
+     * vendor answered with a status is booked at $0, as `judge` books it.
+     */
+    async sameSubject(a: MediaRef, b: MediaRef, _budget: Budget): Promise<Metered<SameSubjectAnswer | null>> {
+      const at = deps.now();
+      const spec = { vendor: VENDOR, endpoint: PAIR_ENDPOINT, unit: 'per-call' as const, estUnits: 1, at };
+      const nothing = { value: null, spend: mergeSpend([], spec, 'per-call') };
+      const ask = deps.client.sameSubject;
+      if (ask === undefined || a.kind !== 'image' || b.kind !== 'image') return nothing;
+      const [fa, fb] = [await deps.client.frame(a.uri), await deps.client.frame(b.uri)];
+      if (fa === null || fb === null) return nothing;
+      const call = await metered<SameSubjectAnswer | null>(deps.meter, bookFor(pairEstimateUsd(), PAIR_ENDPOINT), spec, async () => {
+        try {
+          const reply = await ask.call(deps.client, {
+            a: fa,
+            b: fb,
+            prompt: SAME_SUBJECT_PROMPT.text,
+            maxOutputTokens: deps.policy.pairMaxOutputTokens,
+          });
+          return { value: reply.answer, units: 1, usdActual: usdOf(price, reply.usage) };
+        } catch (error) {
+          if (error instanceof VendorUnavailable && error.status !== undefined) return { value: null, units: 0, usdActual: 0 };
+          throw error;
+        }
+      });
+      return call;
     },
 
     async judge(asked: readonly JudgeSubject[], _budget: Budget): Promise<Metered<readonly JudgeOutcome[]>> {
