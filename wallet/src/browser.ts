@@ -277,6 +277,8 @@ export function browserWallet(config: BrowserWalletConfig): Wallet {
      */
     /* An injected wallet does not sign transactions for Insidor yet: no button, not a broken one. */
     signAndSendTransaction: async () => ({ kind: 'unavailable' as const }),
+    /* An injected wallet has an address and nothing about who holds it. */
+    identity: () => null,
 
     signer: (): Signer | null => {
       if (state.kind !== 'connected') return null;

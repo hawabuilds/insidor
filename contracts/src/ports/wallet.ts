@@ -187,6 +187,13 @@ export type SendOutcome =
   | { readonly kind: 'not-sent'; readonly why: string }
   | { readonly kind: 'failed'; readonly code: WalletFailure };
 
+/** Who signed in, as their sign-in account shows them. Every field may be missing. */
+export interface WalletIdentity {
+  readonly name: string | null;
+  readonly handle: string | null;
+  readonly pictureUrl: string | null;
+}
+
 export interface Wallet {
   /** The current state. Synchronous and cheap; safe to call on every render. */
   state(): WalletState;
@@ -204,4 +211,6 @@ export interface Wallet {
    * signature, and the key never leaves it.
    */
   signAndSendTransaction(payload: Uint8Array): Promise<SendOutcome>;
+  /** The signed-in person's name, handle and picture from their sign-in account; null when there is none. */
+  identity(): WalletIdentity | null;
 }

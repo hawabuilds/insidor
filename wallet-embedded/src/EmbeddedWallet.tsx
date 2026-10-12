@@ -73,9 +73,15 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
     return () => bridge.actions(null);
   }, [bridge, login, logout, signer, signTransaction]);
 
+  /* The X account signed in with, as the vendor reports it. */
+  const x = user?.twitter;
+  const name = x?.name ?? null;
+  const handle = x?.username ?? null;
+  const pictureUrl = x?.profilePictureUrl ?? null;
+
   useEffect(() => {
-    bridge.snapshot({ ready, signedIn: authenticated, address });
-  }, [bridge, ready, authenticated, address]);
+    bridge.snapshot({ ready, signedIn: authenticated, address, identity: { name, handle, pictureUrl } });
+  }, [bridge, ready, authenticated, address, name, handle, pictureUrl]);
 
   return null;
 }
