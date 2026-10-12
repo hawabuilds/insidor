@@ -5,22 +5,15 @@
  * `decode.ts`; nothing here constructs a wire object by hand. The shape and the reasoning are
  * the desktop app's `app/src/shared/api/client.ts`, cut down to what this app reads.
  *
- * ★ THREE SOURCES OF DATA, AND WHICH ONE IS WHICH IS DECIDED HERE, ONCE:
+ * ★ ONE SOURCE OF DATA: THE SERVICES. There is no sample data in the app, in any build. Every
+ * read goes to the read service; an empty answer is an honest empty state on the screen, and a
+ * failure says it could not read. Recorded data lives with the tests only, and
+ * src/no-sample-data.test.ts fails if anything the app imports can reach it.
  *
- *   1. The read service, when `VITE_READ_URL` is set. Real rows, labelled by the provenance
- *      the projector commits with them.
- *   2. Dev fixtures standing in for it, when `VITE_READ_URL` is unset in a dev build. The same
- *      decoder, a permanent "Sample data" notice (`USING_FIXTURES`).
- *   3. Sample screens: the Narratives list and the pages reached from it. There is no
- *      endpoint for them yet, so they are sample data whatever the build points at, and they
- *      say so. ★ In a production build they do not exist at all — `SAMPLE_SCREENS` is a
- *      literal the bundler folds, the fixtures module is dropped, and the screen says it is
- *      coming soon — UNLESS the deploy sets VITE_SAMPLE_DATA=on on purpose, the one switch
- *      that ships sample data, always behind the notice (sample-switch.ts).
- *
- * WHAT BREAKS IF THIS IS CHANGED CARELESSLY: both flags must stay tied to
- * `import.meta.env.DEV` or the deliberate VITE_SAMPLE_DATA build switch. A runtime switch that could turn sample data on is how a screenshot
- * of invented market caps ends up in front of somebody as if it were the market.
+ * ★ SAME-ORIGIN BY DEFAULT. With no VITE_*_URL set, each service is at `/api/<name>` on the
+ * app's own origin: the local dev server and the Vercel deploy both forward those paths to the
+ * services (mobile/vite.config.ts, mobile/api/proxy.js), so one https origin serves everything
+ * and the phone needs no CORS.
  */
 
 import { notImplemented } from '../not-implemented.ts';
@@ -63,61 +56,9 @@ async function saidBy(response: Response): Promise<string | null> {
  */
 export const BOARD_VIEW = 'default';
 
-const BASE = (import.meta.env?.['VITE_READ_URL'] as string | undefined) ?? '';
-const DEV = import.meta.env?.DEV === true;
-/* ★ THE PRODUCTION EXCEPTION, AND THE ONLY ONE: a build configured with VITE_SAMPLE_DATA=on
-   (sample-switch.ts; vite.config.ts fails the build if it is set beside VITE_READ_URL).
-   Kept as a literal comparison so the bundler folds it and drops the fixtures from every
-   build that does not set it. */
-const SAMPLE = import.meta.env?.VITE_SAMPLE_DATA === 'on';
-
-const USE_FIXTURES = (DEV && BASE === '') || SAMPLE;
-
-/** True when the feed is dev fixtures rather than the read service. The shell must say so. */
-export const USING_FIXTURES = USE_FIXTURES;
-
-/** True when the sample-only screens may render at all. False in every production build. */
-export const SAMPLE_SCREENS = DEV || SAMPLE;
-
-async function readFixture(path: string): Promise<unknown> {
-  const { fixtureBoard, fixtureRising, fixtureStory } = await import('./fixtures.ts');
-  if (path.startsWith('/board/')) return fixtureBoard();
-  if (/^\/wallet\/[^/]+\/history/.test(path)) return { range: '1w', points: [] };
-  if (path.startsWith('/wallet/')) {
-    const { fixturePortfolio } = await import('./fixture-wallet.ts');
-    return fixturePortfolio();
-  }
-  if (path.startsWith('/search?q=')) {
-    const { fixtureSearch } = await import('./fixtures.ts');
-    return fixtureSearch(decodeURIComponent(path.slice('/search?q='.length)));
-  }
-  if (/^\/coin\/[^/?]+$/.test(path)) {
-    const { fixtureSearchedCoin } = await import('./fixtures.ts');
-    const coin = fixtureSearchedCoin(decodeURIComponent(path.slice('/coin/'.length)));
-    if (coin === null) throw new ReadError(path, 404);
-    return coin;
-  }
-  if (path.startsWith('/coin/')) {
-    const { fixtureMarket } = await import('./fixtures.ts');
-    const [, coinId = '', tf = '1m'] = /^\/coin\/([^/]+)\/market\?tf=(\w+)$/.exec(path) ?? [];
-    return fixtureMarket(decodeURIComponent(coinId), tf as MarketTimeframe);
-  }
-  if (path.startsWith('/narratives/')) {
-    const { sampleNarrativeIds } = await import('./fixtures.ts');
-    return { tick: 1, stories: sampleNarrativeIds().map((id) => fixtureStory(id)), provenance: { kind: 'observed' } };
-  }
-  if (path === '/rising/fyp' || path === '/rising/popular') return fixtureRising(path.slice('/rising/'.length) as RisingFeedId);
-  if (path.startsWith('/story/')) {
-    const story = fixtureStory(decodeURIComponent(path.slice('/story/'.length)));
-    /* An id the fixtures do not cover is a 404, not an invented page. */
-    if (story === null) throw new ReadError(path, 404);
-    return story;
-  }
-  throw new ReadError(path, 501);
-}
+const BASE = (import.meta.env?.['VITE_READ_URL'] as string | undefined) || '/api/read';
 
 async function read(path: string, signal?: AbortSignal): Promise<unknown> {
-  if (USE_FIXTURES) return readFixture(path);
   const response = await fetch(`${BASE}${path}`, {
     headers: { accept: 'application/json' },
     /* Every number on the board is stale within a tick; a cached one is worse than none. */
@@ -158,13 +99,6 @@ export async function fetchWalletHistory(address: string, range: '1d' | '1w' | '
   });
 }
 
-/** A sample wallet, recorded from a public one, for a build with no read service. Never the network. */
-export async function loadSamplePortfolio(): Promise<Portfolio> {
-  if (!SAMPLE_SCREENS) return notImplemented('loadSamplePortfolio: sample screens are off in this build');
-  const { fixturePortfolio } = await import('./fixture-wallet.ts');
-  return decodePortfolio(fixturePortfolio());
-}
-
 /** The Search tab: narratives, posts and coins matching a term. A 429 means slow down. */
 export async function fetchSearch(term: string, signal?: AbortSignal): Promise<SearchResults> {
   return decodeSearch(await read(`/search?q=${encodeURIComponent(term)}`, signal));
@@ -184,30 +118,13 @@ export async function fetchStory(storyId: string, signal?: AbortSignal): Promise
   return decodeStory(await read(`/story/${encodeURIComponent(storyId)}`, signal));
 }
 
-/** A sample coin's market, for a sample page. Never touches the network. */
-export async function loadSampleMarket(coinId: string, timeframe: MarketTimeframe): Promise<CoinMarket> {
-  if (!SAMPLE_SCREENS) return notImplemented('loadSampleMarket: sample pages are off in this build');
-  const { fixtureMarket } = await import('./fixtures.ts');
-  return decodeCoinMarket(fixtureMarket(coinId, timeframe));
-}
-
-/** One page reached from the Narratives list. Never touches the network. */
-export async function loadSampleStory(storyId: string): Promise<Story> {
-  if (!SAMPLE_SCREENS) return notImplemented('loadSampleStory: no read route for narratives yet');
-  const { fixtureStory } = await import('./fixtures.ts');
-  const raw = fixtureStory(storyId);
-  if (raw === null) throw new ReadError(`/sample/story/${storyId}`, 404);
-  return decodeStory(raw);
-}
-
 /* ── trading (services/trade) ──────────────────────────────────────────
-   A separate service, at VITE_TRADE_URL. Unset, every call below says trading is unavailable
-   and none touches the network. The service itself refuses everything unless TRADING is on. */
+   A separate service, at VITE_TRADE_URL or the same-origin `/api/trade`. The service itself
+   refuses everything unless TRADING is on, so an app pointed at it trades nothing until then. */
 
-const TRADE = (import.meta.env?.['VITE_TRADE_URL'] as string | undefined) ?? '';
+const TRADE = (import.meta.env?.['VITE_TRADE_URL'] as string | undefined) || '/api/trade';
 
 async function trade(path: string, init: RequestInit = {}, signal?: AbortSignal): Promise<{ readonly ok: boolean; readonly status: number; readonly body: Record<string, unknown> }> {
-  if (TRADE === '') return { ok: false, status: 503, body: { error: 'Trading is not connected.' } };
   const response = await fetch(`${TRADE}${path}`, {
     ...init,
     headers: { accept: 'application/json', 'content-type': 'application/json' },
@@ -330,7 +247,6 @@ export async function confirmLaunch(p: { readonly wallet: string; readonly signa
 
 /** How many coins Insidor has seen with this ticker; null when it could not be read. */
 export async function fetchTickerSeen(ticker: string, signal?: AbortSignal): Promise<number | null> {
-  if (USE_FIXTURES) return null;
   try {
     const raw = await read(`/ticker/${encodeURIComponent(ticker)}`, signal);
     const seen = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>)['seen'] : null;

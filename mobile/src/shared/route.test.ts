@@ -18,10 +18,9 @@ const EVERY: readonly Route[] = [
   { screen: 'alert-settings' },
   { screen: 'wallets' },
   { screen: 'import' },
-  { screen: 'story', storyId: 'goose', sample: false },
-  { screen: 'story', storyId: 'jimothy', sample: true },
-  { screen: 'coin', storyId: 'jimothy', coinId: 'c1', sample: true },
-  { screen: 'coin', storyId: 'a/b c', coinId: 'x%y', sample: false },
+  { screen: 'story', storyId: 'goose' },
+  { screen: 'coin', storyId: 'jimothy', coinId: 'c1' },
+  { screen: 'coin', storyId: 'a/b c', coinId: 'x%y' },
   { screen: 'token', coinId: 'solana:Abc123pump' },
 ];
 
@@ -29,11 +28,9 @@ test('every route survives the round trip through its own href', () => {
   for (const route of EVERY) assert.deepEqual(parseRoute(hrefFor(route)), route);
 });
 
-test('a sample story and a read-service story with the same id are different routes', () => {
-  assert.notEqual(
-    hrefFor({ screen: 'story', storyId: 'x', sample: true }),
-    hrefFor({ screen: 'story', storyId: 'x', sample: false }),
-  );
+test('an old sample link opens the feed: there are no sample pages any more', () => {
+  assert.deepEqual(parseRoute('#/sample/story/st_ferry'), { screen: 'feed' });
+  assert.deepEqual(parseRoute('#/sample/story/st_ferry/coin/c_ferry'), { screen: 'feed' });
 });
 
 test('anything unreadable lands on the feed rather than an error screen', () => {
@@ -43,8 +40,8 @@ test('anything unreadable lands on the feed rather than an error screen', () => 
 });
 
 test('a story lights the tab of the list it came from', () => {
-  assert.equal(tabOf({ screen: 'story', storyId: 'x', sample: false }), 'feed');
-  assert.equal(tabOf({ screen: 'coin', storyId: 'x', coinId: 'y', sample: true }), 'narratives');
+  assert.equal(tabOf({ screen: 'story', storyId: 'x' }), 'feed');
+  assert.equal(tabOf({ screen: 'coin', storyId: 'x', coinId: 'y' }), 'feed');
 });
 
 test('a coin opened from search lights Search, where back leads', () => {

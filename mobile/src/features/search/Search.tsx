@@ -12,14 +12,12 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ReadError, USING_FIXTURES, fetchSearch, type SearchCoin, type SearchNarrative, type SearchPost, type SearchResults } from '../../shared/api/index.ts';
+import { ReadError, fetchSearch, type SearchCoin, type SearchNarrative, type SearchPost, type SearchResults } from '../../shared/api/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
-import { boardNotice } from '../../shared/notice.ts';
 import { platformOf } from '../../shared/platform.ts';
 import { hrefFor } from '../../shared/route.ts';
-import { Notice } from '../../shared/ui/Notice.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { GAP_LINE, marketLine, orderCoins, showingTop, type CoinOrder } from './search-view.ts';
@@ -53,7 +51,6 @@ export function Search() {
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
       />
-      <Notice notice={boardNotice(USING_FIXTURES, null)} />
       {term.length < MIN_TERM ? <p className={styles['hint']}>Search for a narrative, a post or a coin.</p> : <Results key={term} term={term} />}
     </section>
   );
@@ -144,7 +141,7 @@ function NarrativeRow({ n, now }: { n: SearchNarrative; now: number }) {
   );
   /* A past narrative was never on the board: it has no page, so the row is not a link. */
   return n.storyId !== null ? (
-    <a className={styles['row']} href={hrefFor({ screen: 'story', storyId: n.storyId, sample: false })}>{body}</a>
+    <a className={styles['row']} href={hrefFor({ screen: 'story', storyId: n.storyId })}>{body}</a>
   ) : (
     <div className={styles['row']}>{body}</div>
   );

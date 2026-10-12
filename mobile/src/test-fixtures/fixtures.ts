@@ -1,13 +1,8 @@
 /**
- * SAMPLE DATA FOR THE PHONE APP, written as RAW WIRE PAYLOADS.
- *
- * Two jobs, both reached only through `client.ts`, which imports this module dynamically and
- * only in a dev build — so none of it can ship:
- *
- *   1. Stand in for the read service when `VITE_READ_URL` is unset: `fixtureBoard` and
- *      `fixtureStory` for the feed's stories.
- *   2. Be the Narratives list, which has no read route yet: `sampleNarrativeIds` and the
- *      `nr_` stories behind them.
+ * RECORDED DATA FOR THE PHONE APP'S TESTS, written as RAW WIRE PAYLOADS. Tests only: nothing in
+ * the app imports this folder, and src/no-sample-data.test.ts fails the build's tests if
+ * anything reachable from main.tsx ever does. The app shows the read service or an honest empty
+ * state, never these.
  *
  * ★ RAW, NOT DECODED. Everything here goes through `decode.ts` like a network response, so a
  * fixture cannot hold a shape the server can never send. That is why the coin the designs

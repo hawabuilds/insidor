@@ -21,7 +21,7 @@ export interface Candle {
 }
 
 export interface MarketTrade {
-  /** The transaction it was in; null only for sample trades, which invent none. */
+  /** The transaction it was in; null when the source did not say. */
   readonly tx: string | null;
   readonly side: 'buy' | 'sell';
   readonly tokenAmount: Measured;

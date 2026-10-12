@@ -46,12 +46,11 @@ type Section = 'coins' | 'posts' | 'comments' | 'stats';
 /** How many coins show before "See all". */
 const FIRST_COINS = 3;
 
-export function NarrativePage({ storyId, sample, onCreate }: {
+export function NarrativePage({ storyId, onCreate }: {
   storyId: string;
-  sample: boolean;
   onCreate: (story: Story) => void;
 }) {
-  const [story] = useLoad(`${sample}:${storyId}`, (signal) => loadStory(storyId, sample, signal));
+  const [story] = useLoad(storyId, (signal) => loadStory(storyId, signal));
   return (
     <section className={styles['page']}>
       <TopBar storyId={storyId} />
@@ -59,7 +58,7 @@ export function NarrativePage({ storyId, sample, onCreate }: {
       {story.state === 'failed' ? (
         <p className={styles['empty']}>This story couldn't be read. It may not be on the read service.</p>
       ) : null}
-      {story.state === 'ready' ? <Body story={story.value} sample={sample} onCreate={onCreate} /> : null}
+      {story.state === 'ready' ? <Body story={story.value} onCreate={onCreate} /> : null}
     </section>
   );
 }
@@ -102,7 +101,7 @@ function TopBar({ storyId }: { storyId: string }) {
   );
 }
 
-function Body({ story, sample, onCreate }: { story: Story; sample: boolean; onCreate: (s: Story) => void }) {
+function Body({ story, onCreate }: { story: Story; onCreate: (s: Story) => void }) {
   const now = useNow();
   const soon = useComingSoon();
   const [section, setSection] = useState<Section>('coins');
@@ -135,7 +134,7 @@ function Body({ story, sample, onCreate }: { story: Story; sample: boolean; onCr
 
       <p className={styles['summary']}>{story.summary.join(' ')}</p>
 
-      <Notice notice={noticeFor(story, sample)} />
+      <Notice notice={noticeFor(story)} />
 
       <UnderlineTabs
         label="Narrative"
@@ -150,10 +149,10 @@ function Body({ story, sample, onCreate }: { story: Story; sample: boolean; onCr
       />
 
       <div className={styles['section']}>
-        {section === 'coins' ? <Coins story={story} sample={sample} coins={coins} line={status.line} now={now} /> : null}
-        {section === 'posts' ? <Posts story={story} sample={sample} now={now} /> : null}
+        {section === 'coins' ? <Coins story={story} coins={coins} line={status.line} now={now} /> : null}
+        {section === 'posts' ? <Posts story={story} now={now} /> : null}
         {section === 'comments' ? <Comments subject={`story:${story.id}`} holdersOf="this narrative" /> : null}
-        {section === 'stats' ? <Stats story={story} sample={sample} now={now} /> : null}
+        {section === 'stats' ? <Stats story={story} now={now} /> : null}
       </div>
 
       <div className={styles['bar']}>
@@ -174,9 +173,8 @@ function Body({ story, sample, onCreate }: { story: Story; sample: boolean; onCr
   );
 }
 
-function Coins({ story, sample, coins, line, now }: {
+function Coins({ story, coins, line, now }: {
   story: Story;
-  sample: boolean;
   coins: readonly Coin[];
   line: string;
   now: number;
@@ -191,7 +189,7 @@ function Coins({ story, sample, coins, line, now }: {
         <a
           key={c.coinId}
           className={styles['coin']}
-          href={hrefFor({ screen: 'coin', storyId: story.id, coinId: c.coinId, sample })}
+          href={hrefFor({ screen: 'coin', storyId: story.id, coinId: c.coinId })}
         >
           <Thumb url={c.imageUrl} size={42} round letter={c.ticker.charAt(0)} />
           <div className={styles['coinText']}>
@@ -221,7 +219,7 @@ function Coins({ story, sample, coins, line, now }: {
   );
 }
 
-function Posts({ story, sample, now }: { story: Story; sample: boolean; now: number }) {
+function Posts({ story, now }: { story: Story; now: number }) {
   const [open, setOpen] = useState<{ id: string; author: string } | null>(null);
   return (
     <>
@@ -242,18 +240,12 @@ function Posts({ story, sample, now }: { story: Story; sample: boolean; now: num
             <span className={styles['postText']}>{e.excerpt}</span>
           </>
         );
-        /* A sample post has no real page to link to, so it is not a link. */
         const talk = (
           <button type="button" className={styles['postComments']} onClick={() => setOpen({ id: e.evidenceId, author: e.authorLabel })}>
             Comments
           </button>
         );
-        return sample ? (
-          <div key={e.evidenceId}>
-            <div className={styles['post']}>{body}</div>
-            {talk}
-          </div>
-        ) : (
+        return (
           <div key={e.evidenceId}>
             <a className={styles['post']} href={e.permalink} target="_blank" rel="noopener noreferrer">
               {body}
@@ -266,12 +258,12 @@ function Posts({ story, sample, now }: { story: Story; sample: boolean; now: num
   );
 }
 
-function Stats({ story, sample, now }: { story: Story; sample: boolean; now: number }) {
+function Stats({ story, now }: { story: Story; now: number }) {
   const earliest = story.earliestPost;
   const rows: readonly [string, React.ReactNode][] = [
     ['Views', <Value r={formatCount(story.reach)} />],
     ['Views in the last 24 hours', <Value r={formatCount(story.reachDelta24h)} />],
-    [earliest.known && earliest.startedBy !== null ? 'Started by' : 'Earliest post found', <Earliest post={earliest} sample={sample} now={now} />],
+    [earliest.known && earliest.startedBy !== null ? 'Started by' : 'Earliest post found', <Earliest post={earliest} now={now} />],
     ['Posts', story.evidence.length],
     ['Sites', siteList(story.evidence.map((e) => e.sourceLabel)) || '—'],
   ];
@@ -291,7 +283,7 @@ function Stats({ story, sample, now }: { story: Story; sample: boolean; now: num
  * "@handle, 6h ago", linked to the post, and under "Started by" the proof in a few words.
  * A dash with its reason when no post in the story carries a time.
  */
-function Earliest({ post, sample, now }: { post: Story['earliestPost']; sample: boolean; now: number }) {
+function Earliest({ post, now }: { post: Story['earliestPost']; now: number }) {
   if (!post.known) return <Value r={formatAge(pendingInstant(post.pending), now)} />;
   const text = (
     <>
@@ -301,7 +293,7 @@ function Earliest({ post, sample, now }: { post: Story['earliestPost']; sample: 
   const proof = post.startedBy === 'quoted' ? 'later posts quote it' : post.startedBy === 'samePicture' ? 'same picture' : null;
   return (
     <>
-      {sample || post.permalink === null ? text : <a href={post.permalink} target="_blank" rel="noopener noreferrer">{text}</a>}
+      {post.permalink === null ? text : <a href={post.permalink} target="_blank" rel="noopener noreferrer">{text}</a>}
       {proof === null ? null : <span className={styles['age']}> ({proof})</span>}
     </>
   );

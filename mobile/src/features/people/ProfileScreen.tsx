@@ -9,14 +9,12 @@
 
 import { useState } from 'react';
 
-import { PEOPLE_SAMPLE, follow, fetchProfile, saveBio, type Comment, type ProfileCard } from '../../shared/api/people.ts';
+import { follow, fetchProfile, saveBio, type Comment, type ProfileCard } from '../../shared/api/people.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
-import { PEOPLE_SAMPLE_NOTICE } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon } from '../../shared/ui/icons.tsx';
-import { Notice } from '../../shared/ui/Notice.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import { RankBadge, RankTag } from './RankBadge.tsx';
@@ -29,7 +27,7 @@ export function subjectHref(subject: string): string | null {
   const at = subject.indexOf(':');
   const kind = subject.slice(0, at);
   const id = subject.slice(at + 1);
-  if (kind === 'story') return hrefFor({ screen: 'story', storyId: id, sample: PEOPLE_SAMPLE });
+  if (kind === 'story') return hrefFor({ screen: 'story', storyId: id });
   if (kind === 'coin') return hrefFor({ screen: 'token', coinId: id.startsWith('solana:') ? id : `solana:${id}` });
   return null;
 }
@@ -54,7 +52,6 @@ export function ProfileScreen({ profileKey }: { profileKey: string }) {
       <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
         <BackIcon size={22} />
       </button>
-      {PEOPLE_SAMPLE ? <Notice notice={PEOPLE_SAMPLE_NOTICE} /> : null}
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {loaded.state === 'failed' ? <p className={styles['note']}>This profile couldn't be read. It may not exist.</p> : null}
       {loaded.state === 'ready' ? <Body p={loaded.value.profile} comments={loaded.value.comments} reload={reload} /> : null}

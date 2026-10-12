@@ -61,7 +61,7 @@ export function WalletsScreen() {
       {signedIn ? (
         <button type="button" className={`${styles['action']} ${box['linkButton']}`} onClick={() => void link()}>Link Phantom</button>
       ) : (
-        <p className={box['lead']}>Sample data: this build has no sign-in, so there is no account to link a wallet to.</p>
+        <p className={box['lead']}>Sign in to link a wallet.</p>
       )}
       <ol className={box['steps']}>
         <li>Tap Link Phantom. Your sign-in provider's window opens.</li>

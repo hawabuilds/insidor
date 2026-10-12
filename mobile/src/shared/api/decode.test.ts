@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { WireLeakError, decodeBoardTick, decodeCoinLink, decodeStory } from './decode.ts';
-import { fixtureBoard, fixtureStory, sampleNarrativeIds } from './fixtures.ts';
+import { fixtureBoard, fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
 
 const row = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
   id: 'r1',

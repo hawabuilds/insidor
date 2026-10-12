@@ -32,8 +32,8 @@ const PARTS: readonly { readonly title: string; readonly body: readonly string[]
     body: ['A number we could not read is a dash with the reason under it, never a zero. Where we cannot tell which coin a narrative became, the narrative says so and offers no coin to buy.'],
   },
   {
-    title: 'Sample data',
-    body: ['Anything marked Sample data is made up to show how a screen works. It is never a real coin or a real wallet.'],
+    title: 'Only what happened',
+    body: ['Insidor shows posts, narratives, coins and wallets as they are. When there is nothing yet, the screen says so; it never fills the space with made-up examples.'],
   },
   {
     title: 'Your wallet',

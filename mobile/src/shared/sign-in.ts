@@ -9,7 +9,8 @@
  *   1. ★ A RETURNING PERSON NEVER SEES THE DOOR FLASH. While the sign-in provider is still starting
  *      in a browser that was signed in before, the answer is `holding`, not `landing`.
  *   2. ★ A BUILD WITH NO SIGN-IN IS THE DEMO. With no app id there is nobody to sign in as, so the
- *      door's "Join now" walks in to the labelled sample screens, as Trador's demo mode does.
+ *      door's "Join now" walks in to the app, whose screens show only what the services hold —
+ *      empty states where there is nothing, never sample data.
  *
  * What breaks if changed carelessly: `connecting` while the sign-in window is open must stay on
  * the door — the person is mid sign-in, and the door is where they will come back to.

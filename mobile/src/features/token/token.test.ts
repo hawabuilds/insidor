@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decodeCoinMarket } from '../../shared/api/decode.ts';
-import { fixtureMarket } from '../../shared/api/fixtures.ts';
+import { fixtureMarket } from '../../test-fixtures/fixtures.ts';
 import type { MarketTrade } from '../../shared/api/index.ts';
 import { candleFromPoint, changePctForPoints, defaultTimeframe, gapBreakMsForWindow, chartWindowMs, hoveredCandleChangePct, isHistoryPrepend, isLiveEdgeUpdate, mergeTradesIntoChart, shouldAutoFit, toLineData, withCompressedBreaks, type ChartPoint } from './chart-data.ts';
 import { chartNote } from './chart-format.ts';

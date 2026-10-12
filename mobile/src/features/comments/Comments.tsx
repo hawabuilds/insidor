@@ -12,13 +12,11 @@
 
 import { useMemo, useState } from 'react';
 
-import { PEOPLE_SAMPLE, fetchComments, hideComment, likeComment, postComment, reportComment, type Comment } from '../../shared/api/people.ts';
+import { fetchComments, hideComment, likeComment, postComment, reportComment, type Comment } from '../../shared/api/people.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
-import { PEOPLE_SAMPLE_NOTICE } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { Notice } from '../../shared/ui/Notice.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import { RankTag } from '../people/RankBadge.tsx';
@@ -42,12 +40,11 @@ export function Comments({ subject, holdersOf }: { subject: string; holdersOf: s
 
   return (
     <div className={styles['thread']}>
-      {PEOPLE_SAMPLE ? <Notice notice={PEOPLE_SAMPLE_NOTICE} /> : null}
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading comments.</p> : null}
       {loaded.state === 'failed' ? <p className={styles['note']}>Comments couldn't be read just now.</p> : null}
       {thread !== null && thread.coin === null ? <p className={styles['note']}>Likes open once {holdersOf} has one coin: only its holders can like.</p> : null}
       {thread !== null && thread.coin !== null ? <p className={styles['note']}>Only holders of {holdersOf}'s coin can like. Rep goes to the commenter.</p> : null}
-      {thread !== null && roots.length === 0 ? <p className={styles['note']}>No comments yet. Be the first.</p> : null}
+      {thread !== null && roots.length === 0 ? <p className={styles['note']}>No comments yet.</p> : null}
       {roots.map(({ top, replies }) => (
         <div key={top.id} className={styles['group']}>
           <Row c={top} likesOpen={thread?.coin !== null} onReply={() => setReplyTo(top)} onChanged={reload} />

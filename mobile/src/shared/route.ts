@@ -6,12 +6,9 @@
  * package. Split from the shell so the parse is testable under `node --test`, which cannot
  * load a `.tsx`.
  *
- * ★ A STORY PAGE SAYS WHERE ITS STORY COMES FROM. `#/story/:id` is read from the read service
- * (or the dev fixtures standing in for it). `#/sample/story/:id` is a sample page that never
- * touches the network: the Narratives list has no endpoint yet, so its pages are sample data
- * whatever the build is pointed at. Folding the two into one route would send a sample id to
- * the real read service, which would answer 404 — or, worse, one day answer with a different
- * story that happened to share the id.
+ * ★ EVERY PAGE IS READ FROM THE SERVICES. `#/story/:id` is the read service's story. The old
+ * `#/sample/…` pages are gone with the sample data; a saved link to one opens the feed rather
+ * than sending a made-up id to the real service.
  *
  * WHAT BREAKS IF THIS IS CHANGED CARELESSLY: `hrefFor` and `parseRoute` must stay inverse.
  * The tests assert the round trip for every screen; a route that parses but cannot be built,
@@ -23,8 +20,8 @@ export type Tab = 'feed' | 'narratives' | 'search' | 'alerts' | 'portfolio';
 export type Route =
   | { readonly screen: 'feed' }
   | { readonly screen: 'narratives' }
-  | { readonly screen: 'story'; readonly storyId: string; readonly sample: boolean }
-  | { readonly screen: 'coin'; readonly storyId: string; readonly coinId: string; readonly sample: boolean }
+  | { readonly screen: 'story'; readonly storyId: string }
+  | { readonly screen: 'coin'; readonly storyId: string; readonly coinId: string }
   | { readonly screen: 'search' }
   /* A coin opened from search: no narrative around it, so none in the route. */
   | { readonly screen: 'token'; readonly coinId: string }
@@ -58,22 +55,23 @@ export function parseRoute(hash: string): Route {
   const parts = segments(hash);
   if (parts === null) return FEED;
 
-  const sample = parts[0] === 'sample';
-  const [head, id, sub, coinId, ...rest] = sample ? parts.slice(1) : parts;
+  /* The old sample pages are gone; a saved #/sample/… link opens the feed. */
+  if (parts[0] === 'sample') return FEED;
+  const [head, id, sub, coinId, ...rest] = parts;
 
   if (head === 'story' && id !== undefined && rest.length === 0) {
-    if (sub === undefined) return { screen: 'story', storyId: id, sample };
-    if (sub === 'coin' && coinId !== undefined) return { screen: 'coin', storyId: id, coinId, sample };
+    if (sub === undefined) return { screen: 'story', storyId: id };
+    if (sub === 'coin' && coinId !== undefined) return { screen: 'coin', storyId: id, coinId };
     return FEED;
   }
-  if (!sample && head === 'token' && id !== undefined && sub === undefined) return { screen: 'token', coinId: id };
-  if (!sample && head === 'alerts' && id === 'settings' && sub === undefined) return { screen: 'alert-settings' };
-  if (!sample && head === 'u' && id !== undefined && coinId === undefined) {
+  if (head === 'token' && id !== undefined && sub === undefined) return { screen: 'token', coinId: id };
+  if (head === 'alerts' && id === 'settings' && sub === undefined) return { screen: 'alert-settings' };
+  if (head === 'u' && id !== undefined && coinId === undefined) {
     if (sub === undefined) return { screen: 'profile', key: id };
     if (sub === 'followers' || sub === 'following') return { screen: 'follows', key: id, which: sub };
     return FEED;
   }
-  if (sample || id !== undefined) return FEED;
+  if (id !== undefined) return FEED;
 
   switch (head) {
     case undefined:
@@ -103,9 +101,9 @@ export function hrefFor(route: Route): string {
     case 'feed':
       return '#/';
     case 'story':
-      return `#/${route.sample ? 'sample/' : ''}story/${enc(route.storyId)}`;
+      return `#/story/${enc(route.storyId)}`;
     case 'coin':
-      return `#/${route.sample ? 'sample/' : ''}story/${enc(route.storyId)}/coin/${enc(route.coinId)}`;
+      return `#/story/${enc(route.storyId)}/coin/${enc(route.coinId)}`;
     case 'token':
       return `#/token/${enc(route.coinId)}`;
     case 'profile':
@@ -124,7 +122,7 @@ export function tabOf(route: Route): Tab {
   switch (route.screen) {
     case 'story':
     case 'coin':
-      return route.sample ? 'narratives' : 'feed';
+      return 'feed';
     case 'token':
       return 'search';
     case 'alert-settings':

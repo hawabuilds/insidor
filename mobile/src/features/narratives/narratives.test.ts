@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decodeStory } from '../../shared/api/decode.ts';
-import { fixtureStory, sampleNarrativeIds } from '../../shared/api/fixtures.ts';
+import { fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
 import { orderNarratives, postsLine } from './narrative-order.ts';
 
 const list = sampleNarrativeIds().map((id) => decodeStory(fixtureStory(id)));

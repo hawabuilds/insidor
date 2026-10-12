@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { WireLeakError, decodeRisingFeed, decodeRisingPost } from './decode.ts';
-import { fixtureBoard, fixtureRising } from './fixtures.ts';
+import { fixtureBoard, fixtureRising } from '../../test-fixtures/fixtures.ts';
 
 const COIN = {
   coinId: 'solana:abc', ticker: 'DOCK', name: 'dock', address: 'abc', venueLabel: 'Pump.fun', imageUrl: null,

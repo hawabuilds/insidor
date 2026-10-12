@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decodePortfolio } from '../../shared/api/decode.ts';
-import { fixturePortfolio } from '../../shared/api/fixture-wallet.ts';
+import { fixturePortfolio } from '../../test-fixtures/fixture-wallet.ts';
 import { confirmBuilt, fromBase64 } from '../trade/order-flow.ts';
 import { tradingOn } from '../../shared/trading.ts';
 import { compactAmount, profitLine } from './wallet-view.ts';
@@ -27,7 +27,7 @@ test('★ an unsure narrative match shows nothing: only a named narrative object
   assert.equal(p.kind === 'read' && p.holdings[0]?.story, null);
 });
 
-test('the sample wallet decodes: real holdings, each a dash for profit (no buy history in what was read)', () => {
+test('a recorded wallet decodes: real holdings, each a dash for profit (no buy history in what was read)', () => {
   const p = decodePortfolio(fixturePortfolio());
   assert.equal(p.kind, 'read');
   if (p.kind !== 'read') return;
@@ -60,18 +60,16 @@ test('the chart is the stored points then the live total; its change is first to
   assert.deepEqual(withLive([{ t: 1, value: 100 }], null, 10).length, 1, 'no live total is not a zero');
 });
 
-test('★ signed out, the Portfolio shows only labelled sample data', async () => {
+test('★ signed out, the Portfolio says sign in — never a stand-in wallet', async () => {
   const { readFileSync } = await import('node:fs');
   const { gateFor } = await import('../../shared/sign-in.ts');
   /* With sign-in set up, signed out never reaches the Portfolio: the door stands in front of it. */
   for (const kind of ['disconnected', 'refused', 'failed'] as const) {
     assert.equal(gateFor({ configured: true, state: (kind === 'failed' ? { kind, code: 'internal' } : { kind }) as never, entered: true }), 'landing');
   }
-  /* In the build with no sign-in, the one wallet it shows is the recorded sample, marked as such. */
+  /* And in a build without sign-in, the tab says so and reads no wallet at all. */
   const screen = readFileSync(new URL('./PortfolioScreen.tsx', import.meta.url), 'utf8');
-  const signedOut = screen.slice(screen.indexOf('/* Only the demo build gets here'));
-  assert.match(signedOut, /canAct=\{false\} sample load=\{\(\) => loadSamplePortfolio\(\)\}/);
-  assert.ok(!/fetchPortfolio\(/.test(signedOut), 'no real wallet is read signed out');
-  const shell = screen.slice(screen.indexOf('function Loaded'), screen.indexOf('function Arrow'));
-  assert.match(shell, /sample \? <div className=\{box\['sampleNotice'\]\}><Notice notice=\{SAMPLE_WALLET\} \/>/, 'and the sample notice is shown');
+  const signedOut = screen.slice(screen.indexOf('/* Signed out.'));
+  assert.match(signedOut, /Sign in to see your portfolio/);
+  assert.ok(!/fetchPortfolio\(|<Loaded/.test(signedOut), 'no wallet is read or drawn signed out');
 });

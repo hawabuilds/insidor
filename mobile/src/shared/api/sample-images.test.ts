@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { decodeBoardTick, decodeStory } from './decode.ts';
-import { fixtureBoard, fixtureStory, sampleNarrativeIds } from './fixtures.ts';
+import { fixtureBoard, fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
 
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'public');
 const CREDITS = readFileSync(join(PUBLIC, 'sample', 'CREDITS.md'), 'utf8');

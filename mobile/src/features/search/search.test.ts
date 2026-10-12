@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decodeSearch } from '../../shared/api/decode.ts';
-import { fixtureSearch } from '../../shared/api/fixtures.ts';
+import { fixtureSearch } from '../../test-fixtures/fixtures.ts';
 import { marketLine, orderCoins, showingTop } from './search-view.ts';
 
 const reply = (coins: readonly Record<string, unknown>[], capped = false) =>
