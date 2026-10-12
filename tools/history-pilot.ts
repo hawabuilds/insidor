@@ -6,6 +6,8 @@
  *   node --env-file=.env.local tools/history-pilot.ts alive      today's alive coins (free; Dune if the key is set)
  *   node --env-file=.env.local tools/history-pilot.ts estimate   group them and price the pilot (free)
  *   node --env-file=.env.local tools/history-pilot.ts prepare    read each coin's metadata, add it to the universe (free)
+ *   node --env-file=.env.local tools/history-pilot.ts filter     drop fake coins: under minLiquidityUsd of pool liquidity
+ *                                                                or minHolders wallets (free), then re-price
  *   SPEND=live node --env-file=.env.local tools/history-pilot.ts run --yes
  *                                                                the paid step: prints its estimate per supplier,
  *                                                                then groups, finds origins, stops at the cap
@@ -32,7 +34,7 @@ import type { CoinSearchHit } from '../contracts/src/ports/coin-search.ts';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { biggestFirst, groupCoins, type HistoryCoin } from '../core/src/history/group.ts';
 import { duneClient, fillParameters } from '../adapters/history/dune/src/index.ts';
-import { dexscreenerStandings } from '../adapters/market/dexscreener/src/index.ts';
+import { dexscreenerQuotes, dexscreenerStandings } from '../adapters/market/dexscreener/src/index.ts';
 import { inMemoryMeter } from '../adapters/meter/spend/src/index.ts';
 import { assetFromSearch, chainClient, fetchMetadata } from '../adapters/venue/solana-pumpfun/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgAssetRepo, PgCoinUniverseRepo, PgHistoryRepo } from '../store/src/index.ts';
@@ -262,6 +264,75 @@ async function prepare(): Promise<void> {
   console.log(`prepared ${out.length} coins: ${out.filter((c) => c.imageUri !== null).length} with a picture, ${out.filter((c) => c.socialLink !== null).length} with a creator link.`);
 }
 
+/* ── filter: the fake-coin filter, free ───────────────────────────────── */
+
+/* The prepared list before filtering, kept so the filter can be run again with other numbers. */
+const UNFILTERED_FILE = new URL('coins-unfiltered.json', OUT);
+const HOLDERS_PACE_MS = 120;
+
+/**
+ * Wallets holding a coin, counted from the chain (Helius DAS, one page of a thousand token
+ * accounts): enough to know whether a coin clears `minHolders`. Null when it could not be read.
+ */
+async function holdersOf(rpcUrl: string, mint: string): Promise<number | null> {
+  try {
+    const r = await fetch(rpcUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTokenAccounts', params: { mint, limit: 1000, page: 1 } }), signal: AbortSignal.timeout(15_000) });
+    const body = (await r.json()) as { result?: { token_accounts?: { owner?: string; amount?: number }[] } };
+    const accounts = body.result?.token_accounts;
+    if (!Array.isArray(accounts)) return null;
+    return new Set(accounts.filter((a) => (a.amount ?? 0) > 0).map((a) => a.owner)).size;
+  } catch {
+    return null;
+  }
+}
+
+async function filter(): Promise<void> {
+  const helius = process.env['HELIUS_API_KEY'] ?? '';
+  if (helius === '') throw new Error('HELIUS_API_KEY is not set: holders are counted on the chain.');
+  const rpcUrl = `https://mainnet.helius-rpc.com/?api-key=${helius}`;
+  let all: PilotCoin[];
+  try {
+    all = JSON.parse(readFileSync(UNFILTERED_FILE, 'utf8')) as PilotCoin[];
+  } catch {
+    all = JSON.parse(readFileSync(COINS_FILE, 'utf8')) as PilotCoin[];
+    writeFileSync(UNFILTERED_FILE, `${JSON.stringify(all, null, 1)}\n`);
+  }
+  const quotes = await dexscreenerQuotes({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: 15_000 }).quotes(all.map((c) => c.address));
+  const kept: PilotCoin[] = [];
+  let thin = 0;
+  let few = 0;
+  let unread = 0;
+  for (const c of all) {
+    const liquidity = quotes.get(c.address)?.liquidityUsd ?? null;
+    if (liquidity === null || liquidity < H.minLiquidityUsd) {
+      if (liquidity === null) unread += 1;
+      else thin += 1;
+      continue;
+    }
+    const holders = await holdersOf(rpcUrl, c.address);
+    await sleep(HOLDERS_PACE_MS);
+    if (holders === null) {
+      unread += 1;
+      continue;
+    }
+    if (holders < H.minHolders) {
+      few += 1;
+      continue;
+    }
+    kept.push(c);
+  }
+  writeFileSync(COINS_FILE, `${JSON.stringify(kept, null, 1)}\n`);
+  console.log(`fake-coin filter: liquidity >= ${usd(H.minLiquidityUsd)} and >= ${H.minHolders} holders`);
+  console.log(`  ${all.length} prepared -> ${kept.length} kept (${thin} thin pools, ${few} too few holders, ${unread} could not be read and were left out)`);
+  const e = pilotEstimate(kept);
+  console.log('The pilot on the kept coins, priced before anything is sent:');
+  console.log(`  narratives (at most)       ${e.narratives}`);
+  console.log(`  X searches back (at most)  ${e.searches}`);
+  console.log(`  creator posts read on X    ${e.xLinks}`);
+  for (const [name, line] of Object.entries(e.lines)) console.log(`  ${name.padEnd(12)} ${String(line.calls).padStart(5)} calls  ${usd(line.usd)}`);
+  console.log(`  total about ${usd(e.total)}; the cap is ${usd(H.pilotUsd)} across every run.`);
+}
+
 /* ── run: the paid step ─────────────────────────────────────────────── */
 
 function pilotEstimate(coins: readonly PilotCoin[]) {
@@ -330,8 +401,9 @@ if (command === 'counts') await counts();
 else if (command === 'alive') await alive();
 else if (command === 'estimate') estimate();
 else if (command === 'prepare') await prepare();
+else if (command === 'filter') await filter();
 else if (command === 'run') await run();
 else {
-  console.log('usage: tools/history-pilot.ts counts | alive | estimate | prepare | run');
+  console.log('usage: tools/history-pilot.ts counts | alive | estimate | prepare | filter | run');
   process.exit(1);
 }

@@ -66,6 +66,8 @@ export interface CoinQuote {
   readonly priceUsd: number | null;
   readonly priceSol: number | null;
   readonly marketCapUsd: number | null;
+  /** The deepest pool's liquidity in dollars; null when the reply did not say. */
+  readonly liquidityUsd: number | null;
   readonly change: { readonly h1: number | null; readonly h6: number | null; readonly h24: number | null };
 }
 
@@ -93,6 +95,7 @@ export function readQuotes(raw: unknown): ReadonlyMap<string, CoinQuote> {
         priceUsd: numText(r.priceUsd),
         priceSol: numText(r.priceNative),
         marketCapUsd: num(r.marketCap) ?? num(r.fdv),
+        liquidityUsd: liquidity >= 0 ? liquidity : null,
         change: { h1: num(change.h1), h6: num(change.h6), h24: num(change.h24) },
       },
     });

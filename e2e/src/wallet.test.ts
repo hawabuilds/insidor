@@ -33,7 +33,7 @@ before(async () => {
 const route = (over: Partial<Parameters<typeof createWallet>[0]> = {}) => createWallet({
   db, log: SILENT, policy: DEFAULT_POLICY.wallet,
   reader: { balances: async () => balances, signatures: async () => [], parse: async () => [] },
-  quotes: { quotes: async (addrs) => new Map(addrs.map((a) => [a, { name: null, ticker: null, priceUsd: 2, priceSol: 0.01, marketCapUsd: 9_000, change: { h1: 1, h6: null, h24: -3 } }])) },
+  quotes: { quotes: async (addrs) => new Map(addrs.map((a) => [a, { name: null, ticker: null, priceUsd: 2, priceSol: 0.01, marketCapUsd: 9_000, liquidityUsd: null, change: { h1: 1, h6: null, h24: -3 } }])) },
   images: null,
   creatorFees: async () => 1_500_000_000n,
   now: () => 1_000,

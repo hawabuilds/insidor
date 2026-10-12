@@ -1018,6 +1018,10 @@ export interface UniversePolicy {
   readonly history: {
     readonly aliveMarketCapUsd: number;
     readonly pilotUsd: number;
+    /** The fake-coin filter (the owner's, 2026-10-13): a coin needs this much pool liquidity now… */
+    readonly minLiquidityUsd: number;
+    /** …and this many wallets holding it, or the pilot does not pay to look at it. */
+    readonly minHolders: number;
   };
 }
 
@@ -1832,8 +1836,10 @@ const POLICY_V1: Policy = {
      v34 adds `trade.maxDevBuySol`: the cap on a creator's first buy at launch.
 
      v35 adds `social` (Trador's ranks and rep, comment limits) and `notify` (alerts: the
-     multiples, the curve mark, the hourly limit, the loops). */
-  version: 'policy.v35',
+     multiples, the curve mark, the hourly limit, the loops).
+
+     v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
+  version: 'policy.v36',
 
   admit: {
     maxAgeMin: 240,
@@ -2225,6 +2231,9 @@ const POLICY_V1: Policy = {
       aliveMarketCapUsd: 100_000,
       /* $25: the founders' cap for the whole pilot, every paid call counted against it. */
       pilotUsd: 25,
+      /* The fake-coin filter: a market cap alone is easy to fake with one wallet and a thin pool. */
+      minLiquidityUsd: 20_000,
+      minHolders: 300,
     },
   },
 
