@@ -18,8 +18,8 @@
  */
 
 import { PrivyProvider, useLogin, usePrivy } from '@privy-io/react-auth';
-import { useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
-import { useEffect, type ReactNode } from 'react';
+import { useCreateWallet, useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
+import { useEffect, useRef, type ReactNode } from 'react';
 
 import type { Bridge } from './store.ts';
 
@@ -53,10 +53,32 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
   const embedded = (user?.linkedAccounts ?? []).find(
     (a) => a.type === 'wallet' && 'chainType' in a && a.chainType === 'solana' && 'walletClientType' in a && a.walletClientType === 'privy',
   );
-  const address = embedded !== undefined && 'address' in embedded && typeof embedded.address === 'string' ? embedded.address : null;
+  const { wallets, ready: walletsReady } = useWallets();
+  const address = embedded !== undefined && 'address' in embedded && typeof embedded.address === 'string' ? embedded.address : (wallets[0]?.address ?? null);
+
+  /*
+   * ★ SIGNED IN WITH NO WALLET IS NOT A STATE TO WAIT IN. The vendor makes the wallet on sign-in,
+   * but an account that signed in before Solana wallets were switched on, or whose creation
+   * failed, comes back with none — and the store would say "connecting" for ever, the door stuck
+   * on Loading. So it is made here, once; if that fails, the person is signed out and told sign-in
+   * did not finish, and Join now is offered again.
+   */
+  const { createWallet } = useCreateWallet();
+  const creating = useRef(false);
+  useEffect(() => {
+    if (!ready || !authenticated || !walletsReady || address !== null || creating.current) return;
+    creating.current = true;
+    createWallet()
+      .catch(async () => {
+        await logout().catch(() => undefined);
+        bridge.signInEnded('error');
+      })
+      .finally(() => {
+        creating.current = false;
+      });
+  }, [ready, authenticated, walletsReady, address, createWallet, logout, bridge]);
 
   /* Signing: the vendor's Solana wallet for this address. Signs only; sending is the caller's. */
-  const { wallets } = useWallets();
   const { signTransaction } = useSignTransaction();
   const signer = wallets.find((w) => w.address === address) ?? null;
 
