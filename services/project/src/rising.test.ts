@@ -6,7 +6,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { projectRisingPost } from './rising.ts';
+import { projectRisingPost, withoutTrailingShortLinks } from './rising.ts';
 import type { WireCoin, WireCoinLink } from './wire.ts';
 
 const ROW = {
@@ -124,4 +124,13 @@ test('no handle means no link, never a guessed one; no reading means a dash with
   assert.equal(post.permalink, null);
   assert.equal(post.reach.v, null);
   assert.equal(post.readAt.at, null);
+});
+
+test('★ the trailing t.co links are hidden and the words kept; a link mid-sentence stays', () => {
+  const post = projectRisingPost({ ...ROW, body: 'A smile for your timeline.. 😊 https://t.co/KVHSZ51Lwk' }, READINGS, new Map(), 1_800_000);
+  assert.equal(post.excerpt, 'A smile for your timeline.. 😊');
+  assert.equal(withoutTrailingShortLinks('Listen\n\n#OnePrideWorldwide https://t.co/dcyykf70Ei https://t.co/abc123 '), 'Listen\n\n#OnePrideWorldwide');
+  assert.equal(withoutTrailingShortLinks('read https://t.co/abc123 then laugh'), 'read https://t.co/abc123 then laugh');
+  assert.equal(withoutTrailingShortLinks('https://t.co/abc123'), '');
+  assert.equal(withoutTrailingShortLinks('no links here'), 'no links here');
 });

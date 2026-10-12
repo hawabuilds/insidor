@@ -10,9 +10,10 @@
  * whose views we have not read goes after every post whose views we have. The client never
  * sorts.
  *
- * What each row says: facts only — where it was posted, by whom, a link to it, its text,
- * its picture (a video's preview counts, flagged so the card draws a play icon), when, how
- * many saw it and when we read that, and the views line. Never the score, never anything
+ * What each row says: facts only — where it was posted, by whom, a link to it, its text
+ * (without the trailing short links X appends), its picture (a video's preview counts, flagged
+ * so the card draws a play icon), when, how many saw it and when we read that, and the views
+ * line. Never the score, never anything
  * TRACK or the judge computed.
  *
  * ★ EVERY ROW SAYS WHERE ITS COIN STANDS, AND A COIN ONLY EVER COMES THROUGH A NARRATIVE.
@@ -174,6 +175,16 @@ function authorLabelOf(row: RisingRow): string {
   return name !== '' ? name : row.source_author_id;
 }
 
+/**
+ * The post's words without the short links X appends for its own media and link cards. The
+ * picture is already on the card and the post's own link is the card's tap, so a trailing
+ * `https://t.co/…` is noise that costs a line. Only trailing ones go: a link in the middle of a
+ * sentence is part of what was said.
+ */
+export function withoutTrailingShortLinks(text: string): string {
+  return text.replace(/(?:\s*https?:\/\/t\.co\/[A-Za-z0-9]+)+\s*$/i, '');
+}
+
 function trimTo(text: string, max: number): string {
   const collapsed = text.replace(/\s+/g, ' ').trim();
   const points = Array.from(collapsed);
@@ -200,7 +211,7 @@ export function projectRisingPost(
     sourceLabel: sourceLabel(row.source),
     authorLabel: authorLabelOf(row),
     permalink: handle === '' ? null : permalinkFor(row.source, handle, row.source_item_id),
-    excerpt: trimTo(row.body, EXCERPT_MAX_CHARS),
+    excerpt: trimTo(withoutTrailingShortLinks(row.body), EXCERPT_MAX_CHARS),
     thumbUrl: picture?.uri ?? null,
     thumbIsVideo: picture?.isVideo ?? false,
     postedAt: instant(toMs(row.posted_at), 'not_reported'),
