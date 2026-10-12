@@ -30,7 +30,26 @@
  * is decided for every path including this one.
  */
 
-import { NotImplemented } from '@insidor/vendor-kit';
+import { arr, num, rec, NotImplemented, VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
+
+const VENDOR_RPC = 'solana-rpc';
+const OLDEST_LABEL = 'POST rpc getTransactionsForAddress';
+
+/**
+ * The block time, in seconds, of an address's oldest transaction, from one oldest-first
+ * reply. Null when the address has no transactions; an RPC error is unavailable, never null.
+ */
+export function readOldestBlockTime(raw: unknown): number | null {
+  const r = rec(raw);
+  if (r.error !== undefined && r.error !== null) {
+    throw new VendorUnavailable(VENDOR_RPC, OLDEST_LABEL, `rpc error: ${JSON.stringify(r.error).slice(0, 200)}`);
+  }
+  const first = arr(rec(r.result).data)[0];
+  if (first === undefined) return null;
+  const blockTime = num(rec(first).blockTime);
+  if (blockTime === null) throw new VendorShapeError(VENDOR_RPC, 'result.data[0].blockTime', 'is missing');
+  return blockTime;
+}
 
 export interface LaunchpadClient {
   /** Newest coins first. Carries the venue's own creation timestamp. */
@@ -70,13 +89,33 @@ export function launchpadClient(_config: SolanaVenueClientConfig): LaunchpadClie
   };
 }
 
-export function chainClient(_config: SolanaVenueClientConfig): ChainClient {
+export function chainClient(config: SolanaVenueClientConfig): ChainClient {
   return {
-    oldestSignatureBlockTime: async (_address) => {
-      // POST {rpcUrl} getSignaturesForAddress [address, { limit: 1000 }]
-      //   The oldest entry's blockTime matched the launchpad timestamp to the
-      //   second on fresh mints. Disagreement is what makes mint time unknown.
-      throw new NotImplemented('POST rpc getSignaturesForAddress');
+    /* ★ OLDEST FIRST, ONE ROW. `getSignaturesForAddress` returns newest first, so the
+       oldest entry of a graduated coin is behind every trade it ever had — hundreds of
+       thousands of rows, page by page. `getTransactionsForAddress` with `sortOrder: 'asc'`
+       answers in one call, and is an extension only some RPC providers serve: on one that
+       does not, this fails as unavailable rather than falling back to the unbounded walk.
+       The oldest entry's blockTime matched the launchpad timestamp to the second on fresh
+       mints; disagreement is what makes mint time unknown. */
+    oldestSignatureBlockTime: async (address) => {
+      let response: Response;
+      try {
+        response = await config.fetch(config.rpcUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getTransactionsForAddress',
+            params: [address, { sortOrder: 'asc', limit: 1, transactionDetails: 'signatures' }],
+          }),
+        });
+      } catch (error) {
+        throw new VendorUnavailable(VENDOR_RPC, OLDEST_LABEL, `request failed: ${error instanceof Error ? error.message : 'unknown'}`);
+      }
+      if (!response.ok) throw new VendorUnavailable(VENDOR_RPC, OLDEST_LABEL, `responded ${response.status}`, response.status);
+      return readOldestBlockTime(await response.json());
     },
     tokenAccountState: async (_address) => {
       // POST {rpcUrl} getAccountInfo [address, { encoding: 'jsonParsed' }]
