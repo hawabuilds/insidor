@@ -125,8 +125,8 @@ const PAGE_LIMIT = 100;
  * with no change; a source that has none of these is reported `unasked` by name
  * rather than quietly skipped.
  */
-const PREFERRED_MODES: readonly DiscoveryMode[] = ['keyword', 'hashtag', 'account', 'catalog'];
-/* `feed` is not on this list: it takes no term. A source that has it is asked the
+const PREFERRED_MODES: readonly DiscoveryMode[] = ['keyword', 'hashtag', 'feed', 'account', 'catalog'];
+/* `catchall` is not on this list: it takes no term. A source that has it is asked the
    catch-all lanes instead — see `feedQueryFor`. */
 
 const MS_PER_DAY = 24 * 60 * MS_PER_MINUTE;
@@ -290,7 +290,7 @@ export function queryFor(adapter: PlatformAdapter, term: string, now: Millis): D
  */
 export function feedQueryFor(lane: FeedLane, baseFloor: number, now: Millis, policy: Policy): DiscoveryQuery {
   return {
-    mode: 'feed',
+    mode: 'catchall',
     term: '',
     sinceMs: (now - policy.feed.windowMin * MS_PER_MINUTE) as Millis,
     untilMs: now,
@@ -450,7 +450,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     /* ★ THE CATCH-ALL FIRST, ON EVERY SOURCE THAT CAN BE ASKED FOR IT: two lanes, no
        keyword. Then the optional term on top. */
     const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null }[] = [];
-    if (adapter.capabilities.discovery.includes('feed')) {
+    if (adapter.capabilities.discovery.includes('catchall')) {
       for (const lane of FEED_LANES) asks.push({ query: feedQueryFor(lane, floors[lane], now, deps.policy), lane });
     }
     if (term !== null) {

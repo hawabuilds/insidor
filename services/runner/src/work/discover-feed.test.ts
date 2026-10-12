@@ -48,7 +48,7 @@ function item(source: string, i: number): Item {
 }
 
 /** A source billed per post returned, answering each lane with a chosen number of posts. */
-function feedSource(returns: { all: number; media: number; term?: number }, seen: DiscoveryQuery[], discovery: readonly DiscoveryMode[] = ['keyword', 'feed']): PlatformAdapter {
+function feedSource(returns: { all: number; media: number; term?: number }, seen: DiscoveryQuery[], discovery: readonly DiscoveryMode[] = ['keyword', 'catchall']): PlatformAdapter {
   const caps: Capabilities = {
     source: sourceId('x'),
     counters: ['reach'],
@@ -60,7 +60,7 @@ function feedSource(returns: { all: number; media: number; term?: number }, seen
     billing: 'per-item-returned',
   };
   const count = (q: DiscoveryQuery): number =>
-    q.mode !== 'feed' ? (returns.term ?? 0) : q.filter?.mediaOnly === true ? returns.media : returns.all;
+    q.mode !== 'catchall' ? (returns.term ?? 0) : q.filter?.mediaOnly === true ? returns.media : returns.all;
   return {
     id: sourceId('x'),
     capabilities: caps,
@@ -120,7 +120,7 @@ test('★ with no terms, a source with a catch-all search is asked both lanes, w
   await run(feedSource({ all: 10, media: 3 }, seen), 'live');
   assert.equal(seen.length, 2);
   for (const q of seen) {
-    assert.equal(q.mode, 'feed');
+    assert.equal(q.mode, 'catchall');
     assert.equal(q.term, '');
     assert.equal(q.untilMs, NOW, 'the window ends now');
     assert.equal(q.sinceMs, NOW - DEFAULT_POLICY.feed.windowMin * 60_000);
@@ -173,11 +173,19 @@ test('a stored floor is the one sent on the next pass', async () => {
 test('DISCOVER_TERMS are extra searches on top of the catch-all, not instead of it', async () => {
   const seen: DiscoveryQuery[] = [];
   await run(feedSource({ all: 10, media: 3, term: 4 }, seen), 'live', floorsStore(), ['ceasefire']);
-  assert.deepEqual(seen.map((q) => q.mode), ['feed', 'feed', 'keyword']);
+  assert.deepEqual(seen.map((q) => q.mode), ['catchall', 'catchall', 'keyword']);
   assert.equal(seen[2]?.term, 'ceasefire');
 });
 
 test('a source with no catch-all search and no term is unasked, by name', async () => {
   const result = await run(feedSource({ all: 0, media: 0 }, [], ['keyword']), 'live');
+  assert.equal(result.unasked, 1);
+});
+
+test('★ a source whose `feed` needs a community name is never sent the catch-all lanes', async () => {
+  const seen: DiscoveryQuery[] = [];
+  const result = await run(feedSource({ all: 0, media: 0 }, seen, ['feed', 'keyword']), 'live');
+  assert.equal(seen.length, 0);
+  assert.equal(result.failed, 0, 'and so it is never counted as a failure');
   assert.equal(result.unasked, 1);
 });

@@ -128,23 +128,23 @@ export class CutoffNotHonoured extends Error {
  * query builder: `min_faves:<floor> [filter:media] lang:<code> -filter:replies
  * -filter:retweets`, with the time window appended by the caller below.
  *
- * Refuses rather than guesses. A feed query without a floor would ask for every post in
+ * Refuses rather than guesses. A catch-all query without a floor would ask for every post in
  * the language — the one query this vendor bills enough for to matter — so a missing or
- * non-whole floor is an error, not a default. A term on a feed query is refused too: it
+ * non-whole floor is an error, not a default. A term on a catch-all query is refused too: it
  * would quietly turn the catch-all back into a keyword search.
  */
 function feedOperators(query: DiscoveryQuery): string[] {
   const filter = query.filter;
   if (filter === undefined || !Number.isInteger(filter.minApproval) || filter.minApproval < 1) {
-    throw new NotImplemented('x:discover:feed', 'a catch-all search needs a whole approval floor of at least 1');
+    throw new NotImplemented('x:discover:catchall', 'a catch-all search needs a whole approval floor of at least 1');
   }
   if (query.term.trim() !== '') {
-    throw new NotImplemented('x:discover:feed', 'a catch-all search takes no term');
+    throw new NotImplemented('x:discover:catchall', 'a catch-all search takes no term');
   }
   const out = [`min_faves:${filter.minApproval}`];
   if (filter.mediaOnly) out.push('filter:media');
   if (filter.lang !== null) {
-    if (!/^[a-z]{2,3}$/.test(filter.lang)) throw new NotImplemented('x:discover:feed', `no such language code: ${filter.lang}`);
+    if (!/^[a-z]{2,3}$/.test(filter.lang)) throw new NotImplemented('x:discover:catchall', `no such language code: ${filter.lang}`);
     out.push(`lang:${filter.lang}`);
   }
   if (filter.originalsOnly) out.push('-filter:replies', '-filter:retweets');
@@ -164,7 +164,7 @@ export function toSearchQuery(query: DiscoveryQuery): string {
   }
 
   const parts: string[] = [];
-  if (query.mode === 'feed') {
+  if (query.mode === 'catchall') {
     parts.push(...feedOperators(query));
   } else {
     const term = query.term.trim();
@@ -174,7 +174,7 @@ export function toSearchQuery(query: DiscoveryQuery): string {
     parts.push(query.mode === 'account' ? `from:${term}` : term.includes(' ') ? `"${term}"` : term);
   }
   // A keyword search applies no language filter: pinning one language is what made every
-  // non-English story invisible. The catch-all feed takes its language from policy, where
+  // non-English story invisible. The catch-all search takes its language from policy, where
   // that cost is written beside the setting.
   //
   // The lower bound rounds DOWN to the second, which widens it. Wide is safe here for

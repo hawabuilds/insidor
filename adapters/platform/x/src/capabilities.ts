@@ -50,7 +50,7 @@ export const CAPABILITIES: Capabilities = {
   counters: ['reach', 'approval', 'conversation', 'rebroadcast', 'reproduction', 'retention'],
   absent: [],
   fidelity: FIDELITY,
-  discovery: ['keyword', 'account', 'feed'],
+  discovery: ['keyword', 'account', 'catchall'],
   /** The lookup endpoint takes up to this many ids in one request. */
   observeBatchSize: 100,
   /** A reproduction here is a first-class object with its own author and id. */
