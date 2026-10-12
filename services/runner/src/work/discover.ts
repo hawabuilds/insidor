@@ -325,7 +325,7 @@ export interface DiscoverDeps {
    * may not read or decide. Authors go first so a post's author row carries its handle from
    * the first read, and a story page can cite the post the moment it is grouped.
    */
-  readonly store: (items: readonly Item[], authors: readonly Author[]) => Promise<number>;
+  readonly store: (items: readonly Item[], authors: readonly Author[], lane?: FeedLane | null) => Promise<number>;
   readonly plan: DiscoveryPlan;
   readonly policy: Policy;
   /**
@@ -710,7 +710,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     let stored: number | null = null;
     if (items.length > 0) {
       try {
-        stored = await deps.store(items, authors);
+        stored = await deps.store(items, authors, lane);
         itemsStored += stored;
       } catch (e) {
         /* ★ `stored` STAYS NULL RATHER THAN BECOMING ZERO. The write did not complete,

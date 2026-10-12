@@ -381,6 +381,10 @@ test('the schema and the vocabulary agree on every closed list', () => {
   assert.deepEqual([...checkedValues(readAsWritten('0022_judgement.sql'), 'looked_at')].sort(), [
     ...JUDGE_EVIDENCE,
   ].sort());
+  assert.deepEqual([...checkedValues(readAsWritten('0025_post_judgement.sql'), 'looked_at')].sort(), [
+    ...JUDGE_EVIDENCE,
+  ].sort());
+  assert.deepEqual([...checkedValues(read('0025_post_judgement.sql'), 'lane')].sort(), [...FEED_LANES].sort());
   /* All four reason columns, not just the first: they are four separate CHECKs and
      four separate opportunities for one of them to be edited alone. */
   for (const column of [

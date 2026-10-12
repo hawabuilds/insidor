@@ -167,6 +167,7 @@ async function main(): Promise<void> {
         log,
         watch: runtime.watch,
         floors: runtime.feedFloors,
+        scorePosts: runtime.scorePosts,
         dailyCapUsd: Math.min(cfg.spend.dailyBudgetUsd, runtime.loopDeps.policy.budget.dailyUsd),
       }),
       admitLoop(runtime.loopDeps),

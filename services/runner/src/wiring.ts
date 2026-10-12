@@ -63,6 +63,7 @@ import {
   PgDecisionRepo,
   PgFeedFloorRepo,
   PgJudgementRepo,
+  PgPostJudgementRepo,
   PgItemRepo,
   PgObservationRepo,
   PgSourceHealthRepo,
@@ -77,6 +78,7 @@ import {
 
 import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
+import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { advisoryLockKey, policyHash } from './hash.ts';
 import type { Logger } from './log.ts';
 import type { DecisionLog, LoopDeps } from './loop.ts';
@@ -105,6 +107,8 @@ export interface Runtime {
   readonly meter: DurableMeter;
   /** The catch-all search's lane floors, kept between passes. */
   readonly feedFloors: PgFeedFloorRepo;
+  /** Score the catch-all posts the judge has not seen, alone and once each. */
+  readonly scorePosts: () => Promise<ScoringResult>;
 }
 
 
@@ -443,8 +447,19 @@ export async function withRuntime<T>(
           platforms,
           watch,
           meter,
-          store: storeArrivals(repos, policy),
+          store: storeArrivals(repos, policy, () => Date.now() as Millis),
           feedFloors: new PgFeedFloorRepo(db),
+          scorePosts: () =>
+            scorePosts({
+              judge,
+              items: repos.items,
+              scores: new PgPostJudgementRepo(db),
+              meter,
+              mode: cfg.spend.kind,
+              policy,
+              log: log.child({ step: 'score-posts' }),
+              now: () => Date.now() as Millis,
+            }),
         }),
       };
     });
