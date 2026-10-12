@@ -276,3 +276,9 @@ test('★ a dry run can price the judge with only a model, and a live run cannot
   assert.equal(loadRunnerConfig({ ...complete, SPEND: 'dry', JUDGE_MODEL: 'claude-haiku-4-5' }).judge.state, 'priced');
   assert.throws(() => loadRunnerConfig({ ...complete, SPEND: 'live', JUDGE_MODEL: 'claude-haiku-4-5' }), /ANTHROPIC_API_KEY/);
 });
+
+test('★ RANK is off unless switched on, so an unbuilt stage does not throw every pass', () => {
+  assert.equal(loadRunnerConfig(complete).rank, 'off');
+  assert.equal(loadRunnerConfig({ ...complete, RANK: 'on' }).rank, 'on');
+  assert.equal(loadRunnerConfig({ ...complete, RANK: 'yes' }).rank, 'off');
+});

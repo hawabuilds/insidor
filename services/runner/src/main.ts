@@ -176,8 +176,11 @@ async function main(): Promise<void> {
       groupLoop(runtime.loopDeps),
       qualifyLoop(runtime.loopDeps),
       resolveLoop(runtime.loopDeps),
-      rankLoop(runtime.loopDeps),
+      /* Off unless RANK=on — see RunnerConfig.rank. Said once at boot rather than thrown
+         every few minutes. */
+      ...(cfg.rank === 'on' ? [rankLoop(runtime.loopDeps)] : []),
     ];
+    if (cfg.rank === 'off') log.info('rank loop off; set RANK=on once the stage is built', {});
 
     /* ★ BEFORE THE LOOPS, AND AWAITED. See maintainPartitions: the first decision of a
        boot must not be able to precede the partition it belongs in. */
