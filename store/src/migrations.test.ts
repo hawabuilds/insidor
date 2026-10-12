@@ -24,6 +24,7 @@ import {
   MINT_TIME_SOURCES,
   SOURCE_CONFIGURATIONS,
 } from '@insidor/contracts';
+import { ORIGIN_STATUSES } from '@insidor/contracts/origin.ts';
 import { STORY_ORIGINS, STORY_STATES } from '@insidor/contracts/story.ts';
 
 import { loadMigrations } from './migrate.ts';
@@ -354,6 +355,9 @@ test('the schema and the vocabulary agree on every closed list', () => {
   assert.deepEqual([...checkedValues(read('0023_item_origin.sql'), 'origin')].sort(), [
     ...ITEM_ORIGINS,
   ].sort());
+  /* A coin's origin status: a status the code can decide and this CHECK refuses would fail
+     the write after the check was paid for. */
+  assert.deepEqual([...checkedValues(read('0034_coin_universe.sql'), 'status')].sort(), [...ORIGIN_STATUSES].sort());
   /* The lane CHECKs were first written in 0024 and 0025 and are both replaced by 0030, so
      0030 is the list that holds — each of its two. */
   for (const table of ['feed_floor', 'item_found_by']) {

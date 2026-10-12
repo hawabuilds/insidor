@@ -78,6 +78,36 @@ export class PgImageEmbeddingRepo {
     );
   }
 
+  /** Whether this subject already has a vector for this picture in this space. */
+  async has(subjectKind: 'item' | 'asset', subjectId: string, uri: string, space: string): Promise<boolean> {
+    const rows = await this.#db.query<{ n: number }>(
+      `select 1 as n from internal.image_embedding where subject_kind = $1 and subject_id = $2 and uri = $3 and space = $4`,
+      [subjectKind, subjectId, uri, space],
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * A coin's picture against each of these posts' pictures, in one space. A post with no
+   * vector is absent — not compared, never zero.
+   */
+  async coinSimilarity(assetKey: string, itemIds: readonly ItemId[], space: string): Promise<ReadonlyMap<ItemId, { readonly similarity: number; readonly coinUri: string; readonly postUri: string }>> {
+    const found = new Map<ItemId, { similarity: number; coinUri: string; postUri: string }>();
+    if (itemIds.length === 0) return found;
+    const rows = await this.#db.query<{ item_id: string; similarity: number; coin_uri: string; post_uri: string }>(
+      `select distinct on (b.subject_id)
+              b.subject_id as item_id, 1 - (a.embedding <=> b.embedding) as similarity, a.uri as coin_uri, b.uri as post_uri
+         from internal.image_embedding a
+         join internal.image_embedding b on b.subject_kind = 'item' and b.space = a.space
+        where a.subject_kind = 'asset' and a.subject_id = $1 and a.space = $3
+          and b.subject_id = any($2::text[])
+        order by b.subject_id, similarity desc`,
+      [assetKey, [...itemIds], space],
+    );
+    for (const row of rows) found.set(row.item_id as ItemId, { similarity: Number(row.similarity), coinUri: row.coin_uri, postUri: row.post_uri });
+    return found;
+  }
+
   /**
    * For one post, its best image similarity against each candidate story's member images,
    * in one space. A story whose posts have no vectors is absent — not compared, never zero.
