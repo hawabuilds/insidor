@@ -1445,8 +1445,12 @@ const POLICY_V1: Policy = {
      three hours are read on the earlier build's hot, warm and cold tiers, ranked by view rate.
 
      v15 adds `rising`: single posts found by the catch-all search are scored alone by the
-     judge, and those at or above the meme-score bar make the For You and Popular feeds. */
-  version: 'policy.v15',
+     judge, and those at or above the meme-score bar make the For You and Popular feeds.
+
+     v16 lowers `track.maxTrackedHours` from 168 to 48, and TRACK now re-reads only posts on
+     screen (in a narrative, or on the For You and Popular feeds); everything else keeps the
+     one reading taken at discovery. A post's history after this bump is at most two days. */
+  version: 'policy.v16',
 
   admit: {
     maxAgeMin: 240,
@@ -1495,7 +1499,9 @@ const POLICY_V1: Policy = {
     /* holdoutRate deleted in v6 — see the note on TrackPolicy. explore.holdoutRate is
        the single source, and it is the one every live call site already read. */
     shedFromTier: 0,
-    maxTrackedHours: 168,
+    /* 48 hours, down from a week. A post's views move in its first day or two; reading
+       every on-screen post for seven days cost more than the whole daily budget. */
+    maxTrackedHours: 48,
     flatReadsToDemote: 3,
 
     lifecycleMargin: 0.1,

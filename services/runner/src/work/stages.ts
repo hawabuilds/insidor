@@ -122,7 +122,6 @@ const PULL_OVERSCAN = 4;
  * policy would refuse — it only decides how much is read.
  */
 const ADMIT_LOOKBACK_MS = 2 * MS_PER_DAY;
-const TRACK_LOOKBACK_MS = 7 * MS_PER_DAY;
 const DETECT_LOOKBACK_MS = 2 * MS_PER_DAY;
 const GROUP_LOOKBACK_MS = 2 * MS_PER_DAY;
 /** The window the observation series is fetched over, for the stages that difference it. */
@@ -435,11 +434,17 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
   const work: StageWork<TrackInput> = {
     async pull(limit, ctx) {
       const now = ctx.now();
-      /* Admitted posts and the members of promoted stories, newest first — see
-         `PgItemRepo.trackable` for why both, and why that order. */
+      /* The posts that are on screen, newest first — see `PgItemRepo.trackable`. */
+      /* Back as far as tracking lasts, and no further: a post past `maxTrackedHours` would
+         only be pulled to be told it is finished, every thirty seconds. */
       const page = await repos.items.trackable(
-        now - TRACK_LOOKBACK_MS,
+        now - policy.track.maxTrackedHours * MS_PER_HOUR,
         limit * PULL_OVERSCAN,
+        {
+          sinceMs: (now - policy.rising.windowMs) as Millis,
+          textBar: policy.qualify.minJudgeConfidence.text,
+          videoFrameBar: policy.qualify.minJudgeConfidence.videoFrame,
+        },
       );
       const items = await undecided(repos, 'track', page, (i) => i.itemId, limit, now);
       if (items.length === 0) return [];
