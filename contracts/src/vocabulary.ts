@@ -242,10 +242,33 @@ export interface Author {
 
 /* ── ITEM ─────────────────────────────────────────────────────────────── */
 
+/**
+ * Where a post row came from: a person posted it, or a tool wrote it.
+ *
+ * ★ THE SAME TWO VALUES AS STORY_ORIGINS, AND FOR THE SAME REASON. Before this an item had
+ * no origin, so "is this post real" could only be answered through the story it sat in, and
+ * an item that sat in no story could not be answered at all. GROUP is the first stage that
+ * turns items into stories, and the story it seeds has to say what it was built from — it
+ * reads the answer off the item rather than guessing it from an id prefix.
+ *
+ * An array because it is also a CHECK in store/migrations/0023_item_origin.sql, and
+ * store/src/migrations.test.ts asserts the two are the same list.
+ */
+export const ITEM_ORIGINS = [
+  /** Read from a source by an adapter, or replayed from a recording of one. A person posted it. */
+  'observed',
+  /** Written by a seed or a demonstration tool. Never a claim about the world. */
+  'fixture',
+] as const;
+
+export type ItemOrigin = (typeof ITEM_ORIGINS)[number];
+
 export interface Item {
   readonly itemId: ItemId; // ours
   readonly source: SourceId;
   readonly sourceItemId: string; // theirs
+  /** See ITEM_ORIGINS. Set by whoever builds the row; there is no default to fall back on. */
+  readonly origin: ItemOrigin;
   /** A stable id, never a display handle. Handles change; ours must not. */
   readonly authorKey: AuthorKey;
 

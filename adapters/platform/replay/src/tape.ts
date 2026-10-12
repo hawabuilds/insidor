@@ -137,6 +137,19 @@ function decodeFingerprints(raw: unknown): readonly Fingerprint[] {
 }
 
 /**
+ * A tape says whether each post on it was recorded from a source or written by hand, and
+ * there is no default. A replay of a recording is still a post a person made; a tape
+ * somebody typed is not, and a decoder that guessed would put a typed post on a live board.
+ */
+function decodeOrigin(raw: unknown): Item['origin'] {
+  const origin = str(raw);
+  if (origin !== 'observed' && origin !== 'fixture') {
+    throw new VendorShapeError(VENDOR, 'origin', `is ${String(origin)}`);
+  }
+  return origin;
+}
+
+/**
  * @param at the instant the REPLAY read it. Everything else comes off the tape
  *           verbatim, including each counter's original observedAt — those are
  *           the readings kinetics is being replayed against and rewriting them
@@ -149,6 +162,7 @@ export function decodeItem(raw: unknown, at: Millis): Item {
     itemId: required(str(r.itemId), 'itemId') as ItemId,
     source: required(str(r.source), 'source') as SourceId,
     sourceItemId,
+    origin: decodeOrigin(r.origin),
     authorKey: required(str(r.authorKey), 'authorKey') as AuthorKey,
     postedAt: num(r.postedAt),
     firstSeenAt: at,

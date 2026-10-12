@@ -1092,10 +1092,10 @@ async function main() {
       client,
       'public.item',
       ['item_id', 'source', 'source_item_id', 'author_key', 'posted_at', 'first_seen_at',
-       'lang', 'body', 'format_ids', 'raw_ref'],
+       'lang', 'body', 'format_ids', 'raw_ref', 'origin'],
       data.items.map((i) => [
         i.itemId, i.source, i.sourceItemId, i.authorKey, i.postedAt, i.firstSeenAt,
-        i.lang, i.body, i.formatIds, i.rawRef,
+        i.lang, i.body, i.formatIds, i.rawRef, 'fixture',
       ]),
     );
     /* Lineage in a second pass: the target item has to exist before a column can

@@ -16,6 +16,7 @@ import {
   ASSET_ORIGINS,
   BILLING_UNITS,
   CENSOR_REASONS,
+  ITEM_ORIGINS,
   JUDGE_EVIDENCE,
   MARKET_ABSENCE_REASONS,
   MARKET_CAP_BASES,
@@ -242,6 +243,23 @@ test('★ the backfill labels rows by evidence, and never by a convenient defaul
   );
 });
 
+test('★ a post cannot be written without saying where it came from', () => {
+  /* 0023, held to 0016's two assertions. A post with `default 'observed'` would let a seed
+     that forgot the column pass its rows off as things people posted — and GROUP now builds
+     a story's origin out of its posts' origins, so the lie would travel upward. */
+  const sql = stripComments(read('0023_item_origin.sql'));
+
+  assert.match(sql, /alter\s+column\s+origin\s+set\s+not\s+null/, 'origin must end up not null');
+  assert.equal(
+    /(add|alter)\s+column\s+origin\b[^;]*\bdefault\b/.test(sql),
+    false,
+    'origin must have no default: a writer that has not decided has to fail, not inherit',
+  );
+  const flat = sql.replace(/\s+/g, ' ');
+  assert.match(flat, /set origin = 'fixture' where item_id in \(/);
+  assert.match(flat, /set origin = 'observed' where origin is null/);
+});
+
 test("★ 'unrecorded' is written by the backfill and by nothing else in the repository", () => {
   /* THE GUARD THAT KEEPS A FIFTH VALUE FROM BECOMING AN ESCAPE HATCH.
      The standing objection to any "we do not know" member of a closed list is that it
@@ -331,6 +349,9 @@ test('the schema and the vocabulary agree on every closed list', () => {
      fall-through has never been reasoned about. */
   assert.deepEqual([...checkedValues(read('0016_story_origin.sql'), 'origin')].sort(), [
     ...STORY_ORIGINS,
+  ].sort());
+  assert.deepEqual([...checkedValues(read('0023_item_origin.sql'), 'origin')].sort(), [
+    ...ITEM_ORIGINS,
   ].sort());
   /* ★ THE ONE WHOSE THIRD MEMBER IS THE WHOLE POINT. `dormant` and `misconfigured` are two
      kinds of dark that demand opposite responses — a person deciding to pay for something

@@ -497,6 +497,7 @@ export function toItem(raw: unknown, at: Millis): Item {
     itemId: id,
     source: SOURCE,
     sourceItemId: fullname,
+    origin: 'observed',
     authorKey: authorKey(SOURCE, stableAuthorId(r)),
 
     // Unix SECONDS on this source, milliseconds in our vocabulary. Null rather
