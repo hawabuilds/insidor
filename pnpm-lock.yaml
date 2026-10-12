@@ -168,6 +168,12 @@ importers:
         specifier: workspace:*
         version: link:../../kit/vendor
 
+  adapters/storage/supabase:
+    dependencies:
+      '@insidor/vendor-kit':
+        specifier: workspace:*
+        version: link:../../kit/vendor
+
   adapters/test/contract:
     dependencies:
       '@insidor/contracts':
@@ -510,12 +516,22 @@ importers:
       '@insidor/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@insidor/storage-supabase':
+        specifier: workspace:*
+        version: link:../../adapters/storage/supabase
       '@insidor/venue-jupiter':
         specifier: workspace:*
         version: link:../../adapters/venue/jupiter
       '@insidor/venue-solana-pumpfun':
         specifier: workspace:*
         version: link:../../adapters/venue/solana-pumpfun
+      pg:
+        specifier: ^8.16.0
+        version: 8.23.0
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.15.0
+        version: 8.21.0
 
   services/watchdog:
     dependencies:
