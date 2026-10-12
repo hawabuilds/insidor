@@ -40,3 +40,10 @@ test('a judgement made with a video frame needs 0.75', () => {
 test('not coinable is below the bar however confident', () => {
   assert.equal(postScore(judged({ coinable: false, confidence: 0.99 }), DEFAULT_POLICY), 'below');
 });
+
+test('★ the name test: a "yes" naming a headline in five words is below, however confident', () => {
+  assert.equal(postScore(judged({ confidence: 0.75, proposedName: 'Kacey Musgraves dog shot response' }), DEFAULT_POLICY), 'below');
+  assert.equal(postScore(judged({ confidence: 0.75, proposedName: 'WILLIAM CONTRERAS' }), DEFAULT_POLICY), 'passes');
+  assert.equal(postScore(judged({ proposedName: 'J-HOPE' }), DEFAULT_POLICY), 'passes');
+  assert.equal(postScore(judged({ proposedName: null }), DEFAULT_POLICY), 'below');
+});

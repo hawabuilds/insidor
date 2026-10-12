@@ -23,6 +23,7 @@ const ROW = {
   coinable: true,
   confidence: 0.9,
   looked_at: 'text' as const,
+  proposed_name: 'CHILLGUY',
   story_id: 'story_seed-x-1',
 };
 
