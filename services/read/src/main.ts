@@ -18,6 +18,9 @@
 
 import { Client, Pool } from 'pg';
 
+import { geckoterminal } from '@insidor/market-geckoterminal';
+import { chainClient, curveProgressOf } from '@insidor/venue-solana-pumpfun';
+
 import { loadReadConfig } from './config.ts';
 import { BOARD_CHANNEL, createNotifier, type ListenSocket } from './listen.ts';
 import { createLogger, errorText } from './log.ts';
@@ -34,6 +37,10 @@ const log = createLogger();
  * than to hold it for an answer nobody is still watching for.
  */
 const POOL_MAX = 5;
+/** A market data request is abandoned after this long: a person is waiting on the token page. */
+const MARKET_TIMEOUT_MS = 6_000;
+/** A curve account read is kept this long; the page polls, and a curve moves trade by trade. */
+const CURVE_KEEP_MS = 15_000;
 const STATEMENT_TIMEOUT_MS = 5_000;
 const IDLE_IN_TRANSACTION_TIMEOUT_MS = 30_000;
 
@@ -144,7 +151,26 @@ async function main(): Promise<void> {
     onLost: () => stream.linkDown(),
   });
 
-  const server = createReadServer({ ...deps, allowedOrigins: cfg.allowedOrigins, stream });
+  /* A coin's market data, read when a token page opens (market.ts). The curve reader needs an
+     RPC; without one, curve progress is a dash. Each curve read is kept fifteen seconds. */
+  const chain = cfg.rpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.rpcUrl, fetch: globalThis.fetch });
+  const curves = new Map<string, { at: number; progress: number | null }>();
+  const market = {
+    market: geckoterminal({ baseUrl: cfg.marketDataUrl, fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS, now: Date.now }),
+    curveProgress:
+      chain === null
+        ? null
+        : async (address: string) => {
+            const kept = curves.get(address);
+            if (kept !== undefined && Date.now() - kept.at < CURVE_KEEP_MS) return kept.progress;
+            const account = await chain.curveAccount(address);
+            const progress = account === null ? null : curveProgressOf(account);
+            curves.set(address, { at: Date.now(), progress });
+            return progress;
+          },
+  };
+
+  const server = createReadServer({ ...deps, market, allowedOrigins: cfg.allowedOrigins, stream });
 
   server.listen(cfg.port, () => log.info('listening', { port: cfg.port, origins: cfg.allowedOrigins }));
   notifier.start();

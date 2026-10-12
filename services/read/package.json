@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The browser's read surface. Three SELECTs against the projection, held by the app role and nothing else.",
+  "description": "The browser's read surface: SELECTs against the projection, held by the app role and nothing else, plus a coin's market data from a public source.",
   "main": "./src/main.ts",
   "scripts": {
     "start": "node --env-file-if-exists=../../.env.local src/main.ts",
@@ -12,6 +12,8 @@
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@insidor/market-geckoterminal": "workspace:*",
+    "@insidor/venue-solana-pumpfun": "workspace:*",
     "pg": "^8.16.0"
   },
   "devDependencies": {

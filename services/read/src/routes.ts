@@ -22,6 +22,7 @@
  * envelope. If something here starts computing, it belongs in services/project.
  */
 
+import { coinMarket, type MarketDeps } from './market.ts';
 import { errorText, type Logger } from './log.ts';
 import {
   BOARD_ROWS_SQL,
@@ -48,6 +49,8 @@ export interface Reply {
 export interface Deps {
   readonly db: Db;
   readonly log: Logger;
+  /** A coin's market data (market.ts). Absent: the coin market route is a 404. */
+  readonly market?: Omit<MarketDeps, 'db' | 'log'>;
 }
 
 /*
@@ -400,6 +403,11 @@ export async function handle(method: string, rawUrl: string, deps: Deps): Promis
   try {
     if (segments.length === 0) return HEALTH;
     if (segments.length === 1 && head === 'health') return HEALTH;
+
+    if (segments.length === 3 && head === 'coin' && param !== undefined && segments[2] === 'market' && deps.market !== undefined) {
+      const tf = new URLSearchParams(rawUrl.split('?')[1] ?? '').get('tf');
+      return (await coinMarket(param, tf, { ...deps.market, db: deps.db, log: deps.log })) ?? NOT_FOUND;
+    }
 
     if (segments.length === 2 && param !== undefined) {
       if (head === 'board') return await board(param, deps);
