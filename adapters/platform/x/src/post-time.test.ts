@@ -13,3 +13,12 @@ test('an id that is not time-ordered, or not an id, has no time rather than a wr
   assert.equal(postTimeFromId('12345'), null);
   assert.equal(postTimeFromId('abc'), null);
 });
+
+test('★ a pasted link is a post with its id, an account, or not ours', async () => {
+  const { parseLink } = await import('./post-time.ts');
+  assert.deepEqual(parseLink('https://x.com/pusholder/status/2079311468231545077?s=46'), { kind: 'post', sourceItemId: '2079311468231545077' });
+  assert.deepEqual(parseLink('https://twitter.com/i/web/status/123'), { kind: 'post', sourceItemId: '123' });
+  assert.deepEqual(parseLink('https://x.com/thedroponsol'), { kind: 'account' });
+  assert.deepEqual(parseLink('https://x.com/i/communities/1800000000000000000'), { kind: 'account' });
+  assert.equal(parseLink('https://t.me/somegroup'), null);
+});

@@ -15,3 +15,10 @@ test('an id too small to be one of these has no time rather than a wrong one', (
   assert.equal(postTimeFromId('123'), null);
   assert.equal(postTimeFromId('x'), null);
 });
+
+test('a pasted link is a post with its id, an account, or not ours (a share link needs a request)', async () => {
+  const { parseLink } = await import('./post-time.ts');
+  assert.deepEqual(parseLink('https://www.tiktok.com/@cazy.chan/video/7658657103057308942'), { kind: 'post', sourceItemId: '7658657103057308942' });
+  assert.deepEqual(parseLink('https://www.tiktok.com/@cazy.chan'), { kind: 'account' });
+  assert.equal(parseLink('https://vm.tiktok.com/ZN8eU5Cqw/'), null);
+});
