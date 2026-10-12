@@ -21,6 +21,7 @@ import type { Coin, Story } from '../../shared/api/index.ts';
 import { coinLabels } from '../../shared/coin-facts.ts';
 import { coinStatus, settledCoins } from '../../shared/coin-status.ts';
 import { formatAge } from '../../shared/format/duration.ts';
+import { instant, pendingInstant } from '../../shared/format/measure.ts';
 import { formatCount, formatUsd } from '../../shared/format/number.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { platformOf, siteList } from '../../shared/platform.ts';
@@ -150,7 +151,7 @@ function Body({ story, sample, onCreate }: { story: Story; sample: boolean; onCr
         {section === 'coins' ? <Coins story={story} sample={sample} coins={coins} line={status.line} now={now} /> : null}
         {section === 'posts' ? <Posts story={story} sample={sample} now={now} /> : null}
         {section === 'calls' ? <p className={styles['note']}>Calls are coming soon: what people say this narrative will do, and whether they were right.</p> : null}
-        {section === 'stats' ? <Stats story={story} now={now} /> : null}
+        {section === 'stats' ? <Stats story={story} sample={sample} now={now} /> : null}
       </div>
 
       <div className={styles['bar']}>
@@ -246,11 +247,12 @@ function Posts({ story, sample, now }: { story: Story; sample: boolean; now: num
   );
 }
 
-function Stats({ story, now }: { story: Story; now: number }) {
+function Stats({ story, sample, now }: { story: Story; sample: boolean; now: number }) {
+  const earliest = story.earliestPost;
   const rows: readonly [string, React.ReactNode][] = [
     ['Views', <Value r={formatCount(story.reach)} />],
     ['Views in the last 24 hours', <Value r={formatCount(story.reachDelta24h)} />],
-    ['Began', <Ago r={formatAge(story.firstSeenAt, now)} />],
+    [earliest.known && earliest.startedBy !== null ? 'Started by' : 'Earliest post found', <Earliest post={earliest} sample={sample} now={now} />],
     ['Posts', story.evidence.length],
     ['Sites', siteList(story.evidence.map((e) => e.sourceLabel)) || '—'],
   ];
@@ -263,6 +265,26 @@ function Stats({ story, now }: { story: Story; now: number }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/**
+ * "@handle, 6h ago", linked to the post, and under "Started by" the proof in a few words.
+ * A dash with its reason when no post in the story carries a time.
+ */
+function Earliest({ post, sample, now }: { post: Story['earliestPost']; sample: boolean; now: number }) {
+  if (!post.known) return <Value r={formatAge(pendingInstant(post.pending), now)} />;
+  const text = (
+    <>
+      {post.authorLabel}, <Ago r={formatAge(instant(post.at), now)} />
+    </>
+  );
+  const proof = post.startedBy === 'quoted' ? 'later posts quote it' : post.startedBy === 'samePicture' ? 'same picture' : null;
+  return (
+    <>
+      {sample || post.permalink === null ? text : <a href={post.permalink} target="_blank" rel="noopener noreferrer">{text}</a>}
+      {proof === null ? null : <span className={styles['age']}> ({proof})</span>}
+    </>
   );
 }
 

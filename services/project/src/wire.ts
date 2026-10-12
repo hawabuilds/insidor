@@ -618,6 +618,20 @@ export type WireStoryProvenance =
   | { readonly kind: 'observed' }
   | { readonly kind: 'seeded'; readonly connectSourceLabel: string };
 
+/**
+ * The earliest post in the story we hold. A dash with a reason when no member carries a
+ * posted time. `startedBy` is set only on proof — see `projectEarliestPost` — and the app
+ * says "Started by" only when it is.
+ */
+export type WireEarliestPost =
+  | { readonly at: null; readonly why: PendingReason }
+  | {
+      readonly at: number;
+      readonly authorLabel: string;
+      readonly permalink: string | null;
+      readonly startedBy: 'quoted' | 'samePicture' | null;
+    };
+
 export interface WireStory {
   readonly id: string;
   readonly title: string;
@@ -628,6 +642,7 @@ export interface WireStory {
   readonly spark: WireSpark;
   readonly momentum: Tone | null;
   readonly firstSeenAt: WireInstant;
+  readonly earliestPost: WireEarliestPost;
   readonly coins: WireCoinLink;
   readonly evidence: readonly WireEvidence[];
   readonly discussion: readonly WireDiscussionPost[];

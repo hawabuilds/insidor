@@ -38,7 +38,7 @@ import type { Rendered } from '../../shared/format/rendered.ts';
 import { Delta, Num, Sparkline, Thumb } from '../../shared/ui/index.ts';
 import { Coins } from './Coins.tsx';
 import { Discussion } from './Discussion.tsx';
-import { EvidenceList } from './Evidence.tsx';
+import { EarliestPost, EvidenceList } from './Evidence.tsx';
 import { storyNotice } from './story-provenance.ts';
 import styles from './story.module.css';
 
@@ -377,7 +377,10 @@ export function Story({ storyId, onBuy, isWatched, onToggleWatch }: StoryProps) 
 
           <div className={styles['tpTabbody']}>
             {tab === 'evidence' ? (
-              <EvidenceList items={story.evidence} now={now} />
+              <>
+                <EarliestPost post={story.earliestPost} now={now} />
+                <EvidenceList items={story.evidence} now={now} />
+              </>
             ) : (
               <Discussion posts={story.discussion} now={now} />
             )}

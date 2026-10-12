@@ -65,3 +65,15 @@ test('no sample address could be mistaken for a real one', () => {
     for (const c of coins) assert.match(c.address, /^SAMPLE/);
   }
 });
+
+test('★ the earliest post decodes with its author; "started by" only from a known proof', () => {
+  const id = decodeBoardTick(fixtureBoard()).order[0] ?? '';
+  const raw = fixtureStory(id) as Record<string, unknown>;
+  const at = 1_800_000_000_000;
+  const started = decodeStory({ ...raw, earliestPost: { at, authorLabel: '@firstpost', permalink: 'https://example.invalid/1', startedBy: 'quoted' } });
+  assert.deepEqual(started.earliestPost, { known: true, at, authorLabel: '@firstpost', permalink: 'https://example.invalid/1', startedBy: 'quoted' });
+  const guessed = decodeStory({ ...raw, earliestPost: { at, authorLabel: '@x', permalink: null, startedBy: 'probably' } });
+  assert.equal(guessed.earliestPost.known && guessed.earliestPost.startedBy, null, 'an unknown proof is dropped, never shown');
+  assert.deepEqual(decodeStory({ ...raw, earliestPost: { at: null, why: 'not_reported' } }).earliestPost, { known: false, pending: 'not_reported' });
+  assert.deepEqual(decodeStory({ ...raw, earliestPost: undefined }).earliestPost, { known: false, pending: 'not_read_yet' }, 'an older server: a dash, not a post');
+});

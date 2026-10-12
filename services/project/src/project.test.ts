@@ -39,6 +39,7 @@ import {
   projectCoin,
   projectCoins,
   projectEvidence,
+  projectEarliestPost,
   projectFirstSeenAt,
   projectLaunch,
   projectMarketCap,
@@ -64,7 +65,7 @@ import type {
   StoryFacts,
 } from './project.ts';
 import { FORBIDDEN_KEYS, FORBIDDEN_SUBSTRINGS, WireLeakError } from './wire.ts';
-import type { PendingReason } from './wire.ts';
+import type { PendingReason, WireEarliestPost } from './wire.ts';
 
 const T0 = 1_755_079_200_000;
 const MIN = 60_000;
@@ -324,6 +325,40 @@ test('first-seen is the earliest member that reported a time, ignoring the ones 
     member({ itemId: 'it_c', postedAt: T0 - 5 * HOUR }),
   ];
   assert.deepEqual(projectFirstSeenAt(members), { at: T0 - 5 * HOUR });
+});
+
+const startedBy = (e: WireEarliestPost): string | null | undefined => (e.at === null ? undefined : e.startedBy);
+
+test('★ the earliest post found is shown with its author; "started by" needs a quote or the same picture', () => {
+  const root = member({ itemId: 'it_root', authorLabel: '@firstpost', postedAt: T0 - 5 * HOUR, permalink: 'https://x.com/firstpost/status/1' });
+  const later = member({ itemId: 'it_later', postedAt: T0 - 2 * HOUR });
+
+  /* A shared name, a carrier, the same subject: the earliest post we found, nothing more. */
+  assert.deepEqual(projectEarliestPost([later, { ...root, relation: { kind: 'nameImage' } }]), {
+    at: T0 - 5 * HOUR,
+    authorLabel: '@firstpost',
+    permalink: 'https://x.com/firstpost/status/1',
+    startedBy: null,
+  });
+  assert.equal(startedBy(projectEarliestPost([later, root])), null, 'being the seed is not proof');
+
+  /* Proof: a later post quotes it, or it reached the story because one did. */
+  const quoting = member({ itemId: 'it_quote', postedAt: T0 - HOUR, relation: { kind: 'lineage', via: 'reproduction', toItem: 'it_root' } });
+  assert.equal(startedBy(projectEarliestPost([later, root, quoting])), 'quoted');
+  assert.equal(startedBy(projectEarliestPost([later, { ...root, relation: { kind: 'lineage', via: 'reproduction', toItem: 'it_later' } }])), 'quoted');
+  assert.equal(
+    startedBy(projectEarliestPost([later, root, { ...quoting, relation: { kind: 'lineage', via: 'rebroadcast', toItem: 'it_root' } }])),
+    null,
+    'a repost is not a version, and proves nothing about who began it',
+  );
+
+  /* Proof: the same picture, edited at most. */
+  assert.equal(startedBy(projectEarliestPost([later, { ...root, relation: { kind: 'picture' } }])), 'samePicture');
+});
+
+test('the earliest post is a dash with a reason when no member has a time', () => {
+  assert.deepEqual(projectEarliestPost([member({ postedAt: null })]), { at: null, why: 'not_reported' });
+  assert.deepEqual(projectEarliestPost([]), { at: null, why: 'not_read_yet' });
 });
 
 test('a story with no members at all reports not_read_yet rather than not_reported', () => {
@@ -1032,8 +1067,8 @@ test('every relation is a sentence and none of them is a number', () => {
     relationText({ kind: 'carrier', carrier: 'textShingle' }),
     relationText({ kind: 'carrier', carrier: 'formatId' }),
     relationText({ kind: 'carrier', carrier: 'entitySpan' }),
-    relationText({ kind: 'lineage', via: 'reproduction' }),
-    relationText({ kind: 'lineage', via: 'rebroadcast' }),
+    relationText({ kind: 'lineage', via: 'reproduction', toItem: null }),
+    relationText({ kind: 'lineage', via: 'rebroadcast', toItem: null }),
     relationText({ kind: 'representation' }),
     relationText({ kind: 'adjudicated' }),
   ];
@@ -1058,7 +1093,7 @@ test('a member with a link becomes checkable evidence', () => {
   );
   const first = page?.evidence[0];
   assert.equal(first?.permalink, 'https://example.com/p/1');
-  assert.equal(first?.relation, 'The earliest post we found with this in it.');
+  assert.equal(first?.relation, 'The first post we found with this in it.');
   assert.deepEqual(first?.postedAt, { at: T0 - 3 * HOUR });
 });
 
@@ -1171,16 +1206,19 @@ test('the row carries exactly the twelve public fields and no thirteenth', () =>
   ]);
 });
 
-test('the story page is the row minus isNew, plus the change, the evidence, the discussion and its provenance', () => {
+test('the story page is the row minus isNew, plus the change, the evidence, the discussion, its earliest post and its provenance', () => {
   /* An exact list, because a field that exists gets rendered eventually. `provenance` was
      added deliberately and is the only field here that is not a fact about the story's
      subject — it is the fact about whether the subject happened, which a reader needs
-     before believing any of the others. Anything else appearing in this list is a leak
-     until somebody argues otherwise in this comment. */
+     before believing any of the others. `earliestPost` is a post and its time, which are
+     facts; its one claim, "started by", is made only on a quote or the same picture.
+     Anything else appearing in this list is a leak until somebody argues otherwise in
+     this comment. */
   const page = projectStory(story(), OPTIONS, OBSERVED_STORY);
   assert.deepEqual(Object.keys(page ?? {}).sort(), [
     'coins',
     'discussion',
+    'earliestPost',
     'evidence',
     'firstSeenAt',
     'id',

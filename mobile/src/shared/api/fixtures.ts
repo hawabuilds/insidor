@@ -166,6 +166,7 @@ function story(s: StorySpec): Record<string, unknown> {
     spark: s.spark,
     momentum: s.momentum,
     firstSeenAt: s.firstSeen,
+    earliestPost: earliestOf(s.evidence),
     coins: s.coins,
     evidence: s.evidence,
     discussion: [],
@@ -177,8 +178,18 @@ function story(s: StorySpec): Record<string, unknown> {
   };
 }
 
+/** The earliest sample post, as the server would send it. Never "started by": a sample proves nothing. */
+function earliestOf(evidence: readonly unknown[]): unknown {
+  let best: { authorLabel: string; permalink: string; at: number } | null = null;
+  for (const e of evidence as readonly { authorLabel: string; permalink: string; postedAt: { at: number | null } }[]) {
+    const at = e.postedAt.at;
+    if (at !== null && (best === null || at < best.at)) best = { authorLabel: e.authorLabel, permalink: e.permalink, at };
+  }
+  return best === null ? noTime('not_reported') : { at: best.at, authorLabel: best.authorLabel, permalink: best.permalink, startedBy: null };
+}
+
 function board(s: Record<string, unknown>): Record<string, unknown> {
-  const { reachDelta24h: _d, evidence: _e, discussion: _x, provenance: _p, ...row } = s;
+  const { reachDelta24h: _d, evidence: _e, discussion: _x, provenance: _p, earliestPost: _f, ...row } = s;
   const coins = s['coins'] as { kind: string; coin?: { marketCapUsd: unknown; priceChange24h: unknown } };
   return {
     ...row,
