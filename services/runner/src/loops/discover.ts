@@ -42,7 +42,9 @@ import { declareSources, type WatchDeps } from '../sources.ts';
 import { discoverPass, type DiscoverDeps, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
 
 /**
- * Five minutes.
+ * Two minutes — the earlier build's ingest cadence, so the catch-all search sees a post
+ * within a couple of minutes of it crossing the floor. What a pass may spend is bounded by
+ * the posts supplier's line, paced over the day, not by how often the pass runs.
  *
  * ★ IT MUST STAY COMFORTABLY BELOW `Policy.ingest.sourceFreshnessMs`, which is thirty,
  * or a perfectly healthy source crosses the freshness bar between passes and the
@@ -51,11 +53,10 @@ import { discoverPass, type DiscoverDeps, type DiscoverMode, type DiscoveryPlan 
  * afternoon. Raise this and that bar has to move with it; they are one decision
  * spelled in two places and this comment is the link between them.
  *
- * It is also the cheapest cadence that matters commercially: two of the three sources
- * bill per call or per run, so a minute would be twelve times the bill for twelve
- * times less new material than an hour of arrivals contains.
+ * The per-call sources (a short-video run, a community listing) are not asked any more often
+ * for this: their own terms are keyword searches, and a free source answers at no cost.
  */
-const EVERY_MS = 300_000;
+const EVERY_MS = 120_000;
 
 /**
  * Last of the offsets. ADMIT is at 0 and reads what this wrote; starting discovery
