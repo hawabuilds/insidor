@@ -195,6 +195,14 @@ export interface RunnerConfig {
   readonly singletonLockName: string;
   readonly heartbeat: HeartbeatConfig;
   readonly discovery: DiscoveryConfig;
+  /**
+   * Whether the RANK loop runs. `off` unless `RANK=on` is set, and off is the only setting
+   * that works today: RANK refuses on every pass until core exports the rate lower bound it
+   * needs (see `rankWork` in work/stages.ts), and a loop that throws every few minutes
+   * buries the log lines that matter. A switch rather than a deleted loop, so turning it on
+   * the day it is built is one line in the environment.
+   */
+  readonly rank: 'off' | 'on';
   /** Whether a vendor may be contacted, and the wallet if one may. See `SpendConfig`. */
   readonly spend: SpendConfig;
   /**
@@ -413,6 +421,7 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     singletonLockName,
     heartbeat,
     discovery,
+    rank: env['RANK'] === 'on' ? 'on' : 'off',
     spend,
     sourceEnv: platformEnv(env),
     judge,
