@@ -81,6 +81,7 @@ function backfillDeps(): BackfillDeps {
   return {
     platforms: { has: (s) => s === X, get: () => source },
     stories: new PgStoryRepo(db),
+    names: new PgJudgementRepo(db),
     items,
     backfill: new PgBackfillRepo(db),
     store: storeArrivals({ authors: new PgAuthorRepo(db), items, observations: new PgObservationRepo(db) }, P, () => NOW),

@@ -132,13 +132,19 @@ export class PgItemRepo implements ItemRepo {
   /**
    * Catch-all posts the judge has not scored yet, newest first — the queue the per-post
    * score works through. Observed posts only: a seeded post is never sent to a paid judge.
+   *
+   * Posts the backfill fetched for a story are scored too (0032): the judge's name for a
+   * post is half of GROUP's name-plus-picture join, and without it a backfilled copy could
+   * only join on a near-identical picture. Scoring one does not put it on the For You feed;
+   * only a catch-all lane does that.
    */
   async catchAllUnscored(at: Millis, limit: number): Promise<readonly Item[]> {
     const rows = await this.#db.query<ItemRow>(
       `${SELECT_ITEM}
         where origin = 'observed'
           and first_seen_at >= $1
-          and exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id)
+          and (exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id)
+               or exists (select 1 from internal.item_backfill b where b.item_id = public.item.item_id))
           and not exists (select 1 from internal.post_judgement j where j.item_id = public.item.item_id)
         order by first_seen_at desc
         limit $2`,

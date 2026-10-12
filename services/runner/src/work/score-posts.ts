@@ -7,8 +7,8 @@
  * post. The bar the answer is held to is core's `postScore`.
  *
  * ★ ONLY CATCH-ALL POSTS, ONLY OBSERVED ONES, AND EACH ONCE. The queue is
- * `PgItemRepo.catchAllUnscored`: found by a catch-all lane, not yet scored, newest first,
- * inside the feed's window. An answer is recorded the moment it arrives, so a restart does
+ * `PgItemRepo.catchAllUnscored`: found by a catch-all lane (or fetched by a story's backfill,
+ * for GROUP's name-plus-picture join), not yet scored, newest first, inside the feed's window. An answer is recorded the moment it arrives, so a restart does
  * not pay for it twice.
  *
  * ★ NO ANSWER IS NOT A NO. A dry run prices the batch and sends nothing; a budget pause or

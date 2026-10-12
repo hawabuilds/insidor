@@ -948,6 +948,13 @@ export interface BackfillPolicy {
   readonly maxReproductionHops: number;
   /** Posts fetched by id per story, across every hop. */
   readonly maxReproducedPosts: number;
+  /**
+   * Posts asked for by the one search back for the story's name, ending at our earliest
+   * post. The source returns the newest first, so this is the stretch just before we caught
+   * the story; each later backfill (after new members, and an earlier earliest post) reaches
+   * further back from there.
+   */
+  readonly searchResultCap: number;
 }
 
 /**
@@ -1569,8 +1576,9 @@ const POLICY_V1: Policy = {
      rather than 15, so the same money finds about three times the new posts), adds the
      slow-burn lane (`feed.slow`), and raises the judge line to $8 and embeddings to $2.
 
-     v22 adds `backfill`: following a promoted story's quotes back to where it started. */
-  version: 'policy.v22',
+     v22 adds `backfill`: following a promoted story's quotes back to where it started.
+     v23 adds `backfill.searchResultCap`, for the one search back for its name. */
+  version: 'policy.v23',
 
   admit: {
     maxAgeMin: 240,
@@ -1918,6 +1926,9 @@ const POLICY_V1: Policy = {
        thread, not a meme travelling. */
     maxReproductionHops: 5,
     maxReproducedPosts: 20,
+    /* 20: one page. Most of what a name search returns is unrelated; GROUP keeps only what
+       matches, so a bigger page buys mostly rejections. */
+    searchResultCap: 20,
   },
 
   rising: {
