@@ -20,11 +20,30 @@
 
 import { storyId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
+import type { ReasonCode } from '@insidor/contracts/reasons.ts';
 import type { MatchEvidence, Story, StoryMember } from '@insidor/contracts/story.ts';
 import type { Fingerprint, Item, Millis } from '@insidor/contracts/vocabulary.ts';
 
 import type { EvidencedMatch } from './match.ts';
 import { shouldPromote } from './promote.ts';
+
+/**
+ * ★ WHICH GROUP ANSWERS LEAVE A POST WITH NO STORY, AND SO START ONE.
+ *
+ * Not only `M6_no_candidate_block`. The runner hands GROUP every open story as the block —
+ * carrier blocking in the store is not built — so once a single story exists, an unrelated
+ * post is scored against it and comes back `M3_below_match_bar` or `M5_generic_carrier`:
+ * "not part of THAT story". Read as "owes nothing", that post would belong nowhere for ever,
+ * and on a live feed only the first moment of the day could ever form a story. Measured,
+ * not argued: the end-to-end test in e2e/ had its unrelated post vanish exactly this way.
+ *
+ * `M4_ambiguous_match` does NOT seed: the post may well belong to one of two stories, and a
+ * third story would be a guess in the other direction. `M9_member_cap` does not either: the
+ * post belongs, the story is full for now, and it waits.
+ */
+export function owesASeed(reason: ReasonCode): boolean {
+  return reason === 'M6_no_candidate_block' || reason === 'M3_below_match_bar' || reason === 'M5_generic_carrier';
+}
 
 /** An item id is `<source>:<id>`; a story id component may not hold the separator. */
 function seedToken(item: Item): string {
