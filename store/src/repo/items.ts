@@ -115,6 +115,39 @@ export class PgItemRepo implements ItemRepo {
     return items.length;
   }
 
+  /**
+   * Note which catch-all lane found these posts (0025). The first lane to find a post
+   * keeps it: a post the media lane found again later was still found by the first one.
+   */
+  async markFoundBy(itemIds: readonly ItemId[], lane: string, at: Millis): Promise<void> {
+    if (itemIds.length === 0) return;
+    await this.#db.query(
+      `insert into internal.item_found_by (item_id, lane, found_at)
+       select id, $2, $3 from unnest($1::text[]) as id
+       on conflict (item_id) do nothing`,
+      [[...itemIds], lane, toTimestamp(at)],
+    );
+  }
+
+  /**
+   * Catch-all posts the judge has not scored yet, newest first — the queue the per-post
+   * score works through. Observed posts only: a seeded post is never sent to a paid judge.
+   */
+  async catchAllUnscored(at: Millis, limit: number): Promise<readonly Item[]> {
+    const rows = await this.#db.query<ItemRow>(
+      `${SELECT_ITEM}
+        where origin = 'observed'
+          and first_seen_at >= $1
+          and exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id)
+          and not exists (select 1 from internal.post_judgement j where j.item_id = public.item.item_id)
+        order by first_seen_at desc
+        limit $2`,
+      [toTimestamp(at), limit],
+    );
+    const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
+    return rows.map((row) => this.#toItem(row, fingerprints));
+  }
+
   async byId(id: ItemId): Promise<Item | null> {
     const rows = await this.#db.query<ItemRow>(`${SELECT_ITEM} where item_id = $1`, [id]);
     const row = rows[0];

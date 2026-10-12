@@ -36,7 +36,7 @@ import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { DiscoveryConfig } from '../config.ts';
-import type { Logger } from '../log.ts';
+import { errorText, type Logger } from '../log.ts';
 import type { Loop, LoopContext, LoopCounts } from '../loop.ts';
 import { declareSources, type WatchDeps } from '../sources.ts';
 import { discoverPass, type DiscoverDeps, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
@@ -78,7 +78,7 @@ const USD_PLACES = 4;
 
 export interface DiscoverLoopDeps {
   readonly platforms: PlatformRegistry;
-  readonly store: (items: readonly Item[], authors: readonly Author[]) => Promise<number>;
+  readonly store: DiscoverDeps['store'];
   readonly discovery: DiscoveryConfig;
   readonly policy: Policy;
   /** The ledger. Read before every call so a refusal can be recorded with its numbers. */
@@ -91,6 +91,11 @@ export interface DiscoverLoopDeps {
   readonly floors: DiscoverDeps['floors'];
   /** The day's hard cap — the lower of the environment's and policy's. */
   readonly dailyCapUsd: number;
+  /**
+   * Score the catch-all posts not yet scored, after the pass that may have found more. Its
+   * failure is logged and never fails the pass: posts that were not scored wait for the next.
+   */
+  readonly scorePosts?: () => Promise<unknown>;
 }
 
 export function discoverLoop(deps: DiscoverLoopDeps): Loop {
@@ -178,6 +183,15 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
           wouldSpendUsdPerDay: Number((result.estimatedUsd * PASSES_PER_DAY).toFixed(USD_PLACES)),
           passesPerDay: PASSES_PER_DAY,
         });
+      }
+
+      /* The per-post score, after the pass that may have found more posts to score. */
+      if (deps.scorePosts !== undefined) {
+        try {
+          await deps.scorePosts();
+        } catch (e) {
+          log.error('post scoring failed; unscored posts wait for the next pass', { err: errorText(e) });
+        }
       }
 
       return {

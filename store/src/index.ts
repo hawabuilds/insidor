@@ -26,7 +26,7 @@ export type { StoryPresentation } from './repo/stories.ts';
 export { PgAssetRepo } from './repo/assets.ts';
 export { PgDecisionRepo, featureHash } from './repo/decisions.ts';
 export { PgFeedFloorRepo } from './repo/feed-floor.ts';
-export { PgJudgementRepo } from './repo/judgements.ts';
+export { PgJudgementRepo, PgPostJudgementRepo } from './repo/judgements.ts';
 export { PgLabelRepo } from './repo/labels.ts';
 export type { LabelKey } from './repo/labels.ts';
 export { PgStageRunRepo } from './repo/runs.ts';

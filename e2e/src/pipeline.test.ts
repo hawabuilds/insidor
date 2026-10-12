@@ -223,7 +223,7 @@ before(async () => {
     { mode: 'keyword', term: 'moo deng', sinceMs: null, untilMs: null, limit: 20, cursor: null },
     { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: NOW + MINUTE },
   );
-  await storeArrivals({ authors: new PgAuthorRepo(db), items: new PgItemRepo(db) }, DEFAULT_POLICY)(
+  await storeArrivals({ authors: new PgAuthorRepo(db), items: new PgItemRepo(db) }, DEFAULT_POLICY, () => clock)(
     page.value.items,
     page.value.authors,
   );

@@ -871,6 +871,21 @@ export interface FeedPolicy {
   readonly pageLimit: number;
 }
 
+/**
+ * The For You and Popular feeds of single posts, and the per-post score that admits a post
+ * to them. A post shows when the catch-all search found it AND the judge, shown that post
+ * alone, called it coinable at or above `qualify.minJudgeConfidence` for what it looked at
+ * — the earlier build's rule. See docs/rising-posts-plan.md for the projection.
+ */
+export interface RisingPolicy {
+  /** How long a post stays eligible after it was posted, and how far back Popular counts. */
+  readonly windowMs: number;
+  /** Rows per feed. */
+  readonly maxRows: number;
+  /** Posts sent to the judge per discovery pass, newest first. The rest wait for the next. */
+  readonly postsPerPass: number;
+}
+
 export interface IngestPolicy {
   /**
    * How long since a configured source last answered, past which it is published as
@@ -1259,6 +1274,7 @@ export interface Policy {
   readonly assets: AssetPolicy;
   readonly ingest: IngestPolicy;
   readonly feed: FeedPolicy;
+  readonly rising: RisingPolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -1426,8 +1442,11 @@ const POLICY_V1: Policy = {
      by a different question from every post before it.
 
      v14 adds `track.youngWindowMin`, `velocityShares` and `velocityMinutes`: a post's first
-     three hours are read on the earlier build's hot, warm and cold tiers, ranked by view rate. */
-  version: 'policy.v14',
+     three hours are read on the earlier build's hot, warm and cold tiers, ranked by view rate.
+
+     v15 adds `rising`: single posts found by the catch-all search are scored alone by the
+     judge, and those at or above the meme-score bar make the For You and Popular feeds. */
+  version: 'policy.v15',
 
   admit: {
     maxAgeMin: 240,
@@ -1749,6 +1768,12 @@ const POLICY_V1: Policy = {
     mediaShare: 0.25,
     lang: 'en',
     pageLimit: 20,
+  },
+
+  rising: {
+    windowMs: 86_400_000, // a day
+    maxRows: 100,
+    postsPerPass: 20,
   },
 
   rank: {
