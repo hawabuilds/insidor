@@ -518,6 +518,7 @@ export async function withRuntime<T>(
             backfillStories({
               platforms,
               stories: repos.stories,
+              names: new PgJudgementRepo(db),
               items: repos.items,
               backfill: new PgBackfillRepo(db),
               store: storeArrivals(repos, policy, () => Date.now() as Millis),

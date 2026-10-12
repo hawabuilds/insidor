@@ -26,7 +26,7 @@ export type { StoryPresentation } from './repo/stories.ts';
 export { PgAssetRepo } from './repo/assets.ts';
 export { PgDecisionRepo, featureHash } from './repo/decisions.ts';
 export { PgBackfillRepo } from './repo/backfill.ts';
-export type { BackfilledPost, BackfillRun } from './repo/backfill.ts';
+export type { BackfilledPost, BackfillRun, BackfillVia } from './repo/backfill.ts';
 export { PgFeedFloorRepo } from './repo/feed-floor.ts';
 export { PgImageEmbeddingRepo } from './repo/image-embeddings.ts';
 export { PgImagePairRepo } from './repo/image-pairs.ts';

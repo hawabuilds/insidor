@@ -17,9 +17,11 @@ import type { ItemId, Millis, StoryId } from '@insidor/contracts';
 import type { Db } from '../client.ts';
 import { reBrand, toMillisRequired, toTimestamp } from '../rows.ts';
 
+export type BackfillVia = 'quote' | 'search';
+
 export interface BackfilledPost {
   readonly storyId: StoryId;
-  readonly via: 'quote';
+  readonly via: BackfillVia;
   /** The post that quoted this one; null when that post has since been deleted. */
   readonly reachedFrom: ItemId | null;
 }
@@ -29,6 +31,10 @@ export interface BackfillRun {
   readonly at: Millis;
   readonly membersAt: number;
   readonly quotedPosts: number;
+  /** What was searched for, and how many posts came back — or, with no search, why not. */
+  readonly search:
+    | { readonly name: string; readonly returned: number }
+    | { readonly name: null; readonly note: 'no_name' | 'not_supported' };
   readonly costUsd: number;
 }
 
@@ -64,7 +70,7 @@ export class PgBackfillRepo {
   }
 
   /** Note posts fetched because of a story. The first story to fetch a post keeps it. */
-  async markPosts(posts: readonly { readonly itemId: ItemId; readonly reachedFrom: ItemId | null }[], storyId: StoryId, via: 'quote', at: Millis): Promise<void> {
+  async markPosts(posts: readonly { readonly itemId: ItemId; readonly reachedFrom: ItemId | null }[], storyId: StoryId, via: BackfillVia, at: Millis): Promise<void> {
     for (const post of posts) {
       await this.#db.query(
         `insert into internal.item_backfill (item_id, story_id, via, reached_from, found_at)
@@ -78,7 +84,7 @@ export class PgBackfillRepo {
   async ofItems(ids: readonly ItemId[]): Promise<ReadonlyMap<ItemId, BackfilledPost>> {
     const out = new Map<ItemId, BackfilledPost>();
     if (ids.length === 0) return out;
-    const rows = await this.#db.query<{ item_id: string; story_id: string; via: 'quote'; reached_from: string | null }>(
+    const rows = await this.#db.query<{ item_id: string; story_id: string; via: BackfillVia; reached_from: string | null }>(
       `select item_id, story_id, via, reached_from from internal.item_backfill where item_id = any($1::text[])`,
       [[...ids]],
     );
@@ -94,22 +100,52 @@ export class PgBackfillRepo {
 
   async record(run: BackfillRun): Promise<void> {
     await this.#db.query(
-      `insert into internal.story_backfill (story_id, ran_at, members_at, quoted_posts, cost_usd)
-       values ($1, $2, $3, $4, $5)
+      `insert into internal.story_backfill
+         (story_id, ran_at, members_at, quoted_posts, search_name, search_returned, search_note, cost_usd)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
        on conflict (story_id) do update set
-         ran_at = excluded.ran_at, members_at = excluded.members_at,
-         quoted_posts = excluded.quoted_posts, cost_usd = excluded.cost_usd`,
-      [run.storyId, toTimestamp(run.at), run.membersAt, run.quotedPosts, run.costUsd],
+         ran_at = excluded.ran_at, members_at = excluded.members_at, quoted_posts = excluded.quoted_posts,
+         search_name = excluded.search_name, search_returned = excluded.search_returned,
+         search_note = excluded.search_note, cost_usd = excluded.cost_usd`,
+      [
+        run.storyId,
+        toTimestamp(run.at),
+        run.membersAt,
+        run.quotedPosts,
+        run.search.name,
+        run.search.name === null ? null : run.search.returned,
+        run.search.name === null ? run.search.note : null,
+        run.costUsd,
+      ],
     );
   }
 
   async last(storyId: StoryId): Promise<BackfillRun | null> {
-    const rows = await this.#db.query<{ ran_at: string | Date; members_at: number; quoted_posts: number; cost_usd: string | number }>(
-      `select ran_at, members_at, quoted_posts, cost_usd from internal.story_backfill where story_id = $1`,
+    const rows = await this.#db.query<{
+      ran_at: string | Date;
+      members_at: number;
+      quoted_posts: number;
+      search_name: string | null;
+      search_returned: number | null;
+      search_note: 'no_name' | 'not_supported' | null;
+      cost_usd: string | number;
+    }>(
+      `select ran_at, members_at, quoted_posts, search_name, search_returned, search_note, cost_usd
+         from internal.story_backfill where story_id = $1`,
       [storyId],
     );
     const row = rows[0];
     if (row === undefined) return null;
-    return { storyId, at: toMillisRequired(row.ran_at, 'ran_at'), membersAt: Number(row.members_at), quotedPosts: Number(row.quoted_posts), costUsd: Number(row.cost_usd) };
+    return {
+      storyId,
+      at: toMillisRequired(row.ran_at, 'ran_at'),
+      membersAt: Number(row.members_at),
+      quotedPosts: Number(row.quoted_posts),
+      search:
+        row.search_name === null
+          ? { name: null, note: row.search_note ?? 'not_supported' }
+          : { name: row.search_name, returned: Number(row.search_returned ?? 0) },
+      costUsd: Number(row.cost_usd),
+    };
   }
 }

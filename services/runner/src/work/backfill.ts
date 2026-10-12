@@ -1,11 +1,17 @@
 /**
  * WHERE A NARRATIVE STARTED, EVEN IF WE CAUGHT IT LATE.
  *
- * Once a story is promoted, follow its posts' quotes back to the posts they quote, and those
- * posts' quotes in turn, up to `backfill.maxReproductionHops`. Each fetched post is stored like any
- * arrival and noted as fetched for this story (internal.item_backfill); GROUP then decides
- * it against this story alone, with the quote as lineage, by its ordinary rules. This file
- * fetches; it never joins anything itself.
+ * Once a story is promoted, two looks back:
+ *
+ *   quotes   follow its posts' quotes back to the posts they quote, and those posts' quotes
+ *            in turn, up to `backfill.maxReproductionHops`.
+ *   search   one search for the name the judge gave the story, for posts published before
+ *            the earliest one we hold, at most `backfill.searchResultCap` of them.
+ *
+ * Each fetched post is stored like any arrival and noted as fetched for this story
+ * (internal.item_backfill); GROUP then decides it against this story alone — a quoted post
+ * with the quote as lineage, a search result on its text and picture — by its ordinary
+ * rules. This file fetches; it never joins anything itself.
  *
  * Once per story, and again only when the story has gained members since (the repo's `due`).
  * Every lookup is priced first, checked against the posts line, skipped on a dry run, and
@@ -19,15 +25,21 @@
 import type { Author, Item, ItemId, Millis, SourceId, StoryId } from '@insidor/contracts';
 import { parseItemId } from '@insidor/contracts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
+import type { DiscoveryQuery } from '@insidor/contracts/ports/platform.ts';
+import type { JudgementRepo } from '@insidor/contracts/ports/store.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import type { PgBackfillRepo, PgItemRepo, PgStoryRepo } from '@insidor/store';
+
+import { NotImplemented } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
 
 export interface BackfillDeps {
   readonly platforms: Pick<PlatformRegistry, 'has' | 'get'>;
-  readonly stories: Pick<PgStoryRepo, 'membersForStories'>;
+  readonly stories: Pick<PgStoryRepo, 'membersForStories' | 'byId'>;
+  /** The judge's name for each story — what the search back looks for. */
+  readonly names: Pick<JudgementRepo, 'latest'>;
   readonly items: Pick<PgItemRepo, 'byIds'>;
   readonly backfill: Pick<PgBackfillRepo, 'due' | 'countSince' | 'markPosts' | 'record'>;
   /** Store fetched posts as arrivals: the accounts, the posts, their first reading. */
@@ -93,10 +105,92 @@ async function backfillOne(deps: BackfillDeps, storyId: StoryId, now: Millis): P
     frontier = await unknownTargets(deps, got.items);
   }
 
+  const searched = await searchBack(deps, storyId, [...new Set(members.map((m) => m.source))], now);
+  if (searched === null) return null;
+
   if (deps.mode === 'dry') return { fetched: 0, usd: 0 };
-  await deps.backfill.record({ storyId, at: now, membersAt: members.length, quotedPosts: fetched, costUsd: usd });
-  deps.log.info('story backfilled', { story: storyId, members: members.length, quotedPosts: fetched, usd });
-  return { fetched, usd };
+  const search = searched.name === null ? { name: null, note: searched.note } : { name: searched.name, returned: searched.returned };
+  const total = usd + searched.usd;
+  await deps.backfill.record({ storyId, at: now, membersAt: members.length, quotedPosts: fetched, search, costUsd: total });
+  deps.log.info('story backfilled', { story: storyId, members: members.length, quotedPosts: fetched, search, usd: total });
+  return { fetched: fetched + (searched.name === null ? 0 : searched.returned), usd: total };
+}
+
+type Searched =
+  | { readonly name: string; readonly returned: number; readonly usd: number }
+  | { readonly name: null; readonly note: 'no_name' | 'not_supported'; readonly usd: 0 };
+
+/**
+ * One search per source of the story's posts, for the story's name, ending at our earliest
+ * post. Null when it could not be completed, so the story is tried again.
+ *
+ * ★ NEWEST FIRST, NOT OLDEST. The sources return the latest posts before the cutoff and
+ * cannot be asked for the oldest, so this reads the stretch just before we caught the
+ * story. A post found here that joins moves the story's earliest post back, and the next
+ * backfill — the story has a new member — searches from there.
+ */
+async function searchBack(deps: BackfillDeps, storyId: StoryId, sources: readonly SourceId[], now: Millis): Promise<Searched | null> {
+  const name = (await deps.names.latest([storyId])).get(storyId)?.judgement.proposedName?.trim() ?? '';
+  if (name === '') return { name: null, note: 'no_name', usd: 0 };
+  const story = await deps.stories.byId(storyId);
+  if (story === null) return null;
+
+  let asked = false;
+  let returned = 0;
+  let usd = 0;
+  for (const source of sources) {
+    if (!deps.platforms.has(source)) continue;
+    const adapter = deps.platforms.get(source);
+    if (!adapter.capabilities.discovery.includes('keyword')) continue;
+    const query: DiscoveryQuery = {
+      mode: 'keyword',
+      term: name,
+      sinceMs: null,
+      untilMs: story.earliestPostAt,
+      limit: deps.policy.backfill.searchResultCap,
+      cursor: null,
+    };
+    let estimate;
+    try {
+      estimate = adapter.estimate({ kind: 'discover', query });
+    } catch (e) {
+      deps.log.error('backfill search cannot be priced; not asking', { story: storyId, source, err: errorText(e) });
+      continue;
+    }
+    if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) {
+      deps.log.info('backfill paused for budget; the story is tried again later', { story: storyId, source, wouldSpendUsd: estimate.usd });
+      return null;
+    }
+    if (deps.mode === 'dry') {
+      deps.log.info('DRY RUN — search back, not sent', { story: storyId, source, name, wouldSpendUsd: estimate.usd });
+      asked = true;
+      continue;
+    }
+
+    try {
+      const line = deps.meter.line(estimate.vendor);
+      const result = await adapter.discover(query, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: 1, deadline: (now + LOOKUP_DEADLINE_MS) as Millis });
+      asked = true;
+      usd += result.spend.usd;
+      const found = result.value.items;
+      returned += found.length;
+      if (found.length > 0) {
+        await deps.store(found, result.value.authors);
+        await deps.backfill.markPosts(found.map((item) => ({ itemId: item.itemId, reachedFrom: null })), storyId, 'search', now);
+      }
+    } catch (e) {
+      /* A source that cannot search back to a cutoff says so by type; it is not an outage,
+         and the story is not tried again for it. */
+      if (e instanceof NotImplemented) {
+        deps.log.info('this source cannot search back to a cutoff; skipped', { story: storyId, source });
+        continue;
+      }
+      deps.log.error('backfill search failed; the story is tried again later', { story: storyId, source, err: errorText(e) });
+      return null;
+    }
+  }
+  if (!asked) return { name: null, note: 'not_supported', usd: 0 };
+  return { name, returned, usd };
 }
 
 /** The posts these quote that we do not have yet. */
