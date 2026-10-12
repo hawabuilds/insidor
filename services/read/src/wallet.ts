@@ -16,6 +16,10 @@
  * ★ A NARRATIVE ONLY ON A CONFIDENT MATCH. A coin shows the narrative whose page names it as its
  * one coin (`kind: 'one'`); "several", "unsure" and "none" show nothing.
  *
+ * Each read may add one point to the balance chart (0041's narrow append function, at most once
+ * a `snapshotGapMs`); `history` serves those points. The chart starts when the wallet was first
+ * read, and says so.
+ *
  * An outage is said, never shown as an empty wallet. Answers are kept `wallet.keepMs` and each
  * client may ask `wallet.perClient` times a `windowMs`, so free RPC and parsing tiers last.
  */
@@ -40,6 +44,17 @@ select c.address, c.story_id, c.created_at, n.name, n.ticker
   left join public.coin_name n on n.address = c.address
  where c.creator = $1
  order by c.created_at desc`;
+
+/* The balance chart's one write: append a point if the wallet's newest is older than the gap (0041). */
+export const RECORD_SNAPSHOT_SQL = `select public.record_wallet_snapshot($1, $2, $3)`;
+export const SNAPSHOTS_SQL = `
+select (extract(epoch from at) * 1000)::bigint as t, total_usd
+  from public.wallet_snapshot
+ where address = $1 and at >= $2
+ order by at asc`;
+
+/** The chart's windows, Trador's: a day, a week, a month, everything. */
+const HISTORY_RANGES: Readonly<Record<string, number | null>> = { '1d': 86_400_000, '1w': 604_800_000, '1m': 2_592_000_000, all: null };
 
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const RANGES = ['1h', '6h', '24h'] as const;
@@ -147,6 +162,13 @@ export function createWallet(deps: WalletDeps) {
     for (const h of shown) h.imageUrl = pictures.get(h.address) ?? null;
 
     const coinsUsd = holdings.reduce((s, h) => s + (h.valueUsd.v ?? 0), 0);
+    /* One point for the balance chart, at most once a gap; best effort — the holdings are the
+       product, the chart is the decoration, and a failed write never fails the read. */
+    if (solUsd !== null) {
+      deps.db.query(RECORD_SNAPSHOT_SQL, [address, sol * solUsd + coinsUsd, deps.policy.snapshotGapMs]).catch((e: unknown) => {
+        deps.log.info('wallet snapshot not recorded', { err: e instanceof Error ? e.message : String(e) });
+      });
+    }
     const unpriced = holdings.filter((h) => h.valueUsd.v === null).length;
 
     const createdRows = await deps.db.query(CREATED_SQL, [address]);
@@ -183,14 +205,37 @@ export function createWallet(deps: WalletDeps) {
     });
   }
 
+  const allow = (client: string, now: number): boolean => {
+    const recent = (calls.get(client) ?? []).filter((t) => now - t < deps.policy.windowMs);
+    if (recent.length >= deps.policy.perClient) return false;
+    calls.set(client, [...recent, now]);
+    return true;
+  };
+
   return {
+    /** GET /wallet/:address/history?range= — the balance chart's points, oldest first. */
+    async history(address: string, rawRange: string | null, client: string) {
+      if (!ADDRESS.test(address)) return json(400, { error: 'bad request' });
+      const now = deps.now();
+      if (!allow(client, now)) return json(429, { error: 'slow down' });
+      const range = rawRange !== null && rawRange in HISTORY_RANGES ? rawRange : '1w';
+      const span = HISTORY_RANGES[range] ?? null;
+      const rows = await deps.db.query(SNAPSHOTS_SQL, [address, new Date(span === null ? 0 : now - span)]);
+      return json(200, {
+        range,
+        points: rows.flatMap((r) => {
+          const t = Number(r['t']);
+          const v = Number(r['total_usd']);
+          return Number.isFinite(t) && Number.isFinite(v) ? [{ t, value: v }] : [];
+        }),
+      });
+    },
+
     async wallet(address: string, rawRange: string | null, client: string) {
       if (!ADDRESS.test(address)) return json(400, { error: 'bad request' });
       const range: Range = (RANGES as readonly string[]).includes(rawRange ?? '') ? (rawRange as Range) : '24h';
       const now = deps.now();
-      const recent = (calls.get(client) ?? []).filter((t) => now - t < deps.policy.windowMs);
-      if (recent.length >= deps.policy.perClient) return json(429, { error: 'slow down' });
-      calls.set(client, [...recent, now]);
+      if (!allow(client, now)) return json(429, { error: 'slow down' });
       const key = `${address}:${range}`;
       const held = kept.get(key);
       if (held !== undefined && now - held.at < deps.policy.keepMs) return held.reply;
