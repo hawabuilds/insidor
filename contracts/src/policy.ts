@@ -477,6 +477,11 @@ export interface GroupPolicy {
   /** Merge two stories when this share of one's carriers is present in the other. */
   readonly mergeCarrierOverlap: number;
   readonly maxMembersPerInterval: number;
+  /**
+   * Post images sent to the embedding vendor per discovery pass, newest first. The rest wait
+   * for the next pass; the embeddings supplier line, paced over the day, is the real limit.
+   */
+  readonly imagesPerPass: number;
 }
 
 /* ── QUALIFY ──────────────────────────────────────────────────────────── */
@@ -1494,8 +1499,11 @@ const POLICY_V1: Policy = {
 
      v18 adds `feed.maxPagesPerLane` (up to 3 full pages per catch-all lane per pass, the
      posts line still the limit) and `judge.postBatchMaxOutputTokens` (800 per batch of
-     single posts, so the judge line is reserved near the real cost). */
-  version: 'policy.v18',
+     single posts, so the judge line is reserved near the real cost).
+
+     v19 adds `group.imagesPerPass`: each new post's picture is embedded once, for GROUP's
+     image evidence. */
+  version: 'policy.v19',
 
   admit: {
     maxAgeMin: 240,
@@ -1664,6 +1672,7 @@ const POLICY_V1: Policy = {
     promoteMinDistinctAuthors: 2,
     promoteMinDistinctSources: 1,
     mergeCarrierOverlap: 0.6,
+    imagesPerPass: 40,
     maxMembersPerInterval: 200,
   },
 

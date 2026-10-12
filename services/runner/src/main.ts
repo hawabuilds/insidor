@@ -167,7 +167,10 @@ async function main(): Promise<void> {
         log,
         watch: runtime.watch,
         floors: runtime.feedFloors,
-        scorePosts: runtime.scorePosts,
+        afterPass: [
+          ['score-posts', runtime.scorePosts],
+          ['embed-images', runtime.embedImages],
+        ],
         /* The catch-all's targets are set from the posts supplier's line — search and re-reads
            share it — never above the day's cap. */
         dailyCapUsd: Math.min(

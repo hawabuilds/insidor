@@ -30,6 +30,18 @@ importers:
         specifier: workspace:*
         version: link:../../kit/vendor
 
+  adapters/embed/voyage:
+    dependencies:
+      '@insidor/contracts':
+        specifier: workspace:*
+        version: link:../../../contracts
+      '@insidor/meter':
+        specifier: workspace:*
+        version: link:../../meter/spend
+      '@insidor/vendor-kit':
+        specifier: workspace:*
+        version: link:../../kit/vendor
+
   adapters/judge/anthropic:
     dependencies:
       '@insidor/contracts':
@@ -392,6 +404,9 @@ importers:
       '@insidor/core':
         specifier: workspace:*
         version: link:../../core
+      '@insidor/embed-voyage':
+        specifier: workspace:*
+        version: link:../../adapters/embed/voyage
       '@insidor/judge-anthropic':
         specifier: workspace:*
         version: link:../../adapters/judge/anthropic
