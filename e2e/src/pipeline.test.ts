@@ -295,8 +295,9 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   assert.equal(first.failed, 0, first.firstError ?? '');
   assert.equal(lookups, 1, 'four due reads, one call');
 
-  /* Five minutes on, the posts are young enough to be on the four-minute tier: read again. */
-  clock = (NOW + 7 * MINUTE) as Millis;
+  /* No view rate yet after one reading, so each post sits on the warm tier: read again
+     eight minutes on. */
+  clock = (NOW + 11 * MINUTE) as Millis;
   const second = await loops.track.run(ctx);
   assert.equal(second.failed, 0, second.firstError ?? '');
   assert.equal(lookups, 2);

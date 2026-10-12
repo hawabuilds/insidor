@@ -97,6 +97,8 @@ export type { TickerEvidence, TickerUse } from './create/ticker.ts';
  * thresholds, so it lives here and nowhere else.
  */
 export { latestCounters, observationsFrom } from './kinetics/readings.ts';
+export { rankByVelocity } from './track/velocity.ts';
+export type { VelocityRank } from './track/velocity.ts';
 
 /**
  * The catch-all search's approval floor: what is sent, what each lane aims at, how a pass

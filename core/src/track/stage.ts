@@ -53,6 +53,7 @@ import { decide as makeDecision } from '../decide.ts';
 import { isTerminal, type LifecycleReading } from '../kinetics/lifecycle.ts';
 import { MS_PER_HOUR, MS_PER_MINUTE } from '../math.ts';
 import { ageFloorTier, nextRead, type Schedule } from './schedule.ts';
+import { VELOCITY_RANKS, type VelocityRank } from './velocity.ts';
 
 /**
  * The stage's identity, copied onto every row it writes. See `admit/stage.ts` for the
@@ -65,8 +66,8 @@ import { ageFloorTier, nextRead, type Schedule } from './schedule.ts';
  * system, and the pollution is invisible until somebody fits on it.
  */
 export const NAME = 'track' as const;
-export const FEATURE_SET: FeatureSetId = 'item.track.v2';
-export const DECIDER = 'rule:track@2';
+export const FEATURE_SET: FeatureSetId = 'item.track.v3';
+export const DECIDER = 'rule:track@3';
 
 const PRESENT = 1;
 const ABSENT = 0;
@@ -108,6 +109,12 @@ export interface TrackInput {
   /** Reads left in this interval's budget, as a number. Nothing is queried here. */
   readonly readsAvailable: number;
   readonly costUsd: number;
+  /**
+   * Where this post's view rate ranks among everything being tracked — see velocity.ts.
+   * Null before the post has a measured rate. Only read in the post's first
+   * `track.youngWindowMin`.
+   */
+  readonly velocityRank: VelocityRank | null;
 }
 
 /* ── the schedule this item is on ─────────────────────────────────────── */
@@ -142,6 +149,12 @@ function ageAtLastRead(input: TrackInput): number {
 
 function plan(input: TrackInput, p: Policy): Plan {
   const planned = ladder(input, p);
+  /* ★ A POST'S FIRST HOURS: THE EARLIER BUILD'S HOT, WARM AND COLD TIERS, by view-rate rank.
+     An unranked post — no rate yet — sits on warm. The holdout keeps its full grid. */
+  if (!input.isHeldBack && ageAtLastRead(input) < p.track.youngWindowMin * MS_PER_MINUTE) {
+    const minutes = p.track.velocityMinutes[input.velocityRank ?? 'warm'];
+    return { ...planned, schedule: { tier: planned.schedule.tier, dueAt: input.lastReadAt + minutes * MS_PER_MINUTE } };
+  }
   /* ★ THE AGE FLOOR, applied last so it can only slow a post down. The holdout is exempt:
      it is on the full grid for its whole life, whatever its age. */
   const floor = input.isHeldBack ? 0 : ageFloorTier(ageAtLastRead(input), p);
@@ -206,10 +219,13 @@ export function extract(input: TrackInput, p: Policy, ctx: StageContext): Featur
     observationCount: input.observations.length,
 
     currentTier: input.tier,
+    /* v3: the view-rate rank a young post was scheduled by — hot 2, warm 1, cold 0. */
+    velocityRank: input.velocityRank === null ? null : VELOCITY_RANKS.length - 1 - VELOCITY_RANKS.indexOf(input.velocityRank),
     /* v2: the age floor the schedule was held to, so a row says why a post read slowly. */
     ageFloorTier: input.isHeldBack ? 0 : ageFloorTier(ageAtLastRead(input), p),
     scheduledTier: schedule.tier,
-    scheduledIntervalMin: grid[schedule.tier] ?? null,
+    /* The interval actually scheduled, which in a post's first hours comes from its view-rate rank and not the grid. */
+    scheduledIntervalMin: (schedule.dueAt - input.lastReadAt) / MS_PER_MINUTE,
     probationTier,
     // Negative when overdue, which is the useful sign: a large negative number here on
     // many items at once is the queue falling behind, and it is visible in the log
