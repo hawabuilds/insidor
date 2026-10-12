@@ -24,7 +24,7 @@ test('no transport at all reads as a snapshot, not as a failure', () => {
   const readout = readLink(meta('idle'), NOW);
   assert.equal(readout.status, 'off');
   assert.equal(readout.label, 'not streaming');
-  /* This is what a sample-data build shows, and it is not an error state. */
+  /* This is what an environment with no live transport shows, and it is not an error state. */
   assert.doesNotMatch(readout.title, /down|failed|error/i);
 });
 

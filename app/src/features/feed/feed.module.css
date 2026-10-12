@@ -63,13 +63,6 @@
   white-space: nowrap;
 }
 
-/* Her `.narr-data-tag` amber (index.css:811) — the one hue she reserves for
-   degraded-but-not-broken. Used when the numbers are invented. */
-.simtagFixtures {
-  color: #ffb020;
-  border-color: rgba(255, 176, 32, 0.35);
-}
-
 /* ===== the Trending sub-tabs (index.css:770-772) =====
    Not a chip group: two bare Clash Display 700 words, 28px apart, muted until selected. No
    pill, no underline, no tray. */
@@ -606,12 +599,12 @@
 }
 
 /* ===== seeded-board notice =====
-   The SAME amber recipe as the shell's .fixtureBar and the sources banner, deliberately
-   and not by coincidence: amber is what this app means by "degraded but not broken", and
-   a fourth treatment would dilute the one signal that already means something. The
-   headline is inline and uppercase like .fixtureBar's, because this bar makes the same
-   KIND of claim — everything below this line is invented — about the database rather
-   than about the bundle. Margins match so the two stack without a seam when both are up. */
+   The SAME amber recipe as the sources banner, deliberately and not by coincidence: amber
+   is what this app means by "degraded but not broken", and a second treatment would
+   dilute the one signal that already means something. The headline is inline and
+   uppercase because this bar makes a hard claim — everything below this line is invented
+   in the database — and margins match the sources banner so the two stack without a seam
+   when both are up. */
 .provenanceBar {
   margin: 12px 26px 0;
   padding: 10px 12px;

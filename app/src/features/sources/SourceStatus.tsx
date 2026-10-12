@@ -167,7 +167,7 @@ export function SourceStatus({ view }: { view: SourcesView }) {
  * The sentence, when one is owed. Rendered by the shell, directly under the nav.
  *
  * ★ IT IS THE APP'S ONE AMBER SURFACE AND NOT A SECOND ONE. The rail's `.pausedBanner`, the
- * pairs screen's reuse of it and the shell's `.fixtureBar` are all this same recipe, and
+ * pairs screen's reuse of it and the board's `.provenanceBar` are all this same recipe, and
  * amber is what this app means by "degraded but not broken". A second treatment would dilute
  * the one signal that already means something.
  *

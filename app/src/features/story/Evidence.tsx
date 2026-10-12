@@ -74,7 +74,7 @@ export function EvidenceList({ items, now }: { items: readonly EvidenceItem[]; n
   if (items.length === 0) {
     return (
       <div className={styles['empty']}>
-        <b>No posts recorded for this story yet.</b>
+        <b>No posts yet.</b>
         Evidence is the record of what we actually saw. When nothing has been collected, this
         list stays empty rather than being filled in from the story text.
       </div>

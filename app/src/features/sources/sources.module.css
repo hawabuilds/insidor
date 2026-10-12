@@ -6,7 +6,7 @@
  *   nav's established treatment for "a quiet fact rather than a control". The micro-type is
  *   the rail's `.status` size — 10px, --dim — which is this app's settled way of saying "a
  *   fact ABOUT a surface rather than a value IN it". The banner is the app's single amber
- *   surface, unchanged, at the shell margins `.fixtureBar` already uses.
+ *   surface, unchanged, at the shell margins `.provenanceBar` already uses.
  *
  * ★ AND THE PIPS ARE NOT COLOURED DOTS. Every state carries a SHAPE — filled disc, hollow
  *   ring, diamond — because roughly one man in twelve cannot separate the red from the lime,
@@ -219,8 +219,8 @@
   }
 }
 
-/* ★ THE SHELL'S BANNER. The app's one amber surface, unchanged, at the margins `.fixtureBar`
-   already uses — same 12% fill, same 35% border, same mono 11px. It is reused rather than
+/* ★ THE SHELL'S BANNER. The app's one amber surface, unchanged, at the margins
+   `.provenanceBar` already uses — same 12% fill, same 35% border, same mono 11px. It is reused rather than
    redrawn for the reason Pairs.tsx gives when it imports the rail's stylesheet for one
    class: amber is this app's single "degraded but not broken" signal, and a second amber
    would dilute the one that already means something.

@@ -37,7 +37,7 @@ function row(id: string, reach: number): BoardRow {
 
 function tick(n: number, order: readonly string[], rows: readonly BoardRow[]): BoardTick {
   /* `observed` so these tests say nothing about provenance: every one of them is about
-     ordering, freezing or the link, and a fixture that announced itself seeded would put
+     ordering, freezing or the link, and a frame that announced itself seeded would put
      an unrelated claim into assertions that are not checking it. The provenance-carrying
      behaviour has its own test below. */
   return { tick: n, order, rows, provenance: { kind: 'observed' } };
@@ -134,8 +134,8 @@ test('a board with no transport is idle, not dropped', () => {
   const store = createBoardStore({ now: () => 500 });
   assert.equal(store.getMeta().link, 'idle');
 
-  /* App.tsx calls this when there is no channel to open at all — sample data, or an
-     environment with no EventSource. Nothing was ever subscribed, so nothing was lost. */
+  /* App.tsx calls this when there is no channel to open at all — an environment with no
+     EventSource. Nothing was ever subscribed, so nothing was lost. */
   store.setConnected(false);
   assert.equal(store.getMeta().link, 'idle', 'a board that never streamed reported a lost connection');
   assert.equal(store.getMeta().linkChangedAt, 0);

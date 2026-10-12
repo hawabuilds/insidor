@@ -32,7 +32,6 @@ import {
   useBoardMeta,
   useBoardOrder,
   useFreezeWhileInteracting,
-  USING_FIXTURES,
 } from '../../shared/api/index.ts';
 import { formatDuration } from '../../shared/format/duration.ts';
 import type { BuyAction } from './row-action.ts';
@@ -44,24 +43,16 @@ import styles from './feed.module.css';
 const CLOCK_MS = 1_000;
 
 /**
- * Where the numbers on this screen came from. Derived, not asserted: a hardcoded "ingest is
- * not running" is a sentence that goes stale the day it starts running, and a provenance
- * label that has quietly become false is worse than none.
- *
- * `USING_FIXTURES` is a build-time literal — false whenever a read endpoint is configured, and
- * the fixtures are dropped from the bundle entirely in a production build.
+ * Where the numbers on this screen came from. There is one answer now, because the app has
+ * no other source: every row was read from the read service, which computes it from what the
+ * pipeline stored. Whether it is still moving is a separate fact and the status line beside
+ * the board says it, so this label makes no claim about whether anything is ingesting.
  */
-const SOURCE = USING_FIXTURES
-  ? {
-      label: 'sample data',
-      title:
-        'Every number on this board is invented. No database and no ingest are connected — these rows exist to show the rules, not the market.',
-    }
-  : {
-      label: 'local database',
-      title:
-        'This board is computed from the local database. Nothing is ingesting into it right now, so it is a snapshot rather than a market feed.',
-    };
+const SOURCE = {
+  label: 'database',
+  title:
+    'This board is read from the database the pipeline writes to. The status line below says whether it is updating live.',
+};
 
 /**
  * Her Trending sub-tabs (index.html:769-774). Two bare words, not a chip group.
@@ -156,7 +147,7 @@ export function Feed({ viewId, store, title, sub, onOpenStory, onBuy }: FeedProp
         <div className={styles['vsub']}>
           <span>{sub}</span>
           <span
-            className={`${styles['simtag']} ${USING_FIXTURES ? styles['simtagFixtures'] : ''}`}
+            className={styles['simtag']}
             title={SOURCE.title}
           >
             {SOURCE.label}
@@ -265,15 +256,15 @@ export function Feed({ viewId, store, title, sub, onOpenStory, onBuy }: FeedProp
                 </>
               ) : read === 'failed' ? (
                 <>
-                  <b>The board could not be read.</b>
-                  The request failed, so this board is empty because we could not ask — not
-                  because nothing has been published. Reopen the screen to try again.
+                  <b>Couldn’t read the board.</b>
+                  The read service did not answer, so this board is empty because we could not
+                  ask — not because nothing has been published. Reopen the screen to try again.
                 </>
               ) : (
                 <>
-                  <b>Nothing is on the board yet.</b>
-                  The board publishes stories once there are stories to publish. This is an
-                  empty board, not a board that failed to load.
+                  <b>No stories yet.</b>
+                  The read service answered and its board is empty. Stories appear here once
+                  the pipeline has published some; this is not a board that failed to load.
                 </>
               )}
             </div>

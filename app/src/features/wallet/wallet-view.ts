@@ -187,8 +187,8 @@ export function walletView(state: WalletState): WalletView {
       };
 
     /* The resting state says nothing. A note here would be a note that is always on, and a
-       note that is always on is a note nobody reads — the same argument the fixture bar and
-       the source banner both turn on. */
+       note that is always on is a note nobody reads — the same argument the provenance bar
+       and the source banner both turn on. */
     case 'disconnected':
       return { kind: 'disconnected', action: CONNECT, note: null, account: null };
 

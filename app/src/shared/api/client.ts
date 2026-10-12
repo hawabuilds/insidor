@@ -15,6 +15,7 @@
 
 import { notImplemented } from '../not-implemented.ts';
 import { createLiveChannel } from './live/channel.ts';
+import { SAME_ORIGIN_READ_PATH } from './read-path.ts';
 import type { EventStreamFactory, LiveChannel, LiveHandlers } from './live/channel.ts';
 import type { BoardTick } from './wire/board.ts';
 import type { LaunchFeed } from './wire/launch.ts';
@@ -45,79 +46,22 @@ export class ReadError extends Error {
  * The read endpoint, from the build environment. Not a runtime config fetch: a board that
  * cannot start until a config request lands is a board with a slower first paint than the
  * data it shows is old.
- */
-const BASE = (import.meta.env?.['VITE_READ_URL'] as string | undefined) ?? '';
-
-/**
- * No endpoint configured, in a dev build: serve the sample payloads instead of failing.
  *
- * Both halves of that condition matter. `import.meta.env.DEV` is a literal the bundler
- * replaces, so in a production build this is `false && ...` and the whole branch — plus the
- * dynamic import of `fixtures.ts`, plus the fixtures themselves — is dropped from the output.
- * There is no runtime flag that can turn sample data on in front of a user. The one build-time
- * switch that can is `VITE_SAMPLE_DATA=on`, set deliberately on a deploy (sample-switch.ts).
+ * ★ UNSET MEANS THE SAME ORIGIN, NEVER "SOMETHING ELSE". The deploy proxies `/api/read`
+ * (read-path.ts) to the read service, and so does the app's own dev server, so an
+ * unconfigured build still asks the real service. There used to be a second answer here: an unconfigured dev build, or one built
+ * with VITE_SAMPLE_DATA=on, served invented payloads from a fixtures module. That path is gone
+ * and must not come back. A build with nothing behind it now shows the screens' "could not be
+ * read" states, which is exactly what is true of it; `vite.config.ts` refuses to build if the
+ * old switch is set, and `src/no-sample-data.test.ts` fails if anything the entry point can
+ * reach holds sample or test-only data.
  *
- * The payloads still go through `read`'s caller and therefore through `decode.ts`, exactly
- * like a network response. Fixtures that bypassed the decoder could hold shapes the server
- * can never send, and every screen designed against them would be designed against a wire
- * format that does not exist.
+ * A trailing slash is dropped so `${BASE}${path}` never doubles one.
  */
-const USE_FIXTURES =
-  (import.meta.env?.DEV === true && BASE === '') ||
-  /* ★ THE PRODUCTION EXCEPTION, AND THE ONLY ONE: a build configured with
-     VITE_SAMPLE_DATA=on (see sample-switch.ts; vite.config.ts fails the build if it is set
-     beside VITE_READ_URL). Kept inline as a literal comparison so the bundler still folds it
-     and drops the fixtures from every build that does not set it. */
-  import.meta.env?.VITE_SAMPLE_DATA === 'on';
-
-/**
- * Exported so the shell can SAY it is showing sample data.
- *
- * Non-negotiable: numbers that look like measurements have to be labelled as not being
- * measurements, on screen, every second they are up. An unlabelled fixture is how a
- * screenshot of invented market caps ends up in a pitch deck.
- */
-export const USING_FIXTURES = USE_FIXTURES;
-
-async function readFixture(path: string): Promise<unknown> {
-  const { fixtureBoard, fixtureLaunches, fixturePairs, fixtureSources, fixtureStory } =
-    await import('./fixtures.ts');
-  if (path.startsWith('/board/')) return fixtureBoard();
-  /* The pairs screen gets a branch for the launches rail's reason: without one, the default
-     dev experience — no VITE_READ_URL — would show that screen's failure state on every
-     load, and a failure state that is always on is a failure state nobody reads. What comes
-     back is a raw wire payload and goes through `decodePairFeed` like anything off the
-     network, so a fixture cannot hold a shape the server could never send. */
-  if (path.startsWith('/pairs/')) return fixturePairs();
-  /* The launches rail gets a branch rather than the 501 below, because without one the
-     default dev experience — no VITE_READ_URL — would show the rail's ERROR state on every
-     load, and an error state that is always on is an error state nobody reads. What comes
-     back is a raw wire payload and goes through `decodeLaunchFeed` like anything off the
-     network, so a fixture cannot hold a shape the server could never send. */
-  if (path.startsWith('/launches/')) return fixtureLaunches();
-  /* The indicator gets a branch for the same reason, and it is the sharpest case of it: with
-     no branch the shell would poll, get a 501, and show "not updating" in the nav on every
-     dev load — a permanent broken-looking corner over sample data that is working perfectly.
-     What comes back is a raw wire payload and goes through `decodeSourceFeed` like anything
-     off the network. */
-  if (path.startsWith('/sources/')) return fixtureSources();
-  if (path.startsWith('/story/')) {
-    const id = decodeURIComponent(path.slice('/story/'.length));
-    const story = fixtureStory(id);
-    /* An id the fixtures do not cover is a 404, not an invented page. Fabricating a story
-       for every id would hide the fact that this endpoint does not exist yet. */
-    if (story === null) throw new ReadError(path, 404);
-    return story;
-  }
-  /* Quotes are a live-market call. There is no honest sample of one, because a stale quote
-     is not a quote — so this reports missing rather than returning a plausible number. */
-  throw new ReadError(path, 501);
-}
+const CONFIGURED = ((import.meta.env?.['VITE_READ_URL'] as string | undefined) ?? '').trim();
+const BASE = (CONFIGURED === '' ? SAME_ORIGIN_READ_PATH : CONFIGURED).replace(/\/+$/, '');
 
 async function read(path: string, signal?: AbortSignal): Promise<unknown> {
-  if (USE_FIXTURES) return readFixture(path);
-
-
   const response = await fetch(`${BASE}${path}`, {
     headers: { accept: 'application/json' },
     /* The board is never cacheable — every number is stale within a tick — so say so once
@@ -237,19 +181,13 @@ export type { LiveChannel, LiveHandlers } from './live/channel.ts';
  * exists for: `onSubscribed` fires on EVERY subscribe, and the caller must turn it into an
  * authoritative refetch, because broadcast has no replay.
  *
- * Two honest refusals rather than a channel that pretends:
+ * One honest refusal rather than a channel that pretends:
  *
- *   - With no read endpoint configured, the board is sample data and there is nothing to
- *     stream FROM. A channel that connected to nowhere and stayed quiet would be
- *     indistinguishable on screen from a live market that had gone still.
  *   - In an environment with no EventSource — a test runner, a server render — there is no
  *     transport at all. App.tsx catches `NotImplemented` and leaves the status line saying
  *     the board is not streaming, which is exactly what is true.
  */
 export function openLiveChannel(viewId: string, handlers: LiveHandlers): LiveChannel {
-  if (USE_FIXTURES) {
-    return notImplemented('openLiveChannel: no read endpoint is configured, so there is nothing to stream');
-  }
   const Source = globalThis.EventSource;
   if (typeof Source !== 'function') {
     return notImplemented('openLiveChannel: this environment has no EventSource');
