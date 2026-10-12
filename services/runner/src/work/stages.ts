@@ -57,7 +57,7 @@ import type { CounterSet, Decision, Item, ItemOrigin, Millis, Observation, Polic
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import type { JudgementRepo } from '@insidor/contracts/ports/store.ts';
-import type { PgImageEmbeddingRepo, PgPostJudgementRepo } from '@insidor/store';
+import type { BackfilledPost, PgBackfillRepo, PgImageEmbeddingRepo, PgPostJudgementRepo } from '@insidor/store';
 import type { Story } from '@insidor/contracts/story.ts';
 import {
   afterMembership,
@@ -164,6 +164,8 @@ export interface StageRepos {
   readonly stories: PgStoryRepo;
   readonly assets: PgAssetRepo;
   readonly decisions: PgDecisionRepo;
+  /** Posts fetched because of a story (0032). Absent: GROUP treats every post as an arrival. */
+  readonly backfill?: Pick<PgBackfillRepo, 'ofItems'>;
 }
 
 /* ── shared helpers ───────────────────────────────────────────────────── */
@@ -710,6 +712,9 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
      input is decided. The decision row still records exactly the block it was decided
      against, because the vector is computed at decide time. */
   const blockOf = new WeakMap<GroupInput, Story[]>();
+  /* Posts the backfill fetched for one story. Decided against that story alone, and a post
+     that does not join it seeds nothing: a backfill finds a story's start, never a new story. */
+  const fromBackfill = new WeakSet<GroupInput>();
 
   /** The judge's names for the posts on this page and for the open stories' posts and selves. */
   async function pictureNames(items: readonly Item[], open: readonly Story[]) {
@@ -756,6 +761,35 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
       }
     }
     return { similarity, inputs: { itemNames, storyNames, confirmed } };
+  }
+
+  /**
+   * A post the backfill fetched for one story: that story is its only candidate, and the post
+   * of ours that quoted it is its lineage — "a member quotes this" puts it in the story the
+   * same way "this quotes a member" does. Null when the story is gone or no longer open.
+   */
+  async function backfilledInput(
+    item: Item,
+    fetched: BackfilledPost,
+    open: readonly Story[],
+    names: Awaited<ReturnType<typeof pictureNames>>,
+  ): Promise<GroupInput | null> {
+    const story = open.find((s) => s.storyId === fetched.storyId) ?? (await repos.stories.byId(fetched.storyId));
+    if (story === null || story.state !== 'promoted' || story.origin !== item.origin) return null;
+    const block = [story];
+    const picture = await pictureFor(item, block, names);
+    const input: GroupInput = {
+      item,
+      candidates: block,
+      similarity: picture.similarity,
+      lineage: fetched.reachedFrom === null ? null : { via: 'reproduction', toItem: fetched.reachedFrom, story: story.storyId },
+      corpus: {},
+      picture: picture.inputs,
+      costUsd: 0,
+    };
+    blockOf.set(input, block);
+    fromBackfill.add(input);
+    return input;
   }
 
   /** Read the story back after a membership write, add carriers, promote if it clears the bar. */
@@ -834,9 +868,16 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
          asked once per pair, inside its daily cap. Without an image vendor, a judge or any
          names, every map below is empty and GROUP groups on the free tiers alone. */
       const names = await pictureNames(items, open);
+      const fetchedFor = repos.backfill === undefined ? new Map<ItemId, BackfilledPost>() : await repos.backfill.ofItems(items.map((i) => i.itemId));
 
       const inputs: GroupInput[] = [];
       for (const item of items) {
+        const fetched = fetchedFor.get(item.itemId);
+        if (fetched !== undefined) {
+          const input = await backfilledInput(item, fetched, open, names);
+          if (input !== null) inputs.push(input);
+          continue;
+        }
         const reproduction = item.reproductionOf;
         const rebroadcast = item.rebroadcastOf;
         const target = reproduction ?? rebroadcast;
@@ -905,7 +946,7 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
         return;
       }
 
-      if (owesASeed(decision.reason)) {
+      if (owesASeed(decision.reason) && !fromBackfill.has(input)) {
         const { story, member } = seedStory(input.item, at);
         await repos.stories.upsert(story);
         await repos.stories.addMembers([member]);

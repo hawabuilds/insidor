@@ -29,6 +29,7 @@ export {
   chainId,
   itemId,
   parseAssetKey,
+  parseItemId,
   sourceId,
   storyId,
   venueId,

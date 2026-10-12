@@ -62,6 +62,7 @@ import {
   PgAssetRepo,
   PgAuthorRepo,
   PgDecisionRepo,
+  PgBackfillRepo,
   PgFeedFloorRepo,
   PgImageEmbeddingRepo,
   PgImagePairRepo,
@@ -83,6 +84,7 @@ import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { embedImages } from './work/embed-images.ts';
+import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { advisoryLockKey, policyHash } from './hash.ts';
 import type { Logger } from './log.ts';
 import type { DecisionLog, LoopDeps } from './loop.ts';
@@ -115,6 +117,8 @@ export interface Runtime {
   readonly scorePosts: () => Promise<ScoringResult>;
   /** Embed the first image of each new post once, for GROUP's image evidence. */
   readonly embedImages: () => Promise<unknown>;
+  /** Follow promoted stories' quotes back to where they started. See work/backfill.ts. */
+  readonly backfill: () => Promise<BackfillResult>;
 }
 
 
@@ -264,6 +268,7 @@ export async function withRuntime<T>(
         stories: new PgStoryRepo(db),
         assets: new PgAssetRepo(db),
         decisions,
+        backfill: new PgBackfillRepo(db),
       };
 
       // The policy body lives in code and is hashed here, once, at boot. The
@@ -507,6 +512,19 @@ export async function withRuntime<T>(
               mode: cfg.spend.kind,
               policy,
               log: log.child({ step: 'embed-images' }),
+              now: () => Date.now() as Millis,
+            }),
+          backfill: () =>
+            backfillStories({
+              platforms,
+              stories: repos.stories,
+              items: repos.items,
+              backfill: new PgBackfillRepo(db),
+              store: storeArrivals(repos, policy, () => Date.now() as Millis),
+              meter,
+              mode: cfg.spend.kind,
+              policy,
+              log: log.child({ step: 'backfill' }),
               now: () => Date.now() as Millis,
             }),
           scorePosts: () =>

@@ -106,6 +106,16 @@ export function itemId(source: SourceId, sourceItemId: string): ItemId {
 }
 
 /**
+ * The source and the source's own id back out of one of ours. Null for a string that is
+ * not an item id. The source token never holds the separator, so the first one splits.
+ */
+export function parseItemId(id: string): { readonly source: SourceId; readonly sourceItemId: string } | null {
+  const at = id.indexOf(SEP);
+  if (at <= 0 || at === id.length - 1) return null;
+  return { source: id.slice(0, at) as SourceId, sourceItemId: id.slice(at + 1) };
+}
+
+/**
  * The account, qualified by its source, and built from the STABLE id rather than the
  * handle. Handles are renamed and re-issued to different people; keying breadth on one
  * would let a rename split one author into two and inflate the count the whole product

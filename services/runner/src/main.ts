@@ -170,6 +170,7 @@ async function main(): Promise<void> {
         afterPass: [
           ['score-posts', runtime.scorePosts],
           ['embed-images', runtime.embedImages],
+          ['backfill', runtime.backfill],
         ],
         /* The catch-all's targets are set from the posts supplier's line — search and re-reads
            share it — never above the day's cap. */
