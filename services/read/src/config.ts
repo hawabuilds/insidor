@@ -79,6 +79,8 @@ export interface ReadConfig {
    * when unset: the token page then shows curve progress as a dash, never a guess.
    */
   readonly rpcUrl: string | null;
+  /** The parsed-transactions endpoint for a wallet's buy history; null when no key is set. */
+  readonly parseUrl: string | null;
 }
 
 export class ConfigError extends Error {
@@ -153,5 +155,6 @@ export function loadReadConfig(env: Env): ReadConfig {
     allowedOrigins,
     marketData: marketDataFrom(env),
     rpcUrl: heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
+    parseUrl: heliusKey === null ? null : `https://api.helius.xyz/v0/transactions?api-key=${heliusKey}`,
   };
 }

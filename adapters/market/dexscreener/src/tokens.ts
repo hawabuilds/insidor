@@ -61,6 +61,8 @@ export function dexscreenerStandings(config: { readonly baseUrl: string; readonl
 
 /** A coin's price now, in dollars and in SOL, and how it moved. Every number may be missing. */
 export interface CoinQuote {
+  readonly name: string | null;
+  readonly ticker: string | null;
   readonly priceUsd: number | null;
   readonly priceSol: number | null;
   readonly marketCapUsd: number | null;
@@ -86,6 +88,8 @@ export function readQuotes(raw: unknown): ReadonlyMap<string, CoinQuote> {
     best.set(address, {
       liquidity,
       quote: {
+        name: str(rec(r.baseToken).name),
+        ticker: str(rec(r.baseToken).symbol),
         priceUsd: numText(r.priceUsd),
         priceSol: numText(r.priceNative),
         marketCapUsd: num(r.marketCap) ?? num(r.fdv),

@@ -19,7 +19,9 @@
 import { Client, Pool } from 'pg';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
-import { dexscreenerSearch } from '@insidor/market-dexscreener';
+import { portfolioReader } from '@insidor/chain-portfolio';
+import { dexscreenerQuotes, dexscreenerSearch } from '@insidor/market-dexscreener';
+import { unclaimedCreatorFees } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
 import { geckoterminal } from '@insidor/market-geckoterminal';
 import { chainClient, curveProgressOf } from '@insidor/venue-solana-pumpfun';
 
@@ -27,6 +29,7 @@ import { loadReadConfig } from './config.ts';
 import { BOARD_CHANNEL, createNotifier, type ListenSocket } from './listen.ts';
 import { createLogger, errorText } from './log.ts';
 import { createSearch } from './search.ts';
+import { createWallet } from './wallet.ts';
 import { createReadServer } from './server.ts';
 import { createBoardStream } from './stream.ts';
 
@@ -195,7 +198,19 @@ async function main(): Promise<void> {
     now: Date.now,
   });
 
-  const server = createReadServer({ ...deps, market, search, allowedOrigins: cfg.allowedOrigins, stream });
+  /* The Wallet tab: public chain data for a wallet, read-only, no key (wallet.ts). */
+  const rpcUrl = cfg.rpcUrl;
+  const wallet = createWallet({
+    ...deps,
+    policy: DEFAULT_POLICY.wallet,
+    reader: rpcUrl === null ? null : portfolioReader({ rpcUrl, parseUrl: cfg.parseUrl, fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS }),
+    quotes: dexscreenerQuotes({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS }),
+    images: chain === null ? null : (mints) => chain.imageUris(mints),
+    creatorFees: rpcUrl === null ? null : (creator) => unclaimedCreatorFees(rpcUrl, creator),
+    now: Date.now,
+  });
+
+  const server = createReadServer({ ...deps, market, search, wallet, allowedOrigins: cfg.allowedOrigins, stream });
 
   server.listen(cfg.port, () => log.info('listening', { port: cfg.port, origins: cfg.allowedOrigins }));
   notifier.start();

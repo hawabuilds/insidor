@@ -25,6 +25,7 @@
 import { coinMarket, type MarketDeps } from './market.ts';
 import { errorText, type Logger } from './log.ts';
 import type { Search } from './search.ts';
+import type { WalletRoute } from './wallet.ts';
 import {
   BOARD_ROWS_SQL,
   BOARD_VIEW_SQL,
@@ -54,6 +55,8 @@ export interface Deps {
   readonly market?: Omit<MarketDeps, 'db' | 'log' | 'recent'>;
   /** The Search tab's live search (search.ts). Absent: /search and /coin/:id are 404s. */
   readonly search?: Search;
+  /** The Wallet tab (wallet.ts). Absent: /wallet/:address is a 404. */
+  readonly wallet?: WalletRoute;
 }
 
 /*
@@ -412,6 +415,10 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       const search = deps.search;
       const recent = search === undefined ? {} : { recent: (address: string) => search.recent(address) !== null };
       return (await coinMarket(param, tf, { ...deps.market, ...recent, db: deps.db, log: deps.log })) ?? NOT_FOUND;
+    }
+
+    if (deps.wallet !== undefined && segments.length === 2 && head === 'wallet' && param !== undefined) {
+      return await deps.wallet.wallet(param, new URLSearchParams(rawUrl.split('?')[1] ?? '').get('range'), client);
     }
 
     if (deps.search !== undefined) {

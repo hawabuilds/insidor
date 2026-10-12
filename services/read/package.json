@@ -12,6 +12,7 @@
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@insidor/chain-portfolio": "workspace:*",
     "@insidor/contracts": "workspace:*",
     "@insidor/core": "workspace:*",
     "@insidor/market-dexscreener": "workspace:*",
