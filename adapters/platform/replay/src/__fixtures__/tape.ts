@@ -29,6 +29,7 @@ export const RAW_TAPE: unknown = {
       itemId: 'tiktok:7391234567890123456',
       source: 'tiktok',
       sourceItemId: '7391234567890123456',
+      origin: 'fixture',
       authorKey: 'tiktok:6789012345678901234',
       postedAt: 1_785_912_030_000,
       firstSeenAt: 1_785_912_100_000,

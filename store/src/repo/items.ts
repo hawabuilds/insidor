@@ -25,6 +25,7 @@ interface ItemRow {
   item_id: string;
   source: string;
   source_item_id: string;
+  origin: Item['origin'];
   author_key: string;
   posted_at: TimestampColumn;
   first_seen_at: TimestampColumn;
@@ -45,7 +46,7 @@ interface FingerprintRow {
 }
 
 const SELECT_ITEM = `
-  select item_id, source, source_item_id, author_key, posted_at, first_seen_at,
+  select item_id, source, source_item_id, origin, author_key, posted_at, first_seen_at,
          lang, body, media, counters, rebroadcast_of, reproduction_of,
          format_ids, raw_ref
     from public.item
@@ -66,6 +67,9 @@ export class PgItemRepo implements ItemRepo {
    * `first_seen_at` is never overwritten: it is the clock the tracking schedule and
    * every age feature are computed from, and moving it forward would quietly make
    * old items look new.
+   *
+   * `origin` is never overwritten either: it is a fact about how the row came to exist, and
+   * a refresh of the same post from the same source cannot change it.
    */
   async upsert(items: readonly Item[]): Promise<number> {
     if (items.length === 0) return 0;
@@ -76,8 +80,8 @@ export class PgItemRepo implements ItemRepo {
         `insert into public.item (
            item_id, source, source_item_id, author_key, posted_at, first_seen_at,
            lang, body, media, counters, counters_observed_at,
-           rebroadcast_of, reproduction_of, format_ids, raw_ref
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14,$15)
+           rebroadcast_of, reproduction_of, format_ids, raw_ref, origin
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14,$15,$16)
          on conflict (item_id) do update set
            lang            = excluded.lang,
            body            = excluded.body,
@@ -103,6 +107,7 @@ export class PgItemRepo implements ItemRepo {
           item.reproductionOf,
           item.formatIds,
           item.rawRef,
+          item.origin,
         ],
       );
       await this.#writeFingerprints(item);
@@ -261,6 +266,7 @@ export class PgItemRepo implements ItemRepo {
       itemId: reBrand<ItemId>(row.item_id),
       source: reBrand<SourceId>(row.source),
       sourceItemId: row.source_item_id,
+      origin: row.origin,
       authorKey: reBrand(row.author_key),
       postedAt: toMillis(row.posted_at),
       firstSeenAt: toMillisRequired(row.first_seen_at, 'first_seen_at'),

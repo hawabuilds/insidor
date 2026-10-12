@@ -41,6 +41,7 @@ function item(over: Partial<Item> = {}): Item {
     itemId: itemId(SOURCE, 'i1'),
     source: SOURCE,
     sourceItemId: 'i1',
+    origin: 'observed',
     authorKey: authorKey(SOURCE, 'a1'),
     postedAt: NOW - 60 * MINUTE,
     firstSeenAt: NOW - 58 * MINUTE,

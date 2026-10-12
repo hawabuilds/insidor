@@ -117,6 +117,7 @@ export function toItem(raw: unknown, at: Millis): Item {
     itemId: itemId(SOURCE, id),
     source: SOURCE,
     sourceItemId: id,
+    origin: 'observed',
     // The numeric account id, never the @handle: handles are renamed and reused.
     authorKey: authorKey(SOURCE, str(author.id) ?? 'unknown'),
 
