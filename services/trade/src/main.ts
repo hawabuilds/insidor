@@ -9,6 +9,12 @@ import { jupiter } from '@insidor/venue-jupiter';
 import { chainClient } from '@insidor/venue-solana-pumpfun';
 import { buildCurve, curveState, payerOf, quoteCurve } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
 import { buildTransfer } from '@insidor/venue-solana-pumpfun/transfer.ts';
+import { LaunchRefused, buildLaunch, launchRules } from '@insidor/venue-solana-pumpfun/launch.ts';
+import { MetadataRejected, supabaseStorage } from '@insidor/storage-supabase';
+import pg from 'pg';
+import { randomUUID } from 'node:crypto';
+
+import { LaunchRefusedError, type LaunchPort } from './routes.ts';
 
 import { loadTradeConfig, tradingOpen } from './config.ts';
 import { createTradeServer } from './server.ts';
@@ -25,6 +31,34 @@ const rpc = cfg.rpcUrl ?? '';
 const chain = chainClient({ launchpadBaseUrl: '', rpcUrl: rpc, fetch: globalThis.fetch });
 const router = jupiter({ ...cfg.jupiter, fetch: globalThis.fetch, timeoutMs: ROUTER_TIMEOUT_MS });
 
+/** A refusal the person should read crosses into the routes as one type; anything else is an outage. */
+const refusals = async <T>(work: () => Promise<T>): Promise<T> => {
+  try {
+    return await work();
+  } catch (e) {
+    if (e instanceof LaunchRefused || e instanceof MetadataRejected) throw new LaunchRefusedError(e.message);
+    throw e;
+  }
+};
+
+/* Creating coins: metadata stored in our own bucket, the coin recorded through 0042's function —
+   the only thing the app role this service holds may write. */
+const launch: LaunchPort | null = (() => {
+  const l = cfg.launch;
+  if (l === null) return null;
+  const storage = supabaseStorage({ url: l.storageUrl, serviceKey: l.storageKey, fetch: globalThis.fetch, id: randomUUID });
+  const pool = new pg.Pool({ connectionString: l.databaseUrl, max: 2, application_name: 'insidor-trade' });
+  return {
+    rules: () => launchRules(rpc),
+    build: (r) => refusals(() => buildLaunch(rpc, r)),
+    upload: (input) => refusals(() => storage.upload(input)),
+    landed: (signature) => chain.landed(signature),
+    register: async (address, creator, storyId, signature) => {
+      await pool.query('select public.register_created_coin($1, $2, $3, $4)', [address, creator, storyId, signature]);
+    },
+  };
+})();
+
 const server = createTradeServer({
   cfg,
   policy: DEFAULT_POLICY.trade,
@@ -36,6 +70,7 @@ const server = createTradeServer({
   pool: router,
   chain,
   transfer: { build: (r) => buildTransfer(rpc, r) },
+  launch,
   payerOf,
   log,
   allowedOrigins: cfg.allowedOrigins,
