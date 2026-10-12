@@ -18,7 +18,7 @@
  * or the reverse, is a link that lands somewhere else.
  */
 
-export type Tab = 'feed' | 'narratives' | 'search' | 'calls' | 'portfolio';
+export type Tab = 'feed' | 'narratives' | 'search' | 'alerts' | 'portfolio';
 
 export type Route =
   | { readonly screen: 'feed' }
@@ -28,7 +28,7 @@ export type Route =
   | { readonly screen: 'search' }
   /* A coin opened from search: no narrative around it, so none in the route. */
   | { readonly screen: 'token'; readonly coinId: string }
-  | { readonly screen: 'calls' }
+  | { readonly screen: 'alerts' }
   | { readonly screen: 'portfolio' }
   /* How Insidor works, from the profile menu: part of the Portfolio tab. */
   | { readonly screen: 'learn' };
@@ -66,13 +66,15 @@ export function parseRoute(hash: string): Route {
       return FEED;
     case 'narratives':
     case 'search':
-    case 'calls':
+    case 'alerts':
     case 'portfolio':
     case 'learn':
       return { screen: head };
-    /* The tab's old name: a link saved before the rename still opens it. */
+    /* The tabs' old names: a link saved before a rename still opens the tab. */
     case 'wallet':
       return { screen: 'portfolio' };
+    case 'calls':
+      return { screen: 'alerts' };
     default:
       return FEED;
   }
