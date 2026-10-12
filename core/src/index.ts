@@ -55,6 +55,7 @@ export { detect } from './detect/stage.ts';
 export { group, joinTarget } from './group/stage.ts';
 export { afterMembership, joinMember, seedStory } from './group/membership.ts';
 export { qualify, worthJudging } from './qualify/stage.ts';
+export { presentationFor } from './qualify/presentation.ts';
 export { resolve } from './resolve/stage.ts';
 export { rank } from './rank/stage.ts';
 
