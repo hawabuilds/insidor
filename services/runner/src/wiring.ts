@@ -119,7 +119,14 @@ export interface Runtime {
  * gives for the platforms: every adapter takes it as a dependency so no test can reach
  * the network, and this file is the one entitled to hand over the real one.
  */
-function buildJudge(cfg: RunnerConfig, meter: Meter, policy: Policy, log: Logger): JudgePort | null {
+function buildJudge(
+  cfg: RunnerConfig,
+  meter: Meter,
+  policy: Policy,
+  log: Logger,
+  /** The answer budget: QUALIFY's by default; the per-post score passes its smaller one. */
+  maxOutputTokens: number = policy.judge.maxOutputTokens,
+): JudgePort | null {
   const setup = cfg.judge;
   if (setup.state === 'dormant' || setup.state === 'misconfigured') {
     log.info('judge dormant: QUALIFY will abstain on every story (Q1_unjudged)', {
@@ -137,7 +144,7 @@ function buildJudge(cfg: RunnerConfig, meter: Meter, policy: Policy, log: Logger
           apiKey: setup.apiKey,
           baseUrl: setup.baseUrl,
           model: setup.model,
-          maxOutputTokens: policy.judge.maxOutputTokens,
+          maxOutputTokens,
           effort: price.effort,
           timeoutMs: policy.judge.timeoutMs,
           maxAttempts: policy.judge.maxAttempts,
@@ -163,7 +170,7 @@ function buildJudge(cfg: RunnerConfig, meter: Meter, policy: Policy, log: Logger
     meter,
     now: () => Date.now(),
     model: setup.model,
-    policy: policy.judge,
+    policy: { ...policy.judge, maxOutputTokens },
     maxBatch: policy.qualify.batchSize,
   });
 }
@@ -357,6 +364,9 @@ export async function withRuntime<T>(
                         holds refuses to run, and the dry run never asks it to.
            configured   the real client. In SPEND=dry it is still never called. */
       const judge = buildJudge(cfg, meter, policy, log);
+      /* The per-post score's judge: the same model and prompt, with a smaller answer budget
+         so ten short answers are not reserved at the cost of two long ones. */
+      const postJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens);
 
       const runtimeDeps: PlatformRuntime = {
         meter,
@@ -460,7 +470,7 @@ export async function withRuntime<T>(
           feedFloors: new PgFeedFloorRepo(db),
           scorePosts: () =>
             scorePosts({
-              judge,
+              judge: postJudge,
               items: repos.items,
               scores: new PgPostJudgementRepo(db),
               meter,
