@@ -46,6 +46,19 @@ const BALANCE_LABEL = 'POST rpc getTokenAccountsByOwner';
 /** A picture link longer than this is not one an honest issuer wrote. */
 const IMAGE_URI_MAX = 512;
 
+/** A getTransaction reply → landed or not, its payer, the accounts it named. Null when not found yet. */
+export function readLanded(raw: unknown): { readonly ok: boolean; readonly payer: string | null; readonly accounts: readonly string[] } | null {
+  const result = rec(raw).result;
+  if (result === null || result === undefined) return null;
+  const r = rec(result);
+  const keys = arr(rec(rec(r.transaction).message).accountKeys).flatMap((k) => {
+    const v = typeof k === 'string' ? k : str(rec(k).pubkey);
+    return v === null ? [] : [v];
+  });
+  const err = rec(r.meta).err;
+  return { ok: err === null || err === undefined, payer: keys[0] ?? null, accounts: keys };
+}
+
 /**
  * A wallet's token accounts for one coin → its balance. Several accounts are summed; none is a
  * balance of zero — an ANSWER that the wallet holds none, which an outage (a throw) never is.
@@ -162,6 +175,8 @@ export interface ChainClient {
   simulate(transactionBase64: string): Promise<Simulation>;
   /** Send a transaction the person already signed. Returns its signature. */
   send(signedBase64: string): Promise<string>;
+  /** A landed transaction: whether it succeeded, who paid for it, and the accounts it named. Null: not found. */
+  landed(signature: string): Promise<{ readonly ok: boolean; readonly payer: string | null; readonly accounts: readonly string[] } | null>;
   /** How much of a coin a wallet holds, in base units, with the coin's decimals. None held is zero. */
   tokenBalance(owner: string, mint: string): Promise<{ readonly amount: string; readonly decimals: number }>;
 }
@@ -240,6 +255,7 @@ export function chainClient(config: SolanaVenueClientConfig): ChainClient {
        accept this now", which is the question before a person is asked to sign. */
     simulate: async (transactionBase64) =>
       readSimulation(await rpc(config, 'simulateTransaction', [transactionBase64, { encoding: 'base64', sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed' }], SIMULATE_LABEL)),
+    landed: async (signature) => readLanded(await rpc(config, 'getTransaction', [signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 }], 'POST rpc getTransaction')),
     tokenBalance: async (owner, mint) =>
       readTokenBalance(await rpc(config, 'getTokenAccountsByOwner', [owner, { mint }, { encoding: 'jsonParsed', commitment: 'confirmed' }], BALANCE_LABEL)),
     send: async (signedBase64) => {
