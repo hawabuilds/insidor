@@ -536,6 +536,13 @@ export interface JudgePolicy {
   readonly timeoutMs: number;
   /** `max_tokens` on the request. Also the output side of the pessimistic estimate. */
   readonly maxOutputTokens: number;
+  /**
+   * The same, for a batch of single posts being scored. Each answer is short — a yes or no,
+   * a name, a confidence — so ten fit well inside this, and the meter's reservation for a
+   * batch stays near what it really costs rather than at double. An answer cut off by it
+   * makes the batch unavailable: those posts wait and are asked again next pass.
+   */
+  readonly postBatchMaxOutputTokens: number;
   /** For the pre-call estimate only: characters per input token, set low so the estimate runs high. */
   readonly charsPerToken: number;
   /** For the pre-call estimate only: input tokens one video frame costs. */
@@ -1706,6 +1713,7 @@ const POLICY_V1: Policy = {
        well under this. Set with room so a long answer is not cut off mid-JSON, which
        would make the whole batch unavailable. */
     maxOutputTokens: 2_048,
+    postBatchMaxOutputTokens: 800,
     /* Typical English runs about four characters a token; three makes the estimate the
        meter checks against run high, which is the safe direction. */
     charsPerToken: 3,
