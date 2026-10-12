@@ -39,9 +39,13 @@ export interface DuneRun {
 }
 
 /** The execution's state, read from a status reply. */
-export function readState(raw: unknown): { readonly state: string; readonly credits: number | null } {
+export function readState(raw: unknown): { readonly state: string; readonly credits: number | null; readonly error: string | null } {
   const r = rec(raw);
-  return { state: str(r.state) ?? 'unknown', credits: num(r.execution_cost_credits) ?? num(rec(r.result_metadata).execution_cost_credits) };
+  return {
+    state: str(r.state) ?? 'unknown',
+    credits: num(r.execution_cost_credits) ?? num(rec(r.result_metadata).execution_cost_credits),
+    error: str(rec(r.error).message) ?? str(r.error),
+  };
 }
 
 /** The rows of a finished execution. */
@@ -95,12 +99,12 @@ export function duneClient(config: DuneConfig) {
       const id = str(started.execution_id);
       if (id === null) throw new VendorUnavailable(VENDOR, EXECUTE, 'no execution id in the reply');
       for (let waited = 0; waited <= config.timeoutMs; waited += config.pollMs) {
-        const { state, credits } = readState(await call('GET', `/api/v1/execution/${encodeURIComponent(id)}/status`, STATUS));
+        const { state, credits, error } = readState(await call('GET', `/api/v1/execution/${encodeURIComponent(id)}/status`, STATUS));
         if (state === 'QUERY_STATE_COMPLETED') {
           return { rows: readRows(await call('GET', `/api/v1/execution/${encodeURIComponent(id)}/results`, RESULTS)), credits };
         }
         if (state === 'QUERY_STATE_FAILED' || state === 'QUERY_STATE_CANCELLED' || state === 'QUERY_STATE_EXPIRED') {
-          throw new VendorUnavailable(VENDOR, STATUS, `execution ${state}`);
+          throw new VendorUnavailable(VENDOR, STATUS, `execution ${state}${error === null ? '' : `: ${error.slice(0, 300)}`}`);
         }
         await config.sleep(config.pollMs);
       }
