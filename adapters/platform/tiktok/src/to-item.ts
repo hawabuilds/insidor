@@ -72,7 +72,9 @@ function fingerprints(r: Rec, text: string): readonly Fingerprint[] {
   // Perceptual hashing of the keyframe happens in the media pipeline, not here.
   // Emitting a fake hash would silently poison the free carrier join, which is
   // the grouper's whole basis. Absent is honest; invented is not.
-  for (const key of shingles(text)) out.push({ kind: 'textShingle', key, bits: 64 });
+  // Phrases, not a hash: the runner folds them into one SimHash (core/group/text-carrier.ts)
+  // before storing, because the hash's weights come from a corpus no adapter can see.
+  for (const key of shingles(text)) out.push({ kind: 'textShingle', key });
   return out;
 }
 
