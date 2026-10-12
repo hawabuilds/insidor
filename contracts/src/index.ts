@@ -231,3 +231,7 @@ export {
   nextRevision,
   parseLabelVersion,
 } from './label.ts';
+
+/* ── where a coin came from ───────────────────────────────────────────── */
+export { ORIGIN_STATUSES, isOrigin } from './origin.ts';
+export type { OriginStatus } from './origin.ts';

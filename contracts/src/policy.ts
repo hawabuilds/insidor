@@ -958,6 +958,18 @@ export interface BackfillPolicy {
 }
 
 /**
+ * The rules that decide a coin's origin status (contracts/src/origin.ts).
+ */
+export interface OriginPolicy {
+  /**
+   * ★ AN ORIGIN IS POSTED BEFORE THE COIN, with this much grace for a launch made in the same
+   * moment as its post — the founders' rule. A post later than the mint by more than this is
+   * `viral_after_launch`: kept and shown, never counted as where the coin came from.
+   */
+  readonly launchAllowanceMs: number;
+}
+
+/**
  * The For You and Popular feeds of single posts, and the per-post score that admits a post
  * to them. A post shows when the catch-all search found it AND the judge, shown that post
  * alone, called it coinable at or above `qualify.minJudgeConfidence` for what it looked at
@@ -1383,6 +1395,7 @@ export interface Policy {
   readonly feed: FeedPolicy;
   readonly rising: RisingPolicy;
   readonly backfill: BackfillPolicy;
+  readonly origin: OriginPolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -1577,8 +1590,11 @@ const POLICY_V1: Policy = {
      slow-burn lane (`feed.slow`), and raises the judge line to $8 and embeddings to $2.
 
      v22 adds `backfill`: following a promoted story's quotes back to where it started.
-     v23 adds `backfill.searchResultCap`, for the one search back for its name. */
-  version: 'policy.v23',
+     v23 adds `backfill.searchResultCap`, for the one search back for its name.
+
+     v24 adds `origin.launchAllowanceMs`: an origin is posted before the coin, with ten
+     minutes' grace; later is `viral_after_launch`. */
+  version: 'policy.v24',
 
   admit: {
     maxAgeMin: 240,
@@ -1929,6 +1945,10 @@ const POLICY_V1: Policy = {
     /* 20: one page. Most of what a name search returns is unrelated; GROUP keeps only what
        matches, so a bigger page buys mostly rejections. */
     searchResultCap: 20,
+  },
+
+  origin: {
+    launchAllowanceMs: 600_000, // ten minutes
   },
 
   rising: {

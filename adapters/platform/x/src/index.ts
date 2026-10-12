@@ -191,3 +191,4 @@ export { CutoffNotHonoured, toSearchQuery } from './discover.ts';
    never know a URL shape — is the caller, and it asks this package by name. */
 export { postUrl } from './permalink.ts';
 export { toItem, toCounters } from './to-item.ts';
+export { postTimeFromId } from './post-time.ts';
