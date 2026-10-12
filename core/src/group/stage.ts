@@ -54,6 +54,7 @@ import {
   representationConsulted,
   timeGapMs,
   timeProximity,
+  type EvidencedMatch,
   type LineageLink,
   type MatchOutcome,
   type MatchResult,
@@ -418,6 +419,20 @@ export function group(input: GroupInput, p: Policy, ctx: StageContext): Decision
     { ...base, verdict: 'pass', reason: joinReason(outcome.best.evidence.kind), score, decider },
     ctx,
   );
+}
+
+/**
+ * The story and evidence a `pass` joined, recomputed from the same input.
+ *
+ * The decision row records the pair and the vector but not the evidence object a member
+ * row needs, and the runner may not score anything itself. Recomputing is safe because
+ * `group` is pure: the same input under the same policy gives the same block, the same
+ * order and the same best. Null when the block did not produce a join, which the caller
+ * checks against the decision it was handed rather than trusting either alone.
+ */
+export function joinTarget(input: GroupInput, p: Policy): EvidencedMatch | null {
+  const outcome = adjudicate(scoreBlock(input, p), p);
+  return outcome.kind === 'join' ? outcome.best : null;
 }
 
 /** Which free tier settled it, as the reason code that names the tier. */

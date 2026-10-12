@@ -51,9 +51,11 @@
  * not checkable from inside the database.
  */
 
-import { candidateId } from '@insidor/contracts/ids.ts';
-import type { ItemId } from '@insidor/contracts/ids.ts';
-import type { Decision, Item, Millis, Observation, Policy } from '@insidor/contracts';
+import { candidateId, pairId } from '@insidor/contracts/ids.ts';
+import type { ItemId, StoryId } from '@insidor/contracts/ids.ts';
+import type { Decision, Item, ItemOrigin, Millis, Observation, Policy } from '@insidor/contracts';
+import type { Story } from '@insidor/contracts/story.ts';
+import { afterMembership, joinMember, joinTarget, seedStory } from '@insidor/core';
 import type {
   PgAssetRepo,
   PgAuthorRepo,
@@ -192,14 +194,12 @@ export interface StageRepos {
  * That is not a defect in the id scheme — the pair id is right, and `PairId`'s own
  * comment explains that deriving it from its two halves is what makes a re-decision
  * recognisable as a re-decision. It means the DURABLE filter for GROUP is membership
- * ("is this item already in a story") and for RESOLVE is the story→asset link, and
- * neither exists yet because neither stage's `apply` is wired. Matching on an id
- * PREFIX would work and is deliberately not done: it would couple this file to the
- * log's string format, which is exactly the coupling the label pipeline is warned off.
- *
- * Until those two writes land, GROUP re-decides on its cadence and its rows accumulate
- * — which is what a live runner would do anyway, and which is honest rather than
- * silently deduplicated against the wrong key.
+ * ("is this item already in a story") and for RESOLVE is the story→asset link. GROUP's
+ * is applied in `groupWork.pull`, now that its `apply` writes members. RESOLVE's link
+ * does not exist yet, so RESOLVE still re-decides on its cadence and its rows
+ * accumulate. Matching on an id PREFIX would work and is deliberately not done: it
+ * would couple this file to the log's string format, which is exactly the coupling the
+ * label pipeline is warned off.
  */
 const REDECIDE_AFTER_MS: Readonly<Record<string, number | null>> = {
   admit: null,
@@ -547,7 +547,29 @@ function detectWork(repos: StageRepos): StageWork<DetectInput> {
 
 /* ── GROUP ────────────────────────────────────────────────────────────── */
 
-function groupWork(repos: StageRepos): StageWork<GroupInput> {
+function groupWork(repos: StageRepos, policy: Policy): StageWork<GroupInput> {
+  /* ★ THE BLOCK IS LIVE FOR THE WHOLE PASS. The loop decides and applies one input at a
+     time, but every input is built here up front. With a candidate list fixed at pull time,
+     two posts of the same moment arriving in the same page would each find nothing, each
+     seed a story of their own, and never meet — membership is the durable filter below, so
+     the second pass could not repair it. Each input therefore holds the SAME array for its
+     origin, and `apply` puts every seeded or grown story back into it before the next
+     input is decided. The decision row still records exactly the block it was decided
+     against, because the vector is computed at decide time. */
+  const blockOf = new WeakMap<GroupInput, Story[]>();
+
+  /** Read the story back after a membership write, add carriers, promote if it clears the bar. */
+  async function settle(id: StoryId, item: Item, at: Millis, block: Story[] | undefined): Promise<void> {
+    const fresh = await repos.stories.byId(id);
+    if (fresh === null) throw new Error(`group.apply: story ${id} vanished after its member was written`);
+    const next = afterMembership(fresh, item, policy, at);
+    if (next !== fresh) await repos.stories.upsert(next);
+    if (block === undefined) return;
+    const index = block.findIndex((s) => s.storyId === id);
+    if (index === -1) block.push(next);
+    else block[index] = next;
+  }
+
   return {
     async pull(limit, ctx) {
       const now = ctx.now();
@@ -555,13 +577,35 @@ function groupWork(repos: StageRepos): StageWork<GroupInput> {
         now - GROUP_LOOKBACK_MS,
         limit * PULL_OVERSCAN,
       );
-      const items = await undecided(repos, 'group', page, (i) => i.itemId, limit, now);
+
+      /* ★ MEMBERSHIP IS GROUP'S DURABLE FILTER, as the note on REDECIDE_AFTER_MS says it
+         had to be. A post that already belongs to a story is not asked again — without this
+         it would be scored against its own story every pass and, the day a second story
+         shared one of its carriers, could land in both. */
+      const homes = await repos.stories.storiesOfItems(page.map((i) => i.itemId));
+      const homeless = page.filter((i) => !homes.has(i.itemId));
+      const items = [...(await undecided(repos, 'group', homeless, (i) => i.itemId, limit, now))]
+        /* Oldest first, so an original seeds its story before the copies in the same page
+           are decided against it. */
+        .sort((a, b) => a.firstSeenAt - b.firstSeenAt);
       if (items.length === 0) return [];
 
-      const candidates = await repos.stories.openSince(
+      const open = await repos.stories.openSince(
         now - GROUP_CANDIDATE_WINDOW_MS,
         GROUP_CANDIDATE_LIMIT,
       );
+      /* ★ A REAL POST IS ONLY EVER COMPARED WITH REAL STORIES, and a seeded post with seeded
+         ones. A fixture story may name invented coins; a real post joining one would carry
+         that permission onto something a person actually posted. */
+      const blocks = new Map<ItemOrigin, Story[]>();
+      const blockFor = (origin: ItemOrigin): Story[] => {
+        let block = blocks.get(origin);
+        if (block === undefined) {
+          block = open.filter((s) => s.origin === origin);
+          blocks.set(origin, block);
+        }
+        return block;
+      };
 
       /* ★ THE LINEAGE LOOKUP, WHICH IS WHY IT IS AN INPUT AND NOT SOMETHING THE STAGE
          DOES. GroupInput.lineage's own doc: "`Item.reproductionOf` names an ITEM and
@@ -580,10 +624,11 @@ function groupWork(repos: StageRepos): StageWork<GroupInput> {
         const rebroadcast = item.rebroadcastOf;
         const target = reproduction ?? rebroadcast;
         const story = target === null ? undefined : storyOf.get(target);
+        const block = blockFor(item.origin);
 
-        return {
+        const input: GroupInput = {
           item,
-          candidates,
+          candidates: block,
           /* Empty because the embed port is not wired. carriers.ts is explicit that
              this must DEGRADE the match rather than block it, and the vector keeps
              `representationConsulted` and `representationPresent` as separate keys so
@@ -605,38 +650,49 @@ function groupWork(repos: StageRepos): StageWork<GroupInput> {
           corpus: {},
           costUsd: 0,
         };
+        blockOf.set(input, block);
+        return input;
       });
     },
 
     subjectId: (input) => input.item.itemId,
 
     /**
-     * A GROUP `pass` is a join and owes a `public.story_member` row; an
-     * `M6_no_candidate_block` abstain owes a newly seeded candidate story. Both are
-     * real writes against tables that exist, and both are deliberately NOT made here.
+     * A `pass` is a join and writes a `public.story_member` row; `M6_no_candidate_block`
+     * seeds a new candidate story with this post as its first member. After either, the
+     * story is read back and PROMOTED if it now clears the breadth bar — promotion is what
+     * QUALIFY, and so the judge, look at, and it happens here because membership is the
+     * only thing that can change the answer.
      *
-     * The reason is that membership is the one artefact in this system that changes
-     * what every later stage sees — QUALIFY counts members, RESOLVE dates the story
-     * from them — so writing it is a change to the pipeline's behaviour rather than to
-     * its record-keeping, and it belongs in the change that wires GROUP's actuation
-     * rather than in the one that wires the log. Until then the join is decided,
-     * logged in full with its seven match channels, and left unapplied.
+     * The evidence is recomputed from the input by `joinTarget` rather than stored on the
+     * decision, and it is checked against the pair the decision names: a mismatch means the
+     * input changed between decide and apply, and writing a member then would record a
+     * reason nobody decided.
      *
      * `M3_below_match_bar`, `M4_ambiguous_match`, `M5_generic_carrier` and
      * `M9_member_cap` owe nothing: none of them adds a member.
      */
-    apply: (_input, receipt) => {
-      const { verdict, reason } = receipt.decision;
-      const owesAJoin = verdict === 'pass';
-      const owesASeed = reason === 'M6_no_candidate_block';
-      if (!owesAJoin && !owesASeed) return Promise.resolve();
-      return Promise.reject(
-        new NotImplemented(
-          `group.apply — ${owesAJoin ? 'StoryRepo.addMembers for the join' : 'a seeded candidate story'}. ` +
-            'Membership changes what QUALIFY and RESOLVE see, so it is wired with ' +
-            "GROUP's actuation and not with the log",
-        ),
-      );
+    async apply(input, receipt) {
+      const { decision } = receipt;
+      const at = decision.decidedAt;
+      const block = blockOf.get(input);
+
+      if (decision.verdict === 'pass') {
+        const match = joinTarget(input, policy);
+        if (match === null || pairId(input.item.itemId, match.story.storyId) !== decision.subjectId) {
+          throw new Error(`group.apply: the join for ${decision.subjectId} no longer reproduces`);
+        }
+        await repos.stories.addMembers([joinMember(input.item, match, at)]);
+        await settle(match.story.storyId, input.item, at, block);
+        return;
+      }
+
+      if (decision.reason === 'M6_no_candidate_block') {
+        const { story, member } = seedStory(input.item, at);
+        await repos.stories.upsert(story);
+        await repos.stories.addMembers([member]);
+        await settle(story.storyId, input.item, at, block);
+      }
     },
   };
 }
@@ -914,7 +970,7 @@ export function storeWork(repos: StageRepos, policy: Policy, judging: JudgingDep
     admit: admitWork(repos, policy),
     track: trackWork(repos, policy),
     detect: detectWork(repos),
-    group: groupWork(repos),
+    group: groupWork(repos, policy),
     qualify: qualifyWork(repos, judging),
     resolve: resolveWork(repos, policy),
     rank: rankWork(),
