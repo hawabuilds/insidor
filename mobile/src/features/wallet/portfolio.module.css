@@ -1,0 +1,404 @@
+/* Trador's Stonkfolio, in Insidor's tokens: the same sizes, weights and washes. */
+
+.page {
+  min-width: 0;
+  padding: 0 var(--gutter) var(--tabbar-space);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 calc(-1 * var(--gutter));
+  padding: 16px var(--gutter) 10px;
+  background: var(--bg);
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.whoText {
+  min-width: 0;
+  flex: 1;
+}
+
+.name {
+  margin: 0;
+  overflow: hidden;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ids {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.handle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy {
+  display: inline-flex;
+  min-width: 0;
+  flex-shrink: 1;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+.mono {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.value {
+  margin-top: 12px;
+}
+
+.label {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.big {
+  margin-top: 2px;
+  font-size: 38px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.subline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.action {
+  display: flex;
+  height: 42px;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 21px;
+  background: rgb(255 255 255 / 6%);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.action:active {
+  transform: scale(0.98);
+}
+
+.controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.pills {
+  display: flex;
+  gap: 2px;
+}
+
+.pill,
+.pillOn {
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pill {
+  background: rgb(255 255 255 / 6%);
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.pillOn {
+  background: var(--input);
+  color: var(--text-1);
+  font-weight: 800;
+  box-shadow: 0 0 0 1px var(--border-subtle);
+}
+
+.chart {
+  display: grid;
+  height: 88px;
+  margin-top: 8px;
+  padding: 0 24px;
+  place-items: center;
+  border-radius: 16px;
+  background: rgb(255 255 255 / 4%);
+  text-align: center;
+}
+
+.chart p {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px calc(-1 * var(--gutter)) 0;
+  padding: 2px 0 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 0 var(--gutter);
+  color: inherit;
+  text-decoration: none;
+}
+
+.mid {
+  min-width: 0;
+  flex: 1;
+}
+
+.symbolRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.symbol {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pair {
+  flex-shrink: 0;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 6%);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1;
+}
+
+.units {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--brand-wash);
+  color: var(--brand-200);
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.right {
+  flex-shrink: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.worth {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.faint {
+  color: var(--text-3);
+}
+
+.up,
+.down,
+.faintSmall {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.up {
+  color: var(--up);
+}
+
+.down {
+  color: var(--down);
+}
+
+.faintSmall {
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.foot {
+  margin: 14px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.section {
+  margin: 24px 0 0;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.empty {
+  padding: 40px 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+  text-align: center;
+}
+
+.nothing {
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.nothing b {
+  font-size: 14px;
+}
+
+.nothing p {
+  max-width: 32ch;
+  margin: 6px auto 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.skeleton {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 var(--gutter);
+}
+
+.skDot,
+.skBox,
+.skLines span {
+  border-radius: 6px;
+  background: rgb(255 255 255 / 6%);
+}
+
+.skDot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+
+.skLines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skLines span:first-child {
+  width: 80px;
+  height: 14px;
+}
+
+.skLines span:last-child {
+  width: 56px;
+  height: 12px;
+}
+
+.skBox {
+  width: 64px;
+  height: 32px;
+}
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sheetNote {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.addressBox {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--input);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  text-align: center;
+  word-break: break-all;
+}

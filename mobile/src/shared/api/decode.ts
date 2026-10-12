@@ -678,6 +678,7 @@ export function decodePortfolio(raw: unknown, path = '$'): Portfolio {
       imageUrl: optStr(r['imageUrl']),
       amount,
       decimals: int(r['decimals'], `${q}.decimals`),
+      priceUsd: measured(r['priceUsd'], `${q}.priceUsd`, 'not_reported'),
       valueUsd: measured(r['valueUsd'], `${q}.valueUsd`, 'not_reported'),
       change: measured(r['change'], `${q}.change`, 'not_reported'),
       /* A number only when the server says it knows; anything else is the dash. */

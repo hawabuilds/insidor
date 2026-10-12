@@ -131,6 +131,7 @@ export function createWallet(deps: WalletDeps) {
         imageUrl: null as string | null,
         amount: t.amount,
         decimals: t.decimals,
+        priceUsd: measured(q?.priceUsd, q === undefined ? 'no_market' : 'not_reported'),
         valueUsd: measured(valueUsd, q === undefined ? 'no_market' : 'not_reported'),
         change: measured(change, q === undefined ? 'no_market' : 'not_reported'),
         profit: profit.kind === 'known'

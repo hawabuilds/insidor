@@ -16,10 +16,10 @@ const SAMPLE = {
   "v": 1328.465917638
  },
  "totalUsd": {
-  "v": 1361658.7443380516
+  "v": 1361490.1400961885
  },
  "totalSol": {
-  "v": 12640.723582789193
+  "v": 12654.430152395096
  },
  "holdings": [
   {
@@ -30,6 +30,9 @@ const SAMPLE = {
    "imageUrl": "https://arweave.net/PAVQPYRQzq2g4O2X7hDzOniW4aBE9PJ19U56MRVpIfA",
    "amount": "500000000000000000",
    "decimals": 9,
+   "priceUsd": {
+    "v": 0.002427
+   },
    "valueUsd": {
     "v": 1213500
    },
@@ -50,6 +53,9 @@ const SAMPLE = {
    "imageUrl": "https://ipfs.io/ipfs/QmePNo8YNbyury8QD77XUuyqnS6ah8RpA8Z89xbc7Xuq7W",
    "amount": "133700000000000",
    "decimals": 6,
+   "priceUsd": {
+    "v": 2.026e-05
+   },
    "valueUsd": {
     "v": 2708.7619999999997
    },
@@ -71,11 +77,14 @@ const SAMPLE = {
    "imageUrl": "https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I",
    "amount": "39758697055337",
    "decimals": 5,
+   "priceUsd": {
+    "v": 3.299e-06
+   },
    "valueUsd": {
-    "v": 1310.4466549439076
+    "v": 1311.6394158555677
    },
    "change": {
-    "v": -5.39
+    "v": -4.99
    },
    "profit": {
     "kind": "none",
@@ -91,11 +100,14 @@ const SAMPLE = {
    "imageUrl": "https://gateway.irys.xyz/em5twmyoeTJw9eZDj25xoKbBjHYhbeXYCcZ55o23Ztg",
    "amount": "4839277530301",
    "decimals": 9,
+   "priceUsd": {
+    "v": 0.1434
+   },
    "valueUsd": {
-    "v": 691.0488313269828
+    "v": 693.9523978451634
    },
    "change": {
-    "v": -3.44
+    "v": -2.67
    },
    "profit": {
     "kind": "none",
@@ -111,6 +123,9 @@ const SAMPLE = {
    "imageUrl": "https://trek-labs.github.io/heart-metadata/bp/bp.png",
    "amount": "175350865891",
    "decimals": 9,
+   "priceUsd": {
+    "v": 1.11
+   },
    "valueUsd": {
     "v": 194.63946113901002
    },
@@ -131,6 +146,9 @@ const SAMPLE = {
    "imageUrl": "https://media.discordapp.net/attachments/962288267292717106/1177718882065186817/INCOME_SOCIETY_8.png?ex=6573872e&is=6561122e&hm=f21817c2eef895f9d1120185504712a0a035f94fed090ed70e542896daea2e55&=&width=810&height=810",
    "amount": "400000000",
    "decimals": 3,
+   "priceUsd": {
+    "v": 0.0001458
+   },
    "valueUsd": {
     "v": 58.32
    },
@@ -151,6 +169,9 @@ const SAMPLE = {
    "imageUrl": "https://gateway.irys.xyz/EU38d9igPQKzFfXjbZvm53FjgE5E9GENtkDcFPsoVMMD",
    "amount": "1000000000000",
    "decimals": 6,
+   "priceUsd": {
+    "v": 3.093e-05
+   },
    "valueUsd": {
     "v": 30.929999999999996
    },
@@ -171,6 +192,9 @@ const SAMPLE = {
    "imageUrl": "https://ipfs.io/ipfs/bafybeieo7rpbjawus2ditvgzoswrbeyvtjp5mieio627d3t7rr52sjgapm",
    "amount": "50000000000",
    "decimals": 6,
+   "priceUsd": {
+    "v": 0.0004588
+   },
    "valueUsd": {
     "v": 22.939999999999998
    },
@@ -191,6 +215,9 @@ const SAMPLE = {
    "imageUrl": "https://ipfs.io/ipfs/bafkreibrykfs3naeq6dmtopfr62vioe6notchkhrov2nxnfn6w2i2eubg4",
    "amount": "10000000",
    "decimals": 4,
+   "priceUsd": {
+    "v": 0.02227
+   },
    "valueUsd": {
     "v": 22.270000000000003
    },
@@ -211,6 +238,9 @@ const SAMPLE = {
    "imageUrl": "https://gateway.pinata.cloud/ipfs/bafkreibfu4mivnd2w7khp35m6g2gpe7lzruiv52v2xs3m3vxh76ildqcye",
    "amount": "39538000000000",
    "decimals": 9,
+   "priceUsd": {
+    "v": 0.0001087
+   },
    "valueUsd": {
     "v": 4.2977806
    },
