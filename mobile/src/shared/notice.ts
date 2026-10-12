@@ -69,3 +69,9 @@ export const SAMPLE_SCREEN: Notice = {
   headline: 'Sample data',
   detail: 'Narratives are not connected to the read service yet. Everything on this screen is made up.',
 };
+
+/** The Wallet tab in a build with no sign-in: a real public wallet, recorded, standing in. */
+export const SAMPLE_WALLET: Notice = {
+  headline: 'Sample data',
+  detail: 'This is not your wallet. It is a public wallet recorded on 12 October 2026, shown so the screen can be seen without signing in.',
+};

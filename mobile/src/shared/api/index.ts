@@ -8,7 +8,8 @@ export type { Coin, CoinLink } from './wire/coin.ts';
 export type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 export type { DiscussionPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 export type { RisingFeed, RisingFeedId, RisingPost } from './wire/rising.ts';
-export type { BuildResult, Holding, TradeQuote, TradeVenue } from './wire/trade.ts';
+export type { BuildResult, Holding as TradeHolding, TradeQuote, TradeVenue } from './wire/trade.ts';
+export type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 export type { OriginGap, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 
 export {
@@ -21,6 +22,9 @@ export {
   fetchNarratives,
   fetchRising,
   buildTrade,
+  buildTransfer,
+  fetchPortfolio,
+  loadSamplePortfolio,
   fetchHolding,
   fetchSearch,
   fetchTradeQuote,

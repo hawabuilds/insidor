@@ -24,7 +24,8 @@
  */
 
 import { notImplemented } from '../not-implemented.ts';
-import { decodeBoardTick, decodeCoinMarket, decodeNarratives, decodeRisingFeed, decodeSearch, decodeSearchedCoin, decodeStory } from './decode.ts';
+import { decodeBoardTick, decodeCoinMarket, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeSearch, decodeSearchedCoin, decodeStory } from './decode.ts';
+import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { SearchedCoin, SearchResults } from './wire/search.ts';
 import type { BuildResult, Holding, TradeQuote, TradeVenue } from './wire/trade.ts';
 import type { CoinMarket, MarketTimeframe } from './wire/market.ts';
@@ -81,6 +82,10 @@ export const SAMPLE_SCREENS = DEV || SAMPLE;
 async function readFixture(path: string): Promise<unknown> {
   const { fixtureBoard, fixtureRising, fixtureStory } = await import('./fixtures.ts');
   if (path.startsWith('/board/')) return fixtureBoard();
+  if (path.startsWith('/wallet/')) {
+    const { fixturePortfolio } = await import('./fixture-wallet.ts');
+    return fixturePortfolio();
+  }
   if (path.startsWith('/search?q=')) {
     const { fixtureSearch } = await import('./fixtures.ts');
     return fixtureSearch(decodeURIComponent(path.slice('/search?q='.length)));
@@ -134,6 +139,18 @@ export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Pro
 /** A coin's price history for one view, its latest trades and, on the curve, its progress. */
 export async function fetchCoinMarket(coinId: string, timeframe: MarketTimeframe, signal?: AbortSignal): Promise<CoinMarket> {
   return decodeCoinMarket(await read(`/coin/${encodeURIComponent(coinId)}/market?tf=${timeframe}`, signal));
+}
+
+/** The Wallet tab: what this wallet holds and what it is worth. The app asks only for its own. */
+export async function fetchPortfolio(address: string, range: PortfolioRange, signal?: AbortSignal): Promise<Portfolio> {
+  return decodePortfolio(await read(`/wallet/${encodeURIComponent(address)}?range=${range}`, signal));
+}
+
+/** A sample wallet, recorded from a public one, for a build with no read service. Never the network. */
+export async function loadSamplePortfolio(): Promise<Portfolio> {
+  if (!SAMPLE_SCREENS) return notImplemented('loadSamplePortfolio: sample screens are off in this build');
+  const { fixturePortfolio } = await import('./fixture-wallet.ts');
+  return decodePortfolio(fixturePortfolio());
 }
 
 /** The Search tab: narratives, posts and coins matching a term. A 429 means slow down. */
@@ -228,6 +245,13 @@ export async function buildTrade(quote: TradeQuote, wallet: string): Promise<Bui
   const r = await trade('/build', { method: 'POST', body: JSON.stringify({ quote: quote.sent, wallet }) });
   const tx = r.body['transaction'];
   return r.ok && typeof tx === 'string' && tx !== '' ? { kind: 'ready', transaction: tx } : { kind: 'blocked', why: said(r.body, 'This trade could not be prepared just now.') };
+}
+
+/** Send: SOL (mint null) or a coin, as an unsigned, simulated transaction — or why it would fail. */
+export async function buildTransfer(t: { readonly wallet: string; readonly to: string; readonly mint: string | null; readonly amount: string }): Promise<BuildResult> {
+  const r = await trade('/transfer', { method: 'POST', body: JSON.stringify(t) });
+  const tx = r.body['transaction'];
+  return r.ok && typeof tx === 'string' && tx !== '' ? { kind: 'ready', transaction: tx } : { kind: 'blocked', why: said(r.body, 'This could not be prepared just now.') };
 }
 
 /** Send what the person signed. */

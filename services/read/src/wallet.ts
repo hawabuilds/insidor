@@ -107,10 +107,9 @@ export function createWallet(deps: WalletDeps) {
       deps.log.info('wallet history unavailable', { err: e instanceof Error ? e.message : String(e) });
     }
 
-    const [narratives, names, pictures] = await Promise.all([
+    const [narratives, names] = await Promise.all([
       deps.db.query(CONFIDENT_NARRATIVE_SQL, [mints]),
       deps.db.query(`select address, name, ticker from public.coin_name where address = any($1)`, [mints]),
-      deps.images === null ? Promise.resolve(new Map<string, string>()) : deps.images(mints.slice(0, deps.policy.holdingsShown * 2)).catch(() => new Map<string, string>()),
     ]);
     const narrativeOf = new Map(narratives.map((r: Row) => [str(r['address']) ?? '', { storyId: str(r['story_id']), title: str(r['title']) }]));
     const nameOf = new Map(names.map((r: Row) => [str(r['address']) ?? '', { name: str(r['name']), ticker: str(r['ticker']) }]));
@@ -129,7 +128,7 @@ export function createWallet(deps: WalletDeps) {
         address: t.mint,
         ticker: name?.ticker ?? q?.ticker ?? null,
         name: name?.name ?? q?.name ?? null,
-        imageUrl: pictures.get(t.mint) ?? null,
+        imageUrl: null as string | null,
         amount: t.amount,
         decimals: t.decimals,
         valueUsd: measured(valueUsd, q === undefined ? 'no_market' : 'not_reported'),
@@ -137,9 +136,14 @@ export function createWallet(deps: WalletDeps) {
         profit: profit.kind === 'known'
           ? { kind: 'known', sol: profit.sol, partial: profit.partial }
           : { kind: 'none', why: historyRead ? 'no_buy_history' : 'history_unread' },
-        narrative: narrative !== undefined && narrative.storyId !== null && narrative.title !== null ? { storyId: narrative.storyId, title: narrative.title } : null,
+        story: narrative !== undefined && narrative.storyId !== null && narrative.title !== null ? { storyId: narrative.storyId, title: narrative.title } : null,
       };
     }).sort((a, b) => (b.valueUsd.v ?? -1) - (a.valueUsd.v ?? -1));
+
+    /* Pictures only for the coins shown, biggest first: the coin's own, from the chain. */
+    const shown = holdings.slice(0, deps.policy.holdingsShown);
+    const pictures = deps.images === null ? new Map<string, string>() : await deps.images(shown.map((h) => h.address)).catch(() => new Map<string, string>());
+    for (const h of shown) h.imageUrl = pictures.get(h.address) ?? null;
 
     const coinsUsd = holdings.reduce((s, h) => s + (h.valueUsd.v ?? 0), 0);
     const unpriced = holdings.filter((h) => h.valueUsd.v === null).length;
@@ -163,7 +167,7 @@ export function createWallet(deps: WalletDeps) {
       solBalance: { v: sol },
       totalUsd: measured(solUsd === null ? null : sol * solUsd + coinsUsd, 'no_market'),
       totalSol: measured(solUsd === null ? null : sol + coinsUsd / solUsd, 'no_market'),
-      holdings: holdings.slice(0, deps.policy.holdingsShown),
+      holdings: shown,
       notShown: Math.max(0, holdings.length - deps.policy.holdingsShown),
       unpriced,
       historyDepth: deps.policy.signaturesRead,

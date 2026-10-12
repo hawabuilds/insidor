@@ -53,8 +53,8 @@ test('★ no buy history means a dash with its reason, never a number', async ()
 test('★ a narrative only on a confident match; an unsure one shows nothing', async () => {
   const w = await read();
   const byAddress = new Map(w.holdings.map((h: any) => [h.address, h]));
-  assert.deepEqual((byAddress.get(CONFIDENT) as any).narrative, { storyId: 'st_one', title: 'The confident one' });
-  assert.equal((byAddress.get(UNSURE) as any).narrative, null);
+  assert.deepEqual((byAddress.get(CONFIDENT) as any).story, { storyId: 'st_one', title: 'The confident one' });
+  assert.equal((byAddress.get(UNSURE) as any).story, null);
 });
 
 test('totals, the range\'s move, and the coins this wallet created with its unclaimed fees', async () => {

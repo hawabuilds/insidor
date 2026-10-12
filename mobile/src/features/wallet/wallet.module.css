@@ -57,3 +57,172 @@
   width: 100%;
   margin-top: 16px;
 }
+
+.totals {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+
+.total {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.sub {
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.headRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section {
+  margin: 22px 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.ranges {
+  display: flex;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.ranges button {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ranges button.on {
+  background: var(--card);
+  color: var(--text-1);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  color: inherit;
+  text-decoration: none;
+}
+
+.rowText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rowText b {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.rowRight small {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.dim {
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.story {
+  align-self: flex-start;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: var(--brand-wash);
+  color: var(--brand-200);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.up {
+  color: var(--up);
+}
+
+.down {
+  color: var(--down);
+}
+
+.line {
+  margin: 8px 0;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--input);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 15px;
+}
+
+.link {
+  color: var(--brand-400);
+  font-weight: 700;
+}
+
+.sample {
+  margin-bottom: 14px;
+}
+
+/* The notice carries the page gutter for screens without one; this screen has its own. */
+.sample > :first-child {
+  margin-left: 0;
+  margin-right: 0;
+}
