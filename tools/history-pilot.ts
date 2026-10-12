@@ -5,10 +5,14 @@
  *   node --env-file=.env.local tools/history-pilot.ts counts     Dune stage 0 (needs DUNE_API_KEY; a few credits)
  *   node --env-file=.env.local tools/history-pilot.ts alive      today's alive coins (free; Dune if the key is set)
  *   node --env-file=.env.local tools/history-pilot.ts estimate   group them and price the pilot (free)
+ *   node --env-file=.env.local tools/history-pilot.ts prepare    read each coin's metadata, add it to the universe (free)
+ *   SPEND=live node --env-file=.env.local tools/history-pilot.ts run --yes
+ *                                                                the paid step: prints its estimate per supplier,
+ *                                                                then groups, finds origins, stops at the cap
  *
- * The paid stage — each narrative's origin, found once, stored with its timeline — is not here
- * yet. It is built after the founders have seen this estimate, and it will refuse to start
- * without SPEND=live and --yes, and stop at `universe.history.pilotUsd` in total.
+ * ★ `run` REFUSES unless SPEND=live is set AND --yes is passed, by the person, on the command
+ * line. It stops at `universe.history.pilotUsd` in total across every run (the ledger,
+ * internal.history_spend), and started again it resumes where it stopped.
  *
  * WHY "ALIVE" HAS TWO SOURCES. Dune's one-day query (tools/dune/4_alive.sql) lists every launchpad
  * coin that traded today above the bar: the census. Without a Dune key, GeckoTerminal's pool
@@ -29,6 +33,11 @@ import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { biggestFirst, groupCoins, type HistoryCoin } from '../core/src/history/group.ts';
 import { duneClient, fillParameters } from '../adapters/history/dune/src/index.ts';
 import { dexscreenerStandings } from '../adapters/market/dexscreener/src/index.ts';
+import { inMemoryMeter } from '../adapters/meter/spend/src/index.ts';
+import { assetFromSearch, chainClient, fetchMetadata } from '../adapters/venue/solana-pumpfun/src/index.ts';
+import { asDb, createPool, DB_ROLE, PgAssetRepo, PgCoinUniverseRepo, PgHistoryRepo } from '../store/src/index.ts';
+import { runPilot, type PilotCoin } from '../services/runner/src/work/history-pilot.ts';
+import { pilotPorts } from './lib/pilot-ports.ts';
 import { geckoterminal, LISTING_PAGES } from '../adapters/market/geckoterminal/src/index.ts';
 
 const P = DEFAULT_POLICY;
@@ -185,11 +194,144 @@ function estimate(): void {
   }
 }
 
+/* ── prepare: free reads, so the paid step knows each coin's picture and creator link ── */
+
+const COINS_FILE = new URL('coins.json', OUT);
+/* One metadata document every so often: a public gateway answers 429 to a burst. */
+const METADATA_PACE_MS = 400;
+const PAIR_USD = 0.003;
+
+async function prepare(): Promise<void> {
+  const file = JSON.parse(readFileSync(ALIVE_FILE, 'utf8')) as { coins: AliveCoin[] };
+  const helius = process.env['HELIUS_API_KEY'] ?? '';
+  if (helius === '') throw new Error('HELIUS_API_KEY is not set: the metadata link is read from the chain.');
+  const chain = chainClient({ launchpadBaseUrl: '', rpcUrl: `https://mainnet.helius-rpc.com/?api-key=${helius}`, fetch: globalThis.fetch });
+  /* --no-db: read and write coins.json only, so the estimate can be made before the database is migrated. */
+  const pool = process.argv.includes('--no-db') ? null : createPool(DB_ROLE.internal, { applicationName: 'insidor-history-pilot' });
+  const db = pool === null ? null : asDb(pool);
+  const assets = db === null ? null : new PgAssetRepo(db);
+  const universe = db === null ? null : new PgCoinUniverseRepo(db);
+  const out: PilotCoin[] = [];
+  /* Pictures straight from the chain, a hundred coins a call: no gateway needed. */
+  const pictures = new Map<string, string>();
+  for (let i = 0; i < file.coins.length; i += 100) {
+    for (const [a, img] of await chain.imageUris(file.coins.slice(i, i + 100).map((c) => c.address))) pictures.set(a, img);
+  }
+  /* The creator's link is only in the metadata document: read through a gateway, paced, and
+     once more after a pause when the gateway says to slow down. */
+  const gateway = process.env['METADATA_GATEWAY'] ?? 'https://gateway.pinata.cloud';
+  const readDoc = async (uri: string | null) => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const read = await fetchMetadata(uri, { gateway, fetch: globalThis.fetch, timeoutMs: P.universe.metadataTimeoutMs, maxBytes: P.universe.metadataMaxBytes });
+        return read.kind === 'read' ? read : null;
+      } catch (e) {
+        if (attempt === 0 && /429/.test(e instanceof Error ? e.message : '')) await sleep(30_000);
+        else return null;
+      }
+    }
+    return null;
+  };
+  for (const c of file.coins) {
+    let uri: string | null = null;
+    let meta = null;
+    try {
+      uri = await chain.metadataUri(c.address);
+      meta = await readDoc(uri);
+    } catch {
+      meta = null;
+    }
+    await sleep(METADATA_PACE_MS);
+    const now = Date.now() as never;
+    const asset = assetFromSearch(
+      { address: c.address, name: c.name, ticker: c.ticker, venue: c.bonded ? 'pool' : 'curve', marketAddress: null, createdAt: c.launchedAt, marketCapUsd: c.marketCapUsd, imageUrl: null, source: 'history' },
+      { firstSeenAt: now, metadataUri: uri, chainCreatedAt: c.launchedAt as never },
+    );
+    if (asset !== null && assets !== null && universe !== null) {
+      await assets.upsert([asset]);
+      if (meta !== null) {
+        const m = meta.metadata;
+        await universe.recordMetadata(`solana:${c.address}`, { outcome: 'read', contentId: meta.cid, name: m.name, ticker: m.ticker, description: m.description, imageUri: m.imageUri, socialLink: m.links.social, website: m.links.website, chatLink: m.links.chat }, now);
+      }
+    }
+    out.push({ address: c.address, name: meta?.metadata.name ?? c.name, ticker: meta?.metadata.ticker ?? c.ticker, launchedAt: c.launchedAt as never, marketCapUsd: c.marketCapUsd, imageUri: meta?.metadata.imageUri ?? pictures.get(c.address) ?? null, socialLink: meta?.metadata.links.social ?? null });
+    if (out.length % 50 === 0) console.log(`  ${out.length} of ${file.coins.length}`);
+  }
+  await pool?.end();
+  writeFileSync(COINS_FILE, `${JSON.stringify(out, null, 1)}\n`);
+  console.log(`prepared ${out.length} coins: ${out.filter((c) => c.imageUri !== null).length} with a picture, ${out.filter((c) => c.socialLink !== null).length} with a creator link.`);
+}
+
+/* ── run: the paid step ─────────────────────────────────────────────── */
+
+function pilotEstimate(coins: readonly PilotCoin[]) {
+  const key = (s: string | null) => (s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  let pairs = 0;
+  const pictured = new Set<string>();
+  for (let i = 0; i < coins.length; i += 1) {
+    for (let j = i + 1; j < coins.length; j += 1) {
+      const a = coins[i];
+      const b = coins[j];
+      if (a === undefined || b === undefined) continue;
+      if ((key(a.name) !== '' && key(a.name) === key(b.name)) || (key(a.ticker) !== '' && key(a.ticker) === key(b.ticker))) {
+        pairs += 1;
+        if (a.imageUri !== null) pictured.add(a.imageUri);
+        if (b.imageUri !== null) pictured.add(b.imageUri);
+      }
+    }
+  }
+  const narratives = groupCoins(coins.map((c) => ({ address: c.address, name: c.name, ticker: c.ticker, launchedAt: c.launchedAt, marketCapUsd: c.marketCapUsd, linkedPost: null })), [], P).length;
+  const xLinks = coins.filter((c) => c.socialLink !== null && /(?:x|twitter)\.com\/[^/]+\/status\//.test(c.socialLink)).length;
+  const confirms = Math.ceil(pairs * 0.2) + narratives * 2;
+  const searchPictures = narratives * PICTURES_PER_SEARCH;
+  const lines = {
+    voyage: { calls: pictured.size + searchPictures, usd: (pictured.size + searchPictures) * VOYAGE_USD_PER_IMAGE },
+    x: { calls: xLinks + narratives, usd: xLinks * X_USD_PER_POST + narratives * SEARCH_RESULTS * X_USD_PER_POST },
+    anthropic: { calls: confirms + xLinks + narratives * JUDGED_PER_SEARCH, usd: confirms * PAIR_USD + xLinks * JUDGE_USD_PER_POST + narratives * JUDGED_PER_SEARCH * JUDGE_USD_PER_POST },
+  };
+  return { narratives, pairs, xLinks, searches: narratives, imageChecks: pictured.size + searchPictures, confirms, lines, total: lines.voyage.usd + lines.x.usd + lines.anthropic.usd };
+}
+
+async function run(): Promise<void> {
+  const coins = JSON.parse(readFileSync(COINS_FILE, 'utf8')) as PilotCoin[];
+  const e = pilotEstimate(coins);
+  console.log('The pilot, priced before anything is sent:');
+  console.log(`  narratives (at most)       ${e.narratives}`);
+  console.log(`  pairs compared by picture  ${e.pairs}`);
+  console.log(`  X searches back (at most)  ${e.searches}`);
+  console.log(`  creator posts read on X    ${e.xLinks}`);
+  console.log(`  Claude calls (about)       ${e.lines.anthropic.calls}`);
+  console.log(`  image checks (at most)     ${e.imageChecks}`);
+  for (const [supplier, l] of Object.entries(e.lines)) console.log(`  ${supplier.padEnd(10)} ${String(l.calls).padStart(6)} calls  ${usd(l.usd)}`);
+  console.log(`  total about ${usd(e.total)}; the cap is ${usd(H.pilotUsd)} across every run.`);
+
+  if (process.env['SPEND'] !== 'live' || !process.argv.includes('--yes')) {
+    console.log('Not run. The pilot spends money: start it yourself with SPEND=live and --yes.');
+    return;
+  }
+  const pool = createPool(DB_ROLE.internal, { applicationName: 'insidor-history-pilot' });
+  const history = new PgHistoryRepo(asDb(pool));
+  const left = Math.max(0, H.pilotUsd - (await history.spent()));
+  const meter = inMemoryMeter({ dailyCapUsd: left, softStop: 1, now: Date.now });
+  const reserve = {
+    pictures: 2 * VOYAGE_USD_PER_IMAGE,
+    confirm: PAIR_USD,
+    creator: X_USD_PER_POST + JUDGE_USD_PER_POST,
+    search: SEARCH_RESULTS * X_USD_PER_POST + PICTURES_PER_SEARCH * VOYAGE_USD_PER_IMAGE + JUDGED_PER_SEARCH * PAIR_USD,
+  };
+  const log = { info: (m: string, f?: object) => console.log(m, f ?? ''), warn: (m: string, f?: object) => console.warn(m, f ?? ''), error: (m: string, f?: object) => console.error(m, f ?? ''), child: () => log };
+  const result = await runPilot(coins, { ports: pilotPorts({ out: OUT, meter, policy: P, env: process.env }), reserve, history, policy: P, log: log as never, now: () => Date.now() as never });
+  await pool.end();
+  console.log(result.stopped === 'cap' ? `Stopped at the cap: $${result.spentUsd.toFixed(4)} spent in total, ${result.remaining} left. Run again after raising the cap.` : `Done: $${result.spentUsd.toFixed(4)} spent in total.`, result);
+}
+
 const command = process.argv[2];
 if (command === 'counts') await counts();
 else if (command === 'alive') await alive();
 else if (command === 'estimate') estimate();
+else if (command === 'prepare') await prepare();
+else if (command === 'run') await run();
 else {
-  console.log('usage: tools/history-pilot.ts counts | alive | estimate');
+  console.log('usage: tools/history-pilot.ts counts | alive | estimate | prepare | run');
   process.exit(1);
 }
