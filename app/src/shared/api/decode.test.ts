@@ -23,7 +23,7 @@ import {
   decodeSourceFeed,
   decodeStory,
 } from './decode.ts';
-import { fixtureStory as earliestFixture } from './fixtures.ts';
+import { recordedStory } from '../../test-fixtures/recorded.ts';
 
 const CLEAN_ROW = {
   id: 'st_01',
@@ -500,7 +500,7 @@ test('one unreadable source fails the frame rather than being quietly skipped', 
 });
 
 test('★ the earliest post decodes with its author; "started by" only from a known proof', () => {
-  const raw = earliestFixture('st_ferry') as Record<string, unknown>;
+  const raw = recordedStory();
   const at = 1_800_000_000_000;
   const started = decodeStory({ ...raw, earliestPost: { at, authorLabel: '@firstpost', permalink: 'https://example.invalid/1', startedBy: 'quoted' } });
   assert.deepEqual(started.earliestPost, { known: true, at, authorLabel: '@firstpost', permalink: 'https://example.invalid/1', startedBy: 'quoted' });

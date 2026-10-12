@@ -6,11 +6,11 @@
  * WHAT to say lives in a module a test can import. See `board-provenance.ts` for both
  * arguments and for the bug the pair of them closes.
  *
- * ★ THERE IS NO DISMISS CONTROL, and that is not an omission. The shell's SAMPLE DATA bar
- * states the rule this one inherits: "a banner the user can close is a banner that is
- * absent in the screenshot somebody later mistakes for a product". This makes the same
- * claim about the same danger — everything below this line is invented — about the
- * database rather than about the bundle, so it gets the same treatment and the same amber.
+ * ★ THERE IS NO DISMISS CONTROL, and that is not an omission. A banner the user can close is
+ * a banner that is absent in the screenshot somebody later mistakes for a product, and this
+ * one's claim — everything below this line is invented, in the database — is exactly the
+ * claim that screenshot would lose. The app itself holds no invented data; a seeded database
+ * is the one place left that can, which is why this banner reads the frame and nothing else.
  *
  * `role="status"` and not `alert`, matching every other amber bar in this app: a reader
  * should notice this, not be interrupted by it.

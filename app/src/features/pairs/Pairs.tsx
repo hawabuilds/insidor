@@ -30,7 +30,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { fetchPairs, USING_FIXTURES } from '../../shared/api/index.ts';
+import { fetchPairs } from '../../shared/api/index.ts';
 import type { PairFeed } from '../../shared/api/index.ts';
 import { Num } from '../../shared/ui/index.ts';
 import feed from '../feed/feed.module.css';
@@ -42,21 +42,15 @@ import type { PairRow } from './pairs.ts';
 const CLOCK_MS = 1_000;
 
 /**
- * Where the numbers on this screen came from. Derived, not asserted — a hardcoded sentence
- * about what is connected goes stale the day it changes, and a provenance label that has
- * quietly become false is worse than none. `Feed.tsx` says the same thing the same way.
+ * Where the numbers on this screen came from. One answer, because the app has no other
+ * source: the read service, computing from what the pipeline stored. `Feed.tsx` says the same
+ * thing the same way.
  */
-const SOURCE = USING_FIXTURES
-  ? {
-      label: 'sample data',
-      title:
-        'Every number on this screen is invented. No database and no market reader are connected — these rows exist to show the rules, not the market.',
-    }
-  : {
-      label: 'local database',
-      title:
-        'This screen is computed from the local database. Each row carries the age of the reading it came from.',
-    };
+const SOURCE = {
+  label: 'database',
+  title:
+    'This screen is read from the database the pipeline writes to. Each row carries the age of the reading it came from.',
+};
 
 /**
  * One row.
@@ -188,7 +182,7 @@ export function Pairs() {
         <div className={feed['vsub']}>
           <span>Of the mints we captured, these are the ones a venue could price.</span>
           <span
-            className={`${feed['simtag']} ${USING_FIXTURES ? feed['simtagFixtures'] : ''}`}
+            className={feed['simtag']}
             title={SOURCE.title}
           >
             {SOURCE.label}

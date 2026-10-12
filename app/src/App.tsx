@@ -76,7 +76,6 @@ import {
   createLiveHandlers,
   fetchBoard,
   openLiveChannel,
-  USING_FIXTURES,
 } from './shared/api/index.ts';
 import { NotImplemented } from './shared/not-implemented.ts';
 import { CommandPalette } from './shared/ui/index.ts';
@@ -264,7 +263,7 @@ export function App({ wallet }: AppProps) {
       const channel = openLiveChannel(VIEW_ID, createLiveHandlers(boardStore, refetch));
       return () => channel.close();
     } catch (e: unknown) {
-      /* No transport in this build — sample data, or an environment with no EventSource.
+      /* No transport in this environment — it has no EventSource.
          Not a crash on first paint: the board still reads, and the status line says it is
          not streaming, which is true. */
       if (!(e instanceof NotImplemented)) throw e;
@@ -349,30 +348,13 @@ export function App({ wallet }: AppProps) {
           "everything you are about to read is missing its inputs". An empty board and a
           board nobody is feeding are the same picture, and this is the sentence that
           separates them — which is the same job the launches rail's source banner and the
-          coverage log both do, arriving on the surface that had no defence at all.
-
-          It is ABOVE the fixture bar deliberately. Both are amber and both are true at once
-          in a dev build, and of the two, "nothing is ingesting" is the one that changes what
-          every row below means. */}
+          coverage log both do, arriving on the surface that had no defence at all. */}
       <SourceBanner view={sources} />
 
-      {/* Every number below is invented. This says so, permanently and without a dismiss
-          control — a banner the user can close is a banner that is absent in the screenshot
-          somebody later mistakes for a product. It compiles out of a production build with
-          the fixtures it describes. */}
-      {USING_FIXTURES ? (
-        <div className={styles['fixtureBar']} role="status">
-          <strong>sample data</strong> — no pipeline is connected. Every number on this screen
-          is made up, and each row is here to show one rule: an unsure match with no button, a
-          source that publishes no views, a broken graph where a reading was censored, an age
-          we never learned.
-        </div>
-      ) : null}
-
-      {/* ★ THE SAME CLAIM ABOUT THE DATABASE THAT THE BAR ABOVE MAKES ABOUT THE BUNDLE, and
-          it is the one that was missing. The bar above only ever appears when there is no
-          backend at all; with a backend attached and a freshly seeded database, six invented
-          stories rendered under `Trending` with nothing over them. This says so, and says it
+      {/* ★ A CLAIM ABOUT THE DATABASE, and it is the one that was missing: with a freshly
+          seeded database, six invented stories rendered under `Trending` with nothing over
+          them. The app itself carries no invented data any more; a seeded database is the
+          one place left that can, and the read service says so on the frame. This says it
           out of the frame's own provenance rather than out of a flag here — so it goes away
           on its own the moment a real story is projected, and cannot be turned off early.
 

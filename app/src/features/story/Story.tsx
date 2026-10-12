@@ -193,7 +193,12 @@ export function Story({ storyId, onBuy, isWatched, onToggleWatch }: StoryProps) 
       .then((story) => setLoad({ kind: 'ready', story }))
       .catch((e: unknown) => {
         if (ac.signal.aborted) return;
-        setLoad({ kind: 'failed', message: e instanceof Error ? e.message : 'could not load' });
+        /* ★ A FAILED READ IS SAID AS ONE, never filled in with an invented page. The
+           transport's own message rides along as the reason, so "it does not hold this
+           story" and "it did not answer" stay distinguishable without this component
+           branching on a status code. */
+        const why = e instanceof Error ? e.message : 'no answer';
+        setLoad({ kind: 'failed', message: `Couldn’t read this story (${why}). Reopen the page to try again.` });
       });
     return () => ac.abort();
   }, [storyId]);

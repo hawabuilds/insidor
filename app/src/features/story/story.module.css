@@ -915,8 +915,8 @@
 }
 
 /* ===== seeded-story notice =====
-   The SAME amber recipe as the board's .provenanceBar, the shell's .fixtureBar and the
-   sources banner. Amber is what this app means by "degraded but not broken", and a fifth
+   The SAME amber recipe as the board's .provenanceBar and the sources banner. Amber is
+   what this app means by "degraded but not broken", and a second
    treatment would dilute the one signal that already means something. Margin-bottom
    rather than -top: this sits above the identity panel inside the page's own column,
    where the shell's bars sit above the whole route. */

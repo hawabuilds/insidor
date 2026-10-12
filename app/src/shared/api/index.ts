@@ -28,7 +28,6 @@ export {
 
 export {
   ReadError,
-  USING_FIXTURES,
   fetchBoard,
   fetchLaunches,
   fetchPairs,

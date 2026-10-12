@@ -14,17 +14,16 @@
  *   3. The withheld branch never reads the rows array AT ALL — not filters it, not empties it
  *      afterwards. There is no value in the decoded object that a component could reach.
  *
- * The fixture is decoded here too. `client.ts` runs sample payloads through this same
- * decoder, so a fixture that could not survive it would be a shape the server can never send,
- * and every screen designed against it would be designed against a wire format that does not
- * exist.
+ * A recorded frame is decoded here too (src/test-fixtures/, test-only). A recording that could
+ * not survive this decoder would be a shape the server can never send, and every test written
+ * against it would be a test of a wire format that does not exist.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decodePair, decodePairFeed, WireLeakError, WireShapeError } from './decode.ts';
-import { fixturePairs } from './fixtures.ts';
+import { recordedPairs } from '../../test-fixtures/recorded.ts';
 
 const T0 = 1_755_079_200_000;
 const MIN = 60_000;
@@ -51,7 +50,7 @@ const SHOWN_HEAD = {
   rows: { listing: 'shown', mintsInWindow: 192, withMarket: 6, withoutMarket: 186 },
 };
 
-/* ── the ordinary case, and the fixture ───────────────────────────────── */
+/* ── the ordinary case, and the recording ───────────────────────────────── */
 
 test('a frame decodes into its head, its counts and its rows, in order', () => {
   const feed = decodePairFeed({ tick: 9, head: SHOWN_HEAD, pairs: [PAIR] });
@@ -68,15 +67,15 @@ test('a frame decodes into its head, its counts and its rows, in order', () => {
   assert.equal(feed.pairs[0]?.pairId, 'solana:toad');
 });
 
-test('the sample payload survives the decoder, so it is a shape the server could send', () => {
-  const feed = decodePairFeed(fixturePairs());
+test('the recorded payload survives the decoder, so it is a shape the server could send', () => {
+  const feed = decodePairFeed(recordedPairs());
   assert.ok(feed.pairs.length > 0);
   assert.equal(feed.head.rows.listing, 'shown');
-  /* And the fixture demonstrates the absences rather than only the happy path: at least one
+  /* And the recording demonstrates the absences rather than only the happy path: at least one
      row must carry a figure the venue did not report. */
   assert.ok(
     feed.pairs.some((p) => !p.liquidityUsd.known || !p.marketCapUsd.known),
-    'every sample row has every figure, which teaches the wrong lesson about this population',
+    'every recorded row has every figure, which teaches the wrong lesson about this population',
   );
 });
 

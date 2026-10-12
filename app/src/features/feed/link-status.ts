@@ -12,7 +12,7 @@
  * Four things it can say, and the middle two are the ones the previous build could not:
  *
  *   off           there is no live channel. The board was read once and is a snapshot.
- *                 Honest, and NOT an error — this is what a fixtures build shows.
+ *                 Honest, and NOT an error — this is what a browser with no EventSource shows.
  *   streaming     subscribed, and updates arrive.
  *   reconnecting  the channel dropped moments ago and the transport is retrying. The board
  *                 is a few seconds stale at worst, and saying "broken" here would cry wolf
