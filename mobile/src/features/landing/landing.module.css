@@ -1,0 +1,147 @@
+/* Trador's landing, in Insidor's tokens: the same spacing, sizes and weights. */
+
+.page {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  padding: 0 32px max(48px, env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+
+.middle {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 1em;
+  color: var(--text-1);
+}
+
+.wordmark {
+  font-family: var(--font-wordmark);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.claim {
+  margin: 0;
+  font-size: clamp(38px, 11vw, 46px);
+  font-weight: 300;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+}
+
+.payoff {
+  color: var(--brand-300);
+  font-weight: 500;
+}
+
+.line {
+  margin: 20px 0 0;
+  color: var(--text-2);
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 44px;
+}
+
+.join {
+  display: flex;
+  min-height: 52px;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 17px;
+  background: var(--brand);
+  box-shadow: 0 16px 32px -14px var(--brand-glow);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.join:active {
+  transform: translateY(1px);
+}
+
+.ios {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: var(--input);
+  color: var(--text-3);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.demo {
+  margin: 8px 0 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.x {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 15px 16px;
+  border: 0;
+  border-radius: 15px;
+  background: var(--brand);
+  box-shadow: 0 16px 32px -14px var(--brand-glow);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.small {
+  max-width: 32ch;
+  margin: 16px auto 0;
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.google {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 15px 16px;
+  border: 0;
+  border-radius: 15px;
+  background: #fff;
+  color: #1f1f1f;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+}
