@@ -107,7 +107,9 @@ test('★ a historical narrative\'s line: first post, first coin, and its peak f
 
 test('only observed narratives and only chainwatch\'s own coins are searched — never a seed or a fixture', () => {
   assert.match(STORY_SEARCH_SQL, /provenance,kind\}' = 'observed'/);
-  assert.match(ASSET_SEARCH_SQL, /origin in \('live_stream', 'backfill'\)/);
+  /* The name index admits only the mint stream's and a search's coins (0037's trigger); the
+     e2e coin-keep test proves a seed never reaches it. */
+  assert.match(ASSET_SEARCH_SQL, /from public\.coin_name/);
 });
 
 test('★ an outage is not an empty list: every source down is "unavailable", one down is counted', async () => {

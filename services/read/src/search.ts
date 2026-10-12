@@ -58,21 +58,29 @@ select distinct on (payload ->> 'id') payload
  order by payload ->> 'id'
  limit $2`;
 
-/* Chainwatch's own coins: zero-trade coins no market lists still appear. Exact ticker only —
-   the symbol index (0005) is on upper(symbol), and a fuzzy match over every mint is not a list. */
+/* Chainwatch's own coins, from the name index (0037), which outlives each coin's full row: a coin
+   deleted by the keep rule is still found here, and its picture is used only while the full row
+   lasts. Exact ticker or exact name only — the index holds every launch ever, and a fuzzy match
+   over it is not a list. */
 export const ASSET_SEARCH_SQL = `
-select address, symbol, name, image_uri, minted_at
-  from public.asset
- where chain = 'solana' and upper(symbol) = $1 and origin in ('live_stream', 'backfill')
- order by minted_at desc nulls last
+select n.address, n.ticker as symbol, n.name, a.image_uri, n.launched_at as minted_at
+  from public.coin_name n
+  left join public.asset a on a.chain = 'solana' and a.address = n.address
+ where upper(n.ticker) = $1 or lower(n.name) = lower($3)
+ order by n.launched_at desc nulls last
  limit $2`;
 
 /* Pictures we already hold for coins a source listed: the metadata's own link, read by chainwatch. */
 export const ASSET_IMAGES_SQL = `
 select address, image_uri from public.asset where chain = 'solana' and address = any($1) and image_uri is not null`;
 
+/* A coin's facts by address: its full row while it lasts, the name index after. */
 export const ASSET_FACTS_SQL = `
-select address, symbol, name, image_uri, minted_at from public.asset where asset_key = $1 and origin in ('live_stream', 'backfill')`;
+select n.address, coalesce(a.symbol, n.ticker) as symbol, coalesce(a.name, n.name) as name, a.image_uri,
+       coalesce(a.minted_at, n.launched_at) as minted_at
+  from public.coin_name n
+  left join public.asset a on a.chain = 'solana' and a.address = n.address
+ where n.address = $1`;
 
 export interface NamedSearch {
   readonly name: string;
@@ -213,7 +221,7 @@ export function createSearch(deps: SearchDeps) {
     const [storyRows, postRows, assetRows, answers] = await Promise.all([
       deps.db.query(STORY_SEARCH_SQL, [like, ticker, LIVE_VIEW, p.storiesShown + 1]),
       deps.db.query(POST_SEARCH_SQL, [like, p.postsShown + 1]),
-      deps.db.query(ASSET_SEARCH_SQL, [ticker, p.coinsShown]),
+      deps.db.query(ASSET_SEARCH_SQL, [ticker, p.coinsShown, term]),
       Promise.allSettled(deps.sources.map((s) => s.source.search(term))),
     ]);
 
@@ -365,7 +373,8 @@ export function createSearch(deps: SearchDeps) {
 
     /**
      * GET /coin/:assetKey — the facts a token page opened from search shows: what the search
-     * said, or what chainwatch recorded. Neither: a 404, never an invented coin.
+     * said, or what chainwatch recorded (its full row, or the name index once that is gone).
+     * Neither: a 404, never an invented coin.
      */
     async facts(assetKey: string): Promise<SearchReply | null> {
       const address = assetKey.startsWith('solana:') ? assetKey.slice('solana:'.length) : null;
@@ -379,7 +388,7 @@ export function createSearch(deps: SearchDeps) {
           venue: hit.source === 'chainwatch' ? null : hit.venue,
         });
       }
-      const rows = await deps.db.query(ASSET_FACTS_SQL, [assetKey]);
+      const rows = await deps.db.query(ASSET_FACTS_SQL, [address]);
       const r = rows[0];
       if (r === undefined) return null;
       return json(200, {
