@@ -11,6 +11,7 @@
     "@insidor/embed-voyage": "workspace:*",
     "@insidor/judge-anthropic": "workspace:*",
     "@insidor/meter": "workspace:*",
+    "@insidor/notify": "workspace:*",
     "@insidor/platform-x": "workspace:*",
     "@insidor/project": "workspace:*",
     "@insidor/read": "workspace:*",

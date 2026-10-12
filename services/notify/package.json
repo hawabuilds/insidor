@@ -1,0 +1,31 @@
+{
+  "name": "@insidor/notify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Alerts: the list, settings, devices and web push, and the checks that fire them — prices, curves, and the pipeline's rising posts and narratives. Push goes out only with NOTIFY=on.",
+  "main": "./src/main.ts",
+  "exports": {
+    ".": "./src/routes.ts",
+    "./*.ts": "./src/*.ts"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=../../.env.local src/main.ts",
+    "dev": "node --watch --env-file-if-exists=../../.env.local src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/chain-portfolio": "workspace:*",
+    "@insidor/contracts": "workspace:*",
+    "@insidor/core": "workspace:*",
+    "@insidor/identity-privy": "workspace:*",
+    "@insidor/market-dexscreener": "workspace:*",
+    "@insidor/push-webpush": "workspace:*",
+    "@insidor/venue-solana-pumpfun": "workspace:*",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.0"
+  }
+}
