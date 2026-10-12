@@ -68,8 +68,9 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
       kind: 'read',
       timeframe,
       venue: market.pool === null ? null : onCurve ? 'curve' : 'pool',
+      /* Null is "could not be read", an empty list is "no trades yet": two different facts. */
       candles: market.candles,
-      trades: market.trades.map((t) => ({
+      trades: market.trades === null ? null : market.trades.map((t) => ({
         tx: t.tx,
         side: t.side,
         tokenAmount: measured(t.tokenAmount, 'not_reported'),
