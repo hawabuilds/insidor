@@ -1051,6 +1051,8 @@ export interface WalletPolicy {
   readonly holdingsShown: number;
   /** Recent transactions read for buy history. Older buys are not seen, and the screen says so. */
   readonly signaturesRead: number;
+  /** The balance chart's spacing: a wallet adds a point at most this often (Trador's ten minutes). */
+  readonly snapshotGapMs: number;
 }
 
 /**
@@ -1743,8 +1745,10 @@ const POLICY_V1: Policy = {
 
      v31 adds `trade`: the per-trade cap, slippage, the platform fee (off) and the probe size.
 
-     v32 adds `wallet`: the Wallet tab's cache, per-client limit, list length and history depth. */
-  version: 'policy.v32',
+     v32 adds `wallet`: the Wallet tab's cache, per-client limit, list length and history depth.
+
+     v33 adds `wallet.snapshotGapMs`: the balance chart's spacing. */
+  version: 'policy.v33',
 
   admit: {
     maxAgeMin: 240,
@@ -2156,6 +2160,8 @@ const POLICY_V1: Policy = {
     holdingsShown: 50,
     /* 200 transactions: two parse calls of a hundred, well inside a free parsing tier. */
     signaturesRead: 200,
+    /* Ten minutes: fine enough to see a real move, coarse enough that a day is 144 points. */
+    snapshotGapMs: 600_000,
   },
 
   search: {

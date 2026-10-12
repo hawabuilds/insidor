@@ -70,3 +70,23 @@ test('★ an outage is said, never an empty wallet', async () => {
   const w = await read(route({ reader: { balances: async () => { throw new Error('429'); }, signatures: async () => [], parse: async () => [] } }));
   assert.deepEqual(w, { kind: 'unavailable', why: 'not_read_yet' });
 });
+
+test('★ the balance chart\'s one write: a point at most once a gap, a junk value never, and the history oldest first', async () => {
+  const A = WALLET;
+  const record = (v: number, gapMs: number) => db.query(`select public.record_wallet_snapshot($1, $2, $3)`, [A, v, gapMs]);
+  await db.query(`delete from public.wallet_snapshot`, []);
+  await record(100, 600_000);
+  await record(200, 600_000);
+  await record(300, 0);
+  const rows = await db.query<{ n: number }>(`select count(*)::int as n from public.wallet_snapshot where address = $1`, [A]);
+  assert.equal(rows[0]?.n, 1, 'inside the gap, and a gap of zero is still at least a minute');
+  await record(-1, 600_000);
+  await db.query(`select public.record_wallet_snapshot($1, $2, $3)`, ['not an address', 5, 600_000]);
+  const all = await db.query<{ n: number }>(`select count(*)::int as n from public.wallet_snapshot`, []);
+  assert.equal(all[0]?.n, 1);
+  await db.query(`insert into public.wallet_snapshot (address, at, total_usd) values ($1, now() - interval '2 days', 50)`, [A]);
+  const h = JSON.parse((await route({ now: Date.now }).history(A, '1w', 'me')).body);
+  assert.deepEqual(h.points.map((p: { value: number }) => p.value), [50, 100]);
+  const day = JSON.parse((await route({ now: Date.now }).history(A, '1d', 'me')).body);
+  assert.deepEqual(day.points.map((p: { value: number }) => p.value), [100]);
+});
