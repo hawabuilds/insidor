@@ -33,6 +33,7 @@ import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { TradeBar } from '../trade/TradeBar.tsx';
 import { defaultTimeframe } from './chart-data.ts';
+import { Comments } from '../comments/Comments.tsx';
 import { CoinChart } from './CoinChart.tsx';
 import styles from './token.module.css';
 
@@ -164,7 +165,7 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
         ]}
       />
       {section === 'trades' ? (read?.trades != null && read.trades.length > 0 ? <Trades ticker={coin.ticker} trades={read.trades} now={now} /> : <p className={styles['note']}>{tradesNote(loaded.state, market)}</p>) : null}
-      {section === 'comments' ? <p className={styles['note']}>Comments are coming soon.</p> : null}
+      {section === 'comments' ? <Comments subject={`coin:${coin.coinId}`} holdersOf={`$${coin.ticker}`} /> : null}
       {section === 'info' ? <Info coin={coin} now={now} /> : null}
 
       {/* A sample coin is never traded; a real one is, once trading is on and it has somewhere to trade. */}

@@ -22,6 +22,7 @@ import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { TradeBar } from '../trade/TradeBar.tsx';
 import { defaultTimeframe } from './chart-data.ts';
+import { Comments } from '../comments/Comments.tsx';
 import { CoinChart } from './CoinChart.tsx';
 import { MARKET_POLL_MS, shortAddress, Trades, tradesNote } from './TokenPage.tsx';
 import styles from './token.module.css';
@@ -49,7 +50,7 @@ function Body({ coin }: { coin: SearchedCoin }) {
   const now = useNow();
   const toast = useToast();
   const [tf, setTf] = useState<MarketTimeframe>(() => defaultTimeframe({ onCurve: coin.venue === 'curve', launchedAt: coin.launchedAt.known ? coin.launchedAt.at : null, now: Date.now() }));
-  const [section, setSection] = useState<'trades' | 'info'>('trades');
+  const [section, setSection] = useState<'trades' | 'comments' | 'info'>('trades');
   const [loaded, reload] = useLoad(`market:search:${coin.coinId}:${tf}`, (signal) => fetchCoinMarket(coin.coinId, tf, signal));
   useEffect(() => {
     const timer = setInterval(reload, MARKET_POLL_MS);
@@ -106,10 +107,12 @@ function Body({ coin }: { coin: SearchedCoin }) {
         onChange={setSection}
         tabs={[
           { key: 'trades', label: 'Trades' },
+          { key: 'comments', label: 'Comments' },
           { key: 'info', label: 'Info' },
         ]}
       />
       {section === 'trades' ? (read?.trades != null && read.trades.length > 0 ? <Trades ticker={ticker} trades={read.trades} now={now} /> : <p className={styles['note']}>{tradesNote(loaded.state, market)}</p>) : null}
+      {section === 'comments' ? <Comments subject={`coin:${coin.coinId}`} holdersOf={coin.ticker !== null ? `$${coin.ticker}` : 'this coin'} /> : null}
       {section === 'info' ? (
         <dl className={styles['info']}>
           <div><dt>Name</dt><dd>{coin.name ?? '—'}</dd></div>

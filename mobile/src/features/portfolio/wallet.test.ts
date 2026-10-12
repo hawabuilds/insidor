@@ -59,3 +59,19 @@ test('the chart is the stored points then the live total; its change is first to
   assert.equal(windowChange(withLive([], 150, 10)), null, 'one point is not a change');
   assert.deepEqual(withLive([{ t: 1, value: 100 }], null, 10).length, 1, 'no live total is not a zero');
 });
+
+test('★ signed out, the Portfolio shows only labelled sample data', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { gateFor } = await import('../../shared/sign-in.ts');
+  /* With sign-in set up, signed out never reaches the Portfolio: the door stands in front of it. */
+  for (const kind of ['disconnected', 'refused', 'failed'] as const) {
+    assert.equal(gateFor({ configured: true, state: (kind === 'failed' ? { kind, code: 'internal' } : { kind }) as never, entered: true }), 'landing');
+  }
+  /* In the build with no sign-in, the one wallet it shows is the recorded sample, marked as such. */
+  const screen = readFileSync(new URL('./PortfolioScreen.tsx', import.meta.url), 'utf8');
+  const signedOut = screen.slice(screen.indexOf('/* Only the demo build gets here'));
+  assert.match(signedOut, /canAct=\{false\} sample load=\{\(\) => loadSamplePortfolio\(\)\}/);
+  assert.ok(!/fetchPortfolio\(/.test(signedOut), 'no real wallet is read signed out');
+  const shell = screen.slice(screen.indexOf('function Loaded'), screen.indexOf('function Arrow'));
+  assert.match(shell, /sample \? <div className=\{box\['sampleNotice'\]\}><Notice notice=\{SAMPLE_WALLET\} \/>/, 'and the sample notice is shown');
+});

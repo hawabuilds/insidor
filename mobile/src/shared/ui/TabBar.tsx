@@ -6,6 +6,7 @@
  * one surface. Icons only, with each label in `aria-label`.
  */
 
+import { badgeText } from '../../features/alerts/group.ts';
 import { hrefFor, type Tab } from '../route.ts';
 import { BellIcon, HomeIcon, LayersIcon, SearchIcon, WalletIcon } from './icons.tsx';
 import styles from './ui.module.css';
@@ -18,7 +19,7 @@ const TABS = [
   { key: 'portfolio', label: 'Portfolio', Icon: WalletIcon },
 ] as const;
 
-export function TabBar({ current }: { current: Tab }) {
+export function TabBar({ current, unread = 0 }: { current: Tab; unread?: number }) {
   return (
     <nav className={styles['tabbar']} aria-label="Primary">
       <div className={styles['tabbarPill']}>
@@ -26,11 +27,12 @@ export function TabBar({ current }: { current: Tab }) {
           <a
             key={key}
             href={hrefFor({ screen: key })}
-            aria-label={label}
+            aria-label={key === 'alerts' && unread > 0 ? `${label}, ${unread} new` : label}
             aria-current={key === current ? 'page' : undefined}
             className={`${styles['tabbarItem']} ${key === current ? styles['tabbarOn'] : ''}`}
           >
             <Icon size={21} />
+            {key === 'alerts' && badgeText(unread) !== null ? <span className={styles['tabBadge']}>{badgeText(unread)}</span> : null}
           </a>
         ))}
       </div>

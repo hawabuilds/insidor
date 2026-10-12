@@ -1,0 +1,257 @@
+/* The Alerts tab and its settings: Trador's notifications screen and settings, in Insidor's tokens. */
+
+.screen {
+  padding: 12px var(--gutter) var(--tabbar-space);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 calc(-1 * var(--gutter));
+  padding: 8px var(--gutter);
+  background: var(--bg);
+}
+
+.title {
+  margin: 6px 0 8px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.gear,
+.back {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+}
+
+.back {
+  margin-left: -8px;
+  color: var(--text-1);
+}
+
+.note {
+  color: var(--text-3);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.section {
+  margin: 18px 0 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 -10px;
+  padding: 10px;
+  border-radius: 14px;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.unread {
+  background: rgb(153 69 255 / 12%);
+}
+
+.coin {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--text-2);
+  font-weight: 800;
+}
+
+.text {
+  min-width: 0;
+  flex: 1;
+}
+
+.text b {
+  display: block;
+  font-size: 14.5px;
+  line-height: 1.3;
+}
+
+.text span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.age {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  align-self: flex-start;
+}
+
+.guide {
+  margin: 8px 0 12px;
+  padding: 14px 16px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.guide ol {
+  margin: 8px 0;
+  padding-left: 20px;
+  color: var(--text-2);
+}
+
+.guide span {
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.set {
+  margin-top: 12px;
+  padding: 4px 16px;
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+
+.setRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.setRow + .setRow,
+.set > div + div .setRow {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.setRow b {
+  display: block;
+  font-size: 14.5px;
+}
+
+.setRow span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.switch {
+  position: relative;
+  width: 46px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+
+.switch span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.switchOn {
+  background: var(--brand);
+}
+
+.switchOn span {
+  transform: translateX(18px);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 0 12px;
+}
+
+.chip,
+.chipOn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chip {
+  background: var(--input);
+  color: var(--text-3);
+}
+
+.chipOn {
+  background: rgb(153 69 255 / 20%);
+  color: var(--text-1);
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: 32px 32px 32px;
+  align-items: center;
+  text-align: center;
+}
+
+.stepper button {
+  height: 32px;
+  border-radius: 16px;
+  background: var(--input);
+  color: var(--text-1);
+  font-size: 18px;
+}
+
+.times {
+  display: flex;
+  gap: 12px;
+  padding-bottom: 12px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.times input {
+  margin-left: 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--input);
+  color: var(--text-1);
+  font: inherit;
+}
+
+.link {
+  display: block;
+  padding: 0 0 12px;
+  color: var(--brand);
+  font-size: 14px;
+  font-weight: 700;
+}

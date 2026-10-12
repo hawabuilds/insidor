@@ -13,10 +13,10 @@ import { useEffect, useRef, useState } from 'react';
 import { runKeyImport } from './key-import.ts';
 
 export interface KeyImportClasses {
-  readonly field?: string;
-  readonly primary?: string;
-  readonly secondary?: string;
-  readonly row?: string;
+  readonly field?: string | undefined;
+  readonly primary?: string | undefined;
+  readonly secondary?: string | undefined;
+  readonly row?: string | undefined;
 }
 
 export function KeyImport({ onDone, classes = {} }: { onDone: (outcome: 'imported' | 'cancelled' | 'failed') => void; classes?: KeyImportClasses }) {

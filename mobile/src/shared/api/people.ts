@@ -1,0 +1,100 @@
+/**
+ * PEOPLE AND ALERTS, AS THE PHONE APP HOLDS THEM — the client for services/social and
+ * services/notify, and their shapes.
+ *
+ * ★ WHO IS ASKING TRAVELS AS THE SIGN-IN TOKEN, NOTHING ELSE. Each request carries the identity
+ * token the wallet port hands out (`setTokenSource`, set once by App). The services read the
+ * person — handle, wallet — from that signed token; nothing about the person is sent as data.
+ *
+ * ★ NO SERVICE, SAMPLE DATA — LABELLED. With no VITE_SOCIAL_URL / VITE_NOTIFY_URL in a build that
+ * may show samples, every call answers from `people-fixtures.ts` and `PEOPLE_SAMPLE` is true, so
+ * each screen shows the "Sample data" notice. A production build with no service says the
+ * service is not set up; it never shows a made-up person.
+ *
+ * ★ PEOPLE'S WORDS ARE NOT CHECKED FOR OUR VOCABULARY, ONLY THE KEYS ARE. A comment may say
+ * anything a person types; what must never appear is a field of ours that scores something.
+ */
+
+import { peopleRequest } from './client.ts';
+import { FORBIDDEN_KEYS } from './wire/fields.ts';
+
+export type { Alert, AlertPrefs, AlertSettings, AlertSwitch, Comment, CommentThread, LeaderRow, PersonRef, ProfileCard, RankId } from './wire/people.ts';
+import type { Alert, AlertPrefs, AlertSettings, Comment, CommentThread, LeaderRow, PersonRef, ProfileCard } from './wire/people.ts';
+
+const SOCIAL = (import.meta.env?.['VITE_SOCIAL_URL'] as string | undefined) ?? '';
+const NOTIFY = (import.meta.env?.['VITE_NOTIFY_URL'] as string | undefined) ?? '';
+const SAMPLES_ALLOWED = import.meta.env?.DEV === true || import.meta.env?.VITE_SAMPLE_DATA === 'on';
+
+/** True when people and alerts are sample data; every screen showing them must say so. */
+export const PEOPLE_SAMPLE = SAMPLES_ALLOWED && (SOCIAL === '' || NOTIFY === '');
+
+let tokenSource: () => string | null = () => null;
+/** Called once by App with the wallet port's `sessionToken`. */
+export function setTokenSource(source: () => string | null): void {
+  tokenSource = source;
+}
+
+export class PeopleError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** Keys only: a person's words are theirs; a field of ours that scores something is a leak. */
+function checkKeys(raw: unknown, path = '$'): void {
+  if (Array.isArray(raw)) raw.forEach((x, i) => checkKeys(x, `${path}[${i}]`));
+  else if (typeof raw === 'object' && raw !== null) {
+    for (const [k, v] of Object.entries(raw)) {
+      if (FORBIDDEN_KEYS.includes(k.toLowerCase())) throw new PeopleError(500, `${path}.${k} is not something this app shows`);
+      checkKeys(v, `${path}.${k}`);
+    }
+  }
+}
+
+async function call(base: string, method: string, path: string, body?: unknown): Promise<unknown> {
+  if (PEOPLE_SAMPLE) {
+    const { sampleAnswer } = await import('./people-fixtures.ts');
+    return sampleAnswer(base === SOCIAL ? 'social' : 'notify', method, path, body);
+  }
+  if (base === '') throw new PeopleError(503, 'This part of Insidor is not set up in this build.');
+  const response = await peopleRequest(`${base}${path}`, method, tokenSource(), body);
+  const parsed = response.json;
+  if (!response.ok) throw new PeopleError(response.status, typeof (parsed as { error?: unknown }).error === 'string' ? (parsed as { error: string }).error : 'That did not work. Try again.');
+  checkKeys(parsed);
+  return parsed;
+}
+
+const social = (method: string, path: string, body?: unknown) => call(SOCIAL, method, path, body);
+const notify = (method: string, path: string, body?: unknown) => call(NOTIFY, method, path, body);
+
+/* ── social ───────────────────────────────────────────────────────── */
+
+export const syncMe = async (): Promise<ProfileCard> => (await social('POST', '/me')) as ProfileCard;
+export const fetchMe = async (): Promise<ProfileCard> => (await social('GET', '/me')) as ProfileCard;
+export const saveBio = async (bio: string): Promise<ProfileCard> => (await social('PUT', '/me', { bio })) as ProfileCard;
+export const fetchProfile = async (key: string): Promise<{ profile: ProfileCard; comments: readonly Comment[] }> =>
+  (await social('GET', `/profile/${encodeURIComponent(key)}`)) as { profile: ProfileCard; comments: readonly Comment[] };
+export const fetchFollows = async (key: string, which: 'followers' | 'following'): Promise<readonly PersonRef[]> =>
+  ((await social('GET', `/profile/${encodeURIComponent(key)}/${which}`)) as { people: readonly PersonRef[] }).people;
+export const follow = async (userId: string, on: boolean): Promise<void> => void (await social(on ? 'POST' : 'DELETE', `/follow/${encodeURIComponent(userId)}`));
+export const fetchComments = async (subject: string): Promise<CommentThread> => (await social('GET', `/comments?subject=${encodeURIComponent(subject)}`)) as CommentThread;
+export const postComment = async (c: { subject: string; parentId: number | null; body: string; proofUrl: string | null }): Promise<Comment> =>
+  ((await social('POST', '/comments', c)) as { comment: Comment }).comment;
+export const likeComment = async (id: number, on: boolean): Promise<{ likes: number; earned?: number }> => (await social(on ? 'POST' : 'DELETE', `/comments/${id}/like`)) as { likes: number; earned?: number };
+export const reportComment = async (id: number, reason: string): Promise<void> => void (await social('POST', `/comments/${id}/report`, { reason }));
+export const hideComment = async (id: number): Promise<void> => void (await social('POST', `/comments/${id}/hide`));
+export const fetchLeaderboard = async (): Promise<{ season: { id: number; endsAt: number }; rows: readonly LeaderRow[] }> =>
+  (await social('GET', '/leaderboard')) as { season: { id: number; endsAt: number }; rows: readonly LeaderRow[] };
+
+/* ── alerts ───────────────────────────────────────────────────────── */
+
+export const fetchAlerts = async (): Promise<{ unread: number; alerts: readonly Alert[] }> => (await notify('GET', '/alerts')) as { unread: number; alerts: readonly Alert[] };
+export const markAlertsSeen = async (): Promise<void> => void (await notify('POST', '/alerts/seen'));
+export const fetchAlertSettings = async (): Promise<AlertSettings> => (await notify('GET', '/prefs')) as AlertSettings;
+export const saveAlertPrefs = async (prefs: AlertPrefs): Promise<AlertSettings> => (await notify('PUT', '/prefs', { prefs })) as AlertSettings;
+export const registerDevice = async (sub: { endpoint: string; keys: { p256dh: string; auth: string } }): Promise<void> => void (await notify('POST', '/push/subscribe', sub));
+export const unregisterDevice = async (endpoint: string): Promise<void> => void (await notify('DELETE', '/push/subscribe', { endpoint }));
+export const sendTestPush = async (): Promise<{ sent: number; why: string | null }> => (await notify('POST', '/push/test')) as { sent: number; why: string | null };
+export const syncWatch = async (stories: readonly string[]): Promise<void> => void (await notify('PUT', '/watch', { stories }));
