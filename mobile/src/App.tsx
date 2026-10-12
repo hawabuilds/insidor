@@ -69,6 +69,9 @@ export function App() {
     markEntered();
     setEntered(true);
   }
+  /* The create modal sits over whichever screen opened it, so it lives here, above them. */
+  const [creating, setCreating] = useState<CreateFrom | null>(null);
+  /* After every hook, so the hooks run the same way whichever screen is shown. */
   if (showsLanding(window.location.hash, entered, signedIn)) {
     return (
       <Landing
@@ -79,8 +82,6 @@ export function App() {
       />
     );
   }
-  /* The create modal sits over whichever screen opened it, so it lives here, above them. */
-  const [creating, setCreating] = useState<CreateFrom | null>(null);
   return (
     <ComingSoonProvider>
       <main>
