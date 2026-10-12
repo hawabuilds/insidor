@@ -81,3 +81,11 @@ export { kendallTau, stabilityState } from './rank/stability.ts';
  * nobody notices being wrong.
  */
 export { liveCount, sourceState } from './sources/state.ts';
+
+/**
+ * The "is this ticker taken" rule, for the Create screen. Not a stage and it writes no row;
+ * it is here because it turns on two policy numbers, and the line it produces — "You'd be
+ * first" — is a claim a person acts on with money.
+ */
+export { tickerUse } from './create/ticker.ts';
+export type { TickerEvidence, TickerUse } from './create/ticker.ts';

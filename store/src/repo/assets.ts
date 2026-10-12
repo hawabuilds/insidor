@@ -314,6 +314,30 @@ export class PgAssetRepo implements AssetRepo {
   }
 
   /**
+   * How many observed launches on this chain used this ticker since `sinceMs`.
+   *
+   * ★ THIS IS NOT CANDIDATE RETRIEVAL, and nothing may use it as one. 0005 forbids
+   * selecting coins by symbol because a symbol search returns the plausible wrong coin.
+   * This returns a COUNT and never a coin: it answers "has anyone launched under this
+   * ticker lately", for the Create screen, and there is no row in its result that could
+   * be linked to a story or offered for purchase.
+   *
+   * Observed origins only. A seeded coin is not a rival anybody launched.
+   */
+  async symbolSightings(chain: ChainId, symbol: string, sinceMs: Millis): Promise<number> {
+    const rows = await this.#db.query<{ seen: string | number }>(
+      `select count(*) as seen
+         from public.asset
+        where chain = $1
+          and upper(symbol) = upper($2)
+          and minted_at >= $3
+          and origin = any($4::text[])`,
+      [chain, symbol, toTimestamp(sinceMs), [...OBSERVED_ASSET_ORIGINS]],
+    );
+    return Number(rows[0]?.seen ?? 0);
+  }
+
+  /**
    * Every chain we hold an OBSERVED asset on.
    *
    * ★ IT EXISTS SO NO SERVICE HAS TO NAME ONE. `mintedBetween` is keyed by chain, and
