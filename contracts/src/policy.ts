@@ -1022,6 +1022,22 @@ export interface UniversePolicy {
 }
 
 /**
+ * Buying and selling (services/trade). Everything here is behind the TRADING switch, which is off
+ * unless the deploy turns it on, and the allowlist of wallets, which is empty unless it names one.
+ */
+export interface TradePolicy {
+  /** The most one buy may spend, in SOL. Sells are bounded by what the wallet holds. */
+  readonly maxSolPerTrade: number;
+  /** Slippage offered by default, and the most a person may choose, in basis points. */
+  readonly defaultSlippageBps: number;
+  readonly maxSlippageBps: number;
+  /** Insidor's own fee on a trade, in basis points. Off; turned on only by the founders. */
+  readonly platformFeeBps: number;
+  /** The size asked about to tell whether a coin can be traded at all, in SOL. */
+  readonly probeSol: number;
+}
+
+/**
  * The Search tab: a person's term, searched live against the market data sources and our own
  * rows. No new table; every answer is held in memory for `keepMs`.
  */
@@ -1496,6 +1512,7 @@ export interface Policy {
   readonly origin: OriginPolicy;
   readonly universe: UniversePolicy;
   readonly search: SearchPolicy;
+  readonly trade: TradePolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -1705,8 +1722,10 @@ const POLICY_V1: Policy = {
 
      v29 adds `universe.keep`: every coin for fourteen days, then only the coins that matter.
 
-     v30 adds `universe.history`: the pilot's alive bar and its total spend cap. */
-  version: 'policy.v30',
+     v30 adds `universe.history`: the pilot's alive bar and its total spend cap.
+
+     v31 adds `trade`: the per-trade cap, slippage, the platform fee (off) and the probe size. */
+  version: 'policy.v31',
 
   admit: {
     maxAgeMin: 240,
@@ -2099,6 +2118,16 @@ const POLICY_V1: Policy = {
       /* $25: the founders' cap for the whole pilot, every paid call counted against it. */
       pilotUsd: 25,
     },
+  },
+
+  trade: {
+    /* 0.05 SOL: a first real trade is a test of the plumbing, not a position. */
+    maxSolPerTrade: 0.05,
+    defaultSlippageBps: 300,
+    /* 15%: past this a launchpad coin's quote says little about what the trade will fill at. */
+    maxSlippageBps: 1_500,
+    platformFeeBps: 0,
+    probeSol: 0.001,
   },
 
   search: {

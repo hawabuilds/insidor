@@ -294,8 +294,8 @@ export type { CheckCode } from './assess.ts';
 export { quoteBuy, execute } from './trade.ts';
 export type { QuoteContext } from './trade.ts';
 export { toMintEvent } from './watch.ts';
-export { launchpadClient, chainClient, readImageUris, readOldestBlockTime } from './client.ts';
-export type { ChainClient, LaunchpadClient, SolanaVenueClientConfig } from './client.ts';
+export { launchpadClient, chainClient, describeSimulationFailure, readImageUris, readOldestBlockTime, readSimulation } from './client.ts';
+export type { ChainClient, LaunchpadClient, Simulation, SolanaVenueClientConfig } from './client.ts';
 export { createMintStream, openWebSocket, toStreamMintEvent } from './stream.ts';
 export type {
   MintStream,

@@ -1,0 +1,19 @@
+{
+  "name": "@insidor/trade",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Buying and selling: quotes and UNSIGNED transactions, each simulated before a person signs, behind the TRADING switch and an allowlist of wallets.",
+  "main": "./src/main.ts",
+  "scripts": {
+    "start": "node --env-file-if-exists=../../.env.local src/main.ts",
+    "dev": "node --watch --env-file-if-exists=../../.env.local src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/venue-jupiter": "workspace:*",
+    "@insidor/venue-solana-pumpfun": "workspace:*"
+  }
+}

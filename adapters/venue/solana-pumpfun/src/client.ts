@@ -40,8 +40,35 @@ const OLDEST_LABEL = 'POST rpc getTransactionsForAddress';
 const CURVE_LABEL = 'POST rpc getAccountInfo';
 const ASSET_LABEL = 'POST rpc getAsset';
 const ASSET_BATCH_LABEL = 'POST rpc getAssetBatch';
+const SIMULATE_LABEL = 'POST rpc simulateTransaction';
+const SEND_LABEL = 'POST rpc sendTransaction';
 /** A picture link longer than this is not one an honest issuer wrote. */
 const IMAGE_URI_MAX = 512;
+
+/** A simulation reply → would it land, and if not, why. Pure, so it is tested against a recorded reply. */
+export function readSimulation(raw: unknown): Simulation {
+  const value = rec(rec(rec(raw).result).value);
+  const err = value.err;
+  if (err === null || err === undefined) return { ok: true };
+  const logs = arr(value.logs).flatMap((l) => (typeof l === 'string' ? [l] : []));
+  return { ok: false, message: describeSimulationFailure(err, logs), logs };
+}
+
+/**
+ * Why a simulation failed, in words the order sheet can show. Trador's reading of the same
+ * logs, kept: the common failures by name, else the program's own last error lines.
+ */
+export function describeSimulationFailure(err: unknown, logs: readonly string[]): string {
+  const joined = logs.join('\n');
+  const errJson = JSON.stringify(err);
+  if (/6001|0x1771|TooMuchSolRequired|TooLittleSolReceived|slippage/i.test(joined)) return 'The price moved past your slippage. Get a new quote and try again.';
+  if (/insufficient lamports|insufficient funds|0x1\b/i.test(joined)) return 'Not enough SOL for this trade, its fees and the account rent.';
+  if (/AccountNotFound/i.test(errJson)) return 'This wallet has no SOL yet. Fund it and try again.';
+  if (/BondingCurveComplete|0x1775/i.test(joined)) return 'This coin has left its curve. Get a new quote to trade it in its pool.';
+  const interesting = logs.filter((line) => /failed|error|insufficient|custom program error/i.test(line));
+  if (interesting.length > 0) return interesting.slice(-3).join(' ');
+  return `The transaction would fail: ${errJson.slice(0, 200)}`;
+}
 
 /** One batch reply → address → picture link. Pure, so it is tested against a recorded reply. */
 export function readImageUris(raw: unknown): ReadonlyMap<string, string> {
@@ -110,7 +137,18 @@ export interface ChainClient {
    * not know, or whose link is not plain https, is missing from the map — never given a guess.
    */
   imageUris(mints: readonly string[]): Promise<ReadonlyMap<string, string>>;
+  /**
+   * Run an unsigned transaction against the chain as it is now, without sending it. The answer
+   * is either "it would land" or why it would not, in words a person can act on.
+   */
+  simulate(transactionBase64: string): Promise<Simulation>;
+  /** Send a transaction the person already signed. Returns its signature. */
+  send(signedBase64: string): Promise<string>;
 }
+
+export type Simulation =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly message: string; readonly logs: readonly string[] };
 
 export interface SolanaVenueClientConfig {
   readonly launchpadBaseUrl: string;
@@ -178,6 +216,16 @@ export function chainClient(config: SolanaVenueClientConfig): ChainClient {
       return str(rec(rec(rec(raw).result).content).json_uri);
     },
     imageUris: async (mints) => (mints.length === 0 ? new Map() : readImageUris(await rpc(config, 'getAssetBatch', { ids: mints }, ASSET_BATCH_LABEL))),
+    /* The signature is not checked and the blockhash is replaced: this asks "would the program
+       accept this now", which is the question before a person is asked to sign. */
+    simulate: async (transactionBase64) =>
+      readSimulation(await rpc(config, 'simulateTransaction', [transactionBase64, { encoding: 'base64', sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed' }], SIMULATE_LABEL)),
+    send: async (signedBase64) => {
+      const raw = await rpc(config, 'sendTransaction', [signedBase64, { encoding: 'base64', preflightCommitment: 'confirmed', maxRetries: 3 }], SEND_LABEL);
+      const signature = str(rec(raw).result);
+      if (signature === null) throw new VendorShapeError(VENDOR_RPC, SEND_LABEL, 'no signature in the reply');
+      return signature;
+    },
     tokenAccountState: async (_address) => {
       // POST {rpcUrl} getAccountInfo [address, { encoding: 'jsonParsed' }]
       //   Token-2022 extensions live here: transfer fee and transfer hook.
