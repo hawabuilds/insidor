@@ -64,7 +64,7 @@
  * A board frame is the opposite and is transactional for the opposite reason.
  */
 
-import type { Item, Millis, Policy } from '@insidor/contracts';
+import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import type { DiscoveryMode, DiscoveryQuery, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
@@ -271,8 +271,12 @@ export type DiscoverMode = 'live' | 'dry';
 
 export interface DiscoverDeps {
   readonly platforms: PlatformRegistry;
-  /** Store the arrivals. Narrow on purpose: this pass may not read or decide. */
-  readonly store: (items: readonly Item[]) => Promise<number>;
+  /**
+   * Store the arrivals: the accounts first, then the posts. Narrow on purpose: this pass
+   * may not read or decide. Authors go first so a post's author row carries its handle from
+   * the first read, and a story page can cite the post the moment it is grouped.
+   */
+  readonly store: (items: readonly Item[], authors: readonly Author[]) => Promise<number>;
   readonly plan: DiscoveryPlan;
   readonly policy: Policy;
   /**
@@ -529,10 +533,12 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     }
 
     let items: readonly Item[];
+    let authors: readonly Author[];
     let hasMore: boolean;
     try {
       const result = await adapter.discover(query, budget);
       items = result.value.items;
+      authors = result.value.authors;
       hasMore = result.value.hasMore;
     } catch (e) {
       /**
@@ -592,7 +598,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     let stored: number | null = null;
     if (items.length > 0) {
       try {
-        stored = await deps.store(items);
+        stored = await deps.store(items, authors);
         itemsStored += stored;
       } catch (e) {
         /* ★ `stored` STAYS NULL RATHER THAN BECOMING ZERO. The write did not complete,

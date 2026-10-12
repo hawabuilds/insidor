@@ -34,6 +34,7 @@ interface AuthorRow {
   author_key: string;
   source: string;
   first_seen_at: TimestampColumn;
+  handle: string | null;
   follower_count: string | null;
   follower_count_observed_at: TimestampColumn;
   roster_tier: number | null;
@@ -45,7 +46,7 @@ interface AuthorRow {
  * has stopped existing.
  */
 const SELECT_AUTHOR = `
-  select a.author_key, a.source, a.first_seen_at,
+  select a.author_key, a.source, a.first_seen_at, a.handle,
          a.follower_count::text as follower_count, a.follower_count_observed_at,
          r.tier as roster_tier
     from public.author a
@@ -64,6 +65,11 @@ export class PgAuthorRepo implements AuthorRepo {
    * different table on purpose, so a discovery pass cannot overwrite a conclusion
    * with a fact, and a source that starts reporting a different handle cannot reset
    * our standing for the account.
+   *
+   * The handle is the one display field written here, because it is the half of a
+   * permalink the post id cannot supply. A newly seen handle replaces the old one — the
+   * account renamed itself, and the old name's links now point at somebody else or at
+   * nothing — and a read that carried no handle leaves the known one in place.
    */
   async upsert(authors: readonly Author[]): Promise<number> {
     for (const author of authors) {
@@ -76,10 +82,11 @@ export class PgAuthorRepo implements AuthorRepo {
       await this.#db.query(
         `insert into public.author (
            author_key, source, source_author_id, first_seen_at, last_seen_at,
-           follower_count, follower_count_observed_at
-         ) values ($1, $2, $3, $4, $4, $5, $6)
+           follower_count, follower_count_observed_at, handle
+         ) values ($1, $2, $3, $4, $4, $5, $6, $7)
          on conflict (author_key) do update
             set last_seen_at = greatest(public.author.last_seen_at, excluded.last_seen_at),
+                handle = coalesce(excluded.handle, public.author.handle),
                 follower_count = coalesce(excluded.follower_count, public.author.follower_count),
                 follower_count_observed_at = coalesce(
                   excluded.follower_count_observed_at,
@@ -92,6 +99,7 @@ export class PgAuthorRepo implements AuthorRepo {
           toTimestamp(author.firstSeenAt),
           author.audience?.value ?? null,
           toTimestamp(author.audience?.observedAt ?? null),
+          author.handle,
         ],
       );
     }
@@ -175,6 +183,7 @@ function toAuthor(row: AuthorRow): Author {
     authorKey: reBrand<AuthorKey>(row.author_key),
     source: reBrand<SourceId>(row.source),
     firstSeenAt: toMillisRequired(row.first_seen_at, 'first_seen_at'),
+    handle: row.handle,
     audience,
     rosterTier: row.roster_tier,
   };

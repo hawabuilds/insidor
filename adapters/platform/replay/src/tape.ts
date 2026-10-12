@@ -11,7 +11,7 @@
  * edited by hand is the most likely source of a malformed one.
  */
 
-import type { Counter, CounterKind, CounterSet, Fidelity, Fingerprint, Item, MediaRef, Millis } from '@insidor/contracts';
+import type { Author, Counter, CounterKind, CounterSet, Fidelity, Fingerprint, Item, MediaRef, Millis } from '@insidor/contracts';
 import { sourceId } from '@insidor/contracts/ids.ts';
 import type { AuthorKey, ItemId, SourceId } from '@insidor/contracts/ids.ts';
 import type { Capabilities } from '@insidor/contracts/ports/platform.ts';
@@ -35,6 +35,12 @@ export interface Tape {
    */
   readonly capabilities: Capabilities;
   readonly items: readonly Item[];
+  /**
+   * The accounts behind `items`, as recorded. A tape recorded before authors were kept has
+   * none, and its posts replay with no handle — uncited on a story page, which is the
+   * honest result of not having recorded one.
+   */
+  readonly authors: readonly Author[];
   readonly readings: readonly TapeReading[];
 }
 
@@ -207,12 +213,27 @@ function decodeCapabilities(raw: unknown, source: SourceId): Capabilities {
   };
 }
 
+/** One recorded account. Its handle is whatever was recorded, or null; never derived. */
+export function decodeAuthor(raw: unknown, at: Millis, index = 0): Author {
+  const a = rec(raw);
+  const handle = str(a.handle);
+  return {
+    authorKey: required(str(a.authorKey), `authors[${index}].authorKey`) as AuthorKey,
+    source: sourceId(required(str(a.source), `authors[${index}].source`)),
+    firstSeenAt: at,
+    handle: handle === null || handle.trim() === '' ? null : handle.trim(),
+    audience: null,
+    rosterTier: null,
+  };
+}
+
 export function decodeTape(raw: unknown, at: Millis): Tape {
   const t = rec(raw);
   const source = sourceId(required(str(t.source), 'source'));
   const capabilities = decodeCapabilities(t.capabilities, source);
 
   const items = arr(t.items).map((i) => decodeItem(i, at));
+  const authors = arr(t.authors).map((a, i) => decodeAuthor(a, at, i));
   const readings = arr(t.readings).map((entry, i) => {
     const r = rec(entry);
     return {
@@ -227,6 +248,7 @@ export function decodeTape(raw: unknown, at: Millis): Tape {
     recordedAt: required(num(t.recordedAt), 'recordedAt'),
     capabilities,
     items,
+    authors,
     readings,
   };
   assertTapeHonoursCapabilities(tape);

@@ -1,5 +1,5 @@
 /**
- * ★ THE PIPELINE END TO END: replayed posts in, a story on the board out.
+ * ★ THE PIPELINE END TO END: posts as X sends them in, a story on the board out.
  *
  * Every migration is applied to a real Postgres — PGlite, in process, with pgvector — and
  * the runner's own loops, the projector's own frame and the read service's own routes run
@@ -14,7 +14,8 @@
  *      stays a one-post candidate.
  *   3. QUALIFY's judge runs dry: it is priced, never contacted, and nothing is spent.
  *   4. The projector puts the promoted story — and only it — on board `default`, titled by
- *      quoting its earliest post, with its real posts on the story page.
+ *      quoting its earliest post, with every post cited by a working link built from the
+ *      handle the X adapter read.
  *   5. A second pass of GROUP changes nothing: membership is the durable filter.
  *
  * No network, no key, no spend. The judge's HTTP client throws if it is ever called.
@@ -30,7 +31,8 @@ import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { anthropicJudge } from '@insidor/judge-anthropic';
 import { inMemoryMeter } from '@insidor/meter';
-import { decodeItem } from '@insidor/platform-replay';
+import { xPlatform } from '@insidor/platform-x';
+import type { XClient } from '@insidor/platform-x/client.ts';
 import { projectStoryFrame } from '@insidor/project/src/frame.ts';
 import { handle } from '@insidor/read/src/routes.ts';
 import { policyHash } from '@insidor/runner/src/hash.ts';
@@ -38,6 +40,7 @@ import { groupLoop } from '@insidor/runner/src/loops/group.ts';
 import { qualifyLoop } from '@insidor/runner/src/loops/qualify.ts';
 import { resolveLoop } from '@insidor/runner/src/loops/resolve.ts';
 import type { Logger } from '@insidor/runner/src/log.ts';
+import { storeArrivals } from '@insidor/runner/src/work/arrivals.ts';
 import { storeWork } from '@insidor/runner/src/work/stages.ts';
 import {
   migrate,
@@ -74,42 +77,47 @@ function dbOf(pg: Pg): Db {
 
 const quiet: Logger = { info: () => {}, warn: () => {}, error: () => {}, child: () => quiet };
 
-/* ── the replayed posts ───────────────────────────────────────────────── */
+/* ── the posts, as X sends them ───────────────────────────────────────── */
 
 /**
- * Five posts as a replay tape holds them. Four are one moment — the same sound, the same
- * named thing — from three accounts; the fifth shares nothing with them.
+ * Five posts in the shape X's search returns them — the same fields the adapter's own
+ * fixtures record. Four are one moment, sharing a hashtag, from three accounts; the fifth
+ * shares nothing with them. They go through the real X adapter, so the post ids, the author
+ * keys, the handles and the carriers are all the adapter's own translation.
  */
-const SOUND = { kind: 'formatId', key: 'x:sound:hippo-yawn-remix' };
-const NAMED = { kind: 'entitySpan', key: 'moo deng' };
-
-function post(n: number, author: string, minutesAgo: number, text: string, fingerprints: readonly unknown[]): unknown {
+function xPost(n: number, userId: string, userName: string, minutesAgo: number, text: string, tag: string): unknown {
   return {
-    itemId: `x:e2e${n}`,
-    source: 'x',
-    sourceItemId: `e2e${n}`,
-    origin: 'observed',
-    authorKey: `x:${author}`,
-    postedAt: NOW - minutesAgo * MINUTE,
+    id: `190000000000000000${n}`,
+    text: `${text} #${tag}`,
+    createdAt: new Date(NOW - minutesAgo * MINUTE).toUTCString(),
     lang: 'en',
-    text,
-    media: [{ kind: 'image', uri: `https://example.invalid/e2e${n}.jpg`, width: 600, height: 700, durationMs: null }],
-    counters: {},
-    fingerprints,
-    rebroadcastOf: null,
-    reproductionOf: null,
-    formatIds: [SOUND.key],
-    rawRef: `replay/e2e${n}.json`,
+    viewCount: 1_000 * n,
+    likeCount: 10 * n,
+    replyCount: n,
+    retweetCount: n,
+    quoteCount: 0,
+    bookmarkCount: 0,
+    author: { id: userId, userName },
+    entities: { hashtags: [{ text: tag }], symbols: [] },
+    extendedEntities: {
+      media: [{ type: 'photo', media_url_https: `https://example.invalid/e2e${n}.jpg`, sizes: { large: { w: 600, h: 700 } } }],
+    },
   };
 }
 
-const TAPE = [
-  post(1, 'hippofan', 40, 'moo deng yawning to the remix is the only thing I need today', [SOUND, NAMED]),
-  post(2, 'zookeeperdiary', 31, 'my version of the moo deng yawn', [SOUND, NAMED]),
-  post(3, 'hippofan', 22, 'part two because you asked', [SOUND]),
-  post(4, 'clipsdaily', 15, 'everyone is doing the moo deng yawn now', [SOUND, NAMED]),
-  post(5, 'weatherbot', 12, 'light rain this evening', [{ kind: 'formatId', key: 'x:sound:rain-ambience' }]),
+const SEARCH_RESULTS = [
+  xPost(1, '1001', 'hippofan', 40, 'moo deng yawning to the remix is the only thing I need today', 'moodeng'),
+  xPost(2, '1002', 'zookeeperdiary', 31, 'my version of the moo deng yawn', 'moodeng'),
+  xPost(3, '1001', 'hippofan', 22, 'part two because you asked', 'moodeng'),
+  xPost(4, '1003', 'clipsdaily', 15, 'everyone is doing the moo deng yawn now', 'moodeng'),
+  xPost(5, '1004', 'weatherbot', 12, 'light rain this evening', 'weather'),
 ];
+
+/** What a recorded X client answers. Nothing here opens a socket. */
+const recordedX: XClient = {
+  search: async () => ({ items: SEARCH_RESULTS, cursor: null, hasMore: false }),
+  lookup: async () => [],
+};
 
 /* ── the run ──────────────────────────────────────────────────────────── */
 
@@ -184,16 +192,17 @@ before(async () => {
   meter = inMemoryMeter({ dailyCapUsd: 1, softStop: DEFAULT_POLICY.budget.softStopFraction, now: () => NOW });
   loops = buildLoops();
 
-  await new PgItemRepo(db).upsert(TAPE.map((raw) => decodeItem(raw, (NOW - 10 * MINUTE) as Millis)));
-
-  /* ★ THE HANDLES ARE WRITTEN HERE BECAUSE NOTHING IN LIVE INGESTION WRITES THEM YET. A post
-     is only cited on a story page with a permalink, and a permalink needs the author's
-     handle; `Author` has no handle field and no adapter fills `public.author.handle`. The
-     seed writes it directly, and so does this test. Until an adapter does, real stories
-     reach the board with an empty evidence list. */
-  for (const author of ['hippofan', 'zookeeperdiary', 'clipsdaily', 'weatherbot']) {
-    await db.query('update public.author set handle = $1 where author_key = $2', [author, `x:${author}`]);
-  }
+  /* Discovery exactly as the runner does it: the adapter's page, then the accounts, then
+     the posts — `wiring.ts`'s `store`. */
+  const x = xPlatform({ client: recordedX, meter, now: () => (NOW - 10 * MINUTE) as Millis });
+  const page = await x.discover(
+    { mode: 'keyword', term: 'moo deng', sinceMs: null, untilMs: null, limit: 20, cursor: null },
+    { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: NOW + MINUTE },
+  );
+  await storeArrivals({ authors: new PgAuthorRepo(db), items: new PgItemRepo(db) }, DEFAULT_POLICY)(
+    page.value.items,
+    page.value.authors,
+  );
 });
 
 test('★ posts in, a promoted story on the board out — with its real posts, and nothing spent', async () => {
@@ -261,14 +270,18 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   assert.equal(board.status, 200);
   const body = JSON.parse(board.body) as { order: string[]; rows: { title: string }[] };
   assert.deepEqual(body.order, [moment.story_id], 'the promoted story, and only it');
-  assert.equal(body.rows[0]?.title, 'moo deng yawning to the remix is the only thing I need today', 'titled by quoting its earliest post');
+  assert.equal(body.rows[0]?.title, 'moo deng yawning to the remix is the only thing I need today #moodeng', 'titled by quoting its earliest post');
 
   const page = await handle('GET', `/story/${moment.story_id}`, { db: { query: (s, p) => db.query(s, p) }, log: quiet });
   assert.equal(page.status, 200);
-  for (const raw of TAPE.slice(0, 4)) {
-    const text = (raw as { text: string }).text;
-    assert.ok(page.body.includes(text), `the story page carries the real post: ${text}`);
-  }
+  const story = JSON.parse(page.body) as { evidence: { excerpt?: string; permalink?: string }[] };
+  assert.equal(story.evidence.length, 4, 'every post in the story is cited');
+  /* ★ A LIVE-SHAPED POST RENDERS A WORKING LINK: the handle the adapter read, and the post
+     id the adapter read, in the URL X itself uses for that post. */
+  const links = JSON.stringify(story.evidence);
+  assert.ok(links.includes('https://x.com/hippofan/status/1900000000000000001'), links);
+  assert.ok(links.includes('https://x.com/zookeeperdiary/status/1900000000000000002'));
+  assert.ok(links.includes('https://x.com/clipsdaily/status/1900000000000000004'));
   assert.ok(!page.body.includes('light rain'), 'and not the unrelated one');
 
   /* 5. A second GROUP pass has nothing to do. */

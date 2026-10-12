@@ -9,7 +9,7 @@
     "@insidor/core": "workspace:*",
     "@insidor/judge-anthropic": "workspace:*",
     "@insidor/meter": "workspace:*",
-    "@insidor/platform-replay": "workspace:*",
+    "@insidor/platform-x": "workspace:*",
     "@insidor/project": "workspace:*",
     "@insidor/read": "workspace:*",
     "@insidor/runner": "workspace:*",

@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 
 import { CROSSPOST, DEGRADED, HOSTILE, PLAIN, REMOVED, SCORE_WITHHELD } from './__fixtures__/posts.ts';
 import { CAPABILITIES } from './capabilities.ts';
-import { communityOfRawRef, rawRefFor, toCounters, toItem } from './to-item.ts';
+import { communityOfRawRef, rawRefFor, toAuthor, toCounters, toItem } from './to-item.ts';
 
 const AT = 1_800_000_000_000;
 
@@ -266,4 +266,15 @@ test('a community name that could change a storage path is treated as absent', (
 
 test('the re-read path and the translation path share one counter mapping', () => {
   assert.deepEqual(toCounters(PLAIN, AT), toItem(PLAIN, AT).counters);
+});
+
+test('★ the username is both the key and the handle on this source', () => {
+  const author = toAuthor(PLAIN, AT);
+  assert.ok(author);
+  assert.equal(author.handle, 'dancing_gran');
+  assert.equal(author.authorKey, toItem(PLAIN, AT).authorKey);
+});
+
+test('a deleted account has no author row: [deleted] is nobody\'s handle', () => {
+  assert.equal(toAuthor(REMOVED, AT), null);
 });

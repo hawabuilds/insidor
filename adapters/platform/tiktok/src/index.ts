@@ -71,14 +71,14 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
         { vendor: VENDOR, endpoint: DISCOVER, unit: 'per-run', estUnits: 1, at },
         async () => {
           const run = await discoverRun(deps.client, query, at);
-          return { value: run.items, units: 1 };
+          return { value: run, units: 1 };
         },
       );
 
       // The actor has no cursor: a run returns what it returns, and it never tells us
       // whether there was more. `false` is what the vendor supports saying, not a
       // guess about the feed.
-      return { value: discovered(result.value, null, false), spend: result.spend };
+      return { value: discovered(result.value.items, result.value.authors, null, false), spend: result.spend };
     },
 
     /**

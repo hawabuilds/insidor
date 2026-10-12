@@ -65,13 +65,13 @@
  * unverifiable bound may be relied on.
  */
 
-import type { Item, Millis } from '@insidor/contracts';
+import type { Author, Item, Millis } from '@insidor/contracts';
 import type { DiscoveryQuery } from '@insidor/contracts/ports/platform.ts';
 import { NotImplemented } from '@insidor/vendor-kit';
 
 import { CAPABILITIES } from './capabilities.ts';
 import type { TikTokClient } from './client.ts';
-import { toItem } from './to-item.ts';
+import { toAuthor, toItem } from './to-item.ts';
 
 /** What the actor is asked to do. Keys are this scraper family's; nothing else knows them. */
 export interface ActorInput {
@@ -124,12 +124,14 @@ export async function discoverRun(
   client: TikTokClient,
   query: DiscoveryQuery,
   at: Millis,
-): Promise<{ readonly items: readonly Item[]; readonly runId: string | null }> {
+): Promise<{ readonly items: readonly Item[]; readonly authors: readonly Author[]; readonly runId: string | null }> {
   const run = await client.runDiscovery(toActorInput(query));
+  // A client-side slice, which is safe because it caps how much of an
+  // already-paid-for run we translate rather than filtering for correctness.
+  const raws = run.items.slice(0, query.limit);
   return {
-    // A client-side slice, which is safe because it caps how much of an
-    // already-paid-for run we translate rather than filtering for correctness.
-    items: run.items.slice(0, query.limit).map((raw) => toItem(raw, at)),
+    items: raws.map((raw) => toItem(raw, at)),
+    authors: raws.flatMap((raw) => toAuthor(raw, at) ?? []),
     runId: run.runId,
   };
 }

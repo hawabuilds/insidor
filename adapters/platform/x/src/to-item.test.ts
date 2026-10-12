@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DEGRADED, PLAIN, QUOTE, REBROADCAST } from './__fixtures__/posts.ts';
-import { toItem } from './to-item.ts';
+import { toAuthor, toItem } from './to-item.ts';
 
 const AT = 1_800_000_000_000;
 
@@ -58,4 +58,20 @@ test('this source has no reusable format object, and says so with an empty list'
 test('the raw payload is referenced, never inlined', () => {
   const item = toItem(PLAIN, AT);
   assert.equal(item.rawRef, 'x/1823456789012345678.json');
+});
+
+test('★ the author carries the handle in the post URL, keyed exactly as the post is', () => {
+  const author = toAuthor(PLAIN, AT);
+  assert.ok(author);
+  assert.equal(author.handle, 'someone');
+  assert.equal(author.authorKey, toItem(PLAIN, AT).authorKey, 'the author row and the post must meet');
+});
+
+test('an account with no handle in the payload has a null handle, and one with no id has no row', () => {
+  assert.equal(toAuthor(QUOTE, AT)?.handle, null);
+  assert.equal(toAuthor(DEGRADED, AT), null);
+});
+
+test('a leading @ is stripped once, here, so it never reaches a link', () => {
+  assert.equal(toAuthor({ author: { id: '1', userName: '@someone' } }, AT)?.handle, 'someone');
 });
