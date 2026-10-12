@@ -298,7 +298,8 @@ export class PgCoinUniverseRepo {
 
   /**
    * ★ DELETE THE OLD COINS THAT DO NOT MATTER: past the window, asked about, not bonded, and either
-   * listed nowhere or seen only below the bar — and not one of the coins always kept. Their metadata and origin rows go
+   * listed nowhere or seen only below the bar — and not one of the coins always kept. A deleted
+   * coin that never traded leaves the name index too; one that traded stays findable by name. Their metadata and origin rows go
    * with them (on delete cascade). A coin not yet asked about is never deleted. Returns how many.
    */
   async sweep(firstSeenBefore: Millis, marketCapUsd: number, limit: number): Promise<number> {
@@ -317,8 +318,15 @@ export class PgCoinUniverseRepo {
           order by a.first_seen_at asc
           limit $3
        ),
-       gone as (delete from public.asset a using doomed d where a.asset_key = d.asset_key returning 1)
-       select count(*) as n from gone`,
+       gone as (delete from public.asset a using doomed d where a.asset_key = d.asset_key returning a.address),
+       /* The name index (0037) keeps a deleted coin only if it ever traded: no market listed
+          it, so nobody did, and a name nobody traded is not worth finding forever. */
+       forgotten as (
+         delete from public.coin_name n
+          using gone g, internal.coin_standing s
+          where n.address = g.address and s.asset_key = 'solana:' || g.address and not s.listed
+         returning 1)
+       select (select count(*) from gone) as n, (select count(*) from forgotten) as forgotten`,
       [toTimestamp(firstSeenBefore), marketCapUsd, limit],
     );
     return Number(rows[0]?.n ?? 0);

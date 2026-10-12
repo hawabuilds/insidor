@@ -136,7 +136,14 @@ test('a coin is asked about once; the next pass asks nothing and deletes nothing
   assert.equal(m.asked.length, 0);
 });
 
-test('★ a deleted coin is still found by its ticker or name, and still opens, from the name index', async () => {
+test('★ after the window the name index keeps only coins that traded: never-traded ones leave it with their row', async () => {
+  const names = new Set((await db.query<{ address: string }>(`select address from public.coin_name`, [])).map((r) => r.address));
+  assert.equal(names.has(address('unlisted')), false, 'no market ever listed it: nobody traded it');
+  assert.equal(names.has(address('small')), true, 'it traded, so it stays findable');
+  assert.equal(names.has(address('young')), true, 'inside the window every coin is kept');
+});
+
+test('★ a deleted coin that traded is still found by its ticker or name, and still opens, from the name index', async () => {
   assert.equal((await held()).has(key('small')), false);
   const byTicker = await db.query<{ address: string }>(ASSET_SEARCH_SQL, ['X', 50, 'nothing']);
   assert.ok(byTicker.some((r) => r.address === address('small')));
