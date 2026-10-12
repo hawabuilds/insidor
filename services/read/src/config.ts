@@ -38,6 +38,9 @@
 /** Port 8787 by default: the app's dev server is on 5173 and the two must not collide. */
 const DEFAULT_PORT = 8787;
 
+/** A public, keyless market data API. A wrong URL fails loudly on the first token page. */
+const DEFAULT_MARKET_DATA_URL = 'https://api.geckoterminal.com/api/v2';
+
 /** The Vite dev server's origin. See app/vite.config.ts, which pins `server.port`. */
 const DEFAULT_ORIGIN = 'http://localhost:5173';
 
@@ -54,6 +57,16 @@ export interface ReadConfig {
    * "http://localhost:51731.evil.example", which is a real registrable host.
    */
   readonly allowedOrigins: readonly string[];
+  /**
+   * Where a coin's price history and trades are read from (market.ts): a public, keyless
+   * market data API. `MARKET_DATA_URL`; GeckoTerminal's when unset.
+   */
+  readonly marketDataUrl: string;
+  /**
+   * The Solana RPC a coin's bonding curve is read through, built from `HELIUS_API_KEY`. Null
+   * when unset: the token page then shows curve progress as a dash, never a guess.
+   */
+  readonly rpcUrl: string | null;
 }
 
 export class ConfigError extends Error {
@@ -121,5 +134,12 @@ export function loadReadConfig(env: Env): ReadConfig {
   /* Non-null by construction: `problems` is non-empty whenever databaseUrl is null,
      and the throw above is unconditional. Stated rather than asserted, because a
      non-null assertion here would be the one place a misconfigured URL could pass. */
-  return { databaseUrl: databaseUrl ?? '', port, allowedOrigins };
+  const heliusKey = trimmed(env, 'HELIUS_API_KEY');
+  return {
+    databaseUrl: databaseUrl ?? '',
+    port,
+    allowedOrigins,
+    marketDataUrl: trimmed(env, 'MARKET_DATA_URL') ?? DEFAULT_MARKET_DATA_URL,
+    rpcUrl: heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
+  };
 }

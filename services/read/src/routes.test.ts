@@ -29,6 +29,7 @@ import {
   STORY_SQL,
   type Row,
 } from './queries.ts';
+import { ASSET_SQL } from './market.ts';
 import { handle, type Deps } from './routes.ts';
 
 /**
@@ -612,4 +613,35 @@ test('★ the narratives list is the board\'s stories as whole pages, in board o
   assert.deepEqual(JSON.parse(reply.body), { tick: 9, stories: [FERRY, PIGEON], provenance: { kind: 'observed' } });
   assert.deepEqual(calls.map((c) => c.sql), [BOARD_VIEW_SQL, NARRATIVES_SQL]);
   assert.equal((await handle('GET', '/narratives/nope', fakeDb({}).deps)).status, 404, 'a view never projected is a 404');
+});
+
+test('★ a coin\'s market: only for a coin we hold; candles, trades and, on a curve, its progress', async () => {
+  const market = {
+    market: {
+      coin: async () => ({
+        pool: { address: 'Curve1', dex: 'pump-fun', reserveUsd: null },
+        candles: [{ t: 1, o: 1, h: 2, l: 0.5, c: 1.5 }],
+        trades: [{ tx: 'tx1', side: 'buy' as const, tokenAmount: 10, usd: 2, priceUsd: 0.2, at: 5, maker: 'm' }],
+      }),
+    },
+    curveProgress: async () => 0.218,
+  };
+  const known = fakeDb({ [ASSET_SQL]: [{ chain: 'solana', address: 'Mint1' }] });
+  const reply = await handle('GET', '/coin/solana%3AMint1/market?tf=5m', { ...known.deps, market });
+  assert.equal(reply.status, 200);
+  const body = JSON.parse(reply.body);
+  assert.equal(body.kind, 'read');
+  assert.equal(body.timeframe, '5m');
+  assert.equal(body.venue, 'curve');
+  assert.deepEqual(body.curveProgress, { v: 0.218 });
+  assert.deepEqual(body.trades[0], { tx: 'tx1', side: 'buy', tokenAmount: { v: 10 }, usd: { v: 2 }, priceUsd: { v: 0.2 }, at: { at: 5 } });
+
+  assert.equal((await handle('GET', '/coin/solana%3AUnknown/market', { ...fakeDb({}).deps, market })).status, 404, 'a coin we do not hold is never fetched');
+  assert.equal((await handle('GET', '/coin/solana%3AMint1/market?tf=7y', { ...known.deps, market })).status, 400);
+});
+
+test('★ an outage is not an empty market: the source failing answers `unavailable`', async () => {
+  const market = { market: { coin: async () => { throw new Error('429'); } }, curveProgress: null };
+  const reply = await handle('GET', '/coin/solana%3AMint1/market', { ...fakeDb({ [ASSET_SQL]: [{ chain: 'solana', address: 'Mint1' }] }).deps, market });
+  assert.deepEqual(JSON.parse(reply.body), { kind: 'unavailable', timeframe: '1m' });
 });
