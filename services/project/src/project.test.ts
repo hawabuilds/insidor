@@ -1868,3 +1868,8 @@ test('★ a coin\'s origin is shown only with how we know it; a post after launc
   assert.deepEqual(projectCoinOrigin(null), { kind: 'unknown', why: 'not_read_yet' });
   assert.deepEqual(projectCoinOrigin({ status: 'not_checked_yet', post: null, postOffsetMs: null }), { kind: 'unknown', why: 'not_read_yet' });
 });
+
+test('★ no coin and the name not yet searched is a dash (pending), never "none" with its Create', () => {
+  assert.deepEqual(projectCoins([], OPTIONS, false), { kind: 'pending' });
+  assert.deepEqual(projectCoins([], OPTIONS, true), { kind: 'none' });
+});

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { decodeCoin } from './api/decode.ts';
+import { decodeCoin, decodeCoinLink } from './api/decode.ts';
 import { coinStatus, settledCoins } from './coin-status.ts';
 
 const coin = (over: Record<string, unknown> = {}) =>
@@ -33,4 +33,11 @@ test('several coins are something to look at, never a buy of one of them', () =>
 
 test('an unsure match gives up no coin', () => {
   assert.deepEqual(settledCoins({ kind: 'unsure', claimCount: 9 }), []);
+});
+
+test('★ before the name has been searched there is no "No coin yet" and no Create, only a dash', () => {
+  const s = coinStatus(decodeCoinLink({ kind: 'pending' }));
+  assert.equal(s.action, null);
+  assert.match(s.line, /^— /);
+  assert.doesNotMatch(s.line, /No coin yet/);
 });

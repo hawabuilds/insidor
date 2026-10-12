@@ -68,3 +68,9 @@ test('a single coin we cannot trade also produces no button', () => {
   assert.equal(action.kind, 'none');
   if (action.kind === 'none') assert.equal(action.reason, 'not_tradable');
 });
+
+test('★ a coin not yet searched for is no button, never Create', () => {
+  const action = actionFor('st_1', { kind: 'pending' });
+  assert.equal(action.kind, 'none');
+  if (action.kind === 'none') assert.equal(action.reason, 'not_checked');
+});

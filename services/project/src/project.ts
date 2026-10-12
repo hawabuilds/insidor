@@ -229,6 +229,11 @@ export interface CoinFacts {
   readonly market: CoinMarket | null;
   /** Where it came from, as the coin universe found it. `null` means it has not been checked. */
   readonly origin?: CoinOriginFacts | null;
+  /**
+   * Found by searching a market data source by name, not seen minted. Such a coin is named on a
+   * story only when its proven origin post is one of the story's posts (coins.ts `holdSearchFound`).
+   */
+  readonly foundBySearch?: boolean;
 }
 
 /**
@@ -237,6 +242,8 @@ export interface CoinFacts {
  */
 export interface CoinOriginFacts {
   readonly status: OriginStatus;
+  /** The post the status is about, by our id; null when it names none. */
+  readonly postItemId?: string | null;
   readonly post: { readonly authorLabel: string; readonly permalink: string | null; readonly postedAt: Millis | null } | null;
   readonly postOffsetMs: number | null;
 }
@@ -271,6 +278,8 @@ export interface StoryFacts extends Orderable {
   readonly distinctSources: number;
   readonly members: readonly MemberFacts[];
   readonly coins: readonly CoinCandidate[];
+  /** Whether the story's name has been searched for coins. False with no coins projects a dash. */
+  readonly coinsLookedUp?: boolean;
   /**
    * Whether this story was on the previous committed frame. `isNew` is that and nothing
    * else — an arrival on this board, which is a fact about the board rather than a
@@ -647,8 +656,11 @@ const ORIGIN_KIND: Partial<Record<OriginStatus, Exclude<WireCoinOrigin['kind'], 
 export function projectCoins(
   candidates: readonly CoinCandidate[],
   options: ProjectOptions,
+  lookedUp = true,
 ): WireCoinLink {
-  if (candidates.length === 0) return { kind: 'none' };
+  /* No coin, and nobody has searched for one yet: a dash, never "none", which puts Create on
+     the row and tells a user nothing exists. */
+  if (candidates.length === 0) return lookedUp ? { kind: 'none' } : { kind: 'pending' };
 
   const confident = candidates.filter((candidate) => candidate.confident);
   if (confident.length === 0) return { kind: 'unsure', claimCount: candidates.length };
@@ -756,6 +768,8 @@ function fromTheOneCoin(
       return read(coins.coin);
     case 'none':
       return measured(null, 'not_minted');
+    case 'pending':
+      return measured(null, 'not_read_yet');
     case 'unsure':
     case 'several':
       return measured(null, 'not_reported');
@@ -1327,6 +1341,8 @@ function coinSentence(coins: WireCoinLink): string {
   switch (coins.kind) {
     case 'none':
       return 'Nothing has been minted from this yet.';
+    case 'pending':
+      return 'Whether a coin exists for this is still being checked.';
     case 'unsure':
       /* The count is a fact. Which of them is the real one is a judgement we have not
          made, and saying so plainly is the point of this branch. */
@@ -1404,7 +1420,7 @@ export function projectBoardRow(story: StoryFacts, options: ProjectOptions): Wir
   if (title === null) return null;
 
   const readings = representativeReach(story.members);
-  const coins = projectCoins(story.coins, options);
+  const coins = projectCoins(story.coins, options, story.coinsLookedUp ?? true);
 
   const row: WireBoardRow = {
     id: story.storyId,
@@ -1447,7 +1463,7 @@ export function projectStory(
   if (title === null) return null;
 
   const readings = representativeReach(story.members);
-  const coins = projectCoins(story.coins, options);
+  const coins = projectCoins(story.coins, options, story.coinsLookedUp ?? true);
 
   const page: WireStory = {
     id: story.storyId,

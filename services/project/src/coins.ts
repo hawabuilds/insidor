@@ -59,6 +59,7 @@
  * no replay can reproduce. db.ts measures them; this file only reads them.
  */
 
+import { isOrigin } from '@insidor/contracts/origin.ts';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
 import type { CoinCandidate, CoinFacts, ProjectOptions } from './project.ts';
@@ -419,4 +420,21 @@ export function orderedOnly(candidates: readonly CoinCandidate[], windowOrdered:
       ? { ...candidate, confident: false }
       : candidate,
   );
+}
+
+/**
+ * ★ A COIN FOUND BY SEARCH IS NAMED ONLY ON PROOF. Search finds every coin that shares a name,
+ * so a search-found coin whose name equals the story's is still only a claimant: it is named
+ * (confident) only when the coin universe proved its origin — the same picture, the name, and
+ * a post made before the coin — and that post is one of this story's own. Otherwise it stays a
+ * claimant, and the row offers nothing.
+ */
+export function holdSearchFound(candidates: readonly CoinCandidate[], memberIds: ReadonlySet<string>): readonly CoinCandidate[] {
+  return candidates.map((candidate) => {
+    const { coin } = candidate;
+    if (!candidate.confident || coin.foundBySearch !== true) return candidate;
+    const origin = coin.origin ?? null;
+    const proven = origin !== null && isOrigin(origin.status) && origin.postItemId != null && memberIds.has(origin.postItemId);
+    return proven ? candidate : { ...candidate, confident: false };
+  });
 }

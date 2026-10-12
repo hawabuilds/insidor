@@ -41,7 +41,7 @@ export interface CompareAction {
  */
 export interface NoAction {
   readonly kind: 'none';
-  readonly reason: 'match_unsure' | 'not_tradable';
+  readonly reason: 'match_unsure' | 'not_tradable' | 'not_checked';
   readonly claimCount: number | null;
 }
 
@@ -55,6 +55,10 @@ export function actionFor(storyId: string, coins: CoinLink): RowAction {
   switch (coins.kind) {
     case 'none':
       return { kind: 'create', storyId };
+
+    case 'pending':
+      /* Not searched for a coin yet: no Create (one may exist), no Buy (none is named). */
+      return { kind: 'none', reason: 'not_checked', claimCount: 0 };
 
     case 'unsure':
       /* Deliberately terminal. There is no branch here that reaches for a coin, because

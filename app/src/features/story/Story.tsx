@@ -79,6 +79,8 @@ function coinFigure(coins: CoinLink, read: (coin: Coin) => Measured): Measured {
       return read(coins.coin);
     case 'none':
       return pending('not_minted');
+    case 'pending':
+      return pending('not_read_yet');
     case 'unsure':
     case 'several':
       return pending('not_reported');
@@ -120,6 +122,7 @@ function marketNote(coins: CoinLink, figures: readonly Measured[]): string | nul
   switch (coins.kind) {
     /* The cells already read "— no coin yet". Glossing that would be noise. */
     case 'none':
+    case 'pending':
       return null;
     case 'unsure':
       return 'no price here: we are not naming a coin for this story, so there is no figure that would be ours to report';
@@ -168,6 +171,8 @@ function CoinChip({ coins }: { coins: CoinLink }) {
       return <span className={`${styles['chip']} ${styles['chipNone']}`}>no coin settled</span>;
     case 'none':
       return <span className={`${styles['chip']} ${styles['chipNone']}`}>no coin yet</span>;
+    case 'pending':
+      return <span className={`${styles['chip']} ${styles['chipNone']}`}>—</span>;
   }
 }
 

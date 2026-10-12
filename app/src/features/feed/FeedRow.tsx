@@ -150,7 +150,9 @@ function FeedRowInner({ id, rank, now, onOpen, onBuy, onCompare, onCreate }: Fee
             title={
               action.reason === 'match_unsure'
                 ? 'More than one coin claims this story and none of them is settled, so there is nothing to buy.'
-                : 'This coin cannot be quoted, so there is nothing to buy.'
+                : action.reason === 'not_checked'
+                  ? 'We have not finished checking whether a coin exists for this story.'
+                  : 'This coin cannot be quoted, so there is nothing to buy.'
             }
           >
             {action.reason === 'match_unsure' ? (
@@ -158,6 +160,8 @@ function FeedRowInner({ id, rank, now, onOpen, onBuy, onCompare, onCreate }: Fee
                 {action.claimCount === null ? 'no coin' : `${action.claimCount} claim this`}
                 <span className={styles['noActionSub']}>none settled</span>
               </>
+            ) : action.reason === 'not_checked' ? (
+              '—'
             ) : (
               'not tradable yet'
             )}

@@ -281,6 +281,8 @@ export function decodeCoinLink(raw: unknown, path = '$.coins'): CoinLink {
   switch (kind) {
     case 'none':
       return { kind: 'none' };
+    case 'pending':
+      return { kind: 'pending' };
     case 'unsure':
       return { kind: 'unsure', claimCount: int(o['claimCount'], `${path}.claimCount`) };
     case 'one':

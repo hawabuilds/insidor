@@ -156,6 +156,14 @@ export function Coins({
   onBuy: (action: BuyAction) => void;
 }) {
   switch (coins.kind) {
+    case 'pending':
+      return (
+        <section className={`${styles['panel']} ${styles['secbox']}`}>
+          <div className={styles['secH']}>Coin</div>
+          <div className={styles['unsure']}>— We are still checking whether a coin exists for this story.</div>
+        </section>
+      );
+
     case 'none':
       return (
         <section className={`${styles['panel']} ${styles['secbox']}`}>

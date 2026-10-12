@@ -98,6 +98,12 @@ export type CoinLink =
   /** Nothing minted from this story yet. The user can be the one to mint it. */
   | { readonly kind: 'none' }
   /**
+   * No coin found yet, and the story's name has not been searched for one. A dash, with no
+   * button: "no coin yet" would be a claim we have not checked, and Create would invite minting
+   * a name that may already be taken.
+   */
+  | { readonly kind: 'pending' }
+  /**
    * Coins claiming this story exist; none of them is confidently the one. NO coin is
    * exposed here, and the number is a fact rather than our arithmetic: it counts coins
    * that named themselves after this story, which is true whether or not we looked.
