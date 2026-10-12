@@ -18,14 +18,17 @@
  * would put a vendor string where the port promises none can go.
  */
 
-import { PrivyProvider, useLogin, usePrivy } from '@privy-io/react-auth';
-import { useCreateWallet, useExportWallet, useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
+import { PrivyProvider, useIdentityToken, useLinkAccount, useLogin, usePrivy } from '@privy-io/react-auth';
+import { toSolanaWalletConnectors, useCreateWallet, useExportWallet, useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
 import { useEffect, useRef, type ReactNode } from 'react';
 
 import type { Bridge } from './store.ts';
 
 /** The vendor's code for a person closing the sign-in themselves. */
 const CLOSED_BY_PERSON = 'exited_auth_flow';
+
+/* Made once: a new connectors object each render would restart the vendor's wallet discovery. */
+const CONNECTORS = toSolanaWalletConnectors();
 
 export function EmbeddedWalletProvider({ appId, bridge, children }: { appId: string; bridge: Bridge; children: ReactNode }) {
   return (
@@ -34,7 +37,9 @@ export function EmbeddedWalletProvider({ appId, bridge, children }: { appId: str
       config={{
         loginMethods: ['twitter', 'google'],
         embeddedWallets: { solana: { createOnLogin: 'users-without-wallets' } },
-        appearance: { theme: 'dark', accentColor: '#9945FF', walletChainType: 'solana-only' },
+        /* Outside wallets are joined for viewing only, through the vendor's own connect window. */
+        externalWallets: { solana: { connectors: CONNECTORS } },
+        appearance: { theme: 'dark', accentColor: '#9945FF', walletChainType: 'solana-only', walletList: ['phantom', 'solflare', 'backpack', 'detected_solana_wallets'] },
       }}
     >
       <VendorBridge bridge={bridge} />
@@ -82,6 +87,16 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
   /* Signing: the vendor's Solana wallet for this address. Signs only; sending is the caller's. */
   const { signTransaction } = useSignTransaction();
   const { exportWallet } = useExportWallet();
+  const { identityToken } = useIdentityToken();
+  const { linkWallet } = useLinkAccount({
+    onSuccess: () => bridge.linkEnded('linked'),
+    onError: (code: unknown) => bridge.linkEnded(code === CLOSED_BY_PERSON ? 'closed' : 'error'),
+  });
+  /* Outside Solana wallets joined to this account: addresses only, for viewing. */
+  const linked = (user?.linkedAccounts ?? []).flatMap((a) =>
+    a.type === 'wallet' && 'chainType' in a && a.chainType === 'solana' && 'walletClientType' in a && a.walletClientType !== 'privy' && 'address' in a && typeof a.address === 'string' ? [a.address] : [],
+  );
+  const linkedKey = linked.join(',');
   const signer = wallets.find((w) => w.address === address) ?? null;
 
   useEffect(() => {
@@ -92,6 +107,7 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
       signIn: (via) => login(via === undefined ? undefined : { loginMethods: [via === 'x' ? 'twitter' : 'google'] }),
       signOut: () => logout(),
       showExport: () => (address === null ? Promise.reject(new Error('no embedded wallet')) : exportWallet({ address })),
+      linkWallet: () => linkWallet({ walletChainType: 'solana-only' }),
       signTransaction: async (payload) => {
         if (signer === null) throw new Error('no embedded wallet to sign with');
         const { signedTransaction } = await signTransaction({ transaction: payload, wallet: signer, chain: 'solana:mainnet' });
@@ -99,7 +115,7 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
       },
     });
     return () => bridge.actions(null);
-  }, [bridge, login, logout, signer, signTransaction, exportWallet, address]);
+  }, [bridge, login, logout, signer, signTransaction, exportWallet, linkWallet, address]);
 
   /* Who signed in, as the vendor reports it: the X account, or the Google account's name. A
      Google email is never passed on — it is not a name, and nothing here needs it. */
@@ -109,8 +125,8 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
   const pictureUrl = x?.profilePictureUrl ?? null;
 
   useEffect(() => {
-    bridge.snapshot({ ready, signedIn: authenticated, address, identity: { name, handle, pictureUrl } });
-  }, [bridge, ready, authenticated, address, name, handle, pictureUrl]);
+    bridge.snapshot({ ready, signedIn: authenticated, address, identity: { name, handle, pictureUrl }, token: identityToken, linked: linkedKey === '' ? [] : linkedKey.split(',') });
+  }, [bridge, ready, authenticated, address, name, handle, pictureUrl, identityToken, linkedKey]);
 
   return null;
 }
