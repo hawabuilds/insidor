@@ -497,6 +497,8 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     permalink: optStr(o.permalink),
     excerpt: str(o.excerpt, `${path}.excerpt`),
     thumbUrl: optStr(o.thumbUrl),
+    /* Absent from a row projected before the field existed: no play icon, the picture still shows. */
+    thumbIsVideo: o.thumbIsVideo === undefined ? false : bool(o.thumbIsVideo, `${path}.thumbIsVideo`),
     postedAt: instantAt(o.postedAt, `${path}.postedAt`, 'not_reported'),
     reach: measured(o.reach, `${path}.reach`, 'not_read_yet'),
     readAt: instantAt(o.readAt, `${path}.readAt`, 'not_read_yet'),

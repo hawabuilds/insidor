@@ -1134,22 +1134,53 @@ function isFingerprintKind(value: string | null): value is FingerprintKind {
 }
 
 /**
- * The first image attached to a post, if it has one.
+ * The picture to show for a post, and whether that picture is a video's preview.
+ *
+ * ★ A VIDEO'S PREVIEW IS A PICTURE TOO. Platforms spell "a still of a video" three ways (the
+ * judge's `frameUriFor` says the same): X sends `video` whose uri IS the preview image (on
+ * pbs.twimg.com), TikTok sends the cover as an `image` that carries a duration, and Reddit sends
+ * `video` whose uri is the video file, with its preview stills as separate `image` entries. So:
+ * a plain `image` first; failing that, a `video` whose uri is not a video file. Reading only
+ * `image`, as this did before, dropped every X video's preview and showed the empty-picture tile
+ * on a post that has a perfectly good picture.
+ *
+ * `isVideo` is a fact about the post — it has a video — and is what draws the play icon. It is
+ * true when any entry is a `video`, or an `image` with a duration (a cover).
  *
  * `media` is jsonb written from MediaRef[], and it is read defensively rather than
  * asserted: everything in it came from a source, and a shape assertion over a source's
  * payload is trusting the source to have sent what we hoped for.
  */
-export function firstImageUri(media: unknown): string | null {
+export interface PostPicture {
+  readonly uri: string;
+  readonly isVideo: boolean;
+}
+
+/** A uri that is the video itself rather than a still of it: an `<img>` cannot show it. */
+const VIDEO_FILE = /\.(mp4|m3u8|mpd|mov|webm)(?:$|[?#])/i;
+
+export function pictureOf(media: unknown): PostPicture | null {
   if (!Array.isArray(media)) return null;
-  for (const entry of media) {
-    if (typeof entry !== 'object' || entry === null) continue;
-    const record = entry as Record<string, unknown>;
-    if (record['kind'] !== 'image') continue;
-    const uri = record['uri'];
-    if (typeof uri === 'string' && uri.trim() !== '') return uri;
+  const entries = media.filter((e): e is Record<string, unknown> => typeof e === 'object' && e !== null);
+  const uriOf = (e: Record<string, unknown>): string | null => {
+    const uri = e['uri'];
+    return typeof uri === 'string' && uri.trim() !== '' ? uri : null;
+  };
+  const isVideo = entries.some((e) => e['kind'] === 'video' || (e['kind'] === 'image' && typeof e['durationMs'] === 'number'));
+  for (const e of entries) {
+    const uri = e['kind'] === 'image' ? uriOf(e) : null;
+    if (uri !== null) return { uri, isVideo };
+  }
+  for (const e of entries) {
+    const uri = e['kind'] === 'video' ? uriOf(e) : null;
+    if (uri !== null && !VIDEO_FILE.test(uri)) return { uri, isVideo };
   }
   return null;
+}
+
+/** The picture's uri alone, for the surfaces that draw no play icon (a narrative's members). */
+export function firstImageUri(media: unknown): string | null {
+  return pictureOf(media)?.uri ?? null;
 }
 
 /**

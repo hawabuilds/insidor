@@ -45,6 +45,14 @@ test('★ a coin without its narrative, or a narrative without a coin, is refuse
   assert.throws(() => decodeRisingPost({ ...POST, storyId: 'st_x' }), WireLeakError);
 });
 
+test('a video preview decodes with its play flag; a row from before the flag shows no play icon', () => {
+  const video = decodeRisingPost({ ...POST, thumbUrl: 'https://pbs.twimg.com/amplify_video_thumb/1/img/a.jpg', thumbIsVideo: true });
+  assert.equal(video.thumbUrl, 'https://pbs.twimg.com/amplify_video_thumb/1/img/a.jpg');
+  assert.equal(video.thumbIsVideo, true);
+  assert.equal(decodeRisingPost(POST).thumbIsVideo, false);
+  assert.throws(() => decodeRisingPost({ ...POST, thumbIsVideo: 'yes' }));
+});
+
 test('a score on the wire is refused', () => {
   assert.throws(() => decodeRisingPost({ ...POST, score: 0.9 }), WireLeakError);
 });

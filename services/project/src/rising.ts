@@ -11,8 +11,9 @@
  * sorts.
  *
  * What each row says: facts only — where it was posted, by whom, a link to it, its text,
- * its picture, when, how many saw it and when we read that, and the views line. Never the
- * score, never anything TRACK or the judge computed.
+ * its picture (a video's preview counts, flagged so the card draws a play icon), when, how
+ * many saw it and when we read that, and the views line. Never the score, never anything
+ * TRACK or the judge computed.
  *
  * ★ A COIN ONLY THROUGH A CONFIDENT NARRATIVE. A single post carries no coin of its own.
  * When it belongs to a promoted story whose board row, in THIS frame, names exactly one coin
@@ -31,7 +32,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { postScore } from '@insidor/core';
 import type { Db } from '@insidor/store';
 
-import { firstImageUri, loadReach, sourceLabel } from './db.ts';
+import { loadReach, pictureOf, sourceLabel } from './db.ts';
 import { permalinkFor } from './permalinks.ts';
 import { projectReach, projectSpark } from './project.ts';
 import type { ReachReading } from './project.ts';
@@ -43,7 +44,7 @@ export type RisingFeed = (typeof RISING_FEEDS)[number];
 
 const EXCERPT_MAX_CHARS = 280;
 
-/** One single post on a feed. Twelve keys, every one a fact. */
+/** One single post on a feed. Thirteen keys, every one a fact. */
 export interface WireRisingPost {
   readonly id: string;
   readonly sourceLabel: string;
@@ -52,6 +53,8 @@ export interface WireRisingPost {
   readonly permalink: string | null;
   readonly excerpt: string;
   readonly thumbUrl: string | null;
+  /** True when `thumbUrl` is a still of the post's video (an X preview, a TikTok cover). */
+  readonly thumbIsVideo: boolean;
   readonly postedAt: WireInstant;
   readonly reach: WireMeasured;
   /** When the view count above was read, so its age travels with it. */
@@ -148,13 +151,15 @@ export function projectRisingPost(
   const link = row.story_id === null ? undefined : coinsByStory.get(row.story_id);
   const confident = link !== undefined && link.kind === 'one' ? link : null;
   const handle = (row.handle ?? '').trim().replace(/^@/, '');
+  const picture = pictureOf(row.media);
   const post: WireRisingPost = {
     id: row.item_id,
     sourceLabel: sourceLabel(row.source),
     authorLabel: authorLabelOf(row),
     permalink: handle === '' ? null : permalinkFor(row.source, handle, row.source_item_id),
     excerpt: trimTo(row.body, EXCERPT_MAX_CHARS),
-    thumbUrl: firstImageUri(row.media),
+    thumbUrl: picture?.uri ?? null,
+    thumbIsVideo: picture?.isVideo ?? false,
     postedAt: instant(toMs(row.posted_at), 'not_reported'),
     reach: projectReach(readings),
     readAt: instant(latest?.atMs ?? null, 'not_read_yet'),

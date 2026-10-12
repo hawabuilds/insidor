@@ -76,7 +76,7 @@ import { applyPostFilters as postFilters, NO_FILTERS as NONE } from './feed-filt
 import type { RisingPost } from '../../shared/api/index.ts';
 
 const onePost = (over: Partial<RisingPost>): RisingPost => ({
-  id: 'p', sourceLabel: 'X', authorLabel: '@a', permalink: null, excerpt: 'e', thumbUrl: null,
+  id: 'p', sourceLabel: 'X', authorLabel: '@a', permalink: null, excerpt: 'e', thumbUrl: null, thumbIsVideo: false,
   postedAt: { known: true, at: 1_000 }, reach: { known: true, amount: 50_000 }, readAt: { known: true, at: 1_000 },
   spark: { points: [], windowMs: 1 }, storyId: null, coin: null, ...over,
 });

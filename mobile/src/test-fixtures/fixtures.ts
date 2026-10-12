@@ -398,6 +398,7 @@ export function fixtureRising(feed: 'fyp' | 'popular'): unknown {
       permalink: lead['permalink'],
       excerpt: lead['excerpt'],
       thumbUrl: s['thumbUrl'],
+      thumbIsVideo: false,
       postedAt: lead['postedAt'],
       reach: s['reach'],
       readAt: s['firstSeenAt'],

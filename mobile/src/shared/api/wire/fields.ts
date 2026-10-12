@@ -72,6 +72,7 @@ export const RISING_POST_FIELDS = [
   'permalink',
   'excerpt',
   'thumbUrl',
+  'thumbIsVideo',
   'postedAt',
   'reach',
   'readAt',

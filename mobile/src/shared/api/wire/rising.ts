@@ -25,6 +25,8 @@ export interface RisingPost {
   readonly permalink: string | null;
   readonly excerpt: string;
   readonly thumbUrl: string | null;
+  /** The picture is a still of the post's video (an X preview, a TikTok cover): it gets a play icon. */
+  readonly thumbIsVideo: boolean;
   readonly postedAt: Instant;
   readonly reach: Measured;
   readonly readAt: Instant;
