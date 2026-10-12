@@ -402,3 +402,15 @@
   text-align: center;
   word-break: break-all;
 }
+
+.chartLine {
+  margin: 8px calc(-1 * var(--gutter)) 0;
+}
+
+.upInline {
+  color: var(--up);
+}
+
+.downInline {
+  color: var(--down);
+}

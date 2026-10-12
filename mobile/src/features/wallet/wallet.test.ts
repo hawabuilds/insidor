@@ -50,3 +50,12 @@ test('amounts are written compactly and never as a bare zero', () => {
   assert.equal(compactAmount('1392353535035', 6), '1.39M');
   assert.equal(compactAmount('100', 0), '100');
 });
+
+test('the chart is the stored points then the live total; its change is first to last, and needs two points', async () => {
+  const { withLive, windowChange } = await import('./balance-points.ts');
+  const pts = withLive([{ t: 1, value: 100 }, { t: 2, value: 120 }], 150, 10);
+  assert.deepEqual(pts.map((p) => p.value), [100, 120, 150]);
+  assert.equal(windowChange(pts), 50);
+  assert.equal(windowChange(withLive([], 150, 10)), null, 'one point is not a change');
+  assert.deepEqual(withLive([{ t: 1, value: 100 }], null, 10).length, 1, 'no live total is not a zero');
+});

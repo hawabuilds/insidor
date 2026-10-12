@@ -15,14 +15,15 @@
 
 import { useState } from 'react';
 
-import { SAMPLE_SCREENS, fetchPortfolio, loadSamplePortfolio, type Holding, type Portfolio as PortfolioData, type PortfolioRange } from '../../shared/api/index.ts';
+import { SAMPLE_SCREENS, fetchPortfolio, fetchWalletHistory, loadSamplePortfolio, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { SAMPLE_WALLET } from '../../shared/notice.ts';
 import { tradingOn } from '../../shared/trading.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
-import { Portfolio, type WhoAmI } from './Portfolio.tsx';
+import { Portfolio, type ChartRange, type WhoAmI } from './Portfolio.tsx';
+import { withLive, type BalancePoint } from './balance-points.ts';
 import { ReceiveSheet } from './ReceiveSheet.tsx';
 import { SendSheet } from './SendSheet.tsx';
 import styles from './portfolio.module.css';
@@ -34,12 +35,22 @@ const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as s
 /** The address of the recorded sample wallet; shown only with the "Sample data" notice. */
 const SAMPLE_ADDRESS = '86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY';
 
-function Loaded({ who, load, canAct, footer = null }: { who: WhoAmI; load: (signal: AbortSignal, range: PortfolioRange) => Promise<PortfolioData>; canAct: boolean; footer?: React.ReactNode }) {
-  const [range, setRange] = useState<PortfolioRange>('24h');
+function Loaded({ who, load, history, canAct, footer = null }: {
+  who: WhoAmI;
+  load: (signal: AbortSignal) => Promise<PortfolioData>;
+  history: (signal: AbortSignal, range: ChartRange) => Promise<readonly BalancePoint[]>;
+  canAct: boolean;
+  footer?: React.ReactNode;
+}) {
+  const [range, setRange] = useState<ChartRange>('1w');
+  const [scrubbed, setScrubbed] = useState<BalancePoint | null>(null);
   const [copied, setCopied] = useState(false);
   const [sheet, setSheet] = useState<'send' | 'receive' | null>(null);
-  const [data] = useLoad(`wallet:${who.address}:${range}`, (signal) => load(signal, range));
+  const [data] = useLoad(`wallet:${who.address}`, (signal) => load(signal));
+  const [stored] = useLoad(`wallet-history:${who.address}:${range}`, (signal) => history(signal, range));
   const portfolio: PortfolioData | null = data.state === 'ready' ? data.value : data.state === 'failed' ? { kind: 'unavailable' } : null;
+  const live = portfolio?.kind === 'read' && portfolio.totalUsd.known ? portfolio.totalUsd.amount : null;
+  const points = stored.state === 'loading' ? null : withLive(stored.state === 'ready' ? stored.value : [], live, Date.now());
   const holdings: readonly Holding[] = portfolio?.kind === 'read' ? portfolio.holdings : [];
 
   const copy = async () => {
@@ -64,8 +75,11 @@ function Loaded({ who, load, canAct, footer = null }: { who: WhoAmI; load: (sign
       <Portfolio
         who={who}
         data={portfolio}
+        points={points}
         range={range}
         onRange={setRange}
+        scrubbed={scrubbed}
+        onScrub={setScrubbed}
         copied={copied}
         onCopy={() => void copy()}
         actions={actions}
@@ -96,14 +110,15 @@ export function WalletScreen() {
       <Loaded
         who={who}
         canAct
-        load={(signal, range) => fetchPortfolio(state.account, range, signal)}
+        load={(signal) => fetchPortfolio(state.account, '24h', signal)}
+        history={(signal, range) => fetchWalletHistory(state.account, range, signal)}
         footer={<div className={box['signOutRow']}><Button look="quiet" size="small" onClick={() => void wallet?.disconnect()}>Sign out</Button></div>}
       />
     );
   }
 
   if (state.kind === 'unavailable' && SAMPLE_SCREENS) {
-    return <Loaded who={{ name: 'Sample wallet', handle: null, pictureUrl: null, address: SAMPLE_ADDRESS }} canAct={false} load={() => loadSamplePortfolio()} />;
+    return <Loaded who={{ name: 'Sample wallet', handle: null, pictureUrl: null, address: SAMPLE_ADDRESS }} canAct={false} load={() => loadSamplePortfolio()} history={async () => []} />;
   }
 
   return (
