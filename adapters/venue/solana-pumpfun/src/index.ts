@@ -312,3 +312,6 @@ export { boundedText, httpsUri, mintAddress } from './hostile.ts';
 /* A coin's metadata document, read by content address through our own gateway. */
 export { contentAddress, fetchMetadata, gatewayUrl, readMetadata } from './metadata.ts';
 export type { CoinMetadata, MetadataFetchConfig, MetadataRead } from './metadata.ts';
+/* A curve read straight from its account: reserves, and progress as the launchpad measures it. */
+export { INITIAL_REAL_TOKEN_UNITS, PROGRAM_ID, curveProgressOf, readCurveAccount } from './curve-account.ts';
+export type { CurveAccount } from './curve-account.ts';
