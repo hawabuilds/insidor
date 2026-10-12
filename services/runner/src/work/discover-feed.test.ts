@@ -139,7 +139,10 @@ test('★ a dry run prices a whole day and asks nobody', async () => {
   assert.ok(day);
   const passes = 86_400_000 / CADENCE_MS;
   assert.ok(Math.abs(day.targetUsd - 1 * DEFAULT_POLICY.feed.budgetShare) < 1e-9, `at target: ${day.targetUsd}`);
-  assert.ok(Math.abs(day.worstUsd - 2 * DEFAULT_POLICY.feed.pageLimit * USD_PER_POST * passes) < 1e-9, `worst: ${day.worstUsd}`);
+  assert.ok(
+    Math.abs(day.worstUsd - 2 * DEFAULT_POLICY.feed.pageLimit * DEFAULT_POLICY.feed.maxPagesPerLane * USD_PER_POST * passes) < 1e-9,
+    `worst: ${day.worstUsd}`,
+  );
   assert.equal(result.planned, 2);
 });
 
@@ -188,4 +191,56 @@ test('★ a source whose `feed` needs a community name is never sent the catch-a
   assert.equal(seen.length, 0);
   assert.equal(result.failed, 0, 'and so it is never counted as a failure');
   assert.equal(result.unasked, 1);
+});
+
+/** A source whose catch-all lane has `pages` full pages behind it, then a short one. */
+function pagedSource(pages: number, seen: DiscoveryQuery[]): PlatformAdapter {
+  const base = feedSource({ all: 0, media: 0 }, seen);
+  const full = DEFAULT_POLICY.feed.pageLimit;
+  return {
+    ...base,
+    discover: async (q: DiscoveryQuery) => {
+      seen.push(q);
+      const n = q.cursor === null ? 1 : Number(q.cursor);
+      const count = q.filter?.mediaOnly === true ? 0 : n <= pages ? full : 3;
+      return {
+        value: { items: Array.from({ length: count }, (_v, i) => item('x', n * 100 + i)), authors: [], cursor: String(n + 1), hasMore: true },
+        spend: [],
+      } as unknown as Metered<Discovered>;
+    },
+  };
+}
+
+test('★ a lane asks for its next page only while each came back full, up to the policy\'s pages', async () => {
+  const seen: DiscoveryQuery[] = [];
+  await run(pagedSource(10, seen), 'live');
+  const allLane = seen.filter((q) => q.filter?.mediaOnly === false);
+  assert.equal(allLane.length, DEFAULT_POLICY.feed.maxPagesPerLane, 'three full pages and no fourth');
+  assert.deepEqual(allLane.map((q) => q.cursor), [null, '2', '3']);
+});
+
+test('a short page ends the lane: the window is exhausted', async () => {
+  const seen: DiscoveryQuery[] = [];
+  await run(pagedSource(1, seen), 'live');
+  assert.equal(seen.filter((q) => q.filter?.mediaOnly === false).length, 2, 'one full page, then the short one');
+});
+
+test('★ the paced line, not the page count, stops a busy lane', async () => {
+  const seen: DiscoveryQuery[] = [];
+  let calls = 0;
+  const tight = { ...meter, mayspend: () => (calls += 1) <= 1 } as unknown as Meter;
+  await discoverPass({
+    platforms: registry(pagedSource(10, seen)),
+    store: async (items) => items.length,
+    plan: { terms: [], cadenceMs: CADENCE_MS },
+    policy: DEFAULT_POLICY,
+    meter: tight,
+    mode: 'live',
+    log: quiet,
+    now: () => NOW,
+    signal: new AbortController().signal,
+    floors: floorsStore(),
+    dailyCapUsd: 1,
+  });
+  assert.equal(seen.filter((q) => q.filter?.mediaOnly === false).length, 1, 'the second page was refused before it was asked for');
 });
