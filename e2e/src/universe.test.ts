@@ -45,6 +45,7 @@ const COINS = {
   late: { launched: NOW - 6 * H, doc: { name: 'Sleepy Otter', symbol: 'OTTER', image: 'otter', twitter: null } },
   promo: { launched: NOW - 2 * H, doc: { name: 'Promo Cat', symbol: 'PCAT', image: null, twitter: 'https://x.test/status/LATE' } },
   linked: { launched: NOW - 2 * H, doc: { name: 'Linked Dog', symbol: 'LDOG', image: null, twitter: 'https://x.test/status/EARLY' } },
+  linkedToo: { launched: NOW - 2 * H, doc: { name: 'Linked Cat', symbol: 'LCAT', image: null, twitter: 'https://x.test/status/EARLY2' } },
   offChain: { launched: NOW - 2 * H, doc: null },
 } as const;
 type Name = keyof typeof COINS;
@@ -70,7 +71,7 @@ function post(n: number, text: string, picture: string | null, postedAt: number)
 }
 
 /* The source: recognises `x.test/status/<id>` links; EARLY was posted before the coin, LATE after. */
-const POSTED = { EARLY: NOW - 5 * H, LATE: NOW - H };
+const POSTED = { EARLY: NOW - 5 * H, EARLY2: NOW - 4 * H, LATE: NOW - H };
 const source = {
   id: X,
   capabilities: { discovery: ['keyword'] },
@@ -89,10 +90,14 @@ const source = {
 
 const judge = {
   id: 'judge:test',
-  estimate: () => ({ vendor: 'anthropic', endpoint: 'judge', unit: 'per-call', estUnits: 1, usd: 0.001 }),
-  judge: async () => {
+  maxBatch: 10,
+  estimate: (subjects: readonly unknown[]) => ({ vendor: 'anthropic', endpoint: 'judge', unit: 'per-call', estUnits: 1, usd: 0.001 * subjects.length }),
+  judge: async (subjects: readonly unknown[]) => {
     calls.judge += 1;
-    return { value: [{ kind: 'judged', judgement: { judgeId: 'judge:test', promptId: 'p', judgedAt: NOW, coinable: true, confidence: 0.9, lookedAt: 'text', proposedName: 'Linked Dog', alternateNames: [], subjectSpans: [], rationaleRef: null, costUsd: 0.001 } }], spend: { usd: 0.001 } };
+    return {
+      value: subjects.map(() => ({ kind: 'judged', judgement: { judgeId: 'judge:test', promptId: 'p', judgedAt: NOW, coinable: true, confidence: 0.9, lookedAt: 'text', proposedName: 'A Pet', alternateNames: [], subjectSpans: [], rationaleRef: null, costUsd: 0.001 } })),
+      spend: { usd: 0.001 * subjects.length },
+    };
   },
 } as unknown as JudgePort;
 
@@ -175,7 +180,7 @@ test('★ a dry run reads metadata (free), settles what is free, and prices the 
 
   const meta = await db.query<{ asset_key: string; outcome: string }>(`select asset_key, outcome from internal.coin_metadata order by asset_key`);
   assert.equal(meta.find((m) => m.asset_key.includes('offChain'))?.outcome, 'not_content_addressed', 'a link that names no content id is never fetched');
-  assert.equal(meta.filter((m) => m.outcome === 'read').length, 5);
+  assert.equal(meta.filter((m) => m.outcome === 'read').length, 6);
 
   assert.equal((await origin('promo'))?.status, 'promo_only', 'the linked post\'s id says it came after the coin: settled for free');
   const linked = await origin('linked');
@@ -200,10 +205,12 @@ test('★ live: a matching post made after the coin is viral after launch, never
   assert.equal(Number(late?.post_offset_ms), H, 'posted an hour after the coin');
 });
 
-test('live: the creator\'s post, read once and judged once, is linked by the creator', async () => {
+test('★ live: creators\' posts are read once each and judged together in one batch, and each is linked by the creator', async () => {
   const linked = await origin('linked');
   assert.equal(linked?.status, 'linked_by_creator');
   assert.equal(linked?.post_item_id, 'x:EARLY');
-  assert.equal(calls.lookup, 1, 'read once');
+  assert.equal((await origin('linkedToo'))?.status, 'linked_by_creator');
+  assert.equal(calls.lookup, 2, 'each post read once');
+  assert.equal(calls.judge, 1, 'both posts judged in one call');
   assert.ok((await new PgItemRepo(db).byIds([itemId(X, 'EARLY')])).has(itemId(X, 'EARLY')), 'and stored, so the next coin linking it costs nothing');
 });
