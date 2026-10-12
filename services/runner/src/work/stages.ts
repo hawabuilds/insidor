@@ -53,9 +53,20 @@
 
 import { candidateId, pairId } from '@insidor/contracts/ids.ts';
 import type { ItemId, StoryId } from '@insidor/contracts/ids.ts';
-import type { Decision, Item, ItemOrigin, Millis, Observation, Policy } from '@insidor/contracts';
+import type { CounterSet, Decision, Item, ItemOrigin, Millis, Observation, Policy } from '@insidor/contracts';
+import type { Meter } from '@insidor/contracts/ports/meter.ts';
+import type { PlatformRegistry } from '@insidor/platform-registry';
 import type { Story } from '@insidor/contracts/story.ts';
-import { afterMembership, joinMember, joinTarget, owesASeed, presentationFor, seedStory } from '@insidor/core';
+import {
+  afterMembership,
+  joinMember,
+  joinTarget,
+  latestCounters,
+  observationsFrom,
+  owesASeed,
+  presentationFor,
+  seedStory,
+} from '@insidor/core';
 import type {
   PgAssetRepo,
   PgAuthorRepo,
@@ -69,12 +80,14 @@ import type {
   AdmitInput,
   DetectInput,
   GroupInput,
+  Logged,
   QualifyInput,
   RankInput,
   ResolveInput,
   StageWork,
   TrackInput,
 } from '../loop.ts';
+import { errorText, type Logger } from '../log.ts';
 import { NotImplemented } from '../not-implemented.ts';
 import { judgeStories, type JudgingDeps } from './judge.ts';
 
@@ -134,6 +147,8 @@ const GROUP_CANDIDATE_LIMIT = 200;
  * makes the survivors a function of process order and destroys replay.
  */
 const TRACK_READ_BUDGET = 250;
+/** How long one source's batch of re-reads may take before the call is abandoned. */
+const TRACK_CALL_DEADLINE_MS = 2 * MS_PER_MINUTE;
 
 /* ── what this module needs from the store ────────────────────────────── */
 
@@ -391,11 +406,27 @@ function admitWork(repos: StageRepos, policy: Policy): StageWork<AdmitInput> {
 
 /* ── TRACK ────────────────────────────────────────────────────────────── */
 
-function trackWork(repos: StageRepos, policy: Policy): StageWork<TrackInput> {
-  return {
+/**
+ * What TRACK needs to take a read: the sources, the meter, and whether money may be spent.
+ * The same shape as `JudgingDeps`, for the same reason — the effect is a paid call, and the
+ * budget is consulted before it, not discovered after.
+ */
+export interface TrackingDeps {
+  readonly platforms: Pick<PlatformRegistry, 'get' | 'has'>;
+  readonly meter: Meter;
+  readonly mode: 'dry' | 'live';
+  readonly log: Logger;
+  /** The clock for the call's deadline. The reading's own time comes from the adapter. */
+  readonly now: () => Millis;
+}
+
+function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): StageWork<TrackInput> {
+  const work: StageWork<TrackInput> = {
     async pull(limit, ctx) {
       const now = ctx.now();
-      const page = await repos.items.admittedSince(
+      /* Admitted posts and the members of promoted stories, newest first — see
+         `PgItemRepo.trackable` for why both, and why that order. */
+      const page = await repos.items.trackable(
         now - TRACK_LOOKBACK_MS,
         limit * PULL_OVERSCAN,
       );
@@ -428,13 +459,14 @@ function trackWork(repos: StageRepos, policy: Policy): StageWork<TrackInput> {
           item,
           observations,
           lastReadAt: lastReadAt(item, observations),
-          /* ★ A NEW ITEM STARTS ON PROBATION, THE BOTTOM OF THE GRID, AND CLIMBS.
-             Not the top: `nextRead` moves at most one tier per read in either
-             direction, so starting an unknown item at tier 0 would hand it the most
-             expensive cadence in the system on the strength of nothing, and it would
-             take seven passes to come back down. Probation is where lead time is made
-             and it is where an item we have not made our minds up about belongs. */
-          tier: previous?.features['scheduledTier'] ?? probationTier,
+          /* ★ A NEW ITEM STARTS ON THE TOP TIER AND THE AGE FLOOR SLOWS IT. It used to start
+             on probation and climb one tier per read, on the strength of a score that never
+             changes after admission — so a minutes-old post was read every 78 minutes, the
+             exact window where views move fastest. TRACK's age floor (policy
+             `track.ageTierMinutes`) now holds every post to the tier its age allows, so
+             starting at the top costs a young post its dense reads and an old one
+             nothing: the floor puts it straight onto the slow grid. */
+          tier: previous?.features['scheduledTier'] ?? 0,
           /* Null before anything scored it, and null is not zero — schedule.ts holds
              the current tier on a null and would demote on a zero. The score comes
              from ADMIT because that is the last stage to have decided anything about
@@ -462,25 +494,98 @@ function trackWork(repos: StageRepos, policy: Policy): StageWork<TrackInput> {
     subjectId: (input) => input.item.itemId,
 
     /**
-     * A TRACK `pass` means a read is due and affordable, and the read is the effect.
-     * Performing it needs a platform adapter's `observe()`, which this service does
-     * not import yet — so a pass owes an action nobody can take, and the row is left
-     * unapplied rather than stamped with a claim that a source was contacted.
+     * A TRACK `pass` means a read is due and affordable, and the read is the effect. Every
+     * other verdict owes nothing: `T6_not_due` and `T2_budget_shed` are holds that resolve
+     * by waiting, and `T3_terminal` is the absence of any further read.
      *
-     * Every other verdict owes nothing: `T6_not_due` and `T2_budget_shed` are holds
-     * that resolve by waiting, and `T3_terminal` is the absence of any further read.
+     * The reads are taken in `applyAll`, one call per source for the whole pass. This
+     * single-subject form exists for the interface and takes a batch of one.
      */
-    apply: (_input, receipt) => {
-      if (receipt.decision.verdict !== 'pass') return Promise.resolve();
-      return Promise.reject(
-        new NotImplemented(
-          'track.apply — the re-read itself: a platform adapter observe() plus ' +
-            'ObservationRepo.append. Until then a due read is logged and not taken, ' +
-            'and the row stays in the unapplied queue rather than claiming otherwise',
-        ),
-      );
+    async apply(input, receipt) {
+      const done = await work.applyAll!([{ input, receipt }]);
+      if (!done.has(receipt.rowId)) throw new Error('track.apply: the read was not taken this pass');
+    },
+
+    /**
+     * ★ ONE PRICED, BUDGET-CHECKED CALL PER SOURCE, and a row is carried out only when its
+     * read went out. In a dry run the reads are priced and not sent, and the rows wait in
+     * the repair queue — a dry run that stamped them would claim a source was contacted.
+     * A source with no live adapter, or one the meter refuses, waits the same way.
+     *
+     * A post the source did not return was still asked about, so its row is carried out
+     * with nothing appended: no reading is not a reading of zero, and TRACK's own
+     * `T4_unreachable` is how a post that keeps not answering is noticed.
+     */
+    async applyAll(logged) {
+      const done = new Set<string>();
+      const due = new Map<string, Logged<TrackInput>[]>();
+      for (const entry of logged) {
+        if (entry.receipt.decision.verdict !== 'pass') {
+          done.add(entry.receipt.rowId);
+          continue;
+        }
+        const source = String(entry.input.item.source);
+        due.set(source, [...(due.get(source) ?? []), entry]);
+      }
+
+      for (const [source, entries] of due) {
+        const sourceId = entries[0]!.input.item.source;
+        if (!tracking.platforms.has(sourceId)) {
+          tracking.log.warn('no live adapter for this source; its reads wait', { source, reads: entries.length });
+          continue;
+        }
+        const adapter = tracking.platforms.get(sourceId);
+        const ids = entries.map((e) => e.input.item.sourceItemId);
+        const estimate = adapter.estimate({ kind: 'observe', sourceItemIds: ids });
+
+        if (!tracking.meter.mayspend(estimate.vendor, estimate.usd)) {
+          const line = tracking.meter.line(estimate.vendor);
+          tracking.log.warn('re-reads paused for budget; the call was not made', {
+            source,
+            reads: ids.length,
+            wouldSpendUsd: estimate.usd,
+            remainingUsd: line.remainingUsd,
+          });
+          continue;
+        }
+        if (tracking.mode === 'dry') {
+          tracking.log.info('DRY RUN — re-reads priced, not sent', { source, reads: ids.length, wouldSpendUsd: estimate.usd });
+          continue;
+        }
+
+        const now = tracking.now();
+        let answered: ReadonlyMap<string, CounterSet>;
+        try {
+          const result = await adapter.observe(ids, {
+            capUsd: policy.budget.observeUsdPerDay,
+            spentUsd: tracking.meter.spentUsd(estimate.vendor),
+            maxCalls: null,
+            deadline: (now + TRACK_CALL_DEADLINE_MS) as Millis,
+          });
+          answered = result.value;
+          tracking.log.info('re-reads taken', { source, asked: ids.length, answered: answered.size, usd: result.spend.usd });
+        } catch (e) {
+          tracking.log.warn('re-reads failed for this source; its rows wait', { source, reads: ids.length, err: errorText(e) });
+          continue;
+        }
+
+        for (const entry of entries) {
+          const counters = answered.get(entry.input.item.sourceItemId);
+          if (counters !== undefined) {
+            const capturedAt = Math.max(
+              ...Object.values(counters).map((c) => c?.observedAt ?? 0),
+            ) as Millis;
+            await repos.observations.append(
+              observationsFrom(entry.input.item.itemId, counters, latestCounters(entry.input.observations), capturedAt, policy.kinetics),
+            );
+          }
+          done.add(entry.receipt.rowId);
+        }
+      }
+      return done;
     },
   };
+  return work;
 }
 
 /* ── DETECT ───────────────────────────────────────────────────────────── */
@@ -983,10 +1088,15 @@ export interface StoreWork {
   readonly rank: StageWork<RankInput>;
 }
 
-export function storeWork(repos: StageRepos, policy: Policy, judging: JudgingDeps): StoreWork {
+export function storeWork(
+  repos: StageRepos,
+  policy: Policy,
+  judging: JudgingDeps,
+  tracking: TrackingDeps,
+): StoreWork {
   return {
     admit: admitWork(repos, policy),
-    track: trackWork(repos, policy),
+    track: trackWork(repos, policy, tracking),
     detect: detectWork(repos),
     group: groupWork(repos, policy),
     qualify: qualifyWork(repos, judging),

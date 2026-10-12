@@ -39,6 +39,7 @@ import { policyHash } from '@insidor/runner/src/hash.ts';
 import { groupLoop } from '@insidor/runner/src/loops/group.ts';
 import { qualifyLoop } from '@insidor/runner/src/loops/qualify.ts';
 import { resolveLoop } from '@insidor/runner/src/loops/resolve.ts';
+import { trackLoop } from '@insidor/runner/src/loops/track.ts';
 import type { Logger } from '@insidor/runner/src/log.ts';
 import { storeArrivals } from '@insidor/runner/src/work/arrivals.ts';
 import { storeWork } from '@insidor/runner/src/work/stages.ts';
@@ -113,11 +114,26 @@ const SEARCH_RESULTS = [
   xPost(5, '1004', 'weatherbot', 12, 'light rain this evening', 'weather'),
 ];
 
-/** What a recorded X client answers. Nothing here opens a socket. */
+/**
+ * What a recorded X client answers. Nothing here opens a socket. Each lookup — TRACK's
+ * re-read — finds every post's views a little higher than the last, as a live post's are.
+ */
+let lookups = 0;
 const recordedX: XClient = {
   search: async () => ({ items: SEARCH_RESULTS, cursor: null, hasMore: false }),
-  lookup: async () => [],
+  lookup: async (ids) => {
+    lookups += 1;
+    return SEARCH_RESULTS.filter((raw) => ids.includes((raw as { id: string }).id)).map((raw) => {
+      const post = raw as { viewCount: number; likeCount: number };
+      return { ...post, viewCount: post.viewCount + 600 * lookups, likeCount: post.likeCount + 7 * lookups };
+    });
+  },
 };
+
+/** The test's clock, moved forward between TRACK passes. */
+let clock: Millis = NOW;
+/** TRACK's spend mode, switched from dry to live part-way through the test. */
+let trackMode: 'dry' | 'live' = 'dry';
 
 /* ── the run ──────────────────────────────────────────────────────────── */
 
@@ -155,14 +171,22 @@ function buildLoops() {
     policy: policy.judge,
     maxBatch: policy.qualify.batchSize,
   });
-  const work = storeWork(repos, policy, {
-    judge,
-    judgements: new PgJudgementRepo(db),
-    meter,
-    mode: 'dry',
+  /* TRACK reads through the real X adapter, over the recorded client above. */
+  const x = xPlatform({ client: recordedX, meter, now: () => clock });
+  const work = storeWork(
+    repos,
     policy,
-    log: quiet,
-  });
+    { judge, judgements: new PgJudgementRepo(db), meter, mode: 'dry', policy, log: quiet },
+    {
+      platforms: { has: (source) => source === x.id, get: () => x },
+      meter,
+      get mode() {
+        return trackMode;
+      },
+      log: quiet,
+      now: () => clock,
+    },
+  );
   const deps = {
     policy,
     policyHash: policyHash(policy),
@@ -173,10 +197,10 @@ function buildLoops() {
     log: quiet,
     ...work,
   };
-  return { group: groupLoop(deps), qualify: qualifyLoop(deps), resolve: resolveLoop(deps) };
+  return { group: groupLoop(deps), qualify: qualifyLoop(deps), resolve: resolveLoop(deps), track: trackLoop(deps) };
 }
 
-const ctx = { signal: new AbortController().signal, now: () => NOW };
+const ctx = { signal: new AbortController().signal, now: () => clock };
 
 before(async () => {
   const pg = await PGlite.create({ extensions: { vector } });
@@ -189,7 +213,7 @@ before(async () => {
   }
   await decisions.recordPolicy(policyHash(DEFAULT_POLICY), DEFAULT_POLICY, 'e2e');
 
-  meter = inMemoryMeter({ dailyCapUsd: 1, softStop: DEFAULT_POLICY.budget.softStopFraction, now: () => NOW });
+  meter = inMemoryMeter({ dailyCapUsd: 1, softStop: DEFAULT_POLICY.budget.softStopFraction, now: () => clock });
   loops = buildLoops();
 
   /* Discovery exactly as the runner does it: the adapter's page, then the accounts, then
@@ -253,12 +277,38 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   const resolved = await loops.resolve.run(ctx);
   assert.equal(resolved.failed, 0, resolved.firstError ?? '');
 
-  /* 4. The projector, then the read service. */
+  /* 4. TRACK. Dry first: every read is priced and none is sent. */
+  clock = (NOW + MINUTE) as Millis;
+  const dry = await loops.track.run(ctx);
+  assert.equal(dry.failed, 0, dry.firstError ?? '');
+  assert.equal(dry.out, 4, 'the four posts of the promoted story are due a read; the unrelated post is not tracked');
+  assert.equal(lookups, 0, 'a dry run contacts nobody');
+  const dryRows = await db.query<{ n: number }>(
+    `select count(*)::int as n from internal.decisions where stage = 'track' and verdict = 'pass' and applied_at is null`,
+  );
+  assert.equal(dryRows[0]?.n, 4, 'and its rows wait unapplied, rather than claiming a read happened');
+
+  /* Live, against the recorded client: one batched lookup for all four posts. */
+  trackMode = 'live';
+  clock = (NOW + 2 * MINUTE) as Millis;
+  const first = await loops.track.run(ctx);
+  assert.equal(first.failed, 0, first.firstError ?? '');
+  assert.equal(lookups, 1, 'four due reads, one call');
+
+  /* Five minutes on, the posts are young enough to be on the four-minute tier: read again. */
+  clock = (NOW + 7 * MINUTE) as Millis;
+  const second = await loops.track.run(ctx);
+  assert.equal(second.failed, 0, second.firstError ?? '');
+  assert.equal(lookups, 2);
+  const readings = await db.query<{ n: number }>(`select count(distinct captured_at)::int as n from public.observation`);
+  assert.equal(readings[0]?.n, 2, 'two readings of the story\'s posts');
+
+  /* 5. The projector, then the read service. */
   await projectStoryFrame(
     db,
     'default',
     {
-      nowMs: NOW,
+      nowMs: clock,
       sparkWindowMs: 30 * MINUTE,
       marketFreshnessMs: DEFAULT_POLICY.market.readingFreshnessMs,
       feedFreshnessMs: DEFAULT_POLICY.assets.feedFreshnessMs,
@@ -268,8 +318,18 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
 
   const board = await handle('GET', '/board/default', { db: { query: (s, p) => db.query(s, p) }, log: quiet });
   assert.equal(board.status, 200);
-  const body = JSON.parse(board.body) as { order: string[]; rows: { title: string }[] };
+  const body = JSON.parse(board.body) as {
+    order: string[];
+    rows: { title: string; reach: { v: number | null }; spark: { points: { value: number | null }[] } }[];
+  };
   assert.deepEqual(body.order, [moment.story_id], 'the promoted story, and only it');
+  /* ★ VIEWS ON THE CARD, AND A SPARKLINE WITH POINTS. */
+  const card = body.rows[0];
+  assert.ok((card?.reach.v ?? 0) > 0, `the card shows views: ${JSON.stringify(card?.reach)}`);
+  assert.ok(
+    (card?.spark.points ?? []).some((p) => p.value !== null),
+    `the sparkline has a measured point: ${JSON.stringify(card?.spark)}`,
+  );
   assert.equal(body.rows[0]?.title, 'moo deng yawning to the remix is the only thing I need today #moodeng', 'titled by quoting its earliest post');
 
   const page = await handle('GET', `/story/${moment.story_id}`, { db: { query: (s, p) => db.query(s, p) }, log: quiet });
@@ -284,7 +344,7 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   assert.ok(links.includes('https://x.com/clipsdaily/status/1900000000000000004'));
   assert.ok(!page.body.includes('light rain'), 'and not the unrelated one');
 
-  /* 5. A second GROUP pass has nothing to do. */
+  /* 6. A second GROUP pass has nothing to do. */
   const again = await loops.group.run(ctx);
   assert.equal(again.in, 0, 'every post already belongs to a story, so none is asked again');
   const after = await db.query<{ n: number }>('select count(*)::int as n from public.story');

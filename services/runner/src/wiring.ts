@@ -341,14 +341,6 @@ export async function withRuntime<T>(
                         holds refuses to run, and the dry run never asks it to.
            configured   the real client. In SPEND=dry it is still never called. */
       const judge = buildJudge(cfg, meter, policy, log);
-      const work = storeWork(repos, policy, {
-        judge,
-        judgements: new PgJudgementRepo(db),
-        meter,
-        mode: cfg.spend.kind,
-        policy,
-        log: log.child({ step: 'judge' }),
-      });
 
       const runtimeDeps: PlatformRuntime = {
         meter,
@@ -373,6 +365,21 @@ export async function withRuntime<T>(
       };
 
       const platforms = watchedRegistry(resolvePlatforms(cfg.sourceEnv, runtimeDeps), watch);
+
+      /* Built after the sources, because TRACK's re-read is a call to one of them. */
+      const work = storeWork(
+        repos,
+        policy,
+        {
+          judge,
+          judgements: new PgJudgementRepo(db),
+          meter,
+          mode: cfg.spend.kind,
+          policy,
+          log: log.child({ step: 'judge' }),
+        },
+        { platforms, meter, mode: cfg.spend.kind, log: log.child({ step: 'track' }), now: () => Date.now() as Millis },
+      );
 
       /* ★ WRITTEN AT BOOT AND NOT ONLY PER PASS. The dormant/failing distinction has to
          be true on a deploy where discovery is switched off entirely, and it has to be
