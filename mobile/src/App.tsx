@@ -20,6 +20,9 @@ import { SearchedToken } from './features/token/SearchedToken.tsx';
 import { TokenPage } from './features/token/TokenPage.tsx';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { WalletScreen } from './features/wallet/WalletScreen.tsx';
+import { Landing } from './features/landing/Landing.tsx';
+import { hasEntered, markEntered, showsLanding } from './features/landing/entered.ts';
+import { useWallet } from './shared/wallet.tsx';
 import { tabOf, type Route } from './shared/route.ts';
 import { useRoute } from './shared/useRoute.ts';
 import { noticeFor } from './shared/story-source.ts';
@@ -58,6 +61,24 @@ function Screen({ route, create }: { route: Route; create: (from: CreateFrom) =>
 
 export function App() {
   const route = useRoute();
+  const { state } = useWallet();
+  const [entered, setEntered] = useState(hasEntered);
+  const signedIn = state.kind === 'connected';
+  /* Once signed in, this browser goes straight in next time too. */
+  if (signedIn && !entered) {
+    markEntered();
+    setEntered(true);
+  }
+  if (showsLanding(window.location.hash, entered, signedIn)) {
+    return (
+      <Landing
+        onEnter={() => {
+          markEntered();
+          setEntered(true);
+        }}
+      />
+    );
+  }
   /* The create modal sits over whichever screen opened it, so it lives here, above them. */
   const [creating, setCreating] = useState<CreateFrom | null>(null);
   return (
