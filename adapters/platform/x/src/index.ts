@@ -142,6 +142,11 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
           },
         );
         for (const raw of result.value) {
+          /* A post the vendor could not return (deleted, private) can come back as an entry with
+             no id. It is absent from the answer, as a deleted post is: skipped, never fatal. */
+          const r = raw as { id?: unknown; id_str?: unknown } | null;
+          const named = (v: unknown) => typeof v === 'string' && v.trim() !== '';
+          if (r === null || typeof r !== 'object' || (!named(r.id) && !named(r.id_str))) continue;
           items.push(toItem(raw, at));
           const author = toAuthor(raw, at);
           if (author !== null) authors.push(author);
