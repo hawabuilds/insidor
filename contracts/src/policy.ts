@@ -1512,6 +1512,78 @@ export interface LabelPolicy {
 
 /* ── the whole thing ──────────────────────────────────────────────────── */
 
+/**
+ * The social layer: profiles, follows, comments and likes (services/social), and the ranks a
+ * person earns from them — Trador's ranks, its numbers kept exactly. A rank is earned from
+ * other people's likes on one's comments, each like weighed by the voter's own rank; nothing
+ * about a coin or a post is scored here.
+ */
+export interface SocialPolicy {
+  /** The rep each rank starts at. GOAT also needs the top `goatPercentile` of the season. */
+  readonly rankRep: { readonly intern: number; readonly analyst: number; readonly quant: number; readonly wolf: number; readonly goat: number };
+  /** What a like from someone of each rank multiplies the vote by (Trador's ×1 to ×2). */
+  readonly rankMultiplier: { readonly intern: number; readonly analyst: number; readonly quant: number; readonly wolf: number; readonly goat: number };
+  /** One like from a holder, before multipliers. */
+  readonly votePoints: number;
+  /** A comment carrying a proof link: an X post by its author, or a transaction that touched the coin. */
+  readonly proofBoost: number;
+  /** The author bought the coin early: first buy under `earlyBuyMultiple` times its earliest price. */
+  readonly earlyBoost: number;
+  readonly earlyBuyMultiple: number;
+  /** A voter earns others rep on at most this many likes a UTC day. */
+  readonly dailyVoteCap: number;
+  /** GOAT is the top this fraction of the season's ranked people, at least one. */
+  readonly goatPercentile: number;
+  /** Season one starts here (UTC); every season is one calendar month. */
+  readonly seasonEpochMs: number;
+  /** Comments one person may post per `commentWindowMs`. */
+  readonly commentsPerWindow: number;
+  readonly commentWindowMs: number;
+  readonly maxCommentChars: number;
+  readonly maxBioChars: number;
+  /** Distinct people reporting a comment before it is hidden from everyone pending review. */
+  readonly reportsToHide: number;
+  /** A holder check is kept this long: one like, one chain read. */
+  readonly holderKeepMs: number;
+  /** The season standings (for GOAT and the leaderboard) are kept this long. */
+  readonly standingsKeepMs: number;
+  readonly leaderboardSize: number;
+  /** Reads and writes one person may make per `windowMs`. */
+  readonly perClient: number;
+  readonly windowMs: number;
+}
+
+/**
+ * Alerts (services/notify): what fires, how often, and the defaults a person starts with.
+ * Every alert is a fact about the world — a price, a curve, a post, a person — and fires once
+ * per person, kind, subject and level.
+ */
+export interface NotifyPolicy {
+  /** The multiples a holding or a watched coin can alert at, in order. */
+  readonly milestones: readonly number[];
+  /** The multiples switched on for someone new. */
+  readonly defaultMultiples: readonly number[];
+  /** "Close to graduating": the curve has passed this fraction. */
+  readonly graduatingSoonAt: number;
+  /** A holding smaller than this many dollars does not alert. */
+  readonly minPositionUsd: number;
+  /** Pushes one person gets in an hour, by default; past it, alerts land in the list only. */
+  readonly defaultPerHour: number;
+  /** The most a person may raise their own hourly limit to. */
+  readonly maxPerHour: number;
+  /** Rows the Alerts list shows. */
+  readonly inboxLimit: number;
+  /** How often the price, multiple and curve checks run. */
+  readonly marketLoopMs: number;
+  /** How often the pipeline is read for new rising posts, narratives and coin links. */
+  readonly pipelineLoopMs: number;
+  /** A push undelivered after this long is dropped by the push service. */
+  readonly pushTtlS: number;
+  /** Reads and writes one person may make per `windowMs`. */
+  readonly perClient: number;
+  readonly windowMs: number;
+}
+
 export interface Policy {
   /** Bumped by hand on every edit. The hash is computed from the object, not this. */
   readonly version: string;
@@ -1534,6 +1606,8 @@ export interface Policy {
   readonly search: SearchPolicy;
   readonly trade: TradePolicy;
   readonly wallet: WalletPolicy;
+  readonly social: SocialPolicy;
+  readonly notify: NotifyPolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -1751,8 +1825,11 @@ const POLICY_V1: Policy = {
 
      v33 adds `wallet.snapshotGapMs`: the balance chart's spacing.
 
-     v34 adds `trade.maxDevBuySol`: the cap on a creator's first buy at launch. */
-  version: 'policy.v34',
+     v34 adds `trade.maxDevBuySol`: the cap on a creator's first buy at launch.
+
+     v35 adds `social` (Trador's ranks and rep, comment limits) and `notify` (alerts: the
+     multiples, the curve mark, the hourly limit, the loops). */
+  version: 'policy.v35',
 
   admit: {
     maxAgeMin: 240,
@@ -2157,6 +2234,49 @@ const POLICY_V1: Policy = {
     probeSol: 0.001,
     /* 2 SOL: the largest preset the founders chose for a dev buy. Lower it for a first test. */
     maxDevBuySol: 2,
+  },
+
+  social: {
+    /* Trador's ladder (config/ranks.ts), unchanged. GOAT's floor is Wolf's: the percentile decides. */
+    rankRep: { intern: 0, analyst: 250, quant: 1_000, wolf: 5_000, goat: 5_000 },
+    rankMultiplier: { intern: 1, analyst: 1.25, quant: 1.5, wolf: 1.75, goat: 2 },
+    votePoints: 10,
+    proofBoost: 1.25,
+    earlyBoost: 1.5,
+    earlyBuyMultiple: 3,
+    dailyVoteCap: 20,
+    goatPercentile: 0.01,
+    /* 2026-10-01T00:00:00Z: Season 1 is October 2026. */
+    seasonEpochMs: 1_790_812_800_000,
+    /* Ten an hour: room to talk, not room to flood. */
+    commentsPerWindow: 10,
+    commentWindowMs: 3_600_000,
+    maxCommentChars: 1_000,
+    maxBioChars: 160,
+    reportsToHide: 3,
+    holderKeepMs: 60_000,
+    standingsKeepMs: 30_000,
+    leaderboardSize: 50,
+    perClient: 60,
+    windowMs: 60_000,
+  },
+
+  notify: {
+    /* Trador's rungs (lib/notifications/milestones.ts). */
+    milestones: [2, 3, 5, 10, 25, 50, 100],
+    defaultMultiples: [2, 5, 10],
+    graduatingSoonAt: 0.9,
+    minPositionUsd: 10,
+    /* Six an hour by default: a busy day still reads as alerts, not noise. */
+    defaultPerHour: 6,
+    maxPerHour: 30,
+    inboxLimit: 40,
+    /* Two minutes: free price and curve reads for a handful of people, well inside the free tiers. */
+    marketLoopMs: 120_000,
+    pipelineLoopMs: 60_000,
+    pushTtlS: 86_400,
+    perClient: 60,
+    windowMs: 60_000,
   },
 
   wallet: {

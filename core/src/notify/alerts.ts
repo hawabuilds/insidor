@@ -1,0 +1,150 @@
+/**
+ * ALERTS: which ones a person gets, at which level, and whether one is pushed or only listed.
+ * Trador's rules (server/notifications/dispatch.ts, lib/notifications/milestones.ts,
+ * quietHours.ts) plus the two it lacked: an hourly limit, and Insidor's own kinds.
+ *
+ *   1. ★ ONCE PER LEVEL, EVER. A holding that reaches 5× alerts once at 5×, and only the
+ *      highest level crossed fires; the levels below it are spent with it. (The claim itself is
+ *      a unique row in the database; `highestMilestone` is told which levels are spent.)
+ *   2. ★ OFF MEANS NOTHING. A kind switched off, or everything muted, makes no row and no push.
+ *   3. ★ QUIET HOURS AND THE HOURLY LIMIT DELAY NOTHING AND DROP NOTHING. The alert lands in the
+ *      list; only the push is withheld. A rank-up is list-only, as in Trador.
+ *
+ * Pure: the local time and the counts come in as arguments (the service reads the clock and the
+ * person's timezone). What breaks if changed carelessly:
+ * `wants` is the only map from a kind to its switch. A new kind with no entry is off, never on.
+ */
+
+import type { NotifyPolicy } from '@insidor/contracts/policy.ts';
+
+export const ALERT_KINDS = [
+  'follow',
+  'reply',
+  'rank_up',
+  'holding_multiple',
+  'watchlist_multiple',
+  'graduating_soon',
+  'graduated',
+  'rising_post',
+  'narrative_promoted',
+  'narrative_coin',
+  'coin_matched',
+] as const;
+export type AlertKind = (typeof ALERT_KINDS)[number];
+
+/** The switches a person sees, one per row of the settings screen. */
+export const SWITCHES = ['follows', 'replies', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins'] as const;
+export type AlertSwitch = (typeof SWITCHES)[number];
+
+const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
+  follow: 'follows',
+  reply: 'replies',
+  rank_up: 'always',
+  holding_multiple: 'holdings',
+  watchlist_multiple: 'watchlist',
+  graduating_soon: 'graduations',
+  graduated: 'graduations',
+  rising_post: 'rising',
+  narrative_promoted: 'narratives',
+  narrative_coin: 'coins',
+  coin_matched: 'coins',
+};
+
+export interface AlertPrefs {
+  readonly muted: boolean;
+  readonly on: Readonly<Record<AlertSwitch, boolean>>;
+  /** The multiples that count for holdings and the watchlist. Never empty. */
+  readonly multiples: readonly number[];
+  /** "HH:MM" local to `timezone`; both or neither. Equal ends mean off. */
+  readonly quietStart: string | null;
+  readonly quietEnd: string | null;
+  readonly timezone: string;
+  /** Pushes an hour; the rest wait in the list. */
+  readonly perHour: number;
+}
+
+/** Trador's defaults, with ours added on: the watchlist off (a watchlist is for browsing), the rest on. */
+export function defaultPrefs(P: NotifyPolicy): AlertPrefs {
+  return {
+    muted: false,
+    on: { follows: true, replies: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true },
+    multiples: [...P.defaultMultiples],
+    quietStart: null,
+    quietEnd: null,
+    timezone: 'UTC',
+    perHour: P.defaultPerHour,
+  };
+}
+
+/** Prefs as stored, made whole: a missing switch takes its default, a bad multiple is dropped, the limit is clamped. */
+export function normalisePrefs(raw: Partial<AlertPrefs> & { readonly on?: Partial<Record<AlertSwitch, boolean>> }, P: NotifyPolicy): AlertPrefs {
+  const d = defaultPrefs(P);
+  const multiples = (raw.multiples ?? d.multiples).filter((m) => P.milestones.includes(m));
+  const time = (t: string | null | undefined) => (typeof t === 'string' && /^\d{1,2}:\d{2}$/.test(t) ? t : null);
+  const qs = time(raw.quietStart);
+  const qe = time(raw.quietEnd);
+  return {
+    muted: raw.muted === true,
+    on: Object.fromEntries(SWITCHES.map((s) => [s, typeof raw.on?.[s] === 'boolean' ? raw.on[s] : d.on[s]])) as Record<AlertSwitch, boolean>,
+    multiples: multiples.length > 0 ? [...new Set(multiples)].sort((a, b) => a - b) : d.multiples,
+    quietStart: qs !== null && qe !== null ? qs : null,
+    quietEnd: qs !== null && qe !== null ? qe : null,
+    timezone: typeof raw.timezone === 'string' && raw.timezone.length > 0 ? raw.timezone : d.timezone,
+    perHour: Math.min(P.maxPerHour, Math.max(1, Math.round(raw.perHour ?? d.perHour))),
+  };
+}
+
+export function wants(prefs: AlertPrefs, kind: AlertKind): boolean {
+  const s = SWITCH_OF[kind];
+  return s === 'always' || prefs.on[s] === true;
+}
+
+/**
+ * The highest level `ratio` has crossed that is switched on and not yet spent; null when none.
+ * Below the first milestone nothing fires.
+ */
+export function highestMilestone(ratio: number, enabled: readonly number[], spent: readonly number[], P: NotifyPolicy): number | null {
+  if (!Number.isFinite(ratio)) return null;
+  let hit: number | null = null;
+  for (const step of P.milestones) {
+    if (ratio < step) break;
+    if (enabled.includes(step) && !spent.includes(step)) hit = step;
+  }
+  return hit;
+}
+
+/** The levels a fired level spends with it: itself and every switched-on level below. */
+export const spentWith = (level: number, enabled: readonly number[]): readonly number[] => enabled.filter((m) => m <= level);
+
+const minutesOf = (hhmm: string): number => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h ?? 0) * MINUTES_PER_HOUR + (m ?? 0);
+};
+const MINUTES_PER_HOUR = 60; // policy-allow: minutes in an hour — a clock fact
+
+/**
+ * Inside quiet hours. `localMinutes` is the minute of the day in the person's own timezone, read
+ * by the service (null when the zone is unknown — never quiet). A window may wrap midnight.
+ */
+export function isQuiet(localMinutes: number | null, prefs: AlertPrefs): boolean {
+  if (localMinutes === null || prefs.quietStart === null || prefs.quietEnd === null || prefs.quietStart === prefs.quietEnd) return false;
+  const start = minutesOf(prefs.quietStart);
+  const end = minutesOf(prefs.quietEnd);
+  return start < end ? localMinutes >= start && localMinutes < end : localMinutes >= start || localMinutes < end;
+}
+
+export type Delivery =
+  | { readonly kind: 'skip'; readonly why: 'muted' | 'off' }
+  | { readonly kind: 'list'; readonly why: 'list-only' | 'quiet' | 'hourly-limit' | 'no-device' }
+  | { readonly kind: 'push' };
+
+/** What happens to one alert for one person, after its level was claimed. */
+export function deliveryFor(r: { readonly kind: AlertKind; readonly prefs: AlertPrefs; readonly localMinutes: number | null; readonly pushedLastHour: number; readonly devices: number }): Delivery {
+  if (r.prefs.muted) return { kind: 'skip', why: 'muted' };
+  if (!wants(r.prefs, r.kind)) return { kind: 'skip', why: 'off' };
+  if (r.kind === 'rank_up') return { kind: 'list', why: 'list-only' };
+  if (isQuiet(r.localMinutes, r.prefs)) return { kind: 'list', why: 'quiet' };
+  if (r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
+  if (r.devices === 0) return { kind: 'list', why: 'no-device' };
+  return { kind: 'push' };
+}
