@@ -741,6 +741,20 @@ export interface AssetPolicy {
    * published as live. Past this the projection says so, and the surface says so.
    */
   readonly feedFreshnessMs: number;
+  /**
+   * How far back the "is this ticker taken" check looks over our own launch records.
+   *
+   * A ticker is not unique on a launchpad — one meme has spawned hundreds of coins sharing
+   * one — so "taken" can only ever mean "somebody launched under it recently". Older than
+   * this and the coin is history rather than a rival for the same moment.
+   */
+  readonly tickerLookbackMs: number;
+  /**
+   * The share of that lookback our launch watch must have covered, without a gap, before
+   * finding no launch under a ticker may be said as "you'd be first". Below it the answer
+   * is that we cannot tell: an unwatched hour is not an hour in which nobody launched.
+   */
+  readonly tickerMinCoverage: number;
 }
 
 /* ── INGEST ───────────────────────────────────────────────────────────── */
@@ -1318,8 +1332,13 @@ const POLICY_V1: Policy = {
      not in a service. They decide WHICH SOURCE gets asked and which gets skipped, so
      two runs under the same terms and the same budget can hold different posts
      depending on them. A board built with `paidOnlyWhenFreeIsEmpty` on saw a different
-     world from one built with it off, and nothing else on the row would say so. */
-  version: 'policy.v10',
+     world from one built with it off, and nothing else on the row would say so.
+
+     v11 adds `assets.tickerLookbackMs` and `assets.tickerMinCoverage`, the two numbers
+     behind the Create screen's "you'd be first". No stage decides on them; they are here
+     because the line that says "you'd be first" is a claim about the world, and the
+     coverage it rests on has to be a number somebody can find. */
+  version: 'policy.v11',
 
   admit: {
     maxAgeMin: 240,
@@ -1598,6 +1617,8 @@ const POLICY_V1: Policy = {
        ordinary, which is a statement about a transport. They are different quantities
        measured over different things and they happen to share a unit. */
     feedFreshnessMs: 900_000,
+    tickerLookbackMs: 604_800_000, // seven days
+    tickerMinCoverage: 0.95,
   },
 
   ingest: {
