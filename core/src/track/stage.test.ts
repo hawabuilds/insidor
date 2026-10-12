@@ -84,6 +84,7 @@ function input(over: Partial<TrackInput> = {}): TrackInput {
     isHeldBack: false,
     readsAvailable: 100,
     costUsd: 0,
+    velocityRank: null,
     ...over,
   };
 }
@@ -500,11 +501,16 @@ test('a proposal that changes restarts the count rather than inheriting it', () 
 
 /* ── the age floor ────────────────────────────────────────────────────── */
 
-test('★ a young post on the top tier is read on the top tier', () => {
-  const young = input({ item: item({ postedAt: NOW - 20 * MINUTE, firstSeenAt: NOW - 20 * MINUTE }), lastReadAt: NOW - 5 * MINUTE });
-  const d = track(young, P, CTX);
-  assert.equal(d.features['scheduledTier'], TOP_TIER);
-  assert.equal(d.verdict, 'pass', 'five minutes since the last read is past a four-minute tier');
+test('★ a young post is read on its view-rate tier: hot 2 minutes, warm 8, cold 20', () => {
+  const young = (velocityRank: 'hot' | 'warm' | 'cold' | null, sinceMin: number) =>
+    track(input({ item: item({ postedAt: NOW - 20 * MINUTE, firstSeenAt: NOW - 20 * MINUTE }), lastReadAt: NOW - sinceMin * MINUTE, velocityRank }), P, CTX);
+  assert.equal(young('hot', 3).verdict, 'pass');
+  assert.equal(young('warm', 3).reason, 'T6_not_due');
+  assert.equal(young('warm', 9).verdict, 'pass');
+  assert.equal(young('cold', 9).reason, 'T6_not_due');
+  assert.equal(young('cold', 21).verdict, 'pass');
+  assert.equal(young(null, 9).verdict, 'pass', 'no rate yet is warm, not cold');
+  assert.equal(young(null, 3).reason, 'T6_not_due');
 });
 
 test('★ an old post is held to the tier its age allows, whatever its score', () => {

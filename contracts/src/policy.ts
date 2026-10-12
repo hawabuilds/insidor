@@ -154,6 +154,19 @@ export interface TrackPolicy {
    * past what its age allows. The holdout ignores it, as it ignores every other ladder.
    */
   readonly ageTierMinutes: readonly number[];
+  /**
+   * The earlier build's snapshot tiers, for a post's first hours. Within `youngWindowMin`
+   * of its post time, tracked posts are ranked by how fast their views are rising: the
+   * fastest `velocityShares.hot` are re-read every `velocityMinutes.hot`, the next
+   * `velocityShares.warm` every `.warm`, the rest every `.cold`. A post with no view rate
+   * yet sits on warm — an absence is neither rewarded nor punished. After the window the age
+   * ladder above takes over. Unlike the earlier build, nothing stops being read at the end
+   * of the window and nothing cold is pruned: a history whose length depends on early
+   * performance is conditioned on the outcome (see core/src/track/schedule.ts).
+   */
+  readonly youngWindowMin: number;
+  readonly velocityShares: { readonly hot: number; readonly warm: number };
+  readonly velocityMinutes: { readonly hot: number; readonly warm: number; readonly cold: number };
   /*
    * ★ `track.holdoutRate` USED TO BE HERE AND HAS BEEN DELETED. It held 0.02, it was
    * declared and never read, and every live call site — admit/stage.ts and
@@ -1410,8 +1423,11 @@ const POLICY_V1: Policy = {
 
      v13 adds `feed`: discovery searches for whatever is moving, with no keyword, behind an
      approval floor that adapts to the budget. Every post arriving after this bump was found
-     by a different question from every post before it. */
-  version: 'policy.v13',
+     by a different question from every post before it.
+
+     v14 adds `track.youngWindowMin`, `velocityShares` and `velocityMinutes`: a post's first
+     three hours are read on the earlier build's hot, warm and cold tiers, ranked by view rate. */
+  version: 'policy.v14',
 
   admit: {
     maxAgeMin: 240,
@@ -1452,6 +1468,11 @@ const POLICY_V1: Policy = {
     /* Under an hour old: every 4 minutes. Then 9, 14, 21, 30, 42 and 58 minutes as the post
        passes 1h, 3h, 6h, 12h, 1 day and 2 days; past 4 days, every 78. */
     ageTierMinutes: [60, 180, 360, 720, 1440, 2880, 5760],
+    /* The earlier build's snapshotter: first 3 hours, top 20% by view rate every 2 min,
+       next 40% every 8, the rest every 20. */
+    youngWindowMin: 180,
+    velocityShares: { hot: 0.2, warm: 0.4 },
+    velocityMinutes: { hot: 2, warm: 8, cold: 20 },
     /* holdoutRate deleted in v6 — see the note on TrackPolicy. explore.holdoutRate is
        the single source, and it is the one every live call site already read. */
     shedFromTier: 0,

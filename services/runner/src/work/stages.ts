@@ -65,6 +65,7 @@ import {
   observationsFrom,
   owesASeed,
   presentationFor,
+  rankByVelocity,
   seedStory,
 } from '@insidor/core';
 import type {
@@ -269,6 +270,16 @@ function lastReadAt(item: Item, observations: readonly Observation[]): Millis {
   return newest;
 }
 
+/** The newest measured views-per-minute on a post, or null when none has been measured. */
+function latestViewRate(observations: readonly Observation[]): number | null {
+  let newest: Observation | null = null;
+  for (const o of observations) {
+    if (o.kind !== 'reach' || o.rate.kind !== 'measured') continue;
+    if (newest === null || o.capturedAt > newest.capturedAt) newest = o;
+  }
+  return newest !== null && newest.rate.kind === 'measured' ? newest.rate.perMin : null;
+}
+
 /**
  * Consecutive newest-first READINGS that produced no usable rate.
  *
@@ -450,6 +461,14 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
 
       const probationTier = policy.track.tierMinutes.length - 1;
 
+      /* ★ THE EARLIER BUILD'S SNAPSHOT TIERS: each post's latest measured view rate, ranked
+         across everything this pass is tracking. A post with no measured rate has no rank,
+         and TRACK keeps it on the middle tier rather than the slowest. */
+      const ranks = rankByVelocity(
+        items.map((item) => latestViewRate(series.get(item.itemId) ?? [])),
+        policy,
+      );
+
       return items.map((item, index) => {
         const observations = series.get(item.itemId) ?? [];
         const previous = lastTrack.get(item.itemId);
@@ -487,6 +506,7 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
              budget is not more exhausted than an empty one. */
           readsAvailable: Math.max(TRACK_READ_BUDGET - index, 0),
           costUsd: 0,
+          velocityRank: ranks[index] ?? null,
         };
       });
     },
