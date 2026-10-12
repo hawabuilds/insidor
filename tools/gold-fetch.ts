@@ -30,8 +30,8 @@ import type { Author, Item } from '../contracts/src/vocabulary.ts';
 import type { Meter } from '../contracts/src/ports/meter.ts';
 import { voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
 import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
-import { inMemoryMeter } from '../adapters/meter/spend/src/index.ts';
 import { xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
+import { openSharedMeter } from './lib/shared-meter.ts';
 import { goldCoins, tuning, type GoldCoin } from '../eval/src/gold/coin-origins.ts';
 import { EVIDENCE_FILE, loadEvidence, type CoinEvidence, type PostRead } from '../eval/src/gold/coin-evidence.ts';
 
@@ -69,11 +69,17 @@ function refuse(message: string): never {
   process.exit(1);
 }
 
-function paid(estimateUsd: number, what: string): Meter {
+/* Closed once the stage is done, so the ledger writes are drained before the process ends. */
+let closeMeter: (() => Promise<void>) | null = null;
+
+/** The stage's cap (its estimate, with room) and the owner's daily lines, on the runner's ledger. */
+async function paid(estimateUsd: number, what: string): Promise<Meter> {
   console.log(`${what}: estimated at most $${estimateUsd.toFixed(4)}.`);
   if (process.env['SPEND'] !== 'live') refuse('SPEND=live is not set. This stage spends money.');
   if (!process.argv.includes('--yes')) refuse('pass --yes to confirm you mean to spend money.');
-  return inMemoryMeter({ dailyCapUsd: Math.max(estimateUsd * 1.5, 0.01), softStop: 1, now: Date.now });
+  const shared = await openSharedMeter(Math.max(estimateUsd * 1.5, 0.01));
+  closeMeter = shared.close;
+  return shared.meter;
 }
 
 const budget = (meter: Meter) => {
@@ -174,7 +180,7 @@ async function posts(): Promise<void> {
     const originId = ev?.origin === undefined && (c.origin.kind === 'post' || c.origin.kind === 'afterLaunch') && c.origin.platform === 'x' ? c.origin.postId : null;
     for (const id of [creatorId, originId]) if (id !== null) want.set(id, [...(want.get(id) ?? []), c.id]);
   }
-  const meter = paid(want.size * X_USD_PER_POST, `posts: ${want.size} posts by id`);
+  const meter = await paid(want.size * X_USD_PER_POST, `posts: ${want.size} posts by id`);
   const read = await lookupX([...want.keys()], meter);
   for (const c of coins) {
     const ev = evidence.get(c.id);
@@ -196,7 +202,7 @@ async function posts(): Promise<void> {
 
 async function search(): Promise<void> {
   const todo = coins.filter((c) => evidence.get(c.id)?.search === undefined);
-  const meter = paid(todo.length * SEARCH_LIMIT * X_USD_PER_POST, `search: ${todo.length} searches`);
+  const meter = await paid(todo.length * SEARCH_LIMIT * X_USD_PER_POST, `search: ${todo.length} searches`);
   const x = xAdapter(meter);
   let done = 0;
   for (const c of todo) {
@@ -220,7 +226,7 @@ async function quotes(): Promise<void> {
     for (const p of all) if (p.quotes !== null) want.add(p.quotes);
   }
   const ids = [...want].filter((id) => !have.has(id));
-  const meter = paid(ids.length * X_USD_PER_POST, `quotes: ${ids.length} quoted posts`);
+  const meter = await paid(ids.length * X_USD_PER_POST, `quotes: ${ids.length} quoted posts`);
   const read = await lookupX(ids, meter);
   /* Filed beside the search results of every coin whose results quote them. */
   for (const c of coins) {
@@ -252,7 +258,7 @@ async function judge(): Promise<void> {
     const post = ev?.creator?.kind === 'post' ? ev.creator.post : null;
     return post === null || ev?.judged?.[post.postId] !== undefined ? [] : [{ c, post }];
   });
-  const meter = paid(todo.length * JUDGE_USD_PER_POST * 3, `judge: ${todo.length} creator posts`);
+  const meter = await paid(todo.length * JUDGE_USD_PER_POST * 3, `judge: ${todo.length} creator posts`);
   const j = judgeFor(meter, P.judge.postBatchMaxOutputTokens);
   for (const { c, post } of todo) {
     const subject = { storyId: storyId(`gold-${c.id.replace(':', '-')}`), texts: post.text.trim() === '' ? [] : [post.text.slice(0, P.judge.maxCharsPerText)], media: post.imageUri === null ? [] : [{ kind: 'image' as const, uri: post.imageUri, width: null, height: null, durationMs: null }], distinctAuthors: 1, distinctSources: 1 };
@@ -275,7 +281,7 @@ async function images(): Promise<void> {
     return [...(ev?.search?.results ?? []), ...(ev?.creator?.kind === 'post' && ev.creator.post ? [ev.creator.post] : []), ...(ev?.origin?.post ? [ev.origin.post] : [])].filter((p) => p.imageUri !== null);
   };
   const total = todo.reduce((n, c) => n + 1 + per(c).length, 0);
-  const meter = paid(total * VOYAGE_USD_PER_IMAGE * 2, `images: ${total} pictures`);
+  const meter = await paid(total * VOYAGE_USD_PER_IMAGE * 2, `images: ${total} pictures`);
   const embed = voyageEmbed({ client: voyageClient({ apiKey: key, baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
   for (const c of todo) {
     const posts = per(c);
@@ -311,7 +317,7 @@ async function pairs(): Promise<void> {
       return s !== undefined && s >= bars.borderline && s < bars.likely && named && ev.sameSubject?.[p.postId] === undefined && p.imageUri !== null ? [{ c, p, coinImage: ev.meta?.imageUri as string }] : [];
     });
   }).slice(0, bars.pairChecksPerDay);
-  const meter = paid(todo.length * PAIR_USD * 2, `pairs: ${todo.length} borderline pictures`);
+  const meter = await paid(todo.length * PAIR_USD * 2, `pairs: ${todo.length} borderline pictures`);
   const j = judgeFor(meter, P.judge.pairMaxOutputTokens);
   for (const { c, p, coinImage } of todo) {
     const image = (uri: string) => ({ kind: 'image' as const, uri, width: null, height: null, durationMs: null });
@@ -326,4 +332,8 @@ const stages: Record<string, () => Promise<void> | void> = { estimate, meta, pos
 const stage = process.argv[2] ?? '';
 const run = stages[stage];
 if (run === undefined) refuse(`stage must be one of: ${Object.keys(stages).join(', ')}`);
-await run();
+try {
+  await run();
+} finally {
+  await closeMeter?.();
+}

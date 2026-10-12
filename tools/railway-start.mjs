@@ -2,7 +2,7 @@
  * HOW EACH SERVICE STARTS ON RAILWAY — one launcher, one argument per service, so the seven
  * Railway services differ only in that word (railway/<service>.json).
  *
- *   node tools/railway-start.mjs runner | chainwatch | read | trade | social | notify | project
+ *   node tools/railway-start.mjs runner | chainwatch | read | trade | social | notify | project | jobs
  *   (or with no word: the service named by Railway's RAILWAY_SERVICE_NAME)
  *
  * ★ RAILWAY'S PORT, EACH SERVICE'S OWN NAME FOR IT. Railway gives every service PORT and checks
@@ -36,6 +36,8 @@ const MAIN = {
   trade: { file: 'services/trade/src/main.ts', env: {} },
   social: { file: 'services/social/src/main.ts', env: {} },
   notify: { file: 'services/notify/src/main.ts', env: {} },
+  /* The one-off paid job: runs its stages, saves, exits 0 — never restarted (tools/jobs.ts). */
+  jobs: { file: 'tools/jobs.ts', args: ['run'], env: {} },
 };
 
 function run(args, extraEnv = {}) {
@@ -43,8 +45,8 @@ function run(args, extraEnv = {}) {
 }
 
 if (service in MAIN) {
-  const { file, env } = MAIN[service];
-  const child = run([file], Object.fromEntries(Object.entries(env).filter(([, v]) => v !== '')));
+  const { file, args = [], env } = MAIN[service];
+  const child = run([file, ...args], Object.fromEntries(Object.entries(env).filter(([, v]) => v !== '')));
   for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => child.kill(signal));
   child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
 } else if (service === 'project') {
