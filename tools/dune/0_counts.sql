@@ -9,8 +9,9 @@
 -- Confirm each name and column in Dune's data explorer before the first run; a wrong name
 -- fails the query at once and costs nothing.
 --
--- {{mcap_bar_usd}} is the stage-2 bar (proposed $25,000 peak market cap); {{peak_since}} the
--- stage-2 start date.
+-- Counts only the cheap stages. Stage 2's count needs the same scan of every trade that stage 2
+-- itself does, so it is measured by running stage 2's FIRST page (one month) and scaling — see
+-- docs/coin-universe-history-plan.md.
 
 with created as (
   select account_mint as mint, call_block_time as created_at from pumpdotfun_solana.pump_call_create
