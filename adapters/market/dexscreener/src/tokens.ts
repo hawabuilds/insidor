@@ -19,10 +19,11 @@ import { CURVE_DEX_IDS } from './to-market-state.ts';
 export const TOKENS_BATCH = MAX_ADDRESSES_PER_CALL;
 
 export function readStandings(raw: unknown): ReadonlyMap<string, CoinStanding> {
-  const out = new Map<string, { bonded: boolean; marketCapUsd: number | null }>();
+  const out = new Map<string, { bonded: boolean; marketCapUsd: number | null; name: string | null; ticker: string | null }>();
   for (const p of arr(raw)) {
     const r = rec(p);
-    const address = str(rec(r.baseToken).address);
+    const base = rec(r.baseToken);
+    const address = str(base.address);
     const dex = str(r.dexId);
     if (str(r.chainId) !== 'solana' || address === null || dex === null) continue;
     const cap = num(r.marketCap) ?? num(r.fdv);
@@ -30,6 +31,8 @@ export function readStandings(raw: unknown): ReadonlyMap<string, CoinStanding> {
     out.set(address, {
       bonded: (held?.bonded ?? false) || !CURVE_DEX_IDS.has(dex),
       marketCapUsd: held?.marketCapUsd == null ? cap : cap === null ? held.marketCapUsd : Math.max(held.marketCapUsd, cap),
+      name: held?.name ?? str(base.name),
+      ticker: held?.ticker ?? str(base.symbol),
     });
   }
   return out;

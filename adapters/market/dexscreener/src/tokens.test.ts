@@ -6,8 +6,8 @@ import { dexscreenerStandings, readStandings, TOKENS_BATCH } from './tokens.ts';
 
 test('★ bonded, on the curve, or not listed at all — read from a recorded reply', () => {
   const s = readStandings(TOKENS_REPLY);
-  assert.deepEqual(s.get(ASKED[0]), { bonded: true, marketCapUsd: 4648 });
-  assert.deepEqual(s.get(ASKED[1]), { bonded: false, marketCapUsd: 4387.53 });
+  assert.deepEqual(s.get(ASKED[0]), { bonded: true, marketCapUsd: 4648, name: 'Aura Bird', ticker: 'Stork' });
+  assert.deepEqual(s.get(ASKED[1]), { bonded: false, marketCapUsd: 4387.53, name: 'Nap Protocol', ticker: '$NAPS' });
   assert.equal(s.has(ASKED[2]), false, 'asked about and not listed');
 });
 
@@ -17,7 +17,7 @@ test('a coin with a curve pair and a pool pair is bonded, at its larger market c
     { chainId: 'solana', dexId: 'pumpswap', baseToken: { address: 'A' }, marketCap: 90 },
     { chainId: 'base', dexId: 'uniswap', baseToken: { address: 'B' }, marketCap: 1 },
   ]);
-  assert.deepEqual(s.get('A'), { bonded: true, marketCapUsd: 90 });
+  assert.deepEqual(s.get('A'), { bonded: true, marketCapUsd: 90, name: null, ticker: null });
   assert.equal(s.has('B'), false);
 });
 
