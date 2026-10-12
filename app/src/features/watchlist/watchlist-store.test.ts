@@ -27,6 +27,7 @@ const COIN: Coin = {
   liquidityUsd: known(1_000),
   priceChange24h: known(-1.5),
   tradable: true,
+  origin: { kind: 'unknown', pending: 'not_read_yet' },
 };
 
 test('a settled coin on a watched story fires once', () => {

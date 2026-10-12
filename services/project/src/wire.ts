@@ -112,7 +112,30 @@ export interface WireCoin {
    */
   readonly priceChange24h: WireMeasured;
   readonly tradable: boolean;
+  /** Where the coin came from, with how we know. See `WireCoinOrigin`. */
+  readonly origin: WireCoinOrigin;
 }
+
+/**
+ * Where a coin came from, said only with how we know it:
+ *
+ *   linkedByCreator   the creator's own link is the post, made before the coin
+ *   matchedByInsidor  we found the post: same picture, same name, made before the coin
+ *   foundByTeam       the founders found the post by hand
+ *   influencer        an influencer's or founder's post, made before the coin
+ *   afterLaunch       ★ "Went viral after launch": the post came AFTER the coin. Shown, with
+ *                     how long after, and never as where the coin came from.
+ *   unknown           not checked, or nothing confident — a dash with its reason, never "none"
+ *
+ * `offset` is the post's time minus the coin's launch, in milliseconds: negative before.
+ */
+export type WireCoinOrigin =
+  | { readonly kind: 'unknown'; readonly why: PendingReason }
+  | {
+      readonly kind: 'linkedByCreator' | 'matchedByInsidor' | 'foundByTeam' | 'influencer' | 'afterLaunch';
+      readonly post: { readonly authorLabel: string; readonly permalink: string | null; readonly postedAt: WireInstant };
+      readonly offset: WireMeasured;
+    };
 
 /**
  * How many coins we will stand behind — the ONLY input to the row's button.

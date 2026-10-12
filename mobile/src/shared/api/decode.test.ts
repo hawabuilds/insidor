@@ -77,3 +77,16 @@ test('★ the earliest post decodes with its author; "started by" only from a kn
   assert.deepEqual(decodeStory({ ...raw, earliestPost: { at: null, why: 'not_reported' } }).earliestPost, { known: false, pending: 'not_reported' });
   assert.deepEqual(decodeStory({ ...raw, earliestPost: undefined }).earliestPost, { known: false, pending: 'not_read_yet' }, 'an older server: a dash, not a post');
 });
+
+test('★ a coin\'s origin decodes with its post; a post after launch stays "after launch"; anything unknown is a dash', () => {
+  const coin = (origin: unknown) => decodeCoinLink({ kind: 'one', coin: { coinId: 'c', ticker: 'T', name: 'T', address: 'a', venueLabel: 'v', imageUrl: null, mintedAt: { at: 1 }, priceUsd: { v: 1 }, marketCapUsd: { v: 1 }, marketCapBasis: null, liquidityUsd: { v: 1 }, priceChange24h: { v: 1 }, tradable: true, origin } });
+  const one = (origin: unknown) => {
+    const link = coin(origin);
+    return link.kind === 'one' ? link.coin.origin : null;
+  };
+  const after = one({ kind: 'afterLaunch', post: { authorLabel: '@whitehouse', permalink: null, postedAt: { at: 5 } }, offset: { v: 7_200_000 } });
+  assert.equal(after?.kind, 'afterLaunch');
+  assert.deepEqual(after?.kind === 'afterLaunch' ? after.offset : null, { known: true, amount: 7_200_000 });
+  assert.deepEqual(one({ kind: 'probably', post: {} }), { kind: 'unknown', pending: 'not_read_yet' }, 'an unknown kind is never shown as an origin');
+  assert.deepEqual(one(undefined), { kind: 'unknown', pending: 'not_read_yet' }, 'an older server: a dash');
+});

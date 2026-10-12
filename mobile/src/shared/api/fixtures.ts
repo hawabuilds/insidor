@@ -70,6 +70,8 @@ interface CoinSpec {
   readonly change: number | null;
   readonly mintedAgo: number | null;
   readonly tradable: boolean;
+  /** Where the sample coin came from; absent is not checked. Sample, like everything here. */
+  readonly origin?: { readonly kind: string; readonly author: string; readonly offsetMs: number };
 }
 
 function coin(c: CoinSpec): unknown {
@@ -87,6 +89,14 @@ function coin(c: CoinSpec): unknown {
     liquidityUsd: c.liq === null ? noValue('not_reported') : m(c.liq),
     priceChange24h: c.change === null ? noValue('not_reported') : m(c.change),
     tradable: c.tradable,
+    origin:
+      c.origin === undefined
+        ? { kind: 'unknown', why: 'not_read_yet' }
+        : {
+            kind: c.origin.kind,
+            post: { authorLabel: c.origin.author, permalink: `https://example.invalid/${c.origin.author}/origin`, postedAt: ago((c.mintedAgo ?? 0) - c.origin.offsetMs) },
+            offset: m(c.origin.offsetMs),
+          },
   };
 }
 
@@ -113,7 +123,7 @@ function post(source: string, author: string, postedAgo: number, excerpt: string
  */
 const JIMOTHY_COINS = [
   coin({ id: 'c_jimothy_1', ticker: 'JIMOTHY', name: 'Jimothy', mcap: 4_300, liq: 3_400, price: 0.0000043, change: 12.4, mintedAgo: 2 * HOUR, tradable: true }),
-  coin({ id: 'c_jimothy_2', ticker: 'JIMOTHY', name: 'Jimothy', mcap: 4_100, liq: 3_300, price: 0.0000041, change: -3.2, mintedAgo: 5 * HOUR, tradable: true }),
+  coin({ id: 'c_jimothy_2', ticker: 'JIMOTHY', name: 'Jimothy', mcap: 4_100, liq: 3_300, price: 0.0000041, change: -3.2, mintedAgo: 5 * HOUR, tradable: true, origin: { kind: 'afterLaunch', author: 'whitehouse', offsetMs: 2 * HOUR } }),
   ...[
     ['JIMMY', 1_200], ['RACCOON', 980], ['JIMOTHY', 870], ['DCRACCOON', 640], ['JIM', 560],
     ['REDCAP', 430], ['JIMOTHYDC', 390], ['TRASHPANDA', 310], ['JIMBO', 280], ['WASHJIM', 240],
@@ -133,7 +143,7 @@ const JIMOTHY_COINS = [
   ),
 ];
 
-const FERRY = coin({ id: 'c_ferry', ticker: 'FERRY', name: 'Ferry Horn', mcap: 182_000, liq: 41_000, price: 0.000182, change: 38.6, mintedAgo: 3 * HOUR + 40 * MIN, tradable: true });
+const FERRY = coin({ id: 'c_ferry', ticker: 'FERRY', name: 'Ferry Horn', mcap: 182_000, liq: 41_000, price: 0.000182, change: 38.6, mintedAgo: 3 * HOUR + 40 * MIN, tradable: true, origin: { kind: 'matchedByInsidor', author: 'nordkyst_ferge', offsetMs: -25 * MIN } });
 
 /** Tradable is false: the server could not get a quote. The row shows its numbers and no button. */
 const GERALD = coin({ id: 'c_gerald', ticker: 'GERALD', name: 'Porch Frog Gerald', mcap: 9_800, liq: null, price: 0.0000098, change: null, mintedAgo: null, tradable: false });

@@ -28,6 +28,7 @@ function coin(ticker: string, tradable = true): Coin {
     liquidityUsd: known(9_000),
     priceChange24h: known(4.2),
     tradable,
+    origin: { kind: 'unknown', pending: 'not_read_yet' },
   };
 }
 
