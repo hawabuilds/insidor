@@ -387,3 +387,9 @@
   color: var(--up);
   box-shadow: none;
 }
+
+.txn {
+  color: var(--text-2);
+  font-weight: 600;
+  text-decoration: none;
+}

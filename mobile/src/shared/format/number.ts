@@ -46,7 +46,10 @@ export function formatCount(m: Measured): Rendered {
 
 /** Dollars at market-cap or liquidity scale: "$4.3K". */
 export function formatUsd(m: Measured): Rendered {
-  return m.known ? value(`$${compact(m.amount)}`) : pendingRendered(m.pending);
+  if (!m.known) return pendingRendered(m.pending);
+  /* A real amount under a cent is never "$0", which is a zero by another name. */
+  if (m.amount > 0 && m.amount < 0.01) return value('<$0.01');
+  return value(`$${compact(m.amount)}`);
 }
 
 /**

@@ -25,7 +25,8 @@
  */
 
 import { notImplemented } from '../not-implemented.ts';
-import { decodeBoardTick, decodeNarratives, decodeRisingFeed, decodeStory } from './decode.ts';
+import { decodeBoardTick, decodeCoinMarket, decodeNarratives, decodeRisingFeed, decodeStory } from './decode.ts';
+import type { CoinMarket, MarketTimeframe } from './wire/market.ts';
 import type { BoardTick } from './wire/board.ts';
 import type { RisingFeed, RisingFeedId } from './wire/rising.ts';
 import type { NarrativesList, Story } from './wire/story.ts';
@@ -66,6 +67,11 @@ export const SAMPLE_SCREENS = DEV || SAMPLE;
 async function readFixture(path: string): Promise<unknown> {
   const { fixtureBoard, fixtureRising, fixtureStory } = await import('./fixtures.ts');
   if (path.startsWith('/board/')) return fixtureBoard();
+  if (path.startsWith('/coin/')) {
+    const { fixtureMarket } = await import('./fixtures.ts');
+    const [, coinId = '', tf = '1m'] = /^\/coin\/([^/]+)\/market\?tf=(\w+)$/.exec(path) ?? [];
+    return fixtureMarket(decodeURIComponent(coinId), tf as MarketTimeframe);
+  }
   if (path.startsWith('/narratives/')) {
     const { sampleNarrativeIds } = await import('./fixtures.ts');
     return { tick: 1, stories: sampleNarrativeIds().map((id) => fixtureStory(id)), provenance: { kind: 'observed' } };
@@ -101,6 +107,11 @@ export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Pro
   return decodeRisingFeed(await read(`/rising/${encodeURIComponent(feed)}`, signal));
 }
 
+/** A coin's price history for one view, its latest trades and, on the curve, its progress. */
+export async function fetchCoinMarket(coinId: string, timeframe: MarketTimeframe, signal?: AbortSignal): Promise<CoinMarket> {
+  return decodeCoinMarket(await read(`/coin/${encodeURIComponent(coinId)}/market?tf=${timeframe}`, signal));
+}
+
 /** The Narratives list: the board's stories as whole pages, in the board's order. */
 export async function fetchNarratives(viewId: string, signal?: AbortSignal): Promise<NarrativesList> {
   return decodeNarratives(await read(`/narratives/${encodeURIComponent(viewId)}`, signal));
@@ -108,6 +119,13 @@ export async function fetchNarratives(viewId: string, signal?: AbortSignal): Pro
 
 export async function fetchStory(storyId: string, signal?: AbortSignal): Promise<Story> {
   return decodeStory(await read(`/story/${encodeURIComponent(storyId)}`, signal));
+}
+
+/** A sample coin's market, for a sample page. Never touches the network. */
+export async function loadSampleMarket(coinId: string, timeframe: MarketTimeframe): Promise<CoinMarket> {
+  if (!SAMPLE_SCREENS) return notImplemented('loadSampleMarket: sample pages are off in this build');
+  const { fixtureMarket } = await import('./fixtures.ts');
+  return decodeCoinMarket(fixtureMarket(coinId, timeframe));
 }
 
 /** One page reached from the Narratives list. Never touches the network. */
