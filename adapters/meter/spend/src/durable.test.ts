@@ -258,3 +258,26 @@ test('a ledger that cannot be read fails the BOOT rather than starting empty', a
     openDurableMeter({ ledger: broken, dailyCapUsd: 1, softStop: 1, now: () => AT }),
   );
 });
+
+test('★ two processes on one ledger: after a refresh, each sees what the other spent, and its own once', async () => {
+  const ledger = shelf();
+  const opts = { ledger, dailyCapUsd: 10, perVendorCapUsd: { acme: 1 }, softStop: 1, now: () => AT };
+  const runner = await openDurableMeter(opts);
+  const job = await openDurableMeter(opts);
+
+  runner.record(spend(0.6));
+  await runner.drain();
+  assert.equal(job.mayspend('acme', 0.6), true, 'before a refresh the job cannot know');
+
+  await job.refresh();
+  assert.equal(job.spentUsd('acme'), 0.6);
+  assert.equal(job.mayspend('acme', 0.6), false, 'the line is shared: 0.6 + 0.6 is over 1');
+
+  job.record(spend(0.3));
+  await job.drain();
+  await job.refresh();
+  assert.ok(Math.abs(job.spentUsd('acme') - 0.9) < 1e-9, "the job's own 0.3 is counted once, not twice");
+  await runner.refresh();
+  assert.ok(Math.abs(runner.spentUsd() - 0.9) < 1e-9);
+  assert.equal(runner.mayspend('acme', 0.2), false);
+});

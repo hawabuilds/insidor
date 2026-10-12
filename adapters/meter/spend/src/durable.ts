@@ -76,6 +76,12 @@ export interface DurableMeter extends Meter {
    * tests — NEVER on the hot path, which is the whole reason `record` is synchronous.
    */
   readonly drain: () => Promise<void>;
+  /**
+   * Re-reads today's ledger, so what ANOTHER process has spent since this one opened counts
+   * against this one's lines. Called on a timer by every process that spends; see the ★ block
+   * on `refresh` below.
+   */
+  readonly refresh: () => Promise<void>;
 }
 
 /**
@@ -139,6 +145,36 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
   return {
     openedWith,
     unrecordedUsd: () => unrecordedUsd,
+
+    /**
+     * ★ TWO PROCESSES, ONE DAY'S LINES. The opening read sees what others had spent at boot and
+     * nothing after, so a runner and a one-off job each spending under the same line would
+     * each believe the whole remainder was theirs. Refreshing sets the carried balance to the
+     * ledger's total MINUS this process's own entries for today — what everybody else spent —
+     * and the tally adds this process's own on top, so nothing is counted twice.
+     *
+     * The bound between refreshes is the soft stop: a line stops at `softStop` of its cap, and
+     * the headroom above it is what absorbs another process's spending since the last read.
+     * Own entries still in flight to the ledger are not in its total yet, so for that moment
+     * the other processes' share reads slightly high — the safe direction.
+     *
+     * A failed read keeps the last balance and rejects; the caller reports it. The tally is
+     * still right for this process, as it is when a write fails.
+     */
+    refresh: async () => {
+      const at = opts.now();
+      const ledger = await opts.ledger.totalsSince(dayStart(at) as Millis);
+      const own: Record<string, number> = {};
+      let ownTotal = 0;
+      for (const e of inner.entries()) {
+        if (e.at < dayStart(at)) continue;
+        own[e.vendor] = (own[e.vendor] ?? 0) + e.usd;
+        ownTotal += e.usd;
+      }
+      const byVendor: Record<string, number> = {};
+      for (const [vendor, usd] of Object.entries(ledger.byVendor)) byVendor[vendor] = Math.max(usd - (own[vendor] ?? 0), 0);
+      inner.reopen({ totalUsd: Math.max(ledger.totalUsd - ownTotal, 0), byVendor });
+    },
     drain: async () => {
       /* Awaited in a loop rather than once, because a write settling can be the thing
          that issues another. `allSettled` because a rejected write is already handled

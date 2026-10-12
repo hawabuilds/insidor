@@ -1364,6 +1364,13 @@ export interface BudgetPolicy {
    */
   readonly paceAheadMs: number;
   /**
+   * ★ HOW OFTEN A SPENDING PROCESS RE-READS TODAY'S LEDGER. The runner and a one-off paid job
+   * share these lines; each re-reads what the other spent this often. Between reads the gap
+   * above `softStopFraction` absorbs the other's spending, so this must stay short beside how
+   * long either takes to spend that tenth of a line — a minute is cents against a dollar.
+   */
+  readonly ledgerRefreshMs: number;
+  /**
    * ★ FREE BEFORE PAID: ask the sources that cost nothing first, every pass.
    *
    * A POLICY AND NOT AN OPTIMISATION, which is why it is a field here rather than a
@@ -1839,7 +1846,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v36',
+  version: 'policy.v37',
 
   admit: {
     maxAgeMin: 240,
@@ -2403,6 +2410,7 @@ const POLICY_V1: Policy = {
     softStopFraction: 0.9,
     supplierLines: { posts: 11.25, judge: 8, video: 2, actors: 1, embeddings: 2 },
     paceAheadMs: 3_600_000, // an hour's head start
+    ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
        is the one with a coverage cost, stated on its field, and is the first thing to
