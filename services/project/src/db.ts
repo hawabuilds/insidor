@@ -167,6 +167,8 @@ interface MemberRow {
   evidence_kind: MatchEvidence['kind'];
   carrier_kind: string | null;
   lineage_via: string | null;
+  /** Which space a representation join was read in: the image space means the same picture, edited. */
+  representation_space: string | null;
 }
 
 /**
@@ -199,7 +201,7 @@ async function loadMembers(db: Db, storyIds: readonly string[]): Promise<readonl
     `select m.story_id, m.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at,
             i.body, i.media,
             a.handle, a.display_name, a.source_author_id,
-            m.evidence_kind, m.carrier_kind, m.lineage_via
+            m.evidence_kind, m.carrier_kind, m.lineage_via, m.representation_space
        from public.story_member m
        join public.item i using (item_id)
        join public.author a on a.author_key = i.author_key
@@ -1056,7 +1058,9 @@ function toRelation(row: MemberRow): MemberRelation {
         via: row.lineage_via === 'rebroadcast' ? 'rebroadcast' : 'reproduction',
       };
     case 'representation':
-      return { kind: 'representation' };
+      return row.representation_space === DEFAULT_POLICY.group.image.space ? { kind: 'picture' } : { kind: 'representation' };
+    case 'nameImage':
+      return { kind: 'nameImage' };
     case 'adjudicated':
       return { kind: 'adjudicated' };
     case 'seed':

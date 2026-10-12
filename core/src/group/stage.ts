@@ -40,7 +40,7 @@ import type { FeatureSetId, FeatureVector } from '@insidor/contracts/features.ts
 import { pairId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { ReasonCode } from '@insidor/contracts/reasons.ts';
-import type { Story } from '@insidor/contracts/story.ts';
+import type { MatchEvidence, Story } from '@insidor/contracts/story.ts';
 import type { Item, Millis } from '@insidor/contracts/vocabulary.ts';
 
 import { decide as makeDecision } from '../decide.ts';
@@ -436,9 +436,9 @@ export function joinTarget(input: GroupInput, p: Policy): EvidencedMatch | null 
 }
 
 /** Which free tier settled it, as the reason code that names the tier. */
-function joinReason(kind: 'seed' | 'carrier' | 'lineage' | 'representation' | 'adjudicated'): ReasonCode {
+function joinReason(kind: MatchEvidence['kind']): ReasonCode {
   if (kind === 'lineage') return 'M1_lineage_join';
-  if (kind === 'representation') return 'M2_semantic_join';
+  if (kind === 'representation' || kind === 'nameImage') return 'M2_semantic_join';
   return 'M0_carrier_join';
 }
 

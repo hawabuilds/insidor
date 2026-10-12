@@ -74,6 +74,10 @@ interface MemberRow {
   representation_space: string | null;
   adjudicated_by: string | null;
   adjudicated_at: TimestampColumn;
+  name_key: string | null;
+  image_similarity: number | null;
+  image_space: string | null;
+  image_confirmed: boolean | null;
 }
 
 /** What the qualify stage renders. Not part of the analytical object; see the header. */
@@ -93,7 +97,8 @@ const SELECT_MEMBER = `
          m.evidence_kind, m.carrier_kind, m.carrier_key, m.carrier_distance, m.carrier_weight,
          m.lineage_via, m.lineage_to_item,
          m.representation_similarity, m.representation_space,
-         m.adjudicated_by, m.adjudicated_at
+         m.adjudicated_by, m.adjudicated_at,
+         m.name_key, m.image_similarity, m.image_space, m.image_confirmed
     from public.story_member m
     join public.item i using (item_id)
 `;
@@ -195,8 +200,9 @@ export class PgStoryRepo implements StoryRepo {
            carrier_kind, carrier_key, carrier_distance, carrier_weight,
            lineage_via, lineage_to_item,
            representation_similarity, representation_space,
-           adjudicated_by, adjudicated_at
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           adjudicated_by, adjudicated_at,
+           name_key, image_similarity, image_space, image_confirmed
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          on conflict (story_id, item_id) do nothing
          returning item_id`,
         [
@@ -214,6 +220,10 @@ export class PgStoryRepo implements StoryRepo {
           evidence.space,
           evidence.adjudicatedBy,
           toTimestamp(evidence.adjudicatedAt),
+          evidence.nameKey,
+          evidence.imageSimilarity,
+          evidence.imageSpace,
+          evidence.imageConfirmed,
         ],
       );
       written += rows.length;
@@ -390,13 +400,15 @@ export class PgStoryRepo implements StoryRepo {
          carrier_kind, carrier_key, carrier_distance, carrier_weight,
          lineage_via, lineage_to_item,
          representation_similarity, representation_space,
-         adjudicated_by, adjudicated_at
+         adjudicated_by, adjudicated_at,
+         name_key, image_similarity, image_space, image_confirmed
        )
        select $2, item_id, joined_at, evidence_kind,
               carrier_kind, carrier_key, carrier_distance, carrier_weight,
               lineage_via, lineage_to_item,
               representation_similarity, representation_space,
-              adjudicated_by, adjudicated_at
+              adjudicated_by, adjudicated_at,
+              name_key, image_similarity, image_space, image_confirmed
          from public.story_member where story_id = $1
        on conflict (story_id, item_id) do nothing`,
       [from, into],
@@ -490,6 +502,10 @@ interface EvidenceColumns {
   readonly space: string | null;
   readonly adjudicatedBy: string | null;
   readonly adjudicatedAt: Millis | null;
+  readonly nameKey: string | null;
+  readonly imageSimilarity: number | null;
+  readonly imageSpace: string | null;
+  readonly imageConfirmed: boolean | null;
 }
 
 const NO_EVIDENCE_COLUMNS = {
@@ -503,6 +519,10 @@ const NO_EVIDENCE_COLUMNS = {
   space: null,
   adjudicatedBy: null,
   adjudicatedAt: null,
+  nameKey: null,
+  imageSimilarity: null,
+  imageSpace: null,
+  imageConfirmed: null,
 } as const;
 
 /**
@@ -543,6 +563,15 @@ function toEvidenceColumns(evidence: MatchEvidence): EvidenceColumns {
         adjudicatedBy: evidence.by,
         adjudicatedAt: evidence.at,
       };
+    case 'nameImage':
+      return {
+        ...NO_EVIDENCE_COLUMNS,
+        kind: 'nameImage',
+        nameKey: evidence.name,
+        imageSimilarity: evidence.similarity,
+        imageSpace: evidence.space,
+        imageConfirmed: evidence.confirmed,
+      };
   }
 }
 
@@ -580,6 +609,14 @@ function toEvidence(row: MemberRow): MatchEvidence {
         kind: 'adjudicated',
         by: present(row.adjudicated_by, 'adjudicated_by'),
         at: toMillisRequired(row.adjudicated_at, 'adjudicated_at'),
+      };
+    case 'nameImage':
+      return {
+        kind: 'nameImage',
+        name: present(row.name_key, 'name_key'),
+        similarity: present(row.image_similarity, 'image_similarity'),
+        space: present(row.image_space, 'image_space'),
+        confirmed: present(row.image_confirmed, 'image_confirmed'),
       };
   }
 }
