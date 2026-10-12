@@ -270,7 +270,8 @@ test('★ 5 — the embedded wallet imports the vendor\'s sign-in and nothing ch
   for (const file of files) {
     for (const specifier of bareImports(readFileSync(file, 'utf8'))) {
       assert.ok(
-        ['react', 'react/jsx-runtime', '@privy-io/react-auth'].includes(specifier) || specifier.startsWith('@insidor/contracts') || specifier.startsWith('node:'),
+        /* The vendor's package and its own subpaths (its Solana hooks live at `/solana`); no other package. */
+        ['react', 'react/jsx-runtime', '@privy-io/react-auth'].includes(specifier) || specifier.startsWith('@privy-io/react-auth/') || specifier.startsWith('@insidor/contracts') || specifier.startsWith('node:'),
         `${relative(ROOT, file)} imports "${specifier}"; only the vendor's sign-in entry is allowed here`,
       );
     }

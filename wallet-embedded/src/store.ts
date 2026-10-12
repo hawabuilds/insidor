@@ -20,7 +20,7 @@
  * and a later change that wires one in has put a key one bug away from a log.
  */
 
-import type { Wallet, WalletState } from '@insidor/contracts/ports/wallet.ts';
+import type { SendOutcome, Wallet, WalletState } from '@insidor/contracts/ports/wallet.ts';
 
 /** What the vendor's hooks say, reduced to the three facts the port needs. */
 export interface Snapshot {
@@ -35,7 +35,15 @@ export interface Actions {
   /** Opens the vendor's sign-in. Its outcome arrives through `Bridge.signInEnded`. */
   signIn(): void;
   signOut(): Promise<void>;
+  /** The vendor's signature on a transaction, from the embedded wallet. The key stays in the vendor's wallet. */
+  signTransaction(payload: Uint8Array): Promise<Uint8Array>;
 }
+
+/** Sends a signed transaction: the trade service, which broadcasts it. */
+export type Broadcast = (signed: Uint8Array) => Promise<{ readonly ok: true; readonly ref: string } | { readonly ok: false; readonly why: string }>;
+
+/** The vendor's ways of saying the person closed or declined its signing prompt. */
+const DECLINED = /reject|declin|cancel|closed|exited/i;
 
 export interface Bridge {
   snapshot(s: Snapshot): void;
@@ -47,7 +55,7 @@ export interface Bridge {
 /** The network every address here is on. The embedded wallet is created on mainnet only. */
 const NETWORK = 'solana:mainnet';
 
-export function embeddedWallet(): { readonly wallet: Wallet; readonly bridge: Bridge } {
+export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {}): { readonly wallet: Wallet; readonly bridge: Bridge } {
   let snap: Snapshot = { ready: false, signedIn: false, address: null };
   let act: Actions | null = null;
   /* The outcome of the last sign-in attempt, shown until the snapshot says something newer. */
@@ -108,6 +116,25 @@ export function embeddedWallet(): { readonly wallet: Wallet; readonly bridge: Br
       publish();
     },
     signer: () => null,
+    async signAndSendTransaction(payload): Promise<SendOutcome> {
+      const actions = act;
+      const broadcast = options.broadcast;
+      if (current.kind !== 'connected' || actions === null || broadcast === undefined) return { kind: 'unavailable' };
+      let signed: Uint8Array;
+      try {
+        signed = await actions.signTransaction(payload);
+      } catch (e) {
+        /* The vendor's words are not kept: only whether the person declined. */
+        const said = e instanceof Error ? `${e.name} ${e.message}` : typeof e === 'string' ? e : '';
+        return DECLINED.test(said) ? { kind: 'refused' } : { kind: 'failed', code: 'internal' };
+      }
+      try {
+        const sent = await broadcast(signed);
+        return sent.ok ? { kind: 'sent', ref: sent.ref } : { kind: 'not-sent', why: sent.why };
+      } catch {
+        return { kind: 'not-sent', why: 'The network could not be reached. Nothing was sent; try again.' };
+      }
+    },
   };
 
   const bridge: Bridge = {
