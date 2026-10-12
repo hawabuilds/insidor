@@ -1,0 +1,21 @@
+{
+  "name": "@insidor/push-webpush",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Web push: a short message to a person's phone, signed with our VAPID key and encrypted for their device by the web-push library.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "web-push": "3.6.7"
+  },
+  "devDependencies": {
+    "@types/web-push": "3.6.4"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  }
+}
