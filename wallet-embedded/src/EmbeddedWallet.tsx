@@ -17,7 +17,7 @@
  * would put a vendor string where the port promises none can go.
  */
 
-import { PrivyProvider, useLogin, useLoginWithOAuth, usePrivy } from '@privy-io/react-auth';
+import { PrivyProvider, useLogin, usePrivy } from '@privy-io/react-auth';
 import { useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
 import { useEffect, type ReactNode } from 'react';
 
@@ -49,12 +49,6 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
     onError: (code: unknown) => bridge.signInEnded(code === CLOSED_BY_PERSON ? 'closed' : 'error'),
   });
 
-  /* Straight to one provider when the front door named it; the vendor's own sheet otherwise. */
-  const { initOAuth } = useLoginWithOAuth({
-    onComplete: () => bridge.signInEnded('done'),
-    onError: (code: unknown) => bridge.signInEnded(code === CLOSED_BY_PERSON ? 'closed' : 'error'),
-  });
-
   /* The embedded wallet: the Solana wallet the vendor created for this user. */
   const embedded = (user?.linkedAccounts ?? []).find(
     (a) => a.type === 'wallet' && 'chainType' in a && a.chainType === 'solana' && 'walletClientType' in a && a.walletClientType === 'privy',
@@ -68,10 +62,10 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
 
   useEffect(() => {
     bridge.actions({
-      signIn: (via) => {
-        if (via === undefined) login();
-        else void initOAuth({ provider: via === 'x' ? 'twitter' : 'google' }).catch(() => bridge.signInEnded('error'));
-      },
+      /* Always the vendor's own sign-in sheet, as Trador opens it — narrowed to the one provider
+         the front door named. Its headless OAuth call is not used: it skips the sheet, takes a
+         different route through the provider, and is not what Trador runs. */
+      signIn: (via) => login(via === undefined ? undefined : { loginMethods: [via === 'x' ? 'twitter' : 'google'] }),
       signOut: () => logout(),
       signTransaction: async (payload) => {
         if (signer === null) throw new Error('no embedded wallet to sign with');
@@ -80,7 +74,7 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
       },
     });
     return () => bridge.actions(null);
-  }, [bridge, login, initOAuth, logout, signer, signTransaction]);
+  }, [bridge, login, logout, signer, signTransaction]);
 
   /* Who signed in, as the vendor reports it: the X account, or the Google account's name. A
      Google email is never passed on — it is not a name, and nothing here needs it. */

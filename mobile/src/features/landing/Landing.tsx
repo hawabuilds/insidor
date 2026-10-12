@@ -10,8 +10,9 @@
  * live universe by forty times; a figure on the front door that is wrong is worse than none.
  *
  * In a build with no sign-in, "Join now" goes straight in and says why, as Trador's demo mode
- * does — never a button that opens nothing. While sign-in is still starting, the door says
- * "Loading" where the button will be, rather than offering one that cannot work yet. The iOS app
+ * does — never a button that opens nothing. While sign-in is starting or finishing, the door says
+ * "Loading" where the button will be, as Trador's does, rather than offering one that cannot work
+ * yet. The iOS app
  * is a label, not a disabled button.
  *
  * This is the only place anyone signs in (shared/sign-in.ts is the gate in front of the app).
@@ -27,8 +28,8 @@ import styles from './landing.module.css';
 export function Landing({ configured, onEnter }: { configured: boolean; onEnter: () => void }) {
   const { wallet, state } = useWallet();
   const [open, setOpen] = useState(false);
-  const starting = configured && (wallet === null || state.kind === 'unavailable');
-  const signingIn = configured && state.kind === 'connecting';
+  /* Sign-in starting, or finishing after the provider hands back: Trador's "Loading", no button. */
+  const waiting = configured && (wallet === null || state.kind === 'unavailable' || state.kind === 'connecting');
 
   return (
     <div className={styles['page']}>
@@ -51,7 +52,7 @@ export function Landing({ configured, onEnter }: { configured: boolean; onEnter:
         </p>
 
         <div className={styles['actions']}>
-          {starting ? <span className={styles['waiting']}>Loading</span> : signingIn ? <span className={styles['waiting']}>Finish signing in in the window that opened</span> : (
+          {waiting ? <span className={styles['waiting']}>Loading</span> : (
             <button type="button" className={styles['join']} onClick={() => (configured ? setOpen(true) : onEnter())}>
               Join now <Arrow />
             </button>
