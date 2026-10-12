@@ -482,6 +482,29 @@ export interface GroupPolicy {
    * for the next pass; the embeddings supplier line, paced over the day, is the real limit.
    */
   readonly imagesPerPass: number;
+  /**
+   * The picture evidence, read from image embeddings in one space (`space`):
+   *
+   *   similarity ≥ nearIdentical   the same picture, edited (cropped, captioned, filtered) —
+   *                                joins on its own, as a near-copy hash would
+   *   ≥ likely                     likely the same subject — joins only TOGETHER WITH a name
+   *                                match (the judge's name for the post and the story's)
+   *   ≥ borderline                 ask the judge "is the main subject the same?"; only "yes"
+   *                                counts, and then as `likely` — still needing the name
+   *   below                        no picture evidence at all
+   *
+   * ★ NOT YET CALIBRATED. These are starting values for a 1,024-wide multimodal space, set
+   * before any real pair was measured. GROUP logs every similarity it reads, so they can be
+   * fit from the first week's pairs; until then treat a join on them as provisional.
+   * `pairChecksPerDay` caps the judge questions; pairs past it simply do not join.
+   */
+  readonly image: {
+    readonly space: string;
+    readonly nearIdentical: number;
+    readonly likely: number;
+    readonly borderline: number;
+    readonly pairChecksPerDay: number;
+  };
 }
 
 /* ── QUALIFY ──────────────────────────────────────────────────────────── */
@@ -548,6 +571,8 @@ export interface JudgePolicy {
    * makes the batch unavailable: those posts wait and are asked again next pass.
    */
   readonly postBatchMaxOutputTokens: number;
+  /** The answer budget for the same-subject question: one word in a small JSON object. */
+  readonly pairMaxOutputTokens: number;
   /** For the pre-call estimate only: characters per input token, set low so the estimate runs high. */
   readonly charsPerToken: number;
   /** For the pre-call estimate only: input tokens one video frame costs. */
@@ -1502,8 +1527,9 @@ const POLICY_V1: Policy = {
      single posts, so the judge line is reserved near the real cost).
 
      v19 adds `group.imagesPerPass`: each new post's picture is embedded once, for GROUP's
-     image evidence. */
-  version: 'policy.v19',
+     image evidence. v20 adds `group.image` (its bars, uncalibrated) and
+     `judge.pairMaxOutputTokens` for the same-subject question. */
+  version: 'policy.v20',
 
   admit: {
     maxAgeMin: 240,
@@ -1673,6 +1699,7 @@ const POLICY_V1: Policy = {
     promoteMinDistinctSources: 1,
     mergeCarrierOverlap: 0.6,
     imagesPerPass: 40,
+    image: { space: 'multimodal-3.1024', nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200 },
     maxMembersPerInterval: 200,
   },
 
@@ -1723,6 +1750,7 @@ const POLICY_V1: Policy = {
        would make the whole batch unavailable. */
     maxOutputTokens: 2_048,
     postBatchMaxOutputTokens: 800,
+    pairMaxOutputTokens: 64,
     /* Typical English runs about four characters a token; three makes the estimate the
        meter checks against run high, which is the safe direction. */
     charsPerToken: 3,

@@ -52,3 +52,15 @@ export const PROMPT_SET_SHA: string = createHash('sha256')
   .update(PROMPT_NAMES.map((n) => PROMPTS[n].sha).join('|'))
   .digest('hex')
   .slice(0, 8);
+
+/**
+ * The same-subject question GROUP asks about a borderline pair of pictures. Kept OUT of the
+ * prompt set above, on purpose: the set's hash is in the id of every coinability judgement,
+ * and adding an unrelated prompt to it would make every judgement after this look like it
+ * came from a different instruction set. This one has its own hash, carried on every answer.
+ */
+const sameSubjectText = readFileSync(join(PROMPT_DIR, 'same-subject.txt'), 'utf8');
+export const SAME_SUBJECT_PROMPT = Object.freeze({
+  text: sameSubjectText,
+  sha: createHash('sha256').update(sameSubjectText).digest('hex').slice(0, 8),
+});
