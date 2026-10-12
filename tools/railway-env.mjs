@@ -22,7 +22,7 @@ import { join } from 'node:path';
 const ROOT = join(import.meta.dirname, '..');
 const parse = (file) => Object.fromEntries(readFileSync(join(ROOT, file), 'utf8').split('\n').flatMap((line) => {
   const m = /^([A-Z_0-9]+)=(.*)$/.exec(line.trim());
-  return m ? [[m[1], m[2].replace(/^['"]|['"]$/g, '')]] : [];
+  return m ? [[m[1], m[2].trim().replace(/^['"]|['"]$/g, '').trim()]] : [];
 }));
 const local = parse('.env.local');
 const example = parse('.env.example');
