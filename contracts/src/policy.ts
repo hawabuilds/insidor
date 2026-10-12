@@ -1035,6 +1035,8 @@ export interface TradePolicy {
   readonly platformFeeBps: number;
   /** The size asked about to tell whether a coin can be traded at all, in SOL. */
   readonly probeSol: number;
+  /** The most a creator may buy of their own coin at launch, in SOL. */
+  readonly maxDevBuySol: number;
 }
 
 /**
@@ -1747,8 +1749,10 @@ const POLICY_V1: Policy = {
 
      v32 adds `wallet`: the Wallet tab's cache, per-client limit, list length and history depth.
 
-     v33 adds `wallet.snapshotGapMs`: the balance chart's spacing. */
-  version: 'policy.v33',
+     v33 adds `wallet.snapshotGapMs`: the balance chart's spacing.
+
+     v34 adds `trade.maxDevBuySol`: the cap on a creator's first buy at launch. */
+  version: 'policy.v34',
 
   admit: {
     maxAgeMin: 240,
@@ -2151,6 +2155,8 @@ const POLICY_V1: Policy = {
     maxSlippageBps: 1_500,
     platformFeeBps: 0,
     probeSol: 0.001,
+    /* 2 SOL: the largest preset the founders chose for a dev buy. Lower it for a first test. */
+    maxDevBuySol: 2,
   },
 
   wallet: {

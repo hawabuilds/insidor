@@ -10,6 +10,10 @@
  *   GET  /balance?mint&wallet                how much of the coin the wallet holds, for Sell
  *   POST /transfer { wallet, to, mint, amount }  Send: SOL (mint null) or a coin, unsigned and simulated;
  *                                            a SOL send is capped like a buy
+ *   GET  /launch/rules                       open or paused, and the fees, read from the chain
+ *   POST /launch/preview { wallet, name, symbol, devBuyLamports }  the launch's real costs, no transaction
+ *   POST /launch/build   { …, description, imageDataUrl, links }   metadata stored, launch built and simulated
+ *   POST /launch/confirm { wallet, signature, mint, storyId }      checked on the chain, then recorded
  *
  * ★ TRADING OFF MEANS NO TRADE PATH. When the switch, the allowlist or the RPC is missing, every
  * route above answers "trading is off" before reading anything else — not a quote, not a venue.
@@ -64,9 +68,35 @@ export interface TradeDeps {
     tokenBalance(owner: string, mint: string): Promise<{ readonly amount: string; readonly decimals: number }>;
   };
   readonly transfer: { build(r: { from: string; to: string; mint: string | null; amount: bigint }): Promise<Built> };
+  /** Creating a coin; null when metadata storage or the database is not configured. */
+  readonly launch: LaunchPort | null;
   readonly payerOf: (signedBase64: string) => string;
   readonly log: { info(msg: string, f?: Record<string, unknown>): void; error(msg: string, f?: Record<string, unknown>): void };
 }
+
+export interface LaunchPort {
+  rules(): Promise<{ readonly open: boolean; readonly creatorFeeBps: number; readonly protocolFeeBps: number }>;
+  build(r: { creator: string; name: string; symbol: string; uri: string; devBuyLamports: bigint }): Promise<{
+    readonly transactionBase64: string;
+    readonly mint: string;
+    readonly costs: readonly { readonly key: string; readonly lamports: number }[];
+    readonly totalLamports: number;
+    readonly balanceLamports: number;
+    readonly devBuy: { readonly lamports: number; readonly tokensOut: string; readonly supplyBps: number } | null;
+  }>;
+  upload(input: { name: string; symbol: string; description: string; imageDataUrl: string; links: { twitter?: string | undefined; telegram?: string | undefined; website?: string | undefined } }): Promise<{ readonly uri: string; readonly image: string }>;
+  landed(signature: string): Promise<{ readonly ok: boolean; readonly payer: string | null; readonly accounts: readonly string[] } | null>;
+  register(address: string, creator: string, storyId: string | null, signature: string): Promise<void>;
+}
+
+/** Thrown by a launch port for a refusal the person should read: paused, unaffordable, rejected. */
+export class LaunchRefusedError extends Error {}
+
+/** What a preview builds against: the transaction is thrown away, so its metadata is never stored. */
+const PREVIEW_URI = 'https://insidor.app/launch-preview.json';
+const NAME_MAX = 32;
+const SYMBOL_MAX = 10;
+const DESCRIPTION_MAX = 500;
 
 const json = (status: number, value: unknown): Reply => ({ status, body: JSON.stringify(value) });
 const refuse = (status: number, why: Refusal): Reply => json(status, { error: REFUSAL_TEXT[why], refusal: why });
@@ -204,6 +234,61 @@ export async function handle(method: string, rawUrl: string, body: string | null
       const simulation = await deps.chain.simulate(built.transactionBase64);
       if (!simulation.ok) return json(422, { error: simulation.message, logs: simulation.logs.slice(-20) });
       return json(200, { transaction: built.transactionBase64, lastValidBlockHeight: built.lastValidBlockHeight, simulated: true });
+    }
+
+    if (parts[0] === 'launch' && parts.length === 2) {
+      const launch = deps.launch;
+      if (launch === null) return json(503, { error: 'Creating coins is not set up on this server.' });
+      if (method === 'GET' && parts[1] === 'rules') {
+        const rules = await launch.rules();
+        return json(200, { ...rules, maxDevBuyLamports: String(BigInt(Math.round(deps.policy.maxDevBuySol * 1e9))) });
+      }
+      const b = parse(body) ?? {};
+      const wallet = typeof b['wallet'] === 'string' ? b['wallet'] : '';
+      if (!deps.cfg.allowlist.has(wallet)) return refuse(403, 'not_allowed');
+
+      if (method === 'POST' && parts[1] === 'confirm') {
+        const signature = typeof b['signature'] === 'string' ? b['signature'] : '';
+        const mint = typeof b['mint'] === 'string' ? b['mint'] : '';
+        const storyId = typeof b['storyId'] === 'string' ? b['storyId'] : null;
+        if (!ADDRESS.test(mint) || !/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(signature)) return json(400, { error: 'bad request' });
+        const tx = await launch.landed(signature);
+        /* Recorded only for a create that landed, was paid for by this wallet, and made this coin. */
+        if (tx === null) return json(409, { error: 'Not on the chain yet. Try again in a moment.' });
+        if (!tx.ok || tx.payer !== wallet || !tx.accounts.includes(mint)) return json(422, { error: 'That transaction did not create this coin from this wallet.' });
+        await launch.register(mint, wallet, storyId, signature);
+        return json(200, { recorded: true, coinId: `solana:${mint}` });
+      }
+
+      const name = typeof b['name'] === 'string' ? b['name'].trim() : '';
+      const symbol = typeof b['symbol'] === 'string' ? b['symbol'].trim().replace(/^\$+/, '') : '';
+      const dev = typeof b['devBuyLamports'] === 'string' && /^\d+$/.test(b['devBuyLamports']) ? BigInt(b['devBuyLamports']) : null;
+      if (name === '' || name.length > NAME_MAX || symbol === '' || symbol.length > SYMBOL_MAX || dev === null) return json(400, { error: `A name up to ${NAME_MAX} characters and a ticker up to ${SYMBOL_MAX}.` });
+      if (dev > BigInt(Math.round(deps.policy.maxDevBuySol * 1e9))) return refuse(403, 'over_cap');
+      const rules = await launch.rules();
+      if (!rules.open) return json(409, { error: 'pump.fun has new coins paused right now.', paused: true });
+
+      try {
+        if (method === 'POST' && parts[1] === 'preview') {
+          const built = await launch.build({ creator: wallet, name, symbol, uri: PREVIEW_URI, devBuyLamports: dev });
+          /* The numbers measured from the chain, passed through; the transaction itself is dropped. */
+          return json(200, { costs: built.costs, totalLamports: built.totalLamports, balanceLamports: built.balanceLamports, devBuy: built.devBuy, creatorFeeBps: rules.creatorFeeBps, protocolFeeBps: rules.protocolFeeBps });
+        }
+        if (method === 'POST' && parts[1] === 'build') {
+          const description = typeof b['description'] === 'string' ? b['description'].slice(0, DESCRIPTION_MAX) : '';
+          const links = typeof b['links'] === 'object' && b['links'] !== null ? (b['links'] as Record<string, string>) : {};
+          const imageDataUrl = typeof b['imageDataUrl'] === 'string' ? b['imageDataUrl'] : '';
+          const stored = await launch.upload({ name, symbol, description, imageDataUrl, links: { twitter: links['twitter'], telegram: links['telegram'], website: links['website'] } });
+          const built = await launch.build({ creator: wallet, name, symbol, uri: stored.uri, devBuyLamports: dev });
+          return json(200, { transaction: built.transactionBase64, mint: built.mint, costs: built.costs, totalLamports: built.totalLamports, devBuy: built.devBuy, simulated: true });
+        }
+      } catch (e) {
+        /* A refusal (paused, not enough SOL, a failed simulation, a rejected picture) is said, and
+           nothing signable is returned with it. */
+        if (e instanceof LaunchRefusedError) return json(422, { error: e.message });
+        throw e;
+      }
+      return json(404, { error: 'not found' });
     }
 
     if (method === 'POST' && parts.length === 1 && parts[0] === 'send') {

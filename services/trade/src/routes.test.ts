@@ -16,7 +16,7 @@ import { readSimulation } from '@insidor/venue-solana-pumpfun';
 import type { CurveQuote } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
 
 import { loadTradeConfig } from './config.ts';
-import { capLamports, handle, type TradeDeps } from './routes.ts';
+import { capLamports, handle, LaunchRefusedError, type LaunchPort, type TradeDeps } from './routes.ts';
 
 const P = DEFAULT_POLICY.trade;
 const ME = 'Me11111111111111111111111111111111111111111';
@@ -25,7 +25,27 @@ const CURVE_COIN = 'szicVgykSZSQHvtuxxjQ9FsSorr2YPwcVVxYj5dMNAP';
 const BONDED_COIN = 'Bm4Czuq3X7BwgU429GiLb8wTHLNBiCzcysN8Gsqpump';
 const DEAD_COIN = 'Dd11111111111111111111111111111111111111111';
 
-function deps(over: { trading?: boolean; allowlist?: string[]; simulation?: unknown } = {}) {
+interface LaunchOver { open?: boolean; refuse?: string; creatorFeeBps?: number; rentLamports?: number; landed?: { ok: boolean; payer: string | null; accounts: string[] } | null }
+
+function launchStub(over: LaunchOver, calls: string[], registered: unknown[]): LaunchPort {
+  return {
+    rules: async () => ({ open: over.open ?? true, creatorFeeBps: over.creatorFeeBps ?? 30, protocolFeeBps: 95 }),
+    build: async (r) => {
+      calls.push(`launch.build:${r.uri}`);
+      if (over.refuse !== undefined) throw new LaunchRefusedError(over.refuse);
+      return { transactionBase64: 'LAUNCH_TX', mint: 'Mnt1111111111111111111111111111111111111pump', costs: [{ key: 'network', lamports: 22_500 }, { key: 'rent', lamports: over.rentLamports ?? 5_481_320 }, { key: 'launchpad', lamports: 0 }], totalLamports: 5_503_820, balanceLamports: 1e9, devBuy: null };
+    },
+    upload: async () => {
+      calls.push('launch.upload');
+      return { uri: 'https://store/abc.json', image: 'https://store/abc.png' };
+    },
+    landed: async () => (over.landed === undefined ? { ok: true, payer: ME, accounts: [ME, 'Mnt1111111111111111111111111111111111111pump'] } : over.landed),
+    register: async (...args) => { registered.push(args); },
+  };
+}
+
+function deps(over: { trading?: boolean; allowlist?: string[]; simulation?: unknown; launch?: LaunchOver } = {}) {
+  const registered: unknown[] = [];
   const calls: string[] = [];
   const built: unknown[] = [];
   const d: TradeDeps = {
@@ -63,6 +83,7 @@ function deps(over: { trading?: boolean; allowlist?: string[]; simulation?: unkn
       },
       tokenBalance: async () => ({ amount: '248401937865', decimals: 6 }),
     },
+    launch: launchStub(over.launch ?? {}, [], registered),
     transfer: {
       build: async () => {
         calls.push('transfer.build');
@@ -72,7 +93,8 @@ function deps(over: { trading?: boolean; allowlist?: string[]; simulation?: unkn
     payerOf: (tx) => (tx === 'SIGNED_BY_ME' ? ME : STRANGER),
     log: { info: () => undefined, error: () => undefined },
   };
-  return { d, calls, built };
+  const withCalls: TradeDeps = { ...d, launch: launchStub(over.launch ?? {}, calls, registered) };
+  return { d: withCalls, calls, built, registered };
 }
 
 const body = (r: { body: string }) => JSON.parse(r.body) as Record<string, any>;
@@ -206,4 +228,74 @@ test('Send: only from an allowlisted wallet, a SOL send capped like a buy, a coi
   assert.equal((await handle('POST', '/transfer', SEND({ mint: CURVE_COIN, amount: '999999999999999' }), d)).status, 200);
   assert.equal((await handle('POST', '/transfer', SEND({ to: 'not an address' }), d)).status, 400);
   assert.equal(body(await handle('POST', '/transfer', SEND(), d)).transaction, 'SEND_TX');
+});
+
+const LAUNCH = (over: Record<string, unknown> = {}) => JSON.stringify({ wallet: ME, name: 'Jimothy', symbol: '$JIM', devBuyLamports: '0', description: 'a raccoon', imageDataUrl: 'data:image/png;base64,AA==', links: {}, ...over });
+
+test('★ TRADING off means no create path at all', async () => {
+  const { d, calls } = deps({ trading: false });
+  for (const [m, u] of [['GET', '/launch/rules'], ['POST', '/launch/preview'], ['POST', '/launch/build'], ['POST', '/launch/confirm']] as const) {
+    assert.equal(body(await handle(m, u, LAUNCH(), d)).refusal, 'trading_off', u);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test('★ paused launches are refused, before anything is built or stored', async () => {
+  const { d, calls } = deps({ launch: { open: false } });
+  const r = await handle('POST', '/launch/build', LAUNCH(), d);
+  assert.equal(r.status, 409);
+  assert.equal(body(r).error, 'pump.fun has new coins paused right now.');
+  assert.deepEqual(calls, []);
+});
+
+test('★ the dev buy cap is enforced', async () => {
+  const { d, calls } = deps();
+  const over = (BigInt(Math.round(P.maxDevBuySol * 1e9)) + 1n).toString();
+  assert.equal(body(await handle('POST', '/launch/preview', LAUNCH({ devBuyLamports: over }), d)).refusal, 'over_cap');
+  assert.equal(body(await handle('POST', '/launch/build', LAUNCH({ devBuyLamports: over }), d)).refusal, 'over_cap');
+  assert.deepEqual(calls, []);
+  assert.equal((await handle('POST', '/launch/preview', LAUNCH({ devBuyLamports: String(BigInt(Math.round(P.maxDevBuySol * 1e9))) }), d)).status, 200);
+});
+
+test('★ a failed simulation blocks signing: the reason, and no transaction', async () => {
+  const { d } = deps({ launch: { refuse: 'Not enough SOL in this wallet: it holds 0.0000 SOL.' } });
+  const r = await handle('POST', '/launch/build', LAUNCH(), d);
+  assert.equal(r.status, 422);
+  assert.equal(body(r).error, 'Not enough SOL in this wallet: it holds 0.0000 SOL.');
+  assert.equal('transaction' in body(r), false);
+});
+
+test('★ fees come from the chain, not constants: the preview passes through what was measured and read', async () => {
+  const a = body(await handle('POST', '/launch/preview', LAUNCH(), deps({ launch: { creatorFeeBps: 30, rentLamports: 5_481_320 } }).d));
+  const b = body(await handle('POST', '/launch/preview', LAUNCH(), deps({ launch: { creatorFeeBps: 55, rentLamports: 7_000_000 } }).d));
+  assert.equal(a.creatorFeeBps, 30);
+  assert.equal(b.creatorFeeBps, 55);
+  assert.equal(a.costs[1].lamports, 5_481_320);
+  assert.equal(b.costs[1].lamports, 7_000_000);
+  assert.equal('transaction' in a, false, 'a preview is numbers only');
+});
+
+test('a build stores the metadata first and builds against it; the preview never stores anything', async () => {
+  const { d, calls } = deps();
+  await handle('POST', '/launch/preview', LAUNCH(), d);
+  assert.deepEqual(calls, ['launch.build:https://insidor.app/launch-preview.json']);
+  calls.length = 0;
+  const r = body(await handle('POST', '/launch/build', LAUNCH(), d));
+  assert.deepEqual(calls, ['launch.upload', 'launch.build:https://store/abc.json']);
+  assert.equal(r.transaction, 'LAUNCH_TX');
+});
+
+test('★ a coin is recorded as created on Insidor only after its create landed, from this wallet', async () => {
+  const sig = '5'.repeat(88);
+  const mint = 'Mnt1111111111111111111111111111111111111pump';
+  const ok = deps();
+  assert.equal(body(await handle('POST', '/launch/confirm', JSON.stringify({ wallet: ME, signature: sig, mint, storyId: 'st_1' }), ok.d)).recorded, true);
+  assert.equal(ok.registered.length, 1);
+  const stranger = deps({ launch: { landed: { ok: true, payer: STRANGER, accounts: [STRANGER, mint] } } });
+  assert.equal((await handle('POST', '/launch/confirm', JSON.stringify({ wallet: ME, signature: sig, mint }), stranger.d)).status, 422);
+  const failed = deps({ launch: { landed: { ok: false, payer: ME, accounts: [ME, mint] } } });
+  assert.equal((await handle('POST', '/launch/confirm', JSON.stringify({ wallet: ME, signature: sig, mint }), failed.d)).status, 422);
+  const notYet = deps({ launch: { landed: null } });
+  assert.equal((await handle('POST', '/launch/confirm', JSON.stringify({ wallet: ME, signature: sig, mint }), notYet.d)).status, 409);
+  assert.equal(stranger.registered.length + failed.registered.length + notYet.registered.length, 0);
 });
