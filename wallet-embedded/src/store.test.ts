@@ -16,6 +16,7 @@ function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<
     signIn: (via?: string) => void calls.push(via === undefined ? 'signIn' : `signIn:${via}`),
     signOut: async () => void calls.push('signOut'),
     showExport: opts.exportWindow ?? (async () => void calls.push('export')),
+    linkWallet: () => void calls.push('link'),
     signTransaction: opts.sign ?? (async (p) => {
       calls.push('sign');
       return new Uint8Array([...p, 9]);
@@ -140,4 +141,32 @@ test('★ the key export answers with a word, never with anything the provider\'
   const failing = setup({ exportWindow: async () => { throw new Error(`leaked ${SECRET}`); } });
   failing.bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111' });
   assert.equal(await failing.wallet.showKeyExport(), 'failed', 'a failure is a word too, not the vendor\'s message');
+});
+
+test('★ a linked wallet gives us an address to view and a word about how linking went — never a key', async () => {
+  const { wallet, bridge, calls } = setup();
+  assert.equal(await wallet.linkWallet(), 'unavailable', 'signed out: nothing to link to');
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111', token: 'id-token', linked: [] });
+  const pending = wallet.linkWallet();
+  assert.deepEqual(calls, ['link'], "the provider's own window opens");
+  bridge.linkEnded('linked');
+  assert.equal(await pending, 'linked');
+  let heard = 0;
+  wallet.subscribe(() => (heard += 1));
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111', token: 'id-token', linked: ['Phantom111'] });
+  assert.deepEqual(wallet.linkedWallets(), ['Phantom111']);
+  assert.equal(heard, 1, 'the screens hear a wallet joined');
+  const closed = wallet.linkWallet();
+  bridge.linkEnded('closed');
+  assert.equal(await closed, 'refused');
+  const port = wallet as unknown as Record<string, unknown>;
+  for (const name of Object.keys(port)) assert.ok(!/key|secret|seed|mnemonic/i.test(name) || name === 'showKeyExport', `the port has no ${name}`);
+});
+
+test('the identity token is offered only while signed in', () => {
+  const { wallet, bridge } = setup();
+  bridge.snapshot({ ready: true, signedIn: false, address: null, token: 'stale' });
+  assert.equal(wallet.sessionToken(), null);
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111', token: 'id-token' });
+  assert.equal(wallet.sessionToken(), 'id-token');
 });

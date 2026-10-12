@@ -9,3 +9,5 @@
 export { embeddedWallet } from './store.ts';
 export type { Actions, Bridge, Snapshot } from './store.ts';
 export { EmbeddedWalletProvider } from './EmbeddedWallet.tsx';
+export { KeyImport } from './KeyImport.tsx';
+export type { KeyImportClasses } from './KeyImport.tsx';

@@ -281,6 +281,9 @@ export function browserWallet(config: BrowserWalletConfig): Wallet {
     identity: () => null,
     /* A browser extension wallet keeps its own key and its own export; there is nothing to show from here. */
     showKeyExport: async () => 'unavailable',
+    sessionToken: () => null,
+    linkedWallets: () => [],
+    linkWallet: async () => 'unavailable',
 
     signer: (): Signer | null => {
       if (state.kind !== 'connected') return null;

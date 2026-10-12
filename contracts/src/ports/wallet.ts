@@ -223,10 +223,22 @@ export interface Wallet {
    * Show the person their wallet's private key in the wallet provider's own secure window, to copy
    * into another wallet. ★ THE KEY NEVER COMES BACK HERE: it is drawn in the provider's window, on
    * the provider's domain, and this resolves only with whether that window was shown. There is
-   * deliberately no method that takes a key in: importing one would mean our code holding it.
+   * no method on this port that takes a key in: importing one happens inside the provider's SDK,
+   * in @insidor/wallet-embedded's KeyImport, from the input box straight to the SDK.
    */
   showKeyExport(): Promise<KeyExportOutcome>;
+  /**
+   * The sign-in provider's signed identity token, sent to our own services to prove who is
+   * asking; null when signed out. It proves identity only: it signs nothing and moves nothing.
+   */
+  sessionToken(): string | null;
+  /** Outside wallets (Phantom) this person joined for viewing. Read-only: their keys never leave those wallets. */
+  linkedWallets(): readonly string[];
+  /** Open the provider's own flow to join an outside wallet for viewing. Resolves with how it ended — never a key. */
+  linkWallet(): Promise<LinkOutcome>;
 }
+
+export type LinkOutcome = 'linked' | 'refused' | 'unavailable' | 'failed';
 
 /** Whether the provider's export window was shown. Never the key, never any text from it. */
 export type KeyExportOutcome = 'shown' | 'unavailable' | 'failed';

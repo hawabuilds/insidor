@@ -20,7 +20,7 @@
  * and a later change that wires one in has put a key one bug away from a log.
  */
 
-import type { SendOutcome, SignInVia, Wallet, WalletIdentity, WalletState } from '@insidor/contracts/ports/wallet.ts';
+import type { LinkOutcome, SendOutcome, SignInVia, Wallet, WalletIdentity, WalletState } from '@insidor/contracts/ports/wallet.ts';
 
 /** What the vendor's hooks say, reduced to the three facts the port needs. */
 export interface Snapshot {
@@ -31,6 +31,10 @@ export interface Snapshot {
   readonly address: string | null;
   /** The X account signed in with: name, handle, picture. Null when signed out. */
   readonly identity?: WalletIdentity | null;
+  /** The provider's signed identity token, for our own services; null when signed out. */
+  readonly token?: string | null;
+  /** Outside wallets joined for viewing, by address. */
+  readonly linked?: readonly string[];
 }
 
 export interface Actions {
@@ -39,6 +43,8 @@ export interface Actions {
   signOut(): Promise<void>;
   /** Opens the vendor's own export window for the embedded wallet. Resolves when it closes; carries nothing back. */
   showExport(): Promise<unknown>;
+  /** Opens the vendor's own window to join an outside wallet. Its outcome arrives through `Bridge.linkEnded`. */
+  linkWallet(): void;
   /** The vendor's signature on a transaction, from the embedded wallet. The key stays in the vendor's wallet. */
   signTransaction(payload: Uint8Array): Promise<Uint8Array>;
 }
@@ -54,6 +60,8 @@ export interface Bridge {
   actions(a: Actions | null): void;
   /** How a sign-in the person started ended: done, closed by them, or an error. */
   signInEnded(outcome: 'done' | 'closed' | 'error'): void;
+  /** How joining an outside wallet ended. Only a word: the vendor's account object is not passed on. */
+  linkEnded(outcome: 'linked' | 'closed' | 'error'): void;
 }
 
 /** The network every address here is on. The embedded wallet is created on mainnet only. */
@@ -67,6 +75,7 @@ export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {})
   let current: WalletState = { kind: 'unavailable' };
   const listeners = new Set<(s: WalletState) => void>();
   const waiters: ((s: WalletState) => void)[] = [];
+  const linkWaiters: ((o: LinkOutcome) => void)[] = [];
 
   function derive(): WalletState {
     if (act === null) return { kind: 'unavailable' };
@@ -120,6 +129,19 @@ export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {})
       publish();
     },
     signer: () => null,
+    sessionToken: () => (snap.signedIn ? (snap.token ?? null) : null),
+    linkedWallets: () => (snap.signedIn ? (snap.linked ?? []) : []),
+    linkWallet() {
+      if (current.kind !== 'connected' || act === null) return Promise.resolve<LinkOutcome>('unavailable');
+      return new Promise<LinkOutcome>((resolve) => {
+        linkWaiters.push(resolve);
+        try {
+          act?.linkWallet();
+        } catch {
+          for (const w of linkWaiters.splice(0)) w('failed');
+        }
+      });
+    },
     identity: () => (snap.signedIn ? snap.identity ?? null : null),
     /* Whatever the vendor's call resolves with is dropped here: the port answers with a word, never a value. */
     async showKeyExport() {
@@ -154,9 +176,16 @@ export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {})
 
   const bridge: Bridge = {
     snapshot(s) {
+      const linkedChanged = JSON.stringify(s.linked ?? []) !== JSON.stringify(snap.linked ?? []);
       snap = s;
       if (s.signedIn && s.address !== null) attempt = 'none';
       publish();
+      /* A wallet joined or dropped changes no state, but the screens listing wallets must hear it. */
+      if (linkedChanged) for (const listener of [...listeners]) listener(current);
+    },
+    linkEnded(outcome) {
+      const word: LinkOutcome = outcome === 'linked' ? 'linked' : outcome === 'closed' ? 'refused' : 'failed';
+      for (const w of linkWaiters.splice(0)) w(word);
     },
     actions(a) {
       act = a;
