@@ -354,7 +354,9 @@ export async function withRuntime<T>(
            UTC day — see `paceAheadMs`. */
         perVendorCapUsd: {
           [SUPPLIER_VENDORS.posts]: policy.budget.supplierLines.posts,
-          [SUPPLIER_VENDORS.video]: policy.budget.supplierLines.video,
+          /* The short-video source is fetched through the scraping service, so both bill as one
+             vendor: its line is the video line and the scraping line together. */
+          [SUPPLIER_VENDORS.video]: policy.budget.supplierLines.video + policy.budget.supplierLines.actors,
           [JUDGE_VENDOR]: policy.budget.supplierLines.judge,
           [EMBED_VENDOR]: policy.budget.supplierLines.embeddings,
         },

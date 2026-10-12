@@ -234,22 +234,19 @@ test('★ .env.example ships SILENT AND FREE, and the first run costs nothing', 
   assert.equal(cfg.discovery.kind, 'off', '.env.example ships a runner that calls vendors');
 });
 
-test('★ the shipped budget is inside the policy ceiling, and small enough to bind', () => {
-  /* Both halves matter. Above the ceiling it would not boot at all; at the ceiling it
-     would never bind, and a cap that cannot bind is a door frame. The measured worst
-     case for one paid source is $4.31/day, so a shipped value at or below that is one
-     that actually stops something. */
+test('★ the shipped budget is the owner\'s cap, and the lines inside it are what bind', () => {
+  /* The owner set the day at $21 with a line per supplier (2026-10-12; before that a $3
+     starter cap, and a $1 default in .env.example that held discovery to a dollar a day).
+     Above the ceiling it would not boot; at the ceiling it is the owner's number. What
+     binds day to day is each supplier's own line, every one of them below the day and
+     paced over it — so no single supplier can take the day by breakfast. */
   const cfg = loadRunnerConfig(shippedEnv());
-
-  assert.ok(
-    cfg.spend.dailyBudgetUsd <= DEFAULT_POLICY.budget.dailyUsd,
-    'the shipped budget exceeds the policy ceiling and would fail the boot',
-  );
-  assert.ok(cfg.spend.dailyBudgetUsd > 0);
-  assert.ok(
-    cfg.spend.dailyBudgetUsd < 4.31,
-    'the shipped budget is above the measured worst case, so it can never bind',
-  );
+  const B = DEFAULT_POLICY.budget;
+  assert.equal(cfg.spend.dailyBudgetUsd, B.dailyUsd, 'shipped at the owner\'s cap');
+  assert.equal(B.dailyUsd, 21);
+  assert.deepEqual(B.supplierLines, { posts: 11.25, judge: 8, video: 2, actors: 1, embeddings: 2 });
+  for (const [role, line] of Object.entries(B.supplierLines)) assert.ok(line < B.dailyUsd, `${role}'s line binds before the day does`);
+  assert.ok(B.paceAheadMs > 0 && B.paceAheadMs < 86_400_000, 'every line is paced over the day');
 });
 
 test('★ .env.example carries no key, so a copy of it cannot spend even set to live', () => {
