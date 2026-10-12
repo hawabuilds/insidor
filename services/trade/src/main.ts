@@ -8,6 +8,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts';
 import { jupiter } from '@insidor/venue-jupiter';
 import { chainClient } from '@insidor/venue-solana-pumpfun';
 import { buildCurve, curveState, payerOf, quoteCurve } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
+import { buildTransfer } from '@insidor/venue-solana-pumpfun/transfer.ts';
 
 import { loadTradeConfig, tradingOpen } from './config.ts';
 import { createTradeServer } from './server.ts';
@@ -34,6 +35,7 @@ const server = createTradeServer({
   },
   pool: router,
   chain,
+  transfer: { build: (r) => buildTransfer(rpc, r) },
   payerOf,
   log,
   allowedOrigins: cfg.allowedOrigins,

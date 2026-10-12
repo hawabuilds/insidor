@@ -63,6 +63,12 @@ function deps(over: { trading?: boolean; allowlist?: string[]; simulation?: unkn
       },
       tokenBalance: async () => ({ amount: '248401937865', decimals: 6 }),
     },
+    transfer: {
+      build: async () => {
+        calls.push('transfer.build');
+        return { transactionBase64: 'SEND_TX', lastValidBlockHeight: 3 };
+      },
+    },
     payerOf: (tx) => (tx === 'SIGNED_BY_ME' ? ME : STRANGER),
     log: { info: () => undefined, error: () => undefined },
   };
@@ -174,4 +180,30 @@ test('a balance is read only for an allowlisted wallet', async () => {
   const { d } = deps();
   assert.deepEqual(body(await handle('GET', `/balance?mint=${CURVE_COIN}&wallet=${ME}`, null, d)), { amount: '248401937865', decimals: 6 });
   assert.equal(body(await handle('GET', `/balance?mint=${CURVE_COIN}&wallet=${STRANGER}`, null, d)).refusal, 'not_allowed');
+});
+
+const SEND = (over: Record<string, unknown> = {}) => JSON.stringify({ wallet: ME, to: STRANGER, mint: null, amount: '1000000', ...over });
+
+test('★ Send is blocked when TRADING is off: no transfer is built', async () => {
+  const { d, calls } = deps({ trading: false });
+  const r = await handle('POST', '/transfer', SEND(), d);
+  assert.equal(body(r).refusal, 'trading_off');
+  assert.deepEqual(calls, []);
+});
+
+test('★ a failed simulation blocks Send: the reason, and nothing to sign', async () => {
+  const { d } = deps({ simulation: UNFUNDED_BUY });
+  const r = await handle('POST', '/transfer', SEND(), d);
+  assert.equal(r.status, 422);
+  assert.equal(body(r).error, 'This wallet has no SOL yet. Fund it and try again.');
+  assert.equal(r.body.includes('SEND_TX'), false);
+});
+
+test('Send: only from an allowlisted wallet, a SOL send capped like a buy, a coin send bounded by what is held', async () => {
+  const { d } = deps();
+  assert.equal(body(await handle('POST', '/transfer', SEND({ wallet: STRANGER, to: ME }), d)).refusal, 'not_allowed');
+  assert.equal(body(await handle('POST', '/transfer', SEND({ amount: (capLamports(P) + 1n).toString() }), d)).refusal, 'over_cap');
+  assert.equal((await handle('POST', '/transfer', SEND({ mint: CURVE_COIN, amount: '999999999999999' }), d)).status, 200);
+  assert.equal((await handle('POST', '/transfer', SEND({ to: 'not an address' }), d)).status, 400);
+  assert.equal(body(await handle('POST', '/transfer', SEND(), d)).transaction, 'SEND_TX');
 });

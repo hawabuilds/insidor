@@ -12,6 +12,7 @@
     "@insidor/meter": "workspace:*",
     "@insidor/vendor-kit": "workspace:*",
     "@nirholas/pump-sdk": "2.0.0",
+    "@solana/spl-token": "0.4.14",
     "@solana/web3.js": "1.98.4",
     "bn.js": "5.2.3"
   },
