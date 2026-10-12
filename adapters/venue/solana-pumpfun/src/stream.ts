@@ -326,10 +326,13 @@ export function toStreamMintEvent(
    * pointer to a JSON document on a host the issuer chose — one of the samples
    * taken while writing this pointed at a domain registered that week.
    *
-   * ★ IT IS NOT FETCHED, HERE OR ANYWHERE. A fetch per mint is an outbound
-   * request, at our expense, to an address an attacker supplies, at the rate they
-   * choose to mint — which is a server-side request forgery primitive and a
-   * denial-of-service amplifier in one field. The image lives inside that
+   * ★ IT IS NOT FETCHED HERE, AND ITS HOST IS NEVER CONTACTED ANYWHERE. A fetch
+   * per mint is an outbound request, at our expense, to an address an attacker
+   * supplies, at the rate they choose to mint — which is a server-side request
+   * forgery primitive and a denial-of-service amplifier in one field. The one
+   * narrowing is metadata.ts: a link that names an IPFS content id is read by that
+   * id from a gateway WE configure, size- and time-capped, so the creator chooses
+   * which document and never which server; anything else stays unread. The image lives inside that
    * document, which is why `imageUri` below is null and not the URI: storing a
    * JSON document's address in a column every renderer treats as an image source
    * is a broken image at best and a request to an attacker's host at worst.

@@ -309,3 +309,6 @@ export type {
   StreamSocket,
 } from './stream.ts';
 export { boundedText, httpsUri, mintAddress } from './hostile.ts';
+/* A coin's metadata document, read by content address through our own gateway. */
+export { contentAddress, fetchMetadata, gatewayUrl, readMetadata } from './metadata.ts';
+export type { CoinMetadata, MetadataFetchConfig, MetadataRead } from './metadata.ts';
