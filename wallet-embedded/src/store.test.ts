@@ -9,12 +9,13 @@ import assert from 'node:assert/strict';
 
 import { embeddedWallet, type Broadcast } from './store.ts';
 
-function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<Uint8Array> } = {}) {
+function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<Uint8Array>; exportWindow?: () => Promise<unknown> } = {}) {
   const { wallet, bridge } = embeddedWallet(opts.broadcast === undefined ? {} : { broadcast: opts.broadcast });
   const calls: string[] = [];
   bridge.actions({
     signIn: (via?: string) => void calls.push(via === undefined ? 'signIn' : `signIn:${via}`),
     signOut: async () => void calls.push('signOut'),
+    showExport: opts.exportWindow ?? (async () => void calls.push('export')),
     signTransaction: opts.sign ?? (async (p) => {
       calls.push('sign');
       return new Uint8Array([...p, 9]);
@@ -126,4 +127,17 @@ test('sign-in can go straight to the method the person chose', async () => {
   void wallet.connect('google');
   void wallet.connect('x');
   assert.deepEqual(calls.slice(0, 1), ['signIn:google']);
+});
+
+test('★ the key export answers with a word, never with anything the provider\'s window handed back', async () => {
+  const SECRET = '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi';
+  const { wallet, bridge } = setup({ exportWindow: async () => ({ privateKey: SECRET }) });
+  assert.equal(await wallet.showKeyExport(), 'unavailable', 'signed out: nothing to export');
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111' });
+  const outcome = await wallet.showKeyExport();
+  assert.equal(outcome, 'shown');
+  assert.ok(!JSON.stringify({ outcome, state: wallet.state(), id: wallet.identity() }).includes(SECRET), 'nothing the window returned leaves the store');
+  const failing = setup({ exportWindow: async () => { throw new Error(`leaked ${SECRET}`); } });
+  failing.bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1111' });
+  assert.equal(await failing.wallet.showKeyExport(), 'failed', 'a failure is a word too, not the vendor\'s message');
 });

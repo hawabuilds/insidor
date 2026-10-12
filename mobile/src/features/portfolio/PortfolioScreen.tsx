@@ -22,6 +22,7 @@ import { useLoad } from '../../shared/hooks.ts';
 import { SAMPLE_WALLET } from '../../shared/notice.ts';
 import { tradingOn } from '../../shared/trading.ts';
 import { Notice } from '../../shared/ui/Notice.tsx';
+import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
 import { forgetEntered } from '../landing/entered.ts';
 import { Portfolio, type ChartRange, type WhoAmI } from './Portfolio.tsx';
@@ -38,11 +39,12 @@ const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as s
 /** The address of the recorded sample wallet; shown only with the "Sample data" notice. */
 const SAMPLE_ADDRESS = '86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY';
 
-function Loaded({ who, load, history, canAct, leave }: {
+function Loaded({ who, load, history, canAct, exportKey, leave }: {
   who: WhoAmI;
   load: (signal: AbortSignal) => Promise<PortfolioData>;
   history: (signal: AbortSignal, range: ChartRange) => Promise<readonly BalancePoint[]>;
   canAct: boolean;
+  exportKey: (() => void) | null;
   leave: { readonly label: string; readonly run: () => void };
 }) {
   const [range, setRange] = useState<ChartRange>('1w');
@@ -93,6 +95,7 @@ function Loaded({ who, load, history, canAct, leave }: {
             subtitle={who.handle !== null ? `@${who.handle}` : canAct ? 'Signed in' : 'Sample data'}
             address={who.address}
             onCopy={() => void copy()}
+            exportKey={exportKey}
             leave={leave}
           />
         }
@@ -113,6 +116,13 @@ function Arrow({ up = false }: { up?: boolean }) {
 
 export function PortfolioScreen() {
   const { wallet, state } = useWallet();
+  const toast = useToast();
+  /* The provider's own window; we hear only whether it opened. */
+  const exportKey = () => {
+    void wallet?.showKeyExport().then((outcome) => {
+      if (outcome !== 'shown') toast("Couldn't open the export", 'Try again in a moment.');
+    });
+  };
 
   if (state.kind === 'connected' || state.kind === 'wrong-network') {
     const id = wallet?.identity() ?? null;
@@ -123,6 +133,7 @@ export function PortfolioScreen() {
         canAct
         load={(signal) => fetchPortfolio(state.account, '24h', signal)}
         history={(signal, range) => fetchWalletHistory(state.account, range, signal)}
+        exportKey={exportKey}
         leave={{ label: 'Sign out', run: () => void wallet?.disconnect() }}
       />
     );
@@ -137,7 +148,7 @@ export function PortfolioScreen() {
     },
   };
   if (SAMPLE_SCREENS) {
-    return <Loaded who={{ name: 'Sample wallet', handle: null, pictureUrl: null, address: SAMPLE_ADDRESS }} canAct={false} load={() => loadSamplePortfolio()} history={async () => []} leave={leaveDemo} />;
+    return <Loaded who={{ name: 'Sample wallet', handle: null, pictureUrl: null, address: SAMPLE_ADDRESS }} canAct={false} load={() => loadSamplePortfolio()} history={async () => []} exportKey={null} leave={leaveDemo} />;
   }
   return (
     <section className={box['screen']}>
