@@ -8,7 +8,7 @@
  * we can actually place, in the order the server sent them.
  */
 
-import type { SearchCoin, SearchResults } from '../../shared/api/index.ts';
+import type { OriginGap, SearchCoin, SearchResults } from '../../shared/api/index.ts';
 
 export type CoinOrder = 'cap' | 'new';
 
@@ -33,3 +33,11 @@ export function marketLine(coin: SearchCoin): string {
 export function showingTop(results: SearchResults): boolean {
   return results.narratives.capped || results.posts.capped || (results.coins.kind === 'read' && results.coins.capped);
 }
+
+/** A past narrative's missing origin, in words. */
+export const GAP_LINE: Record<OriginGap, string> = {
+  not_searched_yet: '— origin not searched yet',
+  origin_not_found: '— origin not found',
+  possibly_deleted: '— origin possibly deleted',
+  tiktok_not_searchable: '— origin on TikTok, not searchable yet',
+};

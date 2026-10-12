@@ -8,8 +8,12 @@
 
 import type { Instant, Measured } from '../../format/measure.ts';
 
+/** Why a past narrative shows no origin post. Each is said in words; none is a blank. */
+export type OriginGap = 'not_searched_yet' | 'origin_not_found' | 'possibly_deleted' | 'tiktok_not_searchable';
+
 export interface SearchNarrative {
-  readonly storyId: string;
+  /** Null for a past narrative: it was never on the board, so it has no page to open. */
+  readonly storyId: string | null;
   readonly title: string;
   readonly thumbUrl: string | null;
   /** On the board now, or a narrative from before. */
@@ -17,6 +21,9 @@ export interface SearchNarrative {
   readonly firstPostAt: Instant;
   readonly firstCoinAt: Instant;
   readonly peakMarketCapUsd: Measured;
+  /** A past narrative's origin post, or why there is none. Both null for a live one. */
+  readonly originPost: { readonly authorLabel: string; readonly permalink: string | null; readonly postedAt: Instant; readonly afterLaunch: boolean } | null;
+  readonly originGap: OriginGap | null;
 }
 
 export interface SearchPost {
@@ -43,7 +50,7 @@ export interface SearchCoin {
   /** 0..1 along the curve; null when it is not on one. */
   readonly curveProgress: Measured | null;
   /** The narrative whose own page names this coin. Null for every other coin of the same name. */
-  readonly matched: { readonly storyId: string; readonly title: string } | null;
+  readonly matched: { readonly storyId: string | null; readonly title: string } | null;
 }
 
 export type SearchCoins =

@@ -61,3 +61,17 @@ test('the sample search lists each post and each coin once, as the server does',
   const coins = r.coins.items.map((c) => c.coinId);
   assert.equal(new Set(coins).size, coins.length);
 });
+
+test('★ a past narrative has no page, and shows its origin post or why there is none', () => {
+  const r = decodeSearch({
+    term: 'moo', posts: { capped: false, items: [] }, coins: { kind: 'unavailable' },
+    narratives: { capped: false, items: [
+      { storyId: null, title: 'Moo Deng', live: false, firstPostAt: { at: 1 }, firstCoinAt: { at: 2 }, peakMarketCapUsd: { v: 9 }, originPost: { authorLabel: '@zoo', permalink: null, postedAt: { at: 1 }, afterLaunch: false }, originGap: null },
+      { storyId: null, title: 'Lost', live: false, firstPostAt: { at: null, why: 'not_reported' }, firstCoinAt: { at: 2 }, peakMarketCapUsd: { v: 9 }, originPost: null, originGap: null },
+    ] },
+  });
+  const [found, lost] = r.narratives.items;
+  assert.equal(found?.storyId, null);
+  assert.equal(found?.originPost?.authorLabel, '@zoo');
+  assert.equal(lost?.originGap, 'not_searched_yet', 'neither a post nor a reason is read as "not searched yet", never as nothing');
+});

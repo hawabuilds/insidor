@@ -74,7 +74,8 @@ export interface AgedCoin {
  *   - a coin with a market reading: that history is append-only and points at the coin;
  *   - a coin with a found origin or an origin post, which includes the gold set (`found_by_team`)
  *     and posts that went viral after launch;
- *   - a coin a narrative or a post names on screen.
+ *   - a coin a narrative or a post names on screen;
+ *   - a coin a past narrative names (0038): history is kept forever.
  */
 const NAMED_COINS = `named as (
   select v.payload #>> '{coins,coin,coinId}' as k from public.story_view v where v.payload #>> '{coins,kind}' = 'one'
@@ -92,6 +93,7 @@ const KEPT_ALWAYS = `(
               and (o.post_item_id is not null
                    or o.status in ('linked_by_creator', 'matched_by_insidor', 'found_by_team', 'influencer_origin', 'viral_after_launch')))
   or exists (select 1 from named n where n.k = a.asset_key)
+  or exists (select 1 from public.history_coin h where h.address = a.address)
 )`;
 
 /** Statuses a later post could change, so they are looked at once more. */

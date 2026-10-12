@@ -72,7 +72,7 @@ test('★ one coin per address across the sources, biggest first, and only the p
   assert.equal(r.coins.kind, 'read');
   assert.deepEqual(r.coins.items.map((c: any) => c.address), ['B', 'A']);
   const [b, a] = r.coins.items;
-  assert.deepEqual(b.matched, { storyId: 'st_jim', title: 'Jimothy the cat', coinId: 'solana:B' });
+  assert.deepEqual(b.matched, { storyId: 'st_jim', title: 'Jimothy the cat' });
   assert.equal(b.venue, 'pool');
   assert.equal(b.curveProgress, null, 'a bonded coin has no curve to be along');
   assert.equal(a.matched, null, 'a same-named coin is a coin with that name, nothing more');

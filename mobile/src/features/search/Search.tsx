@@ -22,7 +22,7 @@ import { hrefFor } from '../../shared/route.ts';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
-import { marketLine, orderCoins, showingTop, type CoinOrder } from './search-view.ts';
+import { GAP_LINE, marketLine, orderCoins, showingTop, type CoinOrder } from './search-view.ts';
 import styles from './search.module.css';
 
 /** Typing settles for this long before a search goes out. */
@@ -83,7 +83,7 @@ function Sections({ results }: { results: SearchResults }) {
       {narratives.items.length > 0 ? (
         <>
           <h2 className={styles['section']}>Narratives</h2>
-          {narratives.items.map((n) => <NarrativeRow key={n.storyId} n={n} now={now} />)}
+          {narratives.items.map((n, i) => <NarrativeRow key={n.storyId ?? `past:${i}:${n.title}`} n={n} now={now} />)}
         </>
       ) : null}
 
@@ -112,14 +112,26 @@ function Sections({ results }: { results: SearchResults }) {
 }
 
 function NarrativeRow({ n, now }: { n: SearchNarrative; now: number }) {
-  return (
-    <a className={styles['row']} href={hrefFor({ screen: 'story', storyId: n.storyId, sample: false })}>
+  const body = (
+    <>
       <Thumb url={n.thumbUrl} size={48} />
       <span className={styles['text']}>
         <b>{n.title}</b>
         <span className={styles['meta']}>
           <span className={n.live ? styles['live'] : ''}>{n.live ? 'Live' : 'From before'}</span>
         </span>
+        {n.originPost !== null ? (
+          <span className={styles['meta']}>
+            <span>{n.originPost.afterLaunch ? 'Went viral after launch' : 'Origin'}</span>
+            {n.originPost.permalink !== null ? (
+              <a className={styles['origin']} href={n.originPost.permalink} target="_blank" rel="noopener noreferrer">{n.originPost.authorLabel}</a>
+            ) : (
+              <b>{n.originPost.authorLabel}</b>
+            )}
+          </span>
+        ) : n.originGap !== null ? (
+          <span className={styles['meta']}>{GAP_LINE[n.originGap]}</span>
+        ) : null}
         {!n.live ? (
           <span className={styles['timeline']}>
             <span>First post <Value r={formatAge(n.firstPostAt, now)} /></span>
@@ -128,7 +140,13 @@ function NarrativeRow({ n, now }: { n: SearchNarrative; now: number }) {
           </span>
         ) : null}
       </span>
-    </a>
+    </>
+  );
+  /* A past narrative was never on the board: it has no page, so the row is not a link. */
+  return n.storyId !== null ? (
+    <a className={styles['row']} href={hrefFor({ screen: 'story', storyId: n.storyId, sample: false })}>{body}</a>
+  ) : (
+    <div className={styles['row']}>{body}</div>
   );
 }
 
