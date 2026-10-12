@@ -57,7 +57,7 @@
 
 import { sourceId } from '@insidor/contracts';
 import type { Item, Millis } from '@insidor/contracts';
-import type { CostEstimate } from '@insidor/contracts/ports/meter.ts';
+import type { Budget, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import type { SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
 import type { PlannedCall, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
@@ -134,6 +134,13 @@ export function watched(adapter: PlatformAdapter, deps: WatchDeps): PlatformAdap
     estimate: (call: PlannedCall): CostEstimate => adapter.estimate(call),
     toItem: (raw: unknown, at: Millis): Item => adapter.toItem(raw, at),
     baselineKey: (item: Item, at: Millis): string => adapter.baselineKey(item, at),
+    /* ★ THE OPTIONAL METHODS ARE CARRIED THROUGH, or the wrapper quietly removes them: a
+       source whose `lookup` vanished here reads to every caller as one that cannot fetch a
+       post by id, and the backfill stops following quotes with nothing wrong in any log. A
+       lookup is a call and is recorded like one; reading a link is arithmetic and is not. */
+    ...(adapter.lookup === undefined ? {} : { lookup: (ids: readonly string[], budget: Budget) => around(() => adapter.lookup!(ids, budget)) }),
+    ...(adapter.parseLink === undefined ? {} : { parseLink: (url: string) => adapter.parseLink!(url) }),
+    ...(adapter.postTimeFromId === undefined ? {} : { postTimeFromId: (id: string) => adapter.postTimeFromId!(id) }),
   };
 }
 

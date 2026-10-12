@@ -20,6 +20,7 @@ import type {
 import { mergeSpend, metered, estimateFor } from '@insidor/meter';
 import type { PriceBook } from '@insidor/meter';
 import { discovered } from '@insidor/vendor-kit';
+import { parseLink as parseLinkOf, postTimeFromId as postTimeOf } from './post-time.ts';
 
 import { billedUnits, CAPABILITIES, LOOKUP, PRICES, SEARCH, SOURCE, VENDOR } from './capabilities.ts';
 import type { XClient } from './client.ts';
@@ -157,6 +158,9 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
       };
     },
 
+    parseLink: (url: string) => parseLinkOf(url),
+    postTimeFromId: (id: string) => postTimeOf(id) as Millis | null,
+
     toItem(raw: unknown, at: Millis): Item {
       return toItem(raw, at);
     },
@@ -191,4 +195,4 @@ export { CutoffNotHonoured, toSearchQuery } from './discover.ts';
    never know a URL shape — is the caller, and it asks this package by name. */
 export { postUrl } from './permalink.ts';
 export { toItem, toCounters } from './to-item.ts';
-export { postTimeFromId } from './post-time.ts';
+export { parseLink, postTimeFromId } from './post-time.ts';

@@ -206,6 +206,16 @@ export interface PlatformAdapter {
   lookup?(sourceItemIds: readonly string[], budget: Budget): Promise<Metered<Discovered>>;
 
   /**
+   * A link a person pasted — a coin creator's, say — read without a request: a post on this
+   * source and its id, an account or community on it, or null when it is not this source's
+   * link at all. Optional; a source without it simply recognises no links.
+   */
+  parseLink?(url: string): { readonly kind: 'post'; readonly sourceItemId: string } | { readonly kind: 'account' } | null;
+
+  /** When a post was made, from its id alone. Null when this source's ids carry no time. */
+  postTimeFromId?(sourceItemId: string): Millis | null;
+
+  /**
    * The ONLY function permitted to know this source's field names.
    * @param at the instant WE read it, INJECTED — an adapter never calls a clock, so
    *           two items from one response share one observedAt and a recorded

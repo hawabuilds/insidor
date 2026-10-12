@@ -141,6 +141,27 @@ const absence = (source: string, configuration: SourceConfiguration): SourceAbse
 
 /* ── the wrapper ───────────────────────────────────────────────────────── */
 
+test('★ the optional verbs survive the wrapper: a lookup is recorded like any call; reading a link is not', async () => {
+  const repo = fakeRepo();
+  let looked = 0;
+  const base: PlatformAdapter = {
+    ...adapterOf('x'),
+    lookup: async () => {
+      looked += 1;
+      return { value: { items: [], authors: [], cursor: null, hasMore: false }, spend: [] } as never;
+    },
+    parseLink: () => ({ kind: 'account' }),
+    postTimeFromId: () => NOW,
+  };
+  const adapter = watched(base, deps(repo));
+  assert.ok(adapter.lookup !== undefined, 'lookup was dropped');
+  await adapter.lookup(['1'], budget);
+  assert.equal(looked, 1);
+  assert.deepEqual(adapter.parseLink?.('https://example.invalid/a'), { kind: 'account' });
+  assert.equal(adapter.postTimeFromId?.('1'), NOW);
+  assert.equal(watched(adapterOf('x'), deps(repo)).lookup, undefined, 'and a source without one still has none');
+});
+
 test('a call that works records a success', async () => {
   const repo = fakeRepo();
   await watched(adapterOf('reddit'), deps(repo)).discover(query, budget);

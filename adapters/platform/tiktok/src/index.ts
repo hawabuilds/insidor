@@ -31,6 +31,7 @@ import type {
 import { mergeSpend, metered, estimateFor } from '@insidor/meter';
 import type { PriceBook } from '@insidor/meter';
 import { discovered } from '@insidor/vendor-kit';
+import { parseLink as parseLinkOf, postTimeFromId as postTimeOf } from './post-time.ts';
 
 import { CAPABILITIES, DISCOVER, OBSERVE, PRICES, SOURCE, VENDOR } from './capabilities.ts';
 import type { TikTokClient } from './client.ts';
@@ -132,6 +133,9 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
       };
     },
 
+    parseLink: (url: string) => parseLinkOf(url),
+    postTimeFromId: (id: string) => postTimeOf(id) as Millis | null,
+
     toItem(raw: unknown, at: Millis): Item {
       return toItem(raw, at);
     },
@@ -165,4 +169,4 @@ export { toItem, toCounters, formatIds } from './to-item.ts';
 /* Share links expanded to the video they name — for links people paste, such as a gold
    sheet's origin column. */
 export { expandShortLink, isShortLink } from './short-link.ts';
-export { postTimeFromId } from './post-time.ts';
+export { parseLink, postTimeFromId } from './post-time.ts';
