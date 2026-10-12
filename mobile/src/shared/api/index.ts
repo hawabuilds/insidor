@@ -8,6 +8,7 @@ export type { Coin, CoinLink } from './wire/coin.ts';
 export type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 export type { DiscussionPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 export type { RisingFeed, RisingFeedId, RisingPost } from './wire/rising.ts';
+export type { SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 
 export {
   BOARD_VIEW,
@@ -18,6 +19,8 @@ export {
   fetchCoinMarket,
   fetchNarratives,
   fetchRising,
+  fetchSearch,
+  fetchSearchedCoin,
   fetchStory,
   loadSampleMarket,
   loadSampleStory,

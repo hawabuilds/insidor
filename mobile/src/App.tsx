@@ -15,6 +15,8 @@ import { Feed } from './features/feed/Feed.tsx';
 import { InstallPrompt } from './features/install/InstallPrompt.tsx';
 import { NarrativePage } from './features/narrative/NarrativePage.tsx';
 import { Narratives } from './features/narratives/Narratives.tsx';
+import { Search } from './features/search/Search.tsx';
+import { SearchedToken } from './features/token/SearchedToken.tsx';
 import { TokenPage } from './features/token/TokenPage.tsx';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { WalletScreen } from './features/wallet/WalletScreen.tsx';
@@ -44,6 +46,9 @@ function Screen({ route, create }: { route: Route; create: (from: CreateFrom) =>
     case 'wallet':
       return <WalletScreen />;
     case 'search':
+      return <Search />;
+    case 'token':
+      return <SearchedToken key={route.coinId} coinId={route.coinId} />;
     case 'calls':
       return <ComingSoonScreen which={route.screen} />;
     default:

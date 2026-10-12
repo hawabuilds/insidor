@@ -33,11 +33,27 @@
 import { arr, num, rec, str, NotImplemented, VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
 
 import { readCurveAccount, type CurveAccount } from './curve-account.ts';
+import { httpsUri } from './hostile.ts';
 
 const VENDOR_RPC = 'solana-rpc';
 const OLDEST_LABEL = 'POST rpc getTransactionsForAddress';
 const CURVE_LABEL = 'POST rpc getAccountInfo';
 const ASSET_LABEL = 'POST rpc getAsset';
+const ASSET_BATCH_LABEL = 'POST rpc getAssetBatch';
+/** A picture link longer than this is not one an honest issuer wrote. */
+const IMAGE_URI_MAX = 512;
+
+/** One batch reply → address → picture link. Pure, so it is tested against a recorded reply. */
+export function readImageUris(raw: unknown): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  for (const entry of arr(rec(raw).result)) {
+    const asset = rec(entry);
+    const id = str(asset.id);
+    const image = httpsUri(rec(rec(asset.content).links).image, IMAGE_URI_MAX);
+    if (id !== null && image !== null) out.set(id, image);
+  }
+  return out;
+}
 
 /** One JSON-RPC call. An RPC error is unavailable, never an empty answer. */
 async function rpc(config: SolanaVenueClientConfig, method: string, params: unknown, label: string): Promise<unknown> {
@@ -89,6 +105,11 @@ export interface ChainClient {
   curveAccount(address: string): Promise<CurveAccount | null>;
   /** The link to a coin's metadata document, as its on-chain metadata names it; null when none. */
   metadataUri(mint: string): Promise<string | null>;
+  /**
+   * Each coin's picture link from its metadata, in one call for many coins. A coin the chain does
+   * not know, or whose link is not plain https, is missing from the map — never given a guess.
+   */
+  imageUris(mints: readonly string[]): Promise<ReadonlyMap<string, string>>;
 }
 
 export interface SolanaVenueClientConfig {
@@ -156,6 +177,7 @@ export function chainClient(config: SolanaVenueClientConfig): ChainClient {
       const raw = await rpc(config, 'getAsset', { id: mint }, ASSET_LABEL);
       return str(rec(rec(rec(raw).result).content).json_uri);
     },
+    imageUris: async (mints) => (mints.length === 0 ? new Map() : readImageUris(await rpc(config, 'getAssetBatch', { ids: mints }, ASSET_BATCH_LABEL))),
     tokenAccountState: async (_address) => {
       // POST {rpcUrl} getAccountInfo [address, { encoding: 'jsonParsed' }]
       //   Token-2022 extensions live here: transfer fee and transfer hook.

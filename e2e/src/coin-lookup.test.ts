@@ -31,7 +31,7 @@ let db: Db;
 const asked: string[] = [];
 
 const hit = (address: string, ageMs: number, source: string): CoinSearchHit => ({
-  address, name: 'Jimothy', ticker: 'JIM', venue: 'curve', createdAt: NOW - ageMs, marketCapUsd: 5_000, imageUrl: null, source,
+  address, name: 'Jimothy', ticker: 'JIM', venue: 'curve', marketAddress: null, createdAt: NOW - ageMs, marketCapUsd: 5_000, imageUrl: null, source,
 });
 const RECENT = 'Rec1111111111111111111111111111111111111pump';
 const OLD = 'Old1111111111111111111111111111111111111pump';

@@ -14,7 +14,7 @@ import { assetFromSearch } from './search-asset.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
 const hit: CoinSearchHit = {
-  address: 'szicVgykSZSQHvtuxxjQ9FsSorr2YPwcVVxYj5dMNAP', name: 'Naps', ticker: '$NAPS', venue: 'curve',
+  address: 'szicVgykSZSQHvtuxxjQ9FsSorr2YPwcVVxYj5dMNAP', name: 'Naps', ticker: '$NAPS', venue: 'curve', marketAddress: null,
   createdAt: NOW - 3_600_000, marketCapUsd: 4_387, imageUrl: 'https://cdn.example/naps.png', source: 'dexscreener',
 };
 

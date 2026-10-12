@@ -1000,6 +1000,29 @@ export interface UniversePolicy {
 }
 
 /**
+ * The Search tab: a person's term, searched live against the market data sources and our own
+ * rows. No new table; every answer is held in memory for `keepMs`.
+ */
+export interface SearchPolicy {
+  /** One answer per term is kept this long, so a crowd typing the same ticker costs one call. */
+  readonly keepMs: number;
+  /** Searches one client may run per `windowMs`. Past it, the reply says to wait. */
+  readonly perClient: number;
+  readonly windowMs: number;
+  /** The shortest and longest term searched. */
+  readonly minTermLength: number;
+  readonly maxTermLength: number;
+  /** Rows per section. More than this and the reply says "Showing top results". */
+  readonly storiesShown: number;
+  readonly postsShown: number;
+  readonly coinsShown: number;
+  /** Curve accounts read per search, biggest coins first; the rest show their progress as a dash. */
+  readonly curvesRead: number;
+  /** How long a coin a search returned may be opened as a token page without being in the universe. */
+  readonly openableMs: number;
+}
+
+/**
  * The rules that decide a coin's origin status (contracts/src/origin.ts).
  */
 export interface OriginPolicy {
@@ -1450,6 +1473,7 @@ export interface Policy {
   readonly backfill: BackfillPolicy;
   readonly origin: OriginPolicy;
   readonly universe: UniversePolicy;
+  readonly search: SearchPolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -1653,8 +1677,10 @@ const POLICY_V1: Policy = {
      v26 adds `universe`: how many new coins a pass reads and checks, and how far back.
 
      v27 adds `universe.lookup`: searching the market data sources for coins we never saw
-     minted, as candidates only. */
-  version: 'policy.v27',
+     minted, as candidates only.
+
+     v28 adds `search`: the Search tab's cache, per-client limit and list lengths. */
+  version: 'policy.v28',
 
   admit: {
     maxAgeMin: 240,
@@ -2034,6 +2060,20 @@ const POLICY_V1: Policy = {
       withinMs: 604_800_000, // seven days
       hitsPerTerm: 10,
     },
+  },
+
+  search: {
+    keepMs: 60_000, // a minute
+    /* 20 a minute: a person typing; a script hammering two free sources gets told to wait. */
+    perClient: 20,
+    windowMs: 60_000,
+    minTermLength: 2,
+    maxTermLength: 32,
+    storiesShown: 10,
+    postsShown: 10,
+    coinsShown: 30,
+    curvesRead: 10,
+    openableMs: 3_600_000, // an hour
   },
 
   rising: {

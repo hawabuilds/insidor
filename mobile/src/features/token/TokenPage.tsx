@@ -59,7 +59,7 @@ export function TokenPage({ storyId, coinId, sample }: { storyId: string; coinId
 }
 
 /** "SAMPLEj…pump": enough of each end to compare by eye, never presented as a label. */
-function shortAddress(a: string): string {
+export function shortAddress(a: string): string {
   return a.length <= 14 ? a : `${a.slice(0, 8)}…${a.slice(-4)}`;
 }
 
@@ -218,18 +218,18 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
   );
 }
 
-const TIMEFRAMES: readonly MarketTimeframe[] = ['1m', '5m', '1h', '6h'];
+export const TIMEFRAMES: readonly MarketTimeframe[] = ['1m', '5m', '1h', '6h'];
 /** How often an open token page reads its market again. The server keeps answers 12–300s. */
-const MARKET_POLL_MS = 20_000;
+export const MARKET_POLL_MS = 20_000;
 
 /** Why there is no chart: still loading, the source failed, or the coin has no trades in this view. */
-function chartNote(state: 'loading' | 'ready' | 'failed', market: CoinMarket | null): string {
+export function chartNote(state: 'loading' | 'ready' | 'failed', market: CoinMarket | null): string {
   if (state === 'loading') return 'Loading price history.';
   if (state === 'failed' || market?.kind === 'unavailable' || (market?.kind === 'read' && market.candles === null)) return 'Price history could not be read just now.';
   return 'No trades in this view yet, so there is no price history to draw.';
 }
 
-function tradesNote(state: 'loading' | 'ready' | 'failed', market: CoinMarket | null): string {
+export function tradesNote(state: 'loading' | 'ready' | 'failed', market: CoinMarket | null): string {
   if (state === 'loading') return 'Loading trades.';
   if (state === 'failed' || market?.kind === 'unavailable' || (market?.kind === 'read' && market.trades === null)) return 'Trades could not be read just now.';
   return 'No trades yet.';
@@ -239,7 +239,7 @@ function tradesNote(state: 'loading' | 'ready' | 'failed', market: CoinMarket | 
  * The latest trades, Trador's tape rebuilt in our style: side and age, amount, value, and the
  * transaction, which opens on a block explorer. A sample trade has no transaction, so no link.
  */
-function Trades({ ticker, trades, now }: { ticker: string; trades: readonly MarketTrade[]; now: number }) {
+export function Trades({ ticker, trades, now }: { ticker: string; trades: readonly MarketTrade[]; now: number }) {
   return (
     <table className={styles['trades']}>
       <thead>

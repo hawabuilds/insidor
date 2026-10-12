@@ -26,6 +26,8 @@ export type Route =
   | { readonly screen: 'story'; readonly storyId: string; readonly sample: boolean }
   | { readonly screen: 'coin'; readonly storyId: string; readonly coinId: string; readonly sample: boolean }
   | { readonly screen: 'search' }
+  /* A coin opened from search: no narrative around it, so none in the route. */
+  | { readonly screen: 'token'; readonly coinId: string }
   | { readonly screen: 'calls' }
   | { readonly screen: 'wallet' };
 
@@ -54,6 +56,7 @@ export function parseRoute(hash: string): Route {
     if (sub === 'coin' && coinId !== undefined) return { screen: 'coin', storyId: id, coinId, sample };
     return FEED;
   }
+  if (!sample && head === 'token' && id !== undefined && sub === undefined) return { screen: 'token', coinId: id };
   if (sample || id !== undefined) return FEED;
 
   switch (head) {
@@ -78,6 +81,8 @@ export function hrefFor(route: Route): string {
       return `#/${route.sample ? 'sample/' : ''}story/${enc(route.storyId)}`;
     case 'coin':
       return `#/${route.sample ? 'sample/' : ''}story/${enc(route.storyId)}/coin/${enc(route.coinId)}`;
+    case 'token':
+      return `#/token/${enc(route.coinId)}`;
     default:
       return `#/${route.screen}`;
   }
@@ -89,6 +94,8 @@ export function tabOf(route: Route): Tab {
     case 'story':
     case 'coin':
       return route.sample ? 'narratives' : 'feed';
+    case 'token':
+      return 'search';
     default:
       return route.screen;
   }

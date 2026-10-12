@@ -28,6 +28,7 @@ import type { Coin, CoinLink, CoinOrigin, MarketCapBasis } from './wire/coin.ts'
 import type { RisingFeed, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
+import type { SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 import {
   BOARD_ROW_FIELDS,
   COIN_FIELDS,
@@ -549,5 +550,95 @@ export function decodeCoinMarket(raw: unknown, path = '$.market'): CoinMarket {
     candles,
     trades,
     curveProgress: o['curveProgress'] === null || o['curveProgress'] === undefined ? null : measured(o['curveProgress'], `${path}.curveProgress`, 'not_reported'),
+  };
+}
+
+/* ── search ───────────────────────────────────────────────────────────── */
+
+const venueOf = (v: unknown): 'curve' | 'pool' | null => (v === 'curve' || v === 'pool' ? v : null);
+
+/**
+ * The Search tab's reply. Only the fields named here are read, so a post that somehow arrived
+ * with a narrative or a coin on it reaches the screen without them: search is a list.
+ */
+export function decodeSearch(raw: unknown, path = '$'): SearchResults {
+  assertNoInternalVocabulary(raw, path);
+  const o = obj(raw, path);
+  const n = obj(o['narratives'], `${path}.narratives`);
+  const p = obj(o['posts'], `${path}.posts`);
+  const c = obj(o['coins'], `${path}.coins`);
+  const narratives = arr(n['items'], `${path}.narratives.items`).map((x, i): SearchNarrative => {
+    const q = `${path}.narratives.items[${i}]`;
+    const r = obj(x, q);
+    return {
+      storyId: str(r['storyId'], `${q}.storyId`),
+      title: str(r['title'], `${q}.title`),
+      thumbUrl: optStr(r['thumbUrl']),
+      live: bool(r['live'], `${q}.live`),
+      firstPostAt: instantAt(r['firstPostAt'], `${q}.firstPostAt`, 'not_read_yet'),
+      firstCoinAt: instantAt(r['firstCoinAt'], `${q}.firstCoinAt`, 'not_read_yet'),
+      peakMarketCapUsd: measured(r['peakMarketCapUsd'], `${q}.peakMarketCapUsd`, 'not_read_yet'),
+    };
+  });
+  const posts = arr(p['items'], `${path}.posts.items`).map((x, i): SearchPost => {
+    const q = `${path}.posts.items[${i}]`;
+    const r = obj(x, q);
+    return {
+      id: str(r['id'], `${q}.id`),
+      sourceLabel: typeof r['sourceLabel'] === 'string' ? r['sourceLabel'] : '',
+      authorLabel: str(r['authorLabel'], `${q}.authorLabel`),
+      permalink: optStr(r['permalink']),
+      excerpt: str(r['excerpt'], `${q}.excerpt`),
+      thumbUrl: optStr(r['thumbUrl']),
+      postedAt: instantAt(r['postedAt'], `${q}.postedAt`, 'not_reported'),
+      live: bool(r['live'], `${q}.live`),
+    };
+  });
+  const coins: SearchCoins = c['kind'] !== 'read'
+    ? { kind: 'unavailable' }
+    : {
+        kind: 'read',
+        capped: c['capped'] === true,
+        sourcesMissing: typeof c['sourcesMissing'] === 'number' ? c['sourcesMissing'] : 0,
+        items: arr(c['items'], `${path}.coins.items`).map((x, i): SearchCoin => {
+          const q = `${path}.coins.items[${i}]`;
+          const r = obj(x, q);
+          const venue = venueOf(r['venue']);
+          const m = r['matched'] === null || r['matched'] === undefined ? null : obj(r['matched'], `${q}.matched`);
+          return {
+            coinId: str(r['coinId'], `${q}.coinId`),
+            address: str(r['address'], `${q}.address`),
+            name: optStr(r['name']),
+            ticker: optStr(r['ticker']),
+            imageUrl: optStr(r['imageUrl']),
+            marketCapUsd: measured(r['marketCapUsd'], `${q}.marketCapUsd`, 'not_reported'),
+            launchedAt: instantAt(r['launchedAt'], `${q}.launchedAt`, 'not_reported'),
+            venue,
+            /* Progress belongs to a curve; on anything else it is not shown at all. */
+            curveProgress: venue === 'curve' ? measured(r['curveProgress'], `${q}.curveProgress`, 'not_read_yet') : null,
+            matched: m === null ? null : { storyId: str(m['storyId'], `${q}.matched.storyId`), title: str(m['title'], `${q}.matched.title`) },
+          };
+        }),
+      };
+  return {
+    term: str(o['term'], `${path}.term`),
+    narratives: { capped: n['capped'] === true, items: narratives },
+    posts: { capped: p['capped'] === true, items: posts },
+    coins,
+  };
+}
+
+export function decodeSearchedCoin(raw: unknown, path = '$.coin'): SearchedCoin {
+  assertNoInternalVocabulary(raw, path);
+  const r = obj(raw, path);
+  return {
+    coinId: str(r['coinId'], `${path}.coinId`),
+    address: str(r['address'], `${path}.address`),
+    name: optStr(r['name']),
+    ticker: optStr(r['ticker']),
+    imageUrl: optStr(r['imageUrl']),
+    marketCapUsd: measured(r['marketCapUsd'], `${path}.marketCapUsd`, 'not_reported'),
+    launchedAt: instantAt(r['launchedAt'], `${path}.launchedAt`, 'not_reported'),
+    venue: venueOf(r['venue']),
   };
 }

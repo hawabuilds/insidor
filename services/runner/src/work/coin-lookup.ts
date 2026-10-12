@@ -19,9 +19,10 @@
 
 import type { Millis } from '@insidor/contracts';
 import { assetKey } from '@insidor/contracts/ids.ts';
-import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
+import type { CoinSearch } from '@insidor/contracts/ports/coin-search.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { PgAssetRepo, PgCoinUniverseRepo } from '@insidor/store';
+import { mergeHits } from '@insidor/core';
 import { assetFromSearch, CHAIN } from '@insidor/venue-solana-pumpfun';
 
 import { errorText, type Logger } from '../log.ts';
@@ -38,17 +39,6 @@ export interface LookupDeps {
 }
 
 const DAY_MS = 86_400_000;
-
-/** Merge the sources' hits, one per coin: the one that knows the most about it wins. */
-export function mergeHits(lists: readonly (readonly CoinSearchHit[])[]): readonly CoinSearchHit[] {
-  const byAddress = new Map<string, CoinSearchHit>();
-  for (const hit of lists.flat()) {
-    const held = byAddress.get(hit.address);
-    if (held === undefined) byAddress.set(hit.address, hit);
-    else byAddress.set(hit.address, { ...held, name: held.name ?? hit.name, ticker: held.ticker ?? hit.ticker, createdAt: held.createdAt ?? hit.createdAt, marketCapUsd: held.marketCapUsd ?? hit.marketCapUsd, imageUrl: held.imageUrl ?? hit.imageUrl });
-  }
-  return [...byAddress.values()];
-}
 
 export async function lookUpCoins(deps: LookupDeps): Promise<{ readonly searched: number; readonly added: number }> {
   const now = deps.now();

@@ -62,6 +62,17 @@ function corsHeaders(req: IncomingMessage, allowed: readonly string[]): Record<s
   return { 'access-control-allow-origin': origin };
 }
 
+/**
+ * Who is asking, for the search limit. Behind the platform's proxy the socket is the proxy, so
+ * the LAST forwarded address is used — the one the nearest proxy appended, which a caller cannot
+ * write. The first one is whatever the caller typed.
+ */
+function clientOf(req: IncomingMessage): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  const list = (Array.isArray(forwarded) ? forwarded.join(',') : forwarded ?? '').split(',').map((s) => s.trim()).filter((s) => s !== '');
+  return list[list.length - 1] ?? req.socket.remoteAddress ?? '';
+}
+
 export function createReadServer(deps: ServerDeps): Server {
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     /* Drain whatever the caller sent. This surface reads no body, and a request body
@@ -115,7 +126,7 @@ export function createReadServer(deps: ServerDeps): Server {
        it must not be allowed to become an unhandled rejection, because main.ts exits
        the process on those and a single malformed request would take the service
        down. */
-    handle(req.method ?? 'GET', req.url ?? '/', deps)
+    handle(req.method ?? 'GET', req.url ?? '/', deps, clientOf(req))
       .then((reply) => {
         res.writeHead(reply.status, base);
         res.end(reply.body);

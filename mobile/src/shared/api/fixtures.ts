@@ -481,3 +481,85 @@ export function fixtureMarket(coinId: string, timeframe: string): unknown {
     curveProgress: mcap < 69_000 ? m(Math.round((0.05 + rand() * 0.4) * 1000) / 1000) : null,
   };
 }
+
+/* ── the Search tab (sample) ───────────────────────────────────────── */
+
+type Raw = Record<string, unknown>;
+
+function searchCoinsOf(story: Raw): readonly Raw[] {
+  const coins = story['coins'] as Raw;
+  if (coins['kind'] === 'one') return [coins['coin'] as Raw];
+  if (coins['kind'] === 'several') return coins['coins'] as readonly Raw[];
+  return [];
+}
+
+/**
+ * A search over the sample stories, in the read service's shape: their titles, their posts and
+ * their coins, one of each, as the server dedupes them. Every coin here is one a sample story names, so each is "matched" to it; the
+ * "Sample data" notice covers the whole screen.
+ */
+export function fixtureSearch(term: string): unknown {
+  const t = term.trim().replace(/^\$+/, '').toLowerCase();
+  const stories = [...BY_ID.values()];
+  const hits = stories.filter((s) => String(s['title']).toLowerCase().includes(t) || searchCoinsOf(s).some((c) => String(c['ticker']).toLowerCase() === t));
+  return {
+    term: t,
+    narratives: {
+      capped: false,
+      items: hits.map((s, i) => {
+        const coins = searchCoinsOf(s);
+        return {
+          storyId: String(s['id']),
+          title: s['title'],
+          thumbUrl: s['thumbUrl'] ?? null,
+          live: i % 2 === 0,
+          firstPostAt: { at: (s['earliestPost'] as Raw)['at'] ?? null, why: 'not_read_yet' },
+          firstCoinAt: coins.length === 0 ? { at: null, why: 'not_minted' } : (coins[0]?.['mintedAt'] ?? { at: null, why: 'not_reported' }),
+          peakMarketCapUsd: coins.length === 0 ? { v: null, why: 'not_minted' } : (coins[0]?.['marketCapUsd'] ?? { v: null, why: 'not_read_yet' }),
+        };
+      }),
+    },
+    posts: {
+      capped: false,
+      items: stories.flatMap((s) => (s['evidence'] as readonly Raw[]).filter((e) => String(e['excerpt']).toLowerCase().includes(t)).map((e) => ({
+        id: String(e['evidenceId']),
+        sourceLabel: e['sourceLabel'],
+        authorLabel: e['authorLabel'],
+        permalink: null,
+        excerpt: e['excerpt'],
+        thumbUrl: e['thumbUrl'] ?? null,
+        postedAt: e['postedAt'],
+        live: false,
+      }))).filter((p, i, all) => all.findIndex((q) => q.id === p.id) === i).slice(0, 10),
+    },
+    coins: {
+      kind: 'read',
+      capped: false,
+      sourcesMissing: 0,
+      items: hits.flatMap((s) => searchCoinsOf(s).map((c) => ({
+        coinId: c['coinId'],
+        address: c['address'],
+        name: c['name'],
+        ticker: c['ticker'],
+        imageUrl: c['imageUrl'] ?? null,
+        marketCapUsd: c['marketCapUsd'],
+        launchedAt: c['mintedAt'],
+        venue: 'curve',
+        curveProgress: { v: 0.42 },
+        matched: { storyId: String(s['id']), title: s['title'] },
+      }))).filter((c, i, all) => all.findIndex((d) => d.coinId === c.coinId) === i),
+    },
+  };
+}
+
+/** A sample coin opened from search, or null — a 404, never an invented coin. */
+export function fixtureSearchedCoin(coinId: string): unknown | null {
+  for (const s of BY_ID.values()) {
+    for (const c of searchCoinsOf(s)) {
+      if (c['coinId'] === coinId) {
+        return { coinId, address: c['address'], name: c['name'], ticker: c['ticker'], imageUrl: c['imageUrl'] ?? null, marketCapUsd: c['marketCapUsd'], launchedAt: c['mintedAt'], venue: 'curve' };
+      }
+    }
+  }
+  return null;
+}
