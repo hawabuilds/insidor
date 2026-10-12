@@ -80,6 +80,34 @@ export interface DiscoveryQuery {
   readonly untilMs: Millis | null;
   readonly limit: number;
   readonly cursor: string | null;
+  /**
+   * Narrows a `feed` query — "whatever is moving, whatever it is about" — to something a
+   * budget can pay for. Absent on every other mode.
+   *
+   * ★ A COST CONTROL AT THE VENDOR, NOT A JUDGEMENT. `minApproval` is how many approvals a
+   * post must already have for the source to return it at all; it exists so a search with
+   * no keyword returns tens of posts and not millions, and it moves with the budget. It is
+   * not ADMIT's bar and must never become one: what we keep is still decided on rates.
+   */
+  readonly filter?: FeedFilter;
+}
+
+/**
+ * The catch-all search's two lanes: everything, and posts carrying an image or a video.
+ * An array because it is also a CHECK in store/migrations/0024_feed_floor.sql.
+ */
+export const FEED_LANES = ['all', 'media'] as const;
+export type FeedLane = (typeof FEED_LANES)[number];
+
+export interface FeedFilter {
+  /** Return only posts with at least this many approvals. A whole number, at least one. */
+  readonly minApproval: number;
+  /** Only posts carrying an image or a video. */
+  readonly mediaOnly: boolean;
+  /** One language code, or null for every language. */
+  readonly lang: string | null;
+  /** Leave out replies and rebroadcasts: the originals are what spread. */
+  readonly originalsOnly: boolean;
 }
 
 export interface Discovered {

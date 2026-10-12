@@ -146,6 +146,8 @@ function loopWith(discovery: { readonly kind: 'off' } | { readonly kind: 'on'; r
     mode: 'live',
     log,
     watch: watch.deps,
+    floors: { floors: async () => ({}), set: async () => undefined },
+    dailyCapUsd: 1,
   });
   return { loop, infos, declared: watch.declared };
 }
@@ -224,6 +226,8 @@ test('a declaration that throws does not take the pass down with it', async () =
     meter: openMeter(),
     mode: 'live',
     log,
+    floors: { floors: async () => ({}), set: async () => undefined },
+    dailyCapUsd: 1,
     watch: {
       health: {
         declare: async () => {

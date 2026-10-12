@@ -807,6 +807,57 @@ export interface AssetPolicy {
  * "failing" and the instant behind it; it does not receive the bar, so it cannot re-derive
  * the call and disagree with us about it.
  */
+/**
+ * The catch-all search: no keywords, two lanes (everything, and posts with an image or a
+ * video), each narrowed by an approval floor that moves to keep the day inside budget.
+ *
+ * ★ THE FLOOR IS A COST CONTROL, NOT ADMISSION. With no keyword the only thing standing
+ * between a search and every post in the language is the floor, so the floor is what the
+ * budget turns. ADMIT still decides on rates; a post that clears this floor has merely
+ * been paid for.
+ *
+ * Ported from the earlier build's ingest (its query builder and adaptive lane floors), with
+ * the per-pass read target derived from the daily budget instead of typed in.
+ */
+export interface FeedPolicy {
+  /** How far back each search reaches, in minutes. Posts in their first half hour. */
+  readonly windowMin: number;
+  /**
+   * The window at which the floor applies in full. A shorter window scales it down in
+   * proportion: a post has had less time to collect approvals, so it is asked for fewer.
+   */
+  readonly fullWindowMin: number;
+  /** Where each lane's floor starts before it has adapted. */
+  readonly startFloor: number;
+  readonly mediaStartFloor: number;
+  /** The base floor never adapts below this, nor above floorMax. */
+  readonly floorMin: number;
+  readonly floorMax: number;
+  /** The floor actually sent, after window scaling, is never below this. */
+  readonly effectiveFloorMin: number;
+  /** A lane that returned more than its target raises its floor by this factor. */
+  readonly raiseFactor: number;
+  /** A lane under `lowBand` × target lowers it by this factor. */
+  readonly lowerFactor: number;
+  readonly lowBand: number;
+  /** A lane that returned nothing lowers it by this factor, at once. */
+  readonly emptyFactor: number;
+  /** The share of the daily budget catch-all search may plan to spend. Re-reads need the rest. */
+  readonly budgetShare: number;
+  /** The share of each pass's posts the media lane is aimed at. */
+  readonly mediaShare: number;
+  /**
+   * One language code, or null for all. ★ A PRODUCT CHOICE WITH A COST: a language filter
+   * makes every post in every other language invisible. Set to English to start.
+   */
+  readonly lang: string | null;
+  /**
+   * Posts asked for per lane per pass: one page. Also the reservation the budget is
+   * checked against before the call, since a source picks its own page size.
+   */
+  readonly pageLimit: number;
+}
+
 export interface IngestPolicy {
   /**
    * How long since a configured source last answered, past which it is published as
@@ -1194,6 +1245,7 @@ export interface Policy {
   readonly market: MarketPolicy;
   readonly assets: AssetPolicy;
   readonly ingest: IngestPolicy;
+  readonly feed: FeedPolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -1354,8 +1406,12 @@ const POLICY_V1: Policy = {
 
      v12 adds `track.ageTierMinutes`: how often a post is re-read now depends on its age, not
      only on a score that never changed after admission. Every TRACK row after this bump was
-     scheduled under a different rule from every row before it. */
-  version: 'policy.v12',
+     scheduled under a different rule from every row before it.
+
+     v13 adds `feed`: discovery searches for whatever is moving, with no keyword, behind an
+     approval floor that adapts to the budget. Every post arriving after this bump was found
+     by a different question from every post before it. */
+  version: 'policy.v13',
 
   admit: {
     maxAgeMin: 240,
@@ -1650,6 +1706,28 @@ const POLICY_V1: Policy = {
        we choose to spend money, which is a different quantity entirely. */
     sourceFreshnessMs: 1_800_000,
     failingAfterFailures: 3,
+  },
+
+  /* The earlier build's numbers, kept: a 30-minute window, floors starting at 100, never
+     adapting below 100 nor above 50,000, at least 30 after window scaling, +20% when a
+     lane overshoots its target, −20% under 60% of it, −40% when it returns nothing, and
+     about a quarter of reads to the media lane. */
+  feed: {
+    windowMin: 30,
+    fullWindowMin: 60,
+    startFloor: 100,
+    mediaStartFloor: 100,
+    floorMin: 100,
+    floorMax: 50_000,
+    effectiveFloorMin: 30,
+    raiseFactor: 1.2,
+    lowerFactor: 0.8,
+    lowBand: 0.6,
+    emptyFactor: 0.6,
+    budgetShare: 0.6,
+    mediaShare: 0.25,
+    lang: 'en',
+    pageLimit: 20,
   },
 
   rank: {

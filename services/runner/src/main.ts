@@ -160,13 +160,14 @@ async function main(): Promise<void> {
         discovery: cfg.discovery,
         policy: runtime.loopDeps.policy,
         meter: runtime.meter,
-        /* ★ THE ONE PLACE `SPEND` IS TURNED INTO BEHAVIOUR, and it reaches exactly the
-           loop that can contact a vendor. Handing it to the other seven would suggest
-           they have a paid path to switch off, which they do not — every one of them
-           reads rows we already hold. */
+        /* `SPEND` reaches the loops that can contact a vendor: this one, and — through
+           `storeWork` in wiring.ts — QUALIFY's judge and TRACK's re-read. The other stages
+           read rows we already hold and have no paid path to switch off. */
         mode: cfg.spend.kind,
         log,
         watch: runtime.watch,
+        floors: runtime.feedFloors,
+        dailyCapUsd: Math.min(cfg.spend.dailyBudgetUsd, runtime.loopDeps.policy.budget.dailyUsd),
       }),
       admitLoop(runtime.loopDeps),
       trackLoop(runtime.loopDeps),
