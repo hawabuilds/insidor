@@ -7,6 +7,7 @@
  *   GET  /quote?mint&side&amount&wallet&slippageBps
  *   POST /build   { quote, wallet }          → { transaction } only if the simulation passed
  *   POST /send    { transaction }            → { signature }
+ *   GET  /balance?mint&wallet                how much of the coin the wallet holds, for Sell
  *
  * ★ TRADING OFF MEANS NO TRADE PATH. When the switch, the allowlist or the RPC is missing, every
  * route above answers "trading is off" before reading anything else — not a quote, not a venue.
@@ -55,7 +56,11 @@ export interface TradeDeps {
     quote(r: { inputMint: string; outputMint: string; amount: bigint; slippageBps: number }): Promise<PoolQuote>;
     build(q: PoolQuote, user: string): Promise<Built>;
   };
-  readonly chain: { simulate(b64: string): Promise<Simulation>; send(b64: string): Promise<string> };
+  readonly chain: {
+    simulate(b64: string): Promise<Simulation>;
+    send(b64: string): Promise<string>;
+    tokenBalance(owner: string, mint: string): Promise<{ readonly amount: string; readonly decimals: number }>;
+  };
   readonly payerOf: (signedBase64: string) => string;
   readonly log: { info(msg: string, f?: Record<string, unknown>): void; error(msg: string, f?: Record<string, unknown>): void };
 }
@@ -154,6 +159,14 @@ export async function handle(method: string, rawUrl: string, body: string | null
         return json(200, { quote });
       }
       return json(409, { error: venue === 'none' ? "This coin can't be traded right now." : 'Prices could not be read just now.', venue });
+    }
+
+    if (method === 'GET' && parts.length === 1 && parts[0] === 'balance') {
+      const mint = url.searchParams.get('mint') ?? '';
+      const wallet = url.searchParams.get('wallet') ?? '';
+      if (!ADDRESS.test(mint) || !ADDRESS.test(wallet)) return json(400, { error: 'bad request' });
+      if (!deps.cfg.allowlist.has(wallet)) return refuse(403, 'not_allowed');
+      return json(200, await deps.chain.tokenBalance(wallet, mint));
     }
 
     if (method === 'POST' && parts.length === 1 && parts[0] === 'build') {

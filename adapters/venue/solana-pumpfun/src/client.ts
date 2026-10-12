@@ -42,8 +42,26 @@ const ASSET_LABEL = 'POST rpc getAsset';
 const ASSET_BATCH_LABEL = 'POST rpc getAssetBatch';
 const SIMULATE_LABEL = 'POST rpc simulateTransaction';
 const SEND_LABEL = 'POST rpc sendTransaction';
+const BALANCE_LABEL = 'POST rpc getTokenAccountsByOwner';
 /** A picture link longer than this is not one an honest issuer wrote. */
 const IMAGE_URI_MAX = 512;
+
+/**
+ * A wallet's token accounts for one coin → its balance. Several accounts are summed; none is a
+ * balance of zero — an ANSWER that the wallet holds none, which an outage (a throw) never is.
+ */
+export function readTokenBalance(raw: unknown): { readonly amount: string; readonly decimals: number } {
+  let total = 0n;
+  let decimals = 0;
+  for (const entry of arr(rec(rec(raw).result).value)) {
+    const amount = rec(rec(rec(rec(rec(rec(entry).account).data).parsed).info).tokenAmount);
+    const raw = str(amount.amount);
+    if (raw === null || !/^\d+$/.test(raw)) continue;
+    total += BigInt(raw);
+    decimals = num(amount.decimals) ?? decimals;
+  }
+  return { amount: total.toString(), decimals };
+}
 
 /** A simulation reply → would it land, and if not, why. Pure, so it is tested against a recorded reply. */
 export function readSimulation(raw: unknown): Simulation {
@@ -144,6 +162,8 @@ export interface ChainClient {
   simulate(transactionBase64: string): Promise<Simulation>;
   /** Send a transaction the person already signed. Returns its signature. */
   send(signedBase64: string): Promise<string>;
+  /** How much of a coin a wallet holds, in base units, with the coin's decimals. None held is zero. */
+  tokenBalance(owner: string, mint: string): Promise<{ readonly amount: string; readonly decimals: number }>;
 }
 
 export type Simulation =
@@ -220,6 +240,8 @@ export function chainClient(config: SolanaVenueClientConfig): ChainClient {
        accept this now", which is the question before a person is asked to sign. */
     simulate: async (transactionBase64) =>
       readSimulation(await rpc(config, 'simulateTransaction', [transactionBase64, { encoding: 'base64', sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed' }], SIMULATE_LABEL)),
+    tokenBalance: async (owner, mint) =>
+      readTokenBalance(await rpc(config, 'getTokenAccountsByOwner', [owner, { mint }, { encoding: 'jsonParsed', commitment: 'confirmed' }], BALANCE_LABEL)),
     send: async (signedBase64) => {
       const raw = await rpc(config, 'sendTransaction', [signedBase64, { encoding: 'base64', preflightCommitment: 'confirmed', maxRetries: 3 }], SEND_LABEL);
       const signature = str(rec(raw).result);

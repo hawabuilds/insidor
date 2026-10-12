@@ -61,6 +61,7 @@ function deps(over: { trading?: boolean; allowlist?: string[]; simulation?: unkn
         calls.push('send');
         return 'SIG';
       },
+      tokenBalance: async () => ({ amount: '248401937865', decimals: 6 }),
     },
     payerOf: (tx) => (tx === 'SIGNED_BY_ME' ? ME : STRANGER),
     log: { info: () => undefined, error: () => undefined },
@@ -167,4 +168,10 @@ test('sells are not capped: they return what the wallet already holds', async ()
   const { d } = deps();
   const r = await handle('GET', quoteUrl(CURVE_COIN, (capLamports(P) * 100n).toString(), ME, 'sell'), null, d);
   assert.equal(r.status, 200);
+});
+
+test('a balance is read only for an allowlisted wallet', async () => {
+  const { d } = deps();
+  assert.deepEqual(body(await handle('GET', `/balance?mint=${CURVE_COIN}&wallet=${ME}`, null, d)), { amount: '248401937865', decimals: 6 });
+  assert.equal(body(await handle('GET', `/balance?mint=${CURVE_COIN}&wallet=${STRANGER}`, null, d)).refusal, 'not_allowed');
 });
