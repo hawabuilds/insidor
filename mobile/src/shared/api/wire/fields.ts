@@ -57,6 +57,7 @@ export const STORY_FIELDS = [
   'spark',
   'momentum',
   'firstSeenAt',
+  'earliestPost',
   'coins',
   'evidence',
   'discussion',

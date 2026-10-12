@@ -81,6 +81,7 @@ import {
   type WireSourceHealth,
   type WireSpark,
   type WireSparkPoint,
+  type WireEarliestPost,
   type WireStory,
 } from './wire.ts';
 
@@ -139,7 +140,8 @@ export interface ReachReading {
 export type MemberRelation =
   | { readonly kind: 'seed' }
   | { readonly kind: 'carrier'; readonly carrier: FingerprintKind }
-  | { readonly kind: 'lineage'; readonly via: 'reproduction' | 'rebroadcast' }
+  /** `toItem`: the post the lineage pointer joins — the quoted post, or the post quoting it. */
+  | { readonly kind: 'lineage'; readonly via: 'reproduction' | 'rebroadcast'; readonly toItem: string | null }
   | { readonly kind: 'representation' }
   /** The same picture, edited — an image embedding so close it is the same image. */
   | { readonly kind: 'picture' }
@@ -468,6 +470,40 @@ export function projectFirstSeenAt(members: readonly MemberFacts[]): WireInstant
   }
   if (earliest !== null) return instant(earliest, 'unreadable');
   return instant(null, members.length === 0 ? 'not_read_yet' : 'not_reported');
+}
+
+/**
+ * ★ THE EARLIEST POST WE HOLD, AND — ONLY WHEN PROVEN — THAT IT STARTED THE STORY.
+ *
+ * The earliest member by posted time, with its author and link: "Earliest post found" is
+ * always a true sentence about what we found, whether or not anything earlier exists.
+ *
+ * `startedBy` is the stronger claim and is made only on proof:
+ *
+ *   quoted       a quote joins it to a later post in the story — it quotes nothing earlier
+ *                in the story, and the story's posts lead back to it
+ *   samePicture  it carries the same picture as the rest, edited at most
+ *
+ * Never from a shared name, a keyword or "the same subject": those say the posts are about
+ * one thing, not that this one came first. A dash with a reason when no member has a time.
+ */
+export function projectEarliestPost(members: readonly MemberFacts[]): WireEarliestPost {
+  let earliest: { readonly member: MemberFacts; readonly at: Millis } | null = null;
+  for (const member of members) {
+    if (member.postedAt === null) continue;
+    if (earliest === null || member.postedAt < earliest.at) earliest = { member, at: member.postedAt };
+  }
+  if (earliest === null) return { at: null, why: members.length === 0 ? 'not_read_yet' : 'not_reported' };
+  const first = earliest.member;
+  const quoted =
+    (first.relation.kind === 'lineage' && first.relation.via === 'reproduction') ||
+    members.some((m) => m !== first && m.relation.kind === 'lineage' && m.relation.via === 'reproduction' && m.relation.toItem === first.itemId);
+  return {
+    at: earliest.at,
+    authorLabel: first.authorLabel,
+    permalink: first.permalink,
+    startedBy: quoted ? 'quoted' : first.relation.kind === 'picture' ? 'samePicture' : null,
+  };
 }
 
 /* ── coins ────────────────────────────────────────────────────────────── */
@@ -1176,7 +1212,7 @@ export function projectPairFeed(
 export function relationText(relation: MemberRelation): string {
   switch (relation.kind) {
     case 'seed':
-      return 'The earliest post we found with this in it.';
+      return 'The first post we found with this in it.';
     case 'carrier':
       return carrierText(relation.carrier);
     case 'lineage':
@@ -1382,6 +1418,7 @@ export function projectStory(
     spark: projectSpark(readings, options.sparkWindowMs),
     momentum: projectMomentum(readings),
     firstSeenAt: projectFirstSeenAt(story.members),
+    earliestPost: projectEarliestPost(story.members),
     coins,
     evidence: projectEvidence(story.members),
     /* There is no discussion table. An empty list says "nobody has said anything here",

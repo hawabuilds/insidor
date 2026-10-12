@@ -20,8 +20,9 @@
  * "link unavailable" placeholder to write here, and adding one would be inventing a state.
  */
 
-import type { Evidence as EvidenceItem } from '../../shared/api/index.ts';
+import type { Evidence as EvidenceItem, Story } from '../../shared/api/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
+import { instant, pendingInstant } from '../../shared/format/measure.ts';
 import { Num, Thumb } from '../../shared/ui/index.ts';
 import styles from './story.module.css';
 
@@ -39,6 +40,33 @@ function SourceBadge({ label }: { label: string }) {
     <span className={styles['pbadge']} aria-hidden="true">
       {initial === '' ? '·' : initial}
     </span>
+  );
+}
+
+/**
+ * The earliest post in the story we found, above the list: "Earliest post found", or
+ * "Started by" only when the server sends the proof — later posts quote it, or it carries
+ * the same picture. A dash with its reason when no post carries a time.
+ */
+export function EarliestPost({ post, now }: { post: Story['earliestPost']; now: number }) {
+  if (!post.known) {
+    return (
+      <div className={styles['card']}>
+        <span className={styles['at']}>Earliest post found</span> <Num rendered={formatAge(pendingInstant(post.pending), now)} dim showWord />
+      </div>
+    );
+  }
+  const proof = post.startedBy === 'quoted' ? 'later posts quote it' : post.startedBy === 'samePicture' ? 'same picture' : null;
+  const who = post.permalink === null ? post.authorLabel : <a href={post.permalink} target="_blank" rel="noopener noreferrer">{post.authorLabel}</a>;
+  return (
+    <div className={styles['card']}>
+      <span className={styles['at']}>{proof === null ? 'Earliest post found' : 'Started by'}</span>{' '}
+      <span className={styles['who']}>{who}</span>{' '}
+      <span className={styles['when']}>
+        <Num rendered={formatAge(instant(post.at), now)} dim />
+      </span>
+      {proof === null ? null : <span className={styles['at']}> · {proof}</span>}
+    </div>
   );
 }
 

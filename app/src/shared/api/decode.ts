@@ -19,7 +19,7 @@
  * nobody fixes at the source.
  */
 
-import type { Instant, Measured, Delta, PendingReason } from '../format/measure.ts';
+import type { Instant, Measured, Delta, Millis, PendingReason } from '../format/measure.ts';
 import { instantFrom, measuredFrom } from '../format/measure.ts';
 import type {
   BoardProvenance,
@@ -34,7 +34,7 @@ import type { Coin, CoinLink, MarketCapBasis } from './wire/coin.ts';
 import type { FeedSource, Launch, LaunchFeed } from './wire/launch.ts';
 import type { Pair, PairFeed, PairHead, PairListing } from './wire/pair.ts';
 import type { SourceFeed, SourceHealth, SourceState } from './wire/source.ts';
-import type { DiscussionPost, Evidence, Story, StoryProvenance } from './wire/story.ts';
+import type { DiscussionPost, EarliestPost, Evidence, Story, StoryProvenance } from './wire/story.ts';
 import type { TradeCost, TradeQuote } from './wire/trade.ts';
 import {
   BOARD_ROW_FIELDS,
@@ -706,6 +706,27 @@ function decodeDiscussionPost(raw: unknown, path: string): DiscussionPost {
   };
 }
 
+/**
+ * The earliest post found. Absent — a server that does not send it yet — is pending with
+ * `not_read_yet`, never a post. An unrecognised `startedBy` reads as null: the claim is
+ * dropped rather than guessed, since "Started by" is the one sentence here that needs proof.
+ */
+function decodeEarliestPost(v: unknown, path: string): EarliestPost {
+  if (v === null || v === undefined) return { known: false, pending: 'not_read_yet' };
+  const o = obj(v, path);
+  const at = o['at'];
+  if (at === null || at === undefined) return { known: false, pending: reasonOf(o['why'] ?? 'not_read_yet') };
+  if (typeof at !== 'number') throw new WireShapeError(`${path}.at`, at);
+  const startedBy = o['startedBy'];
+  return {
+    known: true,
+    at: at as Millis,
+    authorLabel: str(o['authorLabel'], `${path}.authorLabel`),
+    permalink: optStr(o['permalink']),
+    startedBy: startedBy === 'quoted' || startedBy === 'samePicture' ? startedBy : null,
+  };
+}
+
 export function decodeStory(raw: unknown, path = '$.story'): Story {
   assertNoInternalVocabulary(raw, path);
   const o = pick(obj(raw, path), STORY_FIELDS);
@@ -719,6 +740,7 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     spark: decodeSpark(o.spark, `${path}.spark`),
     momentum: tone(o.momentum),
     firstSeenAt: instantAt(o.firstSeenAt, `${path}.firstSeenAt`, 'not_read_yet'),
+    earliestPost: decodeEarliestPost(o.earliestPost, `${path}.earliestPost`),
     coins: decodeCoinLink(o.coins, `${path}.coins`),
     evidence: arr(o.evidence, `${path}.evidence`).map((e, i) =>
       decodeEvidence(e, `${path}.evidence[${i}]`),

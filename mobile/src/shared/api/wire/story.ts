@@ -14,9 +14,25 @@
  * the wire changes, both copies change in the same commit.
  */
 
-import type { Instant, Measured, Delta } from '../../format/measure.ts';
+import type { Instant, Measured, Delta, Millis, PendingReason } from '../../format/measure.ts';
 import type { CoinLink } from './coin.ts';
 import type { Spark, Tone } from './board.ts';
+
+/**
+ * The earliest post in the story we found: when, by whom, and a link. `startedBy` is set
+ * only when it is proven — later posts in the story quote it ('quoted'), or it carries the
+ * same picture ('samePicture') — and "Started by" is said only then. `posted` is pending,
+ * with the server's reason, when no post in the story carries a time.
+ */
+export type EarliestPost =
+  | { readonly known: false; readonly pending: PendingReason }
+  | {
+      readonly known: true;
+      readonly at: Millis;
+      readonly authorLabel: string;
+      readonly permalink: string | null;
+      readonly startedBy: 'quoted' | 'samePicture' | null;
+    };
 
 /**
  * A post we counted as part of this story.
@@ -66,6 +82,8 @@ export interface Story {
   readonly spark: Spark;
   readonly momentum: Tone | null;
   readonly firstSeenAt: Instant;
+  /** The earliest post in the story we hold. See `EarliestPost`. */
+  readonly earliestPost: EarliestPost;
 
   readonly coins: CoinLink;
   readonly evidence: readonly Evidence[];
