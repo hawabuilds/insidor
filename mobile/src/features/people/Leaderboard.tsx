@@ -3,12 +3,10 @@
  * each person's own — earned from holders liking their comments — never a measure of a coin.
  */
 
-import { PEOPLE_SAMPLE, fetchLeaderboard } from '../../shared/api/people.ts';
+import { fetchLeaderboard } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
-import { PEOPLE_SAMPLE_NOTICE } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { BackIcon } from '../../shared/ui/icons.tsx';
-import { Notice } from '../../shared/ui/Notice.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import { RankBadge } from './RankBadge.tsx';
 import { RANK_NAME } from './rank.ts';
@@ -25,7 +23,6 @@ export function Leaderboard() {
       </button>
       <h1 className={styles['title']}>Leaderboard</h1>
       {loaded.state === 'ready' ? <p className={styles['note']}>Season {loaded.value.season.id}, ends {endsOn(loaded.value.season.endsAt)}. Rep comes from holders liking your comments.</p> : null}
-      {PEOPLE_SAMPLE ? <Notice notice={PEOPLE_SAMPLE_NOTICE} /> : null}
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {loaded.state === 'failed' ? <p className={styles['note']}>The leaderboard couldn't be read just now.</p> : null}
       {loaded.state === 'ready' && loaded.value.rows.length === 0 ? <p className={styles['note']}>Nobody has rep this season yet.</p> : null}

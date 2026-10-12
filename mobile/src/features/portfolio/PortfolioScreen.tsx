@@ -3,13 +3,12 @@
  * it is worth (Portfolio.tsx), Send and Receive, and the profile menu top right (ProfileMenu.tsx).
  *
  * ★ NOBODY SIGNS IN HERE. The front door is the only sign-in (shared/sign-in.ts gates the whole
- * app), so this tab is only ever reached signed in — or in the demo build. Signing out is in the
- * profile menu, and returns to the door.
+ * app), so this tab is only ever reached signed in. Signing out is in the profile menu, and
+ * returns to the door. A build with no sign-in shows "Sign in to see your portfolio" — never a
+ * stand-in wallet.
  *
  * Sign-in creates a Solana wallet for anyone who has none (the vendor holds it; we never see a
- * key, and there is no screen to import or export one). The tab only ever reads the signed-in
- * person's own wallet. A build with no sign-in shows a recorded public wallet, labelled as
- * sample data, as Trador's demo mode does; it is never presented as anyone's own.
+ * key). The tab reads the signed-in person's own wallet, or one they linked to view.
  *
  * ★ SEND ONLY WITH TRADING ON. Receive is always there (it is an address); Send appears only in a
  * build with TRADING on, never as a disabled button.
@@ -17,9 +16,9 @@
 
 import { useState, useSyncExternalStore } from 'react';
 
-import { SAMPLE_SCREENS, fetchPortfolio, fetchWalletHistory, loadSamplePortfolio, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
+import { fetchPortfolio, fetchWalletHistory, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
 import { useLoad } from '../../shared/hooks.ts';
-import { LINKED_WALLET, SAMPLE_WALLET } from '../../shared/notice.ts';
+import { LINKED_WALLET } from '../../shared/notice.ts';
 import { tradingOn } from '../../shared/trading.ts';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
@@ -36,17 +35,12 @@ import box from './wallet.module.css';
 /* Read once, at build time, like the trade bar: a deploy turns Send on, never a page. */
 const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as string | undefined });
 
-/** The address of the recorded sample wallet; shown only with the "Sample data" notice. */
-const SAMPLE_ADDRESS = '86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY';
-
-function Loaded({ who, load, history, canAct, sample = false, ownAddress, exportKey, profileKey = null, linked = [], switcher = null, leave }: {
+function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey = null, linked = [], switcher = null, leave }: {
   who: WhoAmI;
   load: (signal: AbortSignal) => Promise<PortfolioData>;
   history: (signal: AbortSignal, range: ChartRange) => Promise<readonly BalancePoint[]>;
   canAct: boolean;
   exportKey: (() => void) | null;
-  /** The demo's recorded wallet: labelled as sample data. */
-  sample?: boolean;
   /** The signed-in person's own wallet, for the menu's card, whichever wallet is shown. */
   ownAddress?: string;
   profileKey?: string | null;
@@ -97,11 +91,11 @@ function Loaded({ who, load, history, canAct, sample = false, ownAddress, export
         copied={copied}
         onCopy={() => void copy()}
         actions={actions}
-        notice={sample ? <div className={box['sampleNotice']}><Notice notice={SAMPLE_WALLET} /></div> : !canAct ? <div className={box['sampleNotice']}><Notice notice={LINKED_WALLET} /></div> : null}
+        notice={!canAct ? <div className={box['viewNotice']}><Notice notice={LINKED_WALLET} /></div> : null}
         menu={
           <ProfileMenu
             name={who.name ?? who.handle ?? 'Your wallet'}
-            subtitle={who.handle !== null ? `@${who.handle}` : canAct ? 'Signed in' : 'Sample data'}
+            subtitle={who.handle !== null ? `@${who.handle}` : 'Signed in'}
             address={ownAddress ?? who.address}
             onCopy={() => void copy()}
             exportKey={exportKey}
@@ -175,20 +169,25 @@ export function PortfolioScreen() {
     );
   }
 
-  /* Only the demo build gets here: the gate lets nobody else in signed out. */
-  const leaveDemo = {
-    label: 'Leave the demo',
-    run: () => {
-      forgetEntered();
-      window.location.reload();
-    },
-  };
-  if (SAMPLE_SCREENS) {
-    return <Loaded who={{ name: 'Sample wallet', handle: null, pictureUrl: null, address: SAMPLE_ADDRESS }} canAct={false} sample load={() => loadSamplePortfolio()} history={async () => []} exportKey={null} leave={leaveDemo} />;
-  }
+  /* Signed out. With sign-in set up the front door stands in front of this; in a build without
+     it, there is nothing to show — never a stand-in wallet. */
   return (
     <section className={box['screen']}>
-      <p className={box['note']}>This build has no sign-in, so there is no wallet to show.</p>
+      <div className={box['signedOut']}>
+        <b>Sign in to see your portfolio</b>
+        <p>Your holdings are read from the chain once you sign in with X.</p>
+        <button
+          type="button"
+          className={box['linkButton']}
+          onClick={() => {
+            forgetEntered();
+            window.location.hash = '#/';
+            window.location.reload();
+          }}
+        >
+          Sign in
+        </button>
+      </div>
     </section>
   );
 }

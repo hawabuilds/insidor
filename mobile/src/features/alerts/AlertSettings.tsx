@@ -10,12 +10,10 @@
 
 import { useEffect, useState } from 'react';
 
-import { PEOPLE_SAMPLE, fetchAlertSettings, saveAlertPrefs, sendTestPush, type AlertPrefs, type AlertSettings as Settings, type AlertSwitch } from '../../shared/api/people.ts';
+import { fetchAlertSettings, saveAlertPrefs, sendTestPush, type AlertPrefs, type AlertSettings as Settings, type AlertSwitch } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
-import { PEOPLE_SAMPLE_NOTICE } from '../../shared/notice.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon } from '../../shared/ui/icons.tsx';
-import { Notice } from '../../shared/ui/Notice.tsx';
 import { currentPush, disablePush, enablePush, pushPlace } from './push.ts';
 import styles from './alerts.module.css';
 
@@ -46,7 +44,6 @@ export function AlertSettings() {
         <BackIcon size={22} />
       </button>
       <h1 className={styles['title']}>Alert settings</h1>
-      {PEOPLE_SAMPLE ? <Notice notice={PEOPLE_SAMPLE_NOTICE} /> : null}
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {loaded.state === 'failed' ? <p className={styles['note']}>Your settings couldn't be read just now.</p> : null}
       {loaded.state === 'ready' ? <Body initial={loaded.value} /> : null}
@@ -108,7 +105,7 @@ function Body({ initial }: { initial: Settings }) {
         </div>
       ) : null}
       {place === 'unsupported' ? <p className={styles['note']}>This browser can't show push notifications. Alerts still land in your list.</p> : null}
-      {!serverPush ? <p className={styles['note']}>{PEOPLE_SAMPLE ? 'Sample data: no alert service is connected, so nothing is pushed.' : 'Alerts are listed here, but this server is not sending pushes yet.'}</p> : null}
+      {!serverPush ? <p className={styles['note']}>Alerts are listed here, but this server is not sending pushes yet.</p> : null}
 
       {place === 'ready' && serverPush ? (
         <div className={styles['set']}>

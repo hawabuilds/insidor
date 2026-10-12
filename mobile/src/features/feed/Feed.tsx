@@ -7,9 +7,10 @@
  * read from `GET /board/default` (`feed-tabs.ts`). The site pills and the filter panel narrow
  * whichever list is showing (`feed-filters.ts`).
  *
- * ★ THE "Sample data" BAR IS NOT THIS SCREEN'S TO TURN OFF. It shows while the build is on
- * fixtures, or while the board's provenance says its stories were seeded or does not say, and
- * it goes away by itself when the read service commits an observed board (`shared/notice.ts`).
+ * ★ THE "Sample data" BAR IS NOT THIS SCREEN'S TO TURN OFF. It shows only while the server's own
+ * provenance says the board's stories were written by hand or does not say, and it goes away by
+ * itself when the read service commits an observed board (`shared/notice.ts`). The app has no
+ * sample data of its own.
  *
  * ★ EVERY EMPTY LIST SAYS WHICH KIND OF EMPTY IT IS. Could not read the board, the board is
  * empty, nothing is starred, the filters matched nothing, or rows were left out because a
@@ -18,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BOARD_VIEW, USING_FIXTURES, fetchBoard, fetchRising, type BoardRow, type RisingPost } from '../../shared/api/index.ts';
+import { BOARD_VIEW, fetchBoard, fetchRising, type BoardRow, type RisingPost } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { FILTER_PLATFORMS } from '../../shared/platform.ts';
@@ -43,7 +44,7 @@ const TABS = [
   { key: 'popular', label: 'Popular' },
 ] as const;
 
-export function Feed({ onCreate }: { onCreate: (row: BoardRow, sample: boolean) => void }) {
+export function Feed({ onCreate }: { onCreate: (row: BoardRow, labelled: boolean) => void }) {
   const [tab, setTab] = useState<FeedTab>('fyp');
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [panel, setPanel] = useState(false);
@@ -79,7 +80,7 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow, sample: boolean) 
   const shownUncounted = applyFilters(view.uncounted, leads, filters, now);
   const hidden = shown.unknown + shownUncounted.unknown;
 
-  const notice = boardNotice(USING_FIXTURES, tick?.provenance ?? null);
+  const notice = boardNotice(tick?.provenance ?? null);
   const feed = tab === 'popular' ? popular : fyp;
   const posts = feed.state === 'ready' ? applyPostFilters(feed.value.posts, filters, now) : null;
   const post = (p: RisingPost) => (
@@ -89,7 +90,7 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow, sample: boolean) 
       now={now}
       handlers={{
         open: () => {
-          if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId, sample: false });
+          if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId });
           else if (p.permalink !== null) window.open(p.permalink, '_blank', 'noopener');
         },
         buy: (ticker) => soon(`Buying $${ticker}`),
@@ -108,8 +109,8 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow, sample: boolean) 
         platform={lead?.platform ?? null}
         platformLabel={lead?.sourceLabel ?? ''}
         handlers={{
-          open: () => (window.location.hash = hrefFor({ screen: 'story', storyId: r.id, sample: false })),
-          viewCoins: () => (window.location.hash = hrefFor({ screen: 'story', storyId: r.id, sample: false })),
+          open: () => (window.location.hash = hrefFor({ screen: 'story', storyId: r.id })),
+          viewCoins: () => (window.location.hash = hrefFor({ screen: 'story', storyId: r.id })),
           create: () => onCreate(r, notice !== null),
           buy: (ticker) => soon(`Buying $${ticker}`),
         }}
@@ -182,7 +183,7 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow, sample: boolean) 
           {feed.state === 'ready' && posts !== null ? (
             <>
               {posts.rows.map(post)}
-              {feed.value.posts.length === 0 ? <p className={styles['empty']}>No post has cleared the bar in the last day yet.</p> : null}
+              {feed.value.posts.length === 0 ? <p className={styles['empty']}>No posts yet.</p> : null}
               {feed.value.posts.length > 0 && posts.rows.length === 0 && posts.unknown === 0 ? (
                 <p className={styles['empty']}>No posts match these filters.</p>
               ) : null}
@@ -240,7 +241,7 @@ function EmptyLine(p: {
   filtered: boolean;
   starredOffBoard: number;
 }) {
-  if (p.boardEmpty) return <p className={styles['empty']}>Nothing is on the board right now.</p>;
+  if (p.boardEmpty) return <p className={styles['empty']}>No narratives yet.</p>;
   const off = p.starredOffBoard;
   const offLine = off > 0 ? ` ${off === 1 ? '1 starred story is' : `${off} starred stories are`} not on the board right now.` : '';
   if (p.tab === 'watchlist' && p.nothingShown && !p.filtered) {

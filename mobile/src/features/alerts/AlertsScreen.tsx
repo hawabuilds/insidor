@@ -9,13 +9,11 @@
 
 import { useEffect, useRef } from 'react';
 
-import { PEOPLE_SAMPLE, fetchAlerts, markAlertsSeen, type Alert, type RankId } from '../../shared/api/people.ts';
+import { fetchAlerts, markAlertsSeen, type Alert, type RankId } from '../../shared/api/people.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
-import { PEOPLE_SAMPLE_NOTICE } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { BellIcon, GearIcon } from '../../shared/ui/icons.tsx';
-import { Notice } from '../../shared/ui/Notice.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { RankBadge } from '../people/RankBadge.tsx';
 import { grouped } from './group.ts';
@@ -47,10 +45,9 @@ export function AlertsScreen({ onSeen }: { onSeen: () => void }) {
           <GearIcon size={20} />
         </a>
       </header>
-      {PEOPLE_SAMPLE ? <Notice notice={PEOPLE_SAMPLE_NOTICE} /> : null}
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {loaded.state === 'failed' ? <p className={styles['note']}>Your alerts couldn't be read just now.</p> : null}
-      {loaded.state === 'ready' && loaded.value.alerts.length === 0 ? <p className={styles['note']}>Alerts about your coins, the narratives you watch and replies to you land here.</p> : null}
+      {loaded.state === 'ready' && loaded.value.alerts.length === 0 ? <p className={styles['note']}>No alerts yet. Alerts about your coins, the narratives you watch and replies to you land here.</p> : null}
       {loaded.state === 'ready'
         ? grouped(loaded.value.alerts, now).map((g) => (
             <div key={g.section}>

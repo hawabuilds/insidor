@@ -6,10 +6,9 @@
  * token the wallet port hands out (`setTokenSource`, set once by App). The services read the
  * person — handle, wallet — from that signed token; nothing about the person is sent as data.
  *
- * ★ NO SERVICE, SAMPLE DATA — LABELLED. With no VITE_SOCIAL_URL / VITE_NOTIFY_URL in a build that
- * may show samples, every call answers from `people-fixtures.ts` and `PEOPLE_SAMPLE` is true, so
- * each screen shows the "Sample data" notice. A production build with no service says the
- * service is not set up; it never shows a made-up person.
+ * ★ NO SAMPLE PEOPLE. Every call goes to the services — at VITE_SOCIAL_URL / VITE_NOTIFY_URL, or
+ * the same-origin `/api/social` and `/api/notify` the dev server and the deploy forward. A
+ * failure says it failed; an empty answer is an honest empty state. Never a made-up person.
  *
  * ★ PEOPLE'S WORDS ARE NOT CHECKED FOR OUR VOCABULARY, ONLY THE KEYS ARE. A comment may say
  * anything a person types; what must never appear is a field of ours that scores something.
@@ -21,12 +20,8 @@ import { FORBIDDEN_KEYS } from './wire/fields.ts';
 export type { Alert, AlertPrefs, AlertSettings, AlertSwitch, Comment, CommentThread, LeaderRow, PersonRef, ProfileCard, RankId } from './wire/people.ts';
 import type { Alert, AlertPrefs, AlertSettings, Comment, CommentThread, LeaderRow, PersonRef, ProfileCard } from './wire/people.ts';
 
-const SOCIAL = (import.meta.env?.['VITE_SOCIAL_URL'] as string | undefined) ?? '';
-const NOTIFY = (import.meta.env?.['VITE_NOTIFY_URL'] as string | undefined) ?? '';
-const SAMPLES_ALLOWED = import.meta.env?.DEV === true || import.meta.env?.VITE_SAMPLE_DATA === 'on';
-
-/** True when people and alerts are sample data; every screen showing them must say so. */
-export const PEOPLE_SAMPLE = SAMPLES_ALLOWED && (SOCIAL === '' || NOTIFY === '');
+const SOCIAL = (import.meta.env?.['VITE_SOCIAL_URL'] as string | undefined) || '/api/social';
+const NOTIFY = (import.meta.env?.['VITE_NOTIFY_URL'] as string | undefined) || '/api/notify';
 
 let tokenSource: () => string | null = () => null;
 /** Called once by App with the wallet port's `sessionToken`. */
@@ -55,11 +50,6 @@ function checkKeys(raw: unknown, path = '$'): void {
 
 async function call(service: 'social' | 'notify', method: string, path: string, body?: unknown): Promise<unknown> {
   const base = service === 'social' ? SOCIAL : NOTIFY;
-  if (PEOPLE_SAMPLE) {
-    const { sampleAnswer } = await import('./people-fixtures.ts');
-    return sampleAnswer(service, method, path, body);
-  }
-  if (base === '') throw new PeopleError(503, 'This part of Insidor is not set up in this build.');
   const response = await peopleRequest(`${base}${path}`, method, tokenSource(), body);
   const parsed = response.json;
   if (!response.ok) throw new PeopleError(response.status, typeof (parsed as { error?: unknown }).error === 'string' ? (parsed as { error: string }).error : 'That did not work. Try again.');

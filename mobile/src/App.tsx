@@ -26,7 +26,7 @@ import { ProfileScreen } from './features/people/ProfileScreen.tsx';
 import { RankUp } from './features/people/RankUp.tsx';
 import { ImportScreen } from './features/portfolio/ImportScreen.tsx';
 import { WalletsScreen } from './features/portfolio/WalletsScreen.tsx';
-import { PEOPLE_SAMPLE, fetchAlerts, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
+import { fetchAlerts, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
 import { useWatchlist } from './shared/hooks.ts';
 import { InstallPrompt } from './features/install/InstallPrompt.tsx';
 import { NarrativePage } from './features/narrative/NarrativePage.tsx';
@@ -49,18 +49,17 @@ import { TabBar } from './shared/ui/TabBar.tsx';
 function Screen({ route, create, onAlertsSeen }: { route: Route; create: (from: CreateFrom) => void; onAlertsSeen: () => void }) {
   switch (route.screen) {
     case 'feed':
-      return <Feed onCreate={(row, sample) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, sample, storyId: row.id })} />;
+      return <Feed onCreate={(row, labelled) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, labelled, storyId: row.id })} />;
     case 'narratives':
-      return <Narratives onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, sample: true, storyId: s.id })} />;
+      return <Narratives onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, labelled: noticeFor(s) !== null, storyId: s.id })} />;
     case 'coin':
-      return <TokenPage key={`${route.sample}:${route.storyId}:${route.coinId}`} storyId={route.storyId} coinId={route.coinId} sample={route.sample} />;
+      return <TokenPage key={`${route.storyId}:${route.coinId}`} storyId={route.storyId} coinId={route.coinId} />;
     case 'story':
       return (
         <NarrativePage
-          key={`${route.sample}:${route.storyId}`}
+          key={route.storyId}
           storyId={route.storyId}
-          sample={route.sample}
-          onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, sample: route.sample || noticeFor(s, false) !== null, storyId: s.id })}
+          onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, labelled: noticeFor(s) !== null, storyId: s.id })}
         />
       );
     case 'portfolio':
@@ -115,12 +114,12 @@ export function App() {
   useEffect(() => setTokenSource(() => wallet?.sessionToken() ?? null), [wallet]);
   /* Signed in: the profile is brought up to date from the sign-in, once per session. */
   useEffect(() => {
-    if (signedIn && !PEOPLE_SAMPLE) void syncMe().catch(() => undefined);
+    if (signedIn) void syncMe().catch(() => undefined);
   }, [signedIn]);
   /* The narratives starred here are mirrored for alerts sent while the app is closed. */
   const watchedKey = watched.join(',');
   useEffect(() => {
-    if (signedIn && !PEOPLE_SAMPLE) void syncWatch(watchedKey === '' ? [] : watchedKey.split(',')).catch(() => undefined);
+    if (signedIn) void syncWatch(watchedKey === '' ? [] : watchedKey.split(',')).catch(() => undefined);
   }, [signedIn, watchedKey]);
   /* The bell's count, read every minute while the app is open. */
   const readUnread = useCallback(() => {

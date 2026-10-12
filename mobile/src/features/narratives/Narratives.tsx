@@ -2,15 +2,15 @@
  * NARRATIVES — viral posts grouped by the story they are about.
  *
  * The board's stories as whole pages (`GET /narratives/default`), in the board's order, under
- * the same notice the feed shows: nothing for observed stories, "Sample data" for dev fixtures
- * or stories written by hand. Each row opens the story's real page.
+ * the same notice the feed shows: nothing for observed stories, a label for any story the server
+ * says was written by hand. Each row opens the story's real page.
  *
  * Rows are the feed's row with the posts count in place of a handle, and no platform badge on
  * the picture — a narrative spans several sites, and one badge would name one of them.
  */
 
 import { useState } from 'react';
-import { BOARD_VIEW, USING_FIXTURES, fetchNarratives, type Story } from '../../shared/api/index.ts';
+import { BOARD_VIEW, fetchNarratives, type Story } from '../../shared/api/index.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -26,7 +26,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const [list] = useLoad('narratives', (signal) => fetchNarratives(BOARD_VIEW, signal));
   const now = useNow();
   const soon = useComingSoon();
-  const open = (s: Story) => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id, sample: false }));
+  const open = (s: Story) => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id }));
 
   return (
     <section className={styles['screen']}>
@@ -55,11 +55,11 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
         </div>
       </div>
 
-      <Notice notice={list.state === 'ready' ? boardNotice(USING_FIXTURES, list.value.provenance) : null} />
+      <Notice notice={list.state === 'ready' ? boardNotice(list.value.provenance) : null} />
 
       {list.state === 'loading' ? <p className={styles['empty']}>Loading.</p> : null}
       {list.state === 'failed' ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
-      {list.state === 'ready' && list.value.stories.length === 0 ? <p className={styles['empty']}>No narratives yet. They appear here as soon as one forms.</p> : null}
+      {list.state === 'ready' && list.value.stories.length === 0 ? <p className={styles['empty']}>No narratives yet.</p> : null}
       {list.state === 'ready'
         ? orderNarratives(list.value.stories, order).map((s) => (
             <StoryRow

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decodeBoardTick, decodeStory } from '../../shared/api/decode.ts';
-import { fixtureBoard, fixtureStory } from '../../shared/api/fixtures.ts';
+import { fixtureBoard, fixtureStory } from '../../test-fixtures/fixtures.ts';
 import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyFilters } from './feed-filters.ts';
 import { rowsInOrder, tabView } from './feed-tabs.ts';
 import { leadPost, type LeadPost } from './lead-post.ts';

@@ -1,7 +1,6 @@
 /**
  * The social and alert services' replies, as the phone app holds them (services/social,
- * services/notify). Shared by the client (people.ts) and the sample data (people-fixtures.ts),
- * which is why they live apart from both.
+ * services/notify), apart from the client so tests can build them without it.
  */
 
 export type RankId = 'intern' | 'analyst' | 'quant' | 'wolf' | 'goat';

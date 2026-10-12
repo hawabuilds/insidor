@@ -18,9 +18,6 @@
  *   referrals, public page not ported: Insidor has neither
  *   sign out               kept, in red; it returns to the front door (shared/sign-in.ts)
  *
- * In the demo build (no sign-in) the header says "Sample wallet" and the last row leaves the demo
- * for the front door instead of signing out of an account nobody signed in to.
- *
  * What breaks if changed carelessly: the outside-tap listener is on `pointerdown`, not `click`,
  * so the tap that closes the menu is not also a tap on whatever is under it.
  */
@@ -36,11 +33,11 @@ const shortAddress = (a: string): string => (a.length <= 12 ? a : `${a.slice(0, 
 
 export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profileKey, linked, leave }: {
   name: string;
-  /** "@handle", "Signed in", or "Sample data". */
+  /** "@handle", or "Signed in". */
   subtitle: string;
   address: string;
   onCopy: () => void;
-  /** Opens the provider's key export window; null where there is no wallet of one's own (the demo), which also titles the card as a sample. */
+  /** Opens the provider's key export window; null where there is none to open. */
   exportKey: (() => void) | null;
   /** This person's profile (handle or id); null in the demo. */
   profileKey: string | null;
@@ -82,20 +79,10 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profil
           </div>
 
           <div className={styles['card']}>
-            {/* The demo's wallet is a stranger's, recorded: never called yours, never Active. */}
-            {exportKey !== null ? (
-              <>
-                <div className={styles['cardTitle']}>
-                  Your Insidor wallet <span className={styles['active']}>Active</span>
-                </div>
-                <p>Holds what you buy here, and is what your portfolio counts.</p>
-              </>
-            ) : (
-              <>
-                <div className={styles['cardTitle']}>Sample wallet</div>
-                <p>A public wallet, recorded to show this screen. Not yours, and nothing here trades from it.</p>
-              </>
-            )}
+            <div className={styles['cardTitle']}>
+              Your Insidor wallet <span className={styles['active']}>Active</span>
+            </div>
+            <p>Holds what you buy here, and is what your portfolio counts.</p>
             <div className={styles['address']}>
               <span>{shortAddress(address)}</span>
               <button type="button" aria-label="Copy wallet address" onClick={onCopy}><CopyIcon size={14} /></button>

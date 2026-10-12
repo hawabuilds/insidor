@@ -16,8 +16,6 @@ export type { OriginGap, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative,
 export {
   BOARD_VIEW,
   ReadError,
-  SAMPLE_SCREENS,
-  USING_FIXTURES,
   fetchBoard,
   fetchCoinMarket,
   fetchNarratives,
@@ -32,7 +30,6 @@ export {
   buildTransfer,
   fetchPortfolio,
   fetchWalletHistory,
-  loadSamplePortfolio,
   fetchHolding,
   fetchSearch,
   fetchTradeQuote,
@@ -40,8 +37,6 @@ export {
   sendSigned,
   fetchSearchedCoin,
   fetchStory,
-  loadSampleMarket,
-  loadSampleStory,
   submitTrade,
 } from './client.ts';
 

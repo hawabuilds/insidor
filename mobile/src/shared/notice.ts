@@ -14,9 +14,8 @@
  * WHAT BREAKS IF THIS IS CHANGED CARELESSLY:
  *   - `unstated` must keep producing a notice. Folding it into the silent branch means a
  *     server that stopped sending the field re-certifies invented rows as real.
- *   - Fixture mode must keep producing one whatever the fixture's own provenance says. The
- *     fixtures claim `observed` so the screens show their working shape, and this notice is
- *     the only thing on screen saying none of it is real.
+ *   - The app has no sample data of its own (src/no-sample-data.test.ts). A notice here only
+ *     ever repeats what the server said about its own rows.
  */
 
 import type { BoardProvenance, StoryProvenance } from './api/index.ts';
@@ -26,19 +25,13 @@ export interface Notice {
   readonly detail: string;
 }
 
-const FIXTURES: Notice = {
-  headline: 'Sample data',
-  detail: 'No read service is connected, so every story, view count and price here is made up.',
-};
-
 const UNSTATED: Notice = {
   headline: 'Not confirmed as real',
   detail: 'This did not say whether its stories were seen or made up, so treat everything here as unverified.',
 };
 
 /** The feed. `provenance` is null until the first frame lands — no frame, nothing to say yet. */
-export function boardNotice(usingFixtures: boolean, provenance: BoardProvenance | null): Notice | null {
-  if (usingFixtures) return FIXTURES;
+export function boardNotice(provenance: BoardProvenance | null): Notice | null {
   if (provenance === null || provenance.kind === 'observed') return null;
   if (provenance.kind === 'unstated') return UNSTATED;
   const { seededStories, totalStories, connectSourceLabel } = provenance;
@@ -54,8 +47,7 @@ export function boardNotice(usingFixtures: boolean, provenance: BoardProvenance 
 }
 
 /** A story page. It carries its own provenance because a story link can be opened cold. */
-export function storyNotice(usingFixtures: boolean, provenance: StoryProvenance): Notice | null {
-  if (usingFixtures) return FIXTURES;
+export function storyNotice(provenance: StoryProvenance): Notice | null {
   if (provenance.kind === 'observed') return null;
   if (provenance.kind === 'unstated') return UNSTATED;
   return {
@@ -64,23 +56,8 @@ export function storyNotice(usingFixtures: boolean, provenance: StoryProvenance)
   };
 }
 
-/** A screen with no read route behind it yet. Permanent: there is nothing that could be real. */
-export const SAMPLE_SCREEN: Notice = {
-  headline: 'Sample data',
-  detail: 'Narratives are not connected to the read service yet. Everything on this screen is made up.',
-};
 
-/** The Portfolio tab in a build with no sign-in: a real public wallet, recorded, standing in. */
-export const SAMPLE_WALLET: Notice = {
-  headline: 'Sample data',
-  detail: 'This is not your wallet. It is a public wallet recorded on 12 October 2026, shown so the screen can be seen without signing in.',
-};
 
-/** People and alerts with no service connected: sample people, made up, none of them real. */
-export const PEOPLE_SAMPLE_NOTICE: Notice = {
-  headline: 'Sample data',
-  detail: 'The social and alert services are not connected, so these people, comments, ranks and alerts are made up.',
-};
 
 /** A wallet joined for viewing: real, read from the chain, and not one Insidor trades from. */
 export const LINKED_WALLET: Notice = {

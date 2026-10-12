@@ -44,13 +44,13 @@ export interface CreateFrom {
   readonly title: string;
   readonly reach: Measured;
   readonly thumbUrl: string | null;
-  /** True when the story behind it is sample data; the modal then carries the notice too. */
-  readonly sample: boolean;
+  /** True when the server labels the story behind it as written by hand; the modal carries that label too. */
+  readonly labelled: boolean;
 }
 
-const SAMPLE_STORY: NoticeCopy = {
-  headline: 'Sample data',
-  detail: 'The story behind this is made up.',
+const HAND_WRITTEN: NoticeCopy = {
+  headline: 'Written by hand',
+  detail: 'The server says the story behind this was written by hand, not seen anywhere.',
 };
 
 /** A figure nobody has read yet: a dash and the words, never a placeholder number. */
@@ -61,8 +61,8 @@ function Unknown() {
 const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as string | undefined });
 
 export function CreateCoin({ from, onClose }: { from: CreateFrom; onClose: () => void }) {
-  /* A sample narrative is never launched from, trading on or not. */
-  return TRADING && !from.sample ? <LiveCreate from={from} onClose={onClose} /> : <SoonCreate from={from} onClose={onClose} />;
+  /* A story the server labels as written by hand is never launched from, trading on or not. */
+  return TRADING && !from.labelled ? <LiveCreate from={from} onClose={onClose} /> : <SoonCreate from={from} onClose={onClose} />;
 }
 
 function SoonCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }) {
@@ -78,7 +78,7 @@ function SoonCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
       subtitle={`From ${from.title}${views.kind === 'value' ? `, ${views.text} views` : ''}`}
       onClose={onClose}
     >
-      {from.sample ? <div className={styles['notice']}><Notice notice={SAMPLE_STORY} /></div> : null}
+      {from.labelled ? <div className={styles['notice']}><Notice notice={HAND_WRITTEN} /></div> : null}
 
       <div className={styles['identity']}>
         <div className={styles['picture']}>

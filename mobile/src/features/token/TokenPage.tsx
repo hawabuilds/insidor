@@ -9,12 +9,11 @@
  * A source that failed is said to have failed; a coin with no trades yet says that instead.
  *
  * ★ BUY AND SELL OPEN THE ORDER SHEET ONLY WHEN TRADING IS ON (features/trade). Off, they say
- * "Coming soon", and appear only for a coin the server says can be quoted (`tradable`). A sample
- * coin is never traded. `submitTrade` is never called from here.
+ * "Coming soon", and appear only for a coin the server says can be quoted (`tradable`).  `submitTrade` is never called from here.
  */
 
 import { useEffect, useState } from 'react';
-import { fetchCoinMarket, loadSampleMarket, type Coin, type CoinMarket, type MarketTimeframe, type MarketTrade, type Story } from '../../shared/api/index.ts';
+import { fetchCoinMarket, type Coin, type CoinMarket, type MarketTimeframe, type MarketTrade, type Story } from '../../shared/api/index.ts';
 import { coinLabels } from '../../shared/coin-facts.ts';
 import { settledCoins } from '../../shared/coin-status.ts';
 import { formatAge, formatDuration } from '../../shared/format/duration.ts';
@@ -39,8 +38,8 @@ import styles from './token.module.css';
 
 type Section = 'trades' | 'comments' | 'info';
 
-export function TokenPage({ storyId, coinId, sample }: { storyId: string; coinId: string; sample: boolean }) {
-  const [story] = useLoad(`${sample}:${storyId}`, (signal) => loadStory(storyId, sample, signal));
+export function TokenPage({ storyId, coinId }: { storyId: string; coinId: string }) {
+  const [story] = useLoad(storyId, (signal) => loadStory(storyId, signal));
   const coin = story.state === 'ready' ? settledCoins(story.value.coins).find((c) => c.coinId === coinId) : undefined;
   return (
     <section className={styles['page']}>
@@ -54,26 +53,24 @@ export function TokenPage({ storyId, coinId, sample }: { storyId: string; coinId
       {story.state === 'ready' && coin === undefined ? (
         <p className={styles['note']}>This coin is not one this narrative has settled on.</p>
       ) : null}
-      {story.state === 'ready' && coin !== undefined ? <Body story={story.value} coin={coin} sample={sample} /> : null}
+      {story.state === 'ready' && coin !== undefined ? <Body story={story.value} coin={coin} /> : null}
     </section>
   );
 }
 
-/** "SAMPLEj…pump": enough of each end to compare by eye, never presented as a label. */
+/** "7xKXtg2C…pump": enough of each end to compare by eye, never presented as a label. */
 export function shortAddress(a: string): string {
   return a.length <= 14 ? a : `${a.slice(0, 8)}…${a.slice(-4)}`;
 }
 
-function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boolean }) {
+function Body({ story, coin }: { story: Story; coin: Coin }) {
   const now = useNow();
   const soon = useComingSoon();
   const toast = useToast();
   const [tf, setTf] = useState<MarketTimeframe>(() => defaultTimeframe({ onCurve: false, launchedAt: coin.mintedAt.known ? coin.mintedAt.at : null, now: Date.now() }));
   const [section, setSection] = useState<Section>('trades');
   /* The market: read now, then again every MARKET_POLL_MS while the page is open. */
-  const [loaded, reload] = useLoad(`market:${sample}:${coin.coinId}:${tf}`, (signal) =>
-    sample ? loadSampleMarket(coin.coinId, tf) : fetchCoinMarket(coin.coinId, tf, signal),
-  );
+  const [loaded, reload] = useLoad(`market:${coin.coinId}:${tf}`, (signal) => fetchCoinMarket(coin.coinId, tf, signal));
   useEffect(() => {
     const timer = setInterval(reload, MARKET_POLL_MS);
     return () => clearInterval(timer);
@@ -96,7 +93,7 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
 
   return (
     <>
-      <a className={styles['from']} href={hrefFor({ screen: 'story', storyId: story.id, sample })}>
+      <a className={styles['from']} href={hrefFor({ screen: 'story', storyId: story.id })}>
         <span className={styles['fromHead']}>
           <span className={styles['kicker']}>From narrative</span>
           <ChevronIcon size={16} />
@@ -128,7 +125,7 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
         </div>
       </div>
 
-      <Origin origin={coin.origin} sample={sample} now={now} />
+      <Origin origin={coin.origin} now={now} />
 
       <div className={styles['chips']}>
         <span className={styles['chip']}>SOL</span>
@@ -150,7 +147,7 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
         </div>
       ) : null}
 
-      <Notice notice={noticeFor(story, sample)} />
+      <Notice notice={noticeFor(story)} />
 
       <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={coin.priceUsd} change24h={coin.priceChange24h} cap={coin.marketCapUsd} liquidity={coin.liquidityUsd} />
 
@@ -168,8 +165,8 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
       {section === 'comments' ? <Comments subject={`coin:${coin.coinId}`} holdersOf={`$${coin.ticker}`} /> : null}
       {section === 'info' ? <Info coin={coin} now={now} /> : null}
 
-      {/* A sample coin is never traded; a real one is, once trading is on and it has somewhere to trade. */}
-      {sample ? <ComingSoonBar coin={coin} soon={soon} /> : <TradeBar mint={coin.address} ticker={coin.ticker} off={<ComingSoonBar coin={coin} soon={soon} />} />}
+      {/* Traded once trading is on and the coin has somewhere to trade; until then, Coming soon. */}
+      <TradeBar mint={coin.address} ticker={coin.ticker} off={<ComingSoonBar coin={coin} soon={soon} />} />
     </>
   );
 }
@@ -197,7 +194,7 @@ export function tradesNote(state: 'loading' | 'ready' | 'failed', market: CoinMa
 
 /**
  * The latest trades, Trador's tape rebuilt in our style: side and age, amount, value, and the
- * transaction, which opens on a block explorer. A sample trade has no transaction, so no link.
+ * transaction, which opens on a block explorer. A trade the source gave no transaction for has no link.
  */
 export function Trades({ ticker, trades, now }: { ticker: string; trades: readonly MarketTrade[]; now: number }) {
   return (
@@ -268,7 +265,7 @@ const ORIGIN_LABEL: Record<Exclude<Coin['origin']['kind'], 'unknown'>, string> =
  * or, for a post that went viral after launch, how long after. Not checked, or nothing
  * confident, is a dash with its reason; never "no origin".
  */
-function Origin({ origin, sample, now }: { origin: Coin['origin']; sample: boolean; now: number }) {
+function Origin({ origin, now }: { origin: Coin['origin']; now: number }) {
   if (origin.kind === 'unknown') {
     return (
       <div className={styles['from']}>
@@ -283,7 +280,7 @@ function Origin({ origin, sample, now }: { origin: Coin['origin']; sample: boole
     <>
       <span className={styles['fromHead']}>
         <span className={styles['kicker']}>{ORIGIN_LABEL[origin.kind]}</span>
-        {origin.post.permalink !== null && !sample ? <ChevronIcon size={16} /> : null}
+        {origin.post.permalink !== null ? <ChevronIcon size={16} /> : null}
       </span>
       <span className={styles['fromTitle']}>
         <b>{origin.post.authorLabel}</b>
@@ -291,8 +288,7 @@ function Origin({ origin, sample, now }: { origin: Coin['origin']; sample: boole
       </span>
     </>
   );
-  /* A sample post has no real page to link to, so it is not a link. */
-  return origin.post.permalink !== null && !sample ? (
+  return origin.post.permalink !== null ? (
     <a className={styles['from']} href={origin.post.permalink} target="_blank" rel="noopener noreferrer">{body}</a>
   ) : (
     <div className={styles['from']}>{body}</div>

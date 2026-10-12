@@ -14,11 +14,11 @@
 }
 
 /* The notice carries the page gutter for screens without one; inside the portfolio it has its own. */
-.sampleNotice {
+.viewNotice {
   margin-top: 12px;
 }
 
-.sampleNotice > :first-child {
+.viewNotice > :first-child {
   margin-left: 0;
   margin-right: 0;
 }
@@ -191,4 +191,22 @@
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+/* Signed out: one line, one way in. */
+.signedOut {
+  max-width: 34ch;
+  text-align: center;
+}
+
+.signedOut b {
+  display: block;
+  font-size: 17px;
+}
+
+.signedOut p {
+  margin: 8px 0 14px;
+  color: var(--text-3);
+  font-size: 14px;
+  line-height: 1.5;
 }

@@ -1,11 +1,9 @@
 /** Who follows someone, or whom they follow: a plain list, each row to that person's profile. */
 
-import { PEOPLE_SAMPLE, fetchFollows } from '../../shared/api/people.ts';
+import { fetchFollows } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
-import { PEOPLE_SAMPLE_NOTICE } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { BackIcon } from '../../shared/ui/icons.tsx';
-import { Notice } from '../../shared/ui/Notice.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import { RankTag } from './RankBadge.tsx';
 import styles from './people.module.css';
@@ -18,7 +16,6 @@ export function FollowList({ profileKey, which }: { profileKey: string; which: '
         <BackIcon size={22} />
       </button>
       <h1 className={styles['title']}>{which === 'followers' ? 'Followers' : 'Following'}</h1>
-      {PEOPLE_SAMPLE ? <Notice notice={PEOPLE_SAMPLE_NOTICE} /> : null}
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {loaded.state === 'failed' ? <p className={styles['note']}>This list couldn't be read just now.</p> : null}
       {loaded.state === 'ready' && loaded.value.length === 0 ? <p className={styles['note']}>{which === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}</p> : null}
