@@ -33,13 +33,14 @@
 
 import type { Author, Item, Policy } from '@insidor/contracts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
+import { slowLaneDue } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { DiscoveryConfig } from '../config.ts';
 import { errorText, type Logger } from '../log.ts';
 import type { Loop, LoopContext, LoopCounts } from '../loop.ts';
 import { declareSources, type WatchDeps } from '../sources.ts';
-import { discoverPass, type DiscoverDeps, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
+import { MAIN_LANES, discoverPass, type DiscoverDeps, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
 
 /**
  * Two minutes — the earlier build's ingest cadence, so the catch-all search sees a post
@@ -102,6 +103,9 @@ export interface DiscoverLoopDeps {
 
 export function discoverLoop(deps: DiscoverLoopDeps): Loop {
   const log = deps.log.child({ stage: 'discover' });
+  /* When the slow-burn lane last ran, in this process. Null after a start, so it runs on
+     the first pass: a restart costs one extra slow search, never a missed one. */
+  let slowRanAt: number | null = null;
 
   return {
     stage: 'discover',
@@ -131,6 +135,10 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
          of a cadence is how a rotation silently stops rotating. */
       const plan: DiscoveryPlan = { terms: deps.discovery.terms, cadenceMs: EVERY_MS };
 
+      const now = ctx.now();
+      const slowDue = slowLaneDue(now, slowRanAt, deps.policy);
+      if (slowDue) slowRanAt = now;
+
       const result = await discoverPass({
         platforms: deps.platforms,
         store: deps.store,
@@ -143,6 +151,7 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
         signal: ctx.signal,
         floors: deps.floors,
         dailyCapUsd: deps.dailyCapUsd,
+        lanes: slowDue ? [...MAIN_LANES, 'slow'] : MAIN_LANES,
       });
 
       /* ★ THE COUNTS ARE PRINTED ON EVERY PASS INCLUDING THE HEALTHY ONES, and always

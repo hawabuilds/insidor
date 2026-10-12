@@ -97,10 +97,11 @@ export interface DiscoveryQuery {
 }
 
 /**
- * The catch-all search's two lanes: everything, and posts carrying an image or a video.
- * An array because it is also a CHECK in store/migrations/0024_feed_floor.sql.
+ * The catch-all search's lanes: everything, posts carrying an image or a video, and the
+ * slow-burn lane — everything again, over hours, at a higher floor, less often. An array
+ * because it is also a CHECK in store/migrations/0030_slow_lane.sql.
  */
-export const FEED_LANES = ['all', 'media'] as const;
+export const FEED_LANES = ['all', 'media', 'slow'] as const;
 export type FeedLane = (typeof FEED_LANES)[number];
 
 export interface FeedFilter {

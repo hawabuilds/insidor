@@ -870,7 +870,7 @@ export interface AssetPolicy {
  * the per-pass read target derived from the daily budget instead of typed in.
  */
 export interface FeedPolicy {
-  /** How far back each search reaches, in minutes. Posts in their first half hour. */
+  /** How far back the main lanes reach, in minutes: posts in their first ten. */
   readonly windowMin: number;
   /**
    * The window at which the floor applies in full. A shorter window scales it down in
@@ -914,6 +914,23 @@ export interface FeedPolicy {
    * day.
    */
   readonly maxPagesPerLane: number;
+  /**
+   * ★ THE SLOW-BURN LANE — the earlier build's SLOW_BURN_EVERY_MS. The main lanes only see a
+   * post in its first `windowMin`, so a post that takes an hour to cross the floor is never
+   * seen at all. This lane looks back `windowMin` (hours, not minutes) every `everyMs`, with a
+   * floor never below `floorMultiple` × the main lane's sent floor so it returns the posts
+   * that kept going rather than the whole afternoon again. Same paging, same posts line.
+   */
+  readonly slow: {
+    readonly windowMin: number;
+    readonly everyMs: number;
+    readonly floorMultiple: number;
+    /**
+     * The share of the catch-all's money its floor steers toward. The rest is the main
+     * lanes'. A target, not a reservation: the paced line is still the only limit.
+     */
+    readonly share: number;
+  };
 }
 
 /**
@@ -1528,8 +1545,12 @@ const POLICY_V1: Policy = {
 
      v19 adds `group.imagesPerPass`: each new post's picture is embedded once, for GROUP's
      image evidence. v20 adds `group.image` (its bars, uncalibrated) and
-     `judge.pairMaxOutputTokens` for the same-subject question. */
-  version: 'policy.v20',
+     `judge.pairMaxOutputTokens` for the same-subject question.
+
+     v21 narrows the catch-all window to 10 minutes (each post comes back about 5 times
+     rather than 15, so the same money finds about three times the new posts), adds the
+     slow-burn lane (`feed.slow`), and raises the judge line to $8 and embeddings to $2. */
+  version: 'policy.v21',
 
   admit: {
     maxAgeMin: 240,
@@ -1842,7 +1863,7 @@ const POLICY_V1: Policy = {
      lane overshoots its target, −20% under 60% of it, −40% when it returns nothing, and
      about a quarter of reads to the media lane. */
   feed: {
-    windowMin: 30,
+    windowMin: 10,
     fullWindowMin: 60,
     startFloor: 100,
     mediaStartFloor: 100,
@@ -1858,6 +1879,14 @@ const POLICY_V1: Policy = {
     lang: 'en',
     pageLimit: 20,
     maxPagesPerLane: 3,
+    slow: {
+      windowMin: 360, // six hours
+      everyMs: 900_000, // every 15 minutes
+      floorMultiple: 5,
+      /* 0.2: a fifth of the search money, uncalibrated. The lane's floor adapts to it, so
+         a wrong share moves the floor, not the bill. */
+      share: 0.2,
+    },
   },
 
   rising: {
@@ -1941,7 +1970,7 @@ const POLICY_V1: Policy = {
        `dailyUsd` is the only ceiling; with two it is what keeps them both alive. */
     perSourceUsdPerDay: 1.5,
     softStopFraction: 0.9,
-    supplierLines: { posts: 11.25, judge: 6, video: 2, actors: 1, embeddings: 1 },
+    supplierLines: { posts: 11.25, judge: 8, video: 2, actors: 1, embeddings: 2 },
     paceAheadMs: 3_600_000, // an hour's head start
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
