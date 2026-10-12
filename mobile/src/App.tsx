@@ -7,6 +7,11 @@
  *
  * The tab bar is always there. A story and a coin page belong to whichever list they were
  * reached from, and light that tab, so the bar always says where "back" leads.
+ *
+ * ★ SIGN IN ONCE, AT THE DOOR. Every address is behind one gate (shared/sign-in.ts): signed in,
+ * the app; signed out, the front door, with the address kept so signing in lands on it; a
+ * returning person, a moment's hold while their session comes back. No screen inside asks anyone
+ * to sign in.
  */
 
 import { useState } from 'react';
@@ -20,8 +25,9 @@ import { SearchedToken } from './features/token/SearchedToken.tsx';
 import { TokenPage } from './features/token/TokenPage.tsx';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { WalletScreen } from './features/wallet/WalletScreen.tsx';
-import { Landing } from './features/landing/Landing.tsx';
-import { hasEntered, markEntered, showsLanding } from './features/landing/entered.ts';
+import { Holding, Landing } from './features/landing/Landing.tsx';
+import { forgetEntered, hasEntered, markEntered } from './features/landing/entered.ts';
+import { SIGN_IN_CONFIGURED, gateFor } from './shared/sign-in.ts';
 import { useWallet } from './shared/wallet.tsx';
 import { tabOf, type Route } from './shared/route.ts';
 import { useRoute } from './shared/useRoute.ts';
@@ -64,17 +70,25 @@ export function App() {
   const { state } = useWallet();
   const [entered, setEntered] = useState(hasEntered);
   const signedIn = state.kind === 'connected';
-  /* Once signed in, this browser goes straight in next time too. */
+  /* Once signed in, this browser is held rather than shown the door while its session comes back. */
   if (signedIn && !entered) {
     markEntered();
     setEntered(true);
   }
+  /* Signed out (the profile menu): the door, and no hold next time. */
+  if (SIGN_IN_CONFIGURED && entered && (state.kind === 'disconnected' || state.kind === 'refused' || state.kind === 'failed')) {
+    forgetEntered();
+    setEntered(false);
+  }
   /* The create modal sits over whichever screen opened it, so it lives here, above them. */
   const [creating, setCreating] = useState<CreateFrom | null>(null);
   /* After every hook, so the hooks run the same way whichever screen is shown. */
-  if (showsLanding(window.location.hash, entered, signedIn)) {
+  const gate = gateFor({ configured: SIGN_IN_CONFIGURED, state, entered });
+  if (gate === 'holding') return <Holding />;
+  if (gate === 'landing') {
     return (
       <Landing
+        configured={SIGN_IN_CONFIGURED}
         onEnter={() => {
           markEntered();
           setEntered(true);

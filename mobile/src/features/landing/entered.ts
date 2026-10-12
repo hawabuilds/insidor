@@ -25,8 +25,11 @@ export function markEntered(): void {
   }
 }
 
-/** The front door is for the bare address only: a shared story or coin link always opens straight in. */
-export function showsLanding(hash: string, entered: boolean, signedIn: boolean): boolean {
-  const bare = hash === '' || hash === '#' || hash === '#/';
-  return bare && !entered && !signedIn;
+/** Signed out: the next visit starts at the door, with no hold. */
+export function forgetEntered(): void {
+  try {
+    globalThis.localStorage?.removeItem(KEY);
+  } catch {
+    /* Storage refused: nothing was kept to forget. */
+  }
 }

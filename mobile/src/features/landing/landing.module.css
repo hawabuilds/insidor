@@ -146,3 +146,33 @@
   font-size: 16px;
   font-weight: 700;
 }
+
+/* Where Join now will be, while sign-in starts or its window is open. Text, never a dead button. */
+.waiting {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 52px;
+  color: var(--text-3);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Trador's hold for a returning session: the mark, breathing, on the page colour. */
+.holding {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .holding { animation: none; }
+}
