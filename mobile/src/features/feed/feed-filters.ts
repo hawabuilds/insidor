@@ -17,6 +17,8 @@
 
 import type { Platform } from '../../shared/platform.ts';
 import type { BoardRow } from '../../shared/api/index.ts';
+import type { RisingPost } from '../../shared/api/index.ts';
+import { platformOf } from '../../shared/platform.ts';
 import type { LeadPost } from './lead-post.ts';
 
 const HOUR = 3_600_000;
@@ -112,6 +114,47 @@ export function applyFilters(
       continue;
     }
     kept.push(row);
+  }
+  return { rows: kept, unknown };
+}
+
+/* ── the same filters, on single posts ────────────────────────────────── */
+
+export interface FilteredPosts {
+  readonly rows: readonly RisingPost[];
+  /** Left out because a value the filter needs is not known — not because it failed. */
+  readonly unknown: number;
+}
+
+/**
+ * The feed filters applied to single posts. The site comes from the post's own label, the
+ * views and the age from its own facts.
+ *
+ * ★ THE COIN FILTER CANNOT SAY "NO COIN" ABOUT A POST. A post carries a coin only through a
+ * narrative with one confident match; one without says nothing about coins at all. So "has a
+ * coin" keeps posts with one and counts the rest as unknown, and "no coin" drops posts with
+ * one and counts the rest as unknown — never as a match.
+ */
+export function applyPostFilters(posts: readonly RisingPost[], f: FeedFilters, now: number): FilteredPosts {
+  const kept: RisingPost[] = [];
+  let unknown = 0;
+  for (const post of posts) {
+    const platform = platformOf(post.sourceLabel);
+    const site: Match = f.sites.length === 0 ? 'keep' : platform === null ? 'unknown' : f.sites.includes(platform) ? 'keep' : 'drop';
+    const views: Match = f.views === null ? 'keep' : !post.reach.known ? 'unknown' : post.reach.amount >= f.views.atLeast ? 'keep' : 'drop';
+    let posted: Match = 'keep';
+    if (f.posted !== null) {
+      if (!post.postedAt.known || now - post.postedAt.at < 0) posted = 'unknown';
+      else posted = now - post.postedAt.at <= f.posted.withinMs ? 'keep' : 'drop';
+    }
+    const coin: Match = f.coin === 'any' ? 'keep' : post.coin !== null ? (f.coin === 'has' ? 'keep' : 'drop') : 'unknown';
+    const answers = [site, views, posted, coin];
+    if (answers.includes('drop')) continue;
+    if (answers.includes('unknown')) {
+      unknown += 1;
+      continue;
+    }
+    kept.push(post);
   }
   return { rows: kept, unknown };
 }

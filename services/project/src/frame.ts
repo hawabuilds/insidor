@@ -117,5 +117,8 @@ export async function projectStoryFrame(db: Db, viewId: string, options: Project
     considered: facts.length,
     skipped,
     withheld: board.withheld.length,
+    /* Each story's coin link as this frame committed it. The For You feed reads a post's
+       coin from here and nowhere else — see rising.ts. */
+    coinsByStory: new Map(board.rows.map((row) => [row.id, row.coins])),
   };
 }

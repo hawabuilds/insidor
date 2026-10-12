@@ -69,3 +69,25 @@ test('the lead post is the earliest one we can date', () => {
   assert.equal(leadPost(s.evidence)?.author, 'WhiteHouse');
   assert.equal(leadPost([]), null);
 });
+
+/* ── filters on single posts ─────────────────────────────────────────── */
+
+import { applyPostFilters as postFilters, NO_FILTERS as NONE } from './feed-filters.ts';
+import type { RisingPost } from '../../shared/api/index.ts';
+
+const onePost = (over: Partial<RisingPost>): RisingPost => ({
+  id: 'p', sourceLabel: 'X', authorLabel: '@a', permalink: null, excerpt: 'e', thumbUrl: null,
+  postedAt: { known: true, at: 1_000 }, reach: { known: true, amount: 50_000 }, readAt: { known: true, at: 1_000 },
+  spark: { points: [], windowMs: 1 }, storyId: null, coin: null, ...over,
+});
+
+test('★ the coin filter never calls a post without a coin "no coin": it is unknown', () => {
+  const plain = onePost({});
+  assert.deepEqual(postFilters([plain], { ...NONE, coin: 'none' }, 2_000), { rows: [], unknown: 1 });
+  assert.deepEqual(postFilters([plain], { ...NONE, coin: 'has' }, 2_000), { rows: [], unknown: 1 });
+});
+
+test('a post with unknown views is left out of a views filter as unknown, not dropped', () => {
+  const unread = onePost({ reach: { known: false, pending: 'not_read_yet' } });
+  assert.deepEqual(postFilters([unread], { ...NONE, views: { label: '10K+', atLeast: 10_000 } }, 2_000), { rows: [], unknown: 1 });
+});

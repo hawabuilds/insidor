@@ -21,10 +21,12 @@
  */
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
+import type { Millis } from '@insidor/contracts';
 import { asDb, createPool, DB_ROLE, PgAssetRepo, withTransaction } from '@insidor/store';
 
 import { loadLaunchFacts, nextLaunchTick, writeLaunches } from './db.ts';
 import { projectStoryFrame } from './frame.ts';
+import { projectRisingFeeds } from './rising.ts';
 import { announceBoard } from './notify.ts';
 import { projectFeedSource, projectLaunch } from './project.ts';
 import type { ProjectOptions } from './project.ts';
@@ -130,6 +132,11 @@ async function main(): Promise<void> {
       });
       const { tick } = frame;
 
+      /* The For You and Popular feeds, in the same transaction as the board they read their
+         coins from — see rising.ts. */
+      const risingRows = await projectRisingFeeds(db, nowMs as Millis, frame.coinsByStory, SPARK_WINDOW_MS);
+
+
       /* ── the launches rail ──
          In the SAME transaction as the board, and not because the two frames depend on each
          other — they do not, and they carry separate ticks precisely so they cannot. It is
@@ -203,6 +210,7 @@ async function main(): Promise<void> {
 
       return {
         ...frame,
+        risingRows,
         launchTick,
         launchRows,
         launchesWithheld,
@@ -220,7 +228,7 @@ async function main(): Promise<void> {
 
     console.log(
       `projected view=${VIEW_ID} tick=${result.tick} ` +
-        `board_row=${result.boardRows} story_view=${result.storyViews} ` +
+        `board_row=${result.boardRows} story_view=${result.storyViews} rising_row=${result.risingRows} ` +
         `considered=${result.considered} skipped=${result.skipped} withheld=${result.withheld} ` +
         /* Two counts, always both printed, including when the second is zero. A field that
            only appears when something is wrong is a field nobody knows the normal value of. */

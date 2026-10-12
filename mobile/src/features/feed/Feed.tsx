@@ -1,10 +1,11 @@
 /**
- * FOR YOU — the feed, and the only screen reading real data.
+ * FOR YOU — the feed.
  *
- * The board comes from `GET /board/default` on the read service (or the dev fixtures standing
- * in for it). The three tabs are three views of that one board (`feed-tabs.ts`); the site
- * pills and the filter panel narrow it (`feed-filters.ts`); the handle and platform badge on
- * each row come from the row's story (`lead-post.ts`, which says why).
+ * FYP and Popular are feeds of SINGLE POSTS from `GET /rising/fyp` and `GET /rising/popular`:
+ * posts the catch-all search found whose meme score clears the bar, newest first and most
+ * views first, in the order the server committed. Watchlist is the narratives you starred,
+ * read from `GET /board/default` (`feed-tabs.ts`). The site pills and the filter panel narrow
+ * whichever list is showing (`feed-filters.ts`).
  *
  * ★ THE "Sample data" BAR IS NOT THIS SCREEN'S TO TURN OFF. It shows while the build is on
  * fixtures, or while the board's provenance says its stories were seeded or does not say, and
@@ -16,8 +17,8 @@
  * different responses and a blank list answers none of them.
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import { BOARD_VIEW, USING_FIXTURES, fetchBoard, type BoardRow } from '../../shared/api/index.ts';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BOARD_VIEW, USING_FIXTURES, fetchBoard, fetchRising, type BoardRow, type RisingPost } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { PLATFORMS } from '../../shared/platform.ts';
@@ -27,10 +28,11 @@ import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
 import { FilterIcon, StarIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
+import { PostRow } from '../../shared/ui/PostRow.tsx';
 import { StoryRow } from '../../shared/ui/StoryRow.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { FilterPanel } from './FilterPanel.tsx';
-import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
+import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyFilters, applyPostFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
 import { rowsInOrder, tabView, type FeedTab } from './feed-tabs.ts';
 import { useLeadPosts } from './useLeadPosts.ts';
 import styles from './feed.module.css';
@@ -45,7 +47,15 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow, sample: boolean) 
   const [tab, setTab] = useState<FeedTab>('fyp');
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [panel, setPanel] = useState(false);
-  const [board, reload] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
+  const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
+  /* One loader per feed, so switching tabs never shows one feed's order under the other's name. */
+  const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
+  const [popular, reloadPopular] = useLoad('rising:popular', (signal) => fetchRising('popular', signal));
+  const reload = useCallback(() => {
+    reloadBoard();
+    reloadFyp();
+    reloadPopular();
+  }, [reloadBoard, reloadFyp, reloadPopular]);
   const starred = useWatchlist();
   const now = useNow();
   const soon = useComingSoon();
@@ -61,13 +71,31 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow, sample: boolean) 
 
   const tick = board.state === 'ready' ? board.value : null;
   const ordered = useMemo(() => (tick ? rowsInOrder(tick.order, tick.rows) : []), [tick]);
+  const onPosts = tab !== 'watchlist';
   const view = tabView(tab, ordered, starred);
-  const leads = useLeadPosts([...view.rows, ...view.uncounted].map((r) => r.id));
+  /* Lead posts are only read for the narrative list; the post feeds carry their own. */
+  const leads = useLeadPosts(onPosts ? [] : [...view.rows, ...view.uncounted].map((r) => r.id));
   const shown = applyFilters(view.rows, leads, filters, now);
   const shownUncounted = applyFilters(view.uncounted, leads, filters, now);
   const hidden = shown.unknown + shownUncounted.unknown;
 
   const notice = boardNotice(USING_FIXTURES, tick?.provenance ?? null);
+  const feed = tab === 'popular' ? popular : fyp;
+  const posts = feed.state === 'ready' ? applyPostFilters(feed.value.posts, filters, now) : null;
+  const post = (p: RisingPost) => (
+    <PostRow
+      key={p.id}
+      post={p}
+      now={now}
+      handlers={{
+        open: () => {
+          if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId, sample: false });
+          else if (p.permalink !== null) window.open(p.permalink, '_blank', 'noopener');
+        },
+        buy: (ticker) => soon(`Buying $${ticker}`),
+      }}
+    />
+  );
   const quickSite = filters.sites.length === 1 ? filters.sites[0] : null;
   const row = (r: BoardRow) => {
     const lead = leads.get(r.id) ?? null;
@@ -142,15 +170,42 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow, sample: boolean) 
 
       <Notice notice={notice} />
 
-      {board.state === 'loading' ? <p className={styles['empty']}>Reading the board.</p> : null}
-      {board.state === 'failed' ? (
+      {onPosts ? (
+        <>
+          {feed.state === 'loading' ? <p className={styles['empty']}>Reading the feed.</p> : null}
+          {feed.state === 'failed' ? (
+            <div className={styles['empty']}>
+              <p>Couldn't reach the read service, so there is nothing to show. This is not an empty feed.</p>
+              <Button look="quiet" onClick={reload}>Try again</Button>
+            </div>
+          ) : null}
+          {feed.state === 'ready' && posts !== null ? (
+            <>
+              {posts.rows.map(post)}
+              {feed.value.posts.length === 0 ? <p className={styles['empty']}>No post has cleared the bar in the last day yet.</p> : null}
+              {feed.value.posts.length > 0 && posts.rows.length === 0 && posts.unknown === 0 ? (
+                <p className={styles['empty']}>No posts match these filters.</p>
+              ) : null}
+              {posts.unknown > 0 ? (
+                <p className={styles['hidden']}>
+                  {posts.unknown === 1 ? '1 more post is' : `${posts.unknown} more posts are`} left out because we can't tell yet whether{' '}
+                  {posts.unknown === 1 ? 'it matches' : 'they match'} these filters.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </>
+      ) : null}
+
+      {!onPosts && board.state === 'loading' ? <p className={styles['empty']}>Reading the board.</p> : null}
+      {!onPosts && board.state === 'failed' ? (
         <div className={styles['empty']}>
           <p>Couldn't reach the read service, so there is nothing to show. This is not an empty board.</p>
           <Button look="quiet" onClick={reload}>Try again</Button>
         </div>
       ) : null}
 
-      {tick !== null ? (
+      {!onPosts && tick !== null ? (
         <>
           {shown.rows.map(row)}
           {shownUncounted.rows.length > 0 ? (

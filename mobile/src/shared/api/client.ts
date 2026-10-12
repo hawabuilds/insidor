@@ -25,8 +25,9 @@
  */
 
 import { notImplemented } from '../not-implemented.ts';
-import { decodeBoardTick, decodeStory } from './decode.ts';
+import { decodeBoardTick, decodeRisingFeed, decodeStory } from './decode.ts';
 import type { BoardTick } from './wire/board.ts';
+import type { RisingFeed, RisingFeedId } from './wire/rising.ts';
 import type { Story } from './wire/story.ts';
 
 /** A failure of the transport, as opposed to a failure of the payload. */
@@ -63,8 +64,9 @@ export const USING_FIXTURES = USE_FIXTURES;
 export const SAMPLE_SCREENS = DEV || SAMPLE;
 
 async function readFixture(path: string): Promise<unknown> {
-  const { fixtureBoard, fixtureStory } = await import('./fixtures.ts');
+  const { fixtureBoard, fixtureRising, fixtureStory } = await import('./fixtures.ts');
   if (path.startsWith('/board/')) return fixtureBoard();
+  if (path === '/rising/fyp' || path === '/rising/popular') return fixtureRising(path.slice('/rising/'.length) as RisingFeedId);
   if (path.startsWith('/story/')) {
     const story = fixtureStory(decodeURIComponent(path.slice('/story/'.length)));
     /* An id the fixtures do not cover is a 404, not an invented page. */
@@ -88,6 +90,11 @@ async function read(path: string, signal?: AbortSignal): Promise<unknown> {
 
 export async function fetchBoard(viewId: string, signal?: AbortSignal): Promise<BoardTick> {
   return decodeBoardTick(await read(`/board/${encodeURIComponent(viewId)}`, signal));
+}
+
+/** One feed of single posts: `fyp` newest first, `popular` most views first. */
+export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Promise<RisingFeed> {
+  return decodeRisingFeed(await read(`/rising/${encodeURIComponent(feed)}`, signal));
 }
 
 export async function fetchStory(storyId: string, signal?: AbortSignal): Promise<Story> {

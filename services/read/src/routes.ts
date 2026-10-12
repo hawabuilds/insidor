@@ -28,6 +28,8 @@ import {
   BOARD_VIEW_SQL,
   LAUNCH_ROWS_SQL,
   LAUNCH_VIEW_SQL,
+  RISING_ROWS_SQL,
+  RISING_VIEW_SQL,
   PAIR_ROWS_SQL,
   PAIR_VIEW_SQL,
   SOURCE_VIEW_SQL,
@@ -217,6 +219,16 @@ async function story(storyId: string, deps: Deps): Promise<Reply> {
  * handed over as it was committed — this process cannot compute it and cannot check it,
  * because the instant behind it comes from a schema its credential has no USAGE on.
  */
+/** One feed of single posts — `fyp` or `popular` — handed over verbatim. */
+async function rising(feedId: string, deps: Deps): Promise<Reply> {
+  const views = await deps.db.query(RISING_VIEW_SQL, [feedId]);
+  const view = views[0];
+  if (view === undefined) return NOT_FOUND;
+
+  const rows = await deps.db.query(RISING_ROWS_SQL, [feedId]);
+  return json(200, { tick: tickNumber(view['tick']), posts: rows.map(payloadOf) });
+}
+
 async function launches(feedId: string, deps: Deps): Promise<Reply> {
   const views = await deps.db.query(LAUNCH_VIEW_SQL, [feedId]);
   const view = views[0];
@@ -377,6 +389,7 @@ export async function handle(method: string, rawUrl: string, deps: Deps): Promis
       if (head === 'board') return await board(param, deps);
       if (head === 'story') return await story(param, deps);
       if (head === 'launches') return await launches(param, deps);
+      if (head === 'rising') return await rising(param, deps);
       if (head === 'pairs') return await pairs(param, deps);
       if (head === 'sources') return await sources(param, deps);
     }

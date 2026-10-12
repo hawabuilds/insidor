@@ -6,6 +6,7 @@
 export type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 export type { Coin, CoinLink } from './wire/coin.ts';
 export type { DiscussionPost, Evidence, Story, StoryProvenance } from './wire/story.ts';
+export type { RisingFeed, RisingFeedId, RisingPost } from './wire/rising.ts';
 
 export {
   BOARD_VIEW,
@@ -13,6 +14,7 @@ export {
   SAMPLE_SCREENS,
   USING_FIXTURES,
   fetchBoard,
+  fetchRising,
   fetchStory,
   loadSampleNarratives,
   loadSampleStory,

@@ -361,3 +361,45 @@ export function fixtureStory(storyId: string): unknown | null {
 export function sampleNarrativeIds(): readonly string[] {
   return NARRATIVES.map((s) => String(s['id']));
 }
+
+/* ── the For You and Popular feeds (sample) ────────────────────────── */
+
+/**
+ * The sample feeds of single posts: each sample feed story's one post, with that story's
+ * picture, views and line. A coin only when the sample story names exactly one — the same
+ * rule the server applies — and never otherwise. The "Sample data" notice covers these as it
+ * covers the board.
+ */
+export function fixtureRising(feed: 'fyp' | 'popular'): unknown {
+  const posts = FEED_STORIES.map((s) => {
+    const lead = (s['evidence'] as readonly Record<string, unknown>[])[0] ?? {};
+    const coins = s['coins'] as { kind: string };
+    const confident = coins.kind === 'one';
+    return {
+      id: `${String(s['id'])}:post`,
+      sourceLabel: lead['sourceLabel'],
+      authorLabel: lead['authorLabel'],
+      permalink: lead['permalink'],
+      excerpt: lead['excerpt'],
+      thumbUrl: s['thumbUrl'],
+      postedAt: lead['postedAt'],
+      reach: s['reach'],
+      readAt: s['firstSeenAt'],
+      spark: s['spark'],
+      storyId: confident ? s['id'] : null,
+      coins: confident ? coins : null,
+    };
+  });
+  const at = (p: Record<string, unknown>): number => ((p['postedAt'] as { at?: number }).at ?? 0);
+  const views = (p: Record<string, unknown>): number | null => ((p['reach'] as { v?: number | null }).v ?? null);
+  const ordered =
+    feed === 'fyp'
+      ? [...posts].sort((a, b) => at(b) - at(a))
+      : [...posts].sort((a, b) => {
+          const va = views(a);
+          const vb = views(b);
+          if (va === null || vb === null) return va === null ? (vb === null ? 0 : 1) : -1;
+          return vb - va;
+        });
+  return { tick: 1, posts: ordered };
+}

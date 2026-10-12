@@ -15,7 +15,7 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 
 export type PostScore = 'passes' | 'below' | 'waiting';
 
-export function postScore(judgement: Judgement | null, p: Policy): PostScore {
+export function postScore(judgement: Pick<Judgement, 'coinable' | 'confidence' | 'lookedAt'> | null, p: Policy): PostScore {
   if (judgement === null) return 'waiting';
   if (!judgement.coinable) return 'below';
   return judgement.confidence >= p.qualify.minJudgeConfidence[judgement.lookedAt] ? 'passes' : 'below';
