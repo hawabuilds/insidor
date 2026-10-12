@@ -248,6 +248,13 @@ export interface RunnerConfig {
    * host a coin's creator named. `METADATA_GATEWAY`; a public gateway when unset.
    */
   readonly metadataGateway: string;
+  /** The Solana RPC, from `HELIUS_API_KEY`: a found coin's metadata link and launch time. Null when unset. */
+  readonly chainRpcUrl: string | null;
+  /**
+   * Coin search's market data plan: CoinGecko's on-chain API with `COINGECKO_API_KEY` (the pro
+   * host, or the public one when `COINGECKO_API_PLAN=demo`), otherwise GeckoTerminal's free API.
+   */
+  readonly marketData: { readonly plan: 'free' | 'demo' | 'pro'; readonly apiKey?: string; readonly baseUrl: string };
 }
 
 export class ConfigError extends Error {
@@ -444,5 +451,20 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
             baseUrl: (env['VOYAGE_API_BASE'] ?? '').trim() || 'https://api.voyageai.com',
           },
     metadataGateway: (env['METADATA_GATEWAY'] ?? '').trim() || 'https://ipfs.io',
+    chainRpcUrl: (env['HELIUS_API_KEY'] ?? '').trim() === '' ? null : `https://mainnet.helius-rpc.com/?api-key=${(env['HELIUS_API_KEY'] ?? '').trim()}`,
+    marketData: marketDataFrom(env),
   };
+}
+
+const MARKET_DATA_URLS = {
+  free: 'https://api.geckoterminal.com/api/v2',
+  demo: 'https://api.coingecko.com/api/v3/onchain',
+  pro: 'https://pro-api.coingecko.com/api/v3/onchain',
+} as const;
+
+function marketDataFrom(env: Readonly<Record<string, string | undefined>>): RunnerConfig['marketData'] {
+  const apiKey = (env['COINGECKO_API_KEY'] ?? '').trim();
+  if (apiKey === '') return { plan: 'free', baseUrl: MARKET_DATA_URLS.free };
+  const plan = (env['COINGECKO_API_PLAN'] ?? '').trim() === 'demo' ? 'demo' : 'pro';
+  return { plan, apiKey, baseUrl: MARKET_DATA_URLS[plan] };
 }

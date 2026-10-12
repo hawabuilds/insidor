@@ -165,4 +165,71 @@ export class PgCoinUniverseRepo {
     );
     return rows.map((r) => ({ itemId: reBrand<ItemId>(r.item_id), postedAt: toMillis(r.posted_at), text: r.body }));
   }
+
+  /**
+   * Names to search: promoted narratives whose page shows no coin, and For You posts with no
+   * coin, each by the judge's name for it — newest first, skipping any searched since
+   * `keepBefore`. A subject the judge has not named has nothing to search and is not returned.
+   */
+  async lookupTerms(keepBefore: Millis, limit: number): Promise<readonly LookupTerm[]> {
+    const rows = await this.#db.query<{ subject_kind: 'story' | 'post'; subject_id: string; term: string }>(
+      `with stories as (
+         select 'story' as subject_kind, s.story_id as subject_id, j.proposed_name as term, s.promoted_at as at
+           from public.story s
+           join public.story_view v on v.story_id = s.story_id
+           join lateral (
+             select proposed_name from internal.judgement jj
+              where jj.story_id = s.story_id and jj.proposed_name is not null
+              order by jj.judged_at desc limit 1
+           ) j on true
+          where s.state = 'promoted' and coalesce(v.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending')
+       ),
+       posts as (
+         select distinct on (r.item_id) 'post' as subject_kind, r.item_id as subject_id, pj.proposed_name as term, i.first_seen_at as at
+           from public.rising_row r
+           join public.item i on i.item_id = r.item_id
+           join internal.post_judgement pj on pj.item_id = r.item_id and pj.proposed_name is not null
+          where r.payload -> 'coins' is null or r.payload ->> 'coins' = 'null'
+          order by r.item_id, pj.judged_at desc
+       )
+       select c.subject_kind, c.subject_id, c.term
+         from (select * from stories union all select * from posts) c
+         left join internal.coin_lookup l on l.subject_kind = c.subject_kind and l.subject_id = c.subject_id
+        where l.subject_id is null or l.looked_at < $1
+        order by c.at desc nulls last
+        limit $2`,
+      [toTimestamp(keepBefore), limit],
+    );
+    return rows.map((r) => ({ kind: r.subject_kind, id: r.subject_id, term: r.term }));
+  }
+
+  async recordLookup(term: LookupTerm, found: number, added: number, at: Millis): Promise<void> {
+    await this.#db.query(
+      `insert into internal.coin_lookup (subject_kind, subject_id, term, looked_at, found, added)
+       values ($1, $2, $3, $4, $5, $6)
+       on conflict (subject_kind, subject_id) do update set
+         term = excluded.term, looked_at = excluded.looked_at, found = excluded.found, added = excluded.added`,
+      [term.kind, term.id, term.term, toTimestamp(at), found, added],
+    );
+  }
+
+  /** Searches since an instant — the day's count for the cap. */
+  async lookupsSince(at: Millis): Promise<number> {
+    const rows = await this.#db.query<{ n: string | number }>(`select count(*) as n from internal.coin_lookup where looked_at >= $1`, [toTimestamp(at)]);
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  /** Which of these coins the universe already holds. */
+  async knownAssets(assetKeys: readonly string[]): Promise<ReadonlySet<string>> {
+    if (assetKeys.length === 0) return new Set();
+    const rows = await this.#db.query<{ asset_key: string }>(`select asset_key from public.asset where asset_key = any($1::text[])`, [[...assetKeys]]);
+    return new Set(rows.map((r) => r.asset_key));
+  }
+}
+
+/** A narrative or post whose name is to be searched for coins. */
+export interface LookupTerm {
+  readonly kind: 'story' | 'post';
+  readonly id: string;
+  readonly term: string;
 }

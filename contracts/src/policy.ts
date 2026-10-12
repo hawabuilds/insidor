@@ -980,6 +980,23 @@ export interface UniversePolicy {
   readonly candidatesPerCoin: number;
   /** An `unlinked`, `account_only` or `promo_only` coin is looked at once more after this. */
   readonly recheckAfterMs: number;
+  /**
+   * ★ LOOKING UP COINS WE NEVER SAW MINTED. A promoted narrative or a For You post with no coin
+   * has its name searched on the market data sources; launchpad coins launched within
+   * `withinMs` go into the universe as CANDIDATES and through the same checks as any coin. A
+   * search result alone never links anything.
+   */
+  readonly lookup: {
+    /** Names searched per pass, and per UTC day at most. */
+    readonly termsPerPass: number;
+    readonly perDay: number;
+    /** A name searched less than this long ago is not searched again. */
+    readonly keepMs: number;
+    /** How recent a launch a candidate may be. */
+    readonly withinMs: number;
+    /** Candidates kept per name, newest launch first. */
+    readonly hitsPerTerm: number;
+  };
 }
 
 /**
@@ -1633,8 +1650,11 @@ const POLICY_V1: Policy = {
      minutes' grace; later is `viral_after_launch`. v25 adds `origin.influencerFollowers` and
      `origin.viralReach`, the creator-link check's two bars (uncalibrated).
 
-     v26 adds `universe`: how many new coins a pass reads and checks, and how far back. */
-  version: 'policy.v26',
+     v26 adds `universe`: how many new coins a pass reads and checks, and how far back.
+
+     v27 adds `universe.lookup`: searching the market data sources for coins we never saw
+     minted, as candidates only. */
+  version: 'policy.v27',
 
   admit: {
     maxAgeMin: 240,
@@ -2006,6 +2026,14 @@ const POLICY_V1: Policy = {
     matchWindowMs: 172_800_000, // two days before launch
     candidatesPerCoin: 20,
     recheckAfterMs: 86_400_000, // a day
+    lookup: {
+      termsPerPass: 5,
+      /* 1,000: two free sources, a call each per name; well inside both free tiers a day. */
+      perDay: 1_000,
+      keepMs: 21_600_000, // six hours
+      withinMs: 604_800_000, // seven days
+      hitsPerTerm: 10,
+    },
   },
 
   rising: {

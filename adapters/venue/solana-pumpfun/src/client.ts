@@ -37,9 +37,10 @@ import { readCurveAccount, type CurveAccount } from './curve-account.ts';
 const VENDOR_RPC = 'solana-rpc';
 const OLDEST_LABEL = 'POST rpc getTransactionsForAddress';
 const CURVE_LABEL = 'POST rpc getAccountInfo';
+const ASSET_LABEL = 'POST rpc getAsset';
 
 /** One JSON-RPC call. An RPC error is unavailable, never an empty answer. */
-async function rpc(config: SolanaVenueClientConfig, method: string, params: unknown[], label: string): Promise<unknown> {
+async function rpc(config: SolanaVenueClientConfig, method: string, params: unknown, label: string): Promise<unknown> {
   let response: Response;
   try {
     response = await config.fetch(config.rpcUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
@@ -86,6 +87,8 @@ export interface ChainClient {
   tokenAccountState(address: string): Promise<unknown>;
   /** A coin's curve account by its address; null when the address holds no curve. */
   curveAccount(address: string): Promise<CurveAccount | null>;
+  /** The link to a coin's metadata document, as its on-chain metadata names it; null when none. */
+  metadataUri(mint: string): Promise<string | null>;
 }
 
 export interface SolanaVenueClientConfig {
@@ -146,6 +149,12 @@ export function chainClient(config: SolanaVenueClientConfig): ChainClient {
       const owner = str(v.owner);
       if (typeof data !== 'string' || owner === null) throw new VendorShapeError(VENDOR_RPC, 'result.value', 'has no data or owner');
       return readCurveAccount(Buffer.from(data, 'base64'), owner);
+    },
+    /* An indexing RPC's asset read: one call that returns the metadata account's `uri`, which a
+       generic RPC would need an address derivation and a layout decode to reach. */
+    metadataUri: async (mint) => {
+      const raw = await rpc(config, 'getAsset', { id: mint }, ASSET_LABEL);
+      return str(rec(rec(rec(raw).result).content).json_uri);
     },
     tokenAccountState: async (_address) => {
       // POST {rpcUrl} getAccountInfo [address, { encoding: 'jsonParsed' }]

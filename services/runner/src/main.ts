@@ -183,7 +183,7 @@ async function main(): Promise<void> {
       }),
       /* Every new coin's metadata, and where it came from. Its own loop so a slow gateway
          never holds up the search. */
-      universeLoop(runtime.universe),
+      universeLoop(runtime.universe, runtime.lookUpCoins),
       admitLoop(runtime.loopDeps),
       trackLoop(runtime.loopDeps),
       detectLoop(runtime.loopDeps),

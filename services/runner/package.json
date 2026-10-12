@@ -15,6 +15,8 @@
     "@insidor/core": "workspace:*",
     "@insidor/embed-voyage": "workspace:*",
     "@insidor/judge-anthropic": "workspace:*",
+    "@insidor/market-dexscreener": "workspace:*",
+    "@insidor/market-geckoterminal": "workspace:*",
     "@insidor/meter": "workspace:*",
     "@insidor/platform-registry": "workspace:*",
     "@insidor/store": "workspace:*",

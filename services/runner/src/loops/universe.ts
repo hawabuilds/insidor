@@ -18,13 +18,22 @@ const EVERY_MS = 60_000;
 /** After discovery's offset, so the two do not start in the same second. */
 const OFFSET_MS = 50_000;
 
-export function universeLoop(deps: Omit<UniverseDeps, 'now'>): Loop {
+export function universeLoop(deps: Omit<UniverseDeps, 'now'>, lookup: (() => Promise<unknown>) | null = null): Loop {
   const log = deps.log.child({ stage: 'universe' });
   return {
     stage: 'universe',
     everyMs: EVERY_MS,
     offsetMs: OFFSET_MS,
     async run(ctx: LoopContext): Promise<LoopCounts> {
+      /* First, coins we never saw minted, by name (work/coin-lookup.ts): candidates added here
+         are read and checked by the pass below like any coin. A failed lookup never stops it. */
+      if (lookup !== null) {
+        try {
+          await lookup();
+        } catch (e) {
+          log.error('coin lookup failed; tried again next pass', { err: e instanceof Error ? e.message : String(e) });
+        }
+      }
       const result = await universePass({ ...deps, log, now: ctx.now });
       return { in: result.metadataRead + result.checked, out: result.checked - result.pending, failed: 0, firstError: null };
     },
