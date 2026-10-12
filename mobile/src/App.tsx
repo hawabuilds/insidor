@@ -25,7 +25,7 @@ import { Search } from './features/search/Search.tsx';
 import { SearchedToken } from './features/token/SearchedToken.tsx';
 import { TokenPage } from './features/token/TokenPage.tsx';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
-import { WalletScreen } from './features/wallet/WalletScreen.tsx';
+import { PortfolioScreen } from './features/portfolio/PortfolioScreen.tsx';
 import { Holding, Landing } from './features/landing/Landing.tsx';
 import { forgetEntered, hasEntered, markEntered } from './features/landing/entered.ts';
 import { SIGN_IN_CONFIGURED, gateFor } from './shared/sign-in.ts';
@@ -53,8 +53,8 @@ function Screen({ route, create }: { route: Route; create: (from: CreateFrom) =>
           onCreate={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, sample: route.sample || noticeFor(s, false) !== null, storyId: s.id })}
         />
       );
-    case 'wallet':
-      return <WalletScreen />;
+    case 'portfolio':
+      return <PortfolioScreen />;
     case 'search':
       return <Search />;
     case 'token':

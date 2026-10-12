@@ -15,7 +15,7 @@ const TABS = [
   { key: 'narratives', label: 'Narratives', Icon: LayersIcon },
   { key: 'search', label: 'Search', Icon: SearchIcon },
   { key: 'calls', label: 'Calls', Icon: ChatIcon },
-  { key: 'wallet', label: 'Wallet', Icon: WalletIcon },
+  { key: 'portfolio', label: 'Portfolio', Icon: WalletIcon },
 ] as const;
 
 export function TabBar({ current }: { current: Tab }) {

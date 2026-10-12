@@ -55,7 +55,7 @@ export interface Deps {
   readonly market?: Omit<MarketDeps, 'db' | 'log' | 'recent'>;
   /** The Search tab's live search (search.ts). Absent: /search and /coin/:id are 404s. */
   readonly search?: Search;
-  /** The Wallet tab (wallet.ts). Absent: /wallet/:address is a 404. */
+  /** The Portfolio tab (wallet.ts). Absent: /wallet/:address is a 404. */
   readonly wallet?: WalletRoute;
 }
 

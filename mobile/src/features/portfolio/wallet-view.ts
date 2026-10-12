@@ -1,5 +1,5 @@
 /**
- * The Wallet tab's wording, apart from the screens so `node --test` holds it: what a holding's
+ * The Portfolio tab's wording, apart from the screens so `node --test` holds it: what a holding's
  * profit says, and how an amount of a coin is written.
  *
  * ★ NO BUY HISTORY IS A DASH WITH ITS REASON. A number appears only when the server knows what

@@ -54,7 +54,7 @@ export function BalanceChart({ points, height, onScrub }: { points: readonly Bal
         preserveAspectRatio="none"
         style={{ width: '100%', height: '100%', touchAction: 'none', display: 'block' }}
         role="img"
-        aria-label="Wallet value over time"
+        aria-label="Portfolio value over time"
         onPointerMove={(e) => {
           const box = e.currentTarget.getBoundingClientRect();
           if (box.width > 0) pick((e.clientX - box.left) / box.width);

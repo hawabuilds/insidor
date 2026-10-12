@@ -2,7 +2,7 @@
  * The wallet, for any screen that needs to know about it — the port and nothing else.
  *
  * main.tsx makes it (sign-in with X or Google, through @insidor/wallet-embedded) and hands it down here.
- * A screen reads its state; only the Wallet tab connects or disconnects. Nothing that decides a
+ * A screen reads its state; only the Portfolio tab connects or disconnects. Nothing that decides a
  * button about a coin reads it: connecting a wallet never makes a button appear or change.
  */
 

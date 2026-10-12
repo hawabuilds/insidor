@@ -6,7 +6,7 @@
  *
  * The wallet is composed here: sign-in with X and an embedded Solana wallet, through
  * @insidor/wallet-embedded, when the build carries `VITE_PRIVY_APP_ID`. Without it the wallet is
- * `unavailable` and the Wallet tab says so. Screens get the port (shared/wallet.tsx), never the
+ * `unavailable` and the Portfolio tab says so. Screens get the port (shared/wallet.tsx), never the
  * vendor.
  */
 

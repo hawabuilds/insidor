@@ -142,7 +142,7 @@ export async function fetchCoinMarket(coinId: string, timeframe: MarketTimeframe
   return decodeCoinMarket(await read(`/coin/${encodeURIComponent(coinId)}/market?tf=${timeframe}`, signal));
 }
 
-/** The Wallet tab: what this wallet holds and what it is worth. The app asks only for its own. */
+/** The Portfolio tab: what this wallet holds and what it is worth. The app asks only for its own. */
 export async function fetchPortfolio(address: string, range: PortfolioRange, signal?: AbortSignal): Promise<Portfolio> {
   return decodePortfolio(await read(`/wallet/${encodeURIComponent(address)}?range=${range}`, signal));
 }

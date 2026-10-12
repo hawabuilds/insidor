@@ -1,5 +1,5 @@
 /**
- * THE PROFILE MENU — Trador's settings menu (`SettingsMenu.tsx`), top right of the Wallet tab: a
+ * THE PROFILE MENU — Trador's settings menu (`SettingsMenu.tsx`), top right of the Portfolio tab: a
  * gear that opens a small panel anchored under it, closed by a tap outside or Escape.
  *
  * What it holds, row by row against Trador's:

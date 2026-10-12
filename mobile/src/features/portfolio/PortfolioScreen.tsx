@@ -111,7 +111,7 @@ function Arrow({ up = false }: { up?: boolean }) {
   );
 }
 
-export function WalletScreen() {
+export function PortfolioScreen() {
   const { wallet, state } = useWallet();
 
   if (state.kind === 'connected' || state.kind === 'wrong-network') {
