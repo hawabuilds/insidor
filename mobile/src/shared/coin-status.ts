@@ -6,6 +6,7 @@
  * phone app's words:
  *
  *   none     → "No coin yet"            + Create coin
+ *   pending  → "—" (not searched yet)    and NO BUTTON
  *   one      → "1 coin"                 + Buy $TICKER, if the server says it can be traded
  *   several  → "13 coins on pump.fun"   + View coins
  *   unsure   → a line saying we cannot tell which coin is from this, and NO BUTTON
@@ -35,6 +36,8 @@ export function coinStatus(coins: CoinLink): CoinStatus {
   switch (coins.kind) {
     case 'none':
       return { line: 'No coin yet', action: { kind: 'create' } };
+    case 'pending':
+      return { line: '— still checking for a coin', action: null };
     case 'unsure':
       return {
         line: coins.claimCount === 1

@@ -148,6 +148,9 @@ export type WireCoinOrigin =
  */
 export type WireCoinLink =
   | { readonly kind: 'none' }
+  /* No coin found yet, and the story's name has not been searched for one: shown as a dash,
+     never as "no coin yet" — that would be a claim about the world we have not checked. */
+  | { readonly kind: 'pending' }
   /* `claimCount`, not `candidateCount`: a candidate is what the resolve stage calls a
      coin it is still weighing, and that word is ours. What the user is told is a fact
      that would be true without us — this many coins name themselves after this story. */

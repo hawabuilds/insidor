@@ -37,7 +37,7 @@ import { coinOriginsVisibleTo } from '@insidor/contracts/story.ts';
 import type { MatchEvidence, StoryOrigin } from '@insidor/contracts/story.ts';
 import type { Db } from '@insidor/store';
 
-import { coinCandidates, corpusStats, orderedOnly } from './coins.ts';
+import { coinCandidates, corpusStats, holdSearchFound, orderedOnly } from './coins.ts';
 import type { CorpusStats } from './coins.ts';
 import { permalinkFor } from './permalinks.ts';
 import type {
@@ -406,6 +406,8 @@ interface AssetRow {
   name: string | null;
   image_uri: string | null;
   minted_at: Date | string | null;
+  /** How the row came to exist: `backfill` is a coin found by search, held to proof (coins.ts). */
+  origin?: string;
 }
 
 /**
@@ -585,14 +587,14 @@ async function loadCoinsForOrigin(
 
   return db.query<AssetRow>(
     `select w.story_id,
-            c.asset_key, c.address, c.venue_id, c.symbol, c.name, c.image_uri, c.minted_at
+            c.asset_key, c.address, c.venue_id, c.symbol, c.name, c.image_uri, c.minted_at, c.origin
        from unnest($1::text[], $2::timestamptz[], $3::timestamptz[], $4::timestamptz[])
               as w(story_id, anchor_at, from_at, to_at)
        cross join lateral (
          select a.asset_key, a.address, a.venue_id,
                 left(a.symbol, $6::int) as symbol,
                 left(a.name, $6::int)   as name,
-                a.image_uri, a.minted_at
+                a.image_uri, a.minted_at, a.origin
            from public.asset a
           where a.origin = any($7::text[])
             and (a.minted_at is null
@@ -766,10 +768,20 @@ function coinsByStory(
        public.market_reading has not been read, which is OUR state; an empty reading
        would say the venue answered and had nothing, which is the world's. Those are
        different sentences and projectCoin gives them different reasons. */
-    bucket.push({ ...toCoinFacts(row, markets.get(row.asset_key) ?? null), origin: origins.get(row.asset_key) ?? null });
+    bucket.push({ ...toCoinFacts(row, markets.get(row.asset_key) ?? null), origin: origins.get(row.asset_key) ?? null, foundBySearch: row.origin === 'backfill' });
     byStory.set(row.story_id, bucket);
   }
   return byStory;
+}
+
+/** The stories whose names have been searched for coins at least once. */
+async function loadLookedUp(db: Db, storyIds: readonly string[]): Promise<ReadonlySet<string>> {
+  if (storyIds.length === 0) return new Set();
+  const rows = await db.query<{ subject_id: string }>(
+    `select subject_id from internal.coin_lookup where subject_kind = 'story' and subject_id = any($1::text[])`,
+    [[...storyIds]],
+  );
+  return new Set(rows.map((r) => r.subject_id));
 }
 
 /* ── where a coin came from ───────────────────────────────────────────── */
@@ -784,10 +796,10 @@ async function loadCoinOrigins(db: Db, assetKeys: readonly string[]): Promise<Re
   const out = new Map<string, CoinOriginFacts>();
   if (assetKeys.length === 0) return out;
   const rows = await db.query<{
-    asset_key: string; status: OriginStatus; post_offset_ms: string | number | null;
+    asset_key: string; status: OriginStatus; post_item_id: string | null; post_offset_ms: string | number | null;
     source: string | null; source_item_id: string | null; posted_at: Date | string | null; handle: string | null;
   }>(
-    `select o.asset_key, o.status, o.post_offset_ms, i.source, i.source_item_id, i.posted_at, a.handle
+    `select o.asset_key, o.status, o.post_item_id, o.post_offset_ms, i.source, i.source_item_id, i.posted_at, a.handle
        from internal.coin_origin o
        left join public.item i on i.item_id = o.post_item_id
        left join public.author a on a.author_key = i.author_key
@@ -798,6 +810,7 @@ async function loadCoinOrigins(db: Db, assetKeys: readonly string[]): Promise<Re
     const handle = (r.handle ?? '').trim();
     out.set(r.asset_key, {
       status: r.status,
+      postItemId: r.post_item_id,
       post: r.source === null ? null : {
         authorLabel: handle === '' ? r.source : handle.startsWith('@') ? handle : `@${handle}`,
         permalink: permalinkFor(r.source, r.handle, r.source_item_id),
@@ -1167,6 +1180,7 @@ function toStoryFacts(
   corpus: CorpusStats,
   wasOnPreviousBoard: boolean,
   windowOrdered: boolean,
+  coinsLookedUp = true,
 ): StoryFacts {
   const memberFacts: MemberFacts[] = members.map((row) => ({
     itemId: row.item_id,
@@ -1189,7 +1203,8 @@ function toStoryFacts(
     distinctAuthors: story.distinct_authors,
     distinctSources: story.distinct_sources,
     members: memberFacts,
-    coins: orderedOnly(coinCandidates(spans, coins, corpus), windowOrdered),
+    coins: holdSearchFound(orderedOnly(coinCandidates(spans, coins, corpus), windowOrdered), new Set(members.map((m) => m.item_id))),
+    coinsLookedUp,
     wasOnPreviousBoard,
   };
 }
@@ -1349,6 +1364,10 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<StoryL
   const coinKeys = [...new Set(coinRows.map((row) => row.asset_key))];
   const markets = await loadMarketReadings(db, coinKeys);
   const coins = coinsByStory(coinRows, markets, await loadCoinOrigins(db, coinKeys));
+  /* Which stories' names have been searched for coins (internal.coin_lookup). An observed story
+     not yet searched projects a dash where "no coin" would be; a seeded one is never searched,
+     so it keeps its own answer. */
+  const lookedUp = await loadLookedUp(db, storyIds);
 
   const byStory = new Map<string, MemberRow[]>();
   for (const row of memberRows) {
@@ -1372,6 +1391,7 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<StoryL
         corpusFor(corpora, row.origin),
         window.previousBoard.has(row.story_id),
         ordered.has(row.story_id),
+        row.origin !== 'observed' || lookedUp.has(row.story_id),
       ),
     ),
     coinWindows,
