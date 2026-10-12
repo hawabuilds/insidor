@@ -69,3 +69,10 @@ test('origins are a comma list, trimmed, and never empty', () => {
 
   assert.throws(() => loadReadConfig({ DATABASE_URL_APP: APP_URL, READ_ALLOWED_ORIGINS: ' , ' }), ConfigError);
 });
+
+test('★ market data: free without a key; CoinGecko pro with one; the public host for a demo key', () => {
+  const base = { DATABASE_URL_APP: 'postgres://app@db/x' };
+  assert.deepEqual(loadReadConfig(base).marketData, { plan: 'free', apiKey: null, baseUrl: 'https://api.geckoterminal.com/api/v2' });
+  assert.deepEqual(loadReadConfig({ ...base, COINGECKO_API_KEY: 'k' }).marketData, { plan: 'pro', apiKey: 'k', baseUrl: 'https://pro-api.coingecko.com/api/v3/onchain' });
+  assert.equal(loadReadConfig({ ...base, COINGECKO_API_KEY: 'k', COINGECKO_API_PLAN: 'demo' }).marketData.baseUrl, 'https://api.coingecko.com/api/v3/onchain');
+});

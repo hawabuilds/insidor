@@ -38,8 +38,18 @@
 /** Port 8787 by default: the app's dev server is on 5173 and the two must not collide. */
 const DEFAULT_PORT = 8787;
 
-/** A public, keyless market data API. A wrong URL fails loudly on the first token page. */
-const DEFAULT_MARKET_DATA_URL = 'https://api.geckoterminal.com/api/v2';
+/** The market data hosts, by plan. A wrong URL fails loudly on the first token page. */
+const MARKET_DATA_URLS = {
+  free: 'https://api.geckoterminal.com/api/v2',
+  demo: 'https://api.coingecko.com/api/v3/onchain',
+  pro: 'https://pro-api.coingecko.com/api/v3/onchain',
+} as const;
+
+function marketDataFrom(env: Env): ReadConfig['marketData'] {
+  const apiKey = trimmed(env, 'COINGECKO_API_KEY');
+  const plan = apiKey === null ? 'free' : trimmed(env, 'COINGECKO_API_PLAN') === 'demo' ? 'demo' : 'pro';
+  return { plan, apiKey, baseUrl: trimmed(env, 'MARKET_DATA_URL') ?? MARKET_DATA_URLS[plan] };
+}
 
 /** The Vite dev server's origin. See app/vite.config.ts, which pins `server.port`. */
 const DEFAULT_ORIGIN = 'http://localhost:5173';
@@ -58,10 +68,12 @@ export interface ReadConfig {
    */
   readonly allowedOrigins: readonly string[];
   /**
-   * Where a coin's price history and trades are read from (market.ts): a public, keyless
-   * market data API. `MARKET_DATA_URL`; GeckoTerminal's when unset.
+   * Where a coin's price history and trades are read from (market.ts). With
+   * `COINGECKO_API_KEY`, CoinGecko's on-chain API — the pro host, or the public one when
+   * `COINGECKO_API_PLAN=demo` — under that plan's request cap; without it, GeckoTerminal's
+   * free API under the free cap. `MARKET_DATA_URL` overrides the host.
    */
-  readonly marketDataUrl: string;
+  readonly marketData: { readonly plan: 'free' | 'demo' | 'pro'; readonly apiKey: string | null; readonly baseUrl: string };
   /**
    * The Solana RPC a coin's bonding curve is read through, built from `HELIUS_API_KEY`. Null
    * when unset: the token page then shows curve progress as a dash, never a guess.
@@ -139,7 +151,7 @@ export function loadReadConfig(env: Env): ReadConfig {
     databaseUrl: databaseUrl ?? '',
     port,
     allowedOrigins,
-    marketDataUrl: trimmed(env, 'MARKET_DATA_URL') ?? DEFAULT_MARKET_DATA_URL,
+    marketData: marketDataFrom(env),
     rpcUrl: heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`,
   };
 }

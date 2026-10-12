@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { GRADUATED_MINT, OHLCV_5M, POOLS, TRADES } from './__fixtures__/replies.ts';
-import { geckoterminal } from './index.ts';
+import { BASE_URLS, geckoterminal } from './index.ts';
 
 function source(fail = { now: false }) {
   const asked: string[] = [];
@@ -56,6 +56,20 @@ test('★ it stays under the free limit: past 25 requests a minute, nothing more
   for (let i = 0; i < 30; i++) await market.coin(`Mint${i}`, '5m').catch(() => (heldBack += 1));
   assert.equal(sent, 25);
   assert.ok(heldBack > 0, 'a coin with nothing kept, past the cap, is unavailable rather than sent');
+});
+
+test('★ with a key, the same paths go to CoinGecko\'s on-chain API with the key in a header; without one, none is sent', async () => {
+  const seen: { url: string; headers: Record<string, string> }[] = [];
+  const fetch = (async (url: string, init: { headers: Record<string, string> }) => {
+    seen.push({ url, headers: init.headers });
+    return new Response(JSON.stringify(url.includes('/tokens/') ? POOLS : url.includes('/ohlcv/') ? OHLCV_5M : TRADES), { status: 200 });
+  }) as unknown as typeof globalThis.fetch;
+  await geckoterminal({ plan: 'pro', apiKey: 'cg-key', baseUrl: BASE_URLS.pro, fetch, timeoutMs: 1_000, now: () => 1 }).coin(GRADUATED_MINT, '5m');
+  assert.ok(seen[0]?.url.startsWith('https://pro-api.coingecko.com/api/v3/onchain/networks/solana/tokens/'));
+  assert.equal(seen[0]?.headers['x-cg-pro-api-key'], 'cg-key');
+  seen.length = 0;
+  await geckoterminal({ plan: 'pro', apiKey: '', baseUrl: BASE_URLS.free, fetch, timeoutMs: 1_000, now: () => 1 }).coin(GRADUATED_MINT, '5m');
+  assert.equal(Object.keys(seen[0]?.headers ?? {}).some((h) => h.startsWith('x-cg')), false, 'a plan with no key is the free API, and sends no key');
 });
 
 test('★ a second look inside the keep time costs nothing; a refusal serves the last good answer', async () => {
