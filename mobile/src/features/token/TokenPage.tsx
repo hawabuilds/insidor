@@ -18,23 +18,22 @@ import { fetchCoinMarket, loadSampleMarket, type Coin, type CoinMarket, type Mar
 import { coinLabels } from '../../shared/coin-facts.ts';
 import { settledCoins } from '../../shared/coin-status.ts';
 import { formatAge, formatDuration } from '../../shared/format/duration.ts';
-import { formatChangePercent, formatCount, formatPrice, formatUsd } from '../../shared/format/number.ts';
+import { formatCount, formatUsd } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { loadStory, noticeFor } from '../../shared/story-source.ts';
 import { leadPost } from '../feed/lead-post.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { useComingSoon, useToast } from '../../shared/ui/ComingSoon.tsx';
-import { BackIcon, CandleIcon, ChevronIcon, CopyIcon, LineChartIcon } from '../../shared/ui/icons.tsx';
+import { BackIcon, ChevronIcon, CopyIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { TradeBar } from '../trade/TradeBar.tsx';
-import { CandleChart } from './CandleChart.tsx';
-import { PriceChart } from './PriceChart.tsx';
-import { directionOf } from './direction.ts';
+import { defaultTimeframe } from './chart-data.ts';
+import { CoinChart } from './CoinChart.tsx';
 import styles from './token.module.css';
 
 type Section = 'trades' | 'comments' | 'info';
@@ -68,8 +67,7 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
   const now = useNow();
   const soon = useComingSoon();
   const toast = useToast();
-  const [tf, setTf] = useState<MarketTimeframe>('1h');
-  const [kind, setKind] = useState<'line' | 'candles'>('line');
+  const [tf, setTf] = useState<MarketTimeframe>(() => defaultTimeframe({ onCurve: false, launchedAt: coin.mintedAt.known ? coin.mintedAt.at : null, now: Date.now() }));
   const [section, setSection] = useState<Section>('trades');
   /* The market: read now, then again every MARKET_POLL_MS while the page is open. */
   const [loaded, reload] = useLoad(`market:${sample}:${coin.coinId}:${tf}`, (signal) =>
@@ -84,8 +82,6 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
   const lead = leadPost(story.evidence);
   const leadEvidence = story.evidence.find((e) => e.authorLabel === lead?.author) ?? null;
   const labels = coinLabels(settledCoins(story.coins)).get(coin.coinId) ?? [];
-  const change = formatChangePercent(coin.priceChange24h);
-  const series = read?.candles?.map((c) => c.c) ?? [];
   const progress = read?.curveProgress?.known ? Math.round(read.curveProgress.amount * 1000) / 10 : null;
 
   const copy = async () => {
@@ -153,45 +149,9 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
         </div>
       ) : null}
 
-      <div className={styles['priceRow']}>
-        <div>
-          <Value r={formatPrice(coin.priceUsd)} className={styles['price']} />
-          <span className={`${styles['change']} ${change.direction === 'up' ? styles['up'] : change.direction === 'down' ? styles['down'] : ''}`}>
-            {change.direction === 'up' ? '▲ ' : change.direction === 'down' ? '▼ ' : ''}
-            <Value r={change.text} /> <span className={styles['tf']}>24H</span>
-          </span>
-        </div>
-        <div className={styles['cap']}>
-          <span className={styles['kicker']}>Market cap</span>
-          <Value r={formatUsd(coin.marketCapUsd)} className={styles['capN']} />
-          <span className={styles['liq']}>Liq <Value r={formatUsd(coin.liquidityUsd)} /></span>
-        </div>
-      </div>
-
       <Notice notice={noticeFor(story, sample)} />
 
-      {series.length > 1 ? (
-        kind === 'line' ? <PriceChart series={series} direction={directionOf(series)} /> : <CandleChart candles={read?.candles ?? []} />
-      ) : (
-        <p className={styles['note']}>{chartNote(loaded.state, market)}</p>
-      )}
-      {market !== null ? (
-        <>
-          <div className={styles['tfRow']}>
-            <div className={styles['tfs']}>
-              {TIMEFRAMES.map((t) => (
-                <button key={t} type="button" className={`${styles['tfButton']} ${t === tf ? styles['tfOn'] : ''}`} onClick={() => setTf(t)}>
-                  {t.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <div className={styles['kinds']}>
-              <button type="button" className={kind === 'line' ? styles['kindOn'] : ''} aria-label="Line chart" aria-pressed={kind === 'line'} onClick={() => setKind('line')}><LineChartIcon size={16} /></button>
-              <button type="button" className={kind === 'candles' ? styles['kindOn'] : ''} aria-label="Candle chart" aria-pressed={kind === 'candles'} onClick={() => setKind('candles')}><CandleIcon size={16} /></button>
-            </div>
-          </div>
-        </>
-      ) : null}
+      <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={coin.priceUsd} change24h={coin.priceChange24h} cap={coin.marketCapUsd} liquidity={coin.liquidityUsd} />
 
       <UnderlineTabs
         label="Coin"
@@ -225,16 +185,8 @@ function ComingSoonBar({ coin, soon }: { coin: Coin; soon: (what: string) => voi
   );
 }
 
-export const TIMEFRAMES: readonly MarketTimeframe[] = ['1m', '5m', '1h', '6h'];
 /** How often an open token page reads its market again. The server keeps answers 12–300s. */
 export const MARKET_POLL_MS = 20_000;
-
-/** Why there is no chart: still loading, the source failed, or the coin has no trades in this view. */
-export function chartNote(state: 'loading' | 'ready' | 'failed', market: CoinMarket | null): string {
-  if (state === 'loading') return 'Loading price history.';
-  if (state === 'failed' || market?.kind === 'unavailable' || (market?.kind === 'read' && market.candles === null)) return 'Price history could not be read just now.';
-  return 'No trades in this view yet, so there is no price history to draw.';
-}
 
 export function tradesNote(state: 'loading' | 'ready' | 'failed', market: CoinMarket | null): string {
   if (state === 'loading') return 'Loading trades.';

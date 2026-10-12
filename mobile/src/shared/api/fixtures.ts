@@ -448,7 +448,7 @@ function seeded(text: string): () => number {
   };
 }
 
-const STEP: Record<string, number> = { '1m': MIN, '5m': 5 * MIN, '1h': HOUR, '6h': 6 * HOUR };
+const STEP: Record<string, number> = { '1m': MIN, '5m': 5 * MIN, '15m': 15 * MIN, '1h': HOUR, '4h': 4 * HOUR, '1D': 24 * HOUR };
 
 /**
  * A sample coin's market, as the read service would send it: 48 candles ending at its price
@@ -470,7 +470,7 @@ export function fixtureMarket(coinId: string, timeframe: string): unknown {
     const o = closes[i - 1] ?? c;
     return { t: T0 - (closes.length - i) * step, o, h: Math.max(o, c) * 1.01, l: Math.min(o, c) * 0.99, c };
   });
-  const trade = (side: 'buy' | 'sell', agoMs: number, tokens: number, usd: number) => ({ tx: null, side, tokenAmount: m(tokens), usd: m(usd), at: ago(agoMs) });
+  const trade = (side: 'buy' | 'sell', agoMs: number, tokens: number, usd: number) => ({ tx: null, side, tokenAmount: m(tokens), usd: m(usd), priceUsd: m(usd / tokens), at: ago(agoMs) });
   const mcap = (coin['marketCapUsd'] as { v?: number } | undefined)?.v ?? 0;
   return {
     kind: 'read',

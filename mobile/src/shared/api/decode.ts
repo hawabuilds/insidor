@@ -515,7 +515,7 @@ export function decodeRisingFeed(raw: unknown, path = '$'): RisingFeed {
   };
 }
 
-const MARKET_TIMEFRAMES: readonly MarketTimeframe[] = ['1m', '5m', '1h', '6h'];
+const MARKET_TIMEFRAMES: readonly MarketTimeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
 
 /**
  * A coin's market. A candle missing a number is dropped, never drawn at zero; a trade with an
@@ -540,6 +540,7 @@ export function decodeCoinMarket(raw: unknown, path = '$.market'): CoinMarket {
       side,
       tokenAmount: measured(r['tokenAmount'], `${path}.trades[${i}].tokenAmount`, 'not_reported'),
       usd: measured(r['usd'], `${path}.trades[${i}].usd`, 'not_reported'),
+      priceUsd: measured(r['priceUsd'], `${path}.trades[${i}].priceUsd`, 'not_reported'),
       at: instantAt(r['at'], `${path}.trades[${i}].at`, 'not_reported'),
     }];
   });
