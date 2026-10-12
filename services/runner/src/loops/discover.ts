@@ -39,7 +39,7 @@ import type { DiscoveryConfig } from '../config.ts';
 import type { Logger } from '../log.ts';
 import type { Loop, LoopContext, LoopCounts } from '../loop.ts';
 import { declareSources, type WatchDeps } from '../sources.ts';
-import { discoverPass, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
+import { discoverPass, type DiscoverDeps, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
 
 /**
  * Five minutes.
@@ -87,6 +87,10 @@ export interface DiscoverLoopDeps {
   readonly mode: DiscoverMode;
   readonly log: Logger;
   readonly watch: WatchDeps;
+  /** The catch-all lanes' floors, kept between passes. */
+  readonly floors: DiscoverDeps['floors'];
+  /** The day's hard cap — the lower of the environment's and policy's. */
+  readonly dailyCapUsd: number;
 }
 
 export function discoverLoop(deps: DiscoverLoopDeps): Loop {
@@ -130,6 +134,8 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
         log,
         now: ctx.now,
         signal: ctx.signal,
+        floors: deps.floors,
+        dailyCapUsd: deps.dailyCapUsd,
       });
 
       /* ★ THE COUNTS ARE PRINTED ON EVERY PASS INCLUDING THE HEALTHY ONES, and always

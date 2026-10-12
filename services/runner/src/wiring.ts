@@ -61,6 +61,7 @@ import {
   PgAssetRepo,
   PgAuthorRepo,
   PgDecisionRepo,
+  PgFeedFloorRepo,
   PgJudgementRepo,
   PgItemRepo,
   PgObservationRepo,
@@ -102,6 +103,8 @@ export interface Runtime {
    * too low or the vendor was down.
    */
   readonly meter: DurableMeter;
+  /** The catch-all search's lane floors, kept between passes. */
+  readonly feedFloors: PgFeedFloorRepo;
 }
 
 
@@ -441,6 +444,7 @@ export async function withRuntime<T>(
           watch,
           meter,
           store: storeArrivals(repos, policy),
+          feedFloors: new PgFeedFloorRepo(db),
         }),
       };
     });

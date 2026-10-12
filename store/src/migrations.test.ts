@@ -16,6 +16,7 @@ import {
   ASSET_ORIGINS,
   BILLING_UNITS,
   CENSOR_REASONS,
+  FEED_LANES,
   ITEM_ORIGINS,
   JUDGE_EVIDENCE,
   MARKET_ABSENCE_REASONS,
@@ -353,6 +354,7 @@ test('the schema and the vocabulary agree on every closed list', () => {
   assert.deepEqual([...checkedValues(read('0023_item_origin.sql'), 'origin')].sort(), [
     ...ITEM_ORIGINS,
   ].sort());
+  assert.deepEqual([...checkedValues(read('0024_feed_floor.sql'), 'lane')].sort(), [...FEED_LANES].sort());
   /* ★ THE ONE WHOSE THIRD MEMBER IS THE WHOLE POINT. `dormant` and `misconfigured` are two
      kinds of dark that demand opposite responses — a person deciding to pay for something
      versus a person being woken up — and the cheapest way to lose that distinction is for

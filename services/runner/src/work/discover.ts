@@ -66,7 +66,9 @@
 
 import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
-import type { DiscoveryMode, DiscoveryQuery, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
+import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
+import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
+import { effectiveFloor, laneTargets, nextFloor, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -123,15 +125,19 @@ const PAGE_LIMIT = 100;
  * with no change; a source that has none of these is reported `unasked` by name
  * rather than quietly skipped.
  */
-const PREFERRED_MODES: readonly DiscoveryMode[] = ['keyword', 'hashtag', 'feed', 'account', 'catalog'];
+const PREFERRED_MODES: readonly DiscoveryMode[] = ['keyword', 'hashtag', 'account', 'catalog'];
+/* `feed` is not on this list: it takes no term. A source that has it is asked the
+   catch-all lanes instead — see `feedQueryFor`. */
+
+const MS_PER_DAY = 24 * 60 * MS_PER_MINUTE;
 
 /* ── what one source did ──────────────────────────────────────────────────── */
 
 export type SourceOutcome =
   /** Asked, and it replied. `items` is a measurement; zero here is a real quiet. */
-  | { readonly kind: 'answered'; readonly source: string; readonly items: number; readonly stored: number | null; readonly hasMore: boolean }
+  | { readonly kind: 'answered'; readonly source: string; readonly items: number; readonly stored: number | null; readonly hasMore: boolean; readonly lane?: FeedLane }
   /** Asked, and the call threw. Recorded against the source's health by the wrapper. */
-  | { readonly kind: 'failed'; readonly source: string; readonly reason: string }
+  | { readonly kind: 'failed'; readonly source: string; readonly reason: string; readonly lane?: FeedLane }
   /** Live, and we have no question it can answer. Our gap, not the vendor's. */
   | { readonly kind: 'unasked'; readonly source: string; readonly reason: string }
   /** Not live. Nothing was asked, and the reason distinguishes off from broken. */
@@ -142,9 +148,9 @@ export type SourceOutcome =
    * left, so the row says whether the cap is too low or the cadence too fast without
    * anybody having to reconstruct it.
    */
-  | { readonly kind: 'paused'; readonly source: string; readonly wouldSpendUsd: number; readonly remainingUsd: number; readonly spentUsd: number; readonly capUsd: number }
+  | { readonly kind: 'paused'; readonly source: string; readonly wouldSpendUsd: number; readonly remainingUsd: number; readonly spentUsd: number; readonly capUsd: number; readonly lane?: FeedLane }
   /** ★ A DRY RUN. Resolved, priced, and not asked. No call left the process. */
-  | { readonly kind: 'planned'; readonly source: string; readonly mode: DiscoveryMode; readonly estUnits: number; readonly wouldSpendUsd: number }
+  | { readonly kind: 'planned'; readonly source: string; readonly mode: DiscoveryMode; readonly estUnits: number; readonly wouldSpendUsd: number; readonly lane?: FeedLane }
   /** ★ A FREE SOURCE COVERED THIS TERM. We chose not to pay for it, and say who. */
   | { readonly kind: 'deferred'; readonly source: string; readonly coveredBy: string; readonly wouldSpendUsd: number };
 
@@ -179,6 +185,23 @@ export interface DiscoverPassResult {
   readonly estimatedUsd: number;
   /** The first thing that went wrong, so the run row says which. A pause is not one. */
   readonly firstError: string | null;
+  /**
+   * ★ WHAT A DAY OF CATCH-ALL SEARCH COSTS AT THIS CADENCE, per source that has it: at the
+   * lanes' targets (what the floors steer toward) and at worst (every lane returning a
+   * full page every pass). Computed on dry and live passes alike, so a dry run answers
+   * "what will a day cost" before anything is spent. Both before the hard daily cap, which
+   * stops the worst case at the cap.
+   */
+  readonly feedDays: readonly FeedDay[];
+}
+
+export interface FeedDay {
+  readonly source: string;
+  readonly floors: LaneFloors;
+  readonly sentFloors: LaneFloors;
+  readonly targets: LaneFloors;
+  readonly targetUsd: number;
+  readonly worstUsd: number;
 }
 
 /* ── the query ────────────────────────────────────────────────────────────── */
@@ -256,6 +279,32 @@ export function queryFor(adapter: PlatformAdapter, term: string, now: Millis): D
   };
 }
 
+/**
+ * One catch-all lane for one pass: no term, the lane's floor as the vendor filter, and the
+ * policy window ending now.
+ *
+ * ★ `untilMs` IS NOW, NOT NULL, unlike `queryFor`. The earlier build sent an explicit
+ * upper bound and the window is defined by both ends; the source refuses a page carrying
+ * anything at or after it (the adapter's cutoff check), which on a live search cannot
+ * happen and would be worth knowing about if it did.
+ */
+export function feedQueryFor(lane: FeedLane, baseFloor: number, now: Millis, policy: Policy): DiscoveryQuery {
+  return {
+    mode: 'feed',
+    term: '',
+    sinceMs: (now - policy.feed.windowMin * MS_PER_MINUTE) as Millis,
+    untilMs: now,
+    limit: policy.feed.pageLimit,
+    cursor: null,
+    filter: {
+      minApproval: effectiveFloor(baseFloor, policy),
+      mediaOnly: lane === 'media',
+      lang: policy.feed.lang,
+      originalsOnly: true,
+    },
+  };
+}
+
 /* ── the pass ─────────────────────────────────────────────────────────────── */
 
 /**
@@ -294,6 +343,16 @@ export interface DiscoverDeps {
   readonly mode: DiscoverMode;
   readonly log: Logger;
   readonly now: () => Millis;
+  /**
+   * The catch-all lanes' approval floors, kept between passes (internal.feed_floor). Read
+   * before the pass; written after a LIVE pass only — a dry run learns nothing to move them by.
+   */
+  readonly floors: {
+    floors(): Promise<Readonly<Record<string, number>>>;
+    set(lane: string, floor: number, at: Millis): Promise<void>;
+  };
+  /** The day's hard cap — the lower of the environment's and policy's. Sets each lane's target. */
+  readonly dailyCapUsd: number;
   /** Aborted on SIGTERM. A pass that ignores it delays every deploy by a vendor call. */
   readonly signal: AbortSignal;
 }
@@ -337,6 +396,8 @@ interface SourcePlan {
   readonly source: string;
   readonly query: DiscoveryQuery;
   readonly estimate: CostEstimate;
+  /** The catch-all lane this is, or null for a term search. */
+  readonly lane: FeedLane | null;
 }
 
 export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResult> {
@@ -372,50 +433,93 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
   const term = termFor(deps.plan, now);
   const budget = budgetFor(deps.policy, now, live.length);
 
+  /* The lanes' floors as last adapted, or policy's start for a lane never adapted. */
+  const stored = await deps.floors.floors();
+  const floors: Record<FeedLane, number> = { ...startFloors(deps.policy) };
+  for (const lane of FEED_LANES) {
+    const held = stored[lane];
+    if (held !== undefined && Number.isFinite(held) && held > 0) floors[lane] = held;
+  }
+
   /* ── prepare: resolve and price every source before asking any of them ──── */
 
   const plans: SourcePlan[] = [];
   for (const adapter of live) {
     const source = String(adapter.id);
 
-    /* Defensive rather than reachable: the config refuses an empty term list. Stated
-       as an outcome anyway, because "we asked nobody and returned clean" must never be
-       a path this function can take without saying so. */
-    if (term === null) {
-      outcomes.push({ kind: 'unasked', source, reason: 'no discovery term is configured' });
-      continue;
+    /* ★ THE CATCH-ALL FIRST, ON EVERY SOURCE THAT CAN BE ASKED FOR IT: two lanes, no
+       keyword. Then the optional term on top. */
+    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null }[] = [];
+    if (adapter.capabilities.discovery.includes('feed')) {
+      for (const lane of FEED_LANES) asks.push({ query: feedQueryFor(lane, floors[lane], now, deps.policy), lane });
+    }
+    if (term !== null) {
+      const query = queryFor(adapter, term, now);
+      if (query !== null) asks.push({ query, lane: null });
     }
 
-    const query = queryFor(adapter, term, now);
-    if (query === null) {
-      /* ★ NOT `failed`. This source declares no discovery mode we know how to render,
-         which is a gap in what WE can ask rather than anything wrong with it. Counting
-         it as a failure would inflate the consecutive-failure count and eventually
-         paint the source red for a feature we have not written. */
+    if (asks.length === 0) {
+      /* ★ NOT `failed`. This source has no catch-all search and either no term is set
+         or it declares no mode we can render one into — a gap in what WE can ask, not
+         anything wrong with it. Counting it as a failure would eventually paint the
+         source red for a feature we have not written. */
       outcomes.push({
         kind: 'unasked',
         source,
-        reason: `declares no discovery mode we can render (${adapter.capabilities.discovery.join(', ') || 'none'})`,
+        reason:
+          term === null
+            ? 'has no catch-all search and no discovery term is configured'
+            : `declares no discovery mode we can render (${adapter.capabilities.discovery.join(', ') || 'none'})`,
       });
       deps.log.warn('source is live but cannot be asked', { source });
       continue;
     }
 
-    let estimate: CostEstimate;
-    try {
-      estimate = adapter.estimate({ kind: 'discover', query });
-    } catch (e) {
-      /* An adapter that cannot price its own call is a configuration fault of ours —
-         a missing row in a price book — and it is `unasked` rather than `failed` for
-         the reason above: nothing was asked and no vendor is implicated. It is NOT a
-         reason to call the source anyway. An unpriced call is not a free call, and
-         asking one would put a charge in the ledger with no line to book it against. */
-      outcomes.push({ kind: 'unasked', source, reason: `cannot be priced: ${errorText(e)}` });
-      deps.log.error('source cannot be priced; not asking it', { source, err: errorText(e) });
-      continue;
+    for (const { query, lane } of asks) {
+      let estimate: CostEstimate;
+      try {
+        estimate = adapter.estimate({ kind: 'discover', query });
+      } catch (e) {
+        /* An adapter that cannot price its own call is a configuration fault of ours —
+           a missing row in a price book — and it is `unasked` rather than `failed`:
+           nothing was asked and no vendor is implicated. It is NOT a reason to call the
+           source anyway. An unpriced call is not a free call. */
+        outcomes.push({ kind: 'unasked', source, reason: `cannot be priced: ${errorText(e)}` });
+        deps.log.error('source cannot be priced; not asking it', { source, err: errorText(e) });
+        continue;
+      }
+      plans.push({ adapter, source, query, estimate, lane });
     }
+  }
 
-    plans.push({ adapter, source, query, estimate });
+  /* What a day of catch-all search costs on each source that has it — on every pass, dry
+     or live, so a dry run answers the question before anything is spent. */
+  const passesPerDay = MS_PER_DAY / Math.max(deps.plan.cadenceMs, 1);
+  const feedDays: FeedDay[] = [];
+  for (const source of new Set(plans.filter((p) => p.lane !== null).map((p) => p.source))) {
+    const lanes = plans.filter((p) => p.source === source && p.lane !== null);
+    const sample = lanes[0];
+    if (sample === undefined) continue;
+    const usdPerPost = sample.estimate.estUnits > 0 ? sample.estimate.usd / sample.estimate.estUnits : 0;
+    const targets = laneTargets(deps.dailyCapUsd, usdPerPost, passesPerDay, deps.policy);
+    const day: FeedDay = {
+      source,
+      floors: { ...floors },
+      sentFloors: { all: effectiveFloor(floors.all, deps.policy), media: effectiveFloor(floors.media, deps.policy) },
+      targets,
+      targetUsd: (targets.all + targets.media) * usdPerPost * passesPerDay,
+      worstUsd: lanes.reduce((sum, p) => sum + p.estimate.usd, 0) * passesPerDay,
+    };
+    feedDays.push(day);
+    deps.log.info(deps.mode === 'dry' ? 'DRY RUN — a day of catch-all search, priced' : 'catch-all search, priced', {
+      source,
+      floors: day.floors,
+      sentFloors: day.sentFloors,
+      postsPerPassTarget: { all: round(targets.all), media: round(targets.media) },
+      dayAtTargetUsd: round(day.targetUsd),
+      dayWorstCaseUsd: round(day.worstUsd),
+      dailyCapUsd: deps.dailyCapUsd,
+    });
   }
 
   /**
@@ -448,10 +552,14 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
    * day this pass asks for more than one, the rule has to be per-term or it is wrong.
    */
   const covered = new Map<string, string>();
+  /* What each catch-all lane returned this pass, per source — the input to its next floor. */
+  const laneReturned = new Map<string, Partial<Record<FeedLane, number>>>();
 
   for (const plan of plans) {
     if (deps.signal.aborted) break;
-    const { adapter, source, query, estimate } = plan;
+    const { adapter, source, query, estimate, lane } = plan;
+    const tag = lane === null ? {} : { lane };
+    const coverKey = lane === null ? query.term : `feed:${lane}`;
 
     /**
      * ★ DO NOT PAY FOR WHAT A FREE SOURCE ALREADY ANSWERED.
@@ -466,7 +574,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
      * opposite facts, and the second is the one that would make somebody turn a
      * working source off.
      */
-    const coveredBy = covered.get(query.term);
+    const coveredBy = covered.get(coverKey);
     if (deps.policy.budget.paidOnlyWhenFreeIsEmpty && estimate.usd > 0 && coveredBy !== undefined) {
       outcomes.push({ kind: 'deferred', source, coveredBy, wouldSpendUsd: estimate.usd });
       deps.log.info('paid source deferred; a free source already answered this term', {
@@ -491,6 +599,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       const line = deps.meter.line(estimate.vendor);
       outcomes.push({
         kind: 'paused',
+        ...tag,
         source,
         wouldSpendUsd: estimate.usd,
         remainingUsd: line.remainingUsd,
@@ -524,6 +633,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       estimatedUsd += estimate.usd;
       outcomes.push({
         kind: 'planned',
+        ...tag,
         source,
         mode: query.mode,
         estUnits: estimate.estUnits,
@@ -554,6 +664,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         const line = deps.meter.line(estimate.vendor);
         outcomes.push({
           kind: 'paused',
+          ...tag,
           source,
           wouldSpendUsd: estimate.usd,
           remainingUsd: line.remainingUsd,
@@ -576,7 +687,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
          a single dark vendor would take the working ones down with it. */
       const text = errorText(e);
       firstError ??= `${source}: ${text}`;
-      outcomes.push({ kind: 'failed', source, reason: text });
+      outcomes.push({ kind: 'failed', source, reason: text, ...tag });
       deps.log.error('source failed', { source, mode: query.mode, err: text });
       continue;
     }
@@ -591,9 +702,10 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
        a non-empty answer counts: a free source that was asked and found nothing has
        told us the term is quiet on IT, which is no reason to skip a source that reads
        a different half of the internet. */
-    if (estimate.usd === 0 && items.length > 0 && !covered.has(query.term)) {
-      covered.set(query.term, source);
+    if (estimate.usd === 0 && items.length > 0 && !covered.has(coverKey)) {
+      covered.set(coverKey, source);
     }
+    if (lane !== null) laneReturned.set(source, { ...laneReturned.get(source), [lane]: items.length });
 
     let stored: number | null = null;
     if (items.length > 0) {
@@ -615,7 +727,40 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       stored = 0;
     }
 
-    outcomes.push({ kind: 'answered', source, items: items.length, stored, hasMore });
+    outcomes.push({ kind: 'answered', source, items: items.length, stored, hasMore, ...tag });
+  }
+
+  /* ── adapt: each lane's floor toward its target, from its own result ───────
+     Live passes only, and only lanes that answered: a pause, a failure or a dry run says
+     nothing about how many posts clear the floor. The floor is a cost lever and nothing
+     else — see core's `nextFloor`. */
+  if (deps.mode === 'live') {
+    for (const [source, returned] of laneReturned) {
+      const day = feedDays.find((d) => d.source === source);
+      if (day === undefined) continue;
+      for (const lane of FEED_LANES) {
+        const got = returned[lane];
+        if (got === undefined) continue;
+        const other = returned[lane === 'all' ? 'media' : 'all'];
+        const next = nextFloor(floors[lane], got, day.targets[lane], other === 0, deps.policy);
+        if (next.floor !== floors[lane]) {
+          try {
+            await deps.floors.set(lane, next.floor, now);
+            floors[lane] = next.floor;
+          } catch (e) {
+            deps.log.error('could not store a lane floor; it starts the next pass where it was', { lane, err: errorText(e) });
+          }
+        }
+        deps.log.info('catch-all lane floor', {
+          source,
+          lane,
+          returned: got,
+          target: round(day.targets[lane]),
+          move: next.move,
+          floor: next.floor,
+        });
+      }
+    }
   }
 
   return {
@@ -632,5 +777,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     itemsStored,
     estimatedUsd,
     firstError,
+    feedDays,
   };
 }
+
+const round = (n: number): number => Math.round(n * 10_000) / 10_000;

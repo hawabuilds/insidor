@@ -104,12 +104,12 @@ test('discovery has to be declared, exactly like the heartbeat', () => {
   assert.throws(() => loadRunnerConfig(missing), ConfigError);
 });
 
-test('discovery on with nothing to look for is refused', () => {
-  assert.throws(() => loadRunnerConfig({ ...complete, DISCOVER: 'on' }), ConfigError);
-  assert.throws(
-    () => loadRunnerConfig({ ...complete, DISCOVER: 'on', DISCOVER_TERMS: ' , , ' }),
-    ConfigError,
-  );
+test('★ discovery on needs no terms: the catch-all search is the default, terms are extra', () => {
+  for (const extra of [{}, { DISCOVER_TERMS: '' }, { DISCOVER_TERMS: ' , , ' }]) {
+    const cfg = loadRunnerConfig({ ...complete, DISCOVER: 'on', ...extra });
+    assert.equal(cfg.discovery.kind, 'on');
+    if (cfg.discovery.kind === 'on') assert.deepEqual(cfg.discovery.terms, []);
+  }
 });
 
 test('discovery on parses its terms and trims them', () => {

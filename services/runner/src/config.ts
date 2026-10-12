@@ -113,7 +113,8 @@ export type HeartbeatConfig =
  * Whether this process goes looking for new items at all.
  *
  * ★ THE HEARTBEAT'S SHAPE, FOR THE HEARTBEAT'S REASON. You either declare
- * `DISCOVER=on` and name what to look for, or you declare `DISCOVER=off` and accept
+ * `DISCOVER=on` — every source that can search for whatever is moving is asked, plus any
+ * `DISCOVER_TERMS` — or you declare `DISCOVER=off` and accept
  * that nothing new arrives from a vendor. Silence has to be CHOSEN — a defaulted-off
  * discovery is a pipeline that runs, looks healthy, and quietly ingests nothing,
  * which is the single failure this whole service is shaped around.
@@ -129,7 +130,7 @@ export type DiscoveryConfig =
   | { readonly kind: 'off' }
   | {
       readonly kind: 'on';
-      /** What to look for. Never empty: an empty list is spelled `off`. */
+      /** Extra keyword searches on top of the catch-all. Empty by default. */
       readonly terms: readonly string[];
     };
 
@@ -357,17 +358,14 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
   const discoverMode = r.choice('DISCOVER', ['off', 'on'] as const);
   let discovery: DiscoveryConfig = { kind: 'off' };
   if (discoverMode === 'on') {
-    const terms = r
-      .text('DISCOVER_TERMS')
+    /* Optional since discovery became catch-all: with no term the pass still asks every
+       source that can search for "whatever is moving", and terms are extra searches on
+       top. A source that can only be asked by term, with none set, is reported `unasked`
+       by name on every pass, so an empty list still cannot pass for a quiet internet. */
+    const terms = (env['DISCOVER_TERMS'] ?? '')
       .split(',')
       .map((term) => term.trim())
       .filter((term) => term !== '');
-    if (terms.length === 0) {
-      problems.push(
-        'DISCOVER_TERMS named no term. Set it, or declare DISCOVER=off — a discovery loop ' +
-          'with nothing to look for runs, reports success, and ingests nothing.',
-      );
-    }
     discovery = { kind: 'on', terms };
   }
 

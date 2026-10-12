@@ -191,6 +191,20 @@ function deps(
     log,
     now: () => NOW,
     signal: new AbortController().signal,
+    floors: memoryFloors(),
+    dailyCapUsd: 1,
+  };
+}
+
+/** The lane floors as the store keeps them, in memory. */
+function memoryFloors(initial: Record<string, number> = {}) {
+  const held: Record<string, number> = { ...initial };
+  return {
+    held,
+    floors: async () => ({ ...held }),
+    set: async (lane: string, floor: number) => {
+      held[lane] = floor;
+    },
   };
 }
 
@@ -348,8 +362,11 @@ test('the query is rendered in the source\'s own declared mode', () => {
   const keyword = queryFor(fakeAdapter('x', { discovery: ['account', 'keyword'] }), 'term', NOW);
   assert.equal(keyword?.mode, 'keyword', 'keyword is preferred where it exists');
 
-  const feed = queryFor(fakeAdapter('t', { discovery: ['feed'] }), 'term', NOW);
-  assert.equal(feed?.mode, 'feed', 'and a source without it gets one it does declare');
+  const account = queryFor(fakeAdapter('t', { discovery: ['account'] }), 'term', NOW);
+  assert.equal(account?.mode, 'account', 'and a source without it gets one it does declare');
+
+  /* A feed takes no term: a feed-only source is asked the catch-all lanes instead. */
+  assert.equal(queryFor(fakeAdapter('f', { discovery: ['feed'] }), 'term', NOW), null);
 
   assert.equal(queryFor(fakeAdapter('n', { discovery: [] }), 'term', NOW), null);
 });

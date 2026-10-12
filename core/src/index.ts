@@ -97,3 +97,10 @@ export type { TickerEvidence, TickerUse } from './create/ticker.ts';
  * thresholds, so it lives here and nowhere else.
  */
 export { latestCounters, observationsFrom } from './kinetics/readings.ts';
+
+/**
+ * The catch-all search's approval floor: what is sent, what each lane aims at, how a pass
+ * moves it. Not a stage; a budget lever with policy thresholds, so it lives here.
+ */
+export { effectiveFloor, laneTargets, nextFloor, startFloors } from './sources/feed-floor.ts';
+export type { FloorMove, LaneFloors } from './sources/feed-floor.ts';

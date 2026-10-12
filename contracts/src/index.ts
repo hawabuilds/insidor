@@ -150,10 +150,12 @@ export type {
   Discovered,
   DiscoveryMode,
   DiscoveryQuery,
+  FeedFilter,
+  FeedLane,
   PlannedCall,
   PlatformAdapter,
 } from './ports/platform.ts';
-export { DISCOVERY_MODES } from './ports/platform.ts';
+export { DISCOVERY_MODES, FEED_LANES } from './ports/platform.ts';
 
 export type {
   MintEvent,
