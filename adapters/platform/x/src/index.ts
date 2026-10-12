@@ -9,7 +9,7 @@
  * core.
  */
 
-import type { CounterSet, Item, Millis } from '@insidor/contracts';
+import type { Author, CounterSet, Item, Millis } from '@insidor/contracts';
 import type { Budget, Meter, Metered, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import type {
   DiscoveryQuery,
@@ -25,7 +25,7 @@ import { billedUnits, CAPABILITIES, LOOKUP, PRICES, SEARCH, SOURCE, VENDOR } fro
 import type { XClient } from './client.ts';
 import { searchPage } from './discover.ts';
 import { chunk, observeBatch } from './observe.ts';
-import { toItem } from './to-item.ts';
+import { toAuthor, toItem } from './to-item.ts';
 
 export interface XAdapterDeps {
   readonly client: XClient;
@@ -116,6 +116,39 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
 
       return {
         value: out,
+        spend: mergeSpend(
+          spends,
+          { vendor: VENDOR, endpoint: LOOKUP, unit: 'per-item-returned', estUnits: sourceItemIds.length, at },
+          'per-item-returned',
+        ),
+      };
+    },
+
+    /** Whole posts by id: the same lookup `observe` makes, read into Items and accounts. */
+    async lookup(sourceItemIds: readonly string[], _budget: Budget): Promise<Metered<Discovered>> {
+      const at = deps.now();
+      const items: Item[] = [];
+      const authors: Author[] = [];
+      const spends = [];
+      for (const batch of chunk(sourceItemIds, batchSize)) {
+        const result = await metered(
+          deps.meter,
+          prices,
+          { vendor: VENDOR, endpoint: LOOKUP, unit: 'per-item-returned', estUnits: batch.length, at },
+          async () => {
+            const raw = await deps.client.lookup(batch);
+            return { value: raw, units: billedUnits(raw.length) };
+          },
+        );
+        for (const raw of result.value) {
+          items.push(toItem(raw, at));
+          const author = toAuthor(raw, at);
+          if (author !== null) authors.push(author);
+        }
+        spends.push(result.spend);
+      }
+      return {
+        value: discovered(items, authors, null, false),
         spend: mergeSpend(
           spends,
           { vendor: VENDOR, endpoint: LOOKUP, unit: 'per-item-returned', estUnits: sourceItemIds.length, at },

@@ -934,6 +934,23 @@ export interface FeedPolicy {
 }
 
 /**
+ * ★ WHERE A NARRATIVE STARTED, looked for once a story is promoted. We often catch a moment
+ * late; the post that began it is usually one quote away, or posted an hour before our
+ * first member. Each promoted story is backfilled once, and again only when new members
+ * arrive; every number here bounds what one backfill may cost.
+ */
+export interface BackfillPolicy {
+  /** Stories backfilled per pass, oldest promotion first. The rest wait. */
+  readonly storiesPerPass: number;
+  /** Backfills started per UTC day, at most. */
+  readonly storiesPerDay: number;
+  /** How many quotes back a chain is followed before we stop and call what we have the root. */
+  readonly maxReproductionHops: number;
+  /** Posts fetched by id per story, across every hop. */
+  readonly maxReproducedPosts: number;
+}
+
+/**
  * The For You and Popular feeds of single posts, and the per-post score that admits a post
  * to them. A post shows when the catch-all search found it AND the judge, shown that post
  * alone, called it coinable at or above `qualify.minJudgeConfidence` for what it looked at
@@ -1358,6 +1375,7 @@ export interface Policy {
   readonly ingest: IngestPolicy;
   readonly feed: FeedPolicy;
   readonly rising: RisingPolicy;
+  readonly backfill: BackfillPolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
@@ -1549,8 +1567,10 @@ const POLICY_V1: Policy = {
 
      v21 narrows the catch-all window to 10 minutes (each post comes back about 5 times
      rather than 15, so the same money finds about three times the new posts), adds the
-     slow-burn lane (`feed.slow`), and raises the judge line to $8 and embeddings to $2. */
-  version: 'policy.v21',
+     slow-burn lane (`feed.slow`), and raises the judge line to $8 and embeddings to $2.
+
+     v22 adds `backfill`: following a promoted story's quotes back to where it started. */
+  version: 'policy.v22',
 
   admit: {
     maxAgeMin: 240,
@@ -1887,6 +1907,17 @@ const POLICY_V1: Policy = {
          a wrong share moves the floor, not the bill. */
       share: 0.2,
     },
+  },
+
+  backfill: {
+    storiesPerPass: 2,
+    /* 100: at about 20 posts fetched for a cent each worst case, a few dollars a day at
+       most, and far more promotions than a normal day produces. */
+    storiesPerDay: 100,
+    /* 5: a quote of a quote of a quote is already rare; a chain longer than this is a
+       thread, not a meme travelling. */
+    maxReproductionHops: 5,
+    maxReproducedPosts: 20,
   },
 
   rising: {

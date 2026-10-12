@@ -197,6 +197,15 @@ export interface PlatformAdapter {
   ): Promise<Metered<ReadonlyMap<string, CounterSet>>>;
 
   /**
+   * ★ WHOLE POSTS BY ID, for following a quote back to the post it quotes. Optional: a
+   * source that cannot fetch one post by id simply has no quote chain to follow, and the
+   * caller says so rather than guessing. Priced and billed as `observe` is — the same
+   * read by id, returning the post rather than only its counts. An id the source did not
+   * answer is absent from `items`, never invented.
+   */
+  lookup?(sourceItemIds: readonly string[], budget: Budget): Promise<Metered<Discovered>>;
+
+  /**
    * The ONLY function permitted to know this source's field names.
    * @param at the instant WE read it, INJECTED — an adapter never calls a clock, so
    *           two items from one response share one observedAt and a recorded
