@@ -105,6 +105,7 @@ async function backfillOne(deps: BackfillDeps, storyId: StoryId, now: Millis): P
     frontier = await unknownTargets(deps, got.items);
   }
 
+  noteSharedFormats(deps, storyId, [...known.values()]);
   const searched = await searchBack(deps, storyId, [...new Set(members.map((m) => m.source))], now);
   if (searched === null) return null;
 
@@ -114,6 +115,20 @@ async function backfillOne(deps: BackfillDeps, storyId: StoryId, now: Millis): P
   await deps.backfill.record({ storyId, at: now, membersAt: members.length, quotedPosts: fetched, search, costUsd: total });
   deps.log.info('story backfilled', { story: storyId, members: members.length, quotedPosts: fetched, search, usd: total });
   return { fetched: fetched + (searched.name === null ? 0 : searched.returned), usd: total };
+}
+
+/**
+ * A sound or effect two of the story's posts share is where it may have started — the first
+ * post to use it. No source can be asked for that yet (docs/go-live-plan.md, "Not built yet"),
+ * so it is said once per backfill rather than silently skipped.
+ */
+function noteSharedFormats(deps: BackfillDeps, storyId: StoryId, posts: readonly Item[]): void {
+  const uses = new Map<string, number>();
+  for (const post of posts) for (const format of new Set(post.formatIds)) uses.set(format, (uses.get(format) ?? 0) + 1);
+  const shared = [...uses].filter(([, n]) => n >= 2).map(([format]) => format);
+  if (shared.length > 0) {
+    deps.log.info('members share a sound or effect; finding its first use is not supported yet', { story: storyId, formats: shared });
+  }
 }
 
 type Searched =
