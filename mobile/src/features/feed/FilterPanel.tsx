@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { PLATFORMS, type Platform } from '../../shared/platform.ts';
+import { FILTER_PLATFORMS, type Platform } from '../../shared/platform.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { NO_FILTERS, type CoinFilter, type FeedFilters, type PostedWindow, type ViewStep } from './feed-filters.ts';
@@ -57,7 +57,7 @@ export function FilterPanel({
 
         <h3>Social site</h3>
         <div className={styles['pills']}>
-          {PLATFORMS.map((p) => (
+          {FILTER_PLATFORMS.map((p) => (
             <Pill key={p.key} on={draft.sites.includes(p.key)} onClick={() => toggleSite(p.key)}>
               <PlatformMark platform={p.key} size={13} /> {p.label}
             </Pill>

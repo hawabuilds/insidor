@@ -21,7 +21,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BOARD_VIEW, USING_FIXTURES, fetchBoard, fetchRising, type BoardRow, type RisingPost } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { boardNotice } from '../../shared/notice.ts';
-import { PLATFORMS } from '../../shared/platform.ts';
+import { FILTER_PLATFORMS } from '../../shared/platform.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
@@ -143,7 +143,7 @@ export function Feed({ onCreate }: { onCreate: (row: BoardRow, sample: boolean) 
           >
             All
           </button>
-          {PLATFORMS.map((p) => (
+          {FILTER_PLATFORMS.map((p) => (
             <button
               key={p.key}
               type="button"
