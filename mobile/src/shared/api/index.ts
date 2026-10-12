@@ -24,6 +24,7 @@ export {
   buildTrade,
   buildTransfer,
   fetchPortfolio,
+  fetchWalletHistory,
   loadSamplePortfolio,
   fetchHolding,
   fetchSearch,

@@ -82,6 +82,7 @@ export const SAMPLE_SCREENS = DEV || SAMPLE;
 async function readFixture(path: string): Promise<unknown> {
   const { fixtureBoard, fixtureRising, fixtureStory } = await import('./fixtures.ts');
   if (path.startsWith('/board/')) return fixtureBoard();
+  if (/^\/wallet\/[^/]+\/history/.test(path)) return { range: '1w', points: [] };
   if (path.startsWith('/wallet/')) {
     const { fixturePortfolio } = await import('./fixture-wallet.ts');
     return fixturePortfolio();
@@ -144,6 +145,17 @@ export async function fetchCoinMarket(coinId: string, timeframe: MarketTimeframe
 /** The Wallet tab: what this wallet holds and what it is worth. The app asks only for its own. */
 export async function fetchPortfolio(address: string, range: PortfolioRange, signal?: AbortSignal): Promise<Portfolio> {
   return decodePortfolio(await read(`/wallet/${encodeURIComponent(address)}?range=${range}`, signal));
+}
+
+/** The balance chart's points for a wallet, oldest first. Empty until the wallet has been read over time. */
+export async function fetchWalletHistory(address: string, range: '1d' | '1w' | '1m' | 'all', signal?: AbortSignal): Promise<readonly { readonly t: number; readonly value: number }[]> {
+  const raw = await read(`/wallet/${encodeURIComponent(address)}/history?range=${range}`, signal);
+  const points = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>)['points'] : null;
+  if (!Array.isArray(points)) return [];
+  return points.flatMap((p) => {
+    const o = typeof p === 'object' && p !== null ? (p as Record<string, unknown>) : {};
+    return typeof o['t'] === 'number' && typeof o['value'] === 'number' && Number.isFinite(o['value']) && o['value'] >= 0 ? [{ t: o['t'], value: o['value'] }] : [];
+  });
 }
 
 /** A sample wallet, recorded from a public one, for a build with no read service. Never the network. */
