@@ -3,7 +3,7 @@
  *
  * One claim, one line saying what the app holds, one thing to press. The wordmark sits on dark
  * with clear space above the headline; the headline is light, large and on two lines, with the
- * payoff in the accent colour. "Join now" opens the sign-in: Continue with X or with Google, and a
+ * payoff in the accent colour. "Join now" opens the sign-in: Continue with X (X only, for now), and a
  * wallet is made on the way in.
  *
  * ★ NO NUMBERS ON THE DOOR. Trador took its counts off this page after they disagreed with the
@@ -78,16 +78,6 @@ export function Landing({ configured, onEnter }: { configured: boolean; onEnter:
           >
             <XMark size={18} /> Continue with X
           </button>
-          <button
-            type="button"
-            className={styles['google']}
-            onClick={() => {
-              setOpen(false);
-              void wallet?.connect('google');
-            }}
-          >
-            <Google /> Continue with Google
-          </button>
           <p className={styles['small']}>A wallet is created for you on the way in. Nothing to install, nothing to pay.</p>
         </Modal>
       ) : null}
@@ -111,14 +101,6 @@ function Mark() {
       <rect width="40" height="40" rx="11" fill="var(--brand)" />
       <path d="M8 20c3.4-5.6 7.4-8.4 12-8.4s8.6 2.8 12 8.4c-3.4 5.6-7.4 8.4-12 8.4S11.4 25.6 8 20Z" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinejoin="round" />
       <circle cx="20" cy="20" r="4.2" fill="#fff" />
-    </svg>
-  );
-}
-
-function Google() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.5 14.6 2.5 12 2.5 6.8 2.5 2.6 6.7 2.6 12s4.2 9.5 9.4 9.5c5.4 0 9-3.8 9-9.2 0-.6-.1-1.1-.2-1.6H12Z" />
     </svg>
   );
 }

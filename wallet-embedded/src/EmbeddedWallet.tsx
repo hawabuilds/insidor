@@ -1,7 +1,7 @@
 /**
  * THE ONE FILE THAT TALKS TO THE WALLET VENDOR'S SDK.
  *
- * Renders the vendor's provider — sign-in with X or Google, an embedded Solana wallet created for
+ * Renders the vendor's provider — sign-in with X (X only, for now), an embedded Solana wallet created for
  * anyone who signs in without one — and one invisible component that reads the vendor's hooks
  * and writes three facts into the store (store.ts): ready, signed in, the embedded wallet's
  * address. Everything the app sees goes through the wallet port; nothing here is exported for a
@@ -35,7 +35,8 @@ export function EmbeddedWalletProvider({ appId, bridge, children }: { appId: str
     <PrivyProvider
       appId={appId}
       config={{
-        loginMethods: ['twitter', 'google'],
+        /* X only, for now. Google is off here and must be off in the vendor's dashboard too. */
+        loginMethods: ['twitter'],
         embeddedWallets: { solana: { createOnLogin: 'users-without-wallets' } },
         /* Outside wallets are joined for viewing only, through the vendor's own connect window. */
         externalWallets: { solana: { connectors: CONNECTORS } },
@@ -104,7 +105,8 @@ function VendorBridge({ bridge }: { bridge: Bridge }) {
       /* Always the vendor's own sign-in sheet, as Trador opens it — narrowed to the one provider
          the front door named. Its headless OAuth call is not used: it skips the sheet, takes a
          different route through the provider, and is not what Trador runs. */
-      signIn: (via) => login(via === undefined ? undefined : { loginMethods: [via === 'x' ? 'twitter' : 'google'] }),
+      /* Every sign-in is X's, whatever the caller asked: Google is switched off. */
+      signIn: () => login({ loginMethods: ['twitter'] }),
       signOut: () => logout(),
       showExport: () => (address === null ? Promise.reject(new Error('no embedded wallet')) : exportWallet({ address })),
       linkWallet: () => linkWallet({ walletChainType: 'solana-only' }),

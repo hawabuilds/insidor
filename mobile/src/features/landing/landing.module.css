@@ -131,21 +131,6 @@
   text-align: center;
 }
 
-.google {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 15px 16px;
-  border: 0;
-  border-radius: 15px;
-  background: #fff;
-  color: #1f1f1f;
-  font: inherit;
-  font-size: 16px;
-  font-weight: 700;
-}
 
 /* Where Join now will be, while sign-in starts or its window is open. Text, never a dead button. */
 .waiting {
