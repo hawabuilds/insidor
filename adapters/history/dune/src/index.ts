@@ -72,7 +72,16 @@ export function duneClient(config: DuneConfig) {
     } catch (error) {
       throw new VendorUnavailable(VENDOR, label, `request failed: ${error instanceof Error ? error.message : 'unknown'}`);
     }
-    if (!response.ok) throw new VendorUnavailable(VENDOR, label, `responded ${response.status}`, response.status);
+    if (!response.ok) {
+      /* Dune's own words for a refusal ("Invalid performance tier"), never the key: it is in a header. */
+      let said = '';
+      try {
+        said = str(rec(JSON.parse(await response.text())).error) ?? '';
+      } catch {
+        said = '';
+      }
+      throw new VendorUnavailable(VENDOR, label, `responded ${response.status}${said === '' ? '' : `: ${said.slice(0, 200)}`}`, response.status);
+    }
     return response.json();
   };
 
