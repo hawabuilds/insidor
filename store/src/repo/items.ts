@@ -143,6 +143,39 @@ export class PgItemRepo implements ItemRepo {
   }
 
   /**
+   * The posts TRACK may spend a read on, NEWEST FIRST: those ADMIT passed, and those in a
+   * promoted story.
+   *
+   * ★ NEWEST FIRST because reads are budgeted and views move fastest in a post's first
+   * hours. Oldest first — the order `admittedSince` returns — would spend a tight budget on
+   * posts that are days old and leave the minutes-old ones unread.
+   *
+   * ★ AND PROMOTED-STORY MEMBERS EVEN IF ADMIT DROPPED THEM. Those posts are the cards on the
+   * board, and every view count and sparkline on a card is read from them. ADMIT's day-one
+   * bar turns most new accounts away, which is right for deciding what to watch and wrong
+   * for leaving a card on screen with a dash where its views should be.
+   */
+  async trackable(at: Millis, limit: number): Promise<readonly Item[]> {
+    const rows = await this.#db.query<ItemRow>(
+      `${SELECT_ITEM}
+        where first_seen_at >= $1
+          and (
+            exists (select 1 from internal.decisions d
+                     where d.subject_kind = 'item' and d.subject_id = public.item.item_id
+                       and d.stage = 'admit' and d.verdict = 'pass')
+            or exists (select 1 from public.story_member m
+                         join public.story s on s.story_id = m.story_id
+                        where m.item_id = public.item.item_id and s.state = 'promoted')
+          )
+        order by first_seen_at desc
+        limit $2`,
+      [toTimestamp(at), limit],
+    );
+    const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
+    return rows.map((row) => this.#toItem(row, fingerprints));
+  }
+
+  /**
    * Items admitted since an instant, oldest first — the query every stage that
    * walks forward in time lives on.
    *

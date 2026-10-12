@@ -90,3 +90,10 @@ export { liveCount, sourceState } from './sources/state.ts';
  */
 export { tickerUse } from './create/ticker.ts';
 export type { TickerEvidence, TickerUse } from './create/ticker.ts';
+
+/**
+ * A re-read turned into the observations it appends. Not a stage: TRACK decides a read is
+ * due, the runner takes it, and this decides what each counter's new rate is — a rule with
+ * thresholds, so it lives here and nowhere else.
+ */
+export { latestCounters, observationsFrom } from './kinetics/readings.ts';

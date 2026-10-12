@@ -27,14 +27,21 @@
 import type { Decision, Millis, Policy, StageContext, StageName } from '@insidor/contracts';
 import type * as core from '@insidor/core';
 
-import { commitDecision, type DecisionLog, type DecisionReceipt } from './commit.ts';
+import {
+  commitDecision,
+  logDecision,
+  markCarriedOut,
+  type DecisionLog,
+  type DecisionReceipt,
+  type Logged,
+} from './commit.ts';
 import type { SupervisedName } from './config.ts';
 import { errorText, type Logger } from './log.ts';
 
 /* The log seam and the receipt are declared in commit.ts, next to the ordering
    they exist to enforce. Re-exported here because this is the file a stage's
    wiring reads to find out what it must supply. */
-export type { DecisionLog, DecisionReceipt } from './commit.ts';
+export type { DecisionLog, DecisionReceipt, Logged } from './commit.ts';
 
 /* ── what a run reports ───────────────────────────────────────────────── */
 
@@ -94,6 +101,14 @@ export interface StageWork<Input> {
   /** Stable, per subject. Seeds holdout and epsilon assignment deterministically. */
   subjectId(input: Input): string;
   apply(input: Input, receipt: DecisionReceipt): Promise<void>;
+  /**
+   * The side effect for a whole pass at once, for a stage whose effect is one call for many
+   * subjects. When present the loop decides and writes every subject first, then calls this
+   * once, then marks the rows it returns — see `logDecision` in commit.ts. `apply` is not
+   * called. Returns the row ids whose effect actually happened, including those that owed
+   * nothing.
+   */
+  applyAll?(logged: readonly Logged<Input>[]): Promise<ReadonlySet<string>>;
 }
 
 /**
@@ -148,6 +163,7 @@ export function makeStageLoop<Input>(spec: StageLoopSpec<Input>, deps: LoopDeps)
       // zero and throwing loses nothing. Everything after this point is
       // per-subject and must not take the batch down with it.
       const inputs = await spec.work.pull(spec.batchSize, ctx);
+      if (spec.work.applyAll !== undefined) return runBatched(spec, deps, ctx, inputs, spec.work.applyAll.bind(spec.work));
 
       let passed = 0;
       let failed = 0;
@@ -213,4 +229,58 @@ export function makeStageLoop<Input>(spec: StageLoopSpec<Input>, deps: LoopDeps)
       return { in: inputs.length, out: passed, failed, firstError };
     },
   };
+}
+
+/**
+ * The batched pass: decide and write every subject, act once, mark what happened.
+ *
+ * The per-subject guarantees of the ordinary pass hold here too. A subject whose id or
+ * decision throws is counted and logged and does not stop the others. If `act` throws,
+ * every row in the pass stays unapplied and the pass reports its error. A row `act` does
+ * not return stays unapplied without being called a failure: a read the budget refused is
+ * a pause, and the repair queue is where it waits.
+ */
+async function runBatched<Input>(
+  spec: StageLoopSpec<Input>,
+  deps: LoopDeps,
+  ctx: LoopContext,
+  inputs: readonly Input[],
+  act: (logged: readonly Logged<Input>[]) => Promise<ReadonlySet<string>>,
+): Promise<LoopCounts> {
+  const commit = { decisions: deps.decisions, now: ctx.now };
+  const logged: Logged<Input>[] = [];
+  let passed = 0;
+  let failed = 0;
+  let firstError: string | null = null;
+
+  for (const input of inputs) {
+    if (ctx.signal.aborted) break;
+    let subjectId = '<subject id unavailable>';
+    try {
+      subjectId = spec.work.subjectId(input);
+      const stageCtx: StageContext = { now: ctx.now(), policyHash: deps.policyHash, seed: `${spec.stage}:${subjectId}` };
+      const entry = await logDecision(input, () => spec.decide(input, deps.policy, stageCtx), commit);
+      logged.push(entry);
+      if (entry.receipt.decision.verdict === 'pass') passed += 1;
+    } catch (e) {
+      failed += 1;
+      const text = errorText(e);
+      firstError ??= `${subjectId}: ${text}`;
+      deps.log.error('subject failed', { stage: spec.stage, subjectId, err: text });
+    }
+  }
+  if (logged.length === 0) return { in: inputs.length, out: passed, failed, firstError };
+
+  try {
+    const done = await act(logged);
+    await markCarriedOut(done, commit);
+    const waiting = logged.length - done.size;
+    if (waiting > 0) deps.log.warn('rows left for the repair queue', { stage: spec.stage, waiting });
+  } catch (e) {
+    const text = errorText(e);
+    failed += logged.length;
+    firstError ??= `${spec.stage} batch: ${text}`;
+    deps.log.error('batch effect failed; every row in the pass stays unapplied', { stage: spec.stage, err: text });
+  }
+  return { in: inputs.length, out: passed, failed, firstError };
 }

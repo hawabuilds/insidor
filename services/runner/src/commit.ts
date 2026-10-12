@@ -146,3 +146,39 @@ export async function commitDecision<Input>(
 
   return decision;
 }
+
+/* ── the batch form ───────────────────────────────────────────────────── */
+
+/** A decision that has been taken and written, with the receipt its side effect needs. */
+export interface Logged<Input> {
+  readonly input: Input;
+  readonly receipt: DecisionReceipt;
+}
+
+/**
+ * ★ THE SAME FOUR STEPS FOR A STAGE WHOSE SIDE EFFECT IS ONE CALL FOR MANY SUBJECTS.
+ *
+ * TRACK's effect is a re-read, and a source answers fifty re-reads in one call for the price
+ * of fifty. Taken one subject at a time that is fifty calls and fifty round trips. So the
+ * order is widened, never reversed: every decision in the pass is decided and WRITTEN first,
+ * then `act` runs once with all their receipts, then each row it reports as carried out is
+ * marked. A row it does not report keeps `applied_at IS NULL` — the repair queue — exactly
+ * as a failed `apply` leaves it in `commitDecision`.
+ *
+ * `act` returns row ids and not a boolean, because "the read went out" is per subject: a
+ * source can answer for forty-eight of fifty, and only those forty-eight happened.
+ */
+export async function logDecision<Input>(
+  input: Input,
+  decide: () => Decision,
+  deps: CommitDeps,
+): Promise<Logged<Input>> {
+  const decision = decide();
+  const rowId = await deps.decisions.write(decision);
+  return { input, receipt: receiptFor(rowId, decision) };
+}
+
+/** Mark the rows `act` reported as carried out. Called only with ids it returned. */
+export async function markCarriedOut(rowIds: Iterable<string>, deps: CommitDeps): Promise<void> {
+  for (const rowId of rowIds) await deps.decisions.markApplied(rowId, deps.now());
+}
