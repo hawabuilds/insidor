@@ -55,7 +55,7 @@ import { candidateId, pairId } from '@insidor/contracts/ids.ts';
 import type { ItemId, StoryId } from '@insidor/contracts/ids.ts';
 import type { Decision, Item, ItemOrigin, Millis, Observation, Policy } from '@insidor/contracts';
 import type { Story } from '@insidor/contracts/story.ts';
-import { afterMembership, joinMember, joinTarget, seedStory } from '@insidor/core';
+import { afterMembership, joinMember, joinTarget, presentationFor, seedStory } from '@insidor/core';
 import type {
   PgAssetRepo,
   PgAuthorRepo,
@@ -746,22 +746,20 @@ function qualifyWork(repos: StageRepos, judging: JudgingDeps): StageWork<Qualify
     subjectId: (input) => input.story.storyId,
 
     /**
-     * A QUALIFY `pass` owes a promotion and a rendered title — `StoryRepo.upsert` with
-     * state `promoted`, then `setPresentation`. Both exist. They are not written here
-     * for the same reason as GROUP: promotion decides what downstream stages are
-     * allowed to look at, so it changes the pipeline rather than the record.
+     * A QUALIFY `pass` writes what the story is shown under: the judge's proposed name and
+     * the earliest post's own picture, through `setPresentation`. Promotion is not written
+     * here — GROUP promotes, and QUALIFY only ever sees promoted stories (`S0` abstains on
+     * the rest), so a pass is always about a story that is already on the board.
      *
-     * With no judge wired every row is `Q1_unjudged` today, which owes nothing at all —
-     * so this branch is currently unreachable and is written for the day it is not.
+     * Every other verdict owes nothing. A story QUALIFY drops keeps its quoted title on the
+     * board; whether a dropped story should leave the board is RANK's question, not this one.
      */
-    apply: (_input, receipt) => {
-      if (receipt.decision.verdict !== 'pass') return Promise.resolve();
-      return Promise.reject(
-        new NotImplemented(
-          'qualify.apply — promotion and presentation (StoryRepo.upsert + setPresentation). ' +
-            'Promotion changes what downstream stages may look at, so it is wired with ' +
-            "QUALIFY's actuation and not with the log",
-        ),
+    async apply(input, receipt) {
+      if (receipt.decision.verdict !== 'pass') return;
+      const found = await repos.items.byIds(input.members.map((m) => m.itemId));
+      await repos.stories.setPresentation(
+        input.story.storyId,
+        presentationFor(input.judgement, [...found.values()]),
       );
     },
   };
