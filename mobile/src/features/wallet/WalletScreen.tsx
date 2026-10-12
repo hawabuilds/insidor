@@ -1,127 +1,137 @@
 /**
- * THE WALLET TAB — sign in with X; then your wallet: what it holds and what it is worth
- * (Portfolio.tsx), Receive (your address, with a copy button) and, once the build has TRADING on,
- * Send.
+ * THE WALLET TAB — Trador's Stonkfolio, in Insidor: sign in with X, then who you are, what your
+ * wallet holds and what it is worth (Portfolio.tsx), Send and Receive.
  *
  * Sign-in creates a Solana wallet for anyone who has none (the vendor holds it; we never see a
  * key, and there is no screen to import or export one). The tab only ever reads the signed-in
  * person's own wallet. A build with no sign-in shows a recorded public wallet, labelled as
- * sample data, so the screen can be seen; it is never presented as anyone's own.
+ * sample data, as Trador's demo mode does; it is never presented as anyone's own.
  *
- * ★ CONNECTING CHANGES NO OTHER SCREEN. Buy and Sell stay "Coming soon" until trading is turned
- * on (shared/trading.ts); a connected wallet is not a reason for a button to appear.
+ * ★ SEND ONLY WITH TRADING ON. Receive is always there (it is an address); Send appears only in a
+ * build with TRADING on, never as a disabled button.
  *
  * Closing the sign-in is said as what it is — "You closed sign-in" — never as an error.
  */
 
 import { useState } from 'react';
 
-import { SAMPLE_SCREENS, fetchPortfolio, loadSamplePortfolio, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
+import { SAMPLE_SCREENS, fetchPortfolio, loadSamplePortfolio, type Holding, type Portfolio as PortfolioData, type PortfolioRange } from '../../shared/api/index.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { SAMPLE_WALLET } from '../../shared/notice.ts';
 import { tradingOn } from '../../shared/trading.ts';
+import { Button } from '../../shared/ui/Button.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
-import { Portfolio, usePortfolioRange } from './Portfolio.tsx';
+import { Portfolio, type WhoAmI } from './Portfolio.tsx';
+import { ReceiveSheet } from './ReceiveSheet.tsx';
 import { SendSheet } from './SendSheet.tsx';
-import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { Button } from '../../shared/ui/Button.tsx';
-import { CopyIcon } from '../../shared/ui/icons.tsx';
-import styles from './wallet.module.css';
-
-/** "7sYK…pump": enough of each end to compare by eye. */
-const short = (a: string): string => (a.length <= 12 ? a : `${a.slice(0, 4)}…${a.slice(-4)}`);
+import styles from './portfolio.module.css';
+import box from './wallet.module.css';
 
 /* Read once, at build time, like the trade bar: a deploy turns Send on, never a page. */
 const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as string | undefined });
 
-function Holdings({ load, keyOf, canSend }: { load: (signal: AbortSignal, range: '1h' | '6h' | '24h') => Promise<PortfolioData>; keyOf: string; canSend: boolean }) {
-  const [range, setRange] = usePortfolioRange();
-  const [data] = useLoad(`wallet:${keyOf}:${range}`, (signal) => load(signal, range));
-  if (data.state === 'loading') return <p className={styles['line']}>Reading the wallet.</p>;
-  if (data.state === 'failed') return <p className={styles['line']}>— what this wallet holds could not be read just now.</p>;
+/** The address of the recorded sample wallet; shown only with the "Sample data" notice. */
+const SAMPLE_ADDRESS = '86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY';
+
+function Loaded({ who, load, canAct, footer = null }: { who: WhoAmI; load: (signal: AbortSignal, range: PortfolioRange) => Promise<PortfolioData>; canAct: boolean; footer?: React.ReactNode }) {
+  const [range, setRange] = useState<PortfolioRange>('24h');
+  const [copied, setCopied] = useState(false);
+  const [sheet, setSheet] = useState<'send' | 'receive' | null>(null);
+  const [data] = useLoad(`wallet:${who.address}:${range}`, (signal) => load(signal, range));
+  const portfolio: PortfolioData | null = data.state === 'ready' ? data.value : data.state === 'failed' ? { kind: 'unavailable' } : null;
+  const holdings: readonly Holding[] = portfolio?.kind === 'read' ? portfolio.holdings : [];
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(who.address);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const actions = canAct ? (
+    <div className={styles['actions']}>
+      {TRADING ? <button type="button" className={styles['action']} onClick={() => setSheet('send')}><Arrow up />Send</button> : null}
+      <button type="button" className={styles['action']} onClick={() => setSheet('receive')}><Arrow />Receive</button>
+    </div>
+  ) : null;
+
   return (
     <>
-      {canSend ? <SendButton holdings={data.value.kind === 'read' ? data.value.holdings : []} /> : null}
-      <Portfolio data={data.value} range={range} onRange={setRange} />
+      <Portfolio
+        who={who}
+        data={portfolio}
+        range={range}
+        onRange={setRange}
+        copied={copied}
+        onCopy={() => void copy()}
+        actions={actions}
+        notice={canAct ? null : <div className={box['sampleNotice']}><Notice notice={SAMPLE_WALLET} /></div>}
+        footer={footer}
+      />
+      {sheet === 'send' ? <SendSheet holdings={holdings} onClose={() => setSheet(null)} /> : null}
+      {sheet === 'receive' ? <ReceiveSheet address={who.address} onClose={() => setSheet(null)} /> : null}
     </>
   );
 }
 
-/** Send, with the wallet's own coins to choose from. Only in a build with TRADING on. */
-function SendButton({ holdings }: { holdings: readonly Holding[] }) {
-  const [open, setOpen] = useState(false);
+function Arrow({ up = false }: { up?: boolean }) {
   return (
-    <>
-      <Button look="primary" size="large" className={styles['cta']} onClick={() => setOpen(true)}>Send</Button>
-      {open ? <SendSheet holdings={holdings} onClose={() => setOpen(false)} /> : null}
-    </>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ transform: up ? undefined : 'rotate(180deg)' }}>
+      <path d="M12 19V5M5 12l7-7 7 7" />
+    </svg>
   );
 }
 
 export function WalletScreen() {
   const { wallet, state } = useWallet();
-  const toast = useToast();
 
-  const copy = async (address: string) => {
-    try {
-      await navigator.clipboard.writeText(address);
-      toast('Address copied');
-    } catch {
-      toast('Could not copy', 'Press and hold the address instead.');
-    }
-  };
+  if (state.kind === 'connected' || state.kind === 'wrong-network') {
+    const id = wallet?.identity() ?? null;
+    const who: WhoAmI = { name: id?.name ?? null, handle: id?.handle ?? null, pictureUrl: id?.pictureUrl ?? null, address: state.account };
+    return (
+      <Loaded
+        who={who}
+        canAct
+        load={(signal, range) => fetchPortfolio(state.account, range, signal)}
+        footer={<div className={box['signOutRow']}><Button look="quiet" size="small" onClick={() => void wallet?.disconnect()}>Sign out</Button></div>}
+      />
+    );
+  }
+
+  if (state.kind === 'unavailable' && SAMPLE_SCREENS) {
+    return <Loaded who={{ name: 'Sample wallet', handle: null, pictureUrl: null, address: SAMPLE_ADDRESS }} canAct={false} load={() => loadSamplePortfolio()} />;
+  }
 
   return (
-    <section className={styles['screen']}>
-      <h1 className={styles['title']}>Wallet</h1>
-      {state.kind === 'unavailable' ? (
-        <div className={styles['box']}>
-          <b>Sign-in isn't set up in this build</b>
-          <p>The wallet needs sign-in with X, which this build has no key for.</p>
-        </div>
-      ) : null}
-      {state.kind === 'unavailable' && SAMPLE_SCREENS ? (
-        <div className={styles['sample']}>
-          <Notice notice={SAMPLE_WALLET} />
-          <Holdings keyOf="sample" canSend={false} load={() => loadSamplePortfolio()} />
-        </div>
-      ) : null}
-
-      {state.kind === 'disconnected' || state.kind === 'refused' || state.kind === 'failed' ? (
-        <div className={styles['box']}>
-          <b>Sign in to get your wallet</b>
-          <p>Sign in with X and a Solana wallet is made for you. Nobody, including us, ever sees its key.</p>
-          {state.kind === 'refused' ? <p className={styles['note']}>You closed sign-in.</p> : null}
-          {state.kind === 'failed' ? <p className={styles['note']}>Sign-in didn't work. Try again.</p> : null}
-          <Button look="primary" size="large" className={styles['cta']} onClick={() => void wallet?.connect()}>
-            Sign in with X
-          </Button>
-        </div>
-      ) : null}
-
-      {state.kind === 'connecting' ? (
-        <div className={styles['box']}>
-          <b>Signing in</b>
-          <p>Finish in the sign-in window. Your wallet is made the first time.</p>
-        </div>
-      ) : null}
-
-      {state.kind === 'connected' || state.kind === 'wrong-network' ? (
-        <>
-          <div className={styles['box']}>
-            <span className={styles['kicker']}>Receive</span>
-            <button type="button" className={styles['address']} onClick={() => void copy(state.account)} aria-label={`Copy address ${state.account}`}>
-              {short(state.account)} <CopyIcon size={14} />
-            </button>
-            <p>Send SOL or coins to this address.</p>
-          </div>
-          <Holdings keyOf={state.account} canSend={TRADING} load={(signal, range) => fetchPortfolio(state.account, range, signal)} />
-          <Button look="quiet" size="large" className={styles['cta']} onClick={() => void wallet?.disconnect()}>
-            Sign out
-          </Button>
-        </>
-      ) : null}
+    <section className={box['screen']}>
+      <div className={box['signIn']}>
+        <span className={box['signInIcon']} aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="6" width="18" height="14" rx="3" /><path d="M16 13h2M3 10h18" /></svg>
+        </span>
+        {state.kind === 'unavailable' ? (
+          <>
+            <b>Sign-in isn't set up in this build</b>
+            <p>The wallet needs sign-in with X, which this build has no key for.</p>
+          </>
+        ) : state.kind === 'connecting' ? (
+          <>
+            <b>Signing in</b>
+            <p>Finish in the sign-in window. Your wallet is made the first time.</p>
+          </>
+        ) : (
+          <>
+            <b>Sign in to see your wallet</b>
+            <p>Your holdings are read from the chain, so nothing is stored here. Nobody, including us, ever sees your wallet's key.</p>
+            {state.kind === 'refused' ? <p className={box['note']}>You closed sign-in.</p> : null}
+            {state.kind === 'failed' ? <p className={box['note']}>Sign-in didn't work. Try again.</p> : null}
+            <Button look="primary" size="large" className={box['cta']} onClick={() => void wallet?.connect()}>Sign in</Button>
+          </>
+        )}
+      </div>
     </section>
   );
 }

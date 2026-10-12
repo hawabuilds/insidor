@@ -10,7 +10,7 @@ import { useWallet } from '../../shared/wallet.tsx';
 import { Button } from '../../shared/ui/Button.tsx';
 import { Modal } from '../../shared/ui/Modal.tsx';
 import { confirmBuilt, fromBase64, toBaseUnits, type ConfirmOutcome } from '../trade/order-flow.ts';
-import styles from './wallet.module.css';
+import styles from './send.module.css';
 
 const SOL_DECIMALS = 9;
 

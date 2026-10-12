@@ -19,6 +19,7 @@ export interface Holding {
   /** Base units, exact, with the coin's decimals. */
   readonly amount: string;
   readonly decimals: number;
+  readonly priceUsd: Measured;
   readonly valueUsd: Measured;
   /** The price move over the chosen range, in percent. */
   readonly change: Measured;
