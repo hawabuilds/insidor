@@ -48,7 +48,7 @@ that guarantee.
 `DATABASE_URL_APP` must point at `insidor_app_user`, never at `postgres`:
 
 ```
-DATABASE_URL_APP=postgresql://insidor_app_user:insidor_app@db.xxxx.supabase.co:5432/postgres
+DATABASE_URL_APP=postgresql://insidor_app_user:YOUR_APP_DB_PASSWORD@db.xxxx.supabase.co:5432/postgres
 ```
 
 ★ **Not the transaction-mode pooler (port 6543).** It releases session advisory locks
