@@ -254,6 +254,9 @@ importers:
       '@insidor/core':
         specifier: workspace:*
         version: link:../core
+      '@insidor/embed-voyage':
+        specifier: workspace:*
+        version: link:../adapters/embed/voyage
       '@insidor/judge-anthropic':
         specifier: workspace:*
         version: link:../adapters/judge/anthropic

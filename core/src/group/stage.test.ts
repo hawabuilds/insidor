@@ -30,7 +30,8 @@ import { matchScore, NO_PAIR_CONTEXT } from './match.ts';
 import { planMerge } from './merge.ts';
 import { carrierWeight, persistence } from './persistence.ts';
 import { shouldPromote } from './promote.ts';
-import { extract, gate, group, type GroupInput } from './stage.ts';
+import { NO_PICTURE_INPUTS } from './picture.ts';
+import { DECIDER, extract, gate, group, type GroupInput } from './stage.ts';
 
 /* ── fixtures ─────────────────────────────────────────────────────────── */
 
@@ -96,6 +97,7 @@ function input(over: Partial<GroupInput> = {}): GroupInput {
     similarity: {},
     lineage: null,
     corpus: {},
+    picture: NO_PICTURE_INPUTS,
     costUsd: 0,
     ...over,
   };
@@ -267,7 +269,7 @@ test('two candidates inside the adjudication band go to a human, not to a guess'
 
   // GROUP never fabricates the human's answer. `{kind:'adjudicated'}` arrives later as
   // data; nothing in this decision claims one was consulted.
-  assert.equal(d.decider, 'rule:group@1');
+  assert.equal(d.decider, DECIDER);
 
   // Separate the two and the same block joins. The band is about separation, not about
   // there being two of anything.

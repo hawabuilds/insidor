@@ -64,6 +64,7 @@ import {
   PgDecisionRepo,
   PgFeedFloorRepo,
   PgImageEmbeddingRepo,
+  PgImagePairRepo,
   PgJudgementRepo,
   PgPostJudgementRepo,
   PgItemRepo,
@@ -411,6 +412,24 @@ export async function withRuntime<T>(
           log: log.child({ step: 'judge' }),
         },
         { platforms, meter, mode: cfg.spend.kind, log: log.child({ step: 'track' }), now: () => Date.now() as Millis },
+        /* GROUP's picture evidence: stored image vectors, the judge's names, and the
+           same-subject question for borderline pictures (asked with QUALIFY's judge). */
+        {
+          images: new PgImageEmbeddingRepo(db),
+          postScores: new PgPostJudgementRepo(db),
+          storyJudgements: new PgJudgementRepo(db),
+          pairs:
+            judge === null
+              ? null
+              : {
+                  judge,
+                  pairs: new PgImagePairRepo(db),
+                  mode: cfg.spend.kind,
+                  policy,
+                  log: log.child({ step: 'image-pairs' }),
+                  now: () => Date.now() as Millis,
+                },
+        },
       );
 
       /* ★ WRITTEN AT BOOT AND NOT ONLY PER PASS. The dormant/failing distinction has to

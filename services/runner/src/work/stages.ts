@@ -56,6 +56,8 @@ import type { ItemId, StoryId } from '@insidor/contracts/ids.ts';
 import type { CounterSet, Decision, Item, ItemOrigin, Millis, Observation, Policy } from '@insidor/contracts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
+import type { JudgementRepo } from '@insidor/contracts/ports/store.ts';
+import type { PgImageEmbeddingRepo, PgPostJudgementRepo } from '@insidor/store';
 import type { Story } from '@insidor/contracts/story.ts';
 import {
   afterMembership,
@@ -65,8 +67,10 @@ import {
   observationsFrom,
   owesASeed,
   presentationFor,
+  nameKey,
   rankByVelocity,
   seedStory,
+  type PictureInputs,
 } from '@insidor/core';
 import type {
   PgAssetRepo,
@@ -91,6 +95,7 @@ import type {
 import { errorText, type Logger } from '../log.ts';
 import { NotImplemented } from '../not-implemented.ts';
 import { judgeStories, type JudgingDeps } from './judge.ts';
+import { checkPair, type PairCheckDeps } from './image-pairs.ts';
 
 /* ── operational constants ────────────────────────────────────────────────
    Cadences, page sizes and lookbacks — how much is fetched, never what is decided.
@@ -683,7 +688,19 @@ function detectWork(repos: StageRepos): StageWork<DetectInput> {
 
 /* ── GROUP ────────────────────────────────────────────────────────────── */
 
-function groupWork(repos: StageRepos, policy: Policy): StageWork<GroupInput> {
+/**
+ * What GROUP reads its picture evidence through. Null when there is no image vendor, judge or
+ * store to read it from: GROUP then groups on the free tiers alone, as it always could.
+ */
+export interface GroupingDeps {
+  readonly images: Pick<PgImageEmbeddingRepo, 'bestMatches'>;
+  readonly postScores: Pick<PgPostJudgementRepo, 'latest'>;
+  readonly storyJudgements: Pick<JudgementRepo, 'latest'>;
+  /** The same-subject question for borderline pictures; null when no judge can be asked. */
+  readonly pairs: PairCheckDeps | null;
+}
+
+function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | null): StageWork<GroupInput> {
   /* ★ THE BLOCK IS LIVE FOR THE WHOLE PASS. The loop decides and applies one input at a
      time, but every input is built here up front. With a candidate list fixed at pull time,
      two posts of the same moment arriving in the same page would each find nothing, each
@@ -693,6 +710,53 @@ function groupWork(repos: StageRepos, policy: Policy): StageWork<GroupInput> {
      input is decided. The decision row still records exactly the block it was decided
      against, because the vector is computed at decide time. */
   const blockOf = new WeakMap<GroupInput, Story[]>();
+
+  /** The judge's names for the posts on this page and for the open stories' posts and selves. */
+  async function pictureNames(items: readonly Item[], open: readonly Story[]) {
+    const byItem = new Map<string, readonly string[]>();
+    const byStory = new Map<string, readonly string[]>();
+    if (grouping === null) return { byItem, byStory };
+    const members = await repos.stories.membersForStories(open.map((s) => s.storyId));
+    const memberIds = [...members.values()].flat().map((m) => m.itemId);
+    const scored = await grouping.postScores.latest([...items.map((i) => i.itemId), ...memberIds]);
+    const namesOf = (j: { proposedName: string | null; alternateNames: readonly string[] } | undefined): string[] =>
+      j === undefined ? [] : [...(j.proposedName === null ? [] : [j.proposedName]), ...j.alternateNames];
+    for (const item of items) byItem.set(item.itemId, namesOf(scored.get(item.itemId)));
+    const storyJudged = await grouping.storyJudgements.latest(open.map((s) => s.storyId));
+    for (const story of open) {
+      const own = namesOf(storyJudged.get(story.storyId)?.judgement);
+      const fromPosts = (members.get(story.storyId) ?? []).flatMap((m) => namesOf(scored.get(m.itemId)));
+      byStory.set(story.storyId, [...own, ...fromPosts]);
+    }
+    return { byItem, byStory };
+  }
+
+  /** One post's picture evidence against its candidate stories. */
+  async function pictureFor(
+    item: Item,
+    block: readonly Story[],
+    names: { byItem: ReadonlyMap<string, readonly string[]>; byStory: ReadonlyMap<string, readonly string[]> },
+  ): Promise<{ similarity: Record<string, Record<string, number>>; inputs: PictureInputs }> {
+    const similarity: Record<string, Record<string, number>> = {};
+    const storyNames: Record<string, readonly string[]> = {};
+    const confirmed: Record<string, boolean> = {};
+    const itemNames = names.byItem.get(item.itemId) ?? [];
+    for (const story of block) storyNames[story.storyId] = names.byStory.get(story.storyId) ?? [];
+    if (grouping === null || block.length === 0) return { similarity, inputs: { itemNames, storyNames, confirmed } };
+
+    const space = policy.group.image.space;
+    const best = await grouping.images.bestMatches(item.itemId, block.map((s) => s.storyId), space);
+    const mine = new Set(itemNames.map(nameKey).filter((n) => n !== ''));
+    for (const [storyId, match] of best) {
+      similarity[storyId] = { [space]: match.similarity };
+      const borderline = match.similarity >= policy.group.image.borderline && match.similarity < policy.group.image.likely;
+      const named = (storyNames[storyId] ?? []).some((n) => mine.has(nameKey(n)));
+      if (borderline && named && grouping.pairs !== null) {
+        confirmed[storyId] = (await checkPair(grouping.pairs, match.itemUri, match.memberUri)) === 'yes';
+      }
+    }
+    return { similarity, inputs: { itemNames, storyNames, confirmed } };
+  }
 
   /** Read the story back after a membership write, add carriers, promote if it clears the bar. */
   async function settle(id: StoryId, item: Item, at: Millis, block: Story[] | undefined): Promise<void> {
@@ -763,22 +827,29 @@ function groupWork(repos: StageRepos, policy: Policy): StageWork<GroupInput> {
       }
       const storyOf = await repos.stories.storiesOfItems(pointers);
 
-      return items.map((item) => {
+      /* ★ THE PICTURE EVIDENCE, RESOLVED HERE AND HANDED TO CORE AS DATA (core/src/group/
+         picture.ts). The judge's names for every post in play, read once for the page; for
+         each post, its best image similarity to each candidate story; and, only for a
+         borderline picture whose names already match, the judge's same-subject answer —
+         asked once per pair, inside its daily cap. Without an image vendor, a judge or any
+         names, every map below is empty and GROUP groups on the free tiers alone. */
+      const names = await pictureNames(items, open);
+
+      const inputs: GroupInput[] = [];
+      for (const item of items) {
         const reproduction = item.reproductionOf;
         const rebroadcast = item.rebroadcastOf;
         const target = reproduction ?? rebroadcast;
         const story = target === null ? undefined : storyOf.get(target);
         const block = blockFor(item.origin);
+        const picture = await pictureFor(item, block, names);
 
         const input: GroupInput = {
           item,
           candidates: block,
-          /* Empty because the embed port is not wired. carriers.ts is explicit that
-             this must DEGRADE the match rather than block it, and the vector keeps
-             `representationConsulted` and `representationPresent` as separate keys so
-             an outage, a short circuit and a genuine dissimilarity stay three
-             different rows for ever. */
-          similarity: {},
+          /* The image space's best similarity per candidate story. A story with no
+             pictures, or a post with none, is absent — not consulted, never zero. */
+          similarity: picture.similarity,
           lineage:
             target === undefined || target === null || story === undefined
               ? null
@@ -792,11 +863,13 @@ function groupWork(repos: StageRepos, policy: Policy): StageWork<GroupInput> {
              "A zero default would mean nothing joins until fourteen days of history
              exist." */
           corpus: {},
+          picture: picture.inputs,
           costUsd: 0,
         };
         blockOf.set(input, block);
-        return input;
-      });
+        inputs.push(input);
+      }
+      return inputs;
     },
 
     subjectId: (input) => input.item.itemId,
@@ -1113,12 +1186,13 @@ export function storeWork(
   policy: Policy,
   judging: JudgingDeps,
   tracking: TrackingDeps,
+  grouping: GroupingDeps | null = null,
 ): StoreWork {
   return {
     admit: admitWork(repos, policy),
     track: trackWork(repos, policy, tracking),
     detect: detectWork(repos),
-    group: groupWork(repos, policy),
+    group: groupWork(repos, policy, grouping),
     qualify: qualifyWork(repos, judging),
     resolve: resolveWork(repos, policy),
     rank: rankWork(),

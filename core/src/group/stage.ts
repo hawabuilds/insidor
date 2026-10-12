@@ -46,6 +46,7 @@ import type { Item, Millis } from '@insidor/contracts/vocabulary.ts';
 import { decide as makeDecision } from '../decide.ts';
 import { MS_PER_MINUTE } from '../math.ts';
 import type { CarrierCorpus } from './carriers.ts';
+import { readPicture, type PictureInputs } from './picture.ts';
 import {
   adjudicate,
   carrierChannel,
@@ -70,8 +71,8 @@ export const NAME = 'group' as const;
  * than the key quietly repurposed because a feature set that changes shape under a name
  * it already used poisons every training row that shares its label window.
  */
-export const FEATURE_SET: FeatureSetId = 'pair.group.v2';
-export const DECIDER = 'rule:group@1';
+export const FEATURE_SET: FeatureSetId = 'pair.group.v3';
+export const DECIDER = 'rule:group@2';
 
 const PRESENT = 1;
 const ABSENT = 0;
@@ -105,13 +106,19 @@ export interface GroupInput {
    * A zero default would mean nothing joins until fourteen days of history exist.
    */
   readonly corpus: CarrierCorpus;
+  /**
+   * The names and same-subject answers the picture evidence reads (picture.ts), resolved by
+   * the runner: the judge's names for this post and for each candidate story's posts, and
+   * which borderline pictures the judge confirmed. Empty degrades to no picture evidence.
+   */
+  readonly picture: PictureInputs;
   readonly costUsd: number;
 }
 
 /* ── scoring the block ────────────────────────────────────────────────── */
 
 function contextOf(input: GroupInput): PairContext {
-  return { lineage: input.lineage, corpus: input.corpus };
+  return { lineage: input.lineage, corpus: input.corpus, picture: input.picture };
 }
 
 function scoreBlock(input: GroupInput, p: Policy): readonly MatchResult[] {
@@ -195,6 +202,9 @@ function vector(
       representationPresent: null,
       representationSimilarity: null,
       representationObserved: null,
+      pictureSimilarity: null,
+      pictureNameShared: null,
+      pictureConfirmed: null,
       sourceAgreement: null,
       timeProximity: null,
       timeGapMin: null,
@@ -214,6 +224,7 @@ function vector(
   const entity = channel.byKind.entitySpan;
 
   const representation = readRepresentation(input.similarity[story.storyId] ?? {}, p);
+  const picture = readPicture(story.storyId, input.similarity[story.storyId] ?? {}, input.picture, p);
   const consulted = representationConsulted(item, story, p, contextOf(input));
 
   const hasPointer = item.rebroadcastOf !== null || item.reproductionOf !== null;
@@ -265,6 +276,12 @@ function vector(
        indistinguishable from a healthy read in an uncalibrated space, since both are
        `present: 0, similarity: null`. Here they are `null` and a number. */
     representationObserved: representation.observed,
+
+    /* v3: the picture evidence (picture.ts) — the similarity in the image space, whether a
+       name was shared, and whether the judge confirmed a borderline picture. */
+    pictureSimilarity: picture.similarity,
+    pictureNameShared: picture.name !== null ? PRESENT : ABSENT,
+    pictureConfirmed: picture.confirmed ? PRESENT : ABSENT,
 
     sourceAgreement: story.distinctSources > 1 ? PRESENT : ABSENT,
     timeProximity: timeProximity(item, story, p),

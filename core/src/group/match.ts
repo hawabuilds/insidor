@@ -49,6 +49,7 @@ import type { FingerprintKind, Item } from '@insidor/contracts/vocabulary.ts';
 
 import { clamp01 } from '../math.ts';
 import { carrierMatches, type CarrierCorpus, type CarrierMatch } from './carriers.ts';
+import { NO_PICTURE_INPUTS, readPicture, type PictureInputs } from './picture.ts';
 
 export interface MatchResult {
   readonly story: Story;
@@ -125,6 +126,8 @@ export interface PairContext {
    * full strength rather than at zero, so grouping works on the first afternoon.
    */
   readonly corpus: CarrierCorpus;
+  /** Names and the judge's same-subject answers, for the picture evidence. See picture.ts. */
+  readonly picture?: PictureInputs;
 }
 
 /**
@@ -467,12 +470,21 @@ export function matchScore(
   // contributing nothing — it does NOT block, and it does not score as a zero
   // similarity, because "we did not look" is not "we looked and saw nothing alike".
   const representation = readRepresentation(similarityBySpace, p);
-  const total = free + (representation.fired ? w.representation : 0);
+  /* The picture: the same image edited joins at the image carrier's weight, as a near-copy
+     hash would; likely the same subject WITH a shared name joins at the representation's.
+     See picture.ts for why neither half alone counts. */
+  const picture = readPicture(story.storyId, similarityBySpace, context.picture ?? NO_PICTURE_INPUTS, p);
+  const pictureWeight = picture.kind === 'near' ? w.imageCarrier : picture.kind === 'nameImage' ? w.representation : 0;
+  const total = free + pictureWeight + (representation.fired ? w.representation : 0);
 
   const evidence: MatchEvidence | null =
-    representation.fired && representation.similarity !== null && representation.space !== null
-      ? { kind: 'representation', similarity: representation.similarity, space: representation.space }
-      : freeEvidence;
+    picture.kind === 'near' && picture.similarity !== null
+      ? { kind: 'representation', similarity: picture.similarity, space: picture.space }
+      : picture.kind === 'nameImage' && picture.similarity !== null && picture.name !== null
+        ? { kind: 'nameImage', name: picture.name, similarity: picture.similarity, space: picture.space, confirmed: picture.confirmed }
+        : representation.fired && representation.similarity !== null && representation.space !== null
+          ? { kind: 'representation', similarity: representation.similarity, space: representation.space }
+          : freeEvidence;
 
   return { story, score: floorAtZero(total), evidence };
 }
