@@ -52,7 +52,7 @@ import type { Item, Millis, Observation } from '@insidor/contracts/vocabulary.ts
 import { decide as makeDecision } from '../decide.ts';
 import { isTerminal, type LifecycleReading } from '../kinetics/lifecycle.ts';
 import { MS_PER_HOUR, MS_PER_MINUTE } from '../math.ts';
-import { nextRead, type Schedule } from './schedule.ts';
+import { ageFloorTier, nextRead, type Schedule } from './schedule.ts';
 
 /**
  * The stage's identity, copied onto every row it writes. See `admit/stage.ts` for the
@@ -65,8 +65,8 @@ import { nextRead, type Schedule } from './schedule.ts';
  * system, and the pollution is invisible until somebody fits on it.
  */
 export const NAME = 'track' as const;
-export const FEATURE_SET: FeatureSetId = 'item.track.v1';
-export const DECIDER = 'rule:track@1';
+export const FEATURE_SET: FeatureSetId = 'item.track.v2';
+export const DECIDER = 'rule:track@2';
 
 const PRESENT = 1;
 const ABSENT = 0;
@@ -135,7 +135,23 @@ interface Plan {
  * the "history length tracks early performance" failure arriving through the censoring
  * path instead of the scoring one.
  */
+/** How old the post was when we last read it. Never negative: a post time after first sight is the source's clock, not a younger post. */
+function ageAtLastRead(input: TrackInput): number {
+  return Math.max(input.lastReadAt - (input.item.postedAt ?? input.item.firstSeenAt), 0);
+}
+
 function plan(input: TrackInput, p: Policy): Plan {
+  const planned = ladder(input, p);
+  /* ★ THE AGE FLOOR, applied last so it can only slow a post down. The holdout is exempt:
+     it is on the full grid for its whole life, whatever its age. */
+  const floor = input.isHeldBack ? 0 : ageFloorTier(ageAtLastRead(input), p);
+  if (planned.schedule.tier >= floor) return planned;
+  const minutes = p.track.tierMinutes[floor] ?? 0;
+  return { ...planned, schedule: { tier: floor, dueAt: input.lastReadAt + minutes * MS_PER_MINUTE } };
+}
+
+/** The score ladder and flat-read demotion, as they were before age was considered. */
+function ladder(input: TrackInput, p: Policy): Plan {
   const scheduled = nextRead(
     input.lastReadAt,
     input.tier,
@@ -190,6 +206,8 @@ export function extract(input: TrackInput, p: Policy, ctx: StageContext): Featur
     observationCount: input.observations.length,
 
     currentTier: input.tier,
+    /* v2: the age floor the schedule was held to, so a row says why a post read slowly. */
+    ageFloorTier: input.isHeldBack ? 0 : ageFloorTier(ageAtLastRead(input), p),
     scheduledTier: schedule.tier,
     scheduledIntervalMin: grid[schedule.tier] ?? null,
     probationTier,

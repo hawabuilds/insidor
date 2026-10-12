@@ -56,3 +56,9 @@ test('the tracking grid is strictly increasing, so a tier is always a longer wai
   }
   assert.equal(tiers.length, DEFAULT_POLICY.track.tierCutoffs.length + 1);
 });
+
+test('the age ladder is one step per tier boundary and strictly ascending', () => {
+  const ages = DEFAULT_POLICY.track.ageTierMinutes;
+  assert.equal(ages.length, DEFAULT_POLICY.track.tierMinutes.length - 1);
+  for (let i = 1; i < ages.length; i += 1) assert.ok((ages[i] ?? 0) > (ages[i - 1] ?? 0));
+});

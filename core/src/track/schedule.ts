@@ -137,3 +137,21 @@ function oneStepToward(target: number, from: number): number {
   if (target < from) return from - 1;
   return from;
 }
+
+/**
+ * The fastest tier a post of this age may sit on: the number of `ageTierMinutes` boundaries
+ * it has passed. A floor, never a target — see the policy field.
+ *
+ * Age is measured at the LAST read, from the post's own time when the source gave one and
+ * from first sight otherwise, so the answer is a function of the logged inputs and a replay
+ * reproduces it. First sight is later than the truth, which errs toward reading a post more
+ * often, never less.
+ */
+export function ageFloorTier(ageMs: number, p: Policy): number {
+  const probationTier = p.track.tierMinutes.length - 1;
+  let tier = 0;
+  for (const minutes of p.track.ageTierMinutes) {
+    if (ageMs >= minutes * MS_PER_MINUTE) tier += 1;
+  }
+  return Math.min(tier, probationTier);
+}
