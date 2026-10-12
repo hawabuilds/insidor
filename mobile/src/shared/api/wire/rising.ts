@@ -5,15 +5,17 @@
  * was posted, how many saw it and when we read that, and the views line. Our reasoning about
  * it (the score that let it onto the feed) is not on the wire and has no field here.
  *
- * ★ A COIN ONLY THROUGH A CONFIDENT NARRATIVE. `coin` is set only when the post is part of a
- * narrative whose board row names exactly one coin, and then `storyId` names that narrative.
- * Otherwise both are null, so no button can be assembled from a single post. The decoder
- * refuses any other shape (decode.ts, `decodeRisingPost`).
+ * ★ EVERY POST SAYS WHERE ITS COIN STANDS, AND A COIN ONLY COMES THROUGH A NARRATIVE. `coins`
+ * is the story's own link when the post is part of a narrative that names one coin, several,
+ * or cannot tell which (`storyId` then names it); otherwise it is the post's own search: `none`
+ * when its name was searched and nothing came back, `unsure` when coins came back, `pending`
+ * when it has not been searched yet. A `one` or `several` link without its narrative is refused
+ * by the decoder (decode.ts, `decodeRisingPost`), so Buy only ever shows a narrative's answer.
  */
 
 import type { Instant, Measured } from '../../format/measure.ts';
 import type { Spark } from './board.ts';
-import type { Coin } from './coin.ts';
+import type { CoinLink } from './coin.ts';
 
 export type RisingFeedId = 'fyp' | 'popular';
 
@@ -32,7 +34,7 @@ export interface RisingPost {
   readonly readAt: Instant;
   readonly spark: Spark;
   readonly storyId: string | null;
-  readonly coin: Coin | null;
+  readonly coins: CoinLink;
 }
 
 export interface RisingFeed {

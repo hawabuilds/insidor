@@ -78,13 +78,20 @@ import type { RisingPost } from '../../shared/api/index.ts';
 const onePost = (over: Partial<RisingPost>): RisingPost => ({
   id: 'p', sourceLabel: 'X', authorLabel: '@a', permalink: null, excerpt: 'e', thumbUrl: null, thumbIsVideo: false,
   postedAt: { known: true, at: 1_000 }, reach: { known: true, amount: 50_000 }, readAt: { known: true, at: 1_000 },
-  spark: { points: [], windowMs: 1 }, storyId: null, coin: null, ...over,
+  spark: { points: [], windowMs: 1 }, storyId: null, coins: { kind: 'pending' }, ...over,
 });
 
-test('★ the coin filter never calls a post without a coin "no coin": it is unknown', () => {
+test('★ the coin filter never calls an unsearched post "no coin": it is unknown', () => {
   const plain = onePost({});
   assert.deepEqual(postFilters([plain], { ...NONE, coin: 'none' }, 2_000), { rows: [], unknown: 1 });
   assert.deepEqual(postFilters([plain], { ...NONE, coin: 'has' }, 2_000), { rows: [], unknown: 1 });
+});
+
+test('a searched post with nothing back is "no coin"; an unsure one "has a coin"', () => {
+  const none = onePost({ coins: { kind: 'none' } });
+  const unsure = onePost({ coins: { kind: 'unsure', claimCount: 2 } });
+  assert.deepEqual(postFilters([none, unsure], { ...NONE, coin: 'none' }, 2_000), { rows: [none], unknown: 0 });
+  assert.deepEqual(postFilters([none, unsure], { ...NONE, coin: 'has' }, 2_000), { rows: [unsure], unknown: 0 });
 });
 
 test('a post with unknown views is left out of a views filter as unknown, not dropped', () => {

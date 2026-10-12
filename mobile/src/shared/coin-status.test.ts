@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decodeCoin, decodeCoinLink } from './api/decode.ts';
-import { coinStatus, settledCoins } from './coin-status.ts';
+import { coinStatus, oneCoinLine, settledCoins } from './coin-status.ts';
 
 const coin = (over: Record<string, unknown> = {}) =>
   decodeCoin({
@@ -40,4 +40,10 @@ test('★ before the name has been searched there is no "No coin yet" and no Cre
   assert.equal(s.action, null);
   assert.match(s.line, /^— /);
   assert.doesNotMatch(s.line, /No coin yet/);
+});
+
+test('a post\'s confident coin line: ticker and market cap; an unread cap is left out, never "$0"', () => {
+  assert.equal(oneCoinLine(coin({ marketCapUsd: { v: 42_000 } })), '$FERRY, $42K market cap');
+  assert.equal(oneCoinLine(coin({ marketCapUsd: { v: null, why: 'no_market' } })), '$FERRY');
+  assert.equal(oneCoinLine(coin({ tradable: false })), "$FERRY, $1 market cap, can't be traded yet");
 });

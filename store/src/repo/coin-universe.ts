@@ -213,6 +213,12 @@ export class PgCoinUniverseRepo {
    * Names to search: promoted narratives whose page shows no coin, and For You posts with no
    * coin, each by the judge's name for it — newest first, skipping any searched since
    * `keepBefore`. A subject the judge has not named has nothing to search and is not returned.
+   *
+   * ★ A POST'S "NO COIN" IS READ AS `coins ->> 'kind'`, the same way as a narrative's. The post
+   * half used to test `payload -> 'coins' is null or payload ->> 'coins' = 'null'`, and a JSON
+   * null matches neither (`->` gives the jsonb `null`, `->>` gives SQL NULL), so no post was ever
+   * returned and the lookup searched nothing, silently, every pass. A coins value that is JSON
+   * null, `none` or `pending` is "no coin"; `one`, `several` and `unsure` are not searched.
    */
   async lookupTerms(keepBefore: Millis, limit: number): Promise<readonly LookupTerm[]> {
     const rows = await this.#db.query<{ subject_kind: 'story' | 'post'; subject_id: string; term: string }>(
@@ -232,7 +238,7 @@ export class PgCoinUniverseRepo {
            from public.rising_row r
            join public.item i on i.item_id = r.item_id
            join internal.post_judgement pj on pj.item_id = r.item_id and pj.proposed_name is not null
-          where r.payload -> 'coins' is null or r.payload ->> 'coins' = 'null'
+          where coalesce(r.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending')
           order by r.item_id, pj.judged_at desc
        )
        select c.subject_kind, c.subject_id, c.term

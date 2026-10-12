@@ -21,6 +21,7 @@
  */
 
 import type { Coin, CoinLink } from './api/index.ts';
+import { formatUsd } from './format/number.ts';
 
 export type CoinAction =
   | { readonly kind: 'create' }
@@ -55,6 +56,15 @@ export function coinStatus(coins: CoinLink): CoinStatus {
       return { line: `${coins.coins.length} coins${venue}`, action: { kind: 'view', count: coins.coins.length } };
     }
   }
+}
+
+/**
+ * The line a single post's card shows for its one confident coin: the ticker, the market cap
+ * when it has been read (an unread cap is left out, never "$0"), and whether it can be traded.
+ */
+export function oneCoinLine(coin: Coin): string {
+  const cap = formatUsd(coin.marketCapUsd);
+  return `$${coin.ticker}${cap.kind === 'value' ? `, ${cap.text} market cap` : ''}${coin.tradable ? '' : ", can't be traded yet"}`;
 }
 
 /** Every coin a story has settled on, in the server's order. `unsure` has none to give. */

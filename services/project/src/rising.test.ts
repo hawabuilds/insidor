@@ -1,6 +1,6 @@
 /**
- * One single post on a feed: facts only, and a coin only through a narrative whose board row
- * names exactly one.
+ * One single post on a feed: facts only, a coin only through a narrative, and a coin line
+ * that tells "searched, nothing" from "not searched yet".
  */
 
 import { strict as assert } from 'node:assert';
@@ -47,23 +47,40 @@ test('★ the row is the thirteen facts and nothing else', () => {
   assert.equal(JSON.stringify(post).includes('0.9'), false, 'the score is never in the row');
 });
 
-test('★ a coin only when the narrative names exactly one, and then its story id with it', () => {
+test('★ the story decides: its one, several or unsure link travels with its story id', () => {
   const one: WireCoinLink = { kind: 'one', coin: COIN };
-  const confident = projectRisingPost(ROW, READINGS, new Map([[ROW.story_id, one]]), 1_800_000);
+  const confident = projectRisingPost(ROW, READINGS, new Map([[ROW.story_id, one]]), 1_800_000, { found: 0 });
   assert.equal(confident.storyId, ROW.story_id);
-  assert.deepEqual(confident.coins, one);
+  assert.deepEqual(confident.coins, one, 'a search result never overrides the story');
 
-  for (const link of [{ kind: 'none' }, { kind: 'unsure', claimCount: 3 }, { kind: 'several', coins: [COIN, COIN] }] as WireCoinLink[]) {
+  for (const link of [{ kind: 'unsure', claimCount: 3 }, { kind: 'several', coins: [COIN, COIN] }] as WireCoinLink[]) {
     const post = projectRisingPost(ROW, READINGS, new Map([[ROW.story_id, link]]), 1_800_000);
-    assert.equal(post.coins, null, `${link.kind} puts no coin on a post`);
-    assert.equal(post.storyId, null, `${link.kind} puts no story id on a post either`);
+    assert.deepEqual(post.coins, link);
+    assert.equal(post.storyId, ROW.story_id);
   }
 });
 
-test('a post in no narrative has no coin and no story id', () => {
-  const post = projectRisingPost({ ...ROW, story_id: null }, READINGS, new Map(), 1_800_000);
-  assert.equal(post.coins, null);
+test('★ searched with nothing back is "none"; never searched is "pending", never "none"', () => {
+  const lone = { ...ROW, story_id: null };
+  assert.deepEqual(projectRisingPost(lone, READINGS, new Map(), 1_800_000, { found: 0 }).coins, { kind: 'none' });
+  const unsearched = projectRisingPost(lone, READINGS, new Map(), 1_800_000);
+  assert.deepEqual(unsearched.coins, { kind: 'pending' });
+  assert.equal(unsearched.storyId, null);
+});
+
+test('★ a search that found coins is unsure with that count, never a coin on the post', () => {
+  const post = projectRisingPost({ ...ROW, story_id: null }, READINGS, new Map(), 1_800_000, { found: 4 });
+  assert.deepEqual(post.coins, { kind: 'unsure', claimCount: 4 });
   assert.equal(post.storyId, null);
+});
+
+test('a story searched with none, and the post not searched itself, is "none" through the story', () => {
+  const post = projectRisingPost(ROW, READINGS, new Map([[ROW.story_id, { kind: 'none' } as WireCoinLink]]), 1_800_000);
+  assert.deepEqual(post.coins, { kind: 'none' });
+  assert.equal(post.storyId, ROW.story_id);
+  const pending = projectRisingPost(ROW, READINGS, new Map([[ROW.story_id, { kind: 'pending' } as WireCoinLink]]), 1_800_000);
+  assert.deepEqual(pending.coins, { kind: 'pending' });
+  assert.equal(pending.storyId, null);
 });
 
 test('★ an X video shows its preview picture, flagged as a video; a photo is not flagged', () => {
