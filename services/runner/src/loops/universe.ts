@@ -18,7 +18,7 @@ const EVERY_MS = 60_000;
 /** After discovery's offset, so the two do not start in the same second. */
 const OFFSET_MS = 50_000;
 
-export function universeLoop(deps: Omit<UniverseDeps, 'now'>, lookup: (() => Promise<unknown>) | null = null): Loop {
+export function universeLoop(deps: Omit<UniverseDeps, 'now'>, lookup: (() => Promise<unknown>) | null = null, keep: (() => Promise<unknown>) | null = null): Loop {
   const log = deps.log.child({ stage: 'universe' });
   return {
     stage: 'universe',
@@ -35,6 +35,15 @@ export function universeLoop(deps: Omit<UniverseDeps, 'now'>, lookup: (() => Pro
         }
       }
       const result = await universePass({ ...deps, log, now: ctx.now });
+      /* Last, the keep rule (work/coin-keep.ts): old coins asked about once, the ones that do not
+         matter deleted. It deletes only on an answer, and a failure here never stops the pass. */
+      if (keep !== null) {
+        try {
+          await keep();
+        } catch (e) {
+          log.error('coin keep failed; tried again next pass', { err: e instanceof Error ? e.message : String(e) });
+        }
+      }
       return { in: result.metadataRead + result.checked, out: result.checked - result.pending, failed: 0, firstError: null };
     },
   };

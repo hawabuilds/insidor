@@ -997,6 +997,19 @@ export interface UniversePolicy {
     /** Candidates kept per name, newest launch first. */
     readonly hitsPerTerm: number;
   };
+  /**
+   * ★ WHICH COINS THE UNIVERSE KEEPS. Every coin chainwatch sees is kept for `allMs`. After that a
+   * coin stays only if it matters: a narrative or a post names it, it bonded, it is in the gold
+   * set, or its market cap reached `marketCapUsd` — the rest are deleted. A coin is asked about
+   * once, when it ages out; a coin no market lists was never traded and goes.
+   */
+  readonly keep: {
+    readonly allMs: number;
+    readonly marketCapUsd: number;
+    /** Coins asked about per pass, and deleted per pass at most. */
+    readonly checksPerPass: number;
+    readonly deletesPerPass: number;
+  };
 }
 
 /**
@@ -1679,8 +1692,10 @@ const POLICY_V1: Policy = {
      v27 adds `universe.lookup`: searching the market data sources for coins we never saw
      minted, as candidates only.
 
-     v28 adds `search`: the Search tab's cache, per-client limit and list lengths. */
-  version: 'policy.v28',
+     v28 adds `search`: the Search tab's cache, per-client limit and list lengths.
+
+     v29 adds `universe.keep`: every coin for fourteen days, then only the coins that matter. */
+  version: 'policy.v29',
 
   admit: {
     maxAgeMin: 240,
@@ -2059,6 +2074,14 @@ const POLICY_V1: Policy = {
       keepMs: 21_600_000, // six hours
       withinMs: 604_800_000, // seven days
       hitsPerTerm: 10,
+    },
+    keep: {
+      allMs: 1_209_600_000, // fourteen days
+      /* $25k: the history plan's bar, a third of the way to bonding. Below it almost no coin has a story. */
+      marketCapUsd: 25_000,
+      /* 300 a minute: ten calls of thirty, so ~42,000 launches a day are asked about in under three hours. */
+      checksPerPass: 300,
+      deletesPerPass: 1_000,
     },
   },
 
