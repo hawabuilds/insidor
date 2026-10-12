@@ -37,7 +37,7 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, leave 
   subtitle: string;
   address: string;
   onCopy: () => void;
-  /** Opens the provider's key export window; null where there is no wallet of one's own (the demo). */
+  /** Opens the provider's key export window; null where there is no wallet of one's own (the demo), which also titles the card as a sample. */
   exportKey: (() => void) | null;
   /** Sign out, or in the demo leave it; the label says which. */
   leave: { readonly label: string; readonly run: () => void };
@@ -75,10 +75,20 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, leave 
           </div>
 
           <div className={styles['card']}>
-            <div className={styles['cardTitle']}>
-              Your Insidor wallet <span className={styles['active']}>Active</span>
-            </div>
-            <p>Holds what you buy here, and is what your portfolio counts.</p>
+            {/* The demo's wallet is a stranger's, recorded: never called yours, never Active. */}
+            {exportKey !== null ? (
+              <>
+                <div className={styles['cardTitle']}>
+                  Your Insidor wallet <span className={styles['active']}>Active</span>
+                </div>
+                <p>Holds what you buy here, and is what your portfolio counts.</p>
+              </>
+            ) : (
+              <>
+                <div className={styles['cardTitle']}>Sample wallet</div>
+                <p>A public wallet, recorded to show this screen. Not yours, and nothing here trades from it.</p>
+              </>
+            )}
             <div className={styles['address']}>
               <span>{shortAddress(address)}</span>
               <button type="button" aria-label="Copy wallet address" onClick={onCopy}><CopyIcon size={14} /></button>
