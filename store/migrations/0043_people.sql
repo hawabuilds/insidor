@@ -108,5 +108,5 @@ grant select, insert, update, delete on all tables in schema people to insidor_p
 grant usage, select on all sequences in schema people to insidor_people;
 
 -- The public projection, read to know a narrative's coin and a post's narrative.
-grant select on public.story, public.story_view, public.board_view, public.board_row,
+grant select on public.story, public.story_member, public.story_view, public.board_view, public.board_row,
   public.rising_view, public.rising_row, public.asset, public.coin_name, public.created_coin to insidor_people;
