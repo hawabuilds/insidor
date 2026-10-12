@@ -396,3 +396,27 @@ export function deriveCoinLink(
 ): WireCoinLink {
   return projectCoins(coinCandidates(spans, coins, corpus), options);
 }
+
+/**
+ * ★ A NAME MATCH IS ONLY CONFIDENT WHEN THE COIN PROVABLY CAME AFTER THE FIRST POST.
+ *
+ * `coinCandidates` answers "is this coin named after this story". It cannot answer "was it
+ * launched after people started posting", and a coin that was not is a coin the story did
+ * not cause — linking it would put Buy on somebody else's older coin that happens to share
+ * a word. Two cases cannot prove the order, and each costs the match its confidence, never
+ * its place in the count:
+ *
+ *   - the story's window is not ordered (no post time on any member, so the window reaches
+ *     back past our own first sighting — see `windowIsOrdered`), or
+ *   - the coin has no mint time, so the retrieval let it through without a time test.
+ *
+ * Demoted, the candidate still counts toward `unsure`, which offers nothing. Dropping it
+ * instead would turn "a coin with this name exists" into `none` and put Create on the row.
+ */
+export function orderedOnly(candidates: readonly CoinCandidate[], windowOrdered: boolean): readonly CoinCandidate[] {
+  return candidates.map((candidate) =>
+    candidate.confident && (!windowOrdered || candidate.coin.mintedAt === null)
+      ? { ...candidate, confident: false }
+      : candidate,
+  );
+}

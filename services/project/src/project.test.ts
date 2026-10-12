@@ -28,7 +28,7 @@ import type { StoryOrigin } from '@insidor/contracts/story.ts';
  */
 const OBSERVED_STORY = { kind: 'observed' } as const;
 
-import { coinCandidates, deriveCoinLink, NO_CORPUS, normalise } from './coins.ts';
+import { coinCandidates, deriveCoinLink, NO_CORPUS, normalise, orderedOnly } from './coins.ts';
 import { orderByRecency } from './order.ts';
 import { permalinkFor } from './permalinks.ts';
 import {
@@ -786,6 +786,28 @@ const SOUP_COINS: readonly CoinFacts[] = [
   asset('THESOUP', 'the soup'),
   asset('LADLE', 'silent kitchen'),
 ];
+
+test('★ a coin with no mint time is never the one coin we name: the row says unsure and offers nothing', () => {
+  /* Its name equals the span, but nothing proves it was launched after the first post — the
+     retrieval let it through without a time test. Buy on it could be Buy on an older coin
+     that happens to share the word. */
+  const candidates = coinCandidates(['refuses to dock', 'dock'], [asset('DOCK', 'refuses to dock', null)], NO_CORPUS);
+  assert.equal(projectCoins(candidates, OPTIONS).kind, 'one', 'the name alone would have named it');
+  assert.deepEqual(projectCoins(orderedOnly(candidates, true), OPTIONS), { kind: 'unsure', claimCount: 1 });
+});
+
+test('★ a story with no post time names no coin, because nothing can be ordered after it', () => {
+  const candidates = coinCandidates(['refuses to dock', 'dock'], [asset('DOCK', 'refuses to dock')], NO_CORPUS);
+  assert.equal(projectCoins(orderedOnly(candidates, true), OPTIONS).kind, 'one');
+  assert.deepEqual(projectCoins(orderedOnly(candidates, false), OPTIONS), { kind: 'unsure', claimCount: 1 });
+});
+
+test('demoting a coin never turns a known name into Create', () => {
+  /* A coin with this name exists; we just cannot say it came after. `none` would put Create
+     on the row and tell a user to make a coin that is already there. */
+  const candidates = coinCandidates(['dock'], [asset('DOCK', 'dock', null)], NO_CORPUS);
+  assert.notEqual(projectCoins(orderedOnly(candidates, false), OPTIONS).kind, 'none');
+});
 
 test('a story that shares no word with any coin in its window links to nothing', () => {
   /* st_pigeon. Its window contains another story's CHILL, minted two minutes ago, and a
