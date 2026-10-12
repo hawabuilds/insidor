@@ -40,7 +40,6 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
 import {
-  APP_PASSWORD,
   APP_USER,
   PEOPLE_USER,
   ROOT,
@@ -189,13 +188,13 @@ alter table internal.schema_migration add column if not exists duration_ms integ
  * one somebody wrote by hand in a migration — six `grant select` lines across
  * 0002, 0004 and 0005 — and public.observation is deliberately not among them.
  */
-const APP_LOGIN = `
+const appLogin = (password) => `
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = '${APP_USER}') then
-    alter role ${APP_USER} with login password '${APP_PASSWORD}';
+    alter role ${APP_USER} with login password ${sqlString(password)};
   else
-    create role ${APP_USER} with login password '${APP_PASSWORD}';
+    create role ${APP_USER} with login password ${sqlString(password)};
   end if;
 end
 $$;
@@ -283,7 +282,26 @@ function peoplePasswordFromEnv() {
   return value;
 }
 
+/**
+ * The app login's password: APP_DB_PASSWORD, or the password already in DATABASE_URL_APP — so
+ * migrating keeps the login the read and trade services use instead of resetting it. ★ There is
+ * no default: a password in a public repository is everyone's password. Without either, refuse.
+ */
+function appPasswordFromEnv() {
+  let value = (process.env['APP_DB_PASSWORD'] ?? '').trim();
+  if (value === '' && (process.env['DATABASE_URL_APP'] ?? '') !== '') {
+    try {
+      value = decodeURIComponent(new URL(process.env['DATABASE_URL_APP']).password);
+    } catch {
+      value = '';
+    }
+  }
+  if (value === '') die('Neither APP_DB_PASSWORD nor a password in DATABASE_URL_APP is set, so the read login\'s password is unknown. Set one and run this again. Nothing was changed.');
+  return value;
+}
+
 async function migrate({ quiet = false } = {}) {
+  const appPassword = appPasswordFromEnv();
   const peoplePassword = peoplePasswordFromEnv();
   const client = await connect();
   try {
@@ -340,7 +358,7 @@ async function migrate({ quiet = false } = {}) {
 
     step(ran === 0 ? 'schema already current' : `${ran} migration${ran === 1 ? '' : 's'} applied`);
 
-    await client.query(APP_LOGIN);
+    await client.query(appLogin(appPassword));
     step(`✓ login user ${APP_USER} → group role insidor_app (${appReach(await appGrants(client))})`);
     await client.query(peopleLogin(peoplePassword));
     step(`✓ login user ${PEOPLE_USER} → group role insidor_people (the people schema, read-only on the projection)`);

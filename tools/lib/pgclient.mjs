@@ -33,9 +33,9 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
  */
 export const DEFAULT_URL = 'postgresql://insidor:insidor@127.0.0.1:5432/insidor';
 
-/** The LOGIN user tools/db.mjs creates for the app role. Read-only, public only. */
+/** The LOGIN user tools/db.mjs creates for the app role. Read-only, public only. Its password is
+    never in the code: it comes from APP_DB_PASSWORD or from the password in DATABASE_URL_APP. */
 export const APP_USER = 'insidor_app_user';
-export const APP_PASSWORD = 'insidor_app';
 /* The social and notify services' login (0043): writes `people.*`, reads the public projection.
    Its password is never in the code: `db:migrate` reads PEOPLE_DB_PASSWORD and refuses without it. */
 export const PEOPLE_USER = 'insidor_people_user';
