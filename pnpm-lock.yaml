@@ -74,6 +74,9 @@ importers:
 
   adapters/market/geckoterminal:
     dependencies:
+      '@insidor/contracts':
+        specifier: workspace:*
+        version: link:../../../contracts
       '@insidor/vendor-kit':
         specifier: workspace:*
         version: link:../../kit/vendor
