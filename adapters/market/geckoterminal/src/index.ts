@@ -4,7 +4,7 @@
  *
  * ★ ITS OWN RATE LIMIT IS THE CONSTRAINT, SO ITS ANSWERS ARE KEPT. The free API allows a few
  * dozen calls a minute for everyone sharing an address. A pool is kept two minutes, candles from
- * fifteen seconds (one-minute view) to five minutes (six-hour view), trades twelve seconds; and a
+ * fifteen seconds (one-minute view) to ten minutes (one-day view), trades twelve seconds; and a
  * refresh that fails serves the last good answer rather than none. Two people opening one coin
  * cost one call.
  *
@@ -29,20 +29,25 @@ export { readSearch, SEARCH_PAGE } from './search.ts';
 export type { Candle, Pool, Trade } from './read.ts';
 
 export const VENDOR = 'geckoterminal';
-export const TIMEFRAMES = ['1m', '5m', '1h', '6h'] as const;
+/** Trador's six views, plus six hours, which the search and the history pilot read a coin's peak from. */
+export const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '6h', '1D'] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
 
 /** The vendor's candle request for each view, and how long its answer is kept. */
-const CANDLES: Record<Timeframe, { readonly unit: 'minute' | 'hour'; readonly aggregate: number; readonly mergeMs: number | null; readonly keepMs: number }> = {
+const CANDLES: Record<Timeframe, { readonly unit: 'minute' | 'hour' | 'day'; readonly aggregate: number; readonly mergeMs: number | null; readonly keepMs: number }> = {
   '1m': { unit: 'minute', aggregate: 1, mergeMs: null, keepMs: 15_000 },
   '5m': { unit: 'minute', aggregate: 5, mergeMs: null, keepMs: 30_000 },
+  '15m': { unit: 'minute', aggregate: 15, mergeMs: null, keepMs: 60_000 },
   '1h': { unit: 'hour', aggregate: 1, mergeMs: null, keepMs: 60_000 },
+  '4h': { unit: 'hour', aggregate: 4, mergeMs: null, keepMs: 300_000 },
   /* The vendor has no six-hour bucket; hourly candles are merged six at a time. */
   '6h': { unit: 'hour', aggregate: 1, mergeMs: 6 * 3_600_000, keepMs: 300_000 },
+  '1D': { unit: 'day', aggregate: 1, mergeMs: null, keepMs: 600_000 },
 };
 const POOL_KEEP_MS = 120_000;
 const TRADES_KEEP_MS = 12_000;
-const CANDLE_LIMIT = 300;
+/** The vendor's ceiling, as Trador asks: the chart pans left through all of it without another call. */
+const CANDLE_LIMIT = 1_000;
 /**
  * Requests a minute, by plan: under the free API's limit for one address, with room for the
  * pool lookups; the same under a demo key (whose limit is the free one's); and well under a

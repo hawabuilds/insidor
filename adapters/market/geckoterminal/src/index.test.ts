@@ -29,7 +29,7 @@ test('★ one coin: its pool, candles (priced as OUR coin) and trades, one call 
   assert.equal(coin.pool?.dex, 'pumpswap');
   assert.equal(coin.candles?.length, 5);
   assert.equal(asked.length, 3);
-  assert.ok(asked.some((u) => u.includes(`/ohlcv/minute?aggregate=5&limit=300&token=${GRADUATED_MINT}`)), 'the candle request names our coin');
+  assert.ok(asked.some((u) => u.includes(`/ohlcv/minute?aggregate=5&limit=1000&token=${GRADUATED_MINT}`)), 'the candle request names our coin');
 });
 
 test('★ candles and trades fail apart: a refusal of one never costs the other', async () => {
