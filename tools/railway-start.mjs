@@ -11,7 +11,7 @@
  * the service reads, so a health check always lands on a server that answers it.
  *
  * ★ THE PROJECTOR IS A SCHEDULE, NOT A PROCESS. `project` runs the one-shot jobs (`db.mjs
- * project` every minute; `market`, `pairs`, `sources` every five; `label` hourly), one at a time,
+ * project` every minute; `market`, `pairs` and the source indicator every five; `label` hourly), one at a time,
  * and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
  * otherwise — so Railway restarts it when the board stops moving, not just when it crashes.
  *
@@ -48,18 +48,22 @@ if (service in MAIN) {
   for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => child.kill(signal));
   child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
 } else if (service === 'project') {
+  /* `sources` runs only the indicator's projector, not `db.mjs sources`: that command also
+     DECLARES the sources from its own environment, and this service holds no platform key —
+     every five minutes it would overwrite the runner's declaration with "dormant". On Railway
+     the runner, which holds the keys, declares at boot (declare-sources.ts explains the split). */
   const JOBS = [
-    { name: 'project', everyMs: 60_000 },
-    { name: 'market', everyMs: 300_000 },
-    { name: 'pairs', everyMs: 300_000 },
-    { name: 'sources', everyMs: 300_000 },
-    { name: 'label', everyMs: 3_600_000 },
+    { name: 'project', everyMs: 60_000, args: ['tools/db.mjs', 'project'] },
+    { name: 'market', everyMs: 300_000, args: ['tools/db.mjs', 'market'] },
+    { name: 'pairs', everyMs: 300_000, args: ['tools/db.mjs', 'pairs'] },
+    { name: 'sources', everyMs: 300_000, args: ['services/project/src/sources-main.ts'] },
+    { name: 'label', everyMs: 3_600_000, args: ['tools/db.mjs', 'label'] },
   ];
   const last = new Map();
   const due = (job, now) => now - (last.get(job.name)?.at ?? 0) >= job.everyMs;
-  const once = (name) =>
+  const once = (job) =>
     new Promise((resolve) => {
-      const child = run(['tools/db.mjs', name]);
+      const child = run(job.args);
       child.on('exit', (code) => resolve(code === 0));
     });
   let stopping = false;
@@ -68,7 +72,7 @@ if (service in MAIN) {
     while (!stopping) {
       for (const job of JOBS) {
         if (!due(job, Date.now())) continue;
-        const ok = await once(job.name);
+        const ok = await once(job);
         last.set(job.name, { at: Date.now(), ok });
         console.log(JSON.stringify({ level: ok ? 'info' : 'error', msg: 'job ran', job: job.name, ok }));
       }
