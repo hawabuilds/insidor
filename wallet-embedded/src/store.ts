@@ -20,7 +20,7 @@
  * and a later change that wires one in has put a key one bug away from a log.
  */
 
-import type { SendOutcome, Wallet, WalletState } from '@insidor/contracts/ports/wallet.ts';
+import type { SendOutcome, Wallet, WalletIdentity, WalletState } from '@insidor/contracts/ports/wallet.ts';
 
 /** What the vendor's hooks say, reduced to the three facts the port needs. */
 export interface Snapshot {
@@ -29,6 +29,8 @@ export interface Snapshot {
   readonly signedIn: boolean;
   /** The embedded wallet's address; null while it is being created, or when signed out. */
   readonly address: string | null;
+  /** The X account signed in with: name, handle, picture. Null when signed out. */
+  readonly identity?: WalletIdentity | null;
 }
 
 export interface Actions {
@@ -116,6 +118,7 @@ export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {})
       publish();
     },
     signer: () => null,
+    identity: () => (snap.signedIn ? snap.identity ?? null : null),
     async signAndSendTransaction(payload): Promise<SendOutcome> {
       const actions = act;
       const broadcast = options.broadcast;

@@ -112,3 +112,11 @@ test('signed but not taken by the network says why; with no way to send, there i
   assert.deepEqual(await nowhere.wallet.signAndSendTransaction(new Uint8Array([1])), { kind: 'unavailable' });
   assert.deepEqual(nowhere.calls, [], 'never asked to sign');
 });
+
+test('who signed in: the X account\'s name, handle and picture, and nothing once signed out', () => {
+  const { wallet, bridge } = setup();
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1', identity: { name: 'Mercury', handle: 'mercury', pictureUrl: null } });
+  assert.deepEqual(wallet.identity(), { name: 'Mercury', handle: 'mercury', pictureUrl: null });
+  bridge.snapshot({ ready: true, signedIn: false, address: null, identity: { name: 'Mercury', handle: 'mercury', pictureUrl: null } });
+  assert.equal(wallet.identity(), null);
+});
