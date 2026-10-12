@@ -61,7 +61,7 @@ function Screen({ route, create }: { route: Route; create: (from: CreateFrom) =>
       return <SearchedToken key={route.coinId} coinId={route.coinId} />;
     case 'learn':
       return <Learn />;
-    case 'calls':
+    case 'alerts':
       return <ComingSoonScreen which={route.screen} />;
     default:
       return <ComingSoonScreen which="narratives" />;
