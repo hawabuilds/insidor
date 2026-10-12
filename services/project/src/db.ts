@@ -117,14 +117,14 @@ interface StoryRow {
 }
 
 /**
- * Stories still open, newest activity first.
+ * Promoted stories still open, newest activity first.
  *
- * `state in ('candidate','promoted')` and not the tighter `state = 'promoted'` alone,
- * because the promote stage does not run yet and the tighter clause would render an
- * empty board on every database that exists today. That is a TEMPORARY widening and it
- * belongs on the same list as order.ts: when promotion is live this clause narrows to
- * promoted rows only, because promotion is precisely the decision about what downstream
- * — including this board — is allowed to look at.
+ * `state = 'promoted'` and nothing wider. This used to read `state in ('candidate',
+ * 'promoted')` because nothing promoted a story and the tighter clause would have rendered
+ * an empty board. GROUP now promotes, so the widening is gone: a candidate is a single post,
+ * or several from one account, and promotion is precisely the decision about what
+ * downstream — including this board — is allowed to look at. The seeded stories are written
+ * promoted, so the sample board is unchanged.
  *
  * `merged_into is null` is not temporary. A merged story points at the story it was
  * folded into; showing both would put the same moment on the board twice.
@@ -135,7 +135,7 @@ async function loadStories(db: Db, sinceMs: Millis, limit: number): Promise<read
             member_count, distinct_authors, distinct_sources
        from public.story
       where merged_into is null
-        and state in ('candidate', 'promoted')
+        and state = 'promoted'
         and last_member_at >= $1
       order by last_member_at desc
       limit $2`,
