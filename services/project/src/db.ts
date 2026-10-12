@@ -233,7 +233,7 @@ interface ObservationRow {
  * reason is set, so the two states arrive distinguishable and the mapping below keeps
  * them that way.
  */
-async function loadReach(
+export async function loadReach(
   db: Db,
   itemIds: readonly string[],
   sinceMs: Millis,
@@ -1080,7 +1080,7 @@ function isFingerprintKind(value: string | null): value is FingerprintKind {
  * asserted: everything in it came from a source, and a shape assertion over a source's
  * payload is trusting the source to have sent what we hoped for.
  */
-function firstImageUri(media: unknown): string | null {
+export function firstImageUri(media: unknown): string | null {
   if (!Array.isArray(media)) return null;
   for (const entry of media) {
     if (typeof entry !== 'object' || entry === null) continue;

@@ -99,6 +99,17 @@ export const LAUNCH_ROWS_SQL =
   'select payload from public.launch_row where feed_id = $1 order by "position" asc';
 
 /**
+ * The For You and Popular feeds of single posts (0026): the frame's tick, then its payloads
+ * in the committed order. The same two statements as launches, for the same reasons —
+ * polled whole, so the array is the order, and `item_id` is not selected so it cannot
+ * reach a reply by accident.
+ */
+export const RISING_VIEW_SQL = 'select tick from public.rising_view where feed_id = $1';
+
+export const RISING_ROWS_SQL =
+  'select payload from public.rising_row where feed_id = $1 order by "position" asc';
+
+/**
  * The pairs frame: the tick, and the head the projector committed alongside it.
  *
  * ★ `head` IS SELECTED HERE AND NOT FETCHED SEPARATELY, and that is the point of it being

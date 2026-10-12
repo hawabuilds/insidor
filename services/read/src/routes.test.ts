@@ -22,6 +22,8 @@ import {
   BOARD_VIEW_SQL,
   LAUNCH_ROWS_SQL,
   LAUNCH_VIEW_SQL,
+  RISING_ROWS_SQL,
+  RISING_VIEW_SQL,
   SOURCE_VIEW_SQL,
   STORY_SQL,
   type Row,
@@ -553,4 +555,48 @@ test('a view id is a parameter here too, never interpolated', async () => {
 
   assert.equal(calls[0]?.sql, SOURCE_VIEW_SQL, 'byte-identical to the constant');
   assert.deepEqual(calls[0]?.params, [hostile]);
+});
+
+/* ── the For You and Popular feeds ───────────────────────────────────── */
+
+const POST = {
+  id: 'x:1900000000000000001',
+  sourceLabel: 'X',
+  authorLabel: '@hippofan',
+  permalink: 'https://x.com/hippofan/status/1900000000000000001',
+  excerpt: 'moo deng yawning',
+  thumbUrl: null,
+  postedAt: { at: 1_755_079_200_000 },
+  reach: { v: 6_200 },
+  readAt: { at: 1_755_079_260_000 },
+  spark: { points: [], windowMs: 1_800_000 },
+  storyId: null,
+  coins: null,
+};
+
+test('★ a feed of single posts is the tick and the payloads, verbatim and in the committed order', async () => {
+  const later = { ...POST, id: 'x:2', excerpt: 'second' };
+  const { deps, calls } = fakeDb({
+    [RISING_VIEW_SQL]: [{ tick: '4' }],
+    [RISING_ROWS_SQL]: [{ payload: later }, { payload: POST }],
+  });
+  const reply = await handle('GET', '/rising/fyp', deps);
+  assert.equal(reply.status, 200);
+  assert.deepEqual(JSON.parse(reply.body), { tick: 4, posts: [later, POST] });
+  assert.deepEqual(calls.map((c) => c.sql), [RISING_VIEW_SQL, RISING_ROWS_SQL]);
+  assert.deepEqual(calls[1]?.params, ['fyp']);
+});
+
+test('★ a feed reply carries no score and no internal word', async () => {
+  const { deps } = fakeDb({ [RISING_VIEW_SQL]: [{ tick: '1' }], [RISING_ROWS_SQL]: [{ payload: POST }] });
+  const body = (await handle('GET', '/rising/popular', deps)).body.toLowerCase();
+  for (const word of ['score', 'confidence', 'memescore', 'burst', 'internal', 'judge']) {
+    assert.equal(body.includes(word), false, `the reply mentions ${word}`);
+  }
+});
+
+test('a feed that has never been projected is 404 and never asks for its rows', async () => {
+  const { deps, calls } = fakeDb({});
+  assert.equal((await handle('GET', '/rising/fyp', deps)).status, 404);
+  assert.deepEqual(calls.map((c) => c.sql), [RISING_VIEW_SQL]);
 });

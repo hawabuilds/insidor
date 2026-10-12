@@ -29,11 +29,12 @@ import { vector } from '@electric-sql/pglite/vector';
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import { anthropicJudge } from '@insidor/judge-anthropic';
+import { anthropicJudge, httpClient } from '@insidor/judge-anthropic';
 import { inMemoryMeter } from '@insidor/meter';
 import { xPlatform } from '@insidor/platform-x';
 import type { XClient } from '@insidor/platform-x/client.ts';
 import { projectStoryFrame } from '@insidor/project/src/frame.ts';
+import { projectRisingFeeds } from '@insidor/project/src/rising.ts';
 import { handle } from '@insidor/read/src/routes.ts';
 import { policyHash } from '@insidor/runner/src/hash.ts';
 import { groupLoop } from '@insidor/runner/src/loops/group.ts';
@@ -42,6 +43,8 @@ import { resolveLoop } from '@insidor/runner/src/loops/resolve.ts';
 import { trackLoop } from '@insidor/runner/src/loops/track.ts';
 import type { Logger } from '@insidor/runner/src/log.ts';
 import { storeArrivals } from '@insidor/runner/src/work/arrivals.ts';
+import { feedQueryFor } from '@insidor/runner/src/work/discover.ts';
+import { scorePosts } from '@insidor/runner/src/work/score-posts.ts';
 import { storeWork } from '@insidor/runner/src/work/stages.ts';
 import {
   migrate,
@@ -51,6 +54,7 @@ import {
   PgItemRepo,
   PgJudgementRepo,
   PgObservationRepo,
+  PgPostJudgementRepo,
   PgStoryRepo,
 } from '@insidor/store';
 import type { Db } from '@insidor/store';
@@ -134,6 +138,48 @@ const recordedX: XClient = {
 let clock: Millis = NOW;
 /** TRACK's spend mode, switched from dry to live part-way through the test. */
 let trackMode: 'dry' | 'live' = 'dry';
+
+/**
+ * The judge, live, over a recorded Messages API reply: every post is coinable at 0.82
+ * except the weather post, which is not. Nothing here opens a socket.
+ */
+function recordedPostJudge() {
+  const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { messages: { content: { type: string; text?: string }[] }[] };
+    const asked = body.messages[0]?.content.find((c) => c.text?.startsWith('Stories to judge'))?.text ?? '';
+    const subjects = JSON.parse(asked.slice(asked.indexOf('\n') + 1)) as { storyId: string; posts: string[] }[];
+    const answers = subjects.map((s) => {
+      const weather = s.posts.join(' ').includes('light rain');
+      return { storyId: s.storyId, coinable: !weather, proposedName: weather ? null : 'moo deng', confidence: weather ? 0.2 : 0.82, alternateNames: [], subjectSpans: [] };
+    });
+    return new Response(
+      JSON.stringify({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ answers }) }], usage: { input_tokens: 1_200, output_tokens: 90 } }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+  }) as typeof globalThis.fetch;
+  const P = DEFAULT_POLICY;
+  return anthropicJudge({
+    client: httpClient({
+      apiKey: 'sk-test-not-a-real-key',
+      baseUrl: 'https://judge.invalid',
+      model: 'claude-haiku-4-5',
+      maxOutputTokens: P.judge.maxOutputTokens,
+      effort: null,
+      timeoutMs: P.judge.timeoutMs,
+      maxAttempts: 1,
+      backoffMs: P.judge.backoffMs,
+      maxWaitMs: P.judge.maxWaitMs,
+      maxFrameBytes: P.judge.maxFrameBytes,
+      fetch,
+      sleep: async () => {},
+    }),
+    meter,
+    now: () => clock,
+    model: 'claude-haiku-4-5',
+    policy: P.judge,
+    maxBatch: P.qualify.batchSize,
+  });
+}
 
 /* ── the run ──────────────────────────────────────────────────────────── */
 
@@ -219,13 +265,17 @@ before(async () => {
   /* Discovery exactly as the runner does it: the adapter's page, then the accounts, then
      the posts — `wiring.ts`'s `store`. */
   const x = xPlatform({ client: recordedX, meter, now: () => (NOW - 10 * MINUTE) as Millis });
-  const page = await x.discover(
-    { mode: 'keyword', term: 'moo deng', sinceMs: null, untilMs: null, limit: 20, cursor: null },
-    { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: NOW + MINUTE },
-  );
+  /* Through the catch-all lane, as the runner asks it now: no keyword, the lane's floor. */
+  const page = await x.discover(feedQueryFor('all', DEFAULT_POLICY.feed.startFloor, (NOW - 10 * MINUTE) as Millis, DEFAULT_POLICY), {
+    capUsd: 1,
+    spentUsd: 0,
+    maxCalls: null,
+    deadline: NOW + MINUTE,
+  });
   await storeArrivals({ authors: new PgAuthorRepo(db), items: new PgItemRepo(db) }, DEFAULT_POLICY, () => clock)(
     page.value.items,
     page.value.authors,
+    'all',
   );
 });
 
@@ -304,8 +354,33 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   const readings = await db.query<{ n: number }>(`select count(distinct captured_at)::int as n from public.observation`);
   assert.equal(readings[0]?.n, 2, 'two readings of the story\'s posts');
 
-  /* 5. The projector, then the read service. */
-  await projectStoryFrame(
+  /* 5. Each catch-all post scored alone, against a recorded judge reply: the moment's posts
+     clear the bar, the weather post does not. */
+  const scored = await scorePosts({
+    judge: recordedPostJudge(),
+    items: new PgItemRepo(db),
+    scores: new PgPostJudgementRepo(db),
+    meter,
+    mode: 'live',
+    policy: DEFAULT_POLICY,
+    log: quiet,
+    now: () => clock,
+  });
+  assert.equal(scored.scored, 5, 'every catch-all post scored, once');
+  const rescored = await scorePosts({
+    judge: recordedPostJudge(),
+    items: new PgItemRepo(db),
+    scores: new PgPostJudgementRepo(db),
+    meter,
+    mode: 'live',
+    policy: DEFAULT_POLICY,
+    log: quiet,
+    now: () => clock,
+  });
+  assert.equal(rescored.queued, 0, 'and none is asked about twice');
+
+  /* 6. The projector, then the read service. */
+  const frame = await projectStoryFrame(
     db,
     'default',
     {
@@ -316,6 +391,7 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
     },
     { storiesSinceMs: NOW - 48 * 60 * MINUTE, reachSinceMs: NOW - 26 * 60 * MINUTE, limit: 200 },
   );
+  await projectRisingFeeds(db, clock, frame.coinsByStory, 30 * MINUTE);
 
   const board = await handle('GET', '/board/default', { db: { query: (s, p) => db.query(s, p) }, log: quiet });
   assert.equal(board.status, 200);
@@ -344,6 +420,27 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   assert.ok(links.includes('https://x.com/zookeeperdiary/status/1900000000000000002'));
   assert.ok(links.includes('https://x.com/clipsdaily/status/1900000000000000004'));
   assert.ok(!page.body.includes('light rain'), 'and not the unrelated one');
+
+  /* ★ THE FOR YOU FEED: the four posts that cleared the bar, newest first, each with its
+     views and a working link, and no coin — the narrative has none. The weather post was
+     found by the same search and scored below the bar, so it is not here. */
+  const read = { db: { query: (s: string, p: readonly unknown[]) => db.query(s, p) }, log: quiet };
+  const fypReply = JSON.parse((await handle('GET', '/rising/fyp', read)).body) as {
+    posts: { id: string; permalink: string | null; reach: { v: number | null }; coins: unknown; storyId: unknown }[];
+  };
+  assert.deepEqual(
+    fypReply.posts.map((p) => p.id),
+    ['x:1900000000000000004', 'x:1900000000000000003', 'x:1900000000000000002', 'x:1900000000000000001'],
+  );
+  for (const p of fypReply.posts) {
+    assert.ok((p.reach.v ?? 0) > 0, `views on ${p.id}`);
+    assert.ok(p.permalink?.startsWith('https://x.com/'), `a link on ${p.id}`);
+    assert.equal(p.coins, null);
+    assert.equal(p.storyId, null);
+  }
+  const popularReply = JSON.parse((await handle('GET', '/rising/popular', read)).body) as { posts: { reach: { v: number } }[] };
+  const views = popularReply.posts.map((p) => p.reach.v);
+  assert.deepEqual(views, [...views].sort((a, b) => b - a), 'Popular is most views first');
 
   /* 6. A second GROUP pass has nothing to do. */
   const again = await loops.group.run(ctx);

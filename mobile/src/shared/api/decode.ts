@@ -25,12 +25,14 @@ import type { Instant, Measured, Delta, PendingReason } from '../format/measure.
 import { instantFrom, measuredFrom } from '../format/measure.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinLink, MarketCapBasis } from './wire/coin.ts';
+import type { RisingFeed, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, Evidence, Story, StoryProvenance } from './wire/story.ts';
 import {
   BOARD_ROW_FIELDS,
   COIN_FIELDS,
   FORBIDDEN_KEYS,
   FORBIDDEN_SUBSTRINGS,
+  RISING_POST_FIELDS,
   STORY_FIELDS,
 } from './wire/fields.ts';
 
@@ -404,4 +406,51 @@ function decodeStoryProvenance(raw: unknown, path: string): StoryProvenance {
   if (o['kind'] === 'observed') return { kind: 'observed' };
   if (o['kind'] !== 'seeded') return { kind: 'unstated' };
   return { kind: 'seeded', connectSourceLabel: str(o['connectSourceLabel'], `${path}.connectSourceLabel`) };
+}
+
+/**
+ * One post on the For You or Popular feed.
+ *
+ * ★ THE COIN RULE IS ENFORCED HERE AS WELL AS ON THE SERVER. A post may carry a coin only as
+ * a confident (`one`) link, and only together with the story id of the narrative that link
+ * belongs to. A `none`, `unsure` or `several` link, a coin without a story, or a story without
+ * a coin is a server sending something a single post must never carry, and it throws
+ * `WireLeakError` — the row is not shown with the coin quietly dropped.
+ */
+export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
+  assertNoInternalVocabulary(raw, path);
+  const o = pick(obj(raw, path), RISING_POST_FIELDS);
+  const storyId = optStr(o.storyId);
+  let coin: Coin | null = null;
+  if (o.coins !== null && o.coins !== undefined) {
+    const link = decodeCoinLink(o.coins, `${path}.coins`);
+    if (link.kind !== 'one') throw new WireLeakError(`${path}.coins (a ${link.kind} link on a single post)`);
+    coin = link.coin;
+  }
+  if ((coin === null) !== (storyId === null)) {
+    throw new WireLeakError(`${path}.storyId (a coin and its narrative travel together or not at all)`);
+  }
+  return {
+    id: str(o.id, `${path}.id`),
+    sourceLabel: str(o.sourceLabel, `${path}.sourceLabel`),
+    authorLabel: str(o.authorLabel, `${path}.authorLabel`),
+    permalink: optStr(o.permalink),
+    excerpt: str(o.excerpt, `${path}.excerpt`),
+    thumbUrl: optStr(o.thumbUrl),
+    postedAt: instantAt(o.postedAt, `${path}.postedAt`, 'not_reported'),
+    reach: measured(o.reach, `${path}.reach`, 'not_read_yet'),
+    readAt: instantAt(o.readAt, `${path}.readAt`, 'not_read_yet'),
+    spark: decodeSpark(o.spark, `${path}.spark`),
+    storyId,
+    coin,
+  };
+}
+
+export function decodeRisingFeed(raw: unknown, path = '$'): RisingFeed {
+  assertNoInternalVocabulary(raw, path);
+  const o = obj(raw, path);
+  return {
+    tick: int(o['tick'], `${path}.tick`),
+    posts: arr(o['posts'], `${path}.posts`).map((p, i) => decodeRisingPost(p, `${path}.posts[${i}]`)),
+  };
 }

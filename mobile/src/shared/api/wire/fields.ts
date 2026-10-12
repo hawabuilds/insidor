@@ -63,6 +63,22 @@ export const STORY_FIELDS = [
   'provenance',
 ] as const;
 
+/** A single post on the For You or Popular feed. See wire/rising.ts. */
+export const RISING_POST_FIELDS = [
+  'id',
+  'sourceLabel',
+  'authorLabel',
+  'permalink',
+  'excerpt',
+  'thumbUrl',
+  'postedAt',
+  'reach',
+  'readAt',
+  'spark',
+  'storyId',
+  'coins',
+] as const;
+
 export const COIN_FIELDS = [
   'coinId',
   'ticker',
