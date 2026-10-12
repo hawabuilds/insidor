@@ -15,8 +15,12 @@
  * there is one place to put them. Vite hands the page only the variables named `VITE_…`; the
  * server keys in that file never reach the browser.
  *
- * No proxy, for the desktop app's reason: the read endpoint is a build-time variable, so a
- * preview deployment cannot reach production data through a rewrite nobody remembered.
+ * ★ ONE ORIGIN FOR A PHONE, LOCAL ONLY. On this machine's dev and preview servers, `/api/read`,
+ * `/api/trade`, `/api/social` and `/api/notify` are forwarded to the services on localhost, so
+ * one tunnel URL (`pnpm tunnel`) reaches the app and everything behind it, and the phone needs no
+ * CORS. The proxy exists only in these local servers and only points at localhost: a deployed
+ * build is static files with no server, so it cannot reach anything through a rewrite nobody
+ * remembered — the endpoints are still the build-time VITE_*_URL variables.
  */
 
 import { fileURLToPath } from 'node:url';
@@ -29,6 +33,14 @@ import { sampleSwitchProblem } from './src/shared/api/sample-switch.ts';
 /* The repository root: where `.env.local` lives for every package. */
 const ENV_DIR = fileURLToPath(new URL('..', import.meta.url));
 
+/** `/api/<name>/…` on this server → the service on localhost, prefix removed. */
+const LOCAL_SERVICES = Object.fromEntries(
+  ([['read', 8787], ['trade', 8790], ['social', 8791], ['notify', 8792]] as const).map(([name, port]) => [
+    `/api/${name}`,
+    { target: `http://127.0.0.1:${port}`, changeOrigin: true, rewrite: (path: string) => path.slice(`/api/${name}`.length) || '/' },
+  ]),
+);
+
 const config = {
   envDir: ENV_DIR,
   plugins: [react()],
@@ -39,6 +51,15 @@ const config = {
   server: {
     port: 5174,
     strictPort: true,
+    proxy: LOCAL_SERVICES,
+    /* A free Cloudflare tunnel's random name: the phone opens the app through it. */
+    allowedHosts: ['.trycloudflare.com'],
+  },
+  preview: {
+    port: 5174,
+    strictPort: true,
+    proxy: LOCAL_SERVICES,
+    allowedHosts: ['.trycloudflare.com'],
   },
 };
 
