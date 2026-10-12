@@ -39,3 +39,17 @@ test('a query parameter is a plain value or a number, never SQL', () => {
   assert.throws(() => fillParameters('{{x}}', { x: "1'; drop table x; --" }), /not a plain value/);
   assert.throws(() => fillParameters('{{missing}}', {}), /no value/);
 });
+
+test('no engine tier is sent unless one is asked for', async () => {
+  const bodies: unknown[] = [];
+  const replies: unknown[] = [STARTED, DONE, RESULTS];
+  const c = duneClient({
+    apiKey: 'test', baseUrl: 'https://dune.example', timeoutMs: 1_000, pollMs: 100, sleep: async () => undefined,
+    fetch: (async (_u: string, init: RequestInit) => {
+      if (init.body !== undefined) bodies.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify(replies.shift()));
+    }) as unknown as typeof fetch,
+  });
+  await c.run('select 1');
+  assert.deepEqual(bodies[0], { sql: 'select 1' });
+});

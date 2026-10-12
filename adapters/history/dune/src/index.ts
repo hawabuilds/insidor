@@ -77,8 +77,12 @@ export function duneClient(config: DuneConfig) {
   };
 
   return {
-    async run(sql: string, performance: 'medium' | 'large' = 'medium'): Promise<DuneRun> {
-      const started = rec(await call('POST', '/api/v1/sql/execute', EXECUTE, { sql, performance }));
+    /**
+     * Run one query. No engine tier is sent unless asked for: the account's default engine runs
+     * it. Sending `medium` was refused on 2026-10-12 ("Invalid performance tier").
+     */
+    async run(sql: string, performance?: 'medium' | 'large'): Promise<DuneRun> {
+      const started = rec(await call('POST', '/api/v1/sql/execute', EXECUTE, performance === undefined ? { sql } : { sql, performance }));
       const id = str(started.execution_id);
       if (id === null) throw new VendorUnavailable(VENDOR, EXECUTE, 'no execution id in the reply');
       for (let waited = 0; waited <= config.timeoutMs; waited += config.pollMs) {
