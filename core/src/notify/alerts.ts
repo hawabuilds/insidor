@@ -46,7 +46,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   graduated: 'graduations',
   rising_post: 'rising',
   narrative_promoted: 'narratives',
-  narrative_coin: 'coins',
+  narrative_coin: 'narratives',
   coin_matched: 'coins',
 };
 

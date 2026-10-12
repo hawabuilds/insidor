@@ -36,6 +36,9 @@ export const DEFAULT_URL = 'postgresql://insidor:insidor@127.0.0.1:5432/insidor'
 /** The LOGIN user tools/db.mjs creates for the app role. Read-only, public only. */
 export const APP_USER = 'insidor_app_user';
 export const APP_PASSWORD = 'insidor_app';
+/* The social and notify services' login (0043): writes `people.*`, reads the public projection. */
+export const PEOPLE_USER = 'insidor_people_user';
+export const PEOPLE_PASSWORD = 'insidor_people';
 
 export function databaseUrl(env = process.env) {
   return env['DATABASE_URL'] ?? DEFAULT_URL;

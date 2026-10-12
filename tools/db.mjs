@@ -42,6 +42,8 @@ import { createHash } from 'node:crypto';
 import {
   APP_PASSWORD,
   APP_USER,
+  PEOPLE_PASSWORD,
+  PEOPLE_USER,
   ROOT,
   connect,
   databaseUrl,
@@ -201,6 +203,22 @@ $$;
 grant insidor_app to ${APP_USER};
 `;
 
+/** The same for the people role (0043): profiles, comments, rep and alerts, and nothing else. */
+const PEOPLE_LOGIN = `
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'insidor_people') then
+    if exists (select 1 from pg_roles where rolname = '${PEOPLE_USER}') then
+      alter role ${PEOPLE_USER} with login password '${PEOPLE_PASSWORD}';
+    else
+      create role ${PEOPLE_USER} with login password '${PEOPLE_PASSWORD}';
+    end if;
+    grant insidor_people to ${PEOPLE_USER};
+  end if;
+end
+$$;
+`;
+
 /**
  * What the browser's role can actually reach, read back from the catalogue.
  *
@@ -307,6 +325,8 @@ async function migrate({ quiet = false } = {}) {
 
     await client.query(APP_LOGIN);
     step(`✓ login user ${APP_USER} → group role insidor_app (${appReach(await appGrants(client))})`);
+    await client.query(PEOPLE_LOGIN);
+    step(`✓ login user ${PEOPLE_USER} → group role insidor_people (the people schema, read-only on the projection)`);
   } finally {
     await client.end();
   }

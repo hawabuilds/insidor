@@ -1577,6 +1577,10 @@ export interface NotifyPolicy {
   readonly marketLoopMs: number;
   /** How often the pipeline is read for new rising posts, narratives and coin links. */
   readonly pipelineLoopMs: number;
+  /** A wallet's buy history (its cost basis) is re-read at most this often: buys are rare, parse calls are not free forever. */
+  readonly positionsKeepMs: number;
+  /** How often queued alerts are delivered. */
+  readonly deliverLoopMs: number;
   /** A push undelivered after this long is dropped by the push service. */
   readonly pushTtlS: number;
   /** Reads and writes one person may make per `windowMs`. */
@@ -2274,6 +2278,9 @@ const POLICY_V1: Policy = {
     /* Two minutes: free price and curve reads for a handful of people, well inside the free tiers. */
     marketLoopMs: 120_000,
     pipelineLoopMs: 60_000,
+    /* Thirty minutes: two parse calls per wallet per half hour stays far inside a free tier. */
+    positionsKeepMs: 1_800_000,
+    deliverLoopMs: 5_000,
     pushTtlS: 86_400,
     perClient: 60,
     windowMs: 60_000,
