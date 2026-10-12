@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@insidor/contracts": "workspace:*",
-    "@privy-io/react-auth": "3.42.0"
+    "@privy-io/react-auth": "3.42.0",
+    "@solana-program/memo": "0.10.0"
   },
   "peerDependencies": {
     "react": "^18 || ^19",

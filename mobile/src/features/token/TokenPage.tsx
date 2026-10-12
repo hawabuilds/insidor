@@ -8,9 +8,9 @@
  * curve — is read from `GET /coin/:id/market` when the page opens, and again every 20 seconds.
  * A source that failed is said to have failed; a coin with no trades yet says that instead.
  *
- * ★ BUY AND SELL DO NOTHING BUT SAY "COMING SOON". The bar appears only for a coin the server
- * says can be quoted (`tradable`); for any other the page shows its numbers and says it cannot
- * be traded yet, with no button. `submitTrade` is never called from here.
+ * ★ BUY AND SELL OPEN THE ORDER SHEET ONLY WHEN TRADING IS ON (features/trade). Off, they say
+ * "Coming soon", and appear only for a coin the server says can be quoted (`tradable`). A sample
+ * coin is never traded. `submitTrade` is never called from here.
  */
 
 import { useEffect, useState } from 'react';
@@ -31,6 +31,7 @@ import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { TradeBar } from '../trade/TradeBar.tsx';
 import { CandleChart } from './CandleChart.tsx';
 import { PriceChart } from './PriceChart.tsx';
 import { directionOf } from './direction.ts';
@@ -206,15 +207,21 @@ function Body({ story, coin, sample }: { story: Story; coin: Coin; sample: boole
       {section === 'comments' ? <p className={styles['note']}>Comments are coming soon.</p> : null}
       {section === 'info' ? <Info coin={coin} now={now} /> : null}
 
-      {coin.tradable ? (
-        <div className={styles['tradeBar']}>
-          <Button look="buy" size="large" className={styles['buyWash']} onClick={() => soon(`Buying ${coin.ticker}`)}>Buy</Button>
-          <Button look="sell" size="large" onClick={() => soon(`Selling ${coin.ticker}`)}>Sell</Button>
-        </div>
-      ) : (
-        <p className={styles['note']}>This coin can't be traded yet.</p>
-      )}
+      {/* A sample coin is never traded; a real one is, once trading is on and it has somewhere to trade. */}
+      {sample ? <ComingSoonBar coin={coin} soon={soon} /> : <TradeBar mint={coin.address} ticker={coin.ticker} off={<ComingSoonBar coin={coin} soon={soon} />} />}
     </>
+  );
+}
+
+/** With trading off: the buttons say "Coming soon", and only for a coin the server says can be quoted. */
+function ComingSoonBar({ coin, soon }: { coin: Coin; soon: (what: string) => void }) {
+  return coin.tradable ? (
+    <div className={styles['tradeBar']}>
+      <Button look="buy" size="large" className={styles['buyWash']} onClick={() => soon(`Buying ${coin.ticker}`)}>Buy</Button>
+      <Button look="sell" size="large" onClick={() => soon(`Selling ${coin.ticker}`)}>Sell</Button>
+    </div>
+  ) : (
+    <p className={styles['note']}>This coin can't be traded yet.</p>
   );
 }
 

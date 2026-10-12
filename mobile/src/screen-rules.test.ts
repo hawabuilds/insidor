@@ -8,7 +8,8 @@
  *   - No middle dots, bullets or "…" menus anywhere. Separation is spacing.
  *   - No disabled buttons. A control that cannot be used is not rendered.
  *   - Nothing but `shared/api/client.ts` touches the network.
- *   - Nothing calls `submitTrade`. Buy, Sell and Create say "Coming soon".
+ *   - Nothing calls `submitTrade`. Buy and Sell open the order sheet only when the build has
+ *     VITE_TRADING=on (features/trade), and say "Coming soon" otherwise; Create says it always.
  *
  * Comments are stripped first, so a header explaining a rule does not break it.
  */

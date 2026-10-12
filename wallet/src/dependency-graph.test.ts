@@ -264,7 +264,9 @@ test('★ 4 — and nothing anywhere names a wallet, chain or signing library', 
  */
 test('★ 5 — the embedded wallet imports the vendor\'s sign-in and nothing chain-shaped', () => {
   const pkg = manifest('wallet-embedded');
-  assert.deepEqual(Object.keys(pkg.dependencies ?? {}).sort(), ['@insidor/contracts', '@privy-io/react-auth']);
+  /* The vendor SDK, and one peer its Solana hooks need and do not install themselves. Our code
+     imports only the SDK (checked below); the peer is there for the SDK. */
+  assert.deepEqual(Object.keys(pkg.dependencies ?? {}).sort(), ['@insidor/contracts', '@privy-io/react-auth', '@solana-program/memo']);
   const files = sourcesUnder(join(ROOT, 'wallet-embedded', 'src'));
   assert.ok(files.length >= 3, `the walk found ${files.length} files in wallet-embedded/src`);
   for (const file of files) {
