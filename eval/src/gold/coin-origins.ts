@@ -29,14 +29,28 @@ export type OriginPlatform = (typeof ORIGIN_PLATFORMS)[number];
 /**
  * Where a coin came from, as the founders found it.
  *
- *   post     viral, and this is the post that started it
- *   account  viral, but only the account is known — left out of the "right origin" score
- *            until the post is found
- *   none     checked, and no viral origin
+ *   post         viral, and this is the post that started it
+ *   account      viral, but only the account is known — left out of the "right origin" score
+ *                until the post is found
+ *   afterLaunch  the post went viral, but it was made after the coin (by more than
+ *                `origin.launchAllowanceMs`). Kept, with how long after; never an origin, and
+ *                out of the "right origin" score. The right answer for such a coin is to name
+ *                no origin.
+ *   none         checked, and no viral origin
  */
 export type CoinOrigin =
   | { readonly kind: 'post'; readonly platform: OriginPlatform; readonly url: string; readonly postId: string }
   | { readonly kind: 'account'; readonly platform: OriginPlatform; readonly url: string }
+  | {
+      readonly kind: 'afterLaunch';
+      readonly platform: OriginPlatform;
+      readonly url: string;
+      readonly postId: string;
+      /** ISO-8601 UTC, read from the post's id. */
+      readonly postedAt: string;
+      /** How long after the coin's first transaction the post was made. */
+      readonly afterMintMs: number;
+    }
   | { readonly kind: 'none' };
 
 export type GoldSplit = 'tune' | 'holdout';
@@ -67,7 +81,11 @@ export interface GoldCoin {
 export const SPLIT_SEED = 20_261_012;
 export const HOLDOUT_SHARE = 0.3;
 
-/** What the split is stratified on: no origin, or the origin's platform. */
+/**
+ * What the split is stratified on: no origin, or the platform of the post the founders found.
+ * A post made after launch stays in its platform's stratum — it is still a post on it, and the
+ * stored split did not move when those coins were relabelled.
+ */
 export function stratumOf(origin: CoinOrigin): string {
   return origin.kind === 'none' ? 'none' : origin.platform;
 }

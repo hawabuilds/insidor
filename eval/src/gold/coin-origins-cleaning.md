@@ -1,6 +1,6 @@
 # Coin-origin gold set: what the import cleaned
 
-Written by `tools/gold-import.ts` from the founders' backtest2 and backtest3 blind sheets. 850 coins.
+Written by `tools/gold-import.ts` from the founders' backtest2 and backtest3 blind sheets. 851 coins.
 Created times are the block time of each coin's first transaction on the chain; the sheet's own value is kept as `createdAtSheet`.
 
 ## The split (seed 20261012, 30% held out, stratified)
@@ -8,13 +8,13 @@ Created times are the block time of each coin's first transaction on the chain; 
 | stratum | coins | tune | holdout |
 |---|---|---|---|
 | no viral origin | 772 | 540 | 232 |
-| x | 61 | 43 | 18 |
+| x | 62 | 43 | 19 |
 | tiktok | 11 | 8 | 3 |
 | instagram | 6 | 4 | 2 |
 
 ## Coins left out, and duplicates removed (15)
 
-- bt2:276 and bt3:74 (BIGTROUT): BIGTROUT is backtest2 row 276 (viral: x.com/pusholder/status/2079311468231545077) and backtest3 row 74 (no viral origin). The founders' rule: viral only if that post came before the mint. It did not — posted 2026-07-20 21:04 UTC (from its id), minted 2026-06-30 19:22 UTC (first transaction on the chain), 20 days earlier. Both copies are left out.
+- bt3:74 (BIGTROUT) removed as a copy of bt2:276: BIGTROUT is backtest2 row 276 (viral: x.com/pusholder/status/2079311468231545077) and backtest3 row 74 (no viral origin). That post was made 2026-07-20 21:04 UTC (from its id), 20 days after the mint (2026-06-30 19:22 UTC, first transaction on the chain). The founders' rule: one copy, backtest2's, labelled viral after launch — the post kept, never counted as the origin.
 - bt2:20 (BANDOW) is the same coin as bt3:93, labelled the same (no viral origin); one copy kept, bt3:93.
 - bt2:34 (Jazz) is the same coin as bt3:394, labelled the same (no viral origin); one copy kept, bt3:394.
 - bt2:131 (JUNK) is the same coin as bt3:213, labelled the same (no viral origin); one copy kept, bt3:213.
@@ -318,7 +318,7 @@ Created times are the block time of each coin's first transaction on the chain; 
 - backtest2 row 435: name "The Sola Whale" replaced by the CSV's "The Solana Whale".
 - backtest2 row 436: ticker "stalgia" replaced by the CSV's "nostalgia".
 - backtest2 row 436: name "stalgia, man." replaced by the CSV's "nostalgia, man.".
-- conflict: BIGTROUT is backtest2 row 276 (viral: x.com/pusholder/status/2079311468231545077) and backtest3 row 74 (no viral origin). The founders' rule: viral only if that post came before the mint. It did not — posted 2026-07-20 21:04 UTC (from its id), minted 2026-06-30 19:22 UTC (first transaction on the chain), 20 days earlier. Both copies are left out.
+- conflict: BIGTROUT is backtest2 row 276 (viral: x.com/pusholder/status/2079311468231545077) and backtest3 row 74 (no viral origin). That post was made 2026-07-20 21:04 UTC (from its id), 20 days after the mint (2026-06-30 19:22 UTC, first transaction on the chain). The founders' rule: one copy, backtest2's, labelled viral after launch — the post kept, never counted as the origin.
 - duplicate: bt2:20 (BANDOW) is the same coin as bt3:93, labelled the same (no viral origin); one copy kept, bt3:93.
 - duplicate: bt2:34 (Jazz) is the same coin as bt3:394, labelled the same (no viral origin); one copy kept, bt3:394.
 - duplicate: bt2:131 (JUNK) is the same coin as bt3:213, labelled the same (no viral origin); one copy kept, bt3:213.
@@ -333,7 +333,7 @@ Created times are the block time of each coin's first transaction on the chain; 
 - duplicate: bt2:365 (MOOBULL) is the same coin as bt3:295, labelled the same (no viral origin); one copy kept, bt3:295.
 - duplicate: bt2:381 (USWR) is the same coin as bt3:148, labelled the same (no viral origin); one copy kept, bt3:148.
 - duplicate: bt2:413 (USOX) is the same coin as bt3:412, labelled the same (no viral origin); one copy kept, bt3:412.
-- origins: tiktok post 11, none 772, x post 61, instagram post 5, instagram account 1.
+- origins: tiktok post 11, none 772, x post 62, instagram post 5, instagram account 1.
 - backtest2 row 1: https://vm.tiktok.com/ZN8eU5Cqw/ expanded to https://www.tiktok.com/@cazy.chan/video/7658657103057308942.
 - backtest2 row 45: https://vm.tiktok.com/ZN8eUjnfM/ expanded to https://www.tiktok.com/@ivyvibing/video/7500005956563160366.
 - backtest2 row 62: https://vm.tiktok.com/ZN8eU7Shh/ expanded to https://www.tiktok.com/@meimeiwarrior/photo/7565704323678702850.
@@ -345,7 +345,28 @@ Created times are the block time of each coin's first transaction on the chain; 
 - backtest2 row 296: https://vm.tiktok.com/ZN8eyYYKQ/ expanded to https://www.tiktok.com/@dutchbreakingnews/video/7658171823556676897.
 - backtest3 row 233: https://vm.tiktok.com/ZN8exCmF3/ expanded to https://www.tiktok.com/@michael_ovo/video/7645104036152134925.
 - backtest3 row 307: https://vm.tiktok.com/ZN8exp9A6/ expanded to https://www.tiktok.com/@committee.of.affairs/video/7651009968115698966.
-- the creator's link was the origin post on 21 of 78 viral coins (repaired links): bt2:4, bt2:28, bt2:72, bt2:76, bt2:111, bt2:133, bt2:145, bt2:155, bt2:242, bt3:34, bt3:82, bt3:86, bt3:91, bt3:122, bt3:127, bt3:155, bt3:201, bt3:219, bt3:223, bt3:274, bt3:327.
+- bt2:118 (CUBEMAN): origin on instagram; its post time cannot be read from the link, so it is not checked against the mint.
+- bt2:120 (Nenem): origin on instagram; its post time cannot be read from the link, so it is not checked against the mint.
+- bt2:159 (Gatoelho): origin on instagram; its post time cannot be read from the link, so it is not checked against the mint.
+- bt3:235 (Tubtim): origin on instagram; its post time cannot be read from the link, so it is not checked against the mint.
+- bt3:239 (DATBIHGAH): origin on instagram; its post time cannot be read from the link, so it is not checked against the mint.
+- bt3:324 (FITNESS): origin posted 72s after the mint, inside the 10-minute allowance; it stays the origin.
+- the creator's link was the origin post on 21 of 79 viral coins (repaired links): bt2:4, bt2:28, bt2:72, bt2:76, bt2:111, bt2:133, bt2:145, bt2:155, bt2:242, bt3:34, bt3:82, bt3:86, bt3:91, bt3:122, bt3:127, bt3:155, bt3:201, bt3:219, bt3:223, bt3:274, bt3:327.
+- of the 7 viral after launch, the creator's link was that post on 0.
+
+## Viral after launch (7): the post came after the coin, so it is kept but never counted as the origin
+
+The founders' rule: an origin is posted before the mint, with 10 minutes' grace for same-moment launches. Post times are read from each post's id.
+
+| coin | ticker | post | posted (UTC) | minted (UTC) | after the mint |
+|---|---|---|---|---|---|
+| bt2:11 | KIMCHI | https://x.com/kimchi1x/status/2080050311725756531 | 2026-07-22 22:00 | 2026-06-30 06:30 | 22.6 days |
+| bt2:206 | Boardy | https://x.com/boardyai/status/2076102489464504608 | 2026-07-12 00:33 | 2026-07-02 18:40 | 9.2 days |
+| bt2:276 | BIGTROUT | https://x.com/pusholder/status/2079311468231545077 | 2026-07-20 21:04 | 2026-06-30 19:22 | 20.1 days |
+| bt3:323 | AUREON | https://x.com/robinhoodapp/status/2075672977497035108 | 2026-07-10 20:06 | 2026-06-13 20:58 | 27.0 days |
+| bt3:388 | Schrödinger | https://x.com/whitehouse/status/2069124520661696843 | 2026-06-22 18:25 | 2026-06-22 16:16 | 2.1 hours |
+| bt3:402 | Odysseus | https://x.com/dexerto/status/2061413468549324819 | 2026-06-01 11:44 | 2026-05-31 15:08 | 20.6 hours |
+| bt3:418 | grok 4.5 | https://x.com/elonmusk/status/2074740539874775163 | 2026-07-08 06:21 | 2025-06-26 09:34 | 376.9 days |
 
 ## Coins whose sheet date is off from the chain by more than a day (84)
 
