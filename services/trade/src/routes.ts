@@ -8,6 +8,8 @@
  *   POST /build   { quote, wallet }          → { transaction } only if the simulation passed
  *   POST /send    { transaction }            → { signature }
  *   GET  /balance?mint&wallet                how much of the coin the wallet holds, for Sell
+ *   POST /transfer { wallet, to, mint, amount }  Send: SOL (mint null) or a coin, unsigned and simulated;
+ *                                            a SOL send is capped like a buy
  *
  * ★ TRADING OFF MEANS NO TRADE PATH. When the switch, the allowlist or the RPC is missing, every
  * route above answers "trading is off" before reading anything else — not a quote, not a venue.
@@ -61,6 +63,7 @@ export interface TradeDeps {
     send(b64: string): Promise<string>;
     tokenBalance(owner: string, mint: string): Promise<{ readonly amount: string; readonly decimals: number }>;
   };
+  readonly transfer: { build(r: { from: string; to: string; mint: string | null; amount: bigint }): Promise<Built> };
   readonly payerOf: (signedBase64: string) => string;
   readonly log: { info(msg: string, f?: Record<string, unknown>): void; error(msg: string, f?: Record<string, unknown>): void };
 }
@@ -184,6 +187,22 @@ export async function handle(method: string, rawUrl: string, body: string | null
         /* No transaction in this reply: nothing here can be signed. */
         return json(422, { error: simulation.message, logs: simulation.logs.slice(-20) });
       }
+      return json(200, { transaction: built.transactionBase64, lastValidBlockHeight: built.lastValidBlockHeight, simulated: true });
+    }
+
+    if (method === 'POST' && parts.length === 1 && parts[0] === 'transfer') {
+      const b = parse(body);
+      const wallet = typeof b?.['wallet'] === 'string' ? b['wallet'] : '';
+      const to = typeof b?.['to'] === 'string' ? b['to'].trim() : '';
+      const mint = b?.['mint'] === null ? null : typeof b?.['mint'] === 'string' ? b['mint'] : undefined;
+      const amount = typeof b?.['amount'] === 'string' ? b['amount'] : '';
+      if (!ADDRESS.test(to) || to === wallet || mint === undefined || (mint !== null && !ADDRESS.test(mint))) return json(400, { error: 'That is not an address this can send to.' });
+      if (!deps.cfg.allowlist.has(wallet)) return refuse(403, 'not_allowed');
+      if (!/^\d+$/.test(amount) || BigInt(amount) === 0n) return refuse(400, 'bad_amount');
+      if (mint === null && BigInt(amount) > capLamports(deps.policy)) return refuse(403, 'over_cap');
+      const built = await deps.transfer.build({ from: wallet, to, mint, amount: BigInt(amount) });
+      const simulation = await deps.chain.simulate(built.transactionBase64);
+      if (!simulation.ok) return json(422, { error: simulation.message, logs: simulation.logs.slice(-20) });
       return json(200, { transaction: built.transactionBase64, lastValidBlockHeight: built.lastValidBlockHeight, simulated: true });
     }
 
