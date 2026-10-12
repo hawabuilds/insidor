@@ -85,7 +85,7 @@ export function Portfolio({
         <div className={styles['who']}>
           <Avatar name={who.name ?? who.handle} seed={who.address} src={who.pictureUrl} size={46} />
           <div className={styles['whoText']}>
-            <h1 className={styles['name']}>{who.name ?? who.handle ?? 'Wallet'}</h1>
+            <h1 className={styles['name']}>{who.name ?? who.handle ?? 'Portfolio'}</h1>
             <div className={styles['ids']}>
               {who.handle !== null ? <span className={styles['handle']}>@{who.handle}</span> : null}
               <button type="button" className={styles['copy']} onClick={onCopy} aria-label={`Copy address ${who.address}`}>

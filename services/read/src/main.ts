@@ -198,7 +198,7 @@ async function main(): Promise<void> {
     now: Date.now,
   });
 
-  /* The Wallet tab: public chain data for a wallet, read-only, no key (wallet.ts). */
+  /* The Portfolio tab: public chain data for a wallet, read-only, no key (wallet.ts). */
   const rpcUrl = cfg.rpcUrl;
   const wallet = createWallet({
     ...deps,

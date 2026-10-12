@@ -656,7 +656,7 @@ export function decodeSearchedCoin(raw: unknown, path = '$.coin'): SearchedCoin 
   };
 }
 
-/* ── the Wallet tab ───────────────────────────────────────────────────── */
+/* ── the Portfolio tab ───────────────────────────────────────────────────── */
 
 const PORTFOLIO_RANGES: readonly PortfolioRange[] = ['1h', '6h', '24h'];
 

@@ -1,5 +1,5 @@
 /**
- * The Wallet tab's reply, as the phone app holds it (services/read/src/wallet.ts).
+ * The Portfolio tab's reply, as the phone app holds it (services/read/src/wallet.ts).
  *
  * ★ PROFIT IS A NUMBER ONLY WITH BUY HISTORY. `profit.kind === 'none'` carries why — no buy in
  * the history read, or the history could not be read — and the screen shows a dash with it.

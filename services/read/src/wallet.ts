@@ -1,5 +1,5 @@
 /**
- * GET /wallet/:address?range=1h|6h|24h — the Wallet tab: what a wallet holds, what it is worth,
+ * GET /wallet/:address?range=1h|6h|24h — the Portfolio tab: what a wallet holds, what it is worth,
  * what each coin cost when we can see it, the narrative each coin came from when the match is
  * confident, and the coins it created through Insidor. Trador's Stonkfolio, read-only, cut to
  * launchpad coins.

@@ -8,7 +8,7 @@ const EVERY: readonly Route[] = [
   { screen: 'narratives' },
   { screen: 'search' },
   { screen: 'calls' },
-  { screen: 'wallet' },
+  { screen: 'portfolio' },
   { screen: 'learn' },
   { screen: 'story', storyId: 'goose', sample: false },
   { screen: 'story', storyId: 'jimothy', sample: true },
@@ -41,5 +41,6 @@ test('a story lights the tab of the list it came from', () => {
 
 test('a coin opened from search lights Search, where back leads', () => {
   assert.equal(tabOf({ screen: 'token', coinId: 'solana:A' }), 'search');
-  assert.equal(tabOf({ screen: 'learn' }), 'wallet', 'How Insidor works is reached from the Wallet tab');
+  assert.equal(tabOf({ screen: 'learn' }), 'portfolio', 'How Insidor works is reached from the Portfolio tab');
+  assert.deepEqual(parseRoute('#/wallet'), { screen: 'portfolio' }, 'a link from before the rename still opens the tab');
 });
