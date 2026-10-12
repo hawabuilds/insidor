@@ -16,7 +16,7 @@
 
 import type { Instant, Measured, Delta, Millis, PendingReason } from '../../format/measure.ts';
 import type { CoinLink } from './coin.ts';
-import type { Spark, Tone } from './board.ts';
+import type { BoardProvenance, Spark, Tone } from './board.ts';
 
 /**
  * The earliest post in the story we found: when, by whom, and a link. `startedBy` is set
@@ -115,3 +115,10 @@ export type StoryProvenance =
   | { readonly kind: 'observed' }
   | { readonly kind: 'seeded'; readonly connectSourceLabel: string }
   | { readonly kind: 'unstated' };
+
+/** The Narratives list: the board's stories as whole pages, with the board's provenance. */
+export interface NarrativesList {
+  readonly tick: number;
+  readonly stories: readonly Story[];
+  readonly provenance: BoardProvenance;
+}
