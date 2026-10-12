@@ -42,3 +42,13 @@ test('a narrative is named by its earliest coin, and the biggest come first', ()
   assert.deepEqual(n.map((x) => x.title), ['Late', 'Solo', 'Other']);
   assert.equal(n[0]?.coins[0]?.address, 'B');
 });
+
+test('★ a same-name coin with a different picture is not grouped in', () => {
+  const coins = [coin('A', { name: 'Moo Deng', ticker: 'MOODENG' }), coin('B', { name: 'Moo Deng', ticker: 'MOODENG' }), coin('C', { name: 'Moo Deng', ticker: 'MOODENG' })];
+  const pairs = [
+    { a: 'A', b: 'B', similarity: P.group.image.likely },
+    { a: 'A', b: 'C', similarity: P.group.image.borderline - 0.01 },
+    { a: 'B', b: 'C', similarity: 0 },
+  ];
+  assert.deepEqual(sets(groupCoins(coins, pairs, P)), ['A,B', 'C']);
+});

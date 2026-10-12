@@ -8,6 +8,11 @@
  *   a picture so close it is the same image            one narrative
  *   the same name AND (the same ticker, or a likely-same picture)   one narrative
  *
+ * ★ A DIFFERENT PICTURE VETOES A SHARED NAME. Two coins with the same name and ticker whose
+ * pictures WERE compared and came out below `borderline` (or a borderline pair the judge said is
+ * not the same subject, passed in as similarity 0) are two narratives that share a word, not one.
+ * Only a comparison vetoes: a pair nobody compared still joins on name and ticker.
+ *
  * ★ A NAME ALONE IS NOT EVIDENCE. Hundreds of coins are called "chill guy" or "the"; joining on
  * the name alone would make one narrative of every coin that shares a common word. A name counts
  * only with a second, independent signal. A picture similarity nobody computed is "not
@@ -90,7 +95,9 @@ export function groupCoins(coins: readonly HistoryCoin[], pairs: readonly Pictur
         if (a === undefined || b === undefined) continue;
         const ta = a.ticker === null ? '' : nameKey(a.ticker);
         const sameTicker = ta !== '' && b.ticker !== null && ta === nameKey(b.ticker);
-        const likely = (similar.get(`${a.address}|${b.address}`) ?? -1) >= image.likely;
+        const s = similar.get(`${a.address}|${b.address}`);
+        if (s !== undefined && s < image.borderline) continue;
+        const likely = (s ?? -1) >= image.likely;
         if (sameTicker || likely) join(a.address, b.address);
       }
     }
