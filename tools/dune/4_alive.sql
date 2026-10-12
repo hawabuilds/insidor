@@ -28,8 +28,25 @@ latest as (
     from launchpad
    where token_amount > 0
    group by mint
+),
+alive as (
+  select mint, price_usd * 1e9 as market_cap_usd, trades
+    from latest
+   where price_usd * 1e9 >= {{mcap_bar_usd}}
+),
+-- Each alive coin's launch, from the launchpad's own create calls. ★ AN INNER JOIN, AND THAT IS
+-- THE FILTER: the bonded pool venue also pools coins launched elsewhere (stablecoins, other
+-- chains' wrapped coins, impostors named like them). A coin with no create call was not
+-- launched on the launchpad and is not a candidate. Only the alive coins are looked up.
+created as (
+  select account_mint as mint, call_block_time as launched_at from pumpdotfun_solana.pump_call_create
+   where account_mint in (select mint from alive)
+  union all
+  select account_mint, call_block_time from pumpdotfun_solana.pump_call_create_v2
+   where account_mint in (select mint from alive)
 )
-select mint, price_usd * 1e9 as market_cap_usd, trades
-  from latest
- where price_usd * 1e9 >= {{mcap_bar_usd}}
- order by market_cap_usd desc
+select a.mint, a.market_cap_usd, a.trades, min(c.launched_at) as launched_at
+  from alive a
+  join created c on c.mint = a.mint
+ group by a.mint, a.market_cap_usd, a.trades
+ order by a.market_cap_usd desc

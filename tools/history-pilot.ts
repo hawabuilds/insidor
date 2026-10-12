@@ -82,13 +82,21 @@ interface AliveCoin {
   readonly launchedAt: number | null;
 }
 
+/* When each candidate launched, when the source said: Dune's create calls. */
+const launched = new Map<string, number>();
+
 async function candidates(): Promise<{ readonly source: string; readonly census: boolean; readonly hits: ReadonlyMap<string, number | null> }> {
   const d = dune();
   if (d !== null) {
     const run = await d.run(query('4_alive.sql', { since_hours: 24, mcap_bar_usd: H.aliveMarketCapUsd }));
     console.log('dune credits charged:', run.credits ?? 'not reported');
     const hits = new Map<string, number | null>();
-    for (const r of run.rows) if (typeof r['mint'] === 'string') hits.set(r['mint'], null);
+    for (const r of run.rows) {
+      if (typeof r['mint'] !== 'string') continue;
+      hits.set(r['mint'], null);
+      const at = typeof r['launched_at'] === 'string' ? Date.parse(r['launched_at'].replace(' UTC', 'Z').replace(' ', 'T')) : Number.NaN;
+      if (Number.isFinite(at)) launched.set(r['mint'], at);
+    }
     return { source: 'dune: every launchpad coin traded in the last day above the bar', census: true, hits };
   }
   const g = geckoterminal({ plan: 'free', baseUrl: 'https://api.geckoterminal.com/api/v2', fetch: globalThis.fetch, timeoutMs: 15_000, now: Date.now });
@@ -130,7 +138,7 @@ async function alive(): Promise<void> {
         continue;
       }
       if (s.marketCapUsd !== null && s.marketCapUsd >= H.aliveMarketCapUsd) {
-        kept.push({ address: a, name: s.name ?? null, ticker: s.ticker ?? null, bonded: s.bonded, marketCapUsd: s.marketCapUsd, launchedAt: null });
+        kept.push({ address: a, name: s.name ?? null, ticker: s.ticker ?? null, bonded: s.bonded, marketCapUsd: s.marketCapUsd, launchedAt: launched.get(a) ?? null });
       }
     }
     await sleep(250);
@@ -140,6 +148,11 @@ async function alive(): Promise<void> {
   const bonded = kept.filter((c) => c.bonded).length;
   console.log(`alive at or above ${usd(H.aliveMarketCapUsd)} now: ${kept.length} (${bonded} bonded, ${kept.length - bonded} on the curve); ${unlisted} candidates not listed`);
   console.log(census ? 'This is the census.' : 'This is a LOWER BOUND: coins quiet today but above the bar are not on the listing.');
+  console.log('Top 20 by market cap now:');
+  for (const c of [...kept].sort((x, y) => y.marketCapUsd - x.marketCapUsd).slice(0, 20)) {
+    const day = c.launchedAt === null ? '—' : new Date(c.launchedAt).toISOString().slice(0, 10);
+    console.log(`  ${(c.ticker ?? '—').padEnd(12)} ${(c.name ?? '—').slice(0, 28).padEnd(28)} ${usd(c.marketCapUsd).padStart(18)}  ${day}  ${c.bonded ? 'bonded' : 'curve'}`);
+  }
 }
 
 function estimate(): void {
