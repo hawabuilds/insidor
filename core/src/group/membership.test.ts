@@ -13,6 +13,7 @@ import type { Story } from '@insidor/contracts/story.ts';
 import type { Fingerprint, Item } from '@insidor/contracts/vocabulary.ts';
 
 import { afterMembership, carriersWith, joinMember, owesASeed, seedStory } from './membership.ts';
+import { NO_PICTURE_INPUTS } from './picture.ts';
 import { joinTarget, type GroupInput } from './stage.ts';
 
 const NOW = 1_700_000_000_000;
@@ -94,6 +95,7 @@ test('a join writes the evidence the match found, onto the story it found', () =
     similarity: {},
     lineage: null,
     corpus: {},
+    picture: NO_PICTURE_INPUTS,
     costUsd: 0,
   };
   const match = joinTarget(input, DEFAULT_POLICY);
@@ -104,7 +106,7 @@ test('a join writes the evidence the match found, onto the story it found', () =
 });
 
 test('an empty block has no join target', () => {
-  const input: GroupInput = { item: item('p1'), candidates: [], similarity: {}, lineage: null, corpus: {}, costUsd: 0 };
+  const input: GroupInput = { item: item('p1'), candidates: [], similarity: {}, lineage: null, corpus: {}, picture: NO_PICTURE_INPUTS, costUsd: 0 };
   assert.equal(joinTarget(input, DEFAULT_POLICY), null);
 });
 

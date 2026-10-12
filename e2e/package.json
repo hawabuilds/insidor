@@ -7,6 +7,7 @@
   "dependencies": {
     "@insidor/contracts": "workspace:*",
     "@insidor/core": "workspace:*",
+    "@insidor/embed-voyage": "workspace:*",
     "@insidor/judge-anthropic": "workspace:*",
     "@insidor/meter": "workspace:*",
     "@insidor/platform-x": "workspace:*",
