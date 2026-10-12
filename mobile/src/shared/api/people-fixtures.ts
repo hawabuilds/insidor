@@ -58,7 +58,7 @@ const alerts: Alert[] = [
   { id: 7, kind: 'reply', title: '@parkdays replied', body: 'Bought FERRY when it was 30K. The horn remixes are the real fuel.', href: '/#/sample/story/st_ferry', at: now() - 2 * HOUR, unread: true, symbol: null, rank: null, season: null },
   { id: 6, kind: 'coin_matched', title: '$FERRY matched to a narrative you watch', body: 'Ferry horn goes viral', href: '/#/sample/story/st_ferry', at: now() - 5 * HOUR, unread: false, symbol: 'FERRY', rank: null, season: null },
   { id: 5, kind: 'graduating_soon', title: '$SEAL is close to graduating', body: '92% of the way through its curve', href: '/#/', at: now() - 2 * DAY, unread: false, symbol: 'SEAL', rank: null, season: null },
-  { id: 4, kind: 'rank_up', title: 'You reached Analyst', body: 'Holders liked your calls.', href: '/#/u/you', at: now() - 3 * DAY, unread: false, symbol: null, rank: 'analyst', season: 1 },
+  { id: 4, kind: 'rank_up', title: 'You reached Analyst', body: 'Holders liked your calls.', href: '/#/u/you', at: now() - 3 * DAY, unread: true, symbol: null, rank: 'analyst', season: 1 },
   { id: 3, kind: 'follow', title: 'New follower', body: '@citybuslog followed you', href: '/#/u/citybuslog', at: now() - 9 * DAY, unread: false, symbol: null, rank: null, season: null },
   { id: 2, kind: 'narrative_promoted', title: 'New narrative', body: 'The grim reaper is back, on a roof', href: '/#/', at: now() - 12 * DAY, unread: false, symbol: null, rank: null, season: null },
 ];
@@ -85,7 +85,7 @@ export function sampleAnswer(service: 'social' | 'notify', method: string, path:
       for (let i = 0; i < alerts.length; i += 1) alerts[i] = { ...(alerts[i] as Alert), unread: false };
       return { seen: true };
     }
-    if (seg[0] === 'alerts') return { unread: alerts.filter((a) => a.unread).length, alerts };
+    if (seg[0] === 'alerts') return { unread: alerts.filter((a) => a.unread).length, alerts: alerts.map((a) => ({ ...a })) };
     if (seg[0] === 'prefs') {
       if (method === 'PUT') prefs = (b['prefs'] as AlertPrefs) ?? prefs;
       return settings();

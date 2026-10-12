@@ -36,7 +36,7 @@ export function ImportScreen() {
         </ul>
       </div>
       {!ready ? (
-        <p className={box['note']}>{SIGN_IN_CONFIGURED ? 'Sign in first to import a wallet.' : 'Sample data: this build has no sign-in, so there is nowhere to import a wallet into.'}</p>
+        <p className={box['lead']}>{SIGN_IN_CONFIGURED ? 'Sign in first to import a wallet.' : 'Sample data: this build has no sign-in, so there is nowhere to import a wallet into.'}</p>
       ) : !understood ? (
         <button type="button" className={box['linkButton']} onClick={() => setUnderstood(true)}>I understand, continue</button>
       ) : (

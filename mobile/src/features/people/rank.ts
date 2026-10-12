@@ -23,5 +23,8 @@ export function rankCardLine(c: { readonly rank: RankId; readonly topOfSeason: b
   return `${c.next.repToGo.toLocaleString('en-US')} rep to ${RANK_NAME[c.next.rank]}`;
 }
 
+/** "a Quant", "an Analyst": Trador wrote "a" before every rank, which reads wrong for two of them. */
+export const withArticle = (rank: RankId): string => `${/^[AEIOU]/.test(RANK_NAME[rank]) ? 'an' : 'a'} ${RANK_NAME[rank]}`;
+
 /** "Share on X": the words Trador shares, with Insidor's name. */
-export const shareText = (rank: RankId, season: number): string => `I'm a ${RANK_NAME[rank]} on Insidor. Season ${season}.`;
+export const shareText = (rank: RankId, season: number): string => `I'm ${withArticle(rank)} on Insidor. Season ${season}.`;

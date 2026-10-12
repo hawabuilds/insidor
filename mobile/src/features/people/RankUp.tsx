@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 
 import { fetchAlerts, type RankId } from '../../shared/api/people.ts';
 import { RankBadge } from './RankBadge.tsx';
-import { RANK_LINE, RANK_NAME, shareText } from './rank.ts';
+import { RANK_LINE, shareText, withArticle } from './rank.ts';
 import styles from './people.module.css';
 
 const SEEN = 'insidor.rankSeen';
@@ -52,11 +52,11 @@ export function RankUp({ signedIn }: { signedIn: boolean }) {
 export function RankUpView({ rank, season, onClose }: { rank: RankId; season: number; onClose: () => void }) {
   const share = `https://x.com/intent/post?text=${encodeURIComponent(shareText(rank, season))}`;
   return (
-    <div className={styles['rankUp']} role="dialog" aria-label={`You're a ${RANK_NAME[rank]}`}>
+    <div className={styles['rankUp']} role="dialog" aria-label={`You're ${withArticle(rank)}`}>
       <div className={styles['rankUpInner']}>
         <RankBadge rank={rank} size={128} />
         <span className={styles['season']}>Season {season}</span>
-        <h2 className={styles['rankUpTitle']}>You're a {RANK_NAME[rank]}</h2>
+        <h2 className={styles['rankUpTitle']}>You're {withArticle(rank)}</h2>
         <p className={styles['rankUpLine']}>{RANK_LINE[rank]}</p>
         <a className={styles['share']} href={share} target="_blank" rel="noreferrer" onClick={onClose}>Share on 𝕏</a>
         <button type="button" className={styles['notNow']} onClick={onClose}>Not now</button>

@@ -53,10 +53,11 @@ function checkKeys(raw: unknown, path = '$'): void {
   }
 }
 
-async function call(base: string, method: string, path: string, body?: unknown): Promise<unknown> {
+async function call(service: 'social' | 'notify', method: string, path: string, body?: unknown): Promise<unknown> {
+  const base = service === 'social' ? SOCIAL : NOTIFY;
   if (PEOPLE_SAMPLE) {
     const { sampleAnswer } = await import('./people-fixtures.ts');
-    return sampleAnswer(base === SOCIAL ? 'social' : 'notify', method, path, body);
+    return sampleAnswer(service, method, path, body);
   }
   if (base === '') throw new PeopleError(503, 'This part of Insidor is not set up in this build.');
   const response = await peopleRequest(`${base}${path}`, method, tokenSource(), body);
@@ -66,8 +67,8 @@ async function call(base: string, method: string, path: string, body?: unknown):
   return parsed;
 }
 
-const social = (method: string, path: string, body?: unknown) => call(SOCIAL, method, path, body);
-const notify = (method: string, path: string, body?: unknown) => call(NOTIFY, method, path, body);
+const social = (method: string, path: string, body?: unknown) => call('social', method, path, body);
+const notify = (method: string, path: string, body?: unknown) => call('notify', method, path, body);
 
 /* ── social ───────────────────────────────────────────────────────── */
 
