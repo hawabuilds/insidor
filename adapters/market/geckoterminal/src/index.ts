@@ -19,9 +19,13 @@
 
 import { VendorUnavailable } from '@insidor/vendor-kit';
 
+import type { CoinSearch } from '@insidor/contracts/ports/coin-search.ts';
+
 import { aggregate, primaryPool, readCandles, readPools, readTrades, type Candle, type Pool, type Trade } from './read.ts';
+import { readSearch, SEARCH_PAGE } from './search.ts';
 
 export { aggregate, primaryPool, readCandles, readPools, readTrades } from './read.ts';
+export { readSearch, SEARCH_PAGE } from './search.ts';
 export type { Candle, Pool, Trade } from './read.ts';
 
 export const VENDOR = 'geckoterminal';
@@ -78,10 +82,13 @@ export interface CoinMarket {
   readonly trades: readonly Trade[] | null;
 }
 
-export interface MarketData {
+export interface MarketData extends CoinSearch {
   /** The coin's primary pool, its candles for one view, and its latest trades. */
   coin(mint: string, timeframe: Timeframe): Promise<CoinMarket>;
 }
+
+/** A search answer is kept a minute: the same name typed twice costs one request. */
+const SEARCH_KEEP_MS = 60_000;
 
 export function geckoterminal(config: GeckoConfig): MarketData {
   const plan: GeckoPlan = config.plan !== undefined && config.plan !== 'free' && (config.apiKey ?? '') !== '' ? config.plan : 'free';
@@ -130,6 +137,14 @@ export function geckoterminal(config: GeckoConfig): MarketData {
   }
 
   return {
+    async search(term) {
+      const key = term.trim().toLowerCase();
+      const hits = await cached(`search:${key}`, SEARCH_KEEP_MS, async () =>
+        readSearch(await get(`/search/pools?query=${encodeURIComponent(key)}&network=solana&page=1`)),
+      );
+      return { hits, capped: hits.length >= SEARCH_PAGE };
+    },
+
     async coin(mint, timeframe) {
       const pool = await cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1`))));
       if (pool === null) return { pool: null, candles: [], trades: [] };

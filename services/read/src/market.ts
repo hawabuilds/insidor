@@ -30,7 +30,7 @@ export const ASSET_SQL = 'select chain, address from public.asset where asset_ke
 export interface MarketDeps {
   readonly db: Db;
   readonly log: Logger;
-  readonly market: MarketData;
+  readonly market: Pick<MarketData, 'coin'>;
   /** A curve's progress from its account, 0..1; null when the address holds no curve. Null reader: no RPC configured. */
   readonly curveProgress: ((address: string) => Promise<number | null>) | null;
 }

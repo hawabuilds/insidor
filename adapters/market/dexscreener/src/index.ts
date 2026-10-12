@@ -159,3 +159,6 @@ export { httpClient, CHAIN_SLUG, MAX_ADDRESSES_PER_CALL, PAIRS_ENDPOINT, RATE_LI
 export type { MarketClient, MarketClientConfig } from './client.ts';
 export { toMarketState, toPairView, pickPricePair, CURVE_DEX_IDS } from './to-market-state.ts';
 export type { MarketReadContext, PairView } from './to-market-state.ts';
+
+/* Search by name or ticker, kept to the launchpad's coins on Solana. */
+export { dexscreenerSearch, readSearch, SEARCH_LIMIT } from './search.ts';
