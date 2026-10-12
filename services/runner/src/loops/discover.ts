@@ -93,10 +93,11 @@ export interface DiscoverLoopDeps {
   /** The day's hard cap — the lower of the environment's and policy's. */
   readonly dailyCapUsd: number;
   /**
-   * Score the catch-all posts not yet scored, after the pass that may have found more. Its
-   * failure is logged and never fails the pass: posts that were not scored wait for the next.
+   * Steps run after the pass that may have found new posts, in order — scoring each new post
+   * alone, embedding its picture. A step's failure is logged and never fails the pass: what
+   * it did not do waits for the next.
    */
-  readonly scorePosts?: () => Promise<unknown>;
+  readonly afterPass?: readonly (readonly [string, () => Promise<unknown>])[];
 }
 
 export function discoverLoop(deps: DiscoverLoopDeps): Loop {
@@ -186,12 +187,11 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
         });
       }
 
-      /* The per-post score, after the pass that may have found more posts to score. */
-      if (deps.scorePosts !== undefined) {
+      for (const [name, step] of deps.afterPass ?? []) {
         try {
-          await deps.scorePosts();
+          await step();
         } catch (e) {
-          log.error('post scoring failed; unscored posts wait for the next pass', { err: errorText(e) });
+          log.error('a step after the pass failed; what it did not do waits for the next pass', { step: name, err: errorText(e) });
         }
       }
 

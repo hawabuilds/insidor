@@ -55,6 +55,7 @@ import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, VENDOR as JUDGE_VENDOR, anthropicJudge, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openDurableMeter } from '@insidor/meter';
+import { VENDOR as EMBED_VENDOR, httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
 import { SUPPLIER_VENDORS, resolvePlatforms, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
   DB_ROLE,
@@ -62,6 +63,7 @@ import {
   PgAuthorRepo,
   PgDecisionRepo,
   PgFeedFloorRepo,
+  PgImageEmbeddingRepo,
   PgJudgementRepo,
   PgPostJudgementRepo,
   PgItemRepo,
@@ -79,6 +81,7 @@ import {
 import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
+import { embedImages } from './work/embed-images.ts';
 import { advisoryLockKey, policyHash } from './hash.ts';
 import type { Logger } from './log.ts';
 import type { DecisionLog, LoopDeps } from './loop.ts';
@@ -109,6 +112,8 @@ export interface Runtime {
   readonly feedFloors: PgFeedFloorRepo;
   /** Score the catch-all posts the judge has not seen, alone and once each. */
   readonly scorePosts: () => Promise<ScoringResult>;
+  /** Embed the first image of each new post once, for GROUP's image evidence. */
+  readonly embedImages: () => Promise<unknown>;
 }
 
 
@@ -329,6 +334,7 @@ export async function withRuntime<T>(
           [SUPPLIER_VENDORS.posts]: policy.budget.supplierLines.posts,
           [SUPPLIER_VENDORS.video]: policy.budget.supplierLines.video,
           [JUDGE_VENDOR]: policy.budget.supplierLines.judge,
+          [EMBED_VENDOR]: policy.budget.supplierLines.embeddings,
         },
         paceAheadMs: policy.budget.paceAheadMs,
         softStop: policy.budget.softStopFraction,
@@ -468,6 +474,22 @@ export async function withRuntime<T>(
           meter,
           store: storeArrivals(repos, policy, () => Date.now() as Millis),
           feedFloors: new PgFeedFloorRepo(db),
+          embedImages: () =>
+            embedImages({
+              embed:
+                cfg.embeddings.state === 'configured'
+                  ? voyageEmbed({
+                      client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
+                      meter,
+                      now: () => Date.now() as Millis,
+                    })
+                  : null,
+              images: new PgImageEmbeddingRepo(db),
+              mode: cfg.spend.kind,
+              policy,
+              log: log.child({ step: 'embed-images' }),
+              now: () => Date.now() as Millis,
+            }),
           scorePosts: () =>
             scorePosts({
               judge: postJudge,

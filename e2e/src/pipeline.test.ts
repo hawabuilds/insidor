@@ -62,23 +62,7 @@ import type { Db } from '@insidor/store';
 const MINUTE = 60_000;
 const NOW = Date.now() as Millis;
 
-/* ── the database ─────────────────────────────────────────────────────── */
-
-type Pg = Pick<PGlite, 'query' | 'exec'>;
-
-/** The store's Db over PGlite. A statement with no parameters may hold several, as a migration does. */
-function dbOf(pg: Pg): Db {
-  return {
-    query: async <R>(sql: string, params?: readonly unknown[]): Promise<R[]> => {
-      if (params === undefined || params.length === 0) {
-        const results = await pg.exec(sql);
-        return (results.at(-1)?.rows ?? []) as R[];
-      }
-      const result = await pg.query<R>(sql, [...params]);
-      return result.rows;
-    },
-  } as Db;
-}
+import { dbOf } from './db.ts';
 
 const quiet: Logger = { info: () => {}, warn: () => {}, error: () => {}, child: () => quiet };
 

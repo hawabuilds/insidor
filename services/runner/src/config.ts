@@ -238,6 +238,11 @@ export interface RunnerConfig {
    * SPEND=live with a model but no key — a live process told to judge that cannot.
    */
   readonly judge: JudgeSetup;
+  /**
+   * The image embedding vendor, or dormant. Dormant is a supported state: posts go without
+   * vectors and GROUP groups them on the free tiers. The key is the only thing to set.
+   */
+  readonly embeddings: { readonly state: 'dormant' } | { readonly state: 'configured'; readonly apiKey: string; readonly baseUrl: string };
 }
 
 export class ConfigError extends Error {
@@ -425,5 +430,13 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     spend,
     sourceEnv: platformEnv(env),
     judge,
+    embeddings:
+      (env['VOYAGE_API_KEY'] ?? '').trim() === ''
+        ? { state: 'dormant' }
+        : {
+            state: 'configured',
+            apiKey: (env['VOYAGE_API_KEY'] ?? '').trim(),
+            baseUrl: (env['VOYAGE_API_BASE'] ?? '').trim() || 'https://api.voyageai.com',
+          },
   };
 }
