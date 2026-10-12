@@ -13,6 +13,7 @@ const EVERY: readonly Route[] = [
   { screen: 'story', storyId: 'jimothy', sample: true },
   { screen: 'coin', storyId: 'jimothy', coinId: 'c1', sample: true },
   { screen: 'coin', storyId: 'a/b c', coinId: 'x%y', sample: false },
+  { screen: 'token', coinId: 'solana:Abc123pump' },
 ];
 
 test('every route survives the round trip through its own href', () => {
@@ -27,7 +28,7 @@ test('a sample story and a read-service story with the same id are different rou
 });
 
 test('anything unreadable lands on the feed rather than an error screen', () => {
-  for (const hash of ['', '#', '#/', '#/nope', '#/story', '#/story/x/nope', '#/%zz', '#/sample/stories', '#/search/extra']) {
+  for (const hash of ['', '#', '#/', '#/nope', '#/story', '#/story/x/nope', '#/%zz', '#/sample/stories', '#/search/extra', '#/token', '#/token/a/b', '#/sample/token/a']) {
     assert.deepEqual(parseRoute(hash), { screen: 'feed' }, hash);
   }
 });
@@ -35,4 +36,8 @@ test('anything unreadable lands on the feed rather than an error screen', () => 
 test('a story lights the tab of the list it came from', () => {
   assert.equal(tabOf({ screen: 'story', storyId: 'x', sample: false }), 'feed');
   assert.equal(tabOf({ screen: 'coin', storyId: 'x', coinId: 'y', sample: true }), 'narratives');
+});
+
+test('a coin opened from search lights Search, where back leads', () => {
+  assert.equal(tabOf({ screen: 'token', coinId: 'solana:A' }), 'search');
 });

@@ -112,3 +112,4 @@ export { effectiveFloor, laneTargets, laneWindowMin, nextFloor, sentFloors, slow
 export type { FloorMove, LaneFloors } from './sources/feed-floor.ts';
 export { checkCreatorLink, decideOrigin, earliestByReproduction, matchCandidates, namesCoin } from './origin/check.ts';
 export type { Candidate, CoinFacts, CreatorCheck, CreatorLink, MatchResult, OriginDecision, PostFacts } from './origin/check.ts';
+export { mergeHits } from './search/merge.ts';

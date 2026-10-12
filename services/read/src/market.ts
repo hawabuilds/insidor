@@ -10,8 +10,9 @@
  * when someone opens a token page. Projecting candles and trades for every coin every minute
  * would cost a hundred calls to show one.
  *
- * ★ ONLY FOR A COIN WE ALREADY HOLD. An address nobody indexed is a 404, so this route can never
- * be used to make us fetch an arbitrary address. And every answer is kept (see the adapter), so
+ * ★ ONLY FOR A COIN WE ALREADY HOLD, OR ONE A SEARCH JUST RETURNED. An address nobody indexed and
+ * no search of ours listed is a 404, so this route can never be used to make us fetch an
+ * arbitrary address; a search result stays openable for `search.openableMs` (search.ts). And every answer is kept (see the adapter), so
  * a crowd on one coin costs one call.
  *
  * What breaks if changed carelessly: an outage is not an empty market. A source that failed
@@ -33,6 +34,8 @@ export interface MarketDeps {
   readonly market: Pick<MarketData, 'coin'>;
   /** A curve's progress from its account, 0..1; null when the address holds no curve. Null reader: no RPC configured. */
   readonly curveProgress: ((address: string) => Promise<number | null>) | null;
+  /** True for an address a recent search returned (search.ts): openable without being in the universe. */
+  readonly recent?: (address: string) => boolean;
 }
 
 export interface MarketReply {
@@ -48,8 +51,9 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
   if (timeframe === null) return json(400, { error: 'bad request' });
   const rows = await deps.db.query(ASSET_SQL, [assetKey]);
   const asset = rows[0];
-  if (asset === undefined || asset['chain'] !== 'solana' || typeof asset['address'] !== 'string') return null;
-  const mint = asset['address'];
+  const searched = assetKey.startsWith('solana:') && deps.recent?.(assetKey.slice('solana:'.length)) === true ? assetKey.slice('solana:'.length) : null;
+  if ((asset === undefined || asset['chain'] !== 'solana' || typeof asset['address'] !== 'string') && searched === null) return null;
+  const mint = typeof asset?.['address'] === 'string' && asset['chain'] === 'solana' ? asset['address'] : (searched ?? '');
 
   try {
     const market = await deps.market.coin(mint, timeframe);

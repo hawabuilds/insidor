@@ -1,8 +1,7 @@
 /**
  * THE ONLY MODULE IN THE PHONE APP THAT TOUCHES THE NETWORK.
  *
- * It reads two routes of the read service — `GET /board/:viewId` and `GET /story/:storyId`
- * (services/read/src/routes.ts) — and nothing else. Everything it returns has been through
+ * It reads the read service's routes (services/read/src/routes.ts) and nothing else. Everything it returns has been through
  * `decode.ts`; nothing here constructs a wire object by hand. The shape and the reasoning are
  * the desktop app's `app/src/shared/api/client.ts`, cut down to what this app reads.
  *
@@ -25,7 +24,8 @@
  */
 
 import { notImplemented } from '../not-implemented.ts';
-import { decodeBoardTick, decodeCoinMarket, decodeNarratives, decodeRisingFeed, decodeStory } from './decode.ts';
+import { decodeBoardTick, decodeCoinMarket, decodeNarratives, decodeRisingFeed, decodeSearch, decodeSearchedCoin, decodeStory } from './decode.ts';
+import type { SearchedCoin, SearchResults } from './wire/search.ts';
 import type { CoinMarket, MarketTimeframe } from './wire/market.ts';
 import type { BoardTick } from './wire/board.ts';
 import type { RisingFeed, RisingFeedId } from './wire/rising.ts';
@@ -34,10 +34,23 @@ import type { NarrativesList, Story } from './wire/story.ts';
 /** A failure of the transport, as opposed to a failure of the payload. */
 export class ReadError extends Error {
   readonly status: number;
-  constructor(path: string, status: number) {
+  /** The server's own word for the failure (`{ "error": "slow down" }`), when it sent one. */
+  readonly said: string | null;
+  constructor(path: string, status: number, said: string | null = null) {
     super(`read failed: ${path} (${status})`);
     this.name = 'ReadError';
     this.status = status;
+    this.said = said;
+  }
+}
+
+async function saidBy(response: Response): Promise<string | null> {
+  try {
+    const body: unknown = await response.json();
+    const said = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['error'] : null;
+    return typeof said === 'string' ? said : null;
+  } catch {
+    return null;
   }
 }
 
@@ -67,6 +80,16 @@ export const SAMPLE_SCREENS = DEV || SAMPLE;
 async function readFixture(path: string): Promise<unknown> {
   const { fixtureBoard, fixtureRising, fixtureStory } = await import('./fixtures.ts');
   if (path.startsWith('/board/')) return fixtureBoard();
+  if (path.startsWith('/search?q=')) {
+    const { fixtureSearch } = await import('./fixtures.ts');
+    return fixtureSearch(decodeURIComponent(path.slice('/search?q='.length)));
+  }
+  if (/^\/coin\/[^/?]+$/.test(path)) {
+    const { fixtureSearchedCoin } = await import('./fixtures.ts');
+    const coin = fixtureSearchedCoin(decodeURIComponent(path.slice('/coin/'.length)));
+    if (coin === null) throw new ReadError(path, 404);
+    return coin;
+  }
   if (path.startsWith('/coin/')) {
     const { fixtureMarket } = await import('./fixtures.ts');
     const [, coinId = '', tf = '1m'] = /^\/coin\/([^/]+)\/market\?tf=(\w+)$/.exec(path) ?? [];
@@ -94,7 +117,7 @@ async function read(path: string, signal?: AbortSignal): Promise<unknown> {
     cache: 'no-store',
     ...(signal ? { signal } : {}),
   });
-  if (!response.ok) throw new ReadError(path, response.status);
+  if (!response.ok) throw new ReadError(path, response.status, await saidBy(response));
   return response.json();
 }
 
@@ -110,6 +133,16 @@ export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Pro
 /** A coin's price history for one view, its latest trades and, on the curve, its progress. */
 export async function fetchCoinMarket(coinId: string, timeframe: MarketTimeframe, signal?: AbortSignal): Promise<CoinMarket> {
   return decodeCoinMarket(await read(`/coin/${encodeURIComponent(coinId)}/market?tf=${timeframe}`, signal));
+}
+
+/** The Search tab: narratives, posts and coins matching a term. A 429 means slow down. */
+export async function fetchSearch(term: string, signal?: AbortSignal): Promise<SearchResults> {
+  return decodeSearch(await read(`/search?q=${encodeURIComponent(term)}`, signal));
+}
+
+/** A coin opened from search: what the search said about it. */
+export async function fetchSearchedCoin(coinId: string, signal?: AbortSignal): Promise<SearchedCoin> {
+  return decodeSearchedCoin(await read(`/coin/${encodeURIComponent(coinId)}`, signal));
 }
 
 /** The Narratives list: the board's stories as whole pages, in the board's order. */

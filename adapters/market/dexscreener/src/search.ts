@@ -27,6 +27,7 @@ export function readSearch(raw: unknown): { readonly hits: readonly CoinSearchHi
       name: str(base.name),
       ticker: str(base.symbol),
       venue,
+      marketAddress: str(r.pairAddress),
       createdAt: num(r.pairCreatedAt),
       marketCapUsd: num(r.marketCap) ?? num(r.fdv),
       imageUrl: str(rec(r.info).imageUrl),

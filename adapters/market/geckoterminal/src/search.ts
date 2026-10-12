@@ -29,6 +29,7 @@ export function readSearch(raw: unknown): readonly CoinSearchHit[] {
       name: null,
       ticker,
       venue,
+      marketAddress: str(a.address),
       createdAt: created === null ? null : Date.parse(created),
       marketCapUsd: num(a.market_cap_usd) ?? num(a.fdv_usd),
       imageUrl: null,

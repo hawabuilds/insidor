@@ -24,6 +24,7 @@
 
 import { coinMarket, type MarketDeps } from './market.ts';
 import { errorText, type Logger } from './log.ts';
+import type { Search } from './search.ts';
 import {
   BOARD_ROWS_SQL,
   BOARD_VIEW_SQL,
@@ -50,7 +51,9 @@ export interface Deps {
   readonly db: Db;
   readonly log: Logger;
   /** A coin's market data (market.ts). Absent: the coin market route is a 404. */
-  readonly market?: Omit<MarketDeps, 'db' | 'log'>;
+  readonly market?: Omit<MarketDeps, 'db' | 'log' | 'recent'>;
+  /** The Search tab's live search (search.ts). Absent: /search and /coin/:id are 404s. */
+  readonly search?: Search;
 }
 
 /*
@@ -387,7 +390,7 @@ async function sources(viewId: string, deps: Deps): Promise<Reply> {
  * route that wanted to explain itself to the caller would have to be written to do
  * so deliberately, which is the right amount of friction.
  */
-export async function handle(method: string, rawUrl: string, deps: Deps): Promise<Reply> {
+export async function handle(method: string, rawUrl: string, deps: Deps, client = ''): Promise<Reply> {
   const segments = segmentsOf(rawUrl);
   if (segments === null) return BAD_REQUEST;
 
@@ -406,7 +409,14 @@ export async function handle(method: string, rawUrl: string, deps: Deps): Promis
 
     if (segments.length === 3 && head === 'coin' && param !== undefined && segments[2] === 'market' && deps.market !== undefined) {
       const tf = new URLSearchParams(rawUrl.split('?')[1] ?? '').get('tf');
-      return (await coinMarket(param, tf, { ...deps.market, db: deps.db, log: deps.log })) ?? NOT_FOUND;
+      const search = deps.search;
+      const recent = search === undefined ? {} : { recent: (address: string) => search.recent(address) !== null };
+      return (await coinMarket(param, tf, { ...deps.market, ...recent, db: deps.db, log: deps.log })) ?? NOT_FOUND;
+    }
+
+    if (deps.search !== undefined) {
+      if (segments.length === 1 && head === 'search') return await deps.search.search(new URLSearchParams(rawUrl.split('?')[1] ?? '').get('q'), client);
+      if (segments.length === 2 && head === 'coin' && param !== undefined) return (await deps.search.facts(param)) ?? NOT_FOUND;
     }
 
     if (segments.length === 2 && param !== undefined) {

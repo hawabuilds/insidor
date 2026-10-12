@@ -18,12 +18,15 @@
 
 import { Client, Pool } from 'pg';
 
+import { DEFAULT_POLICY } from '@insidor/contracts';
+import { dexscreenerSearch } from '@insidor/market-dexscreener';
 import { geckoterminal } from '@insidor/market-geckoterminal';
 import { chainClient, curveProgressOf } from '@insidor/venue-solana-pumpfun';
 
 import { loadReadConfig } from './config.ts';
 import { BOARD_CHANNEL, createNotifier, type ListenSocket } from './listen.ts';
 import { createLogger, errorText } from './log.ts';
+import { createSearch } from './search.ts';
 import { createReadServer } from './server.ts';
 import { createBoardStream } from './stream.ts';
 
@@ -155,15 +158,16 @@ async function main(): Promise<void> {
      RPC; without one, curve progress is a dash. Each curve read is kept fifteen seconds. */
   const chain = cfg.rpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.rpcUrl, fetch: globalThis.fetch });
   const curves = new Map<string, { at: number; progress: number | null }>();
+  const marketData = geckoterminal({
+    plan: cfg.marketData.plan,
+    ...(cfg.marketData.apiKey === null ? {} : { apiKey: cfg.marketData.apiKey }),
+    baseUrl: cfg.marketData.baseUrl,
+    fetch: globalThis.fetch,
+    timeoutMs: MARKET_TIMEOUT_MS,
+    now: Date.now,
+  });
   const market = {
-    market: geckoterminal({
-      plan: cfg.marketData.plan,
-      ...(cfg.marketData.apiKey === null ? {} : { apiKey: cfg.marketData.apiKey }),
-      baseUrl: cfg.marketData.baseUrl,
-      fetch: globalThis.fetch,
-      timeoutMs: MARKET_TIMEOUT_MS,
-      now: Date.now,
-    }),
+    market: marketData,
     curveProgress:
       chain === null
         ? null
@@ -177,7 +181,21 @@ async function main(): Promise<void> {
           },
   };
 
-  const server = createReadServer({ ...deps, market, allowedOrigins: cfg.allowedOrigins, stream });
+  /* The Search tab: our own rows plus two market data sources, searched live (search.ts). */
+  const search = createSearch({
+    ...deps,
+    policy: DEFAULT_POLICY.search,
+    sources: [
+      { name: 'dexscreener', source: dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS }) },
+      { name: 'geckoterminal', source: marketData },
+    ],
+    curveProgress: market.curveProgress,
+    images: chain === null ? null : (mints) => chain.imageUris(mints),
+    market: marketData,
+    now: Date.now,
+  });
+
+  const server = createReadServer({ ...deps, market, search, allowedOrigins: cfg.allowedOrigins, stream });
 
   server.listen(cfg.port, () => log.info('listening', { port: cfg.port, origins: cfg.allowedOrigins }));
   notifier.start();

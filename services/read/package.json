@@ -12,6 +12,9 @@
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/core": "workspace:*",
+    "@insidor/market-dexscreener": "workspace:*",
     "@insidor/market-geckoterminal": "workspace:*",
     "@insidor/venue-solana-pumpfun": "workspace:*",
     "pg": "^8.16.0"

@@ -406,6 +406,15 @@ importers:
 
   services/read:
     dependencies:
+      '@insidor/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@insidor/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@insidor/market-dexscreener':
+        specifier: workspace:*
+        version: link:../../adapters/market/dexscreener
       '@insidor/market-geckoterminal':
         specifier: workspace:*
         version: link:../../adapters/market/geckoterminal

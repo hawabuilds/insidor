@@ -87,7 +87,7 @@ export function venueDeps(): VenueDeps {
   return {
     pumpfun: {
       issuer: { listNewCoins: refuse('pumpfun:list'), getCoin: refuse('pumpfun:coin') },
-      chain: { oldestSignatureBlockTime: refuse('rpc:signatures'), tokenAccountState: refuse('rpc:account'), curveAccount: refuse('rpc:curve'), metadataUri: refuse('rpc:asset') },
+      chain: { oldestSignatureBlockTime: refuse('rpc:signatures'), tokenAccountState: refuse('rpc:account'), curveAccount: refuse('rpc:curve'), metadataUri: refuse('rpc:asset'), imageUris: refuse('rpc:assets') },
       meter: m,
       now,
       mintTimeOptions: { agreementToleranceMs: 60_000, observationLagS: 10 },

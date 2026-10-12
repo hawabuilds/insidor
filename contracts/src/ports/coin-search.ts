@@ -18,6 +18,8 @@ export interface CoinSearchHit {
   readonly ticker: string | null;
   /** Still on its launchpad's bonding curve, or trading in a listed pool. */
   readonly venue: 'curve' | 'pool';
+  /** The account its market lives in: for a curve coin, the curve itself, which is where its progress is read. */
+  readonly marketAddress: string | null;
   /** When its market was created — for a curve coin, its launch. */
   readonly createdAt: number | null;
   readonly marketCapUsd: number | null;
