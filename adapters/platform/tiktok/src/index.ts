@@ -162,3 +162,6 @@ export type { TikTokClient, TikTokClientConfig } from './client.ts';
    It is the single most important line in this package after `capabilities.absent`. */
 export { toActorInput } from './discover.ts';
 export { toItem, toCounters, formatIds } from './to-item.ts';
+/* Share links expanded to the video they name — for links people paste, such as a gold
+   sheet's origin column. */
+export { expandShortLink, isShortLink } from './short-link.ts';
