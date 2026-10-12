@@ -42,7 +42,6 @@ import { createHash } from 'node:crypto';
 import {
   APP_PASSWORD,
   APP_USER,
-  PEOPLE_PASSWORD,
   PEOPLE_USER,
   ROOT,
   connect,
@@ -203,15 +202,21 @@ $$;
 grant insidor_app to ${APP_USER};
 `;
 
-/** The same for the people role (0043): profiles, comments, rep and alerts, and nothing else. */
-const PEOPLE_LOGIN = `
+/**
+ * The same for the people role (0043): profiles, comments, rep and alerts, and nothing else.
+ *
+ * ★ NO DEFAULT PASSWORD. This login holds people's words and alert settings, and a password
+ * written in a repository is a password anyone with the repository has. It comes from
+ * PEOPLE_DB_PASSWORD, set by the owner; without it `migrate` refuses before touching anything.
+ */
+const peopleLogin = (password) => `
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'insidor_people') then
     if exists (select 1 from pg_roles where rolname = '${PEOPLE_USER}') then
-      alter role ${PEOPLE_USER} with login password '${PEOPLE_PASSWORD}';
+      alter role ${PEOPLE_USER} with login password ${sqlString(password)};
     else
-      create role ${PEOPLE_USER} with login password '${PEOPLE_PASSWORD}';
+      create role ${PEOPLE_USER} with login password ${sqlString(password)};
     end if;
     grant insidor_people to ${PEOPLE_USER};
   end if;
@@ -267,7 +272,19 @@ function appReach(rows) {
     .join(', ')} — the app role should only ever read; check the newest migration`;
 }
 
+/** A value as an SQL string literal: quotes doubled, so a password can hold any character. */
+const sqlString = (value) => `'${String(value).replace(/'/g, "''")}'`;
+
+/** The people login's password, from the environment only. Too short to be one is refused too. */
+function peoplePasswordFromEnv() {
+  const value = (process.env['PEOPLE_DB_PASSWORD'] ?? '').trim();
+  if (value === '') die('PEOPLE_DB_PASSWORD is not set. Choose a password for the comments and alerts database login, set it in your environment, and run this again. Nothing was changed.');
+  if (value.length < 16) die('PEOPLE_DB_PASSWORD is shorter than 16 characters. Use a longer one. Nothing was changed.');
+  return value;
+}
+
 async function migrate({ quiet = false } = {}) {
+  const peoplePassword = peoplePasswordFromEnv();
   const client = await connect();
   try {
     await client.query(LEDGER);
@@ -325,7 +342,7 @@ async function migrate({ quiet = false } = {}) {
 
     await client.query(APP_LOGIN);
     step(`✓ login user ${APP_USER} → group role insidor_app (${appReach(await appGrants(client))})`);
-    await client.query(PEOPLE_LOGIN);
+    await client.query(peopleLogin(peoplePassword));
     step(`✓ login user ${PEOPLE_USER} → group role insidor_people (the people schema, read-only on the projection)`);
   } finally {
     await client.end();
