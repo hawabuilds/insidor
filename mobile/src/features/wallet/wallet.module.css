@@ -5,48 +5,12 @@
   place-items: center;
 }
 
-.signIn {
-  max-width: 32ch;
-  text-align: center;
-}
-
-.signInIcon {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  margin: 0 auto;
-  place-items: center;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 6%);
-  color: var(--text-3);
-}
-
-.signIn b {
-  display: block;
-  margin-top: 16px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.signIn p {
-  margin: 6px auto 0;
-  color: var(--text-2);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
 .note {
-  color: var(--text-1) !important;
-}
-
-.cta {
-  margin-top: 16px;
-}
-
-.signOutRow {
-  display: flex;
-  justify-content: center;
-  margin-top: 24px;
+  max-width: 32ch;
+  color: var(--text-3);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 /* The notice carries the page gutter for screens without one; inside the portfolio it has its own. */
