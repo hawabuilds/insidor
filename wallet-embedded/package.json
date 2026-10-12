@@ -1,0 +1,28 @@
+{
+  "name": "@insidor/wallet-embedded",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The wallet port, implemented with an embedded wallet and social sign-in. The one package in the repository allowed to import the wallet vendor's SDK.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*.ts": "./src/*.ts"
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@privy-io/react-auth": "3.42.0"
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  }
+}

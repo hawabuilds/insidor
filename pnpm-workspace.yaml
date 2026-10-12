@@ -10,6 +10,10 @@ packages:
   # anything under adapters/. That rule is right and is not widened for this; the package is
   # pinned down by its own rule instead. See `wallet-imports-only-contracts`.
   - 'wallet'
+  # The wallet port implemented with an embedded wallet and sign-in with X. Top level for the
+  # same reason as wallet/, and the ONE package allowed to import the wallet vendor's SDK —
+  # wallet/src/dependency-graph.test.ts holds every other browser package to the ban.
+  - 'wallet-embedded'
   - 'app'
   # The phone app. A second browser package under the same wall as app/: it may import the
   # vocabulary and the wallet port and nothing else, by its own rule in .dependency-cruiser.cjs.
@@ -18,3 +22,13 @@ packages:
   # The pipeline end to end, as a test. Its own package so no service has to depend on
   # another service, or on an in-process database, to be tested.
   - 'e2e'
+# Install scripts from the wallet vendor's dependency tree. None is run: none is needed for a
+# browser bundle, and an install script is code from a package we did not choose directly.
+# `strictDepBuilds: false` because pnpm 11.0.0 fails the install over scripts that are listed
+# here as not to run; an unlisted package's scripts still never run without approval.
+strictDepBuilds: false
+allowBuilds:
+  '@reown/appkit': false
+  bufferutil: false
+  keccak: false
+  utf-8-validate: false
