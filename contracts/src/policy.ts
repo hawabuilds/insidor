@@ -141,6 +141,19 @@ export interface TrackPolicy {
   readonly tierMinutes: readonly number[];
   /** Score bands that map an item onto a tier. Same length as tierMinutes − 1. */
   readonly tierCutoffs: readonly number[];
+  /**
+   * How old a post may be, in minutes at its last read, and still sit on each tier. A post
+   * older than `ageTierMinutes[i]` is read no faster than tier `i + 1`. Same length as
+   * tierMinutes − 1, ascending.
+   *
+   * ★ WHY AGE AND NOT ONLY SCORE. The score ladder needs a fresh score, and the only score a
+   * post has today is ADMIT's, fixed at admission — so every post sat on one tier for its
+   * whole life and a minutes-old post was read no more often than a day-old one. Views move
+   * fastest in a post's first hours; this is the rule that spends reads there. It is a
+   * FLOOR: the score ladder and flat-read demotion can still slow a post, never speed it
+   * past what its age allows. The holdout ignores it, as it ignores every other ladder.
+   */
+  readonly ageTierMinutes: readonly number[];
   /*
    * ★ `track.holdoutRate` USED TO BE HERE AND HAS BEEN DELETED. It held 0.02, it was
    * declared and never read, and every live call site — admit/stage.ts and
@@ -1337,8 +1350,12 @@ const POLICY_V1: Policy = {
      v11 adds `assets.tickerLookbackMs` and `assets.tickerMinCoverage`, the two numbers
      behind the Create screen's "you'd be first". No stage decides on them; they are here
      because the line that says "you'd be first" is a claim about the world, and the
-     coverage it rests on has to be a number somebody can find. */
-  version: 'policy.v11',
+     coverage it rests on has to be a number somebody can find.
+
+     v12 adds `track.ageTierMinutes`: how often a post is re-read now depends on its age, not
+     only on a score that never changed after admission. Every TRACK row after this bump was
+     scheduled under a different rule from every row before it. */
+  version: 'policy.v12',
 
   admit: {
     maxAgeMin: 240,
@@ -1376,6 +1393,9 @@ const POLICY_V1: Policy = {
   track: {
     tierMinutes: [4, 9, 14, 21, 30, 42, 58, 78],
     tierCutoffs: [0.9, 0.75, 0.6, 0.45, 0.3, 0.2, 0.1],
+    /* Under an hour old: every 4 minutes. Then 9, 14, 21, 30, 42 and 58 minutes as the post
+       passes 1h, 3h, 6h, 12h, 1 day and 2 days; past 4 days, every 78. */
+    ageTierMinutes: [60, 180, 360, 720, 1440, 2880, 5760],
     /* holdoutRate deleted in v6 — see the note on TrackPolicy. explore.holdoutRate is
        the single source, and it is the one every live call site already read. */
     shedFromTier: 0,

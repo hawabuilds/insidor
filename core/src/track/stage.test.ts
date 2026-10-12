@@ -497,3 +497,28 @@ test('a proposal that changes restarts the count rather than inheriting it', () 
   const switched = nextLifecycle(r, 'rising', P.track.lifecycleMargin, NOW, P);
   assert.equal(switched.agreeing, 1);
 });
+
+/* ── the age floor ────────────────────────────────────────────────────── */
+
+test('★ a young post on the top tier is read on the top tier', () => {
+  const young = input({ item: item({ postedAt: NOW - 20 * MINUTE, firstSeenAt: NOW - 20 * MINUTE }), lastReadAt: NOW - 5 * MINUTE });
+  const d = track(young, P, CTX);
+  assert.equal(d.features['scheduledTier'], TOP_TIER);
+  assert.equal(d.verdict, 'pass', 'five minutes since the last read is past a four-minute tier');
+});
+
+test('★ an old post is held to the tier its age allows, whatever its score', () => {
+  const day = 24 * 60 * MINUTE;
+  const old = input({ item: item({ postedAt: NOW - 2 * day, firstSeenAt: NOW - 2 * day }), lastReadAt: NOW - 5 * MINUTE });
+  const d = track(old, P, CTX);
+  const expected = P.track.ageTierMinutes.filter((m) => 2 * day - 5 * MINUTE >= m * MINUTE).length;
+  assert.equal(d.features['ageFloorTier'], expected);
+  assert.equal(d.features['scheduledTier'], expected);
+  assert.equal(d.reason, 'T6_not_due', 'a two-day-old post is not re-read five minutes later');
+});
+
+test('the holdout ignores the age floor, as it ignores every other ladder', () => {
+  const day = 24 * 60 * MINUTE;
+  const held = input({ item: item({ postedAt: NOW - 2 * day, firstSeenAt: NOW - 2 * day }), lastReadAt: NOW - 5 * MINUTE, isHeldBack: true });
+  assert.equal(track(held, P, CTX).features['scheduledTier'], TOP_TIER);
+});
