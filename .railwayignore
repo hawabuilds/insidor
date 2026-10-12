@@ -1,0 +1,8 @@
+# Never uploaded to Railway: secrets, local data, build output.
+.env
+.env.*
+!.env.example
+node_modules/
+*/node_modules/
+var/
+dist/
