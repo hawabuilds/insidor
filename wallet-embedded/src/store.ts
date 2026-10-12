@@ -20,7 +20,7 @@
  * and a later change that wires one in has put a key one bug away from a log.
  */
 
-import type { SendOutcome, Wallet, WalletIdentity, WalletState } from '@insidor/contracts/ports/wallet.ts';
+import type { SendOutcome, SignInVia, Wallet, WalletIdentity, WalletState } from '@insidor/contracts/ports/wallet.ts';
 
 /** What the vendor's hooks say, reduced to the three facts the port needs. */
 export interface Snapshot {
@@ -34,8 +34,8 @@ export interface Snapshot {
 }
 
 export interface Actions {
-  /** Opens the vendor's sign-in. Its outcome arrives through `Bridge.signInEnded`. */
-  signIn(): void;
+  /** Opens the vendor's sign-in — the chosen method, or all of them. Its outcome arrives through `Bridge.signInEnded`. */
+  signIn(via?: SignInVia): void;
   signOut(): Promise<void>;
   /** The vendor's signature on a transaction, from the embedded wallet. The key stays in the vendor's wallet. */
   signTransaction(payload: Uint8Array): Promise<Uint8Array>;
@@ -95,13 +95,13 @@ export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {})
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    async connect() {
+    async connect(via?: SignInVia) {
       if (current.kind === 'connected' || act === null) return current;
       const settled = new Promise<WalletState>((resolve) => waiters.push(resolve));
       attempt = 'pending';
       publish();
       try {
-        act.signIn();
+        act.signIn(via);
       } catch {
         attempt = 'error';
         publish();

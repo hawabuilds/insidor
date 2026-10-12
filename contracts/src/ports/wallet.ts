@@ -187,6 +187,9 @@ export type SendOutcome =
   | { readonly kind: 'not-sent'; readonly why: string }
   | { readonly kind: 'failed'; readonly code: WalletFailure };
 
+/** The sign-in methods a person can choose on the front door. */
+export type SignInVia = 'x' | 'google';
+
 /** Who signed in, as their sign-in account shows them. Every field may be missing. */
 export interface WalletIdentity {
   readonly name: string | null;
@@ -199,8 +202,11 @@ export interface Wallet {
   state(): WalletState;
   /** Fires on every transition. Returns the unsubscribe. */
   subscribe(listener: (state: WalletState) => void): () => void;
-  /** Asks the wallet to connect. Resolves with the resulting state; never rejects. */
-  connect(): Promise<WalletState>;
+  /**
+   * Asks the wallet to connect. Resolves with the resulting state; never rejects. `via` names
+   * the sign-in to go straight to; without it the wallet offers every one it has.
+   */
+  connect(via?: SignInVia): Promise<WalletState>;
   /** Drops the connection on our side. Resolves even if the wallet has already gone. */
   disconnect(): Promise<void>;
   /** A signer for the connected account, or null. See the note above. */

@@ -1,7 +1,7 @@
 # @insidor/mobile — the phone app
 
 A separate web app for phones, next to the desktop app in `app/`. Same wall: it may import
-`@insidor/contracts`, `@insidor/wallet` and `@insidor/wallet-embedded` (sign-in with X) and
+`@insidor/contracts`, `@insidor/wallet` and `@insidor/wallet-embedded` (sign-in with X or Google) and
 nothing else, and it reads data only from the read service (`services/read`).
 
 ```bash
@@ -45,7 +45,7 @@ nothing calls it; `src/screen-rules.test.ts` fails if anything does.
 
 | Variable | What it does |
 |---|---|
-| `VITE_PRIVY_APP_ID` | Sign-in with X and an embedded Solana wallet. Unset: the Wallet tab says sign-in isn't set up. The app's id only; there is no secret in the browser. The vendor's dashboard must list each origin the app is served from and have X sign-in enabled. |
+| `VITE_PRIVY_APP_ID` | Sign-in with X or Google and an embedded Solana wallet. Unset: the Wallet tab says sign-in isn't set up. The app's id only; there is no secret in the browser. The vendor's dashboard must list each origin the app is served from and have X and Google sign-in enabled. |
 | `VITE_TRADING` | Exactly `on` lets the app ask to trade. Unset or anything else: no trade path at all. Even on, the server decides who may trade and how much. |
 | `VITE_TRADE_URL` | The trade service (`services/trade`). Unset: every trade call says trading is not connected, and nothing touches the network. |
 

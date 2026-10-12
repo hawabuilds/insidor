@@ -130,7 +130,7 @@ export function WalletScreen() {
         {state.kind === 'unavailable' ? (
           <>
             <b>Sign-in isn't set up in this build</b>
-            <p>The wallet needs sign-in with X, which this build has no key for.</p>
+            <p>The wallet needs sign-in, which this build has no key for.</p>
           </>
         ) : state.kind === 'connecting' ? (
           <>

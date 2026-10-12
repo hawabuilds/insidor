@@ -13,7 +13,7 @@ function setup(opts: { broadcast?: Broadcast; sign?: (p: Uint8Array) => Promise<
   const { wallet, bridge } = embeddedWallet(opts.broadcast === undefined ? {} : { broadcast: opts.broadcast });
   const calls: string[] = [];
   bridge.actions({
-    signIn: () => void calls.push('signIn'),
+    signIn: (via?: string) => void calls.push(via === undefined ? 'signIn' : `signIn:${via}`),
     signOut: async () => void calls.push('signOut'),
     signTransaction: opts.sign ?? (async (p) => {
       calls.push('sign');
@@ -119,4 +119,11 @@ test('who signed in: the X account\'s name, handle and picture, and nothing once
   assert.deepEqual(wallet.identity(), { name: 'Mercury', handle: 'mercury', pictureUrl: null });
   bridge.snapshot({ ready: true, signedIn: false, address: null, identity: { name: 'Mercury', handle: 'mercury', pictureUrl: null } });
   assert.equal(wallet.identity(), null);
+});
+
+test('sign-in can go straight to the method the person chose', async () => {
+  const { wallet, calls } = setup();
+  void wallet.connect('google');
+  void wallet.connect('x');
+  assert.deepEqual(calls.slice(0, 1), ['signIn:google']);
 });

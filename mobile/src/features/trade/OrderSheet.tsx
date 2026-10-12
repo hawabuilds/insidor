@@ -41,7 +41,7 @@ export function OrderSheet({ mint, ticker, side, onClose }: { mint: string; tick
         <div className={styles['sheet']}>
           <p className={styles['note']}>Sign in to trade. Your wallet is created for you; Insidor never holds its key.</p>
           {wallet !== null && state.kind !== 'unavailable' && state.kind !== 'connecting' ? (
-            <Button look="buy" size="large" onClick={() => void wallet.connect()}>Sign in with X</Button>
+            <Button look="buy" size="large" onClick={() => void wallet.connect()}>Sign in</Button>
           ) : null}
         </div>
       ) : (
