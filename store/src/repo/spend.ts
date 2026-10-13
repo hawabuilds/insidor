@@ -24,7 +24,7 @@
  */
 
 import type { Millis, Spend, SpendLedger, SpendTotals } from '@insidor/contracts';
-import { BILLING_UNITS } from '@insidor/contracts';
+import { BILLING_UNITS, JOB_ENDPOINT_PREFIX } from '@insidor/contracts';
 import type { BillingUnit } from '@insidor/contracts';
 
 import type { Db } from '../client.ts';
@@ -33,6 +33,7 @@ import { toTimestamp } from '../rows.ts';
 interface TotalRow {
   vendor: string;
   usd: string | number;
+  job_usd: string | number;
 }
 
 /**
@@ -107,16 +108,21 @@ export class PgSpendRepo implements SpendLedger {
    */
   async totalsSince(sinceMs: Millis): Promise<SpendTotals> {
     const rows = await this.#db.query<TotalRow>(
-      `select coalesce(vendor, '') as vendor, coalesce(sum(usd), 0) as usd
+      `select coalesce(vendor, '') as vendor, coalesce(sum(usd), 0) as usd,
+              coalesce(sum(usd) filter (where endpoint like $2), 0) as job_usd
          from internal.spend
         where at >= $1
         group by grouping sets ((vendor), ())`,
-      [toTimestamp(sinceMs)],
+      [toTimestamp(sinceMs), `${JOB_ENDPOINT_PREFIX}%`],
     );
 
     const byVendor: Record<string, number> = {};
     let totalUsd = 0;
+    const jobByVendor: Record<string, number> = {};
+    let jobTotalUsd = 0;
     for (const row of rows) {
+      if (row.vendor === '') jobTotalUsd = toUsd(row.job_usd, '(all jobs)');
+      else if (toUsd(row.job_usd, row.vendor) > 0) jobByVendor[row.vendor] = toUsd(row.job_usd, row.vendor);
       /* The overall row is the one with no vendor. `coalesce` to the empty string
          rather than reading a null makes the two cases one type, and the empty string
          is not a legal vendor token — the CHECK on the column forbids it — so the two
@@ -125,6 +131,6 @@ export class PgSpendRepo implements SpendLedger {
       else byVendor[row.vendor] = toUsd(row.usd, row.vendor);
     }
 
-    return { totalUsd, byVendor };
+    return { totalUsd, byVendor, jobs: { totalUsd: jobTotalUsd, byVendor: jobByVendor } };
   }
 }

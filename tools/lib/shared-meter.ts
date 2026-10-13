@@ -16,7 +16,7 @@
  */
 
 import { DEFAULT_POLICY } from '../../contracts/src/policy.ts';
-import type { Meter } from '../../contracts/src/ports/meter.ts';
+import { JOB_ENDPOINT_PREFIX, type Meter } from '../../contracts/src/ports/meter.ts';
 import { inMemoryMeter, openDurableMeter } from '../../adapters/meter/spend/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgSpendRepo } from '../../store/src/index.ts';
 import { vendorLines } from '../../services/runner/src/vendor-lines.ts';
@@ -50,7 +50,8 @@ export async function openSharedMeter(stageCapUsd: number, env: Record<string, s
   const meter: Meter = {
     record: (spend) => {
       own.record(spend);
-      shared.record(spend);
+      /* Labelled as a job's, so the runner keeps it out of its pace (SpendTotals.jobs). */
+      shared.record({ ...spend, endpoint: `${JOB_ENDPOINT_PREFIX}${spend.endpoint}` });
     },
     /* The stage's own spend: what each tool reports as "spent". */
     spentUsd: (vendor) => own.spentUsd(vendor),
