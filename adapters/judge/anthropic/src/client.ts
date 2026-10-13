@@ -220,6 +220,17 @@ export const ANSWER_SCHEMA = {
  * makes every call a cache write, which costs MORE than no cache. The mark changes nothing the
  * model reads; below the model's minimum cacheable length it is silently ignored.
  */
+/**
+ * ★ THE SAME POST GETS THE SAME ANSWER (the owner's call, 2026-10-13): temperature 0, the most
+ * deterministic setting the API offers. Four gold posts flipped between no and yes on two asks
+ * of the same question at the default temperature, which made every gate measurement noisier
+ * than the change it measured. Sent only to a model without `effort`: whether the effort models
+ * accept a temperature beside it was not verified (the account was out of credit when this was
+ * written), and a rejected parameter would fail every call. Temperature 0 is still not a
+ * guarantee of identical output — it removes the sampling, not every source of variation.
+ */
+export const temperatureFor = (config: Pick<JudgeClientConfig, 'effort'>): { readonly temperature?: number } => (config.effort === null ? { temperature: 0 } : {});
+
 export function buildRequestBody(
   config: Pick<JudgeClientConfig, 'model' | 'maxOutputTokens' | 'effort'>,
   request: JudgeRequest,
@@ -246,6 +257,7 @@ export function buildRequestBody(
   return {
     model: config.model,
     max_tokens: config.maxOutputTokens,
+    ...temperatureFor(config),
     system: [{ type: 'text', text: request.system }],
     messages: [{ role: 'user', content }],
     output_config: {
@@ -527,6 +539,7 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
       const parsed = await send({
         model: config.model,
         max_tokens: request.maxOutputTokens,
+        ...temperatureFor(config),
         messages: [
           {
             role: 'user',

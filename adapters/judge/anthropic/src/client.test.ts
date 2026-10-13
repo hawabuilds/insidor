@@ -129,6 +129,12 @@ test('the prompt files go in exactly as loaded, and only a video story carries a
   assert.equal('effort' in ((body['output_config'] as Record<string, unknown>) ?? {}), false, 'Haiku takes no effort field');
 });
 
+test('★ temperature 0 for the live model, so the same post gets the same answer; none beside an effort field', () => {
+  const req = { system: 's', instructions: 'i', subjects: [subject('a')], frames: new Map() };
+  assert.equal(buildRequestBody({ model: 'claude-haiku-4-5', maxOutputTokens: P.maxOutputTokens, effort: null }, req)['temperature'], 0);
+  assert.equal('temperature' in buildRequestBody({ model: 'claude-sonnet-5-5', maxOutputTokens: P.maxOutputTokens, effort: 'low' }, req), false);
+});
+
 /* ── replies ──────────────────────────────────────────────────────────── */
 
 test('cache writes and reads are read off the usage apart from fresh input', () => {
