@@ -1,0 +1,264 @@
+{
+ "about": "Posts from the live For You feed on 2026-10-13 that the owner would reject: sport, K-pop and fan accounts, celebrity and political news. Recorded from public.item with the picture each carried. Every one of them passed the judge before the sport, fandom and celebrity rules were added. Used by tools/feed-pass-rates.ts: these should FAIL.",
+ "recordedAt": "2026-10-13",
+ "posts": [
+  {
+   "itemId": "x:2109786007608430984",
+   "kind": "celebrity or political",
+   "text": "Kacey Musgraves responds to Kristi Noem’s tweet saying she prefers Ella Langley over her:\n\n“I don’t think you have a dog in this fight but if you did you would have shot it.” https://t.co/ZMkJt5BmWg",
+   "imageUri": "https://pbs.twimg.com/media/HUd3MNYXoAANXp_.jpg"
+  },
+  {
+   "itemId": "x:2109787136652083655",
+   "kind": "sport",
+   "text": "A trip around the bases, William Contreras style 🍿 https://t.co/N1tcibhsKv",
+   "imageUri": "https://pbs.twimg.com/media/HUd4mcRWYAA9kPx.jpg"
+  },
+  {
+   "itemId": "x:2109787572201271785",
+   "kind": "celebrity or political",
+   "text": "CAN'T STOP LAUGHING AT THIS ONE!!!🤣🤣🤣 https://t.co/skHgMgLz3r",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109787412314427392/img/KNkPJLY1ykPZrDRY.jpg"
+  },
+  {
+   "itemId": "x:2109783662678184139",
+   "kind": "k-pop and fan accounts",
+   "text": "#RM via Instagram Story 💜 https://t.co/50TJ6oSga6",
+   "imageUri": "https://pbs.twimg.com/media/HUd1DtYXkAAQglz.jpg"
+  },
+  {
+   "itemId": "x:2109783404396859862",
+   "kind": "k-pop and fan accounts",
+   "text": "#JHOPE via Instagram Post 💜 [Thread]\n\n“BTS WORLD TOUR ‘ARIRANG’. LIMA”\nhttps://t.co/5RtKBuvZop https://t.co/7RuAfPvt19",
+   "imageUri": "https://pbs.twimg.com/media/HUd00ruXcAAH6Jv.jpg"
+  },
+  {
+   "itemId": "x:2109788326676844989",
+   "kind": "k-pop and fan accounts",
+   "text": "📸 INSTAGRAM\n\nJ-Hope stories:\nGracias! Lima😍\nWe're here! Chile😶‍🌫️🤚 https://t.co/oOdwjOAZuH",
+   "imageUri": "https://pbs.twimg.com/media/HUd5SvnXgAAjiHc.jpg"
+  },
+  {
+   "itemId": "x:2109788716965216501",
+   "kind": "k-pop and fan accounts",
+   "text": "📸 INSTAGRAM\n\nJimin story:\nWow☺️ https://t.co/0CYKsrl7Ya",
+   "imageUri": "https://pbs.twimg.com/media/HUd5qBuWMAIOWMT.jpg"
+  },
+  {
+   "itemId": "x:2109788708849537041",
+   "kind": "sport",
+   "text": "Bobby Thomas left it all out there for @CoventryCityFC  💪 https://t.co/2rbgcBBQH7",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109767696778776576/img/o_woT5c-nPE0svt3.jpg"
+  },
+  {
+   "itemId": "x:2109788577756266903",
+   "kind": "sport",
+   "text": "The William Contreras Game. \n\nHe is 3-for-4, with the tying home run and go-ahead single. \n\nBrewers 5, Dodgers 4. \n\n@MLBNetwork",
+   "imageUri": null
+  },
+  {
+   "itemId": "x:2109788483464146966",
+   "kind": "sport",
+   "text": "Wild Bill loves the moment. https://t.co/u3eAjs6Pap",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109788462672904192/img/r1RF2opIbc_e1IZ7.jpg"
+  },
+  {
+   "itemId": "x:2109788394792669472",
+   "kind": "sport",
+   "text": "WILLIAM BREWERS LEAD BLANK CHECK",
+   "imageUri": null
+  },
+  {
+   "itemId": "x:2109788383786734049",
+   "kind": "sport",
+   "text": "Intentionally walking Brice for Wild Bill 😂😂😂😂😂😂",
+   "imageUri": null
+  },
+  {
+   "itemId": "x:2109788726427861195",
+   "kind": "sport",
+   "text": "William Contreras puts the Brewers in front!\n\nHe's got 3 RBI tonight 💪 https://t.co/IHA682RpfR",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109788525465874432/img/Q6yR-NgrSJzUra0s.jpg"
+  },
+  {
+   "itemId": "x:2109788553769337069",
+   "kind": "sport",
+   "text": "William Contreras' third hit of the game! This one for the lead. The other two tied the game https://t.co/XVbq9O9oQS",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109788397413769216/img/mxYVOB2678VoGXi6.jpg"
+  },
+  {
+   "itemId": "x:2109790155481481728",
+   "kind": "sport",
+   "text": "I love the Midshipmen.\n\nI love Supe.\n\nI love Navy. https://t.co/KfUzvfQFiy",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109789803856396288/img/TfWUbIQH993kzZqz.jpg"
+  },
+  {
+   "itemId": "x:2109791254003462523",
+   "kind": "k-pop and fan accounts",
+   "text": "261011 Saddle Up 🩶\n\n#aespa #에스파 #Winter #윈터 https://t.co/pij230rmY7",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109789291819798528/img/Oc_N3o-RFcIeHG2F.jpg"
+  },
+  {
+   "itemId": "x:2109792456300708324",
+   "kind": "k-pop and fan accounts",
+   "text": "📱261013 | #OHYUL weverse post\n\n🐈‍⬛ with ryul🤦‍♂️🤦‍♂️\n\n#오율 #LNGSHOT #롱샷 https://t.co/xfVZ68ayhO",
+   "imageUri": "https://pbs.twimg.com/media/HUd9De8acAAIUJ0.jpg"
+  },
+  {
+   "itemId": "x:2109792078263877699",
+   "kind": "sport",
+   "text": "The Staffords 💙 💛\n\n@BUFvsLAR on ESPN\nStream on @NFLPlus https://t.co/FmAknhewwy",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109791487705939968/img/-G1Gd7O0l0q8Zaxc.jpg"
+  },
+  {
+   "itemId": "x:2109782540387066186",
+   "kind": "k-pop and fan accounts",
+   "text": "#JIN via Instagram Post (4)💜\nhttps://t.co/GRS0YGXP1Q https://t.co/0UTiSB9IKq",
+   "imageUri": "https://pbs.twimg.com/media/HUd0CbJWYAARBc6.jpg"
+  },
+  {
+   "itemId": "x:2109781972830626268",
+   "kind": "k-pop and fan accounts",
+   "text": "#JIN via Instagram Post (1)💜\nhttps://t.co/8tmzKCE5NJ https://t.co/1zwgLunnhR",
+   "imageUri": "https://pbs.twimg.com/media/HUdzhZrXsAA112g.jpg"
+  },
+  {
+   "itemId": "x:2109781635700850697",
+   "kind": "sport",
+   "text": "William Contreras is tied with Jackson Chourio for the Brewers franchise postseason homer lead. They've both bopped 5.",
+   "imageUri": null
+  },
+  {
+   "itemId": "x:2109781578503381150",
+   "kind": "sport",
+   "text": "Contreras is such a fucking dog.",
+   "imageUri": null
+  },
+  {
+   "itemId": "x:2109781524820209784",
+   "kind": "sport",
+   "text": "WILLIAM CONTRERAS HOMER AND THIS GAME IS TIED AGAIN https://t.co/ajsQBjJamH",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109781414048620545/img/8Ise-vZPxHZvt0Yf.jpg"
+  },
+  {
+   "itemId": "x:2109781510769500548",
+   "kind": "sport",
+   "text": "William Contreras homered and this game is tied once again. Sweet sassy molassy. https://t.co/AfXAeR7os7",
+   "imageUri": "https://pbs.twimg.com/media/HUdzGchWQAAf4G0.jpg"
+  },
+  {
+   "itemId": "x:2109781420797243723",
+   "kind": "sport",
+   "text": "William Contreras - Milwaukee Brewers (3) Solo 388 feet \n+475",
+   "imageUri": null
+  },
+  {
+   "itemId": "x:2109781556093161832",
+   "kind": "sport",
+   "text": "WILLIAM CONTRERAS, TIE GAME 💥 https://t.co/TGRX9LxhEU",
+   "imageUri": "https://pbs.twimg.com/media/HUd45X2XMAA1-me.jpg"
+  },
+  {
+   "itemId": "x:2109781157793718325",
+   "kind": "k-pop and fan accounts",
+   "text": "𝑾𝒆 𝑻𝒐𝒐 𝑨𝒏𝒅𝒍𝒆𝒔𝒔❤️‍🔥\n\nhttps://t.co/fGckkwpoqO\n\nPre-save\n🔗https://t.co/59PjqBT5G2\n\n#tripleS #트리플에스\n#HaYeon #하연 #ChaeWon #채원\n#Andless https://t.co/4fuNio1Opw",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109689681797595136/img/NmJLzo24NYefeLNo.jpg"
+  },
+  {
+   "itemId": "x:2109781164265504934",
+   "kind": "k-pop and fan accounts",
+   "text": "Travis Japan「EGO」MV公開！\n\n✨https://t.co/46zCBDye8L \n\nMusic Video now on YouTube!\nMV已上線YouTube!\n\n#TravisJapan \n@TravisJapan_cr https://t.co/BLM8mqysLO",
+   "imageUri": "https://pbs.twimg.com/media/HUa5mSmakAEY3W4.jpg"
+  },
+  {
+   "itemId": "x:2109778652242342317",
+   "kind": "celebrity or political",
+   "text": "Lorde has updated her profile picture on Instagram\n\nRIP iconic Snow Peak water bottle https://t.co/xI6b0JBrBn",
+   "imageUri": "https://pbs.twimg.com/media/HUdwfq2W8AAuHC6.jpg"
+  },
+  {
+   "itemId": "x:2109779036713193546",
+   "kind": "k-pop and fan accounts",
+   "text": "FINO announced that they will continue expanding their activities with WONHEE as their Brand Ambassador, while launching their first-ever Pink Ribbon Campaign in Korea this October, in recognition of Breast Cancer Awareness Month. https://t.co/DvPilolTBN",
+   "imageUri": "https://pbs.twimg.com/media/HUdw1jwbkAAvoQV.jpg"
+  },
+  {
+   "itemId": "x:2109793740814471350",
+   "kind": "sport",
+   "text": "THE BLOODLINE HAS ARRIVED FOR THEIR SHOWDOWN AGAINST THE 946 \n\n#WWERAW https://t.co/TqNoWjzGIm",
+   "imageUri": "https://pbs.twimg.com/media/HUd-JTFWkAEYNFD.jpg"
+  },
+  {
+   "itemId": "x:2109793739447193623",
+   "kind": "sport",
+   "text": "3 year old Pedri, 2005 . https://t.co/H65Y0g2L5z",
+   "imageUri": "https://pbs.twimg.com/media/HUdwj2jWYAA1frh.jpg"
+  },
+  {
+   "itemId": "x:2109793578297987171",
+   "kind": "k-pop and fan accounts",
+   "text": "SANTOS BRAVOS are in NYC\n\n#SANTOSBRAVOS @santos_bravos https://t.co/QQqKvSLXDW",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109793262546677760/img/vF9anuUIXP97jrbz.jpg"
+  },
+  {
+   "itemId": "x:2109793182968062427",
+   "kind": "k-pop and fan accounts",
+   "text": "#JISUNG had a severe cold during the script reading 😢\n\n🐹 I’m Jisung, playing the role of Ji Daese\n\n#지성 #박지성 #Crash2 #크래시2 https://t.co/Jmr1EG9stz",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109793153893253121/img/TITifa8Qbek2kMXI.jpg"
+  },
+  {
+   "itemId": "x:2109781721038352884",
+   "kind": "sport",
+   "text": "William Contreras HR, his 3rd of the postseason\n\nTie game\n\nhttps://t.co/YoUWey22Ha",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109781506100989953/img/i6lXpoGZ9XWFTOeB.jpg"
+  },
+  {
+   "itemId": "x:2109781770249891862",
+   "kind": "sport",
+   "text": "WILD BILL GOES OFF THE SCOREBOARD https://t.co/tLgKSYREhX",
+   "imageUri": "https://pbs.twimg.com/media/HUdzVtCWEAAPet-.jpg"
+  },
+  {
+   "itemId": "x:2109781940618559603",
+   "kind": "sport",
+   "text": "WILLIAM CONTRERAS WITH A DEAD CENTER TANK TO TIE THIS BALLGAME  https://t.co/6pTQysK9X8",
+   "imageUri": "https://pbs.twimg.com/media/HUdzVtCWEAAPet-.jpg"
+  },
+  {
+   "itemId": "x:2109781504566161740",
+   "kind": "k-pop and fan accounts",
+   "text": "261013  #JIMIN Instagram Story💛\n\n🔗 https://t.co/h4B2nyXhwT https://t.co/jvuNDed7Rz",
+   "imageUri": "https://pbs.twimg.com/media/HUdzGFCbAAEcEsE.jpg"
+  },
+  {
+   "itemId": "x:2109780197415559403",
+   "kind": "k-pop and fan accounts",
+   "text": "JIMIN CAME HOME 🥹❤️‍🩹 our bday boy https://t.co/CBj5C54PiD",
+   "imageUri": "https://pbs.twimg.com/media/HUdx538WgAAqg02.jpg"
+  },
+  {
+   "itemId": "x:2109780185100832830",
+   "kind": "k-pop and fan accounts",
+   "text": "one of the most iconic things taekook have ever done btw https://t.co/1CMPVhZoyh",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109780142302052352/img/DI-CzhPiA1Ie4D70.jpg"
+  },
+  {
+   "itemId": "x:2109775287638765700",
+   "kind": "k-pop and fan accounts",
+   "text": "#HappyJiminDay\nHAPPY BIRTHDAY JIMIN\n#디스이즈_지민데이\n#지민날_1013_못참지\n#JIMIN https://t.co/FcpkELBKzi",
+   "imageUri": "https://pbs.twimg.com/media/HUdtcR5bsAAA7i3.jpg"
+  },
+  {
+   "itemId": "x:2109794043387400209",
+   "kind": "sport",
+   "text": "Postseason William Contreras is a MOOD 😤\n\n(Cut4 x @CoronaUSA) https://t.co/Trp8uTqkcb",
+   "imageUri": "https://pbs.twimg.com/media/HUd99ZHWIAE24Rx.jpg"
+  },
+  {
+   "itemId": "x:2109775528903250096",
+   "kind": "sport",
+   "text": "Jake Bauers worked a 12-pitch walk to load the bases ...\n\nChristian Yelich delivered right away for the Brewers 🙌 https://t.co/FT8kYGboIB",
+   "imageUri": "https://pbs.twimg.com/amplify_video_thumb/2109774900877504513/img/xQYGZFI2Q2K_uJIi.jpg"
+  }
+ ]
+}

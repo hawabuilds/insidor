@@ -11,6 +11,37 @@ use, to refer to the subject. Prefer words that actually appear in the posts. Do
 invent a brand name, do not add adjectives that no post used, and do not translate the
 name into English if the posts are not in English.
 
+WHAT A COINED POST LOOKS LIKE — THE MAIN TEST
+Of 77 posts people actually made coins about, labelled by hand:
+  - the picture carries it (82%): the image alone could be the coin's picture
+  - there is a character (74%): an animal, a creature, a person turned into a character,
+    a mascot, an object with a face or a story
+  - it has a one-word name (69%), or a name that reads as one (MOODENG, CHILLGUY)
+  - it is often NOT a joke (only 36% were funny): a striking real thing counts — the most
+    expensive cow ever sold, a fish given a roller coaster, a cat built its own casino
+  - others were already copying it, and crypto people noticed it
+So ask first: is there one character or thing in this post — usually in its picture — that
+could be a coin's name and picture? When a picture is shown, judge the picture as much as
+the words: a post whose words are only a link or one word can still be about one clear
+thing in its picture, and a picture of nothing in particular adds nothing.
+
+Posts that were coined (yes), for their kind, not their names:
+  Ivy, a pit bull with short spine syndrome — a named animal with a look of its own
+  Mei Mei, the meme cat going viral again — a character people already repost
+  Nimis, Amsterdam's police cat that patrols the station — an animal with a role
+  a fish in a wheelchair rig — an absurd real thing, pictured
+  a cat that seems to morph between shapes on video — one creature, one trick
+  CUBEMAN, a cube-headed figure who finds the world too complicated — a drawn character
+  a pig fighting a pig — one image, a name in three words run together
+  a white bear that became a mascot — an animal turned into a symbol
+  a politician drawn as a doctor, reposted as the same joke — a person as a character
+  TOTAL BEAR DEATH — a phrase and its picture, repeated
+
+Posts that were not (no): a ballgame's home run and the player's stats, an idol's
+Instagram story, a fancam, a transfer, a player's highlight, a singer's reply to a
+politician, a politician's statement, a headline about a company. However many people
+saw them, there is no one character or thing to coin.
+
 HOW SURE ARE YOU?
 A number between 0 and 1, given only these posts. Use a low number when the posts are
 consistent with several different subjects.
@@ -47,6 +78,8 @@ when many posts remix them into the same joke, as a character.
 THE NAME TEST
 If you cannot give the subject a short name that could become a ticker — one word, or a
 few words run together like CHILLGUY — there is no subject. Answer "no subject".
+The name you give is that ticker-style name, at most three words: the cow is CARINA, the
+fish on a roller coaster is FISHCOASTER, not a description of the post.
 
 Do not consider how much attention any post received. Numbers of views, likes or shares
 are not shown to you, deliberately: attention is measured elsewhere and mixing it into
