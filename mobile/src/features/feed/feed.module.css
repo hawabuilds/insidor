@@ -1,5 +1,9 @@
+/* The For You screen: the tabs, the filters and the list of cards. The floating tab bar sits over
+   the bottom of this screen, so the list ends with the bar's room (safe area included) plus a
+   card's gap more: the last card's buttons must be tappable above the bar, never under it. */
+
 .screen {
-  padding-bottom: var(--tabbar-space);
+  padding-bottom: calc(var(--tabbar-space) + 28px);
 }
 
 .header {
