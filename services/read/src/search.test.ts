@@ -7,6 +7,7 @@ import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-se
 import { SILENT } from './log.ts';
 import type { Row } from './queries.ts';
 import { handle } from './routes.ts';
+import { SAME_NAME_SQL } from './same-name.ts';
 import { ASSET_SEARCH_SQL, createSearch, normaliseTerm, POST_SEARCH_SQL, STORY_SEARCH_SQL, TICKER_COUNT_SQL, type NamedSearch } from './search.ts';
 
 const POLICY = DEFAULT_POLICY.search;
@@ -165,4 +166,93 @@ test('the ticker check counts the coins we have seen with it, and nothing more',
   const { search } = harness({ rows: { [TICKER_COUNT_SQL]: [{ n: 3 }] } });
   assert.deepEqual(body(await search.ticker('$jim', 'c1')), { ticker: 'jim', seen: 3 });
   assert.equal((await search.ticker('', 'c1')).status, 400);
+});
+
+/* ── GET /post/:id/coins ─────────────────────────────────────────────── */
+
+const held = (address: string, over: Partial<Row> = {}): Row => ({
+  address, symbol: 'JIM', name: 'Jimothy', image_uri: null, minted_at: new Date(2_000), more: false, ...over,
+});
+
+test('★ an unsure post lists exactly the coins committed beside it, each as Search shows it', async () => {
+  const dex = source(async () => ({
+    hits: [
+      hit({ address: 'A', marketCapUsd: 5_000, marketAddress: 'curveA' }),
+      hit({ address: 'B', venue: 'pool', marketAddress: 'poolB', marketCapUsd: 900_000, imageUrl: 'https://cdn.vendor.example/b.png' }),
+      hit({ address: 'Z', marketCapUsd: 1 }),
+    ],
+    capped: false,
+  }));
+  const { search } = harness({
+    sources: [{ name: 'dex', source: dex }],
+    rows: { [SAME_NAME_SQL]: [held('A'), held('B', { image_uri: 'https://ipfs.io/ipfs/b' }), held('C', { minted_at: null })] },
+    curve: async () => 0.42,
+  });
+  const reply = await search.postCoins('x:1', 'c1');
+  assert.equal(reply.status, 200);
+  const r = body(reply);
+  assert.deepEqual(r.items.map((c: any) => c.address), ['A', 'B', 'C'], 'the committed list, and a same-named coin not on it (Z) is not added');
+  const [a, b, c] = r.items;
+  assert.deepEqual(a.curveProgress, { v: 0.42 });
+  assert.equal(a.coinId, 'solana:A');
+  assert.equal(a.imageUrl, 'https://ipfs.io/ipfs/a', 'a picture from the coin\'s metadata when we hold none');
+  assert.equal(b.venue, 'pool');
+  assert.equal(b.curveProgress, null);
+  assert.equal(b.imageUrl, 'https://ipfs.io/ipfs/b', 'our copy, never the source\'s');
+  assert.deepEqual(b.marketCapUsd, { v: 900_000 });
+  assert.equal(c.venue, null, 'a coin no source listed has no venue');
+  assert.deepEqual(c.marketCapUsd, { v: null, why: 'no_market' }, 'and a dash with why, never zero');
+  assert.deepEqual(c.launchedAt, { at: null, why: 'not_reported' }, 'an unknown launch is a dash, never "brand new"');
+  assert.deepEqual(a.launchedAt, { at: 2_000 }, 'the launch we hold, not the source\'s market time');
+  assert.equal(r.more, false);
+  assert.equal(r.sourcesMissing, 0);
+  assert.equal(dex.calls, 1, 'the coins share a name: one search finds them all');
+});
+
+test('★ a post that is not unsure on a feed has nothing to list: a 404, through the route too', async () => {
+  const { search } = harness();
+  assert.equal((await search.postCoins('x:gone', 'c1')).status, 404);
+  const routed = await handle('GET', '/post/x%3Agone/coins', { db: { query: async () => [] }, log: SILENT, search }, 'c1');
+  assert.equal(routed.status, 404);
+});
+
+test('an unsure post with nothing we can list is an empty list, told apart from "not here"', async () => {
+  const { search } = harness({ rows: { [SAME_NAME_SQL]: [{ address: null, symbol: null, name: null, image_uri: null, minted_at: null, more: false }] } });
+  const r = await search.postCoins('x:1', 'c1');
+  assert.equal(r.status, 200);
+  assert.deepEqual(body(r).items, []);
+});
+
+test('★ a list the search cut short says so, so the screen can say "10+" and not a smaller count', async () => {
+  const { search } = harness({ rows: { [SAME_NAME_SQL]: [held('A', { more: true }), held('B', { more: true })] } });
+  assert.equal(body(await search.postCoins('x:1', 'c1')).more, true);
+});
+
+test('★ an outage is said, and a coin it left unlisted is "not read", never "no market"', async () => {
+  const down = source(async () => { throw new Error('down'); });
+  const { search } = harness({ sources: [{ name: 'dex', source: down }], rows: { [SAME_NAME_SQL]: [held('A')] } });
+  const r = body(await search.postCoins('x:1', 'c1'));
+  assert.equal(r.sourcesMissing, 1);
+  assert.deepEqual(r.items[0].marketCapUsd, { v: null, why: 'not_read_yet' });
+  assert.equal(r.items.length, 1, 'the coins are still listed with what we hold of them');
+});
+
+test('a listed coin is remembered as a search hit, so its page shows the same facts', async () => {
+  const dex = source(async () => ({ hits: [hit({ address: 'A', marketCapUsd: 7_000 })], capped: false }));
+  const { search } = harness({ sources: [{ name: 'dex', source: dex }], rows: { [SAME_NAME_SQL]: [held('A')] } });
+  await search.postCoins('x:1', 'c1');
+  const facts = body((await search.facts('solana:A'))!);
+  assert.deepEqual(facts.marketCapUsd, { v: 7_000 });
+  assert.deepEqual(facts.launchedAt, { at: 2_000 });
+});
+
+test('the list is kept a minute and counted against the per-client limit like a search', async () => {
+  const dex = source(async () => ({ hits: [], capped: false }));
+  const { search, tick } = harness({ sources: [{ name: 'dex', source: dex }], rows: { [SAME_NAME_SQL]: [held('A')] } });
+  await search.postCoins('x:1', 'c1');
+  await search.postCoins('x:1', 'c1');
+  assert.equal(dex.calls, 1, 'opened twice, read once');
+  tick(POLICY.keepMs);
+  for (let i = 0; i < POLICY.perClient; i += 1) await search.postCoins(`x:${i + 2}`, 'c2');
+  assert.equal((await search.postCoins('x:99', 'c2')).status, 429);
 });

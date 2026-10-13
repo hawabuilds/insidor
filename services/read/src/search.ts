@@ -24,6 +24,11 @@
  * two free sources answering. A term reaches a source at most once a minute however many people
  * type it, and one client cannot type faster than `perClient` a minute. A coin a search returned
  * may then be opened as a token page for `openableMs`; nothing else widens the market route.
+ *
+ * GET /post/:id/coins lives here too (same-name.ts): an unsure feed post's same-named coins, with
+ * their market read by the same sources, the same per-client limit and the same pictures rule.
+ * Its coins are ones we already hold by name, so it widens nothing; it only remembers what the
+ * market said so a coin opened from the list shows the same facts as one opened from Search.
  */
 
 import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
@@ -33,6 +38,7 @@ import type { MarketData } from '@insidor/market-geckoterminal';
 
 import type { Logger } from './log.ts';
 import type { Db, Row } from './queries.ts';
+import { heldCoins, namesToSearch, SAME_NAME_SQL, withMarket } from './same-name.ts';
 
 /** The board whose rows count as live (routes.ts BOARD_VIEW is the client's; the projector writes one). */
 const LIVE_VIEW = 'default';
@@ -221,6 +227,10 @@ export function createSearch(deps: SearchDeps) {
   const kept = new Map<string, { readonly at: number; readonly reply: SearchReply }>();
   const calls = new Map<string, number[]>();
   const openable = new Map<string, { readonly at: number; readonly hit: CoinSearchHit }>();
+  /* What the sources said about a name, for `keepMs`: a sheet opened twice costs one search. */
+  const named = new Map<string, { readonly at: number; readonly hits: readonly (readonly CoinSearchHit[])[]; readonly failed: number }>();
+  /* Each post's list reply, for `keepMs`, like a search's. */
+  const lists = new Map<string, { readonly at: number; readonly reply: SearchReply }>();
 
   /** True when this client may search now; records the search when it may. */
   function allow(client: string, now: number): boolean {
@@ -238,6 +248,85 @@ export function createSearch(deps: SearchDeps) {
     for (const [k, v] of kept) if (now - v.at >= deps.policy.keepMs) kept.delete(k);
     for (const [k, v] of openable) if (now - v.at >= deps.policy.openableMs) openable.delete(k);
     for (const [k, v] of calls) if (v.every((t) => now - t >= deps.policy.windowMs)) calls.delete(k);
+    for (const [k, v] of named) if (now - v.at >= deps.policy.keepMs) named.delete(k);
+    for (const [k, v] of lists) if (now - v.at >= deps.policy.keepMs) lists.delete(k);
+  }
+
+  /** The sources' answers for a name: each source's hits, and how many sources failed. */
+  async function searchName(term: string, now: number): Promise<{ readonly hits: readonly (readonly CoinSearchHit[])[]; readonly failed: number }> {
+    const key = term.toLowerCase();
+    const held = named.get(key);
+    if (held !== undefined) return held;
+    const answers = await Promise.allSettled(deps.sources.map((s) => s.source.search(term)));
+    for (const [i, a] of answers.entries()) {
+      if (a.status === 'rejected') deps.log.info('coin search source unavailable', { source: deps.sources[i]?.name, err: a.reason instanceof Error ? a.reason.message : String(a.reason) });
+    }
+    const out = {
+      at: now,
+      hits: answers.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : [])),
+      failed: answers.filter((a) => a.status === 'rejected').length,
+    };
+    named.set(key, out);
+    return out;
+  }
+
+  async function sameName(itemId: string, now: number): Promise<SearchReply> {
+    const held = heldCoins(await deps.db.query(SAME_NAME_SQL, [itemId]));
+    if (held === null) return json(404, { error: 'not found' });
+
+    const answers = await Promise.all(namesToSearch(held.coins).map((t) => searchName(t, now)));
+    const mine = new Set(held.coins.map((c) => c.address));
+    const listed = new Map<string, CoinSearchHit>();
+    for (const h of mergeHits(answers.flatMap((a) => a.hits))) if (mine.has(h.address)) listed.set(h.address, h);
+    const coins = withMarket(held.coins, listed);
+    /* A source that failed on every name searched is missing; one that failed on some is too. */
+    const sourcesMissing = answers.reduce((m, a) => Math.max(m, a.failed), 0);
+
+    const curves = new Map<string, Measured>();
+    if (deps.curveProgress !== null) {
+      const reader = deps.curveProgress;
+      const toRead = coins.flatMap(({ hit }) => (hit !== null && hit.venue === 'curve' && hit.marketAddress !== null ? [hit] : [])).slice(0, deps.policy.curvesRead);
+      await Promise.all(toRead.map(async (h) => {
+        try {
+          curves.set(h.address, measured(await reader(h.marketAddress ?? ''), 'unreadable'));
+        } catch {
+          curves.set(h.address, measured(null, 'not_read_yet'));
+        }
+      }));
+    }
+
+    const pictures = new Map<string, string>(held.coins.flatMap((c) => (c.imageUrl === null ? [] : [[c.address, c.imageUrl] as const])));
+    const missing = held.coins.filter((c) => c.imageUrl === null).map((c) => c.address);
+    if (deps.images !== null && missing.length > 0) {
+      try {
+        for (const [a, i] of await deps.images(missing)) pictures.set(a, i);
+      } catch (e) {
+        deps.log.info('coin pictures unavailable', { err: e instanceof Error ? e.message : String(e) });
+      }
+    }
+
+    const items = coins.map(({ held: c, hit }) => {
+      const launched = c.launchedAt ?? hit?.createdAt ?? null;
+      const imageUrl = pictures.get(c.address) ?? null;
+      /* Remembered as Search remembers its hits, so the coin's page shows these same facts. A
+         coin no source listed is not: its page reads what we hold of it, as from Search. */
+      if (hit !== null) openable.set(c.address, { at: now, hit: { ...hit, name: c.name ?? hit.name, ticker: c.ticker ?? hit.ticker, createdAt: launched, imageUrl } });
+      return {
+        coinId: `solana:${c.address}`,
+        address: c.address,
+        name: c.name ?? hit?.name ?? null,
+        ticker: c.ticker ?? hit?.ticker ?? null,
+        imageUrl,
+        /* Unlisted while a source was down is "not read", never "no market". */
+        marketCapUsd: measured(hit?.marketCapUsd, hit !== null ? 'not_reported' : sourcesMissing > 0 ? 'not_read_yet' : 'no_market'),
+        launchedAt: instant(launched, 'not_reported'),
+        /* A coin no source listed has no market anyone reports: where it trades is not known. */
+        venue: hit === null ? null : hit.venue,
+        curveProgress: hit !== null && hit.venue === 'curve' ? (curves.get(c.address) ?? measured(null, deps.curveProgress === null ? 'not_reported' : 'not_read_yet')) : null,
+        matched: null,
+      };
+    });
+    return json(200, { kind: 'read', more: held.more, sourcesMissing, items });
   }
 
   async function peakOf(story: StoryHit): Promise<Measured> {
@@ -439,6 +528,19 @@ export function createSearch(deps: SearchDeps) {
       if (!allow(client, deps.now())) return json(429, { error: 'slow down' });
       const rows = await deps.db.query(TICKER_COUNT_SQL, [symbol]);
       return json(200, { ticker: symbol, seen: Number(rows[0]?.['n'] ?? 0) });
+    },
+
+    /** GET /post/:id/coins — an unsure feed post's same-named coins (same-name.ts). 404 when it is not unsure on a feed. */
+    async postCoins(itemId: string, client: string): Promise<SearchReply> {
+      const now = deps.now();
+      sweep(now);
+      if (itemId === '' || itemId.length > 200) return json(400, { error: 'bad request' });
+      const kept = lists.get(itemId);
+      if (kept !== undefined) return kept.reply;
+      if (!allow(client, now)) return json(429, { error: 'slow down' });
+      const reply = await sameName(itemId, now);
+      if (reply.status === 200) lists.set(itemId, { at: now, reply });
+      return reply;
     },
 
     /** A coin a recent search returned, by address; null when none did. Widens the market route by exactly this. */

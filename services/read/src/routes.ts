@@ -428,6 +428,8 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       if (segments.length === 1 && head === 'search') return await deps.search.search(new URLSearchParams(rawUrl.split('?')[1] ?? '').get('q'), client);
       if (segments.length === 2 && head === 'coin' && param !== undefined) return (await deps.search.facts(param)) ?? NOT_FOUND;
       if (segments.length === 2 && head === 'ticker' && param !== undefined) return await deps.search.ticker(param, client);
+      /* An unsure feed post's same-named coins: what "See 3 coins" opens (same-name.ts). */
+      if (segments.length === 3 && head === 'post' && param !== undefined && segments[2] === 'coins') return await deps.search.postCoins(param, client);
     }
 
     if (segments.length === 2 && param !== undefined) {
