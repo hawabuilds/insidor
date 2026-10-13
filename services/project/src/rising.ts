@@ -11,9 +11,9 @@
  * And it must clear the feed's view bar (core's `clearsReachBar`): For You at 40k views or fast
  * early growth, Popular at 250k. A post whose views we have not read is on neither.
  *
- * In what order (the owner, 2026-10-13): `fyp` judge yes WITH other accounts' crypto signal first,
- * judge yes alone next, the signal alone last; within each, faster growth over the last hour first,
- * then newest (`forYouOrder`). The order model (core `postRankScore`, 0065) does not order; with
+ * In what order (the owner, 2026-10-13): `fyp` newest first, by when the post went up on its source
+ * (`forYouOrder`); the pass routes (judge, judge with the signal, the signal) decide only whether a
+ * post is on For You, never where. The order model (core `postRankScore`, 0065) does not order; with
  * `rising.scorePassBar` set, a post the rules passed but the fit puts under the bar is not on For
  * You (`under_score_bar`), and its number goes nowhere else: not on the row, not in the payload,
  * not in the log. `popular` most views
@@ -453,27 +453,13 @@ export function postStanding(row: RisingRow, policy = DEFAULT_POLICY, signal: Cr
   return postRoute(row, policy, signal).why;
 }
 
-/** For You's groups, first to last (the owner, 2026-10-13). */
-const ROUTE_ORDER: Readonly<Record<PassRoute, number>> = { 'judge+signal': 0, judge: 1, signal: 2 };
-
 /**
- * ★ FOR YOU'S ORDER (the owner, 2026-10-13): the judge's yes WITH other accounts' crypto signal
- * first, the judge's yes alone next, the signal alone last; within each, faster growth first (views
- * a minute over the last hour, `recentGrowthPerMinute`, on the short-video scale for a short video;
- * a post whose growth cannot be read goes after those whose can), then newest, then by id so a
- * frame is stable. The order model's number is not in it.
+ * ★ FOR YOU'S ORDER (the owner, 2026-10-13, second word): newest first, by when the post went up on
+ * its source (`at`: the post's own time, or when we first saw it when the source gave none), then by
+ * id so a frame is stable. Pull to refresh then brings new posts in at the top. The route a post
+ * passed by, its growth and the order model's number are not in it; they decide only admission.
  */
-export function forYouOrder(
-  a: { readonly route: PassRoute; readonly growth: number | null; readonly at: number; readonly id: string },
-  b: { readonly route: PassRoute; readonly growth: number | null; readonly at: number; readonly id: string },
-): number {
-  const byRoute = ROUTE_ORDER[a.route] - ROUTE_ORDER[b.route];
-  if (byRoute !== 0) return byRoute;
-  if (a.growth !== b.growth) {
-    if (a.growth === null) return 1;
-    if (b.growth === null) return -1;
-    if (b.growth !== a.growth) return b.growth - a.growth;
-  }
+export function forYouOrder(a: { readonly at: number; readonly id: string }, b: { readonly at: number; readonly id: string }): number {
   return b.at - a.at || a.id.localeCompare(b.id);
 }
 
@@ -528,13 +514,11 @@ export async function buildRising(
   const heldBy = new Map<string, HeldKind>();
   const candidates = await loadCandidates(db, sinceMs);
   const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
-  const routes = new Map<string, PassRoute>();
   const rows = candidates.filter((row) => {
-    const { why, route } = postRoute(row, policy, cryptoSignalFor(row, crypto.get(row.item_id), policy));
+    const { why } = postRoute(row, policy, cryptoSignalFor(row, crypto.get(row.item_id), policy));
     if (why !== 'passes') whyNot.set(row.item_id, why);
     const held = postHeldKind(row, policy);
     if (why !== 'passes' && held !== null) heldBy.set(row.item_id, held);
-    if (route !== null) routes.set(row.item_id, route);
     return why === 'passes';
   });
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
@@ -563,11 +547,6 @@ export async function buildRising(
     return {
       score,
       underBar,
-      route: routes.get(row.item_id) ?? 'judge',
-      growth: (() => {
-        const g = recentGrowthPerMinute(views, nowMs, policy);
-        return g === null ? null : g / scale;
-      })(),
       post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? [], {
         views: views.map((v) => ({ atMs: v.atMs, value: v.reach })),
         perMinute: (() => {
@@ -584,7 +563,7 @@ export async function buildRising(
     };
   });
 
-  const fyp = posts.filter((p) => p.fyp).sort((a, b) => forYouOrder({ route: a.route, growth: a.growth, at: a.at, id: a.post.id }, { route: b.route, growth: b.growth, at: b.at, id: b.post.id }));
+  const fyp = posts.filter((p) => p.fyp).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
   const views = (p: WireRisingPost): number | null => p.reach.v;
   const popular = posts.filter((p) => p.popular).sort((a, b) => {
     const va = views(a.post);

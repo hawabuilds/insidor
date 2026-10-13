@@ -1,7 +1,6 @@
 /**
- * For You's order and the pass routes, as the projector applies them (the owner, 2026-10-13): judge
- * yes with other accounts' crypto signal first, judge yes alone next, the signal alone last; faster
- * growth first within each, then newest. A shill never passes; the owner's call outranks all of it.
+ * For You's order and the pass routes, as the projector applies them (the owner, 2026-10-13): newest
+ * first by when the post went up, whatever route it passed by. A shill never passes; the owner's call outranks all of it.
  * And the order model's bar still holds a post back only when set, with a fit, never over a meme call.
  */
 
@@ -10,22 +9,19 @@ import { test } from 'node:test';
 
 import { cryptoSignalFor, forYouOrder, postRoute, underScoreBar, type RisingRow } from './rising.ts';
 
-type P = { route: 'judge+signal' | 'judge' | 'signal'; growth: number | null; at: number; id: string };
+type P = { at: number; id: string };
 const sorted = (posts: P[]) => [...posts].sort(forYouOrder).map((p) => p.id);
 
-test('★ the routes in the owner\'s order, then growth (unread growth last), then newest', () => {
+test('★ newest first by when the post went up, then by id', () => {
   assert.deepEqual(
     sorted([
-      { route: 'signal', growth: 9_000, at: 9, id: 'sig' },
-      { route: 'judge', growth: 10, at: 1, id: 'slow' },
-      { route: 'judge', growth: 500, at: 1, id: 'fast' },
-      { route: 'judge+signal', growth: null, at: 1, id: 'both' },
-      { route: 'judge', growth: null, at: 5, id: 'unread-new' },
-      { route: 'judge', growth: null, at: 2, id: 'unread-old' },
+      { at: 2, id: 'older' },
+      { at: 9, id: 'newest' },
+      { at: 5, id: 'middle' },
     ]),
-    ['both', 'fast', 'slow', 'unread-new', 'unread-old', 'sig'],
+    ['newest', 'middle', 'older'],
   );
-  assert.deepEqual(sorted([{ route: 'judge', growth: 1, at: 1, id: 'b' }, { route: 'judge', growth: 1, at: 1, id: 'a' }]), ['a', 'b']);
+  assert.deepEqual(sorted([{ at: 1, id: 'b' }, { at: 1, id: 'a' }]), ['a', 'b']);
 });
 
 const ROW: RisingRow = {
