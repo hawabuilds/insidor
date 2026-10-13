@@ -11,6 +11,36 @@
   border-top: 1px dashed var(--border-subtle);
 }
 
+/* The owner's row under a For You card: Not a meme and the coin call, once each, small and on
+   one line so the card keeps its height; what the owner already said is a small grey tag after
+   them, never a button. Only the card uses these; NameCall keeps .strip and .said. */
+.cardStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.cardStrip .mini {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.saidTag {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
 .said {
   color: var(--amber);
   font-size: 12px;
