@@ -353,6 +353,41 @@
   color: var(--text-3);
 }
 
+/* The spinner that follows a pull down: Trador's 32px popup chip under the status bar. */
+.pull {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: calc(10px + var(--safe-top));
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.pull > span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(13 13 16 / 85%);
+  color: var(--text-2);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Feed settings: Trador's sheet, rising from the bottom over a scrim, the settings in one card. */
 .scrim {
   position: fixed;

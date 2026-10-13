@@ -23,15 +23,17 @@ import { SettingsSheet } from './AlertSettings.tsx';
 import { linkOf } from './AlertsScreen.tsx';
 import { grouped } from './group.ts';
 import { useAlertList } from './list.ts';
-import { Headline, Mark } from './Parts.tsx';
+import { Headline, Mark, PullIndicator } from './Parts.tsx';
+import { pullStyle, usePullToRefresh } from './pull.ts';
 import { notifications } from './split.ts';
 import styles from './alerts.module.css';
 
 export function NotificationsScreen({ settings, onSeen }: { settings: boolean; onSeen: () => void }) {
   const now = useNow();
-  const { list } = useAlertList();
+  const { list, refresh } = useAlertList();
   const [sheet, setSheet] = useState(settings);
   useEffect(() => setSheet(settings), [settings]);
+  const { pull, refreshing } = usePullToRefresh(refresh);
 
   /* Unread as it stood when the list first arrived: marking it read does not untint what is on screen. */
   const openedUnread = useRef<ReadonlySet<number> | null>(null);
@@ -51,7 +53,8 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
 
   return (
     <>
-      <section className={styles['page']}>
+      <PullIndicator pull={pull} refreshing={refreshing} />
+      <section className={styles['page']} style={pullStyle(pull)}>
         <header className={styles['sticky']}>
           <div className={`${styles['titleRow']} ${styles['titleOnly']}`}>
             <h1 className={styles['title']}>Notifications</h1>
@@ -62,7 +65,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
         </header>
 
         {list.state === 'loading' ? <p className={styles['centred']}>Loading</p> : null}
-        {list.state === 'failed' ? <p className={styles['centred']}>Could not load your notifications.</p> : null}
+        {list.state === 'failed' ? <p className={styles['centred']}>Could not load your notifications. Pull down to try again.</p> : null}
         {list.state === 'ready' && items.length === 0 ? <p className={styles['centred']}>Your coins' multiples and graduations, new followers and replies land here.</p> : null}
         {grouped(items, now).map((g) => (
           <section key={g.section}>
