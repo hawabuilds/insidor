@@ -37,6 +37,8 @@ import type { JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import { VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
 import { headerValueProblem, httpUrlProblem, messageOf, snippet, trimTrailingSlash } from '@insidor/vendor-kit/http.ts';
 
+import { sizedPictureUri, type PictureSize } from './pictures.ts';
+
 export const VENDOR = 'anthropic';
 export const MESSAGES_ENDPOINT = 'POST /v1/messages';
 const MESSAGES_PATH = '/v1/messages';
@@ -104,6 +106,12 @@ export interface JudgeClientConfig {
   readonly backoffMs: number;
   readonly maxWaitMs: number;
   readonly maxFrameBytes: number;
+  /**
+   * Ask the picture host for this smaller named size before showing a picture (pictures.ts),
+   * falling back to the full one. Absent or null: the picture as the post links it. Off by
+   * default because a smaller picture can change the answer; see pictures.ts.
+   */
+  readonly pictureSize?: PictureSize | null;
   readonly fetch: typeof globalThis.fetch;
   /** Injected so a test can retry without waiting. */
   readonly sleep: (ms: number) => Promise<void>;
@@ -356,6 +364,28 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
       throw new VendorUnavailable(VENDOR, MESSAGES_ENDPOINT, `gave up after ${config.maxAttempts} attempts: ${lastNote}`, lastStatus);
   };
 
+  /**
+   * One picture read and checked, or null when there is no usable image at `uri`. `sized` is
+   * an address pictures.ts built from one that already passed the check below, and differs
+   * from it only by the size query it added — so it is let through with that query.
+   */
+  const readFrame = async (uri: string, sized = false): Promise<Frame | null> => {
+    if (!sized && httpUrlProblem(uri) !== null) return null;
+    try {
+      const response = await config.fetch(uri, { signal: AbortSignal.timeout(config.timeoutMs) });
+      const type = (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+      if (!response.ok || !FRAME_TYPES.has(type as Frame['mediaType'])) {
+        await response.body?.cancel();
+        return null;
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length === 0 || bytes.length > config.maxFrameBytes) return null;
+      return { mediaType: type as Frame['mediaType'], base64: Buffer.from(bytes).toString('base64') };
+    } catch {
+      return null;
+    }
+  };
+
   return {
     async judge(request) {
       return decodeReply(await send(buildRequestBody(config, request)));
@@ -384,20 +414,15 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
     },
 
     async frame(uri) {
-      if (httpUrlProblem(uri) !== null) return null;
-      try {
-        const response = await config.fetch(uri, { signal: AbortSignal.timeout(config.timeoutMs) });
-        const type = (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
-        if (!response.ok || !FRAME_TYPES.has(type as Frame['mediaType'])) {
-          await response.body?.cancel();
-          return null;
+      const size = config.pictureSize ?? null;
+      if (size !== null) {
+        const smaller = sizedPictureUri(uri, size);
+        if (smaller !== uri && httpUrlProblem(uri) === null) {
+          const small = await readFrame(smaller, true);
+          if (small !== null) return small;
         }
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        if (bytes.length === 0 || bytes.length > config.maxFrameBytes) return null;
-        return { mediaType: type as Frame['mediaType'], base64: Buffer.from(bytes).toString('base64') };
-      } catch {
-        return null;
       }
+      return readFrame(uri);
     },
   };
 }

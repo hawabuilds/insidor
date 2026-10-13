@@ -286,6 +286,8 @@ export { PROMPTS, PROMPT_NAMES, PROMPT_SET_SHA } from './prompts.ts';
 export type { Prompt, PromptName } from './prompts.ts';
 export { ANSWER_SCHEMA, JudgeNotConfigured, buildRequestBody, decodeReply, httpClient, usageOf } from './client.ts';
 export type { Frame, JudgeClient, JudgeClientConfig, JudgeRequest, JudgeResponse, Usage } from './client.ts';
+export { sizedPictureUri } from './pictures.ts';
+export type { PictureSize } from './pictures.ts';
 export { MODEL_PRICES, PRICES_READ_AT, priceFor, usdForTokens } from './prices.ts';
 export type { ModelPrice } from './prices.ts';
 export { API_KEY, BASE_URL, DEFAULT_BASE_URL, MODEL, readJudgeSetup } from './credentials.ts';
