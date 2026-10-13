@@ -909,6 +909,8 @@ export interface FeedPolicy {
    * catch-all lane, each a pass, newest first. Without a '#'; the adapter adds what it needs.
    */
   readonly hashtags: readonly string[];
+  /** Posts asked for per hashtag ask: a run bills per post returned, so this is the ask's price. */
+  readonly hashtagResults: number;
   /**
    * Posts asked for per lane per pass: one page. Also the reservation the budget is
    * checked against before the call, since a source picks its own page size.
@@ -1917,7 +1919,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v45',
+  version: 'policy.v46',
 
   admit: {
     maxAgeMin: 240,
@@ -2247,6 +2249,7 @@ const POLICY_V1: Policy = {
     mediaShare: 0.25,
     langs: ['en', 'zxx'],
     hashtags: ['meme', 'memes', 'funny', 'fyp', 'viral', 'cat', 'dog', 'animals', 'pet', 'cute', 'trend', 'crypto', 'memecoin', 'solana'], // vocab-allow: solana  — a hashtag the owner chose to watch, not a chain this code knows
+    hashtagResults: 10,
     pageLimit: 20,
     maxPagesPerLane: 3,
     slow: {
