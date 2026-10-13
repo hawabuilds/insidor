@@ -663,6 +663,25 @@ export interface JudgePolicy {
    * reads that record rather than asking again.
    */
   readonly rejudgeGrowth: number;
+  /**
+   * ★ THE OWNER'S LABELLED POSTS, SHOWN AS PRECEDENT IN EVERY POST-JUDGE CALL (the owner,
+   * 2026-10-13). Each post sent to the feed's judge is embedded (its words and picture together)
+   * and its `k` closest labelled posts — the owner's "is a meme" / "not a meme" calls, coined
+   * posts, gold — go in the call with the owner's label. Every label is a candidate, not a capped
+   * block. `maxChars` of each example's words are sent. `labelsPerPass` new labels are embedded a
+   * pass, so a tap reaches the next calls within minutes.
+   *
+   * ★ `holdNotSimilarity`: a post at least this close to one the owner called "not a meme" is held
+   * (kind label NOT_MEME_MATCH, in `heldKinds`). Chosen on the labelled set itself, leave one out:
+   * the lowest bar at which not one gold, coined or owner-meme post would be held. See the
+   * measurement on the value.
+   */
+  readonly precedents: {
+    readonly k: number;
+    readonly maxChars: number;
+    readonly holdNotSimilarity: number;
+    readonly labelsPerPass: number;
+  };
 }
 
 /* ── RESOLVE ──────────────────────────────────────────────────────────── */
@@ -2483,6 +2502,18 @@ const POLICY_V1: Policy = {
     maxCharsPerText: 400,
     /* Half again as many members. A story of 4 is asked again at 6, a story of 20 at 30. */
     rejudgeGrowth: 0.5,
+    precedents: {
+      k: 10,
+      maxChars: 200,
+      /* Measured 2026-10-13 (tools/label-embeddings.ts), leave one out over 418 labelled posts (138
+         meme: 41 gold-sheet, 82 coined, 2 missed, 2 meme taps, 11 hand-labelled; 280 not). The meme
+         label closest to any "not" label sits at 0.662 (a Goliath roller-coaster post in hand gold;
+         the closest coined post 0.602), so 0.67 holds no gold, coined or meme post and 69 of the 280
+         "not" labels. 0.80 would hold 20, 0.92 five. A first cut on the owner's labels alone: a live
+         post is not one of them, so expect some meme posts near a "not" — measure the holds. */
+      holdNotSimilarity: 0.67,
+      labelsPerPass: 40,
+    },
   },
 
   resolve: {

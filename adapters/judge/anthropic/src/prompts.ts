@@ -90,3 +90,16 @@ export const SAME_SUBJECT_PROMPT = Object.freeze({
   text: sameSubjectText,
   sha: createHash('sha256').update(sameSubjectText).digest('hex').slice(0, 8),
 });
+
+/**
+ * The words that introduce the owner's labelled posts when they ride along with the post question
+ * as precedent (client.ts `buildRequestBody`). Kept out of the post prompt set, like the
+ * same-subject prompt: its hash is folded into the post question's id only when precedents are on
+ * (index.ts `promptFor`), so turning them on or editing these words files every answer after it
+ * under a new id, and turning them off returns to the rules' own id.
+ */
+const precedentsText = readFileSync(join(PROMPT_DIR, 'post-precedents.txt'), 'utf8');
+export const PRECEDENTS_PROMPT = Object.freeze({
+  text: precedentsText,
+  sha: createHash('sha256').update(precedentsText).digest('hex').slice(0, 8),
+});

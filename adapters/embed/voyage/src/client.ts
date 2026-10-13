@@ -15,8 +15,11 @@ import { arr, num, outOfCredit, rec, vendorAnswered, VendorShapeError, VendorUna
 export const VENDOR = 'voyage';
 export const ENDPOINT_LABEL = 'POST /v1/multimodalembeddings';
 
-/** One input: an image by its public URL, or a piece of text. */
-export type EmbedInput = { readonly imageUrl: string } | { readonly text: string };
+/**
+ * One input: an image by its public URL, a piece of text, or both read as one (a post's words
+ * and its picture: the vendor puts the pair in one vector).
+ */
+export type EmbedInput = { readonly imageUrl: string; readonly text?: undefined } | { readonly text: string; readonly imageUrl?: string };
 
 export interface EmbedReply {
   /** One vector per input, in input order; null for an input the vendor did not embed. */
@@ -39,8 +42,12 @@ export interface VoyageClientConfig {
 function body(model: string, inputs: readonly EmbedInput[]): string {
   return JSON.stringify({
     model,
+    /* Words first, then the picture, as one content list: one vector for the pair. */
     inputs: inputs.map((input) => ({
-      content: ['imageUrl' in input ? { type: 'image_url', image_url: input.imageUrl } : { type: 'text', text: input.text }],
+      content: [
+        ...(input.text === undefined ? [] : [{ type: 'text', text: input.text }]),
+        ...(input.imageUrl === undefined ? [] : [{ type: 'image_url', image_url: input.imageUrl }]),
+      ],
     })),
     /* `document`: these are what later posts are compared against, the vendor's own term. */
     input_type: 'document',

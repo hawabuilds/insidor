@@ -55,4 +55,16 @@ export interface EmbedPort {
     media: readonly MediaRef[],
     budget: Budget,
   ): Promise<Metered<readonly (Embedding | null)[]>>;
+
+  /**
+   * Optional: one vector per POST, its words and its picture read together, so a post with no
+   * picture and a post with no words both get one. Its own space (`postSpace`): a post vector is
+   * never compared with a picture-only vector. A null picture is the words alone; empty words and
+   * no picture is a null slot.
+   */
+  readonly postSpace?: string;
+  embedPosts?(
+    posts: readonly { readonly text: string; readonly picture: string | null }[],
+    budget: Budget,
+  ): Promise<Metered<readonly (Embedding | null)[]>>;
 }

@@ -1,0 +1,3 @@
+Posts the owner has already labelled, chosen because they are the closest to the posts you are judging (by their words and picture together). Each story below lists the ones closest to it under "labelledLike", closest first, by ref.
+
+They are precedent, not rules. A post much like one the owner called "not a meme" is very likely not one, for the same reason the owner gave. A post much like one the owner called "meme" may well be one. Similar is not the same: judge each post on what it shows, and use these to see where the owner draws the line. Never answer for a labelled post; answer only for the storyIds you are asked about.

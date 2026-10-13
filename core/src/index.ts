@@ -62,6 +62,7 @@ export { qualify, worthJudging } from './qualify/stage.ts';
 export { presentationFor } from './qualify/presentation.ts';
 export { couldPassWithBoost, passesWithSignal, postScore, postScoreReason } from './qualify/post-score.ts';
 export { KIND_LABELS, NEVER_SHOWN_KINDS, NEWS_KINDS, heldKind, isNewsKind } from './qualify/kinds.ts';
+export { closestNot, embedInput, heldAsNotMeme, nearestLabelled, postPicture, precedentsFor, type LabelledVector, type Neighbour } from './qualify/precedents.ts';
 export type { HeldKind, NeverShownKind, NewsKind } from './qualify/kinds.ts';
 export type { CryptoSignal, PassRoute, PostScoreReason } from './qualify/post-score.ts';
 export { clearsReachBar } from './qualify/reach-bar.ts';
