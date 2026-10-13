@@ -80,7 +80,7 @@ test("the author's follower count, name and picture are kept, with the read's in
   const a = toAuthor({ author: { id: '1', userName: 'raw', name: 'Raw Alerts', followers: 1_900_000, profilePicture: 'https://pbs.twimg.com/profile_images/1/a_normal.jpg' } }, AT);
   assert.deepEqual(a?.audience, { value: 1_900_000, fidelity: { kind: 'exact' }, observedAt: AT });
   assert.equal(a?.displayName, 'Raw Alerts');
-  assert.equal(a?.pictureUri, 'https://pbs.twimg.com/profile_images/1/a_200x200.jpg');
+  assert.equal(a?.pictureUri, 'https://pbs.twimg.com/profile_images/1/a_400x400.jpg');
   const bare = toAuthor({ author: { id: '2' } }, AT);
   assert.equal(bare?.audience, null, 'no count is no counter, never zero');
   assert.equal(bare?.pictureUri, null);
