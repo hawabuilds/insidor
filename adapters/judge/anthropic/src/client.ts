@@ -93,6 +93,11 @@ export interface JudgeRequest {
   readonly subjects: readonly JudgeSubject[];
   /** Keyed by story id. Only subjects judged on a video frame have one. */
   readonly frames: ReadonlyMap<string, Frame>;
+  /**
+   * The words introducing the subjects' precedents (prompts/post-precedents.txt). Absent: no
+   * precedents are sent, whatever the subjects carry.
+   */
+  readonly precedentsIntro?: string;
 }
 
 export interface JudgeResponse {
@@ -232,22 +237,44 @@ export const ANSWER_SCHEMA = {
  */
 export const temperatureFor = (config: Pick<JudgeClientConfig, 'effort'>): { readonly temperature?: number } => (config.effort === null ? { temperature: 0 } : {});
 
+/**
+ * The call's precedents, each labelled post once, numbered in the order first met (`L1`, `L2`…):
+ * the subjects name theirs by these short refs, never by a post id. Null when the call sends none.
+ */
+export function precedentsOf(request: Pick<JudgeRequest, 'subjects' | 'precedentsIntro'>): { readonly list: readonly { ref: string; label: string; why: string | null; words: string }[]; readonly refOf: ReadonlyMap<string, string> } | null {
+  if (request.precedentsIntro === undefined) return null;
+  const refOf = new Map<string, string>();
+  const list: { ref: string; label: string; why: string | null; words: string }[] = [];
+  for (const s of request.subjects) {
+    for (const p of s.precedents ?? []) {
+      if (refOf.has(p.ref)) continue;
+      const ref = `L${list.length + 1}`;
+      refOf.set(p.ref, ref);
+      list.push({ ref, label: p.label === 'meme' ? 'meme' : 'not a meme', why: p.why, words: p.text === '' ? '(no words: a picture only)' : p.text });
+    }
+  }
+  return list.length === 0 ? null : { list, refOf };
+}
+
 export function buildRequestBody(
   config: Pick<JudgeClientConfig, 'model' | 'maxOutputTokens' | 'effort'>,
   request: JudgeRequest,
 ): Record<string, unknown> {
+  const shown = precedentsOf(request);
   const stories = request.subjects.map((s) => ({
     storyId: String(s.storyId),
     posts: s.texts,
     distinctAuthors: s.distinctAuthors,
     distinctSources: s.distinctSources,
     frame: request.frames.has(String(s.storyId)) ? 'shown below' : 'none',
+    ...(shown === null ? {} : { labelledLike: (s.precedents ?? []).flatMap((p) => shown.refOf.get(p.ref) ?? []) }),
   }));
 
-  const content: unknown[] = [
-    { type: 'text', text: request.instructions, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: `Stories to judge, as JSON. Answer once for each storyId.\n${JSON.stringify(stories)}` },
-  ];
+  const content: unknown[] = [{ type: 'text', text: request.instructions, cache_control: { type: 'ephemeral' } }];
+  /* ★ AFTER THE CACHE MARK: the precedents differ on every call, so before it they would turn every
+     call into a cache write. Each labelled post once per call, however many subjects it is near. */
+  if (shown !== null) content.push({ type: 'text', text: `${request.precedentsIntro ?? ''}\n${JSON.stringify(shown.list)}` });
+  content.push({ type: 'text', text: `Stories to judge, as JSON. Answer once for each storyId.\n${JSON.stringify(stories)}` });
   for (const s of request.subjects) {
     const frame = request.frames.get(String(s.storyId));
     if (frame === undefined) continue;

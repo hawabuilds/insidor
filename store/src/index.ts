@@ -65,6 +65,8 @@ export type { StageRunClose } from './repo/runs.ts';
 export { PgHistoryRepo } from './repo/history.ts';
 export { PgJobFileRepo } from './repo/job-files.ts';
 export { PgCoinedPictureRepo } from './repo/coined-pictures.ts';
+export { LABEL_RANK, PgLabelEmbeddingRepo, mergeLabels } from './repo/label-embeddings.ts';
+export type { LabelKind, LabelledPost, StoredLabel } from './repo/label-embeddings.ts';
 export { FEED_REJECTION_REASONS, PgFeedRejectionRepo } from './repo/feed-rejections.ts';
 export type { FeedRejection, FeedRejectionReason } from './repo/feed-rejections.ts';
 export { FEED_HISTORY_RETENTION_MS, recordFeedHistory } from './repo/feed-history.ts';

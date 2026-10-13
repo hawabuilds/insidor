@@ -76,6 +76,7 @@ import {
   PgImageEmbeddingRepo,
   PgImagePairRepo,
   PgJudgementRepo,
+  PgLabelEmbeddingRepo,
   PgLearningRepo,
   PgPostJudgementRepo,
   PgItemRepo,
@@ -96,6 +97,7 @@ import {
 import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
+import { precedentSource } from './work/precedents.ts';
 import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
 import { refillMemory, refillPosts, type RefillResult } from './work/post-refill.ts';
 import { embedImages } from './work/embed-images.ts';
@@ -181,6 +183,8 @@ function buildJudge(
   question: JudgeQuestion = 'story',
   /** The owner's learned examples after the post question's rules (learned-examples.ts); null: none. */
   examples: string | null = null,
+  /** Send each post's closest labelled posts as precedent (work/precedents.ts); post question only. */
+  precedents = false,
 ): JudgePort | null {
   const setup = cfg.judge;
   if (setup.state === 'dormant' || setup.state === 'misconfigured') {
@@ -233,6 +237,7 @@ function buildJudge(
     maxBatch: policy.qualify.batchSize,
     question,
     examples,
+    precedents,
   });
 }
 /**
@@ -524,14 +529,17 @@ export async function withRuntime<T>(
       /* ★ WITH THE OWNER'S LEARNED EXAMPLES: the latest block the re-tune APPLIED (0056), read at
          boot and every few minutes, swapped in behind the same port (learned-examples.ts). None
          applied: no examples, the judge's rules alone. */
-      const rulesOnlyPostJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post');
+      /* ★ PRECEDENTS (work/precedents.ts): the owner's closest labelled posts ride along with each
+         post, when the embeddings that find them are configured. They change the post question's id. */
+      const withPrecedents = cfg.embeddings.state === 'configured' && policy.judge.precedents.k > 0;
+      const rulesOnlyPostJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', null, withPrecedents);
       const learning = new PgLearningRepo(db);
       const learned =
         rulesOnlyPostJudge === null
           ? null
           : learnedJudge({
               latest: () => learning.latestApplied(),
-              build: (examples) => (examples === null ? rulesOnlyPostJudge : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', examples) ?? rulesOnlyPostJudge),
+              build: (examples) => (examples === null ? rulesOnlyPostJudge : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents) ?? rulesOnlyPostJudge),
               log: log.child({ step: 'learned-examples' }),
             });
       if (learned !== null) {
@@ -542,6 +550,23 @@ export async function withRuntime<T>(
       /* The feed's second question — which kind of post — asked only of posts the first passed;
          see `kindJudge` in work/score-posts.ts. Same model, its own prompt set and hash. */
       const kindJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'kind');
+      /* The labels and vectors behind the precedents and the not-a-meme hold, kept for the process. */
+      const precedents =
+        cfg.embeddings.state === 'configured'
+          ? precedentSource({
+              embed: voyageEmbed({
+                client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
+                meter,
+                now: () => Date.now() as Millis,
+              }),
+              labels: new PgLabelEmbeddingRepo(db),
+              meter,
+              mode: cfg.spend.kind,
+              policy,
+              log: log.child({ step: 'precedents' }),
+              now: () => Date.now() as Millis,
+            })
+          : null;
 
       const runtimeDeps: PlatformRuntime = {
         meter,
@@ -834,6 +859,7 @@ export async function withRuntime<T>(
             scorePosts({
               judge: postJudge,
               kindJudge,
+              precedents,
               items: repos.items,
               scores: new PgPostJudgementRepo(db),
               meter,

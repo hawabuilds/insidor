@@ -132,3 +132,28 @@ test('★ a billing refusal is its own error, heard by the listener, and never h
   await assert.rejects(port.embedMedia!([image('https://example.invalid/a.jpg'), image('https://example.invalid/b.jpg')], { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: 1 }), OutOfCredit);
   assert.equal(calls, 1, 'not split and asked again');
 });
+
+test('★ a post is its words and picture as one input, in the post space; a dead picture leaves the words alone', async () => {
+  const dead = 'https://example.invalid/dead.jpg';
+  const sent: unknown[] = [];
+  const port = voyageEmbed({
+    client: {
+      embed: async ({ inputs }) => {
+        sent.push(...inputs);
+        if (inputs.some((i) => i.imageUrl === dead)) throw new VendorUnavailable('voyage', 'embed', 'responded 400', 400);
+        const one = Float32Array.from({ length: DIMENSIONS }, (_, k) => (k === 0 ? 1 : 0));
+        return { vectors: inputs.map(() => one), totalTokens: 100 * inputs.length };
+      },
+    },
+    meter: meter(),
+    now: () => 0,
+  });
+  const r = await port.embedPosts!(
+    [{ text: 'a hippo', picture: 'https://example.invalid/a.jpg' }, { text: 'words only', picture: null }, { text: 'its picture is gone', picture: dead }, { text: ' ', picture: null }],
+    { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: 1 },
+  );
+  assert.deepEqual(sent[0], { text: 'a hippo', imageUrl: 'https://example.invalid/a.jpg' });
+  assert.deepEqual(r.value.map((v) => v?.space ?? null), [port.postSpace, port.postSpace, port.postSpace, null]);
+  assert.ok(sent.some((i) => JSON.stringify(i) === JSON.stringify({ text: 'its picture is gone' })), 'asked again with its words alone');
+  assert.notEqual(port.postSpace, SPACE, 'never compared with a picture-only vector');
+});

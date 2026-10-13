@@ -41,6 +41,22 @@ export interface JudgeSubject {
   readonly media: readonly MediaRef[];
   readonly distinctAuthors: number;
   readonly distinctSources: number;
+  /**
+   * Posts the owner has labelled that are closest to this one, with the owner's label, shown to
+   * the judge as precedent. Chosen by the CALLER (by similarity), for the reason above: what the
+   * judge is shown is a decision that must be visible outside the adapter. Absent or empty: none.
+   */
+  readonly precedents?: readonly JudgePrecedent[];
+}
+
+/** One labelled post shown as precedent: its words (already trimmed), the owner's label, and why. */
+export interface JudgePrecedent {
+  /** The labelled post's id: two subjects sharing a precedent are shown it once. */
+  readonly ref: string;
+  readonly text: string;
+  readonly label: 'meme' | 'not';
+  /** The owner's reason, or what the label came from; null when nothing was said. */
+  readonly why: string | null;
 }
 
 export type JudgeOutcome =

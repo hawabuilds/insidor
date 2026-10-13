@@ -22,6 +22,10 @@
  * ★ `batch` SENDS EVERY CALL AS ONE MESSAGE BATCH, at half price: the same requests as without it, so
  * the same answers, but minutes of waiting. Right for a run nobody watches.
  *
+ * ★ THE OWNER'S LABELS AS PRECEDENT, AS LIVE (`precedents`): each test post sent with its closest
+ * labelled posts, chosen by the same core functions
+ * the live scorer uses, with a test post never its own precedent.
+ *
  * What breaks if changed carelessly: the judge must be the live one's question and output budget
  * (`post`, postBatchMaxOutputTokens). Grading with a different prompt than the feed's measures a
  * judge nobody runs.
@@ -36,9 +40,10 @@ import type { Meter } from '../../contracts/src/ports/meter.ts';
 import { createHash } from 'node:crypto';
 
 import { heldKind } from '../../core/src/qualify/kinds.ts';
+import { embedInput, nearestLabelled, precedentsFor, type LabelledVector } from '../../core/src/qualify/precedents.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
 import { BATCH_PRICE_FRACTION, anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
-import { SPACE as EMBED_SPACE, voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
+import { POST_SPACE, SPACE as EMBED_SPACE, voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
 import { tuning } from '../../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../../eval/src/gold/coin-evidence.ts';
 
@@ -53,6 +58,8 @@ export interface EvalPost<G extends string = string> {
   readonly imageUri: string | null;
   /** The coin this post is the origin of, when it is one: its own picture is never its boost. Defaults to `id`. */
   readonly coinRef?: string;
+  /** The post's own id when `id` is not one (a gold sheet's coin id): never its own precedent. */
+  readonly itemId?: string;
 }
 
 export interface EvalRow<G extends string = string> extends EvalPost<G> {
@@ -99,6 +106,15 @@ export interface GradeOptions {
   readonly kind?: boolean;
   /** Ask the kind question of these posts too, passing or not (a gold post's kind decides which gate it counts in). */
   readonly kindAlso?: (p: EvalPost<string>) => boolean;
+  /**
+   * ★ PRECEDENTS, AS LIVE (services/runner work/precedents.ts): the owner's labelled posts with their
+   * vectors (internal.label_embedding, `PgLabelEmbeddingRepo.all(POST_SPACE)`). Each test post is
+   * embedded the same way (core `embedInput`; a post that is itself a label reuses that vector, so
+   * nothing is paid twice), sent with its Policy.judge.precedents.k closest labels — never itself:
+   * not its id, its own picture or its own words.
+   * Absent: no precedents (the judge as it ran before 2026-10-13).
+   */
+  readonly precedents?: { readonly labels: readonly LabelledVector[] } | null;
   /** Kind labels already known, by post id (stored answers, or an earlier grading this run): not asked again. */
   readonly knownKinds?: ReadonlyMap<string, string>;
   /** The kinds held back from the memes feed; Policy.judge.heldKinds unless a caller measures another set. */
@@ -180,18 +196,25 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
      per-post answer budget as the whole call's budget. */
   const maxBatch = o.maxBatch ?? P.qualify.batchSize;
   const policy = { ...P.judge, maxOutputTokens: P.judge.postBatchMaxOutputTokens };
-  const judge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy, maxBatch, question: 'post', examples: o.examples, batch: o.batch });
+  const withPrecedents = o.precedents !== undefined && o.precedents !== null && P.judge.precedents.k > 0;
+  const judge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy, maxBatch, question: 'post', examples: o.examples, batch: o.batch, precedents: withPrecedents });
   /* Graded in a fixed mixed order (a hash of the id), answered back in the caller's order. */
   const order = posts.map((p, i) => ({ i, h: createHash('sha256').update(p.id).digest('hex') })).sort((a, b) => (a.h < b.h ? -1 : a.h > b.h ? 1 : a.i - b.i)).map((x) => x.i);
   const chunks = <T,>(xs: readonly T[]): T[][] => Array.from({ length: Math.ceil(xs.length / maxBatch) }, (_, k) => xs.slice(k * maxBatch, (k + 1) * maxBatch));
 
-  const subjectOf = (p: EvalPost<G>) => ({
-    storyId: storyId(`rate-${p.id.replaceAll(':', '-')}`),
-    texts: p.text.trim() === '' ? [] : [p.text.slice(0, P.judge.maxCharsPerText)],
-    media: o.textOnly === true || p.imageUri === null ? [] : [{ kind: 'image' as const, uri: p.imageUri, width: null, height: null, durationMs: null }],
-    distinctAuthors: 1,
-    distinctSources: 1,
-  });
+  /* Each post's precedents and closeness to a "not a meme" label, filled below before any judging. */
+  const near = new Map<string, { readonly precedents: ReturnType<typeof precedentsFor> }>();
+  const subjectOf = (p: EvalPost<G>) => {
+    const precedents = near.get(p.id)?.precedents ?? [];
+    return {
+      storyId: storyId(`rate-${p.id.replaceAll(':', '-')}`),
+      texts: p.text.trim() === '' ? [] : [p.text.slice(0, P.judge.maxCharsPerText)],
+      media: o.textOnly === true || p.imageUri === null ? [] : [{ kind: 'image' as const, uri: p.imageUri, width: null, height: null, durationMs: null }],
+      distinctAuthors: 1,
+      distinctSources: 1,
+      ...(precedents.length === 0 ? {} : { precedents }),
+    };
+  };
   /* `maxBatch` posts a call either way, as the live scorer asks; batched, all of them go in one
      judge() so they leave as one Message Batch of such calls. */
   const budget = () => ({ capUsd: o.meter.line().capUsd, spentUsd: o.meter.line().spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
@@ -233,6 +256,44 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
     const others = o.coined.filter((c) => c.coinRef !== (p.coinRef ?? p.id) && c.uri !== p.imageUri);
     return others.length === 0 ? null : Math.max(...others.map((c) => c.v.reduce((s, x, i) => s + x * (v[i] ?? 0), 0)));
   };
+
+  /* ★ PRECEDENTS, before the first call — see GradeOptions.precedents. */
+  if (withPrecedents) {
+    const labels = o.precedents!.labels;
+    const norm = (t: string): string => t.trim().replace(/\s+/g, ' ').toLowerCase();
+    const selfOf = (p: EvalPost<G>) => {
+      const ids = new Set([p.id, p.itemId ?? p.id]);
+      const words = norm(embedInput(p.text, null, P).text);
+      return (l: LabelledVector): boolean => ids.has(l.itemId) || (p.imageUri !== null && l.picture === p.imageUri) || (words !== '' && norm(l.text) === words);
+    };
+    const inputOf = (p: EvalPost<G>) => embedInput(p.text, o.textOnly === true ? null : p.imageUri, P);
+    /* A post that is itself a label, embedded from the same words and picture, has that vector. */
+    const vectors = new Map<string, ArrayLike<number>>();
+    for (const p of posts) {
+      const input = inputOf(p);
+      const own = labels.find((l) => (l.itemId === p.id || l.itemId === p.itemId) && l.text === input.text && (l.picture ?? null) === input.picture);
+      if (own !== undefined) vectors.set(p.id, own.values);
+    }
+    const ask = posts.filter((p) => !vectors.has(p.id) && (inputOf(p).text !== '' || inputOf(p).picture !== null));
+    if (ask.length > 0) {
+      const embed = voyageEmbed({ client: voyageClient({ apiKey: (o.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: o.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter: o.meter, now: Date.now });
+      for (let k = 0; k < ask.length; k += embed.maxBatch) {
+        const part = ask.slice(k, k + embed.maxBatch);
+        const line = o.meter.line();
+        const r = await embed.embedPosts!(part.map(inputOf), { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
+        part.forEach((p, j) => {
+          const v = r.value[j];
+          if (v !== null && v !== undefined && v.space === POST_SPACE) vectors.set(p.id, v.values);
+        });
+      }
+    }
+    for (const p of posts) {
+      const v = vectors.get(p.id);
+      if (v === undefined) continue;
+      const self = selfOf(p);
+      near.set(p.id, { precedents: precedentsFor(nearestLabelled(v, labels, P.judge.precedents.k, self), P) });
+    }
+  }
 
   const mixed = order.map((i) => posts[i]!);
   if (batched) outcomes.push(...(await judge.judge(mixed.map(subjectOf), budget())).value);

@@ -37,6 +37,11 @@
  * judge and prompt ids, cost zero, `copied_from` naming the post it was given about. Only on a
  * live run: a dry run writes nothing, copies included.
  *
+ * ★ THE OWNER'S LABELS RIDE ALONG (2026-10-13). Before a pass is judged, each post is embedded
+ * (words and picture together) and sent with its closest labelled posts and their labels
+ * (work/precedents.ts, Policy.judge.precedents). With no vectors (the vendor down, the line spent,
+ * 0069 not applied) posts are judged as before.
+ *
  * ★ NO ANSWER IS NOT A NO. A dry run prices the batch and sends nothing; a budget pause or
  * an unavailable answer records nothing. Each leaves the post waiting — off the feed, and
  * back in the queue next pass — and none is ever read as a pass.
@@ -49,7 +54,7 @@
 import type { Item, Millis } from '@insidor/contracts';
 import { storyId, type ItemId, type StoryId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import type { JudgePort, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
+import type { JudgePort, JudgePrecedent, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PgItemRepo, PgPostJudgementRepo, ReusableAnswer } from '@insidor/store';
 import { clearsReachBar, couldPassWithBoost, heldKind } from '@insidor/core';
@@ -62,6 +67,7 @@ const PREFETCH_FACTOR = 5;
 const KIND_PROMPT_LABEL = 'post-kind';
 
 import { errorText, type Logger } from '../log.ts';
+import type { PostPrecedents, PrecedentSource } from './precedents.ts';
 
 export interface ScoringDeps {
   /** null when the judge is dormant: nothing is asked and every post waits. */
@@ -75,6 +81,11 @@ export interface ScoringDeps {
    * one question only.
    */
   readonly kindJudge?: JudgePort | null;
+  /**
+   * The owner's labelled posts closest to each post, sent with it as precedent
+   * (work/precedents.ts, Policy.judge.precedents). Absent, or nothing found: judged without them.
+   */
+  readonly precedents?: PrecedentSource | null;
   readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'catchAllStale' | 'reachReadings' | 'backfilled'>;
   readonly scores: Pick<PgPostJudgementRepo, 'record' | 'recordCopy' | 'reusable'>;
   readonly meter: Meter;
@@ -100,7 +111,7 @@ function subjectIdFor(item: Item): StoryId {
   return storyId(`post-${String(item.itemId).replaceAll(':', '-').replaceAll('|', '-')}`);
 }
 
-function subjectFor(item: Item, p: Policy): JudgeSubject {
+function subjectFor(item: Item, p: Policy, precedents: readonly JudgePrecedent[] = []): JudgeSubject {
   const text = item.text.trim().slice(0, p.judge.maxCharsPerText);
   return {
     storyId: subjectIdFor(item),
@@ -108,6 +119,7 @@ function subjectFor(item: Item, p: Policy): JudgeSubject {
     media: item.media,
     distinctAuthors: 1,
     distinctSources: 1,
+    ...(precedents.length === 0 ? {} : { precedents }),
   };
 }
 
@@ -214,12 +226,19 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
     }
   }
 
+  /* ★ THE OWNER'S LABELS FIRST: new taps embedded, then each post's closest labelled posts. Live
+     only, and never in the way: with nothing found every post is judged as before. */
+  const near: ReadonlyMap<string, PostPrecedents> =
+    deps.precedents === undefined || deps.precedents === null || deps.mode !== 'live' || toJudge.length === 0
+      ? new Map()
+      : await deps.precedents.refresh().then(() => deps.precedents!.forPosts(toJudge));
+
   let scored = copied;
   let wouldSpendUsd = 0;
   let spentUsd = 0;
   for (let i = 0; i < toJudge.length; i += judge.maxBatch) {
     const batch = toJudge.slice(i, i + judge.maxBatch);
-    const subjects = batch.map((item) => subjectFor(item, deps.policy));
+    const subjects = batch.map((item) => subjectFor(item, deps.policy, near.get(String(item.itemId))?.precedents));
     const byKey = new Map<string, ItemId>(batch.map((item) => [String(subjectIdFor(item)), item.itemId]));
     const estimate = judge.estimate(subjects);
 
@@ -296,7 +315,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   if (deps.mode === 'dry') {
     deps.log.info('DRY RUN — posts priced for scoring, not sent', { posts: queue.length, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
   } else {
-    deps.log.info('posts scored', { queued: queue.length, rescoring: rescoring.length, scored, heldBack, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
+    deps.log.info('posts scored', { queued: queue.length, rescoring: rescoring.length, scored, heldBack, withPrecedents: near.size, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
   }
   return { queued: queue.length, scored, copied, waiting: queue.length - scored, wouldSpendUsd, spentUsd };
 }

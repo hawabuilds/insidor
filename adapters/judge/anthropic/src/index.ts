@@ -35,10 +35,10 @@ import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
 import type { PriceBook } from '@insidor/meter';
 
 import type { BatchAnswer, Frame, JudgeClient, JudgeRequest, JudgeResponse, Usage } from './client.ts';
-import { VENDOR } from './client.ts';
+import { VENDOR, precedentsOf } from './client.ts';
 import { createHash } from 'node:crypto';
 
-import { POST_PROMPT_SET_SHA, PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT, VETO_PROMPT_SET_SHA } from './prompts.ts';
+import { POST_PROMPT_SET_SHA, PRECEDENTS_PROMPT, PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT, VETO_PROMPT_SET_SHA } from './prompts.ts';
 import { BATCH_PRICE_FRACTION, priceFor, usdForTokens, type ModelPrice } from './prices.ts';
 import { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, pictureUriFor, toOutcomes } from './to-judgement.ts';
 
@@ -79,17 +79,27 @@ const QUESTION: Readonly<Record<JudgeQuestion, { system: string; instructions: s
  * re-tune's block is applied. The rules stay a reviewed file; the examples are data. They change the
  * prompt, so they change its hash: an answer always names the exact examples it saw.
  */
-interface PromptSet { readonly system: string; readonly instructions: string; readonly sha: string; readonly label: string }
-function promptFor(question: JudgeQuestion, examples: string | null): PromptSet {
+/**
+ * ★ PRECEDENTS. With `precedents` on, each post in a call may carry the owner's labelled posts
+ * closest to it (JudgeSubject.precedents, chosen by the caller), sent after the cache mark with the
+ * words of prompts/post-precedents.txt. They differ on every call, so they cannot be in the hash;
+ * what is in it is that precedents were ON and the words that introduce them, so every answer
+ * says whether it was judged with them. Post question only.
+ */
+interface PromptSet { readonly system: string; readonly instructions: string; readonly sha: string; readonly label: string; readonly precedents: boolean }
+function promptFor(question: JudgeQuestion, examples: string | null, precedents = false): PromptSet {
   const q = QUESTION[question];
-  if (examples === null || examples.trim() === '' || question !== 'post') return { system: q.system, instructions: q.instructions, sha: q.sha(), label: q.label };
-  const sha = createHash('sha256').update(`${q.sha()}|${examples}`).digest('hex').slice(0, 8);
-  return { system: q.system, instructions: `${q.instructions}\n\n${examples.trim()}`, sha, label: q.label };
+  const withPrecedents = precedents && question === 'post';
+  const hasExamples = examples !== null && examples.trim() !== '' && question === 'post';
+  if (!hasExamples && !withPrecedents) return { system: q.system, instructions: q.instructions, sha: q.sha(), label: q.label, precedents: false };
+  const parts = [q.sha(), ...(hasExamples ? [examples] : []), ...(withPrecedents ? [`precedents:${PRECEDENTS_PROMPT.sha}`] : [])];
+  const sha = createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 8);
+  return { system: q.system, instructions: hasExamples ? `${q.instructions}\n\n${examples.trim()}` : q.instructions, sha, label: q.label, precedents: withPrecedents };
 }
 
-export const judgeId = (model: string, question: JudgeQuestion = 'story', examples: string | null = null): string => `judge:${VENDOR}/${model}@${promptFor(question, examples).sha}`;
-export const promptId = (question: JudgeQuestion = 'story', examples: string | null = null): string => {
-  const p = promptFor(question, examples);
+export const judgeId = (model: string, question: JudgeQuestion = 'story', examples: string | null = null, precedents = false): string => `judge:${VENDOR}/${model}@${promptFor(question, examples, precedents).sha}`;
+export const promptId = (question: JudgeQuestion = 'story', examples: string | null = null, precedents = false): string => {
+  const p = promptFor(question, examples, precedents);
   return `${p.label}@${p.sha}`;
 };
 
@@ -112,6 +122,8 @@ export interface AnthropicJudgeDeps {
   readonly batch?: boolean;
   /** Labelled examples after the post question's rules; ignored for the story question. */
   readonly examples?: string | null;
+  /** Send each subject's precedents (JudgeSubject.precedents); post question only. See PRECEDENTS above. */
+  readonly precedents?: boolean;
 }
 
 /** A batch's result inside the meter: the reply, or the vendor error that came with a status. */
@@ -138,10 +150,13 @@ const bookFor = (usd: number, endpoint: string = ENDPOINT): PriceBook => ({
  * (system prompt and instructions) is counted as a cache WRITE, the dearest way it can be
  * billed now that it carries the cache mark — so the estimate stays an upper bound.
  */
-export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubject[], question: JudgeQuestion = 'story', examples: string | null = null): Usage {
-  const set = promptFor(question, examples);
+export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubject[], question: JudgeQuestion = 'story', examples: string | null = null, precedents = false): Usage {
+  const set = promptFor(question, examples, precedents);
   const prefixChars = set.system.length + set.instructions.length;
-  const chars = JSON.stringify(subjects.map((s) => s.texts)).length;
+  /* The precedents as sent (each once a call, with their intro), when they are on. */
+  const shown = set.precedents ? precedentsOf({ subjects, precedentsIntro: PRECEDENTS_PROMPT.text }) : null;
+  const precedentChars = shown === null ? 0 : PRECEDENTS_PROMPT.text.length + JSON.stringify(shown.list).length + subjects.reduce((n, s) => n + JSON.stringify(s.precedents ?? []).length, 0);
+  const chars = JSON.stringify(subjects.map((s) => s.texts)).length + precedentChars;
   const frames = subjects.filter((s) => lookedAtFor(s) === 'videoFrame' || pictureUriFor(s) !== null).length;
   return {
     inputTokens: Math.ceil(chars / policy.charsPerToken) + frames * policy.tokensPerFrame,
@@ -161,8 +176,11 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
   };
   const question = deps.question ?? 'story';
   const examples = deps.examples ?? null;
-  const prompt = promptFor(question, examples);
-  const estimateUsd = (batch: readonly JudgeSubject[]): number => usdOf(price, estimateTokens(deps.policy, batch, question, examples));
+  const precedents = deps.precedents === true;
+  const prompt = promptFor(question, examples, precedents);
+  /* The words before the precedents, on every request this judge sends when they are on. */
+  const intro = prompt.precedents ? { precedentsIntro: PRECEDENTS_PROMPT.text } : {};
+  const estimateUsd = (batch: readonly JudgeSubject[]): number => usdOf(price, estimateTokens(deps.policy, batch, question, examples, precedents));
   /** Two pictures, the prompt, and the small answer budget — the most a pair can cost. */
   const pairEstimateUsd = (): number =>
     usdOf(price, {
@@ -171,8 +189,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
     });
 
   return {
-    id: judgeId(deps.model, question, examples),
-    promptId: promptId(question, examples),
+    id: judgeId(deps.model, question, examples, precedents),
+    promptId: promptId(question, examples, precedents),
     maxBatch: deps.maxBatch,
 
     estimate(subjects): CostEstimate {
@@ -264,6 +282,7 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
           instructions: prompt.instructions,
           subjects: batch,
           frames,
+          ...intro,
         }));
         const usd = parts.reduce((sum, b) => sum + estimateUsd(b), 0) * BATCH_PRICE_FRACTION;
         const spec = { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
@@ -297,8 +316,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
           const answered =
             reply?.kind === 'answered'
               ? toOutcomes(batch, reply.response.answers, {
-                  judgeId: judgeId(deps.model, question, examples),
-                  promptId: promptId(question, examples),
+                  judgeId: judgeId(deps.model, question, examples, precedents),
+                  promptId: promptId(question, examples, precedents),
                   judgedAt,
                   costUsdPerSubject: (usdOf(price, reply.response.usage) * BATCH_PRICE_FRACTION) / batch.length,
                 }, pictured)
@@ -321,6 +340,7 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
                 instructions: prompt.instructions,
                 subjects: batch,
                 frames,
+                ...intro,
               });
               // The vendor itemises its own charge in tokens, so the ledger records
               // what was actually spent rather than the estimate.
@@ -343,8 +363,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
           spends.push(call.spend);
           if (call.value.response === null) throw call.value.refusedWith ?? new Error('judge: no reply and no error');
           answered = toOutcomes(batch, call.value.response.answers, {
-            judgeId: judgeId(deps.model, question, examples),
-            promptId: promptId(question, examples),
+            judgeId: judgeId(deps.model, question, examples, precedents),
+            promptId: promptId(question, examples, precedents),
             judgedAt,
             costUsdPerSubject: batch.length === 0 ? 0 : call.spend.usd / batch.length,
           }, pictured);
@@ -374,9 +394,9 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
 
 export { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, pictureUriFor, toJudgement, toOutcomes } from './to-judgement.ts';
 export type { JudgementContext } from './to-judgement.ts';
-export { PROMPTS, PROMPT_NAMES, PROMPT_SET_SHA } from './prompts.ts';
+export { PRECEDENTS_PROMPT, PROMPTS, PROMPT_NAMES, PROMPT_SET_SHA } from './prompts.ts';
 export type { Prompt, PromptName } from './prompts.ts';
-export { ANSWER_SCHEMA, JudgeNotConfigured, buildRequestBody, decodeReply, httpClient, usageOf } from './client.ts';
+export { ANSWER_SCHEMA, JudgeNotConfigured, buildRequestBody, decodeReply, httpClient, precedentsOf, usageOf } from './client.ts';
 export type { BatchAnswer, Frame, JudgeClient, JudgeClientConfig, JudgeRequest, JudgeResponse, Usage } from './client.ts';
 export { sizedPictureUri } from './pictures.ts';
 export type { PictureSize } from './pictures.ts';
