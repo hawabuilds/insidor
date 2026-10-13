@@ -74,6 +74,34 @@
   overflow-wrap: break-word;
 }
 
+/* The poster's picture, small and inline before the handle on a post card, so the line keeps the
+   baseline the story cards share. The letter stands in only when the picture fails to load. */
+.posterPic {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: -3px;
+  background: var(--input);
+}
+
+.posterLetter {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: -3px;
+  background: var(--input);
+  color: var(--text-2);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .age {
   color: var(--text-2);
   font-weight: 600;

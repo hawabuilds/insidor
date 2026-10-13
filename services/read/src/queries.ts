@@ -112,11 +112,22 @@ export const LAUNCH_ROWS_SQL =
  * polled whole, so the array is the order, and `item_id` is not selected so it cannot
  * reach a reply by accident. The post sheet's facts (`sheet`, a chart's worth of readings per
  * post) are cut here: the feed draws cards, and only `GET /post/:id/sheet` reads them.
+ *
+ * ★ THE POSTER'S PICTURE IS ADDED HERE, AT READ TIME, NOT IN THE PROJECTED PAYLOAD
+ * (`authorPictureUrl`, the owner 2026-10-13: the card shows the poster's picture beside the
+ * handle). public.author is where the picture is filled in — by every new read of the account and
+ * by the runner's fill-in of older posts — so a card shows it as soon as it is stored, not at the
+ * next projection. Null when the account has none; read through `to_jsonb(a)` so a database
+ * without 0067 sends null rather than failing the feed.
  */
 export const RISING_VIEW_SQL = 'select tick from public.rising_view where feed_id = $1';
 
 export const RISING_ROWS_SQL =
-  `select payload - 'sheet' as payload from public.rising_row where feed_id = $1 order by "position" asc`;
+  `select (r.payload - 'sheet') || jsonb_build_object('authorPictureUrl', to_jsonb(a) ->> 'picture_url') as payload
+     from public.rising_row r
+     left join public.item i on i.item_id = r.item_id
+     left join public.author a on a.author_key = i.author_key
+    where r.feed_id = $1 order by r."position" asc`;
 
 /**
  * The pairs frame: the tick, and the head the projector committed alongside it.

@@ -2,9 +2,9 @@
  * One single post on the For You or Popular feed, as a card.
  *
  * The story card's layout (row.module.css) with a post's facts in it: the post's own picture
- * with its platform badge, its words as the title, who posted it and how long ago, its views
- * and views line. This is the card as it looked before the post sheet was built, kept that way
- * on purpose: the owner asked for the old look back.
+ * with its platform badge, its words as the title, who posted it (with their profile picture) and
+ * how long ago, its views and views line. This is the card as it looked before the post sheet was
+ * built, kept that way on purpose: the owner asked for the old look back.
  * A post with no picture or video has no thumbnail box at all, so its words use the card's full
  * width; a card with media is unchanged.
  *
@@ -31,7 +31,7 @@
  * as well, and a card that opens anything but the post sheet sends the person out of the flow.
  */
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { RisingPost } from '../api/index.ts';
 import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
 import { formatAge } from '../format/duration.ts';
@@ -93,7 +93,10 @@ export function PostRow({ post, now, handlers, extra = null }: { post: RisingPos
               <span className={styles['viewsL']}>views</span>
             </div>
             <div className={styles['byline']}>
-              <span>{post.authorLabel}</span>
+              <span>
+                <PosterPic key={post.authorPictureUrl ?? ''} url={post.authorPictureUrl} label={post.authorLabel} />
+                {post.authorLabel}
+              </span>
               <Value r={formatAge(post.postedAt, now)} className={styles['age']} />
             </div>
           </div>
@@ -119,6 +122,16 @@ export function PostRow({ post, now, handlers, extra = null }: { post: RisingPos
       {extra}
     </article>
   );
+}
+
+/**
+ * The poster's own profile picture beside the handle (the owner, 2026-10-13). The handle's first
+ * letter only when the account has no picture stored or the picture will not load.
+ */
+function PosterPic({ url, label }: { url: string | null; label: string }) {
+  const [failed, setFailed] = useState(false);
+  if (url !== null && !failed) return <img className={styles['posterPic']} src={url} alt="" loading="lazy" onError={() => setFailed(true)} />;
+  return <span className={styles['posterLetter']} aria-hidden="true">{(label.replace(/^@/, '').trim()[0] ?? '?').toUpperCase()}</span>;
 }
 
 /** One button the coin status asked for, and never one it did not. */
