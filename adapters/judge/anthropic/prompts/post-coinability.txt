@@ -1,0 +1,61 @@
+Each item below is one post (one storyId, one text). Answer for each.
+
+WHAT A COINED POST LOOKS LIKE
+Of 77 posts people actually made coins about, labelled by hand:
+  - the picture carries it (82%): the image alone could be the coin's picture
+  - there is a character (74%): an animal, a creature, a person turned into a character,
+    a mascot, an object with a face or a story
+  - it has a one-word name (69%), or a name that reads as one (MOODENG, CHILLGUY)
+  - most were NOT jokes (only 36% were funny): serious news and striking real things
+    were coined as often as jokes
+So the question is not "is this funny" and not "is this a meme yet". It is: is there one
+nameable thing here that people could rally a coin around?
+
+YES — one nameable thing, in the words or the picture:
+  - an animal or creature with a look, a name or a story (a pygmy hippo, a cat with a job)
+  - a character: drawn, from a game or a show, or a person turned into one
+  - an object or an absurd real thing (the most expensive cow ever sold, a fish given a
+    roller coaster, a cat with its own casino)
+  - a phrase or a line people repeat, with or without a picture
+  - a product everyone is posting about by name (a new AI model, a gadget)
+  - a company's moment (a company joining an index, a launch people repeat)
+  - one person's single viral moment (a prize-winner's arrest, a chart a leader held up,
+    a line someone said that everyone quotes, a bet someone made in public)
+  - a crypto or AI story with a name: a rug pull, an airdrop, a token or model launch, a
+    market moment, a product coming to crypto, a crypto figure's line or picture the
+    timeline repeats, a joke or pun about a coin or its holders
+  - a rallying cry around one person or thing ("JUSTICE FOR ...", "FREE ...", "HELP ..."),
+    including a fundraiser or a call to help one named person
+  - a picture that is itself the thing. WHEN THE WORDS SAY ALMOST NOTHING — a link, one or
+    two words, "good morning", "Always trust" — THE PICTURE DECIDES: if it shows one clear
+    figure, creature, character, face or object, answer yes and name what it shows. Only a
+    picture of nothing in particular (a crowd, a screenshot of text, scenery) is a no
+News IS a subject when one of the things above is at its centre. Name the thing, not the
+headline. The test between a person's viral moment and general political news: is the post
+about ONE named person or thing and what they did or what happened to them (a viral moment
+— yes), or about a policy, an ideology, a party or an election (general — no)?
+
+NO — nothing to coin:
+  - sport: a score, a result, a highlight or clip, a transfer, a player's stats or news
+    about a player or a team
+  - fan accounts: an idol's photo or story, a fancam, a comeback, an album, tour or airport
+    update, a streaming or voting goal
+  - general political news with nothing in it to name: a policy, an ideology, a party, an
+    election, a debate about society
+  - a post with nothing specific in it: a mood, a generic photo, a list, an ad
+Sport, fandom and politics turn into a YES only when there is a meme subject inside them:
+an animal on the pitch, a fan's sign, an object thrown on stage, one line or picture that
+people repeat.
+Judge what the post shows, never who posted it.
+
+THE NAME
+Give a ticker-style name of at most three words, as the post or its picture would have
+people say it: the cow is CARINA, the fish on a roller coaster is FISHCOASTER, the hippo
+is MOODENG. Not a description of the post. If you cannot name it in three words, answer no.
+
+HOW SURE ARE YOU?
+A number between 0 and 1, given only this post. High when one thing clearly stands out;
+low when the post could be about several things.
+
+Do not consider how many people saw the post. Numbers of views, likes or shares are not
+shown to you, deliberately: attention is measured elsewhere.

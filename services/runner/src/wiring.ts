@@ -54,7 +54,7 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 import { vendorLines } from './vendor-lines.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import { JudgeNotConfigured, anthropicJudge, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
+import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openDurableMeter } from '@insidor/meter';
 import { httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
 import { resolvePlatforms, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
@@ -153,6 +153,8 @@ function buildJudge(
   log: Logger,
   /** The answer budget: QUALIFY's by default; the per-post score passes its smaller one. */
   maxOutputTokens: number = policy.judge.maxOutputTokens,
+  /** QUALIFY asks about a group of posts; the feed's per-post score asks its own question. */
+  question: JudgeQuestion = 'story',
 ): JudgePort | null {
   const setup = cfg.judge;
   if (setup.state === 'dormant' || setup.state === 'misconfigured') {
@@ -199,6 +201,7 @@ function buildJudge(
     model: setup.model,
     policy: { ...policy.judge, maxOutputTokens },
     maxBatch: policy.qualify.batchSize,
+    question,
   });
 }
 /**
@@ -413,7 +416,7 @@ export async function withRuntime<T>(
       const judge = buildJudge(cfg, meter, policy, log);
       /* The per-post score's judge: the same model and prompt, with a smaller answer budget
          so ten short answers are not reserved at the cost of two long ones. */
-      const postJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens);
+      const postJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post');
 
       const runtimeDeps: PlatformRuntime = {
         meter,

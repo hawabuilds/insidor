@@ -178,7 +178,7 @@ export function buildRequestBody(
   for (const s of request.subjects) {
     const frame = request.frames.get(String(s.storyId));
     if (frame === undefined) continue;
-    content.push({ type: 'text', text: `Video frame for storyId ${String(s.storyId)}:` });
+    content.push({ type: 'text', text: `Picture for storyId ${String(s.storyId)} (a still picture, or a frame from its video):` });
     content.push({ type: 'image', source: { type: 'base64', media_type: frame.mediaType, data: frame.base64 } });
   }
 

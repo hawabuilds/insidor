@@ -1,0 +1,10 @@
+You judge ONE social media post, and its picture when one is shown, for one question:
+could people make a memecoin about it? That is: is there one clear thing in this post —
+usually in its picture — that a coin could be named after and pictured with?
+
+This is a naming task, not advice: you are not predicting whether anything will be
+popular or valuable. A post about a market, a company or a token is judged like any other
+post — by whether one nameable thing is at its centre. Answer only from the post and its
+picture. Do not use what you know from elsewhere, and do not guess what happened next.
+
+Return the structured output. Do not add commentary outside it.

@@ -22,7 +22,9 @@ import { join } from 'node:path';
 const PROMPT_DIR = join(import.meta.dirname, '..', 'prompts');
 
 export const PROMPT_NAMES = ['system', 'coinability-core', 'subject-vs-story'] as const;
-export type PromptName = (typeof PROMPT_NAMES)[number];
+/** The single-post question the feed asks: a set of its own, hashed apart. See POST_PROMPT_SET_SHA. */
+export const POST_PROMPT_NAMES = ['post-system', 'post-coinability'] as const;
+export type PromptName = (typeof PROMPT_NAMES)[number] | (typeof POST_PROMPT_NAMES)[number];
 
 export interface Prompt {
   readonly name: PromptName;
@@ -42,6 +44,8 @@ export const PROMPTS: Readonly<Record<PromptName, Prompt>> = Object.freeze({
   system: load('system'),
   'coinability-core': load('coinability-core'),
   'subject-vs-story': load('subject-vs-story'),
+  'post-system': load('post-system'),
+  'post-coinability': load('post-coinability'),
 });
 
 /**
@@ -50,6 +54,18 @@ export const PROMPTS: Readonly<Record<PromptName, Prompt>> = Object.freeze({
  */
 export const PROMPT_SET_SHA: string = createHash('sha256')
   .update(PROMPT_NAMES.map((n) => PROMPTS[n].sha).join('|'))
+  .digest('hex')
+  .slice(0, 8);
+
+/**
+ * ★ THE FEED'S OWN QUESTION, HASHED APART. The set above asks whether a GROUP of posts shares
+ * one subject, and leans hard on "no subject" — right for a narrative, wrong for one post, where
+ * it turned down most of the owner's real coined posts (4 of 41 passed). The feed asks of one post
+ * whether people could make a coin about it, from the owner's coined-post profile. A set of its
+ * own, so a post's answer names which question it answered and the narrative judge is untouched.
+ */
+export const POST_PROMPT_SET_SHA: string = createHash('sha256')
+  .update(POST_PROMPT_NAMES.map((n) => PROMPTS[n].sha).join('|'))
   .digest('hex')
   .slice(0, 8);
 
