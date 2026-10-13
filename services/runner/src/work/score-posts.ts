@@ -16,6 +16,15 @@
  * that has not cleared it waits, unscored and off the feed, and is checked again after its next
  * re-read. A post a story's backfill fetched is judged regardless: GROUP needs its name.
  *
+ * ★ NO DOUBLE SCORING (2026-10-13). Before a post is sent, an answer this judge already gave
+ * under this prompt, inside the feed's window, is reused when the post shows the judge nothing
+ * new: a plain repost (the same object, re-shown); a quote whose own text is empty or only links
+ * and that carries no picture of its own (a quote with words is a new post — it says something
+ * the quoted one did not, so it is judged); or a post whose first picture is the very file of a
+ * post the judge was shown (`looked_at = 'picture'`). The answer is filed as a copy (0053): same
+ * judge and prompt ids, cost zero, `copied_from` naming the post it was given about. Only on a
+ * live run: a dry run writes nothing, copies included.
+ *
  * ★ NO ANSWER IS NOT A NO. A dry run prices the batch and sends nothing; a budget pause or
  * an unavailable answer records nothing. Each leaves the post waiting — off the feed, and
  * back in the queue next pass — and none is ever read as a pass.
@@ -30,7 +39,7 @@ import { storyId, type ItemId, type StoryId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePort, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import type { PgItemRepo, PgPostJudgementRepo } from '@insidor/store';
+import type { PgItemRepo, PgPostJudgementRepo, ReusableAnswer } from '@insidor/store';
 import { clearsReachBar } from '@insidor/core';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -43,7 +52,7 @@ export interface ScoringDeps {
   /** null when the judge is dormant: nothing is asked and every post waits. */
   readonly judge: JudgePort | null;
   readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'reachReadings' | 'backfilled'>;
-  readonly scores: Pick<PgPostJudgementRepo, 'record'>;
+  readonly scores: Pick<PgPostJudgementRepo, 'record' | 'recordCopy' | 'reusable'>;
   readonly meter: Meter;
   readonly mode: 'dry' | 'live';
   readonly policy: Policy;
@@ -54,6 +63,8 @@ export interface ScoringDeps {
 export interface ScoringResult {
   readonly queued: number;
   readonly scored: number;
+  /** Given another post's answer instead of a call (included in `scored`). */
+  readonly copied: number;
   readonly waiting: number;
   /** Priced and not sent, on a dry run. */
   readonly wouldSpendUsd: number;
@@ -76,6 +87,48 @@ function subjectFor(item: Item, p: Policy): JudgeSubject {
   };
 }
 
+/** The post's words without its links: what a quote says of its own. */
+const ownWords = (text: string): string => text.replace(/https?:\/\/\S+/gi, '').trim();
+
+/** The first still picture's uri, as the store keys a post's picture. */
+const firstImage = (item: Item): string | null => item.media.find((m) => m.kind === 'image' && m.uri !== '')?.uri ?? null;
+
+/**
+ * The answer this post may reuse, by the rule in the header, or null when it must be judged.
+ * A repost first, then a bare quote, then the same picture.
+ */
+export function reusableFor(
+  item: Item,
+  found: { readonly byItem: ReadonlyMap<string, ReusableAnswer>; readonly byImage: ReadonlyMap<string, ReusableAnswer> },
+): ReusableAnswer | null {
+  if (item.rebroadcastOf !== null) {
+    const answer = found.byItem.get(String(item.rebroadcastOf));
+    if (answer !== undefined) return answer;
+  }
+  const picture = firstImage(item);
+  if (item.reproductionOf !== null && ownWords(item.text) === '' && picture === null) {
+    const answer = found.byItem.get(String(item.reproductionOf));
+    if (answer !== undefined) return answer;
+  }
+  return picture === null ? null : (found.byImage.get(picture) ?? null);
+}
+
+/** The answers this pass may reuse, or null when they cannot be read: then every post is judged. */
+async function findReusable(deps: ScoringDeps, queue: readonly Item[], judgeId: string, promptId: string, since: Millis) {
+  try {
+    return await deps.scores.reusable({
+      itemIds: queue.flatMap((item) => [item.rebroadcastOf, item.reproductionOf].filter((id): id is ItemId => id !== null)),
+      imageUris: queue.flatMap((item) => firstImage(item) ?? []),
+      judgeId,
+      promptId,
+      since,
+    });
+  } catch (e) {
+    deps.log.warn('earlier answers could not be read; every post is judged', { err: errorText(e) });
+    return null;
+  }
+}
+
 export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   const now = deps.now();
   const r = deps.policy.rising;
@@ -89,15 +142,36 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   const queue = wide
     .filter((item) => backfilled.has(String(item.itemId)) || clearsReachBar('fyp', readings.get(String(item.itemId)) ?? [], item.postedAt, deps.policy))
     .slice(0, r.postsPerPass);
-  const empty = { queued: queue.length, scored: 0, waiting: queue.length, wouldSpendUsd: 0, spentUsd: 0 };
+  const empty = { queued: queue.length, scored: 0, copied: 0, waiting: queue.length, wouldSpendUsd: 0, spentUsd: 0 };
   if (queue.length === 0 || deps.judge === null) return empty;
   const judge = deps.judge;
 
-  let scored = 0;
+  /* ★ REUSE BEFORE PAYING — see the header. Live only: a dry run writes nothing. A lookup or a
+     copy that fails (a database without 0053, say) never costs a post its judgement: the post is
+     simply judged, as it was before reuse existed. */
+  let copied = 0;
+  const toJudge: Item[] = [];
+  const found = deps.mode === 'live' ? await findReusable(deps, queue, judge.id, judge.promptId, since) : null;
+  for (const item of queue) {
+    const answer = found === null ? null : reusableFor(item, found);
+    if (answer === null || String(answer.sourceId) === String(item.itemId)) {
+      toJudge.push(item);
+      continue;
+    }
+    try {
+      await deps.scores.recordCopy(item.itemId, { ...answer.judgement, judgedAt: now, costUsd: 0, rationaleRef: null }, answer.sourceId);
+      copied += 1;
+    } catch (e) {
+      deps.log.warn('could not file a reused answer; the post is judged instead', { post: String(item.itemId), err: errorText(e) });
+      toJudge.push(item);
+    }
+  }
+
+  let scored = copied;
   let wouldSpendUsd = 0;
   let spentUsd = 0;
-  for (let i = 0; i < queue.length; i += judge.maxBatch) {
-    const batch = queue.slice(i, i + judge.maxBatch);
+  for (let i = 0; i < toJudge.length; i += judge.maxBatch) {
+    const batch = toJudge.slice(i, i + judge.maxBatch);
     const subjects = batch.map((item) => subjectFor(item, deps.policy));
     const byKey = new Map<string, ItemId>(batch.map((item) => [String(subjectIdFor(item)), item.itemId]));
     const estimate = judge.estimate(subjects);
@@ -140,7 +214,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   if (deps.mode === 'dry') {
     deps.log.info('DRY RUN — posts priced for scoring, not sent', { posts: queue.length, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
   } else {
-    deps.log.info('posts scored', { queued: queue.length, scored, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
+    deps.log.info('posts scored', { queued: queue.length, scored, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
   }
-  return { queued: queue.length, scored, waiting: queue.length - scored, wouldSpendUsd, spentUsd };
+  return { queued: queue.length, scored, copied, waiting: queue.length - scored, wouldSpendUsd, spentUsd };
 }

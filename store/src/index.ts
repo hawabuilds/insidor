@@ -39,6 +39,7 @@ export { PgImageEmbeddingRepo } from './repo/image-embeddings.ts';
 export { PgImagePairRepo } from './repo/image-pairs.ts';
 export type { ImageMatch, UnembeddedImage } from './repo/image-embeddings.ts';
 export { PgJudgementRepo, PgPostJudgementRepo } from './repo/judgements.ts';
+export type { ReusableAnswer } from './repo/judgements.ts';
 export { PgLabelRepo } from './repo/labels.ts';
 export type { LabelKey } from './repo/labels.ts';
 export { PgStageRunRepo } from './repo/runs.ts';
