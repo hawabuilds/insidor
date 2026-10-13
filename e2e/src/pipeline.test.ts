@@ -34,7 +34,7 @@ import { inMemoryMeter } from '@insidor/meter';
 import { xPlatform } from '@insidor/platform-x';
 import type { XClient } from '@insidor/platform-x/client.ts';
 import { projectStoryFrame } from '@insidor/project/src/frame.ts';
-import { projectRisingFeeds } from '@insidor/project/src/rising.ts';
+import { buildRising, projectRisingFeeds } from '@insidor/project/src/rising.ts';
 import { handle } from '@insidor/read/src/routes.ts';
 import { policyHash } from '@insidor/runner/src/hash.ts';
 import { groupLoop } from '@insidor/runner/src/loops/group.ts';
@@ -453,6 +453,42 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   const popularReply = JSON.parse((await handle('GET', '/rising/popular', read)).body) as { posts: { reach: { v: number } }[] };
   const views = popularReply.posts.map((p) => p.reach.v);
   assert.deepEqual(views, [...views].sort((a, b) => b - a), 'Popular is most views first');
+
+  /* ★ THE OWNER'S CALL WINS (0054, services/project/src/owner-calls.ts). "Not a meme" takes a
+     post off both feeds and off its narrative's page; "Is a meme" brings it back, and lifts the
+     judge's no from the weather post — the reach bar still applies. */
+  const reproject = async () => {
+    await projectStoryFrame(
+      db,
+      'default',
+      { nowMs: clock, sparkWindowMs: 30 * MINUTE, marketFreshnessMs: DEFAULT_POLICY.market.readingFreshnessMs, feedFreshnessMs: DEFAULT_POLICY.assets.feedFreshnessMs },
+      { storiesSinceMs: NOW - 48 * 60 * MINUTE, reachSinceMs: NOW - 26 * 60 * MINUTE, limit: 200 },
+    );
+    await projectRisingFeeds(db, clock, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1 } });
+    const feedIds = async (feed: string) => (JSON.parse((await handle('GET', `/rising/${feed}`, read)).body) as { posts: { id: string }[] }).posts.map((p) => p.id);
+    const storyPage = JSON.parse((await handle('GET', `/story/${moment.story_id}`, read)).body) as { evidence: { evidenceId: string }[] };
+    return { fyp: await feedIds('fyp'), popular: await feedIds('popular'), story: storyPage.evidence.map((e) => e.evidenceId) };
+  };
+  const call = (itemId: string, verdict: string) =>
+    db.query(`insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict) values ('wallet:A1e82D9Lw4irgKMpXRpJbvLw8c7xCCyA42NdcxzKvvdL', 'did:privy:owner', 'post', $1, $2)`, [itemId, verdict]);
+  const HIDDEN = 'x:1900000000000000002';
+  await call(HIDDEN, 'not');
+  const hidden = await reproject();
+  assert.ok(!hidden.fyp.includes(HIDDEN) && !hidden.popular.includes(HIDDEN), 'a post the owner hid is on neither feed');
+  assert.ok(!hidden.story.includes(HIDDEN), "and not on its narrative's page");
+  assert.equal(hidden.story.length, 3, 'the narrative keeps its other posts');
+  const why = await db.query<{ reason: string }>(`select reason from public.feed_rejection where subject_kind = 'post' and subject_id = $1`, [HIDDEN]);
+  assert.equal(why[0]?.reason, 'owner_not_meme', "recorded as the owner's no, not the judge's");
+  await assert.rejects(db.query(`update internal.owner_feedback set verdict = 'meme' where item_id = $1`, [HIDDEN]), 'a call is never edited in place');
+
+  await call(HIDDEN, 'meme');
+  await call('x:1900000000000000005', 'meme');
+  const back = await reproject();
+  assert.ok(back.fyp.includes(HIDDEN) && back.popular.includes(HIDDEN) && back.story.includes(HIDDEN), '"Is a meme" brings it back everywhere');
+  /* The weather post passes the owner's call and meets the reach bar like any other post: its
+     views were never read as a rate, so it waits, for that reason and not the judge's. */
+  const weather = await buildRising(db, clock, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1 } });
+  assert.equal(weather.whyNot.get('x:1900000000000000005'), 'reach_unread', 'the owner says what a post is, not how many saw it');
 
   /* 6. A second GROUP pass has nothing to do. */
   const again = await loops.group.run(ctx);

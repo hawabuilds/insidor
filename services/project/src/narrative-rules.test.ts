@@ -21,3 +21,13 @@ test('a narrative that qualifies keeps only its passing posts; an unscored post 
   assert.deepEqual(r.kept[0]?.members.map((m) => m.itemId), ['a', 'b']);
   assert.deepEqual(r.rejections, [{ kind: 'post', id: 'c', reason: 'not_scored', detail: 'dropped from s2' }]);
 });
+
+test("★ the owner's \"Not a meme\" drops a post from its narrative, and too few left takes the narrative off the board", () => {
+  const kept = checkNarratives([story('s3', ['a', 'b', 'c'])], new Map([['a', 'passes'], ['b', 'passes'], ['c', 'owner_not_meme']]), P);
+  assert.deepEqual(kept.kept[0]?.members.map((m) => m.itemId), ['a', 'b']);
+  assert.deepEqual(kept.rejections, [{ kind: 'post', id: 'c', reason: 'owner_not_meme', detail: 'dropped from s3' }]);
+
+  const gone = checkNarratives([story('s4', ['a', 'b'])], new Map([['a', 'passes'], ['b', 'owner_not_meme']]), P);
+  assert.deepEqual(gone.kept, []);
+  assert.equal(gone.rejections[0]?.reason, 'too_few_passing_posts');
+});

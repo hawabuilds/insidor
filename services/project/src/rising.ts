@@ -44,6 +44,10 @@
  *
  * A search never puts a coin on a post: the one-coin link only ever comes from a story's row.
  *
+ * ★ THE OWNER'S CALL WINS OVER THE JUDGE'S (owner-calls.ts). "Not a meme" keeps a post off both
+ * feeds, recorded as `owner_not_meme`; "Is a meme" passes it whatever the judge said, judged or
+ * not — and it must still clear the feed's reach bar like any other post.
+ *
  * What breaks if changed carelessly: the story's link is read from the board rows committed in
  * the same projection run. Reading it from anywhere else would let a post offer Buy on a coin
  * the narrative's own row has since stopped naming.
@@ -55,6 +59,7 @@ import { clearsReachBar, postScoreReason, type ReachLevel } from '@insidor/core'
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
 
 import { loadReach, pictureOf, sourceLabel } from './db.ts';
+import { withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { writeSameNameCoins } from './same-name.ts';
 import { permalinkFor } from './permalinks.ts';
 import { projectReach, projectSpark } from './project.ts';
@@ -89,7 +94,7 @@ export interface WireRisingPost {
   readonly coins: WirePostCoinLink;
 }
 
-interface RisingRow {
+export interface RisingRow {
   item_id: string;
   source: string;
   source_item_id: string;
@@ -100,12 +105,16 @@ interface RisingRow {
   handle: string | null;
   display_name: string | null;
   source_author_id: string;
-  coinable: boolean;
-  confidence: number;
-  looked_at: 'text' | 'picture' | 'videoFrame';
+  /* Null together when the judge has not answered: such a row is loaded only when the owner
+     called it a meme. */
+  coinable: boolean | null;
+  confidence: number | null;
+  looked_at: 'text' | 'picture' | 'videoFrame' | null;
   proposed_name: string | null;
   picture_similarity: number | null;
   story_id: string | null;
+  /** The owner's newest call on this post (0054), or null when there is none. */
+  owner_call?: OwnerPostCall | null;
 }
 
 const toMs = (value: Date | string | null): Millis | null => {
@@ -125,17 +134,26 @@ async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingR
             a.handle, a.display_name, a.source_author_id,
             j.coinable, j.confidence, j.looked_at, j.proposed_name,
             pic.similarity as picture_similarity,
-            s.story_id
+            s.story_id,
+            oc.verdict as owner_call
        from internal.item_found_by f
        join public.item i on i.item_id = f.item_id
        join public.author a on a.author_key = i.author_key
-       join lateral (
+       left join lateral (
               select pj.coinable, pj.confidence, pj.looked_at, pj.proposed_name
                 from internal.post_judgement pj
                where pj.item_id = i.item_id
                order by pj.judged_at desc, pj.id desc
                limit 1
             ) j on true
+       /* The owner's newest call (0054): it outranks the judge's answer, either way. */
+       left join lateral (
+              select ofb.verdict
+                from internal.owner_feedback ofb
+               where ofb.subject_kind = 'post' and ofb.item_id = i.item_id
+               order by ofb.created_at desc, ofb.id desc
+               limit 1
+            ) oc on true
        /* The picture boost's one number: how close this post's picture is to a coined post's.
           Read here and nowhere else; it decides, and never reaches the wire. */
        left join lateral (
@@ -153,7 +171,8 @@ async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingR
                limit 1
             ) s on true
       where i.origin = 'observed'
-        and coalesce(i.posted_at, i.first_seen_at) >= $1`,
+        and coalesce(i.posted_at, i.first_seen_at) >= $1
+        and (j.coinable is not null or oc.verdict = 'meme')`,
     [new Date(sinceMs).toISOString()],
   );
 }
@@ -287,6 +306,19 @@ export interface RisingFrame {
   readonly sameName: ReadonlyMap<string, readonly string[]>;
 }
 
+/**
+ * Whether one loaded post passes: the judge's answer held to `postScoreReason`, with the owner's
+ * call over it. A row with no answer is here only because the owner called it a meme.
+ */
+export function postStanding(row: RisingRow, policy = DEFAULT_POLICY): FeedRejectionReason | 'passes' {
+  const similarity = row.picture_similarity === null ? null : Number(row.picture_similarity);
+  const judge =
+    row.coinable === null || row.confidence === null || row.looked_at === null
+      ? undefined
+      : postScoreReason({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy, similarity);
+  return withOwnerCall(judge, row.owner_call ?? undefined) ?? 'not_scored';
+}
+
 /** Load, filter by the per-post score and each feed's view bar, project, and order both feeds. Writes nothing. */
 export async function buildRising(
   db: Db,
@@ -298,8 +330,7 @@ export async function buildRising(
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
   const rows = (await loadCandidates(db, sinceMs)).filter((row) => {
-    const similarity = row.picture_similarity === null ? null : Number(row.picture_similarity);
-    const why = postScoreReason({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy, similarity);
+    const why = postStanding(row, policy);
     if (why !== 'passes') whyNot.set(row.item_id, why);
     return why === 'passes';
   });
