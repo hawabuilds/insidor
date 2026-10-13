@@ -276,9 +276,9 @@ export function replayOne(m: MissedReplayPost, ctx: ReplayContext, fresh: EvalRo
   if (m.judgement !== null) {
     const said = postScoreReason(m.judgement, P);
     const j = m.judgement;
-    judge = { ok: said === 'passes', asked: 'stored', said: `${said === 'passes' ? 'passes' : `no (${said})`}: said ${j.coinable ? 'meme' : 'not a meme'} at ${j.confidence}, name ${j.proposedName === null ? '—' : `"${j.proposedName}"`}, looked at ${j.lookedAt}, ${utc(j.judgedAtMs)} UTC (stored)` };
+    judge = { ok: said === 'passes', asked: 'stored', said: `${said === 'passes' ? '' : `${said}; `}said ${j.coinable ? 'meme' : 'not a meme'} at ${j.confidence}, name ${j.proposedName === null ? '—' : `"${j.proposedName}"`}, looked at ${j.lookedAt}, ${utc(j.judgedAtMs)} UTC (stored)` };
   } else if (fresh !== null && fresh.coinable !== null) {
-    judge = { ok: fresh.passes, asked: 'fresh', said: `${fresh.passes ? 'passes' : 'no'}: said ${fresh.coinable ? 'meme' : 'not a meme'} at ${fresh.confidence}, name ${fresh.name === null ? '—' : `"${fresh.name}"`}, looked at ${fresh.lookedAt} (asked now, live rules, kind question after)` };
+    judge = { ok: fresh.passes, asked: 'fresh', said: `said ${fresh.coinable ? 'meme' : 'not a meme'} at ${fresh.confidence}, name ${fresh.name === null ? '—' : `"${fresh.name}"`}, looked at ${fresh.lookedAt} (asked now, live rules, kind question after)` };
   } else {
     judge = { ok: null, asked: 'never', said: 'never judged; run with --judge to ask the live judge on the learning book' };
   }
