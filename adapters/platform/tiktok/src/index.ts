@@ -21,7 +21,7 @@
  * product judgement that lives in core.
  */
 
-import type { CounterSet, Item, Millis } from '@insidor/contracts';
+import type { Author, CounterSet, Item, Millis } from '@insidor/contracts';
 import type { Budget, Meter, Metered, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import type {
   DiscoveryQuery,
@@ -38,7 +38,7 @@ import { CAPABILITIES, DISCOVER, OBSERVE, PRICES, SOURCE, VENDOR } from './capab
 import type { TikTokClient } from './client.ts';
 import { discoverRun } from './discover.ts';
 import { addressable, chunk, observeBatch } from './observe.ts';
-import { toItem } from './to-item.ts';
+import { toAuthor, toItem } from './to-item.ts';
 
 export interface TikTokAdapterDeps {
   readonly client: TikTokClient;
@@ -130,6 +130,43 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
            ZEROS RATHER THAN AS NOTHING. Every id being unaddressable is a legitimate
            outcome — see `addressable` — and it means no run happened, so nothing was
            billed. `mergeSpend` over an empty list produces exactly that. */
+        spend: mergeSpend(spends, { vendor: VENDOR, endpoint: OBSERVE, unit: 'per-run', estUnits: 1, at }, 'per-run'),
+      };
+    },
+
+    /**
+     * ★ WHOLE POSTS BY ID: the same run as `observe`, read into Items and accounts — the owner's
+     * pasted missed posts are read this way. Addressed by URL like `observe`, so an id with no
+     * handle starts no run and costs nothing; billed and quoted as `observe`, one full run each
+     * batch. An entry the run returned without an id is skipped, never keyed by a guess.
+     */
+    async lookup(sourceItemIds: readonly string[], _budget: Budget): Promise<Metered<Discovered>> {
+      const at = deps.now();
+      const items: Item[] = [];
+      const authors: Author[] = [];
+      const spends = [];
+      for (const batch of chunk(addressable(sourceItemIds, deps.handleOf), batchSize)) {
+        const result = await metered(
+          deps.meter,
+          prices,
+          { vendor: VENDOR, endpoint: OBSERVE, unit: 'per-run', estUnits: 1, at },
+          async () => ({ value: await deps.client.runObserve(batch.map((entry) => entry.url)), units: 1 }),
+        );
+        for (const raw of result.value.items) {
+          let item: Item;
+          try {
+            item = toItem(raw, at);
+          } catch {
+            continue;
+          }
+          items.push(item);
+          const author = toAuthor(raw, at);
+          if (author !== null) authors.push(author);
+        }
+        spends.push(result.spend);
+      }
+      return {
+        value: discovered(items, authors, null, false),
         spend: mergeSpend(spends, { vendor: VENDOR, endpoint: OBSERVE, unit: 'per-run', estUnits: 1, at }, 'per-run'),
       };
     },
