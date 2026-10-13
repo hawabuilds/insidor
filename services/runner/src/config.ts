@@ -86,8 +86,9 @@ export type SupervisedStage = (typeof SUPERVISED_STAGES)[number];
  * which is the same widening argued at length.
  */
 /* `missed`: the owner's pasted missed posts, read and diagnosed (work/missed-posts.ts). With
-   HEARTBEAT=on it needs HEARTBEAT_SLUG_MISSED like every other supervised loop. */
-export const SUPERVISED_TASKS = ['discover', 'universe', 'missed'] as const;
+   HEARTBEAT=on it needs HEARTBEAT_SLUG_MISSED like every other supervised loop. `refill`: older
+   feed posts' video files read again (work/post-refill.ts); with HEARTBEAT=on, HEARTBEAT_SLUG_REFILL. */
+export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill'] as const;
 
 export type SupervisedTask = (typeof SUPERVISED_TASKS)[number];
 

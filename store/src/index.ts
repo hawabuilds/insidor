@@ -33,6 +33,8 @@ export { PgOlderCoinRepo } from './repo/older-coin.ts';
 export type { DueOlderCoin, FoundOlderCoin, OlderCoinReading } from './repo/older-coin.ts';
 export { PgCryptoAttentionRepo } from './repo/crypto-attention.ts';
 export type { AttentionRow, DueAttention } from './repo/crypto-attention.ts';
+export { PgPostRefillRepo } from './repo/post-refill.ts';
+export type { RefillDue } from './repo/post-refill.ts';
 export type { BackfilledPost, BackfillRun, BackfillVia } from './repo/backfill.ts';
 export { PgFeedFloorRepo } from './repo/feed-floor.ts';
 export { PgOwnerAlertRepo } from './repo/owner-alerts.ts';
