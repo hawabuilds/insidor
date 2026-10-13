@@ -89,6 +89,22 @@
   --shadow-tab-active: 0 6px 18px -10px rgb(153 69 255 / 45%);
   --shadow-inset-soft: inset 0 2px 8px rgb(0 0 0 / 46%);
   --shadow-inset-focus: inset 0 2px 8px rgb(0 0 0 / 46%), 0 0 0 2px rgb(153 69 255 / 18%);
+
+  /* Every sheet and pop-up except the Buy and Sell ticket (which keeps its own): Trador's popup
+     values from its brand-tokens.css, by name. Ground --surface-popup, cards --surface-card with a
+     --border-subtle line, secondary buttons --overlay-wash, chips --segment-track on the ground,
+     text --text-primary, labels --text-secondary. Purple is the main action only. New names rather
+     than changes to the ones above, so the screens that use those do not move. */
+  --sheet-bg: #0d0d10;
+  --sheet-card: #131317;
+  --sheet-border: #1a1a1f;
+  --sheet-button: rgb(255 255 255 / 6%);
+  --sheet-chip: rgb(255 255 255 / 10%);
+  --sheet-text: #f4f4f6;
+  --sheet-label: #a1a1aa;
+  --sheet-action: #9945ff;
+  /* The sheet's top edge: about 54px down, never under the status bar. */
+  --sheet-top: max(54px, calc(var(--safe-top) + 10px));
 }
 
 *,
