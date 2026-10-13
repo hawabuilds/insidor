@@ -1,0 +1,75 @@
+/** The learned-examples block: a fixed split by id, the owner's newest call wins, balanced and capped, and a block applied only when every gate holds. */
+
+import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+
+import { DEFAULT_POLICY } from '@insidor/contracts';
+
+import { buildBlock, changed, currentCalls, gate, isExample, latestSlot, type OwnerCall } from './examples.ts';
+
+const L = DEFAULT_POLICY.learning;
+const call = (itemId: string, label: 'meme' | 'not', from: OwnerCall['from'], at: number | null = null): OwnerCall => ({ itemId, text: `post ${itemId}`, imageUri: null, label, why: 'because', at, from });
+const ids = (n: number, prefix: string) => Array.from({ length: n }, (_, i) => `x:${prefix}${i}`);
+
+test('★ the split is the id alone: the same post lands on the same side whatever else is in the set', () => {
+  const nots = ids(40, 'n').map((id) => call(id, 'not', 'labels'));
+  const a = buildBlock(nots, [], 120);
+  const b = buildBlock(nots.slice(0, 10), [], 120);
+  for (const id of b.exampleIds) assert.ok(a.exampleIds.includes(id));
+  for (const p of [...a.testNegatives]) assert.equal(isExample(p.itemId), false);
+  assert.ok(a.testNegatives.length > 0 && a.exampleIds.length > 0);
+});
+
+test("a tap beats the labels file, and the owner's newest tap beats an older one", () => {
+  const cur = currentCalls([call('x:1', 'meme', 'labels'), call('x:1', 'not', 'tap', 1), call('x:1', 'meme', 'tap', 2), call('x:2', 'meme', 'missed', 5), call('x:2', 'not', 'tap', 1)]);
+  assert.deepEqual(cur.map((c) => [c.itemId, c.label, c.from]).sort(), [['x:1', 'meme', 'tap'], ['x:2', 'not', 'tap']]);
+});
+
+test('balanced and capped: a short side leaves its room to the other, newest first', () => {
+  const memes = ids(5, 'm').map((id, i) => call(id, 'meme', 'labels', i));
+  const nots = ids(400, 'n').map((id, i) => call(id, 'not', 'tap', i));
+  const b = buildBlock([...memes, ...nots], [], 20);
+  assert.equal(b.exampleIds.length, 20);
+  assert.equal(b.used.labels, 5, 'every meme goes in');
+  assert.equal(b.used.taps, 15, 'the no side takes the room the memes left');
+  const newest = nots.filter((n) => isExample(n.itemId)).sort((x, y) => (y.at ?? 0) - (x.at ?? 0)).slice(0, 15).map((n) => n.itemId);
+  assert.deepEqual(nots.filter((n) => b.exampleIds.includes(n.itemId)).map((n) => n.itemId).sort(), newest.sort(), 'the newest no examples of the taught half');
+});
+
+test("missed posts are split like non-memes: half taught, half held back to test", () => {
+  const missed = ids(30, 'k').map((id) => call(id, 'meme', 'missed'));
+  const b = buildBlock(missed, [], 120);
+  assert.equal(b.used.missed + b.testMissed.length, 30);
+  assert.ok(b.testMissed.every((m) => !b.exampleIds.includes(m.itemId)));
+});
+
+test("the owner's names go in a names section", () => {
+  const b = buildBlock([call('x:1', 'meme', 'tap')], [{ itemId: 'x:1', text: 'a frog in a hat', name: 'FROG', verdict: 'down', betterName: 'HATFROG', at: 1 }], 120);
+  assert.match(b.text, /NAMES/);
+  assert.match(b.text, /the owner's name: "HATFROG"/);
+  assert.equal(b.used.names, 1);
+});
+
+test('★ applied only when every gate holds; an untested missed group does not block, an untested gold group does', () => {
+  const ok = { gold: { passed: 30, tested: 41 }, negatives: { passed: 2, tested: 90 }, missed: { passed: 0, tested: 0 } };
+  assert.deepEqual(gate(ok, L), { apply: true, why: null });
+  assert.equal(gate({ ...ok, gold: { passed: 20, tested: 41 } }, L).apply, false);
+  assert.equal(gate({ ...ok, negatives: { passed: 9, tested: 90 } }, L).apply, false);
+  assert.equal(gate({ ...ok, missed: { passed: 1, tested: 4 } }, L).apply, false);
+  assert.equal(gate({ ...ok, gold: { passed: 0, tested: 0 } }, L).apply, false);
+});
+
+test('what changed: added and removed example ids', () => {
+  assert.deepEqual(changed(['a', 'b', 'c'], ['b', 'c', 'd', 'e']), { added: 2, removed: 1 });
+});
+
+test('the re-tune slot is the latest 08:00 or 20:00 London at or before now, through a clock change', () => {
+  const times = ['08:00', '20:00'];
+  const tz = 'Europe/London';
+  /* Summer: London is UTC+1, so 08:00 London is 07:00Z. */
+  assert.equal(new Date(latestSlot(Date.UTC(2026, 9, 13, 7, 30), times, tz)).toISOString(), '2026-10-13T07:00:00.000Z');
+  assert.equal(new Date(latestSlot(Date.UTC(2026, 9, 13, 6, 59), times, tz)).toISOString(), '2026-10-12T19:00:00.000Z');
+  assert.equal(new Date(latestSlot(Date.UTC(2026, 9, 13, 19, 0), times, tz)).toISOString(), '2026-10-13T19:00:00.000Z');
+  /* Winter (after 25 October): London is UTC. */
+  assert.equal(new Date(latestSlot(Date.UTC(2026, 10, 2, 9), times, tz)).toISOString(), '2026-11-02T08:00:00.000Z');
+});
