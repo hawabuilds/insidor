@@ -3,7 +3,9 @@
  * and sending what the person signed. No reference to node:http, so every rule is tested
  * against stand-ins for the venues and the chain.
  *
- *   GET  /venue/:mint                        curve | pool | none | unavailable
+ *   GET  /venue/:mint                        curve | pool | none | unavailable, with the limits a
+ *                                            ticket sizes against: the buy cap, the slippage
+ *                                            bounds and the platform fee, all from policy
  *   GET  /quote?mint&side&amount&wallet&slippageBps
  *   POST /build   { quote, wallet }          → { transaction } only if the simulation passed
  *   POST /send    { transaction }            → { signature }
@@ -170,7 +172,17 @@ export async function handle(method: string, rawUrl: string, body: string | null
     if (method === 'GET' && parts.length === 2 && parts[0] === 'venue') {
       const mint = parts[1] ?? '';
       if (!ADDRESS.test(mint)) return json(400, { error: 'bad request' });
-      return json(200, { kind: await venueOf(mint, deps) });
+      /* The limits travel with the venue so the order sheet offers only sizes the gate will take:
+         a preset over the cap (with its slippage) would be a button that can only be refused. */
+      return json(200, {
+        kind: await venueOf(mint, deps),
+        limits: {
+          maxBuyLamports: capLamports(deps.policy).toString(),
+          defaultSlippageBps: deps.policy.defaultSlippageBps,
+          maxSlippageBps: deps.policy.maxSlippageBps,
+          feeBps: deps.policy.platformFeeBps,
+        },
+      });
     }
 
     if (method === 'GET' && parts.length === 1 && parts[0] === 'quote') {

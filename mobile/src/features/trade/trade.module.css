@@ -1,112 +1,67 @@
+/* Trador's trade bar: pinned 84px above the bottom (over our floating tab bar), a 16px-blurred
+   popup panel with the two buttons side by side — Buy a green wash, Sell a red one. */
+
 .bar {
-  position: sticky;
-  bottom: var(--tabbar-space);
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 30;
+  width: 100%;
+  max-width: 480px;
+  padding: 0 var(--gutter);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.panel {
+  pointer-events: auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin: 16px var(--gutter);
+  gap: 8px;
+  padding: 8px;
+  border-radius: 16px;
+  background: rgb(13 13 16 / 88%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-panel);
 }
 
-.note {
-  margin: 14px var(--gutter);
-  color: var(--text-3);
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.sheet {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.sheet .note {
-  margin: 0;
-}
-
-.label {
-  color: var(--text-3);
-  font-size: 11px;
+.buy,
+.sell {
+  padding: 13px 0;
+  border-radius: 16px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  transition: transform 150ms, background-color 150ms;
 }
 
-.input {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 13px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-control);
-  background: var(--input);
-  color: var(--text-1);
-  font: inherit;
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.input:focus {
-  outline: none;
-  border-color: var(--brand);
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chips button {
-  padding: 7px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
-  background: transparent;
-  color: var(--text-2);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.chips button.on {
-  border-color: var(--brand);
-  background: var(--brand-wash);
-  color: var(--text-1);
-}
-
-.price {
-  margin: 4px 0;
-  padding: 12px 14px;
-  border-radius: var(--r-card);
-  background: var(--card);
-}
-
-.price div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 4px 0;
-  font-size: 14px;
-}
-
-.price dt {
-  color: var(--text-3);
-}
-
-.price dd {
-  margin: 0;
-  font-weight: 700;
-  text-align: right;
-  overflow-wrap: anywhere;
-}
-
-.done {
-  margin: 0;
+.buy {
+  background: var(--up-wash);
   color: var(--up);
-  font-size: 18px;
-  font-weight: 800;
+  box-shadow: var(--shadow-up);
 }
 
-.link {
-  color: var(--brand-400);
-  font-weight: 700;
+.sell {
+  background: var(--down-wash);
+  color: var(--down);
+  box-shadow: var(--shadow-down);
+}
+
+.buy:active {
+  background: var(--up-wash-hover);
+}
+
+.sell:active {
+  background: var(--down-wash-hover);
+}
+
+/* Where the buttons would be, why they are not: one line across the panel. */
+.why {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 13px 0;
+  color: var(--text-3);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
 }

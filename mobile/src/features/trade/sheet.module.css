@@ -1,0 +1,380 @@
+/* The order ticket: Trador's OrderSheet inside its Modal (max 352px, 20px in, 16px corners), with
+   Trador's sizes written out and our colours. Green and red only for the buy and sell sides. */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background: var(--scrim);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+}
+
+.ticket {
+  position: relative;
+  width: 100%;
+  max-width: 352px;
+  max-height: 92%;
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--popup);
+  box-shadow: var(--shadow-panel);
+}
+
+.close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--overlay-wash);
+  color: var(--text-2);
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.head {
+  margin-bottom: 16px;
+  padding-right: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gear,
+.gearOn {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-3);
+}
+
+.gearOn {
+  background: var(--overlay-wash-hover);
+  color: var(--text-1);
+}
+
+.label {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.config {
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--segment-track);
+  box-shadow: var(--shadow-inset-soft);
+}
+
+.configHead {
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.configHead button {
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.choices {
+  display: flex;
+  gap: 6px;
+}
+
+.choices button {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: 999px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.choices .choiceOn {
+  background: var(--input);
+  color: var(--text-1);
+  box-shadow: var(--shadow-tab-active);
+}
+
+.configNote {
+  margin: 8px 0 0;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.sides {
+  margin-bottom: 14px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--segment-track);
+  box-shadow: var(--shadow-inset-soft);
+}
+
+.sides button {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: 999px;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sides .sideBuy {
+  background: var(--up-wash);
+  color: var(--up);
+  box-shadow: var(--shadow-up);
+}
+
+.sides .sideSell {
+  background: var(--down-wash);
+  color: var(--down);
+  box-shadow: var(--shadow-down);
+}
+
+.field {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--input);
+  box-shadow: var(--shadow-inset-soft);
+}
+
+.field:focus-within {
+  box-shadow: var(--shadow-inset-focus);
+}
+
+.inputRow {
+  margin-top: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.inputRow input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-1);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  outline: none;
+}
+
+.inputRow input::placeholder {
+  color: var(--text-3);
+}
+
+.unit {
+  color: var(--text-3);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.estimate {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.quick {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.quick button {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 999px;
+  background: var(--overlay-wash);
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.holdLine,
+.line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.holdLine {
+  margin-top: 8px;
+  padding: 0 4px;
+}
+
+.holdLine span,
+.line span {
+  color: var(--text-3);
+}
+
+.holdLine b,
+.line b {
+  color: var(--text-2);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paying {
+  margin-top: 14px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 16px;
+  background: var(--segment-track);
+  box-shadow: var(--shadow-inset-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.paying span {
+  color: var(--text-3);
+}
+
+.paying b {
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lines {
+  margin-top: 10px;
+  padding: 0 4px;
+  display: grid;
+  gap: 4px;
+}
+
+.holdLine b.error,
+.line b.error,
+p.error {
+  color: var(--down);
+}
+
+.line b.caution,
+p.caution {
+  color: var(--amber);
+}
+
+p.error,
+p.caution,
+.success {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.success {
+  color: var(--up);
+}
+
+.success a {
+  text-decoration: underline;
+}
+
+.short {
+  margin-top: 12px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+  border-radius: 16px;
+  background: var(--segment-track);
+  box-shadow: var(--shadow-inset-soft);
+  font-size: 12.5px;
+}
+
+.short span {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+/* Confirm: Trador's full-width purple button. Where Trador greys it out, the reason stands in
+   its place as text — never a button that cannot be pressed. */
+.confirm,
+.confirmWait {
+  margin-top: 16px;
+  width: 100%;
+  padding: 16px 0;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.confirm {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: var(--shadow-brand);
+}
+
+.confirmWait {
+  background: var(--overlay-wash);
+  color: var(--text-3);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.foot {
+  margin: 10px 0 0;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.signIn p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}

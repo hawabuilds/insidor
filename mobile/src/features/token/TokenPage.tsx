@@ -23,13 +23,13 @@ import { useLoad, useNow } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { loadStory, noticeFor } from '../../shared/story-source.ts';
 import { leadPost } from '../feed/lead-post.ts';
-import { Button } from '../../shared/ui/Button.tsx';
 import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon, ChevronIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
+import { TradeButtons } from '../trade/TradeBar.tsx';
 import { TokenView, type TokenFacts } from './TokenView.tsx';
 import styles from './token.module.css';
 
@@ -82,10 +82,7 @@ function Body({ story, coin }: { story: Story; coin: Coin }) {
 /** With trading off: the buttons say "Coming soon", and only for a coin the server says can be quoted. */
 function ComingSoonBar({ coin, soon }: { coin: Coin; soon: (what: string) => void }) {
   return coin.tradable ? (
-    <div className={styles['tradeBar']}>
-      <Button look="buy" size="large" className={styles['buyWash']} onClick={() => soon(`Buying ${coin.ticker}`)}>Buy</Button>
-      <Button look="sell" size="large" onClick={() => soon(`Selling ${coin.ticker}`)}>Sell</Button>
-    </div>
+    <TradeButtons ticker={coin.ticker} onBuy={() => soon(`Buying ${coin.ticker}`)} onSell={() => soon(`Selling ${coin.ticker}`)} />
   ) : (
     <p className={styles['note']}>This coin can't be traded yet.</p>
   );

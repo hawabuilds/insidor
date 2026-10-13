@@ -567,31 +567,3 @@
 .fromBy b {
   color: var(--text-2);
 }
-
-/* ── the floating buy and sell bar (trading off) ───────────────────── */
-
-.tradeBar {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 2 * var(--gutter));
-  max-width: calc(480px - 2 * var(--gutter));
-  bottom: calc(84px + env(safe-area-inset-bottom));
-  z-index: 30;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 8px;
-  border-radius: var(--r-card);
-  background: rgb(13 13 16 / 88%);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-panel);
-}
-
-/* Trador's trade bar: the buy side as a green wash with green text, matching the sell side. */
-.tradeBar .buyWash {
-  background: var(--up-wash);
-  color: var(--up);
-  box-shadow: none;
-}

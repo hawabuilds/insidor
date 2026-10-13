@@ -30,7 +30,7 @@ import { Comments } from '../comments/Comments.tsx';
 import { TradeBar } from '../trade/TradeBar.tsx';
 import { defaultTimeframe } from './chart-data.ts';
 import { CoinChart } from './CoinChart.tsx';
-import { InfoPanel } from './InfoPanel.tsx';
+import { InfoPanel, latestPrice } from './InfoPanel.tsx';
 import { SocialRow } from './SocialRow.tsx';
 import type { TokenFacts } from './token-facts.ts';
 import { TradesPanel } from './TradesPanel.tsx';
@@ -164,7 +164,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
         {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} tradable={facts.tradable} now={now} insidor={insidor} /> : null}
       </div>
 
-      <TradeBar mint={facts.address} ticker={ticker} off={offBar} />
+      <TradeBar mint={facts.address} ticker={ticker} priceUsd={latestPrice(market) ?? facts.price} off={offBar} />
     </>
   );
 }

@@ -7,6 +7,19 @@
 
 export type TradeVenue = 'curve' | 'pool' | 'none' | 'unavailable';
 
+/**
+ * What a ticket sizes against, from the trade service's policy: the most one buy may spend at
+ * worst (its amount plus slippage), the slippage bounds, and the platform fee. Read with the
+ * venue, so no preset is offered that the gate would refuse.
+ */
+export interface TradeLimits {
+  /** Lamports, as a decimal string. */
+  readonly maxBuyLamports: string;
+  readonly defaultSlippageBps: number;
+  readonly maxSlippageBps: number;
+  readonly feeBps: number;
+}
+
 export interface TradeQuote {
   readonly venue: 'curve' | 'pool';
   readonly side: 'buy' | 'sell';
