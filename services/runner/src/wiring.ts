@@ -102,6 +102,7 @@ import { keepCoins } from './work/coin-keep.ts';
 import { lookUpCoins } from './work/coin-lookup.ts';
 import { checkOlderCoins } from './work/older-coins.ts';
 import { measureDiscovery } from './work/discovery-settings.ts';
+import { sourceHandles } from './work/handle-cache.ts';
 import { readOutages, SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
 import { pictureCoinMatches } from './work/coin-match.ts';
 
@@ -525,18 +526,15 @@ export async function withRuntime<T>(
            a unit test; this is the one file entitled to hand over the real one. */
         fetch: globalThis.fetch,
         /**
-         * ★ NO HANDLE LOOKUP YET, AND SAYING SO IS THE POINT.
-         *
-         * One source addresses posts by URL, so re-reading one needs the author's
-         * handle. We hold that on the author row, but there is no synchronous read for
-         * it and this signature is synchronous — an adapter cannot await a database.
-         * Returning null means those posts are SKIPPED rather than requested under a
-         * guessed URL, which is the honest failure: a wrong URL costs a paid run and
-         * returns nothing, and the run would look like the source having nothing to
-         * say. What changes it is a warmed handle cache loaded per pass and closed
-         * over here; until then this is a stated absence rather than a silent one.
+         * ★ A WARMED HANDLE CACHE. One source addresses posts by URL, so re-reading one
+         * needs the author's handle; this signature is synchronous and cannot await the
+         * author row, so TRACK fills the cache from the store just before it asks
+         * (work/handle-cache.ts). A post with no handle there is still SKIPPED rather
+         * than requested under a guessed URL — a wrong URL costs a paid run and returns
+         * nothing. Until 2026-10-13 this returned null for every post, and no short
+         * video was ever re-read.
          */
-        handles: () => null,
+        handles: (source, sourceItemId) => sourceHandles.get(String(source), sourceItemId),
       };
 
       const platforms = watchedRegistry(resolvePlatforms(cfg.sourceEnv, runtimeDeps), watch);
