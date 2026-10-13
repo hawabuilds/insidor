@@ -224,10 +224,11 @@ export const ANSWER_SCHEMA = {
  * ★ THE SAME POST GETS THE SAME ANSWER (the owner's call, 2026-10-13): temperature 0, the most
  * deterministic setting the API offers. Four gold posts flipped between no and yes on two asks
  * of the same question at the default temperature, which made every gate measurement noisier
- * than the change it measured. Sent only to a model without `effort`: whether the effort models
- * accept a temperature beside it was not verified (the account was out of credit when this was
- * written), and a rejected parameter would fail every call. Temperature 0 is still not a
- * guarantee of identical output — it removes the sampling, not every source of variation.
+ * than the change it measured. Sent only to a model without `effort`: the effort models refuse it
+ * ("`temperature` is deprecated for this model", claude-sonnet-5-5, 2026-10-13), and a refused
+ * parameter fails every call. Measured on those four posts, three asks each at temperature 0:
+ * the same yes/no every time; one confidence still moved (0.10, 0.25, 0.10) — it removes the
+ * sampling, not every source of variation.
  */
 export const temperatureFor = (config: Pick<JudgeClientConfig, 'effort'>): { readonly temperature?: number } => (config.effort === null ? { temperature: 0 } : {});
 
