@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { checkCreatorLink, decideOrigin, earliestByReproduction, matchCandidates, namesCoin, type Candidate, type PostFacts } from './check.ts';
+import { checkCreatorLink, decideOrigin, earliestByReproduction, earliestBySamePicture, matchCandidates, namesCoin, type Candidate, type PostFacts } from './check.ts';
 
 const P = DEFAULT_POLICY;
 const H = 3_600_000;
@@ -58,6 +58,18 @@ test('★ a same-name coin with a different picture stays unlinked: never a link
   const result = matchCandidates([candidate({ picture: null }), candidate({ postId: 'c2', picture: null, text: 'big trout energy' })], coin, P);
   assert.deepEqual(result, { kind: 'none', why: 'posts name it, but none shows the same subject' });
   assert.equal(decideOrigin({ kind: 'fallThrough', why: 'no link' }, result).status, 'unlinked');
+});
+
+test('★ a matched post leads back to the earliest post with its own picture, named or not', () => {
+  const named = { postId: 'named', postedAt: (LAUNCH - H) as Millis };
+  const same = [
+    { postId: 'oct11', postedAt: (LAUNCH - 2 * 24 * H) as Millis },
+    { postId: 'sept', postedAt: (LAUNCH - 22 * 24 * H) as Millis },
+    { postId: 'after', postedAt: (LAUNCH - H / 2) as Millis },
+  ];
+  assert.equal(earliestBySamePicture(named, same).postId, 'sept');
+  assert.equal(earliestBySamePicture(named, []).postId, 'named');
+  assert.equal(earliestBySamePicture(named, [{ postId: 'undated', postedAt: null }]).postId, 'named', 'a post with no time cannot be shown to come first');
 });
 
 test('★ a matching post made after the coin is viral after launch, never the origin', () => {

@@ -9,7 +9,12 @@
  *      an influencer's origin; a nameable subject with real views is the viral post.
  *   2. Our own matching (`matchCandidates`), for a coin whose link did not settle it. A
  *      candidate post counts only with ALL THREE: made before the coin, naming it, and showing
- *      the same subject in its picture. The earliest such post wins.
+ *      the same subject in its picture. The earliest such post wins — and then, ★ THE SAME
+ *      PICTURE LEADS BACK (`earliestBySamePicture`): a post we hold with the WINNER's picture
+ *      (near-identical), made before it, is where that picture started, and becomes the origin.
+ *      A repost rarely carries the coin's exact name (2026-10-13: a coin was named after a
+ *      misspelt repost of a picture first posted three weeks earlier); the walk needs no name
+ *      because the named, pictured post already tied the coin to the picture.
  *
  * `decideOrigin` folds the two into one status from contracts/src/origin.ts.
  *
@@ -18,7 +23,10 @@
  *
  * What breaks if changed carelessly: ★ NEVER LINK ON A NAME ALONE. A coin's name is the one
  * thing every unrelated post that happens to say it shares; dropping the picture requirement
- * turns every common word into an origin. And a post made after the coin is never its origin,
+ * turns every common word into an origin. And the walk back takes only the same image (the
+ * near-identical bar), not the same subject, and only from a named, pictured post: as a route of
+ * its own, a picture with no name would have linked 90 live coins in a day (2026-10-13), several
+ * to posts whose picture a second, unrelated coin had reused. And a post made after the coin is never its origin,
  * however well it matches — the rule the founders' own gold set had to be corrected by.
  */
 
@@ -112,6 +120,23 @@ export function matchCandidates(candidates: readonly Candidate[], coin: CoinFact
   if (after !== undefined) return { kind: 'afterLaunch', postId: after.postId, afterLaunchMs: (after.postedAt ?? 0) - coin.launchedAt };
   const named = candidates.some((c) => namesCoin(c.text, coin));
   return { kind: 'none', why: named ? 'posts name it, but none shows the same subject' : 'nothing found names it' };
+}
+
+/**
+ * Where a matched post's picture started: of the posts whose picture is the matched post's own
+ * (near-identical — the caller's read, at `group.image.nearIdentical`), the earliest made before
+ * it; the matched post itself when none was. Named or not: the matched post carries the name.
+ */
+export function earliestBySamePicture(
+  matched: { readonly postId: string; readonly postedAt: Millis | null },
+  samePicture: readonly { readonly postId: string; readonly postedAt: Millis | null }[],
+): { readonly postId: string; readonly postedAt: Millis | null } {
+  let best = matched;
+  for (const c of samePicture) {
+    if (c.postedAt === null || best.postedAt === null || c.postedAt >= best.postedAt) continue;
+    best = c;
+  }
+  return best;
 }
 
 /**

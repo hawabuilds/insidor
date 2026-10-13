@@ -300,6 +300,29 @@ export class PgCoinUniverseRepo {
   }
 
   /**
+   * Observed posts we hold, posted in [sinceMs, untilMs], other than `itemId`, with a picture
+   * whose vector in `space` is at least `minSimilarity` like one of `itemId`'s — the same
+   * picture, at the near-identical bar — earliest first. Read by the origin check to find where a
+   * matched post's picture started (core `earliestBySamePicture`). A post with no vector has none.
+   */
+  async postsWithSamePicture(itemId: string, space: string, minSimilarity: number, sinceMs: Millis, untilMs: Millis, limit: number): Promise<readonly NamingPost[]> {
+    const rows = await this.#db.query<{ item_id: string; posted_at: string | Date | null; body: string }>(
+      `select i.item_id, i.posted_at, i.body
+         from internal.image_embedding me
+         join internal.image_embedding ie on ie.subject_kind = 'item' and ie.space = me.space and ie.subject_id <> me.subject_id
+         join public.item i on i.item_id = ie.subject_id
+        where me.subject_kind = 'item' and me.subject_id = $1 and me.space = $2
+          and i.origin = 'observed' and i.posted_at between $4 and $5
+          and 1 - (ie.embedding <=> me.embedding) >= $3
+        group by i.item_id, i.posted_at, i.body
+        order by i.posted_at asc
+        limit $6`,
+      [itemId, space, minSimilarity, toTimestamp(sinceMs), toTimestamp(untilMs), limit],
+    );
+    return rows.map((r) => ({ itemId: reBrand<ItemId>(r.item_id), postedAt: toMillis(r.posted_at), text: r.body }));
+  }
+
+  /**
    * Notes every waiting subject not yet noted, at `at`. Run at the start of each pass, before the
    * caps decide how many are searched, so a post the caps leave for a later pass still has the
    * moment it was first seen waiting — the clock "Couldn't check" runs on. Never moves a time

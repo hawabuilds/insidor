@@ -10,7 +10,9 @@
  *             `metadataAttempts` times (store `unread`).
  *   origin    the creator's link (contracts/src/origin.ts, core's `checkCreatorLink`), then
  *             the posts we already hold that name the coin (core's `matchCandidates`): picture
- *             plus name plus timing, never a name alone. `decideOrigin` gives the status.
+ *             plus name plus timing, never a name alone — and from the post that matched, back
+ *             to the earliest post we hold with that post's own picture (store
+ *             `postsWithSamePicture`, vectors already held). `decideOrigin` gives the status.
  *
  * ★ FREE FIRST, AND A COIN SETTLED FOR FREE IS NEVER PRICED. A creator's post made after the
  * coin is promotion by its id's own time; a coin no post of ours names cannot be matched.
@@ -33,7 +35,7 @@ import type { EmbedPort } from '@insidor/contracts/ports/embed.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { checkCreatorLink, decideOrigin, matchCandidates, namesCoin, type Candidate, type CoinFacts, type CreatorLink, type PostFacts } from '@insidor/core';
+import { checkCreatorLink, decideOrigin, earliestBySamePicture, matchCandidates, namesCoin, type Candidate, type CoinFacts, type CreatorLink, type PostFacts } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import type { CoinToCheck, PgAuthorRepo, PgCoinUniverseRepo, PgImageEmbeddingRepo, PgItemRepo, PgPostJudgementRepo } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
@@ -52,7 +54,7 @@ export interface MetadataReader {
 export type DeclaredReader = (uri: string | null) => Promise<{ readonly kind: 'read'; readonly metadata: Extract<Awaited<ReturnType<MetadataReader['read']>>, { kind: 'read' }>['metadata'] } | { readonly kind: 'refused'; readonly why: string }>;
 
 export interface UniverseDeps {
-  readonly coins: Pick<PgCoinUniverseRepo, 'unread' | 'recordMetadata' | 'unchecked' | 'recordOrigin' | 'postsNaming'>;
+  readonly coins: Pick<PgCoinUniverseRepo, 'unread' | 'recordMetadata' | 'unchecked' | 'recordOrigin' | 'postsNaming'> & Partial<Pick<PgCoinUniverseRepo, 'postsWithSamePicture'>>;
   readonly metadata: MetadataReader;
   /** A link that names no content id, read from its own host. Absent: recorded not content-addressed, as before. */
   readonly declared?: DeclaredReader;
@@ -373,7 +375,22 @@ async function matchOwn(deps: UniverseDeps, coin: CoinToCheck, facts: CoinFacts,
     }
     candidates.push({ postId: p.itemId, postedAt: p.postedAt, text: p.text, picture });
   }
-  return { result: matchCandidates(candidates, facts, deps.policy), postedAt };
+  const result = matchCandidates(candidates, facts, deps.policy);
+  if (result.kind !== 'matched' || deps.coins.postsWithSamePicture === undefined) return { result, postedAt };
+  /* ★ Back to where the matched post's picture started: the earliest post we hold with the same
+     picture, named or not (core `earliestBySamePicture`). Read from vectors already held; nothing
+     is paid. A failed read keeps the matched post — the walk only ever moves earlier. */
+  const matchedAt = postedAt.get(result.postId as ItemId) ?? null;
+  try {
+    const same = await deps.coins.postsWithSamePicture(result.postId, space, bars.nearIdentical, (facts.launchedAt - u.pictureLookbackMs) as Millis, (matchedAt ?? facts.launchedAt) as Millis, u.picturePostsPerCoin);
+    const first = earliestBySamePicture({ postId: result.postId, postedAt: matchedAt }, same.map((p) => ({ postId: p.itemId, postedAt: p.postedAt })));
+    if (first.postId === result.postId) return { result, postedAt };
+    if (first.postedAt !== null) postedAt.set(first.postId as ItemId, first.postedAt);
+    return { result: { kind: 'matched', postId: first.postId } as const, postedAt };
+  } catch (e) {
+    deps.log.warn('posts with the matched post\'s picture could not be read; the matched post stands', { coin: coin.assetKey, err: errorText(e) });
+    return { result, postedAt };
+  }
 }
 
 /* What one picture is reserved at before it is embedded (the embedding adapter reserves 3,000
