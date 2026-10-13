@@ -1,5 +1,8 @@
 /* Trador's trade bar: pinned 84px above the bottom (over our floating tab bar), a 16px-blurred
-   popup panel with the two buttons side by side — Buy a green wash, Sell a red one. */
+   popup panel with the two buttons side by side — Buy a green wash, Sell a red one. The panel is
+   framed with a hairline, as the owner's token page design draws it, so it reads as its own
+   panel over the trades scrolling behind it and above the tab bar, which stays visible below.
+   The token page's bottom padding (token.module.css .page) is what lets its last row clear both. */
 
 .bar {
   position: fixed;
@@ -19,7 +22,8 @@
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   padding: 8px;
-  border-radius: 16px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
   background: rgb(13 13 16 / 88%);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
