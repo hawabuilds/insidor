@@ -1185,6 +1185,21 @@ export interface RisingPolicy {
   readonly fypFastWindowMs: number;
   readonly popularMinReach: number;
   /**
+   * ★ FOR YOU IS FRESH. A post older than `fypMaxAgeMs` leaves For You unless it is still growing
+   * fast: its newest view reading is under `fypGrowthWindowMs` old, and between it and the
+   * earliest reading in the `fypGrowthWindowMs` before it — at least `fypGrowthMinSpanMs` apart —
+   * it gained `fypStillGrowingPerMinute` views a minute or more (times `shortVideoReachScale` for a
+   * short video). A stale newest reading says nothing about now, so it never keeps a post. Popular
+   * has no age limit inside `windowMs`. The owner's rule (2026-10-13): six hours. Measured that day
+   * on the 14 For You posts: 8 were over six hours old, gaining 11 to 2,079 views a minute over
+   * their last hour; at 1,000 a minute one stays (1.1M views, 2,079 a minute) and 7 leave. At 500
+   * a minute a second (567 a minute) would stay.
+   */
+  readonly fypMaxAgeMs: number;
+  readonly fypGrowthWindowMs: number;
+  readonly fypGrowthMinSpanMs: number;
+  readonly fypStillGrowingPerMinute: number;
+  /**
    * ★ WHICH UNJUDGED POSTS GET PAID RE-READS. The judge only sees a post once its reach clears a
    * For You bar, and only a re-read can show that it has. A catch-all post nobody has judged yet
    * is re-read inside `fypFastWindowMs` of being posted while its reach is averaging at least
@@ -2535,6 +2550,10 @@ const POLICY_V1: Policy = {
     fypFastReachPerMinute: 2_000,
     fypFastWindowMs: 1_800_000, // the first half hour
     popularMinReach: 250_000,
+    fypMaxAgeMs: 21_600_000, // six hours
+    fypGrowthWindowMs: 3_600_000, // the last hour of readings
+    fypGrowthMinSpanMs: 1_200_000, // twenty minutes between the two readings compared
+    fypStillGrowingPerMinute: 1_000, // half the early-growth bar
     watchMinReachPerMinute: 500,
     shortVideoReachScale: 12.5,
     narrativeMinPassingPosts: 2,
