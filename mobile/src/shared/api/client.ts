@@ -17,9 +17,9 @@
  */
 
 import { notImplemented } from '../not-implemented.ts';
-import { decodeBoardTick, decodeCoinMarket, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory } from './decode.ts';
+import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
-import type { SameNameCoins, SearchedCoin, SearchResults } from './wire/search.ts';
+import type { NameIdea, SameNameCoins, SearchedCoin, SearchResults } from './wire/search.ts';
 import type { BuildResult, Holding, TradeQuote, TradeVenue } from './wire/trade.ts';
 import type { CoinMarket, MarketTimeframe } from './wire/market.ts';
 import type { BoardTick } from './wire/board.ts';
@@ -110,6 +110,16 @@ export async function fetchSearch(term: string, signal?: AbortSignal): Promise<S
  */
 export async function fetchPostCoins(postId: string, signal?: AbortSignal): Promise<SameNameCoins> {
   return decodeSameNameCoins(await read(`/post/${encodeURIComponent(postId)}/coins`, signal));
+}
+
+/** A feed post's name ideas for Create, free tickers first (GET /post/:id/names). */
+export async function fetchPostNames(postId: string, signal?: AbortSignal): Promise<readonly NameIdea[]> {
+  return decodeNameIdeas(await read(`/post/${encodeURIComponent(postId)}/names`, signal));
+}
+
+/** The coins already using a ticker: what "Taken by 3 coins" opens (GET /ticker/:symbol/coins). */
+export async function fetchTickerCoins(ticker: string, signal?: AbortSignal): Promise<SameNameCoins> {
+  return decodeTickerCoins(await read(`/ticker/${encodeURIComponent(ticker)}/coins`, signal));
 }
 
 /** A coin opened from search: what the search said about it. */

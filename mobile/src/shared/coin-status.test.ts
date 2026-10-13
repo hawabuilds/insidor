@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decodeCoin, decodeCoinLink } from './api/decode.ts';
-import { coinStatus, oneCoinLine, postCoinStatus, seeCoinsLabel, settledCoins } from './coin-status.ts';
+import { coinStatus, evidenceFacts, oneCoinLine, postCoinStatus, seeCoinsLabel, settledCoins } from './coin-status.ts';
 
 const coin = (over: Record<string, unknown> = {}) =>
   decodeCoin({
@@ -86,4 +86,12 @@ test('★ no coin on a post card: "No coin yet" and Create; not looked up yet: a
 
 test('a narrative\'s unsure line still has no button: the list is a feed card\'s', () => {
   assert.equal(coinStatus({ kind: 'unsure', claimCount: 3 }).action, null);
+});
+
+test("a post's own coin shows its line, Buy, and why as facts only — an unknown is never said", () => {
+  const status = postCoinStatus({ kind: 'matched', coin: coin(), evidence: { linksPost: true, samePicture: null, launchedAfterMs: 720_000 } });
+  assert.deepEqual(status.actions.map((a) => a.kind), ['buy']);
+  assert.deepEqual(status.facts, ['Links this post', 'Launched 12m after']);
+  assert.deepEqual(evidenceFacts({ linksPost: false, samePicture: true, launchedAfterMs: -7_200_000 }), ['Same picture', 'Launched 2h before']);
+  assert.deepEqual(postCoinStatus({ kind: 'matched', coin: coin({ tradable: false }), evidence: { linksPost: null, samePicture: null, launchedAfterMs: null } }).actions, []);
 });

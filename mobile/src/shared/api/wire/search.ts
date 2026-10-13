@@ -6,6 +6,7 @@
  * coin carries `matched` only when the narrative's own page already names it.
  */
 
+import type { CoinEvidence } from './coin.ts';
 import type { Instant, Measured } from '../../format/measure.ts';
 
 /** Why a past narrative shows no origin post. Each is said in words; none is a blank. */
@@ -62,7 +63,21 @@ export interface SearchCoin {
 export interface SameNameCoins {
   readonly more: boolean;
   readonly sourcesMissing: number;
-  readonly items: readonly SearchCoin[];
+  /** In the server's order: strongest evidence against the post first, then the earliest launch. */
+  readonly items: readonly SameNameCoin[];
+}
+
+/** A same-named coin, with what is known about it against the post; null when nothing was weighed. */
+export type SameNameCoin = SearchCoin & { readonly evidence: CoinEvidence | null };
+
+/** Whether a ticker is in use: by how many coins, free (every source answered), or not known. */
+export type TickerUse = { readonly kind: 'free' } | { readonly kind: 'taken'; readonly count: number; readonly more: boolean } | { readonly kind: 'unknown' };
+
+/** A name and ticker idea for a coin made from a post, with whether the ticker is in use. */
+export interface NameIdea {
+  readonly name: string;
+  readonly ticker: string;
+  readonly use: TickerUse;
 }
 
 export type SearchCoins =

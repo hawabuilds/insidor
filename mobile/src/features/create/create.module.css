@@ -186,3 +186,71 @@
   color: var(--brand-400);
   font-weight: 800;
 }
+
+/* The name chips (NameSuggestions.tsx): one per idea, its ticker's standing beside it. */
+.ideas {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.ideaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ideaChip {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 17px;
+  background: var(--input);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  color: var(--text-1, inherit);
+  font-size: 14px;
+  text-align: left;
+}
+
+.ideaChip b {
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+.ideaOn {
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+.ideaFree,
+.ideaUnknown,
+.ideaTaken {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.ideaFree {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.ideaTaken {
+  border: 0;
+  background: none;
+  padding: 6px 0;
+  text-decoration: underline;
+}
+
+.ideaCoins {
+  margin: 6px -18px 0;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.ideaNote {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+}

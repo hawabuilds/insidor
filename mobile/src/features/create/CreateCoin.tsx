@@ -1,7 +1,9 @@
 /**
  * CREATE COIN — a centred modal, after Trador's `CreateSheet.tsx` and `ui/Modal.tsx`.
  *
- * The picture from the post (with "Change"), a name and a ticker to edit, dev-buy presets and a
+ * The picture from the post (with "Change"), name chips from the post's subject when made from a
+ * feed post (NameSuggestions.tsx: tapping one fills the name and ticker, both still editable, and
+ * the picture stays the post's), a name and a ticker to edit, dev-buy presets and a
  * custom amount, the launch's costs and what the creator earns, and a Create button.
  *
  * ★ WITH TRADING OFF THE BUTTON SAYS "COMING SOON" AND DOES NOTHING ELSE. No coin is minted,
@@ -35,6 +37,9 @@ import { RocketIcon } from '../../shared/ui/icons.tsx';
 import { Modal } from '../../shared/ui/Modal.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
+import { NameCallButtons } from '../owner/NameCall.tsx';
+import { useIsOwner } from '../owner/hooks.ts';
+import { NameSuggestions } from './NameSuggestions.tsx';
 import { DEV_BUY_PRESETS, TICKER_MAX, cleanTicker, feeRate, presetsWithin, suggestTicker, supplyShare, tickerLine } from './create-form.ts';
 import styles from './create.module.css';
 
@@ -46,6 +51,8 @@ export interface CreateFrom {
   readonly thumbUrl: string | null;
   /** The post it is made from, when it is made from one post: it goes in the coin's description. */
   readonly link?: string | null;
+  /** The feed post's id, when made from one: its name ideas are offered as chips (NameSuggestions). */
+  readonly postId?: string | null;
   /** True when the server labels the story behind it as written by hand; the modal carries that label too. */
   readonly labelled: boolean;
 }
@@ -69,6 +76,7 @@ export function CreateCoin({ from, onClose }: { from: CreateFrom; onClose: () =>
 
 function SoonCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }) {
   const soon = useComingSoon();
+  const owner = useIsOwner();
   const [name, setName] = useState(from.title);
   const [ticker, setTicker] = useState(() => suggestTicker(from.title));
   const [devBuy, setDevBuy] = useState<number | null>(DEV_BUY_PRESETS[0] ?? null);
@@ -101,6 +109,16 @@ function SoonCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
         </div>
       </div>
 
+      {from.postId ? (
+        <NameSuggestions
+          postId={from.postId}
+          onPick={(idea) => {
+            setName(idea.name.slice(0, 32));
+            setTicker(cleanTicker(idea.ticker));
+          }}
+          beside={owner ? (idea) => <NameCallButtons itemId={from.postId ?? ''} suggestion={{ name: idea.name, ticker: idea.ticker }} /> : undefined}
+        />
+      ) : null}
       <p className={styles['check']}>Checking whether {ticker || 'a ticker'} is taken is coming soon.</p>
 
       <div className={styles['devBuy']}>
@@ -143,6 +161,7 @@ const SETTLE_MS = 500;
 
 function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }) {
   const { wallet, state } = useWallet();
+  const owner = useIsOwner();
   const [name, setName] = useState(from.title.slice(0, 32));
   const [ticker, setTicker] = useState(() => suggestTicker(from.title));
   const [picked, setPicked] = useState<string | null>(null);
@@ -240,6 +259,16 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
         </div>
       </div>
 
+      {from.postId ? (
+        <NameSuggestions
+          postId={from.postId}
+          onPick={(idea) => {
+            setName(idea.name.slice(0, 32));
+            setTicker(cleanTicker(idea.ticker));
+          }}
+          beside={owner ? (idea) => <NameCallButtons itemId={from.postId ?? ''} suggestion={{ name: idea.name, ticker: idea.ticker }} /> : undefined}
+        />
+      ) : null}
       <p className={styles['check']}>{tickerLine(ticker, seen)}</p>
 
       {rules.state === 'ready' && r === null ? <p className={styles['check']}>— the launchpad's rules couldn't be read just now.</p> : null}
