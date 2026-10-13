@@ -1,0 +1,90 @@
+/**
+ * `SPEND=live node --env-file=.env.local --experimental-strip-types tools/rescore-feed.ts --yes [--unscored]`
+ *
+ * RE-CHECKS EVERY POST NOW ON FOR YOU OR POPULAR AGAINST THE JUDGE AS IT IS TODAY. A post's score
+ * is recorded once, under the prompt of its day; when the rules change (the sport, fandom and
+ * celebrity rules, the coined-post profile, the picture) the posts already showing were passed
+ * under the old ones. Each is judged again exactly as the live scorer judges it — alone, with its
+ * picture — and the new answer recorded beside the old (the judgement log is append-only). The
+ * projector's next frame then holds them to it, and a post that now fails leaves the feed with
+ * its reason kept (public.feed_rejection).
+ *
+ * `--unscored` instead scores the runner's own waiting queue (catch-all posts never scored, inside
+ * the feed's window, newest first) — the catch-up after the runner's scorer was paused.
+ *
+ * Separate from the runner's scorer because that one only asks about posts never scored. Paid,
+ * on the shared ledger as a job (tools/lib/shared-meter.ts): in the day's caps, not the runner's
+ * pace. Only posts whose latest answer came from another prompt are asked.
+ *
+ * What breaks if changed carelessly: the subject id must be the scorer's own (`post-<id>`), so
+ * an answer is filed under the post it is about.
+ */
+
+import process from 'node:process';
+
+import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
+import { storyId, type ItemId } from '../contracts/src/ids.ts';
+import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
+import { asDb, createPool, DB_ROLE, PgItemRepo, PgPostJudgementRepo } from '../store/src/index.ts';
+import { openSharedMeter } from './lib/shared-meter.ts';
+
+const P = DEFAULT_POLICY;
+const USD_PER_POST = 0.01;
+const UNSCORED = process.argv.includes('--unscored');
+
+if (process.env['SPEND'] !== 'live' || !process.argv.includes('--yes')) {
+  console.error('rescore-feed refused: this calls the paid judge. Set SPEND=live and pass --yes.');
+  process.exit(1);
+}
+const setup = readJudgeSetup(process.env);
+if (setup.state !== 'configured') throw new Error(`the judge is ${setup.state}`);
+const price = priceFor(setup.model);
+if (price === null) throw new Error(`JUDGE_MODEL ${setup.model} has no price`);
+
+const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'] }, applicationName: 'insidor-rescore-feed' });
+const db = asDb(pool);
+const { meter, close } = await openSharedMeter(UNSCORED ? 2 : 1);
+const judge = anthropicJudge({
+  client: judgeClient({
+    apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: setup.model, maxOutputTokens: P.judge.postBatchMaxOutputTokens, effort: price.effort,
+    timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
+    maxFrameBytes: P.judge.maxFrameBytes, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+  }),
+  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1,
+});
+
+try {
+  const showing = UNSCORED
+    ? (await new PgItemRepo(db).catchAllUnscored((Date.now() - P.rising.windowMs) as never, P.rising.postsPerPass)).map((i) => ({ item_id: String(i.itemId) }))
+    : await db.query<{ item_id: string }>(
+    `select distinct r.item_id from public.rising_row r
+      where (select pj.prompt_id from internal.post_judgement pj where pj.item_id = r.item_id order by pj.judged_at desc, pj.id desc limit 1) is distinct from $1`,
+    [judge.promptId],
+  );
+  console.log(`${showing.length} ${UNSCORED ? 'posts waiting for a first score' : 'posts on the feeds were scored under an older prompt'}; at most $${(showing.length * USD_PER_POST).toFixed(2)}.`);
+  const items = await new PgItemRepo(db).byIds(showing.map((r) => r.item_id as ItemId));
+  const scores = new PgPostJudgementRepo(db);
+  let passed = 0;
+  let failed = 0;
+  for (const item of items.values()) {
+    const subject = {
+      storyId: storyId(`post-${String(item.itemId).replaceAll(':', '-').replaceAll('|', '-')}`),
+      texts: item.text.trim() === '' ? [] : [item.text.trim().slice(0, P.judge.maxCharsPerText)],
+      media: item.media,
+      distinctAuthors: 1,
+      distinctSources: 1,
+    };
+    const line = meter.line();
+    const result = await judge.judge([subject], { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: 1, deadline: Date.now() + 120_000 });
+    const o = result.value[0];
+    if (o?.kind !== 'judged') continue;
+    await scores.record(item.itemId, o.judgement);
+    if (o.judgement.coinable) passed += 1;
+    else failed += 1;
+    console.log(`${o.judgement.coinable ? 'yes' : 'no '} ${o.judgement.confidence.toFixed(2)} ${(o.judgement.proposedName ?? '-').padEnd(20)} ${item.text.replace(/\s+/g, ' ').slice(0, 80)}`);
+  }
+  console.log(`\nre-scored ${passed + failed}: ${passed} still memeable, ${failed} not; spent $${meter.line().spentUsd.toFixed(4)}. The projector's next frame applies it.`);
+} finally {
+  await close();
+  await pool.end();
+}
