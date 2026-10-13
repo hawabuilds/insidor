@@ -1170,6 +1170,15 @@ export interface RisingPolicy {
   readonly fypFastWindowMs: number;
   readonly popularMinReach: number;
   /**
+   * ★ WHICH UNJUDGED POSTS GET PAID RE-READS. The judge only sees a post once its reach clears a
+   * For You bar, and only a re-read can show that it has. A catch-all post nobody has judged yet
+   * is re-read inside `fypFastWindowMs` of being posted while its reach is averaging at least
+   * this many a minute; slower ones keep the reading discovery paid for. Without it a new post
+   * kept one reading forever and the feed starved (2026-10-13). A quarter of the fast bar: it
+   * keeps about a quarter of new posts, roughly 110 an hour, a couple of dollars a day of reads.
+   */
+  readonly watchMinReachPerMinute: number;
+  /**
    * A promoted narrative stays on the board only while at least this many of its posts pass the
    * same per-post rules as For You (scored, memeable, confident, a short name). Below it the board
    * hides it; above it, only its passing posts are listed. The owner's rule (2026-10-13).
@@ -1960,7 +1969,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v55',
+  version: 'policy.v56',
 
   admit: {
     maxAgeMin: 240,
@@ -2480,6 +2489,7 @@ const POLICY_V1: Policy = {
     fypFastReachPerMinute: 2_000,
     fypFastWindowMs: 1_800_000, // the first half hour
     popularMinReach: 250_000,
+    watchMinReachPerMinute: 500,
     narrativeMinPassingPosts: 2,
     boostMinSimilarity: 0.44,
     boostMaxNoConfidence: 0.3,

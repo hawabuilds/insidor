@@ -251,22 +251,66 @@ export class PgItemRepo implements ItemRepo {
    * passed, and with them ADMIT's holdout lane. Tracking every admitted post cost several
    * times the daily budget.
    *
+   * Two more, because the feeds are fed by re-reads and the list above only re-reads what is
+   * already on them — so a new post kept the one reading discovery paid for, never cleared a
+   * reach bar, and the For You feed starved (2026-10-13):
+   *
+   *   - a catch-all post the judge has answered, posted since `watch.judgedSince` — TRACK's
+   *     gate keeps only the answers that can still pass, so this is a few dozen at a time. The
+   *     window, not the whole tracked day, because a day of them was about $5 of reads;
+   *   - a catch-all post nobody has judged, posted within `watch.sinceMs` and averaging at least
+   *     `watch.minPerMinute` reach a minute at its latest reading. Its reach decides whether it
+   *     is judged at all; a slow one keeps its one reading.
+   *
+   * On-screen and judged posts sort first, so the unjudged watch list can never crowd them out
+   * of the page TRACK pulls.
+   *
    * TRACK narrows this further with `trackingFacts` (the runner's work/track-gate.ts): a story
    * member that can never be shown — a firm "no", a failed name test — is not re-read.
    */
-  async trackable(at: Millis, limit: number): Promise<readonly Item[]> {
+  async trackable(
+    at: Millis,
+    limit: number,
+    watch: {
+      readonly now: Millis;
+      readonly since: Millis;
+      readonly minPerMinute: number;
+      readonly judgedSince: Millis;
+    },
+  ): Promise<readonly Item[]> {
     const rows = await this.#db.query<ItemRow>(
-      `${SELECT_ITEM}
-        where first_seen_at >= $1
-          and (
-            exists (select 1 from public.story_member m
-                      join public.story s on s.story_id = m.story_id
-                     where m.item_id = public.item.item_id and s.state = 'promoted' and s.merged_into is null)
-            or exists (select 1 from public.rising_row r where r.item_id = public.item.item_id)
-          )
-        order by first_seen_at desc
-        limit $2`,
-      [toTimestamp(at), limit],
+      `with recent as (
+         select i.item_id, i.posted_at, i.first_seen_at,
+                (exists (select 1 from public.story_member m
+                           join public.story s on s.story_id = m.story_id
+                          where m.item_id = i.item_id and s.state = 'promoted' and s.merged_into is null)
+                 or exists (select 1 from public.rising_row r where r.item_id = i.item_id)
+                 or (i.posted_at >= $6
+                     and exists (select 1 from internal.item_found_by f where f.item_id = i.item_id)
+                     and exists (select 1 from internal.post_judgement j where j.item_id = i.item_id))
+                ) as kept
+           from public.item i
+          where i.first_seen_at >= $1
+       ), picked as (
+         select r.item_id, r.kept, r.first_seen_at from recent r
+          where r.kept
+             or (r.posted_at >= $3
+                 and exists (select 1 from internal.item_found_by f where f.item_id = r.item_id)
+                 and not exists (select 1 from internal.post_judgement j where j.item_id = r.item_id)
+                 and (select o.value from public.observation o
+                       where o.item_id = r.item_id and o.kind = 'reach' and o.value is not null
+                       order by o.captured_at desc limit 1)
+                     >= $4 * greatest(extract(epoch from ($5::timestamptz - r.posted_at)) / 60, 1))
+          order by r.kept desc, r.first_seen_at desc
+          limit $2
+       )
+       select item.item_id, item.source, item.source_item_id, item.origin, item.author_key,
+              item.posted_at, item.first_seen_at, item.lang, item.body, item.media, item.counters,
+              item.rebroadcast_of, item.reproduction_of, item.format_ids, item.raw_ref
+         from picked p
+         join public.item item on item.item_id = p.item_id
+        order by p.kept desc, p.first_seen_at desc`,
+      [toTimestamp(at), limit, toTimestamp(watch.since), watch.minPerMinute, toTimestamp(watch.now), toTimestamp(watch.judgedSince)],
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => this.#toItem(row, fingerprints));

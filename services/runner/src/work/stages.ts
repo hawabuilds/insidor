@@ -445,9 +445,17 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
       /* The posts that are on screen, newest first — see `PgItemRepo.trackable`. */
       /* Back as far as tracking lasts, and no further: a post past `maxTrackedHours` would
          only be pulled to be told it is finished, every thirty seconds. */
+      /* And the new catch-all posts still young enough to clear a reach bar by growing, so the
+         judge ever sees them — see `rising.watchMinReachPerMinute`. */
       const onScreen = await repos.items.trackable(
         now - policy.track.maxTrackedHours * MS_PER_HOUR,
         limit * PULL_OVERSCAN,
+        {
+          now,
+          since: now - policy.rising.fypFastWindowMs,
+          minPerMinute: policy.rising.watchMinReachPerMinute,
+          judgedSince: now - policy.track.youngWindowMin * MS_PER_MINUTE,
+        },
       );
       /* ★ NO PAID READ FOR A POST THAT CAN NEVER BE SHOWN — a firm "no", a failed name test, a
          hidden narrative's unjudged watch post. See work/track-gate.ts for what is kept and

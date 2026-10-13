@@ -1,7 +1,8 @@
 /**
  * WHICH ON-SCREEN POSTS ARE STILL WORTH A PAID RE-READ.
  *
- * `PgItemRepo.trackable` hands TRACK the posts on a feed and the members of promoted stories.
+ * `PgItemRepo.trackable` hands TRACK the posts on a feed, the members of promoted stories, the
+ * catch-all posts the judge has answered, and young catch-all posts that are growing fast.
  * Some of those can never be shown again whatever their views do, and a re-read of one buys a
  * number nobody will see. This drops them before TRACK decides anything; it never adds a post.
  *
