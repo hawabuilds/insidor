@@ -1,17 +1,17 @@
 /**
  * WHICH OWNER CONTROLS A CARD DRAWS, AND WHAT THEY SAY — pure, so every case runs under a test.
  *
- * ★ A COIN CALL IS ONLY OFFERED WHERE THERE IS A COIN TO CALL. A card naming one coin asks "Right
- * coin / Wrong coin" about THAT coin. A card that says we can't tell, with coins listed, asks
- * "Which coin?" and opens the list. Every other coin line (no coin yet, a dash, couldn't check, a
- * narrative's several coins) has no coin in front of the owner, so nothing is asked.
+ * ★ A COIN CALL IS OFFERED ON EVERY POST'S OWN COIN LINE. A card naming one coin (a narrative's
+ * one, or the post's own proven coin) asks "Right coin / Wrong coin" about THAT coin. Every other
+ * post line — we can't tell, no coin yet, a dash, couldn't check — asks "Which coin?", whose sheet
+ * lists the coins with the post's name (if any) and always takes a pasted contract address, so it
+ * always has an answer to give. A narrative's several coins are the narrative's, and ask nothing.
  *
  * ★ THE CARD SAYS WHAT THE OWNER SAID, IN THE OWNER'S WORDS. Never a mark of ours: "You said this
  * is the coin", not a tick or a number.
  *
- * What breaks if changed carelessly: `coinAsk` for `unsure` with no listed coins must be null —
- * "Which coin?" on an empty list is a question with no answers, and the list is what the owner
- * picks from.
+ * What breaks if changed carelessly: `launchLine`. A coin launched before the post cannot have come
+ * from it; the owner may still save it, but the preview must say so in those words, never hide it.
  */
 
 import type { Coin, PostCoinLink } from '../../shared/api/index.ts';
@@ -28,9 +28,29 @@ export type CoinAsk =
   | { readonly kind: 'pick' };
 
 export function coinAsk(coins: PostCoinLink): CoinAsk | null {
-  if (coins.kind === 'one') return { kind: 'confirm', coin: coins.coin };
-  if (coins.kind === 'unsure' && coins.claimCount > 0) return { kind: 'pick' };
-  return null;
+  if (coins.kind === 'one' || coins.kind === 'matched') return { kind: 'confirm', coin: coins.coin };
+  if (coins.kind === 'several') return null;
+  return { kind: 'pick' };
+}
+
+const MINUTE_MS = 60_000;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
+const DAYS_SHOWN_AS_HOURS = 2;
+
+/** "18m", "3h", "2d": a gap the way the card says one. */
+function gap(ms: number): string {
+  const minutes = Math.round(Math.abs(ms) / MINUTE_MS);
+  if (minutes < MINUTES_PER_HOUR) return `${minutes}m`;
+  const hours = Math.round(minutes / MINUTES_PER_HOUR);
+  return hours < HOURS_PER_DAY * DAYS_SHOWN_AS_HOURS ? `${hours}h` : `${Math.round(hours / HOURS_PER_DAY)}d`;
+}
+
+/** A pasted coin's launch against the post, and whether it is older than the post. */
+export function launchLine(launchedAfterMs: number | null): { readonly line: string; readonly older: boolean } {
+  if (launchedAfterMs === null) return { line: 'When it launched against the post is not known', older: false };
+  if (launchedAfterMs >= 0) return { line: `Launched ${gap(launchedAfterMs)} after the post`, older: false };
+  return { line: `Launched ${gap(launchedAfterMs)} before the post`, older: true };
 }
 
 /** The line under a coin call once the owner has made one; null before. */

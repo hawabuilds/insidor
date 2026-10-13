@@ -28,8 +28,8 @@
  * Buy on the card; tapping opens that coin's page, or the list when there are several.
  *
  * The owner, and only the owner, also gets a strip under each card (features/owner): "Not a meme",
- * which takes the post out of this list at once, and the coin call; and "Hidden by me" to bring
- * a hidden post back.
+ * which takes the post out of this list at once, and the coin call; "Hidden by me" to bring
+ * a hidden post back; and, on For You, "Add a missed post" with its coin's address.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -56,6 +56,7 @@ import { PostSheet } from '../post-sheet/index.ts';
 import { PullIndicator } from '../alerts/Parts.tsx';
 import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
 import { HiddenByMe } from '../owner/HiddenByMe.tsx';
+import { AddMissedPostSheet } from '../owner/AddMissedPost.tsx';
 import { OwnerCardStrip } from '../owner/OwnerCard.tsx';
 import { HideBar } from '../owner/OwnerPost.tsx';
 import { useIsOwner, useOwnerState, useSavedCalls } from '../owner/hooks.ts';
@@ -98,6 +99,7 @@ export function Feed({
   const owner = useIsOwner();
   const { hidden: hiddenNow } = useOwnerState();
   const [hiddenList, setHiddenList] = useState(false);
+  const [addMissed, setAddMissed] = useState(false);
 
   /* Coming back to the app is when somebody expects it to be current. */
   useEffect(() => {
@@ -243,6 +245,7 @@ export function Feed({
         {owner && onPosts ? (
           <div className={styles['ownerRow']}>
             <Button look="quiet" onClick={() => setHiddenList(true)}>Hidden by me</Button>
+            {tab === 'fyp' ? <Button look="quiet" onClick={() => setAddMissed(true)}>Add a missed post</Button> : null}
           </div>
         ) : null}
 
@@ -306,6 +309,7 @@ export function Feed({
           </>
         ) : null}
         {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}
+        {owner && addMissed ? <AddMissedPostSheet onClose={() => setAddMissed(false)} /> : null}
         {owner ? <HideBar /> : null}
         {sheet !== null ? <PostSheet key={sheet.id} postId={sheet.id} start={sheet.start} onClose={() => setSheet(null)} /> : null}
       </section>

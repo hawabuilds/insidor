@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import type { Coin, PostCoinLink } from '../../shared/api/index.ts';
 import { callsByItem, decodeCalls, decodeHidden, decodeOwner, savedCallOf } from '../../shared/api/wire/owner.ts';
 import { callKey, cardOf, createOwnerStore, withoutHidden } from './owner-store.ts';
-import { coinAsk, coinCallLine, hiddenAgo, nameCallLine } from './owner-view.ts';
+import { coinAsk, coinCallLine, hiddenAgo, launchLine, nameCallLine } from './owner-view.ts';
 
 const MINT = 'FerryHorn1111111111111111111111111111111pump';
 const call = (over: Record<string, unknown> = {}) => ({ kind: 'post', itemId: 'x:1', call: 'not', coin: null, name: null, ticker: null, betterName: null, note: null, at: 1_000, ...over });
@@ -73,13 +73,18 @@ test('★ a hide takes the post out at once; a refused save puts it back and say
   assert.equal(store.get().hidden.size, 0, 'signing out forgets everything the owner did');
 });
 
-test('★ a coin is called only where the card shows one', () => {
+test('★ a coin is called on every post line; a narrative\'s several coins ask nothing', () => {
   const coin = { coinId: `solana:${MINT}`, address: MINT, ticker: 'FERRY' } as unknown as Coin;
   assert.deepEqual(coinAsk({ kind: 'one', coin }), { kind: 'confirm', coin });
-  assert.deepEqual(coinAsk({ kind: 'unsure', claimCount: 3 }), { kind: 'pick' });
-  for (const coins of [{ kind: 'unsure', claimCount: 0 }, { kind: 'none' }, { kind: 'pending' }, { kind: 'unchecked' }, { kind: 'several', coins: [coin, coin] }] as PostCoinLink[]) {
-    assert.equal(coinAsk(coins), null, coins.kind);
+  assert.deepEqual(coinAsk({ kind: 'matched', coin, evidence: { linksPost: true, samePicture: null, launchedAfterMs: null } }), { kind: 'confirm', coin });
+  for (const coins of [{ kind: 'unsure', claimCount: 3 }, { kind: 'unsure', claimCount: 0 }, { kind: 'none' }, { kind: 'pending' }, { kind: 'unchecked' }] as PostCoinLink[]) {
+    assert.deepEqual(coinAsk(coins), { kind: 'pick' }, `${coins.kind}: a pasted address is always an answer`);
   }
+  assert.equal(coinAsk({ kind: 'several', coins: [coin, coin] }), null, "a narrative's coins are the narrative's");
+  assert.deepEqual(launchLine(18 * 60_000), { line: 'Launched 18m after the post', older: false });
+  assert.deepEqual(launchLine(-3 * 3_600_000), { line: 'Launched 3h before the post', older: true });
+  assert.equal(launchLine(null).older, false);
+  assert.equal(coinCallLine(savedCallOf(call({ kind: 'coin_match', call: 'cleared' }))!), null, 'a removed label says nothing');
 });
 
 test('the card says what the owner said, in words', () => {
