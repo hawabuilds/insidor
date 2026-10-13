@@ -2,9 +2,17 @@
  * The coin logo's two decisions, apart from the component so `node --test` holds them: which
  * pictures to try and in what order, and the fallback disc's colour.
  *
- * Our storage's copy first (built from the address, never carried in a reply), then the coin's
- * own picture; the colour is fixed by the address so a coin's disc never changes between
+ * Our storage's copy first (built from the address, never carried in a reply), then the
+ * launchpad's own resized copy (built from the address, for the launchpad's coins only), then the
+ * coin's own picture; the colour is fixed by the address so a coin's disc never changes between
  * screens. See shared/ui/CoinLogo.tsx for why each.
+ *
+ * ★ THE LAUNCHPAD'S IMAGE SERVICE ONLY FOR ITS OWN COINS. It answers every address, and one it
+ * does not know with a shared placeholder picture — which loads fine, so the browser cannot tell
+ * it from a logo and the letter would never show. Its coins carry its address suffix, so only
+ * those are sent there. The market source's hosted copy is not tried here at all: the app never
+ * shows a source's hosted copy (services/read search.ts), and the server's logo mirror already
+ * copies it into our storage when nothing better exists.
  *
  * ★ A CONTENT-ADDRESSED PICTURE IS TRIED ON MORE THAN ONE GATEWAY. The same file sits behind every
  * IPFS gateway, and on 2026-10-13 two of the public ones answered 429 while the launchpad's own
@@ -82,10 +90,20 @@ export function logoGradient(seed: string): string {
   return GRADIENTS[hash % GRADIENTS.length] ?? GRADIENTS[0] ?? '';
 }
 
-/** The pictures to try, in order: our copy (when storage is configured), then the coin's own through its gateway chain. */
+/** The launchpad's image service, resized on its side to the largest disc the app draws. Kept equal to the mirror's. */
+export const LAUNCHPAD_IMAGE = 'https://images.pump.fun/coin-image';
+const LAUNCHPAD_SIZE = '256x256';
+const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * The pictures to try, in order: our copy (when storage is configured), the launchpad's copy (its
+ * own coins only), then the coin's own picture through its gateway chain.
+ */
 export function logoSources(address: string | null, imageUrl: string | null, base: string): readonly string[] {
   const out: string[] = [];
-  if (base !== '' && address !== null && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) out.push(`${base}/${address}`);
+  const valid = address !== null && ADDRESS.test(address);
+  if (base !== '' && valid) out.push(`${base}/${address}`);
+  if (valid && /pump$/.test(address)) out.push(`${LAUNCHPAD_IMAGE}/${address}?variant=${LAUNCHPAD_SIZE}`);
   if (imageUrl !== null && imageUrl !== '') for (const u of pictureChain(imageUrl)) if (!out.includes(u)) out.push(u);
   return out;
 }

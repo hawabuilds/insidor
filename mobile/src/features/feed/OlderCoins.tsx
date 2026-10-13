@@ -11,6 +11,10 @@
  * buttons are the server's answer about THAT, and nothing here touches them. A person who wants
  * an older coin buys it from its own page, as from Search.
  *
+ * Every coin here is drawn with its logo through the shared CoinLogo (shared/ui/CoinLogo.tsx),
+ * the same pictures in the same order as the card's own coin: the line's one coin, a small stack
+ * of the first few when there are several, and each row of the list.
+ *
  * Separate from PostRow because the card is shared and its coin line is a decided rule; this is
  * a second, independent fact about the world, and keeping it in its own file means a change to
  * one cannot quietly change the other.
@@ -21,9 +25,13 @@ import type { OlderCoin, RisingPost } from '../../shared/api/index.ts';
 import type { Millis } from '../../shared/format/measure.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { Button } from '../../shared/ui/Button.tsx';
+import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Modal } from '../../shared/ui/Modal.tsx';
 import { olderCoinId, olderCoinLabel, olderFacts, olderLine } from './older-view.ts';
 import styles from './older.module.css';
+
+/** How many logos the several-coins line stacks; the count is in its words. */
+const STACKED = 3;
 
 const open = (c: OlderCoin) => {
   window.location.hash = hrefFor({ screen: 'token', coinId: olderCoinId(c) });
@@ -44,12 +52,20 @@ export function OlderCoinsLine({ post, now }: { post: RisingPost; now: Millis })
           href={hrefFor({ screen: 'token', coinId: olderCoinId(only) })}
           onClick={stop}
         >
-          <span className={styles['line']}>{line}</span>
-          <span className={styles['facts']}>{olderFacts(only, now).join(', ')}</span>
+          <CoinLogo address={only.address} ticker={only.ticker ?? only.name} size={22} />
+          <span className={styles['text']}>
+            <span className={styles['line']}>{line}</span>
+            <span className={styles['facts']}>{olderFacts(only, now).join(', ')}</span>
+          </span>
         </a>
       ) : (
         <div className={styles['several']}>
-          <span className={styles['line']}>{line}</span>
+          <span className={styles['stack']} aria-hidden="true">
+            {post.runningOlder.slice(0, STACKED).map((c) => (
+              <span key={c.address} className={styles['stackItem']}><CoinLogo address={c.address} ticker={c.ticker ?? c.name} size={22} /></span>
+            ))}
+          </span>
+          <span className={`${styles['line']} ${styles['text']}`}>{line}</span>
           <Button look="quiet" onClick={() => setListing(true)}>See {post.runningOlder.length} coins</Button>
         </div>
       )}
@@ -65,9 +81,12 @@ export function OlderCoinsList({ coins, now, onClose }: { coins: readonly OlderC
       <div className={styles['list']}>
         {coins.map((c) => (
           <button key={c.address} type="button" className={styles['row']} onClick={() => open(c)}>
-            <span className={styles['ticker']}>{olderCoinLabel(c)}</span>
-            {c.name !== null && c.ticker !== null ? <span className={styles['name']}>{c.name}</span> : null}
-            <span className={styles['facts']}>{olderFacts(c, now).join(', ')}</span>
+            <CoinLogo address={c.address} ticker={c.ticker ?? c.name} size={32} />
+            <span className={styles['text']}>
+              <span className={styles['ticker']}>{olderCoinLabel(c)}</span>
+              {c.name !== null && c.ticker !== null ? <span className={styles['name']}>{c.name}</span> : null}
+              <span className={styles['facts']}>{olderFacts(c, now).join(', ')}</span>
+            </span>
           </button>
         ))}
       </div>

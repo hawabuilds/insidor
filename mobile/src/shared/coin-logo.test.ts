@@ -1,6 +1,6 @@
 /**
- * The coin logo's order: our copy, then the coin's own picture (through a chain of gateways when it
- * is content-addressed), then the letter.
+ * The coin logo's order: our copy, then the launchpad's copy for its own coins, then the coin's own
+ * picture (through a chain of gateways when it is content-addressed), then the letter.
  */
 
 import test from 'node:test';
@@ -40,4 +40,24 @@ test('the letter is the ticker\'s first, and a coin keeps one colour', () => {
   assert.equal(logoLetter('$wif'), 'W');
   assert.equal(logoLetter(null), '?');
   assert.equal(logoGradient(A), logoGradient(A));
+});
+
+const P = 'Er4LgAaev5h9hXkmvJxCzZb7xA9a9VhRM1XMTj5Fpump';
+
+test('★ a launchpad coin: our copy, then the launchpad\'s resized copy, then its own picture', () => {
+  assert.deepEqual(logoSources(P, `ipfs://${CID}`, 'https://store.example/coin-logos').slice(0, 3), [
+    'https://store.example/coin-logos/' + P,
+    `https://images.pump.fun/coin-image/${P}?variant=256x256`,
+    `https://pump.mypinata.cloud/ipfs/${CID}?img-width=256&img-height=256&img-format=webp`,
+  ]);
+});
+
+test('★ a launchpad coin with no picture in its reply still has a real source before the letter', () => {
+  assert.deepEqual(logoSources(P, null, ''), [`https://images.pump.fun/coin-image/${P}?variant=256x256`]);
+  assert.deepEqual(logoSources(P, null, 'https://store.example'), ['https://store.example/' + P, `https://images.pump.fun/coin-image/${P}?variant=256x256`]);
+});
+
+test('★ any other coin is never sent to the launchpad\'s image service, whose placeholder would hide the letter', () => {
+  assert.ok(logoSources(A, null, 'https://store.example').every((u) => !u.includes('images.pump.fun')));
+  assert.ok(logoSources('../pump', null, '').length === 0);
 });

@@ -7,9 +7,11 @@
  * SLOW_MS (a stalled gateway hands over to the next instead of leaving a blank disc):
  *   1. our storage's copy, at `VITE_COIN_LOGO_BASE/<address>` (services/project/src/logos-main.ts
  *      copies the coin's metadata picture there, else the launchpad's copy, else the market's);
- *   2. the coin's own picture as the reply carried it, through a chain of IPFS gateways when it is
+ *   2. the launchpad's own resized copy from its image service, for the launchpad's coins only
+ *      (an address it does not know gets a placeholder picture, which would hide the letter);
+ *   3. the coin's own picture as the reply carried it, through a chain of IPFS gateways when it is
  *      content-addressed (shared/coin-logo.ts);
- *   3. Trador's fallback: the ticker's first letter in a circle, on a colour fixed by the address.
+ *   4. Trador's fallback: the ticker's first letter in a circle, on a colour fixed by the address.
  *      Every launchpad coin has a picture, so a letter means every source above failed.
  *
  * ★ "SLOW" IS JUDGED ONLY ON SCREEN. The pictures load lazily, so one below the fold has not
@@ -18,7 +20,8 @@
  *
  * ★ THE STORAGE URL IS BUILT HERE FROM THE ADDRESS, NEVER CARRIED IN A REPLY. The censor in
  * shared/api/decode.ts refuses the storage vendor's name inside any value, and a copied logo needs
- * no server to say where it is: the path is the address. Unset, step 1 is skipped.
+ * no server to say where it is: the path is the address. Unset, step 1 is skipped. A coin with no
+ * copy there yet (the bucket answers 400 or 404) falls to step 2 on the error, at once.
  *
  * What breaks if changed carelessly: the path must match `COIN_LOGO_FOLDER` in
  * adapters/storage/supabase/src/coin-logo.ts — the base ends in that folder, the file is the
