@@ -8,9 +8,13 @@
  * And it must clear the feed's view bar (core's `clearsReachBar`): For You at 40k views or fast
  * early growth, Popular at 250k. A post whose views we have not read is on neither.
  *
- * In what order: `fyp` newest first by post time; `popular` most views first, and a post
- * whose views we have not read goes after every post whose views we have. The client never
- * sorts.
+ * In what order: `fyp` by the re-tune's applied order model (core `postRankScore`, 0065), highest
+ * first, ties newest first by post time — and with no fit applied (or 0065 not yet migrated),
+ * newest first as before. With `rising.scorePassBar` set, a post the rules passed but the fit puts
+ * under the bar is not on For You (`under_score_bar`). The fit's number orders and gates here and
+ * goes nowhere else: not on the row, not in the payload, not in the log. `popular` most views
+ * first, and a post whose views we have not read goes after every post whose views we have. The
+ * client never sorts.
  *
  * What each row says: facts only — where it was posted, by whom, a link to it, its text
  * (without the trailing short links X appends), its picture (a video's preview counts, flagged
@@ -65,8 +69,9 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import { clearsReachBar, heldKind, postScoreReason, type HeldKind, type ReachLevel } from '@insidor/core';
+import { clearsReachBar, heldKind, postRankScore, postScoreReason, postSignals, type HeldKind, type ReachLevel, type ScoreFit } from '@insidor/core';
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
+import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
 
 import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.ts';
 
@@ -380,6 +385,23 @@ export function postStanding(row: RisingRow, policy = DEFAULT_POLICY): FeedRejec
   return withOwnerCall(judge, row.owner_call ?? undefined) ?? 'not_scored';
 }
 
+/**
+ * For You's order: the order model's number, highest first; equal numbers — or no fit, when every
+ * number is null — newest first by post time, then by id so a frame is stable.
+ */
+export function forYouOrder(a: { readonly score: number | null; readonly at: number; readonly id: string }, b: { readonly score: number | null; readonly at: number; readonly id: string }): number {
+  return (b.score ?? 0) - (a.score ?? 0) || b.at - a.at || a.id.localeCompare(b.id);
+}
+
+/**
+ * Whether the order model holds a post back: only with a bar set, a fit applied, and the post
+ * under it — and never a post the owner called a meme, whose call outranks the fit as it
+ * outranks the judge.
+ */
+export function underScoreBar(score: number | null, bar: number | null, ownerCall: OwnerPostCall | null): boolean {
+  return bar !== null && score !== null && score < bar && ownerCall !== 'meme';
+}
+
 /** Load, filter by the per-post score and each feed's view bar, project, and order both feeds. Writes nothing. */
 export async function buildRising(
   db: Db,
@@ -401,6 +423,11 @@ export async function buildRising(
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
   const lookups = await withMatches(db, rows, await loadPostLookups(db, rows.map((row) => row.item_id)), coinsByStory, nowMs, sparkWindowMs, policy);
   const older = await loadRunningOlder(db, rows.map((row) => row.item_id));
+  /* The order model: the latest applied fit, and crypto attention only when the fit weighs it. */
+  const scores = new PgScoreModelRepo(db);
+  const applied = await scores.latestApplied();
+  const fit: ScoreFit | null = applied === null ? null : { intercept: applied.intercept, terms: applied.terms };
+  const attention = fit !== null && fit.terms.some((t) => t.signal === 'attention') ? await scores.attention(rows.map((row) => row.item_id)) : new Map<string, number>();
   const posts = rows.map((row) => {
     const readings = reach.get(row.item_id) ?? [];
     /* Measured counts only: a censored reading's last level is an older number, and read at a
@@ -410,17 +437,25 @@ export async function buildRising(
     const lookup = lookups.get(row.item_id) ?? null;
     /* A short video's views run an order of magnitude above a text post's: its own bars (Policy.rising.shortVideoReachScale). */
     const scale = row.source === SHORT_VIDEO_SOURCE ? policy.rising.shortVideoReachScale : 1;
+    const score = fit === null ? null : postRankScore(postSignals({
+      coinable: row.coinable, confidence: row.confidence === null ? null : Number(row.confidence), lookedAt: row.looked_at, proposedName: row.proposed_name,
+      kindLabel: row.kind_label ?? null, pictureSimilarity: row.picture_similarity === null ? null : Number(row.picture_similarity),
+      readings: views, postedAtMs: postedAt, reachScale: scale, attention: attention.get(row.item_id) ?? null,
+    }, policy), fit);
+    const underBar = underScoreBar(score, policy.rising.scorePassBar, row.owner_call ?? null);
     return {
+      score,
+      underBar,
       post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? []),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
-      fyp: clearsReachBar('fyp', views, postedAt, policy, scale),
+      fyp: !underBar && clearsReachBar('fyp', views, postedAt, policy, scale),
       unread: views.every((v) => v.reach === null),
       popular: clearsReachBar('popular', views, postedAt, policy, scale),
     };
   });
 
-  const fyp = posts.filter((p) => p.fyp).sort((a, b) => b.at - a.at || a.post.id.localeCompare(b.post.id));
+  const fyp = posts.filter((p) => p.fyp).sort((a, b) => forYouOrder({ score: a.score, at: a.at, id: a.post.id }, { score: b.score, at: b.at, id: b.post.id }));
   const views = (p: WireRisingPost): number | null => p.reach.v;
   const popular = posts.filter((p) => p.popular).sort((a, b) => {
     const va = views(a.post);
@@ -429,7 +464,7 @@ export async function buildRising(
     return vb - va || b.at - a.at;
   });
   const cap = (list: typeof posts) => list.slice(0, policy.rising.maxRows).map((p) => p.post);
-  for (const p of posts) if (!p.fyp) whyNot.set(p.post.id, p.unread ? 'reach_unread' : 'under_reach_bar');
+  for (const p of posts) if (!p.fyp) whyNot.set(p.post.id, p.underBar ? 'under_score_bar' : p.unread ? 'reach_unread' : 'under_reach_bar');
   const shown = { fyp: cap(fyp), popular: cap(popular) };
   const ids = new Set([...shown.fyp, ...shown.popular].map((p) => p.id));
   const sameName = new Map(posts.filter((p) => ids.has(p.post.id) && p.sameName.length > 0).map((p) => [p.post.id, p.sameName] as const));
