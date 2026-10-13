@@ -671,8 +671,11 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
   /* What each catch-all lane returned this pass, per source — the input to its next floor. */
   const laneReturned = new Map<string, Partial<Record<FeedLane, number>>>();
 
-  for (const plan of plans) {
-    if (deps.signal.aborted) break;
+  /* ★ ONE ASK, RUN. A function so the spaced asks — a source with no catch-all, whose paid scraper
+     runs take minutes — run beside the catch-all lanes rather than ahead of them: a four-minute
+     short-video run used to hold the text search, the feed's main input, for as long. */
+  const runPlan = async (plan: SourcePlan): Promise<void> => {
+    if (deps.signal.aborted) return;
     const { adapter, source, query, estimate, lane, spaced, watch } = plan;
     const tag = lane === null ? {} : { lane };
     const coverKey = lane === null ? query.term : `feed:${lane}`;
@@ -699,7 +702,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         coveredBy,
         wouldSpendUsd: estimate.usd,
       });
-      continue;
+      return;
     }
 
     /**
@@ -734,7 +737,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         capUsd: line.capUsd,
         unrecordedUsd: line.unrecordedUsd,
       });
-      continue;
+      return;
     }
 
     /**
@@ -755,7 +758,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         estUnits: estimate.estUnits,
         wouldSpendUsd: estimate.usd,
       });
-      continue;
+      return;
     }
 
     let items: readonly Item[];
@@ -807,7 +810,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
           capUsd: line.capUsd,
         });
         deps.log.warn('source paused for budget at the vendor edge', { source, reason: e.reason });
-        continue;
+        return;
       }
       /* ★ A FAILED CALL STILL COST MONEY. The vendor bills on receipt, not on our
          ability to parse the answer, so this pass spent those dollars and the running
@@ -824,7 +827,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       firstError ??= `${source}: ${text}`;
       outcomes.push({ kind: 'failed', source, reason: text, ...tag });
       deps.log.error('source failed', { source, mode: query.mode, err: text });
-      continue;
+      return;
     }
 
     /* Quoted, not measured. The measured figure is in the ledger, recorded by the
@@ -863,7 +866,14 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     }
 
     outcomes.push({ kind: 'answered', source, items: items.length, stored, hasMore, ...tag });
-  }
+  };
+  const inTurn = async (list: readonly SourcePlan[]): Promise<void> => {
+    for (const plan of list) {
+      if (deps.signal.aborted) return;
+      await runPlan(plan);
+    }
+  };
+  await Promise.all([inTurn(plans.filter((p) => !p.spaced)), inTurn(plans.filter((p) => p.spaced))]);
 
   /* ── adapt: each lane's floor toward its target, from its own result ───────
      Live passes only, and only lanes that answered: a pause, a failure or a dry run says

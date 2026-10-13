@@ -203,7 +203,7 @@ test('a run is created, waited on server-side, and its dataset read', async () =
   assert.equal(paramsOf(create.url).get('waitForFinish'), '60');
   // ★ And it is told to KILL the run at a timeout, because a run we walk away from
   // keeps billing and would never appear in our ledger at all.
-  assert.equal(paramsOf(create.url).get('timeout'), '360');
+  assert.equal(paramsOf(create.url).get('timeout'), '600');
 
   // The credential is a header, never a query parameter: the vendor's own docs call
   // `?token=` less secure because URLs are stored in histories and server logs.

@@ -111,14 +111,16 @@ const DEFAULT_WAIT_FOR_FINISH_S = 60;
  * A COUNT rather than a deadline, deliberately: a count needs no clock, so this whole
  * file stays deterministic and a test can exhaust the loop instantly.
  */
-const DEFAULT_MAX_STATUS_POLLS = 4;
+/* 8 since 2026-10-13: a most-liked, past-day search of 20 took 223 s live, and at 4 (five
+   minutes) a slower run was given up on while the vendor finished and billed it anyway. */
+const DEFAULT_MAX_STATUS_POLLS = 8;
 
 /**
  * What we tell the VENDOR to stop the run at. Slightly beyond our own waiting
  * ceiling, so that a run we are still waiting on is not killed underneath us, and a
  * run we have given up on is killed rather than left billing.
  */
-const DEFAULT_RUN_TIMEOUT_S = 360;
+const DEFAULT_RUN_TIMEOUT_S = 600;
 
 /**
  * The most dataset items we will pull in one read.
