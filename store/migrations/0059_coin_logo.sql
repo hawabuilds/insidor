@@ -1,5 +1,7 @@
 -- 0059_coin_logo.sql
 --
+-- Two parts: the coin-logo mirror's ledger, then (below) a view of each coin's own links.
+--
 -- WHICH COINS' LOGOS HAVE BEEN COPIED INTO OUR STORAGE, FROM WHERE, OR WHY NOT.
 --
 -- Every list of coins in the phone app shows a logo, and until now each one loaded from wherever
@@ -37,3 +39,28 @@ create index coin_logo_retry_idx on internal.coin_logo (checked_at) where outcom
 
 comment on table internal.coin_logo is
   'The coin-logo mirror''s ledger: copied into storage (and from which source), no picture anywhere, or a failed copy with its tries.';
+
+-- ── the coin's own links, readable by the read service ───────────────────────────────────────
+--
+-- The token page shows a coin's links (X, Telegram, website, TikTok) as icon buttons under its
+-- name, as Trador does. The market source's links come first; the links in the coin's launch
+-- metadata fill in any kind it lacks (services/read/src/coin-about.ts merges them). Those launch
+-- links live in internal.coin_metadata, which the app role cannot read, so this view exposes
+-- exactly three columns of it and nothing else: no outcome, no content id, no description, no
+-- attempt count, and only for documents that were read.
+--
+-- ★ THE OWNER'S CALL, OVER 0034's. 0034 kept the creator's links out of every payload because
+-- they are claims. They still are, and the page treats them so: shown as the coin's own links,
+-- with the real domain or handle on a long press, never labelled official or verified. A view
+-- rather than a copied table so a link the runner reads appears without a projector pass.
+
+create view public.coin_link as
+select m.asset_key, m.social_link, m.website, m.chat_link
+  from internal.coin_metadata m
+ where m.outcome = 'read'
+   and (m.social_link is not null or m.website is not null or m.chat_link is not null);
+
+comment on view public.coin_link is
+  'A coin''s own links from its launch metadata (X or TikTok, website, Telegram), as the creator wrote them. Claims, shown as the coin''s links and never as verified.';
+
+grant select on public.coin_link to insidor_app;

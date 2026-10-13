@@ -21,9 +21,10 @@ import { Client, Pool } from 'pg';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import { portfolioReader } from '@insidor/chain-portfolio';
-import { dexscreenerQuotes, dexscreenerSearch } from '@insidor/market-dexscreener';
+import { dexscreenerProfiles, dexscreenerQuotes, dexscreenerSearch, type CoinProfile } from '@insidor/market-dexscreener';
 import { unclaimedCreatorFees } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
 import { geckoterminal } from '@insidor/market-geckoterminal';
+import { geckoterminalHolders, keyHeaders } from '@insidor/market-geckoterminal/holders.ts';
 import { chainClient, curveProgressOf } from '@insidor/venue-solana-pumpfun';
 
 import { loadReadConfig } from './config.ts';
@@ -52,6 +53,10 @@ const IDLE_CLIENT_MS = 10_000;
 const MARKET_TIMEOUT_MS = 6_000;
 /** A curve account read is kept this long; the page polls, and a curve moves trade by trade. */
 const CURVE_KEEP_MS = 15_000;
+/** A coin's profile (links, day volume) is kept this long: a page polls, and links rarely change. */
+const PROFILE_KEEP_MS = 60_000;
+/** Profiles held at once; past it the oldest-kept go, so a day of opened coins cannot grow the process. */
+const PROFILES_KEPT = 2_000;
 const STATEMENT_TIMEOUT_MS = 5_000;
 const IDLE_IN_TRANSACTION_TIMEOUT_MS = 30_000;
 
@@ -218,7 +223,30 @@ async function main(): Promise<void> {
     now: Date.now,
   });
 
-  const server = createReadServer({ ...deps, market, search, wallet, allowedOrigins: cfg.allowedOrigins, stream });
+  /* The token page's Info tab and link buttons (coin-about.ts): the market source's profile of the
+     coin, kept a minute per coin, and the holder count, on its own small budget. */
+  const profiles = dexscreenerProfiles({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS });
+  const keptProfiles = new Map<string, { at: number; profile: CoinProfile | null }>();
+  const holders = geckoterminalHolders({
+    baseUrl: cfg.marketData.baseUrl,
+    headers: keyHeaders(cfg.marketData.plan, cfg.marketData.apiKey),
+    fetch: globalThis.fetch,
+    timeoutMs: MARKET_TIMEOUT_MS,
+    now: Date.now,
+  });
+  const about = {
+    profile: async (address: string) => {
+      const kept = keptProfiles.get(address);
+      if (kept !== undefined && Date.now() - kept.at < PROFILE_KEEP_MS) return kept.profile;
+      const profile = (await profiles.profiles([address])).get(address) ?? null;
+      if (keptProfiles.size >= PROFILES_KEPT) keptProfiles.delete(keptProfiles.keys().next().value ?? '');
+      keptProfiles.set(address, { at: Date.now(), profile });
+      return profile;
+    },
+    holders: (address: string) => holders.holders(address),
+  };
+
+  const server = createReadServer({ ...deps, market, search, wallet, about, allowedOrigins: cfg.allowedOrigins, stream });
 
   server.listen(cfg.port, () => log.info('listening', { port: cfg.port, origins: cfg.allowedOrigins }));
   notifier.start();
