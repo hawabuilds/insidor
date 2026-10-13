@@ -63,5 +63,7 @@ export { PgJobFileRepo } from './repo/job-files.ts';
 export { PgCoinedPictureRepo } from './repo/coined-pictures.ts';
 export { FEED_REJECTION_REASONS, PgFeedRejectionRepo } from './repo/feed-rejections.ts';
 export type { FeedRejection, FeedRejectionReason } from './repo/feed-rejections.ts';
+export { FEED_HISTORY_RETENTION_MS, recordFeedHistory } from './repo/feed-history.ts';
+export type { FeedHistoryOutcome } from './repo/feed-history.ts';
 export type { JobFile } from './repo/job-files.ts';
 export type { HistoryGap, HistoryOriginPost, PastNarrative, PendingNarrative, SpendRow, SpendStep } from './repo/history.ts';
