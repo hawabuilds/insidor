@@ -59,7 +59,7 @@ export interface DurableMeterOptions
   /** Where spend is read from at boot and written to afterwards. */
   readonly ledger: SpendLedger;
   /** Which spending this meter's lines hold: the live feed's (default) or one-off jobs'. */
-  readonly book?: 'live' | 'jobs';
+  readonly book?: 'live' | 'jobs' | 'learning';
   /**
    * Called when a spend could not be persisted. Reporting only — the meter has
    * already counted the dollars and does not act on the failure. Kept as a callback
@@ -137,12 +137,15 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
      a one-off job's lines only jobs' (rows labelled JOB_ENDPOINT_PREFIX; SpendTotals.jobs), so
      neither can ever spend the other's money. */
   const book = opts.book ?? 'live';
+  const none = { totalUsd: 0, byVendor: {} as Readonly<Record<string, number>> };
   const inBook = (t: SpendTotals): SpendTotals => {
-    const jobs = t.jobs ?? { totalUsd: 0, byVendor: {} };
+    const jobs = t.jobs ?? none;
+    const learning = t.learning ?? none;
     if (book === 'jobs') return { totalUsd: jobs.totalUsd, byVendor: { ...jobs.byVendor } };
+    if (book === 'learning') return { totalUsd: learning.totalUsd, byVendor: { ...learning.byVendor } };
     return {
-      totalUsd: Math.max(t.totalUsd - jobs.totalUsd, 0),
-      byVendor: Object.fromEntries(Object.entries(t.byVendor).map(([v, usd]) => [v, Math.max(usd - (jobs.byVendor[v] ?? 0), 0)])),
+      totalUsd: Math.max(t.totalUsd - jobs.totalUsd - learning.totalUsd, 0),
+      byVendor: Object.fromEntries(Object.entries(t.byVendor).map(([v, usd]) => [v, Math.max(usd - (jobs.byVendor[v] ?? 0) - (learning.byVendor[v] ?? 0), 0)])),
     };
   };
   const paceOpening: SpendTotals = inBook(openedWith);

@@ -179,7 +179,12 @@ export interface SpendTotals {
    * from a ledger that cannot tell, which then counts everything as the runner's.
    */
   readonly jobs?: { readonly totalUsd: number; readonly byVendor: Readonly<Record<string, number>> };
+  /** The part spent by the learning work (re-tunes, missed-post fetches, gold additions): `LEARN_ENDPOINT_PREFIX`. */
+  readonly learning?: { readonly totalUsd: number; readonly byVendor: Readonly<Record<string, number>> };
 }
+
+/** How the learning work's ledger rows are told apart: `learn:<endpoint>`. Its own book, like a job's. */
+export const LEARN_ENDPOINT_PREFIX = 'learn:';
 
 /** How a one-off paid job's ledger rows are told apart from the runner's: `job:<endpoint>`. */
 export const JOB_ENDPOINT_PREFIX = 'job:';

@@ -20,9 +20,9 @@ import { VENDOR as EMBED_VENDOR } from '@insidor/embed-voyage';
 import { VENDOR as JUDGE_VENDOR } from '@insidor/judge-anthropic';
 import { SUPPLIER_VENDORS } from '@insidor/platform-registry';
 
-/** The one-off jobs' lines (Policy.budget.jobLines), keyed the same way. */
-export function jobVendorLines(policy: Policy): Readonly<Record<string, number>> {
-  const lines = policy.budget.jobLines;
+/** The one-off jobs' lines (Policy.budget.jobLines), or the learning work's, keyed the same way. */
+export function jobVendorLines(policy: Policy, book: 'jobs' | 'learning' = 'jobs'): Readonly<Record<string, number>> {
+  const lines = book === 'learning' ? policy.budget.learningLines : policy.budget.jobLines;
   return {
     [SUPPLIER_VENDORS.posts]: lines.posts,
     [SUPPLIER_VENDORS.video]: lines.video,

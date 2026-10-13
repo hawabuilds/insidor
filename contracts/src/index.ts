@@ -198,7 +198,7 @@ export type {
   SpendLedger,
   SpendTotals,
 } from './ports/meter.ts';
-export { BILLING_UNITS, JOB_ENDPOINT_PREFIX } from './ports/meter.ts';
+export { BILLING_UNITS, JOB_ENDPOINT_PREFIX, LEARN_ENDPOINT_PREFIX } from './ports/meter.ts';
 
 export type {
   AssetRepo,

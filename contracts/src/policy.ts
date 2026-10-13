@@ -1429,6 +1429,12 @@ export interface BudgetPolicy {
    * the live feed's lines and the live feed never spends these. `dailyUsd` caps the jobs' day.
    */
   readonly jobLines: { readonly dailyUsd: number; readonly posts: number; readonly judge: number; readonly video: number; readonly embeddings: number };
+  /**
+   * ★ THE LEARNING WORK'S OWN MONEY: the twice-daily re-tunes, fetching the owner's missed posts,
+   * and adding gold from live. Its own book on the ledger (rows labelled `learn:`), apart from the
+   * live feed and from one-off jobs. Prompt caching makes a re-tune mostly cache reads.
+   */
+  readonly learningLines: { readonly dailyUsd: number; readonly posts: number; readonly judge: number; readonly video: number; readonly embeddings: number };
   /*
    * ★ NO PACING, BY THE OWNER'S CHOICE (2026-10-13). Lines were once paced over the UTC day, so a
    * busy morning could not spend the day by breakfast. In practice the pace paused discovery and
@@ -1672,6 +1678,39 @@ export interface NotifyPolicy {
   readonly windowMs: number;
 }
 
+/**
+ * ★ WHO THE OWNER IS. Owner-only controls (the "Not a meme" / "Is a meme" buttons, feedback on coin
+ * matches and names, "Add missed posts") and owner-only alerts go to a signed-in person whose
+ * wallet or X handle is listed here — never anyone else, whatever the app shows them.
+ */
+export interface OwnerPolicy {
+  /** Wallet addresses, as the sign-in's embedded or linked wallet reports them. */
+  readonly wallets: readonly string[];
+  /** X handles without '@', lower-case. */
+  readonly xHandles: readonly string[];
+}
+
+/**
+ * ★ HOW THE JUDGE LEARNS FROM THE OWNER. Twice a day the learned-examples block (the owner's taps,
+ * missed posts and feedback) is rebuilt and tested; it is applied only if every gate holds,
+ * otherwise the current block stays. Gold is the floor every re-tune is held to.
+ */
+export interface LearningPolicy {
+  /** Local times the re-tune runs, in `timeZone`. */
+  readonly retuneAt: readonly string[];
+  readonly timeZone: string;
+  /** Gold origin posts that must still pass. */
+  readonly minGoldPass: number;
+  /** Held-out live non-memes that may pass, at most. */
+  readonly maxLiveNegativePass: number;
+  /** The owner's missed posts that must pass ("most"). */
+  readonly minMissedPass: number;
+  /** Labelled posts in the examples block, at most: newest first, yes and no balanced. */
+  readonly maxExamples: number;
+  /** Missed-post links the owner may paste at once. */
+  readonly maxMissedPerPaste: number;
+}
+
 export interface Policy {
   /** Bumped by hand on every edit. The hash is computed from the object, not this. */
   readonly version: string;
@@ -1695,6 +1734,8 @@ export interface Policy {
   readonly trade: TradePolicy;
   readonly wallet: WalletPolicy;
   readonly social: SocialPolicy;
+  readonly owner: OwnerPolicy;
+  readonly learning: LearningPolicy;
   readonly notify: NotifyPolicy;
   readonly rank: RankPolicy;
   readonly features: FeaturesPolicy;
@@ -1919,7 +1960,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v51',
+  version: 'policy.v52',
 
   admit: {
     maxAgeMin: 240,
@@ -2363,6 +2404,21 @@ const POLICY_V1: Policy = {
     windowMs: 60_000,
   },
 
+  owner: {
+    wallets: ['A1e82D9Lw4irgKMpXRpJbvLw8c7xCCyA42NdcxzKvvdL'],
+    xHandles: [],
+  },
+
+  learning: {
+    retuneAt: ['08:00', '20:00'],
+    timeZone: 'Europe/London',
+    minGoldPass: 0.65,
+    maxLiveNegativePass: 0.05,
+    minMissedPass: 0.5,
+    maxExamples: 120,
+    maxMissedPerPaste: 10,
+  },
+
   notify: {
     /* Trador's rungs (lib/notifications/milestones.ts). */
     milestones: [2, 3, 5, 10, 25, 50, 100],
@@ -2511,7 +2567,10 @@ const POLICY_V1: Policy = {
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured
        full-speed X is $5.72 a day) and $1 from the live judge ($8.50 → $7.50; measured $4.48), so the
        judge can be re-tuned on the live negative set today. The day stays $29.75. */
-    jobLines: { dailyUsd: 8.75, posts: 1, judge: 8.25, video: 0.5, embeddings: 0.5 },
+    /* $4.75 from 2026-10-13 07:00 UTC, with the learning work moved to its own $4 line below. Live
+       $21 + jobs $4.75 + learning $4 = $29.75 a day, under the owner's $30. */
+    jobLines: { dailyUsd: 4.75, posts: 0.5, judge: 3.75, video: 0.25, embeddings: 0.25 },
+    learningLines: { dailyUsd: 4, posts: 1, judge: 2.5, video: 0, embeddings: 0.5 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
