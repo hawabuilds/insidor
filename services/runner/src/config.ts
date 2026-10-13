@@ -256,10 +256,14 @@ export interface RunnerConfig {
    */
   readonly embeddings: { readonly state: 'dormant' } | { readonly state: 'configured'; readonly apiKey: string; readonly baseUrl: string };
   /**
-   * The IPFS gateway coin metadata is read through, by content id. Ours to choose — never the
-   * host a coin's creator named. `METADATA_GATEWAY`; a public gateway when unset.
+   * The IPFS gateways coin metadata is read through, by content id, tried in order. Ours to
+   * choose — never the host a coin's creator named. `METADATA_GATEWAY` alone when set; else the
+   * launchpad's own gateway, then Pinata's public one (the daily recall check's pair). Until
+   * 2026-10-13 the default was ipfs.io, which answers this runner's bursts with 429: every one of
+   * 7,263 coins read was `unavailable` or not content-addressed, and no coin's links or picture
+   * from its metadata was ever held.
    */
-  readonly metadataGateway: string;
+  readonly metadataGateways: readonly string[];
   /** The Solana RPC, from `HELIUS_API_KEY`: a found coin's metadata link and launch time. Null when unset. */
   readonly chainRpcUrl: string | null;
   /**
@@ -471,7 +475,7 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
             apiKey: (env['VOYAGE_API_KEY'] ?? '').trim(),
             baseUrl: (env['VOYAGE_API_BASE'] ?? '').trim() || 'https://api.voyageai.com',
           },
-    metadataGateway: (env['METADATA_GATEWAY'] ?? '').trim() || 'https://ipfs.io',
+    metadataGateways: (env['METADATA_GATEWAY'] ?? '').trim() === '' ? METADATA_GATEWAYS : [(env['METADATA_GATEWAY'] ?? '').trim()],
     chainRpcUrl: (env['HELIUS_API_KEY'] ?? '').trim() === '' ? null : `https://mainnet.helius-rpc.com/?api-key=${(env['HELIUS_API_KEY'] ?? '').trim()}`,
     marketData: marketDataFrom(env),
     ownerWallets: (env['OWNER_WALLET'] ?? '')
@@ -480,6 +484,9 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
       .filter((w) => w !== ''),
   };
 }
+
+/* The launchpad's own gateway answers fastest; Pinata's public one serves most of what it refuses. */
+const METADATA_GATEWAYS: readonly string[] = ['https://pump.mypinata.cloud', 'https://gateway.pinata.cloud'];
 
 const MARKET_DATA_URLS = {
   free: 'https://api.geckoterminal.com/api/v2',
