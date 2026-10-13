@@ -13,7 +13,10 @@
  * A re-tune summary is the owner's twice-daily report on the judge's learned examples: applied or
  * kept, how each test group did as passed-of-tested, and what it learned from. A group nobody could
  * test is a dash, never 0 of 0 read as a failure; the reason a block was kept is the job's own
- * sentence about which gate it missed.
+ * sentence about which gate it missed. It also carries the For You order model's refit (only when
+ * the facts carry `orderSignals`): applied or kept, how much each signal counts (its weight per
+ * standard deviation, the owner's own request — a property of the fit, not a number about any post
+ * or coin), and each held-out group before and after.
  */
 
 import type { AlertKind } from '@insidor/core';
@@ -33,6 +36,37 @@ export function compact(value: number): string {
 
 const RANK_NAME: Record<string, string> = { intern: 'Intern', analyst: 'Analyst', quant: 'Quant', wolf: 'Wolf', goat: 'GOAT' };
 const usd = (v: number): string => `$${v.toFixed(2)}`;
+/** The order model's signals in the owner's words. */
+const SIGNAL_WORDS: Readonly<Record<string, string>> = {
+  judge_yes: 'judge yes', judge_held_kind: 'held kind', judge_unjudged: 'not judged', judge_belief: 'judge sureness',
+  looked_picture: 'judged on picture', looked_frame: 'judged on video frame', name_test: 'name test', picture: 'picture match',
+  reach: 'reach', growth: 'growth', first_read_age: 'first read age', attention: 'crypto attention',
+};
+/** How many signals the alert names, largest weight first; the log has them all. */
+const SIGNALS_NAMED = 6;
+
+/** The order model's sentence, or nothing when the facts carry no refit. */
+function orderLine(f: Facts): string {
+  const signals = Array.isArray(f['orderSignals']) ? (f['orderSignals'] as unknown[]) : null;
+  if (signals === null) return typeof f['orderWhy'] === 'string' ? ` Order model kept: ${s(f['orderWhy'], 'it could not be fitted')}.` : '';
+  const named = signals
+    .flatMap((x) => {
+      const o = typeof x === 'object' && x !== null ? (x as Record<string, unknown>) : {};
+      const w = n(o['weight']);
+      return typeof o['signal'] === 'string' && w !== null ? [{ name: SIGNAL_WORDS[o['signal']] ?? o['signal'].replaceAll('_', ' '), w }] : [];
+    })
+    .slice(0, SIGNALS_NAMED)
+    .map((x) => `${x.name} ${x.w > 0 ? '+' : ''}${x.w.toFixed(2)}`);
+  const move = (label: string, k: string): string => {
+    const total = n(f[`order${k}N`]);
+    const before = n(f[`order${k}Before`]);
+    const after = n(f[`order${k}After`]);
+    return total === null || total === 0 || before === null || after === null ? `${label} –` : `${label} ${before}→${after}/${total}`;
+  };
+  const head = f['orderApplied'] === true ? 'Order model updated' : `Order model kept (${s(f['orderWhy'], 'a test fell short')})`;
+  return ` ${head}. Signals: ${named.length === 0 ? '–' : named.join(', ')}. Held out: ${move('hand gold', 'Hand')}, ${move('non-memes', 'Neg')}, ${move('missed', 'Missed')}.`;
+}
+
 const ofN = (passed: unknown, tested: unknown): string => {
   const p = n(passed);
   const t = n(tested);
@@ -95,7 +129,7 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const kept = applied ? '' : ` Kept the current examples: ${s(f['why'], 'a test fell short')}.`;
       const reasons = typeof f['missReasons'] === 'object' && f['missReasons'] !== null ? Object.entries(f['missReasons'] as Record<string, unknown>).filter(([, v]) => n(v) !== null) : [];
       const missedWhy = reasons.length === 0 ? '' : ` Missed today: ${reasons.map(([k, v]) => `${k.replaceAll('_', ' ')} ${n(v)}`).join(', ')}.`;
-      return { title: applied ? 'Judge examples updated' : 'Judge examples kept', body: `${tests}${auto}${regress} ${from}${kept}${missedWhy}` };
+      return { title: applied ? 'Judge examples updated' : 'Judge examples kept', body: `${tests}${auto}${regress} ${from}${kept}${missedWhy}${orderLine(f)}` };
     }
   }
 }

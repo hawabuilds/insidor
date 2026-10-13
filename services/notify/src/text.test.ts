@@ -46,3 +46,18 @@ test("a re-tune summary says applied or kept, each test as passed-of-tested, and
   );
   assert.match(alertText('retune_summary', { applied: true, missReasons: { never_found: 2, rejected: 1 } }).body, /Missed today: never found 2, rejected 1\.$/);
 });
+
+test("a re-tune summary carries the order model's refit: each signal's weight, and each held-out group before and after", () => {
+  const order = {
+    orderApplied: false, orderWhy: 'held-out gold is put above a non-meme 65% of the time, against 77% with today\'s rules',
+    orderSignals: [{ signal: 'looked_picture', weight: -2.13 }, { signal: 'judge_held_kind', weight: -1.49 }, { signal: 'picture', weight: 0.79 }],
+    orderHandBefore: 3, orderHandAfter: 3, orderHandN: 3, orderNegBefore: 22, orderNegAfter: 22, orderNegN: 48, orderMissedBefore: 0, orderMissedAfter: 0, orderMissedN: 0,
+  };
+  assert.match(
+    alertText('retune_summary', { applied: true, ...order }).body,
+    / Order model kept \(held-out gold is put above a non-meme 65% of the time, against 77% with today's rules\)\. Signals: judged on picture -2\.13, held kind -1\.49, picture match \+0\.79\. Held out: hand gold 3→3\/3, non-memes 22→22\/48, missed –\.$/,
+  );
+  assert.match(alertText('retune_summary', { applied: true, orderApplied: true, orderSignals: [] }).body, /Order model updated\. Signals: –\./);
+  assert.match(alertText('retune_summary', { applied: true, orderApplied: false, orderWhy: 'the order model could not be fitted: timeout' }).body, /Order model kept: the order model could not be fitted: timeout\.$/);
+  assert.doesNotMatch(alertText('retune_summary', { applied: true }).body, /Order model/, 'no refit in the facts, no sentence');
+});
