@@ -474,6 +474,9 @@ export async function withRuntime<T>(
         setInterval(() => void learned.refresh(), EXAMPLES_RECHECK_MS).unref();
       }
       const postJudge = learned?.port ?? null;
+      /* The feed's second question — which kind of post — asked only of posts the first passed;
+         see `kindJudge` in work/score-posts.ts. Same model, its own prompt set and hash. */
+      const kindJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'kind');
 
       const runtimeDeps: PlatformRuntime = {
         meter,
@@ -755,6 +758,7 @@ export async function withRuntime<T>(
           scorePosts: () =>
             scorePosts({
               judge: postJudge,
+              kindJudge,
               items: repos.items,
               scores: new PgPostJudgementRepo(db),
               meter,

@@ -40,17 +40,27 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePort, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PgItemRepo, PgPostJudgementRepo, ReusableAnswer } from '@insidor/store';
-import { clearsReachBar } from '@insidor/core';
+import { clearsReachBar, postScore } from '@insidor/core';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 /** How many unscored posts are read per pass for each one that may be judged: the rest are below the bar. */
 const PREFETCH_FACTOR = 5;
+
+/** The kinds the second question holds back (adapters/judge/anthropic/prompts/post-veto.txt). */
+export const HELD_KINDS: ReadonlySet<string> = new Set(['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS']);
 
 import { errorText, type Logger } from '../log.ts';
 
 export interface ScoringDeps {
   /** null when the judge is dormant: nothing is asked and every post waits. */
   readonly judge: JudgePort | null;
+  /**
+   * The second question, asked only of a post the first answer passed: which kind of post it is.
+   * AD, SPORT, FANDOM, SHOWBIZ and POLITICS hold it back — the kind answer (coinable false, the
+   * kind as its name) is filed as the post's latest judgement, so every reader of the latest
+   * answer hides it. OTHER files nothing: the first answer stands. Absent: one question only.
+   */
+  readonly kindJudge?: JudgePort | null;
   readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'reachReadings' | 'backfilled'>;
   readonly scores: Pick<PgPostJudgementRepo, 'record' | 'recordCopy' | 'reusable'>;
   readonly meter: Meter;
@@ -168,6 +178,8 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   }
 
   let scored = copied;
+  /* Posts the first question passed this pass, for the second. */
+  const passedFirst: { itemId: ItemId; subject: JudgeSubject | undefined }[] = [];
   let wouldSpendUsd = 0;
   let spentUsd = 0;
   for (let i = 0; i < toJudge.length; i += judge.maxBatch) {
@@ -201,6 +213,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
         if (itemId === undefined) continue;
         await deps.scores.record(itemId, outcome.judgement);
         scored += 1;
+        if (postScore(outcome.judgement, deps.policy) === 'passes') passedFirst.push({ itemId, subject: subjects[index] });
       }
     } catch (e) {
       if (e instanceof BudgetRefused) {
@@ -211,10 +224,42 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
     }
   }
 
+  /* The second question, for the posts the first passed: a kind other than OTHER holds the post
+     back by filing the kind answer as its latest judgement. A budget pause or an outage here
+     leaves the first answer standing — the post is not hidden for want of a second answer. */
+  let heldBack = 0;
+  const kindJudge = deps.kindJudge ?? null;
+  if (kindJudge !== null && deps.mode === 'live' && passedFirst.length > 0) {
+    const asked = passedFirst.flatMap((p) => (p.subject === undefined ? [] : [{ itemId: p.itemId, subject: p.subject }]));
+    const estimate = kindJudge.estimate(asked.map((a) => a.subject));
+    if (deps.meter.mayspend(estimate.vendor, estimate.usd)) {
+      try {
+        const line = deps.meter.line(estimate.vendor);
+        const result = await kindJudge.judge(asked.map((a) => a.subject), {
+          capUsd: line.capUsd,
+          spentUsd: line.spentUsd,
+          maxCalls: null,
+          deadline: (now + deps.policy.judge.timeoutMs * deps.policy.judge.maxAttempts) as Millis,
+        });
+        spentUsd += result.spend.usd;
+        for (const [index, outcome] of result.value.entries()) {
+          const a = asked[index];
+          /* Decided by the kind named, not the yes/no beside it: a reply that says OTHER and "not
+             coinable" in one breath is OTHER. */
+          if (a === undefined || outcome.kind !== 'judged' || !HELD_KINDS.has((outcome.judgement.proposedName ?? '').trim().toUpperCase())) continue;
+          await deps.scores.record(a.itemId, outcome.judgement);
+          heldBack += 1;
+        }
+      } catch (e) {
+        deps.log.warn('the kind question failed; first answers stand', { posts: asked.length, err: errorText(e) });
+      }
+    }
+  }
+
   if (deps.mode === 'dry') {
     deps.log.info('DRY RUN — posts priced for scoring, not sent', { posts: queue.length, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
   } else {
-    deps.log.info('posts scored', { queued: queue.length, scored, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
+    deps.log.info('posts scored', { queued: queue.length, scored, heldBack, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
   }
   return { queued: queue.length, scored, copied, waiting: queue.length - scored, wouldSpendUsd, spentUsd };
 }
