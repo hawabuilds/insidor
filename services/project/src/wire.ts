@@ -153,8 +153,11 @@ export type WireCoinLink =
   | { readonly kind: 'pending' }
   /* `claimCount`, not `candidateCount`: a candidate is what the resolve stage calls a
      coin it is still weighing, and that word is ours. What the user is told is a fact
-     that would be true without us — this many coins name themselves after this story. */
-  | { readonly kind: 'unsure'; readonly claimCount: number }
+     that would be true without us — this many coins name themselves after this story.
+     `more`, only ever true and only on a feed post's own search: the search found more coins
+     of the name than it kept, so the count is "at least". The coins themselves are never here;
+     they are listed by GET /post/:id/coins (public.same_name_coin), opened by a person's tap. */
+  | { readonly kind: 'unsure'; readonly claimCount: number; readonly more?: true }
   | { readonly kind: 'one'; readonly coin: WireCoin }
   | { readonly kind: 'several'; readonly coins: readonly [WireCoin, WireCoin, ...WireCoin[]] };
 

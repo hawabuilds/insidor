@@ -25,6 +25,7 @@ import {
 import { projectBoard, projectBoardProvenance, projectStory, projectStoryProvenance } from './project.ts';
 import type { ProjectOptions } from './project.ts';
 import { checkNarratives, loadPostReasons } from './narrative-rules.ts';
+import { storySameNameLists, writeSameNameCoins } from './same-name.ts';
 import { countAnchors, windowIsOrdered } from './window.ts';
 import { WireLeakError } from './wire.ts';
 import type { WireStory } from './wire.ts';
@@ -117,6 +118,10 @@ export async function projectStoryFrame(db: Db, viewId: string, options: Project
   const provenance = projectBoardProvenance(load.origins, board.order, FREE_POST_SOURCE_LABEL);
   const boardRows = await writeBoard(db, viewId, tick, board.rows, provenance);
   const storyViews = await writeStories(db, pages);
+  /* The coins behind each unsure narrative's count, written with the board that shows the count
+     (same-name.ts). A post on such a narrative lists these when "See N coins" is tapped. */
+  const coinsByStory = new Map(board.rows.map((row) => [row.id, row.coins]));
+  await writeSameNameCoins(db, 'story', storySameNameLists(facts, coinsByStory));
   return {
     tick,
     anchors,
@@ -127,6 +132,6 @@ export async function projectStoryFrame(db: Db, viewId: string, options: Project
     withheld: board.withheld.length,
     /* Each story's coin link as this frame committed it. The For You feed reads a post's
        coin from here and nowhere else — see rising.ts. */
-    coinsByStory: new Map(board.rows.map((row) => [row.id, row.coins])),
+    coinsByStory,
   };
 }

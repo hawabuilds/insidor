@@ -6,7 +6,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { projectRisingPost, withoutTrailingShortLinks } from './rising.ts';
+import { postCoins, projectRisingPost, withoutTrailingShortLinks } from './rising.ts';
 import type { WireCoin, WireCoinLink } from './wire.ts';
 
 const ROW = {
@@ -24,6 +24,7 @@ const ROW = {
   confidence: 0.9,
   looked_at: 'text' as const,
   proposed_name: 'CHILLGUY',
+  picture_similarity: null,
   story_id: 'story_seed-x-1',
 };
 
@@ -49,7 +50,7 @@ test('★ the row is the thirteen facts and nothing else', () => {
 
 test('★ the story decides: its one, several or unsure link travels with its story id', () => {
   const one: WireCoinLink = { kind: 'one', coin: COIN };
-  const confident = projectRisingPost(ROW, READINGS, new Map([[ROW.story_id, one]]), 1_800_000, { found: 0 });
+  const confident = projectRisingPost(ROW, READINGS, new Map([[ROW.story_id, one]]), 1_800_000, { coins: [], more: false });
   assert.equal(confident.storyId, ROW.story_id);
   assert.deepEqual(confident.coins, one, 'a search result never overrides the story');
 
@@ -62,16 +63,36 @@ test('★ the story decides: its one, several or unsure link travels with its st
 
 test('★ searched with nothing back is "none"; never searched is "pending", never "none"', () => {
   const lone = { ...ROW, story_id: null };
-  assert.deepEqual(projectRisingPost(lone, READINGS, new Map(), 1_800_000, { found: 0 }).coins, { kind: 'none' });
+  assert.deepEqual(projectRisingPost(lone, READINGS, new Map(), 1_800_000, { coins: [], more: false }).coins, { kind: 'none' });
   const unsearched = projectRisingPost(lone, READINGS, new Map(), 1_800_000);
   assert.deepEqual(unsearched.coins, { kind: 'pending' });
   assert.equal(unsearched.storyId, null);
 });
 
 test('★ a search that found coins is unsure with that count, never a coin on the post', () => {
-  const post = projectRisingPost({ ...ROW, story_id: null }, READINGS, new Map(), 1_800_000, { found: 4 });
+  const found = { coins: ['A1', 'B2', 'C3', 'D4'], more: false };
+  const post = projectRisingPost({ ...ROW, story_id: null }, READINGS, new Map(), 1_800_000, found);
   assert.deepEqual(post.coins, { kind: 'unsure', claimCount: 4 });
   assert.equal(post.storyId, null);
+  assert.equal(JSON.stringify(post).includes('A1'), false, 'the addresses are listed elsewhere, never on the row');
+});
+
+test('★ the count on an unsure post is the length of the list written beside it', () => {
+  const found = { coins: ['A1', 'B2', 'C3'], more: false };
+  const coins = postCoins(undefined, found);
+  assert.deepEqual(coins.sameName, found.coins);
+  assert.equal(coins.coins.kind === 'unsure' ? coins.coins.claimCount : -1, coins.sameName.length);
+  /* A story that is unsure lists its own coins (the frame writes them); the post adds none. */
+  assert.deepEqual(postCoins({ kind: 'unsure', claimCount: 2 }, found).sameName, []);
+  /* Nothing to list for any other state. */
+  assert.deepEqual(postCoins(undefined, { coins: [], more: false }).sameName, []);
+  assert.deepEqual(postCoins(undefined, { gaveUp: true }).sameName, []);
+});
+
+test('★ a search that kept fewer coins than it found says so: the count is "at least"', () => {
+  const coins = postCoins(undefined, { coins: ['A1', 'B2'], more: true }).coins;
+  assert.deepEqual(coins, { kind: 'unsure', claimCount: 2, more: true });
+  assert.equal('more' in postCoins(undefined, { coins: ['A1'], more: false }).coins, false, 'absent, never false, when the list is whole');
 });
 
 test('a story searched with none, and the post not searched itself, is "none" through the story', () => {
