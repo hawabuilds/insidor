@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import type { Judgement } from '@insidor/contracts/judgement.ts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { couldPassWithBoost, postScore, postScoreReason } from './post-score.ts';
+import { couldPassWithBoost, passesWithSignal, postScore, postScoreReason } from './post-score.ts';
 
 const judged = (over: Partial<Judgement>): Judgement => ({
   judgeId: 'judge:test@1',
@@ -97,4 +97,19 @@ test('couldPassWithBoost: a pass or a "yes" near the bar; never a "no"', () => {
   assert.equal(couldPassWithBoost(judged({ confidence: bar - DEFAULT_POLICY.rising.boostBarMargin }), DEFAULT_POLICY), true);
   assert.equal(couldPassWithBoost(judged({ confidence: 0.4 }), DEFAULT_POLICY), false);
   assert.equal(couldPassWithBoost(judged({ coinable: false, confidence: 0.15, proposedName: null }), DEFAULT_POLICY), false);
+});
+
+test('★ the crypto signal: the judge, the judge with the signal, or the signal alone; a held kind or a shill never', () => {
+  const yes = judged({ confidence: 0.85, proposedName: 'CHILLGUY' });
+  const no = judged({ coinable: false, confidence: 0.1, proposedName: null });
+  const others = { others: true, shill: false };
+  assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, null, null), 'judge');
+  assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, null, { others: false, shill: false }), 'judge');
+  assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, null, others), 'judge+signal');
+  assert.equal(passesWithSignal(no, DEFAULT_POLICY, null, null, others), 'signal', 'a "no" with other accounts coining it passes');
+  assert.equal(passesWithSignal(no, DEFAULT_POLICY, null, null, null), null);
+  assert.equal(passesWithSignal(no, DEFAULT_POLICY, null, 'SPORT', others), null, 'a held kind is not lifted by the signal');
+  assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, 'AD', others), null);
+  assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, null, { others: true, shill: true }), null, 'a shill is held as an ad, whatever the judge says');
+  assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, null, { others: false, shill: true }), null);
 });

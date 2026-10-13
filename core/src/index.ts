@@ -60,10 +60,10 @@ export { NAME_SPAN_PREFIX, nameCarriers, nameSpanKey, withNameCarriers } from '.
 export type { PictureInputs } from './group/picture.ts';
 export { qualify, worthJudging } from './qualify/stage.ts';
 export { presentationFor } from './qualify/presentation.ts';
-export { couldPassWithBoost, postScore, postScoreReason } from './qualify/post-score.ts';
+export { couldPassWithBoost, passesWithSignal, postScore, postScoreReason } from './qualify/post-score.ts';
 export { KIND_LABELS, NEVER_SHOWN_KINDS, NEWS_KINDS, heldKind, isNewsKind } from './qualify/kinds.ts';
 export type { HeldKind, NeverShownKind, NewsKind } from './qualify/kinds.ts';
-export type { PostScoreReason } from './qualify/post-score.ts';
+export type { CryptoSignal, PassRoute, PostScoreReason } from './qualify/post-score.ts';
 export { clearsReachBar } from './qualify/reach-bar.ts';
 export type { ReachBar, ReachLevel } from './qualify/reach-bar.ts';
 export { SCORE_SIGNALS, postRankScore, postSignals, termInput } from './qualify/post-rank.ts';
