@@ -105,6 +105,9 @@ const KEPT_ALWAYS = `(
   or exists (select 1 from public.history_coin h where h.address = a.address)
 )`;
 
+/** A judge's subject span of at most this many words is searched as a name too (lookupTerms). */
+const SPAN_NAME_WORDS = 3;
+
 /** Statuses a later post could change, so they are looked at once more. */
 const RECHECKED: readonly OriginStatus[] = ['unlinked', 'account_only', 'promo_only'];
 
@@ -124,18 +127,18 @@ const RECHECKED: readonly OriginStatus[] = ['unlinked', 'account_only', 'promo_o
  */
 const WAITING = `
        stories as (
-         select 'story' as subject_kind, s.story_id as subject_id, j.proposed_name as term, s.promoted_at as seen_at
+         select 'story' as subject_kind, s.story_id as subject_id, j.proposed_name as term, j.alternate_names as alternates, j.subject_spans as spans, s.promoted_at as seen_at
            from public.story s
            join public.story_view v on v.story_id = s.story_id
            join lateral (
-             select proposed_name from internal.judgement jj
+             select proposed_name, alternate_names, subject_spans from internal.judgement jj
               where jj.story_id = s.story_id and jj.proposed_name is not null
               order by jj.judged_at desc limit 1
            ) j on true
           where s.state = 'promoted' and coalesce(v.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending')
        ),
        posts as (
-         select distinct on (r.item_id) 'post' as subject_kind, r.item_id as subject_id, pj.proposed_name as term, i.first_seen_at as seen_at
+         select distinct on (r.item_id) 'post' as subject_kind, r.item_id as subject_id, pj.proposed_name as term, pj.alternate_names as alternates, pj.subject_spans as spans, i.first_seen_at as seen_at
            from public.rising_row r
            join public.item i on i.item_id = r.item_id
            join internal.post_judgement pj on pj.item_id = r.item_id and pj.proposed_name is not null
@@ -326,9 +329,9 @@ export class PgCoinUniverseRepo {
    * the card cannot offer "See N coins" until the list exists.
    */
   async lookupTerms(keepBefore: Millis, retries: number, limit: number): Promise<readonly LookupTerm[]> {
-    const rows = await this.#db.query<{ subject_kind: 'story' | 'post'; subject_id: string; term: string; attempts: number | null }>(
+    const rows = await this.#db.query<{ subject_kind: 'story' | 'post'; subject_id: string; term: string; alternates: unknown; spans: unknown; attempts: number | null }>(
       `with ${WAITING}
-       select w.subject_kind, w.subject_id, w.term, a.attempts
+       select w.subject_kind, w.subject_id, w.term, w.alternates, w.spans, a.attempts
          from waiting w
          left join internal.coin_lookup l on l.subject_kind = w.subject_kind and l.subject_id = w.subject_id
          left join internal.coin_lookup_attempt a on a.subject_kind = w.subject_kind and a.subject_id = w.subject_id
@@ -338,7 +341,13 @@ export class PgCoinUniverseRepo {
         limit $3`,
       [toTimestamp(keepBefore), retries, limit],
     );
-    return rows.map((r) => ({ kind: r.subject_kind, id: r.subject_id, term: r.term, attempts: Number(r.attempts ?? 0) }));
+    return rows.map((r) => {
+      const strings = (v: unknown) => (Array.isArray(v) ? v.filter((n): n is string => typeof n === 'string' && n.trim() !== '') : []);
+      /* A span short enough to be a name (the words the judge read in the post or its picture,
+         "Koi-4B", "Banana Duck"); a longer one is a description and is not searched. */
+      const spans = strings(r.spans).filter((t) => t.trim().split(/\s+/).length <= SPAN_NAME_WORDS);
+      return { kind: r.subject_kind, id: r.subject_id, term: r.term, names: [...new Set([r.term, ...strings(r.alternates), ...spans])], attempts: Number(r.attempts ?? 0) };
+    });
   }
 
   /**
@@ -478,3 +487,11 @@ export interface LookupTerm {
   /** Searches for it that failed on every source since the last one that finished. */
   readonly attempts: number;
 }
+  /**
+   * Every name the judge gave the subject: `term` (its proposed name) first, then its alternates,
+   * then its short subject spans — the words it read in the post or its picture (the judge has
+   * no separate reading of the picture's text, and asking for one would be a call per post).
+   * The runner searches each (owner, 2026-10-13: the right coin was among one name's results
+   * for only 25 of 71 gold origin posts). `term` stays the row's key and label.
+   */
+  readonly names?: readonly string[];

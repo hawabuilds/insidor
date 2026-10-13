@@ -8,6 +8,13 @@
  * chain when an RPC is configured. The universe loop then reads each one's metadata and checks
  * its origin like any coin's.
  *
+ * ★ EVERY NAME, NOT ONE (2026-10-13). A subject is searched under each name the judge gave it —
+ * the proposed name, then the alternates, up to `lookup.namesPerSubject` — and the answers are
+ * merged by address. One name found the right coin for only 25 of 71 gold origin posts: the
+ * coin is often named after the alternate, or the ticker. The subject counts as searched when
+ * any name finished on any source; it failed only when every name failed on every source. The
+ * caps count calls, so a pass takes `termsPerPass / namesPerSubject` subjects.
+ *
  * ★ A SEARCH RESULT NEVER LINKS ANYTHING. This step only adds rows; whether a coin belongs to a
  * narrative is the projector's call, and for a search-found coin it requires the picture, the
  * name and the timing to agree (services/project). Free reads only, so it runs on a dry run.
@@ -37,7 +44,7 @@ import type { Millis } from '@insidor/contracts';
 import { assetKey } from '@insidor/contracts/ids.ts';
 import type { CoinSearch } from '@insidor/contracts/ports/coin-search.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import type { PgAssetRepo, PgCoinUniverseRepo, PgOlderCoinRepo } from '@insidor/store';
+import type { LookupTerm, PgAssetRepo, PgCoinUniverseRepo, PgOlderCoinRepo } from '@insidor/store';
 import { mergeHits } from '@insidor/core';
 import { assetFromSearch, CHAIN } from '@insidor/venue-solana-pumpfun';
 
@@ -67,13 +74,29 @@ export interface LookupResult {
   readonly failed: number;
 }
 
+/** The subject's names to search: distinct once case, spaces and punctuation go, at most `max`. */
+export function searchNames(term: Pick<LookupTerm, 'term' | 'names'>, max: number): readonly string[] {
+  const key = (n: string) => n.toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '');
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const n of [term.term, ...(term.names ?? [])]) {
+    const k = key(n);
+    if (k === '' || seen.has(k)) continue;
+    seen.add(k);
+    out.push(n.trim());
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
   const now = deps.now();
   const l = deps.policy.universe.lookup;
   await deps.coins.queueLookups(now);
   const today = await deps.coins.searchesSince((Math.floor(now / DAY_MS) * DAY_MS) as Millis);
   const thisMinute = await deps.coins.searchesSince((now - MINUTE_MS) as Millis);
-  const room = Math.min(l.termsPerPass, l.perMinute - thisMinute, l.perDay - today);
+  const names = Math.max(1, l.namesPerSubject);
+  const room = Math.floor(Math.min(l.termsPerPass, l.perMinute - thisMinute * names, l.perDay - today * names) / names);
   if (room <= 0) {
     deps.log.info('coin lookup held back by its caps; the names wait for the next pass', { today, thisMinute });
     return { searched: 0, added: 0, failed: 0 };
@@ -83,7 +106,8 @@ export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
   let added = 0;
   let failed = 0;
   for (const term of await deps.coins.lookupTerms((now - l.keepMs) as Millis, l.retries, room)) {
-    const answers = await Promise.allSettled(deps.sources.map((s) => s.search(term.term)));
+    const perName = await Promise.all(searchNames(term, names).map((n) => Promise.allSettled(deps.sources.map((s) => s.search(n)))));
+    const answers = perName.flat();
     const read = answers.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []));
     if (read.length === 0) {
       const why = answers.map((a) => (a.status === 'rejected' ? errorText(a.reason) : '')).filter((e) => e !== '').join('; ');
@@ -104,12 +128,22 @@ export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
         deps.log.warn('older coins for a post could not be noted; the lookup goes on', { post: term.id, err: errorText(e) });
       }
     }
-    const recent = merged
-      .filter((h) => h.createdAt !== null && h.createdAt >= now - l.withinMs)
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-    const hits = recent.slice(0, l.hitsPerTerm);
+    const isRecent = (h: { createdAt: number | null }) => h.createdAt !== null && h.createdAt >= now - l.withinMs;
+    const newest = <T extends { createdAt: number | null }>(xs: readonly T[]) => [...xs].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    /* Each name keeps its own newest `hitsPerTerm`, so a common alternate cannot crowd out the
+       proposed name's coins; the union is listed newest first. */
+    const kept = new Map<string, (typeof merged)[number]>();
+    let cut = false;
+    for (const answersOfName of perName) {
+      /* A name every source failed on may hold coins we did not see: the list says "more". */
+      if (answersOfName.every((a) => a.status === 'rejected')) cut = true;
+      const recentOfName = newest(mergeHits(answersOfName.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []))).filter(isRecent));
+      if (recentOfName.length > l.hitsPerTerm) cut = true;
+      for (const h of recentOfName.slice(0, l.hitsPerTerm)) if (!kept.has(h.address)) kept.set(h.address, merged.find((m) => m.address === h.address) ?? h);
+    }
+    const hits = newest([...kept.values()]);
     /* A source that cut its own answer short may have left out more coins of this name. */
-    const more = recent.length > hits.length || answers.some((a) => a.status === 'fulfilled' && a.value.capped);
+    const more = cut || answers.some((a) => a.status === 'fulfilled' && a.value.capped);
     const known = await deps.coins.knownAssets(hits.map((h) => assetKey({ chain: CHAIN, address: h.address })));
     let newHere = 0;
     for (const hit of hits) {
