@@ -64,12 +64,16 @@ const CHART_HEIGHT = 120;
 /** The sheet's side padding, both sides, and the widest the app's column gets. */
 const SIDES = 32;
 const COLUMN = 480;
-/** The tallest the media box may be, as a share of the screen's height. */
-const MEDIA_TALLEST = 0.56;
+/**
+ * The tallest the media box may be, as a share of the screen's height. A third, so on a 390x844
+ * phone the post's words, the media, Views and the views chart all show above the fixed coin area
+ * when the sheet opens; a taller frame is shown whole, letterboxed, never cropped or squashed.
+ */
+const MEDIA_TALLEST = 0.32;
 
 /**
  * The media box's height: the media's own shape at the sheet's real width, so the whole frame
- * shows; a very tall video stops at about half the screen and is shown whole inside it. A post
+ * shows; a very tall video stops at about a third of the screen and is shown whole inside it. A post
  * that does not say its shape gets a square box. (PostMedia.tsx draws the media in it, contained.)
  */
 function mediaHeight(width: number | null, height: number | null): number {
