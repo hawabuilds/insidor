@@ -98,3 +98,16 @@ test('the chain and the cap are still bound parameters', async () => {
   assert.equal(params[0], 'solana');
   assert.equal(params[1], 300);
 });
+
+test('★ the coins on screen are read before the newest, under the same origin rule', async () => {
+  /* A coin on a For You card is usually hours older than the newest-first bound reaches, so
+     without this it was read once when new and never again: a stale absence and no Buy on
+     every card. Every coinId a projected feed or board names comes first. */
+  const { db, last } = recorder();
+  await assetsToRead(db, 'solana', 300);
+  const { sql } = last();
+  assert.match(sql, /from public\.rising_row/);
+  assert.match(sql, /from public\.board_row/);
+  assert.match(sql, /and a\.origin = any\(\$3::text\[\]\)/);
+  assert.match(sql, /order by tier, first_seen_at desc, asset_key asc limit \$2$/);
+});
