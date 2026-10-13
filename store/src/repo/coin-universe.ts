@@ -54,6 +54,15 @@ export interface NamingPost {
 }
 
 /** A coin a market source answered about: listed or not, bonded or not, its market cap now. */
+/** A feed post's name-search coin, with both pictures and, when the coin's is embedded, how alike they are. */
+export interface PostCoinPicture {
+  readonly itemId: string;
+  readonly assetKey: string;
+  readonly coinUri: string;
+  readonly postUri: string;
+  readonly similarity: number | null;
+}
+
 export interface StandingRow {
   readonly assetKey: string;
   readonly listed: boolean;
@@ -84,7 +93,7 @@ const NAMED_COINS = `named as (
    cross join lateral jsonb_array_elements(case when jsonb_typeof(v.payload #> '{coins,coins}') = 'array'
                                                then v.payload #> '{coins,coins}' else '[]'::jsonb end) c
   union
-  select r.payload #>> '{coins,coin,coinId}' from public.rising_row r where r.payload #>> '{coins,kind}' = 'one'
+  select r.payload #>> '{coins,coin,coinId}' from public.rising_row r where r.payload #>> '{coins,kind}' in ('one', 'matched')
 )`;
 const KEPT_ALWAYS = `(
   a.origin not in ('live_stream', 'backfill')
@@ -108,8 +117,10 @@ const RECHECKED: readonly OriginStatus[] = ['unlinked', 'account_only', 'promo_o
  * half used to test `payload -> 'coins' is null or payload ->> 'coins' = 'null'`, and a JSON
  * null matches neither (`->` gives the jsonb `null`, `->>` gives SQL NULL), so no post was ever
  * returned and the lookup searched nothing, silently, every pass. A coins value that is JSON
- * null, `none`, `pending` or `unchecked` is "no coin"; `one`, `several` and `unsure` are not
- * searched.
+ * null, `none`, `pending` or `unchecked` is "no coin"; `one`, `several` and a narrative's
+ * `unsure` are not searched. A post's OWN `unsure` is searched again every `keepMs` (2026-10-13):
+ * the coin made from a post is usually launched after it, so the list its card offers and the
+ * evidence that can make it confident (services/project post-match.ts) need the later launches.
  */
 const WAITING = `
        stories as (
@@ -128,7 +139,8 @@ const WAITING = `
            from public.rising_row r
            join public.item i on i.item_id = r.item_id
            join internal.post_judgement pj on pj.item_id = r.item_id and pj.proposed_name is not null
-          where coalesce(r.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending', 'unchecked')
+          where (coalesce(r.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending', 'unchecked')
+                 or (r.payload -> 'coins' ->> 'kind' = 'unsure' and r.payload ->> 'storyId' is null))
           order by r.item_id, pj.judged_at desc
        ),
        waiting as (select * from posts union all select * from stories)`;
@@ -221,6 +233,41 @@ export class PgCoinUniverseRepo {
          policy_version = excluded.policy_version`,
       [assetKey, origin.status, origin.postItemId, origin.postOffsetMs, origin.why, toTimestamp(at), policyVersion],
     );
+  }
+
+  /**
+   * Each feed post's name-search coins whose picture could be weighed against the post's: the
+   * coin launched inside [post − allowanceMs, post + windowMs] (one launched earlier can never be
+   * the post's), the coin has a picture (its metadata's, else the one stream gave), and the post
+   * has a vector in `space`. With the similarity when the coin's picture is already embedded;
+   * null when it is not yet. Newest post first. Read by the runner's coin-match step.
+   */
+  async postCoinPictures(space: string, allowanceMs: number, windowMs: number, limit: number): Promise<readonly PostCoinPicture[]> {
+    const rows = await this.#db.query<{ item_id: string; asset_key: string; coin_uri: string; post_uri: string; similarity: number | string | null }>(
+      `select p.item_id, a.asset_key, coalesce(m.image_uri, a.image_uri) as coin_uri, e.uri as post_uri,
+              (select max(1 - (ae.embedding <=> e.embedding)) from internal.image_embedding ae
+                where ae.subject_kind = 'asset' and ae.subject_id = a.asset_key and ae.space = $1
+                  and ae.uri = coalesce(m.image_uri, a.image_uri)) as similarity
+         from (select distinct item_id from public.rising_row where payload -> 'coins' ->> 'kind' in ('unsure', 'matched')) p
+         join public.item i on i.item_id = p.item_id
+         join internal.coin_lookup l on l.subject_kind = 'post' and l.subject_id = p.item_id and l.hits is not null
+         cross join lateral unnest(l.hits) as h(address)
+         join public.asset a on a.address = h.address
+         left join internal.coin_metadata m on m.asset_key = a.asset_key
+         join lateral (
+                select x.uri, x.embedding from internal.image_embedding x
+                 where x.subject_kind = 'item' and x.subject_id = p.item_id and x.space = $1
+                 limit 1
+              ) e on true
+        where coalesce(m.image_uri, a.image_uri) is not null
+          and a.minted_at is not null
+          and a.minted_at >= coalesce(i.posted_at, i.first_seen_at) - make_interval(secs => $2::double precision / 1000)
+          and a.minted_at <= coalesce(i.posted_at, i.first_seen_at) + make_interval(secs => $3::double precision / 1000)
+        order by coalesce(i.posted_at, i.first_seen_at) desc, a.asset_key
+        limit $4`,
+      [space, allowanceMs, windowMs, limit],
+    );
+    return rows.map((r) => ({ itemId: r.item_id, assetKey: r.asset_key, coinUri: r.coin_uri, postUri: r.post_uri, similarity: r.similarity === null ? null : Number(r.similarity) }));
   }
 
   /**

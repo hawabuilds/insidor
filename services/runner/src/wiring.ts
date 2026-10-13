@@ -101,6 +101,7 @@ import { keepCoins } from './work/coin-keep.ts';
 import { lookUpCoins } from './work/coin-lookup.ts';
 import { measureDiscovery } from './work/discovery-settings.ts';
 import { SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
+import { pictureCoinMatches } from './work/coin-match.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
 const SEARCH_TIMEOUT_MS = 8_000;
@@ -658,8 +659,9 @@ export async function withRuntime<T>(
             policy,
             log,
           },
-          lookUpCoins: () =>
-            lookUpCoins({
+          /* The lookup, then the picture evidence for what it found (work/coin-match.ts). */
+          lookUpCoins: async () => {
+            const looked = await lookUpCoins({
               coins: new PgCoinUniverseRepo(db),
               assets: repos.assets,
               sources: lookupSources,
@@ -667,7 +669,33 @@ export async function withRuntime<T>(
               policy,
               log: log.child({ step: 'coin-lookup' }),
               now: () => Date.now() as Millis,
-            }),
+            });
+            await pictureCoinMatches(
+              {
+                coins: new PgCoinUniverseRepo(db),
+                images: new PgImageEmbeddingRepo(db),
+                embed:
+                  cfg.embeddings.state === 'configured'
+                    ? voyageEmbed({
+                        client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
+                        meter,
+                        now: () => Date.now() as Millis,
+                      })
+                    : null,
+                pairs:
+                  judge === null
+                    ? null
+                    : { judge, pairs: new PgImagePairRepo(db), mode: cfg.spend.kind, policy, log: log.child({ step: 'image-pairs' }), now: () => Date.now() as Millis },
+                meter,
+                mode: cfg.spend.kind,
+                policy,
+                log: log.child({ step: 'coin-match' }),
+                now: () => Date.now() as Millis,
+              },
+              policy.universe.matchWindowMs,
+            );
+            return looked;
+          },
           /* ★ THE LEARNING BOOK, NOT THE LIVE ONE. Each pass with work opens its own meter on
              `learning` (Policy.budget.learningLines), reading today's ledger fresh, with every
              spend labelled `learn:` as tools/lib/shared-meter.ts labels it, and its own sources
