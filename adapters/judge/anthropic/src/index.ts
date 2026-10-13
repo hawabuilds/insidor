@@ -16,6 +16,13 @@
  * daily cap and the vendor line BEFORE the request leaves; afterwards it records what the
  * vendor's token counts say the call actually cost. A call refused for money throws
  * `BudgetRefused` from `metered()` and is not made.
+ *
+ * ★ BATCH MODE IS FOR JOBS, NEVER THE LIVE FEED. With `batch: true` every call of one
+ * `judge()` goes to the vendor as ONE Message Batch, billed at half price and answered in
+ * minutes rather than seconds. The whole batch is checked against the meter as one call at
+ * its (halved) estimate, then recorded at what the replies say it cost. Only one-off tools
+ * (re-scoring, pass-rate tests) set it; the runner's wiring does not, and must not — a post
+ * waiting on a batch is a post the feed shows late.
  */
 
 import type { Millis } from '@insidor/contracts';
@@ -27,10 +34,10 @@ import { mergeSpend, metered } from '@insidor/meter';
 import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
 import type { PriceBook } from '@insidor/meter';
 
-import type { Frame, JudgeClient, JudgeResponse, Usage } from './client.ts';
+import type { BatchAnswer, Frame, JudgeClient, JudgeRequest, JudgeResponse, Usage } from './client.ts';
 import { VENDOR } from './client.ts';
 import { POST_PROMPT_SET_SHA, PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT } from './prompts.ts';
-import { priceFor, usdForTokens, type ModelPrice } from './prices.ts';
+import { BATCH_PRICE_FRACTION, priceFor, usdForTokens, type ModelPrice } from './prices.ts';
 import { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, pictureUriFor, toOutcomes } from './to-judgement.ts';
 
 export { VENDOR } from './client.ts';
@@ -76,6 +83,8 @@ export interface AnthropicJudgeDeps {
   readonly maxBatch: number;
   /** Which question this judge asks; `story` when absent. See JudgeQuestion. */
   readonly question?: JudgeQuestion;
+  /** Send each `judge()` as one Message Batch, at half price. Jobs only; see the header. */
+  readonly batch?: boolean;
 }
 
 /** A batch's result inside the meter: the reply, or the vendor error that came with a status. */
@@ -217,7 +226,60 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
       }
 
       const spends: Spend[] = [];
-      for (const batch of batches(subjects)) {
+      const judgeBatch = deps.client.judgeBatch;
+      if (deps.batch === true && judgeBatch !== undefined && subjects.length > 0) {
+        const parts = batches(subjects);
+        const requests: JudgeRequest[] = parts.map((batch) => ({
+          system: QUESTION[question].system,
+          instructions: QUESTION[question].instructions,
+          subjects: batch,
+          frames,
+        }));
+        const usd = parts.reduce((sum, b) => sum + estimateUsd(b), 0) * BATCH_PRICE_FRACTION;
+        const spec = { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
+        let replies: readonly BatchAnswer[] | null = null;
+        let failure = 'no reply';
+        try {
+          const call = await metered<readonly BatchAnswer[] | null>(deps.meter, bookFor(usd), spec, async () => {
+            try {
+              const answers = await judgeBatch.call(deps.client, requests);
+              const billed = answers.reduce((sum, a) => sum + (a.kind === 'answered' ? usdOf(price, a.response.usage) : 0), 0);
+              return { value: answers, units: answers.filter((a) => a.kind === 'answered').length, usdActual: billed * BATCH_PRICE_FRACTION };
+            } catch (error) {
+              /* As below: a create the vendor refused with a status made nothing and is $0.
+                 A batch that was created and then lost is rethrown without one (client.ts),
+                 and `metered` charges the estimate. */
+              if (error instanceof VendorUnavailable && error.status !== undefined) {
+                failure = error.message;
+                return { value: null, units: 0, usdActual: 0 };
+              }
+              throw error;
+            }
+          });
+          spends.push(call.spend);
+          replies = call.value;
+        } catch (error) {
+          if (error instanceof BudgetRefused) throw error;
+          failure = error instanceof Error ? error.message : String(error);
+        }
+        parts.forEach((batch, i) => {
+          const reply = replies?.[i];
+          const answered =
+            reply?.kind === 'answered'
+              ? toOutcomes(batch, reply.response.answers, {
+                  judgeId: judgeId(deps.model, question),
+                  promptId: promptId(question),
+                  judgedAt,
+                  costUsdPerSubject: (usdOf(price, reply.response.usage) * BATCH_PRICE_FRACTION) / batch.length,
+                }, pictured)
+              : allUnavailable(batch, reply?.kind === 'failed' ? reply.note : failure);
+          batch.forEach((s, j) => {
+            const o = answered[j];
+            if (o !== undefined) outcomes.set(String(s.storyId), o);
+          });
+        });
+      }
+      for (const batch of deps.batch === true && judgeBatch !== undefined ? [] : batches(subjects)) {
         const usd = estimateUsd(batch);
         const spec = { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
         let answered: readonly JudgeOutcome[];
@@ -285,10 +347,10 @@ export type { JudgementContext } from './to-judgement.ts';
 export { PROMPTS, PROMPT_NAMES, PROMPT_SET_SHA } from './prompts.ts';
 export type { Prompt, PromptName } from './prompts.ts';
 export { ANSWER_SCHEMA, JudgeNotConfigured, buildRequestBody, decodeReply, httpClient, usageOf } from './client.ts';
-export type { Frame, JudgeClient, JudgeClientConfig, JudgeRequest, JudgeResponse, Usage } from './client.ts';
+export type { BatchAnswer, Frame, JudgeClient, JudgeClientConfig, JudgeRequest, JudgeResponse, Usage } from './client.ts';
 export { sizedPictureUri } from './pictures.ts';
 export type { PictureSize } from './pictures.ts';
-export { MODEL_PRICES, PRICES_READ_AT, priceFor, usdForTokens } from './prices.ts';
+export { BATCH_PRICE_FRACTION, MODEL_PRICES, PRICES_READ_AT, priceFor, usdForTokens } from './prices.ts';
 export type { ModelPrice } from './prices.ts';
 export { API_KEY, BASE_URL, DEFAULT_BASE_URL, MODEL, readJudgeSetup } from './credentials.ts';
 export type { JudgeSetup } from './credentials.ts';

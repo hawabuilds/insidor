@@ -283,3 +283,63 @@ test('an error the vendor answered is recorded at $0; a lost reply is charged th
   assert.equal(b.value[0]?.kind, 'unavailable');
   assert.ok(meterB.spentUsd() > 0, 'a reply that may have been billed is booked at the estimate');
 });
+
+/* ── the batch path, for jobs ─────────────────────────────────────────── */
+
+const batchJudge = (fetch: typeof globalThis.fetch, meter = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT }), over: Partial<JudgeClientConfig> = {}) =>
+  anthropicJudge({ client: httpClient(config(fetch, over)), meter, now: () => AT, model: 'claude-haiku-4-5', policy: P, maxBatch: 1, batch: true });
+
+const answer = (token: string, coinable: boolean) => ({ storyId: String(storyId(token)), coinable, proposedName: coinable ? 'gerald' : null, confidence: 0.8, alternateNames: [], subjectSpans: [] });
+const resultLine = (customId: string, body: unknown) => JSON.stringify({ custom_id: customId, result: { type: 'succeeded', message: body } });
+
+test('a batch is one create, polled until it ends, its results matched by id and billed at half', async () => {
+  const { fetch, calls } = fakeFetch([
+    () => json(200, { id: 'msgbatch_1', processing_status: 'in_progress' }),
+    () => json(200, { id: 'msgbatch_1', processing_status: 'in_progress' }),
+    () => json(200, { id: 'msgbatch_1', processing_status: 'ended' }),
+    /* Out of order, as the vendor may send them. */
+    () => new Response(`${resultLine('r1', reply([answer('b', false)]))}\n${resultLine('r0', reply([answer('a', true)]))}\n`, { status: 200 }),
+  ]);
+  const meter = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT });
+  const res = await batchJudge(fetch, meter).judge([subject('a'), subject('b')], BUDGET);
+  assert.deepEqual(res.value.map((o) => (o.kind === 'judged' ? o.judgement.coinable : o.kind)), [true, false]);
+  assert.equal(calls[0]?.url, 'https://judge.invalid/v1/messages/batches');
+  const sent = JSON.parse(String(calls[0]?.init?.body)) as { requests: { custom_id: string; params: { messages: unknown[] } }[] };
+  assert.deepEqual(sent.requests.map((r) => r.custom_id), ['r0', 'r1']);
+  assert.equal(calls[3]?.url, 'https://judge.invalid/v1/messages/batches/msgbatch_1/results');
+  const full = 2 * ((1_200 / 1e6) * 1 + (90 / 1e6) * 5);
+  assert.ok(Math.abs(meter.spentUsd() - full / 2) < 1e-12, 'half the direct price');
+});
+
+test('a batch request that errored is unavailable and unbilled; the others keep their answers', async () => {
+  const { fetch } = fakeFetch([
+    () => json(200, { id: 'msgbatch_2', processing_status: 'ended' }),
+    () => new Response(`${resultLine('r0', reply([answer('a', true)]))}\n${JSON.stringify({ custom_id: 'r1', result: { type: 'errored', error: { type: 'overloaded_error' } } })}\n`, { status: 200 }),
+  ]);
+  const res = await batchJudge(fetch).judge([subject('a'), subject('b')], BUDGET);
+  assert.equal(res.value[0]?.kind, 'judged');
+  assert.equal(res.value[1]?.kind, 'unavailable');
+  assert.ok(Math.abs(res.spend.usd - ((1_200 / 1e6) * 1 + (90 / 1e6) * 5) / 2) < 1e-12);
+});
+
+test('a lost reply to the create is never retried, and is charged the estimate', async () => {
+  const { fetch, calls } = fakeFetch([() => { throw new DOMException('timeout', 'TimeoutError'); }]);
+  const meter = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT });
+  const res = await batchJudge(fetch, meter).judge([subject('a')], BUDGET);
+  assert.equal(calls.length, 1, 'a second create could be billed twice');
+  assert.equal(res.value[0]?.kind, 'unavailable');
+  assert.ok(meter.spentUsd() > 0);
+});
+
+test('a batch still running at the wait limit is cancelled, and what finished is kept', async () => {
+  const { fetch, calls } = fakeFetch([
+    () => json(200, { id: 'msgbatch_3', processing_status: 'in_progress' }),
+    () => json(200, { id: 'msgbatch_3', processing_status: 'in_progress' }),
+    () => json(200, { id: 'msgbatch_3', processing_status: 'canceling' }),
+    () => json(200, { id: 'msgbatch_3', processing_status: 'ended' }),
+    () => new Response(`${resultLine('r0', reply([answer('a', true)]))}\n${JSON.stringify({ custom_id: 'r1', result: { type: 'canceled' } })}\n`, { status: 200 }),
+  ]);
+  const res = await batchJudge(fetch, undefined, { batchPollMs: 10, batchMaxWaitMs: 10 }).judge([subject('a'), subject('b')], BUDGET);
+  assert.equal(calls[2]?.url, 'https://judge.invalid/v1/messages/batches/msgbatch_3/cancel');
+  assert.deepEqual(res.value.map((o) => o.kind), ['judged', 'unavailable']);
+});
