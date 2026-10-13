@@ -134,3 +134,22 @@ test('the suggestion for languages and tags names them', () => {
   assert.match(s.text ?? '', /add 'es' to feed\.langs/);
   assert.match(s.text ?? '', /#dance, #fyp/);
 });
+
+test('never found while discovery was down: the outage, before any search reason', () => {
+  const outages = [{ fromMs: null, toMs: at(-600) }, { fromMs: at(-5), toMs: at(60) }];
+  const d = diagnoseMissed({ ...base, held: null, post: { ...base.post, lang: 'es' } }, { ...CTX, outages }, P);
+  assert.deepEqual([d.diagnosis, d.detail['why'], d.detail['notRunningYet']], ['never_found', 'discovery_down', false]);
+  const early = diagnoseMissed({ ...base, held: null, postedAtMs: at(-700) }, { ...CTX, outages }, P);
+  assert.deepEqual([early.detail['why'], early.detail['notRunningYet']], ['discovery_down', true]);
+  /* Up for part of the window: the search's own reason, with the minutes it was up beside it. */
+  const partly = diagnoseMissed({ ...base, held: null, postedAtMs: at(-8) }, { ...CTX, outages: [{ fromMs: null, toMs: at(-600) }, { fromMs: at(-5), toMs: at(0) }] }, P);
+  assert.notEqual(partly.detail['why'], 'discovery_down');
+  assert.equal(partly.detail['upMinutes'], P.feed.windowMin - 5);
+});
+
+test('posts made while discovery was down do not drive a search change', () => {
+  const down = { search: 'floor' as const, diagnosis: 'never_found', detail: { why: 'discovery_down' } };
+  const s = missedSuggestion({ rows: [down, down, down, { search: 'floor', diagnosis: 'rejected', detail: {} }], settings: SETTINGS, searchUsdPerDay: 4, usdPerPost: 0.00015 }, P);
+  assert.equal(s.text, null);
+  assert.equal(s.facts['discoveryDown'], 3);
+});

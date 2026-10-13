@@ -121,6 +121,8 @@ export type { FloorMove, LaneFloors } from './sources/feed-floor.ts';
 export { approvalsAt, crossingAgeMin, fitGrowthTau, inSearch, missReasonBefore, searchFilter, verdict } from './sources/recall.ts';
 export type { DiscoverySettings, LaneSetting, PostFacts as RecallPostFacts, Verdict } from './sources/recall.ts';
 export { MISSED_DIAGNOSES, MISSED_FAILURES, crossedBarAt, diagnoseMissed, missedSuggestion } from './learning/missed.ts';
+export { outageGapMs, outages, postWindow } from './learning/outage.ts';
+export type { Outage, PassRecord, PostWindow } from './learning/outage.ts';
 export type { Diagnosed, MissedCase, MissedContext, MissedDiagnosis, MissedFailure, MissedJudgeAnswer, SearchKind, Suggestion, SuggestionInput } from './learning/missed.ts';
 export { checkCreatorLink, decideOrigin, earliestByReproduction, matchCandidates, namesCoin } from './origin/check.ts';
 export type { Candidate, CoinFacts, CreatorCheck, CreatorLink, MatchResult, OriginDecision, PostFacts } from './origin/check.ts';
