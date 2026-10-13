@@ -605,6 +605,12 @@ importers:
       '@insidor/identity-privy':
         specifier: workspace:*
         version: link:../../adapters/identity/privy
+      '@insidor/market-dexscreener':
+        specifier: workspace:*
+        version: link:../../adapters/market/dexscreener
+      '@insidor/market-geckoterminal':
+        specifier: workspace:*
+        version: link:../../adapters/market/geckoterminal
       '@insidor/venue-solana-pumpfun':
         specifier: workspace:*
         version: link:../../adapters/venue/solana-pumpfun

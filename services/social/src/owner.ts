@@ -6,6 +6,9 @@
  *   POST /owner/feedback { kind, itemId, call, coin?, name?, ticker?, betterName?, note?, shown? }
  *   GET  /owner/feedback?kind=&items=a,b    the current call on each item (and name)
  *   GET  /owner/hidden                      posts whose current call is "Not a meme", newest first
+ *   POST /owner/coin-check, /owner/coin-label   a pasted coin address checked, then saved (owner-coin.ts)
+ *
+ * A coin call `cleared` (0072) is "Remove my label": a new row that says no call from here on.
  *
  * ★ THE SERVER IS THE GATE; THE APP ONLY HIDES BUTTONS. A person is the owner when a wallet or the
  * X handle in their SIGNED sign-in token is listed in policy `owner` — never anything the request
@@ -30,6 +33,7 @@ import type { OwnerPolicy } from '@insidor/contracts/policy.ts';
 import type { Person } from '@insidor/contracts/ports/people.ts';
 
 import { json, type Reply } from './http.ts';
+import { ownerCoinRoute, type CoinCheck } from './owner-coin.ts';
 
 interface Db {
   query<R = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<R[]>;
@@ -40,7 +44,7 @@ export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
 
 const CALLS: Readonly<Record<FeedbackKind, readonly string[]>> = {
   post: ['meme', 'not'],
-  coin_match: ['right', 'wrong', 'none'],
+  coin_match: ['right', 'wrong', 'none', 'cleared'],
   name: ['up', 'down'],
 };
 
@@ -135,6 +139,7 @@ export function parseFeedback(body: unknown): Feedback | string {
     const raw = typeof b['coin'] === 'string' ? b['coin'].replace(/^solana:/, '') : b['coin'] === undefined || b['coin'] === null ? null : '';
     if (raw !== null && !MINT.test(raw)) return 'That coin address is not a coin address.';
     if (call === 'none' && raw !== null) return '"No coin is from this" names no coin.';
+    if (call === 'cleared' && raw !== null) return '"Remove my label" names no coin.';
     if (call === 'right' && raw === null) return '"Right coin" names the coin.';
     coin = raw;
   }
@@ -170,6 +175,8 @@ const CALL_COLS = `subject_kind as kind, item_id as "itemId", verdict as call, c
 export interface OwnerDeps {
   readonly db: Db;
   readonly owner?: OwnerPolicy;
+  /** Reads a pasted coin address on the launchpad and the market sources; absent, the check says it is not set up. */
+  readonly coinCheck?: CoinCheck;
 }
 
 const bad = (error: string, status = 400): Reply => json(status, { error });
@@ -236,6 +243,8 @@ export async function ownerRoute(
     );
     return json(200, { posts });
   }
+
+  if (sub === 'coin-check' || sub === 'coin-label') return ownerCoinRoute(r.method, sub, r.body, me, ref, deps);
 
   return bad('method not allowed', 405);
 }
