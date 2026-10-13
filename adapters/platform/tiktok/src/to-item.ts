@@ -8,6 +8,12 @@
  *
  * The fidelity values were MEASURED against live payloads, not assumed. That is
  * why they differ per field within the same object.
+ *
+ * ★ TWO SPELLINGS OF ONE POST. The platform's own item object (`desc`, `author`, `stats`,
+ * `video.cover`) and the scraper's flattened one (`text`, `authorMeta`, top-level `playCount`,
+ * `videoMeta.coverUrl`, `musicMeta`, `hashtags`) — the configured scraper, recorded 2026-10-13,
+ * sends the second. Every read below tries the scraper's field and falls back to the platform's,
+ * so either payload becomes the same Item. A field missing under both is null, never zero.
  */
 
 import type { Author, Counter, CounterSet, Fingerprint, Item, MediaRef, Millis } from '@insidor/contracts';
@@ -26,8 +32,9 @@ const counter = (value: number | null, fidelity: Counter['fidelity'], at: Millis
 /* ── media ────────────────────────────────────────────────────────────── */
 
 function media(r: Rec): readonly MediaRef[] {
-  const v = rec(r.video);
-  const cover = str(v.cover) ?? str(v.originCover);
+  const meta = rec(r.videoMeta);
+  const v = Object.keys(meta).length > 0 ? meta : rec(r.video);
+  const cover = str(v.coverUrl) ?? str(v.originalCoverUrl) ?? str(v.cover) ?? str(v.originCover);
   if (cover === null) return [];
   const durationS = num(v.duration);
   return [
@@ -52,7 +59,7 @@ function media(r: Rec): readonly MediaRef[] {
  */
 export function formatIds(r: Rec): readonly string[] {
   const out: string[] = [];
-  const music = str(rec(r.music).id);
+  const music = str(rec(r.musicMeta).musicId) ?? str(rec(r.music).id);
   if (music !== null) out.push(`${SOURCE}:sound:${music}`);
   for (const e of arr(r.effectStickers)) {
     const id = str(rec(e).ID) ?? str(rec(e).id);
@@ -64,9 +71,9 @@ export function formatIds(r: Rec): readonly string[] {
 function fingerprints(r: Rec, text: string): readonly Fingerprint[] {
   const out: Fingerprint[] = formatIds(r).map((key) => ({ kind: 'formatId', key }));
 
-  for (const tag of arr(r.textExtra)) {
-    const name = str(rec(tag).hashtagName);
-    if (name !== null) out.push({ kind: 'entitySpan', key: hashtagKey(name) });
+  for (const tag of [...arr(r.textExtra), ...arr(r.hashtags)]) {
+    const name = str(rec(tag).hashtagName) ?? str(rec(tag).name);
+    if (name !== null && name !== '') out.push({ kind: 'entitySpan', key: hashtagKey(name) });
   }
 
   // Perceptual hashing of the keyframe happens in the media pipeline, not here.
@@ -89,7 +96,9 @@ function fingerprints(r: Rec, text: string): readonly Fingerprint[] {
  * live bug this rebuild exists to remove.
  */
 export function toCounters(raw: unknown, at: Millis): CounterSet {
-  const s = rec(rec(raw).stats);
+  const r = rec(raw);
+  /* The scraper puts the counts on the item itself; the platform nests them under `stats`. */
+  const s = Object.keys(rec(r.stats)).length > 0 ? rec(r.stats) : r;
   return {
     reach: counter(num(s.playCount), FIDELITY.reach, at),
     approval: counter(num(s.diggCount), FIDELITY.approval, at),
@@ -100,6 +109,12 @@ export function toCounters(raw: unknown, at: Millis): CounterSet {
 }
 
 /* ── the translation ──────────────────────────────────────────────────── */
+
+/** The account object under either spelling: the scraper's `authorMeta` (handle in `name`), or `author`. */
+function authorOf(r: Rec): Rec {
+  const meta = rec(r.authorMeta);
+  return Object.keys(meta).length > 0 ? meta : rec(r.author);
+}
 
 /**
  * @param raw  one item from the vendor payload
@@ -112,8 +127,8 @@ export function toItem(raw: unknown, at: Millis): Item {
   const id = str(r.id) ?? str(r.awemeId);
   if (id === null) throw new TypeError('to-item: payload has no item id');
 
-  const text = str(r.desc) ?? '';
-  const author = rec(r.author);
+  const text = str(r.text) ?? str(r.desc) ?? '';
+  const author = authorOf(r);
 
   return {
     itemId: itemId(SOURCE, id),
@@ -156,10 +171,10 @@ export function toItem(raw: unknown, at: Millis): Item {
  * anything and which appears in no link. Null when the payload names no account id.
  */
 export function toAuthor(raw: unknown, at: Millis): Author | null {
-  const author = rec(rec(raw).author);
+  const author = authorOf(rec(raw));
   const id = str(author.id);
   if (id === null) return null;
-  const handle = (str(author.uniqueId) ?? '').replace(/^@+/, '').trim();
+  const handle = (str(author.uniqueId) ?? str(author.name) ?? '').replace(/^@+/, '').trim();
   return {
     authorKey: authorKey(SOURCE, id),
     source: SOURCE,

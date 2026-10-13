@@ -143,7 +143,7 @@ export interface TikTokClient {
   /** Hashtag / feed / account actor. No keyword search exists on this source. */
   runDiscovery(input: {
     readonly hashtags?: readonly string[];
-    readonly accounts?: readonly string[];
+    readonly profiles?: readonly string[];
     readonly resultsPerPage?: number;
   }): Promise<RunResult>;
   /** Re-read by URL, batched. The actor takes a list, not an id list. */

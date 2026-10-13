@@ -55,3 +55,27 @@ export const SAMPLES: readonly unknown[] = [withSound, stitch, degraded];
 export const WITH_SOUND = withSound;
 export const STITCH = stitch;
 export const DEGRADED = degraded;
+
+/**
+ * The configured scraper's own shape, field for field as one live run returned it on 2026-10-13
+ * (values shortened, ids changed): the counts on the item itself, the account under `authorMeta`
+ * with its handle in `name`, the cover under `videoMeta.coverUrl`, hashtags as objects.
+ */
+export const SCRAPER_POST: unknown = {
+  id: '7694134244519525000',
+  text: 'the hippo is back #moodeng',
+  textLanguage: 'en',
+  createTime: 1_791_430_248,
+  createTimeISO: '2026-10-08T03:30:48.000Z',
+  authorMeta: { id: '6900000000000000001', name: 'zookeeperdiary', nickName: 'Zoo Keeper', verified: false },
+  musicMeta: { musicName: 'original sound', musicAuthor: 'zookeeperdiary', musicOriginal: true, musicId: '7400000000000000002' },
+  webVideoUrl: 'https://www.tiktok.com/@zookeeperdiary/video/7694134244519525000',
+  videoMeta: { height: 1024, width: 576, duration: 15, coverUrl: 'https://p16-sign.tiktokcdn.com/obj/cover.jpeg' },
+  diggCount: 8_100,
+  shareCount: 420,
+  playCount: 310_000,
+  collectCount: 1_900,
+  commentCount: 260,
+  hashtags: [{ id: '1', name: 'moodeng', title: '', cover: '' }],
+  effectStickers: [],
+};
