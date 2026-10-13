@@ -1077,6 +1077,43 @@ export interface FeedPolicy {
      */
     readonly share: number;
   };
+  /**
+   * ★ FRESH DISCOVERY (the owner's "find text posts sooner at the same cost", 2026-10-14). OFF by
+   * default: with `enabled` and `cutStale` false nothing below is read and discovery and re-reads
+   * are exactly as before.
+   *
+   * Why: the main lanes ask "the 20 newest posts over the floor in the last ten minutes" every
+   * pass, and the posts line is paced so a second page is almost never affordable. Measured
+   * 2026-10-13 23:46 UTC, eight posts a minute clear the ten-minute floor, so the page fills with
+   * posts four to eight minutes old and a post that crosses the floor later is never seen by them:
+   * 104 of the 187 text posts that reached For You after 15:00 were found by the slow lane, a
+   * median 234 minutes after posting. The same page also returns each young post two or three
+   * times, and the media lane re-asks a subset of the same posts.
+   *
+   * With `enabled`, the main search becomes `bandAgesMin` age bands in place of the 'all' and
+   * 'media' lanes: band k asks for the posts that turned `bandAgesMin[k]` minutes old since its
+   * last ask — contiguous posting-time windows, newest first, at the lane's floor scaled to that
+   * age — so every post under an hour is looked at once at each age, with no gap and no overlap.
+   * A window never reaches back more than `maxWindowMin` (a restart). The bands' posts together
+   * steer the 'all' floor toward the main lanes' combined target × `targetScale`; the slow lane
+   * drops the time slices the bands already cover. Unjudged catch-all posts climbing at least
+   * `rereadMinReachPerMinute` are re-read until `rereadMaxAgeMs` old, so the speed bar
+   * (`rising.speedBar`) gets readings while it can fire.
+   *
+   * With `cutStale`, TRACK stops re-reading a post older than `staleAfterMs` that has not passed
+   * the bar (no judgement) and is not on a feed: measured, 51 such posts in a day, none reached
+   * For You.
+   */
+  readonly fresh: {
+    readonly enabled: boolean;
+    readonly bandAgesMin: readonly number[];
+    readonly maxWindowMin: number;
+    readonly targetScale: number;
+    readonly rereadMaxAgeMs: number;
+    readonly rereadMinReachPerMinute: number;
+    readonly cutStale: boolean;
+    readonly staleAfterMs: number;
+  };
 }
 
 /**
@@ -1389,6 +1426,15 @@ export interface RisingPolicy {
   readonly fypGrowthWindowMs: number;
   readonly fypGrowthMinSpanMs: number;
   readonly fypStillGrowingPerMinute: number;
+  /**
+   * Whether the projector holds For You to the six-hour rule above. It did until the News tab was
+   * removed (2026-10-13 15:28 UTC), when the filter went with it by accident; since then For You
+   * has shown posts up to the whole `windowMs` old. Measured on the 194 posts first shown 15:00–24:00
+   * that day: 58 were over six hours old and not still growing when they first showed (35 of them
+   * only passed on a re-judge after a prompt change; the owner called 38 not a meme). Off keeps
+   * today's behaviour until the owner approves.
+   */
+  readonly fypMaxAgeOn: boolean;
   /**
    * ★ WHICH UNJUDGED POSTS GET PAID RE-READS. The judge only sees a post once its reach clears a
    * For You bar, and only a re-read can show that it has. A catch-all post nobody has judged yet
@@ -2732,6 +2778,21 @@ const POLICY_V1: Policy = {
          a wrong share moves the floor, not the bill. */
       share: 0.2,
     },
+    /* Off until the owner has seen the cost (FeedPolicy.fresh). Bands at 6, 25 and 50 minutes:
+       6 is today's median find age for the posts the main lanes catch; 25 and 50 catch the ones
+       that climb later (a live check at 23:46 UTC: 5 and 6 of 20 posts over the floor at 30 and
+       45 minutes were posts we did not hold). 0.85 of the main lanes' money pays for the longer
+       re-reads. 444 views a minute is the speed bar's own pace (40k by 90 minutes). */
+    fresh: {
+      enabled: false,
+      bandAgesMin: [6, 25, 50],
+      maxWindowMin: 15,
+      targetScale: 0.85,
+      rereadMaxAgeMs: 5_400_000, // 90 minutes, the speed bar's last chance
+      rereadMinReachPerMinute: 444,
+      cutStale: false,
+      staleAfterMs: 21_600_000, // six hours
+    },
   },
 
   attention: {
@@ -2970,6 +3031,7 @@ const POLICY_V1: Policy = {
     fypGrowthWindowMs: 3_600_000, // the last hour of readings
     fypGrowthMinSpanMs: 1_200_000, // twenty minutes between the two readings compared
     fypStillGrowingPerMinute: 1_000, // half the early-growth bar
+    fypMaxAgeOn: false,
     watchMinReachPerMinute: 500,
     shortVideoReachScale: 12.5,
     shortVideoEarlyReach: 150_000,

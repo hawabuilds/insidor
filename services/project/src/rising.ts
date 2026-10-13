@@ -10,6 +10,9 @@
  * never shown as if it had passed.
  * And it must clear the feed's view bar (core's `clearsReachBar`): For You at 40k views or fast
  * early growth, Popular at 250k. A post whose views we have not read is on neither.
+ * With `rising.fypMaxAgeOn`, For You also drops a post over `rising.fypMaxAgeMs` old unless it is
+ * still growing fast (fyp-freshness.ts); off, it keeps every post inside the window, as it has
+ * since the News tab went.
  *
  * In what order (the owner, 2026-10-13): `fyp` newest first, by when the post went up on its source
  * (`forYouOrder`); the pass routes (judge, judge with the signal, the signal) decide only whether a
@@ -79,7 +82,7 @@
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar, heldKind, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
-import { recentGrowthPerMinute } from './fyp-freshness.ts';
+import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
 
@@ -570,12 +573,15 @@ export async function buildRising(
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
       fyp: !underBar && clearsReachBar('fyp', views, postedAt, policy, scale),
+      /* Six hours, unless still climbing fast (fyp-freshness.ts), with `rising.fypMaxAgeOn`. For
+         You only: Popular keeps old posts. Ageing out is not a rejection, so it records no reason. */
+      fresh: !policy.rising.fypMaxAgeOn || freshForYou(views, postedAt ?? toMs(row.first_seen_at) ?? 0, nowMs, policy, scale),
       unread: views.every((v) => v.reach === null),
       popular: clearsReachBar('popular', views, postedAt, policy, scale),
     };
   });
 
-  const fyp = posts.filter((p) => p.fyp).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
+  const fyp = posts.filter((p) => p.fyp && p.fresh).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
   const views = (p: WireRisingPost): number | null => p.reach.v;
   const popular = posts.filter((p) => p.popular).sort((a, b) => {
     const va = views(a.post);
