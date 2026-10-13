@@ -67,6 +67,9 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
     const rows = page.rows.map((r) => ({ ...r, facts: (typeof r.facts === 'string' ? JSON.parse(r.facts) : r.facts) as Record<string, unknown> }));
     /* The face on each row (faces.ts): saved with the alert, or looked up where it was not. */
     const people = await peopleOf(deps.db, rows);
+    /* Follow back: whether I already follow each follower (Trador shows the button only when not). */
+    const followers = rows.flatMap((r) => (r.kind === 'follow' ? [people.get(r.id)?.userId ?? ''] : [])).filter((u) => u !== '');
+    const iFollow = new Set(followers.length === 0 ? [] : (await deps.db.query<{ userId: string }>('select followee_id as "userId" from people.follow where follower_id = $1 and followee_id = any($2::text[])', [me.userId, followers])).map((f) => f.userId));
     const posters = await posterPictures(deps.db, rows.filter((r) => r.kind === 'rising_post' && httpsOrNull(r.facts['picture']) === null).map((r) => r.subject));
     const alerts = rows.map((r) => {
       const facts = r.facts;
@@ -77,6 +80,7 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
         id: r.id, kind: r.kind, title: r.title, body: r.body, href: r.href, at, unread: at > seenAt,
         symbol: typeof facts['symbol'] === 'string' ? facts['symbol'] : null, rank: typeof facts['rank'] === 'string' ? facts['rank'] : null, season: typeof facts['season'] === 'number' ? facts['season'] : null,
         picture, coin: coinOf(r),
+        actor: r.kind === 'follow' && person !== null && person.userId !== me.userId ? { userId: person.userId, handle: person.handle, name: person.name, iFollow: iFollow.has(person.userId) } : null,
       };
     });
     /* `unread` is this reply's unread rows, as before; `bell` is every unread notification; `seenAt`

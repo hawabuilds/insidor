@@ -70,6 +70,8 @@ export interface Alert {
   readonly picture?: string | null;
   /** The coin the alert is about, by address, for its logo; null or absent when it is about no coin. */
   readonly coin?: string | null;
+  /** A follow's follower, and whether you already follow them back; null or absent on other rows. */
+  readonly actor?: { readonly userId: string; readonly handle: string | null; readonly name: string | null; readonly iFollow: boolean } | null;
 }
 
 export type AlertSwitch = 'follows' | 'replies' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins';

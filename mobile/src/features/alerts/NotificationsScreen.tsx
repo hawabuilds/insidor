@@ -13,14 +13,19 @@
  * Twenty at a time, with "Load more" under the last (Trador's Feed paging; its own Notifications
  * stop at forty). Rows on later pages are tinted by the same line: the time the list was last
  * marked read, as the first page told it, so marking it read on opening does not untint page two.
+ *
+ * A follow row carries Trador's "Follow back" when you do not follow that person yet; once you
+ * do, it says "Following". It sits inside the row's link, so its tap is stopped from opening
+ * their profile.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 
-import { markAlertsSeen } from '../../shared/api/people.ts';
+import { follow, markAlertsSeen, type Alert } from '../../shared/api/people.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { useNow } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
+import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { GearIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { SettingsSheet } from './AlertSettings.tsx';
@@ -92,6 +97,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
                         <Value r={formatAge({ known: true, at: a.at as never }, now as never)} />
                       </p>
                     </div>
+                    {a.kind === 'follow' && a.actor != null ? <FollowBack actor={a.actor} /> : null}
                   </a>
                 </li>
               ))}
@@ -102,5 +108,30 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
       </section>
       {sheet ? <SettingsSheet onClose={closeSheet} /> : null}
     </>
+  );
+}
+
+/** Trador's Follow back: follows them without leaving the list, then says Following. */
+function FollowBack({ actor }: { actor: NonNullable<Alert['actor']> }) {
+  const toast = useToast();
+  const [state, setState] = useState<'no' | 'asking' | 'yes'>(actor.iFollow ? 'yes' : 'no');
+  if (state === 'yes') return <span className={styles['following']}>Following</span>;
+  const tap = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (state === 'asking') return;
+    setState('asking');
+    follow(actor.userId, true).then(
+      () => setState('yes'),
+      (err: unknown) => {
+        setState('no');
+        toast("Couldn't follow them", err instanceof Error ? err.message : 'Try again in a moment.');
+      },
+    );
+  };
+  return (
+    <button type="button" className={styles['followBack']} aria-busy={state === 'asking'} onClick={tap}>
+      <span>Follow back</span>
+    </button>
   );
 }
