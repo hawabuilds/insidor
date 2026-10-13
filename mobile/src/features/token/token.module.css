@@ -507,33 +507,6 @@
   animation: trade-in 220ms ease-out;
 }
 
-/* ── Info ──────────────────────────────────────────────────────────── */
-
-.info {
-  margin: 4px 0 16px;
-}
-
-.info > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 14px;
-}
-
-.info dt {
-  color: var(--text-3);
-  flex: none;
-}
-
-.info dd {
-  margin: 0;
-  font-weight: 700;
-  text-align: right;
-  min-width: 0;
-}
-
 /* ── Insidor's part of Info: the narrative and where the coin came from ── */
 
 .from {

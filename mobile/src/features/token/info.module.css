@@ -1,0 +1,220 @@
+/* The Info tab: Trador's InfoPanel — a two-column stat card, a card of rows, then Insidor's part —
+   with Trador's sizes written out and our colours. */
+
+.info {
+  padding-bottom: 4px;
+}
+
+.up {
+  color: var(--up);
+}
+
+.down {
+  color: var(--down);
+}
+
+.faint {
+  color: var(--text-3);
+  font-weight: 800;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--card);
+}
+
+.stat {
+  padding: 12px 16px;
+}
+
+.stat:nth-child(odd) {
+  background: rgb(255 255 255 / 2.4%);
+}
+
+.stat dt {
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.stat dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.rows {
+  margin-top: 16px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--card);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.row:nth-child(even) {
+  background: rgb(255 255 255 / 2.4%);
+}
+
+.rowLabel {
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.rowValue {
+  min-width: 0;
+  font-size: 13px;
+  text-align: right;
+}
+
+.rowValue b {
+  font-weight: 800;
+}
+
+.strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+}
+
+.strong svg,
+.muted svg {
+  color: var(--text-3);
+}
+
+.muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.mint {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-2);
+}
+
+.mint button,
+.mint a {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-3);
+}
+
+/* ── Insidor's part ────────────────────────────────────────────────── */
+
+.section {
+  margin: 22px 0 0;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+
+.cardLink {
+  display: block;
+}
+
+.postHead {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-3);
+}
+
+.post {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.postText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.by {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.by b {
+  color: var(--text-2);
+}
+
+.excerpt {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.facts {
+  display: block;
+  margin-top: 8px;
+  color: var(--brand-300);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.storyLink {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+}

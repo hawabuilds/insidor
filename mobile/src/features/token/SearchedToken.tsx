@@ -13,12 +13,10 @@
  * of its own. They are dashes ("not reported") until the market is read, never zeros.
  */
 
-import { fetchSearchedCoin, type CoinMarket, type SearchedCoin } from '../../shared/api/index.ts';
-import { formatAge } from '../../shared/format/duration.ts';
+import { fetchSearchedCoin, type SearchedCoin } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
-import { useLoad, useNow } from '../../shared/hooks.ts';
+import { useLoad } from '../../shared/hooks.ts';
 import { BackIcon } from '../../shared/ui/icons.tsx';
-import { Value } from '../../shared/ui/Value.tsx';
 import { TokenView, type TokenFacts } from './TokenView.tsx';
 import styles from './token.module.css';
 
@@ -55,24 +53,12 @@ function Body({ coin }: { coin: SearchedCoin }) {
     liquidityUsd: null,
     venue: coin.venue,
     venueLabel: 'pump.fun',
+    tradable: null,
   };
   return (
     <TokenView
       facts={facts}
-      info={(market) => <SearchedInfo coin={coin} market={market} />}
       offBar={<p className={styles['note']}>Opened from search. Buying and selling are coming soon.</p>}
     />
-  );
-}
-
-function SearchedInfo({ coin, market: _market }: { coin: SearchedCoin; market: CoinMarket | null }) {
-  const now = useNow();
-  return (
-    <dl className={styles['info']}>
-      <div><dt>Name</dt><dd>{coin.name ?? '—'}</dd></div>
-      <div><dt>Ticker</dt><dd>{coin.ticker ?? '—'}</dd></div>
-      <div><dt>Launched</dt><dd><Value r={formatAge(coin.launchedAt, now as never)} /></dd></div>
-      <div><dt>Address</dt><dd className={styles['mono']}>{coin.address}</dd></div>
-    </dl>
   );
 }

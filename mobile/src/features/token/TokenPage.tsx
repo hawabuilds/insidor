@@ -14,11 +14,11 @@
  * hand-edited link cannot put a narrative's name above a coin it never chose.
  */
 
-import type { Coin, CoinMarket, Story } from '../../shared/api/index.ts';
+import type { Coin, Story } from '../../shared/api/index.ts';
 import { coinLabels } from '../../shared/coin-facts.ts';
 import { settledCoins } from '../../shared/coin-status.ts';
 import { formatAge, formatDuration } from '../../shared/format/duration.ts';
-import { formatCount, formatUsd } from '../../shared/format/number.ts';
+import { formatCount } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { loadStory, noticeFor } from '../../shared/story-source.ts';
@@ -66,13 +66,14 @@ function Body({ story, coin }: { story: Story; coin: Coin }) {
     liquidityUsd: coin.liquidityUsd,
     venue: null,
     venueLabel: coin.venueLabel,
+    tradable: coin.tradable,
   };
   return (
     <TokenView
       facts={facts}
       chips={coinLabels(settledCoins(story.coins)).get(coin.coinId) ?? []}
       notice={<Notice notice={noticeFor(story)} />}
-      info={(market) => <NarrativeInfo story={story} coin={coin} market={market} />}
+      insidor={<NarrativeInfo story={story} coin={coin} />}
       offBar={<ComingSoonBar coin={coin} soon={soon} />}
     />
   );
@@ -90,31 +91,13 @@ function ComingSoonBar({ coin, soon }: { coin: Coin; soon: (what: string) => voi
   );
 }
 
-/** The Info tab for a narrative's coin: the coin's facts, then the narrative and where the coin came from. */
-function NarrativeInfo({ story, coin, market: _market }: { story: Story; coin: Coin; market: CoinMarket | null }) {
+/** Insidor's part of the Info tab for a narrative's coin: the narrative, its lead post, and where the coin came from. */
+function NarrativeInfo({ story, coin }: { story: Story; coin: Coin }) {
   const now = useNow();
   const lead = leadPost(story.evidence);
   const leadEvidence = story.evidence.find((e) => e.authorLabel === lead?.author) ?? null;
-  const minted = formatAge(coin.mintedAt, now as never);
-  const rows: readonly [string, React.ReactNode][] = [
-    ['Name', coin.name],
-    ['Ticker', coin.ticker],
-    ['Venue', coin.venueLabel],
-    ['Minted', minted.kind === 'value' ? `${minted.text} ago` : <Value r={minted} />],
-    ['Market cap', <><Value r={formatUsd(coin.marketCapUsd)} />{coin.marketCapBasis === 'circulating' ? ' circulating' : coin.marketCapBasis === 'fully-diluted' ? ' fully diluted' : ''}</>],
-    ['Liquidity', <Value r={formatUsd(coin.liquidityUsd)} />],
-    ['Address', <span className={styles['mono']}>{coin.address}</span>],
-  ];
   return (
     <>
-      <dl className={styles['info']}>
-        {rows.map(([k, v]) => (
-          <div key={k}>
-            <dt>{k}</dt>
-            <dd>{v}</dd>
-          </div>
-        ))}
-      </dl>
       <a className={styles['from']} href={hrefFor({ screen: 'story', storyId: story.id })}>
         <span className={styles['fromHead']}>
           <span className={styles['kicker']}>From narrative</span>
