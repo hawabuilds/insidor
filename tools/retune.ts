@@ -94,6 +94,7 @@ import { isMissingTable } from '../store/src/repo/learning.ts';
 import { buildBlock, caught, changed, currentCalls, gate, latestSlot, ratesOf, regressions, share, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
+import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 import { LineTooShort, goldOriginPosts, handGoldIds, gradePosts, judgeSetup, type EvalPost, type EvalRow } from './lib/pass-rates.ts';
 import { refitForRetune } from './lib/score-model.ts';
@@ -116,6 +117,20 @@ const command = process.argv[2] ?? '';
 const flag = (f: string) => process.argv.includes(f);
 const arg = (k: string) => process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? null;
 const log = (level: 'info' | 'warn' | 'error', msg: string, fields: Record<string, unknown> = {}) => console.log(JSON.stringify({ level, msg, job: 'retune', ...fields }));
+/* ★ A SUPPLIER THAT REFUSES FOR BILLING is logged at error level once per vendor per run, and named
+   in the run's reason (and so in the owner's summary alert) instead of "outage or the learning
+   line": an empty account is the owner's to top up, not a bad minute. The runner sends the
+   supplier_account push; this job only says it clearly. */
+const billingRefused = new Map<string, string>();
+onOutOfCredit({
+  refused: (e) => {
+    if (billingRefused.has(e.vendor)) return;
+    billingRefused.set(e.vendor, e.reason);
+    log('error', 'supplier out of credit', { vendor: e.vendor, endpoint: e.endpoint, reason: e.reason, status: e.status ?? null });
+  },
+});
+const unansweredCause = (): string =>
+  billingRefused.size === 0 ? 'outage or the learning line' : `refused for billing: ${[...billingRefused].map(([v, r]) => `${v} ${r}`).join(', ')}`;
 /* A read of a table this database has not been migrated to yet is empty — for `measure`, which
    must work before 0054–0057 are applied. A write to one still fails the run. */
 const soft = <T,>(read: Promise<T>, empty: T): Promise<T> => read.catch((e: unknown) => (isMissingTable(e) ? empty : Promise.reject(e)));
@@ -336,7 +351,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const verdict = gate({ ...rates, regressions: regressed, live: liveRates }, L);
       /* `--rows=<file>`: every graded post's answers, for comparing held-kind sets on one run. */
       if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, lookedAt: r.lookedAt, similarity: r.similarity, imageUri: r.imageUri, signal: signals.get(r.id) ?? null, text: r.text.slice(0, 120) })), null, 1));
-      const why = unanswered > 0 ? `${unanswered} of ${rows.length} test posts went unanswered (outage or the learning line)${verdict.why === null ? '' : `; ${verdict.why}`}` : verdict.why;
+      const why = unanswered > 0 ? `${unanswered} of ${rows.length} test posts went unanswered (${unansweredCause()})${verdict.why === null ? '' : `; ${verdict.why}`}` : verdict.why;
       const apply = verdict.apply && unanswered === 0 && !opts.dry;
       const before = await soft(repo.appliedExampleIds(), []);
       const delta = changed(before, block.exampleIds);
