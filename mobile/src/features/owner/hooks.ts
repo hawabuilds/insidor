@@ -30,7 +30,16 @@ export function useIsOwner(): boolean {
       if (ownerStore.get().owner !== null) ownerStore.setOwner(null);
       return;
     }
-    if (asked === null) asked = fetchIsOwner().then((yes) => ownerStore.setOwner(yes));
+    /* A failed ask is forgotten, so the next render asks again: a network blip at sign-in must not
+       hide the owner's controls for the rest of the session. */
+    if (asked === null) {
+      asked = fetchIsOwner().then(
+        (yes) => ownerStore.setOwner(yes),
+        () => {
+          asked = null;
+        },
+      );
+    }
   }, [connected]);
   return owner === true;
 }
