@@ -51,7 +51,8 @@ import type { Author, Item, Millis } from '@insidor/contracts';
 import type { DurableMeter } from '@insidor/meter';
 import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { vendorLines } from './vendor-lines.ts';
+import { supplierRoles, vendorLines } from './vendor-lines.ts';
+import { supplierWarnings } from './supplier-warnings.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
@@ -72,6 +73,7 @@ import {
   PgPostJudgementRepo,
   PgItemRepo,
   PgObservationRepo,
+  PgOwnerAlertRepo,
   PgSourceHealthRepo,
   PgSpendRepo,
   PgStageRunRepo,
@@ -397,12 +399,35 @@ export async function withRuntime<T>(
       /* ★ THE LINES ARE SHARED WITH ANY ONE-OFF PAID JOB (tools/jobs.ts), which writes to the same
          ledger. Re-read it on a timer so what the job spends counts here too; see `refresh` in
          the meter. Unref'd: it must never be what keeps a stopping runner alive. */
+      /* ★ THE OWNER'S EARLY WARNING rides the same minute: after each re-read, any supplier
+         at 80% or 95% of its line (Policy.budget.warnAt) is logged and queued for the owner,
+         once a level a day. See supplier-warnings.ts. A failed re-read still checks, against
+         the last balance, which is the most the meter itself knows. */
+      const warnings = supplierWarnings({
+        roles: supplierRoles(),
+        line: (vendor) => meter.line(vendor),
+        warnAt: policy.budget.warnAt,
+        ownerWallets: cfg.ownerWallets,
+        owner: new PgOwnerAlertRepo(db),
+        log: log.child({ step: 'supplier-warnings' }),
+        now: () => Date.now(),
+      });
+      log.info('supplier warnings', {
+        at: policy.budget.warnAt,
+        alert: cfg.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : 'queued for the owner',
+      });
       setInterval(() => {
-        meter.refresh().catch((error: unknown) =>
-          log.warn('the spend ledger could not be re-read; keeping the last balance', {
-            err: error instanceof Error ? error.message : String(error),
-          }),
-        );
+        meter
+          .refresh()
+          .catch((error: unknown) =>
+            log.warn('the spend ledger could not be re-read; keeping the last balance', {
+              err: error instanceof Error ? error.message : String(error),
+            }),
+          )
+          .then(() => warnings.check())
+          .catch((error: unknown) =>
+            log.error('the supplier warning check failed', { err: error instanceof Error ? error.message : String(error) }),
+          );
       }, policy.budget.ledgerRefreshMs).unref();
 
       /* ── the judge ──────────────────────────────────────────────────────

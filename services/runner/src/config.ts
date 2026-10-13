@@ -265,6 +265,13 @@ export interface RunnerConfig {
    * host, or the public one when `COINGECKO_API_PLAN=demo`), otherwise GeckoTerminal's free API.
    */
   readonly marketData: { readonly plan: 'free' | 'demo' | 'pro'; readonly apiKey?: string; readonly baseUrl: string };
+  /**
+   * The owner's wallet(s), from `OWNER_WALLET` (on Railway, a reference to the trade service's
+   * `TRADING_ALLOWLIST`; comma separated there, so read the same way). Whoever signed in with one
+   * gets the supplier warnings. Empty is a supported state, like a source with no key, and not a
+   * boot failure: the warnings are then logged only, and the boot line says so.
+   */
+  readonly ownerWallets: readonly string[];
 }
 
 export class ConfigError extends Error {
@@ -465,6 +472,10 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     metadataGateway: (env['METADATA_GATEWAY'] ?? '').trim() || 'https://ipfs.io',
     chainRpcUrl: (env['HELIUS_API_KEY'] ?? '').trim() === '' ? null : `https://mainnet.helius-rpc.com/?api-key=${(env['HELIUS_API_KEY'] ?? '').trim()}`,
     marketData: marketDataFrom(env),
+    ownerWallets: (env['OWNER_WALLET'] ?? '')
+      .split(',')
+      .map((w) => w.trim())
+      .filter((w) => w !== ''),
   };
 }
 

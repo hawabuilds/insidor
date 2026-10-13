@@ -77,8 +77,10 @@ wallet address only), `JUPITER_API_KEY` (optional), `JUPITER_API_URL` (optional)
 `HELIUS_API_KEY`, `COINGECKO_API_KEY` (optional), `COINGECKO_API_PLAN` (optional),
 `METADATA_GATEWAY` (optional), `DISCOVER_TERMS` (optional), `RANK` (optional),
 `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` / `REDDIT_USER_AGENT` (optional),
-`SHUTDOWN_GRACE_MS`†, `HEARTBEAT`† (+ its three if on). `HEALTH_PORT` and
-`SINGLETON_LOCK_NAME` are filled by the launcher.
+`SHUTDOWN_GRACE_MS`†, `HEARTBEAT`† (+ its three if on), `OWNER_WALLET` (optional: set it to
+the reference `${{trade.TRADING_ALLOWLIST}}`; whoever signs in with that wallet gets the
+supplier warnings at 80% and 95% of a daily line, which are otherwise only logged). `HEALTH_PORT`
+and `SINGLETON_LOCK_NAME` are filled by the launcher.
 
 **Vercel `insidor-mobile`** — `VITE_PRIVY_APP_ID`, `VITE_TRADING` (`on` to show Buy/Sell),
 `READ_SERVICE_URL`, `TRADE_SERVICE_URL`, `SOCIAL_SERVICE_URL`, `NOTIFY_SERVICE_URL` (each the
