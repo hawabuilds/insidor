@@ -72,6 +72,12 @@ test("a re-tune summary carries the order model's refit: each signal's weight, a
   assert.match(alertText('retune_summary', { applied: true, orderApplied: true, orderSignals: [] }).body, /Order model updated\. Signals: –\./);
   assert.match(alertText('retune_summary', { applied: true, orderApplied: false, orderWhy: 'the order model could not be fitted: timeout' }).body, /Order model kept: the order model could not be fitted: timeout\.$/);
   assert.doesNotMatch(alertText('retune_summary', { applied: true }).body, /Order model/, 'no refit in the facts, no sentence');
+  assert.match(
+    alertText('retune_summary', { applied: true, coinMatchApplied: true, coinGoldN: 23, coinGoldProven: 7, coinGoldWrong: 0, coinGoldLikelyBefore: 0, coinGoldLikelyAfter: 1, coinLabelsN: 2, coinLabelsRightBefore: 1, coinLabelsRightAfter: 1, coinLabelsWrong: 0 }).body,
+    /Coin matching refitted\. Held-out gold: 7\/23 proven, 0 wrong, likely 0→1\. Your coin labels: 1→1\/2 right, 0 wrong\.$/,
+  );
+  assert.match(alertText('retune_summary', { applied: true, coinMatchApplied: false, coinMatchWhy: 'the coin match could not be refitted: timeout' }).body, /Coin matching kept: the coin match could not be refitted: timeout\.$/);
+  assert.doesNotMatch(alertText('retune_summary', { applied: true }).body, /Coin matching/, 'no coin refit in the facts, no sentence');
 });
 
 test('a re-tune summary counts the taps it tested as well as the ones it taught', () => {
