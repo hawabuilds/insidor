@@ -140,7 +140,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       {venue === 'curve' && progress !== null ? <CurveProgress pct={progress} /> : null}
 
-      <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={facts.price} change24h={facts.change24h} cap={facts.marketCapUsd} liquidity={facts.liquidityUsd} />
+      <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={facts.price} change24h={facts.change24h} cap={facts.marketCapUsd} liquidity={facts.liquidityUsd ?? about?.liquidityUsd ?? null} />
 
       {/* Stuck under the top once the chart scrolls away; a second tap on the open tab returns to it. */}
       <div ref={tabs} className={styles['panelTabs']} role="tablist" aria-label="Coin">
