@@ -93,8 +93,13 @@ function refuse(message: string): never {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const round = (n: number, places = 1) => Number(n.toFixed(places));
 
+/* ★ THE INTERNAL URL, OR THE ONE URL A SERVICE HAS. On Railway the `project` service that runs the
+   daily check carries DATABASE_URL and not DATABASE_URL_INTERNAL, so asking for the internal role's
+   own variable refused every day and no live catch rate was ever written. The same fallback as
+   tools/retune.ts and tools/lib/shared-meter.ts: one database, one URL, whichever is set. */
 function openDb() {
-  const pool = createPool(DB_ROLE.internal, { applicationName: 'insidor-recall-check' });
+  const url = process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'];
+  const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-recall-check' });
   return { pool, db: asDb(pool) };
 }
 
