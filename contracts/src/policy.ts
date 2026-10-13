@@ -1897,7 +1897,12 @@ export interface LearningPolicy {
    * check's other additions are auto gold, reported and never gated.
    */
   readonly minGoldPass: number;
-  /** Held-out live non-memes that may pass, at most. */
+  /**
+   * Held-out live non-memes that may pass, at most. 15% for now (the owner, 2026-10-13): the
+   * judge with the named-news rule lets about a fifth through, and a bar no block can meet
+   * would keep every block out. Every gate is also held against the setup live now, measured
+   * in the same run: a block is never applied if it is worse on gold, non-memes or missed posts.
+   */
   readonly maxLiveNegativePass: number;
   /** The owner's missed posts that must pass ("most"). */
   readonly minMissedPass: number;
@@ -2688,7 +2693,7 @@ const POLICY_V1: Policy = {
     timeZone: 'Europe/London',
     startAheadMs: 1_200_000, // twenty minutes
     minGoldPass: 0.65,
-    maxLiveNegativePass: 0.05,
+    maxLiveNegativePass: 0.15,
     minMissedPass: 0.5,
     maxExamples: 120,
     maxMissedPerPaste: 10,

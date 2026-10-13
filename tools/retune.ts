@@ -47,6 +47,13 @@
  *        gate        hand gold (memes, news, tragedies alike) ≥ minGoldPass AND held-out live
  *                    non-memes ≤ maxLiveNegativePass
  *        missed      the held-out half of missed posts caught ≥ minMissedPass
+ *        not worse   no worse than the setup live now (its applied block, or its rules alone)
+ *                    on any of the three, graded on the same posts beside the block's test
+ *      A post passes as live decides (core passesWithSignal): the judge, or — its kind not held —
+ *      other accounts' crypto talk from its crypto-attention read; a shill never. A post with no
+ *      such read is decided by the judge alone, and the run says how many.
+ *      The live non-memes are the labels file's "not" posts and every "Not a meme" tap the owner
+ *      makes, held out by the id split, so the set grows by itself day by day.
  *        no regress  every missed post the judge in use catches (its applied block, or its rules
  *                    alone) is still caught by the new block — one regression and it is not applied.
  *   5. recorded (internal.judge_examples_version, 0056) applied or not, with why; then the owner's
@@ -288,37 +295,47 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
           await shared.close();
         }
       };
-      const graded = (rows: readonly EvalRow<G>[]): GradedPost[] => rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind }));
+      /* ★ GRADED AS LIVE DECIDES: the judge, or (kind not held) other accounts' crypto signal; a shill
+         never (core passesWithSignal). The signal is the post's crypto-attention read; a post with
+         no read carrying the own/others split is decided by the judge alone, and counted. */
+      const signals = await soft(repo.cryptoSignals(posts.map((p) => p.id)), new Map<string, { readonly others: boolean; readonly shill: boolean }>());
+      const noFacts = posts.filter((p) => !signals.has(p.id) && p.group !== 'missed-taught').length;
+      const graded = (rows: readonly EvalRow<G>[]): GradedPost[] => rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, signal: signals.get(r.id) ?? null }));
       const GROUPS = { hand: ['gold', 'missed'], auto: 'auto', negatives: 'live-not', missed: 'missed' } as const;
       const caughtMap = (rows: readonly EvalRow<G>[]) => new Map(graded(rows).filter((r) => r.group === 'missed' || r.group === 'missed-taught').map((r) => [r.id, caught(r, held)] as const));
 
-      const tested = await grade(posts, opts.rulesOnly === true ? null : block.text);
+      /* ★ THE SETUP LIVE NOW, graded on the same posts in the same run (its applied block, or its
+         rules alone when none is): the block must be no worse on any of the three, and every missed
+         post it catches must still be caught. Graded beside the block's test, not after it, so a
+         run still finishes inside `startAheadMs`. Not needed when the block IS the live one, and
+         `--rules-only` has nothing to compare. */
+      const inUse = await soft(repo.latestApplied(), null);
+      const compare = opts.rulesOnly !== true && inUse?.text !== block.text;
+      const wantBase = opts.baseline === true && opts.rulesOnly !== true;
+      const [tested, nowGraded, baseGraded] = await Promise.all([
+        grade(posts, opts.rulesOnly === true ? null : block.text),
+        compare ? grade(posts, inUse?.text ?? null) : Promise.resolve(null),
+        wantBase && !(compare && inUse === null) ? grade(posts, null) : Promise.resolve(null),
+      ]);
       const rows = tested.rows;
       /* `--baseline`: the same test posts graded by the judge's rules alone (no learned examples),
          so the owner's table compares like with like. Paid on the learning book. */
-      let baseRows: readonly EvalRow<G>[] | null = null;
-      if (opts.baseline === true && opts.rulesOnly !== true) baseRows = (await grade(posts, null)).rows;
+      const baseRows: readonly EvalRow<G>[] | null = wantBase ? (baseGraded?.rows ?? (inUse === null ? (nowGraded?.rows ?? null) : null)) : null;
       const baseline = baseRows === null ? null : ratesOf(graded(baseRows), held, GROUPS);
       if (baseline !== null) log('info', 'retune baseline: the same posts, rules alone', { slot: slot.toISOString(), handGold: baseline.hand, liveNegatives: baseline.negatives, missed: baseline.missed, autoGold: baseline.auto });
 
-      /* ★ NO REGRESSION: the owner's missed posts graded by the judge in use now — its applied
-         block, or its rules alone when none is — and every one it catches must still be caught. */
-      const inUse = await soft(repo.latestApplied(), null);
-      let regressed: readonly string[] = [];
-      if (opts.rulesOnly !== true) {
-        const missedPosts = posts.filter((p) => p.group === 'missed' || p.group === 'missed-taught');
-        const nowRows = inUse?.text === block.text ? rows : inUse === null && baseRows !== null ? baseRows : missedPosts.length === 0 ? [] : (await grade(missedPosts, inUse?.text ?? null)).rows;
-        regressed = regressions(caughtMap(nowRows), caughtMap(rows));
-      }
+      const nowRows = opts.rulesOnly === true ? null : inUse?.text === block.text ? rows : (nowGraded?.rows ?? null);
+      const regressed: readonly string[] = nowRows === null ? [] : regressions(caughtMap(nowRows), caughtMap(rows));
+      const liveRates = nowRows === null ? null : ratesOf(graded(nowRows.filter((r) => r.coinable !== null)), held, GROUPS);
       const costUsd = spentUsd + gold.xUsd;
 
       /* Unanswered posts are out of every rate, and stop the block being applied. */
       const answered = rows.filter((r) => r.coinable !== null);
       const unanswered = rows.length - answered.length;
       const rates = ratesOf(graded(answered), held, GROUPS);
-      const verdict = gate({ ...rates, regressions: regressed }, L);
+      const verdict = gate({ ...rates, regressions: regressed, live: liveRates }, L);
       /* `--rows=<file>`: every graded post's answers, for comparing held-kind sets on one run. */
-      if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, lookedAt: r.lookedAt, similarity: r.similarity, imageUri: r.imageUri, text: r.text.slice(0, 120) })), null, 1));
+      if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, lookedAt: r.lookedAt, similarity: r.similarity, imageUri: r.imageUri, signal: signals.get(r.id) ?? null, text: r.text.slice(0, 120) })), null, 1));
       const why = unanswered > 0 ? `${unanswered} of ${rows.length} test posts went unanswered (outage or the learning line)${verdict.why === null ? '' : `; ${verdict.why}`}` : verdict.why;
       const apply = verdict.apply && unanswered === 0 && !opts.dry;
       const before = await soft(repo.appliedExampleIds(), []);
@@ -347,7 +364,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const outcome = opts.dry ? 'dry' : apply ? 'applied' : 'kept';
       const summary = {
         slot: slot.toISOString(), version: versionId, outcome, why,
-        handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held,
+        handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, withoutCryptoFacts: noFacts,
         autoGold: rates.auto, missed: rates.missed, regressions: regressed, judgeInUse: inUse === null ? 'rules alone' : `block ${inUse.versionId}`,
         unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true,
         learnedFrom: block.used, examples: block.exampleIds.length, added: delta.added, removed: delta.removed, chars: block.text.length,
@@ -355,7 +372,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       };
       log(apply || opts.dry ? 'info' : 'warn', `retune ${outcome}`, summary);
       const ofN = (r: Rate) => `${r.passed}/${r.tested}`;
-      const tally = `hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), regressions ${regressed.length}`;
+      const tally = `hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), regressions ${regressed.length}${liveRates === null ? '' : `; live now: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone)`;
       await end(outcome, versionId, why === null ? `applied: ${tally}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}` : `${why} (${tally})`, costUsd);
 
       /* The owner's alert, once per slot (the claim is on the subject). A dry run tells nobody. */
