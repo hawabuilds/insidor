@@ -11,15 +11,13 @@
  *              the read service serves a popular view of its own, this becomes a fetch.
  *              ★ Rows whose views are unknown are NOT sorted as zero — they come after the
  *              counted ones, as their own group, so "not reported" never reads as "least seen".
- *   News       a feed of single posts like FYP's (Feed.tsx reads `GET /rising/news`); over the
- *              board it is the server's order, as FYP is.
  *   Watchlist  starred rows, in the server's order. A starred story that is not on the board
  *              right now is counted, so an empty list can say why it is empty.
  */
 
 import type { BoardRow } from '../../shared/api/index.ts';
 
-export type FeedTab = 'watchlist' | 'fyp' | 'popular' | 'news';
+export type FeedTab = 'watchlist' | 'fyp' | 'popular';
 
 export interface TabView {
   readonly rows: readonly BoardRow[];
@@ -40,7 +38,6 @@ export function rowsInOrder(order: readonly string[], rows: readonly BoardRow[])
 export function tabView(tab: FeedTab, ordered: readonly BoardRow[], starred: readonly string[]): TabView {
   switch (tab) {
     case 'fyp':
-    case 'news':
       return { rows: ordered, uncounted: [], starredOffBoard: 0 };
     case 'popular': {
       const counted = ordered.filter((r) => r.reach.known);

@@ -247,7 +247,7 @@ async function story(storyId: string, deps: Deps): Promise<Reply> {
  * handed over as it was committed — this process cannot compute it and cannot check it,
  * because the instant behind it comes from a schema its credential has no USAGE on.
  */
-/** One feed of single posts — `fyp`, `popular` or `news` — handed over verbatim. */
+/** One feed of single posts — `fyp` or `popular` — handed over verbatim. */
 async function rising(feedId: string, deps: Deps): Promise<Reply> {
   const views = await deps.db.query(RISING_VIEW_SQL, [feedId]);
   const view = views[0];
