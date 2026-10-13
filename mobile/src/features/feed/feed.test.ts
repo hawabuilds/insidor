@@ -16,6 +16,10 @@ test('FYP is the server order, untouched', () => {
   assert.deepEqual(tabView('fyp', rows, []).rows.map((r) => r.id), tick.order);
 });
 
+test('News, like FYP, is the server order, untouched: which post is news is the server\'s call', () => {
+  assert.deepEqual(tabView('news', rows, []).rows.map((r) => r.id), tick.order);
+});
+
 test('Popular puts the most viewed first and never sorts an unknown count as zero', () => {
   const v = tabView('popular', rows, []);
   const amounts = v.rows.map((r) => (r.reach.known ? r.reach.amount : -1));

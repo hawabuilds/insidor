@@ -1,5 +1,5 @@
 /**
- * One single post on the For You or Popular feed, as `GET /rising/:feedId` sends it.
+ * One single post on the For You, Popular or News feed, as `GET /rising/:feedId` sends it.
  *
  * Facts only — where and by whom it was posted, a link to it, its words and picture, when it
  * was posted, how many saw it and when we read that, and the views line. Our reasoning about
@@ -24,7 +24,8 @@ import type { Instant, Measured } from '../../format/measure.ts';
 import type { Spark } from './board.ts';
 import type { PostCoinLink } from './coin.ts';
 
-export type RisingFeedId = 'fyp' | 'popular';
+/** `news` is news posts with a coin in them; `fyp` and `popular` are memes only (services/project news.ts). */
+export type RisingFeedId = 'fyp' | 'popular' | 'news';
 
 export interface RisingPost {
   readonly id: string;

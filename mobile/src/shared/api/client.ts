@@ -74,7 +74,7 @@ export async function fetchBoard(viewId: string, signal?: AbortSignal): Promise<
   return decodeBoardTick(await read(`/board/${encodeURIComponent(viewId)}`, signal));
 }
 
-/** One feed of single posts: `fyp` newest first, `popular` most views first. */
+/** One feed of single posts: `fyp` and `news` newest first, `popular` most views first. */
 export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Promise<RisingFeed> {
   return decodeRisingFeed(await read(`/rising/${encodeURIComponent(feed)}`, signal));
 }
