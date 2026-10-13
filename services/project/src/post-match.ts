@@ -138,7 +138,8 @@ async function loadPosts(db: Db, itemIds: readonly string[]): Promise<ReadonlyMa
        from public.item i
        left join lateral (
               select pj.proposed_name, pj.alternate_names from internal.post_judgement pj
-               where pj.item_id = i.item_id order by pj.judged_at desc, pj.id desc limit 1
+               where pj.item_id = i.item_id and pj.prompt_id not like 'post-kind%'
+               order by pj.judged_at desc, pj.id desc limit 1
             ) j on true
       where i.item_id = any($1::text[])`,
     [[...itemIds]],

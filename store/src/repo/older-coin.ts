@@ -97,7 +97,8 @@ export class PgOlderCoinRepo {
          join public.item i on i.item_id = o.item_id
          join lateral (
                 select pj.proposed_name, pj.alternate_names from internal.post_judgement pj
-                 where pj.item_id = o.item_id order by pj.judged_at desc, pj.id desc limit 1
+                 where pj.item_id = o.item_id and pj.prompt_id not like 'post-kind%'
+                 order by pj.judged_at desc, pj.id desc limit 1
               ) j on true
         where o.outcome in ('waiting', 'read', 'unavailable')
           and exists (select 1 from public.rising_row r where r.item_id = o.item_id)

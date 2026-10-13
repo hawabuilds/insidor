@@ -139,6 +139,7 @@ const WAITING = `
            from public.rising_row r
            join public.item i on i.item_id = r.item_id
            join internal.post_judgement pj on pj.item_id = r.item_id and pj.proposed_name is not null
+                                          and pj.prompt_id not like 'post-kind%'
           where (coalesce(r.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending', 'unchecked')
                  or (r.payload -> 'coins' ->> 'kind' = 'unsure' and r.payload ->> 'storyId' is null))
           order by r.item_id, pj.judged_at desc
