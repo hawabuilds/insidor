@@ -63,3 +63,9 @@ test("Trador's split: the Feed is what is happening, the bell's list is what hap
 test("a rising post's face is Trador's up arrow", () => {
   assert.deepEqual(markOf({ kind: 'rising_post', rank: null, symbol: null }, []), { kind: 'rising', label: 'Rising post' });
 });
+
+test("a follow or a reply shows the person's monogram, as Trador shows the person", () => {
+  assert.deepEqual(markOf({ kind: 'follow', rank: null, symbol: null, href: '/#/u/jonas', title: 'New follower' }, []), { kind: 'person', name: 'jonas' });
+  assert.deepEqual(markOf({ kind: 'reply', rank: null, symbol: null, href: '/#/story/s1', title: 'maya replied' }, []), { kind: 'person', name: 'maya' });
+  assert.deepEqual(markOf({ kind: 'reply', rank: null, symbol: null, href: '/#/story/s1', title: 'Someone replied' }, []), { kind: 'bell' });
+});

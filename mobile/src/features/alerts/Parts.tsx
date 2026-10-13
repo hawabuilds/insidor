@@ -17,6 +17,7 @@ import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { BellIcon } from '../../shared/ui/icons.tsx';
 import { RankBadge } from '../people/RankBadge.tsx';
+import { Avatar } from '../portfolio/Avatar.tsx';
 import { badgeText } from './group.ts';
 import { markOf } from './mark.ts';
 import { withTicker } from './split.ts';
@@ -29,6 +30,7 @@ export function Mark({ a }: { a: Alert }) {
   const m = markOf(a, RANKS);
   if (m.kind === 'rank') return <RankBadge rank={m.rank as RankId} size={40} />;
   if (m.kind === 'coin') return <CoinLogo address={m.address ?? null} ticker={m.letter} size={40} />;
+  if (m.kind === 'person') return <Avatar name={m.name} seed={m.name} src={null} size={40} />;
   if (m.kind === 'rising') return <span className={styles['face']} role="img" aria-label={m.label}>↑</span>;
   if (m.kind === 'money') return <span className={styles['face']} role="img" aria-label={m.label}>$</span>;
   if (m.kind === 'learned') return <span className={styles['face']} role="img" aria-label={m.label}>↻</span>;
