@@ -21,12 +21,12 @@ import { VendorUnavailable } from '@insidor/vendor-kit';
 
 import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
 
-import { aggregate, primaryPool, readCandles, readPools, readTrades, type Candle, type Pool, type Trade } from './read.ts';
+import { aggregate, primaryPool, readCandles, readPools, readTrades, readVolumeCandles, type Candle, type Pool, type Trade, type VolumeCandle } from './read.ts';
 import { readSearch, SEARCH_PAGE } from './search.ts';
 
-export { aggregate, primaryPool, readCandles, readPools, readTrades } from './read.ts';
+export { aggregate, primaryPool, readCandles, readPools, readTrades, readVolumeCandles } from './read.ts';
 export { readSearch, SEARCH_PAGE } from './search.ts';
-export type { Candle, Pool, Trade } from './read.ts';
+export type { Candle, Pool, Trade, VolumeCandle } from './read.ts';
 
 export const VENDOR = 'geckoterminal';
 /** Trador's six views, plus six hours, which the search and the history pilot read a coin's peak from. */
@@ -96,6 +96,13 @@ export interface MarketData extends CoinSearch {
    * bound on the coins trading there, never the count of them.
    */
   launchpadPools(venue: 'curve' | 'pool', page: number): Promise<readonly CoinSearchHit[]>;
+  /**
+   * The coin's candles in its primary pool, with their dollar volume, ending before `untilMs`:
+   * at most `limit` buckets of `bucketMinutes`. What the runner measures an older coin's trading
+   * around a post from. `pool: null` (and no candles) when the vendor lists no pool for the coin.
+   * Not kept: each call asks about a different stretch of time.
+   */
+  history(mint: string, untilMs: number, bucketMinutes: number, limit: number): Promise<{ readonly pool: Pool | null; readonly candles: readonly VolumeCandle[] }>;
 }
 
 /** The vendor serves this many pages of a listing and no more. */
@@ -163,6 +170,14 @@ export function geckoterminal(config: GeckoConfig): MarketData {
     async launchpadPools(venue, page) {
       if (!Number.isInteger(page) || page < 1 || page > LISTING_PAGES) throw new RangeError(`page must be 1..${LISTING_PAGES}`);
       return readSearch(await get(`/networks/solana/dexes/${LISTING_DEX[venue]}/pools?page=${page}&sort=h24_volume_usd_desc`));
+    },
+
+    async history(mint, untilMs, bucketMinutes, limit) {
+      const pool = await cached(`pool:${mint}`, POOL_KEEP_MS, async () => primaryPool(readPools(await get(`/networks/solana/tokens/${mint}/pools?page=1`))));
+      if (pool === null) return { pool: null, candles: [] };
+      const until = Math.floor(untilMs / 1_000);
+      const raw = await get(`/networks/solana/pools/${pool.address}/ohlcv/minute?aggregate=${bucketMinutes}&limit=${Math.min(limit, CANDLE_LIMIT)}&before_timestamp=${until}&token=${mint}&currency=usd`);
+      return { pool, candles: readVolumeCandles(raw) };
     },
 
     async coin(mint, timeframe) {

@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CURVE_MINT, OHLCV_5M, POOLS, TRADES } from './__fixtures__/replies.ts';
-import { aggregate, primaryPool, readCandles, readPools, readTrades } from './read.ts';
+import { aggregate, primaryPool, readCandles, readPools, readTrades, readVolumeCandles } from './read.ts';
 
 test('★ a graduated coin trades in its deepest listed pool, not its old curve', () => {
   const pools = readPools(POOLS);
@@ -44,4 +44,13 @@ test('★ a trade\'s side and price are read from our coin\'s side of it', () =>
     assert.ok(t.at !== null && t.tx.length > 40);
   }
   assert.deepEqual(readTrades(TRADES, 'SomeOtherMint'), [], 'a trade not in our coin is not ours');
+});
+
+test('candles with volume keep the dollar volume, oldest first; a row without it is unread, not zero', () => {
+  const candles = readVolumeCandles(OHLCV_5M);
+  assert.equal(candles.length, 5);
+  assert.ok(candles.every((c) => c.v !== null && c.v >= 0));
+  for (let i = 1; i < candles.length; i++) assert.ok((candles[i]?.t ?? 0) > (candles[i - 1]?.t ?? 0));
+  const short = readVolumeCandles({ data: { attributes: { ohlcv_list: [[1_791_709_500, 1, 1, 1, 0.5]] } } });
+  assert.deepEqual(short, [{ t: 1_791_709_500_000, c: 0.5, v: null }]);
 });
