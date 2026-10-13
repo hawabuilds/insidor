@@ -20,15 +20,19 @@ test('★ the gain is between two of our readings, nearest five minutes apart, a
   assert.equal(recentGain([{ atMs: 0, value: null }, { atMs: 5 * M, value: 9 }]), null, 'a censored reading is never used');
 });
 
-test('★ no chart without two counted readings; a censored reading lifts the pen', () => {
+test('★ no chart without two counted readings; a censored reading is bridged, never a break or a drop to the floor', () => {
   assert.equal(chartPlan([{ atMs: 0, value: 5 }], null, { found: null, coin: null }), null);
   const plan = chartPlan([{ atMs: 10 * M, value: 100 }, { atMs: 20 * M, value: null }, { atMs: 30 * M, value: 700_000 }], 0, { found: 2 * M, coin: 33 * M });
   assert.ok(plan);
   assert.equal(plan.max, 750_000);
   assert.equal(plan.times[0]?.at, 0, 'the chart starts at the post time');
+  assert.equal(plan.times[2]?.at, 33 * M, 'and stretches to the coin launched after our last reading');
   assert.equal(plan.markers[0]?.onLine, false, 'found before our first counted reading: a dotted line, no dot');
-  assert.equal(plan.markers.length, 1, 'a coin after the last reading has no marker inside the chart');
-  assert.equal(linePath(plan.points, 100, 10).split('M').length - 1, 2, 'two runs: the censored reading broke the line');
+  assert.equal(plan.markers.length, 2, 'both markers are drawn at their real times');
+  assert.ok(Math.abs((plan.markers[1]?.x ?? 0) - 1) < 1e-9, 'the coin sits at the right edge, where it launched');
+  assert.ok(Math.abs(plan.last.x - 30 / 33) < 1e-9, 'the line ends at our last reading, before the coin');
+  assert.equal(linePath(plan.points, 100, 10).split('M').length - 1, 1, 'one unbroken line across the censored reading');
+  assert.ok(plan.points.every((p) => p !== null && p.y > 0), 'nothing drops to the floor');
   assert.equal(niceMax(751_000), 800_000);
 });
 

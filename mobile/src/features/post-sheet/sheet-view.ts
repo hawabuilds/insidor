@@ -10,7 +10,11 @@
  * interpolated, and a reading the source rounded away (null) is never used.
  *
  * ★ NO CHART WITHOUT HISTORY. Fewer than two counted readings draws nothing, rather than a line we
- * would have to invent.
+ * would have to invent. ★ NO BREAKS IN THE LINE (the owner's call): a reading the source rounded
+ * away is left out and the line runs straight from the reading before it to the one after, never
+ * down to the floor. ★ THE FOUND AND COIN MARKERS SIT AT THEIR REAL TIMES: the chart's span
+ * stretches to take them in, so a coin launched after our last reading is still drawn where it
+ * launched, past the end of the line.
  *
  * What breaks if changed carelessly: the card's coin line follows `postCoinStatus` (shared/coin-
  * status.ts) for which states exist; this file only words them the way the design does. A Buy is
@@ -106,13 +110,14 @@ export function followersText(n: number): string {
 /* ── the reach chart ─────────────────────────────────────────────────── */
 
 export interface ChartPlan {
-  /** Points in 0..1 on both axes (x time, y views from 0 to `max`); a null breaks the line. */
+  /** Points in 0..1 on both axes (x time, y views from 0 to `max`); a null would break the line, and chartPlan makes none. */
   readonly points: readonly ({ readonly x: number; readonly y: number } | null)[];
   readonly max: number;
+  /** The latest counted reading. */
   readonly last: { readonly x: number; readonly y: number };
   /** Dotted markers along x: where we found the post and where the first coin launched; a dot on the line only where the line is drawn. */
   readonly markers: readonly { readonly x: number; readonly kind: 'found' | 'coin'; readonly onLine: boolean }[];
-  /** Three times under the chart: start, middle, end ("Now" when the last reading is recent). */
+  /** Three times under the chart: start, middle, end ("Now" when the end is recent). */
   readonly times: readonly { readonly x: number; readonly at: number }[];
 }
 
@@ -125,32 +130,33 @@ export function niceMax(v: number): number {
 }
 
 export function chartPlan(readings: readonly Reading[], start: number | null, marks: { readonly found: number | null; readonly coin: number | null }): ChartPlan | null {
-  const sorted = [...readings].sort((a, b) => a.atMs - b.atMs);
-  const counted = sorted.filter((r): r is { atMs: number; value: number } => r.value !== null);
+  const counted = [...readings].sort((a, b) => a.atMs - b.atMs).filter((r): r is { atMs: number; value: number } => r.value !== null);
   const firstCounted = counted[0];
   const lastCounted = counted[counted.length - 1];
   if (counted.length < 2 || firstCounted === undefined || lastCounted === undefined) return null;
-  /* From the post time when we know it (so "Found" sits where it happened), to our last counted reading. */
-  const from = start !== null && start < firstCounted.atMs ? start : firstCounted.atMs;
-  const to = lastCounted.atMs;
+  /* From the post time when we know it (so "Found" sits where it happened) to our last counted
+     reading, stretched to take in either marker that falls outside. */
+  const marked = [marks.found, marks.coin].filter((t): t is number => t !== null);
+  const from = Math.min(start !== null && start < firstCounted.atMs ? start : firstCounted.atMs, ...marked);
+  const to = Math.max(lastCounted.atMs, ...marked);
   if (to <= from) return null;
   const max = niceMax(Math.max(...counted.map((r) => r.value)));
   const x = (t: number) => (t - from) / (to - from);
-  const points = sorted.filter((r) => r.atMs >= firstCounted.atMs && r.atMs <= to).map((r) => (r.value === null ? null : { x: x(r.atMs), y: r.value / max }));
+  const points = counted.map((r) => ({ x: x(r.atMs), y: r.value / max }));
   const markers = (['found', 'coin'] as const).flatMap((kind) => {
     const at = marks[kind];
-    return at !== null && at >= from && at <= to ? [{ x: x(at), kind, onLine: at >= firstCounted.atMs }] : [];
+    return at !== null ? [{ x: x(at), kind, onLine: at >= firstCounted.atMs && at <= lastCounted.atMs }] : [];
   });
   return {
     points,
     max,
-    last: { x: 1, y: lastCounted.value / max },
+    last: { x: x(lastCounted.atMs), y: lastCounted.value / max },
     markers,
     times: [0, 0.5, 1].map((f) => ({ x: f, at: from + (to - from) * f })),
   };
 }
 
-/** The chart's line as an SVG path in a `w` by `h` box; a censored reading lifts the pen. */
+/** The chart's line as an SVG path in a `w` by `h` box; a null in the points (chartPlan makes none) would lift the pen. */
 export function linePath(points: ChartPlan['points'], w: number, h: number): string {
   let d = '';
   let pen = false;

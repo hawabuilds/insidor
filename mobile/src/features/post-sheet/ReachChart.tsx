@@ -4,8 +4,12 @@
  * we found the post and where its first coin launched, and a dot on the latest reading.
  *
  * Every point is one of our own view readings (`sheet-view.ts chartPlan`); a reading the source
- * rounded away lifts the pen rather than dropping the line to the floor. With fewer than two
- * counted readings there is no chart at all — the caller is handed null and draws nothing.
+ * rounded away is stepped over, so the line never breaks and never drops to the floor. With fewer
+ * than two counted readings there is no chart at all — the caller is handed null and draws nothing.
+ *
+ * Each dotted marker carries a small "Found" or "Coin" label at its top, on whichever side has
+ * room; when the two would sit on top of each other, Coin's label drops a line, so the two can
+ * always be told apart even when both fall at the right edge.
  *
  * The lines are an SVG stretched to the box; the dots and labels are HTML laid over it at the same
  * fractions, so a circle stays a circle at any phone width.
@@ -17,6 +21,12 @@ import styles from './post-sheet.module.css';
 
 const W = 300;
 const H = 100;
+/** Markers closer than this share of the width would have their labels collide. */
+const CROWDED = 0.16;
+/** A marker this near the right edge puts its label on its left. */
+const LABEL_ROOM = 0.18;
+/** How far a crowded Coin label drops below the Found one, in pixels. */
+const LABEL_LINE = 17;
 
 function timeLabel(at: number, now: number): string {
   if (now - at < 2 * 60_000) return 'Now';
@@ -50,6 +60,20 @@ export function ReachChart({ plan, now, height }: { plan: ChartPlan; now: number
             <span key={m.kind} className={styles['markDot']} style={{ left: pct(m.x), bottom: pct(markerY(plan, m.x)) }} title={m.kind === 'found' ? 'Found' : 'First coin'} />
           ))}
           <span className={styles['lastDot']} style={{ left: pct(plan.last.x), bottom: pct(plan.last.y) }} />
+          {plan.markers.map((m) => {
+            const other = plan.markers.find((o) => o.kind !== m.kind);
+            const crowded = other !== undefined && Math.abs(other.x - m.x) < CROWDED;
+            const leftward = m.x > 1 - LABEL_ROOM;
+            return (
+              <span
+                key={`l-${m.kind}`}
+                className={`${styles['markLabel']} ${leftward ? styles['markLabelLeft'] : ''}`}
+                style={{ left: pct(m.x), top: crowded && m.kind === 'coin' ? LABEL_LINE : 0 }}
+              >
+                {m.kind === 'found' ? 'Found' : 'Coin'}
+              </span>
+            );
+          })}
         </div>
         <div className={styles['axis']} style={{ height }} aria-hidden="true">
           <span>{compact(plan.max)}</span>
