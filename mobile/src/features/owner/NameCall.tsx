@@ -1,5 +1,6 @@
 /**
- * THUMBS ON A SUGGESTED NAME, AND "BETTER NAME:" — the owner's only, beside each name chip.
+ * THUMBS ON A SUGGESTED NAME, AND "BETTER NAME:" — the owner's only, one strip per name idea
+ * under More options on the Create sheet, so they stay reachable without lengthening the sheet.
  *
  * ★ BUILT AGAINST A SMALL TYPED INTERFACE, NOT THE CHIPS' OWN CODE. The Create sheet's suggestion
  * chips are another change in flight; whatever they hold, they need only hand this a

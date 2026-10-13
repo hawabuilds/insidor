@@ -1,47 +1,57 @@
 /**
- * CREATE COIN — a centred modal, after Trador's `CreateSheet.tsx` and `ui/Modal.tsx`.
+ * CREATE COIN — the pop-up, after Trador's `components/CreateSheet.tsx` minus every stock step,
+ * and its `Launched` success screen.
  *
- * The picture from the post (with "Change"), name chips from the post's subject when made from a
- * feed post (NameSuggestions.tsx: tapping one fills the name and ticker, both still editable, and
- * the picture stays the post's), a name and a ticker to edit, dev-buy presets and a
- * custom amount, the launch's costs and what the creator earns, and a Create button.
+ * The main sheet is five things and nothing else: the picture (the post's, with "Change"), the
+ * name and ticker (the post's top name idea, its other ideas as one row of chips), the dev buy
+ * (0, 0.5, 1, 2 SOL or a typed amount, in one row, 0 to start), one line for what the launch costs,
+ * and the Create button. Description, socials, the creator fee and the owner's name feedback sit
+ * behind "More options", closed when the sheet opens.
  *
- * ★ WITH TRADING OFF THE BUTTON SAYS "COMING SOON" AND DOES NOTHING ELSE. No coin is minted,
- * no address generated, no success shown; the fee lines say they are not known.
+ * ★ IT MUST FIT A 390×844 PHONE WITHOUT SCROLLING. A new line on the main sheet costs a line of
+ * height that this sheet was cut down to earn; put it behind More options instead. More options
+ * and the ticker's coin list each scroll inside their own box, so opening them never pushes the
+ * button off the screen (the modal itself does not scroll).
  *
- * ★ WITH TRADING ON, EVERY NUMBER IS THE CHAIN'S. Paused launches are said and nothing else is
- * offered; the costs are measured by simulating this exact launch; what the creator earns is the
- * launchpad's fee rate now. Create builds the launch unsigned and simulated (features/trade's
- * build-then-sign rule), your wallet signs it, and once it lands the coin is recorded against its
- * narrative as "Created on Insidor". The ticker check speaks only for coins Insidor has seen.
+ * ★ WITH TRADING OFF, OR FROM A STORY WRITTEN BY HAND, THE BUTTON SAYS "COMING SOON" AND DOES
+ * NOTHING ELSE. No coin is minted and no cost is shown; the cost line says it is not live.
+ *
+ * ★ WITH TRADING ON, EVERY NUMBER IS THE CHAIN'S, AND THE SAFETY IS THE TRADE SERVICE'S. The cost
+ * is the simulation of this exact launch (`POST /launch/preview`), a dash with a reason when it
+ * was not measured. Create asks the trade service to store the picture and build the launch
+ * unsigned; the service refuses a wallet off its allowlist or a dev buy over its cap, simulates
+ * the transaction, and only then hands it back (features/trade's build-then-sign rule). The
+ * wallet signs it; once it lands it is recorded against its story as "Created on Insidor".
+ * Any failure is one short line saying why, and nothing is signed.
  */
 
 import { useEffect, useState } from 'react';
 
 import {
-  buildLaunchTx, confirmLaunch, fetchLaunchRules, fetchTickerSeen, imageAsDataUrl, previewLaunch,
-  type LaunchPreview, type LaunchRules,
+  buildLaunchTx, confirmLaunch, fetchLaunchRules, fetchPostNames, fetchTickerCoins, imageAsDataUrl, previewLaunch,
+  type LaunchPreview, type LaunchRules, type NameIdea, type SameNameCoins,
 } from '../../shared/api/index.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { tradingOn } from '../../shared/trading.ts';
 import { useWallet } from '../../shared/wallet.tsx';
-import { confirmBuilt, fromBase64, toBaseUnits, type ConfirmOutcome } from '../trade/order-flow.ts';
+import { confirmBuilt, fromBase64, type ConfirmOutcome } from '../trade/order-flow.ts';
 import type { Measured } from '../../shared/format/measure.ts';
-import { formatCount } from '../../shared/format/number.ts';
-import { PENDING_GLYPH } from '../../shared/format/rendered.ts';
 import type { Notice as NoticeCopy } from '../../shared/notice.ts';
 import { Button } from '../../shared/ui/Button.tsx';
+import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
 import { RocketIcon } from '../../shared/ui/icons.tsx';
 import { Modal } from '../../shared/ui/Modal.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
-import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { NameCallButtons } from '../owner/NameCall.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
-import { NameSuggestions } from './NameSuggestions.tsx';
-import { DEV_BUY_PRESETS, TICKER_MAX, cleanTicker, feeRate, presetsWithin, suggestTicker, supplyShare, tickerLine } from './create-form.ts';
+import { NameChips, TickerCoins } from './NameSuggestions.tsx';
+import {
+  DEV_BUY_DEFAULT, DEV_BUY_PRESETS, FIRST_SHEET, NAME_MAX, TICKER_MAX, cleanTicker, coinPageUrl, costLine, devBuyLamports, feeRate,
+  firstFill, firstLinks, otherIdeas, presetsWithin, shareOnX, solText, tickerCheck, useOfList, type Links, type SheetState, type TickerUse,
+} from './create-form.ts';
 import styles from './create.module.css';
 
 export interface CreateFrom {
@@ -50,11 +60,11 @@ export interface CreateFrom {
   readonly title: string;
   readonly reach: Measured;
   readonly thumbUrl: string | null;
-  /** The post it is made from, when it is made from one post: it goes in the coin's description. */
+  /** The post it is made from, when it is made from one post: prefilled as the coin's link. */
   readonly link?: string | null;
-  /** The feed post's id, when made from one: its name ideas are offered as chips (NameSuggestions). */
+  /** The feed post's id, when made from one: its name ideas fill the fields and the chips. */
   readonly postId?: string | null;
-  /** True when the server labels the story behind it as written by hand; the modal carries that label too. */
+  /** True when the server labels the story behind it as written by hand; the sheet says so. */
   readonly labelled: boolean;
 }
 
@@ -63,158 +73,232 @@ const HAND_WRITTEN: NoticeCopy = {
   detail: 'The server says the story behind this was written by hand, not seen anywhere.',
 };
 
-/** A figure nobody has read yet: a dash and the words, never a placeholder number. */
-function Unknown() {
-  return <span className={styles['unknown']}>{PENDING_GLYPH} not known yet</span>;
-}
-
 const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as string | undefined });
+
+/** Typing settles for this long before the ticker is checked or the launch priced again. */
+const SETTLE_MS = 500;
+/** The picture's square on the sheet, in CSS pixels: Trador's 76. */
+const PICTURE_PX = 76;
+/** The coin's logo on the success screen, in CSS pixels. */
+const LOGO_PX = 64;
+/** A landed create takes a moment to be readable; asked this many times, this far apart. */
+const CONFIRM_TRIES = 6;
+const CONFIRM_GAP_MS = 2_000;
+/** The description's limit, matched by the trade service's DESCRIPTION_MAX. */
+const DESCRIPTION_MAX = 280;
 
 export function CreateCoin({ from, onClose }: { from: CreateFrom; onClose: () => void }) {
   /* A story the server labels as written by hand is never launched from, trading on or not. */
   return TRADING && !from.labelled ? <LiveCreate from={from} onClose={onClose} /> : <SoonCreate from={from} onClose={onClose} />;
 }
 
-function SoonCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }) {
+const NO_IDEAS: readonly NameIdea[] = [];
+
+type TickerRead = { kind: 'checking' } | { kind: 'failed' } | { kind: 'read'; use: TickerUse; list: SameNameCoins };
+
+/** Everything both sheets hold: the fields, the name ideas, the ticker check, More options. */
+function useForm(from: CreateFrom) {
+  const [ideasLoad] = useLoad(`post-names:${from.postId ?? ''}`, (signal) => (from.postId ? fetchPostNames(from.postId, signal) : Promise.resolve(NO_IDEAS)));
+  const ideas = ideasLoad.state === 'ready' ? ideasLoad.value : NO_IDEAS;
+  const first = firstFill([], from.title);
+  const [name, setName] = useState(first.name);
+  const [ticker, setTicker] = useState(first.ticker);
+  const [touched, setTouched] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [preset, setPreset] = useState(DEV_BUY_DEFAULT);
+  const [custom, setCustom] = useState('');
+  const [description, setDescription] = useState(from.link ? `From ${from.link}` : `From ${from.title}`);
+  const [links, setLinks] = useState<Links>(() => firstLinks(from.link));
+  const [sheet, setSheet] = useState<SheetState>(FIRST_SHEET);
+  const [check, setCheck] = useState<TickerRead>({ kind: 'checking' });
+
+  /* The top idea fills the fields when it arrives, unless the person already typed. */
+  useEffect(() => {
+    if (touched || ideas.length === 0) return;
+    const f = firstFill(ideas, from.title);
+    setName(f.name);
+    setTicker(f.ticker);
+  }, [ideas]);
+
+  useEffect(() => {
+    setSheet((s) => ({ ...s, coinsOpen: false }));
+    if (ticker === '') return;
+    setCheck({ kind: 'checking' });
+    const ac = new AbortController();
+    const t = setTimeout(() => void fetchTickerCoins(ticker, ac.signal).then(
+      (list) => { if (!ac.signal.aborted) setCheck({ kind: 'read', use: useOfList(list), list }); },
+      () => { if (!ac.signal.aborted) setCheck({ kind: 'failed' }); },
+    ), SETTLE_MS);
+    return () => { clearTimeout(t); ac.abort(); };
+  }, [ticker]);
+
+  return {
+    from, ideas, name, ticker, picked, preset, custom, description, links, sheet, check,
+    devLamports: devBuyLamports(preset, custom),
+    typeName: (v: string) => { setTouched(true); setName(v.slice(0, NAME_MAX)); },
+    typeTicker: (v: string) => { setTouched(true); setTicker(cleanTicker(v)); },
+    pickIdea: (i: NameIdea) => { setTouched(true); setName(i.name.slice(0, NAME_MAX)); setTicker(cleanTicker(i.ticker)); },
+    pickImage: (file: File | undefined) => {
+      if (file === undefined) return;
+      const reader = new FileReader();
+      reader.onload = () => setPicked(typeof reader.result === 'string' ? reader.result : null);
+      reader.readAsDataURL(file);
+    },
+    setPreset: (sol: number) => { setCustom(''); setPreset(sol); },
+    setCustom: (v: string) => setCustom(v.replace(/[^0-9.]/g, '').slice(0, 8)),
+    setDescription: (v: string) => setDescription(v.slice(0, DESCRIPTION_MAX)),
+    setLinks,
+    toggleMore: () => setSheet((s) => ({ ...s, more: !s.more })),
+    toggleCoins: () => setSheet((s) => ({ ...s, coinsOpen: !s.coinsOpen })),
+  };
+}
+
+type Form = ReturnType<typeof useForm>;
+
+/** Picture, name, ticker, chips, the ticker line and the dev buy row. */
+function Fields({ f, presets, live }: { f: Form; presets: readonly number[]; live: boolean }) {
   const soon = useComingSoon();
-  const owner = useIsOwner();
-  const [name, setName] = useState(from.title);
-  const [ticker, setTicker] = useState(() => suggestTicker(from.title));
-  const [devBuy, setDevBuy] = useState<number | null>(DEV_BUY_PRESETS[0] ?? null);
-  const views = formatCount(from.reach);
-
+  const line = tickerCheck(f.ticker, f.check);
   return (
-    <Modal
-      title="Create coin"
-      subtitle={`From ${from.title}${views.kind === 'value' ? `, ${views.text} views` : ''}`}
-      onClose={onClose}
-    >
-      {from.labelled ? <div className={styles['notice']}><Notice notice={HAND_WRITTEN} /></div> : null}
-
+    <>
       <div className={styles['identity']}>
         <div className={styles['picture']}>
-          <Thumb url={from.thumbUrl} size={92} />
-          <button type="button" className={styles['change']} onClick={() => soon('Changing the picture')}>
-            Change
-          </button>
+          {f.picked !== null ? <img className={styles['picked']} src={f.picked} alt="" /> : <Thumb url={f.from.thumbUrl} size={PICTURE_PX} />}
+          {live ? (
+            <label className={styles['change']}>
+              Change
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className={styles['file']} onChange={(e) => f.pickImage(e.target.files?.[0])} />
+            </label>
+          ) : (
+            <button type="button" className={styles['change']} onClick={() => soon('Changing the picture')}>Change</button>
+          )}
         </div>
         <div className={styles['inputs']}>
-          <input aria-label="Name" value={name} maxLength={32} onChange={(e) => setName(e.target.value)} />
-          <input
-            aria-label="Ticker"
-            className={styles['tickerInput']}
-            value={ticker}
-            maxLength={TICKER_MAX}
-            onChange={(e) => setTicker(cleanTicker(e.target.value))}
-          />
+          <input aria-label="Name" placeholder="Name" value={f.name} maxLength={NAME_MAX} onChange={(e) => f.typeName(e.target.value)} />
+          <input aria-label="Ticker" placeholder="TICKER" className={styles['tickerInput']} value={f.ticker} maxLength={TICKER_MAX} onChange={(e) => f.typeTicker(e.target.value)} />
+          {line.opens ? (
+            <button type="button" className={`${styles['tickerLine']} ${styles['taken']}`} aria-expanded={f.sheet.coinsOpen} onClick={f.toggleCoins}>{line.text}</button>
+          ) : (
+            <span className={`${styles['tickerLine']} ${line.text === 'Free' ? styles['free'] : ''}`}>{line.text}</span>
+          )}
         </div>
       </div>
+      {f.sheet.coinsOpen && f.check.kind === 'read' ? <TickerCoins ticker={f.ticker} list={f.check.list} /> : null}
 
-      {from.postId ? (
-        <NameSuggestions
-          postId={from.postId}
-          onPick={(idea) => {
-            setName(idea.name.slice(0, 32));
-            setTicker(cleanTicker(idea.ticker));
-          }}
-          beside={owner ? (idea) => <NameCallButtons itemId={from.postId ?? ''} suggestion={{ name: idea.name, ticker: idea.ticker }} /> : undefined}
-        />
-      ) : null}
-      <p className={styles['check']}>Checking whether {ticker || 'a ticker'} is taken is coming soon.</p>
+      <NameChips ideas={otherIdeas(f.ideas, f.ticker)} onPick={f.pickIdea} />
 
       <div className={styles['devBuy']}>
-        <div>
-          <b>Dev buy</b>
-          <span>Optional, buy first at launch price</span>
-        </div>
+        <span className={styles['label']}>Dev buy</span>
         <div className={styles['presets']}>
-          {DEV_BUY_PRESETS.map((sol) => (
-            <button
-              key={sol}
-              type="button"
-              aria-pressed={devBuy === sol}
-              className={`${styles['preset']} ${devBuy === sol ? styles['presetOn'] : ''}`}
-              onClick={() => setDevBuy(devBuy === sol ? null : sol)}
-            >
-              {sol}
-            </button>
-          ))}
-          <span className={styles['amount']}>{devBuy === null ? 'None' : <>{devBuy} <small>SOL</small></>}</span>
+          {presets.map((sol) => {
+            const on = f.custom === '' && f.preset === sol;
+            return (
+              <button key={sol} type="button" aria-pressed={on} className={`${styles['preset']} ${on ? styles['presetOn'] : ''}`} onClick={() => f.setPreset(sol)}>{sol}</button>
+            );
+          })}
+          <label className={styles['custom']}>
+            <input aria-label="Dev buy in SOL" inputMode="decimal" placeholder="Custom" value={f.custom} onChange={(e) => f.setCustom(e.target.value)} />
+            <small>SOL</small>
+          </label>
         </div>
       </div>
+    </>
+  );
+}
 
-      <dl className={styles['terms']}>
-        <div><dt>Launch fee</dt><dd><Unknown /></dd></div>
-        <div><dt>You earn as creator</dt><dd><Unknown /></dd></div>
-      </dl>
+/** The link and what it opens: description, socials, the creator fee, the owner's name calls. */
+function MoreOptions({ f, creatorFee }: { f: Form; creatorFee: string }) {
+  const owner = useIsOwner();
+  const postId = f.from.postId ?? null;
+  if (!f.sheet.more) {
+    return <button type="button" className={styles['moreLink']} aria-expanded={false} onClick={f.toggleMore}>More options</button>;
+  }
+  return (
+    <>
+      <button type="button" className={styles['moreLink']} aria-expanded onClick={f.toggleMore}>Fewer options</button>
+      <div className={styles['more']}>
+        <textarea aria-label="Description" placeholder="Description" rows={2} value={f.description} onChange={(e) => f.setDescription(e.target.value)} />
+        <input aria-label="X link" placeholder="X link" value={f.links.twitter} onChange={(e) => f.setLinks({ ...f.links, twitter: e.target.value })} />
+        <input aria-label="Telegram link" placeholder="Telegram link" value={f.links.telegram} onChange={(e) => f.setLinks({ ...f.links, telegram: e.target.value })} />
+        <input aria-label="Website" placeholder="Website" value={f.links.website} onChange={(e) => f.setLinks({ ...f.links, website: e.target.value })} />
+        <p className={styles['fee']}><span>You earn as creator</span><b>{creatorFee}</b></p>
+        {owner && postId !== null
+          ? f.ideas.map((idea) => (
+            <div key={idea.ticker} className={styles['call']}>
+              <b>{idea.name} ${idea.ticker}</b>
+              <NameCallButtons itemId={postId} suggestion={{ name: idea.name, ticker: idea.ticker }} />
+            </div>
+          ))
+          : null}
+      </div>
+    </>
+  );
+}
 
+function SoonCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }) {
+  const soon = useComingSoon();
+  const f = useForm(from);
+  return (
+    <Modal title="Create coin" onClose={onClose}>
+      {from.labelled ? <div className={styles['notice']}><Notice notice={HAND_WRITTEN} /></div> : null}
+      <Fields f={f} presets={DEV_BUY_PRESETS} live={false} />
+      <p className={styles['cost']}>{costLine({ kind: 'off' })}</p>
+      <MoreOptions f={f} creatorFee="— not live yet" />
       <Button look="primary" size="large" className={styles['create']} onClick={() => soon('Creating a coin')}>
-        <RocketIcon size={18} /> Create {ticker || 'coin'}
+        <RocketIcon size={18} /> Create coin
       </Button>
-      <p className={styles['foot']}>When this is live: one approval in your wallet, listed on pump.fun.</p>
     </Modal>
   );
 }
 
-const SOL = (lamports: number): string => `${(lamports / 1e9).toLocaleString('en-US', { maximumFractionDigits: 4 })} SOL`;
-/** Typing settles for this long before the launch is priced again. */
-const SETTLE_MS = 500;
+type Priced = { kind: 'none' } | { kind: 'asking' } | { kind: 'preview'; preview: LaunchPreview } | { kind: 'refused'; why: string };
+type Outcome = ConfirmOutcome | 'working' | { kind: 'created'; mint: string } | null;
+
+/** One short line for a launch that did not happen. */
+function failedLine(o: ConfirmOutcome): string {
+  if (o.kind === 'blocked' || o.kind === 'not-sent') return o.why;
+  if (o.kind === 'refused') return 'You declined in your wallet. Nothing was created.';
+  return 'Signing failed. Nothing was created.';
+}
 
 function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }) {
   const { wallet, state } = useWallet();
-  const owner = useIsOwner();
-  const [name, setName] = useState(from.title.slice(0, 32));
-  const [ticker, setTicker] = useState(() => suggestTicker(from.title));
-  const [picked, setPicked] = useState<string | null>(null);
-  const [preset, setPreset] = useState<number | null>(null);
-  const [custom, setCustom] = useState('');
-  const [seen, setSeen] = useState<number | null>(null);
-  const [priced, setPriced] = useState<{ kind: 'none' } | { kind: 'asking' } | { kind: 'preview'; preview: LaunchPreview } | { kind: 'refused'; why: string }>({ kind: 'none' });
-  const [outcome, setOutcome] = useState<ConfirmOutcome | 'working' | { kind: 'created'; mint: string } | null>(null);
+  const f = useForm(from);
+  const [priced, setPriced] = useState<Priced>({ kind: 'none' });
+  const [outcome, setOutcome] = useState<Outcome>(null);
   const [rules] = useLoad('launch-rules', (signal) => fetchLaunchRules(signal));
   const r: LaunchRules | null = rules.state === 'ready' ? rules.value : null;
   const cap = r === null ? 0n : BigInt(r.maxDevBuyLamports);
-  const devLamports = custom.trim() !== '' ? toBaseUnits(custom, 9) : preset === null ? 0n : BigInt(Math.round(preset * 1e9));
+  const dev = f.devLamports;
   const account = state.kind === 'connected' ? state.account : null;
 
   useEffect(() => {
-    if (ticker === '') return;
-    const ac = new AbortController();
-    const t = setTimeout(() => void fetchTickerSeen(ticker, ac.signal).then(setSeen, () => setSeen(null)), SETTLE_MS);
-    return () => { clearTimeout(t); ac.abort(); };
-  }, [ticker]);
-
-  useEffect(() => {
-    if (account === null || r === null || !r.open || name.trim() === '' || ticker === '' || devLamports === null) return;
+    if (account === null || r === null || !r.open || f.name.trim() === '' || f.ticker === '' || dev === null || dev > cap) {
+      setPriced({ kind: 'none' });
+      return;
+    }
     const ac = new AbortController();
     setPriced({ kind: 'asking' });
     const t = setTimeout(() => {
-      previewLaunch({ wallet: account, name: name.trim(), symbol: ticker, devBuyLamports: devLamports.toString() }, ac.signal).then(
-        (p) => setPriced(p.kind === 'preview' ? { kind: 'preview', preview: p.preview } : { kind: 'refused', why: p.why }),
-        () => setPriced({ kind: 'refused', why: 'The launch could not be priced just now.' }),
+      previewLaunch({ wallet: account, name: f.name.trim(), symbol: f.ticker, devBuyLamports: dev.toString() }, ac.signal).then(
+        (p) => { if (!ac.signal.aborted) setPriced(p.kind === 'preview' ? { kind: 'preview', preview: p.preview } : { kind: 'refused', why: p.why }); },
+        () => { if (!ac.signal.aborted) setPriced({ kind: 'refused', why: "The launch couldn't be priced just now." }); },
       );
     }, SETTLE_MS);
     return () => { clearTimeout(t); ac.abort(); };
-  }, [account, r?.open, name, ticker, devLamports?.toString()]);
-
-  const pick = (file: File | undefined) => {
-    if (file === undefined) return;
-    const reader = new FileReader();
-    reader.onload = () => setPicked(typeof reader.result === 'string' ? reader.result : null);
-    reader.readAsDataURL(file);
-  };
+  }, [account, r?.open, f.name, f.ticker, dev?.toString()]);
 
   const create = async () => {
-    if (account === null || wallet === null || devLamports === null) return;
+    if (account === null || wallet === null || dev === null) return;
     setOutcome('working');
-    const imageDataUrl = picked ?? (from.thumbUrl === null ? null : await imageAsDataUrl(from.thumbUrl));
+    const imageDataUrl = f.picked ?? (from.thumbUrl === null ? null : await imageAsDataUrl(from.thumbUrl));
     if (imageDataUrl === null) {
       setOutcome({ kind: 'blocked', why: "The post's picture couldn't be read. Tap Change and pick one." });
       return;
     }
     let mint = '';
     const done = await confirmBuilt(async () => {
-      const built = await buildLaunchTx({ wallet: account, name: name.trim(), symbol: ticker, description: from.link ? `From ${from.link}` : `From ${from.title}`, imageDataUrl, devBuyLamports: devLamports.toString() });
+      const built = await buildLaunchTx({ wallet: account, name: f.name.trim(), symbol: f.ticker, description: f.description.trim(), imageDataUrl, devBuyLamports: dev.toString(), links: f.links });
       if (built.kind === 'blocked') return built;
       mint = built.mint;
       return { kind: 'ready', transaction: built.transaction };
@@ -223,103 +307,68 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
       setOutcome(done);
       return;
     }
-    /* Landed takes a moment; recorded once the chain shows it. */
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < CONFIRM_TRIES; i += 1) {
       if (await confirmLaunch({ wallet: account, signature: done.ref, mint, storyId: from.storyId ?? null })) break;
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      await new Promise((resolve) => setTimeout(resolve, CONFIRM_GAP_MS));
     }
     setOutcome({ kind: 'created', mint });
   };
 
-  const presets = presetsWithin(cap);
-  const preview = priced.kind === 'preview' ? priced.preview : null;
-  const launchCost = preview === null ? null : preview.costs.reduce((s, c) => s + c.lamports, 0);
-
   if (outcome !== null && outcome !== 'working' && outcome.kind === 'created') {
-    return (
-      <Modal title="Created" onClose={onClose}>
-        <div className={styles['createdLogo']}>
-          <CoinLogo address={outcome.mint} ticker={ticker} imageUrl={picked ?? from.thumbUrl} size={64} />
-        </div>
-        <p className={styles['check']}>{ticker} is live on pump.fun, created on Insidor.</p>
-        <a className={styles['link']} href={hrefFor({ screen: 'token', coinId: `solana:${outcome.mint}` })} onClick={onClose}>Open {ticker}</a>
-      </Modal>
-    );
+    return <Launched mint={outcome.mint} ticker={f.ticker} imageUrl={f.picked ?? from.thumbUrl} onClose={onClose} />;
   }
 
+  const cost = account === null ? costLine({ kind: 'signed-out' })
+    : priced.kind === 'preview' ? costLine({ kind: 'measured', lamports: priced.preview.costs.map((c) => c.lamports) })
+      : priced.kind === 'asking' ? costLine({ kind: 'measuring' })
+        : costLine({ kind: 'unread' });
+
+  /* Why Create is not offered, if it is not; else why the last try failed. One line, never both. */
+  const stop = rules.state === 'loading' ? null
+    : r === null ? "The launchpad couldn't be read just now."
+      : !r.open ? 'pump.fun has new coins paused right now.'
+        : f.name.trim() === '' ? 'Add a name.'
+          : f.ticker === '' ? 'Add a ticker.'
+            : dev === null ? 'The dev buy must be an amount of SOL.'
+              : dev > cap ? `The dev buy is capped at ${solText(Number(cap))}.`
+                : priced.kind === 'refused' ? priced.why
+                  : null;
+  const failed = outcome !== null && outcome !== 'working' ? failedLine(outcome) : null;
+  const why = stop ?? failed;
+  const offered = rules.state === 'ready' && stop === null;
+
   return (
-    <Modal title="Create coin" subtitle={`From ${from.title}`} onClose={onClose}>
-      <div className={styles['identity']}>
-        <div className={styles['picture']}>
-          {picked !== null ? <img className={styles['picked']} src={picked} alt="" /> : <Thumb url={from.thumbUrl} size={92} />}
-          <label className={styles['change']}>
-            Change
-            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className={styles['file']} onChange={(e) => pick(e.target.files?.[0])} />
-          </label>
-        </div>
-        <div className={styles['inputs']}>
-          <input aria-label="Name" value={name} maxLength={32} onChange={(e) => setName(e.target.value)} />
-          <input aria-label="Ticker" className={styles['tickerInput']} value={ticker} maxLength={TICKER_MAX} onChange={(e) => setTicker(cleanTicker(e.target.value))} />
-        </div>
+    <Modal title="Create coin" onClose={outcome === 'working' ? () => undefined : onClose}>
+      <Fields f={f} presets={presetsWithin(cap)} live />
+      <p className={styles['cost']}>{cost}</p>
+      <MoreOptions f={f} creatorFee={r === null ? "— couldn't be read" : feeRate(r.creatorFeeBps)} />
+      {why !== null ? <p className={styles['why']} role="alert">{why}</p> : null}
+      {account === null ? (
+        wallet !== null && state.kind !== 'unavailable' && state.kind !== 'connecting'
+          ? <Button look="primary" size="large" className={styles['create']} onClick={() => void wallet.connect()}>Sign in to create</Button>
+          : <p className={styles['why']}>Sign-in isn't set up in this build.</p>
+      ) : outcome === 'working' ? (
+        <p className={styles['working']}>Checking the launch, then your wallet asks to sign.</p>
+      ) : !offered ? null : (
+        <Button look="primary" size="large" className={styles['create']} onClick={() => void create()}>
+          <RocketIcon size={18} /> Create coin
+        </Button>
+      )}
+    </Modal>
+  );
+}
+
+/** Trador's `Launched`: the coin's logo, View coin, Share on X. */
+function Launched({ mint, ticker, imageUrl, onClose }: { mint: string; ticker: string; imageUrl: string | null; onClose: () => void }) {
+  const hash = hrefFor({ screen: 'token', coinId: `solana:${mint}` });
+  const page = coinPageUrl(window.location.origin, window.location.pathname, hash);
+  return (
+    <Modal title={`$${ticker} is live`} onClose={onClose}>
+      <div className={styles['launched']}>
+        <CoinLogo address={mint} ticker={ticker} imageUrl={imageUrl} size={LOGO_PX} />
+        <a className={styles['view']} href={hash} onClick={onClose}>View coin</a>
+        <a className={styles['share']} href={shareOnX(ticker, page)} target="_blank" rel="noreferrer">Share on X</a>
       </div>
-
-      {from.postId ? (
-        <NameSuggestions
-          postId={from.postId}
-          onPick={(idea) => {
-            setName(idea.name.slice(0, 32));
-            setTicker(cleanTicker(idea.ticker));
-          }}
-          beside={owner ? (idea) => <NameCallButtons itemId={from.postId ?? ''} suggestion={{ name: idea.name, ticker: idea.ticker }} /> : undefined}
-        />
-      ) : null}
-      <p className={styles['check']}>{tickerLine(ticker, seen)}</p>
-
-      {rules.state === 'ready' && r === null ? <p className={styles['check']}>— the launchpad's rules couldn't be read just now.</p> : null}
-      {r !== null && !r.open ? <p className={styles['check']}>pump.fun has new coins paused right now. Nothing can be created until it reopens.</p> : null}
-
-      {r !== null && r.open ? (
-        <>
-          <div className={styles['devBuy']}>
-            <div>
-              <b>Dev buy</b>
-              <span>Optional, buy first at launch price</span>
-            </div>
-            <div className={styles['presets']}>
-              {presets.map((sol) => (
-                <button key={sol} type="button" aria-pressed={preset === sol && custom === ''} className={`${styles['preset']} ${preset === sol && custom === '' ? styles['presetOn'] : ''}`} onClick={() => { setCustom(''); setPreset(preset === sol ? null : sol); }}>{sol}</button>
-              ))}
-              <input aria-label="Custom dev buy in SOL" className={styles['customInput']} inputMode="decimal" placeholder="Custom" value={custom} onChange={(e) => setCustom(e.target.value)} />
-            </div>
-          </div>
-
-          <dl className={styles['terms']}>
-            <div><dt>Launch cost</dt><dd>{launchCost === null ? <span className={styles['unknown']}>{priced.kind === 'asking' ? 'Measuring' : '—'}</span> : SOL(launchCost)}</dd></div>
-            {preview !== null ? preview.costs.map((c) => (
-              <div key={c.key} className={styles['sub']}><dt>{c.key === 'network' ? 'Network fee' : c.key === 'rent' ? 'Account rent' : 'pump.fun fee'}</dt><dd>{c.lamports === 0 && c.key === 'launchpad' ? 'Free' : SOL(c.lamports)}</dd></div>
-            )) : null}
-            {preview?.devBuy != null ? <div><dt>Dev buy</dt><dd>{SOL(preview.devBuy.lamports)}, {supplyShare(preview.devBuy.supplyBps)}</dd></div> : null}
-            <div><dt>You earn as creator</dt><dd>{feeRate(r.creatorFeeBps)}</dd></div>
-          </dl>
-          {priced.kind === 'refused' ? <p className={styles['check']}>{priced.why}</p> : null}
-
-          {account === null ? (
-            wallet !== null && state.kind !== 'unavailable' && state.kind !== 'connecting' ? <Button look="primary" size="large" className={styles['create']} onClick={() => void wallet.connect()}>Sign in to create</Button> : <p className={styles['foot']}>Sign-in isn't set up in this build.</p>
-          ) : outcome === 'working' ? (
-            <p className={styles['foot']}>Storing the picture, checking the launch, then asking your wallet to sign.</p>
-          ) : preview !== null && devLamports !== null && devLamports <= cap ? (
-            <Button look="primary" size="large" className={styles['create']} onClick={() => void create()}>
-              <RocketIcon size={18} /> Create {ticker || 'coin'}
-            </Button>
-          ) : null}
-          {outcome !== null && outcome !== 'working' ? (
-            <p className={styles['check']}>
-              {outcome.kind === 'blocked' ? `Nothing was signed. ${outcome.why}` : outcome.kind === 'refused' ? 'You declined in your wallet. Nothing was created.' : outcome.kind === 'not-sent' ? outcome.why : 'Something went wrong signing. Nothing was created.'}
-            </p>
-          ) : null}
-          <p className={styles['foot']}>One approval in your wallet, listed on pump.fun.</p>
-        </>
-      ) : null}
     </Modal>
   );
 }
