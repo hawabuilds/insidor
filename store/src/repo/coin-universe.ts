@@ -268,7 +268,9 @@ export class PgCoinUniverseRepo {
    * Names to search, in the order they are owed: feed posts first, newest into the feed first,
    * then narratives, newest promoted first. Skipped: a subject searched since `keepBefore`, and
    * one whose search failed `1 + retries` times in a row, until `keepBefore` has passed its last
-   * failure — a source that is down for the day is not asked again every minute.
+   * failure — a source that is down for the day is not asked again every minute. A post searched
+   * before 0051 that found coins is owed a search at once: its row has a count and no list, and
+   * the card cannot offer "See N coins" until the list exists.
    */
   async lookupTerms(keepBefore: Millis, retries: number, limit: number): Promise<readonly LookupTerm[]> {
     const rows = await this.#db.query<{ subject_kind: 'story' | 'post'; subject_id: string; term: string; attempts: number | null }>(
@@ -277,7 +279,7 @@ export class PgCoinUniverseRepo {
          from waiting w
          left join internal.coin_lookup l on l.subject_kind = w.subject_kind and l.subject_id = w.subject_id
          left join internal.coin_lookup_attempt a on a.subject_kind = w.subject_kind and a.subject_id = w.subject_id
-        where (l.subject_id is null or l.looked_at < $1)
+        where (l.subject_id is null or l.looked_at < $1 or (w.subject_kind = 'post' and l.hits is null and l.found > 0))
           and (a.subject_id is null or a.attempts <= $2 or a.last_failed_at < $1)
         order by (w.subject_kind = 'post') desc, a.queued_at desc nulls first, w.seen_at desc nulls last, w.subject_id
         limit $3`,
@@ -286,18 +288,23 @@ export class PgCoinUniverseRepo {
     return rows.map((r) => ({ kind: r.subject_kind, id: r.subject_id, term: r.term, attempts: Number(r.attempts ?? 0) }));
   }
 
-  /** A finished search: written over the last one, and the failed-attempt count starts again. */
-  async recordLookup(term: LookupTerm, found: number, added: number, at: Millis): Promise<void> {
+  /**
+   * A finished search: written over the last one, and the failed-attempt count starts again.
+   * `hits` are the addresses kept, newest launch first; `more` says more came back than were
+   * kept. Both together, so a row never has a list without saying whether it is the whole list.
+   */
+  async recordLookup(term: LookupTerm, kept: { readonly hits: readonly string[]; readonly more: boolean }, added: number, at: Millis): Promise<void> {
     await this.#db.query(
       `with reset as (
          update internal.coin_lookup_attempt set attempts = 0, last_error = null
           where subject_kind = $1 and subject_id = $2
        )
-       insert into internal.coin_lookup (subject_kind, subject_id, term, looked_at, found, added)
-       values ($1, $2, $3, $4, $5, $6)
+       insert into internal.coin_lookup (subject_kind, subject_id, term, looked_at, found, added, hits, more)
+       values ($1, $2, $3, $4, $5, $6, $7::text[], $8)
        on conflict (subject_kind, subject_id) do update set
-         term = excluded.term, looked_at = excluded.looked_at, found = excluded.found, added = excluded.added`,
-      [term.kind, term.id, term.term, toTimestamp(at), found, added],
+         term = excluded.term, looked_at = excluded.looked_at, found = excluded.found, added = excluded.added,
+         hits = excluded.hits, more = excluded.more`,
+      [term.kind, term.id, term.term, toTimestamp(at), kept.hits.length, added, [...kept.hits], kept.more],
     );
   }
 

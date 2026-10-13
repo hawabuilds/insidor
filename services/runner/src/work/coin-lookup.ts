@@ -18,6 +18,11 @@
  * the feed first, then narratives (the store's `lookupTerms`). Every waiting subject is noted
  * before the caps apply, so one the caps leave for later still has the moment it began waiting.
  *
+ * ★ THE ADDRESSES KEPT ARE RECORDED, NOT ONLY HOW MANY (0051). A card that says "3 coins use this
+ * name" offers to list them, and the list is these addresses; `more` says the search found more
+ * than `hitsPerTerm`, or a source cut its answer, so the card can say "10+" instead of a count
+ * that is only the part we kept.
+ *
  * What breaks if changed carelessly: a term both sources failed on is NOT recorded as a search,
  * only as a failed attempt. Recording it would mark the post "searched, nothing found" and show
  * "no coin yet" on the strength of an outage. A failed name is tried again on later passes,
@@ -83,10 +88,12 @@ export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
       else deps.log.warn('coin search unavailable on every source; the name is searched again next pass', { term: term.term, tries, err: why });
       continue;
     }
-    const hits = mergeHits(read)
+    const recent = mergeHits(read)
       .filter((h) => h.createdAt !== null && h.createdAt >= now - l.withinMs)
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-      .slice(0, l.hitsPerTerm);
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    const hits = recent.slice(0, l.hitsPerTerm);
+    /* A source that cut its own answer short may have left out more coins of this name. */
+    const more = recent.length > hits.length || answers.some((a) => a.status === 'fulfilled' && a.value.capped);
     const known = await deps.coins.knownAssets(hits.map((h) => assetKey({ chain: CHAIN, address: h.address })));
     let newHere = 0;
     for (const hit of hits) {
@@ -108,7 +115,7 @@ export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
       newHere += 1;
     }
     /* Stamped when the search ran, not when the pass began: the rolling minute counts by it. */
-    await deps.coins.recordLookup(term, hits.length, newHere, deps.now());
+    await deps.coins.recordLookup(term, { hits: hits.map((h) => h.address), more }, newHere, deps.now());
     searched += 1;
     added += newHere;
   }
