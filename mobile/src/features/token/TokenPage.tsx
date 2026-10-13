@@ -27,6 +27,7 @@ import { useComingSoon, useToast } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon, ChevronIcon, CopyIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
+import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
@@ -118,7 +119,7 @@ function Body({ story, coin }: { story: Story; coin: Coin }) {
       </a>
 
       <div className={styles['coinHead']}>
-        <Thumb url={coin.imageUrl} size={44} round letter={coin.ticker.charAt(0)} />
+        <CoinLogo address={coin.address} ticker={coin.ticker} imageUrl={coin.imageUrl} size={44} />
         <div>
           <h1>{coin.ticker}</h1>
           <span className={styles['name']}>{coin.name}</span>

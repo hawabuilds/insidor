@@ -13,6 +13,7 @@ import { fetchAlerts, markAlertsSeen, type Alert, type RankId } from '../../shar
 import { formatAge } from '../../shared/format/duration.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
+import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { BellIcon, GearIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { RankBadge } from '../people/RankBadge.tsx';
@@ -25,7 +26,7 @@ const RANKS: readonly string[] = ['intern', 'analyst', 'quant', 'wolf', 'goat'];
 function Mark({ a }: { a: Alert }) {
   const m = markOf(a, RANKS);
   if (m.kind === 'rank') return <RankBadge rank={m.rank as RankId} size={40} />;
-  if (m.kind === 'coin') return <span className={styles['coin']}>{m.letter}</span>;
+  if (m.kind === 'coin') return <CoinLogo address={m.address ?? null} ticker={m.letter} size={40} />;
   if (m.kind === 'money') return <span className={styles['coin']} role="img" aria-label={m.label}>$</span>;
   if (m.kind === 'learned') return <span className={styles['coin']} role="img" aria-label={m.label}>↻</span>;
   return <span className={styles['coin']}><BellIcon size={18} /></span>;

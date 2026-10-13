@@ -36,6 +36,7 @@ import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
 import { RocketIcon } from '../../shared/ui/icons.tsx';
 import { Modal } from '../../shared/ui/Modal.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
+import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { NameCallButtons } from '../owner/NameCall.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
@@ -237,6 +238,9 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
   if (outcome !== null && outcome !== 'working' && outcome.kind === 'created') {
     return (
       <Modal title="Created" onClose={onClose}>
+        <div className={styles['createdLogo']}>
+          <CoinLogo address={outcome.mint} ticker={ticker} imageUrl={picked ?? from.thumbUrl} size={64} />
+        </div>
         <p className={styles['check']}>{ticker} is live on pump.fun, created on Insidor.</p>
         <a className={styles['link']} href={hrefFor({ screen: 'token', coinId: `solana:${outcome.mint}` })} onClick={onClose}>Open {ticker}</a>
       </Modal>

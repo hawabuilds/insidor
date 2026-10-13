@@ -25,6 +25,9 @@ test("the owner's supplier warning gets the dollar mark; coins, ranks and the re
   assert.deepEqual(markOf({ kind: 'supplier_warning', rank: null, symbol: null }, ranks), { kind: 'money', label: 'Supplier spend' });
   assert.deepEqual(markOf({ kind: 'retune_summary', rank: null, symbol: null }, ranks), { kind: 'learned', label: 'Learning from your calls' });
   assert.deepEqual(markOf({ kind: 'holding_multiple', rank: null, symbol: 'FERRY' }, ranks), { kind: 'coin', letter: 'F' });
+  const mint = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+  assert.deepEqual(markOf({ kind: 'graduated', rank: null, symbol: 'FERRY', href: `/#/token/${encodeURIComponent(`solana:${mint}`)}` }, ranks), { kind: 'coin', letter: 'F', address: mint });
+  assert.deepEqual(markOf({ kind: 'narrative_coin', rank: null, symbol: 'FERRY', href: '/#/story/s1' }, ranks), { kind: 'coin', letter: 'F' });
   assert.deepEqual(markOf({ kind: 'rank_up', rank: 'goat', symbol: null }, ranks), { kind: 'rank', rank: 'goat' });
   assert.deepEqual(markOf({ kind: 'rising_post', rank: null, symbol: null }, ranks), { kind: 'bell' });
 });

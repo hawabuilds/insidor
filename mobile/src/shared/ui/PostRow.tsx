@@ -32,6 +32,7 @@ import { formatAge } from '../format/duration.ts';
 import { formatCount } from '../format/number.ts';
 import { platformOf } from '../platform.ts';
 import { Button } from './Button.tsx';
+import { CoinLogo } from './CoinLogo.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { Thumb } from './Thumb.tsx';
 import { Value } from './Value.tsx';
@@ -95,6 +96,11 @@ export function PostRow({ post, now, handlers, extra = null }: { post: RisingPos
 
       <div className={status.actions.length > 1 ? `${styles['foot']} ${styles['footWrap']}` : styles['foot']}>
         <span className={styles['status']}>
+          {post.coins.kind === 'one' || post.coins.kind === 'matched' ? (
+            <span className={styles['statusLogo']}>
+              <CoinLogo address={post.coins.coin.address} ticker={post.coins.coin.ticker} imageUrl={post.coins.coin.imageUrl} size={22} />
+            </span>
+          ) : null}
           {status.line}
           {status.facts !== undefined && status.facts.length > 0 ? <span className={styles['facts']}>{status.facts.join(', ')}</span> : null}
         </span>
