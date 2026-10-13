@@ -7,8 +7,15 @@
  * than estimated — so `httpClient` refuses to build for one, at boot, naming the table.
  *
  * Source: https://platform.claude.com/docs/en/about-claude/pricing — base input and output
- * token prices, read 2026-10-10. Cache prices do not apply: the judge sends no cache_control,
- * because its instruction set is under every model's minimum cacheable prefix.
+ * token prices, read 2026-10-10; cache prices read 2026-10-13.
+ *
+ * ★ THREE KINDS OF INPUT TOKEN, PRICED APART. The judge marks its fixed prefix (system prompt and
+ * instructions) for the vendor's prompt cache, so a reply's usage can split its input three ways:
+ * fresh input, input written to the cache (dearer than fresh: 1.25x for the 5-minute cache), and
+ * input read back from it (a tenth, or less on some models). Each has its own rate here, per
+ * model, because the read discount is not the same on every model. A model whose minimum
+ * cacheable prefix is longer than ours (Haiku 4.5: 4,096 tokens; our post prefix is ~1,600)
+ * simply reports zero cache tokens and is billed as before.
  *
  * WHAT BREAKS IF THIS IS CHANGED CARELESSLY: a stale rate makes every estimate wrong in the
  * same direction, and the meter's pre-call check is only as good as the estimate it is
@@ -18,6 +25,10 @@
 export interface ModelPrice {
   readonly usdPerMillionInput: number;
   readonly usdPerMillionOutput: number;
+  /** Input written to the 5-minute prompt cache. */
+  readonly usdPerMillionCacheWrite: number;
+  /** Input read back from the prompt cache. */
+  readonly usdPerMillionCacheRead: number;
   /**
    * Sent as `output_config.effort` where the model takes one, and absent where it does
    * not (Haiku 4.5 rejects the field). This is a one-word classification; low effort
@@ -27,17 +38,27 @@ export interface ModelPrice {
   readonly effort: 'low' | null;
 }
 
-export const PRICES_READ_AT = '2026-10-10';
+export const PRICES_READ_AT = '2026-10-13';
 
 export const MODEL_PRICES: Readonly<Record<string, ModelPrice>> = {
-  'claude-haiku-4-5': { usdPerMillionInput: 1, usdPerMillionOutput: 5, effort: null },
-  'claude-sonnet-5-5': { usdPerMillionInput: 2, usdPerMillionOutput: 10, effort: 'low' },
-  'claude-opus-5-5': { usdPerMillionInput: 4, usdPerMillionOutput: 20, effort: 'low' },
+  'claude-haiku-4-5': { usdPerMillionInput: 1, usdPerMillionOutput: 5, usdPerMillionCacheWrite: 1.25, usdPerMillionCacheRead: 0.1, effort: null },
+  'claude-sonnet-5-5': { usdPerMillionInput: 2, usdPerMillionOutput: 10, usdPerMillionCacheWrite: 2.5, usdPerMillionCacheRead: 0.2, effort: 'low' },
+  'claude-opus-5-5': { usdPerMillionInput: 4, usdPerMillionOutput: 20, usdPerMillionCacheWrite: 5, usdPerMillionCacheRead: 0.2, effort: 'low' },
 };
 
 export function priceFor(model: string): ModelPrice | null {
   return MODEL_PRICES[model] ?? null;
 }
 
-export const usdForTokens = (price: ModelPrice, inputTokens: number, outputTokens: number): number =>
-  (inputTokens / 1e6) * price.usdPerMillionInput + (outputTokens / 1e6) * price.usdPerMillionOutput;
+/** Fresh input and output, plus cache writes and reads when the reply reported any. */
+export const usdForTokens = (
+  price: ModelPrice,
+  inputTokens: number,
+  outputTokens: number,
+  cacheWriteTokens = 0,
+  cacheReadTokens = 0,
+): number =>
+  (inputTokens / 1e6) * price.usdPerMillionInput +
+  (outputTokens / 1e6) * price.usdPerMillionOutput +
+  (cacheWriteTokens / 1e6) * price.usdPerMillionCacheWrite +
+  (cacheReadTokens / 1e6) * price.usdPerMillionCacheRead;

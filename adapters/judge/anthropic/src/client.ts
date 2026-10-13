@@ -42,10 +42,16 @@ export const MESSAGES_ENDPOINT = 'POST /v1/messages';
 const MESSAGES_PATH = '/v1/messages';
 export const API_VERSION = '2023-06-01';
 
-/** Token counts as the vendor reports them. Cost is computed from these. */
+/**
+ * Token counts as the vendor reports them. Cost is computed from these. `inputTokens` is the
+ * FRESH input only: tokens written to or read from the prompt cache are reported apart and
+ * priced apart (prices.ts), so the three never double-count. Absent cache counts mean none.
+ */
 export interface Usage {
   readonly inputTokens: number;
   readonly outputTokens: number;
+  readonly cacheWriteTokens?: number;
+  readonly cacheReadTokens?: number;
 }
 
 /** A frame the judge may be shown, already read and checked. */
@@ -158,6 +164,14 @@ export const ANSWER_SCHEMA = {
  * the other two as the first block of the user turn. Then the stories as JSON, then — only
  * for stories judged on a video frame — each frame, labelled with its story id. No counts
  * of views, likes or shares are sent: the prompt says why.
+ *
+ * ★ THE FIXED PART ENDS AT THE INSTRUCTIONS BLOCK, AND THAT BLOCK CARRIES THE CACHE MARK.
+ * Everything up to it (the answer schema, the system prompt, the instructions) is byte-for-byte
+ * the same on every call of one question, so it is marked `cache_control: ephemeral` and the
+ * vendor may serve it from its prompt cache at a tenth of the input rate. Anything that varies
+ * per call — the stories, the pictures — must stay AFTER the mark: a varying byte before it
+ * makes every call a cache write, which costs MORE than no cache. The mark changes nothing the
+ * model reads; below the model's minimum cacheable length it is silently ignored.
  */
 export function buildRequestBody(
   config: Pick<JudgeClientConfig, 'model' | 'maxOutputTokens' | 'effort'>,
@@ -172,7 +186,7 @@ export function buildRequestBody(
   }));
 
   const content: unknown[] = [
-    { type: 'text', text: request.instructions },
+    { type: 'text', text: request.instructions, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: `Stories to judge, as JSON. Answer once for each storyId.\n${JSON.stringify(stories)}` },
   ];
   for (const s of request.subjects) {
@@ -185,7 +199,7 @@ export function buildRequestBody(
   return {
     model: config.model,
     max_tokens: config.maxOutputTokens,
-    system: request.system,
+    system: [{ type: 'text', text: request.system }],
     messages: [{ role: 'user', content }],
     output_config: {
       format: { type: 'json_schema', schema: ANSWER_SCHEMA },
@@ -198,6 +212,18 @@ export function buildRequestBody(
 
 const count = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
 
+/** The usage block of a reply, cache counts included, whatever else the reply holds. */
+export function usageOf(body: unknown): Usage {
+  const r = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+  const u = (typeof r['usage'] === 'object' && r['usage'] !== null ? r['usage'] : {}) as Record<string, unknown>;
+  return {
+    inputTokens: count(u['input_tokens']),
+    outputTokens: count(u['output_tokens']),
+    cacheWriteTokens: count(u['cache_creation_input_tokens']),
+    cacheReadTokens: count(u['cache_read_input_tokens']),
+  };
+}
+
 /**
  * The answers and the usage out of a reply body.
  *
@@ -207,8 +233,7 @@ const count = (v: unknown): number => (typeof v === 'number' && Number.isFinite(
  */
 export function decodeReply(body: unknown): JudgeResponse {
   const r = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-  const u = (typeof r['usage'] === 'object' && r['usage'] !== null ? r['usage'] : {}) as Record<string, unknown>;
-  const usage: Usage = { inputTokens: count(u['input_tokens']), outputTokens: count(u['output_tokens']) };
+  const usage = usageOf(body);
 
   if (r['stop_reason'] !== 'end_turn') return { answers: [], usage };
   const blocks = Array.isArray(r['content']) ? r['content'] : [];
@@ -237,8 +262,7 @@ export const SAME_SUBJECT_SCHEMA = {
 /** The answer out of a reply, or null for anything short of one of the three words. Usage always. */
 export function decodeSameSubject(body: unknown): { readonly answer: SameSubjectAnswer | null; readonly usage: Usage } {
   const r = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-  const u = (typeof r['usage'] === 'object' && r['usage'] !== null ? r['usage'] : {}) as Record<string, unknown>;
-  const usage: Usage = { inputTokens: count(u['input_tokens']), outputTokens: count(u['output_tokens']) };
+  const usage = usageOf(body);
   if (r['stop_reason'] !== 'end_turn') return { answer: null, usage };
   const blocks = Array.isArray(r['content']) ? r['content'] : [];
   const text = blocks

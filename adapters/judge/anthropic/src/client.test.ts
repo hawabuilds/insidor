@@ -117,9 +117,11 @@ test('the prompt files go in exactly as loaded, and only a video story carries a
       frames: new Map([[String(storyId('b')), { mediaType: 'image/jpeg' as const, base64: 'AAAA' }]]),
     },
   );
-  assert.equal(body['system'], PROMPTS.system.text);
-  const content = (body['messages'] as { content: { type: string; text?: string }[] }[])[0]?.content ?? [];
+  assert.deepEqual(body['system'], [{ type: 'text', text: PROMPTS.system.text }]);
+  const content = (body['messages'] as { content: { type: string; text?: string; cache_control?: unknown }[] }[])[0]?.content ?? [];
   assert.equal(content[0]?.text, PROMPTS['coinability-core'].text);
+  assert.deepEqual(content[0]?.cache_control, { type: 'ephemeral' }, 'the fixed prefix ends at the instructions, marked for the cache');
+  assert.equal(content.filter((c) => c.cache_control !== undefined).length, 1, 'nothing that varies per call carries the mark');
   assert.equal(content.filter((c) => c.type === 'image').length, 1);
   for (const key of ['"views"', '"likes"', '"reach"', '"shares"']) {
     assert.equal(content[1]?.text?.includes(key), false, `no attention counts are sent (${key})`);
@@ -129,11 +131,20 @@ test('the prompt files go in exactly as loaded, and only a video story carries a
 
 /* ── replies ──────────────────────────────────────────────────────────── */
 
+test('cache writes and reads are read off the usage apart from fresh input', () => {
+  const res = decodeReply({
+    stop_reason: 'end_turn',
+    content: [{ type: 'text', text: '{"answers": []}' }],
+    usage: { input_tokens: 700, output_tokens: 40, cache_creation_input_tokens: 0, cache_read_input_tokens: 1_600 },
+  });
+  assert.deepEqual(res.usage, { inputTokens: 700, outputTokens: 40, cacheWriteTokens: 0, cacheReadTokens: 1_600 });
+});
+
 test('a good reply is decoded, with the usage the vendor reported', async () => {
   const { fetch, calls } = fakeFetch([() => json(200, reply([{ storyId: 'x', coinable: true }]))]);
   const res = await httpClient(config(fetch)).judge(REQUEST);
   assert.equal(res.answers.length, 1);
-  assert.deepEqual(res.usage, { inputTokens: 1_200, outputTokens: 90 });
+  assert.deepEqual(res.usage, { inputTokens: 1_200, outputTokens: 90, cacheWriteTokens: 0, cacheReadTokens: 0 });
   const headers = calls[0]?.init?.headers as Record<string, string>;
   assert.equal(headers['x-api-key'], 'sk-test-not-a-real-key');
   assert.equal(calls[0]?.url, 'https://judge.invalid/v1/messages');

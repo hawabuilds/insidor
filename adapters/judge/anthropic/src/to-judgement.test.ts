@@ -98,4 +98,8 @@ test('cost comes from token counts, at the configured model rates', () => {
   assert.equal(usdOf(haiku, { inputTokens: 1_000_000, outputTokens: 0 }), haiku.usdPerMillionInput);
   assert.equal(usdOf(haiku, { inputTokens: 0, outputTokens: 1_000_000 }), haiku.usdPerMillionOutput);
   assert.equal(usdOf(haiku, { inputTokens: 0, outputTokens: 0 }), 0);
+  /* A cache write is dearer than fresh input and a read far cheaper, each at its own rate. */
+  assert.equal(usdOf(haiku, { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 1_000_000 }), haiku.usdPerMillionCacheWrite);
+  assert.equal(usdOf(haiku, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000 }), haiku.usdPerMillionCacheRead);
+  assert.ok(haiku.usdPerMillionCacheWrite > haiku.usdPerMillionInput && haiku.usdPerMillionCacheRead < haiku.usdPerMillionInput);
 });
