@@ -51,9 +51,23 @@ that guarantee.
 DATABASE_URL_APP=postgresql://insidor_app_user:YOUR_APP_DB_PASSWORD@db.xxxx.supabase.co:5432/postgres
 ```
 
-★ **Not the transaction-mode pooler (port 6543).** It releases session advisory locks
-between statements, which silently stops `withAdvisoryLock` guarding anything.
-`store/src/client.ts` refuses that URL rather than let it happen. Use port 5432.
+★ **The transaction-mode pooler (port 6543) for pools; 5432 only where a session is held.**
+The session pooler caps clients per user (fifteen), and every pooled client in every
+service used to take one. On Railway the pools now use 6543, and the three connections
+that keep session state use 5432:
+
+| Connection | Variable | Port |
+|---|---|---|
+| runner's singleton advisory lock | `DATABASE_URL_SESSION` (runner) | 5432 |
+| read's LISTEN | `DATABASE_URL_APP_SESSION` (read, same app login) | 5432 |
+| chainwatch (writes on its lock's own session) | `DATABASE_URL` (chainwatch) | 5432 |
+| everything else | `DATABASE_URL`, `DATABASE_URL_APP`, `DATABASE_URL_PEOPLE` | 6543 |
+
+A transaction-pooler URL for the lock is refused at boot (`createPool(..., { session: true })`),
+and read refuses one for its LISTEN — transaction mode would release the lock, or drop the
+subscription, with no error. Transaction mode also ignores the `statement_timeout` sent at
+connect: `withTransaction` re-applies it, and a standalone statement runs under the role's
+own default until a per-role `alter role ... set statement_timeout` is migrated.
 
 ---
 
