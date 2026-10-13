@@ -73,7 +73,8 @@ const QUESTION: Readonly<Record<JudgeQuestion, { system: string; instructions: s
 /**
  * ★ LEARNED EXAMPLES. The post question can carry a block of labelled posts after its rules —
  * the owner's own "is a meme" / "not a meme" calls, built by tools/judge-examples.ts and
- * re-tuned hourly. The rules stay a reviewed file; the examples are data. They change the
+ * re-tuned twice a day, at 08:00 and 20:00 London time (tools/retune.ts), and used only once a
+ * re-tune's block is applied. The rules stay a reviewed file; the examples are data. They change the
  * prompt, so they change its hash: an answer always names the exact examples it saw.
  */
 interface PromptSet { readonly system: string; readonly instructions: string; readonly sha: string; readonly label: string }
