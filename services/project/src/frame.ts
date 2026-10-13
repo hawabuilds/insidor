@@ -11,7 +11,8 @@
  * story pages that were never written.
  */
 
-import type { Db } from '@insidor/store';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { PgFeedRejectionRepo, type Db } from '@insidor/store';
 
 import {
   FREE_POST_SOURCE_LABEL,
@@ -23,6 +24,7 @@ import {
 } from './db.ts';
 import { projectBoard, projectBoardProvenance, projectStory, projectStoryProvenance } from './project.ts';
 import type { ProjectOptions } from './project.ts';
+import { checkNarratives, loadPostReasons } from './narrative-rules.ts';
 import { countAnchors, windowIsOrdered } from './window.ts';
 import { WireLeakError } from './wire.ts';
 import type { WireStory } from './wire.ts';
@@ -44,7 +46,13 @@ export async function projectStoryFrame(db: Db, viewId: string, options: Project
     limit: windows.limit,
     previousBoard: await previousBoardStoryIds(db, viewId),
   });
-  const facts = load.stories;
+  /* ★ THE OWNER'S RULES, BEFORE ANYTHING IS PROJECTED: a narrative needs enough posts that pass
+     the per-post rules, and lists only those. What is left out is recorded with why
+     (public.feed_rejection) and stays in the database. See narrative-rules.ts. */
+  const reasons = await loadPostReasons(db, load.stories.flatMap((s) => s.members.map((m) => m.itemId)), DEFAULT_POLICY);
+  const checked = checkNarratives(load.stories, reasons, DEFAULT_POLICY);
+  await new PgFeedRejectionRepo(db).record(checked.rejections);
+  const facts = checked.kept;
 
   /* ★ NAMED, ONE LINE PER STORY, BECAUSE THIS PROJECTOR CANNOT WRITE IT DOWN ANYWHERE
      ELSE. A story with no post time on any member has its coin window hung on when WE
