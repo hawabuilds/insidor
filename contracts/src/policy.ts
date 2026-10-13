@@ -1244,6 +1244,14 @@ export interface RisingPolicy {
    */
   readonly boostMinSimilarity: number;
   readonly boostBarMargin: number;
+  /**
+   * ★ RE-SCORING AFTER A PROMPT CHANGE. A post inside the window whose newest answer came from
+   * another version of the post question is judged again by the live scorer, at most this many a
+   * pass, after the never-judged posts. A prompt change (a wording edit, a re-tune's new examples)
+   * makes every judged post in the day stale at once; capped, the re-score drains over hours on
+   * the live judge line instead of landing as one burst.
+   */
+  readonly rescorePerPass: number;
 }
 
 export interface IngestPolicy {
@@ -2571,6 +2579,8 @@ const POLICY_V1: Policy = {
     boostMinSimilarity: 0.44,
     /* A "yes" up to a tenth under its bar: 0.60 on text or a picture, 0.65 with a video frame. */
     boostBarMargin: 0.1,
+    /* 40 a pass: a day's judged posts made stale by one prompt change drain in a few hours. */
+    rescorePerPass: 40,
   },
 
   rank: {

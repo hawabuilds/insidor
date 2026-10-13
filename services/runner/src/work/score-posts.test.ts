@@ -103,6 +103,7 @@ function deps(
   meter?: Meter,
   reach: (id: string) => number | null = () => 1_000_000,
   found: Found = nothingFound,
+  stale: readonly Item[] = [],
 ) {
   const recorded = new Map<ItemId, Judgement>();
   const copies = new Map<ItemId, { judgement: Judgement; from: ItemId }>();
@@ -115,6 +116,7 @@ function deps(
       judge: judge?.judge ?? null,
       items: {
         catchAllUnscored: async () => queue,
+        catchAllStale: async (_at: Millis, limit: number) => stale.slice(0, limit),
         reachReadings: async (ids: readonly ItemId[]) => new Map(ids.map((id) => [String(id), [{ atMs: NOW, reach: reach(String(id)) }]])),
         backfilled: async () => new Set<string>(),
       },
@@ -326,3 +328,13 @@ test('★ only a held kind label is filed: OTHER and an unknown label file nothi
   assert.deepEqual(filed.sort(), ['CORP_NEWS', 'TRAGEDY']);
 });
 
+test('★ posts answered under an older prompt are re-judged after the new ones, at most rescorePerPass a pass', async () => {
+  const judge = recordedJudge(0.82);
+  const stale = Array.from({ length: P.rising.rescorePerPass + 5 }, (_, i) => post(100 + i));
+  const { deps: d, recorded } = deps([post(1)], judge, 'live', undefined, undefined, nothingFound, stale);
+  const result = await scorePosts(d);
+  assert.equal(result.queued, 1 + P.rising.rescorePerPass);
+  assert.ok(recorded.has(post(1).itemId), 'the never-judged post first');
+  assert.ok(recorded.has(post(100).itemId), 'then the newest stale one');
+  assert.ok(!recorded.has(post(100 + P.rising.rescorePerPass).itemId), 'and no more than the cap');
+});
