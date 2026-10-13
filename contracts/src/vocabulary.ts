@@ -215,14 +215,20 @@ export interface MediaRef {
   readonly width: number | null;
   readonly height: number | null;
   readonly durationMs: number | null;
+  /**
+   * A video's own playable file, when the source hands one out that plays in a page as it is.
+   * Absent or null when it does not, or when its links are signed and expire: the post then
+   * shows its still, and is never sent out to the source to be watched.
+   */
+  readonly playUri?: string | null;
 }
 
 /* ── AUTHOR ───────────────────────────────────────────────────────────── */
 
 /**
- * What we know about the account, not who they are. There is deliberately no display
- * name here, and the handle is never a key: handles are renamed and re-issued to other
- * people, so `authorKey` is the stable id and nothing joins on `handle`.
+ * What we know about the account, not who they are. The handle is never a key: handles are
+ * renamed and re-issued to other people, so `authorKey` is the stable id and nothing joins on
+ * `handle`, the name or the picture.
  *
  * ★ THE HANDLE IS HERE ANYWAY, BECAUSE IT IS HOW A POST IS CITED. It is the account's own
  * public name as the source showed it when we read the post — a fact about the world, and
@@ -248,6 +254,13 @@ export interface Author {
    * Never read from a source: a source's own prominence metric is theirs to game.
    */
   readonly rosterTier: number | null;
+  /**
+   * The account's name and picture as the source showed them when we read the post, for the
+   * post sheet's byline (the owner, 2026-10-13). Shown, never joined on, like the handle.
+   * Absent or null when the source gave none; the screen then draws the handle's letter.
+   */
+  readonly displayName?: string | null;
+  readonly pictureUri?: string | null;
 }
 
 /* ── ITEM ─────────────────────────────────────────────────────────────── */

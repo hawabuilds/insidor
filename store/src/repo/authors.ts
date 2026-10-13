@@ -66,10 +66,11 @@ export class PgAuthorRepo implements AuthorRepo {
    * with a fact, and a source that starts reporting a different handle cannot reset
    * our standing for the account.
    *
-   * The handle is the one display field written here, because it is the half of a
-   * permalink the post id cannot supply. A newly seen handle replaces the old one — the
-   * account renamed itself, and the old name's links now point at somebody else or at
-   * nothing — and a read that carried no handle leaves the known one in place.
+   * The handle is written because it is the half of a permalink the post id cannot supply;
+   * the name and picture because the post sheet shows them beside the post. A newly seen
+   * value replaces the old one — the account renamed itself, and the old name's links now
+   * point at somebody else or at nothing — and a read that carried none leaves the known
+   * one in place.
    */
   async upsert(authors: readonly Author[]): Promise<number> {
     for (const author of authors) {
@@ -82,11 +83,12 @@ export class PgAuthorRepo implements AuthorRepo {
       await this.#db.query(
         `insert into public.author (
            author_key, source, source_author_id, first_seen_at, last_seen_at,
-           follower_count, follower_count_observed_at, handle
-         ) values ($1, $2, $3, $4, $4, $5, $6, $7)
+           follower_count, follower_count_observed_at, handle, display_name
+         ) values ($1, $2, $3, $4, $4, $5, $6, $7, $8)
          on conflict (author_key) do update
             set last_seen_at = greatest(public.author.last_seen_at, excluded.last_seen_at),
                 handle = coalesce(excluded.handle, public.author.handle),
+                display_name = coalesce(excluded.display_name, public.author.display_name),
                 follower_count = coalesce(excluded.follower_count, public.author.follower_count),
                 follower_count_observed_at = coalesce(
                   excluded.follower_count_observed_at,
@@ -100,10 +102,29 @@ export class PgAuthorRepo implements AuthorRepo {
           author.audience?.value ?? null,
           toTimestamp(author.audience?.observedAt ?? null),
           author.handle,
+          author.displayName ?? null,
         ],
       );
+      if (author.pictureUri != null && this.#pictures) await this.#picture(author.authorKey, author.pictureUri);
     }
     return authors.length;
+  }
+
+  /** Whether `picture_url` exists (0067); false after the first write finds it missing. */
+  #pictures = true;
+
+  /**
+   * The account's picture, in its own statement so a database without 0067 still takes the
+   * author: the missing column (42703) is remembered and the picture skipped until a restart.
+   * Any other failure is the database's, and is thrown as the upsert's would be.
+   */
+  async #picture(key: string, uri: string): Promise<void> {
+    try {
+      await this.#db.query(`update public.author set picture_url = $2 where author_key = $1`, [key, uri]);
+    } catch (e) {
+      if ((e as { code?: unknown } | null)?.code !== '42703') throw e;
+      this.#pictures = false;
+    }
   }
 
   async byKey(key: AuthorKey): Promise<Author | null> {

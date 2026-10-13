@@ -75,3 +75,28 @@ test('an account with no handle in the payload has a null handle, and one with n
 test('a leading @ is stripped once, here, so it never reaches a link', () => {
   assert.equal(toAuthor({ author: { id: '1', userName: '@someone' } }, AT)?.handle, 'someone');
 });
+
+test("the author's follower count, name and picture are kept, with the read's instant", () => {
+  const a = toAuthor({ author: { id: '1', userName: 'raw', name: 'Raw Alerts', followers: 1_900_000, profilePicture: 'https://pbs.twimg.com/profile_images/1/a_normal.jpg' } }, AT);
+  assert.deepEqual(a?.audience, { value: 1_900_000, fidelity: { kind: 'exact' }, observedAt: AT });
+  assert.equal(a?.displayName, 'Raw Alerts');
+  assert.equal(a?.pictureUri, 'https://pbs.twimg.com/profile_images/1/a_200x200.jpg');
+  const bare = toAuthor({ author: { id: '2' } }, AT);
+  assert.equal(bare?.audience, null, 'no count is no counter, never zero');
+  assert.equal(bare?.pictureUri, null);
+});
+
+test("a video keeps its own mp4 to play in the app: the best rendition a phone plays smoothly, never a playlist", () => {
+  const item = toItem({
+    id: '9', author: { id: '1' },
+    extendedEntities: { media: [{ type: 'video', media_url_https: 'https://pbs.twimg.com/v.jpg', video_info: { duration_millis: 14_000, variants: [
+      { content_type: 'application/x-mpegURL', url: 'https://video.twimg.com/v.m3u8' },
+      { content_type: 'video/mp4', bitrate: 256_000, url: 'https://video.twimg.com/low.mp4' },
+      { content_type: 'video/mp4', bitrate: 2_176_000, url: 'https://video.twimg.com/mid.mp4' },
+      { content_type: 'video/mp4', bitrate: 10_368_000, url: 'https://video.twimg.com/high.mp4' },
+    ] } }] },
+  }, AT);
+  assert.equal(item.media[0]?.playUri, 'https://video.twimg.com/mid.mp4');
+  assert.equal(item.media[0]?.uri, 'https://pbs.twimg.com/v.jpg', 'the still stays the picture');
+  assert.equal(toItem(PLAIN, AT).media[0]?.playUri, undefined, 'a photo has nothing to play');
+});

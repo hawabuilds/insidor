@@ -175,12 +175,20 @@ export function toAuthor(raw: unknown, at: Millis): Author | null {
   const id = str(author.id);
   if (id === null) return null;
   const handle = (str(author.uniqueId) ?? str(author.name) ?? '').replace(/^@+/, '').trim();
+  /* The scraper's `fans`, or the platform's own `authorStats.followerCount`; the name and picture
+     under either spelling. The picture link is signed and expires: the screen falls back to the
+     handle's letter when it no longer loads, and the next read of the account renews it. */
+  const followers = num(author.fans) ?? num(rec(rec(raw).authorStats).followerCount);
+  const name = (str(author.nickName) ?? str(author.nickname) ?? '').trim();
+  const picture = str(author.avatar) ?? str(author.avatarMedium) ?? str(author.avatarThumb) ?? str(author.originalAvatarUrl);
   return {
     authorKey: authorKey(SOURCE, id),
     source: SOURCE,
     firstSeenAt: at,
     handle: handle === '' ? null : handle,
-    audience: null,
+    audience: followers === null ? null : { value: followers, fidelity: { kind: 'exact' }, observedAt: at },
     rosterTier: null,
+    displayName: name === '' ? null : name,
+    pictureUri: picture !== null && picture.startsWith('https://') ? picture : null,
   };
 }

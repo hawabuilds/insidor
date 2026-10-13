@@ -45,6 +45,30 @@ export function toCounters(raw: unknown, at: Millis): CounterSet {
 
 /* ── media ────────────────────────────────────────────────────────────── */
 
+/**
+ * The bitrate a phone plays a post's video at: the best mp4 at or under it, else the smallest.
+ * The vendor lists every rendition; the largest is several megabits a second, which a phone on a
+ * mobile network stalls on, and the smallest is too soft to read a caption in.
+ */
+const PLAY_BITRATE_MAX = 2_200_000;
+
+/**
+ * The video's own mp4, when the vendor lists one. These files are served unsigned and play in a
+ * page's video element as they are, so the post sheet plays the post in the app. A stream
+ * playlist (m3u8) is skipped: a page cannot play one without a player library.
+ */
+export function playUriOf(videoInfo: unknown): string | null {
+  const mp4 = arr(rec(videoInfo).variants)
+    .map((v) => rec(v))
+    .flatMap((v) => {
+      const url = str(v.url);
+      return url !== null && str(v.content_type) === 'video/mp4' && url.startsWith('https://') ? [{ url, bitrate: num(v.bitrate) ?? 0 }] : [];
+    })
+    .sort((a, b) => a.bitrate - b.bitrate);
+  const fits = mp4.filter((v) => v.bitrate <= PLAY_BITRATE_MAX);
+  return (fits[fits.length - 1] ?? mp4[0])?.url ?? null;
+}
+
 function media(r: Rec): readonly MediaRef[] {
   const entries = arr(rec(r.extendedEntities).media);
   const out: MediaRef[] = [];
@@ -53,12 +77,15 @@ function media(r: Rec): readonly MediaRef[] {
     const uri = str(m.media_url_https) ?? str(m.media_url);
     if (uri === null) continue;
     const size = rec(rec(m.sizes).large);
+    const video = str(m.type) === 'video' || str(m.type) === 'animated_gif';
+    const playUri = video ? playUriOf(m.video_info) : null;
     out.push({
-      kind: str(m.type) === 'video' || str(m.type) === 'animated_gif' ? 'video' : 'image',
+      kind: video ? 'video' : 'image',
       uri,
       width: num(size.w),
       height: num(size.h),
       durationMs: num(rec(m.video_info).duration_millis),
+      ...(playUri === null ? {} : { playUri }),
     });
   }
   return out;
@@ -160,12 +187,21 @@ export function toAuthor(raw: unknown, at: Millis): Author | null {
   const id = str(author.id) ?? str(author.id_str);
   if (id === null) return null;
   const handle = (str(author.userName) ?? str(author.screen_name) ?? '').replace(/^@+/, '').trim();
+  /* The follower count and the account's name and picture ride on every post the search returns:
+     stored with the read's instant, so a count is never shown without when it was true. */
+  const followers = num(author.followers) ?? num(author.followers_count);
+  const name = (str(author.name) ?? '').trim();
+  const picture = str(author.profilePicture) ?? str(author.profile_image_url_https) ?? str(author.profile_image_url);
   return {
     authorKey: authorKey(SOURCE, id),
     source: SOURCE,
     firstSeenAt: at,
     handle: handle === '' ? null : handle,
-    audience: null,
+    audience: followers === null ? null : { value: followers, fidelity: { kind: 'exact' }, observedAt: at },
     rosterTier: null,
+    displayName: name === '' ? null : name,
+    /* The vendor hands the 48px rendition (`_normal`); the 200px one is the same picture at a
+       size that stays sharp in a 44px circle on a phone's screen. */
+    pictureUri: picture !== null && picture.startsWith('https://') ? picture.replace(/_normal(\.[a-z]+)$/i, '_200x200$1') : null,
   };
 }

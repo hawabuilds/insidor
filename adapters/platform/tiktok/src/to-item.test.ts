@@ -88,3 +88,11 @@ test("★ the configured scraper's flattened post becomes the same Item: text, a
   assert.ok(item.formatIds.includes('tiktok:sound:7400000000000000002'));
   assert.equal(toAuthor(SCRAPER_POST, 0 as never)?.handle, 'zookeeperdiary');
 });
+
+test("the account's follower count, name and picture are kept from the scraper's spelling", () => {
+  const a = toAuthor({ id: '1', authorMeta: { id: '6900', name: 'zoo', nickName: 'Zoo Keeper', fans: 52_000, avatar: 'https://p16-sign.tiktokcdn.com/a.jpeg' } }, 5 as never);
+  assert.deepEqual(a?.audience, { value: 52_000, fidelity: { kind: 'exact' }, observedAt: 5 });
+  assert.equal(a?.displayName, 'Zoo Keeper');
+  assert.equal(a?.pictureUri, 'https://p16-sign.tiktokcdn.com/a.jpeg');
+  assert.equal(toAuthor({ id: '1', authorMeta: { id: '6900', name: 'zoo' } }, 5 as never)?.audience, null, 'no count is no counter');
+});
