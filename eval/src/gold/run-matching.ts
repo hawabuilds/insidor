@@ -24,7 +24,8 @@ const pct = (n: number, d: number) => (d === 0 ? '—' : `${((100 * n) / d).toFi
 const RULES: readonly [RuleName, string][] = [
   ['today', "today's rule (a post's search never names a coin)"],
   ['nameOnly', 'name only (the one coin with the exact name)'],
-  ['evidence', 'evidence (this change)'],
+  ['oneName', 'evidence rule, one name searched (before 2026-10-13)'],
+  ['evidence', 'evidence rule, every name searched (this change)'],
 ];
 
 function table(title: string, rs: readonly CaseResult[]): string[] {
@@ -61,14 +62,16 @@ const report = [
   '',
   'Rendered by `eval/src/gold/run-matching.ts` from `match-evidence.json` (`tools/gold-match-fetch.ts`). Each case is a post and the coins a search for its subject\'s name finds; the subject\'s name is taken to be the coin\'s own (the best case for finding the right coin and the worst case for wrong links). See `match-cases.ts` for the three kinds of post and `match-eval.ts` for what each outcome means.',
   '',
-  `Bars: grace before the post ${MATCH_BARS.launchAllowanceMs / 60_000} min, timing window ${MATCH_BARS.windowMs / 3_600_000} h after it, a post id in a link at least ${MATCH_BARS.minLinkIdLength} characters, a looser spelling at least ${MATCH_BARS.minVariantLength} letters; picture bars are GROUP's (near-identical, or borderline and the judge said "the same subject").`,
+  `Bars: grace before the post ${MATCH_BARS.launchAllowanceMs / 60_000} min, timing window ${MATCH_BARS.windowMs / 3_600_000} h after it, a post id in a link at least ${MATCH_BARS.minLinkIdLength} characters, a looser spelling at least ${MATCH_BARS.minVariantLength} letters; "same picture" is GROUP's near-identical bar only (a judge's "same subject" on a borderline pair leaves it unknown; its "no" counts against). A name alone never makes an answer confident.`,
   '',
-  `Cases with a finished search: ${searched.length} of ${results.length}. Picture comparisons held: ${Object.keys(ev.similarity).length}; judge answers on borderline pairs: ${Object.keys(ev.sameSubject).length}; coins whose metadata was read: ${Object.values(ev.meta).filter((m) => m !== null).length} of ${Object.keys(ev.meta).length}.`,
+  'Before 2026-10-13 (commit a72648c, one name searched, metadata read for 31 of 68 coins, a judge\'s "same subject" counted as the same picture, and "the only coin of the exact name" made a confident answer): 7 of 71 origin posts right, 1 wrong, 63 missed; 6 wrong links in 353 posts (1.7%).',
+  '',
+  `Cases with a finished search: ${searched.length} of ${results.length}. Picture comparisons held: ${Object.keys(ev.similarity).length}; judge answers on borderline pairs: ${Object.keys(ev.sameSubject).length}; coins whose metadata was read: ${Object.values(ev.meta).filter((m) => m !== null).length} of ${Object.keys(ev.meta).length} (${Object.values(ev.meta).filter((m) => m?.from === 'creatorHost').length} from the creator's own host, the link naming no content id).`,
   '',
   ...table('Tuning half', tune),
   ...table('Held out (origin posts only)', held),
   ...table('All', searched),
-  `Confident answers by reason: links this post ${because('links')}, same picture and timing ${because('pictureAndTiming')}, timing and the only exact name ${because('timingAndName')}.`,
+  `Confident answers by reason: links this post ${because('links')}, same picture and timing ${because('pictureAndTiming')} (a name alone never makes one).`,
   '',
   '## Wrong links (evidence rule)',
   '',

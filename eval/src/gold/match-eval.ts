@@ -11,8 +11,10 @@
  *              coin. Every post with coins is "unsure", so nothing is wrong and nothing is found.
  *   nameOnly   the rule this change must NOT become: one coin uses the subject's exact name,
  *              so it is the post's. Shown to say what the evidence bars are buying.
- *   evidence   core's rule: links, then picture plus timing, then timing plus an exact name on
- *              the only coin in the window.
+ *   oneName    core's rule over the coins ONE name's search found (the coin's name): the lookup
+ *              before 2026-10-13, kept to read what searching every name bought.
+ *   evidence   core's rule over every name's coins (name, ticker, the judge's name): links, then
+ *              picture plus timing, then timing plus an exact name on the only coin of the name.
  *
  * Outcomes per case: `right` (named the right coin), `wrong` (named any coin that is not the
  * right one — on an `unrelated` or `afterLaunch` post, any coin), `missed` (named none where
@@ -25,7 +27,7 @@
 
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 import type { Millis } from '@insidor/contracts';
-import { matchPostCoin, pictureVerdict, type CoinSide, type MatchBars, type PostCoinMatch } from '@insidor/core';
+import { matchPostCoin, postPictureVerdict, type CoinSide, type MatchBars, type PostCoinMatch } from '@insidor/core';
 
 import { pairKey, type FoundCoin, type MatchCase, type MatchEvidence } from './match-cases.ts';
 
@@ -38,7 +40,7 @@ export const MATCH_BARS: MatchBars = {
 };
 
 export type MatchOutcome = 'right' | 'wrong' | 'missed' | 'clear';
-export type RuleName = 'today' | 'nameOnly' | 'evidence';
+export type RuleName = 'today' | 'nameOnly' | 'oneName' | 'evidence';
 
 export interface CaseResult {
   readonly c: MatchCase;
@@ -58,8 +60,8 @@ function mediaIds(uri: string | null): string[] {
 }
 
 /** The coins the runner's lookup would hold for this post: launched within a week before it, or after. */
-export function coinsFor(c: MatchCase, ev: MatchEvidence, p: Policy = DEFAULT_POLICY): readonly CoinSide[] {
-  const found: readonly FoundCoin[] = ev.searches[c.term] ?? [];
+export function coinsFor(c: MatchCase, ev: MatchEvidence, p: Policy = DEFAULT_POLICY, terms: readonly string[] = c.terms): readonly CoinSide[] {
+  const found: readonly FoundCoin[] = [...new Map(terms.flatMap((t) => ev.searches[t] ?? []).map((f) => [f.address, f])).values()];
   const image = c.imageUri ?? ev.postImages[c.postId] ?? null;
   return found.flatMap((f): CoinSide[] => {
     const launchedAt = (ev.launched[f.address] ?? f.createdAt) as Millis | null;
@@ -74,7 +76,7 @@ export function coinsFor(c: MatchCase, ev: MatchEvidence, p: Policy = DEFAULT_PO
       ticker: f.ticker,
       launchedAt,
       links: meta === undefined || meta === null ? null : meta.links,
-      samePicture: pictureVerdict(s ?? null, said === 'yes' ? true : said === 'no' ? false : null, p.group.image),
+      samePicture: postPictureVerdict(s ?? null, said ?? null, p.group.image),
     }];
   });
 }
@@ -86,6 +88,7 @@ export function evaluateCase(c: MatchCase, ev: MatchEvidence, bars: MatchBars = 
   const coins = coinsFor(c, ev);
   const post = { postedAt: c.postedAt as Millis | null, linkIds: [c.postId, ...mediaIds(c.imageUri ?? ev.postImages[c.postId] ?? null)], names: c.names };
   const result = matchPostCoin(post, coins, bars);
+  const one = matchPostCoin(post, coinsFor(c, ev, DEFAULT_POLICY, [c.term]), bars);
   const exact = result.kind === 'none' ? [] : result.ranked.filter((e) => e.name === 'exact');
   const nameOnly = exact.length === 1 ? (exact[0]?.address ?? null) : null;
   return {
@@ -96,6 +99,7 @@ export function evaluateCase(c: MatchCase, ev: MatchEvidence, bars: MatchBars = 
     outcomes: {
       today: outcome(null, c.right),
       nameOnly: outcome(nameOnly, c.right),
+      oneName: outcome(one.kind === 'confident' ? one.address : null, c.right),
       evidence: outcome(result.kind === 'confident' ? result.address : null, c.right),
     },
   };

@@ -51,6 +51,11 @@ export interface MatchCase {
   readonly names: readonly string[];
   /** The term the name search ran with — the coin's name, as the lookup searches the judge's. */
   readonly term: string;
+  /**
+   * Every name searched, as the lookup now searches every name the judge gives (2026-10-13):
+   * `term` first, then the ticker, then the judge's own proposed name when it read the post.
+   */
+  readonly terms: readonly string[];
   /** The right coin's address; null when no coin is right. */
   readonly right: string | null;
   /** The gold coin of the case, which the search may or may not have found. */
@@ -75,19 +80,34 @@ export function timeFromId(platform: MatchCase['platform'], id: string): number 
 const FEED_VIEWS = DEFAULT_POLICY.rising.fypMinReach;
 const WINDOW_MS = DEFAULT_POLICY.universe.matchWindowMs;
 
+/** Names once case, spaces and punctuation go — the runner's `searchNames` rule. */
+export function distinctNames(names: readonly string[]): string[] {
+  const key = (n: string) => n.toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '');
+  const seen = new Set<string>();
+  return names.filter((n) => {
+    const k = key(n);
+    if (k === '' || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).map((n) => n.trim());
+}
+
 const namesOf = (c: GoldCoin): string[] => [...new Set([c.name, c.ticker].filter((n) => n.trim() !== ''))];
 
 export function matchCases(coins: readonly GoldCoin[] = goldCoins(), evidence: ReadonlyMap<string, CoinEvidence> = loadEvidence()): readonly MatchCase[] {
   const out: MatchCase[] = [];
   for (const c of coins) {
     const ev = evidence.get(c.id);
-    const base = { coinId: c.id, split: c.split, names: namesOf(c), term: c.name.trim() || c.ticker, goldMint: c.mint };
+    const term = c.name.trim() || c.ticker;
+    const base = { coinId: c.id, split: c.split, names: namesOf(c), term, goldMint: c.mint };
+    const termsFor = (postId: string): string[] => distinctNames([term, c.ticker, ev?.judged?.[postId]?.proposedName ?? '']);
     if (c.origin.kind === 'post' || c.origin.kind === 'afterLaunch') {
       const o = c.origin;
       const read = ev?.origin?.post ?? null;
       out.push({
         ...base,
         id: `${c.id}/${o.postId}`,
+        terms: termsFor(o.postId),
         kind: o.kind === 'post' ? 'origin' : 'afterLaunch',
         platform: o.platform,
         postId: o.postId,
@@ -102,7 +122,7 @@ export function matchCases(coins: readonly GoldCoin[] = goldCoins(), evidence: R
     const launch = Date.parse(c.createdAt);
     for (const p of ev.search.results) {
       if (p.postedAt === null || p.postedAt > launch || p.postedAt < launch - WINDOW_MS || (p.reach ?? 0) < FEED_VIEWS) continue;
-      out.push({ ...base, id: `${c.id}/${p.postId}`, kind: 'unrelated', platform: 'x', postId: p.postId, postUrl: p.url, postedAt: p.postedAt, imageUri: p.imageUri, right: null });
+      out.push({ ...base, terms: termsFor(p.postId), id: `${c.id}/${p.postId}`, kind: 'unrelated', platform: 'x', postId: p.postId, postUrl: p.url, postedAt: p.postedAt, imageUri: p.imageUri, right: null });
     }
   }
   return out;
@@ -123,6 +143,8 @@ export interface FoundCoin {
 export interface CoinMeta {
   readonly links: readonly string[];
   readonly imageUri: string | null;
+  /** Where the document came from: by content id through our gateway, or the creator's own host. */
+  readonly from?: 'contentId' | 'creatorHost';
 }
 
 export interface MatchEvidence {

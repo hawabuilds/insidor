@@ -9,10 +9,14 @@
  *              — its social link, website, chat link and description — carries the post's id
  *              or its picture's. Unread metadata is "not known", never "no".
  *   picture    the post's vector against the coin's (internal.image_embedding, embedded by the
- *              runner's coin-match step), and the judge's same-subject answer on a borderline
- *              pair (internal.image_pair_check). Read here, decided by core's bars.
+ *              runner's coin-match step). Only near-identical is "same picture" (core
+ *              `postPictureVerdict`): the judge's "same subject" on a borderline pair
+ *              (internal.image_pair_check) leaves it unknown, and only its "no" counts against.
+ *              The coin's picture is its metadata document's, now read from the creator's own
+ *              host too when the link names no content id (runner universe loop).
  *   timing     the coin's launch (public.coin_name, else public.asset) against the post's time.
- *   name       the judge's names for the subject against the coin's name and ticker.
+ *   name       the judge's names for the subject against the coin's name and ticker. Orders the
+ *              list only: since 2026-10-13 a name never makes a card confident (core header).
  *
  * ★ ONLY THE FACTS LEAVE. The similarity, the judge's answer and the rule's reason stay here;
  * the wire carries "links this post", "same picture" and "launched 12m after" (wire.ts
@@ -29,7 +33,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { matchPostCoin, nameIdeas, pictureVerdict, type CoinSide, type MatchBars, type NameIdea, type PostCoinMatch } from '@insidor/core';
+import { matchPostCoin, nameIdeas, postPictureVerdict, type CoinSide, type MatchBars, type NameIdea, type PostCoinMatch } from '@insidor/core';
 import type { Db } from '@insidor/store';
 
 import { pictureOf } from './db.ts';
@@ -203,7 +207,7 @@ export async function weighPostCoins(db: Db, lists: ReadonlyMap<string, readonly
       ticker: r.ticker,
       launchedAt: ms(r.launched_at),
       links: r.outcome === 'read' ? [r.social_link, r.website, r.chat_link, r.description].filter((l): l is string => l !== null) : null,
-      samePicture: pictureVerdict(r.similarity === null ? null : Number(r.similarity), r.same_subject === 'yes' ? true : r.same_subject === 'no' ? false : null, p.group.image),
+      samePicture: postPictureVerdict(r.similarity === null ? null : Number(r.similarity), r.same_subject, p.group.image),
     }));
     const decision = matchPostCoin(
       { postedAt: ms(post.posted_at) ?? ms(post.first_seen_at), linkIds: [post.source_item_id, ...pictureIds(post.media)], names },
