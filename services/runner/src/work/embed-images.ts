@@ -1,10 +1,22 @@
 /**
- * THE IMAGE EMBEDDING STEP: each new post's picture embedded once, after each discovery pass.
+ * THE IMAGE EMBEDDING STEP: a post's picture embedded once, after each discovery pass.
  *
- * Its own step because the vectors are what GROUP's image evidence is read from, and they
- * must exist before GROUP decides about a post — so the step runs right after the pass that
- * stored the post. GROUP itself never calls the vendor (core is pure); it reads the stored
- * vectors through the store.
+ * Its own step because the vectors are read in two places — GROUP's image evidence and the
+ * feed's picture boost — and neither may call the vendor (core is pure). GROUP itself reads
+ * the stored vectors through the store.
+ *
+ * ★ ONLY PICTURES SOMETHING WILL READ (2026-10-13). A post is embedded when the judge passed it
+ * or turned it down unsurely (`couldStillPass`: the boost compares an unsure "no" with coined
+ * pictures, so it needs the vector), or when it is in a promoted story or was fetched by a
+ * story's backfill (a post joining that narrative is compared with its pictures). A firm "no",
+ * a failed name test and a post nobody has judged yet are not: until 2026-10-13 every new
+ * picture was embedded, and about five in six went to posts that could never reach a screen.
+ * The cost of the cut: a fresh post is usually judged after GROUP has already placed it, so it
+ * meets GROUP without a vector of its own — which in the live log never mattered (no picture
+ * join, `M2_semantic_join`, has ever been recorded), and a post naming a coin is compared with
+ * the coin's picture only once it has passed (universe.ts; no picture match has linked a coin
+ * yet either). Scoring runs before this step in every pass, so a post is embedded in the same
+ * pass that judges it.
  *
  * ★ A MISSING VECTOR DEGRADES, NEVER BLOCKS. With no key, in a dry run, past the supplier
  * line, or on a failed call, posts simply have no vector and GROUP groups them on the free
@@ -21,6 +33,7 @@ import type { PgImageEmbeddingRepo } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
+import { couldStillPass } from './track-gate.ts';
 
 export interface EmbeddingDeps {
   /** null when no embedding vendor is configured: every post goes without, and GROUP degrades. */
@@ -35,15 +48,22 @@ export interface EmbeddingDeps {
 const MS_PER_HOUR = 3_600_000;
 /** How long one batch of images may take before the call is abandoned. */
 const EMBED_CALL_DEADLINE_MS = 60_000;
+/** How many candidates are read per picture embedded: the store drops firm noes, this step drops
+    the rest that cannot pass (a failed name test, an unsure yes), so they cannot crowd the batch. */
+const PREFETCH_FACTOR = 5;
 
 export async function embedImages(deps: EmbeddingDeps): Promise<{ readonly queued: number; readonly embedded: number }> {
   if (deps.embed === null || deps.embed.embedMedia === undefined) return { queued: 0, embedded: 0 };
   const now = deps.now();
-  const queue = await deps.images.unembedded(
+  const wide = await deps.images.unembedded(
     deps.embed.space,
     (now - deps.policy.track.maxTrackedHours * MS_PER_HOUR) as Millis,
-    deps.policy.group.imagesPerPass,
+    deps.policy.group.imagesPerPass * PREFETCH_FACTOR,
+    deps.policy.rising.boostMaxNoConfidence,
   );
+  const queue = wide
+    .filter((q) => q.inNarrative || (q.judgement !== null && couldStillPass(q.judgement, deps.policy)))
+    .slice(0, deps.policy.group.imagesPerPass);
   if (queue.length === 0) return { queued: 0, embedded: 0 };
   if (deps.mode === 'dry') {
     deps.log.info('DRY RUN — images to embed, not sent', { images: queue.length });

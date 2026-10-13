@@ -29,6 +29,15 @@ export interface ImageMatch {
 export interface UnembeddedImage {
   readonly itemId: ItemId;
   readonly uri: string;
+  /** In a promoted story, or fetched by a story's backfill: GROUP reads its picture. */
+  readonly inNarrative: boolean;
+  /** The judge's newest answer about the post; null when it has none yet. */
+  readonly judgement: {
+    readonly coinable: boolean;
+    readonly confidence: number;
+    readonly lookedAt: 'text' | 'picture' | 'videoFrame';
+    readonly proposedName: string | null;
+  } | null;
 }
 
 const toVectorLiteral = (values: Float32Array): string => `[${Array.from(values).join(',')}]`;
@@ -42,12 +51,34 @@ export class PgImageEmbeddingRepo {
 
   /**
    * Observed posts seen since `sinceMs` whose FIRST image has no vector in `space`, newest
-   * first. The first image only: it is the picture a post is shown with, and embedding every
-   * image of every post would spend the line on the third photo of a carousel.
+   * first, with what decides whether the picture is worth paying for. The first image only: it
+   * is the picture a post is shown with, and embedding every image of every post would spend
+   * the line on the third photo of a carousel.
+   *
+   * Only posts that might use a vector come back (the runner's embed-images.ts holds the rest
+   * to core's per-post rule):
+   *   - a post the judge has answered, unless the answer is a firm "no" — confidence above
+   *     `firmNoAbove`, the picture boost's own ceiling, so no picture can ever lift it;
+   *   - a member of a promoted, unmerged story, or a post a story's backfill fetched: GROUP
+   *     compares a post joining a narrative with these pictures, judged or not.
+   * A post not judged yet waits: the scorer runs before this step in every pass, so a post is
+   * embedded in the pass that judges it.
    */
-  async unembedded(space: string, sinceMs: Millis, limit: number): Promise<readonly UnembeddedImage[]> {
-    const rows = await this.#db.query<{ item_id: string; uri: string }>(
-      `select i.item_id, first_image.uri
+  async unembedded(space: string, sinceMs: Millis, limit: number, firmNoAbove: number): Promise<readonly UnembeddedImage[]> {
+    const rows = await this.#db.query<{
+      item_id: string;
+      uri: string;
+      in_narrative: boolean;
+      coinable: boolean | null;
+      confidence: number | null;
+      looked_at: 'text' | 'picture' | 'videoFrame' | null;
+      proposed_name: string | null;
+    }>(
+      `select i.item_id, first_image.uri, j.coinable, j.confidence, j.looked_at, j.proposed_name,
+              (exists (select 1 from public.story_member m
+                         join public.story s on s.story_id = m.story_id
+                        where m.item_id = i.item_id and s.state = 'promoted' and s.merged_into is null)
+               or exists (select 1 from internal.item_backfill b where b.item_id = i.item_id)) as in_narrative
          from public.item i
          cross join lateral (
            select m ->> 'uri' as uri
@@ -56,17 +87,37 @@ export class PgImageEmbeddingRepo {
             order by n
             limit 1
          ) first_image
+         left join lateral (
+           select pj.coinable, pj.confidence, pj.looked_at, pj.proposed_name
+             from internal.post_judgement pj
+            where pj.item_id = i.item_id
+            order by pj.judged_at desc, pj.id desc
+            limit 1
+         ) j on true
         where i.origin = 'observed'
           and i.first_seen_at >= $2
           and not exists (
                 select 1 from internal.image_embedding e
                  where e.subject_kind = 'item' and e.subject_id = i.item_id
                    and e.uri = first_image.uri and e.space = $1)
+          and ((j.coinable is not null and not (j.coinable = false and j.confidence > $4))
+               or exists (select 1 from public.story_member m
+                            join public.story s on s.story_id = m.story_id
+                           where m.item_id = i.item_id and s.state = 'promoted' and s.merged_into is null)
+               or exists (select 1 from internal.item_backfill b where b.item_id = i.item_id))
         order by i.first_seen_at desc
         limit $3`,
-      [space, toTimestamp(sinceMs), limit],
+      [space, toTimestamp(sinceMs), limit, firmNoAbove],
     );
-    return rows.map((row) => ({ itemId: row.item_id as ItemId, uri: row.uri }));
+    return rows.map((row) => ({
+      itemId: row.item_id as ItemId,
+      uri: row.uri,
+      inNarrative: row.in_narrative,
+      judgement:
+        row.coinable === null || row.confidence === null || row.looked_at === null
+          ? null
+          : { coinable: row.coinable, confidence: Number(row.confidence), lookedAt: row.looked_at, proposedName: row.proposed_name },
+    }));
   }
 
   async record(subjectKind: 'item' | 'asset', subjectId: string, uri: string, space: string, values: Float32Array, at: Millis): Promise<void> {
