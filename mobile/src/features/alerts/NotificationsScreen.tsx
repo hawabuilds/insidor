@@ -15,7 +15,7 @@
  * marked read, as the first page told it, so marking it read on opening does not untint page two.
  *
  * A follow row carries Trador's "Follow back" when you do not follow that person yet; once you
- * do, it says "Following". It sits inside the row's link, so its tap is stopped from opening
+ * tap it, it says "Following" (a follow you had already returned shows neither, as in Trador). It sits inside the row's link, so its tap is stopped from opening
  * their profile.
  */
 
@@ -97,7 +97,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
                         <Value r={formatAge({ known: true, at: a.at as never }, now as never)} />
                       </p>
                     </div>
-                    {a.kind === 'follow' && a.actor != null ? <FollowBack actor={a.actor} /> : null}
+                    {a.kind === 'follow' && a.actor != null && !a.actor.iFollow ? <FollowBack actor={a.actor} /> : null}
                   </a>
                 </li>
               ))}
@@ -114,7 +114,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
 /** Trador's Follow back: follows them without leaving the list, then says Following. */
 function FollowBack({ actor }: { actor: NonNullable<Alert['actor']> }) {
   const toast = useToast();
-  const [state, setState] = useState<'no' | 'asking' | 'yes'>(actor.iFollow ? 'yes' : 'no');
+  const [state, setState] = useState<'no' | 'asking' | 'yes'>('no');
   if (state === 'yes') return <span className={styles['following']}>Following</span>;
   const tap = (e: MouseEvent) => {
     e.preventDefault();
