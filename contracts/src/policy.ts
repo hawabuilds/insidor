@@ -1423,6 +1423,30 @@ export interface RisingPolicy {
   readonly shortVideoFastReachPerMinute: number;
   readonly shortVideoFastWindowMs: number;
   /**
+   * ★ THE SPEED BAR: one more way for a text post to clear For You's views bar — on pace to pass
+   * `fypMinReach` by `horizonMs` after it was posted. At a reading between `minAgeMs` and
+   * `horizonMs` old, with at least `minReach` views, its views a minute since the post AND (when an
+   * earlier reading at least `recentMinSpanMs` before exists) since that reading must both reach
+   * `fypMinReach / horizonMs`. The 40k total and the growth paths above stay; this only adds. OFF
+   * (`enabled: false`) until the owner has seen the cost. Not the short-video source's: its own
+   * growth paths already ask less.
+   *
+   * Replayed 2026-10-13 09:00–20:00 UTC (5,984 found posts, 175 For You posts, 45 coined gold posts
+   * with readings): 40k by 90 minutes (444 a minute) from half an hour old, 15k views or more. Of
+   * the 27 For You posts that waited at the bar, the median passes at 61 minutes instead of 110 (34
+   * instead of 69 with five-minute re-reads); every post that passes today still does. It lets in
+   * about 6.5 posts an hour that never read 40k (about $1.36 a day of judging). The owner's example,
+   * 40k by two hours from ten minutes, let in 30 an hour ($6.45 a day) for the same gain; 40k by an
+   * hour moved none of the 27.
+   */
+  readonly speedBar: {
+    readonly enabled: boolean;
+    readonly horizonMs: number;
+    readonly minAgeMs: number;
+    readonly minReach: number;
+    readonly recentMinSpanMs: number;
+  };
+  /**
    * A promoted narrative stays on the board only while at least this many of its posts pass the
    * same per-post rules as For You (scored, memeable, confident, a short name). Below it the board
    * hides it; above it, only its passing posts are listed. The owner's rule (2026-10-13).
@@ -2952,6 +2976,8 @@ const POLICY_V1: Policy = {
     shortVideoEarlyWindowMs: 7_200_000, // two hours
     shortVideoFastReachPerMinute: 1_500,
     shortVideoFastWindowMs: 14_400_000, // four hours
+    /* Off until the owner approves the cost; see RisingPolicy.speedBar for the replay. */
+    speedBar: { enabled: false, horizonMs: 5_400_000, minAgeMs: 1_800_000, minReach: 15_000, recentMinSpanMs: 300_000 },
     narrativeMinPassingPosts: 2,
     /* 3 posts is where GROUP promotes a story; 8 posts, or a top post at 5M views (125 times
        the For You views bar), is a narrative most of the timeline has seen. */

@@ -10,6 +10,13 @@
  * averages `fypFastReachPerMinute` since the post. Popular takes `popularMinReach`. Once a post
  * has cleared a growth path it stays cleared: a post caught early is not dropped for slowing.
  *
+ * ★ THE SPEED BAR (`rising.speedBar`, off by default): a text post also clears For You when a
+ * reading shows it on pace to pass the total by `horizonMs` — its views a minute since the post,
+ * and since an earlier reading when there is one, both at `fypMinReach / horizonMs` or more. Both
+ * rates, because a post that spiked and then stalled still has a fast average; the recent rate is
+ * what says it is still climbing. It only adds a way in: switched off, every caller (the scorer,
+ * the projector, the replays) holds a post to exactly the bars above.
+ *
  * ★ AN UNREAD COUNT IS NOT A SMALL ONE, AND IT IS NOT A PASS. A post with no view reading, or no
  * post time for the growth paths, does not clear a bar on that path — it waits, off the feed.
  *
@@ -55,6 +62,23 @@ export function clearsReachBar(bar: ReachBar, readings: readonly ReachLevel[], p
     const ageMs = x.atMs - postedAtMs;
     if (ageMs <= 0) return false;
     if (ageMs <= early.windowMs && x.reach >= early.reach) return true;
-    return ageMs <= fast.windowMs && x.reach / (ageMs / MS_PER_MINUTE) >= fast.perMinute;
+    if (ageMs <= fast.windowMs && x.reach / (ageMs / MS_PER_MINUTE) >= fast.perMinute) return true;
+    return !short && onPace(read, x, ageMs, p);
   });
+}
+
+/**
+ * Whether reading `x` (one of `read`, `ageMs` after the post) puts a text post on pace to
+ * pass `fypMinReach` by `speedBar.horizonMs`: inside its window, over its floor, and fast enough
+ * both since the post and since the newest reading at least `recentMinSpanMs` before it.
+ */
+function onPace(read: readonly { atMs: number; reach: number }[], x: { atMs: number; reach: number }, ageMs: number, p: Policy): boolean {
+  const s = p.rising.speedBar;
+  if (!s.enabled) return false;
+  if (ageMs < s.minAgeMs || ageMs > s.horizonMs || x.reach < s.minReach) return false;
+  const needPerMs = p.rising.fypMinReach / s.horizonMs;
+  if (x.reach / ageMs < needPerMs) return false;
+  /* By time, not by position: a caller's readings need not be in order. */
+  const before = read.reduce<{ atMs: number; reach: number } | undefined>((b, y) => (x.atMs - y.atMs >= s.recentMinSpanMs && (b === undefined || y.atMs > b.atMs) ? y : b), undefined);
+  return before === undefined || (x.reach - before.reach) / (x.atMs - before.atMs) >= needPerMs;
 }
