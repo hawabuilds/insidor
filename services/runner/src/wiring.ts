@@ -53,6 +53,7 @@ import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/st
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { supplierRoles, vendorLines } from './vendor-lines.ts';
 import { supplierWarnings } from './supplier-warnings.ts';
+import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
@@ -70,6 +71,7 @@ import {
   PgImageEmbeddingRepo,
   PgImagePairRepo,
   PgJudgementRepo,
+  PgLearningRepo,
   PgPostJudgementRepo,
   PgItemRepo,
   PgObservationRepo,
@@ -157,6 +159,8 @@ function buildJudge(
   maxOutputTokens: number = policy.judge.maxOutputTokens,
   /** QUALIFY asks about a group of posts; the feed's per-post score asks its own question. */
   question: JudgeQuestion = 'story',
+  /** The owner's learned examples after the post question's rules (learned-examples.ts); null: none. */
+  examples: string | null = null,
 ): JudgePort | null {
   const setup = cfg.judge;
   if (setup.state === 'dormant' || setup.state === 'misconfigured') {
@@ -208,6 +212,7 @@ function buildJudge(
     policy: { ...policy.judge, maxOutputTokens },
     maxBatch: policy.qualify.batchSize,
     question,
+    examples,
   });
 }
 /**
@@ -444,7 +449,24 @@ export async function withRuntime<T>(
       const judge = buildJudge(cfg, meter, policy, log);
       /* The per-post score's judge: the same model and prompt, with a smaller answer budget
          so ten short answers are not reserved at the cost of two long ones. */
-      const postJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post');
+      /* ★ WITH THE OWNER'S LEARNED EXAMPLES: the latest block the re-tune APPLIED (0056), read at
+         boot and every few minutes, swapped in behind the same port (learned-examples.ts). None
+         applied: no examples, the judge's rules alone. */
+      const rulesOnlyPostJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post');
+      const learning = new PgLearningRepo(db);
+      const learned =
+        rulesOnlyPostJudge === null
+          ? null
+          : learnedJudge({
+              latest: () => learning.latestApplied(),
+              build: (examples) => (examples === null ? rulesOnlyPostJudge : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', examples) ?? rulesOnlyPostJudge),
+              log: log.child({ step: 'learned-examples' }),
+            });
+      if (learned !== null) {
+        await learned.refresh();
+        setInterval(() => void learned.refresh(), EXAMPLES_RECHECK_MS).unref();
+      }
+      const postJudge = learned?.port ?? null;
 
       const runtimeDeps: PlatformRuntime = {
         meter,
