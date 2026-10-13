@@ -89,7 +89,7 @@ interface RisingRow {
   source_author_id: string;
   coinable: boolean;
   confidence: number;
-  looked_at: 'text' | 'videoFrame';
+  looked_at: 'text' | 'picture' | 'videoFrame';
   proposed_name: string | null;
   story_id: string | null;
 }

@@ -31,7 +31,7 @@ import type { Frame, JudgeClient, JudgeResponse, Usage } from './client.ts';
 import { VENDOR } from './client.ts';
 import { PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT } from './prompts.ts';
 import { priceFor, usdForTokens, type ModelPrice } from './prices.ts';
-import { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, toOutcomes } from './to-judgement.ts';
+import { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, pictureUriFor, toOutcomes } from './to-judgement.ts';
 
 export { VENDOR } from './client.ts';
 const ENDPOINT = 'judge';
@@ -88,7 +88,7 @@ const bookFor = (usd: number, endpoint: string = ENDPOINT): PriceBook => ({
  */
 export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubject[]): Usage {
   const chars = SYSTEM.length + INSTRUCTIONS.length + JSON.stringify(subjects.map((s) => s.texts)).length;
-  const frames = subjects.filter((s) => lookedAtFor(s) === 'videoFrame').length;
+  const frames = subjects.filter((s) => lookedAtFor(s) === 'videoFrame' || pictureUriFor(s) !== null).length;
   return {
     inputTokens: Math.ceil(chars / policy.charsPerToken) + frames * policy.tokensPerFrame,
     outputTokens: policy.maxOutputTokens,
@@ -180,6 +180,18 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
       }
       const subjects = asked.filter((s) => !unseen.has(String(s.storyId)));
 
+      /* A still picture, for a subject with no video: shown when it can be fetched, and the
+         subject judged on its text alone when it cannot — a dead picture is not a dead post. */
+      const pictured = new Set<string>();
+      for (const s of subjects) {
+        const uri = pictureUriFor(s);
+        if (uri === null) continue;
+        const picture = await deps.client.frame(uri);
+        if (picture === null) continue;
+        frames.set(String(s.storyId), picture);
+        pictured.add(String(s.storyId));
+      }
+
       const outcomes = new Map<string, JudgeOutcome>();
       for (const s of asked.filter((x) => unseen.has(String(x.storyId)))) {
         outcomes.set(String(s.storyId), { kind: 'unavailable', storyId: s.storyId, detail: NO_FRAME });
@@ -224,7 +236,7 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
             promptId: promptId(),
             judgedAt,
             costUsdPerSubject: batch.length === 0 ? 0 : call.spend.usd / batch.length,
-          });
+          }, pictured);
         } catch (error) {
           /* A refusal for money is not ours to swallow: the caller records it as a pause.
              Anything else — the vendor down, out of retries — is unavailability. The
@@ -249,7 +261,7 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
   };
 }
 
-export { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, toJudgement, toOutcomes } from './to-judgement.ts';
+export { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, pictureUriFor, toJudgement, toOutcomes } from './to-judgement.ts';
 export type { JudgementContext } from './to-judgement.ts';
 export { PROMPTS, PROMPT_NAMES, PROMPT_SET_SHA } from './prompts.ts';
 export type { Prompt, PromptName } from './prompts.ts';

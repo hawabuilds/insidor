@@ -1858,7 +1858,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v38',
+  version: 'policy.v39',
 
   admit: {
     maxAgeMin: 240,
@@ -2058,6 +2058,8 @@ const POLICY_V1: Policy = {
        until there is data. */
     minJudgeConfidence: {
       text: 0.7,
+      /* A picture is more to go on than text alone, not less: held to the text bar. */
+      picture: 0.7,
       videoFrame: 0.75,
     },
     weights: {

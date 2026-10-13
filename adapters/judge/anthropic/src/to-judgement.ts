@@ -55,6 +55,16 @@ export function frameUriFor(subject: JudgeSubject): string | null | undefined {
  * subject is never sent, and it comes back `unavailable` — so QUALIFY abstains. A still
  * image is not sent at all; the text bar applies.
  */
+/**
+ * The still picture the judge is shown when the subject has no video: its first image with a
+ * uri. Null when there is none. Unlike a video frame, a picture that cannot be fetched does not
+ * make the subject unavailable — the text is still a reading — it is judged as `text` instead.
+ */
+export function pictureUriFor(subject: JudgeSubject): string | null {
+  if (frameUriFor(subject) !== undefined) return null;
+  return subject.media.find((m) => m.kind === 'image' && m.durationMs === null && m.uri.trim() !== '')?.uri ?? null;
+}
+
 export function lookedAtFor(subject: JudgeSubject): JudgeEvidence | null {
   const uri = frameUriFor(subject);
   if (uri === undefined) return 'text';
@@ -109,6 +119,8 @@ export function toOutcomes(
   subjects: readonly JudgeSubject[],
   answers: readonly unknown[],
   ctx: JudgementContext,
+  /** Subjects whose still picture was fetched and shown, by story id: judged as `picture`. */
+  pictured: ReadonlySet<string> = new Set(),
 ): readonly JudgeOutcome[] {
   const byStory = new Map<string, unknown>();
   for (const answer of answers) {
@@ -117,7 +129,8 @@ export function toOutcomes(
   }
 
   return subjects.map((subject): JudgeOutcome => {
-    const lookedAt = lookedAtFor(subject);
+    const seen = lookedAtFor(subject);
+    const lookedAt = seen === 'text' && pictured.has(String(subject.storyId)) ? 'picture' : seen;
     if (lookedAt === null) return { kind: 'unavailable', storyId: subject.storyId as StoryId, detail: NO_FRAME };
     const answer = byStory.get(String(subject.storyId));
     if (answer === undefined) {

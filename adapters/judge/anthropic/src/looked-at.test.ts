@@ -30,9 +30,34 @@ const subject = (token: string, m: readonly MediaRef[] = []): JudgeSubject => ({
   distinctSources: 1,
 });
 
-test('text, or a still image, is judged against the text bar', () => {
+test('before any picture is fetched, text or a still image reads as text', () => {
   assert.equal(lookedAtFor(subject('a')), 'text');
   assert.equal(lookedAtFor(subject('b', [media('image', 'blob://img')])), 'text');
+});
+
+test('★ a still picture the judge was shown is recorded as `picture`; one it could not fetch stays text', async () => {
+  const shown: string[] = [];
+  const client: JudgeClient = {
+    judge: async ({ subjects, frames }) => {
+      shown.push(...subjects.filter((s) => frames.has(String(s.storyId))).map((s) => String(s.storyId)));
+      return {
+        answers: subjects.map((s) => ({ storyId: String(s.storyId), coinable: true, proposedName: 'frog', confidence: 0.8 })),
+        usage: { inputTokens: 10, outputTokens: 10 },
+      };
+    },
+    frame: async (uri) => (uri.includes('dead') ? null : { mediaType: 'image/jpeg', base64: 'AAAA' }),
+  };
+  const judge = anthropicJudge({
+    client,
+    meter: inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT }),
+    now: () => AT,
+    model: 'claude-haiku-4-5',
+    policy: DEFAULT_POLICY.judge,
+    maxBatch: 10,
+  });
+  const { value } = await judge.judge([subject('p1', [media('image', 'https://cdn/frog.jpg')]), subject('p2', [media('image', 'https://cdn/dead.jpg')])], BUDGET);
+  assert.deepEqual(shown, [String(storyId('p1'))]);
+  assert.deepEqual(value.map((o) => (o.kind === 'judged' ? o.judgement.lookedAt : o.kind)), ['picture', 'text']);
 });
 
 test('a video cover sent as an image with a duration is a video frame', () => {

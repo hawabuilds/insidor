@@ -390,12 +390,12 @@ test('the schema and the vocabulary agree on every closed list', () => {
   /* What the judge looked at decides QUALIFY's confidence bar; a CHECK that drifted from
      the vocabulary would refuse a judgement the code can produce, or let one in that
      repo/judgements.ts then refuses on the way out. */
-  assert.deepEqual([...checkedValues(readAsWritten('0022_judgement.sql'), 'looked_at')].sort(), [
-    ...JUDGE_EVIDENCE,
-  ].sort());
-  assert.deepEqual([...checkedValues(readAsWritten('0025_post_judgement.sql'), 'looked_at')].sort(), [
-    ...JUDGE_EVIDENCE,
-  ].sort());
+  /* 0046 replaced both CHECKs when the judge began to be shown pictures, so 0046 holds the list. */
+  const pictureSql = stripComments(readAsWritten('0046_judge_picture.sql')).split(';');
+  for (const table of ['internal.judgement', 'internal.post_judgement']) {
+    const add = pictureSql.find((statement) => statement.includes(`alter table ${table}\n  add constraint`)) ?? '';
+    assert.deepEqual([...checkedValues(add, 'looked_at')].sort(), [...JUDGE_EVIDENCE].sort(), table);
+  }
   /* All four reason columns, not just the first: they are four separate CHECKs and
      four separate opportunities for one of them to be edited alone. */
   for (const column of [
