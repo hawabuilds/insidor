@@ -179,3 +179,16 @@ test('★ a post whose coins were weighed lists them strongest first; one settle
   assert.equal(matched.fromStory, false);
   assert.deepEqual(matched.sameName, ['B2', 'A1'], 'the settled coin first, then the others with the name, for the post sheet');
 });
+
+test("★ the owner's coin wins over the story's link and the evidence, and says the owner checked it", () => {
+  const owned = { ...COIN, address: 'Own1' } as unknown as WireCoin;
+  const evidence = { linksPost: true, samePicture: null, launchedAfterMs: 1_080_000, ownerChecked: true } as const;
+  const lookup = { coins: ['B2', 'Own1'], more: false, match: { kind: 'matched' as const, coin: owned, evidence, owner: true as const } };
+  const r = postCoins({ kind: 'one', coin: COIN }, lookup);
+  assert.deepEqual(r.coins, { kind: 'matched', coin: owned, evidence });
+  assert.equal(r.fromStory, false, 'the owner named it, not the narrative');
+  assert.deepEqual(r.sameName, ['Own1', 'B2'], 'the owner\'s coin first, every other coin with the name after it');
+  /* Without the owner's mark, a matched coin still yields to the story. */
+  const plain = postCoins({ kind: 'one', coin: COIN }, { ...lookup, match: { kind: 'matched', coin: owned, evidence } });
+  assert.equal(plain.fromStory, true);
+});

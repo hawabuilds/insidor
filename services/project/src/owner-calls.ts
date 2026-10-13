@@ -18,6 +18,14 @@
  * the same table: one SQL statement and one pure function, so the feeds and the narratives can
  * never disagree about whether the owner hid a post.
  *
+ * ★ AND THE OWNER'S COIN CALL NAMES A POST'S COIN (`loadOwnerCoins`). A current coin call `right`
+ * with an address — "This is the coin", tapped on a card or pasted in "Which coin?" — makes that
+ * coin the post's own for everyone: rising.ts shows it as proven ("Links this post", Buy when it
+ * can be traded), over the evidence and over a narrative's link, marked `ownerChecked` on the wire.
+ * A newest `cleared` (0072, "Remove my label"), `wrong` or `none` is no owner coin, and the
+ * evidence decides again. A coin we do not hold yet is not shown until the runner adds it
+ * (services/runner work/owner-coins.ts); the card never offers Buy on a coin it cannot draw.
+ *
  * What breaks if changed carelessly: the order. The NEWEST row is the call — the table is
  * append-only and changing your mind is a new row. Reading the oldest would make "Is a meme"
  * powerless against an earlier "Not a meme".
@@ -49,4 +57,17 @@ export function withOwnerCall(judge: PostScoreReason | undefined, call: OwnerPos
   if (call === 'not') return 'owner_not_meme';
   if (call === 'meme') return 'passes';
   return judge;
+}
+
+/** The coin the owner's newest coin call names as each post's own; a post with no such call is absent. */
+export async function loadOwnerCoins(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+  if (itemIds.length === 0) return new Map();
+  const rows = await db.query<{ item_id: string; verdict: string; coin_address: string | null }>(
+    `select distinct on (item_id) item_id, verdict, coin_address
+       from internal.owner_feedback
+      where subject_kind = 'coin_match' and item_id = any($1::text[])
+      order by item_id, created_at desc, id desc`,
+    [[...itemIds]],
+  );
+  return new Map(rows.flatMap((r) => (r.verdict === 'right' && r.coin_address !== null ? [[r.item_id, r.coin_address] as const] : [])));
 }
