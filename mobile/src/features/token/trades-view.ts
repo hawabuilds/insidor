@@ -2,6 +2,8 @@
  * THE TRADES LIST'S DECISIONS, apart from the panel so `node --test` holds them: which trades a
  * filter keeps, what each row is keyed by, and which rows arrived since the last read.
  *
+ * A row's wallet and dollars are written here too: "3rpf...yMDA", and cents under $1,000.
+ *
  * Trador's tape has two scopes, All and Mine. The owner asked for buys and sells too, so the
  * rail here is All, Buys, Sells, and Mine when a wallet is signed in. "Mine" is the tape's own
  * trades whose wallet is yours — the latest trades the market source lists, not your whole
@@ -12,6 +14,9 @@
  */
 
 import type { MarketTrade } from '../../shared/api/index.ts';
+import type { Measured } from '../../shared/format/measure.ts';
+import { formatUsd } from '../../shared/format/number.ts';
+import { value, type Rendered } from '../../shared/format/rendered.ts';
 
 export type TapeFilter = 'all' | 'buys' | 'sells' | 'mine';
 
@@ -67,4 +72,18 @@ export function emptyLine(filter: TapeFilter, ticker: string): string {
     default:
       return 'No trades yet.';
   }
+}
+
+/** "3rpf...yMDA": the wallet that made the trade, enough of each end to compare by eye. */
+export function shortWallet(a: string): string {
+  return a.length <= 11 ? a : `${a.slice(0, 4)}...${a.slice(-4)}`;
+}
+
+/**
+ * A trade's dollars to the cent under $1,000 ("$2.10"), where most launchpad trades are and where
+ * the compact "$2" would round away a fifth of the trade; compact above that, as every other money.
+ * Missing is the pending dash with its reason, as everywhere.
+ */
+export function tradeUsd(m: Measured): Rendered {
+  return m.known && m.amount >= 0.01 && m.amount < 1000 ? value(`$${m.amount.toFixed(2)}`) : formatUsd(m);
 }
