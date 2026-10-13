@@ -149,9 +149,10 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
     /**
      * ★ TWO PROCESSES, ONE DAY'S LINES. The opening read sees what others had spent at boot and
      * nothing after, so a runner and a one-off job each spending under the same line would
-     * each believe the whole remainder was theirs. Refreshing sets the carried balance to the
-     * ledger's total MINUS this process's own entries for today — what everybody else spent —
-     * and the tally adds this process's own on top, so nothing is counted twice.
+     * each believe the whole remainder was theirs. Refreshing finds what OTHER processes spent
+     * since this one opened — the ledger, less the opening, less this process's own entries —
+     * and counts it in every cap but not in this process's pace (see `external` in
+     * in-memory.ts), so nothing is counted twice.
      *
      * The bound between refreshes is the soft stop: a line stops at `softStop` of its cap, and
      * the headroom above it is what absorbs another process's spending since the last read.
@@ -164,16 +165,18 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
     refresh: async () => {
       const at = opts.now();
       const ledger = await opts.ledger.totalsSince(dayStart(at) as Millis);
-      const own: Record<string, number> = {};
-      let ownTotal = 0;
+      /* Another process's spending since this one opened: the ledger, less what was there when
+         this one opened, less this process's own entries. It goes in the caps, not the pace. */
+      const known: Record<string, number> = { ...openedWith.byVendor };
+      let knownTotal = openedWith.totalUsd;
       for (const e of inner.entries()) {
         if (e.at < dayStart(at)) continue;
-        own[e.vendor] = (own[e.vendor] ?? 0) + e.usd;
-        ownTotal += e.usd;
+        known[e.vendor] = (known[e.vendor] ?? 0) + e.usd;
+        knownTotal += e.usd;
       }
       const byVendor: Record<string, number> = {};
-      for (const [vendor, usd] of Object.entries(ledger.byVendor)) byVendor[vendor] = Math.max(usd - (own[vendor] ?? 0), 0);
-      inner.reopen({ totalUsd: Math.max(ledger.totalUsd - ownTotal, 0), byVendor });
+      for (const [vendor, usd] of Object.entries(ledger.byVendor)) byVendor[vendor] = Math.max(usd - (known[vendor] ?? 0), 0);
+      inner.setExternal({ totalUsd: Math.max(ledger.totalUsd - knownTotal, 0), byVendor });
     },
     drain: async () => {
       /* Awaited in a loop rather than once, because a write settling can be the thing

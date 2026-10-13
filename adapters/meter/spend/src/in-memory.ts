@@ -92,10 +92,10 @@ export interface InMemoryMeter extends Meter {
   /** Discards yesterday. Called on record, and available to tests. */
   readonly rollover: (at: number) => void;
   /**
-   * Replaces what today held before this process's own entries — what OTHER processes have
-   * spent, re-read from the ledger. See `refresh` in durable.ts, the only caller.
+   * What OTHER processes have spent since this one opened, re-read from the ledger. It counts
+   * against every daily cap and NOT against the pace: see `refresh` in durable.ts, the only caller.
    */
-  readonly reopen: (opening: SpendTotals) => void;
+  readonly setExternal: (external: SpendTotals) => void;
 }
 
 const DAY_MS = 86_400_000;
@@ -123,6 +123,15 @@ export function inMemoryMeter(opts: InMemoryMeterOptions): InMemoryMeter {
    * is also spending, and a second process spending is a different problem.
    */
   let opening: SpendTotals = opts.opening ?? NO_OPENING;
+  /**
+   * ★ ANOTHER PROCESS'S SPENDING SINCE THIS ONE OPENED: a one-off paid job beside the runner. It
+   * is in every cap — the day's lines are shared — but not in the pace, which is THIS process's
+   * spreading of its own spending over the day. Counted in the pace, a job that spent its share
+   * just after midnight would pause the runner's discovery for hours while the caps still had
+   * room. The opening balance stays in the pace: it is what this process, or the copy of it that
+   * crashed, already spent today, and a crash loop must not get a fresh pace each restart.
+   */
+  let external: SpendTotals = NO_OPENING;
 
   const rollover = (at: number): void => {
     const d = dayOf(at);
@@ -130,10 +139,17 @@ export function inMemoryMeter(opts: InMemoryMeterOptions): InMemoryMeter {
       day = d;
       entries = [];
       opening = NO_OPENING;
+      external = NO_OPENING;
     }
   };
 
-  const spentUsd = (vendor?: string): number => {
+  const externalUsd = (vendor?: string): number => (vendor === undefined ? external.totalUsd : (external.byVendor[vendor] ?? 0));
+
+  /** Everything spent today on a line, this process's and every other's: what the caps hold. */
+  const spentUsd = (vendor?: string): number => paceSpentUsd(vendor) + externalUsd(vendor);
+
+  /** What the pace holds: this process's own, and what was already spent when it opened. */
+  const paceSpentUsd = (vendor?: string): number => {
     const carried = vendor === undefined ? opening.totalUsd : (opening.byVendor[vendor] ?? 0);
     return entries.reduce(
       (sum, e) => (vendor === undefined || e.vendor === vendor ? sum + e.usd : sum),
@@ -169,9 +185,9 @@ export function inMemoryMeter(opts: InMemoryMeterOptions): InMemoryMeter {
   return {
     entries: () => entries,
     rollover,
-    reopen: (next) => {
+    setExternal: (next) => {
       rollover(opts.now());
-      opening = next;
+      external = next;
     },
     spentUsd,
 
@@ -189,9 +205,11 @@ export function inMemoryMeter(opts: InMemoryMeterOptions): InMemoryMeter {
      */
     mayspend: (vendor, usd) => {
       rollover(opts.now());
-      if (spentUsd() + usd > paced(opts.dailyCapUsd) * opts.softStop) return false;
+      if (spentUsd() + usd > opts.dailyCapUsd * opts.softStop) return false;
+      if (paceSpentUsd() + usd > paced(opts.dailyCapUsd) * opts.softStop) return false;
       const vendorCap = vendorCapFor(vendor);
-      if (vendorCap !== undefined && spentUsd(vendor) + usd > paced(vendorCap) * opts.softStop) return false;
+      if (vendorCap !== undefined && spentUsd(vendor) + usd > vendorCap * opts.softStop) return false;
+      if (vendorCap !== undefined && paceSpentUsd(vendor) + usd > paced(vendorCap) * opts.softStop) return false;
       return true;
     },
 
@@ -213,7 +231,8 @@ export function inMemoryMeter(opts: InMemoryMeterOptions): InMemoryMeter {
         capUsd,
         spentUsd: spent,
         stopAtUsd,
-        remainingUsd: Math.max(stopAtUsd - spent, 0),
+        /* The tighter of the pace (own spending) and the cap (everybody's). */
+        remainingUsd: Math.max(Math.min(stopAtUsd - paceSpentUsd(vendor), capUsd * opts.softStop - spent), 0),
         unrecordedUsd: 0,
       };
     },

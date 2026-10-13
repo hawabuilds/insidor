@@ -281,3 +281,33 @@ test('★ two processes on one ledger: after a refresh, each sees what the other
   assert.ok(Math.abs(runner.spentUsd() - 0.9) < 1e-9);
   assert.equal(runner.mayspend('acme', 0.2), false);
 });
+
+test("★ a one-off job's spending counts in the runner's cap but not its pace", async () => {
+  const ledger = shelf();
+  const DAY = 86_400_000;
+  /* Two hours into the UTC day, a $10 line paced with no head start: $0.83 may be spent so far. */
+  const twoHoursIn = (Math.floor(AT / DAY) * DAY + 2 * 3_600_000) as Millis;
+  const at = (usd: number): Spend => ({ ...spend(usd), at: twoHoursIn });
+  const runner = await openDurableMeter({ ledger, dailyCapUsd: 100, perVendorCapUsd: { acme: 10 }, paceAheadMs: 0, softStop: 1, now: () => twoHoursIn });
+  const job = await openDurableMeter({ ledger, dailyCapUsd: 100, perVendorCapUsd: { acme: 10 }, softStop: 1, now: () => twoHoursIn });
+
+  job.record(at(9));
+  await job.drain();
+  await runner.refresh();
+  assert.equal(runner.mayspend('acme', 0.5), true, "the job's $9 does not use up the runner's two hours of pace");
+  assert.equal(runner.mayspend('acme', 1.2), false, 'its own pace still holds: $1.20 is over two hours of $10');
+  assert.ok(Math.abs(runner.spentUsd('acme') - 9) < 1e-9, 'and it is reported as spent today');
+});
+
+test("late in the day the job's spending is what stops the runner at the line", async () => {
+  const ledger = shelf();
+  const DAY = 86_400_000;
+  const lateIn = (Math.floor(AT / DAY) * DAY + 23 * 3_600_000) as Millis;
+  const runner = await openDurableMeter({ ledger, dailyCapUsd: 100, perVendorCapUsd: { acme: 10 }, paceAheadMs: 0, softStop: 1, now: () => lateIn });
+  const job = await openDurableMeter({ ledger, dailyCapUsd: 100, perVendorCapUsd: { acme: 10 }, softStop: 1, now: () => lateIn });
+  job.record({ ...spend(9), at: lateIn });
+  await job.drain();
+  await runner.refresh();
+  assert.equal(runner.mayspend('acme', 0.9), true);
+  assert.equal(runner.mayspend('acme', 1.5), false, '$9 + $1.50 is over the $10 line, though the pace would allow it');
+});
