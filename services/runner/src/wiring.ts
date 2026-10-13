@@ -245,7 +245,19 @@ export async function withRuntime<T>(
 ): Promise<T> {
   // The runner writes decisions and judgements, so it holds the `internal` role
   // and no other. Configuration owns the one read of process.env in this
-  // service, which is why the URL is handed in rather than read again here.
+  // service, which is why the URLs are handed in rather than read again here.
+  //
+  // TWO POOLS, ONE ROLE. The singleton lock is session state and gets a pool of one
+  // client on a session-mode URL (createPool refuses the transaction pooler for it).
+  // The loops' work runs on a second pool that may sit behind the transaction pooler,
+  // so the runner holds ONE session-mode client however busy its loops are — the
+  // session pooler caps clients per user, and seven loops used to take ten of them.
+  const lockPool = createPool(DB_ROLE.internal, {
+    applicationName: `insidor-runner-lock@${cfg.host}`,
+    env: { DATABASE_URL_INTERNAL: cfg.lockDatabaseUrl },
+    session: true,
+    max: 1,
+  });
   const pool = createPool(DB_ROLE.internal, {
     applicationName: `insidor-runner@${cfg.host}`,
     env: { DATABASE_URL_INTERNAL: cfg.databaseUrl },
@@ -254,12 +266,12 @@ export async function withRuntime<T>(
   try {
     // A session advisory lock, not a row. Session mode (5432) is required for
     // this to hold; transaction mode cannot keep a session lock, which is why
-    // createPool refuses the transaction-mode pooler for this role.
+    // the lock pool is opened with `session: true`.
     //
     // The result is wrapped in an object so that "the lock was not free" (null)
     // stays distinguishable from "the work returned null" — the same distinction
     // between empty and dead that the rest of this service is built around.
-    const outcome = await withAdvisoryLock(pool, advisoryLockKey(cfg.singletonLockName), async () => {
+    const outcome = await withAdvisoryLock(lockPool, advisoryLockKey(cfg.singletonLockName), async () => {
       // The lock-holding client does nothing else: repositories run on the pool,
       // so seven loops do not serialise behind one backend.
       const db = asDb(pool);
@@ -637,5 +649,6 @@ export async function withRuntime<T>(
     return outcome.value;
   } finally {
     await pool.end();
+    await lockPool.end();
   }
 }

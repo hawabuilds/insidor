@@ -305,8 +305,14 @@ export async function withRuntime(
     applicationName: `insidor-chainwatch-${cfg.feedId}`,
     // The service takes one connection string and decides which role it is for,
     // rather than the pool reading an environment this process already validated
-    // once at boot. Session mode is still asserted, inside createPool.
+    // once at boot. Session mode is asserted, inside createPool, because of `session`.
     env: { DATABASE_URL_INTERNAL: cfg.databaseUrl },
+    // Everything this process writes travels on the lock's own client (see above), so the
+    // pool never lends a second one. One session-mode client is this service's whole share
+    // of the session pooler, which caps clients per user; the role's default would have
+    // let it hold five.
+    session: true,
+    max: 1,
   });
 
   try {

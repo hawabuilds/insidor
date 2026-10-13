@@ -96,11 +96,12 @@ function connectionUrl(env: Readonly<Record<string, string | undefined>>): strin
 async function main(): Promise<void> {
   /* createPool takes the role's own variable name. The projector is deployed with the
      owner credential that .env.example calls DATABASE_URL, so it is handed in under the
-     service role's key rather than duplicating the pool tuning and the session-mode
-     check that live in store/src/client.ts. That check still applies, which is what we
-     want: the transaction-mode pooler releases advisory locks between statements and
-     drops prepared statements, and a projector that silently ran there would be a
-     problem discovered much later. */
+     service role's key rather than duplicating the pool tuning that lives in
+     store/src/client.ts. The projector holds no session state — one `withTransaction`,
+     no advisory lock, and its NOTIFY is sent at commit by whichever backend ran the
+     transaction — so DATABASE_URL may be the transaction-mode pooler (6543), and is on
+     Railway. A session advisory lock added here later must open its pool with
+     `session: true`; withAdvisoryLock refuses a transaction-mode pool either way. */
   const pool = createPool(DB_ROLE.service, {
     applicationName: 'insidor-project',
     env: { DATABASE_URL_SERVICE: connectionUrl(process.env) },
