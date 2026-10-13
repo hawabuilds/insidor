@@ -30,6 +30,8 @@ export interface RisingPost {
   readonly id: string;
   readonly sourceLabel: string;
   readonly authorLabel: string;
+  /** The poster's own profile picture; null when the account has none stored (the card draws its letter). */
+  readonly authorPictureUrl: string | null;
   /** Null when the server holds no handle to build one from — never a guessed link. */
   readonly permalink: string | null;
   readonly excerpt: string;

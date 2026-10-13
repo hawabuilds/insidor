@@ -83,6 +83,11 @@ function optStr(v: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
+/** A picture link the app may load: https only, anything else is no picture. */
+function httpsOrNull(v: unknown): string | null {
+  return typeof v === 'string' && v.startsWith('https://') ? v : null;
+}
+
 function int(v: unknown, path: string): number {
   if (typeof v !== 'number' || !Number.isFinite(v)) throw new WireShapeError(path, v);
   return v;
@@ -504,6 +509,8 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     id: str(o.id, `${path}.id`),
     sourceLabel: str(o.sourceLabel, `${path}.sourceLabel`),
     authorLabel: str(o.authorLabel, `${path}.authorLabel`),
+    /* Added by the read service from the account; absent from an older server or the owner's copies. */
+    authorPictureUrl: httpsOrNull(o.authorPictureUrl),
     permalink: optStr(o.permalink),
     excerpt: str(o.excerpt, `${path}.excerpt`),
     thumbUrl: optStr(o.thumbUrl),

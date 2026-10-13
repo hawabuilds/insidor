@@ -58,6 +58,13 @@ test('a video preview decodes with its play flag; a row from before the flag sho
   assert.throws(() => decodeRisingPost({ ...POST, thumbIsVideo: 'yes' }));
 });
 
+test("the poster's picture decodes when it is an https link; absent or anything else is no picture", () => {
+  assert.equal(decodeRisingPost({ ...POST, authorPictureUrl: 'https://pbs.twimg.com/profile_images/1/a_400x400.jpg' }).authorPictureUrl, 'https://pbs.twimg.com/profile_images/1/a_400x400.jpg');
+  assert.equal(decodeRisingPost(POST).authorPictureUrl, null, 'a server from before the field');
+  assert.equal(decodeRisingPost({ ...POST, authorPictureUrl: null }).authorPictureUrl, null);
+  assert.equal(decodeRisingPost({ ...POST, authorPictureUrl: 'javascript:alert(1)' }).authorPictureUrl, null);
+});
+
 test('a score on the wire is refused', () => {
   assert.throws(() => decodeRisingPost({ ...POST, score: 0.9 }), WireLeakError);
 });
