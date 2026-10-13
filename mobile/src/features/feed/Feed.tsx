@@ -17,9 +17,9 @@
  * value the filter needs is unknown — five different sentences, because they call for five
  * different responses and a blank list answers none of them.
  *
- * A post card looks as it did before the post sheet was built (shared/ui/PostRow.tsx), and tapping
- * it or its coin button (Buy, See N coins, Create coin, View coins) opens the post sheet
- * (features/post-sheet): the post, its views, and its coins with Buy, Choose coin and Create.
+ * A post card looks as it did before the post sheet was built (shared/ui/PostRow.tsx). Tapping it,
+ * its Buy or its View coins opens the post sheet (features/post-sheet); See N coins opens that
+ * sheet straight on Choose coin, and Create coin opens the create flow from the post.
  *
  * Under a post's coin line, when the server says so, a line of its own: an older coin named for
  * the post's subject is trading more since it (OlderCoins.tsx) — never the post's coin, never a
@@ -65,14 +65,17 @@ const TABS = [
 
 export function Feed({
   onCreate,
+  onCreatePost,
 }: {
   onCreate: (row: BoardRow, labelled: boolean) => void;
+  /** Create from a single post: its picture and link, never a name we made up. */
+  onCreatePost: (post: RisingPost) => void;
 }) {
   const [tab, setTab] = useState<FeedTab>('fyp');
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [panel, setPanel] = useState(false);
-  /* The post whose post sheet is open, or none. */
-  const [sheet, setSheet] = useState<string | null>(null);
+  /* The post whose post sheet is open and the view it opened on, or none. */
+  const [sheet, setSheet] = useState<{ readonly id: string; readonly start: 'post' | 'coins' } | null>(null);
   const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
   /* One loader per feed, so switching tabs never shows one feed's order under the other's name. */
   const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
@@ -126,8 +129,11 @@ export function Feed({
           {owner ? <OwnerCardStrip post={p} /> : null}
         </>
       }
-      /* The card and its coin button both open the post sheet (features/post-sheet). */
-      handlers={{ open: () => setSheet(p.id) }}
+      handlers={{
+        open: () => setSheet({ id: p.id, start: 'post' }),
+        create: () => onCreatePost(p),
+        seeCoins: () => setSheet({ id: p.id, start: 'coins' }),
+      }}
     />
   );
   const quickSite = filters.sites.length === 1 ? filters.sites[0] : null;
@@ -271,7 +277,7 @@ export function Feed({
       ) : null}
       {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}
       {owner ? <HideBar /> : null}
-      {sheet !== null ? <PostSheet key={sheet} postId={sheet} onClose={() => setSheet(null)} /> : null}
+      {sheet !== null ? <PostSheet key={sheet.id} postId={sheet.id} start={sheet.start} onClose={() => setSheet(null)} /> : null}
     </section>
   );
 }

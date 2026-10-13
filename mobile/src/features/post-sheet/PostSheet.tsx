@@ -20,6 +20,9 @@
  * Buy opens the existing ticket unchanged (BuyOpen.tsx); there is no quick buy here — that is on
  * Choose coin only. Tapping the coin row anywhere else opens that coin's token page.
  *
+ * `start: 'coins'` opens straight on Choose coin (a For You card's "See N coins"); its back arrow
+ * still leads to the post.
+ *
  * What breaks if changed carelessly: renaming or adding a required prop breaks the token page,
  * which renders this sheet knowing nothing else about the post.
  */
@@ -53,6 +56,8 @@ export interface PostSheetProps {
   /** The feed post's id: `RisingPost.id`, or `AboutPost.postId` on a coin page. */
   readonly postId: string;
   readonly onClose: () => void;
+  /** Which view opens first: the post (the default) or Choose coin. */
+  readonly start?: 'post' | 'coins';
 }
 
 const CHART_HEIGHT = 120;
@@ -73,9 +78,9 @@ function mediaHeight(width: number | null, height: number | null): number {
   return Math.round(Math.min(inner * shape, window.innerHeight * MEDIA_TALLEST));
 }
 
-export function PostSheet({ postId, onClose }: PostSheetProps) {
+export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
   const [loaded, reload] = useLoad(`post-sheet:${postId}`, (signal) => fetchPostSheet(postId, signal));
-  const [view, setView] = useState<'post' | 'coins'>('post');
+  const [view, setView] = useState<'post' | 'coins'>(start);
   const [buying, setBuying] = useState<SheetCoin | null>(null);
   const [creating, setCreating] = useState(false);
   const [note, setNote] = useState<SheetNote | null>(null);
