@@ -64,7 +64,7 @@ if (setup.state !== 'configured') throw new Error(`the judge is ${setup.state}`)
 const price = priceFor(setup.model);
 if (price === null) throw new Error(`JUDGE_MODEL ${setup.model} has no price`);
 
-interface Post { readonly group: 'gold' | 'non-meme'; readonly id: string; readonly kind: string; readonly text: string; readonly imageUri: string | null }
+interface Post { readonly group: 'gold' | 'non-meme' | 'live-not' | 'live-meme'; readonly id: string; readonly kind: string; readonly text: string; readonly imageUri: string | null }
 const evidence = loadEvidence();
 const PICTURES = new URL('../eval/src/feed/gold-origin-pictures.json', import.meta.url);
 if (process.argv.includes('--refresh-pictures')) {
@@ -89,7 +89,19 @@ const gold: Post[] = tuning().flatMap((c) => {
 });
 const sample = JSON.parse(readFileSync(new URL('../eval/src/feed/non-meme-sample.json', import.meta.url), 'utf8')) as { posts: { itemId: string; kind: string; text: string; imageUri: string | null }[] };
 const nonMeme: Post[] = sample.posts.map((p) => ({ group: 'non-meme', id: p.itemId, kind: p.kind, text: p.text, imageUri: p.imageUri }));
-const posts = [...gold, ...nonMeme];
+/* The live set (eval/src/feed/live-labels.json): every post that passed or showed overnight,
+   labelled by the owner's rules — owner corrections win. "unsure" posts are left out. */
+const live = JSON.parse(readFileSync(new URL('../eval/src/feed/live-labels.json', import.meta.url), 'utf8')) as { posts: { itemId: string; text: string; imageUri: string | null; label: string; ownerLabel?: string; why: string }[] };
+/* `--examples=<file>` gives the judge a learned-examples block (tools/judge-examples.ts); its
+   posts are then left out of every group here, so the test never grades the examples. */
+const EXAMPLES_FILE = process.argv.find((a) => a.startsWith('--examples='))?.slice('--examples='.length) ?? null;
+const examples = EXAMPLES_FILE === null ? null : (JSON.parse(readFileSync(EXAMPLES_FILE, 'utf8')) as { text: string; exampleIds: string[] });
+const heldOut = new Set(examples?.exampleIds ?? []);
+const liveSet: Post[] = live.posts.filter((p) => !heldOut.has(p.itemId)).flatMap((p) => {
+  const label = p.ownerLabel ?? p.label;
+  return label === 'unsure' ? [] : [{ group: label === 'meme' ? ('live-meme' as const) : ('live-not' as const), id: p.itemId, kind: p.why, text: p.text, imageUri: p.imageUri }];
+});
+const posts = [...gold, ...nonMeme, ...liveSet];
 console.log(`${gold.length} gold origin posts, ${nonMeme.length} non-meme posts${TEXT_ONLY ? ', text only' : PICTURE_SIZE === null ? ', with pictures' : `, with pictures at ${PICTURE_SIZE}`}; at most $${(posts.length * USD_PER_POST).toFixed(2)}.`);
 
 const { meter, close } = await openSharedMeter(posts.length * USD_PER_POST);
@@ -130,7 +142,7 @@ const client: JudgeClient = {
 };
 const judge = anthropicJudge({
   client,
-  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post', batch: BATCH,
+  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post', examples: examples?.text ?? null, batch: BATCH,
 });
 
 /* The coined pictures, and each post's own picture embedded, for the boost. */
@@ -190,6 +202,12 @@ const rate = (g: Post['group']) => {
 };
 console.log(`\n[${LABEL}] gold origin posts:  ${rate('gold')}   — should pass`);
 console.log(`[${LABEL}] non-meme posts:     ${rate('non-meme')}   — should fail`);
+console.log(`[${LABEL}] live non-memes:     ${rate('live-not')}   — should fail`);
+console.log(`[${LABEL}] live memes:         ${rate('live-meme')}   — should pass`);
+for (const k of [...new Set(liveSet.filter((p) => p.group === 'live-not').map((p) => p.kind))]) {
+  const of = rows.filter((r) => r.group === 'live-not' && r.kind === k);
+  console.log(`    live: ${k.padEnd(48)} ${of.filter((r) => r.passes).length} of ${of.length} pass`);
+}
 for (const k of [...new Set(nonMeme.map((p) => p.kind))]) {
   const of = rows.filter((r) => r.group === 'non-meme' && r.kind === k);
   console.log(`    ${k.padEnd(24)} ${of.filter((r) => r.passes).length} of ${of.length} pass`);
