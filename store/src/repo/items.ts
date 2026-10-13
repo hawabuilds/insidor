@@ -158,23 +158,26 @@ export class PgItemRepo implements ItemRepo {
    * only join on a near-identical picture. Scoring one does not put it on the For You feed;
    * only a catch-all lane does that.
    */
-  async catchAllUnscored(at: Millis, limit: number, minReach: number | null = null): Promise<readonly Item[]> {
+  async catchAllUnscored(at: Millis, limit: number, minReach: number | null = null, lane: string | null = null): Promise<readonly Item[]> {
     /* With `minReach`, a catch-all post waits until some reading of its reach has reached it —
        the free check before the paid judge. A backfilled post is never held back: it is scored
-       for GROUP's name join, not for the feed. */
+       for GROUP's name join, not for the feed.
+       With `lane`, only that lane's posts (and no backfill): the short-video watch lane is read
+       on its own, because newest-first over every lane it never makes the page — the text lanes
+       add hundreds of unscored posts an hour (2026-10-13: 233 videos stored, none judged). */
     const rows = await this.#db.query<ItemRow>(
       `${SELECT_ITEM}
         where origin = 'observed'
           and first_seen_at >= $1
-          and ((exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id)
+          and ((exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id and ($4::text is null or f.lane = $4))
                 and ($3::double precision is null
                      or exists (select 1 from public.observation o
                                  where o.item_id = public.item.item_id and o.kind = 'reach' and o.value >= $3)))
-               or exists (select 1 from internal.item_backfill b where b.item_id = public.item.item_id))
+               or ($4::text is null and exists (select 1 from internal.item_backfill b where b.item_id = public.item.item_id)))
           and not exists (select 1 from internal.post_judgement j where j.item_id = public.item.item_id)
         order by first_seen_at desc
         limit $2`,
-      [toTimestamp(at), limit, minReach],
+      [toTimestamp(at), limit, minReach, lane],
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => this.#toItem(row, fingerprints));

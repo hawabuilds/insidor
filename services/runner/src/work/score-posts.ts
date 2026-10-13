@@ -149,7 +149,15 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   /* The database narrows to posts some reading has put at the lowest reach any path to the feed
      starts from; core then holds each to the exact bar. Fetched wide, so posts still below it
      cannot crowd out the ones above it. */
-  const wide = await deps.items.catchAllUnscored(since, r.postsPerPass * PREFETCH_FACTOR, Math.min(r.fypFastReachPerMinute, r.fypEarlyReach, r.fypMinReach));
+  const floor = Math.min(r.fypFastReachPerMinute, r.fypEarlyReach, r.fypMinReach);
+  /* The watch lane read on its own as well: newest-first over every lane, the text lanes' hundreds
+     of unscored posts an hour push a short video stored hours earlier off the page for good. */
+  const [everyLane, watchLane] = await Promise.all([
+    deps.items.catchAllUnscored(since, r.postsPerPass * PREFETCH_FACTOR, floor),
+    deps.items.catchAllUnscored(since, r.postsPerPass, floor, 'watch'),
+  ]);
+  const seen = new Set(everyLane.map((i) => String(i.itemId)));
+  const wide = [...everyLane, ...watchLane.filter((i) => !seen.has(String(i.itemId)))];
   const readings = await deps.items.reachReadings(wide.map((i) => i.itemId), since);
   const backfilled = await deps.items.backfilled(wide.map((i) => i.itemId));
   const queue = wide
