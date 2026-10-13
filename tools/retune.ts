@@ -9,9 +9,11 @@
  *   due [--detach]       what the `project` schedule runs every ten minutes: if the latest 08:00 or
  *                        20:00 London slot (Policy.learning.retuneAt/timeZone) has no run yet, runs
  *                        it. `--detach` starts that run and returns at once (see below).
- *   run [--dry] [--force] [--slot=<iso>]
+ *   run [--dry] [--force] [--baseline] [--slot=<iso>]
  *                        one run now (by hand: the slot is this minute). `--dry` tests and records
- *                        the block but never applies it; `--force` builds even with nothing new.
+ *                        the block but never applies it; `--force` builds even with nothing new;
+ *                        `--baseline` also grades the same test posts with no learned block, for a
+ *                        before-and-after on the same posts (about doubles the run's cost).
  *   measure              build and test a block now and print the result, writing nothing to the
  *                        database (no slot, no gold additions, no version, no alert) and reading
  *                        any table not yet migrated as empty. Paid like a run, on the learning book.
@@ -176,7 +178,7 @@ async function ownerCalls(repo: PgLearningRepo) {
 
 /* ── a run ───────────────────────────────────────────────────────────────────────────────────── */
 
-async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean }): Promise<void> {
+async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean }): Promise<void> {
   await withRepo(async (repo, owner) => {
     if (opts.record && !(await repo.claimSlot(slot, new Date()))) {
       log('info', 'this slot already ran', { slot: slot.toISOString() });
@@ -224,7 +226,25 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       } finally {
         await shared.close();
       }
-      const costUsd = shared.meter.spentUsd() + gold.xUsd;
+      /* `--baseline`: the same test posts graded by the judge as it runs before this block (its
+         rules alone, no learned examples), so the owner's table compares like with like. Paid on
+         the learning book, refused rather than dribbled when the line cannot cover it. */
+      let baseline: Record<'gold' | 'negatives' | 'missed', Rate> | null = null;
+      let baselineUsd = 0;
+      if (opts.baseline === true) {
+        const again = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning');
+        try {
+          const coined = await repo.coinedPictureVectors();
+          const base = await gradePosts(posts, { env, meter: again.meter, examples: null, batch: true, mustFit: true, coined });
+          const said = base.rows.filter((r) => r.coinable !== null);
+          baseline = { gold: rateOf(said, 'gold'), negatives: rateOf(said, 'live-not'), missed: rateOf(said, 'missed') };
+          log('info', 'retune baseline: the same posts, rules alone', { slot: slot.toISOString(), gold: baseline.gold, liveNegatives: baseline.negatives, missed: baseline.missed, unanswered: base.rows.length - said.length });
+        } finally {
+          baselineUsd = again.meter.spentUsd();
+          await again.close();
+        }
+      }
+      const costUsd = shared.meter.spentUsd() + gold.xUsd + baselineUsd;
 
       /* Unanswered posts are out of every rate, and stop the block being applied. */
       const answered = rows.filter((r) => r.coinable !== null);
@@ -257,7 +277,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const outcome = opts.dry ? 'dry' : apply ? 'applied' : 'kept';
       const summary = {
         slot: slot.toISOString(), version: versionId, outcome, why,
-        gold: rates.gold, liveNegatives: rates.negatives, missed: rates.missed, unanswered,
+        gold: rates.gold, liveNegatives: rates.negatives, missed: rates.missed, unanswered, baseline,
         learnedFrom: block.used, examples: block.exampleIds.length, added: delta.added, removed: delta.removed, chars: block.text.length,
         costUsd: Number(costUsd.toFixed(4)), batched, usage: used, goldAdded: gold.added, missReasons, matchingLessons: lessons,
       };
@@ -328,8 +348,8 @@ if (command === 'status') {
     log('info', 'retune started, detached', { slot: slot.toISOString() });
     process.exit(0);
   }
-  await run(slot, { dry: flag('--dry'), force: flag('--force'), record: true });
+  await run(slot, { dry: flag('--dry'), force: flag('--force'), record: true, baseline: flag('--baseline') });
 } else {
-  console.error('usage: tools/retune.ts due|run|measure|status [--yes] [--dry] [--force] [--detach] [--slot=<iso>]');
+  console.error('usage: tools/retune.ts due|run|measure|status [--yes] [--dry] [--force] [--baseline] [--detach] [--slot=<iso>]');
   process.exit(2);
 }
