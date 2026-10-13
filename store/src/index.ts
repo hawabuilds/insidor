@@ -30,6 +30,8 @@ export { PgCoinUniverseRepo } from './repo/coin-universe.ts';
 export type { AgedCoin, CoinMetadataRow, CoinToCheck, LookupTerm, NamingPost, StandingRow, UnreadCoin } from './repo/coin-universe.ts';
 export type { BackfilledPost, BackfillRun, BackfillVia } from './repo/backfill.ts';
 export { PgFeedFloorRepo } from './repo/feed-floor.ts';
+export { PgRecallRepo } from './repo/recall.ts';
+export type { GrowthPair, LaneMeasured, RecallDay, RecallRow, RecallRun } from './repo/recall.ts';
 export { PgImageEmbeddingRepo } from './repo/image-embeddings.ts';
 export { PgImagePairRepo } from './repo/image-pairs.ts';
 export type { ImageMatch, UnembeddedImage } from './repo/image-embeddings.ts';

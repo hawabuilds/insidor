@@ -60,6 +60,9 @@ if (service in MAIN) {
     { name: 'pairs', everyMs: 300_000, args: ['tools/db.mjs', 'pairs'] },
     { name: 'sources', everyMs: 300_000, args: ['services/project/src/sources-main.ts'] },
     { name: 'label', everyMs: 3_600_000, args: ['tools/db.mjs', 'label'] },
+    /* Once a day: did discovery hold each bonded coin's linked X post before it launched
+       (internal.recall_check). Detached, because a day's reads outlast the board's health bar. */
+    { name: 'recall', everyMs: 86_400_000, args: ['tools/recall-check.ts', 'daily', '--yes', '--detach'] },
   ];
   const last = new Map();
   const due = (job, now) => now - (last.get(job.name)?.at ?? 0) >= job.everyMs;
