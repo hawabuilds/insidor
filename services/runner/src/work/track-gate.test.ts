@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { TrackingFacts, TrackingJudgement } from '@insidor/store';
 
-import { worthRereading } from './track-gate.ts';
+import { staleUnpassed, worthRereading } from './track-gate.ts';
 
 const P = DEFAULT_POLICY;
 const r = P.rising;
@@ -53,4 +53,20 @@ test('an unjudged watch post is re-read only while its narrative is on the board
   assert.equal(worthRereading('w', shown, P), true);
   const hidden = facts({ storiesOf: new Map([['w', ['s']]]), membersOf: new Map([['s', members]]), judged: new Map([['p1', yes], ['p2', firmNo]]) });
   assert.equal(worthRereading('w', hidden, P), false);
+});
+
+test('★ the stale cut is off by default: an old unjudged post keeps its re-reads', () => {
+  const now = 100 * 3_600_000;
+  assert.equal(staleUnpassed('a', now - 10 * 3_600_000, now, facts(), P), false);
+});
+
+test('the stale cut, on: an unjudged post off every feed past six hours is dropped; judged, on a feed, younger or undated is kept', () => {
+  const on = { ...P, feed: { ...P.feed, fresh: { ...P.feed.fresh, cutStale: true } } };
+  const now = 100 * 3_600_000;
+  const old = now - P.feed.fresh.staleAfterMs - 1;
+  assert.equal(staleUnpassed('a', old, now, facts(), on), true);
+  assert.equal(staleUnpassed('a', old, now, facts({ judged: new Map([['a', yes]]) }), on), false);
+  assert.equal(staleUnpassed('a', old, now, facts({ onFeed: new Set(['a']) }), on), false);
+  assert.equal(staleUnpassed('a', now - P.feed.fresh.staleAfterMs, now, facts(), on), false);
+  assert.equal(staleUnpassed('a', null, now, facts(), on), false);
 });

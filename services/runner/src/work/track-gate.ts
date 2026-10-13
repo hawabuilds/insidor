@@ -57,3 +57,17 @@ export function worthRereading(itemId: string, facts: TrackingFacts, policy: Pol
   if (facts.catchAll.has(itemId)) return true;
   return (facts.storiesOf.get(itemId) ?? []).some((s) => narrativeShown(s, facts, policy));
 }
+
+/**
+ * ★ THE STALE CUT (`feed.fresh.cutStale`, off by default): a post older than `fresh.staleAfterMs`
+ * that has not passed the bar (never judged) and is on no feed is not re-read. It is in TRACK only
+ * as a member of a promoted narrative, and measured over 2026-10-13 such posts almost never pass:
+ * 51 were re-read past six hours, 795 reads, and none reached For You. A post with no time is
+ * not shown to be old, so it is kept.
+ */
+export function staleUnpassed(itemId: string, postedAt: number | null, now: number, facts: TrackingFacts, policy: Policy): boolean {
+  const f = policy.feed.fresh;
+  if (!f.cutStale || postedAt === null) return false;
+  if (now - postedAt <= f.staleAfterMs) return false;
+  return !facts.judged.has(itemId) && !facts.onFeed.has(itemId);
+}
