@@ -289,10 +289,12 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         ...missedTaught.map((c) => ({ group: 'missed-taught' as const, id: c.itemId, kind: 'missed (taught)', text: c.text, imageUri: c.imageUri })),
       ];
       /* The owner's "meme" calls the cap left out of the block, and the posts the owner confirmed a
-         coin for: hand gold, unless already in the test or taught. */
+         coin for: hand gold, unless already in the test or taught. A "meme" call whose note starts
+         "teaching example" (e.g. a post from before a source was watched) teaches the judge but is
+         never gold, by the owner's choice. */
       const inTest = new Set(posts.map((p) => p.id));
       const fresh = (id: string) => !inTest.has(id) && !taught.has(id);
-      const tappedMemes = block.testMemes.filter((c) => fresh(c.itemId));
+      const tappedMemes = block.testMemes.filter((c) => fresh(c.itemId) && !/^teaching example/i.test(c.why ?? ''));
       for (const c of tappedMemes) { posts.push({ group: 'gold', id: c.itemId, kind: "the owner's meme call", text: c.text, imageUri: c.imageUri }); inTest.add(c.itemId); }
       const coinGold = await soft(repo.heldPosts(coinRight.map((m) => m.itemId).filter(fresh)), []);
       for (const h of coinGold) posts.push({ group: 'gold', id: h.itemId, kind: "the owner's coin call: this is the coin", text: h.body, imageUri: pictureOf(h.media)?.uri ?? null, coinRef: coinRight.find((m) => m.itemId === h.itemId)?.coinAddress ?? h.itemId });
