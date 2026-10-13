@@ -1143,6 +1143,22 @@ export interface RisingPolicy {
    * ("Kacey Musgraves dog shot response"), and does not reach the feed. No name at all fails too.
    */
   readonly maxNameWords: number;
+  /**
+   * ★ THE REACH BARS. A post reaches For You at `fypMinReach`, OR earlier when it is taking off:
+   * `fypEarlyReach` within `fypEarlyWindowMs` of being posted, or `fypFastReachPerMinute` on
+   * average at any reading inside `fypFastWindowMs`. Popular needs `popularMinReach`. A post
+   * whose reach we have not read is on neither: an unread count is not a small one.
+   *
+   * The owner's numbers (2026-10-13). Checked against the gold sheets: a third of coins launch
+   * within 30 minutes of their post, which only the growth paths can catch in time; 4 of 41
+   * origin posts never passed 60k reach at all, and 40k shuts those out.
+   */
+  readonly fypMinReach: number;
+  readonly fypEarlyReach: number;
+  readonly fypEarlyWindowMs: number;
+  readonly fypFastReachPerMinute: number;
+  readonly fypFastWindowMs: number;
+  readonly popularMinReach: number;
 }
 
 export interface IngestPolicy {
@@ -2363,6 +2379,12 @@ const POLICY_V1: Policy = {
     maxRows: 60,
     postsPerPass: 200,
     maxNameWords: 3,
+    fypMinReach: 40_000,
+    fypEarlyReach: 10_000,
+    fypEarlyWindowMs: 900_000, // fifteen minutes
+    fypFastReachPerMinute: 1_000,
+    fypFastWindowMs: 3_600_000, // the first hour
+    popularMinReach: 250_000,
   },
 
   rank: {
