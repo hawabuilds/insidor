@@ -28,6 +28,23 @@ import type { ReachLevel } from '@insidor/core';
 
 const MS_PER_MINUTE = 60_000;
 
+/**
+ * Views a minute between the newest reading (inside `fypGrowthWindowMs` of now) and the earliest
+ * one in the window before it, at least `fypGrowthMinSpanMs` apart; null when the readings cannot
+ * say. The freshness rule's growth, and For You's order within a pass route (rising.ts).
+ */
+export function recentGrowthPerMinute(views: readonly ReachLevel[], nowMs: number, policy = DEFAULT_POLICY): number | null {
+  const r = policy.rising;
+  const counted = views.filter((v): v is { atMs: number; reach: number } => v.reach !== null).sort((a, b) => a.atMs - b.atMs);
+  const newest = counted[counted.length - 1];
+  if (newest === undefined || nowMs - newest.atMs > r.fypGrowthWindowMs) return null;
+  const earliest = counted.find((v) => v.atMs >= newest.atMs - r.fypGrowthWindowMs);
+  if (earliest === undefined) return null;
+  const spanMs = newest.atMs - earliest.atMs;
+  if (spanMs < r.fypGrowthMinSpanMs) return null;
+  return (newest.reach - earliest.reach) / (spanMs / MS_PER_MINUTE);
+}
+
 /** True when the post may stay on For You: young enough, or old and still climbing fast. */
 export function freshForYou(
   views: readonly ReachLevel[],
@@ -38,12 +55,6 @@ export function freshForYou(
 ): boolean {
   const r = policy.rising;
   if (nowMs - postedAtMs <= r.fypMaxAgeMs) return true;
-  const counted = views.filter((v): v is { atMs: number; reach: number } => v.reach !== null).sort((a, b) => a.atMs - b.atMs);
-  const newest = counted[counted.length - 1];
-  if (newest === undefined || nowMs - newest.atMs > r.fypGrowthWindowMs) return false;
-  const earliest = counted.find((v) => v.atMs >= newest.atMs - r.fypGrowthWindowMs);
-  if (earliest === undefined) return false;
-  const spanMs = newest.atMs - earliest.atMs;
-  if (spanMs < r.fypGrowthMinSpanMs) return false;
-  return (newest.reach - earliest.reach) / (spanMs / MS_PER_MINUTE) >= r.fypStillGrowingPerMinute * scale;
+  const growth = recentGrowthPerMinute(views, nowMs, policy);
+  return growth !== null && growth >= r.fypStillGrowingPerMinute * scale;
 }
