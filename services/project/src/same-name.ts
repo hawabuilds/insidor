@@ -24,27 +24,46 @@
 import type { Db } from '@insidor/store';
 
 import type { StoryFacts } from './project.ts';
-import type { WireCoinLink } from './wire.ts';
+import type { WireCoinEvidence, WireCoinLink } from './wire.ts';
 
 export type SameNameKind = 'story' | 'post';
 
-/** Every list of one kind, replacing whatever the last run wrote for that kind. */
-export async function writeSameNameCoins(db: Db, kind: SameNameKind, lists: ReadonlyMap<string, readonly string[]>): Promise<number> {
+/**
+ * Every list of one kind, replacing whatever the last run wrote for that kind. Each list is in
+ * the order it will be shown (`position`); a post's list carries each coin's facts against the
+ * post (0058) when its coins were weighed, and nulls — "not known", never "no" — otherwise.
+ */
+export async function writeSameNameCoins(
+  db: Db,
+  kind: SameNameKind,
+  lists: ReadonlyMap<string, readonly string[]>,
+  evidence: ReadonlyMap<string, ReadonlyMap<string, WireCoinEvidence>> = new Map(),
+): Promise<number> {
   await db.query(`delete from public.same_name_coin where subject_kind = $1`, [kind]);
   const ids: string[] = [];
   const addresses: string[] = [];
+  const links: (boolean | null)[] = [];
+  const pictures: (boolean | null)[] = [];
+  const after: (number | null)[] = [];
+  const positions: number[] = [];
   for (const [id, list] of lists) {
-    for (const address of new Set(list)) {
+    [...new Set(list)].forEach((address, position) => {
+      const e = evidence.get(id)?.get(address);
       ids.push(id);
       addresses.push(address);
-    }
+      links.push(e?.linksPost ?? null);
+      pictures.push(e?.samePicture ?? null);
+      after.push(e?.launchedAfterMs ?? null);
+      positions.push(position);
+    });
   }
   if (ids.length === 0) return 0;
   await db.query(
-    `insert into public.same_name_coin (subject_kind, subject_id, address)
-     select $1, s.id, s.address from unnest($2::text[], $3::text[]) as s(id, address)
+    `insert into public.same_name_coin (subject_kind, subject_id, address, links_post, same_picture, launched_after_ms, position)
+     select $1, s.id, s.address, s.links, s.picture, s.after, s.position
+       from unnest($2::text[], $3::text[], $4::boolean[], $5::boolean[], $6::bigint[], $7::int[]) as s(id, address, links, picture, after, position)
      on conflict do nothing`,
-    [kind, ids, addresses],
+    [kind, ids, addresses, links, pictures, after, positions],
   );
   return ids.length;
 }

@@ -18,8 +18,8 @@
  * line. Never the score, never anything
  * TRACK or the judge computed.
  *
- * ★ EVERY ROW SAYS WHERE ITS COIN STANDS, AND A COIN ONLY EVER COMES THROUGH A NARRATIVE.
- * `coins` is never null; it is one of these, decided in `postCoins` below:
+ * ★ EVERY ROW SAYS WHERE ITS COIN STANDS. `coins` is never null; it is one of these, decided in
+ * `postCoins` below:
  *
  *   the post's promoted story names one coin, several, or is unsure → that story's own link,
  *                                       with its story id (if the read has a story, the story
@@ -27,6 +27,10 @@
  *                                       answer and nothing else;
  *   the post's name was searched (internal.coin_lookup) and no coin we hold by name came back
  *                                       → `none`;
+ *   it was searched and the evidence settles one coin (post-match.ts, core `matchPostCoin`:
+ *                                       links this post, or same picture and launched after,
+ *                                       or the only coin launched after under the exact name)
+ *                                       → `matched`, with the coin and the facts that settled it;
  *   it was searched and launchpad coins came back → `unsure` with how many: coins exist, and
  *                                       nothing has said which, if any, is this post's. The
  *                                       count is the length of the list written beside it
@@ -42,7 +46,8 @@
  *   nothing searched yet                → `pending`, a dash — never "no coin yet", which
  *                                       would be a claim about the world we had not checked.
  *
- * A search never puts a coin on a post: the one-coin link only ever comes from a story's row.
+ * A search alone never puts a coin on a post: `matched` needs evidence beyond the name, and the
+ * board's `one` only ever comes from a story's row.
  *
  * ★ THE OWNER'S CALL WINS OVER THE JUDGE'S (owner-calls.ts). "Not a meme" keeps a post off both
  * feeds, recorded as `owner_not_meme`; "Is a meme" passes it whatever the judge said, judged or
@@ -58,14 +63,16 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar, postScoreReason, type ReachLevel } from '@insidor/core';
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
 
-import { loadReach, pictureOf, sourceLabel } from './db.ts';
+import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.ts';
+import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from './post-match.ts';
+import { projectCoin } from './project.ts';
 import { withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { writeSameNameCoins } from './same-name.ts';
 import { permalinkFor } from './permalinks.ts';
 import { projectReach, projectSpark } from './project.ts';
 import type { ReachReading } from './project.ts';
 import { assertNoInternalVocabulary, instant } from './wire.ts';
-import type { WireCoinLink, WireInstant, WireMeasured, WirePostCoinLink, WireSpark } from './wire.ts';
+import type { WireCoin, WireCoinEvidence, WireCoinLink, WireInstant, WireMeasured, WirePostCoinLink, WireSpark } from './wire.ts';
 
 export const RISING_FEEDS = ['fyp', 'popular'] as const;
 export type RisingFeed = (typeof RISING_FEEDS)[number];
@@ -217,7 +224,15 @@ export async function loadPostLookups(
  * A finished search for a post's name — the coins it kept that we can list, newest launch first,
  * and whether it found more than it kept — or none in time.
  */
-export type PostLookup = { readonly coins: readonly string[]; readonly more: boolean } | { readonly gaveUp: true };
+export type PostLookup = { readonly coins: readonly string[]; readonly more: boolean; readonly match?: PostLookupMatch } | { readonly gaveUp: true };
+
+/**
+ * The coins weighed (post-match.ts): one coin settled with the facts that settled it, or the
+ * list in evidence order with each coin's facts. Absent when nothing was weighed.
+ */
+export type PostLookupMatch =
+  | { readonly kind: 'matched'; readonly coin: WireCoin; readonly evidence: WireCoinEvidence }
+  | { readonly kind: 'unsure'; readonly order: readonly string[]; readonly evidence: ReadonlyMap<string, WireCoinEvidence> };
 
 /** The row's coin line and the story it came from, by the rule in the header. */
 export function postCoins(
@@ -230,7 +245,12 @@ export function postCoins(
   if (lookup !== null && 'coins' in lookup) {
     const n = lookup.coins.length;
     if (n === 0) return { coins: { kind: 'none' }, fromStory: false, sameName: [] };
-    return { coins: lookup.more ? { kind: 'unsure', claimCount: n, more: true } : { kind: 'unsure', claimCount: n }, fromStory: false, sameName: lookup.coins };
+    const m = lookup.match;
+    if (m?.kind === 'matched') return { coins: { kind: 'matched', coin: m.coin, evidence: m.evidence }, fromStory: false, sameName: [] };
+    /* Strongest evidence first when the coins were weighed; the list is the same coins either way. */
+    const listed = new Set(lookup.coins);
+    const sameName = m?.kind === 'unsure' ? [...m.order.filter((a) => listed.has(a)), ...lookup.coins.filter((a) => !m.order.includes(a))] : lookup.coins;
+    return { coins: lookup.more ? { kind: 'unsure', claimCount: n, more: true } : { kind: 'unsure', claimCount: n }, fromStory: false, sameName };
   }
   if (storyLink !== undefined && storyLink.kind === 'none') return { coins: storyLink, fromStory: true, sameName: [] };
   if (lookup !== null) return { coins: { kind: 'unchecked' }, fromStory: false, sameName: [] };
@@ -302,8 +322,10 @@ export interface RisingFrame {
    * Read only to record why a post that WAS showing left (public.feed_rejection); never sent.
    */
   readonly whyNot: ReadonlyMap<string, FeedRejectionReason>;
-  /** The coins behind each shown post's own unsure count, by post id (same-name.ts). */
+  /** The coins behind each shown post's own unsure count, by post id (same-name.ts), strongest evidence first. */
   readonly sameName: ReadonlyMap<string, readonly string[]>;
+  /** Each listed coin's facts against its post, by post id then address (0058). */
+  readonly sameNameEvidence: ReadonlyMap<string, ReadonlyMap<string, WireCoinEvidence>>;
 }
 
 /**
@@ -335,7 +357,7 @@ export async function buildRising(
     return why === 'passes';
   });
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
-  const lookups = await loadPostLookups(db, rows.map((row) => row.item_id));
+  const lookups = await withMatches(db, rows, await loadPostLookups(db, rows.map((row) => row.item_id)), coinsByStory, nowMs, sparkWindowMs, policy);
   const posts = rows.map((row) => {
     const readings = reach.get(row.item_id) ?? [];
     /* Measured counts only: a censored reading's last level is an older number, and read at a
@@ -366,7 +388,57 @@ export async function buildRising(
   const shown = { fyp: cap(fyp), popular: cap(popular) };
   const ids = new Set([...shown.fyp, ...shown.popular].map((p) => p.id));
   const sameName = new Map(posts.filter((p) => ids.has(p.post.id) && p.sameName.length > 0).map((p) => [p.post.id, p.sameName] as const));
-  return { ...shown, whyNot, sameName };
+  const sameNameEvidence = new Map<string, ReadonlyMap<string, WireCoinEvidence>>();
+  for (const id of sameName.keys()) {
+    const l = lookups.get(id);
+    if (l !== undefined && 'coins' in l && l.match?.kind === 'unsure') sameNameEvidence.set(id, l.match.evidence);
+  }
+  return { ...shown, whyNot, sameName, sameNameEvidence };
+}
+
+/**
+ * Each searched post's coins weighed by evidence (post-match.ts), the answer folded into its
+ * lookup: a confident coin is projected as the board projects its coins, with its market. A post
+ * whose narrative decides its coins is not weighed — if the read has a story, the story decides.
+ */
+async function withMatches(
+  db: Db,
+  rows: readonly RisingRow[],
+  lookups: ReadonlyMap<string, PostLookup>,
+  coinsByStory: ReadonlyMap<string, WireCoinLink>,
+  nowMs: Millis,
+  sparkWindowMs: number,
+  policy: typeof DEFAULT_POLICY,
+): Promise<ReadonlyMap<string, PostLookup>> {
+  const lists = new Map<string, readonly string[]>();
+  for (const row of rows) {
+    const story = row.story_id === null ? undefined : coinsByStory.get(row.story_id)?.kind;
+    if (story === 'one' || story === 'several' || story === 'unsure') continue;
+    const l = lookups.get(row.item_id);
+    if (l !== undefined && 'coins' in l && l.coins.length > 0) lists.set(row.item_id, l.coins);
+  }
+  if (lists.size === 0) return lookups;
+  const weighed: ReadonlyMap<string, PostMatch> = await weighPostCoins(db, lists, policy);
+  const confident = [...weighed.values()].flatMap((m) => (m.decision.kind === 'confident' ? [m.decision.address] : []));
+  const facts = await loadCoinFactsByAddress(db, confident);
+  const options = { nowMs, sparkWindowMs, marketFreshnessMs: policy.market.readingFreshnessMs, feedFreshnessMs: policy.assets.feedFreshnessMs };
+  const out = new Map(lookups);
+  for (const [itemId, m] of weighed) {
+    const l = lookups.get(itemId);
+    if (l === undefined || !('coins' in l)) continue;
+    const evidence = new Map(m.evidence.map(({ address, ...e }) => [address, e] as const));
+    const d = m.decision;
+    const coin = d.kind === 'confident' ? facts.get(d.address) : undefined;
+    const e = d.kind === 'confident' ? evidence.get(d.address) : undefined;
+    /* A confident coin we cannot project (not an observed coin we hold) stays in the list: the
+       card never offers Buy on a coin it cannot show. */
+    if (coin !== undefined && e !== undefined) {
+      out.set(itemId, { ...l, match: { kind: 'matched', coin: projectCoin(coin, options), evidence: e } });
+    } else {
+      out.set(itemId, { ...l, match: { kind: 'unsure', order: m.evidence.map((x) => x.address), evidence } });
+    }
+  }
+  return out;
 }
 
 /** Write one feed's frame: the view row first, then its rows, in the caller's transaction. */
@@ -412,6 +484,8 @@ export async function projectRisingFeeds(
   });
   await new PgFeedRejectionRepo(db).record(left);
   /* The coins behind each unsure post's count, in this transaction with the rows that show it. */
-  await writeSameNameCoins(db, 'post', frame.sameName);
+  await writeSameNameCoins(db, 'post', frame.sameName, frame.sameNameEvidence);
+  /* Each shown post's name ideas for Create (0058), with the feeds they belong to. */
+  await writeNameIdeas(db, await loadNameIdeas(db, [...new Set([...frame.fyp, ...frame.popular].map((p) => p.id))]));
   return (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
 }

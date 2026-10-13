@@ -2166,3 +2166,28 @@ export async function writeSources(
   );
   return sources.length;
 }
+
+/**
+ * The coins a feed post's own match names, by address, as the board's coins are loaded: the
+ * asset row, its newest market reading and its origin. Observed origins only (OBSERVED_ORIGINS):
+ * a post asserts a live coin, so a fixture can never be one. A coin we do not hold is absent.
+ * Used by post-match.ts; a separate reader because the board's is per story and time-windowed.
+ */
+export async function loadCoinFactsByAddress(db: Db, addresses: readonly string[]): Promise<ReadonlyMap<string, CoinFacts>> {
+  const out = new Map<string, CoinFacts>();
+  if (addresses.length === 0) return out;
+  const rows = await db.query<AssetRow>(
+    `select '' as story_id, a.asset_key, a.address, a.venue_id,
+            left(a.symbol, $2::int) as symbol, left(a.name, $2::int) as name, a.image_uri, a.minted_at, a.origin
+       from public.asset a
+      where a.address = any($1::text[]) and a.origin = any($3::text[])`,
+    [[...addresses], TRANSPORT_TEXT_CAP, OBSERVED_ORIGINS],
+  );
+  const keys = rows.map((r) => r.asset_key);
+  const markets = await loadMarketReadings(db, keys);
+  const origins = await loadCoinOrigins(db, keys);
+  for (const row of rows) {
+    out.set(row.address, { ...toCoinFacts(row, markets.get(row.asset_key) ?? null), origin: origins.get(row.asset_key) ?? null, foundBySearch: row.origin === 'backfill' });
+  }
+  return out;
+}
