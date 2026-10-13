@@ -1,6 +1,6 @@
 /**
  * THE TRADE RECORD: every transaction this service builds or sends, written to public.trade
- * (0064) at build, at send, and when it is seen landed — so the Portfolio and an audit can see
+ * (0062) at build, at send, and when it is seen landed — so the Portfolio and an audit can see
  * real trades, not reconstruct them from logs.
  *
  * Its own file because the routes must not know how a record is kept, and because the one rule
@@ -19,7 +19,7 @@
  * found leaves the row `sent`, because a lookup that came back empty says nothing about the
  * trade.
  *
- * Never a key and never the transaction bytes: only the facts the 0064 header lists.
+ * Never a key and never the transaction bytes: only the facts the 0062 header lists.
  */
 
 import { createHash } from 'node:crypto';
@@ -78,7 +78,7 @@ interface Query {
   query(sql: string, params: readonly unknown[]): Promise<unknown>;
 }
 
-/** Records through 0064's functions. Every write's failure is logged and swallowed — see the header. */
+/** Records through 0062's functions. Every write's failure is logged and swallowed — see the header. */
 export function pgRecords(db: Query, log: { error(msg: string, f?: Record<string, unknown>): void }): TradeRecords {
   const run = async (what: string, sql: string, params: readonly unknown[]): Promise<void> => {
     try {

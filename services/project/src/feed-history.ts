@@ -1,5 +1,5 @@
 /**
- * The projector's hourly feed history (0065): after the feeds are written, the posts they show
+ * The projector's hourly feed history (0063): after the feeds are written, the posts they show
  * are added to the hour's record, in the same transaction, so "shown per hour" can be counted.
  *
  * Its own file so the feed writer (rising.ts) stays about what is on screen now; this is one
