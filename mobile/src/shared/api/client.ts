@@ -17,6 +17,7 @@
  */
 
 import { notImplemented } from '../not-implemented.ts';
+import { decodeCoinAbout, type CoinAbout } from './about.ts';
 import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, SameNameCoins, SearchedCoin, SearchResults } from './wire/search.ts';
@@ -81,6 +82,11 @@ export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Pro
 /** A coin's price history for one view, its latest trades and, on the curve, its progress. */
 export async function fetchCoinMarket(coinId: string, timeframe: MarketTimeframe, signal?: AbortSignal): Promise<CoinMarket> {
   return decodeCoinMarket(await read(`/coin/${encodeURIComponent(coinId)}/market?tf=${timeframe}`, signal));
+}
+
+/** A coin's links, day numbers, holders, creator and the feed posts naming it: the token page's Info tab. */
+export async function fetchCoinAbout(coinId: string, signal?: AbortSignal): Promise<CoinAbout> {
+  return decodeCoinAbout(await read(`/coin/${encodeURIComponent(coinId)}/about`, signal));
 }
 
 /** The Portfolio tab: what this wallet holds and what it is worth. The app asks only for its own. */

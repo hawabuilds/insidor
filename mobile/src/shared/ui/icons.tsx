@@ -213,6 +213,44 @@ export const PlusIcon = (p: IconProps) => (
   </Stroke>
 );
 
+/* ── a coin's own links, Trador's SocialRow glyphs ───────────────────── */
+
+/** X's logo, filled, as Trador's XIcon draws it: the link button, not the platform badge. */
+export const XLogoIcon = ({ size = 20, ...rest }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...rest}>
+    <path d="M18.9 2H22l-7.6 8.7L23 22h-6.8l-5.3-6.9L4.8 22H1.7l8.1-9.3L1 2h7l4.8 6.3L18.9 2zm-2.4 18h1.9L7.5 4H5.5l11 16z" />
+  </svg>
+);
+
+export const TelegramIcon = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M21 4.5L2.9 11.4c-.9.34-.88 1.62.03 1.93l4.4 1.5 1.7 5.1c.26.78 1.27.96 1.79.33l2.36-2.87 4.42 3.25c.63.46 1.53.12 1.7-.65L22.4 5.6c.17-.8-.63-1.42-1.4-1.1z" />
+    <path d="M7.33 14.83L18.4 7.2l-7.7 8.36-.3 3.9" strokeWidth={1.6} />
+  </Stroke>
+);
+
+export const GlobeIcon = (p: IconProps) => (
+  <Stroke {...p}>
+    <circle cx="12" cy="12" r="8.6" />
+    <path d="M3.4 12h17.2M12 3.4c2.2 2.4 3.3 5.4 3.3 8.6s-1.1 6.2-3.3 8.6c-2.2-2.4-3.3-5.4-3.3-8.6S9.8 5.8 12 3.4z" strokeWidth={1.7} />
+  </Stroke>
+);
+
+/** Trador's ArrowUpIcon: the like on a comment. */
+export const ArrowUpIcon = (p: IconProps) => (
+  <Stroke {...p} strokeWidth={2.2}>
+    <path d="M12 19V5M6 11l6-6 6 6" />
+  </Stroke>
+);
+
+/** Trador's ReplyIcon. */
+export const ReplyIcon = (p: IconProps) => (
+  <Stroke {...p} strokeWidth={2}>
+    <path d="M10 7L5 12l5 5" />
+    <path d="M5 12h9a5 5 0 015 5v1" />
+  </Stroke>
+);
+
 /* ── platform marks ────────────────────────────────────────────────── */
 
 export const XMark = (p: IconProps) => (

@@ -20,8 +20,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { fetchCoinMarket, type CoinMarket, type MarketTimeframe } from '../../shared/api/index.ts';
-import type { Instant, Measured } from '../../shared/format/measure.ts';
+import { fetchCoinAbout, fetchCoinMarket, type CoinAbout, type CoinMarket, type MarketTimeframe } from '../../shared/api/index.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { useWallet } from '../../shared/wallet.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
@@ -31,27 +30,13 @@ import { Comments } from '../comments/Comments.tsx';
 import { TradeBar } from '../trade/TradeBar.tsx';
 import { defaultTimeframe } from './chart-data.ts';
 import { CoinChart } from './CoinChart.tsx';
+import { InfoPanel } from './InfoPanel.tsx';
+import { SocialRow } from './SocialRow.tsx';
+import type { TokenFacts } from './token-facts.ts';
 import { TradesPanel } from './TradesPanel.tsx';
-import styles from './token.module.css';
 
-/** What the page knows about the coin before its market is read. */
-export interface TokenFacts {
-  readonly coinId: string;
-  readonly address: string;
-  readonly ticker: string | null;
-  readonly name: string | null;
-  readonly imageUrl: string | null;
-  readonly launchedAt: Instant;
-  readonly price: Measured;
-  readonly change24h: Measured;
-  readonly marketCapUsd: Measured;
-  /** Null where nothing has read it (a searched coin): the chip is left out rather than dashed. */
-  readonly liquidityUsd: Measured | null;
-  /** Where it trades, when known before the market is read. */
-  readonly venue: 'curve' | 'pool' | null;
-  /** The launchpad's name as the server says it. */
-  readonly venueLabel: string;
-}
+export type { TokenFacts } from './token-facts.ts';
+import styles from './token.module.css';
 
 type Panel = 'trades' | 'comments' | 'info';
 
@@ -75,16 +60,14 @@ export function tradesNote(state: 'loading' | 'ready' | 'failed', market: CoinMa
   return 'No trades yet.';
 }
 
-export function TokenView({ facts, chips = [], notice = null, links = null, info, offBar }: {
+export function TokenView({ facts, chips = [], notice = null, insidor = null, offBar }: {
   facts: TokenFacts;
   /** Fact chips after the pair and launchpad: "Created on Insidor" and the like. */
   chips?: readonly string[];
   /** A sample or unobserved narrative's notice, above everything: a fiction is labelled. */
   notice?: ReactNode;
-  /** The coin's own links, beside the name (SocialRow), or nothing. */
-  links?: ReactNode;
-  /** The Info tab's body. */
-  info: (market: CoinMarket | null) => ReactNode;
+  /** Insidor's part of the Info tab that only this page knows: the narrative and the coin's origin. */
+  insidor?: ReactNode;
   /** What stands in for Buy and Sell while trading is off. */
   offBar: ReactNode;
 }) {
@@ -104,6 +87,9 @@ export function TokenView({ facts, chips = [], notice = null, links = null, info
     return () => clearInterval(timer);
   }, [reload]);
   const market: CoinMarket | null = loaded.state === 'ready' ? loaded.value : null;
+  /* The links, day numbers, holders, creator and posts: read once when the page opens. */
+  const [aboutLoad] = useLoad(`about:${facts.coinId}`, (signal) => fetchCoinAbout(facts.coinId, signal));
+  const about: CoinAbout | null = aboutLoad.state === 'ready' ? aboutLoad.value : null;
   const read = market?.kind === 'read' ? market : null;
   const venue = read?.venue ?? facts.venue;
   const progress = read?.curveProgress?.known ? Math.min(100, Math.max(0, read.curveProgress.amount * 100)) : null;
@@ -130,7 +116,8 @@ export function TokenView({ facts, chips = [], notice = null, links = null, info
           <h1>{ticker}</h1>
           <div className={styles['name']}>{facts.name ?? ''}</div>
         </div>
-        {links}
+        {/* The coin's own links, aligned to the logo as Trador aligns them; none, no row. */}
+        {about !== null ? <SocialRow links={about.links} /> : null}
       </div>
 
       <div className={styles['chips']}>
@@ -174,7 +161,7 @@ export function TokenView({ facts, chips = [], notice = null, links = null, info
       <div className={styles['panel']}>
         {panel === 'trades' ? <TradesPanel ticker={ticker} trades={read?.trades != null && read.trades.length > 0 ? read.trades : null} note={tradesNote(loaded.state, market)} account={account} now={now} /> : null}
         {panel === 'comments' ? <Comments subject={`coin:${facts.coinId}`} holdersOf={facts.ticker !== null ? `$${facts.ticker}` : 'this coin'} /> : null}
-        {panel === 'info' ? info(market) : null}
+        {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} tradable={facts.tradable} now={now} insidor={insidor} /> : null}
       </div>
 
       <TradeBar mint={facts.address} ticker={ticker} off={offBar} />

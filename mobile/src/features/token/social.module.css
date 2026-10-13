@@ -1,0 +1,46 @@
+/* A coin's own links: Trador's SocialRow — 32px round buttons, faint until pressed — and the
+   destination a long press shows, under the row. */
+
+.row {
+  position: relative;
+  flex-shrink: 0;
+  margin: -4px -6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.link {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-3);
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.link:active,
+.link:hover {
+  background: var(--overlay-wash);
+  color: var(--text-1);
+}
+
+.label {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--popup);
+  box-shadow: var(--shadow-panel);
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
