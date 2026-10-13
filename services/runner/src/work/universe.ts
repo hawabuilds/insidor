@@ -48,16 +48,16 @@ export interface MetadataReader {
   >;
 }
 
-export interface UniverseDeps {
-  readonly coins: Pick<PgCoinUniverseRepo, 'unread' | 'recordMetadata' | 'unchecked' | 'recordOrigin' | 'postsNaming'>;
 /** The creator's own host, read behind the adapter's address fence; `refused` is a link we will not fetch. */
 export type DeclaredReader = (uri: string | null) => Promise<{ readonly kind: 'read'; readonly metadata: Extract<Awaited<ReturnType<MetadataReader['read']>>, { kind: 'read' }>['metadata'] } | { readonly kind: 'refused'; readonly why: string }>;
 
+export interface UniverseDeps {
+  readonly coins: Pick<PgCoinUniverseRepo, 'unread' | 'recordMetadata' | 'unchecked' | 'recordOrigin' | 'postsNaming'>;
   readonly metadata: MetadataReader;
-  readonly platforms: Pick<PlatformRegistry, 'all'>;
-  readonly items: Pick<PgItemRepo, 'byIds'>;
   /** A link that names no content id, read from its own host. Absent: recorded not content-addressed, as before. */
   readonly declared?: DeclaredReader;
+  readonly platforms: Pick<PlatformRegistry, 'all'>;
+  readonly items: Pick<PgItemRepo, 'byIds'>;
   readonly authors: Pick<PgAuthorRepo, 'byKeys'>;
   readonly postScores: Pick<PgPostJudgementRepo, 'latest' | 'record'>;
   readonly images: Pick<PgImageEmbeddingRepo, 'has' | 'record' | 'coinSimilarity'>;

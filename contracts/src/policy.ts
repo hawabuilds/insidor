@@ -1083,6 +1083,12 @@ export interface UniversePolicy {
     /** Candidates kept per name, newest launch first. */
     readonly hitsPerTerm: number;
     /**
+     * Names searched for one subject: the judge's proposed name, then its alternates. Each name
+     * is a search on every source, so a pass takes `termsPerPass / namesPerSubject` subjects and
+     * the per-minute rate holds in calls, not subjects.
+     */
+    readonly namesPerSubject: number;
+    /**
      * Names searched per minute, across passes, so no source blocks us. The on-chain search runs
      * on the owner's paid market-data plan (500 calls a minute, shared with the read service's
      * and the projector's market reads); the other search source allows 300. Every post in the feed should be
@@ -1100,12 +1106,6 @@ export interface UniversePolicy {
    * set, or its market cap reached `marketCapUsd` — the rest are deleted. A coin is asked about
    * once, when it ages out; a coin no market lists was never traded and goes.
    */
-    /**
-     * Names searched for one subject: the judge's proposed name, then its alternates. Each name
-     * is a search on every source, so a pass takes `termsPerPass / namesPerSubject` subjects and
-     * the per-minute rate holds in calls, not subjects.
-     */
-    readonly namesPerSubject: number;
   readonly keep: {
     readonly allMs: number;
     readonly marketCapUsd: number;
@@ -2518,6 +2518,9 @@ const POLICY_V1: Policy = {
       keepMs: 21_600_000, // six hours
       withinMs: 604_800_000, // seven days
       hitsPerTerm: 10,
+      /* 4: the proposed name and up to three alternates; the judge gave three or more in 487 of
+         its 660 yes answers on 2026-10-13. */
+      namesPerSubject: 4,
       /* 100: a fifth of the Analyst plan's 500 a minute, the rest left to market reads. */
       perMinute: 100,
       retries: 3,
@@ -2546,9 +2549,6 @@ const POLICY_V1: Policy = {
     maxSolPerTrade: 0.05,
     defaultSlippageBps: 300,
     /* 15%: past this a launchpad coin's quote says little about what the trade will fill at. */
-      /* 4: the proposed name and up to three alternates; the judge gave three or more in 487 of
-         its 660 yes answers on 2026-10-13. */
-      namesPerSubject: 4,
     maxSlippageBps: 1_500,
     platformFeeBps: 0,
     probeSol: 0.001,
