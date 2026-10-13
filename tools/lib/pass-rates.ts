@@ -60,6 +60,8 @@ export interface EvalRow<G extends string = string> extends EvalPost<G> {
   readonly name: string | null;
   readonly confidence: number | null;
   readonly lookedAt: string | null;
+  /** The picture boost's input: the post's picture against the closest other coined picture; null without one. */
+  readonly similarity: number | null;
   /** The first question passed (postScore with the picture boost), before the kind question. */
   readonly firstPass: boolean;
   /** The kind question's label, upper case: asked this run, or given in `knownKinds`; null when neither. */
@@ -254,7 +256,7 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
     const out = outcomeOf.get(i);
     const j = out?.kind === 'judged' ? out.judgement : null;
     const firstPass = j !== null && postScore(j, P, similarityOf(p)) === 'passes';
-    return { ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, firstPass, postKind: o.knownKinds?.get(p.id) ?? null, passes: firstPass };
+    return { ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, similarity: similarityOf(p), firstPass, postKind: o.knownKinds?.get(p.id) ?? null, passes: firstPass };
   });
   if (o.kind !== false) {
     const kindJudge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy, maxBatch, question: 'kind', batch: batched });
