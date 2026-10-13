@@ -1919,7 +1919,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v46',
+  version: 'policy.v47',
 
   admit: {
     maxAgeMin: 240,
@@ -2502,7 +2502,8 @@ const POLICY_V1: Policy = {
     softStopFraction: 0.9,
     supplierLines: { posts: 11.25, judge: 8, video: 2, actors: 1, embeddings: 2 },
     warnAt: [0.8, 0.95],
-    jobLines: { dailyUsd: 4, posts: 1, judge: 2, video: 0.5, embeddings: 0.5 },
+    /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $27, under the owner's $30. */
+    jobLines: { dailyUsd: 6, posts: 1, judge: 5, video: 0.5, embeddings: 0.5 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
