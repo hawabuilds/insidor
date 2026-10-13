@@ -256,3 +256,25 @@ test('★ when earlier answers cannot be read, every post is judged — reuse ne
   assert.equal(judge.calls.length, 1);
   assert.ok(recorded.has(repost.itemId));
 });
+
+test('★ the second question holds back a post the first passed when its kind is not OTHER; OTHER files nothing more', async () => {
+  const judge = recordedJudge(0.82);
+  const filed: { id: string; coinable: boolean; name: string | null }[] = [];
+  const { deps: d } = deps([post(1), post(2)], judge);
+  const kindOf = (id: string) => (id.endsWith('1') ? 'AD' : 'OTHER');
+  const kindJudge = {
+    ...judge.judge,
+    judge: async (subjects: readonly { storyId: unknown }[]) => ({
+      value: subjects.map((s) => {
+        const kind = kindOf(String(s.storyId));
+        return { kind: 'judged' as const, judgement: { judgeId: 'judge:kind@1', promptId: 'post-kind@1', judgedAt: NOW, coinable: kind === 'OTHER', confidence: 0.9, lookedAt: 'text' as const, proposedName: kind, alternateNames: [], subjectSpans: [], rationaleRef: null, costUsd: 0 } };
+      }),
+      spend: { vendor: 'anthropic', endpoint: 'judge', unit: 'per-call' as const, units: 1, usd: 0, at: NOW },
+    }),
+  };
+  const scores = { ...d.scores, record: async (id: ItemId, j: Judgement) => void filed.push({ id: String(id), coinable: j.coinable, name: j.proposedName }) };
+  await scorePosts({ ...d, scores, kindJudge: kindJudge as never });
+  const held = filed.filter((f) => !f.coinable);
+  assert.equal(held.length, 1, 'only the AD post gets a second, holding answer');
+  assert.equal(held[0]?.name, 'AD');
+});
