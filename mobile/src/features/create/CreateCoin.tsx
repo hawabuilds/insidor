@@ -8,10 +8,11 @@
  * and the Create button. Description, socials, the creator fee and the owner's name feedback sit
  * behind "More options", closed when the sheet opens.
  *
- * ★ IT MUST FIT A 390×844 PHONE WITHOUT SCROLLING. A new line on the main sheet costs a line of
- * height that this sheet was cut down to earn; put it behind More options instead. More options
- * and the ticker's coin list each scroll inside their own box, so opening them never pushes the
- * button off the screen (the modal itself does not scroll).
+ * ★ THE CREATE BUTTON NEVER LEAVES THE SCREEN. The sheet is the shared one (shared/ui/Sheet.tsx):
+ * the fields scroll in the middle, and the Create button, with the one line saying why it is not
+ * offered when it is not, is fixed at the bottom clear of the phone's home bar. It closes every
+ * way the other sheets do, except while a launch is being signed. The closed sheet still fits a
+ * 390×844 phone without scrolling; put a new line behind More options rather than on it.
  *
  * ★ WITH TRADING OFF, OR FROM A STORY WRITTEN BY HAND, THE BUTTON SAYS "COMING SOON" AND DOES
  * NOTHING ELSE. No coin is minted and no cost is shown; the cost line says it is not live.
@@ -43,6 +44,7 @@ import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
 import { RocketIcon } from '../../shared/ui/icons.tsx';
 import { Modal } from '../../shared/ui/Modal.tsx';
+import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { NameCallButtons } from '../owner/NameCall.tsx';
@@ -239,15 +241,20 @@ function SoonCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
   const soon = useComingSoon();
   const f = useForm(from);
   return (
-    <Modal title="Create coin" onClose={onClose}>
-      {from.labelled ? <div className={styles['notice']}><Notice notice={HAND_WRITTEN} /></div> : null}
-      <Fields f={f} presets={DEV_BUY_PRESETS} live={false} />
-      <p className={styles['cost']}>{costLine({ kind: 'off' })}</p>
-      <MoreOptions f={f} creatorFee="— not live yet" />
-      <Button look="primary" size="large" className={styles['create']} onClick={() => soon('Creating a coin')}>
-        <RocketIcon size={18} /> Create coin
-      </Button>
-    </Modal>
+    <Sheet label="Create coin" onClose={onClose}>
+      <SheetHead title="Create coin" />
+      <SheetBody>
+        {from.labelled ? <div className={styles['notice']}><Notice notice={HAND_WRITTEN} /></div> : null}
+        <Fields f={f} presets={DEV_BUY_PRESETS} live={false} />
+        <p className={styles['cost']}>{costLine({ kind: 'off' })}</p>
+        <MoreOptions f={f} creatorFee="— not live yet" />
+      </SheetBody>
+      <SheetFoot>
+        <Button look="primary" size="large" className={styles['create']} onClick={() => soon('Creating a coin')}>
+          <RocketIcon size={18} /> Create coin
+        </Button>
+      </SheetFoot>
+    </Sheet>
   );
 }
 
@@ -338,10 +345,14 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
   const offered = rules.state === 'ready' && stop === null;
 
   return (
-    <Modal title="Create coin" onClose={outcome === 'working' ? () => undefined : onClose}>
-      <Fields f={f} presets={presetsWithin(cap)} live />
-      <p className={styles['cost']}>{cost}</p>
-      <MoreOptions f={f} creatorFee={r === null ? "— couldn't be read" : feeRate(r.creatorFeeBps)} />
+    <Sheet label="Create coin" onClose={outcome === 'working' ? () => undefined : onClose}>
+      <SheetHead title="Create coin" />
+      <SheetBody>
+        <Fields f={f} presets={presetsWithin(cap)} live />
+        <p className={styles['cost']}>{cost}</p>
+        <MoreOptions f={f} creatorFee={r === null ? "— couldn't be read" : feeRate(r.creatorFeeBps)} />
+      </SheetBody>
+      <SheetFoot>
       {why !== null ? <p className={styles['why']} role="alert">{why}</p> : null}
       {account === null ? (
         wallet !== null && state.kind !== 'unavailable' && state.kind !== 'connecting'
@@ -354,7 +365,8 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
           <RocketIcon size={18} /> Create coin
         </Button>
       )}
-    </Modal>
+      </SheetFoot>
+    </Sheet>
   );
 }
 
