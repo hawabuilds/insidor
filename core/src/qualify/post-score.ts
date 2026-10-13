@@ -22,6 +22,13 @@
  * on live posts — a political headline passed as "Kacey Musgraves dog shot response" — and a
  * rule the model can skip is held here, where it cannot.
  *
+ * ★ AND THE CRYPTO SIGNAL (the owner's pick, 2026-10-13): `passesWithSignal`. A post also passes
+ * when OTHER accounts answer it with a cashtag, a contract address or "CA" (read early, before a
+ * coin), provided its kind is not held — people coining it is the thing we are trying to see, and
+ * the judge misses news it calls generic. A shill — the post's own text or its author's own
+ * replies carrying a ticker or an address — is held as an ad and never passes, by either route:
+ * an account advertising its own coin is not other people rallying around something.
+ *
  * What breaks if changed carelessly: the runner asks the kind question of exactly the posts
  * `couldPassWithBoost` says yes to. A boost rule widened here without that is a boosted post that
  * never met the kind question — how a zoo-mauling news post reached For You on 2026-10-13.
@@ -82,3 +89,32 @@ export function postScoreReason(
  */
 export const couldPassWithBoost = (judgement: Answer, p: Policy): boolean =>
   postScoreReason(judgement, p, BEST_POSSIBLE_PICTURE_MATCH) === 'passes';
+
+/** Other accounts' crypto talk under a post, as the projector reads it: null when not read. */
+export interface CryptoSignal {
+  /** Another account replied or quoted with a cashtag, a contract address or "CA", early. */
+  readonly others: boolean;
+  /** The post's own text, or its author's own replies, carry a ticker or an address. */
+  readonly shill: boolean;
+}
+
+/** How a post passes: the judge alone, the judge with the signal beside it, or the signal alone. */
+export type PassRoute = 'judge' | 'judge+signal' | 'signal';
+
+/**
+ * The For You pass rule: the judge passes it (postScore, held kinds and all), OR its kind is not
+ * held and other accounts' crypto signal is present. A shill never passes. null: it does not pass
+ * (or, with no judgement and no signal, has not been decided — the caller's `postScore` says which).
+ */
+export function passesWithSignal(
+  judgement: Answer | null,
+  p: Policy,
+  pictureSimilarity: number | null,
+  kindLabel: string | null,
+  signal: CryptoSignal | null,
+): PassRoute | null {
+  if (signal?.shill === true) return null;
+  const others = signal?.others === true;
+  if (postScoreReason(judgement, p, pictureSimilarity, kindLabel) === 'passes') return others ? 'judge+signal' : 'judge';
+  return others && heldKind(kindLabel, p.judge.heldKinds) === null ? 'signal' : null;
+}
