@@ -2935,7 +2935,10 @@ const POLICY_V1: Policy = {
        X $10, short video $2 + $1, the judge $7.50 as before; pictures up from $0.50 to $1 (they paced
        $0.91 and had stopped). With jobs $3.75 and learning $7.25 the day is $32.50, under the
        owner's $33 (approved 2026-10-13; it was $30). */
-    dailyUsd: 21.5,
+    /* $25.50 from 2026-10-13 20:45 UTC: the judge sees the 10 closest labelled posts in every call
+       (+$2.75 a day) and each judged post is embedded (+$0.90). Paid by moving $4 from the jobs and
+       learning lines, which run well under them most days; the day stays $38. */
+    dailyUsd: 25.5,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
@@ -2949,7 +2952,7 @@ const POLICY_V1: Policy = {
     softStopFraction: 0.97,
     vendorLinesStop: false,
     lineBuffer: 1.25,
-    supplierLines: { posts: 10, judge: 7.5, video: 2, actors: 1, embeddings: 1 },
+    supplierLines: { posts: 10, judge: 10.5, video: 2, actors: 1, embeddings: 2 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured
@@ -2957,7 +2960,7 @@ const POLICY_V1: Policy = {
        judge can be re-tuned on the live negative set today. The day stays $29.75. */
     /* $4.75 from 2026-10-13 07:00 UTC, with the learning work moved to its own $4 line below. Live
        $21 + jobs $4.75 + learning $4 = $29.75 a day, under the owner's $30. */
-    jobLines: { dailyUsd: 3.75, posts: 0.5, judge: 2.75, video: 0.25, embeddings: 0.25 },
+    jobLines: { dailyUsd: 1.75, posts: 0.25, judge: 1.25, video: 0.125, embeddings: 0.125 },
     /* $5: $1 moved from jobs on 2026-10-13 so today's re-tune could finish and re-check the feed. */
     /* $7.25 from 2026-10-13 12:50 UTC: the 07:00 run was not tested ($1.15 left of the judge, the
        test's worst case $2.97), and two runs today need room for that worst case each. Paid by
@@ -2969,7 +2972,7 @@ const POLICY_V1: Policy = {
     /* $12.75 from 2026-10-13 14:00 UTC: today's after-audit measurements (the clean baseline, coin
        matching on gold, the slow-lane and short-video tests) are paid here, because the jobs book spent
        its line this morning. The day is $38.00, the owner's approved ceiling. */
-    learningLines: { dailyUsd: 12.75, posts: 1.5, judge: 10, video: 0.5, embeddings: 0.75 },
+    learningLines: { dailyUsd: 10.75, posts: 1.5, judge: 8, video: 0.5, embeddings: 0.75 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`

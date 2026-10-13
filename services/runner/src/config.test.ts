@@ -243,8 +243,8 @@ test('★ the shipped budget is the owner\'s cap, and the lines inside it are wh
   const cfg = loadRunnerConfig(shippedEnv());
   const B = DEFAULT_POLICY.budget;
   assert.equal(cfg.spend.dailyBudgetUsd, B.dailyUsd, 'shipped at the owner\'s cap');
-  assert.equal(B.dailyUsd, 21.5);
-  assert.deepEqual(B.supplierLines, { posts: 10, judge: 7.5, video: 2, actors: 1, embeddings: 1 });
+  assert.equal(B.dailyUsd, 25.5);
+  assert.deepEqual(B.supplierLines, { posts: 10, judge: 10.5, video: 2, actors: 1, embeddings: 2 });
   for (const [role, line] of Object.entries(B.supplierLines)) assert.ok(line < B.dailyUsd, `${role}'s line binds before the day does`);
   assert.ok(!('paceAheadMs' in B), 'the live runner is not paced: the lines are brakes');
 });
