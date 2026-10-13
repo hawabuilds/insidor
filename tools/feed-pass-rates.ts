@@ -13,6 +13,9 @@
  * `--text-only` withholds the pictures, to measure what the judge did before it was shown them.
  * `--pictures=small` (or `=360x360`) shows the judge the picture host's smaller named size
  * (adapters/judge/anthropic/src/pictures.ts), to measure whether that cut costs any coins.
+ * `--batch` sends every post as one Message Batch at half price: the same request per post, so
+ * the same answers, but minutes of waiting instead of seconds. Off by default, so a quick check
+ * stays quick; worth it for a run that is not watched.
  * `--refresh-pictures` first re-reads each gold origin post on X (a fraction of a cent) and records
  * the picture the feed would show — a video's preview included — in eval/src/feed/
  * gold-origin-pictures.json, which later runs use; the gold evidence kept still images only.
@@ -35,7 +38,8 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { storyId } from '../contracts/src/ids.ts';
 import { postScore } from '../core/src/qualify/post-score.ts';
-import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient } from '../adapters/judge/anthropic/src/index.ts';
+import type { JudgeOutcome } from '../contracts/src/ports/judge.ts';
+import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../adapters/judge/anthropic/src/index.ts';
 import { tuning } from '../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../eval/src/gold/coin-evidence.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
@@ -48,6 +52,7 @@ const P = DEFAULT_POLICY;
 const USD_PER_POST = 0.01;
 const TEXT_ONLY = process.argv.includes('--text-only');
 const PICTURE_SIZE = ((v) => (v === 'small' || v === '360x360' ? v : null))(process.argv.find((a) => a.startsWith('--pictures='))?.slice('--pictures='.length));
+const BATCH = process.argv.includes('--batch');
 const LABEL = process.argv.find((a) => a.startsWith('--label='))?.slice('--label='.length) ?? (TEXT_ONLY ? 'text-only' : 'now');
 
 if (process.env['SPEND'] !== 'live' || !process.argv.includes('--yes')) {
@@ -95,26 +100,37 @@ const http = judgeClient({
 });
 /* Every reply's usage, summed, for the report. Read through, never changed. */
 const used = { calls: 0, pictures: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0, inputWithPicture: 0, inputWithout: 0 };
+const count = (request: JudgeRequest, reply: JudgeResponse): void => {
+  const pictured = request.subjects.filter((x) => request.frames.has(String(x.storyId))).length;
+  const all = reply.usage.inputTokens + (reply.usage.cacheWriteTokens ?? 0) + (reply.usage.cacheReadTokens ?? 0);
+  used.calls += 1;
+  used.pictures += pictured;
+  if (pictured > 0) used.inputWithPicture += all;
+  else used.inputWithout += all;
+  used.input += reply.usage.inputTokens;
+  used.cacheWrite += reply.usage.cacheWriteTokens ?? 0;
+  used.cacheRead += reply.usage.cacheReadTokens ?? 0;
+  used.output += reply.usage.outputTokens;
+};
 const client: JudgeClient = {
   ...http,
   async judge(request) {
     const reply = await http.judge(request);
-    const pictured = request.subjects.filter((x) => request.frames.has(String(x.storyId))).length;
-    const all = reply.usage.inputTokens + (reply.usage.cacheWriteTokens ?? 0) + (reply.usage.cacheReadTokens ?? 0);
-    used.calls += 1;
-    used.pictures += pictured;
-    if (pictured > 0) used.inputWithPicture += all;
-    else used.inputWithout += all;
-    used.input += reply.usage.inputTokens;
-    used.cacheWrite += reply.usage.cacheWriteTokens ?? 0;
-    used.cacheRead += reply.usage.cacheReadTokens ?? 0;
-    used.output += reply.usage.outputTokens;
+    count(request, reply);
     return reply;
+  },
+  async judgeBatch(requests) {
+    const answers = await http.judgeBatch!(requests);
+    answers.forEach((a, i) => {
+      const request = requests[i];
+      if (a.kind === 'answered' && request !== undefined) count(request, a.response);
+    });
+    return answers;
   },
 };
 const judge = anthropicJudge({
   client,
-  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post',
+  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post', batch: BATCH,
 });
 
 /* The coined pictures, and each post's own picture embedded, for the boost. */
@@ -145,17 +161,21 @@ const similarityOf = (p: Post): number | null => {
 
 const rows: (Post & { coinable: boolean | null; name: string | null; confidence: number | null; lookedAt: string | null; passes: boolean })[] = [];
 try {
-  for (const p of posts) {
-    const subject = {
-      storyId: storyId(`rate-${p.id.replaceAll(':', '-')}`),
-      texts: p.text.trim() === '' ? [] : [p.text.slice(0, P.judge.maxCharsPerText)],
-      media: TEXT_ONLY || p.imageUri === null ? [] : [{ kind: 'image' as const, uri: p.imageUri, width: null, height: null, durationMs: null }],
-      distinctAuthors: 1,
-      distinctSources: 1,
-    };
-    const line = meter.line();
-    const result = await judge.judge([subject], { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: 1, deadline: Date.now() + 120_000 });
-    const o = result.value[0];
+  const subjectOf = (p: Post) => ({
+    storyId: storyId(`rate-${p.id.replaceAll(':', '-')}`),
+    texts: p.text.trim() === '' ? [] : [p.text.slice(0, P.judge.maxCharsPerText)],
+    media: TEXT_ONLY || p.imageUri === null ? [] : [{ kind: 'image' as const, uri: p.imageUri, width: null, height: null, durationMs: null }],
+    distinctAuthors: 1,
+    distinctSources: 1,
+  });
+  /* One post a call either way (maxBatch 1), as the live scorer asks; batched, all of them go
+     in one judge() so they leave as one Message Batch. */
+  const budget = () => ({ capUsd: meter.line().capUsd, spentUsd: meter.line().spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
+  const outcomes: JudgeOutcome[] = [];
+  if (BATCH) outcomes.push(...(await judge.judge(posts.map(subjectOf), budget())).value);
+  else for (const p of posts) outcomes.push(...(await judge.judge([subjectOf(p)], budget())).value);
+  for (const [i, p] of posts.entries()) {
+    const o = outcomes[i];
     const j = o?.kind === 'judged' ? o.judgement : null;
     rows.push({ ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, passes: j !== null && postScore(j, P, similarityOf(p)) === 'passes' });
   }
