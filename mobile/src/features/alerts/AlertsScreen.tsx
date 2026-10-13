@@ -27,6 +27,7 @@ function Mark({ a }: { a: Alert }) {
   if (m.kind === 'rank') return <RankBadge rank={m.rank as RankId} size={40} />;
   if (m.kind === 'coin') return <span className={styles['coin']}>{m.letter}</span>;
   if (m.kind === 'money') return <span className={styles['coin']} role="img" aria-label={m.label}>$</span>;
+  if (m.kind === 'learned') return <span className={styles['coin']} role="img" aria-label={m.label}>↻</span>;
   return <span className={styles['coin']}><BellIcon size={18} /></span>;
 }
 

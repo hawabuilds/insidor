@@ -15,6 +15,9 @@
  *      screen; mute still silences it and quiet hours still withhold its push, because both are
  *      the owner's own explicit choices. The hourly limit is not: a busy hour of coin alerts must
  *      not be what keeps the one about money off the phone.
+ *   5. A RE-TUNE SUMMARY IS THE OWNER'S TOO: twice a day, what the judge learned from the owner's
+ *      own calls and whether it was applied (tools/retune.ts). No switch, like the warning, but
+ *      it waits behind the hourly limit like any other alert — it is a report, not an alarm.
  *
  * Pure: the local time and the counts come in as arguments (the service reads the clock and the
  * person's timezone). What breaks if changed carelessly:
@@ -36,6 +39,7 @@ export const ALERT_KINDS = [
   'narrative_coin',
   'coin_matched',
   'supplier_warning',
+  'retune_summary',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -56,6 +60,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   narrative_coin: 'narratives',
   coin_matched: 'coins',
   supplier_warning: 'always',
+  retune_summary: 'always',
 };
 
 export interface AlertPrefs {
