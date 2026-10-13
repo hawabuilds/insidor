@@ -255,9 +255,11 @@ export class PgItemRepo implements ItemRepo {
    * already on them — so a new post kept the one reading discovery paid for, never cleared a
    * reach bar, and the For You feed starved (2026-10-13):
    *
-   *   - a catch-all post the judge has answered, posted since `watch.judgedSince` — TRACK's
-   *     gate keeps only the answers that can still pass, so this is a few dozen at a time. The
-   *     window, not the whole tracked day, because a day of them was about $5 of reads;
+   *   - a catch-all post the judge has answered, posted since `watch.judgedSince` or already at
+   *     `watch.judgedMinReach` — TRACK's gate keeps only the answers that can still pass, so this
+   *     is a few dozen at a time. Not every answered post of the tracked day, because that was
+   *     about $5 of reads; but an older one close to the bar is still worth reading, or a post
+   *     at 38k after four hours could never be seen crossing 40k;
    *   - a catch-all post nobody has judged, posted within `watch.sinceMs` and averaging at least
    *     `watch.minPerMinute` reach a minute at its latest reading. Its reach decides whether it
    *     is judged at all; a slow one keeps its one reading.
@@ -276,6 +278,7 @@ export class PgItemRepo implements ItemRepo {
       readonly since: Millis;
       readonly minPerMinute: number;
       readonly judgedSince: Millis;
+      readonly judgedMinReach: number;
     },
   ): Promise<readonly Item[]> {
     const rows = await this.#db.query<ItemRow>(
@@ -285,9 +288,12 @@ export class PgItemRepo implements ItemRepo {
                            join public.story s on s.story_id = m.story_id
                           where m.item_id = i.item_id and s.state = 'promoted' and s.merged_into is null)
                  or exists (select 1 from public.rising_row r where r.item_id = i.item_id)
-                 or (i.posted_at >= $6
-                     and exists (select 1 from internal.item_found_by f where f.item_id = i.item_id)
-                     and exists (select 1 from internal.post_judgement j where j.item_id = i.item_id))
+                 or (exists (select 1 from internal.item_found_by f where f.item_id = i.item_id)
+                     and exists (select 1 from internal.post_judgement j where j.item_id = i.item_id)
+                     and (i.posted_at >= $6
+                          or (select o.value from public.observation o
+                               where o.item_id = i.item_id and o.kind = 'reach' and o.value is not null
+                               order by o.captured_at desc limit 1) >= $7))
                 ) as kept
            from public.item i
           where i.first_seen_at >= $1
@@ -310,7 +316,7 @@ export class PgItemRepo implements ItemRepo {
          from picked p
          join public.item item on item.item_id = p.item_id
         order by p.kept desc, p.first_seen_at desc`,
-      [toTimestamp(at), limit, toTimestamp(watch.since), watch.minPerMinute, toTimestamp(watch.now), toTimestamp(watch.judgedSince)],
+      [toTimestamp(at), limit, toTimestamp(watch.since), watch.minPerMinute, toTimestamp(watch.now), toTimestamp(watch.judgedSince), watch.judgedMinReach],
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => this.#toItem(row, fingerprints));
