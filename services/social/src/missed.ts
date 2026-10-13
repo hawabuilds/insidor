@@ -118,6 +118,14 @@ export function describe(r: Pick<Row, 'status' | 'diagnosis' | 'diagnosis_detail
     case 'never_found': {
       if (d['held'] === true) lines.push('We had it from another search, never from the one that feeds For You.');
       const why = text(d['why']);
+      if (why === 'discovery_down') {
+        const back = num(d['downToMs']);
+        lines.push(d['notRunningYet'] === true
+          ? 'Our search was not running yet when it was posted, so no setting would have found it.'
+          : `Our search was down when it was posted${back === null ? ', and is still down' : `, until ${new Date(back).toISOString().slice(11, 16)} UTC`}, so it never had its first minutes in the search.`);
+        return { headline: 'Never found: search was down', tone: 'missed', lines };
+      }
+      if (num(d['upMinutes']) !== null) lines.push(`Our search was down for part of its first ${num(d['windowMinutes']) ?? '?'} min: up for ${num(d['upMinutes'])} of them.`);
       if (why === 'not_in_search') lines.push(`Not in our search: ${FILTER_WORDS[text(d['filter']) ?? ''] ?? 'the search does not ask for posts like it'}${text(d['lang']) !== null && d['filter'] === 'language' ? ` (${String(d['lang'])})` : ''}.`);
       if (why === 'under_floor') lines.push(`Under the like floor: ${num(d['approvals']) ?? 'unknown'} likes now, and the search asks for ${num(d['floor']) ?? 'more'} within ${num(d['reachMinutes']) ?? '?'} min of posting.`);
       if (why === 'between_checks') lines.push(num(d['crossedFloorMinutes']) !== null ? `Between checks: it passed the like floor about ${span(num(d['crossedFloorMinutes']))} after posting, after the search stopped looking back.` : 'Between checks: the watched tags are asked in turn, and it was not among the newest when its tag came round.');

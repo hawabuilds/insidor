@@ -204,6 +204,31 @@ export class PgMissedPostRepo {
     return rows.map((r) => ({ address: r.address, name: r.name, ticker: r.ticker, launchedAt: toMillis(r.launched_at) }));
   }
 
+  /**
+   * When the catch-all lanes STORED posts (internal.item_found_by), as core's outage check reads it
+   * (core/src/learning/outage.ts): the first and last, and every gap over `minGapMs`. Stored, not
+   * paid: a search whose posts never reached the database found nothing we could show. The watch
+   * lane runs on its own hourly cadence and is left out, or its quiet hours would read as outages.
+   */
+  async passRecord(minGapMs: number): Promise<{ readonly firstMs: number | null; readonly lastMs: number | null; readonly gaps: readonly { readonly fromMs: number; readonly toMs: number }[] }> {
+    const ends = await this.#db.query<{ first: Date | null; last: Date | null }>(
+      `select min(found_at) as first, max(found_at) as last from internal.item_found_by where lane in ('all', 'media', 'slow')`,
+    );
+    const gaps = await this.#db.query<{ from_at: Date; to_at: Date }>(
+      `select prev as from_at, found_at as to_at from (
+         select found_at, lag(found_at) over (order by found_at) as prev
+           from internal.item_found_by where lane in ('all', 'media', 'slow')) t
+        where prev is not null and found_at - prev > make_interval(secs => $1::float8 / 1000)
+        order by prev`,
+      [minGapMs],
+    );
+    return {
+      firstMs: toMillis(ends[0]?.first ?? null),
+      lastMs: toMillis(ends[0]?.last ?? null),
+      gaps: gaps.map((g) => ({ fromMs: toMillis(g.from_at) as number, toMs: toMillis(g.to_at) as number })),
+    };
+  }
+
   /** What the catch-all search cost on the live book in the day before `now`, for the suggestion's price. */
   async liveSpendSince(vendor: string, endpoint: string, sinceMs: Millis): Promise<number> {
     const rows = await this.#db.query<{ usd: string | null }>(

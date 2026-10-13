@@ -14,6 +14,12 @@
  * (`under_reach_bar`), and last `unsure`: every gate passed and yet it was never recorded as shown.
  * `unsure` is an answer, never a guess at one of the others.
  *
+ * ★ AN OUTAGE COMES FIRST AMONG THE NEVER-FOUND. A post made while discovery was not running —
+ * before its first pass, or in a gap longer than the main lanes look back (learning/outage.ts) —
+ * is `never_found` with why `discovery_down`, whatever the search settings would have done: no
+ * setting changes a search that did not run. Told apart from `unexplained`, which it used to be
+ * (2026-10-13: rrealist, posted at 01:09 UTC inside the 00:08–02:04 outage, read "unexplained").
+ *
  * ★ WHY IT WAS NEVER FOUND IS THE RECALL MODEL'S (core/src/sources/recall.ts), asked of the post as
  * read now — the same model the daily recall check names its misses with. When the model says the
  * search WOULD have caught it, the answer is `unexplained`, not a reason picked to fit.
@@ -31,6 +37,7 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 import { MS_PER_DAY, MS_PER_MINUTE } from '../math.ts';
 import { clearsReachBar, type ReachLevel } from '../qualify/reach-bar.ts';
 import { postScoreReason } from '../qualify/post-score.ts';
+import { postWindow, type Outage } from './outage.ts';
 import { approvalsAt, crossingAgeMin, searchFilter, verdict, type DiscoverySettings, type PostFacts } from '../sources/recall.ts';
 
 export const MISSED_DIAGNOSES = ['never_found', 'not_judged', 'rejected', 'under_reach_bar', 'shown_late', 'shown', 'unsure'] as const;
@@ -72,6 +79,11 @@ export interface MissedContext {
   readonly settings: DiscoverySettings | null;
   /** The tags the watch-list source is asked for. */
   readonly watchTags: readonly string[];
+  /**
+   * When the floor search was not running (learning/outage.ts `outages`); null or absent when the
+   * pass record could not be read — the diagnosis then says nothing about outages, never "up".
+   */
+  readonly outages?: readonly Outage[] | null;
 }
 
 export interface Diagnosed {
@@ -91,7 +103,7 @@ export function crossedBarAt(reach: readonly ReachLevel[], postedAtMs: number | 
   return null;
 }
 
-function neverFound(c: MissedCase, ctx: MissedContext): Diagnosed {
+function neverFound(c: MissedCase, ctx: MissedContext, p: Policy): Diagnosed {
   const base = { held: c.held !== null, approvals: c.post.approvals, lang: c.post.lang };
   if (c.search === 'watch') {
     const watched = c.post.tags.filter((t) => ctx.watchTags.includes(t));
@@ -100,17 +112,36 @@ function neverFound(c: MissedCase, ctx: MissedContext): Diagnosed {
       : { diagnosis: 'never_found', detail: { ...base, why: 'between_checks', tags: c.post.tags, watched } };
   }
   const s = ctx.settings;
-  if (s === null) return { diagnosis: 'never_found', detail: { ...base, why: 'unsure' } };
+  const slowReach = s?.lanes.find((l) => l.lane === 'slow')?.reachMin ?? 0;
+  const w = ctx.outages === undefined || ctx.outages === null || c.postedAtMs === null ? null : postWindow(ctx.outages, c.postedAtMs, slowReach, p);
+  if (w !== null && w.down) {
+    return {
+      diagnosis: 'never_found',
+      detail: {
+        ...base,
+        why: 'discovery_down',
+        notRunningYet: w.beforeFirstPass,
+        downFromMs: w.postedIn?.fromMs ?? null,
+        downToMs: w.postedIn?.toMs ?? null,
+        slowUpMinutes: Math.round(w.slowCoveredMin),
+        slowReachMinutes: Math.round(w.slowReachMin),
+      },
+    };
+  }
+  /* Discovery up for only part of the main window: said beside whatever reason follows. */
+  const partly = w !== null && w.coveredMin < w.windowMin ? { upMinutes: Math.round(w.coveredMin), windowMinutes: w.windowMin } : {};
+  if (s === null) return { diagnosis: 'never_found', detail: { ...base, ...partly, why: 'unsure' } };
   const filter = searchFilter(c.post, null, s);
-  if (filter !== null) return { diagnosis: 'never_found', detail: { ...base, why: 'not_in_search', filter } };
+  if (filter !== null) return { diagnosis: 'never_found', detail: { ...base, ...partly, why: 'not_in_search', filter } };
   const v = verdict(c.post, s);
-  if (v.kind === 'caught') return { diagnosis: 'never_found', detail: { ...base, why: 'unexplained', lane: v.lane, modelMinutes: Math.round(v.delayMin) } };
+  if (v.kind === 'caught') return { diagnosis: 'never_found', detail: { ...base, ...partly, why: 'unexplained', lane: v.lane, modelMinutes: Math.round(v.delayMin) } };
   const main = s.lanes.find((l) => l.lane === 'all') ?? s.lanes[0];
   const crossedMin = main === undefined ? null : crossingAgeMin(c.post.approvals, main.floor, s.tauMin);
   return {
     diagnosis: 'never_found',
     detail: {
       ...base,
+      ...partly,
       why: v.reason,
       floor: main?.floor ?? null,
       reachMinutes: main?.reachMin ?? null,
@@ -120,7 +151,7 @@ function neverFound(c: MissedCase, ctx: MissedContext): Diagnosed {
 }
 
 export function diagnoseMissed(c: MissedCase, ctx: MissedContext, p: Policy): Diagnosed {
-  if (c.held === null || c.held.foundBy === null) return neverFound(c, ctx);
+  if (c.held === null || c.held.foundBy === null) return neverFound(c, ctx, p);
 
   const found = { foundMinutes: minutesBetween(c.postedAtMs, c.held.foundBy.atMs), lane: c.held.foundBy.lane };
   if (c.judgement === null) return { diagnosis: 'not_judged', detail: found };
@@ -188,8 +219,11 @@ function counted(values: readonly string[]): readonly [string, number][] {
 
 export function missedSuggestion(input: SuggestionInput, p: Policy): Suggestion {
   const total = input.rows.length;
-  const never = input.rows.filter((r) => r.diagnosis === 'never_found');
-  const facts = { total, neverFound: never.length };
+  const neverAll = input.rows.filter((r) => r.diagnosis === 'never_found');
+  /* A post made while discovery was not running says nothing about the search's settings. */
+  const down = neverAll.filter((r) => str(r.detail['why']) === 'discovery_down');
+  const never = neverAll.filter((r) => str(r.detail['why']) !== 'discovery_down');
+  const facts = { total, neverFound: neverAll.length, discoveryDown: down.length };
   if (total === 0 || never.length * 2 <= total) return { text: null, facts };
 
   const s = input.settings;
@@ -254,6 +288,6 @@ export function missedSuggestion(input: SuggestionInput, p: Policy): Suggestion 
   const unexplained = never.filter((r) => str(r.detail['why']) === 'unexplained' || str(r.detail['why']) === 'unsure').length;
   if (unexplained > 0) lines.push(`${unexplained} the model says the search would have caught, or could not tell: no search change is suggested for them.`);
 
-  const head = `${never.length} of ${total} missed posts were never found by the search.`;
+  const head = `${never.length} of ${total} missed posts were never found by the search while it was running${down.length > 0 ? ` (${down.length} more were made while discovery was not running, which no search change would catch)` : ''}.`;
   return { text: [head, ...lines].join(' '), facts: { ...facts, ceilingUsd, searchUsdPerDay: today } };
 }

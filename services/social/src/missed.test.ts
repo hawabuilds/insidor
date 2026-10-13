@@ -62,4 +62,8 @@ test('each diagnosis reads as words, with the facts behind it', () => {
   assert.match(turned.lines.join(' '), /said it is not a meme/);
   assert.equal(describe({ status: 'queued', diagnosis: null, diagnosis_detail: {}, last_error: null }).headline, 'Checking');
   assert.equal(span(1_500), '1 day');
+  const down = describe({ status: 'done', diagnosis: 'never_found', diagnosis_detail: { why: 'discovery_down', notRunningYet: false, downToMs: Date.parse('2026-10-13T02:04:15Z') }, last_error: null });
+  assert.equal(down.headline, 'Never found: search was down');
+  assert.match(down.lines.join(' '), /down when it was posted, until 02:04 UTC/);
+  assert.match(describe({ status: 'done', diagnosis: 'never_found', diagnosis_detail: { why: 'discovery_down', notRunningYet: true }, last_error: null }).lines.join(' '), /not running yet/);
 });

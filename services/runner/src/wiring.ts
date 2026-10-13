@@ -102,7 +102,7 @@ import { keepCoins } from './work/coin-keep.ts';
 import { lookUpCoins } from './work/coin-lookup.ts';
 import { checkOlderCoins } from './work/older-coins.ts';
 import { measureDiscovery } from './work/discovery-settings.ts';
-import { SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
+import { readOutages, SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
 import { pictureCoinMatches } from './work/coin-match.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
@@ -775,6 +775,7 @@ export async function withRuntime<T>(
               store: storeArrivals(repos, policy, () => Date.now() as Millis),
               coinSearch: lookupSources,
               settings: async () => (await measureDiscovery({ recall: new PgRecallRepo(db), floors: new PgFeedFloorRepo(db) }, Date.now() as Millis, policy))?.settings ?? null,
+              outages: () => readOutages(new PgMissedPostRepo(db), policy, Date.now()),
               /* The posts supplier's catch-all endpoint, as its adapter records it (its SEARCH). */
               searchUsdPerDay: () => new PgMissedPostRepo(db).liveSpendSince(SUPPLIER_VENDORS.posts, 'search', (Date.now() - SPEND_WINDOW_MS) as Millis),
               mode: cfg.spend.kind,

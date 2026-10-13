@@ -34,7 +34,7 @@ import type { CoinSearch } from '@insidor/contracts/ports/coin-search.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { diagnoseMissed, missedSuggestion, type DiscoverySettings, type MissedFailure, type SearchKind } from '@insidor/core';
+import { diagnoseMissed, missedSuggestion, outageGapMs, outages as outagesOf, type DiscoverySettings, type MissedFailure, type Outage, type SearchKind } from '@insidor/core';
 import type { HeldPost, MissedOutcome, NamedCoin, PgMissedPostRepo, QueuedMissedPost } from '@insidor/store';
 
 import { errorText, type Logger } from '../log.ts';
@@ -70,6 +70,11 @@ export interface MissedDeps {
   readonly store: (items: readonly Item[], authors: readonly Author[]) => Promise<number>;
   readonly coinSearch: readonly CoinSearch[];
   readonly settings: () => Promise<DiscoverySettings | null>;
+  /**
+   * When the catch-all search was not running (core/src/learning/outage.ts), so a post made in an
+   * outage is told so rather than "unexplained". Absent or failing: the diagnosis says nothing of outages.
+   */
+  readonly outages?: () => Promise<readonly Outage[] | null>;
   /** The floor search's live spend in the last day, for the suggestion's cost; null when unread. */
   readonly searchUsdPerDay: () => Promise<number | null>;
   readonly mode: 'dry' | 'live';
@@ -123,6 +128,7 @@ async function diagnose(
   before: HeldPost | null,
   now: HeldPost,
   settings: DiscoverySettings | null,
+  outages: readonly Outage[] | null,
   usd: number,
 ): Promise<MissedOutcome> {
   const facts = await deps.missed.facts(now.itemId);
@@ -150,7 +156,7 @@ async function diagnose(
       shownAtMs: facts.shownAt,
       firstCoinAtMs: firstCoinAt,
     },
-    { settings, watchTags: deps.policy.feed.hashtags.map((t) => t.toLowerCase()) },
+    { settings, watchTags: deps.policy.feed.hashtags.map((t) => t.toLowerCase()), outages },
     deps.policy,
   );
   return {
@@ -203,6 +209,10 @@ export async function workMissedPosts(deps: MissedDeps): Promise<MissedResult> {
       deps.log.warn('discovery settings could not be measured; never-found reasons are unsure', { err: errorText(e) });
       return null;
     });
+    const outages = deps.outages === undefined ? null : await deps.outages().catch((e: unknown) => {
+      deps.log.warn('the search pass record could not be read; outages are not named this pass', { err: errorText(e) });
+      return null;
+    });
 
     /* 1. Read each link: which source, which post, and drop what cannot be a "yes". */
     const toRead: Parsed[] = [];
@@ -231,7 +241,7 @@ export async function workMissedPosts(deps: MissedDeps): Promise<MissedResult> {
     }
 
     /* 2. Posts we held: diagnosed for nothing. */
-    for (const { parsed, held } of heldNow) await finish(parsed.row.id, await diagnose(deps, parsed, held, held, settings, 0));
+    for (const { parsed, held } of heldNow) await finish(parsed.row.id, await diagnose(deps, parsed, held, held, settings, outages, 0));
 
     /* 3. Posts we never had: read once per source, on the learning book. */
     const bySource = new Map<PlatformAdapter, Parsed[]>();
@@ -272,7 +282,7 @@ export async function workMissedPosts(deps: MissedDeps): Promise<MissedResult> {
             await finish(p.row.id, { ...failure('unreadable', { why: 'the source returned no post for this id: deleted, private or gone' }, { source: adapter.id, sourceItemId: p.sourceItemId }), usd: each });
             continue;
           }
-          await finish(p.row.id, await diagnose(deps, p, null, stored, settings, each));
+          await finish(p.row.id, await diagnose(deps, p, null, stored, settings, outages, each));
         }
       } catch (e) {
         const err = errorText(e);
@@ -305,6 +315,11 @@ async function suggest(deps: MissedDeps, sources: readonly PlatformAdapter[], se
   const searchUsdPerDay = await deps.searchUsdPerDay().catch(() => null);
   const s = missedSuggestion({ rows, settings, searchUsdPerDay, usdPerPost }, deps.policy);
   await deps.missed.writeSuggestion(s.text, s.facts, deps.now());
+}
+
+/** When the catch-all search was not running, from the record of its passes. Exported for the wiring and the replay tool. */
+export async function readOutages(repo: Pick<PgMissedPostRepo, 'passRecord'>, policy: Policy, nowMs: number): Promise<readonly Outage[]> {
+  return outagesOf(await repo.passRecord(outageGapMs(policy)), nowMs, policy);
 }
 
 /** The window the suggestion's spend is read over. Exported for the wiring. */
