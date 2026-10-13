@@ -60,6 +60,8 @@ export type { PictureInputs } from './group/picture.ts';
 export { qualify, worthJudging } from './qualify/stage.ts';
 export { presentationFor } from './qualify/presentation.ts';
 export { postScore } from './qualify/post-score.ts';
+export { clearsReachBar } from './qualify/reach-bar.ts';
+export type { ReachBar, ReachLevel } from './qualify/reach-bar.ts';
 export type { PostScore } from './qualify/post-score.ts';
 export { resolve } from './resolve/stage.ts';
 export { rank } from './rank/stage.ts';

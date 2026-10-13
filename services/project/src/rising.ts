@@ -5,6 +5,8 @@
  * `item_found_by`), observed rather than seeded, posted inside `rising.windowMs`, whose
  * meme score — the judge's answer about that post alone — clears core's `postScore`. A post
  * with no score yet is not here: it waits, and is never shown as if it had passed.
+ * And it must clear the feed's view bar (core's `clearsReachBar`): For You at 40k views or fast
+ * early growth, Popular at 250k. A post whose views we have not read is on neither.
  *
  * In what order: `fyp` newest first by post time; `popular` most views first, and a post
  * whose views we have not read goes after every post whose views we have. The client never
@@ -39,7 +41,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import { postScore } from '@insidor/core';
+import { clearsReachBar, postScore, type ReachLevel } from '@insidor/core';
 import type { Db } from '@insidor/store';
 
 import { loadReach, pictureOf, sourceLabel } from './db.ts';
@@ -230,7 +232,7 @@ export interface RisingFrame {
   readonly popular: readonly WireRisingPost[];
 }
 
-/** Load, filter by the per-post score, project, and order both feeds. Writes nothing. */
+/** Load, filter by the per-post score and each feed's view bar, project, and order both feeds. Writes nothing. */
 export async function buildRising(
   db: Db,
   nowMs: Millis,
@@ -244,14 +246,23 @@ export async function buildRising(
   );
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
   const lookups = await loadPostLookups(db, rows.map((row) => row.item_id));
-  const posts = rows.map((row) => ({
-    post: projectRisingPost(row, reach.get(row.item_id) ?? [], coinsByStory, sparkWindowMs, lookups.get(row.item_id) ?? null),
-    at: toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0,
-  }));
+  const posts = rows.map((row) => {
+    const readings = reach.get(row.item_id) ?? [];
+    /* Measured counts only: a censored reading's last level is an older number, and read at a
+       later time it would overstate how fast the post grew. */
+    const views: ReachLevel[] = readings.map((x) => ({ atMs: x.atMs, reach: x.rate.kind === 'measured' ? x.rate.level : null }));
+    const postedAt = toMs(row.posted_at);
+    return {
+      post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookups.get(row.item_id) ?? null),
+      at: postedAt ?? toMs(row.first_seen_at) ?? 0,
+      fyp: clearsReachBar('fyp', views, postedAt, policy),
+      popular: clearsReachBar('popular', views, postedAt, policy),
+    };
+  });
 
-  const fyp = [...posts].sort((a, b) => b.at - a.at || a.post.id.localeCompare(b.post.id));
+  const fyp = posts.filter((p) => p.fyp).sort((a, b) => b.at - a.at || a.post.id.localeCompare(b.post.id));
   const views = (p: WireRisingPost): number | null => p.reach.v;
-  const popular = [...posts].sort((a, b) => {
+  const popular = posts.filter((p) => p.popular).sort((a, b) => {
     const va = views(a.post);
     const vb = views(b.post);
     if (va === null || vb === null) return va === null ? (vb === null ? b.at - a.at : 1) : -1;
@@ -290,7 +301,8 @@ export async function projectRisingFeeds(
   nowMs: Millis,
   coinsByStory: ReadonlyMap<string, WireCoinLink>,
   sparkWindowMs: number,
+  policy = DEFAULT_POLICY,
 ): Promise<number> {
-  const frame = await buildRising(db, nowMs, coinsByStory, sparkWindowMs);
+  const frame = await buildRising(db, nowMs, coinsByStory, sparkWindowMs, policy);
   return (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
 }

@@ -378,7 +378,15 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
     },
     { storiesSinceMs: NOW - 48 * 60 * MINUTE, reachSinceMs: NOW - 26 * 60 * MINUTE, limit: 200 },
   );
+  /* ★ THE REACH BAR HOLDS: these posts are a few thousand views, under For You's 40k and too slow
+     for its growth paths, so the owner's bar leaves both feeds empty. The rest of this test lowers
+     the bar to one view, to check what a post that clears it carries. */
   await projectRisingFeeds(db, clock, frame.coinsByStory, 30 * MINUTE);
+  assert.equal((await db.query<{ n: number }>(`select count(*)::int as n from public.rising_row`))[0]?.n, 0, 'small slow posts are on no feed');
+  await projectRisingFeeds(db, clock, frame.coinsByStory, 30 * MINUTE, {
+    ...DEFAULT_POLICY,
+    rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1 },
+  });
 
   const board = await handle('GET', '/board/default', { db: { query: (s, p) => db.query(s, p) }, log: quiet });
   assert.equal(board.status, 200);
