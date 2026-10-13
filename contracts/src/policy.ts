@@ -904,6 +904,12 @@ export interface FeedPolicy {
    */
   readonly langs: readonly string[];
   /**
+   * ★ THE OWNER'S HASHTAG WATCH (2026-10-13), edited here. A source that cannot search everything
+   * — the short-video source can only enter by hashtag or account — watches these instead of a
+   * catch-all lane, each a pass, newest first. Without a '#'; the adapter adds what it needs.
+   */
+  readonly hashtags: readonly string[];
+  /**
    * Posts asked for per lane per pass: one page. Also the reservation the budget is
    * checked against before the call, since a source picks its own page size.
    */
@@ -2222,6 +2228,7 @@ const POLICY_V1: Policy = {
     budgetShare: 0.6,
     mediaShare: 0.25,
     langs: ['en', 'zxx'],
+    hashtags: ['meme', 'memes', 'funny', 'fyp', 'viral', 'cat', 'dog', 'animals', 'pet', 'cute', 'trend', 'crypto', 'memecoin', 'solana'], // vocab-allow: solana  — a hashtag the owner chose to watch, not a chain this code knows
     pageLimit: 20,
     maxPagesPerLane: 3,
     slow: {
