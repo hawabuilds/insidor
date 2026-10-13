@@ -35,6 +35,7 @@ import { Modal } from '../../shared/ui/Modal.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformBadge } from '../../shared/ui/PlatformMark.tsx';
 import { Sparkline } from '../../shared/ui/Sparkline.tsx';
+import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
@@ -194,7 +195,7 @@ function Coins({ story, coins, line, now }: {
           className={styles['coin']}
           href={hrefFor({ screen: 'coin', storyId: story.id, coinId: c.coinId })}
         >
-          <Thumb url={c.imageUrl} size={42} round letter={c.ticker.charAt(0)} />
+          <CoinLogo address={c.address} ticker={c.ticker} imageUrl={c.imageUrl} size={42} />
           <div className={styles['coinText']}>
             <span className={styles['ticker']}>
               {c.ticker}

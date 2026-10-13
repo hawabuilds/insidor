@@ -159,6 +159,13 @@
   flex: 1 1 100%;
 }
 
+/* The coin's logo at the head of its line, when the card names one coin (shared/ui/CoinLogo.tsx). */
+.statusLogo {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
 /* Why a post's own coin is its coin, as facts, on the line under the ticker (coin-status.ts). */
 .facts {
   display: block;

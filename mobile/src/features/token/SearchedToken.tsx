@@ -17,7 +17,7 @@ import { formatCount } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon, CopyIcon } from '../../shared/ui/icons.tsx';
-import { Thumb } from '../../shared/ui/Thumb.tsx';
+import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { TradeBar } from '../trade/TradeBar.tsx';
@@ -74,7 +74,7 @@ function Body({ coin }: { coin: SearchedCoin }) {
   return (
     <>
       <div className={styles['coinHead']}>
-        <Thumb url={coin.imageUrl} size={44} round letter={ticker.charAt(0)} />
+        <CoinLogo address={coin.address} ticker={coin.ticker ?? coin.name} imageUrl={coin.imageUrl} size={44} />
         <div>
           <h1>{ticker}</h1>
           <span className={styles['name']}>{coin.name ?? ''}</span>

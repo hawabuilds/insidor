@@ -18,6 +18,7 @@ import { formatUsd } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { platformOf } from '../../shared/platform.ts';
 import { hrefFor } from '../../shared/route.ts';
+import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { GAP_LINE, marketLine, orderCoins, showingTop, type CoinOrder } from './search-view.ts';
@@ -179,7 +180,7 @@ export function CoinRow({ c, now }: { c: SearchCoin; now: number }) {
   const label = c.ticker ?? c.name ?? c.address.slice(0, 6);
   return (
     <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: c.coinId })}>
-      <Thumb url={c.imageUrl} size={44} round letter={label.charAt(0).toUpperCase()} />
+      <CoinLogo address={c.address} ticker={label} imageUrl={c.imageUrl} size={44} />
       <span className={styles['text']}>
         <span className={styles['coinTop']}>
           <b>{c.ticker ?? '—'}</b>

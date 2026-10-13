@@ -23,6 +23,7 @@ import type { Holding, Portfolio as PortfolioData } from '../../shared/api/index
 import type { Measured } from '../../shared/format/measure.ts';
 import { formatPrice, formatUsd } from '../../shared/format/number.ts';
 import { hrefFor } from '../../shared/route.ts';
+import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { Avatar } from './Avatar.tsx';
 import { BalanceChart } from './BalanceChart.tsx';
@@ -166,7 +167,7 @@ export function Portfolio({
             {read.created.coins.map((c) => (
               <li key={c.address}>
                 <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: c.coinId })}>
-                  <Avatar name={c.ticker} seed={c.address} src={null} size={36} />
+                  <CoinLogo address={c.address} ticker={c.ticker} size={36} />
                   <div className={styles['mid']}>
                     <div className={styles['symbolRow']}><span className={styles['symbol']}>{c.ticker ?? '—'}</span><span className={styles['pair']}>Created on Insidor</span></div>
                     <div className={styles['units']}>Market cap</div>
@@ -190,7 +191,7 @@ function Row({ h }: { h: Holding }) {
   const priced = h.valueUsd.known;
   return (
     <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: h.coinId })}>
-      <Avatar name={symbol} seed={h.address} src={h.imageUrl} size={36} />
+      <CoinLogo address={h.address} ticker={h.ticker} imageUrl={h.imageUrl} size={36} />
       <div className={styles['mid']}>
         <div className={styles['symbolRow']}>
           <span className={styles['symbol']}>{symbol}</span>
