@@ -278,3 +278,51 @@ test('★ the second question holds back a post the first passed when its kind i
   assert.equal(held.length, 1, 'only the AD post gets a second, holding answer');
   assert.equal(held[0]?.name, 'AD');
 });
+
+/** A kind judge answering each subject with the kind `kindOf` names for it; `asked` lists the subjects it saw. */
+function kindJudgeAnswering(base: ReturnType<typeof recordedJudge>, kindOf: (id: string) => string) {
+  const asked: string[] = [];
+  const kindJudge = {
+    ...base.judge,
+    promptId: 'post-kind@1',
+    judge: async (subjects: readonly { storyId: unknown }[]) => ({
+      value: subjects.map((s) => {
+        asked.push(String(s.storyId));
+        const kind = kindOf(String(s.storyId));
+        return { kind: 'judged' as const, judgement: { judgeId: 'judge:kind@1', promptId: 'post-kind@1', judgedAt: NOW, coinable: false, confidence: 0.9, lookedAt: 'text' as const, proposedName: kind, alternateNames: [], subjectSpans: [], rationaleRef: null, costUsd: 0 } };
+      }),
+      spend: { vendor: 'anthropic', endpoint: 'judge', unit: 'per-call' as const, units: 1, usd: 0, at: NOW },
+    }),
+  };
+  return { kindJudge: kindJudge as never, asked };
+}
+
+test('★ a "yes" just under the bar — one the picture boost could lift — is asked the kind question too', async () => {
+  const near = P.qualify.minJudgeConfidence.text - P.rising.boostBarMargin;
+  const judge = recordedJudge(near);
+  const { deps: d } = deps([post(1)], judge);
+  const k = kindJudgeAnswering(judge, () => 'TRAGEDY');
+  const filed: string[] = [];
+  await scorePosts({ ...d, kindJudge: k.kindJudge, scores: { ...d.scores, record: async (_id: ItemId, j: Judgement) => void filed.push(String(j.proposedName)) } });
+  assert.equal(k.asked.length, 1, 'the boostable post met the kind question');
+  assert.deepEqual(filed, ['baby hippo', 'TRAGEDY'], 'and its tragedy answer was filed to hold it');
+});
+
+test('a "yes" far under the bar can never show, and is not asked the kind', async () => {
+  const judge = recordedJudge(0.4);
+  const { deps: d } = deps([post(1)], judge);
+  const k = kindJudgeAnswering(judge, () => 'AD');
+  await scorePosts({ ...d, kindJudge: k.kindJudge });
+  assert.equal(k.asked.length, 0);
+});
+
+test('★ only a held kind label is filed: OTHER and an unknown label file nothing, whatever yes/no came with them', async () => {
+  const judge = recordedJudge(0.82);
+  const { deps: d } = deps([post(1), post(2), post(3), post(4)], judge);
+  const labels: Record<string, string> = { '1': 'TRAGEDY', '2': 'OTHER', '3': 'CORP_NEWS', '4': 'NEWS' };
+  const k = kindJudgeAnswering(judge, (id) => labels[id.slice(-1)] ?? 'OTHER');
+  const filed: string[] = [];
+  await scorePosts({ ...d, kindJudge: k.kindJudge, scores: { ...d.scores, record: async (_id: ItemId, j: Judgement) => void (j.promptId.startsWith('post-kind') && filed.push(String(j.proposedName))) } });
+  assert.deepEqual(filed.sort(), ['CORP_NEWS', 'TRAGEDY']);
+});
+
