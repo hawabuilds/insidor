@@ -9,6 +9,12 @@
  *   2. ★ OFF MEANS NOTHING. A kind switched off, or everything muted, makes no row and no push.
  *   3. ★ QUIET HOURS AND THE HOURLY LIMIT DELAY NOTHING AND DROP NOTHING. The alert lands in the
  *      list; only the push is withheld. A rank-up is list-only, as in Trador.
+ *   4. ★ A SUPPLIER WARNING IS THE OWNER'S, AND IT IS NEVER HELD BACK BY THE HOURLY LIMIT. It is
+ *      queued only for the owner (services/runner), when a supplier's spend reaches a share of
+ *      its daily line. It has no switch, so it cannot be turned off by accident on the settings
+ *      screen; mute still silences it and quiet hours still withhold its push, because both are
+ *      the owner's own explicit choices. The hourly limit is not: a busy hour of coin alerts must
+ *      not be what keeps the one about money off the phone.
  *
  * Pure: the local time and the counts come in as arguments (the service reads the clock and the
  * person's timezone). What breaks if changed carelessly:
@@ -29,6 +35,7 @@ export const ALERT_KINDS = [
   'narrative_promoted',
   'narrative_coin',
   'coin_matched',
+  'supplier_warning',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -48,6 +55,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   narrative_promoted: 'narratives',
   narrative_coin: 'narratives',
   coin_matched: 'coins',
+  supplier_warning: 'always',
 };
 
 export interface AlertPrefs {
@@ -144,7 +152,7 @@ export function deliveryFor(r: { readonly kind: AlertKind; readonly prefs: Alert
   if (!wants(r.prefs, r.kind)) return { kind: 'skip', why: 'off' };
   if (r.kind === 'rank_up') return { kind: 'list', why: 'list-only' };
   if (isQuiet(r.localMinutes, r.prefs)) return { kind: 'list', why: 'quiet' };
-  if (r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
+  if (r.kind !== 'supplier_warning' && r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
   if (r.devices === 0) return { kind: 'list', why: 'no-device' };
   return { kind: 'push' };
 }
