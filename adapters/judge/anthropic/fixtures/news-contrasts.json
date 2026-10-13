@@ -1,93 +1,467 @@
 {
-  "about": "The news-versus-subject contrasts the prompts teach. Each case is a story the judge could be asked about, the answer it should give, and the prompt lines that teach that answer. `answer` is HAND-WRITTEN in the judge's output format, NOT a recording of a model: the client has never made a call. When it can, replace each `answer` with a recorded one and set `answerSource` to `recorded`. See docs/meme-score-comparison.md, follow-ups.",
-  "cases": [
-    {
-      "id": "biden-news", "side": "news", "pair": "biden",
-      "texts": ["Biden tapes about classified documents released", "new details in the Biden classified documents tapes", "what the Biden tapes mean for the documents case"],
-      "expect": { "coinable": false },
-      "promptMustContain": ["Biden tapes on classified documents", "a news event"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": false, "proposedName": null, "confidence": 0.85 }
-    },
-    {
-      "id": "biden-subject", "side": "subject", "pair": "biden",
-      "texts": ["biden as the guy who forgot where he parked", "every biden edit today is the same joke", "biden walking into the wrong room again lmao"],
-      "expect": { "coinable": true },
-      "promptMustContain": ["memed AS a character"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": true, "proposedName": "biden", "confidence": 0.8 }
-    },
-    {
-      "id": "messi-news", "side": "news", "pair": "messi",
-      "texts": ["Messi's team lost the final 2-1", "heartbreak for Messi as his side lose the final", "full time: Messi's team beaten in the final"],
-      "expect": { "coinable": false },
-      "promptMustContain": ["Messi's team lost the final", "a sports result"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": false, "proposedName": null, "confidence": 0.85 }
-    },
-    {
-      "id": "messi-subject", "side": "subject", "pair": "messi",
-      "texts": ["messi staring at the trophy is my new reaction pic", "messi stare edit #4", "me looking at my bank account (messi stare)"],
-      "expect": { "coinable": true },
-      "promptMustContain": ["reposted and remixed as a meme"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": true, "proposedName": "messi", "confidence": 0.8 }
-    },
-    {
-      "id": "therapy-argument", "side": "news",
-      "texts": ["Therapy industry criticised as ineffective", "honestly the therapy industry criticism is fair", "therapy industry is ineffective? hard disagree"],
-      "expect": { "coinable": false },
-      "promptMustContain": ["Therapy industry criticised as ineffective", "an argument"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": false, "proposedName": null, "confidence": 0.9 }
-    },
-    {
-      "id": "kpop-argument", "side": "news",
-      "texts": ["K-pop industry faces criticism over schedules", "the k-pop industry criticism is overdue", "K-pop industry faces backlash, idols speak out"],
-      "expect": { "coinable": false },
-      "promptMustContain": ["K-pop industry faces criticism"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": false, "proposedName": null, "confidence": 0.85 }
-    },
-    {
-      "id": "apple-product-news", "side": "news",
-      "texts": ["Apple and LG leak new HomeKit features", "leak: HomeKit features coming from Apple and LG", "Apple LG HomeKit leak, here is everything"],
-      "expect": { "coinable": false },
-      "promptMustContain": ["Apple and LG leak new HomeKit features", "product news", "even though Apple is a specific name"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": false, "proposedName": null, "confidence": 0.85 }
-    },
-    {
-      "id": "stray-announcement", "side": "news", "pair": "stray",
-      "texts": ["Stray Kids unveil single, out Friday", "BREAKING: Stray Kids unveil new single", "Stray Kids announce single release date"],
-      "expect": { "coinable": false },
-      "promptMustContain": ["Stray Kids unveil single", "a press release", "not passing on a"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": false, "proposedName": null, "confidence": 0.75 }
-    },
-    {
-      "id": "stray-subject", "side": "subject", "pair": "stray",
-      "texts": ["felix doing the stray kids wave again i cannot", "stray kids wave edit compilation", "everyone doing the stray kids wave on the tube"],
-      "expect": { "coinable": true },
-      "promptMustContain": ["fans reposting a Stray Kids member's moment", "(STRAY)"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": true, "proposedName": "STRAY", "confidence": 0.75 }
-    },
-    {
-      "id": "fan-idol-subject", "side": "subject",
-      "texts": ["jungkook's face when the mic cut out", "jungkook mic face edit", "me when my alarm goes off (jungkook mic face)"],
-      "expect": { "coinable": true },
-      "promptMustContain": ["(JUNGKOOK, STRAY, RM)", "IS a subject when the posts treat them"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": true, "proposedName": "jungkook", "confidence": 0.8 }
-    },
-    {
-      "id": "unnameable", "side": "news",
-      "texts": ["what a week for the markets", "markets had a week", "this week in markets, thread"],
-      "expect": { "coinable": false },
-      "promptMustContain": ["one word, or a", "few words run together like CHILLGUY"],
-      "answerSource": "hand-written",
-      "answer": { "coinable": false, "proposedName": null, "confidence": 0.9 }
-    }
-  ]
+ "about": "The news-versus-subject contrasts the prompts teach. Each case is a story the judge could be asked about, the answer it should give, and the prompt lines that teach that answer. Answers marked \"recorded\" are the judge's real answers under the current prompts (claude-haiku-4-5, 2026-10-12), written by tools/record-news-contrasts.ts; rerun it after any prompt edit.",
+ "cases": [
+  {
+   "id": "biden-news",
+   "side": "news",
+   "pair": "biden",
+   "texts": [
+    "Biden tapes about classified documents released",
+    "new details in the Biden classified documents tapes",
+    "what the Biden tapes mean for the documents case"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "Biden tapes on classified documents",
+    "a news event"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.95
+   }
+  },
+  {
+   "id": "biden-subject",
+   "side": "subject",
+   "pair": "biden",
+   "texts": [
+    "biden as the guy who forgot where he parked",
+    "every biden edit today is the same joke",
+    "biden walking into the wrong room again lmao"
+   ],
+   "expect": {
+    "coinable": true
+   },
+   "promptMustContain": [
+    "memed AS a character"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": true,
+    "proposedName": "Biden",
+    "confidence": 0.85
+   }
+  },
+  {
+   "id": "messi-news",
+   "side": "news",
+   "pair": "messi",
+   "texts": [
+    "Messi's team lost the final 2-1",
+    "heartbreak for Messi as his side lose the final",
+    "full time: Messi's team beaten in the final"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "Messi's team lost the final",
+    "a sports result"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.98
+   }
+  },
+  {
+   "id": "messi-subject",
+   "side": "subject",
+   "pair": "messi",
+   "texts": [
+    "the dog that ran onto the pitch in the final is the real mvp",
+    "pitch dog edit #4",
+    "me running from my responsibilities (the pitch dog)"
+   ],
+   "expect": {
+    "coinable": true
+   },
+   "promptMustContain": [
+    "the dog (PITCHDOG), not Messi"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": true,
+    "proposedName": "PITCHDOG",
+    "confidence": 0.95
+   }
+  },
+  {
+   "id": "therapy-argument",
+   "side": "news",
+   "texts": [
+    "Therapy industry criticised as ineffective",
+    "honestly the therapy industry criticism is fair",
+    "therapy industry is ineffective? hard disagree"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "Therapy industry criticised as ineffective",
+    "an argument"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.99
+   }
+  },
+  {
+   "id": "kpop-argument",
+   "side": "news",
+   "texts": [
+    "K-pop industry faces criticism over schedules",
+    "the k-pop industry criticism is overdue",
+    "K-pop industry faces backlash, idols speak out"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "K-pop industry faces criticism"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.95
+   }
+  },
+  {
+   "id": "apple-product-news",
+   "side": "news",
+   "texts": [
+    "Apple and LG leak new HomeKit features",
+    "leak: HomeKit features coming from Apple and LG",
+    "Apple LG HomeKit leak, here is everything"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "Apple and LG leak new HomeKit features",
+    "product news",
+    "even though Apple is a specific name"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.98
+   }
+  },
+  {
+   "id": "stray-announcement",
+   "side": "news",
+   "pair": "stray",
+   "texts": [
+    "Stray Kids unveil single, out Friday",
+    "BREAKING: Stray Kids unveil new single",
+    "Stray Kids announce single release date"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "Stray Kids unveil single",
+    "a press release"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.99
+   }
+  },
+  {
+   "id": "stray-subject",
+   "side": "subject",
+   "pair": "stray",
+   "texts": [
+    "felix threw the plush toy into the crowd and it hit a security guard lol",
+    "the stray kids flying plush toy edit",
+    "me throwing my problems away (the plush toy)"
+   ],
+   "expect": {
+    "coinable": true
+   },
+   "promptMustContain": [
+    "the plush toy a Stray Kids member threw into the crowd"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": true,
+    "proposedName": "flying plush toy",
+    "confidence": 0.85
+   }
+  },
+  {
+   "id": "fan-idol-subject",
+   "side": "subject",
+   "texts": [
+    "jungkook's face when the mic cut out",
+    "jungkook mic face edit",
+    "me when my alarm goes off (jungkook mic face)"
+   ],
+   "expect": {
+    "coinable": true
+   },
+   "promptMustContain": [
+    "remix them into the same joke, as a character"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": true,
+    "proposedName": "jungkook mic face",
+    "confidence": 0.92
+   }
+  },
+  {
+   "id": "unnameable",
+   "side": "news",
+   "texts": [
+    "what a week for the markets",
+    "markets had a week",
+    "this week in markets, thread"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "one word, or a",
+    "few words run together like CHILLGUY"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.95
+   }
+  },
+  {
+   "id": "sports-result",
+   "side": "news",
+   "pair": "sports",
+   "texts": [
+    "William Contreras puts the Brewers in front! He's got 3 RBI tonight 💪",
+    "The William Contreras Game. He is 3-for-4, with the tying home run and go-ahead single.",
+    "A MAN THAT CAN'T BE STOPPED"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "SPORT: a result, a score"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.99
+   }
+  },
+  {
+   "id": "sports-animal",
+   "side": "subject",
+   "pair": "sports",
+   "texts": [
+    "a cat just ran onto the pitch and sat on the penalty spot",
+    "the pitch cat refuses to leave, ref gives up",
+    "pitch cat has more composure than our defence"
+   ],
+   "expect": {
+    "coinable": true
+   },
+   "promptMustContain": [
+    "The cat that ran onto the"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": true,
+    "proposedName": "pitch cat",
+    "confidence": 0.95
+   }
+  },
+  {
+   "id": "sports-clip",
+   "side": "news",
+   "texts": [
+    "Bobby Thomas left it all out there for @CoventryCityFC 💪",
+    "What a block from Bobby Thomas in the 89th minute",
+    "Thomas man of the match again"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "a match clip or highlight"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.95
+   }
+  },
+  {
+   "id": "sports-transfer",
+   "side": "news",
+   "texts": [
+    "DONE DEAL: Coventry sign striker for £12m, five-year contract",
+    "here we go! medical booked for Friday",
+    "the striker transfer is confirmed, fans react"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "a transfer"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.95
+   }
+  },
+  {
+   "id": "kpop-idol-photo",
+   "side": "news",
+   "pair": "kpop",
+   "texts": [
+    "#RM via Instagram Story 💜",
+    "📸 INSTAGRAM Jimin story: Wow☺️",
+    "#JHOPE via Instagram Post 💜 [Thread] BTS WORLD TOUR LIMA"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "an idol's photo or story"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.98
+   }
+  },
+  {
+   "id": "kpop-plush",
+   "side": "subject",
+   "pair": "kpop",
+   "texts": [
+    "the plush toy jimin threw at the concert landed on a fan's head and she's holding it like a trophy",
+    "plush toy girl is living my dream",
+    "everyone is editing the plush toy into everything"
+   ],
+   "expect": {
+    "coinable": true
+   },
+   "promptMustContain": [
+    "the plush toy thrown into the crowd"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": true,
+    "proposedName": "plush toy girl",
+    "confidence": 0.92
+   }
+  },
+  {
+   "id": "kpop-fancam",
+   "side": "news",
+   "texts": [
+    "JIHOPE ARRIVED IN CHILE 🇨🇱",
+    "jimin fancam from lima night 2, he looks so good",
+    "let's reach 10M streams on ARIRANG by Friday ARMY"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "a fancam",
+    "a streaming or voting goal"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.95
+   }
+  },
+  {
+   "id": "celebrity-news",
+   "side": "news",
+   "pair": "celebrity",
+   "texts": [
+    "Kacey Musgraves responds to Kristi Noem's tweet saying she prefers Ella Langley over her",
+    "Kacey Musgraves clapped back at Kristi Noem",
+    "the Kacey Musgraves reply is everywhere"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "CELEBRITY or POLITICAL news",
+    "however sharp the reply"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.95
+   }
+  },
+  {
+   "id": "celebrity-absurd",
+   "side": "subject",
+   "pair": "celebrity",
+   "texts": [
+    "the singer's shoe flew off on stage and landed in the drummer's soup",
+    "shoe in the soup edit",
+    "the soup shoe deserves its own tour"
+   ],
+   "expect": {
+    "coinable": true
+   },
+   "promptMustContain": [
+    "an absurd moment"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": true,
+    "proposedName": "shoe in the soup",
+    "confidence": 0.85
+   }
+  },
+  {
+   "id": "political-news",
+   "side": "news",
+   "texts": [
+    "Senator says she will vote against the funding bill",
+    "the senator's statement on the funding vote, thread",
+    "reactions to the senator's vote are pouring in"
+   ],
+   "expect": {
+    "coinable": false
+   },
+   "promptMustContain": [
+    "CELEBRITY or POLITICAL news"
+   ],
+   "answerSource": "recorded",
+   "answer": {
+    "coinable": false,
+    "proposedName": null,
+    "confidence": 0.98
+   }
+  }
+ ]
 }

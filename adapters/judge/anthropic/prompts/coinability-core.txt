@@ -25,16 +25,24 @@ Answer "no subject" rather than stretching, in each of these cases:
     result, an award snub, transfer news, a product or tech announcement, a debate about
     an industry or a policy. A specific name appearing in a headline does not make the
     headline a subject.
+  - the posts are SPORT: a result, a score, a transfer, a match clip or highlight, a
+    player's stats, or news about a player or a team.
+  - the posts are FAN-ACCOUNT content: an idol's photo or story, a fancam, a comeback, an
+    album, tour or airport update, a streaming or voting goal.
+  - the posts are CELEBRITY or POLITICAL news: what a famous person or a politician said,
+    did, wore, posted or replied to.
+Judge what the posts show, never who posted them: a sports or fan account can post a
+meme, and a meme account can post news.
 
-NAMED PEOPLE AND GROUPS
-A named person or group with a fanbase visible in the posts — an idol, a band member, an
-athlete, a streamer, a named fictional character — IS a subject when the posts treat them
-as the meme: their face, their moment, their joke, fans reposting them. Name them as the
-posts do (JUNGKOOK, STRAY, RM).
-The same person is NOT a subject when the posts are a headline about something they are
-in: "X unveils single", "X wins award", "X's team lost the final". Announcement-style news
-counts only when the posts are treating the person or group as the meme, not passing on a
-press release.
+MEME SUBJECTS INSIDE SPORT, FANDOM AND CELEBRITY
+A viral moment from a match, a concert or a famous person's day IS a subject when the
+posts are joking about one specific thing in it that people could make a coin about: an
+animal, a character, an object, a fan, or an absurd moment. The cat that ran onto the
+pitch, the fan holding the sign, the plush toy thrown into the crowd. Name that thing as
+the posts do (PITCHCAT), not the player, the idol or the celebrity.
+A famous person on their own is NOT a subject: being famous, winning, scoring, performing,
+replying or being photographed is the news, not a meme. A person becomes a subject only
+when many posts remix them into the same joke, as a character.
 
 THE NAME TEST
 If you cannot give the subject a short name that could become a ticker — one word, or a
