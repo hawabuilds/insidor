@@ -40,7 +40,7 @@ import type { DiscoveryConfig } from '../config.ts';
 import { errorText, type Logger } from '../log.ts';
 import type { Loop, LoopContext, LoopCounts } from '../loop.ts';
 import { declareSources, type WatchDeps } from '../sources.ts';
-import { MAIN_LANES, discoverPass, memoryWatchClock, type DiscoverDeps, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
+import { MAIN_LANES, discoverPass, memoryFreshClock, memoryWatchClock, type DiscoverDeps, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
 
 /**
  * Two minutes — the earlier build's ingest cadence, so the catch-all search sees a post
@@ -109,6 +109,9 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
   /* When each source with no catch-all was last asked, in this process — the same trade:
      a restart asks it once more at once, never misses it. See `watchEveryMs`. */
   const watch = memoryWatchClock();
+  /* Where each fresh band's last ask ended (`feed.fresh`), in this process: a restart reaches back
+     the band's cap once, never leaves a gap. Unused while fresh discovery is off. */
+  const fresh = memoryFreshClock();
 
   return {
     stage: 'discover',
@@ -156,6 +159,7 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
         dailyCapUsd: deps.dailyCapUsd,
         lanes: slowDue ? [...MAIN_LANES, 'slow'] : MAIN_LANES,
         watch,
+        fresh,
       });
 
       /* ★ THE COUNTS ARE PRINTED ON EVERY PASS INCLUDING THE HEALTHY ONES, and always
