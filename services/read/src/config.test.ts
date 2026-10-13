@@ -76,3 +76,28 @@ test('★ market data: free without a key; CoinGecko pro with one; the public ho
   assert.deepEqual(loadReadConfig({ ...base, COINGECKO_API_KEY: 'k' }).marketData, { plan: 'pro', apiKey: 'k', baseUrl: 'https://pro-api.coingecko.com/api/v3/onchain' });
   assert.equal(loadReadConfig({ ...base, COINGECKO_API_KEY: 'k', COINGECKO_API_PLAN: 'demo' }).marketData.baseUrl, 'https://api.coingecko.com/api/v3/onchain');
 });
+
+/* ── the LISTEN connection's URL ─────────────────────────────────────────── */
+
+const APP_POOLED = 'postgres://insidor_app_user:pw@host:6543/insidor';
+
+test('the pool may sit on the transaction pooler while LISTEN holds a session on the same login', () => {
+  const cfg = loadReadConfig({ DATABASE_URL_APP: APP_POOLED, DATABASE_URL_APP_SESSION: APP_URL });
+  assert.equal(cfg.databaseUrl, APP_POOLED);
+  assert.equal(cfg.listenUrl, APP_URL);
+});
+
+test('with no session URL, LISTEN uses DATABASE_URL_APP — fine locally, where there is no pooler', () => {
+  assert.equal(loadReadConfig({ DATABASE_URL_APP: APP_URL }).listenUrl, APP_URL);
+});
+
+test('★ LISTEN on the transaction pooler is refused: it would never hear a frame', () => {
+  assert.throws(() => loadReadConfig({ DATABASE_URL_APP: APP_POOLED }), /DATABASE_URL_APP_SESSION/);
+});
+
+test('★ a session URL with a different login is a second credential, and is refused', () => {
+  assert.throws(
+    () => loadReadConfig({ DATABASE_URL_APP: APP_POOLED, DATABASE_URL_APP_SESSION: INTERNAL_URL }),
+    /same app login/,
+  );
+});

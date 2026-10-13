@@ -60,6 +60,15 @@ export interface ReadConfig {
    * only, and denied `public.observation`. Never DATABASE_URL.
    */
   readonly databaseUrl: string;
+  /**
+   * The SAME app credential for the one dedicated LISTEN connection, from
+   * DATABASE_URL_APP_SESSION, or DATABASE_URL_APP when that is unset. It exists because the
+   * pool may sit behind the transaction-mode pooler (port 6543), where a LISTEN is dropped
+   * with no error, while the listener must hold a session (5432). It is not a second
+   * credential: a different login than DATABASE_URL_APP's, or the transaction pooler, or
+   * DATABASE_URL itself, is refused at boot — so rule 1 above still holds for both.
+   */
+  readonly listenUrl: string;
   readonly port: number;
   /**
    * Exact origins allowed to read this surface, matched whole — never a prefix and
@@ -92,6 +101,17 @@ export class ConfigError extends Error {
 
 type Env = Readonly<Record<string, string | undefined>>;
 
+/** The transaction-mode pooler's port: a LISTEN cannot live there. */
+const TRANSACTION_POOLER_PORT = '6543';
+
+function parsedUrl(raw: string): URL | null {
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
+}
+
 function trimmed(env: Env, key: string): string | null {
   const raw = env[key];
   if (raw === undefined) return null;
@@ -118,6 +138,26 @@ export function loadReadConfig(env: Env): ReadConfig {
         'the internal role under the app role\'s name. Create a separate LOGIN user granted ' +
         'insidor_app and point DATABASE_URL_APP at that.',
     );
+  }
+
+  const listenUrl = trimmed(env, 'DATABASE_URL_APP_SESSION') ?? databaseUrl;
+  if (databaseUrl !== null && listenUrl !== null) {
+    const pooled = parsedUrl(databaseUrl);
+    const session = parsedUrl(listenUrl);
+    if (pooled === null || session === null) {
+      problems.push('DATABASE_URL_APP or DATABASE_URL_APP_SESSION is not a valid connection URL.');
+    } else if (session.port === TRANSACTION_POOLER_PORT) {
+      problems.push(
+        `The LISTEN connection would use the transaction-mode pooler (port ${TRANSACTION_POOLER_PORT}), ` +
+          'which drops a LISTEN with no error, so the live board would never hear a frame. Set ' +
+          'DATABASE_URL_APP_SESSION to the same app login on the session pooler (5432).',
+      );
+    } else if (session.username !== pooled.username || (internalUrl !== null && listenUrl === internalUrl)) {
+      problems.push(
+        'DATABASE_URL_APP_SESSION must be the same app login as DATABASE_URL_APP, on the session ' +
+          'pooler. A different login here is a second credential in a browser-facing process.',
+      );
+    }
   }
 
   let port = DEFAULT_PORT;
@@ -151,6 +191,7 @@ export function loadReadConfig(env: Env): ReadConfig {
   const heliusKey = trimmed(env, 'HELIUS_API_KEY');
   return {
     databaseUrl: databaseUrl ?? '',
+    listenUrl: listenUrl ?? '',
     port,
     allowedOrigins,
     marketData: marketDataFrom(env),
