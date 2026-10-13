@@ -55,12 +55,12 @@ export function CoinCallButtons({ post }: { post: RisingPost }) {
   };
   return (
     <>
-      {said !== null ? <span className={styles['said']}>{said}</span> : null}
       {ask.kind === 'confirm' ? (
         <>
-          <Button look="quiet" onClick={stop(() => void call(post, 'right', ask.coin.address))}>Right coin</Button>
+          <Button look="quiet" className={styles['mini']} onClick={stop(() => void call(post, 'right', ask.coin.address))}>Right coin</Button>
           <Button
             look="quiet"
+            className={styles['mini']}
             onClick={stop(() => {
               void call(post, 'wrong', null);
               setPicking(true);
@@ -70,8 +70,9 @@ export function CoinCallButtons({ post }: { post: RisingPost }) {
           </Button>
         </>
       ) : (
-        <Button look="quiet" onClick={stop(() => setPicking(true))}>Which coin?</Button>
+        <Button look="quiet" className={styles['mini']} onClick={stop(() => setPicking(true))}>Which coin?</Button>
       )}
+      {said !== null ? <span className={styles['saidTag']}>{said}</span> : null}
       {picking ? (
         <Modal title="Which coin is from this post?" onClose={() => setPicking(false)}>
           <CoinPickLoaded post={post} pickedCall={ask.kind === 'confirm' ? 'wrong' : 'right'} onDone={() => setPicking(false)} />

@@ -49,10 +49,11 @@ export async function showPost(itemId: string): Promise<boolean> {
   }
 }
 
-export function NotAMeme({ item }: { item: JustHidden }) {
+export function NotAMeme({ item, className }: { item: JustHidden; className?: string | undefined }) {
   return (
     <Button
       look="quiet"
+      className={className}
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
