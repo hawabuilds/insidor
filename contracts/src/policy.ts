@@ -2579,8 +2579,10 @@ const POLICY_V1: Policy = {
     boostMinSimilarity: 0.44,
     /* A "yes" up to a tenth under its bar: 0.60 on text or a picture, 0.65 with a video frame. */
     boostBarMargin: 0.1,
-    /* 40 a pass: a day's judged posts made stale by one prompt change drain in a few hours. */
-    rescorePerPass: 40,
+    /* 15 a pass, with a pass every minute or two: about 600 an hour. The ~2,100 posts judged in a
+       day (2026-10-13) re-score in about 3.5 hours after a prompt change, near $0.70 an hour at
+       the measured $0.0012 a post, on the live judge line and under its cap. */
+    rescorePerPass: 15,
   },
 
   rank: {
