@@ -193,6 +193,9 @@ export interface WireCoinEvidence {
   /** The post's own account posted the coin's address under it (or in it); null when the replies
       were not read. Absent from rows written before 2026-10-13's coin-match signals. */
   readonly posterPostedAddress?: boolean | null;
+  /** The owner checked this coin by hand and said it is the post's ("This is the coin", 0054):
+      the card shows it as linking the post. Absent on every coin the evidence settled alone. */
+  readonly ownerChecked?: true;
 }
 
 export interface WireBoardRow {

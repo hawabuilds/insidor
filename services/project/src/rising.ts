@@ -29,6 +29,9 @@
  * ★ EVERY ROW SAYS WHERE ITS COIN STANDS. `coins` is never null; it is one of these, decided in
  * `postCoins` below:
  *
+ *   the owner's current coin call names a coin we hold ("This is the coin", owner-calls.ts)
+ *                                       → `matched` with that coin, over the story's link and
+ *                                       the evidence, `ownerChecked` among its facts;
  *   the post's promoted story names one coin, several, or is unsure → that story's own link,
  *                                       with its story id (if the read has a story, the story
  *                                       decides) — so a Buy button is the board's confident
@@ -86,7 +89,7 @@ import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.
 const SHORT_VIDEO_SOURCE = 'tiktok';
 import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from './post-match.ts';
 import { projectCoin } from './project.ts';
-import { withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
+import { loadOwnerCoins, withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { writeSameNameCoins } from './same-name.ts';
 import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { permalinkFor } from './permalinks.ts';
@@ -302,7 +305,8 @@ export type PostLookup = { readonly coins: readonly string[]; readonly more: boo
  * list in evidence order with each coin's facts. Absent when nothing was weighed.
  */
 export type PostLookupMatch =
-  | { readonly kind: 'matched'; readonly coin: WireCoin; readonly evidence: WireCoinEvidence }
+  /* `owner`: the owner named this coin (owner-calls.ts `loadOwnerCoins`); it wins over a story's link. */
+  | { readonly kind: 'matched'; readonly coin: WireCoin; readonly evidence: WireCoinEvidence; readonly owner?: true }
   | { readonly kind: 'unsure'; readonly order: readonly string[]; readonly evidence: ReadonlyMap<string, WireCoinEvidence> };
 
 /** The row's coin line and the story it came from, by the rule in the header. */
@@ -310,6 +314,11 @@ export function postCoins(
   storyLink: WireCoinLink | undefined,
   lookup: PostLookup | null,
 ): { readonly coins: WirePostCoinLink; readonly fromStory: boolean; readonly sameName: readonly string[] } {
+  /* The owner's own coin first: "This is the coin" outranks a narrative's link and the evidence. */
+  if (lookup !== null && 'coins' in lookup && lookup.match?.kind === 'matched' && lookup.match.owner === true) {
+    const m = lookup.match;
+    return { coins: { kind: 'matched', coin: m.coin, evidence: m.evidence }, fromStory: false, sameName: [m.coin.address, ...lookup.coins.filter((a) => a !== m.coin.address)] };
+  }
   if (storyLink !== undefined && (storyLink.kind === 'one' || storyLink.kind === 'several' || storyLink.kind === 'unsure')) {
     return { coins: storyLink, fromStory: true, sameName: [] };
   }
@@ -611,10 +620,11 @@ async function withMatches(
        found (post-match.ts widens the list). */
     if (l !== undefined && 'coins' in l) lists.set(row.item_id, l.coins);
   }
-  if (lists.size === 0) return lookups;
-  const weighed: ReadonlyMap<string, PostMatch> = await weighPostCoins(db, lists, policy);
+  const ownerCoins = await loadOwnerCoins(db, rows.map((row) => row.item_id));
+  if (lists.size === 0 && ownerCoins.size === 0) return lookups;
+  const weighed: ReadonlyMap<string, PostMatch> = lists.size === 0 ? new Map() : await weighPostCoins(db, lists, policy);
   const confident = [...weighed.values()].flatMap((m) => (m.decision.kind === 'confident' ? [m.decision.address] : []));
-  const facts = await loadCoinFactsByAddress(db, confident);
+  const facts = await loadCoinFactsByAddress(db, [...new Set([...confident, ...ownerCoins.values()])]);
   const options = { nowMs, sparkWindowMs, marketFreshnessMs: policy.market.readingFreshnessMs, feedFreshnessMs: policy.assets.feedFreshnessMs };
   const out = new Map(lookups);
   for (const [itemId, m] of weighed) {
@@ -631,6 +641,26 @@ async function withMatches(
     } else {
       out.set(itemId, { ...l, match: { kind: 'unsure', order: m.evidence.map((x) => x.address), evidence } });
     }
+  }
+  /* The owner's coin, over all of the above: proven for everyone, with the facts we hold about it
+     against the post. A coin we do not hold yet waits for the runner to add it (owner-calls.ts). */
+  const postedAt = new Map(rows.map((row) => [row.item_id, toMs(row.posted_at) ?? toMs(row.first_seen_at)] as const));
+  for (const [itemId, address] of ownerCoins) {
+    const f = facts.get(address);
+    if (f === undefined) continue;
+    const coin = projectCoin(f, options);
+    const weighedHere = weighed.get(itemId)?.evidence.find((x) => x.address === address);
+    const posted = postedAt.get(itemId) ?? null;
+    const evidence: WireCoinEvidence = {
+      linksPost: true,
+      samePicture: weighedHere?.samePicture ?? null,
+      launchedAfterMs: weighedHere?.launchedAfterMs ?? (coin.mintedAt.at === null || posted === null ? null : coin.mintedAt.at - posted),
+      ...(weighedHere?.posterPostedAddress === undefined ? {} : { posterPostedAddress: weighedHere.posterPostedAddress }),
+      ownerChecked: true,
+    };
+    const l = out.get(itemId);
+    const base = l !== undefined && 'coins' in l ? l : { coins: [], more: false };
+    out.set(itemId, { ...base, match: { kind: 'matched', coin, evidence, owner: true } });
   }
   return out;
 }
