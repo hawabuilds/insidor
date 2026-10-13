@@ -1,5 +1,5 @@
 /**
- * The shared vocabulary of the vendor edge: defensive readers, four errors, and the
+ * The shared vocabulary of the vendor edge: defensive readers, four errors and the billing one, and the
  * one shape in which "we were never given a key for this" is a value rather than a
  * throw.
  *
@@ -29,6 +29,8 @@
 export { rec, str, num, int, bool, arr, missing, secondsToMillis, dateToMillis } from './read.ts';
 export type { Rec } from './read.ts';
 export { NotImplemented, VendorUnavailable, VendorShapeError, BudgetRefused } from './errors.ts';
+export { OutOfCredit, outOfCredit, onOutOfCredit, vendorAnswered, isOutOfCredit } from './billing.ts';
+export type { BillingListener } from './billing.ts';
 export { discovered } from './discovered.ts';
 export { readCredentials, credentialVariables } from './credentials.ts';
 export type {
