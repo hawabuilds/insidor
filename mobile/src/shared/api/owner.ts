@@ -8,9 +8,9 @@
  */
 
 import { socialCall } from './people.ts';
-import { decodeCalls, decodeHidden, decodeOwner, savedCallOf, type CallKind, type HiddenPost, type SavedCall } from './wire/owner.ts';
+import { decodeCalls, decodeCoinCheck, decodeHidden, decodeOwner, savedCallOf, type CallKind, type CoinCheckResult, type HiddenPost, type SavedCall } from './wire/owner.ts';
 
-export type { CallKind, CoinCall, HiddenCard, HiddenPost, NameCall, PostCall, SavedCall } from './wire/owner.ts';
+export type { CallKind, CoinCall, CoinCheckResult, HiddenCard, HiddenPost, NameCall, PastedCoin, PostCall, SavedCall } from './wire/owner.ts';
 
 /** What the owner saw when making a call: the card's facts, or the coin line. */
 export type Shown = Readonly<Record<string, string | number | boolean | null>>;
@@ -48,4 +48,18 @@ export async function fetchCalls(kind: CallKind, itemIds: readonly string[]): Pr
 
 export async function fetchHidden(): Promise<readonly HiddenPost[]> {
   return decodeHidden(await socialCall('GET', '/owner/hidden'));
+}
+
+/** Which post a pasted coin is for: the card's own id, or the link the owner pasted. */
+export type PostRef = { readonly itemId: string } | { readonly postUrl: string };
+
+/** "Check": is the pasted address a coin, and what is it. Nothing is saved. */
+export async function checkCoin(coin: string, post: PostRef): Promise<CoinCheckResult> {
+  return decodeCoinCheck(await socialCall('POST', '/owner/coin-check', { coin, ...post }));
+}
+
+/** "Confirm": save "This is the coin" with the pasted address; a post we do not hold is queued too. */
+export async function saveCoinLabel(coin: string, post: PostRef): Promise<SavedCall | null> {
+  const reply = (await socialCall('POST', '/owner/coin-label', { coin, ...post })) as { saved?: unknown };
+  return savedCallOf(reply.saved);
 }

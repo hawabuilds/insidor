@@ -16,12 +16,13 @@
 
 export type CallKind = 'post' | 'coin_match' | 'name';
 export type PostCall = 'meme' | 'not';
-export type CoinCall = 'right' | 'wrong' | 'none';
+/** `cleared` is "Remove my label": the owner takes back a coin call; it is no call from then on. */
+export type CoinCall = 'right' | 'wrong' | 'none' | 'cleared';
 export type NameCall = 'up' | 'down';
 
 const CALLS: Readonly<Record<CallKind, readonly string[]>> = {
   post: ['meme', 'not'],
-  coin_match: ['right', 'wrong', 'none'],
+  coin_match: ['right', 'wrong', 'none', 'cleared'],
   name: ['up', 'down'],
 };
 
@@ -123,4 +124,47 @@ export function callsByItem(calls: readonly SavedCall[]): ReadonlyMap<string, Sa
     if (held === undefined || held.at <= c.at) out.set(key, c);
   }
   return out;
+}
+
+/** A coin the owner pasted by its address, as the service read it. Every number may be missing. */
+export interface PastedCoin {
+  readonly address: string;
+  readonly name: string | null;
+  readonly ticker: string | null;
+  readonly logoUrl: string | null;
+  readonly marketCapUsd: number | null;
+  readonly highestMarketCapUsd: number | null;
+  /** Why the highest is missing, in words; null when it is there. */
+  readonly highestWhy: string | null;
+  readonly launchedAt: number | null;
+}
+
+/** "Check": the coin, or that no source knows it; and its launch against the post. */
+export type CoinCheckResult =
+  | { readonly found: false }
+  | { readonly found: true; readonly coin: PastedCoin; readonly launchedAfterMs: number | null; readonly postStored: boolean };
+
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+export function decodeCoinCheck(raw: unknown): CoinCheckResult {
+  if (!isObj(raw) || raw['found'] !== true || !isObj(raw['coin'])) return { found: false };
+  const c = raw['coin'];
+  const address = str(c['address']);
+  if (address === null) return { found: false };
+  const post = isObj(raw['post']) ? raw['post'] : {};
+  return {
+    found: true,
+    coin: {
+      address,
+      name: str(c['name']),
+      ticker: str(c['ticker']),
+      logoUrl: link(c['logoUrl']),
+      marketCapUsd: num(c['marketCapUsd']),
+      highestMarketCapUsd: num(c['highestMarketCapUsd']),
+      highestWhy: str(c['highestWhy']),
+      launchedAt: num(c['launchedAt']),
+    },
+    launchedAfterMs: num(raw['launchedAfterMs']),
+    postStored: post['stored'] === true,
+  };
 }
