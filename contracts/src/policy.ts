@@ -1421,6 +1421,12 @@ export interface BudgetPolicy {
   readonly supplierLines: { readonly posts: number; readonly judge: number; readonly video: number; readonly actors: number; readonly embeddings: number };
   /** Shares of a supplier's line at which the owner is warned (a push and a log line), once each a day. */
   readonly warnAt: readonly number[];
+  /**
+   * ★ ONE-OFF JOBS' OWN MONEY: re-scoring, the history pilot, the pass-rate and gold tools. Kept
+   * in a separate book on the same ledger (rows labelled as a job's), so a job can never spend
+   * the live feed's lines and the live feed never spends these. `dailyUsd` caps the jobs' day.
+   */
+  readonly jobLines: { readonly dailyUsd: number; readonly posts: number; readonly judge: number; readonly video: number; readonly embeddings: number };
   /*
    * ★ NO PACING, BY THE OWNER'S CHOICE (2026-10-13). Lines were once paced over the UTC day, so a
    * busy morning could not spend the day by breakfast. In practice the pace paused discovery and
@@ -1911,7 +1917,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v44',
+  version: 'policy.v45',
 
   admit: {
     maxAgeMin: 240,
@@ -2493,6 +2499,7 @@ const POLICY_V1: Policy = {
     softStopFraction: 0.9,
     supplierLines: { posts: 11.25, judge: 8, video: 2, actors: 1, embeddings: 2 },
     warnAt: [0.8, 0.95],
+    jobLines: { dailyUsd: 4, posts: 1, judge: 2, video: 0.5, embeddings: 0.5 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`

@@ -282,7 +282,7 @@ test('★ two processes on one ledger: after a refresh, each sees what the other
   assert.equal(runner.mayspend('acme', 0.2), false);
 });
 
-test("★ a one-off job's spending counts in the runner's cap but not its pace", async () => {
+test("★ another process in the same book counts in the runner's cap but not its pace", async () => {
   const ledger = shelf();
   const DAY = 86_400_000;
   /* Two hours into the UTC day, a $10 line paced with no head start: $0.83 may be spent so far. */
@@ -299,7 +299,7 @@ test("★ a one-off job's spending counts in the runner's cap but not its pace",
   assert.ok(Math.abs(runner.spentUsd('acme') - 9) < 1e-9, 'and it is reported as spent today');
 });
 
-test("late in the day the job's spending is what stops the runner at the line", async () => {
+test("late in the day another process's spending is what stops the runner at the line", async () => {
   const ledger = shelf();
   const DAY = 86_400_000;
   const lateIn = (Math.floor(AT / DAY) * DAY + 23 * 3_600_000) as Millis;
@@ -310,4 +310,29 @@ test("late in the day the job's spending is what stops the runner at the line", 
   await runner.refresh();
   assert.equal(runner.mayspend('acme', 0.9), true);
   assert.equal(runner.mayspend('acme', 1.5), false, '$9 + $1.50 is over the $10 line, though the pace would allow it');
+});
+
+test("★ two books: the live meter never counts a job's spending, and a job's meter counts only jobs'", async () => {
+  const rows: Spend[] = [];
+  const ledger: SpendLedger = {
+    append: async (sp: Spend) => void rows.push(sp),
+    totalsSince: async (sinceMs: Millis): Promise<SpendTotals> => {
+      const sum = (pick: (sp: Spend) => boolean) => {
+        const byVendor: Record<string, number> = {};
+        let totalUsd = 0;
+        for (const r of rows) if (r.at >= sinceMs && pick(r)) { byVendor[r.vendor] = (byVendor[r.vendor] ?? 0) + r.usd; totalUsd += r.usd; }
+        return { totalUsd, byVendor };
+      };
+      return { ...sum(() => true), jobs: sum((r) => r.endpoint.startsWith('job:')) };
+    },
+  };
+  rows.push({ ...spend(0.9), endpoint: 'job:search' });
+  const live = await openDurableMeter({ ledger, dailyCapUsd: 10, perVendorCapUsd: { acme: 1 }, softStop: 1, now: () => AT });
+  assert.equal(live.mayspend('acme', 0.9), true, "the job's $0.90 is not the live feed's");
+  const job = await openDurableMeter({ ledger, book: 'jobs', dailyCapUsd: 10, perVendorCapUsd: { acme: 1 }, softStop: 1, now: () => AT });
+  assert.equal(job.mayspend('acme', 0.2), false, "but it is the jobs' own: $0.90 + $0.20 is over their $1");
+  live.record(spend(0.5));
+  await live.drain();
+  await job.refresh();
+  assert.ok(Math.abs(job.spentUsd('acme') - 0.9) < 1e-9, "and the live feed's spending never reaches the jobs' book");
 });

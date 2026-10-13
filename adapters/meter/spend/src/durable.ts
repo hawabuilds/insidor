@@ -58,6 +58,8 @@ export interface DurableMeterOptions
   extends Omit<InMemoryMeterOptions, 'opening' | 'onRecord'> {
   /** Where spend is read from at boot and written to afterwards. */
   readonly ledger: SpendLedger;
+  /** Which spending this meter's lines hold: the live feed's (default) or one-off jobs'. */
+  readonly book?: 'live' | 'jobs';
   /**
    * Called when a spend could not be persisted. Reporting only — the meter has
    * already counted the dollars and does not act on the failure. Kept as a callback
@@ -131,13 +133,19 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
      explicitly-undefined optional a different type from an omitted one — and the
      difference matters here: an explicit `undefined` cap would read as a declared
      absence of a ceiling rather than as a question nobody asked. */
-  /* The pace starts from what was spent before this process by anything that is NOT a one-off
-     job; the jobs' share goes in the caps only (`external`). See SpendTotals.jobs. */
-  const jobsAtOpen = openedWith.jobs ?? { totalUsd: 0, byVendor: {} };
-  const paceOpening: SpendTotals = {
-    totalUsd: Math.max(openedWith.totalUsd - jobsAtOpen.totalUsd, 0),
-    byVendor: Object.fromEntries(Object.entries(openedWith.byVendor).map(([v, usd]) => [v, Math.max(usd - (jobsAtOpen.byVendor[v] ?? 0), 0)])),
+  /* ★ TWO BOOKS ON ONE LEDGER. The live feed's lines count only the live feed's spending, and
+     a one-off job's lines only jobs' (rows labelled JOB_ENDPOINT_PREFIX; SpendTotals.jobs), so
+     neither can ever spend the other's money. */
+  const book = opts.book ?? 'live';
+  const inBook = (t: SpendTotals): SpendTotals => {
+    const jobs = t.jobs ?? { totalUsd: 0, byVendor: {} };
+    if (book === 'jobs') return { totalUsd: jobs.totalUsd, byVendor: { ...jobs.byVendor } };
+    return {
+      totalUsd: Math.max(t.totalUsd - jobs.totalUsd, 0),
+      byVendor: Object.fromEntries(Object.entries(t.byVendor).map(([v, usd]) => [v, Math.max(usd - (jobs.byVendor[v] ?? 0), 0)])),
+    };
   };
+  const paceOpening: SpendTotals = inBook(openedWith);
 
   const inner = inMemoryMeter({
     dailyCapUsd: opts.dailyCapUsd,
@@ -149,7 +157,6 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
     opening: paceOpening,
     onRecord: persist,
   });
-  inner.setExternal({ totalUsd: jobsAtOpen.totalUsd, byVendor: jobsAtOpen.byVendor });
 
   return {
     openedWith,
@@ -173,9 +180,9 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
      */
     refresh: async () => {
       const at = opts.now();
-      const ledger = await opts.ledger.totalsSince(dayStart(at) as Millis);
-      /* Another process's spending since this one opened: the ledger, less what was there when
-         this one opened, less this process's own entries. It goes in the caps, not the pace. */
+      const ledger = inBook(await opts.ledger.totalsSince(dayStart(at) as Millis));
+      /* Another process's spending in the same book since this one opened: the book, less what was
+         there when this one opened, less this process's own entries. Caps, not pace. */
       const known: Record<string, number> = { ...paceOpening.byVendor };
       let knownTotal = paceOpening.totalUsd;
       for (const e of inner.entries()) {
