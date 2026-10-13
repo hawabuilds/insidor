@@ -18,6 +18,7 @@
 
 import { notImplemented } from '../not-implemented.ts';
 import { decodeCoinAbout, type CoinAbout } from './about.ts';
+import { decodePostSheet, type PostSheetData } from './post-sheet.ts';
 import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, SameNameCoins, SearchedCoin, SearchResults } from './wire/search.ts';
@@ -87,6 +88,11 @@ export async function fetchCoinMarket(coinId: string, timeframe: MarketTimeframe
 /** A coin's links, day numbers, holders, creator and the feed posts naming it: the token page's Info tab. */
 export async function fetchCoinAbout(coinId: string, signal?: AbortSignal): Promise<CoinAbout> {
   return decodeCoinAbout(await read(`/coin/${encodeURIComponent(coinId)}/about`, signal));
+}
+
+/** One feed post as its post sheet shows it: the post, its author, its media and every coin with its name. */
+export async function fetchPostSheet(postId: string, signal?: AbortSignal): Promise<PostSheetData> {
+  return decodePostSheet(await read(`/post/${encodeURIComponent(postId)}/sheet`, signal));
 }
 
 /** The Portfolio tab: what this wallet holds and what it is worth. The app asks only for its own. */

@@ -56,7 +56,7 @@ test('an outage is not an empty market: every cap is "not read yet"', async () =
 test('a post no feed holds is a 404, and its narrative is named when it is in one', async () => {
   assert.equal((await createPostSheet(deps({})).sheet('x:gone')).status, 404);
   const sheet = createPostSheet(deps({ [SHEET_POST_SQL]: [{ payload: { ...POST, coins: { kind: 'none' } }, media: [] }], [SHEET_STORY_SQL]: [{ story_id: 'st_1', title: 'Goliath' }] }));
-  assert.deepEqual(JSON.parse((await sheet.sheet('x:1')).body).narrative, { storyId: 'st_1', title: 'Goliath' });
+  assert.deepEqual(JSON.parse((await sheet.sheet('x:1')).body).story, { storyId: 'st_1', title: 'Goliath' });
 });
 
 test('a video is offered to play only with an https mp4 of its own; otherwise its still, and nothing when there is no picture', () => {
