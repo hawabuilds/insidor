@@ -366,10 +366,9 @@ export async function withRuntime<T>(
            and the source nobody remembers is exactly the one that would have none. */
         defaultVendorCapUsd: policy.budget.perSourceUsdPerDay,
         /* ★ ONE LINE PER SUPPLIER, the owner's caps (Policy.budget.supplierLines), mapped
-           here from role to the vendor that bills under it. Every line is paced over the
-           UTC day — see `paceAheadMs`. */
+           here from role to the vendor that bills under it. Not paced: full speed every pass,
+           the lines are brakes (see the note where policy once held `paceAheadMs`). */
         perVendorCapUsd: vendorLines(policy),
-        paceAheadMs: policy.budget.paceAheadMs,
         softStop: policy.budget.softStopFraction,
         now: () => Date.now(),
         /* Reported, not acted on. A write that failed means the NEXT process will not

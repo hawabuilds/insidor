@@ -1419,14 +1419,15 @@ export interface BudgetPolicy {
    *   embeddings  the image embedding service (Part 1)
    */
   readonly supplierLines: { readonly posts: number; readonly judge: number; readonly video: number; readonly actors: number; readonly embeddings: number };
-  /**
-   * ★ PACE EVERY LINE EVENLY OVER THE DAY. At a moment `t` into the UTC day a line may have
-   * spent at most `line × (t + paceAheadMs) / 24h`. Without it a busy morning spends the
-   * whole day by breakfast and the afternoon's posts — the ones a user opening the app at
-   * teatime sees — are never read. `paceAheadMs` is the head start, so the first pass after
-   * midnight is not refused for having nothing banked yet.
+  /** Shares of a supplier's line at which the owner is warned (a push and a log line), once each a day. */
+  readonly warnAt: readonly number[];
+  /*
+   * ★ NO PACING, BY THE OWNER'S CHOICE (2026-10-13). Lines were once paced over the UTC day, so a
+   * busy morning could not spend the day by breakfast. In practice the pace paused discovery and
+   * scoring for hours after midnight whenever anything had spent early. The live runner now runs
+   * at full speed every pass; the lines are emergency brakes set above its measured full-speed
+   * cost, and the owner is warned at 80% and 95% of each (`budget.warnAt`).
    */
-  readonly paceAheadMs: number;
   /**
    * ★ HOW OFTEN A SPENDING PROCESS RE-READS TODAY'S LEDGER. The runner and a one-off paid job
    * share these lines; each re-reads what the other spent this often. Between reads the gap
@@ -1864,7 +1865,7 @@ const POLICY_V1: Policy = {
      one reading taken at discovery. A post's history after this bump is at most two days.
 
      v17 raises `budget.dailyUsd` from 3 to 21 with a line per supplier (`supplierLines`) and
-     paces every line over the day (`paceAheadMs`) — the owner's caps from the earlier build,
+     once paced every line over the day (no longer — see `supplierLines`) — the owner's caps from the earlier build,
      approved 2026-10-12. Re-reads go to the top 60 rows of each feed and to promoted
      narratives only, every 6 / 15 / 30 minutes by view rate, for 24 hours.
 
@@ -1910,7 +1911,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v43',
+  version: 'policy.v44',
 
   admit: {
     maxAgeMin: 240,
@@ -2491,7 +2492,7 @@ const POLICY_V1: Policy = {
     perSourceUsdPerDay: 1.5,
     softStopFraction: 0.9,
     supplierLines: { posts: 11.25, judge: 8, video: 2, actors: 1, embeddings: 2 },
-    paceAheadMs: 3_600_000, // an hour's head start
+    warnAt: [0.8, 0.95],
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
