@@ -53,3 +53,38 @@ test('★ a short video takes its own growth paths: 150k inside two hours, or 1,
   assert.equal(clearsReachBar('fyp', [at(72, 130_460)], POSTED, P), true, 'a text post at 130k is over 40k anyway');
   assert.equal(clearsReachBar('fyp', [at(90, 39_000)], POSTED, P), false);
 });
+
+const SPEED = { ...P, rising: { ...P.rising, speedBar: { ...P.rising.speedBar, enabled: true } } };
+
+test('the speed bar is off by default: a post on pace for 40k waits for a bar it clears today', () => {
+  assert.equal(P.rising.speedBar.enabled, false);
+  assert.equal(clearsReachBar('fyp', [at(40, 25_000)], POSTED, P), false);
+});
+
+test('speed bar: on pace for 40k by 90 minutes (444 a minute) from half an hour old passes', () => {
+  assert.equal(clearsReachBar('fyp', [at(40, 25_000)], POSTED, SPEED), true, '625 a minute at 40 minutes');
+  assert.equal(clearsReachBar('fyp', [at(60, 27_000)], POSTED, SPEED), true, '450 a minute at an hour');
+  assert.equal(clearsReachBar('fyp', [at(60, 26_000)], POSTED, SPEED), false, '433 a minute is not on pace');
+  assert.equal(clearsReachBar('fyp', [at(25, 14_000)], POSTED, SPEED), false, 'under 15k views is too few to read a pace from');
+  assert.equal(clearsReachBar('fyp', [at(20, 18_000)], POSTED, SPEED), false, 'under half an hour old the early paths decide');
+  assert.equal(clearsReachBar('fyp', [at(100, 39_000)], POSTED, SPEED), false, 'past 90 minutes only the 40k total counts');
+});
+
+test('speed bar: a post that spiked and stalled is not on pace, one still climbing is', () => {
+  assert.equal(clearsReachBar('fyp', [at(25, 22_000), at(45, 23_000)], POSTED, SPEED), false, '50 a minute since the last reading');
+  assert.equal(clearsReachBar('fyp', [at(25, 14_000), at(45, 24_000)], POSTED, SPEED), true, '500 a minute since the last reading');
+  assert.equal(clearsReachBar('fyp', [at(45, 24_000), at(25, 14_000)], POSTED, SPEED), true, 'readings out of order are read by time');
+  assert.equal(clearsReachBar('fyp', [at(40, 24_000), at(42, 24_100)], POSTED, SPEED), true, 'two minutes apart is too close to judge a recent pace: the first reading stands');
+});
+
+test('speed bar: never the short-video source, never an unread or undated post', () => {
+  assert.equal(clearsReachBar('fyp', [at(40, 50_000)], POSTED, SPEED, P.rising.shortVideoReachScale), false, '1,250 a minute is under its own fast path');
+  assert.equal(clearsReachBar('fyp', [at(40, null)], POSTED, SPEED), false);
+  assert.equal(clearsReachBar('fyp', [at(40, 25_000)], null, SPEED), false);
+});
+
+test('speed bar on: everything that passes with it off still passes', () => {
+  for (const readings of [[at(600, 40_000)], [at(12, 20_500)], [at(18, 39_000)], [at(10, 21_000), at(300, 25_000)]]) {
+    assert.equal(clearsReachBar('fyp', readings, POSTED, SPEED), true);
+  }
+});
