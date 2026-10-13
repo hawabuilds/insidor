@@ -11,6 +11,8 @@
  *              these should FAIL
  *
  * `--text-only` withholds the pictures, to measure what the judge did before it was shown them.
+ * `--pictures=small` (or `=360x360`) shows the judge the picture host's smaller named size
+ * (adapters/judge/anthropic/src/pictures.ts), to measure whether that cut costs any coins.
  * `--refresh-pictures` first re-reads each gold origin post on X (a fraction of a cent) and records
  * the picture the feed would show — a video's preview included — in eval/src/feed/
  * gold-origin-pictures.json, which later runs use; the gold evidence kept still images only.
@@ -45,6 +47,7 @@ import { pictureOf } from '../services/project/src/db.ts';
 const P = DEFAULT_POLICY;
 const USD_PER_POST = 0.01;
 const TEXT_ONLY = process.argv.includes('--text-only');
+const PICTURE_SIZE = ((v) => (v === 'small' || v === '360x360' ? v : null))(process.argv.find((a) => a.startsWith('--pictures='))?.slice('--pictures='.length));
 const LABEL = process.argv.find((a) => a.startsWith('--label='))?.slice('--label='.length) ?? (TEXT_ONLY ? 'text-only' : 'now');
 
 if (process.env['SPEND'] !== 'live' || !process.argv.includes('--yes')) {
@@ -82,13 +85,13 @@ const gold: Post[] = tuning().flatMap((c) => {
 const sample = JSON.parse(readFileSync(new URL('../eval/src/feed/non-meme-sample.json', import.meta.url), 'utf8')) as { posts: { itemId: string; kind: string; text: string; imageUri: string | null }[] };
 const nonMeme: Post[] = sample.posts.map((p) => ({ group: 'non-meme', id: p.itemId, kind: p.kind, text: p.text, imageUri: p.imageUri }));
 const posts = [...gold, ...nonMeme];
-console.log(`${gold.length} gold origin posts, ${nonMeme.length} non-meme posts${TEXT_ONLY ? ', text only' : ', with pictures'}; at most $${(posts.length * USD_PER_POST).toFixed(2)}.`);
+console.log(`${gold.length} gold origin posts, ${nonMeme.length} non-meme posts${TEXT_ONLY ? ', text only' : PICTURE_SIZE === null ? ', with pictures' : `, with pictures at ${PICTURE_SIZE}`}; at most $${(posts.length * USD_PER_POST).toFixed(2)}.`);
 
 const { meter, close } = await openSharedMeter(posts.length * USD_PER_POST);
 const http = judgeClient({
   apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: setup.model, maxOutputTokens: P.judge.postBatchMaxOutputTokens, effort: price.effort,
   timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
-  maxFrameBytes: P.judge.maxFrameBytes, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+  maxFrameBytes: P.judge.maxFrameBytes, pictureSize: PICTURE_SIZE, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
 });
 /* Every reply's usage, summed, for the report. Read through, never changed. */
 const used = { calls: 0, pictures: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0, inputWithPicture: 0, inputWithout: 0 };

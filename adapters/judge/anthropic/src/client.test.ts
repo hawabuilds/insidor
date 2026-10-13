@@ -207,6 +207,19 @@ test('a frame is only ever a picture: a video file or a failed fetch is no frame
   assert.equal(await client.frame('not a url'), null);
 });
 
+test('with a picture size set, the smaller picture is asked for first and the full one is the fallback', async () => {
+  const { fetch, calls } = fakeFetch([
+    () => new Response(new Uint8Array([1]), { headers: { 'content-type': 'image/jpeg' } }),
+    () => new Response('gone', { status: 404, headers: { 'content-type': 'text/plain' } }),
+    () => new Response(new Uint8Array([2]), { headers: { 'content-type': 'image/jpeg' } }),
+  ]);
+  const client = httpClient(config(fetch, { pictureSize: 'small' }));
+  assert.ok(await client.frame('https://pbs.twimg.com/media/A.jpg'));
+  assert.equal(calls[0]?.url, 'https://pbs.twimg.com/media/A.jpg?format=jpg&name=small');
+  assert.ok(await client.frame('https://pbs.twimg.com/media/B.jpg'), 'a size that does not load is not a missing picture');
+  assert.deepEqual(calls.slice(1).map((c) => c.url), ['https://pbs.twimg.com/media/B.jpg?format=jpg&name=small', 'https://pbs.twimg.com/media/B.jpg']);
+});
+
 /* ── money ────────────────────────────────────────────────────────────── */
 
 const judgeWith = (fetch: typeof globalThis.fetch, capUsd: number) =>
