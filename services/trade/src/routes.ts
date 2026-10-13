@@ -38,6 +38,7 @@
 
 import type { TradePolicy } from '@insidor/contracts/policy.ts';
 import type { CurveQuote } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
+import { routeAfter, type TradeRoute } from '@insidor/venue-solana-pumpfun/route.ts';
 import { NATIVE, readQuote, type PoolQuote } from '@insidor/venue-jupiter';
 
 import { tradingOpen, type TradeConfig } from './config.ts';
@@ -122,22 +123,19 @@ function parse(body: string | null): Record<string, unknown> | null {
   }
 }
 
-/** Where a coin trades now: its curve while it is open, else the aggregator if it routes. */
-async function venueOf(mint: string, deps: TradeDeps): Promise<'curve' | 'pool' | 'none' | 'unavailable'> {
+/** Where a coin trades now: its curve while it is open, else the aggregator if it routes. The rule
+    itself is `routeAfter`, shared with the market reader, so a card's "tradable" and this answer
+    can never disagree. */
+async function venueOf(mint: string, deps: TradeDeps): Promise<TradeRoute> {
   let state: 'open' | 'complete' | 'none';
   try {
     state = await deps.curve.state(mint);
   } catch {
     return 'unavailable';
   }
-  if (state === 'open') return 'curve';
-  try {
-    await deps.pool.quote({ inputMint: NATIVE, outputMint: mint, amount: BigInt(Math.round(deps.policy.probeSol * 1e9)), slippageBps: deps.policy.defaultSlippageBps });
-    return 'pool';
-  } catch (e) {
-    /* No route is a fact about the coin; any other failure is ours, and is not "no liquidity". */
-    return e instanceof Error && /no route/.test(e.message) ? 'none' : 'unavailable';
-  }
+  return routeAfter(state, () =>
+    deps.pool.quote({ inputMint: NATIVE, outputMint: mint, amount: BigInt(Math.round(deps.policy.probeSol * 1e9)), slippageBps: deps.policy.defaultSlippageBps }),
+  );
 }
 
 /** A quote that came back through the browser, checked before it is built. */
