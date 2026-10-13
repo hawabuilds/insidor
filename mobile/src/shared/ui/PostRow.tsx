@@ -34,6 +34,7 @@
 import { useState, type ReactNode } from 'react';
 import type { RisingPost } from '../api/index.ts';
 import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
+import { useCoinCap } from '../useCoinCap.ts';
 import { formatAge } from '../format/duration.ts';
 import { formatCount } from '../format/number.ts';
 import { platformOf } from '../platform.ts';
@@ -53,9 +54,16 @@ export interface PostHandlers {
   readonly seeCoins: () => void;
 }
 
+const NO_COIN = { known: false, pending: 'not_minted' } as const;
+
 /** `extra`: a strip under the coin line that the card does not decide (the owner's controls). */
 export function PostRow({ post, now, handlers, extra = null }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode }) {
-  const status = postCoinStatus(post.coins);
+  /* The coin line's cap is the shared one (shared/coin-cap.ts): live while a fresh price is held,
+     so the card says what the sheet and token page say. The card itself never polls. */
+  const own = post.coins.kind === 'one' || post.coins.kind === 'matched' ? post.coins.coin : null;
+  const cap = useCoinCap(own?.address ?? '', own?.marketCapUsd ?? NO_COIN, false, own?.priceUsd ?? null);
+  const coins = own !== null && (post.coins.kind === 'one' || post.coins.kind === 'matched') ? { ...post.coins, coin: { ...own, marketCapUsd: cap } } : post.coins;
+  const status = postCoinStatus(coins);
 
   return (
     <article className={styles['card']} onClick={handlers.open}>
