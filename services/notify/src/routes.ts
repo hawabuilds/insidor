@@ -59,7 +59,12 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
     const [seen] = await deps.db.query<{ seenAt: string }>('select seen_at as "seenAt" from people.alert_seen where user_id = $1', [me.userId]);
     const seenAt = seen === undefined ? 0 : new Date(seen.seenAt).getTime();
     const rows = await deps.db.query<{ id: number; kind: string; title: string; body: string; href: string; at: string; facts: unknown }>(
-      'select alert_id::int as id, kind, title, body, href, at, facts from people.alert where user_id = $1 order by at desc, alert_id desc limit $2',
+      /* Nothing about a post or narrative the feeds have since hidden (0050): the alert stays in
+         the table, it is just not listed. A coin match's subject is "story id|coin". */
+      `select a.alert_id::int as id, a.kind, a.title, a.body, a.href, a.at, a.facts from people.alert a
+        where a.user_id = $1
+          and not exists (select 1 from public.feed_rejection r where r.subject_id = split_part(a.subject, '|', 1))
+        order by a.at desc, a.alert_id desc limit $2`,
       [me.userId, P.inboxLimit],
     );
     const alerts = rows.map((r) => {
