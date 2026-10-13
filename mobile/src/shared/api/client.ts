@@ -80,6 +80,60 @@ export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Pro
   return decodeRisingFeed(await read(`/rising/${encodeURIComponent(feed)}`, signal));
 }
 
+/*
+ * FOR YOU'S LIVE LINE (used only by features/feed/useLiveFeed.ts, only while VITE_LIVE_FEED=on):
+ * "this feed changed" as it happens, and the feed's number alone for the 30-second backup check.
+ *
+ * ★ OUR READ SERVICE, NOT THE DATABASE'S OWN REALTIME. The owner asked for Supabase realtime; it
+ * needs the database's public key in this bundle, and on this project that key can write and
+ * delete every app-facing table (the default grants, with no row rules), so shipping it would hand
+ * the feed to anyone who opens the app's source. The read service already holds one LISTEN for the
+ * projector's announcements and fans it out over SSE (services/read/src/stream.ts); this is that
+ * stream with a small "changed" message.
+ *
+ * ★ THE STREAM GOES STRAIGHT TO THE READ SERVICE. A deployed build reaches it through the Vercel
+ * function at /api/read, which is cut at 60 seconds and billed for every second it is held open,
+ * the wrong place for a line that stays open. So: `VITE_LIVE_URL`, else `VITE_READ_URL`, else (local
+ * dev only) the dev server's proxy; with none of them there is no stream and the 30-second check
+ * alone keeps the feed current. A direct stream needs the app's origin in READ_ALLOWED_ORIGINS.
+ */
+const LIVE_BASE: string | null =
+  ((import.meta.env?.['VITE_LIVE_URL'] as string | undefined) ?? '').trim().replace(/\/+$/, '') ||
+  ((import.meta.env?.['VITE_READ_URL'] as string | undefined) ?? '').trim().replace(/\/+$/, '') ||
+  (import.meta.env?.DEV === true ? '/api/read' : null);
+
+/** The feed's number alone; it moves with every frame the projector commits. Null when it could not be read. */
+export async function fetchRisingTick(feed: RisingFeedId, signal?: AbortSignal): Promise<number | null> {
+  try {
+    const body = await read(`/rising/${encodeURIComponent(feed)}/tick`, signal);
+    const tick = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['tick'] : null;
+    return typeof tick === 'number' && Number.isSafeInteger(tick) ? tick : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Listen for the feed changing. `onChanged` gets the new number, or null when the line has just
+ * (re)connected and frames may have been missed, so read the feed then (the service says `ready`
+ * on every reconnect for exactly that). Returns the close, or null when this build has nowhere to
+ * stream from.
+ */
+export function openRisingStream(feed: RisingFeedId, onChanged: (tick: number | null) => void): (() => void) | null {
+  if (LIVE_BASE === null || globalThis.EventSource === undefined) return null;
+  const source = new EventSource(`${LIVE_BASE}/stream/rising/${encodeURIComponent(feed)}`);
+  source.addEventListener('ready', () => onChanged(null));
+  source.addEventListener('changed', (e) => {
+    try {
+      const tick = (JSON.parse((e as MessageEvent<string>).data) as Record<string, unknown>)['tick'];
+      onChanged(typeof tick === 'number' && Number.isSafeInteger(tick) ? tick : null);
+    } catch {
+      onChanged(null);
+    }
+  });
+  return () => source.close();
+}
+
 /** A coin's price history for one view, its latest trades and, on the curve, its progress. */
 export async function fetchCoinMarket(coinId: string, timeframe: MarketTimeframe, signal?: AbortSignal): Promise<CoinMarket> {
   return decodeCoinMarket(await read(`/coin/${encodeURIComponent(coinId)}/market?tf=${timeframe}`, signal));

@@ -27,6 +27,10 @@
  * the post's subject is trading more since it (OlderCoins.tsx) — never the post's coin, never a
  * Buy on the card; tapping opens that coin's page, or the list when there are several.
  *
+ * LIVE (off unless the build sets VITE_LIVE_FEED=on; features/feed/live-feed.ts): while FYP is open
+ * and on screen, a new post slides in at the top as soon as the projector commits it, and nothing
+ * already on the list moves or disappears until pull to refresh (useLiveFeed.ts, LiveCard.tsx).
+ *
  * The owner, and only the owner, also gets a strip under each card (features/owner): "Not a meme",
  * which takes the post out of this list at once, and the coin call; "Hidden by me" to bring
  * a hidden post back; and, on For You, "Add a missed post" with its coin's address.
@@ -52,6 +56,9 @@ import { FilterPanel } from './FilterPanel.tsx';
 import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyFilters, applyPostFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
 import { rowsInOrder, tabView, type FeedTab } from './feed-tabs.ts';
 import { useLeadPosts } from './useLeadPosts.ts';
+import { LIVE_FEED } from './live-feed.ts';
+import { LiveCard } from './LiveCard.tsx';
+import { useLiveFeed } from './useLiveFeed.ts';
 import { PostSheet } from '../post-sheet/index.ts';
 import { PullIndicator } from '../alerts/Parts.tsx';
 import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
@@ -87,6 +94,8 @@ export function Feed({
   const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
   const [popular, reloadPopular] = useLoad('rising:popular', (signal) => fetchRising('popular', signal));
   usePreloadCreate(); /* Create coin then opens with the launchpad's rules already read. */
+  /* FYP kept current while it is looked at, when the build switches it on; otherwise null and unused. */
+  const live = useLiveFeed(LIVE_FEED && tab === 'fyp', fyp, reloadFyp);
   const reload = useCallback(() => {
     reloadBoard();
     reloadFyp();
@@ -126,9 +135,11 @@ export function Feed({
       () =>
         new Promise<void>((done) => {
           settled.current = done;
+          /* A pull is the one moment the live list takes the server's order and removals. */
+          live.rebuildNext();
           reload();
         }),
-      [reload],
+      [reload, live.rebuildNext],
     ),
   );
 
@@ -145,7 +156,8 @@ export function Feed({
   const notice = boardNotice(tick?.provenance ?? null);
   const feed = tab === 'popular' ? popular : fyp;
   /* A post the owner just hid leaves the list now; the projection drops it on its next run. */
-  const posts = feed.state === 'ready' ? applyPostFilters(withoutHidden(feed.value.posts, hiddenNow, (p) => p.id), filters, now) : null;
+  const feedPosts = tab === 'fyp' && live.rows !== null ? live.rows : feed.state === 'ready' ? feed.value.posts : null;
+  const posts = feed.state === 'ready' && feedPosts !== null ? applyPostFilters(withoutHidden(feedPosts, hiddenNow, (p) => p.id), filters, now) : null;
   useSavedCalls('coin_match', posts === null ? [] : posts.rows.map((p) => p.id), owner);
   const post = (p: RisingPost) => (
     <PostRow
@@ -260,7 +272,13 @@ export function Feed({
             ) : null}
             {feed.state === 'ready' && posts !== null ? (
               <>
-                {posts.rows.map(post)}
+                {tab === 'fyp' && live.rows !== null
+                  ? posts.rows.map((p) => (
+                      <LiveCard key={p.id} id={p.id} arrival={live.arrivals.get(p.id)}>
+                        {post(p)}
+                      </LiveCard>
+                    ))
+                  : posts.rows.map(post)}
                 {feed.value.posts.length === 0 ? <p className={styles['empty']}>No posts yet.</p> : null}
                 {feed.value.posts.length > 0 && posts.rows.length === 0 && posts.unknown === 0 ? (
                   <p className={styles['empty']}>No posts match these filters.</p>
