@@ -27,7 +27,7 @@ import { storyId } from '../../contracts/src/ids.ts';
 import type { JudgeOutcome } from '../../contracts/src/ports/judge.ts';
 import type { Meter } from '../../contracts/src/ports/meter.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
-import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
+import { BATCH_PRICE_FRACTION, anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
 import { voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
 import { tuning } from '../../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../../eval/src/gold/coin-evidence.ts';
@@ -72,8 +72,21 @@ export interface GradeOptions {
   /** Withhold the pictures (what the judge did before it was shown them). */
   readonly textOnly?: boolean;
   readonly pictureSize?: 'small' | '360x360' | null;
+  /** Refuse to start (LineTooShort) when what is left of the line cannot cover the whole test. */
+  readonly mustFit?: boolean;
   /** The coined pictures for the boost; null leaves the boost out. */
   readonly coined: readonly { readonly coinRef: string; readonly uri: string; readonly v: readonly number[] }[] | null;
+}
+
+/** The line has less left than the test's pessimistic estimate: nothing was asked. */
+export class LineTooShort extends Error {
+  readonly remainingUsd: number;
+  readonly neededUsd: number;
+  constructor(remainingUsd: number, neededUsd: number) {
+    super(`the line has $${remainingUsd.toFixed(2)} left and the test needs up to $${neededUsd.toFixed(2)}`);
+    this.remainingUsd = remainingUsd;
+    this.neededUsd = neededUsd;
+  }
 }
 
 /** The judge as configured in this environment; throws when it is not. */
@@ -124,6 +137,29 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
   };
   const judge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post', examples: o.examples, batch: o.batch });
 
+  const subjectOf = (p: EvalPost<G>) => ({
+    storyId: storyId(`rate-${p.id.replaceAll(':', '-')}`),
+    texts: p.text.trim() === '' ? [] : [p.text.slice(0, P.judge.maxCharsPerText)],
+    media: o.textOnly === true || p.imageUri === null ? [] : [{ kind: 'image' as const, uri: p.imageUri, width: null, height: null, durationMs: null }],
+    distinctAuthors: 1,
+    distinctSources: 1,
+  });
+  /* One post a call either way (maxBatch 1), as the live scorer asks; batched, all of them go in
+     one judge() so they leave as one Message Batch. */
+  const budget = () => ({ capUsd: o.meter.line().capUsd, spentUsd: o.meter.line().spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
+  const outcomes: JudgeOutcome[] = [];
+  /* Batched only when the whole batch's pessimistic estimate fits what is left of the line: a
+     batch refused by the meter comes back unanswered whole, where single calls would get most of
+     the way. */
+  const whole = judge.estimate(posts.map(subjectOf));
+  const remaining = Math.min(o.meter.line().remainingUsd, o.meter.line(whole.vendor).remainingUsd);
+  const batched = o.batch && whole.usd * BATCH_PRICE_FRACTION <= remaining;
+  /* A test the line cannot cover is not started: a run that dribbles one call at a time as the
+     ledger frees a cent grades a handful of posts in an hour and says nothing. */
+  if (o.mustFit === true && (batched ? whole.usd * BATCH_PRICE_FRACTION : whole.usd) > remaining) {
+    throw new LineTooShort(remaining, whole.usd * (o.batch ? BATCH_PRICE_FRACTION : 1));
+  }
+
   /* Each post's own picture embedded, for the boost. */
   const postVectors = new Map<string, number[] | null>();
   if (o.coined !== null && o.textOnly !== true) {
@@ -143,22 +179,6 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
     return others.length === 0 ? null : Math.max(...others.map((c) => c.v.reduce((s, x, i) => s + x * (v[i] ?? 0), 0)));
   };
 
-  const subjectOf = (p: EvalPost<G>) => ({
-    storyId: storyId(`rate-${p.id.replaceAll(':', '-')}`),
-    texts: p.text.trim() === '' ? [] : [p.text.slice(0, P.judge.maxCharsPerText)],
-    media: o.textOnly === true || p.imageUri === null ? [] : [{ kind: 'image' as const, uri: p.imageUri, width: null, height: null, durationMs: null }],
-    distinctAuthors: 1,
-    distinctSources: 1,
-  });
-  /* One post a call either way (maxBatch 1), as the live scorer asks; batched, all of them go in
-     one judge() so they leave as one Message Batch. */
-  const budget = () => ({ capUsd: o.meter.line().capUsd, spentUsd: o.meter.line().spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
-  const outcomes: JudgeOutcome[] = [];
-  /* Batched only when the whole batch's pessimistic estimate fits what is left of the line: a
-     batch refused by the meter comes back unanswered whole, where single calls would get most of
-     the way. */
-  const whole = judge.estimate(posts.map(subjectOf));
-  const batched = o.batch && whole.usd <= Math.min(o.meter.line().remainingUsd, o.meter.line(whole.vendor).remainingUsd);
   if (batched) outcomes.push(...(await judge.judge(posts.map(subjectOf), budget())).value);
   else for (const p of posts) outcomes.push(...(await judge.judge([subjectOf(p)], budget())).value);
   const rows = posts.map((p, i): EvalRow<G> => {

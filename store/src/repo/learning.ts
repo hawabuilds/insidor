@@ -92,10 +92,14 @@ export class PgLearningRepo {
     return r === undefined ? null : { versionId: Number(r.version_id), text: r.text, sha: r.sha, appliedAt: r.applied_at };
   }
 
-  /** The newest block built (applied or not): what a new run compares its inputs against. */
+  /**
+   * The newest block built for real (applied or kept, not a dry run): what a new run compares its
+   * inputs against. A dry run is left out, so a block only measured by hand is still built and
+   * tested at the next slot rather than skipped as "nothing new".
+   */
   async lastBuilt(): Promise<{ readonly versionId: number; readonly inputsThrough: Date | null; readonly labelsSha: string; readonly exampleIds: readonly string[] } | null> {
     const rows = await this.#db.query<{ version_id: string; inputs_through: Date | null; labels_sha: string; example_ids: string[] }>(
-      'select version_id, inputs_through, labels_sha, example_ids from internal.judge_examples_version order by built_at desc limit 1',
+      'select version_id, inputs_through, labels_sha, example_ids from internal.judge_examples_version where not dry order by built_at desc limit 1',
     );
     const r = rows[0];
     return r === undefined ? null : { versionId: Number(r.version_id), inputsThrough: r.inputs_through, labelsSha: r.labels_sha, exampleIds: r.example_ids };
