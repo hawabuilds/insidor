@@ -11,8 +11,8 @@
  * ★ NEVER ABOVE THE CAP. The trade service caps a buy's amount PLUS its slippage
  * (`policy.trade.maxSolPerTrade`, services/trade gate.ts). An amount over the largest buy the cap
  * allows at the chosen slippage is not offered (`quickAmounts`), and a saved amount the cap no
- * longer allows falls to the largest one it does. With the cap at 0.05 SOL, 0.05 itself is never
- * offered: 0.05 plus any slippage is over it.
+ * longer allows falls to the largest one it does. With the cap at 0.06 SOL, 0.05 is offered at
+ * every slippage up to 20%.
  *
  * ★ CHECKED BEFORE SIGNING. A refused quote, a price impact past the ticket's block, or a failed
  * simulation stops before the wallet is asked, and says why. Nothing here holds or logs a key.

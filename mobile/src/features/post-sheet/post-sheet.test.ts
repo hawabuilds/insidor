@@ -55,6 +55,8 @@ const CAP = { maxBuyLamports: '50000000', defaultSlippageBps: 300, maxSlippageBp
 test('★ quick buy never offers an amount that, with its slippage, is over the cap', () => {
   assert.deepEqual(quickAmounts(CAP, 300), ['0.01', '0.025'], '0.05 plus 3% is over a 0.05 cap');
   assert.deepEqual(quickAmounts({ ...CAP, maxBuyLamports: '1000000000' }, 1000), ['0.01', '0.025', '0.05']);
+  assert.deepEqual(quickAmounts({ ...CAP, maxBuyLamports: '60000000' }, 300), ['0.01', '0.025', '0.05'], 'the 0.06 cap: 0.05 plus 3% fits');
+  assert.deepEqual(quickAmounts({ ...CAP, maxBuyLamports: '60000000' }, 1000), ['0.01', '0.025', '0.05'], 'and plus 10%');
   assert.deepEqual(quickAmounts(null, 300), [], 'no cap read, no amount offered');
   assert.deepEqual(effectiveChoice({ amountSol: '0.05', slippageBps: 300 }, CAP), { amountSol: '0.025', slippageBps: 300 }, 'a saved amount over the cap falls to the largest allowed');
   assert.equal(effectiveChoice({ amountSol: '0.01', slippageBps: 300 }, { ...CAP, maxBuyLamports: '1000' }), null);
