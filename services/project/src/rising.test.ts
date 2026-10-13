@@ -83,6 +83,18 @@ test('a story searched with none, and the post not searched itself, is "none" th
   assert.equal(pending.storyId, null);
 });
 
+test('★ no search finished in time is "unchecked", never "none" and never a story\'s coin', () => {
+  const lone = projectRisingPost({ ...ROW, story_id: null }, READINGS, new Map(), 1_800_000, { gaveUp: true });
+  assert.deepEqual(lone.coins, { kind: 'unchecked' });
+  assert.equal(lone.storyId, null);
+  /* A story that settled its coins still decides; one searched with none still says none. */
+  const one = { kind: 'one', coin: COIN } as WireCoinLink;
+  assert.deepEqual(projectRisingPost(ROW, READINGS, new Map([[ROW.story_id, one]]), 1_800_000, { gaveUp: true }).coins, one);
+  assert.deepEqual(projectRisingPost(ROW, READINGS, new Map([[ROW.story_id, { kind: 'none' } as WireCoinLink]]), 1_800_000, { gaveUp: true }).coins, { kind: 'none' });
+  /* A story still pending does not hide that the post's own search never went through. */
+  assert.deepEqual(projectRisingPost(ROW, READINGS, new Map([[ROW.story_id, { kind: 'pending' } as WireCoinLink]]), 1_800_000, { gaveUp: true }).coins, { kind: 'unchecked' });
+});
+
 test('★ an X video shows its preview picture, flagged as a video; a photo is not flagged', () => {
   const video = projectRisingPost(
     { ...ROW, media: [{ kind: 'video', uri: 'https://pbs.twimg.com/amplify_video_thumb/1/img/a.jpg', width: 720, height: 1280, durationMs: 10_005 }] },

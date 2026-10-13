@@ -158,6 +158,18 @@ export type WireCoinLink =
   | { readonly kind: 'one'; readonly coin: WireCoin }
   | { readonly kind: 'several'; readonly coins: readonly [WireCoin, WireCoin, ...WireCoin[]] };
 
+/**
+ * A single feed post's coin line: a story's link, or one more state only a post has.
+ *
+ * `unchecked` is "Couldn't check": the post's name could not be searched, on every source, for
+ * `universe.lookup.giveUpMs` after it entered the feed. It is not `none`, which would say no coin
+ * exists and offer Create on a name that may be taken, and not `pending`, which would keep saying
+ * "still checking" about a search that is not going to finish. Like `pending` it carries nothing
+ * a button could be built from. Kept off `WireCoinLink` so a narrative can never carry it: a
+ * narrative's coins are decided by the board, not by whether one search went through.
+ */
+export type WirePostCoinLink = WireCoinLink | { readonly kind: 'unchecked' };
+
 export interface WireBoardRow {
   readonly id: string;
   readonly title: string;

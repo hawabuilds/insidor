@@ -6,7 +6,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { WireLeakError, decodeRisingFeed, decodeRisingPost } from './decode.ts';
+import { WireLeakError, decodeCoinLink, decodeRisingFeed, decodeRisingPost } from './decode.ts';
 import { fixtureBoard, fixtureRising } from '../../test-fixtures/fixtures.ts';
 
 const COIN = {
@@ -38,6 +38,11 @@ test('searched with nothing back, searched with coins back, and not searched: th
   assert.deepEqual(decodeRisingPost({ ...POST, coins: { kind: 'none' } }).coins, { kind: 'none' });
   assert.deepEqual(decodeRisingPost({ ...POST, coins: { kind: 'unsure', claimCount: 2 } }).coins, { kind: 'unsure', claimCount: 2 });
   assert.deepEqual(decodeRisingPost({ ...POST, coins: { kind: 'pending' } }).coins, { kind: 'pending' });
+});
+
+test('★ a post whose search could not finish decodes as unchecked; a narrative cannot carry it', () => {
+  assert.deepEqual(decodeRisingPost({ ...POST, coins: { kind: 'unchecked' } }).coins, { kind: 'unchecked' });
+  assert.throws(() => decodeCoinLink({ kind: 'unchecked' }));
 });
 
 test('★ a coin, or coins, without their narrative is a leak, not a Buy button', () => {

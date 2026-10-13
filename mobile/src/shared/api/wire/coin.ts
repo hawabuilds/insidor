@@ -113,3 +113,14 @@ export type CoinLink =
   | { readonly kind: 'one'; readonly coin: Coin }
   /** At least two, ordered by the server. The tuple type makes "several" mean several. */
   | { readonly kind: 'several'; readonly coins: readonly [Coin, Coin, ...Coin[]] };
+
+/**
+ * A single feed post's coin line: a narrative's link, or one more state only a post has.
+ *
+ * `unchecked` is "Couldn't check": the post's name could not be searched, on every source, for
+ * some minutes after it reached the feed. Not `none` ("No coin yet" would claim no coin exists
+ * and offer Create on a name that may be taken) and not `pending` (a search that is not going to
+ * finish is not "still checking"). It carries nothing, so no button can be built from it. A
+ * narrative never has it, so the narrative screens' `CoinLink` does not either.
+ */
+export type PostCoinLink = CoinLink | { readonly kind: 'unchecked' };

@@ -147,7 +147,7 @@ export function applyPostFilters(posts: readonly RisingPost[], f: FeedFilters, n
       else posted = now - post.postedAt.at <= f.posted.withinMs ? 'keep' : 'drop';
     }
     const coin: Match =
-      f.coin === 'any' ? 'keep' : post.coins.kind === 'pending' ? 'unknown' : (f.coin === 'none') === (post.coins.kind === 'none') ? 'keep' : 'drop';
+      f.coin === 'any' ? 'keep' : post.coins.kind === 'pending' || post.coins.kind === 'unchecked' ? 'unknown' : (f.coin === 'none') === (post.coins.kind === 'none') ? 'keep' : 'drop';
     const answers = [site, views, posted, coin];
     if (answers.includes('drop')) continue;
     if (answers.includes('unknown')) {

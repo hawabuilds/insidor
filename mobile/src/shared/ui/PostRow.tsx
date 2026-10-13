@@ -14,6 +14,8 @@
  *   none     → "No coin yet" and Create, which opens the Create sheet with the post's picture
  *              and link; the post's name was searched and nothing came back
  *   pending  → a dash with its reason: nobody has searched yet, so neither claim is made
+ *   unchecked → "Couldn't check", and NO button: the search failed for minutes, so neither
+ *              claim is made and nothing is guessed
  *   unsure   → the sentence saying we cannot tell, and NO button — never Buy on an unsure match
  *   several  → how many, and View coins, which opens the narrative
  */

@@ -47,3 +47,7 @@ test('a post\'s confident coin line: ticker and market cap; an unread cap is lef
   assert.equal(oneCoinLine(coin({ marketCapUsd: { v: null, why: 'no_market' } })), '$FERRY');
   assert.equal(oneCoinLine(coin({ tradable: false })), "$FERRY, $1 market cap, can't be traded yet");
 });
+
+test('★ a post that could not be checked says so, with no button: no Create, no guess', () => {
+  assert.deepEqual(coinStatus({ kind: 'unchecked' }), { line: "Couldn't check", action: null });
+});

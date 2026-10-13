@@ -7,6 +7,8 @@
  *
  *   none     → "No coin yet"            + Create coin
  *   pending  → "—" (not searched yet)    and NO BUTTON
+ *   unchecked → "Couldn't check" (a post's search failed for minutes) and NO BUTTON: never
+ *               Create, since a coin may exist under the name, and never a guess
  *   one      → "1 coin"                 + Buy $TICKER, if the server says it can be traded
  *   several  → "13 coins on pump.fun"   + View coins
  *   unsure   → a line saying we cannot tell which coin is from this, and NO BUTTON
@@ -20,7 +22,7 @@
  * made by asking for a quote, and this only obeys it.
  */
 
-import type { Coin, CoinLink } from './api/index.ts';
+import type { Coin, CoinLink, PostCoinLink } from './api/index.ts';
 import { formatUsd } from './format/number.ts';
 
 export type CoinAction =
@@ -33,12 +35,14 @@ export interface CoinStatus {
   readonly action: CoinAction | null;
 }
 
-export function coinStatus(coins: CoinLink): CoinStatus {
+export function coinStatus(coins: PostCoinLink): CoinStatus {
   switch (coins.kind) {
     case 'none':
       return { line: 'No coin yet', action: { kind: 'create' } };
     case 'pending':
       return { line: '— still checking for a coin', action: null };
+    case 'unchecked':
+      return { line: "Couldn't check", action: null };
     case 'unsure':
       return {
         line: coins.claimCount === 1

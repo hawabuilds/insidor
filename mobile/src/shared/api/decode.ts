@@ -24,7 +24,7 @@
 import type { Instant, Measured, Delta, Millis, PendingReason } from '../format/measure.ts';
 import { instantFrom, measuredFrom } from '../format/measure.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
-import type { Coin, CoinLink, CoinOrigin, MarketCapBasis } from './wire/coin.ts';
+import type { Coin, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
 import type { RisingFeed, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
@@ -476,13 +476,19 @@ function decodeStoryProvenance(raw: unknown, path: string): StoryProvenance {
  * one without is a server sending something a single post must never carry, and it throws
  * `WireLeakError` — the row is not shown with a coin of unknown standing. A row projected before
  * every post carried a coin line has `coins: null`, and that reads as `pending`: not searched
- * is the only thing such a row can be said to know.
+ * is the only thing such a row can be said to know. `unchecked` is a post's alone and is read
+ * here, never by `decodeCoinLink`, so a narrative carrying it is still a shape error.
  */
 export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
   assertNoInternalVocabulary(raw, path);
   const o = pick(obj(raw, path), RISING_POST_FIELDS);
   const storyId = optStr(o.storyId);
-  const coins: CoinLink = o.coins === null || o.coins === undefined ? { kind: 'pending' } : decodeCoinLink(o.coins, `${path}.coins`);
+  const coins: PostCoinLink =
+    o.coins === null || o.coins === undefined
+      ? { kind: 'pending' }
+      : obj(o.coins, `${path}.coins`)['kind'] === 'unchecked'
+        ? { kind: 'unchecked' }
+        : decodeCoinLink(o.coins, `${path}.coins`);
   if ((coins.kind === 'one' || coins.kind === 'several') && storyId === null) {
     throw new WireLeakError(`${path}.coins (a ${coins.kind} link on a post with no narrative)`);
   }
