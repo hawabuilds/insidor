@@ -6,9 +6,65 @@
  * own picture; the colour is fixed by the address so a coin's disc never changes between
  * screens. See shared/ui/CoinLogo.tsx for why each.
  *
+ * ★ A CONTENT-ADDRESSED PICTURE IS TRIED ON MORE THAN ONE GATEWAY. The same file sits behind every
+ * IPFS gateway, and on 2026-10-13 two of the public ones answered 429 while the launchpad's own
+ * served it in a second. So an IPFS link becomes the host it was written on, then the same list
+ * the server's logo mirror uses (adapters/venue/solana-pumpfun/src/logo-picture.ts), resized
+ * first where the gateway can. Only reached when our copy is missing.
+ *
  * What breaks if changed carelessly: the colours exclude green and red, which mean price
- * direction only (tokens.css rule 1).
+ * direction only (tokens.css rule 1). And the gateway list should match the mirror's; a gateway
+ * here that the mirror dropped (cloudflare-ipfs.com is retired) is a wasted try on every miss.
  */
+
+/** In the order tried, after the host the link names. Kept equal to the mirror's list. */
+export const IPFS_GATEWAYS: readonly string[] = ['https://pump.mypinata.cloud', 'https://ipfs.io', 'https://dweb.link', 'https://gateway.pinata.cloud'];
+/** Gateways that resize on request; the small copy is tried before the original. */
+const RESIZING_GATEWAYS: readonly string[] = ['https://pump.mypinata.cloud'];
+const RESIZED = '?img-width=256&img-height=256&img-format=webp';
+/* CIDv0 (base58, 46 chars from "Qm") or CIDv1 in base32 (from "b"), as the server reads them. */
+const CID = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{50,100})$/;
+
+/** The IPFS content id a picture link names, or null. */
+export function contentId(link: string): string | null {
+  const scheme = /^ipfs:\/\/(?:ipfs\/)?([^/?#]+)/i.exec(link.trim())?.[1];
+  if (scheme !== undefined) return CID.test(scheme) ? scheme : null;
+  let url: URL;
+  try {
+    url = new URL(link.trim());
+  } catch {
+    return null;
+  }
+  const path = /^\/ipfs\/([^/?#]+)/.exec(url.pathname)?.[1];
+  if (path !== undefined) return CID.test(path) ? path : null;
+  const host = /^([^.]+)\.ipfs\./i.exec(url.hostname)?.[1];
+  return host !== undefined && CID.test(host) ? host : null;
+}
+
+/**
+ * The URLs for one picture: itself when it names no content id (a local preview on Create is a
+ * blob: link, and stays one), else a chain of gateways.
+ */
+export function pictureChain(link: string): readonly string[] {
+  const cid = contentId(link);
+  if (cid === null) return [link];
+  const out: string[] = [];
+  const add = (u: string) => {
+    if (!out.includes(u)) out.push(u);
+  };
+  const gateway = (g: string) => {
+    if (RESIZING_GATEWAYS.includes(g)) add(`${g}/ipfs/${cid}${RESIZED}`);
+    add(`${g}/ipfs/${cid}`);
+  };
+  try {
+    const u = new URL(link.trim());
+    if (u.protocol === 'https:' && u.pathname.startsWith('/ipfs/')) gateway(u.origin);
+  } catch {
+    /* ipfs://… names no host to prefer */
+  }
+  for (const g of IPFS_GATEWAYS) gateway(g);
+  return out;
+}
 
 /** Trador's monogram colours (ui/Avatar.tsx): Solana purple first, then five far from green and red. */
 const GRADIENTS = [
@@ -26,11 +82,11 @@ export function logoGradient(seed: string): string {
   return GRADIENTS[hash % GRADIENTS.length] ?? GRADIENTS[0] ?? '';
 }
 
-/** The pictures to try, in order: our copy (when storage is configured), then the coin's own. */
+/** The pictures to try, in order: our copy (when storage is configured), then the coin's own through its gateway chain. */
 export function logoSources(address: string | null, imageUrl: string | null, base: string): readonly string[] {
   const out: string[] = [];
   if (base !== '' && address !== null && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) out.push(`${base}/${address}`);
-  if (imageUrl !== null && imageUrl !== '' && !out.includes(imageUrl)) out.push(imageUrl);
+  if (imageUrl !== null && imageUrl !== '') for (const u of pictureChain(imageUrl)) if (!out.includes(u)) out.push(u);
   return out;
 }
 
