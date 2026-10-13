@@ -71,6 +71,19 @@ function orderLine(f: Facts): string {
   return ` ${head}. Signals: ${named.length === 0 ? '–' : named.join(', ')}. Held out: ${move('hand gold', 'Hand')}, ${move('non-memes', 'Neg')}, ${move('missed', 'Missed')}.`;
 }
 
+/**
+ * The coin match's sentence (tools/lib/coin-match-fit.ts), or nothing when the facts carry no
+ * refit: on the gold set's held-out posts, how many got their coin proven and how many a wrong
+ * coin, how many the ranking named likely before and after the refit; then the owner's own coin
+ * labels answered right (proven, likely, or rightly none) before and after.
+ */
+function coinMatchLine(f: Facts): string {
+  if (f['coinGoldN'] === undefined) return typeof f['coinMatchWhy'] === 'string' ? ` Coin matching kept: ${s(f['coinMatchWhy'], 'it could not be refitted')}.` : '';
+  const c = (k: string): string => String(n(f[k]) ?? '–');
+  const head = f['coinMatchApplied'] === true ? 'Coin matching refitted' : `Coin matching kept${typeof f['coinMatchWhy'] === 'string' ? ` (${s(f['coinMatchWhy'], 'a test fell short')})` : ''}`;
+  return ` ${head}. Held-out gold: ${c('coinGoldProven')}/${c('coinGoldN')} proven, ${c('coinGoldWrong')} wrong, likely ${c('coinGoldLikelyBefore')}→${c('coinGoldLikelyAfter')}. Your coin labels: ${c('coinLabelsRightBefore')}→${c('coinLabelsRightAfter')}/${c('coinLabelsN')} right, ${c('coinLabelsWrong')} wrong.`;
+}
+
 const ofN = (passed: unknown, tested: unknown): string => {
   const p = n(passed);
   const t = n(tested);
@@ -152,7 +165,7 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const kept = applied ? '' : ` Kept the current examples: ${s(f['why'], 'a test fell short')}.`;
       const reasons = typeof f['missReasons'] === 'object' && f['missReasons'] !== null ? Object.entries(f['missReasons'] as Record<string, unknown>).filter(([, v]) => n(v) !== null) : [];
       const missedWhy = reasons.length === 0 ? '' : ` Missed today: ${reasons.map(([k, v]) => `${k.replaceAll('_', ' ')} ${n(v)}`).join(', ')}.`;
-      return { title: applied ? 'Judge examples updated' : 'Judge examples kept', body: `${tests}${auto}${regress} ${from}${kept}${missedWhy}${orderLine(f)}` };
+      return { title: applied ? 'Judge examples updated' : 'Judge examples kept', body: `${tests}${auto}${regress} ${from}${kept}${missedWhy}${orderLine(f)}${coinMatchLine(f)}` };
     }
   }
 }
