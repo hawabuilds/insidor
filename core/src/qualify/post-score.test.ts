@@ -55,3 +55,11 @@ test('the reason names which check a post failed, and agrees with the score', ()
   assert.equal(postScoreReason(judged({ confidence: 0.5 }), DEFAULT_POLICY), 'judge_unsure');
   assert.equal(postScoreReason(judged({}), DEFAULT_POLICY), 'passes');
 });
+
+test('★ the picture boost: an unsure "no" with a picture like a coined post passes; a firm "no" never does', () => {
+  const no = (confidence: number) => judged({ coinable: false, confidence, proposedName: null });
+  assert.equal(postScore(no(0.15), DEFAULT_POLICY, 0.5), 'passes');
+  assert.equal(postScore(no(0.15), DEFAULT_POLICY, 0.3), 'below', 'not alike enough');
+  assert.equal(postScore(no(0.15), DEFAULT_POLICY, null), 'below', 'never compared is not alike');
+  assert.equal(postScore(no(0.9), DEFAULT_POLICY, 0.99), 'below', 'a firm no stands');
+});

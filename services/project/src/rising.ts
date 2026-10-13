@@ -104,6 +104,7 @@ interface RisingRow {
   confidence: number;
   looked_at: 'text' | 'picture' | 'videoFrame';
   proposed_name: string | null;
+  picture_similarity: number | null;
   story_id: string | null;
 }
 
@@ -123,6 +124,7 @@ async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingR
     `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media,
             a.handle, a.display_name, a.source_author_id,
             j.coinable, j.confidence, j.looked_at, j.proposed_name,
+            pic.similarity as picture_similarity,
             s.story_id
        from internal.item_found_by f
        join public.item i on i.item_id = f.item_id
@@ -134,6 +136,14 @@ async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingR
                order by pj.judged_at desc, pj.id desc
                limit 1
             ) j on true
+       /* The picture boost's one number: how close this post's picture is to a coined post's.
+          Read here and nowhere else; it decides, and never reaches the wire. */
+       left join lateral (
+              select max(1 - (e.embedding <=> c.embedding)) as similarity
+                from internal.image_embedding e
+                join internal.coined_picture c on c.space = e.space
+               where e.subject_kind = 'item' and e.subject_id = i.item_id
+            ) pic on true
        left join lateral (
               select m.story_id
                 from public.story_member m
@@ -288,7 +298,8 @@ export async function buildRising(
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
   const rows = (await loadCandidates(db, sinceMs)).filter((row) => {
-    const why = postScoreReason({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy);
+    const similarity = row.picture_similarity === null ? null : Number(row.picture_similarity);
+    const why = postScoreReason({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy, similarity);
     if (why !== 'passes') whyNot.set(row.item_id, why);
     return why === 'passes';
   });

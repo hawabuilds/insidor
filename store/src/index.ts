@@ -50,6 +50,7 @@ export { PgSpendRepo } from './repo/spend.ts';
 export type { StageRunClose } from './repo/runs.ts';
 export { PgHistoryRepo } from './repo/history.ts';
 export { PgJobFileRepo } from './repo/job-files.ts';
+export { PgCoinedPictureRepo } from './repo/coined-pictures.ts';
 export { FEED_REJECTION_REASONS, PgFeedRejectionRepo } from './repo/feed-rejections.ts';
 export type { FeedRejection, FeedRejectionReason } from './repo/feed-rejections.ts';
 export type { JobFile } from './repo/job-files.ts';

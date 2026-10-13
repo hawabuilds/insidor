@@ -1173,6 +1173,17 @@ export interface RisingPolicy {
    * hides it; above it, only its passing posts are listed. The owner's rule (2026-10-13).
    */
   readonly narrativeMinPassingPosts: number;
+  /**
+   * ★ THE PICTURE BOOST. A post the judge turned down only UNSURELY — "no" at or below
+   * `boostMaxNoConfidence` — still reaches the feed when its picture is at least
+   * `boostMinSimilarity` alike (cosine, in the image space) to a picture of a post that was
+   * actually coined (internal.coined_picture). A firm "no" is never overturned, and the number
+   * never reaches a screen. Tuned 2026-10-13 on the gold origin posts, each compared to the
+   * OTHER gold pictures: it took gold from 27 to 29 of 41 and let no recorded non-meme through
+   * — both bars chosen on that same set, so expect less on posts it has not seen.
+   */
+  readonly boostMinSimilarity: number;
+  readonly boostMaxNoConfidence: number;
 }
 
 export interface IngestPolicy {
@@ -1899,7 +1910,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v42',
+  version: 'policy.v43',
 
   admit: {
     maxAgeMin: 240,
@@ -2401,6 +2412,8 @@ const POLICY_V1: Policy = {
     fypFastWindowMs: 3_600_000, // the first hour
     popularMinReach: 250_000,
     narrativeMinPassingPosts: 2,
+    boostMinSimilarity: 0.44,
+    boostMaxNoConfidence: 0.3,
   },
 
   rank: {
