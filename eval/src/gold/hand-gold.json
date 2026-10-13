@@ -1,0 +1,11 @@
+{
+  "about": "Posts the owner has put in hand gold by hand, beyond the gold sheets and the owner's missed posts. Hand gold is the re-tune's gate (tools/retune.ts): at least Policy.learning.minGoldPass of it must reach For You. An id here that is a recall-check gold addition (internal.gold_addition, source 'recall') approves that addition; any other id is read from the posts we hold (public.item). Every recall addition not listed is auto gold, reported and never gated, because a creator linking a post does not prove the post started the meme. A post the current block was taught is left out of the test either way. Add an id ('x:<status id>') to put a post in; remove it to take it out.",
+  "itemIds": [
+    "x:2109770751406719005",
+    "x:2109759454858379456"
+  ],
+  "notes": {
+    "x:2109770751406719005": "Goliath roller coaster death (Six Flags, Georgia): the owner flipped it to meme; an older coin named for it ran on this news",
+    "x:2109759454858379456": "Goliath roller coaster death, a second report: the owner flipped it to meme"
+  }
+}

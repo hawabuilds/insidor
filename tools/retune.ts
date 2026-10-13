@@ -14,9 +14,14 @@
  *                        the block but never applies it; `--force` builds even with nothing new;
  *                        `--baseline` also grades the same test posts with no learned block, for a
  *                        before-and-after on the same posts (about doubles the run's cost).
- *   measure              build and test a block now and print the result, writing nothing to the
+ *   measure [--baseline] [--rules-only] [--max-batch=<n>] [--rows=<file>]
+ *                        build and test a block now and print the result, writing nothing to the
  *                        database (no slot, no gold additions, no version, no alert) and reading
  *                        any table not yet migrated as empty. Paid like a run, on the learning book.
+ *                        `--rules-only` grades the judge's rules alone (no block, no regression
+ *                        check): the baseline by itself, at half the cost. `--max-batch` measures
+ *                        another number of posts per call than the live scorer's; `--rows` writes
+ *                        every graded post's answers to a file.
  *   status               the last runs and the block in use. Free.
  *
  * A RUN, IN ORDER:
@@ -28,9 +33,17 @@
  *   3. the block: the labels file, the owner's meme/not taps (a note is the reason), missed posts
  *      as "yes", the owner's name calls as a names section — balanced, newest first, at most
  *      Policy.learning.maxExamples (eval/src/feed/examples.ts, shared with judge-examples.ts).
- *   4. the test, exactly as feed-pass-rates.ts grades (tools/lib/pass-rates.ts): gold (committed
- *      origin posts + additions) must pass ≥ minGoldPass; the held-out half of live non-memes may
- *      pass ≤ maxLiveNegativePass; the held-out half of missed posts must pass ≥ minMissedPass.
+ *   4. the test, asked exactly as the live scorer asks (tools/lib/pass-rates.ts: ten posts a call,
+ *      the same picture size and answer budget, then the kind question). HAND GOLD is the gold
+ *      sheets, the owner's missed posts and the owner's own list (eval/src/gold/hand-gold.json:
+ *      approved recall additions and any post we hold); every other recall addition is AUTO GOLD, graded and
+ *      reported, never gated. A post passes when it would be on For You: the first question passes
+ *      and its kind is not one Policy.judge.heldKinds holds (eval/src/feed/examples.ts):
+ *        gate        hand gold (memes, news, tragedies alike) ≥ minGoldPass AND held-out live
+ *                    non-memes ≤ maxLiveNegativePass
+ *        missed      the held-out half of missed posts caught ≥ minMissedPass
+ *        no regress  every missed post the judge in use catches (its applied block, or its rules
+ *                    alone) is still caught by the new block — one regression and it is not applied.
  *   5. recorded (internal.judge_examples_version, 0056) applied or not, with why; then the owner's
  *      summary: a log line and an owner alert (`retune_summary`), with the matching lessons (the
  *      owner's right/wrong coin calls, counted and listed for the matching rules' owner) and the
@@ -54,22 +67,23 @@
  * check. The slot row (0056) is claimed by the run itself, so a second start finds it taken.
  *
  * What breaks if changed carelessly: the test must never contain a post in the block. Every group
- * here drops `exampleIds` first; a gold addition that is also a taught missed post is not gold.
+ * here drops `exampleIds` first; a gold addition that is also a taught missed post is not gold. The
+ * one exception is `missed-taught`, graded for the regression rule only and never in a rate.
  */
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { asDb, createPool, DB_ROLE, PgLearningRepo, PgOwnerAlertRepo, type GoldAddition } from '../store/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
-import { buildBlock, changed, gate, latestSlot, share, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
+import { buildBlock, caught, changed, currentCalls, gate, latestSlot, ratesOf, regressions, share, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
-import { LineTooShort, goldOriginPosts, gradePosts, judgeSetup, rateOf, type EvalPost, type EvalRow, type Usage } from './lib/pass-rates.ts';
+import { LineTooShort, goldOriginPosts, handGoldIds, gradePosts, judgeSetup, type EvalPost, type EvalRow } from './lib/pass-rates.ts';
 
 const P = DEFAULT_POLICY;
 const L = P.learning;
@@ -178,7 +192,9 @@ async function ownerCalls(repo: PgLearningRepo) {
 
 /* ── a run ───────────────────────────────────────────────────────────────────────────────────── */
 
-async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean }): Promise<void> {
+type G = 'gold' | 'auto' | 'live-not' | 'missed' | 'missed-taught';
+
+async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean; readonly rulesOnly?: boolean; readonly maxBatch?: number; readonly rowsFile?: string }): Promise<void> {
   await withRepo(async (repo, owner) => {
     if (opts.record && !(await repo.claimSlot(slot, new Date()))) {
       log('info', 'this slot already ran', { slot: slot.toISOString() });
@@ -201,75 +217,109 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       }
 
       const block = buildBlock(calls, names, L.maxExamples);
-      const taught = new Set(block.exampleIds);
-      const testMissedIds = new Set(block.testMissed.map((m) => m.itemId));
+      /* `--rules-only` teaches nothing, so nothing is held out: every missed post is tested. */
+      const allMissed = currentCalls(calls).filter((c) => c.from === 'missed' && c.label === 'meme');
+      const testMissed = opts.rulesOnly === true ? allMissed : block.testMissed;
+      const taught = new Set(opts.rulesOnly === true ? [] : block.exampleIds);
+      const testMissedIds = new Set(testMissed.map((m) => m.itemId));
       const additions = await soft(repo.goldAdditions(), []);
-      type G = 'gold' | 'live-not' | 'missed';
+      /* ★ HAND GOLD AND AUTO GOLD. Hand gold — the gold sheets, the owner's missed posts, and the
+         owner's own list (eval/src/gold/hand-gold.json: approved recall additions, or posts we
+         hold) — is the gate. Every other recall addition is auto gold: a creator linking a post
+         does not prove the post is a meme origin, so it is graded and reported, never gated. */
+      const listed = handGoldIds();
+      const inAdditions = new Set(additions.map((g) => g.itemId));
+      const listedHeld = await soft(repo.heldPosts([...listed].filter((id) => !inAdditions.has(id) && !taught.has(id) && !testMissedIds.has(id))), []);
+      /* Every missed post the owner gave, taught or held out: the held-out half is the `missed`
+         group; the taught half is graded only for the regression rule. */
+      const missedTaught = allMissed.filter((c) => !testMissedIds.has(c.itemId));
       const posts: EvalPost<G>[] = [
         ...goldOriginPosts(),
-        ...additions.filter((g) => !taught.has(g.itemId) && !testMissedIds.has(g.itemId)).map((g) => ({ group: 'gold' as const, id: g.itemId, kind: `added ${g.addedOn} (${g.source})`, text: g.postText, imageUri: g.imageUri, coinRef: g.coinMint })),
+        ...additions
+          .filter((g) => !taught.has(g.itemId) && !testMissedIds.has(g.itemId))
+          .map((g) => ({ group: g.source === 'recall' && !listed.has(g.itemId) ? ('auto' as const) : ('gold' as const), id: g.itemId, kind: `added ${g.addedOn} (${g.source})`, text: g.postText, imageUri: g.imageUri, coinRef: g.coinMint })),
+        ...listedHeld.map((h) => ({ group: 'gold' as const, id: h.itemId, kind: "the owner's hand-gold list", text: h.body, imageUri: pictureOf(h.media)?.uri ?? null })),
         ...block.testNegatives.map((c) => ({ group: 'live-not' as const, id: c.itemId, kind: c.why, text: c.text, imageUri: c.imageUri })),
-        ...block.testMissed.map((c) => ({ group: 'missed' as const, id: c.itemId, kind: 'missed', text: c.text, imageUri: c.imageUri })),
+        ...testMissed.map((c) => ({ group: 'missed' as const, id: c.itemId, kind: 'missed', text: c.text, imageUri: c.imageUri })),
+        ...missedTaught.map((c) => ({ group: 'missed-taught' as const, id: c.itemId, kind: 'missed (taught)', text: c.text, imageUri: c.imageUri })),
       ];
+      /* The kind answers one grading gets are reused by the next this run, so the block, the
+         baseline and the judge in use are held back on the same labels and pay for them once. */
+      const kinds = new Map<string, string>();
+      const maxBatch = opts.maxBatch ?? P.qualify.batchSize;
+      const held = P.judge.heldKinds;
 
       judgeSetup(env);
-      log('info', 'retune testing a block', { slot: slot.toISOString(), posts: posts.length, gold: posts.filter((p) => p.group === 'gold').length, liveNegatives: block.testNegatives.length, missed: block.testMissed.length, examples: block.exampleIds.length, chars: block.text.length });
+      log('info', 'retune testing a block', { slot: slot.toISOString(), posts: posts.length, handGold: posts.filter((p) => p.group === 'gold').length, autoGold: posts.filter((p) => p.group === 'auto').length, liveNegatives: block.testNegatives.length, missed: testMissed.length, missedTaught: missedTaught.length, heldKinds: held, maxBatch, rulesOnly: opts.rulesOnly === true, examples: block.exampleIds.length, chars: block.text.length });
       /* Bounded by the learning book's lines, not a guess per post: the test either fits what is left
          of them (mustFit) or is not started. */
       /* ★ A PICTURE IS EMBEDDED ONCE PER RUN. The block's test and the baseline grade the same
          posts minutes apart, and two embeddings of one file minutes apart came back bit-identical
          (2026-10-13), so the second grading reads the first's vectors. Not across runs: vectors
          stored hours earlier differed by up to 0.0003 cosine, which is not provably the same answer. */
-      const held = new Map<string, readonly number[]>();
+      const runVectors = new Map<string, readonly number[]>();
       const vectors = {
-        stored: async (uris: readonly string[]) => new Map(uris.flatMap((u) => { const v = held.get(u); return v === undefined ? [] : [[u, v] as const]; })),
-        keep: async (_id: string, uri: string, _space: string, v: readonly number[]) => void held.set(uri, v),
+        stored: async (uris: readonly string[]) => new Map(uris.flatMap((u) => { const v = runVectors.get(u); return v === undefined ? [] : [[u, v] as const]; })),
+        keep: async (_id: string, uri: string, _space: string, v: readonly number[]) => void runVectors.set(uri, v),
       };
-      const shared = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning');
-      let rows: readonly EvalRow<G>[] = [];
-      let used: Usage | null = null;
-      let batched = false;
-      try {
-        const coined = await repo.coinedPictureVectors();
-        ({ rows, used, batched } = await gradePosts(posts, { env, meter: shared.meter, examples: block.text, batch: true, mustFit: true, coined, vectors }));
-      } finally {
-        await shared.close();
-      }
-      /* `--baseline`: the same test posts graded by the judge as it runs before this block (its
-         rules alone, no learned examples), so the owner's table compares like with like. Paid on
-         the learning book, refused rather than dribbled when the line cannot cover it. */
-      let baseline: Record<'gold' | 'negatives' | 'missed', Rate> | null = null;
-      let baselineUsd = 0;
-      if (opts.baseline === true) {
-        const again = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning');
+      let spentUsd = 0;
+      const coined = await repo.coinedPictureVectors();
+      /* One grading on the learning book. The kind labels it learns are kept, so a later grading
+         this run splits gold exactly as this one did and does not pay to ask again. */
+      const grade = async (of: readonly EvalPost<G>[], examples: string | null) => {
+        const shared = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning');
         try {
-          const coined = await repo.coinedPictureVectors();
-          const base = await gradePosts(posts, { env, meter: again.meter, examples: null, batch: true, mustFit: true, coined, vectors });
-          const said = base.rows.filter((r) => r.coinable !== null);
-          baseline = { gold: rateOf(said, 'gold'), negatives: rateOf(said, 'live-not'), missed: rateOf(said, 'missed') };
-          log('info', 'retune baseline: the same posts, rules alone', { slot: slot.toISOString(), gold: baseline.gold, liveNegatives: baseline.negatives, missed: baseline.missed, unanswered: base.rows.length - said.length });
+          const out = await gradePosts(of, { env, meter: shared.meter, examples, batch: true, mustFit: true, coined, vectors, knownKinds: kinds, maxBatch });
+          for (const r of out.rows) if (r.postKind !== null) kinds.set(r.id, r.postKind);
+          return out;
         } finally {
-          baselineUsd = again.meter.spentUsd();
-          await again.close();
+          spentUsd += shared.meter.spentUsd();
+          await shared.close();
         }
+      };
+      const graded = (rows: readonly EvalRow<G>[]): GradedPost[] => rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind }));
+      const GROUPS = { hand: ['gold', 'missed'], auto: 'auto', negatives: 'live-not', missed: 'missed' } as const;
+      const caughtMap = (rows: readonly EvalRow<G>[]) => new Map(graded(rows).filter((r) => r.group === 'missed' || r.group === 'missed-taught').map((r) => [r.id, caught(r, held)] as const));
+
+      const tested = await grade(posts, opts.rulesOnly === true ? null : block.text);
+      const rows = tested.rows;
+      /* `--baseline`: the same test posts graded by the judge's rules alone (no learned examples),
+         so the owner's table compares like with like. Paid on the learning book. */
+      let baseRows: readonly EvalRow<G>[] | null = null;
+      if (opts.baseline === true && opts.rulesOnly !== true) baseRows = (await grade(posts, null)).rows;
+      const baseline = baseRows === null ? null : ratesOf(graded(baseRows), held, GROUPS);
+      if (baseline !== null) log('info', 'retune baseline: the same posts, rules alone', { slot: slot.toISOString(), handGold: baseline.hand, liveNegatives: baseline.negatives, missed: baseline.missed, autoGold: baseline.auto });
+
+      /* ★ NO REGRESSION: the owner's missed posts graded by the judge in use now — its applied
+         block, or its rules alone when none is — and every one it catches must still be caught. */
+      const inUse = await soft(repo.latestApplied(), null);
+      let regressed: readonly string[] = [];
+      if (opts.rulesOnly !== true) {
+        const missedPosts = posts.filter((p) => p.group === 'missed' || p.group === 'missed-taught');
+        const nowRows = inUse?.text === block.text ? rows : inUse === null && baseRows !== null ? baseRows : missedPosts.length === 0 ? [] : (await grade(missedPosts, inUse?.text ?? null)).rows;
+        regressed = regressions(caughtMap(nowRows), caughtMap(rows));
       }
-      const costUsd = shared.meter.spentUsd() + gold.xUsd + baselineUsd;
+      const costUsd = spentUsd + gold.xUsd;
 
       /* Unanswered posts are out of every rate, and stop the block being applied. */
       const answered = rows.filter((r) => r.coinable !== null);
       const unanswered = rows.length - answered.length;
-      const rates: Record<'gold' | 'negatives' | 'missed', Rate> = { gold: rateOf(answered, 'gold'), negatives: rateOf(answered, 'live-not'), missed: rateOf(answered, 'missed') };
-      const verdict = gate(rates, L);
+      const rates = ratesOf(graded(answered), held, GROUPS);
+      const verdict = gate({ ...rates, regressions: regressed }, L);
+      /* `--rows=<file>`: every graded post's answers, for comparing held-kind sets on one run. */
+      if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, text: r.text.slice(0, 120) })), null, 1));
       const why = unanswered > 0 ? `${unanswered} of ${rows.length} test posts went unanswered (outage or the learning line)${verdict.why === null ? '' : `; ${verdict.why}`}` : verdict.why;
       const apply = verdict.apply && unanswered === 0 && !opts.dry;
       const before = await soft(repo.appliedExampleIds(), []);
       const delta = changed(before, block.exampleIds);
       const sha = createHash('sha256').update(block.text).digest('hex').slice(0, 16);
+      /* The version row's gold columns carry hand gold; auto gold and the regressions are in the
+         run's detail, the log and the owner's alert. */
       const version = {
         builtAt: new Date(), text: block.text, sha, exampleIds: block.exampleIds,
         tapsUsed: block.used.taps, missedUsed: block.used.missed, labelsUsed: block.used.labels, namesUsed: block.used.names,
         inputsThrough: newest, labelsSha,
-        goldPass: share(rates.gold), goldN: rates.gold.tested, liveNegativePass: share(rates.negatives), liveNegativeN: rates.negatives.tested, missedPass: share(rates.missed), missedN: rates.missed.tested,
+        goldPass: share(rates.hand), goldN: rates.hand.tested, liveNegativePass: share(rates.negatives), liveNegativeN: rates.negatives.tested, missedPass: share(rates.missed), missedN: rates.missed.tested,
         applied: apply, reasonNotApplied: apply ? null : opts.dry ? `dry run${why === null ? ': every gate held' : `: ${why}`}` : why, dry: opts.dry, costUsd,
       };
       const versionId = opts.record ? await repo.recordVersion(version) : null;
@@ -286,12 +336,16 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const outcome = opts.dry ? 'dry' : apply ? 'applied' : 'kept';
       const summary = {
         slot: slot.toISOString(), version: versionId, outcome, why,
-        gold: rates.gold, liveNegatives: rates.negatives, missed: rates.missed, unanswered, baseline,
+        handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held,
+        autoGold: rates.auto, missed: rates.missed, regressions: regressed, judgeInUse: inUse === null ? 'rules alone' : `block ${inUse.versionId}`,
+        unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true,
         learnedFrom: block.used, examples: block.exampleIds.length, added: delta.added, removed: delta.removed, chars: block.text.length,
-        costUsd: Number(costUsd.toFixed(4)), batched, usage: used, goldAdded: gold.added, missReasons, matchingLessons: lessons,
+        costUsd: Number(costUsd.toFixed(4)), batched: tested.batched, usage: tested.used, goldAdded: gold.added, missReasons, matchingLessons: lessons,
       };
       log(apply || opts.dry ? 'info' : 'warn', `retune ${outcome}`, summary);
-      await end(outcome, versionId, why ?? `applied: gold ${rates.gold.passed}/${rates.gold.tested}, live non-memes ${rates.negatives.passed}/${rates.negatives.tested}, missed ${rates.missed.passed}/${rates.missed.tested}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}`, costUsd);
+      const ofN = (r: Rate) => `${r.passed}/${r.tested}`;
+      const tally = `hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), regressions ${regressed.length}`;
+      await end(outcome, versionId, why === null ? `applied: ${tally}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}` : `${why} (${tally})`, costUsd);
 
       /* The owner's alert, once per slot (the claim is on the subject). A dry run tells nobody. */
       if (!opts.dry && opts.record) {
@@ -303,7 +357,8 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
               rung: 1,
               facts: {
                 applied: apply, why,
-                goldPassed: rates.gold.passed, goldN: rates.gold.tested, negativePassed: rates.negatives.passed, negativeN: rates.negatives.tested, missedPassed: rates.missed.passed, missedN: rates.missed.tested,
+                goldPassed: rates.hand.passed, goldN: rates.hand.tested, negativePassed: rates.negatives.passed, negativeN: rates.negatives.tested, missedPassed: rates.missed.passed, missedN: rates.missed.tested,
+                autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length,
                 taps: block.used.taps, missed: block.used.missed, names: block.used.names, added: delta.added, removed: delta.removed, missReasons,
               },
               href: '/#/alerts',
@@ -339,7 +394,8 @@ if (command === 'status') {
     console.error('retune refused: this calls the paid judge. Set SPEND=live and pass --yes.');
     process.exit(1);
   }
-  await run(new Date(), { dry: true, force: true, record: false });
+  const mb = arg('max-batch');
+  await run(new Date(), { dry: true, force: true, record: false, baseline: flag('--baseline'), rulesOnly: flag('--rules-only'), ...(mb === null ? {} : { maxBatch: Number(mb) }), ...(arg('rows') === null ? {} : { rowsFile: arg('rows') ?? '' }) });
 } else if (command === 'due' || command === 'run') {
   if (process.env['SPEND'] !== 'live' || !flag('--yes')) {
     console.error('retune refused: this calls the paid judge. Set SPEND=live and pass --yes.');

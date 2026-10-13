@@ -1,11 +1,11 @@
-/** The learned-examples block: a fixed split by id, the owner's newest call wins, balanced and capped, and a block applied only when every gate holds. */
+/** The learned-examples block: a fixed split by id, the owner's newest call wins, balanced and capped, and a block applied only when the gate holds and no caught missed post regresses. */
 
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { buildBlock, changed, currentCalls, gate, isExample, latestSlot, type OwnerCall } from './examples.ts';
+import { buildBlock, caught, changed, currentCalls, gate, isExample, latestSlot, ratesOf, regressions, type GradedPost, type OwnerCall } from './examples.ts';
 
 const L = DEFAULT_POLICY.learning;
 const call = (itemId: string, label: 'meme' | 'not', from: OwnerCall['from'], at: number | null = null): OwnerCall => ({ itemId, text: `post ${itemId}`, imageUri: null, label, why: 'because', at, from });
@@ -50,13 +50,45 @@ test("the owner's names go in a names section", () => {
   assert.equal(b.used.names, 1);
 });
 
-test('★ applied only when every gate holds; an untested missed group does not block, an untested gold group does', () => {
-  const ok = { gold: { passed: 30, tested: 41 }, negatives: { passed: 2, tested: 90 }, missed: { passed: 0, tested: 0 } };
+const ok = { hand: { passed: 30, tested: 41 }, negatives: { passed: 2, tested: 90 }, missed: { passed: 0, tested: 0 }, regressions: [] as string[] };
+
+test('★ applied only when every gate holds; an untested missed group does not block, an untested hand gold group does', () => {
   assert.deepEqual(gate(ok, L), { apply: true, why: null });
-  assert.equal(gate({ ...ok, gold: { passed: 20, tested: 41 } }, L).apply, false);
+  assert.equal(gate({ ...ok, hand: { passed: 20, tested: 41 } }, L).apply, false);
   assert.equal(gate({ ...ok, negatives: { passed: 9, tested: 90 } }, L).apply, false);
   assert.equal(gate({ ...ok, missed: { passed: 1, tested: 4 } }, L).apply, false);
-  assert.equal(gate({ ...ok, gold: { passed: 0, tested: 0 } }, L).apply, false);
+  assert.equal(gate({ ...ok, hand: { passed: 0, tested: 0 } }, L).apply, false);
+});
+
+test('★ no block is applied that makes a missed post the judge in use catches fail', () => {
+  const r = regressions(new Map([['x:1', true], ['x:2', true], ['x:3', false], ['x:4', true]]), new Map([['x:1', false], ['x:2', true], ['x:3', false], ['x:4', null]]));
+  assert.deepEqual(r, ['x:1'], 'a caught post now failing; not one never caught, not one left unanswered');
+  const v = gate({ ...ok, regressions: r }, L);
+  assert.equal(v.apply, false);
+  assert.match(v.why ?? '', /1 missed post caught now would fail: x:1/);
+});
+
+const g = (id: string, group: string, firstPass: boolean, kind: string | null, coinable: boolean | null = firstPass): GradedPost => ({ id, group, coinable, firstPass, kind });
+
+test('hand gold is one set whatever its kind; a held kind keeps a post off the feed only when policy holds it; auto gold is reported, never gated', () => {
+  const rows = [
+    g('a', 'gold', true, null), g('b', 'gold', true, 'OTHER'), g('c', 'gold', false, null), g('d', 'gold', true, 'TRAGEDY'),
+    g('e', 'missed', true, 'SPORT'), g('f', 'gold', true, 'AD'), g('u', 'gold', false, null, null),
+    g('n1', 'live-not', true, 'SHOWBIZ'), g('n2', 'live-not', true, null), g('n3', 'live-not', false, null),
+    g('z', 'auto', true, 'CORP_NEWS'),
+  ];
+  const groups = { hand: ['gold', 'missed'], auto: 'auto', negatives: 'live-not', missed: 'missed' };
+  const adsOnly = ratesOf(rows, ['AD'], groups);
+  assert.deepEqual(adsOnly.hand, { passed: 4, tested: 6 }, 'news and a tragedy count when the first question passed; an ad does not; unanswered is out');
+  assert.deepEqual(adsOnly.negatives, { passed: 2, tested: 3 });
+  assert.deepEqual(adsOnly.auto, { passed: 1, tested: 1 });
+  const old = ratesOf(rows, ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS'], groups);
+  assert.deepEqual([old.hand.passed, old.negatives.passed, old.missed.passed], [3, 1, 0]);
+  const none = ratesOf(rows, [], groups);
+  assert.deepEqual(none.hand, { passed: 5, tested: 6 }, 'no kind gate: the first question alone decides');
+  assert.equal(caught(g('t', 'gold', true, 'TRAGEDY'), ['TRAGEDY']), false);
+  assert.equal(caught(g('t', 'gold', true, 'TRAGEDY'), ['AD']), true);
+  assert.equal(caught(g('t', 'gold', true, 'MADE_UP'), ['MADE_UP']), true, 'a label core does not know holds nothing');
 });
 
 test('what changed: added and removed example ids', () => {
