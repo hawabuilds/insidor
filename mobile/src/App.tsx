@@ -52,7 +52,7 @@ function Screen({ route, create, onAlertsSeen }: { route: Route; create: (from: 
       return (
         <Feed
           onCreate={(row, labelled) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, labelled, storyId: row.id })}
-          onCreatePost={(p) => create({ title: p.excerpt, reach: p.reach, thumbUrl: p.thumbUrl, labelled: false, storyId: p.storyId, link: p.permalink })}
+          onCreatePost={(p) => create({ title: p.excerpt, reach: p.reach, thumbUrl: p.thumbUrl, labelled: false, storyId: p.storyId, link: p.permalink, postId: p.id })}
         />
       );
     case 'narratives':

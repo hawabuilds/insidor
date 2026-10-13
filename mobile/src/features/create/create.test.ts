@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cleanTicker, feeRate, presetsWithin, suggestTicker, tickerLine } from './create-form.ts';
+import { cleanTicker, feeRate, presetsWithin, suggestTicker, tickerLine, tickerUseLine } from './create-form.ts';
 
 test('a short name suggests its last word, a long title its first', () => {
   assert.equal(suggestTicker('Grim Reaper'), 'REAPER');
@@ -37,4 +37,11 @@ test('★ TRADING off means no create path: the sheet is the Coming soon one', a
   const { tradingOn } = await import('../../shared/trading.ts');
   assert.equal(tradingOn({}), false);
   assert.equal(tradingOn({ VITE_TRADING: 'yes' }), false);
+});
+
+test('a name chip says Free only when the server does, and never on an outage', () => {
+  assert.equal(tickerUseLine({ kind: 'free' }), 'Free');
+  assert.equal(tickerUseLine({ kind: 'unknown' }), "Couldn't check");
+  assert.equal(tickerUseLine({ kind: 'taken', count: 1, more: false }), 'Taken by 1 coin');
+  assert.equal(tickerUseLine({ kind: 'taken', count: 10, more: true }), 'Taken by 10+ coins');
 });

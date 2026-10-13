@@ -126,4 +126,24 @@ export type CoinLink =
  * finish is not "still checking"). It carries nothing, so no button can be built from it. A
  * narrative never has it, so the narrative screens' `CoinLink` does not either.
  */
-export type PostCoinLink = CoinLink | { readonly kind: 'unchecked' };
+export type PostCoinLink =
+  | CoinLink
+  | { readonly kind: 'unchecked' }
+  /**
+   * The post's OWN coin, settled by evidence beyond its name: the coin links this post, or has
+   * its picture and launched after it, or is the only coin launched after it under the
+   * subject's exact name. `evidence` is which facts held; the card says them, never a measure
+   * of how sure. A post's alone, so a narrative's `one` keeps its one meaning.
+   */
+  | { readonly kind: 'matched'; readonly coin: Coin; readonly evidence: CoinEvidence };
+
+/**
+ * What is known about a coin against one post, each a fact true without us. Null is "not
+ * known" (not read, not compared), never "no", and is never said on screen.
+ */
+export interface CoinEvidence {
+  readonly linksPost: boolean | null;
+  readonly samePicture: boolean | null;
+  /** The coin's launch minus the post's time; negative is before. */
+  readonly launchedAfterMs: number | null;
+}

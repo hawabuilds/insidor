@@ -23,6 +23,8 @@
  * Create, since the person may make the coin they meant. The owner's four card states:
  *
  *   one       → "$TICKER, $42K market cap" + Buy $TICKER
+ *   matched   → the same line and Buy, for the post's OWN coin settled by evidence, with why
+ *               as facts beneath it: "Links this post", "Same picture", "Launched 12m after"
  *   unsure    → "3 coins use this name. We can't tell which one came from here." + See 3 coins
  *               + Create coin (never Buy on the card)
  *   none      → "No coin yet" + Create coin
@@ -34,7 +36,7 @@
  * made by asking for a quote, and this only obeys it.
  */
 
-import type { Coin, CoinLink, PostCoinLink } from './api/index.ts';
+import type { Coin, CoinEvidence, CoinLink, PostCoinLink } from './api/index.ts';
 import { formatUsd } from './format/number.ts';
 
 export type CoinAction =
@@ -49,6 +51,8 @@ export interface PostCoinStatus {
   readonly line: string;
   /** In the order they are drawn. Empty is no button at all, never a disabled one. */
   readonly actions: readonly PostAction[];
+  /** For a post's own coin: why it is the post's, as facts (`evidenceFacts`). */
+  readonly facts?: readonly string[];
 }
 
 export interface CoinStatus {
@@ -67,6 +71,7 @@ export function coinStatus(coins: PostCoinLink): CoinStatus {
     case 'unsure':
       return { line: unsureLine(coins.claimCount, coins.more === true), action: null };
     case 'one':
+    case 'matched':
       return coins.coin.tradable
         ? { line: '1 coin', action: { kind: 'buy', coin: coins.coin } }
         : { line: "1 coin, can't be traded yet", action: null };
@@ -104,7 +109,33 @@ export function postCoinStatus(coins: PostCoinLink): PostCoinStatus {
     };
   }
   const status = coinStatus(coins);
-  return { line: coins.kind === 'one' ? oneCoinLine(coins.coin) : status.line, actions: status.action === null ? [] : [status.action] };
+  const one = coins.kind === 'one' || coins.kind === 'matched';
+  return {
+    line: one ? oneCoinLine(coins.coin) : status.line,
+    actions: status.action === null ? [] : [status.action],
+    ...(coins.kind === 'matched' ? { facts: evidenceFacts(coins.evidence) } : {}),
+  };
+}
+
+/** Minutes, hours or days, the way the card says a gap: "12m", "3h", "2d". */
+function gap(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 60) return `${Math.max(minutes, 0)}m`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`;
+}
+
+/**
+ * WHY A COIN IS THE POST'S, AS FACTS: "Links this post", "Same picture", "Launched 12m after".
+ * Only facts that hold are said; an unknown is left out, never said as a "no". A coin launched
+ * before the post says so, since that is the one fact that rules it out. Never a measure of how sure.
+ */
+export function evidenceFacts(e: CoinEvidence): readonly string[] {
+  const out: string[] = [];
+  if (e.linksPost === true) out.push('Links this post');
+  if (e.samePicture === true) out.push('Same picture');
+  if (e.launchedAfterMs !== null) out.push(e.launchedAfterMs >= 0 ? `Launched ${gap(e.launchedAfterMs)} after` : `Launched ${gap(-e.launchedAfterMs)} before`);
+  return out;
 }
 
 /**

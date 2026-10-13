@@ -25,3 +25,10 @@
   justify-content: flex-end;
   margin-top: 12px;
 }
+
+/* Why each coin might be the post's, as facts, under its row. */
+.facts {
+  margin: -6px 18px 8px 74px;
+  color: var(--text-3);
+  font-size: 12px;
+}

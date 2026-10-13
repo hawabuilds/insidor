@@ -8,6 +8,8 @@
  *
  * ★ EVERY CARD HAS A COIN LINE, AND IT IS THE SERVER'S ANSWER, NOT OURS (`postCoinStatus`):
  *
+ *   matched  → the post's own coin, settled by evidence: as `one`, with why beneath it as facts
+ *              ("Links this post, Same picture, Launched 12m after"), never how sure
  *   one      → "$TICKER" and the coin's market cap when it has been read, and Buy, which opens
  *              the coin's page — only ever a narrative's confident coin (the decoder refuses a
  *              coin without its narrative)
@@ -92,7 +94,10 @@ export function PostRow({ post, now, handlers, extra = null }: { post: RisingPos
       </div>
 
       <div className={status.actions.length > 1 ? `${styles['foot']} ${styles['footWrap']}` : styles['foot']}>
-        <span className={styles['status']}>{status.line}</span>
+        <span className={styles['status']}>
+          {status.line}
+          {status.facts !== undefined && status.facts.length > 0 ? <span className={styles['facts']}>{status.facts.join(', ')}</span> : null}
+        </span>
         {status.actions.length > 0 ? (
           <span className={styles['actions']}>
             {status.actions.map((action) => <ActionButton key={action.kind} action={action} handlers={handlers} />)}

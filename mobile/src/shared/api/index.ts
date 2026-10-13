@@ -4,14 +4,14 @@
  */
 
 export type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
-export type { Coin, CoinLink, PostCoinLink } from './wire/coin.ts';
+export type { Coin, CoinEvidence, CoinLink, PostCoinLink } from './wire/coin.ts';
 export type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 export type { DiscussionPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 export type { RisingFeed, RisingFeedId, RisingPost } from './wire/rising.ts';
 export type { LaunchPreview, LaunchRules } from './client.ts';
 export type { BuildResult, Holding as TradeHolding, TradeQuote, TradeVenue } from './wire/trade.ts';
 export type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
-export type { OriginGap, SameNameCoins, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
+export type { NameIdea, OriginGap, SameNameCoin, SameNameCoins, SearchCoin, TickerUse, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 
 export {
   BOARD_VIEW,
@@ -37,6 +37,8 @@ export {
   sendSigned,
   fetchSearchedCoin,
   fetchPostCoins,
+  fetchPostNames,
+  fetchTickerCoins,
   fetchStory,
   submitTrade,
 } from './client.ts';

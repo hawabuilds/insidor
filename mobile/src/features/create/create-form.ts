@@ -56,3 +56,14 @@ export function feeRate(bps: number): string {
 export function supplyShare(bps: number): string {
   return `${(bps / 100).toFixed(2)}% of supply`;
 }
+
+/**
+ * What the line beside a name chip says about its ticker, in the server's three answers: "Free"
+ * only when every source answered, "Taken by 3 coins" (or "10+" when there were more), and
+ * "Couldn't check" when a source was down — never "Free" on an outage.
+ */
+export function tickerUseLine(use: { readonly kind: 'free' } | { readonly kind: 'taken'; readonly count: number; readonly more: boolean } | { readonly kind: 'unknown' }): string {
+  if (use.kind === 'free') return 'Free';
+  if (use.kind === 'unknown') return "Couldn't check";
+  return `Taken by ${use.count}${use.more ? '+' : ''} ${use.count === 1 && !use.more ? 'coin' : 'coins'}`;
+}

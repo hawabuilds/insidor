@@ -24,12 +24,12 @@
 import type { Instant, Measured, Delta, Millis, PendingReason } from '../format/measure.ts';
 import { instantFrom, measuredFrom } from '../format/measure.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
-import type { Coin, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
+import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
 import type { RisingFeed, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
-import type { OriginGap, SameNameCoins, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
+import type { NameIdea, OriginGap, SameNameCoins, SearchCoin, SearchCoins, TickerUse, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 import {
   BOARD_ROW_FIELDS,
   COIN_FIELDS,
@@ -486,12 +486,15 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
   assertNoInternalVocabulary(raw, path);
   const o = pick(obj(raw, path), RISING_POST_FIELDS);
   const storyId = optStr(o.storyId);
+  const kind = o.coins === null || o.coins === undefined ? null : obj(o.coins, `${path}.coins`)['kind'];
   const coins: PostCoinLink =
-    o.coins === null || o.coins === undefined
+    kind === null
       ? { kind: 'pending' }
-      : obj(o.coins, `${path}.coins`)['kind'] === 'unchecked'
+      : kind === 'unchecked'
         ? { kind: 'unchecked' }
-        : decodeCoinLink(o.coins, `${path}.coins`);
+        : kind === 'matched'
+          ? { kind: 'matched', coin: decodeCoin(obj(o.coins, `${path}.coins`)['coin'], `${path}.coins.coin`), evidence: decodeCoinEvidence(obj(o.coins, `${path}.coins`)['evidence'], `${path}.coins.evidence`) }
+          : decodeCoinLink(o.coins, `${path}.coins`);
   if ((coins.kind === 'one' || coins.kind === 'several') && storyId === null) {
     throw new WireLeakError(`${path}.coins (a ${coins.kind} link on a post with no narrative)`);
   }
@@ -651,6 +654,17 @@ function decodeSearchCoin(x: unknown, q: string): SearchCoin {
 }
 
 /**
+ * What is known about a coin against a post. Each fact is a literal boolean or null — anything
+ * else is "not known", never coerced to a "no". A time difference must be a finite number.
+ */
+export function decodeCoinEvidence(raw: unknown, path = '$.evidence'): CoinEvidence {
+  const o = obj(raw, path);
+  const fact = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
+  const after = o['launchedAfterMs'];
+  return { linksPost: fact(o['linksPost']), samePicture: fact(o['samePicture']), launchedAfterMs: typeof after === 'number' && Number.isFinite(after) ? after : null };
+}
+
+/**
  * An unsure post's same-named coins. Each is a coin with that name and nothing more: `matched`
  * is dropped whatever the server sent, since this list never says which coin is the post's.
  */
@@ -660,8 +674,32 @@ export function decodeSameNameCoins(raw: unknown, path = '$'): SameNameCoins {
   return {
     more: o['more'] === true,
     sourcesMissing: typeof o['sourcesMissing'] === 'number' && Number.isInteger(o['sourcesMissing']) && o['sourcesMissing'] >= 0 ? o['sourcesMissing'] : 0,
-    items: arr(o['items'], `${path}.items`).map((x, i) => ({ ...decodeSearchCoin(x, `${path}.items[${i}]`), matched: null })),
+    items: arr(o['items'], `${path}.items`).map((x, i) => {
+      const e = obj(x, `${path}.items[${i}]`)['evidence'];
+      return { ...decodeSearchCoin(x, `${path}.items[${i}]`), matched: null, evidence: e === null || e === undefined ? null : decodeCoinEvidence(e, `${path}.items[${i}].evidence`) };
+    }),
   };
+}
+
+/** The coins using a ticker: the same list shape, no post to weigh them against. */
+export function decodeTickerCoins(raw: unknown, path = '$'): SameNameCoins {
+  const list = decodeSameNameCoins(raw, path);
+  return { ...list, items: list.items.map((c) => ({ ...c, evidence: null })) };
+}
+
+/** A post's name ideas for Create, in the server's order (free tickers first). */
+export function decodeNameIdeas(raw: unknown, path = '$'): readonly NameIdea[] {
+  assertNoInternalVocabulary(raw, path);
+  return arr(obj(raw, path)['items'], `${path}.items`).map((x, i): NameIdea => {
+    const q = `${path}.items[${i}]`;
+    const r = obj(x, q);
+    const u = obj(r['use'], `${q}.use`);
+    const use: TickerUse =
+      u['kind'] === 'free' ? { kind: 'free' }
+        : u['kind'] === 'taken' ? { kind: 'taken', count: int(u['count'], `${q}.use.count`), more: u['more'] === true }
+          : { kind: 'unknown' };
+    return { name: str(r['name'], `${q}.name`), ticker: str(r['ticker'], `${q}.ticker`), use };
+  });
 }
 
 export function decodeSearchedCoin(raw: unknown, path = '$.coin'): SearchedCoin {
