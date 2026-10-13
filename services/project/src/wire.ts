@@ -705,6 +705,12 @@ export interface WireStory {
   readonly earliestPost: WireEarliestPost;
   readonly coins: WireCoinLink;
   readonly evidence: readonly WireEvidence[];
+  /**
+   * Early, Forming or Big — a name for two counts a reader can check: the posts listed in
+   * `evidence` and the views of the most-viewed one. Never a score; the bars are policy
+   * (rising.narrativeStages) and the same counts always give the same stage.
+   */
+  readonly stage: 'early' | 'forming' | 'big';
   readonly discussion: readonly WireDiscussionPost[];
   /**
    * ★ ON THE PAGE, because the page is reachable without the board. A story link survives

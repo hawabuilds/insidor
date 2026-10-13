@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { decodeStory } from '../../shared/api/decode.ts';
 import { fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
-import { orderNarratives, postsLine } from './narrative-order.ts';
+import { orderNarratives, postsLine, stageLabel } from './narrative-order.ts';
 
 const list = sampleNarrativeIds().map((id) => decodeStory(fixtureStory(id)));
 
@@ -29,4 +29,12 @@ test('the posts line counts posts and names each site once', () => {
   const jimothy = list.find((s) => s.id === 'nr_jimothy');
   assert.ok(jimothy);
   assert.equal(postsLine(jimothy), '9 posts on X, TikTok');
+});
+
+test('the stage label is the server\'s word, and no label when it sent none', () => {
+  const base = list[0];
+  assert.ok(base);
+  assert.equal(stageLabel({ ...base, stage: 'forming' }), 'Forming');
+  assert.equal(stageLabel({ ...base, stage: 'big' }), 'Big');
+  assert.equal(stageLabel({ ...base, stage: null }), null);
 });

@@ -6,7 +6,9 @@
  * says was written by hand. Each row opens the story's real page.
  *
  * Rows are the feed's row with the posts count in place of a handle, and no platform badge on
- * the picture — a narrative spans several sites, and one badge would name one of them.
+ * the picture — a narrative spans several sites, and one badge would name one of them. Each
+ * byline starts with the narrative's stage (Early, Forming, Big), the server's name for how many
+ * posts it lists and how far its top post has been seen.
  */
 
 import { useState } from 'react';
@@ -18,7 +20,7 @@ import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
 import { FilterIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { StoryRow } from '../../shared/ui/StoryRow.tsx';
-import { orderNarratives, postsLine, type NarrativeOrder } from './narrative-order.ts';
+import { orderNarratives, postsLine, stageLabel, type NarrativeOrder } from './narrative-order.ts';
 import styles from './narratives.module.css';
 
 export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
@@ -66,7 +68,12 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
               key={s.id}
               item={s}
               now={now}
-              byline={<span>{postsLine(s)}</span>}
+              byline={
+                <span>
+                  {stageLabel(s) === null ? null : <span className={`${styles['stage']} ${styles[`stage_${s.stage ?? ''}`] ?? ''}`}>{stageLabel(s)}</span>}
+                  {postsLine(s)}
+                </span>
+              }
               platform={null}
               platformLabel=""
               handlers={{

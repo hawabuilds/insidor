@@ -449,6 +449,7 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     evidence: arr(o.evidence, `${path}.evidence`).map((e, i) =>
       decodeEvidence(e, `${path}.evidence[${i}]`),
     ),
+    stage: o.stage === 'early' || o.stage === 'forming' || o.stage === 'big' ? o.stage : null,
     discussion: arr(o.discussion, `${path}.discussion`).map((d, i) =>
       decodeDiscussionPost(d, `${path}.discussion[${i}]`),
     ),
