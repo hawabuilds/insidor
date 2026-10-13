@@ -1,134 +1,131 @@
 /**
- * One single post on the For You or Popular feed, as a card (the owner's design, 2026-10-13).
+ * One single post on the For You or Popular feed, as a card.
  *
- * Top: the post's own picture or video still with its platform badge, its words on one line, who
- * posted it and how long ago, and its views with how many it gained lately ("751K views +38K").
- * Bottom, under a rule: where the post's coin stands, in one of the design's states, with one
- * button. Tapping the card anywhere else opens the post sheet (features/post-sheet).
+ * The story card's layout (row.module.css) with a post's facts in it: the post's own picture
+ * with its platform badge, its words as the title, who posted it and how long ago, its views
+ * and views line. This is the card as it looked before the post sheet was built, kept that way
+ * on purpose: the owner asked for the old look back.
  *
- * ★ THE COIN AREA IS THE SERVER'S ANSWER, WORDED HERE (`cardFoot`, post-sheet/sheet-view.ts):
+ * ★ EVERY TAP ON THE CARD OPENS THE POST SHEET (features/post-sheet). The card, its title, and its
+ * coin button (Buy, See N coins, Create coin, View coins) all call one handler the feed gives; the
+ * sheet is where a coin is bought, chosen or created. The button's WORDS still come from the coin
+ * line below, so the card says what the post's coin is before anyone taps.
  *
- *   one / matched → "$VOID $86K" and why it is the post's ("Links this post"), and a purple Buy
- *                   that opens the post sheet, where the coin is bought
- *   unsure        → "8 coins, none proven" and Choose coin, which opens the post sheet
- *   none          → "No coin yet" and Create, which opens the Create sheet from this post
- *   several       → how many, and View coins, which opens the narrative
- *   pending       → "Still checking for a coin", no button
- *   unchecked     → "Couldn't check for a coin", no button: nothing is guessed
+ * ★ EVERY CARD HAS A COIN LINE, AND IT IS THE SERVER'S ANSWER, NOT OURS (`postCoinStatus`):
  *
- * ★ THE GAIN IS BETWEEN TWO OF OUR READINGS (`recentGain`): "+38K" when they are about five minutes
- * apart, and with its real span ("+38K 9m") when they are not. No gain is drawn without two.
+ *   matched  → the post's own coin, settled by evidence: as `one`, with why beneath it as facts
+ *              ("Links this post, Same picture, Launched 12m after"), never how sure
+ *   one      → "$TICKER" and the coin's market cap when it has been read, and Buy — only ever a
+ *              narrative's confident coin (the decoder refuses a coin without its narrative)
+ *   none     → "No coin yet" and Create coin; the post's name was searched and nothing came back
+ *   pending  → a dash with its reason: nobody has searched yet, so neither claim is made
+ *   unchecked → "Couldn't check", and NO button: the search failed for minutes, so neither
+ *              claim is made and nothing is guessed
+ *   unsure   → the sentence saying we cannot tell, then "See 3 coins" (the real count, "10+" when
+ *              the search found more than it kept) and Create coin — never Buy on an unsure match
+ *   several  → how many, and View coins
  *
- * `extra` is a strip under the coin area that the card does not decide (the owner's controls, an
- * older coin trading on the subject).
+ * What breaks if changed carelessly: a button that skips `stopPropagation` fires the card's tap
+ * as well, and a card that opens anything but the post sheet sends the person out of the flow.
  */
 
 import type { ReactNode } from 'react';
 import type { RisingPost } from '../api/index.ts';
-import { evidenceFacts } from '../coin-status.ts';
+import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
 import { formatAge } from '../format/duration.ts';
-import { formatCount, formatUsd } from '../format/number.ts';
+import { formatCount } from '../format/number.ts';
 import { platformOf } from '../platform.ts';
-import { cardFoot, gainText, recentGain } from '../../features/post-sheet/sheet-view.ts';
+import { Button } from './Button.tsx';
 import { CoinLogo } from './CoinLogo.tsx';
+import { Sparkline } from './Sparkline.tsx';
 import { Thumb } from './Thumb.tsx';
 import { Value } from './Value.tsx';
-import styles from './post-card.module.css';
+import styles from './row.module.css';
 
 export interface PostHandlers {
-  /** Opens the post sheet: a tap on the card, its Buy, or its Choose coin. */
+  /** Opens the post sheet: a tap on the card, its title, or its coin button. */
   readonly open: () => void;
-  /** Opens the Create sheet from this post. */
-  readonly create: () => void;
-  /** Opens the narrative whose coins these are. */
-  readonly viewCoins: () => void;
 }
 
-/** Readings this close to five minutes apart are said as the five-minute change, without a span. */
-const FIVE_MINUTES_SAID = [4, 6] as const;
-
+/** `extra`: a strip under the coin line that the card does not decide (the owner's controls). */
 export function PostRow({ post, now, handlers, extra = null }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode }) {
-  const foot = cardFoot(post.coins, evidenceFacts);
-  const gain = recentGain(post.spark.points.map((p) => ({ atMs: p.atMs, value: p.value })));
-  const gainSaid = gainText(gain);
-  const span = gain !== null && (gain.minutes < FIVE_MINUTES_SAID[0] || gain.minutes > FIVE_MINUTES_SAID[1]) ? ` ${gain.minutes}m` : '';
-  const tap = (fn: () => void) => (e: { stopPropagation: () => void }) => {
-    e.stopPropagation();
-    fn();
-  };
+  const status = postCoinStatus(post.coins);
 
   return (
     <article className={styles['card']} onClick={handlers.open}>
-      <div className={styles['top']}>
+      <div className={styles['body']}>
         <Thumb
           url={post.thumbUrl}
           video={post.thumbIsVideo}
-          width={72}
-          height={84}
-          radius={16}
+          width={84}
+          height={98}
+          radius={14}
           platform={platformOf(post.sourceLabel)}
           platformLabel={post.sourceLabel}
         />
-        <div className={styles['facts']}>
-          <a
-            className={styles['title']}
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handlers.open();
-            }}
-          >
-            {post.excerpt === '' ? 'Post' : post.excerpt}
-          </a>
-          <span className={styles['grey']}>
-            <span>{post.authorLabel}</span>
-            <Value r={formatAge(post.postedAt, now)} />
-          </span>
-          <span className={styles['grey']}>
-            <span><Value r={formatCount(post.reach)} /> views</span>
-            {gainSaid !== null && gain !== null ? <span className={gain.gain >= 0 ? styles['up'] : styles['down']}>{gainSaid}{span}</span> : null}
-          </span>
+        <div className={styles['content']}>
+          <div className={styles['top']}>
+            <a
+              className={styles['postText']}
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handlers.open();
+              }}
+            >
+              {post.excerpt}
+            </a>
+            <span className={styles['spark']}>
+              <Sparkline points={post.spark.points} windowMs={post.spark.windowMs} width={44} label={`Views over time for this post by ${post.authorLabel}`} />
+            </span>
+            <div className={styles['views']}>
+              <Value r={formatCount(post.reach)} className={styles['viewsN']} />
+              <span className={styles['viewsL']}>views</span>
+            </div>
+            <div className={styles['byline']}>
+              <span>{post.authorLabel}</span>
+              <Value r={formatAge(post.postedAt, now)} className={styles['age']} />
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className={styles['foot']}>
-        {foot.kind === 'proven' ? (
-          <>
-            <span className={styles['coin']}>
-              <CoinLogo address={foot.coin.address} ticker={foot.coin.ticker} imageUrl={foot.coin.imageUrl} size={30} />
-              <span className={styles['coinText']}>
-                <b>
-                  ${foot.coin.ticker}
-                  {foot.coin.marketCapUsd.known ? <Value r={formatUsd(foot.coin.marketCapUsd)} className={styles['capText']} /> : null}
-                </b>
-                <span className={styles['grey']}>{foot.why}</span>
-              </span>
+      <div className={status.actions.length > 1 ? `${styles['foot']} ${styles['footWrap']}` : styles['foot']}>
+        <span className={styles['status']}>
+          {post.coins.kind === 'one' || post.coins.kind === 'matched' ? (
+            <span className={styles['statusLogo']}>
+              <CoinLogo address={post.coins.coin.address} ticker={post.coins.coin.ticker} imageUrl={post.coins.coin.imageUrl} size={22} />
             </span>
-            <button type="button" className={styles['buy']} onClick={tap(handlers.open)}>Buy</button>
-          </>
+          ) : null}
+          {status.line}
+          {status.facts !== undefined && status.facts.length > 0 ? <span className={styles['facts']}>{status.facts.join(', ')}</span> : null}
+        </span>
+        {status.actions.length > 0 ? (
+          <span className={styles['actions']}>
+            {status.actions.map((action) => <ActionButton key={action.kind} action={action} handlers={handlers} />)}
+          </span>
         ) : null}
-        {foot.kind === 'choose' ? (
-          <>
-            <span className={styles['grey']}>{foot.line}</span>
-            <button type="button" className={styles['quiet']} onClick={tap(handlers.open)}>Choose coin</button>
-          </>
-        ) : null}
-        {foot.kind === 'create' ? (
-          <>
-            <span className={styles['grey']}>No coin yet</span>
-            <button type="button" className={styles['quiet']} onClick={tap(handlers.create)}>Create</button>
-          </>
-        ) : null}
-        {foot.kind === 'several' ? (
-          <>
-            <span className={styles['grey']}>{foot.line}</span>
-            <button type="button" className={styles['quiet']} onClick={tap(handlers.viewCoins)}>View coins</button>
-          </>
-        ) : null}
-        {foot.kind === 'line' ? <span className={styles['grey']}>{foot.line}</span> : null}
       </div>
       {extra}
     </article>
   );
+}
+
+/** One button the coin status asked for, and never one it did not. */
+function ActionButton({ action, handlers }: { action: PostAction; handlers: PostHandlers }) {
+  const tap = (fn: () => void) => (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    fn();
+  };
+  switch (action.kind) {
+    case 'create':
+      return <Button look="primary" onClick={tap(handlers.open)}>Create coin</Button>;
+    case 'buy':
+      return <Button look="buy" onClick={tap(handlers.open)}>Buy ${action.coin.ticker}</Button>;
+    case 'view':
+      return <Button look="quiet" onClick={tap(handlers.open)}>View coins</Button>;
+    case 'see':
+      return <Button look="quiet" onClick={tap(handlers.open)}>{seeCoinsLabel(action.count, action.more)}</Button>;
+  }
 }

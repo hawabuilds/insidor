@@ -17,8 +17,9 @@
  * value the filter needs is unknown — five different sentences, because they call for five
  * different responses and a blank list answers none of them.
  *
- * Tapping a post card, its Buy or its Choose coin opens the post sheet (features/post-sheet): the
- * post, its views, and its coins with Buy. Create on a card opens the Create sheet from the post.
+ * A post card looks as it did before the post sheet was built (shared/ui/PostRow.tsx), and tapping
+ * it or its coin button (Buy, See N coins, Create coin, View coins) opens the post sheet
+ * (features/post-sheet): the post, its views, and its coins with Buy, Choose coin and Create.
  *
  * Under a post's coin line, when the server says so, a line of its own: an older coin named for
  * the post's subject is trading more since it (OlderCoins.tsx) — never the post's coin, never a
@@ -41,7 +42,6 @@ import { FilterIcon, StarIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { PostRow } from '../../shared/ui/PostRow.tsx';
-import { SameNameCoins } from './SameNameCoins.tsx';
 import { OlderCoinsLine } from './OlderCoins.tsx';
 import { StoryRow } from '../../shared/ui/StoryRow.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
@@ -65,17 +65,12 @@ const TABS = [
 
 export function Feed({
   onCreate,
-  onCreatePost,
 }: {
   onCreate: (row: BoardRow, labelled: boolean) => void;
-  /** Create from a single post: its picture and link, never a name we made up. */
-  onCreatePost: (post: RisingPost) => void;
 }) {
   const [tab, setTab] = useState<FeedTab>('fyp');
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [panel, setPanel] = useState(false);
-  /* The post whose same-named coins are open ("See 3 coins"), or none. */
-  const [seeing, setSeeing] = useState<RisingPost | null>(null);
   /* The post whose post sheet is open, or none. */
   const [sheet, setSheet] = useState<string | null>(null);
   const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
@@ -129,22 +124,10 @@ export function Feed({
           {/* An older coin trading on the subject since the post: its own line, never a Buy (OlderCoins.tsx). */}
           <OlderCoinsLine post={p} now={now} />
           {owner ? <OwnerCardStrip post={p} /> : null}
-          {/* The owner's call on which of an unsure post's coins is its own lives in the same-name list. */}
-          {owner && p.coins.kind === 'unsure' && p.coins.claimCount > 0 ? (
-            <div className={styles['ownerRow']} onClick={(e) => e.stopPropagation()}>
-              <Button look="quiet" onClick={() => setSeeing(p)}>Which coin is it</Button>
-            </div>
-          ) : null}
         </>
       }
-      handlers={{
-        /* The card, its Buy and its Choose coin all open the post sheet (features/post-sheet). */
-        open: () => setSheet(p.id),
-        create: () => onCreatePost(p),
-        viewCoins: () => {
-          if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId });
-        },
-      }}
+      /* The card and its coin button both open the post sheet (features/post-sheet). */
+      handlers={{ open: () => setSheet(p.id) }}
     />
   );
   const quickSite = filters.sites.length === 1 ? filters.sites[0] : null;
@@ -289,16 +272,6 @@ export function Feed({
       {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}
       {owner ? <HideBar /> : null}
       {sheet !== null ? <PostSheet key={sheet} postId={sheet} onClose={() => setSheet(null)} /> : null}
-      {seeing !== null ? (
-        <SameNameCoins
-          post={seeing}
-          onClose={() => setSeeing(null)}
-          onCreate={() => {
-            setSeeing(null);
-            onCreatePost(seeing);
-          }}
-        />
-      ) : null}
     </section>
   );
 }
