@@ -1,114 +1,57 @@
 /*
- * The post sheet and Choose coin: a bottom sheet over whichever screen opened it, sized so a video
- * post, a picture post and a text post each fit a 390 by 844 screen without scrolling.
+ * The post sheet and Choose coin, inside the shared bottom sheet (shared/ui/Sheet.tsx, which owns
+ * the ground, the head, the X, the scrolling middle and the fixed foot).
  *
- * The owner's colours for this flow are set once at the top as custom properties (Trador's purple,
- * ink and lavender, the grey labels, and the green and red of a price move) and used by name below.
- * Every touch target is at least 44px. What breaks if changed carelessly: the vertical sizes. The
- * sheet is measured to fit one screen; a few pixels added to a row here pushes the coin area into
- * a scroll on a phone, which the design forbids.
+ * Colours are Trador's sheet values by name (`--sheet-*` in tokens.css): cards #131317 with a
+ * #1a1a1f line on the #0d0d10 sheet, secondary buttons Trador's 6% white wash, purple only on Buy
+ * and the quick buy. No grey block anywhere. The owner's sizes: Buy at least 52 by 96 and 12px
+ * from the price, Create and All coins 52px tall and 12px apart, coin rows 68px, every tap target
+ * at least 44px.
+ *
+ * What breaks if changed carelessly: `flex: none` on the coin row, Buy and the pair. The foot is
+ * fixed; if anything in it may shrink, a long coin name squashes Buy instead of clipping the name.
  */
-
-.scrim {
-  --ps-purple: #9945ff;
-  --ps-ink: #111116;
-  --ps-mist: #f4eeff;
-  --ps-grey: #8b8794;
-  --ps-up: #2fd47a;
-  --ps-down: #ff5c5c;
-  --ps-panel: #1b1a21;
-  --ps-panel-2: #24232b;
-  --badge-ring: var(--ps-panel);
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  background: var(--scrim);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-.sheet {
-  position: relative;
-  width: 100%;
-  max-width: 520px;
-  max-height: calc(100dvh - var(--safe-top) - 12px);
-  overflow-y: auto;
-  padding: 0 16px calc(14px + env(safe-area-inset-bottom));
-  border-radius: 30px 30px 0 0;
-  background: var(--ps-ink);
-  box-shadow: var(--shadow-panel);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.gripButton {
-  align-self: center;
-  width: 88px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-
-.grip {
-  display: block;
-  width: 36px;
-  height: 4px;
-  border-radius: 2px;
-  background: #3a3942;
-}
 
 .note {
   margin: 0;
-  color: var(--ps-grey);
+  color: var(--sheet-label);
   font-size: 13px;
   line-height: 1.4;
 }
 
 .label {
-  color: var(--ps-grey);
+  color: var(--sheet-label);
   font-size: 13px;
 }
 
 .up {
-  color: var(--ps-up);
+  color: var(--up);
   font-weight: 700;
   font-size: 13px;
 }
 
 .down {
-  color: var(--ps-down);
+  color: var(--down);
   font-weight: 700;
   font-size: 13px;
 }
 
 .upText {
-  color: var(--ps-up);
+  color: var(--up);
 }
 
-/* ── the post card ─────────────────────────────────────────────────── */
+/* ── the head and the scrolling middle ─────────────────────────────── */
 
-.postCard {
-  background: var(--ps-panel);
-  border-radius: 22px;
-  padding: 12px;
+/* The middle's own column: the words, the media, the views, the chart, the tiles. */
+.scroll {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.who {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
+  gap: 12px;
+  padding-top: 2px;
 }
 
 .avatar {
+  --badge-ring: var(--sheet-bg);
   position: relative;
   width: 44px;
   height: 44px;
@@ -135,8 +78,8 @@
   object-fit: cover;
   display: grid;
   place-items: center;
-  background: var(--ps-panel-2);
-  color: var(--ps-mist);
+  background: var(--sheet-card);
+  color: var(--sheet-text);
   font-weight: 700;
   font-size: 18px;
 }
@@ -158,26 +101,31 @@
 .byline {
   display: flex;
   gap: 6px;
-  color: var(--ps-grey);
+  color: var(--sheet-label);
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
 }
 
-.round {
+/* The bell, the open button and Choose coin's back: outlined squares, so the X (a filled circle,
+   shared/ui/bottom-sheet.module.css) is never mistaken for any of them. */
+.round,
+.open {
   width: 44px;
   height: 44px;
-  flex-shrink: 0;
-  border-radius: 50%;
+  flex: none;
+  border-radius: 14px;
   display: grid;
   place-items: center;
-  background: var(--ps-panel-2);
-  color: var(--ps-mist);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--sheet-text);
   text-decoration: none;
 }
 
 .roundOn {
-  background: var(--ps-purple);
+  background: var(--sheet-action);
+  box-shadow: none;
   color: #fff;
 }
 
@@ -195,6 +143,7 @@
 
 .media {
   position: relative;
+  flex: none;
   border-radius: 16px;
   overflow: hidden;
   background: #000;
@@ -313,6 +262,7 @@
 .viewsLine .up,
 .viewsLine .down {
   font-size: 15px;
+  white-space: nowrap;
 }
 
 .tags {
@@ -325,7 +275,7 @@
 .tagFound {
   padding: 6px 11px;
   border-radius: 999px;
-  background: var(--ps-panel-2);
+  background: var(--sheet-chip);
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
@@ -333,7 +283,7 @@
 
 .tagFound {
   background: rgb(153 69 255 / 22%);
-  color: var(--ps-mist);
+  color: var(--sheet-text);
 }
 
 /* ── chart ─────────────────────────────────────────────────────────── */
@@ -373,7 +323,7 @@
 
 .line {
   fill: none;
-  stroke: var(--ps-purple);
+  stroke: var(--sheet-action);
   stroke-width: 3;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -386,20 +336,41 @@
   height: 10px;
   margin: 0 0 -5px -5px;
   border-radius: 50%;
-  background: var(--ps-mist);
+  background: var(--sheet-text);
 }
 
 .lastDot {
   width: 14px;
   height: 14px;
   margin: 0 0 -7px -7px;
-  background: var(--ps-purple);
+  background: var(--sheet-action);
   box-shadow: 0 0 0 3px rgb(153 69 255 / 30%);
+}
+
+/* "Found" and "Coin" at the top of their dotted lines, on a patch of the sheet so the line under
+   them never makes them hard to read. */
+.markLabel {
+  position: absolute;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--sheet-bg);
+  color: var(--sheet-label);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.markLabelLeft {
+  margin-left: -4px;
+  transform: translateX(-100%);
 }
 
 .axis {
   position: relative;
-  color: var(--ps-grey);
+  color: var(--sheet-label);
   font-size: 11px;
   min-width: 34px;
 }
@@ -426,7 +397,7 @@
   display: flex;
   justify-content: space-between;
   margin: 6px 42px 0 0;
-  color: var(--ps-grey);
+  color: var(--sheet-label);
   font-size: 11px;
 }
 
@@ -437,13 +408,14 @@
   gap: 8px;
 }
 
+/* A tile with nothing to say is not drawn, and the ones left share the full width. */
 .tile {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
-  max-width: calc((100% - 16px) / 3);
   padding: 9px 12px;
   border-radius: 18px;
-  background: var(--ps-panel);
+  background: var(--sheet-card);
+  box-shadow: inset 0 0 0 1px var(--sheet-border);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -467,7 +439,7 @@
 
 .tileValue svg {
   flex-shrink: 0;
-  color: var(--ps-grey);
+  color: var(--sheet-label);
 }
 
 .clip {
@@ -481,7 +453,7 @@
 .coinArea {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .coinHead {
@@ -489,7 +461,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 0 4px;
-  color: var(--ps-grey);
+  color: var(--sheet-label);
   font-size: 13px;
 }
 
@@ -503,15 +475,18 @@
   text-align: right;
 }
 
+/* 68px, Buy inside it with 8px around: the row's height is the owner's, not the content's. */
 .coinRow {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 8px 8px 10px;
+  gap: 12px;
+  height: 68px;
+  padding: 0 8px 0 12px;
   border-radius: 20px;
-  background: var(--ps-panel);
+  background: var(--sheet-card);
+  box-shadow: inset 0 0 0 1px var(--sheet-border);
   cursor: pointer;
-  min-height: 60px;
 }
 
 .coinText {
@@ -531,7 +506,7 @@
 .coinSub {
   display: flex;
   gap: 6px;
-  color: var(--ps-grey);
+  color: var(--sheet-label);
   font-size: 13px;
 }
 
@@ -549,19 +524,20 @@
 
 .buy,
 .bolted {
-  min-width: 72px;
-  height: 44px;
-  padding: 0 16px;
-  border-radius: 14px;
-  background: var(--ps-purple);
+  min-width: 96px;
+  height: 52px;
+  padding: 0 18px;
+  border-radius: 16px;
+  background: var(--sheet-action);
   color: #fff;
   font-weight: 800;
   font-size: 16px;
-  flex-shrink: 0;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
+  box-shadow: var(--shadow-brand);
 }
 
 .bolted {
@@ -570,16 +546,19 @@
 }
 
 .pair {
+  flex: none;
   display: flex;
-  gap: 8px;
+  gap: 12px;
 }
 
+/* Create, All coins, Try again: Trador's secondary button, its white wash on the sheet. */
 .dark {
-  flex: 1;
-  height: 48px;
-  border-radius: 18px;
-  background: var(--ps-panel);
-  color: var(--ps-mist);
+  flex: 1 1 0;
+  min-width: 0;
+  height: 52px;
+  border-radius: 16px;
+  background: var(--sheet-button);
+  color: var(--sheet-text);
   font-weight: 800;
   font-size: 16px;
   display: inline-flex;
@@ -591,7 +570,6 @@
 .wide {
   width: 100%;
   flex: none;
-  margin-top: auto;
 }
 
 .stack {
@@ -601,7 +579,7 @@
 .stackItem {
   display: inline-flex;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--ps-panel);
+  box-shadow: 0 0 0 2px var(--sheet-bg);
 }
 
 .stackItem + .stackItem {
@@ -609,20 +587,6 @@
 }
 
 /* ── Choose coin ───────────────────────────────────────────────────── */
-
-.choose {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: calc(100dvh - var(--safe-top) - 60px);
-}
-
-.chooseHead {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 
 .chooseTitle {
   flex: 1;
@@ -639,7 +603,7 @@
 }
 
 .chooseTitle span {
-  color: var(--ps-grey);
+  color: var(--sheet-label);
   font-size: 13px;
 }
 
@@ -647,7 +611,8 @@
   height: 44px;
   padding: 0 12px;
   border-radius: 999px;
-  border: 1.5px solid var(--ps-purple);
+  background: var(--sheet-button);
+  box-shadow: inset 0 0 0 1px var(--border);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -656,33 +621,55 @@
 }
 
 .chip span {
-  color: var(--ps-grey);
+  color: var(--sheet-label);
 }
 
 .bolt {
-  color: var(--ps-purple);
+  color: var(--sheet-action);
 }
 
+/* The quick buy panel: over the list, under the chip, never pushing the list down. */
 .panel {
   position: absolute;
-  top: 54px;
-  right: 0;
-  left: 28px;
-  z-index: 2;
-  padding: 14px;
+  top: 74px;
+  right: 12px;
+  left: 12px;
+  z-index: 3;
+  padding: 8px 14px 16px;
   border-radius: 22px;
-  background: var(--ps-panel);
-  border: 1px solid #2e2d36;
-  box-shadow: var(--shadow-panel);
+  background: var(--sheet-card);
+  box-shadow: var(--shadow-panel), inset 0 0 0 1px var(--border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .panelScrim {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
+  background: rgb(6 6 8 / 40%);
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-right: -8px;
+}
+
+.panelHead b {
+  font-size: 15px;
+}
+
+.panelClose {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--sheet-button);
+  color: var(--sheet-text);
 }
 
 .choices {
@@ -694,19 +681,19 @@
   flex: 1;
   height: 44px;
   border-radius: 14px;
-  background: var(--ps-panel-2);
+  background: var(--sheet-button);
   font-weight: 700;
   border: 1.5px solid transparent;
 }
 
 .choices .choiceOn {
-  border-color: var(--ps-purple);
+  border-color: var(--sheet-action);
   background: rgb(153 69 255 / 18%);
 }
 
 .panelNote {
   margin: 2px 0 0;
-  color: var(--ps-grey);
+  color: var(--sheet-label);
   font-size: 13px;
   line-height: 1.4;
 }
@@ -715,8 +702,9 @@
   margin: 0;
   padding: 12px 14px;
   border-radius: 18px;
-  background: var(--ps-panel);
-  color: var(--ps-grey);
+  background: var(--sheet-card);
+  box-shadow: inset 0 0 0 1px var(--sheet-border);
+  color: var(--sheet-label);
   font-size: 14px;
   line-height: 1.4;
 }
@@ -724,7 +712,7 @@
 .chooseList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* ── the toast ─────────────────────────────────────────────────────── */
@@ -741,14 +729,14 @@
   align-items: center;
   padding: 12px 16px;
   border-radius: 16px;
-  background: #1f1e26;
-  box-shadow: var(--shadow-panel);
-  color: var(--ps-mist, #f4eeff);
+  background: var(--sheet-card);
+  box-shadow: var(--shadow-panel), inset 0 0 0 1px var(--border);
+  color: var(--sheet-text);
   font-size: 14px;
 }
 
 .toast a {
-  color: #b688ff;
+  color: var(--brand-300);
   font-weight: 700;
   white-space: nowrap;
 }

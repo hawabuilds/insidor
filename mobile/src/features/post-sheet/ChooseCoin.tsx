@@ -4,12 +4,16 @@
  * buy amount at once (quick-buy.ts), checked before signing, and the toast says what happened with
  * a link to the transaction.
  *
- * A view inside the post sheet rather than a sheet of its own, so back returns to the post without
- * reading it again and the tab bar under both is never touched.
+ * A view inside the post sheet rather than a sheet of its own, so its back arrow returns to the post
+ * without reading it again and the tab bar under both is never touched. It fills the post sheet's
+ * three parts (shared/ui/Sheet.tsx): the head (back, title, the chip, the X), the list, which
+ * scrolls, and "None of these, create one" fixed at the bottom clear of the home bar.
  *
  * ★ THE QUICK BUY CHIP, after HODL's desktop one: "⚡ 0.025 SOL 3%" at the top right opens a small
  * panel with the amounts and slippages; a change updates every ⚡ on the screen at once and is saved
- * for this wallet. An amount over the trading cap at the chosen slippage is not offered at all.
+ * for this wallet. An amount over the trading cap at the chosen slippage is not offered at all. The
+ * panel lies over the list without moving it, and closes like any pop-up: its own X, a tap beside
+ * it, back, or Escape (each of those closes only the panel, not the sheet under it).
  * ★ When none of the coins is proven, one line says so and points to the charts: a list is not a
  * recommendation.
  *
@@ -17,12 +21,14 @@
  * no cap read, no amount is offered and the ⚡ buttons are not drawn — never a guess at the cap.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { fetchTradeVenue, type PostSheetData, type SheetCoin, type TradeLimits } from '../../shared/api/index.ts';
 import { useNow } from '../../shared/hooks.ts';
 import { useWallet } from '../../shared/wallet.tsx';
-import { BackIcon } from '../../shared/ui/icons.tsx';
+import { useDismiss } from '../../shared/ui/dismiss.ts';
+import { BackIcon, CloseIcon } from '../../shared/ui/icons.tsx';
+import { SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
 import { TRADING, type SheetNote } from './BuyOpen.tsx';
 import { CoinLine } from './CoinLine.tsx';
 import { effectiveChoice, outcomeLine, quickAmounts, quickBuy, quickSlippages, readQuickChoice, saveQuickChoice, type QuickChoice } from './quick-buy.ts';
@@ -85,8 +91,8 @@ export function ChooseCoin({ data, onBack, onOpenCoin, onCreate, onNote }: {
   };
 
   return (
-    <div className={styles['choose']}>
-      <header className={styles['chooseHead']}>
+    <>
+      <SheetHead>
         <button type="button" className={styles['round']} aria-label="Back to the post" onClick={onBack}><BackIcon size={20} /></button>
         <span className={styles['chooseTitle']}>
           <b>{name} coins</b>
@@ -99,11 +105,37 @@ export function ChooseCoin({ data, onBack, onOpenCoin, onCreate, onNote }: {
             <span>{choice.slippageBps / 100}%</span>
           </button>
         ) : null}
-      </header>
+      </SheetHead>
 
-      {panel && choice !== null ? <div className={styles['panelScrim']} onClick={() => setPanel(false)} /> : null}
+      <SheetBody>
+        <div className={styles['scroll']}>
+          {TRADING && limits === null && data.coins.length > 0 ? <p className={styles['note']}>Quick buy isn't available just now. Tap a coin to buy from its page.</p> : null}
+          {noneProven ? <p className={styles['banner']}>None proven from this post. Tap a coin to check its chart.</p> : null}
+          {data.sourcesMissing > 0 ? <p className={styles['note']}>The market could not be read, so some numbers are missing.</p> : null}
+
+          <div className={styles['chooseList']}>
+            {data.coins.map((c) => (
+              <CoinLine key={c.address} coin={c} now={now} onOpen={() => onOpenCoin(c)} action={
+                choice !== null ? (
+                  <button type="button" className={styles['bolted']} aria-label={`Buy ${choice.amountSol} SOL of ${c.ticker ?? c.name ?? 'this coin'}`} onClick={(e) => {
+                    e.stopPropagation();
+                    void buy(c);
+                  }}>
+                    {busy === c.address ? 'Buying' : <><BoltIcon size={14} /> {choice.amountSol}</>}
+                  </button>
+                ) : null
+              } />
+            ))}
+          </div>
+        </div>
+      </SheetBody>
+
+      <SheetFoot>
+        <button type="button" className={`${styles['dark']} ${styles['wide']}`} onClick={onCreate}>None of these, create one</button>
+      </SheetFoot>
+
       {panel && choice !== null ? (
-        <div className={styles['panel']} role="dialog" aria-label="Quick buy">
+        <QuickPanel onClose={() => setPanel(false)}>
           <span className={styles['label']}>Quick buy amount</span>
           <div className={styles['choices']}>
             {quickAmounts(cap, choice.slippageBps).map((a) => (
@@ -117,29 +149,25 @@ export function ChooseCoin({ data, onBack, onOpenCoin, onCreate, onNote }: {
             ))}
           </div>
           <p className={styles['panelNote']}>One tap on a coin's buy button buys this amount. Checked before signing.</p>
-        </div>
+        </QuickPanel>
       ) : null}
+    </>
+  );
+}
 
-      {TRADING && limits === null && data.coins.length > 0 ? <p className={styles['note']}>Quick buy isn't available just now. Tap a coin to buy from its page.</p> : null}
-      {noneProven ? <p className={styles['banner']}>None proven from this post. Tap a coin to check its chart.</p> : null}
-      {data.sourcesMissing > 0 ? <p className={styles['note']}>The market could not be read, so some numbers are missing.</p> : null}
-
-      <div className={styles['chooseList']}>
-        {data.coins.map((c) => (
-          <CoinLine key={c.address} coin={c} now={now} onOpen={() => onOpenCoin(c)} action={
-            choice !== null ? (
-              <button type="button" className={styles['bolted']} aria-label={`Buy ${choice.amountSol} SOL of ${c.ticker ?? c.name ?? 'this coin'}`} onClick={(e) => {
-                e.stopPropagation();
-                void buy(c);
-              }}>
-                {busy === c.address ? 'Buying' : <><BoltIcon size={14} /> {choice.amountSol}</>}
-              </button>
-            ) : null
-          } />
-        ))}
+/** The quick buy panel: over the list, under the chip, with its own X; a tap beside it closes it. */
+function QuickPanel({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  useDismiss(onClose);
+  return (
+    <>
+      <div className={styles['panelScrim']} onClick={onClose} />
+      <div className={styles['panel']} role="dialog" aria-label="Quick buy">
+        <div className={styles['panelHead']}>
+          <b>Quick buy</b>
+          <button type="button" className={styles['panelClose']} aria-label="Close quick buy" onClick={onClose}><CloseIcon size={18} /></button>
+        </div>
+        {children}
       </div>
-
-      <button type="button" className={`${styles['dark']} ${styles['wide']}`} onClick={onCreate}>None of these, create one</button>
-    </div>
+    </>
   );
 }
