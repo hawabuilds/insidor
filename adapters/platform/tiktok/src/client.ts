@@ -144,7 +144,6 @@ export interface TikTokClient {
   runDiscovery(input: {
     readonly searchQueries?: readonly string[];
     readonly searchSection?: string;
-    readonly videoSearchSorting?: string;
     readonly hashtags?: readonly string[];
     readonly profiles?: readonly string[];
     readonly resultsPerPage?: number;
