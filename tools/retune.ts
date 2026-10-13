@@ -346,7 +346,8 @@ if (command === 'status') {
     process.exit(1);
   }
   const slotArg = arg('slot');
-  const slot = command === 'due' ? new Date(latestSlot(Date.now(), L.retuneAt, L.timeZone)) : new Date(slotArg ?? new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString());
+  /* `due` claims a slot `startAheadMs` before it, so the run is finished by 08:00 and 20:00, not started then. */
+  const slot = command === 'due' ? new Date(latestSlot(Date.now() + L.startAheadMs, L.retuneAt, L.timeZone)) : new Date(slotArg ?? new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString());
   if (command === 'due') {
     if (await withRepo((repo) => repo.hasRun(slot))) process.exit(0);
   }
