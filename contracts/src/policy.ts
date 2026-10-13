@@ -1223,16 +1223,27 @@ export interface RisingPolicy {
    */
   readonly narrativeMinPassingPosts: number;
   /**
-   * ★ THE PICTURE BOOST. A post the judge turned down only UNSURELY — "no" at or below
-   * `boostMaxNoConfidence` — still reaches the feed when its picture is at least
+   * ★ THE PICTURE BOOST. It lifts only a post the judge was unsure about NEAR THE BAR, and never
+   * a "no". "Near the bar" is exact: the judge said YES, named it in a short name, and its
+   * confidence fell short of the bar for what it looked at (`qualify.minJudgeConfidence`) by at
+   * most `boostBarMargin` — at 0.1, a "yes" at 0.60–0.69 on text or a picture, 0.65–0.74 with a
+   * video frame. Such a post still reaches the feed when its picture is at least
    * `boostMinSimilarity` alike (cosine, in the image space) to a picture of a post that was
-   * actually coined (internal.coined_picture). A firm "no" is never overturned, and the number
-   * never reaches a screen. Tuned 2026-10-13 on the gold origin posts, each compared to the
-   * OTHER gold pictures: it took gold from 27 to 29 of 41 and let no recorded non-meme through
-   * — both bars chosen on that same set, so expect less on posts it has not seen.
+   * actually coined (internal.coined_picture). It must still answer the kind question like any
+   * passing post, and a held kind stands whatever the picture.
+   *
+   * Why no "no" is ever lifted (the owner's rule, 2026-10-13: "never a clear no"): the post
+   * question gives a "no"'s confidence no meaning, and the model uses 0.15 for a firm no as often
+   * as for a doubtful one. Live, 551 of 1,790 "no" answers sat at or below 0.3; the old rule
+   * (a "no" at or below 0.3) lifted 20 posts the owner had marked "not a meme", every one a
+   * "no" at 0.15, and put a tiger-mauling news post on For You — the same 0.15 it gave the two
+   * gold posts it rescued. A number that cannot tell those apart cannot say "unsure".
+   *
+   * The similarity bar was tuned 2026-10-13 on the gold origin posts; the number never reaches a
+   * screen.
    */
   readonly boostMinSimilarity: number;
-  readonly boostMaxNoConfidence: number;
+  readonly boostBarMargin: number;
 }
 
 export interface IngestPolicy {
@@ -2558,7 +2569,8 @@ const POLICY_V1: Policy = {
     shortVideoReachScale: 12.5,
     narrativeMinPassingPosts: 2,
     boostMinSimilarity: 0.44,
-    boostMaxNoConfidence: 0.3,
+    /* A "yes" up to a tenth under its bar: 0.60 on text or a picture, 0.65 with a video frame. */
+    boostBarMargin: 0.1,
   },
 
   rank: {

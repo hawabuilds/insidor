@@ -8,14 +8,14 @@
  *
  * Read:
  *   - every post on For You or Popular now (public.rising_row): what is on screen;
- *   - a post the judge passed, or turned down UNSURELY — the picture boost can still put an
- *     unsure "no" on For You, and either may yet clear For You's reach bar, which only a
- *     re-read can show;
+ *   - a post the judge passed, or said "yes" to just under its bar — the picture boost can
+ *     still put that one on For You (core's `couldPassWithBoost`), and either may yet clear For
+ *     You's reach bar, which only a re-read can show;
  *   - a post not judged yet, when a catch-all lane found it (its reach decides whether it is
  *     judged at all) or it sits in a narrative the board shows.
  * Skipped:
  *   - a post whose newest judgement fails core's per-post rule even with the best picture match
- *     there could be — a firm "no", a broken name test, a "yes" under the confidence bar. A
+ *     there could be — any "no", a broken name test, a "yes" too far under the bar. A
  *     post is judged once, so that answer is final until someone re-scores it, and then this
  *     follows the new answer on the next pass;
  *   - a post not judged and not catch-all whose only narratives the board hides (fewer than
@@ -32,15 +32,12 @@
  */
 
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { postScoreReason } from '@insidor/core';
+import { couldPassWithBoost, postScoreReason } from '@insidor/core';
 import type { TrackingFacts, TrackingJudgement } from '@insidor/store';
-
-/** The closest a picture can be to another: cosine similarity tops out at one. */
-const BEST_POSSIBLE_PICTURE_MATCH = 1;
 
 /** Whether this answer could still put the post on a feed, given the luckiest picture match. */
 export function couldStillPass(j: TrackingJudgement, policy: Policy): boolean {
-  return postScoreReason(j, policy, BEST_POSSIBLE_PICTURE_MATCH) === 'passes';
+  return couldPassWithBoost(j, policy);
 }
 
 /** Whether the board shows this narrative: the projector's rule, without the picture boost. */

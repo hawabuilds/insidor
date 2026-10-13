@@ -65,7 +65,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import { clearsReachBar, postScoreReason, type ReachLevel } from '@insidor/core';
+import { clearsReachBar, heldKind, postScoreReason, type HeldKind, type ReachLevel } from '@insidor/core';
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.ts';
@@ -133,7 +133,18 @@ export interface RisingRow {
   story_id: string | null;
   /** The owner's newest call on this post (0054), or null when there is none. */
   owner_call?: OwnerPostCall | null;
+  /**
+   * The label the kind question filed, when the post's newest answer is a kind answer (prompt id
+   * `post-kind…`); null otherwise. Only a held kind holds (core `heldKind`): OTHER holds nothing.
+   */
+  kind_label?: string | null;
 }
+
+/**
+ * The kind a post was held by, or null: what feed_rejection's detail records and what a News
+ * surface sorts by. The same rule `postStanding` applies, so the two never disagree.
+ */
+export const postHeldKind = (row: Pick<RisingRow, 'kind_label'>): HeldKind | null => heldKind(row.kind_label ?? null);
 
 const toMs = (value: Date | string | null): Millis | null => {
   if (value === null) return null;
@@ -151,19 +162,32 @@ async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingR
     `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media,
             a.handle, a.display_name, a.source_author_id,
             j.coinable, j.confidence, j.looked_at, j.proposed_name,
+            k.kind_label,
             pic.similarity as picture_similarity,
             s.story_id,
             oc.verdict as owner_call
        from internal.item_found_by f
        join public.item i on i.item_id = f.item_id
        join public.author a on a.author_key = i.author_key
+       /* ★ The first question's newest answer, never a kind answer: a kind label is not a name, and
+          its yes/no is not the judge's verdict on the post (two OTHER answers filed as "no" hid two
+          posts on 2026-10-13). The kind is read beside it, below. */
        left join lateral (
               select pj.coinable, pj.confidence, pj.looked_at, pj.proposed_name
+                from internal.post_judgement pj
+               where pj.item_id = i.item_id and pj.prompt_id not like 'post-kind%'
+               order by pj.judged_at desc, pj.id desc
+               limit 1
+            ) j on true
+       /* The kind label, only when the newest answer of all is a kind answer: a re-score after it
+          (a new prompt) asks the kind again, and until then the old label no longer holds. */
+       left join lateral (
+              select case when pj.prompt_id like 'post-kind%' then pj.proposed_name end as kind_label
                 from internal.post_judgement pj
                where pj.item_id = i.item_id
                order by pj.judged_at desc, pj.id desc
                limit 1
-            ) j on true
+            ) k on true
        /* The owner's newest call (0054): it outranks the judge's answer, either way. */
        left join lateral (
               select ofb.verdict
@@ -335,6 +359,8 @@ export interface RisingFrame {
    * Read only to record why a post that WAS showing left (public.feed_rejection); never sent.
    */
   readonly whyNot: ReadonlyMap<string, FeedRejectionReason>;
+  /** The kind that held each post the kind question held (`postHeldKind`), recorded as the rejection's detail. */
+  readonly heldBy: ReadonlyMap<string, HeldKind>;
   /** The coins behind each shown post's own unsure count, by post id (same-name.ts), strongest evidence first. */
   readonly sameName: ReadonlyMap<string, readonly string[]>;
   /** Each listed coin's facts against its post, by post id then address (0058). */
@@ -350,7 +376,7 @@ export function postStanding(row: RisingRow, policy = DEFAULT_POLICY): FeedRejec
   const judge =
     row.coinable === null || row.confidence === null || row.looked_at === null
       ? undefined
-      : postScoreReason({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy, similarity);
+      : postScoreReason({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy, similarity, row.kind_label ?? null);
   return withOwnerCall(judge, row.owner_call ?? undefined) ?? 'not_scored';
 }
 
@@ -364,9 +390,12 @@ export async function buildRising(
 ): Promise<RisingFrame> {
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
+  const heldBy = new Map<string, HeldKind>();
   const rows = (await loadCandidates(db, sinceMs)).filter((row) => {
     const why = postStanding(row, policy);
     if (why !== 'passes') whyNot.set(row.item_id, why);
+    const held = postHeldKind(row);
+    if (why !== 'passes' && held !== null) heldBy.set(row.item_id, held);
     return why === 'passes';
   });
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
@@ -409,7 +438,7 @@ export async function buildRising(
     const l = lookups.get(id);
     if (l !== undefined && 'coins' in l && l.match?.kind === 'unsure') sameNameEvidence.set(id, l.match.evidence);
   }
-  return { ...shown, whyNot, sameName, sameNameEvidence };
+  return { ...shown, whyNot, heldBy, sameName, sameNameEvidence };
 }
 
 /**
@@ -480,6 +509,9 @@ export async function writeRising(db: Db, feedId: RisingFeed, posts: readonly Wi
   return posts.length;
 }
 
+/** A held post's rejection detail: `kind:TRAGEDY`, `kind:AD` and so on; null for any other reason. */
+export const kindDetail = (kind: HeldKind | undefined): string | null => (kind === undefined ? null : `kind:${kind}`);
+
 /** Both feeds, built and written: what one projection run does. `main.ts` and the e2e test call this. */
 export async function projectRisingFeeds(
   db: Db,
@@ -496,9 +528,24 @@ export async function projectRisingFeeds(
   const now = new Set([...frame.fyp, ...frame.popular].map((p) => p.id));
   const left = showing.flatMap(({ item_id }) => {
     const why = now.has(item_id) ? undefined : frame.whyNot.get(item_id);
-    return why === undefined ? [] : [{ kind: 'post' as const, id: item_id, reason: why, detail: null }];
+    return why === undefined ? [] : [{ kind: 'post' as const, id: item_id, reason: why, detail: kindDetail(frame.heldBy.get(item_id)) }];
   });
-  await new PgFeedRejectionRepo(db).record(left);
+  /* ★ AND WHAT THE KIND QUESTION HELD, whether or not it ever showed: usually it never did, since
+     the kind is asked in the pass that judged it. Recorded once per kind (detail `kind:AD`…), so
+     an unchanged hold is not rewritten every frame; a post on a feed now (News) is not a hold. */
+  const leftIds = new Set(left.map((r) => r.id));
+  const heldIds = [...frame.heldBy.keys()].filter((id) => !now.has(id) && !leftIds.has(id));
+  const recorded = heldIds.length === 0 ? [] : await db.query<{ subject_id: string; detail: string | null }>(
+    `select subject_id, detail from public.feed_rejection where subject_kind = 'post' and subject_id = any($1::text[])`,
+    [heldIds],
+  );
+  const already = new Map(recorded.map((r) => [r.subject_id, r.detail] as const));
+  const held = heldIds.flatMap((id) => {
+    const detail = kindDetail(frame.heldBy.get(id));
+    const why = frame.whyNot.get(id);
+    return why === undefined || already.get(id) === detail ? [] : [{ kind: 'post' as const, id, reason: why, detail }];
+  });
+  await new PgFeedRejectionRepo(db).record([...left, ...held]);
   /* The coins behind each unsure post's count, in this transaction with the rows that show it. */
   await writeSameNameCoins(db, 'post', frame.sameName, frame.sameNameEvidence);
   /* Each shown post's name ideas for Create (0058), with the feeds they belong to. */

@@ -14,10 +14,12 @@ import { worthRereading } from './track-gate.ts';
 const P = DEFAULT_POLICY;
 const r = P.rising;
 const yes: TrackingJudgement = { coinable: true, confidence: 0.9, lookedAt: 'text', proposedName: 'CHILLGUY' };
-const firmNo: TrackingJudgement = { coinable: false, confidence: r.boostMaxNoConfidence + 0.2, lookedAt: 'picture', proposedName: null };
-const unsureNo: TrackingJudgement = { coinable: false, confidence: r.boostMaxNoConfidence, lookedAt: 'picture', proposedName: null };
+const firmNo: TrackingJudgement = { coinable: false, confidence: 0.9, lookedAt: 'picture', proposedName: null };
+/* A "no" at 0.15 is the model's routine firm no as often as a doubtful one: never lifted, never re-read. */
+const lowNo: TrackingJudgement = { coinable: false, confidence: 0.15, lookedAt: 'picture', proposedName: null };
 const longName: TrackingJudgement = { ...yes, proposedName: 'one two three four five six' };
-const unsureYes: TrackingJudgement = { ...yes, confidence: P.qualify.minJudgeConfidence.text - 0.1 };
+const nearYes: TrackingJudgement = { ...yes, confidence: P.qualify.minJudgeConfidence.text - r.boostBarMargin };
+const unsureYes: TrackingJudgement = { ...yes, confidence: P.qualify.minJudgeConfidence.text - r.boostBarMargin - 0.1 };
 
 function facts(over: Partial<{ [K in keyof TrackingFacts]: TrackingFacts[K] }> = {}): TrackingFacts {
   return { onFeed: new Set(), catchAll: new Set(), storiesOf: new Map(), membersOf: new Map(), judged: new Map(), ...over };
@@ -27,14 +29,14 @@ test('a post on a feed is always re-read', () => {
   assert.equal(worthRereading('a', facts({ onFeed: new Set(['a']), judged: new Map([['a', firmNo]]) }), P), true);
 });
 
-test('a firm no, a failed name test and an unsure yes are never re-read off the feed', () => {
-  for (const j of [firmNo, longName, unsureYes]) {
+test('any no, a failed name test and a yes far under the bar are never re-read off the feed', () => {
+  for (const j of [firmNo, lowNo, longName, unsureYes]) {
     assert.equal(worthRereading('a', facts({ judged: new Map([['a', j]]), catchAll: new Set(['a']) }), P), false);
   }
 });
 
-test('a pass and an unsure no keep their re-reads: reach and the picture boost can still show them', () => {
-  for (const j of [yes, unsureNo]) {
+test('a pass and a yes near the bar keep their re-reads: reach and the picture boost can still show them', () => {
+  for (const j of [yes, nearYes]) {
     assert.equal(worthRereading('a', facts({ judged: new Map([['a', j]]) }), P), true);
   }
 });

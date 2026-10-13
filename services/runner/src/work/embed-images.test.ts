@@ -75,18 +75,20 @@ test('with no vendor configured nothing is asked', async () => {
   assert.deepEqual(await embedImages({ embed: null, images: s.images, mode: 'live', policy: DEFAULT_POLICY, log: quiet, now: () => 1 as Millis }), { queued: 0, embedded: 0 });
 });
 
-test('★ a picture that can never reach a screen is not paid for: a failed name test, an unsure yes', async () => {
+test('★ a picture that can never reach a screen is not paid for: a failed name test, a yes far under the bar, any no', async () => {
   const P = DEFAULT_POLICY;
   const longName = { ...passed, proposedName: 'one two three four five six' };
-  const unsureYes = { ...passed, confidence: P.qualify.minJudgeConfidence.picture - 0.1 };
-  const unsureNo = { coinable: false, confidence: P.rising.boostMaxNoConfidence, lookedAt: 'picture' as const, proposedName: null };
+  const unsureYes = { ...passed, confidence: P.qualify.minJudgeConfidence.picture - P.rising.boostBarMargin - 0.1 };
+  const lowNo = { coinable: false, confidence: 0.15, lookedAt: 'picture' as const, proposedName: null };
+  const nearYes = { ...passed, confidence: P.qualify.minJudgeConfidence.picture - P.rising.boostBarMargin };
   const s = setup(true, [
     { itemId: 'x:1' as ItemId, uri: 'https://example.invalid/a.jpg', inNarrative: false, judgement: longName },
     { itemId: 'x:2' as ItemId, uri: 'https://example.invalid/b.jpg', inNarrative: false, judgement: unsureYes },
-    { itemId: 'x:3' as ItemId, uri: 'https://example.invalid/c.jpg', inNarrative: false, judgement: unsureNo },
+    { itemId: 'x:3' as ItemId, uri: 'https://example.invalid/c.jpg', inNarrative: false, judgement: nearYes },
     { itemId: 'x:4' as ItemId, uri: 'https://example.invalid/d.jpg', inNarrative: true, judgement: longName },
+    { itemId: 'x:5' as ItemId, uri: 'https://example.invalid/e.jpg', inNarrative: false, judgement: lowNo },
   ]);
   const result = await embedImages({ embed: s.embed, images: s.images, mode: 'live', policy: P, log: quiet, now: () => 1 as Millis });
-  assert.equal(result.queued, 2, 'the unsure no (for the picture boost) and the narrative post');
+  assert.equal(result.queued, 2, 'the yes near the bar (for the picture boost) and the narrative post');
   assert.deepEqual(s.recorded, ['x:3', 'x:4']);
 });

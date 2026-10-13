@@ -11,6 +11,11 @@
  * for GROUP's name-plus-picture join), not yet scored, newest first, inside the feed's window. An answer is recorded the moment it arrives, so a restart does
  * not pay for it twice.
  *
+ * ★ THE KIND QUESTION MEETS EVERY POST THAT COULD SHOW. It is asked of a post the first answer
+ * passed or that the picture boost could still lift (core `couldPassWithBoost`), and of a copied
+ * answer that could; until 2026-10-13 a boosted post skipped it, and a zoo-mauling news post
+ * reached For You that way.
+ *
  * ★ FREE CHECKS FIRST. A catch-all post goes to the paid judge only once its reach clears For
  * You's bar (core's `clearsReachBar`) — a post that cannot show is not worth a judgement yet. One
  * that has not cleared it waits, unscored and off the feed, and is checked again after its next
@@ -40,14 +45,15 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePort, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PgItemRepo, PgPostJudgementRepo, ReusableAnswer } from '@insidor/store';
-import { clearsReachBar, postScore } from '@insidor/core';
+import { clearsReachBar, couldPassWithBoost, heldKind } from '@insidor/core';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 /** How many unscored posts are read per pass for each one that may be judged: the rest are below the bar. */
 const PREFETCH_FACTOR = 5;
 
-/** The kinds the second question holds back (adapters/judge/anthropic/prompts/post-veto.txt). */
-export const HELD_KINDS: ReadonlySet<string> = new Set(['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS']);
+/** The kinds the second question holds back (core kinds.ts, the prompt's own labels): re-exported for the tools. */
+export { HELD_KINDS } from '@insidor/core';
+
 
 import { errorText, type Logger } from '../log.ts';
 
@@ -55,10 +61,12 @@ export interface ScoringDeps {
   /** null when the judge is dormant: nothing is asked and every post waits. */
   readonly judge: JudgePort | null;
   /**
-   * The second question, asked only of a post the first answer passed: which kind of post it is.
-   * AD, SPORT, FANDOM, SHOWBIZ and POLITICS hold it back — the kind answer (coinable false, the
-   * kind as its name) is filed as the post's latest judgement, so every reader of the latest
-   * answer hides it. OTHER files nothing: the first answer stands. Absent: one question only.
+   * The second question, asked of a post the first answer passed OR could pass with the picture
+   * boost (core `couldPassWithBoost`): which kind of post it is. A held kind (core HELD_KINDS: AD,
+   * SPORT, FANDOM, SHOWBIZ, POLITICS, TRAGEDY, CORP_NEWS, MEDIA_NEWS) holds it back — the kind
+   * answer (coinable false, the kind as its name) is filed as the post's latest judgement, so every
+   * reader of the latest answer hides it. OTHER files nothing: the first answer stands. Absent:
+   * one question only.
    */
   readonly kindJudge?: JudgePort | null;
   readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'reachReadings' | 'backfilled'>;
@@ -172,6 +180,8 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
      simply judged, as it was before reuse existed. */
   let copied = 0;
   const toJudge: Item[] = [];
+  /* Posts the first question passed, or could pass with the boost, this pass: for the second. */
+  const askKind: { itemId: ItemId; subject: JudgeSubject | undefined }[] = [];
   const found = deps.mode === 'live' ? await findReusable(deps, queue, judge.id, judge.promptId, since) : null;
   for (const item of queue) {
     const answer = found === null ? null : reusableFor(item, found);
@@ -182,6 +192,8 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
     try {
       await deps.scores.recordCopy(item.itemId, { ...answer.judgement, judgedAt: now, costUsd: 0, rationaleRef: null }, answer.sourceId);
       copied += 1;
+      /* A copied answer is still asked the kind: the source's kind answer is not copied with it. */
+      if (couldPassWithBoost(answer.judgement, deps.policy)) askKind.push({ itemId: item.itemId, subject: subjectFor(item, deps.policy) });
     } catch (e) {
       deps.log.warn('could not file a reused answer; the post is judged instead', { post: String(item.itemId), err: errorText(e) });
       toJudge.push(item);
@@ -189,8 +201,6 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   }
 
   let scored = copied;
-  /* Posts the first question passed this pass, for the second. */
-  const passedFirst: { itemId: ItemId; subject: JudgeSubject | undefined }[] = [];
   let wouldSpendUsd = 0;
   let spentUsd = 0;
   for (let i = 0; i < toJudge.length; i += judge.maxBatch) {
@@ -224,7 +234,9 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
         if (itemId === undefined) continue;
         await deps.scores.record(itemId, outcome.judgement);
         scored += 1;
-        if (postScore(outcome.judgement, deps.policy) === 'passes') passedFirst.push({ itemId, subject: subjects[index] });
+        /* ★ The boost's posts too: a post the picture may lift must meet the kind question like a
+           pass, or a boosted ad or news post reaches For You (the zoo-mauling post, 2026-10-13). */
+        if (couldPassWithBoost(outcome.judgement, deps.policy)) askKind.push({ itemId, subject: subjects[index] });
       }
     } catch (e) {
       if (e instanceof BudgetRefused) {
@@ -235,13 +247,13 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
     }
   }
 
-  /* The second question, for the posts the first passed: a kind other than OTHER holds the post
-     back by filing the kind answer as its latest judgement. A budget pause or an outage here
+  /* The second question, for the posts the first passed or the boost could: a held kind holds the
+     post back by filing the kind answer as its latest judgement. A budget pause or an outage here
      leaves the first answer standing — the post is not hidden for want of a second answer. */
   let heldBack = 0;
   const kindJudge = deps.kindJudge ?? null;
-  if (kindJudge !== null && deps.mode === 'live' && passedFirst.length > 0) {
-    const asked = passedFirst.flatMap((p) => (p.subject === undefined ? [] : [{ itemId: p.itemId, subject: p.subject }]));
+  if (kindJudge !== null && deps.mode === 'live' && askKind.length > 0) {
+    const asked = askKind.flatMap((p) => (p.subject === undefined ? [] : [{ itemId: p.itemId, subject: p.subject }]));
     const estimate = kindJudge.estimate(asked.map((a) => a.subject));
     if (deps.meter.mayspend(estimate.vendor, estimate.usd)) {
       try {
@@ -257,7 +269,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
           const a = asked[index];
           /* Decided by the kind named, not the yes/no beside it: a reply that says OTHER and "not
              coinable" in one breath is OTHER. */
-          if (a === undefined || outcome.kind !== 'judged' || !HELD_KINDS.has((outcome.judgement.proposedName ?? '').trim().toUpperCase())) continue;
+          if (a === undefined || outcome.kind !== 'judged' || heldKind(outcome.judgement.proposedName) === null) continue;
           await deps.scores.record(a.itemId, outcome.judgement);
           heldBack += 1;
         }

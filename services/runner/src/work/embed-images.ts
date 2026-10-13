@@ -6,9 +6,9 @@
  * the stored vectors through the store.
  *
  * ★ ONLY PICTURES SOMETHING WILL READ (2026-10-13). A post is embedded when the judge passed it
- * or turned it down unsurely (`couldStillPass`: the boost compares an unsure "no" with coined
+ * or said "yes" just under its bar (`couldStillPass`: the boost compares such a post with coined
  * pictures, so it needs the vector), or when it is in a promoted story or was fetched by a
- * story's backfill (a post joining that narrative is compared with its pictures). A firm "no",
+ * story's backfill (a post joining that narrative is compared with its pictures). Any "no",
  * a failed name test and a post nobody has judged yet are not: until 2026-10-13 every new
  * picture was embedded, and about five in six went to posts that could never reach a screen.
  * The cost of the cut: a fresh post is usually judged after GROUP has already placed it, so it
@@ -48,9 +48,11 @@ export interface EmbeddingDeps {
 const MS_PER_HOUR = 3_600_000;
 /** How long one batch of images may take before the call is abandoned. */
 const EMBED_CALL_DEADLINE_MS = 60_000;
-/** How many candidates are read per picture embedded: the store drops firm noes, this step drops
-    the rest that cannot pass (a failed name test, an unsure yes), so they cannot crowd the batch. */
+/** How many candidates are read per picture embedded: the store drops every "no", this step drops
+    the rest that cannot pass (a failed name test, a yes far under the bar), so they cannot crowd the batch. */
 const PREFETCH_FACTOR = 5;
+/** The store drops every "no" above this confidence: below every confidence, since the picture boost never lifts a "no" (policy rising.boostBarMargin). */
+const EVERY_NO_IS_FIRM = -1;
 
 export async function embedImages(deps: EmbeddingDeps): Promise<{ readonly queued: number; readonly embedded: number }> {
   if (deps.embed === null || deps.embed.embedMedia === undefined) return { queued: 0, embedded: 0 };
@@ -59,7 +61,7 @@ export async function embedImages(deps: EmbeddingDeps): Promise<{ readonly queue
     deps.embed.space,
     (now - deps.policy.track.maxTrackedHours * MS_PER_HOUR) as Millis,
     deps.policy.group.imagesPerPass * PREFETCH_FACTOR,
-    deps.policy.rising.boostMaxNoConfidence,
+    EVERY_NO_IS_FIRM,
   );
   const queue = wide
     .filter((q) => q.inNarrative || (q.judgement !== null && couldStillPass(q.judgement, deps.policy)))
