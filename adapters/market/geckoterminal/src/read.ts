@@ -72,6 +72,29 @@ export function readCandles(raw: unknown): readonly Candle[] {
     .sort((a, b) => a.t - b.t);
 }
 
+/** A candle with its dollar volume: what an older coin's trading around a post is measured from. */
+export interface VolumeCandle {
+  readonly t: number;
+  readonly c: number;
+  /** The bucket's volume in dollars (`currency=usd`); null when the row did not carry it. */
+  readonly v: number | null;
+}
+
+/**
+ * Candles with their volume, oldest first. Separate from `readCandles`, which drops the sixth
+ * field because a chart has no use for it; here it is the point. A bucket with no trades is not
+ * sent at all, so a gap between two rows is an hour nobody traded, never an unread one.
+ */
+export function readVolumeCandles(raw: unknown): readonly VolumeCandle[] {
+  return arr(rec(rec(rec(raw).data).attributes).ohlcv_list)
+    .flatMap((row) => {
+      const r = arr(row).map((v) => num(v));
+      const [t, , , , c, v] = r;
+      return t == null || c == null ? [] : [{ t: t * 1_000, c, v: v ?? null }];
+    })
+    .sort((a, b) => a.t - b.t);
+}
+
 /** Merge each run of `factor` consecutive candles into one: the 6-hour view from hourly candles. */
 export function aggregate(candles: readonly Candle[], bucketMs: number): readonly Candle[] {
   const out: Candle[] = [];
