@@ -48,5 +48,14 @@ test('a coin opened from search lights Search, where back leads', () => {
   assert.equal(tabOf({ screen: 'token', coinId: 'solana:A' }), 'search');
   assert.equal(tabOf({ screen: 'learn' }), 'portfolio', 'How Insidor works is reached from the Portfolio tab');
   assert.deepEqual(parseRoute('#/wallet'), { screen: 'portfolio' }, 'a link from before the rename still opens the tab');
-  assert.deepEqual(parseRoute('#/calls'), { screen: 'alerts' }, 'and the old Calls link opens Alerts');
+  assert.deepEqual(parseRoute('#/calls'), { screen: 'alerts' }, 'and the old Calls link opens the Feed tab');
+});
+
+test('the Feed tab is #/feed, and every Alerts link from before the rename still opens it', () => {
+  assert.equal(hrefFor({ screen: 'alerts' }), '#/feed');
+  assert.equal(hrefFor({ screen: 'alert-settings' }), '#/feed/settings');
+  assert.deepEqual(parseRoute('#/alerts'), { screen: 'alerts' }, 'pushes already on phones carry /#/alerts');
+  assert.deepEqual(parseRoute('#/alerts/settings'), { screen: 'alert-settings' });
+  assert.deepEqual(parseRoute('#/feed/nope'), { screen: 'feed' });
+  for (const r of [{ screen: 'alerts' }, { screen: 'alert-settings' }] as const) assert.equal(tabOf(r), 'alerts');
 });

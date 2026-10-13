@@ -1,5 +1,5 @@
 /**
- * The screen behind a tab that has nothing built behind it yet: Alerts.
+ * The screen behind a tab that has nothing built behind it yet.
  *
  * A plain statement rather than a mock of the screen to come. A mock would have to show
  * results, calls or balances, and every one of those would be a fiction on a surface whose
@@ -9,7 +9,6 @@
 import styles from './soon.module.css';
 
 const COPY = {
-  alerts: { title: 'Alerts', body: 'Alerts about the narratives and coins you follow, as they happen.' },
   narratives: { title: 'Narratives', body: 'Viral posts grouped by the story they are about.' },
 } as const;
 
