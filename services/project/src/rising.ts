@@ -1,5 +1,5 @@
 /**
- * THE FOR YOU AND POPULAR FEEDS: single posts, projected once and served verbatim.
+ * THE FOR YOU, POPULAR AND NEWS FEEDS: single posts, projected once and served verbatim.
  *
  * Which posts: the earlier build's rule. A post the catch-all search found (0025's
  * `item_found_by`), observed rather than seeded, posted inside `rising.windowMs`, whose
@@ -8,7 +8,12 @@
  * And it must clear the feed's view bar (core's `clearsReachBar`): For You at 40k views or fast
  * early growth, Popular at 250k. A post whose views we have not read is on neither.
  *
- * In what order: `fyp` newest first by post time; `popular` most views first, and a post
+ * For You is also FRESH: a post over `rising.fypMaxAgeMs` old leaves it unless it is still
+ * growing fast (fyp-freshness.ts); Popular keeps it. Both are memes only: a post the judge called
+ * news goes to the third feed, `news` (news.ts), when it is coinable or has a confident coin, and
+ * clears For You's views bar; one post is never on two of For You, Popular and News.
+ *
+ * In what order: `fyp` and `news` newest first by post time; `popular` most views first, and a post
  * whose views we have not read goes after every post whose views we have. The client never
  * sorts.
  *
@@ -76,6 +81,8 @@ import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from '.
 import { projectCoin } from './project.ts';
 import { withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { writeSameNameCoins } from './same-name.ts';
+import { freshForYou } from './fyp-freshness.ts';
+import { loadNewsCandidates, newsPasses } from './news.ts';
 import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { permalinkFor } from './permalinks.ts';
 import { projectReach, projectSpark } from './project.ts';
@@ -83,7 +90,7 @@ import type { ReachReading } from './project.ts';
 import { assertNoInternalVocabulary, instant } from './wire.ts';
 import type { WireCoin, WireCoinEvidence, WireCoinLink, WireInstant, WireMeasured, WirePostCoinLink, WireSpark } from './wire.ts';
 
-export const RISING_FEEDS = ['fyp', 'popular'] as const;
+export const RISING_FEEDS = ['fyp', 'popular', 'news'] as const;
 export type RisingFeed = (typeof RISING_FEEDS)[number];
 
 const EXCERPT_MAX_CHARS = 280;
@@ -354,6 +361,8 @@ export function projectRisingPost(
 export interface RisingFrame {
   readonly fyp: readonly WireRisingPost[];
   readonly popular: readonly WireRisingPost[];
+  /** News posts with a coin in them, newest first (news.ts): never on For You or Popular. */
+  readonly news: readonly WireRisingPost[];
   /**
    * Why each scored post in the window is not on For You: the failed check, or a reach reason.
    * Read only to record why a post that WAS showing left (public.feed_rejection); never sent.
@@ -391,13 +400,14 @@ export async function buildRising(
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
   const heldBy = new Map<string, HeldKind>();
-  const rows = (await loadCandidates(db, sinceMs)).filter((row) => {
+  const passing = (await loadCandidates(db, sinceMs)).filter((row) => {
     const why = postStanding(row, policy);
     if (why !== 'passes') whyNot.set(row.item_id, why);
     const held = postHeldKind(row);
     if (why !== 'passes' && held !== null) heldBy.set(row.item_id, held);
     return why === 'passes';
   });
+  const { rows, newsRows } = await withNewsRows(db, passing, sinceMs);
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
   const lookups = await withMatches(db, rows, await loadPostLookups(db, rows.map((row) => row.item_id)), coinsByStory, nowMs, sparkWindowMs, policy);
   const older = await loadRunningOlder(db, rows.map((row) => row.item_id));
@@ -415,23 +425,32 @@ export async function buildRising(
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
       fyp: clearsReachBar('fyp', views, postedAt, policy, scale),
+      /* Six hours, unless still climbing fast (fyp-freshness.ts). For You only: Popular keeps old posts. */
+      fresh: freshForYou(views, postedAt ?? toMs(row.first_seen_at) ?? 0, nowMs, policy, scale),
       unread: views.every((v) => v.reach === null),
       popular: clearsReachBar('popular', views, postedAt, policy, scale),
+      news: newsRows.get(row.item_id),
     };
   });
 
-  const fyp = posts.filter((p) => p.fyp).sort((a, b) => b.at - a.at || a.post.id.localeCompare(b.post.id));
+  const memes = posts.filter((p) => p.news === undefined);
+  const fyp = memes.filter((p) => p.fyp && p.fresh).sort((a, b) => b.at - a.at || a.post.id.localeCompare(b.post.id));
   const views = (p: WireRisingPost): number | null => p.reach.v;
-  const popular = posts.filter((p) => p.popular).sort((a, b) => {
+  const popular = memes.filter((p) => p.popular).sort((a, b) => {
     const va = views(a.post);
     const vb = views(b.post);
     if (va === null || vb === null) return va === null ? (vb === null ? b.at - a.at : 1) : -1;
     return vb - va || b.at - a.at;
   });
   const cap = (list: typeof posts) => list.slice(0, policy.rising.maxRows).map((p) => p.post);
-  for (const p of posts) if (!p.fyp) whyNot.set(p.post.id, p.unread ? 'reach_unread' : 'under_reach_bar');
-  const shown = { fyp: cap(fyp), popular: cap(popular) };
-  const ids = new Set([...shown.fyp, ...shown.popular].map((p) => p.id));
+  /* News: the same views bar as For You, and coinable or a confident coin (news.ts). */
+  const news = posts
+    .filter((p) => p.news !== undefined && p.fyp && newsPasses(p.news, p.post.coins, policy))
+    .sort((a, b) => b.at - a.at || a.post.id.localeCompare(b.post.id));
+  /* A post that only went stale is not a rejection, as one that aged out of the window is not. */
+  for (const p of memes) if (!p.fyp) whyNot.set(p.post.id, p.unread ? 'reach_unread' : 'under_reach_bar');
+  const shown = { fyp: cap(fyp), popular: cap(popular), news: cap(news) };
+  const ids = new Set([...shown.fyp, ...shown.popular, ...shown.news].map((p) => p.id));
   const sameName = new Map(posts.filter((p) => ids.has(p.post.id) && p.sameName.length > 0).map((p) => [p.post.id, p.sameName] as const));
   const sameNameEvidence = new Map<string, ReadonlyMap<string, WireCoinEvidence>>();
   for (const id of sameName.keys()) {
@@ -439,6 +458,24 @@ export async function buildRising(
     if (l !== undefined && 'coins' in l && l.match?.kind === 'unsure') sameNameEvidence.set(id, l.match.evidence);
   }
   return { ...shown, whyNot, heldBy, sameName, sameNameEvidence };
+}
+
+/** A news post as loaded (news.ts): the first question's answer in the judge columns, and its kind. */
+type NewsRow = RisingRow & { readonly kind: string };
+
+/**
+ * The For You candidates that passed, plus the news posts (news.ts) loaded beside them so they are
+ * read, searched and projected exactly as For You's are. A post already passing For You's rule — an
+ * "Is a meme" call — stays For You's: one post is never on both.
+ */
+async function withNewsRows(
+  db: Db,
+  passing: readonly RisingRow[],
+  sinceMs: Millis,
+): Promise<{ readonly rows: readonly RisingRow[]; readonly newsRows: ReadonlyMap<string, NewsRow> }> {
+  const taken = new Set(passing.map((row) => row.item_id));
+  const news = (await loadNewsCandidates<NewsRow>(db, sinceMs)).filter((row) => !taken.has(row.item_id));
+  return { rows: [...passing, ...news], newsRows: new Map(news.map((row) => [row.item_id, row] as const)) };
 }
 
 /**
@@ -525,7 +562,7 @@ export async function projectRisingFeeds(
      failed — kept as a "no" example, never deleted. A post that only aged out of the window is
      not a rejection and has no reason here, so it is not recorded. */
   const showing = await db.query<{ item_id: string }>(`select distinct item_id from public.rising_row`);
-  const now = new Set([...frame.fyp, ...frame.popular].map((p) => p.id));
+  const now = new Set([...frame.fyp, ...frame.popular, ...frame.news].map((p) => p.id));
   const left = showing.flatMap(({ item_id }) => {
     const why = now.has(item_id) ? undefined : frame.whyNot.get(item_id);
     return why === undefined ? [] : [{ kind: 'post' as const, id: item_id, reason: why, detail: kindDetail(frame.heldBy.get(item_id)) }];
@@ -549,6 +586,6 @@ export async function projectRisingFeeds(
   /* The coins behind each unsure post's count, in this transaction with the rows that show it. */
   await writeSameNameCoins(db, 'post', frame.sameName, frame.sameNameEvidence);
   /* Each shown post's name ideas for Create (0058), with the feeds they belong to. */
-  await writeNameIdeas(db, await loadNameIdeas(db, [...new Set([...frame.fyp, ...frame.popular].map((p) => p.id))]));
-  return (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
+  await writeNameIdeas(db, await loadNameIdeas(db, [...new Set([...frame.fyp, ...frame.popular, ...frame.news].map((p) => p.id))]));
+  return (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular)) + (await writeRising(db, 'news', frame.news));
 }
