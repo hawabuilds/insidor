@@ -102,6 +102,9 @@ test('★ a narrative with no coin: its name searched, recent launchpad coins ad
   assert.ok(rows[0]?.declared_social.metadata?.includes('/ipfs/'), 'the metadata link from the chain, so the universe reads it by content id');
   const lookup = await db.query<{ found: number; added: number }>(`select found, added from internal.coin_lookup where subject_id = $1`, [STORY]);
   assert.deepEqual(lookup.map((l) => [Number(l.found), Number(l.added)]), [[2, 1]]);
+  const kept = await db.query<{ hits: string[]; more: boolean }>(`select hits, more from internal.coin_lookup where subject_id = $1`, [STORY]);
+  assert.deepEqual([...(kept[0]?.hits ?? [])].sort(), [HELD, RECENT].sort(), 'the addresses kept are recorded, the held coin too: "See 2 coins" lists both');
+  assert.equal(kept[0]?.more, false, 'nothing past the cap, and no source cut its answer');
 });
 
 test('the same name is not searched again inside the keep time', async () => {
