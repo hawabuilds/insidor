@@ -1900,6 +1900,35 @@ export interface LearningPolicy {
   readonly maxMissedPerPaste: number;
 }
 
+/**
+ * ★ CRYPTO ATTENTION: what replies and reproductions under a For You post say about coins, read as
+ * facts (core/src/qualify/attention.ts) and stored (internal.crypto_attention, 0064). The owner's
+ * sheets: 64% of coined posts had "crypto noticed" and 38% a ticker in the replies. MEASURED, NOT
+ * WIRED: nothing here moves a post on or off a feed; the owner picks how it is used.
+ */
+export interface AttentionPolicy {
+  /** Replies read per post, newest first (one search page is 20). */
+  readonly repliesPerPost: number;
+  /** Reproductions (posts carrying this one inside theirs) read per post, newest first. */
+  readonly reproductionsPerPost: number;
+  /** Posts read per runner pass, and per UTC day (first reads and re-reads together). */
+  readonly postsPerPass: number;
+  readonly postsPerDay: number;
+  /** A post read once is read once more this long after its first read; null reads it once. */
+  readonly rereadAfterMs: number | null;
+  /** Words (whole, any case) that make a response talk about a coin. */
+  readonly coinWords: readonly string[];
+  /** Words (whole, any case) in an account's handle, name or profile that make it a crypto account. */
+  readonly cryptoAccountWords: readonly string[];
+  /** A cashtag's letters after the sign: at least / at most. */
+  readonly tickerMinChars: number;
+  readonly tickerMaxChars: number;
+  /** An address-shaped string: this many characters of the address alphabet, or a hex address this long after 0x. */
+  readonly addressMinChars: number;
+  readonly addressMaxChars: number;
+  readonly hexAddressChars: number;
+}
+
 export interface Policy {
   /** Bumped by hand on every edit. The hash is computed from the object, not this. */
   readonly version: string;
@@ -1916,6 +1945,7 @@ export interface Policy {
   readonly ingest: IngestPolicy;
   readonly feed: FeedPolicy;
   readonly rising: RisingPolicy;
+  readonly attention: AttentionPolicy;
   readonly backfill: BackfillPolicy;
   readonly origin: OriginPolicy;
   readonly universe: UniversePolicy;
@@ -2506,6 +2536,23 @@ const POLICY_V1: Policy = {
     },
   },
 
+  attention: {
+    /* One search page each: at most 40 posts returned, $0.006 a read on the posts line. */
+    repliesPerPost: 20,
+    reproductionsPerPost: 20,
+    postsPerPass: 10,
+    /* About 1,000 text posts a day clear For You's bar (2026-10-13); 300 reads is at most $1.80 a
+       day, the judged-yes posts first (services/runner/src/work/crypto-attention.ts). */
+    postsPerDay: 300,
+    rereadAfterMs: 3_600_000, // an hour
+    coinWords: ['coin', 'coins', 'memecoin', 'memecoins', 'token', 'tokens', 'pump', 'pumping', 'pumped', 'ticker', 'mcap', 'marketcap', 'dex', 'bonded', 'aped', 'rugged', 'launched', 'contract'],
+    cryptoAccountWords: ['crypto', 'cryptos', 'memecoin', 'memecoins', 'degen', 'degens', 'trader', 'trading', 'web3', 'defi', 'nft', 'nfts', 'onchain', 'airdrop', 'airdrops', 'calls', 'caller', '100x', '1000x', 'gem', 'gems', 'sol', 'btc', 'eth', 'bnb', 'dex', 'pump', 'token', 'tokens', 'coin', 'coins', 'shitcoin', 'shitcoins', 'bitcoin', 'altcoin', 'altcoins', 'trenches', 'chart', 'charts'],
+    tickerMinChars: 2,
+    tickerMaxChars: 10,
+    addressMinChars: 32,
+    addressMaxChars: 44,
+    hexAddressChars: 40,
+  },
   backfill: {
     storiesPerPass: 2,
     /* 100: at about 20 posts fetched for a cent each worst case, a few dollars a day at

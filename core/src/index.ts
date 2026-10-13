@@ -66,6 +66,8 @@ export type { HeldKind, NeverShownKind, NewsKind } from './qualify/kinds.ts';
 export type { PostScoreReason } from './qualify/post-score.ts';
 export { clearsReachBar } from './qualify/reach-bar.ts';
 export type { ReachBar, ReachLevel } from './qualify/reach-bar.ts';
+export { addressesIn, attentionFacts, cashtagsIn, hasCryptoSignal, isCryptoAccount } from './qualify/attention.ts';
+export type { AttentionFacts } from './qualify/attention.ts';
 export type { PostScore } from './qualify/post-score.ts';
 export { resolve } from './resolve/stage.ts';
 export { rank } from './rank/stage.ts';
