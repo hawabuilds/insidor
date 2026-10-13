@@ -37,12 +37,20 @@ export class PeopleError extends Error {
   }
 }
 
+/**
+ * A person's rank (Intern to GOAT) is the one forbidden word the people services may send: it is
+ * the ladder people climb by their own likes and calls, shown on every profile and comment, not
+ * the pipeline's ranking of posts that FORBIDDEN_KEYS bans the word for. Without this every
+ * comment and profile was refused here, since each carries its author's rank.
+ */
+const PEOPLE_KEYS: readonly string[] = ['rank'];
+
 /** Keys only: a person's words are theirs; a field of ours that scores something is a leak. */
 function checkKeys(raw: unknown, path = '$'): void {
   if (Array.isArray(raw)) raw.forEach((x, i) => checkKeys(x, `${path}[${i}]`));
   else if (typeof raw === 'object' && raw !== null) {
     for (const [k, v] of Object.entries(raw)) {
-      if (FORBIDDEN_KEYS.includes(k.toLowerCase())) throw new PeopleError(500, `${path}.${k} is not something this app shows`);
+      if (FORBIDDEN_KEYS.includes(k.toLowerCase()) && !PEOPLE_KEYS.includes(k.toLowerCase())) throw new PeopleError(500, `${path}.${k} is not something this app shows`);
       checkKeys(v, `${path}.${k}`);
     }
   }
