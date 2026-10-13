@@ -103,11 +103,14 @@ export const DISCOVER_RESULTS_CAP = 20;
  * product choices, which is why they sit at the vendor edge and not in policy. A lower plan
  * tier charges about a quarter more per post; re-measure if the plan changes.
  */
-const RUN_START_USD = 0.001;
-const PER_POST_USD = 0.003;
-/* The two charged search filters discovery sends (most liked, past day), per post: measured
-   2026-10-13 as $0.071 for a run of 20 against $0.061 unfiltered. */
-const SEARCH_FILTERS_PER_POST_USD = 0.0005;
+export const RUN_START_USD = 0.001;
+export const PER_POST_USD = 0.003;
+/* ★ THE TWO CHARGED SEARCH FILTERS, PER POST: an order (`mobile-filter-sorting-applied`) and the
+   past-day window (`filter-applied`), $0.001 each. Read from the vendor's own itemised charges on
+   2026-10-13 (runs of 10 at 14:05 and 14:12 UTC billed $0.051: $0.001 + 10 × $0.005). The $0.0005
+   here before came from a total that had not finished settling, and quoted a full ask at $0.071
+   against a real $0.101 — so each ask was spaced as if it cost seven tenths of what it did. */
+export const SEARCH_FILTERS_PER_POST_USD = 0.002;
 
 const price = (endpoint: string, usdPerUnit: number): Price => ({
   vendor: VENDOR,
@@ -119,14 +122,25 @@ const price = (endpoint: string, usdPerUnit: number): Price => ({
 });
 
 /**
- * ★ EACH RUN IS QUOTED AT ITS LARGEST POSSIBLE BILL, and that is deliberate. The unit stays
- * the run — the ledger cannot see how many posts came back before it records — so the quote
- * is the start fee plus a full run's posts: `DISCOVER_RESULTS_CAP` search results, or
- * a full observe batch. A short run is therefore over-recorded, never under-recorded. The
- * flat two cents that was here before was about a seventh of a full observe batch's real
- * bill, which made the supplier line a cap on paper only.
+ * ★ EACH RUN IS QUOTED AT ITS LARGEST POSSIBLE BILL, AND RECORDED AT WHAT IT REALLY COST. The
+ * unit stays the run, and the quote — what the budget is checked against before the call, and
+ * what the runner spaces its asks by — is the start fee plus a full run's posts:
+ * `DISCOVER_RESULTS_CAP` search results, or a full observe batch. Once the run is back, the
+ * vendor's bill is known exactly — it charges per post returned, at the rates above — so the
+ * ledger records that (`runCostUsd`), not the quote. Until 2026-10-13 the quote was recorded:
+ * a re-read of three posts went down as fifty, and a search that failed with nothing in it as a
+ * full one, so the line ran out on paper hours before it did on the invoice. A run that throws
+ * is still recorded at the quote: what it was billed is not known then, and too high is the
+ * safe side.
  */
 export const PRICES: PriceBook = {
   [`${VENDOR}:${DISCOVER}`]: price(DISCOVER, RUN_START_USD + DISCOVER_RESULTS_CAP * (PER_POST_USD + SEARCH_FILTERS_PER_POST_USD)),
   [`${VENDOR}:${OBSERVE}`]: price(OBSERVE, RUN_START_USD + (CAPABILITIES.observeBatchSize ?? 1) * PER_POST_USD),
 };
+
+/** What a run that came back with `posts` posts was billed: the start fee and each post's fees. */
+export const runCostUsd = (posts: number, perPostUsd: number): number => RUN_START_USD + Math.max(0, posts) * perPostUsd;
+
+/** The per-post fee of a search ask (the post and both filters) and of a re-read. */
+export const SEARCH_POST_USD = PER_POST_USD + SEARCH_FILTERS_PER_POST_USD;
+export const READ_POST_USD = PER_POST_USD;

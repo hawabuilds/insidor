@@ -66,17 +66,25 @@
  * vendor charges per post returned, and the run's quoted price is only a bound because
  * the size is.
  *
- * ── ★ KEYWORD SEARCH, IN THE SCRAPER'S OWN ORDER — AND WHY NOT NEWEST FIRST ──
+ * ── ★ KEYWORD SEARCH, OVER THE PAST DAY, IN TWO ORDERS BY TURNS ──
  *
  * The scraper's video search (`searchQueries`, the `/video` section) is the first entry
  * point because the owner asked for it over hashtags when it exists, and it matches a word
- * in a caption as well as a tag. ★ SINCE 2026-10-13 IT IS SENT MOST-LIKED FIRST OVER THE PAST
- * DAY (`videoSearchSorting: MOST_LIKED`, `videoSearchDateFilter: PAST_24_HOURS`, both charged
- * filters): the owner wants new viral videos, and the vendor's default "most relevant" order
- * came back as posts from the last two weeks. A live run that day returned 20 videos, every one
- * under 24 hours old, the top five at 1.5M to 3M views, for $0.071 against $0.061 unfiltered.
- * The newest-first sort is still not sent: it goes through the scraper's mobile route, and that
- * run SUCCEEDED with nothing in it after four minutes of failed device registrations.
+ * in a caption as well as a tag. It is sent over the past day (`videoSearchDateFilter:
+ * PAST_24_HOURS`) and, ★ SINCE THE AFTERNOON OF 2026-10-13, IN TWO ORDERS BY TURNS
+ * (`SearchOrder`): most liked first, which finds the day's big videos — but at 12 to 22 hours
+ * old, with their growth behind them — and newest first, which finds videos under an hour old
+ * with a few thousand views, the only ones the growth paths and the fast re-reads can still
+ * act on. Measured on "meme" at 14:05 and 14:12 UTC: newest first, ten videos 0.6 to 1.0 hours
+ * old at 1.4k to 26k views; most liked, ten at 0.8 to 22 hours old, 28k to 3.2M views. Both
+ * are charged filters ($0.001 a post each) and both go through the scraper's mobile route.
+ *
+ * ★ THAT ROUTE FAILS FOR STRETCHES AND SAYS IT SUCCEEDED. From 13:20 to 13:56 UTC on
+ * 2026-10-13 every run spent its minutes failing device registration and ended SUCCEEDED,
+ * "Scraped 0/1 search queries", with nothing or one stale post in it — the newest-first sort
+ * did the same earlier that day. A run that did not finish its search is therefore an outage
+ * here, not a quiet word (`client.ts`, `requireSearchFinished`). There is no shorter window:
+ * the scraper's `oldestPostDateUnified` ("6 hours") is ignored by search (a run with it returned videos up to 22 hours old).
  *
  * The date filter is a hint here in the same sense as the size bound below, not a correctness
  * claim this package makes: the runner checks each post's own time and credits only posts from
@@ -96,6 +104,10 @@ import { CAPABILITIES, DISCOVER_RESULTS_CAP } from './capabilities.ts';
 import type { TikTokClient } from './client.ts';
 import { toAuthor, toItem } from './to-item.ts';
 
+/** Which order a keyword search asks for. The adapter alternates them (index.ts `nextOrder`). */
+export type SearchOrder = 'most_liked' | 'newest';
+export const SEARCH_ORDERS: readonly SearchOrder[] = ['newest', 'most_liked'];
+
 /** What the actor is asked to do. Keys are this scraper family's; nothing else knows them. */
 export interface ActorInput {
   readonly searchQueries?: readonly string[];
@@ -105,8 +117,8 @@ export interface ActorInput {
   readonly profiles?: readonly string[];
   /** A hint, not a guarantee — see the header's last section for why that is fine. */
   readonly resultsPerPage?: number;
-  /** The video search's order: most liked first (a charged filter). */
-  readonly videoSearchSorting?: 'MOST_LIKED';
+  /** The video search's order: most liked or newest first (a charged filter either way). */
+  readonly videoSearchSorting?: 'MOST_LIKED' | 'LATEST';
   /** The video search's window: the past day (a charged filter). */
   readonly videoSearchDateFilter?: 'PAST_24_HOURS';
 }
@@ -118,7 +130,7 @@ export interface ActorInput {
  * which matters more than usual here, because the most important thing this function
  * does is throw.
  */
-export function toActorInput(query: DiscoveryQuery): ActorInput {
+export function toActorInput(query: DiscoveryQuery, order: SearchOrder = 'most_liked'): ActorInput {
   if (!CAPABILITIES.discovery.includes(query.mode)) {
     throw new NotImplemented(`tiktok:discover:${query.mode}`, 'this source has no such entry point');
   }
@@ -143,7 +155,13 @@ export function toActorInput(query: DiscoveryQuery): ActorInput {
   const resultsPerPage = Math.min(DISCOVER_RESULTS_CAP, Math.max(1, Math.trunc(query.limit)));
 
   if (query.mode === 'keyword') {
-    return { searchQueries: [term], searchSection: '/video', resultsPerPage, videoSearchSorting: 'MOST_LIKED', videoSearchDateFilter: 'PAST_24_HOURS' };
+    return {
+      searchQueries: [term],
+      searchSection: '/video',
+      resultsPerPage,
+      videoSearchSorting: order === 'newest' ? 'LATEST' : 'MOST_LIKED',
+      videoSearchDateFilter: 'PAST_24_HOURS',
+    };
   }
   return query.mode === 'account'
     ? { profiles: [term], resultsPerPage }
@@ -158,8 +176,9 @@ export async function discoverRun(
   client: TikTokClient,
   query: DiscoveryQuery,
   at: Millis,
-): Promise<{ readonly items: readonly Item[]; readonly authors: readonly Author[]; readonly runId: string | null }> {
-  const run = await client.runDiscovery(toActorInput(query));
+  order: SearchOrder = 'most_liked',
+): Promise<{ readonly items: readonly Item[]; readonly authors: readonly Author[]; readonly runId: string | null; readonly billedPosts: number }> {
+  const run = await client.runDiscovery(toActorInput(query, order));
   // A client-side slice, which is safe because it caps how much of an
   // already-paid-for run we translate rather than filtering for correctness.
   const raws = run.items.slice(0, query.limit);
@@ -167,5 +186,7 @@ export async function discoverRun(
     items: raws.map((raw) => toItem(raw, at)),
     authors: raws.flatMap((raw) => toAuthor(raw, at) ?? []),
     runId: run.runId,
+    /* Every post the run returned was billed, including any past `limit`. */
+    billedPosts: run.items.length,
   };
 }

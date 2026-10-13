@@ -13,12 +13,19 @@
  * standing up a meter and a clock. What is left below is assembly and metering.
  *
  * ★ EVERY PAID CALL GOES THROUGH `metered`, AND THE UNIT IS THE RUN. The vendor charges a
- * start fee plus a fee per post returned, and the posts in a run are capped, so each run
- * is recorded as one unit quoted at its full bill (`PRICES`) — over-recorded when it comes
- * back short, never under. Counting returned items instead would need the count before
- * the ledger is written, which is after the money is spent. The Budget is handed in and never read from a global: the
- * adapter reports, the meter refuses, and what to give up when money runs short is a
- * product judgement that lives in core.
+ * start fee plus a fee per post returned, and the posts in a run are capped, so each run is
+ * checked against the budget at its full bill (`PRICES`) — a re-read at the bill of the posts
+ * it asks about — and recorded, once it is back, at what the vendor billed for the posts it
+ * returned (`runCostUsd`). A run that throws is recorded at the quote. The Budget is handed in
+ * and never read from a global: the adapter reports, the meter refuses, and what to give up
+ * when money runs short is a product judgement that lives in core.
+ *
+ * ★ TWO PIECES OF STATE, BOTH IN MEMORY AND BOTH SAFE TO LOSE. Which search order the next ask
+ * uses (`nextOrder`: newest and most liked by turns, see discover.ts), started from the clock so
+ * a restart does not always begin on the same one; and the handle of every post this adapter has
+ * itself read (`learned`), so a post it found can be re-read by URL even when the caller's handle
+ * lookup has nothing — before 2026-10-13 15:00 UTC the runner's had nothing for every post, and
+ * no short video was ever re-read. A restart forgets both; the caller's lookup still answers.
  */
 
 import type { Author, CounterSet, Item, Millis } from '@insidor/contracts';
@@ -34,9 +41,9 @@ import type { PriceBook } from '@insidor/meter';
 import { discovered } from '@insidor/vendor-kit';
 import { parseLink as parseLinkOf, postTimeFromId as postTimeOf } from './post-time.ts';
 
-import { CAPABILITIES, DISCOVER, OBSERVE, PRICES, SOURCE, VENDOR } from './capabilities.ts';
+import { CAPABILITIES, DISCOVER, OBSERVE, PRICES, READ_POST_USD, runCostUsd, SEARCH_POST_USD, SOURCE, VENDOR } from './capabilities.ts';
 import type { TikTokClient } from './client.ts';
-import { discoverRun } from './discover.ts';
+import { discoverRun, SEARCH_ORDERS, type SearchOrder } from './discover.ts';
 import { addressable, chunk, observeBatch } from './observe.ts';
 import { toAuthor, toItem } from './to-item.ts';
 
@@ -54,9 +61,45 @@ export interface TikTokAdapterDeps {
   readonly prices?: PriceBook;
 }
 
+const HOUR_MS = 3_600_000;
+/* Posts whose handle the adapter keeps: about two days of watch-list asks. */
+const LEARNED_HANDLES_MAX = 5_000;
+
 export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
   const prices = deps.prices ?? PRICES;
   const batchSize = CAPABILITIES.observeBatchSize ?? 1;
+
+  /* Search orders by turns, from the hour at start so a restart does not always begin on one. */
+  let turn = Math.floor(deps.now() / HOUR_MS);
+  const nextOrder = (): SearchOrder => SEARCH_ORDERS[turn++ % SEARCH_ORDERS.length] ?? 'most_liked';
+
+  /* The handle of each post this adapter read, newest kept: a post is addressed by URL. */
+  const learned = new Map<string, string>();
+  const learn = (items: readonly Item[], authors: readonly Author[]): void => {
+    const handleOfAuthor = new Map(authors.flatMap((a) => (a.handle === null || a.handle === undefined ? [] : [[a.authorKey, a.handle] as const])));
+    for (const item of items) {
+      const handle = item.authorKey === null ? undefined : handleOfAuthor.get(item.authorKey);
+      if (handle === undefined) continue;
+      learned.delete(item.sourceItemId);
+      learned.set(item.sourceItemId, handle);
+    }
+    while (learned.size > LEARNED_HANDLES_MAX) {
+      const oldest = learned.keys().next().value;
+      if (oldest === undefined) break;
+      learned.delete(oldest);
+    }
+  };
+  const handleOf = (sourceItemId: string): string | null => deps.handleOf(sourceItemId) ?? learned.get(sourceItemId) ?? null;
+
+  /* What the vendor billed for a run that returned `posts`; a custom book (tests) prices units. */
+  const billed = (posts: number, perPostUsd: number): { usdActual?: number } =>
+    deps.prices === undefined ? { usdActual: runCostUsd(posts, perPostUsd) } : {};
+
+  /* A re-read run is quoted at the posts it asks about; a custom book (tests) keeps its own price. */
+  const observeBook = (posts: number): PriceBook =>
+    deps.prices !== undefined
+      ? prices
+      : { ...prices, [`${VENDOR}:${OBSERVE}`]: { ...PRICES[`${VENDOR}:${OBSERVE}`]!, usdPerUnit: runCostUsd(posts, READ_POST_USD) } };
 
   return {
     id: SOURCE,
@@ -72,10 +115,14 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
         // vendor with per-item arithmetic.
         { vendor: VENDOR, endpoint: DISCOVER, unit: 'per-run', estUnits: 1, at },
         async () => {
-          const run = await discoverRun(deps.client, query, at);
-          return { value: run, units: 1 };
+          const keyword = query.mode === 'keyword';
+          const run = await discoverRun(deps.client, query, at, keyword ? nextOrder() : 'most_liked');
+          /* What the vendor billed: the start fee and each post returned, with the two search
+             filters on a keyword ask. Recorded instead of the full-run quote. */
+          return { value: run, units: 1, ...billed(run.billedPosts, keyword ? SEARCH_POST_USD : READ_POST_USD) };
         },
       );
+      learn(result.value.items, result.value.authors);
 
       // The actor has no cursor: a run returns what it returns, and it never tells us
       // whether there was more. `false` is what the vendor supports saying, not a
@@ -101,8 +148,10 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
      */
     estimate(call: PlannedCall): CostEstimate {
       if (call.kind === 'discover') return estimateFor(prices, VENDOR, DISCOVER, 1);
-      const runs = chunk(addressable(call.sourceItemIds, deps.handleOf), batchSize).length;
-      return estimateFor(prices, VENDOR, OBSERVE, runs);
+      const batches = chunk(addressable(call.sourceItemIds, handleOf), batchSize);
+      if (deps.prices !== undefined) return estimateFor(prices, VENDOR, OBSERVE, batches.length);
+      const usd = batches.reduce((sum, batch) => sum + runCostUsd(batch.length, READ_POST_USD), 0);
+      return { ...estimateFor(prices, VENDOR, OBSERVE, batches.length), usd };
     },
 
     async observe(
@@ -113,12 +162,15 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
       const out = new Map<string, CounterSet>();
       const spends = [];
 
-      for (const batch of chunk(addressable(sourceItemIds, deps.handleOf), batchSize)) {
+      for (const batch of chunk(addressable(sourceItemIds, handleOf), batchSize)) {
         const result = await metered(
           deps.meter,
-          prices,
+          observeBook(batch.length),
           { vendor: VENDOR, endpoint: OBSERVE, unit: 'per-run', estUnits: 1, at },
-          async () => ({ value: await observeBatch(deps.client, batch, at), units: 1 }),
+          async () => {
+            const read = await observeBatch(deps.client, batch, at);
+            return { value: read, units: 1, ...billed(read.billedPosts, READ_POST_USD) };
+          },
         );
         for (const [id, counters] of result.value.counters) out.set(id, counters);
         spends.push(result.spend);
@@ -145,12 +197,15 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
       const items: Item[] = [];
       const authors: Author[] = [];
       const spends = [];
-      for (const batch of chunk(addressable(sourceItemIds, deps.handleOf), batchSize)) {
+      for (const batch of chunk(addressable(sourceItemIds, handleOf), batchSize)) {
         const result = await metered(
           deps.meter,
-          prices,
+          observeBook(batch.length),
           { vendor: VENDOR, endpoint: OBSERVE, unit: 'per-run', estUnits: 1, at },
-          async () => ({ value: await deps.client.runObserve(batch.map((entry) => entry.url)), units: 1 }),
+          async () => {
+            const run = await deps.client.runObserve(batch.map((entry) => entry.url));
+            return { value: run, units: 1, ...billed(run.items.length, READ_POST_USD) };
+          },
         );
         for (const raw of result.value.items) {
           let item: Item;
@@ -165,6 +220,7 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
         }
         spends.push(result.spend);
       }
+      learn(items, authors);
       return {
         value: discovered(items, authors, null, false),
         spend: mergeSpend(spends, { vendor: VENDOR, endpoint: OBSERVE, unit: 'per-run', estUnits: 1, at }, 'per-run'),

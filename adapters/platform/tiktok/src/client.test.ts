@@ -21,6 +21,7 @@ import { VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
 import {
   decodeDataset,
   decodeRun,
+  requireSearchFinished,
   httpClient,
   isPathSegment,
   isTerminal,
@@ -488,4 +489,15 @@ test('★ a header that is present and BLANK reads as no reading, never as zero'
   // rather than a defect.
   assert.equal(seen.reading.used, null);
   assert.equal(seen.reading.resetSeconds, null);
+});
+
+test('★ a search run that SUCCEEDED without finishing its search is an outage, not a quiet word', () => {
+  // What the scraper's mobile route said four times running on 2026-10-13, 13:20–13:56 UTC.
+  const failed = decodeRun({ data: { id: RUN_ID, status: 'SUCCEEDED', defaultDatasetId: DATASET_ID, statusMessage: 'Scraped 0/1 search queries' } }, 'endpoint');
+  assert.throws(() => requireSearchFinished(failed), VendorUnavailable);
+  const done = decodeRun({ data: { id: RUN_ID, status: 'SUCCEEDED', defaultDatasetId: DATASET_ID, statusMessage: 'Scraped 1/1 search queries' } }, 'endpoint');
+  assert.doesNotThrow(() => requireSearchFinished(done));
+  // A message in another shape says nothing either way, and is let through.
+  assert.doesNotThrow(() => requireSearchFinished(decodeRun({ data: { id: RUN_ID, status: 'SUCCEEDED', statusMessage: 'Finished!' } }, 'endpoint')));
+  assert.doesNotThrow(() => requireSearchFinished(decodeRun({ data: { id: RUN_ID, status: 'SUCCEEDED' } }, 'endpoint')));
 });
