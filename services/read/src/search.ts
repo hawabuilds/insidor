@@ -25,6 +25,8 @@
  * type it, and one client cannot type faster than `perClient` a minute. A coin a search returned
  * may then be opened as a token page for `openableMs`; nothing else widens the market route.
  *
+ * GET /post/:id/names and GET /ticker/:symbol/coins live here too (name-ideas.ts): the Create
+ * sheet's name chips and whether each ticker is free, searched through the same cache and limit.
  * GET /post/:id/coins lives here too (same-name.ts): an unsure feed post's same-named coins, with
  * their market read by the same sources, the same per-client limit and the same pictures rule.
  * Its coins are ones we already hold by name, so it widens nothing; it only remembers what the
@@ -38,6 +40,7 @@ import type { MarketData } from '@insidor/market-geckoterminal';
 
 import type { Logger } from './log.ts';
 import type { Db, Row } from './queries.ts';
+import { freeFirst, ideasFrom, NAME_IDEAS_SQL, TICKER_COINS_SHOWN, TICKER_COINS_SQL, tickerAddresses, tickerUse } from './name-ideas.ts';
 import { heldCoins, namesToSearch, SAME_NAME_SQL, withMarket } from './same-name.ts';
 
 /** The board whose rows count as live (routes.ts BOARD_VIEW is the client's; the projector writes one). */
@@ -324,6 +327,7 @@ export function createSearch(deps: SearchDeps) {
         venue: hit === null ? null : hit.venue,
         curveProgress: hit !== null && hit.venue === 'curve' ? (curves.get(c.address) ?? measured(null, deps.curveProgress === null ? 'not_reported' : 'not_read_yet')) : null,
         matched: null,
+        evidence: c.evidence,
       };
     });
     return json(200, { kind: 'read', more: held.more, sourcesMissing, items });
@@ -540,6 +544,74 @@ export function createSearch(deps: SearchDeps) {
       if (!allow(client, now)) return json(429, { error: 'slow down' });
       const reply = await sameName(itemId, now);
       if (reply.status === 200) lists.set(itemId, { at: now, reply });
+      return reply;
+    },
+
+    /** GET /post/:id/names — a feed post's name ideas for Create, each with whether its ticker is free (name-ideas.ts). */
+    async postNames(itemId: string, client: string): Promise<SearchReply> {
+      const now = deps.now();
+      sweep(now);
+      if (itemId === '' || itemId.length > 200) return json(400, { error: 'bad request' });
+      const key = `names:${itemId}`;
+      const held = lists.get(key);
+      if (held !== undefined) return held.reply;
+      if (!allow(client, now)) return json(429, { error: 'slow down' });
+      const ideas = ideasFrom(await deps.db.query(NAME_IDEAS_SQL, [itemId]));
+      if (ideas.length === 0) return json(404, { error: 'not found' });
+      const items = await Promise.all(
+        ideas.map(async (idea) => {
+          const [indexed, answer] = await Promise.all([deps.db.query(TICKER_COINS_SQL, [idea.ticker, TICKER_COINS_SHOWN + 1]), searchName(idea.ticker, now)]);
+          const addresses = tickerAddresses(idea.ticker, indexed.flatMap((r) => str(r['address']) ?? []), answer.hits.flat());
+          return { ...idea, use: tickerUse(addresses, answer.failed, indexed.length > TICKER_COINS_SHOWN) };
+        }),
+      );
+      const reply = json(200, { items: freeFirst(items) });
+      lists.set(key, { at: now, reply });
+      return reply;
+    },
+
+    /** GET /ticker/:symbol/coins — the coins using exactly this ticker: what "Taken by 3 coins" opens. */
+    async tickerCoins(raw: string, client: string): Promise<SearchReply> {
+      const now = deps.now();
+      sweep(now);
+      const symbol = raw.trim().replace(/^\$+/, '').toUpperCase();
+      if (!/^[A-Z0-9]{1,10}$/.test(symbol)) return json(400, { error: 'bad request' });
+      const key = `ticker-coins:${symbol}`;
+      const held = lists.get(key);
+      if (held !== undefined) return held.reply;
+      if (!allow(client, now)) return json(429, { error: 'slow down' });
+      const [indexed, answer] = await Promise.all([deps.db.query(TICKER_COINS_SQL, [symbol, TICKER_COINS_SHOWN + 1]), searchName(symbol, now)]);
+      const hits = new Map(mergeHits(answer.hits).filter((h) => (h.ticker ?? '').toUpperCase() === symbol).map((h) => [h.address, h] as const));
+      const ours = new Map(indexed.flatMap((r) => {
+        const a = str(r['address']);
+        const minted = r['minted_at'] instanceof Date ? r['minted_at'].getTime() : null;
+        return a === null ? [] : [[a, { name: str(r['name']), ticker: str(r['symbol']), imageUrl: str(r['image_uri']), launchedAt: minted }] as const];
+      }));
+      const addresses = [...new Set([...ours.keys(), ...hits.keys()])];
+      const items = addresses
+        .map((address) => {
+          const o = ours.get(address);
+          const hit = hits.get(address) ?? null;
+          const launched = o?.launchedAt ?? hit?.createdAt ?? null;
+          if (hit !== null) openable.set(address, { at: now, hit: { ...hit, createdAt: launched, imageUrl: o?.imageUrl ?? null } });
+          return {
+            coinId: `solana:${address}`,
+            address,
+            name: o?.name ?? hit?.name ?? null,
+            ticker: o?.ticker ?? hit?.ticker ?? null,
+            /* The coin's own picture, never a source's copy (the header's rule). */
+            imageUrl: o?.imageUrl ?? null,
+            marketCapUsd: measured(hit?.marketCapUsd, hit !== null ? 'not_reported' : answer.failed > 0 ? 'not_read_yet' : 'no_market'),
+            launchedAt: instant(launched, 'not_reported'),
+            venue: hit === null ? null : hit.venue,
+            curveProgress: null,
+            matched: null,
+          };
+        })
+        .sort((a, b) => (b.launchedAt.at ?? 0) - (a.launchedAt.at ?? 0))
+        .slice(0, TICKER_COINS_SHOWN);
+      const reply = json(200, { kind: 'read', more: addresses.length > TICKER_COINS_SHOWN || indexed.length > TICKER_COINS_SHOWN, sourcesMissing: answer.failed, items });
+      lists.set(key, { at: now, reply });
       return reply;
     },
 
