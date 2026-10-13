@@ -13,10 +13,10 @@
  * The same shape as writing a zero where a counter does not exist, one layer up.
  *
  * It is enforced by the TYPE and not by discipline: `SourceOutcome` carries an item
- * count on exactly one of its seven members. There is no way to write down "this dark
+ * count on exactly one of its eight members. There is no way to write down "this dark
  * source returned nothing", because that sentence has no representation here.
  *
- * The seven members are seven genuinely different facts:
+ * The eight members are eight genuinely different facts:
  *
  *   answered  we asked and it replied. `items` is a measurement, and zero is a real
  *             and meaningful zero: this source was quiet.
@@ -35,6 +35,9 @@
  *   deferred  ★ A FREE SOURCE ALREADY ANSWERED THIS TERM, so we did not pay for it.
  *             Names the source that covered it, because "we chose not to" and "there
  *             was nothing there" are opposite facts about the same empty result.
+ *   resting   ★ A PAID SOURCE WITH NO CATCH-ALL, BETWEEN ASKS. It is asked by word,
+ *             spaced so a day of asks fits its share of the line (`watchEveryMs`), and
+ *             this pass falls between two of them. Says when the next one is.
  *
  * ── ★ WHY THE LAST THREE EXIST AS SEPARATE MEMBERS ─────────────────────────
  *
@@ -152,7 +155,13 @@ export type SourceOutcome =
   /** ★ A DRY RUN. Resolved, priced, and not asked. No call left the process. */
   | { readonly kind: 'planned'; readonly source: string; readonly mode: DiscoveryMode; readonly estUnits: number; readonly wouldSpendUsd: number; readonly lane?: FeedLane }
   /** ★ A FREE SOURCE COVERED THIS TERM. We chose not to pay for it, and say who. */
-  | { readonly kind: 'deferred'; readonly source: string; readonly coveredBy: string; readonly wouldSpendUsd: number };
+  | { readonly kind: 'deferred'; readonly source: string; readonly coveredBy: string; readonly wouldSpendUsd: number }
+  /**
+   * ★ ASKED RECENTLY; ITS SHARE OF THE LINE IS SPREAD OVER THE DAY. A paid source with no
+   * catch-all is asked once per `everyMs`, not every pass — see `watchEveryMs`. Nothing was
+   * asked, nothing is wrong, and `nextAtMs` says when it will be.
+   */
+  | { readonly kind: 'resting'; readonly source: string; readonly everyMs: number; readonly nextAtMs: number };
 
 export interface DiscoverPassResult {
   /** One per KNOWN source, live or not. Never a subset — see `dark` above. */
@@ -169,6 +178,8 @@ export interface DiscoverPassResult {
   readonly planned: number;
   /** Sources skipped because a free source had already answered the term. */
   readonly deferred: number;
+  /** Paid sources without a catch-all, between their spread-out asks. */
+  readonly resting: number;
   /**
    * Items returned by sources that ANSWERED. Never includes a dark source's absence
    * as a zero, because a dark source has no item count in this type at all.
@@ -255,6 +266,61 @@ export function termFor(plan: DiscoveryPlan, now: Millis): string | null {
   const period = Math.max(plan.cadenceMs, 1);
   const index = Math.floor(now / period) % plan.terms.length;
   return plan.terms[index] ?? null;
+}
+
+/**
+ * ★ HOW OFTEN A SOURCE WITH NO CATCH-ALL IS ASKED: its discovery share of its supplier's line,
+ * spread evenly over the day.
+ *
+ * Such a source is asked by word (the configured terms, or else the owner's watch list in
+ * `policy.feed.hashtags`), and on the short-video source every ask is a paid scraper run. Asked
+ * every pass it would spend the whole line by mid-morning and starve the re-reads that share
+ * it; left to the meter's pace it would do the same thing more slowly, with a `paused` warning
+ * every two minutes. So the ask is spaced so that a day of them costs `feed.budgetShare` of the
+ * line — the same share the catch-all search is allowed, with the rest left for re-reads —
+ * and never more often than the pass itself runs. A free source (an ask priced at zero) is
+ * asked every pass, exactly as before.
+ *
+ * Derived, not configured: change the line, the share or the vendor's price and the spacing
+ * follows. A line of zero gives no spacing at all — the meter refuses and says so, which is
+ * the honest record of "no money", rather than a rest that would hide it.
+ */
+export function watchEveryMs(usdPerAsk: number, lineCapUsd: number, cadenceMs: number, policy: Policy): number {
+  const share = lineCapUsd * policy.feed.budgetShare;
+  if (!(usdPerAsk > 0) || !(share > 0)) return cadenceMs;
+  /* Whole milliseconds, rounded up: a fractional spacing never quite elapses on a millisecond clock. */
+  return Math.max(cadenceMs, Math.ceil((usdPerAsk / share) * MS_PER_DAY));
+}
+
+/**
+ * Which word a source with no catch-all is asked for: the configured term if there is one,
+ * else the owner's watch list, rotated by the clock in steps of the source's own spacing so
+ * that consecutive asks walk the list rather than repeat one word. From the clock for the same
+ * reason as `termFor`: it survives a restart without state.
+ */
+export function watchTermFor(watch: readonly string[], everyMs: number, now: Millis): string | null {
+  const words = watch.map((w) => w.trim()).filter((w) => w.length > 0);
+  if (words.length === 0) return null;
+  return words[Math.floor(now / Math.max(everyMs, 1)) % words.length] ?? null;
+}
+
+/**
+ * When each source with no catch-all was last asked, kept by the loop between passes. In
+ * memory on purpose: a restart forgets it and asks at once, which costs one extra ask per
+ * deploy and never a missed one — the slow lane's trade.
+ */
+export interface WatchClock {
+  lastAskedAt(source: string): Millis | null;
+  asked(source: string, at: Millis): void;
+}
+
+/** A clock held in memory, for the loop. */
+export function memoryWatchClock(): WatchClock {
+  const at = new Map<string, Millis>();
+  return {
+    lastAskedAt: (source) => at.get(source) ?? null,
+    asked: (source, when) => void at.set(source, when),
+  };
 }
 
 /**
@@ -360,6 +426,11 @@ export interface DiscoverDeps {
   readonly lanes?: readonly FeedLane[];
   /** Aborted on SIGTERM. A pass that ignores it delays every deploy by a vendor call. */
   readonly signal: AbortSignal;
+  /**
+   * When each source with no catch-all was last asked — see `watchEveryMs`. The loop always
+   * passes one; absent, every such source counts as never asked, which only a test wants.
+   */
+  readonly watch?: WatchClock;
 }
 
 /**
@@ -403,6 +474,8 @@ interface SourcePlan {
   readonly estimate: CostEstimate;
   /** The catch-all lane this is, or null for a term search. */
   readonly lane: FeedLane | null;
+  /** An ask on a source with no catch-all, spaced by `watchEveryMs`: its clock is set when asked. */
+  readonly spaced: boolean;
 }
 
 export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResult> {
@@ -454,13 +527,41 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
 
     /* ★ THE CATCH-ALL FIRST, ON EVERY SOURCE THAT CAN BE ASKED FOR IT: two lanes, no
        keyword. Then the optional term on top. */
-    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null }[] = [];
+    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean }[] = [];
     if (adapter.capabilities.discovery.includes('catchall')) {
       for (const lane of deps.lanes ?? MAIN_LANES) asks.push({ query: feedQueryFor(lane, floors, now, deps.policy), lane });
     }
-    if (term !== null) {
+    const catchAll = asks.length > 0;
+    if (catchAll && term !== null) {
       const query = queryFor(adapter, term, now);
       if (query !== null) asks.push({ query, lane: null });
+    }
+
+    /* ★ NO CATCH-ALL: ASK BY WORD, SPACED. The configured term if one is set, else the owner's
+       watch list; one page of `feed.pageLimit` posts, no time cutoff; and on a paid source,
+       only once per `watchEveryMs` so a day of it stays inside its share of the line. */
+    if (!catchAll) {
+      const probe = queryFor(adapter, term ?? deps.policy.feed.hashtags[0] ?? '', now);
+      if (probe !== null) {
+        let priced: CostEstimate | null = null;
+        try {
+          priced = adapter.estimate({ kind: 'discover', query: probe });
+        } catch {
+          /* Left to the pricing step below, which records it as `unasked` with the reason. */
+        }
+        const usdPerAsk = priced?.usd ?? 0;
+        const lineCapUsd = priced !== null && usdPerAsk > 0 ? deps.meter.line(priced.vendor).capUsd : 0;
+        const everyMs = watchEveryMs(usdPerAsk, lineCapUsd, deps.plan.cadenceMs, deps.policy);
+        const last = deps.watch?.lastAskedAt(source) ?? null;
+        if (last !== null && now - last < everyMs) {
+          outcomes.push({ kind: 'resting', source, everyMs, nextAtMs: last + everyMs });
+          continue;
+        }
+        const word = term ?? watchTermFor(deps.policy.feed.hashtags, everyMs, now);
+        const query = word === null ? null : queryFor(adapter, word, now);
+        /* The watch list is asked for one policy page; a configured term keeps its own size. */
+        if (query !== null) asks.push({ query: term === null ? { ...query, limit: deps.policy.feed.pageLimit } : query, lane: null, spaced: true });
+      }
     }
 
     if (asks.length === 0) {
@@ -472,15 +573,15 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         kind: 'unasked',
         source,
         reason:
-          term === null
-            ? 'has no catch-all search and no discovery term is configured'
+          term === null && deps.policy.feed.hashtags.length === 0
+            ? 'has no catch-all search, no discovery term is configured and the watch list is empty'
             : `declares no discovery mode we can render (${adapter.capabilities.discovery.join(', ') || 'none'})`,
       });
       deps.log.warn('source is live but cannot be asked', { source });
       continue;
     }
 
-    for (const { query, lane } of asks) {
+    for (const { query, lane, spaced } of asks) {
       let estimate: CostEstimate;
       try {
         estimate = adapter.estimate({ kind: 'discover', query });
@@ -493,7 +594,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         deps.log.error('source cannot be priced; not asking it', { source, err: errorText(e) });
         continue;
       }
-      plans.push({ adapter, source, query, estimate, lane });
+      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true });
     }
   }
 
@@ -567,7 +668,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
 
   for (const plan of plans) {
     if (deps.signal.aborted) break;
-    const { adapter, source, query, estimate, lane } = plan;
+    const { adapter, source, query, estimate, lane, spaced } = plan;
     const tag = lane === null ? {} : { lane };
     const coverKey = lane === null ? query.term : `feed:${lane}`;
 
@@ -655,6 +756,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     let items: readonly Item[];
     let authors: readonly Author[];
     let hasMore: boolean;
+    /* Set as the call goes out, not when it comes back: a run that fails was still billed. */
+    if (spaced) deps.watch?.asked(source, now);
     try {
       const result = await adapter.discover(query, budget);
       items = result.value.items;
@@ -800,6 +903,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     paused: outcomes.filter((o) => o.kind === 'paused').length,
     planned: outcomes.filter((o) => o.kind === 'planned').length,
     deferred: outcomes.filter((o) => o.kind === 'deferred').length,
+    resting: outcomes.filter((o) => o.kind === 'resting').length,
     itemsSeen,
     itemsStored,
     estimatedUsd,

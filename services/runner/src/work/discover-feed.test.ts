@@ -192,17 +192,31 @@ test('DISCOVER_TERMS are extra searches on top of the catch-all, not instead of 
   assert.equal(seen[2]?.term, 'ceasefire');
 });
 
-test('a source with no catch-all search and no term is unasked, by name', async () => {
-  const result = await run(feedSource({ all: 0, media: 0 }, [], ['keyword']), 'live');
+test('a source with no catch-all search, no term and an empty watch list is unasked, by name', async () => {
+  const policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, hashtags: [] } };
+  const result = await discoverPass({
+    platforms: registry(feedSource({ all: 0, media: 0 }, [], ['keyword'])),
+    store: async (items) => items.length,
+    plan: { terms: [], cadenceMs: CADENCE_MS },
+    policy,
+    meter,
+    mode: 'live',
+    log: quiet,
+    now: () => NOW,
+    signal: new AbortController().signal,
+    floors: floorsStore(),
+    dailyCapUsd: 1,
+  });
   assert.equal(result.unasked, 1);
 });
 
 test('★ a source whose `feed` needs a community name is never sent the catch-all lanes', async () => {
+  // It is asked by word from the owner's watch list instead (discover-watch.test.ts).
   const seen: DiscoveryQuery[] = [];
   const result = await run(feedSource({ all: 0, media: 0 }, seen, ['feed', 'keyword']), 'live');
-  assert.equal(seen.length, 0);
+  assert.equal(seen.filter((q) => q.mode === 'catchall').length, 0);
   assert.equal(result.failed, 0, 'and so it is never counted as a failure');
-  assert.equal(result.unasked, 1);
+  assert.equal(result.unasked, 0);
 });
 
 /** A source whose catch-all lane has `pages` full pages behind it, then a short one. */

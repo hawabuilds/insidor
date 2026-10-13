@@ -40,7 +40,7 @@ import type { DiscoveryConfig } from '../config.ts';
 import { errorText, type Logger } from '../log.ts';
 import type { Loop, LoopContext, LoopCounts } from '../loop.ts';
 import { declareSources, type WatchDeps } from '../sources.ts';
-import { MAIN_LANES, discoverPass, type DiscoverDeps, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
+import { MAIN_LANES, discoverPass, memoryWatchClock, type DiscoverDeps, type DiscoverMode, type DiscoveryPlan } from '../work/discover.ts';
 
 /**
  * Two minutes — the earlier build's ingest cadence, so the catch-all search sees a post
@@ -106,6 +106,9 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
   /* When the slow-burn lane last ran, in this process. Null after a start, so it runs on
      the first pass: a restart costs one extra slow search, never a missed one. */
   let slowRanAt: number | null = null;
+  /* When each source with no catch-all was last asked, in this process — the same trade:
+     a restart asks it once more at once, never misses it. See `watchEveryMs`. */
+  const watch = memoryWatchClock();
 
   return {
     stage: 'discover',
@@ -152,6 +155,7 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
         floors: deps.floors,
         dailyCapUsd: deps.dailyCapUsd,
         lanes: slowDue ? [...MAIN_LANES, 'slow'] : MAIN_LANES,
+        watch,
       });
 
       /* ★ THE COUNTS ARE PRINTED ON EVERY PASS INCLUDING THE HEALTHY ONES, and always
@@ -173,6 +177,7 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
         paused: result.paused,
         planned: result.planned,
         deferred: result.deferred,
+        resting: result.resting,
         itemsSeen: result.itemsSeen,
         itemsStored: result.itemsStored,
         estimatedUsd: Number(result.estimatedUsd.toFixed(USD_PLACES)),
