@@ -19,6 +19,8 @@ export const FEED_REJECTION_REASONS = [
   'under_reach_bar',
   'reach_unread',
   'too_few_passing_posts',
+  /* The owner tapped "Not a meme" (0054): the owner's no, kept apart from the judge's. */
+  'owner_not_meme',
 ] as const;
 export type FeedRejectionReason = (typeof FEED_REJECTION_REASONS)[number];
 

@@ -14,6 +14,7 @@
  *   POST   /comments/:id/like          DELETE the same to unlike
  *   POST   /comments/:id/report { reason }    POST /comments/:id/hide (for me only)
  *   GET    /leaderboard                this season's standings
+ *   GET    /me/owner, /owner/…         the owner's calls on posts, coin matches and names (owner.ts)
  *
  * ★ ONLY A HOLDER CAN LIKE, CHECKED ON THE CHAIN AT THE TIME OF THE LIKE (Trador's rule). The
  * voter's wallets come from their signed sign-in token, never from the request; a chain that
@@ -30,11 +31,12 @@
  * whether it is pushed.
  */
 
-import type { SocialPolicy } from '@insidor/contracts/policy.ts';
+import type { OwnerPolicy, SocialPolicy } from '@insidor/contracts/policy.ts';
 import type { IdentityCheck, Person } from '@insidor/contracts/ports/people.ts';
 import { boughtEarly, earnsRep, nextRank, rankFor, rankedUp, seasonOf, standings, votePoints, type RankId, type Standing } from '@insidor/core';
 
 import { json, type Reply, type Request } from './http.ts';
+import { ownerRoute } from './owner.ts';
 import { blockedWord, cleanBody, parseSubject, proofLinkOf, type Subject } from './rules.ts';
 
 export interface Db {
@@ -58,6 +60,8 @@ export interface SocialDeps {
   /** Null: no chain configured, so nobody can like. */
   readonly chain: Chain | null;
   readonly policy: SocialPolicy;
+  /** Who the owner is (policy `owner`). Absent: nobody is, and every /owner route refuses. */
+  readonly owner?: OwnerPolicy;
   readonly now: () => number;
   readonly pace: (client: string, now: number) => boolean;
 }
@@ -280,6 +284,9 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
   if (m === 'GET' && head === 'health') return json(200, { ok: true });
 
   const me = await signedIn(req, deps);
+
+  const owned = await ownerRoute({ method: m, seg, query: url.searchParams, body: req.body }, me, deps);
+  if (owned !== null) return owned;
 
   if (head === 'me' && seg.length === 1) {
     if (me === null) return SIGN_IN;

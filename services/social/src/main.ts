@@ -70,7 +70,7 @@ const chain: Chain | null = (() => {
   };
 })();
 
-const deps = { db, identity: privyIdentity({ appId: cfg.appId }), chain, policy: P, now: Date.now, pace: pacer(P.perClient, P.windowMs) };
+const deps = { db, identity: privyIdentity({ appId: cfg.appId }), chain, policy: P, owner: DEFAULT_POLICY.owner, now: Date.now, pace: pacer(P.perClient, P.windowMs) };
 
 serve(cfg.allowedOrigins, async (req) => {
   try {
