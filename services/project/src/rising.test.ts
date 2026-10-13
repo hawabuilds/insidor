@@ -6,7 +6,10 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { postCoins, projectRisingPost, withoutTrailingShortLinks } from './rising.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { clearsReachBar } from '@insidor/core';
+
+import { barReadings, postCoins, projectRisingPost, withoutTrailingShortLinks } from './rising.ts';
 import type { WireCoin, WireCoinLink } from './wire.ts';
 
 const ROW = {
@@ -191,4 +194,24 @@ test("★ the owner's coin wins over the story's link and the evidence, and says
   /* Without the owner's mark, a matched coin still yields to the story. */
   const plain = postCoins({ kind: 'one', coin: COIN }, { ...lookup, match: { kind: 'matched', coin: owned, evidence } });
   assert.equal(plain.fromStory, true);
+});
+
+test("the views bars: measured readings only, or every readable count with rising.feedBarCountsEveryReading", () => {
+  const POSTED = 1_800_000_000_000;
+  const MIN = 60_000;
+  const readings = [
+    /* The first reading has no earlier one to take a rate from: censored, though the count was read. */
+    { atMs: POSTED + 6 * MIN, fidelity: 'quantized' as const, rate: { kind: 'censored' as const, reason: 'no_prior' as const, lastLevel: null }, count: 12_425 },
+    { atMs: POSTED + 7 * MIN, fidelity: 'quantized' as const, rate: { kind: 'measured' as const, perMin: 691, overMs: 60_000, level: 13_116 }, count: 13_116 },
+    { atMs: POSTED + 8 * MIN, fidelity: 'absent' as const, rate: { kind: 'censored' as const, reason: 'no_prior' as const, lastLevel: null }, count: null },
+  ];
+  const on = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, feedBarCountsEveryReading: true } };
+  assert.deepEqual(barReadings(readings).map((r) => r.reach), [null, 13_116, null]);
+  assert.deepEqual(barReadings(readings, on).map((r) => r.reach), [12_425, 13_116, null]);
+  /* 12,425 at six minutes is 2,071 a minute: the scorer's fast path, which the measured readings never show. */
+  assert.equal(clearsReachBar('fyp', barReadings(readings), POSTED, DEFAULT_POLICY), false);
+  assert.equal(clearsReachBar('fyp', barReadings(readings, on), POSTED, on), true);
+  /* A reading loaded without its count keeps its measured level either way. */
+  const { count: _drop, ...noCount } = readings[1]!;
+  assert.deepEqual(barReadings([noCount], on).map((r) => r.reach), [13_116]);
 });

@@ -1436,6 +1436,18 @@ export interface RisingPolicy {
    */
   readonly fypMaxAgeOn: boolean;
   /**
+   * Whether the projector's views bars read every reading the judge's own bar reads. The scorer
+   * (runner score-posts) counts any readable reading; the projector counted only readings with a
+   * measured rate, so a post's FIRST reading (no earlier one to take a rate from) and any reading
+   * that moved less than a quantization step were unread to it. A post the judge was paid to judge
+   * on its first reading then waited for a second one, and a post that cleared a growth path only
+   * on that first reading could not clear it at all. Measured on the 194 For You posts first shown
+   * 15:00–24:00 UTC on 2026-10-13: 89 waited over five minutes for this, 16 minutes on average.
+   * Only the bars: the views line on the card still shows measured readings only. Off keeps
+   * today's behaviour until the owner approves.
+   */
+  readonly feedBarCountsEveryReading: boolean;
+  /**
    * ★ WHICH UNJUDGED POSTS GET PAID RE-READS. The judge only sees a post once its reach clears a
    * For You bar, and only a re-read can show that it has. A catch-all post nobody has judged yet
    * is re-read inside `fypFastWindowMs` of being posted while its reach is averaging at least
@@ -3032,6 +3044,7 @@ const POLICY_V1: Policy = {
     fypGrowthMinSpanMs: 1_200_000, // twenty minutes between the two readings compared
     fypStillGrowingPerMinute: 1_000, // half the early-growth bar
     fypMaxAgeOn: false,
+    feedBarCountsEveryReading: false,
     watchMinReachPerMinute: 500,
     shortVideoReachScale: 12.5,
     shortVideoEarlyReach: 150_000,

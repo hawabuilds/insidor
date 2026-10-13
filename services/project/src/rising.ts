@@ -442,6 +442,17 @@ export function cryptoSignalFor(row: Pick<RisingRow, 'body'>, read: CryptoRead |
 }
 
 /**
+ * The readings a feed's views bars hold a post to. Measured counts only, as the card's views line
+ * shows them; with `rising.feedBarCountsEveryReading`, every readable count, as the scorer reads
+ * them — a first reading and a flat one included. A reading loaded without its count keeps its
+ * measured level.
+ */
+export function barReadings(readings: readonly ReachReading[], policy = DEFAULT_POLICY): ReachLevel[] {
+  const measured = (x: ReachReading): number | null => (x.rate.kind === 'measured' ? x.rate.level : null);
+  return readings.map((x) => ({ atMs: x.atMs, reach: policy.rising.feedBarCountsEveryReading && x.count !== undefined ? x.count : measured(x) }));
+}
+
+/**
  * Whether one loaded post passes, and by which route: core `passesWithSignal` (the judge, the judge
  * with other accounts' crypto signal, or the signal alone on a kind not held; a shill never), with
  * the owner's call over it. A row with no answer is here only because the owner called it a meme.
@@ -549,6 +560,10 @@ export async function buildRising(
     /* Measured counts only: a censored reading's last level is an older number, and read at a
        later time it would overstate how fast the post grew. */
     const views: ReachLevel[] = readings.map((x) => ({ atMs: x.atMs, reach: x.rate.kind === 'measured' ? x.rate.level : null }));
+    /* ★ The bars may read what the scorer read (`rising.feedBarCountsEveryReading`): every readable
+       count, the first reading and a flat one included, so a post judged on a reading can show on
+       it. The card's views line above stays measured-only. */
+    const barViews = barReadings(readings, policy);
     const postedAt = toMs(row.posted_at);
     const lookup = lookups.get(row.item_id) ?? null;
     /* A short video's views run an order of magnitude above a text post's: its own bars (Policy.rising.shortVideoReachScale). */
@@ -572,12 +587,12 @@ export async function buildRising(
       }),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
-      fyp: !underBar && clearsReachBar('fyp', views, postedAt, policy, scale),
+      fyp: !underBar && clearsReachBar('fyp', barViews, postedAt, policy, scale),
       /* Six hours, unless still climbing fast (fyp-freshness.ts), with `rising.fypMaxAgeOn`. For
          You only: Popular keeps old posts. Ageing out is not a rejection, so it records no reason. */
       fresh: !policy.rising.fypMaxAgeOn || freshForYou(views, postedAt ?? toMs(row.first_seen_at) ?? 0, nowMs, policy, scale),
-      unread: views.every((v) => v.reach === null),
-      popular: clearsReachBar('popular', views, postedAt, policy, scale),
+      unread: barViews.every((v) => v.reach === null),
+      popular: clearsReachBar('popular', barViews, postedAt, policy, scale),
     };
   });
 

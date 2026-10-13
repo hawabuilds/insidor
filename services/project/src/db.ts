@@ -224,6 +224,7 @@ interface ObservationRow {
   rate_over_ms: number | null;
   rate_level: number | null;
   rate_last_level: number | null;
+  value: number | string | null;
 }
 
 /**
@@ -249,7 +250,7 @@ export async function loadReach(
 
   const rows = await db.query<ObservationRow>(
     `select item_id, captured_at, fidelity_kind,
-            rate_per_min, censored, rate_over_ms, rate_level, rate_last_level
+            rate_per_min, censored, rate_over_ms, rate_level, rate_last_level, value
        from public.observation
       where item_id = any($1::text[])
         and kind = 'reach'
@@ -264,6 +265,7 @@ export async function loadReach(
       atMs: toMillis(row.captured_at),
       fidelity: row.fidelity_kind,
       rate: toRate(row),
+      count: row.fidelity_kind === 'absent' || row.value === null ? null : Number(row.value),
     });
     byItem.set(row.item_id, series);
   }
