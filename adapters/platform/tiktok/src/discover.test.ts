@@ -135,17 +135,17 @@ test('a hashtag and an account go into different keys, because the actor reads t
   });
 });
 
-test('★ a keyword is a video search with no sort and no date filter', () => {
+test('★ a keyword is a video search, most liked first over the past day', () => {
   const input = toActorInput(query({ mode: 'keyword', term: ' memecoin ' }));
   assert.deepEqual(input, {
     searchQueries: ['memecoin'],
     searchSection: '/video',
     resultsPerPage: 8,
+    videoSearchSorting: 'MOST_LIKED',
+    videoSearchDateFilter: 'PAST_24_HOURS',
   });
-  // The newest-first sort goes through a route that returned an empty SUCCEEDED run live;
-  // the date filter is a cutoff with every flaw the header lists.
-  assert.equal('videoSearchSorting' in input, false);
-  assert.equal('videoSearchDateFilter' in input, false);
+  // Never the newest-first sort: its route returned an empty SUCCEEDED run live.
+  assert.notEqual(input.videoSearchSorting, 'LATEST');
   // And the cutoff is refused on this mode exactly as on the others.
   assert.throws(() => toActorInput(query({ mode: 'keyword', untilMs: 1 })), NotImplemented);
 });
@@ -205,6 +205,7 @@ test('★ a run is quoted at its full bill: the start fee plus every post it may
   // The flat two cents that was here first was about a seventh of a full observe batch.
   const discover = PRICES['apify:discover']?.usdPerUnit ?? 0;
   const observe = PRICES['apify:observe']?.usdPerUnit ?? 0;
-  assert.ok(Math.abs(discover - (0.001 + DISCOVER_RESULTS_CAP * 0.003)) < 1e-9, `discover quoted at ${discover}`);
+  // The two charged search filters add half a cent per ten posts.
+  assert.ok(Math.abs(discover - (0.001 + DISCOVER_RESULTS_CAP * 0.0035)) < 1e-9, `discover quoted at ${discover}`);
   assert.ok(Math.abs(observe - (0.001 + (CAPABILITIES.observeBatchSize ?? 1) * 0.003)) < 1e-9, `observe quoted at ${observe}`);
 });

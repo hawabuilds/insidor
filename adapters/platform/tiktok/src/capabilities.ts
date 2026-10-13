@@ -91,12 +91,12 @@ export const OBSERVE = 'observe';
  * never asks for more, whatever `query.limit` says. Raising it raises the quoted price with
  * it, so a bigger run can never be cheaper on paper than it is on the invoice.
  *
- * ★ 10 SINCE 2026-10-13, EQUAL TO `policy.feed.hashtagResults` — the posts the runner asks for
+ * ★ 20 SINCE 2026-10-13, EQUAL TO `policy.feed.hashtagResults` — the posts the runner asks for
  * per hashtag ask. Above it, every run would be quoted (and recorded, and spaced by the runner's
  * `watchEveryMs`) at a bill twice what is asked; below it, the policy's ask would be silently
  * cut short. The test beside discover.ts holds the two equal: raise one, raise both.
  */
-export const DISCOVER_RESULTS_CAP = 10;
+export const DISCOVER_RESULTS_CAP = 20;
 
 /**
  * The scraper's per-event charges on our plan tier (BRONZE), in dollars. Vendor prices, not
@@ -105,6 +105,9 @@ export const DISCOVER_RESULTS_CAP = 10;
  */
 const RUN_START_USD = 0.001;
 const PER_POST_USD = 0.003;
+/* The two charged search filters discovery sends (most liked, past day), per post: measured
+   2026-10-13 as $0.071 for a run of 20 against $0.061 unfiltered. */
+const SEARCH_FILTERS_PER_POST_USD = 0.0005;
 
 const price = (endpoint: string, usdPerUnit: number): Price => ({
   vendor: VENDOR,
@@ -124,6 +127,6 @@ const price = (endpoint: string, usdPerUnit: number): Price => ({
  * bill, which made the supplier line a cap on paper only.
  */
 export const PRICES: PriceBook = {
-  [`${VENDOR}:${DISCOVER}`]: price(DISCOVER, RUN_START_USD + DISCOVER_RESULTS_CAP * PER_POST_USD),
+  [`${VENDOR}:${DISCOVER}`]: price(DISCOVER, RUN_START_USD + DISCOVER_RESULTS_CAP * (PER_POST_USD + SEARCH_FILTERS_PER_POST_USD)),
   [`${VENDOR}:${OBSERVE}`]: price(OBSERVE, RUN_START_USD + (CAPABILITIES.observeBatchSize ?? 1) * PER_POST_USD),
 };

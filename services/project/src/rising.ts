@@ -69,6 +69,9 @@ import { clearsReachBar, postScoreReason, type ReachLevel } from '@insidor/core'
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.ts';
+
+/** The source whose posts are held to the short-video bars. */
+const SHORT_VIDEO_SOURCE = 'tiktok';
 import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from './post-match.ts';
 import { projectCoin } from './project.ts';
 import { withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
@@ -376,13 +379,15 @@ export async function buildRising(
     const views: ReachLevel[] = readings.map((x) => ({ atMs: x.atMs, reach: x.rate.kind === 'measured' ? x.rate.level : null }));
     const postedAt = toMs(row.posted_at);
     const lookup = lookups.get(row.item_id) ?? null;
+    /* A short video's views run an order of magnitude above a text post's: its own bars (Policy.rising.shortVideoReachScale). */
+    const scale = row.source === SHORT_VIDEO_SOURCE ? policy.rising.shortVideoReachScale : 1;
     return {
       post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? []),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
-      fyp: clearsReachBar('fyp', views, postedAt, policy),
+      fyp: clearsReachBar('fyp', views, postedAt, policy, scale),
       unread: views.every((v) => v.reach === null),
-      popular: clearsReachBar('popular', views, postedAt, policy),
+      popular: clearsReachBar('popular', views, postedAt, policy, scale),
     };
   });
 

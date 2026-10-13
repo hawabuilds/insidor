@@ -97,6 +97,9 @@ function subjectFor(item: Item, p: Policy): JudgeSubject {
   };
 }
 
+/** The source held to the short-video bars (Policy.rising.shortVideoReachScale): the projector applies the same. */
+const SHORT_VIDEO_SOURCE = 'tiktok';
+
 /** The post's words without its links: what a quote says of its own. */
 const ownWords = (text: string): string => text.replace(/https?:\/\/\S+/gi, '').trim();
 
@@ -150,7 +153,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   const readings = await deps.items.reachReadings(wide.map((i) => i.itemId), since);
   const backfilled = await deps.items.backfilled(wide.map((i) => i.itemId));
   const queue = wide
-    .filter((item) => backfilled.has(String(item.itemId)) || clearsReachBar('fyp', readings.get(String(item.itemId)) ?? [], item.postedAt, deps.policy))
+    .filter((item) => backfilled.has(String(item.itemId)) || clearsReachBar('fyp', readings.get(String(item.itemId)) ?? [], item.postedAt, deps.policy, String(item.source) === SHORT_VIDEO_SOURCE ? deps.policy.rising.shortVideoReachScale : 1))
     .slice(0, r.postsPerPass);
   const empty = { queued: queue.length, scored: 0, copied: 0, waiting: queue.length, wouldSpendUsd: 0, spentUsd: 0 };
   if (queue.length === 0 || deps.judge === null) return empty;

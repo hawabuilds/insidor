@@ -187,6 +187,15 @@ export interface TrackPolicy {
   readonly maxTrackedHours: number;
   /** Consecutive censored reads before the lifecycle demotes a tier. */
   readonly flatReadsToDemote: number;
+  /**
+   * ★ THE FASTEST A SOURCE THAT BILLS EVERY RE-READ AS A RUN IS RE-READ, in minutes. A text post's
+   * re-read costs $0.00015; a short video's is a scraper run at $0.001 plus $0.003 a post, twenty
+   * times as much, and the four-minute top tier would spend the source's whole line on re-reads by
+   * midday. Its posts arrive up to a day old with their views already large, so its posts are
+   * re-read together, one batch every three hours: a run is quoted at a full batch ($0.151), so
+   * eight runs a day is about $1.20 of the source's $3, the rest for discovery.
+   */
+  readonly paidReadMinMinutes: number;
 
   /*
    * ── the lifecycle bars ──────────────────────────────────────────────
@@ -912,6 +921,12 @@ export interface FeedPolicy {
   /** Posts asked for per hashtag ask: a run bills per post returned, so this is the ask's price. */
   readonly hashtagResults: number;
   /**
+   * The oldest a watch-list post may be and still be judged and shown. The short-video search is
+   * asked for its most-liked videos of the past day; anything older the vendor sends anyway is
+   * stored and never credited to the watch lane (0061), so it never reaches the feed.
+   */
+  readonly watchMaxAgeMs: number;
+  /**
    * Posts asked for per lane per pass: one page. Also the reservation the budget is
    * checked against before the call, since a source picks its own page size.
    */
@@ -1178,6 +1193,14 @@ export interface RisingPolicy {
    * keeps about a quarter of new posts, roughly 110 an hour, a couple of dollars a day of reads.
    */
   readonly watchMinReachPerMinute: number;
+  /**
+   * ★ THE SHORT-VIDEO SOURCE'S BARS: every reach bar above times this, for its posts only. Its
+   * views run an order of magnitude above a text post's: measured 2026-10-13, its posts aged one to
+   * 24 hours had a median of 74k views and a 90th percentile of 1.4M, and 52% were over For You's
+   * 40k — against 2% of text posts under an hour old. At 12.5 a short video needs 500k for For You
+   * (250k in fifteen minutes, or 25k a minute in its first half hour) and about 3.1M for Popular.
+   */
+  readonly shortVideoReachScale: number;
   /**
    * A promoted narrative stays on the board only while at least this many of its posts pass the
    * same per-post rules as For You (scored, memeable, confident, a short name). Below it the board
@@ -1981,7 +2004,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v59',
+  version: 'policy.v60',
 
   admit: {
     maxAgeMin: 240,
@@ -2034,6 +2057,7 @@ const POLICY_V1: Policy = {
     /* 24 hours. A post's views move in its first day; the owner's caps pay for a day. */
     maxTrackedHours: 24,
     flatReadsToDemote: 3,
+    paidReadMinMinutes: 180,
 
     lifecycleMargin: 0.1,
     /* 2 / 4 / 6. The ordering is the cost of being wrong on each edge, and the edges
@@ -2311,7 +2335,10 @@ const POLICY_V1: Policy = {
     mediaShare: 0.25,
     langs: ['en', 'zxx'],
     hashtags: ['meme', 'memes', 'funny', 'fyp', 'viral', 'cat', 'dog', 'animals', 'pet', 'cute', 'trend', 'crypto', 'memecoin', 'solana'], // vocab-allow: solana  — a hashtag the owner chose to watch, not a chain this code knows
-    hashtagResults: 10,
+    /* 20, sorted by most liked over the past day: a live run on 2026-10-13 returned 20 videos, all
+       under 24 hours old, the top five at 1.5M to 3M views, for $0.071. */
+    hashtagResults: 20,
+    watchMaxAgeMs: 86_400_000, // a day
     pageLimit: 20,
     maxPagesPerLane: 3,
     slow: {
@@ -2502,6 +2529,7 @@ const POLICY_V1: Policy = {
     fypFastWindowMs: 1_800_000, // the first half hour
     popularMinReach: 250_000,
     watchMinReachPerMinute: 500,
+    shortVideoReachScale: 12.5,
     narrativeMinPassingPosts: 2,
     boostMinSimilarity: 0.44,
     boostMaxNoConfidence: 0.3,

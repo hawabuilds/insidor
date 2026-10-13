@@ -392,7 +392,7 @@ export interface DiscoverDeps {
    * may not read or decide. Authors go first so a post's author row carries its handle from
    * the first read, and a story page can cite the post the moment it is grouped.
    */
-  readonly store: (items: readonly Item[], authors: readonly Author[], lane?: FeedLane | null) => Promise<number>;
+  readonly store: (items: readonly Item[], authors: readonly Author[], lane?: FeedLane | 'watch' | null) => Promise<number>;
   readonly plan: DiscoveryPlan;
   readonly policy: Policy;
   /**
@@ -477,6 +477,8 @@ interface SourcePlan {
   readonly lane: FeedLane | null;
   /** An ask on a source with no catch-all, spaced by `watchEveryMs`: its clock is set when asked. */
   readonly spaced: boolean;
+  /** An ask from the owner's watch list: its fresh posts are credited to the 'watch' lane (0061), so they are judged. */
+  readonly watch: boolean;
 }
 
 export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResult> {
@@ -528,7 +530,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
 
     /* ★ THE CATCH-ALL FIRST, ON EVERY SOURCE THAT CAN BE ASKED FOR IT: two lanes, no
        keyword. Then the optional term on top. */
-    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean }[] = [];
+    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean; readonly watch?: boolean }[] = [];
     if (adapter.capabilities.discovery.includes('catchall')) {
       for (const lane of deps.lanes ?? MAIN_LANES) asks.push({ query: feedQueryFor(lane, floors, now, deps.policy), lane });
     }
@@ -563,7 +565,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         const word = term ?? watchTermFor(deps.policy.feed.hashtags, everyMs, now);
         const query = word === null ? null : queryFor(adapter, word, now);
         /* The watch list is asked for `feed.hashtagResults` posts; a configured term keeps its own size. */
-        if (query !== null) asks.push({ query: term === null ? { ...query, limit: deps.policy.feed.hashtagResults } : query, lane: null, spaced: true });
+        if (query !== null) asks.push({ query: term === null ? { ...query, limit: deps.policy.feed.hashtagResults } : query, lane: null, spaced: true, watch: term === null });
       }
     }
 
@@ -584,7 +586,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       continue;
     }
 
-    for (const { query, lane, spaced } of asks) {
+    for (const { query, lane, spaced, watch } of asks) {
       let estimate: CostEstimate;
       try {
         estimate = adapter.estimate({ kind: 'discover', query });
@@ -597,7 +599,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         deps.log.error('source cannot be priced; not asking it', { source, err: errorText(e) });
         continue;
       }
-      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true });
+      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true, watch: watch === true });
     }
   }
 
@@ -671,7 +673,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
 
   for (const plan of plans) {
     if (deps.signal.aborted) break;
-    const { adapter, source, query, estimate, lane, spaced } = plan;
+    const { adapter, source, query, estimate, lane, spaced, watch } = plan;
     const tag = lane === null ? {} : { lane };
     const coverKey = lane === null ? query.term : `feed:${lane}`;
 
@@ -843,7 +845,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     let stored: number | null = null;
     if (items.length > 0) {
       try {
-        stored = await deps.store(items, authors, lane);
+        stored = await deps.store(items, authors, lane ?? (watch ? 'watch' : null));
         itemsStored += stored;
       } catch (e) {
         /* ★ `stored` STAYS NULL RATHER THAN BECOMING ZERO. The write did not complete,
