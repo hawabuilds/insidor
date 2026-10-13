@@ -18,6 +18,7 @@ import { formatUsd } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { platformOf } from '../../shared/platform.ts';
 import { hrefFor } from '../../shared/route.ts';
+import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
@@ -178,6 +179,8 @@ function PostRow({ p, now }: { p: SearchPost; now: number }) {
     the same-name list (features/feed/SameNameCoins.tsx), so both lists draw a coin alike. */
 export function CoinRow({ c, now }: { c: SearchCoin; now: number }) {
   const label = c.ticker ?? c.name ?? c.address.slice(0, 6);
+  /* The shared cap (shared/coin-cap.ts): live when a screen has just read this coin's price. */
+  const cap = useCoinCap(c.address, c.marketCapUsd);
   return (
     <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: c.coinId })}>
       <CoinLogo address={c.address} ticker={label} imageUrl={c.imageUrl} size={44} />
@@ -193,7 +196,7 @@ export function CoinRow({ c, now }: { c: SearchCoin; now: number }) {
         {c.matched !== null ? <span className={styles['matched']}>Matched to this narrative: {c.matched.title}</span> : null}
       </span>
       <span className={styles['cap']}>
-        <Value r={formatUsd(c.marketCapUsd)} />
+        <Value r={formatUsd(cap)} />
       </span>
     </a>
   );

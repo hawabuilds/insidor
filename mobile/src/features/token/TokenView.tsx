@@ -15,14 +15,23 @@
  * place here and is not ported. The market is read now and every MARKET_POLL_MS while open, so
  * the tape and the chart's last candle move live, as Trador's poll does.
  *
- * What breaks if changed carelessly: the market cap and liquidity shown are the coin's own read
- * (`facts`), scaled to the shown price by CoinChart; an absent one is a dash with its reason.
+ * ★ THE MARKET CAP IS THE SHARED ONE (shared/coin-cap.ts): each market read is noted against the
+ * coin's address, and the header and Info tab show `useCoinCap` — price × the launchpad's supply
+ * while a fresh price is held, else the coin's own read cap — the same figure the post sheet,
+ * Choose coin and the For You card show for that coin. Until anything is read, the header holds a
+ * small placeholder where the number goes, never "$0" or an empty space.
+ *
+ * What breaks if changed carelessly: liquidity is the coin's own read when known, else the market
+ * profile's; an absent one is a dash with its reason, and only once the profile has answered.
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { fetchCoinAbout, fetchCoinMarket, type CoinAbout, type CoinMarket, type MarketTimeframe } from '../../shared/api/index.ts';
+import { LIVE_POLL_MS, noteMarket } from '../../shared/coin-cap.ts';
+import type { Measured } from '../../shared/format/measure.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
+import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { useWallet } from '../../shared/wallet.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
@@ -33,7 +42,7 @@ import { defaultTimeframe } from './chart-data.ts';
 import { CoinChart } from './CoinChart.tsx';
 import { InfoPanel, latestPrice } from './InfoPanel.tsx';
 import { SocialRow } from './SocialRow.tsx';
-import type { TokenFacts } from './token-facts.ts';
+import { servedCap, type TokenFacts } from './token-facts.ts';
 import { TradesPanel } from './TradesPanel.tsx';
 import { ViralPost } from './ViralPost.tsx';
 
@@ -48,8 +57,8 @@ const PANELS: readonly { readonly key: Panel; readonly label: string }[] = [
   { key: 'info', label: 'Info' },
 ];
 
-/** How often an open token page reads its market again: Trador's tape cadence. The server keeps trades 12s. */
-export const MARKET_POLL_MS = 12_000;
+/** How often an open token page reads its market again: the shared live cadence, so the cap moves with the price. The server keeps trades 12s. */
+export const MARKET_POLL_MS = LIVE_POLL_MS;
 
 /** "7xKXtg…sAsU": enough of each end to compare by eye, never presented as a label (Trador's shortAddress). */
 export function shortAddress(a: string, lead = 6): string {
@@ -89,12 +98,20 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
     return () => clearInterval(timer);
   }, [reload]);
   const market: CoinMarket | null = loaded.state === 'ready' ? loaded.value : null;
+  /* Every read's price goes to the shared store, so every screen showing this coin agrees. */
+  useEffect(() => {
+    if (market !== null) noteMarket(facts.address, market, Date.now());
+  }, [market, facts.address]);
   /* The links, day numbers, holders, creator and posts: read once when the page opens. */
   const [aboutLoad] = useLoad(`about:${facts.coinId}`, (signal) => fetchCoinAbout(facts.coinId, signal));
   const about: CoinAbout | null = aboutLoad.state === 'ready' ? aboutLoad.value : null;
   const read = market?.kind === 'read' ? market : null;
   const venue = read?.venue ?? facts.venue;
   const progress = read?.curveProgress?.known ? Math.min(100, Math.max(0, read.curveProgress.amount * 100)) : null;
+  const cap = useCoinCap(facts.address, servedCap(facts, about), false, facts.price);
+  /* Nothing read yet, from either source: a placeholder where the number goes. */
+  const capWaiting = !cap.known && (loaded.state === 'loading' || aboutLoad.state === 'loading');
+  const liquidity: Measured | 'loading' = facts.liquidityUsd?.known === true ? facts.liquidityUsd : about !== null ? (about.liquidityUsd.known ? about.liquidityUsd : (facts.liquidityUsd ?? about.liquidityUsd)) : aboutLoad.state === 'loading' ? 'loading' : (facts.liquidityUsd ?? { known: false, pending: 'unreadable' });
 
   const copy = async () => {
     try {
@@ -142,7 +159,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       {venue === 'curve' && progress !== null ? <CurveProgress pct={progress} /> : null}
 
-      <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={facts.price} change24h={facts.change24h} cap={facts.marketCapUsd} liquidity={facts.liquidityUsd ?? about?.liquidityUsd ?? null} />
+      <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} />
 
       {about !== null ? <ViralPost posts={about.posts} /> : null}
 

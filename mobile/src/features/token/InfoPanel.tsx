@@ -14,8 +14,8 @@
  * never "$0"; "Vol / liq" is shown only when both of its numbers are known.
  *
  * What breaks if changed carelessly: the price and market cap here must be the ones the header
- * shows. The header scales the cap to the latest price; this tab shows the coin's own read cap
- * and the latest trade's price, which are the same figures at the latest price.
+ * shows. Both read the cap through the shared `useCoinCap` (shared/coin-cap.ts) from the same
+ * served figure, and this tab shows the latest trade's price, the one that cap is at.
  */
 
 import type { ReactNode } from 'react';
@@ -27,11 +27,12 @@ import type { Measured } from '../../shared/format/measure.ts';
 import { formatChangePercent, formatCount, formatPrice, formatUsd } from '../../shared/format/number.ts';
 import { pendingRendered, value } from '../../shared/format/rendered.ts';
 import { hrefFor } from '../../shared/route.ts';
+import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { ChevronIcon, CopyIcon, ExternalIcon } from '../../shared/ui/icons.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
-import type { TokenFacts } from './token-facts.ts';
+import { servedCap, type TokenFacts } from './token-facts.ts';
 import styles from './info.module.css';
 
 /** The latest price the market read gives: the newest trade's, else the last candle's close. */
@@ -73,7 +74,8 @@ export function InfoPanel({ facts, market, about, tradable, now, insidor = null 
   const unread: Measured = { known: false, pending: about === null ? 'not_read_yet' : 'not_reported' };
   const liquidity = facts.liquidityUsd?.known === true ? facts.liquidityUsd : (about?.liquidityUsd ?? unread);
   const volume = about?.volume24hUsd ?? unread;
-  const cap = facts.marketCapUsd.known ? facts.marketCapUsd : (about?.marketCapUsd ?? unread);
+  const served = servedCap(facts, about);
+  const cap = useCoinCap(facts.address, served.known || about !== null ? served : unread, false, facts.price);
   const price = latestPrice(market) ?? facts.price;
   const change = formatChangePercent(facts.change24h);
   const turnover = liquidity.known && volume.known && liquidity.amount > 0 ? value(`${(volume.amount / liquidity.amount).toFixed(2)}x`) : null;

@@ -243,6 +243,26 @@
   font-weight: 700;
 }
 
+/* While the cap or liquidity is first read: a quiet bar where the number will be, the number's height. */
+.capWait,
+.liqWait {
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 4px;
+  background: var(--hover);
+}
+
+.capWait {
+  width: 44px;
+  height: 13px;
+}
+
+.liqWait {
+  width: 28px;
+  height: 9px;
+  background: var(--overlay-wash);
+}
+
 .chart {
   position: relative;
   display: block;

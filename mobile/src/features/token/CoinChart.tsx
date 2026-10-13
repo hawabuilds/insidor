@@ -10,7 +10,8 @@
  * and 24-hour change show, labelled 24H.
  *
  * What breaks if changed carelessly: the market cap is scaled from the LATEST price, the one the
- * cap was read at. Scaling from the first candle's would show a cap the coin never had.
+ * cap was read at. Scaling from the first candle's would show a cap the coin never had. And
+ * 'loading' is a placeholder the size of the number, in its place: never "$0", never empty.
  */
 
 import { useMemo, useState } from 'react';
@@ -35,9 +36,10 @@ export function CoinChart({ market, state, tf, onTf, price, change24h, cap, liqu
   /** The coin's own price and 24-hour change, shown when there are no candles to read. */
   price: Measured;
   change24h: Measured;
-  cap: Measured;
-  /** Null where the page does not show liquidity. */
-  liquidity: Measured | null;
+  /** 'loading' until anything has been read: a placeholder holds the number's place. */
+  cap: Measured | 'loading';
+  /** Null where the page does not show liquidity; 'loading' while it is being read. */
+  liquidity: Measured | 'loading' | null;
 }) {
   const [style, setStyle] = useState<ChartStyle>(readChartStyle);
   const [scrubbed, setScrubbed] = useState<ChartPoint | null>(null);
@@ -58,7 +60,7 @@ export function CoinChart({ market, state, tf, onTf, price, change24h, cap, liqu
   const direction = move !== null ? (move > 0 ? 'up' : move < 0 ? 'down' : 'flat') : fallback.direction;
   const moveText: Rendered = move !== null ? value(movePercent(move)) : fallback.text;
   const label = scrubbed !== null ? clock(scrubbed.t) : move !== null ? tf : '24H';
-  const shownCap: Measured = cap.known && shown !== null && latest !== null && latest > 0 ? { known: true, amount: cap.amount * (shown / latest) } : cap;
+  const shownCap: Measured | 'loading' = cap !== 'loading' && cap.known && shown !== null && latest !== null && latest > 0 ? { known: true, amount: cap.amount * (shown / latest) } : cap;
 
   const pick = (next: ChartStyle) => {
     setStyle(next);
@@ -77,8 +79,8 @@ export function CoinChart({ market, state, tf, onTf, price, change24h, cap, liqu
         </div>
         <div className={styles['cap']}>
           <span className={styles['kicker']}>Market cap</span>
-          <Value r={formatUsd(shownCap)} className={styles['capN']} />
-          {liquidity !== null ? <span className={styles['liq']}>Liq <Value r={formatUsd(liquidity)} /></span> : null}
+          {shownCap === 'loading' ? <span className={styles['capN']} aria-label="reading"><span className={styles['capWait']} /></span> : <Value r={formatUsd(shownCap)} className={styles['capN']} />}
+          {liquidity !== null ? <span className={styles['liq']}>Liq {liquidity === 'loading' ? <span className={styles['liqWait']} aria-label="reading" /> : <Value r={formatUsd(liquidity)} />}</span> : null}
         </div>
       </div>
 
