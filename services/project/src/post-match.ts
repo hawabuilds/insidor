@@ -53,23 +53,31 @@ export function matchBars(p: Policy = DEFAULT_POLICY): MatchBars {
 /**
  * Brand names a coin must not be named: a coin under someone's trademark invites the takedown
  * and the lawsuit, and the judge sometimes names the product in the picture rather than the
- * subject. Lower-cased, matched as a whole name or a word of it. Not a complete list — the
- * judge's prompt carries the rule; this catches the ones it lets through most often.
+ * subject. Lower-cased, written as one word; matched as a whole name, a word of it, or two or
+ * three neighbouring words run together ("Six Flags Goliath" is SIXFLAGS). Not a complete list —
+ * the judge's prompt carries the rule; this catches the ones it lets through most often. Only
+ * words that are a brand and nothing else: "apple", "subway" or "target" would drop real
+ * subjects.
  */
 const BRANDS: ReadonlySet<string> = new Set([
-  'iphone', 'google', 'microsoft', 'amazon', 'netflix', 'disney', 'pixar', 'marvel', 'nike', 'adidas', 'gucci',
-  'coca', 'cola', 'cocacola', 'pepsi', 'mcdonalds', 'starbucks', 'tesla', 'spacex', 'samsung', 'sony', 'nintendo',
-  'pokemon', 'pikachu', 'lego', 'barbie', 'ferrari', 'lamborghini', 'porsche', 'bmw', 'mercedes', 'toyota', 'walmart',
-  'chatgpt', 'openai', 'facebook', 'instagram', 'tiktok', 'youtube', 'twitter', 'snapchat', 'spotify', 'uber',
-  'redbull', 'doritos', 'oreo', 'nutella', 'shrek', 'minecraft', 'fortnite', 'roblox',
+  'iphone', 'ipad', 'macbook', 'google', 'microsoft', 'amazon', 'netflix', 'disney', 'disneyland', 'pixar', 'marvel',
+  'nike', 'adidas', 'puma', 'gucci', 'prada', 'chanel', 'louisvuitton', 'hermes', 'rolex', 'balenciaga', 'crocs',
+  'coca', 'cola', 'cocacola', 'pepsi', 'fanta', 'gatorade', 'mcdonalds', 'mcdonald', 'starbucks', 'kfc', 'burgerking',
+  'wendys', 'tacobell', 'popeyes', 'chipotle', 'dominos', 'dunkin', 'costco', 'ikea', 'walmart', 'tesla', 'spacex',
+  'samsung', 'sony', 'playstation', 'xbox', 'nintendo', 'pokemon', 'pikachu', 'lego', 'barbie', 'hotwheels', 'hellokitty',
+  'sanrio', 'ferrari', 'lamborghini', 'porsche', 'bmw', 'mercedes', 'toyota', 'chatgpt', 'openai', 'nvidia', 'facebook',
+  'instagram', 'whatsapp', 'tiktok', 'youtube', 'twitter', 'snapchat', 'discord', 'twitch', 'reddit', 'spotify', 'uber',
+  'airbnb', 'doordash', 'fedex', 'redbull', 'doritos', 'cheetos', 'skittles', 'oreo', 'nutella', 'shrek', 'minecraft',
+  'fortnite', 'roblox', 'sixflags', 'universalstudios', 'seaworld', 'legoland', 'wwe', 'nfl', 'nba', 'fifa', 'gopro',
 ]);
 
 const words = (s: string): string[] => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w !== '');
 
-/** A name that is, or contains as a word, a brand on the list. */
+/** A name that is, or contains as a word or as neighbouring words run together, a brand on the list. */
 export function isBrand(name: string): boolean {
   const ws = words(name);
-  return ws.some((w) => BRANDS.has(w)) || BRANDS.has(ws.join(''));
+  const runs = ws.flatMap((w, i) => [w, w + (ws[i + 1] ?? ''), w + (ws[i + 1] ?? '') + (ws[i + 2] ?? '')]);
+  return runs.some((r) => BRANDS.has(r)) || BRANDS.has(ws.join(''));
 }
 
 /** The Create sheet's ideas for one post, from the judge's names, brands dropped. */
