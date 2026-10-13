@@ -1,6 +1,11 @@
 /**
  * THE OWNER'S EARLY WARNING: a log line and an alert when a supplier's spend today reaches a
- * share of its daily line (Policy.budget.warnAt, 80% and 95%), once per supplier, level and UTC day.
+ * share of its daily line (Policy.budget.warnAt, 80% and 95%), once per supplier, level and UTC day,
+ * with how much to raise the line to carry the day at its current rate plus the buffer.
+ *
+ * ★ A WARNING, NOT A STOP. Lines no longer pause anything (Policy.budget.vendorLinesStop): the
+ * owner's rule is that nothing is skipped, so the warning is what keeps a line honest, and the
+ * day's total is the only stop.
  *
  * ★ READ FROM THE METER, NOT THE LEDGER. The meter is what refuses calls, and it already holds
  * today's spend from every process (refreshed each minute from the ledger). Warning from the same
@@ -38,10 +43,13 @@ export interface OwnerQueue {
 }
 
 export interface SupplierWarningDeps {
-  readonly roles: readonly SupplierRole[];
+  /** The lines watched: a supplier's role (prefixed with its book outside the live one) and the vendor it bills as. */
+  readonly roles: readonly { readonly role: SupplierRole['role'] | string; readonly vendor: string }[];
   readonly line: (vendor: string) => Pick<BudgetLine, 'capUsd' | 'spentUsd'>;
   /** Policy.budget.warnAt: shares of a line, ascending or not. */
   readonly warnAt: readonly number[];
+  /** Policy.budget.lineBuffer: what a line should hold over the day's projected spend, so the raise suggested is real cost plus this. */
+  readonly buffer: number;
   /** OWNER_WALLET; empty: logged only. */
   readonly ownerWallets: readonly string[];
   readonly owner: OwnerQueue;
@@ -56,6 +64,24 @@ export function highestReached(line: Pick<BudgetLine, 'capUsd' | 'spentUsd'>, wa
   let hit: number | null = null;
   for (const level of warnAt) if (share >= level && (hit === null || level > hit)) hit = level;
   return hit;
+}
+
+const DAY_MS = 86_400_000;
+/* A projection from the first minutes of a day is noise: the day is never taken as less than an hour gone. */
+const MIN_DAY_SHARE = 1 / 24;
+/* Raises are suggested in quarter dollars, the steps the lines are set in. */
+const RAISE_STEP_USD = 0.25;
+
+/**
+ * ★ HOW MUCH TO RAISE A LINE, so a warning is something the owner can act on. The day's spend
+ * projected from the share of the UTC day gone, times the buffer, less the line, rounded up to a
+ * quarter; zero when the line already covers that.
+ */
+export function raiseFor(line: Pick<BudgetLine, 'capUsd' | 'spentUsd'>, nowMs: number, buffer: number): { readonly projectedUsd: number; readonly raiseByUsd: number } {
+  const share = Math.max((nowMs % DAY_MS) / DAY_MS, MIN_DAY_SHARE);
+  const projectedUsd = line.spentUsd / share;
+  const short = projectedUsd * buffer - line.capUsd;
+  return { projectedUsd, raiseByUsd: short > 0 ? Math.ceil(short / RAISE_STEP_USD) * RAISE_STEP_USD : 0 };
 }
 
 const utcDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
@@ -81,14 +107,17 @@ export function supplierWarnings(deps: SupplierWarningDeps): { readonly check: (
         const level = highestReached(line, deps.warnAt);
         if (level === null) continue;
         const key = `${today}|${role}|${percent(level)}`;
+        const raise = raiseFor(line, deps.now(), deps.buffer);
         if (!logged.has(key)) {
           /* The levels below are spent with this one, so a later check does not log them. */
           for (const lower of deps.warnAt) if (lower <= level) logged.add(`${today}|${role}|${percent(lower)}`);
-          deps.log.warn(`supplier line at ${percent(level)}%: ${role} ${money(line.spentUsd)} of ${money(line.capUsd)}`, {
+          deps.log.warn(`supplier line at ${percent(level)}%: ${role} ${money(line.spentUsd)} of ${money(line.capUsd)}${raise.raiseByUsd > 0 ? `; raise it by ${money(raise.raiseByUsd)}` : ''}`, {
             role,
             share: level,
             spentUsd: line.spentUsd,
             capUsd: line.capUsd,
+            projectedUsd: raise.projectedUsd,
+            raiseByUsd: raise.raiseByUsd,
             alert: deps.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : 'queued for the owner, once their profile exists',
           });
         }
@@ -100,7 +129,7 @@ export function supplierWarnings(deps: SupplierWarningDeps): { readonly check: (
               kind: 'supplier_warning',
               subject: `supplier|${role}|${today}`,
               rung: percent(level),
-              facts: { role, share: level, spentUsd: line.spentUsd, capUsd: line.capUsd },
+              facts: { role, share: level, spentUsd: line.spentUsd, capUsd: line.capUsd, projectedUsd: raise.projectedUsd, raiseByUsd: raise.raiseByUsd },
               href: '/#/alerts',
             });
           }

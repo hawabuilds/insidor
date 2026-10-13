@@ -157,3 +157,12 @@ test('spend resets when the day rolls over', () => {
   meter.rollover(t);
   assert.equal(meter.spentUsd(), 0);
 });
+
+test('★ a warn-only vendor line never stops a call; only the total does', () => {
+  const meter = inMemoryMeter({ dailyCapUsd: 10, perVendorCapUsd: { acme: 1 }, softStop: 1, vendorLinesWarnOnly: true, now: () => AT });
+  meter.record({ vendor: 'acme', endpoint: 'search', unit: 'per-item-returned', units: 1, usd: 3, at: AT } as never);
+  assert.equal(meter.mayspend('acme', 1), true, 'over its own line, and still allowed');
+  assert.equal(meter.line('acme').capUsd, 1, 'the line is still reported, to warn against');
+  assert.equal(meter.line('acme').remainingUsd, 7, 'what may be spent is what the total has left');
+  assert.equal(meter.mayspend('acme', 8), false, 'the total still stops it');
+});

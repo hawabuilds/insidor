@@ -1418,6 +1418,18 @@ export interface BudgetPolicy {
   /** Stop spending on a vendor at this share of its line, leaving room to finish. */
   readonly softStopFraction: number;
   /**
+   * ★ WHETHER A SUPPLIER'S LINE STOPS ITS CALLS. False by the owner's rule (2026-10-13): nothing is
+   * ever skipped — not discovery, scoring, pictures, short video or a re-tune — so a line is a
+   * number to warn against at `warnAt`, with how much to raise it, and only a book's daily total
+   * (`dailyUsd`, `jobLines.dailyUsd`, `learningLines.dailyUsd`) stops spending.
+   */
+  readonly vendorLinesStop: boolean;
+  /**
+   * What a line holds over its measured cost: lines are set at real full-day cost times this, and
+   * a warning's suggested raise brings the line to the day's projected spend times this.
+   */
+  readonly lineBuffer: number;
+  /**
    * ★ ONE LINE PER SUPPLIER, BY WHAT IT DOES FOR US — the owner's caps from the earlier
    * build. Named by role because contracts may not name a vendor; the runner maps each role
    * to the adapter that bills under it. A supplier with no line here is bounded by
@@ -1969,7 +1981,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v58',
+  version: 'policy.v59',
 
   admit: {
     maxAgeMin: 240,
@@ -2578,6 +2590,8 @@ const POLICY_V1: Policy = {
     /* 0.97: the lines are brakes now, set above the measured cost; stopping at 90% wasted a tenth
        of each and meant the owner's 95% warning could never fire. */
     softStopFraction: 0.97,
+    vendorLinesStop: false,
+    lineBuffer: 1.25,
     supplierLines: { posts: 10, judge: 7.5, video: 2, actors: 1, embeddings: 1 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
