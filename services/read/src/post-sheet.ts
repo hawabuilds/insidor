@@ -109,14 +109,22 @@ const https = (v: unknown): string | null => {
   return s !== null && s.startsWith('https://') ? s : null;
 };
 
-/** The post's media: its first video with a playable file, else its first picture; null when neither. */
-export function sheetMedia(raw: unknown): { readonly kind: 'video' | 'image'; readonly posterUrl: string; readonly playUrl: string | null; readonly width: number | null; readonly height: number | null; readonly durationMs: number | null } | null {
+/**
+ * The post's media: its first video with a playable file, else its first picture; null when neither.
+ *
+ * ★ A GIF GOES OUT AS A PICTURE WITH A FILE (`kind: 'image'`, a `playUrl`, `loops: true`): a short
+ * silent clip the app plays muted and looping, with no player controls, the way the source shows
+ * it. A stored clip marked `loops`, or one stored before that mark with a file and no length (the
+ * source gives every real video its length), is one. A real video keeps `kind: 'video'`.
+ */
+export function sheetMedia(raw: unknown): { readonly kind: 'video' | 'image'; readonly posterUrl: string; readonly playUrl: string | null; readonly loops: boolean; readonly width: number | null; readonly height: number | null; readonly durationMs: number | null } | null {
   const entries = (Array.isArray(raw) ? raw : []).map(rec);
   const shape = (e: Row, playUrl: string | null) => {
     const posterUrl = https(e['uri']);
     if (posterUrl === null) return null;
-    const video = e['kind'] === 'video' || typeof e['durationMs'] === 'number';
-    return { kind: video ? ('video' as const) : ('image' as const), posterUrl, playUrl, width: num(e['width']), height: num(e['height']), durationMs: num(e['durationMs']) };
+    const loops = playUrl !== null && (e['loops'] === true || num(e['durationMs']) === null);
+    const video = !loops && (e['kind'] === 'video' || typeof e['durationMs'] === 'number');
+    return { kind: video ? ('video' as const) : ('image' as const), posterUrl, playUrl, loops, width: num(e['width']), height: num(e['height']), durationMs: num(e['durationMs']) };
   };
   for (const e of entries) {
     const play = https(e['playUri']);

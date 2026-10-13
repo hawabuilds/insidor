@@ -77,7 +77,10 @@ function media(r: Rec): readonly MediaRef[] {
     const uri = str(m.media_url_https) ?? str(m.media_url);
     if (uri === null) continue;
     const size = rec(rec(m.sizes).large);
-    const video = str(m.type) === 'video' || str(m.type) === 'animated_gif';
+    /* A GIF here is an mp4 with no sound and no length: kept as a video with its file, and
+       marked `loops` so the post sheet plays it like the moving picture it is. */
+    const gif = str(m.type) === 'animated_gif';
+    const video = str(m.type) === 'video' || gif;
     const playUri = video ? playUriOf(m.video_info) : null;
     out.push({
       kind: video ? 'video' : 'image',
@@ -86,6 +89,7 @@ function media(r: Rec): readonly MediaRef[] {
       height: num(size.h),
       durationMs: num(rec(m.video_info).duration_millis),
       ...(playUri === null ? {} : { playUri }),
+      ...(gif ? { loops: true } : {}),
     });
   }
   return out;
