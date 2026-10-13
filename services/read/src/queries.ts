@@ -110,12 +110,13 @@ export const LAUNCH_ROWS_SQL =
  * The For You and Popular feeds of single posts (0026): the frame's tick, then its payloads
  * in the committed order. The same two statements as launches, for the same reasons —
  * polled whole, so the array is the order, and `item_id` is not selected so it cannot
- * reach a reply by accident.
+ * reach a reply by accident. The post sheet's facts (`sheet`, a chart's worth of readings per
+ * post) are cut here: the feed draws cards, and only `GET /post/:id/sheet` reads them.
  */
 export const RISING_VIEW_SQL = 'select tick from public.rising_view where feed_id = $1';
 
 export const RISING_ROWS_SQL =
-  'select payload from public.rising_row where feed_id = $1 order by "position" asc';
+  `select payload - 'sheet' as payload from public.rising_row where feed_id = $1 order by "position" asc`;
 
 /**
  * The pairs frame: the tick, and the head the projector committed alongside it.
