@@ -1,14 +1,16 @@
 /*
- * The Create sheet (CreateCoin.tsx, NameSuggestions.tsx), sized after Trador's CreateSheet: a
- * 76px picture beside two 36px fields, one row of chips, one dev-buy row, one cost line and a 52px
- * button. The closed sheet is about 400px tall inside the modal, so it fits a 390×844 phone with
- * room for the keyboard's first rows.
+ * The Create sheet (CreateCoin.tsx, NameSuggestions.tsx), laid out after Trador's CreateSheet: a
+ * 76px picture beside two fields, one row of chips, one dev-buy row, one cost line and a 52px
+ * button. Every field, chip and preset is 44px tall, the owner's least for anything tapped, which
+ * is taller than Trador's 34px; the closed sheet still fits a 390×844 phone.
+ *
+ * The fields sit in the shared sheet's scrolling middle and the Create button in its fixed foot
+ * (shared/ui/Sheet.tsx), so the button can never be pushed off the screen.
  *
  * What breaks if changed carelessly: the main sheet's height. Anything that can grow — the
- * ticker's coin list, More options — has a max-height and scrolls inside itself, because the
- * modal is centred in a fixed scrim and does not scroll; a block that grows unbounded pushes the
- * Create button off the screen with no way to reach it. The why line is amber, not red: red
- * means a price going down (tokens.css rule 1).
+ * ticker's coin list, More options — keeps its max-height and scrolls inside itself, so the closed
+ * sheet still fits without the middle scrolling. The why line is amber, not red: red means a
+ * price going down (tokens.css rule 1).
  */
 
 .notice > div {
@@ -50,6 +52,13 @@
   cursor: pointer;
 }
 
+/* "Change" is a small tag; an invisible edge makes it a 44px touch without making it bigger. */
+.change::before {
+  content: '';
+  position: absolute;
+  inset: -14px -8px;
+}
+
 .file {
   display: none;
 }
@@ -64,7 +73,7 @@
 
 .inputs input {
   width: 100%;
-  height: 36px;
+  height: 44px;
   padding: 0 12px;
   border: 0;
   border-radius: 11px;
@@ -129,11 +138,12 @@
   display: none;
 }
 
+/* Every control on the sheet is at least 44px to the touch (the owner's rule for every sheet). */
 .chip {
   flex: none;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 13px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 22px;
   background: var(--card);
   color: var(--text-2);
   font-size: 12px;
@@ -157,14 +167,14 @@
 .presets {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .preset {
-  min-width: 30px;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 14px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: 22px;
   background: var(--card);
   color: var(--text-2);
   font-size: 12px;
@@ -180,9 +190,9 @@
   display: flex;
   align-items: center;
   width: 92px;
-  height: 28px;
-  padding-right: 8px;
-  border-radius: 14px;
+  height: 44px;
+  padding-right: 10px;
+  border-radius: 22px;
   background: var(--input);
   box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
@@ -193,6 +203,7 @@
 
 .custom input {
   width: 100%;
+  height: 100%;
   min-width: 0;
   padding: 0 0 0 8px;
   border: 0;
@@ -221,7 +232,10 @@
 }
 
 .moreLink {
-  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 0;
   padding: 0;
   border: 0;
   background: none;
@@ -255,6 +269,10 @@
   resize: none;
 }
 
+.more input {
+  min-height: 44px;
+}
+
 .fee {
   display: flex;
   justify-content: space-between;
@@ -274,7 +292,7 @@
 }
 
 .why {
-  margin: 10px 0 0;
+  margin: 0 0 10px;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
@@ -282,7 +300,7 @@
 }
 
 .working {
-  margin: 14px 0 0;
+  margin: 4px 0;
   text-align: center;
   font-size: 13px;
   color: var(--text-2);
@@ -290,7 +308,7 @@
 
 .create {
   width: 100%;
-  margin-top: 14px;
+  min-height: 52px;
 }
 
 /* Trador's Launched: the logo, then View coin and Share on X. */
