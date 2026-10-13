@@ -330,6 +330,41 @@ export class PgStoryRepo implements StoryRepo {
   }
 
   /**
+   * The judge's proposed names for these posts, from EVERY answer it gave about each — the
+   * names GROUP joins posts on (core/src/group/name-span.ts, picture.ts).
+   *
+   * ★ NOT THE NEWEST ANSWER, for two measured reasons. The kind question ("is this an ad, a
+   * sport…") is stored in the same table with the kind as its proposed name, so for a held
+   * post the newest row names it "SPORT" — and every held sports post then shares that name.
+   * Rows whose prompt id starts with `skipPromptLabel` are left out for that reason. And the
+   * judge names the same post differently on different days ("cute pig", "SMILING PIG",
+   * "PIGSMILE"), so any of its names may be the one another post was given.
+   *
+   * Proposed names only, not the alternates: the alternates are where the bare common words
+   * live ("PIG", "SEAL"), and on 36h of posts they turned one seal meme into ten seal posts.
+   */
+  async judgedNames(ids: readonly ItemId[], skipPromptLabel: string): Promise<ReadonlyMap<ItemId, readonly string[]>> {
+    const found = new Map<ItemId, string[]>();
+    if (ids.length === 0) return found;
+    const rows = await this.#db.query<{ item_id: string; proposed_name: string }>(
+      `select distinct item_id, proposed_name
+         from internal.post_judgement
+        where item_id = any($1::text[])
+          and proposed_name is not null
+          and prompt_id not like $2 || '@%'
+        order by item_id, proposed_name`,
+      [[...ids], skipPromptLabel],
+    );
+    for (const row of rows) {
+      const key = reBrand<ItemId>(row.item_id);
+      const list = found.get(key);
+      if (list === undefined) found.set(key, [row.proposed_name]);
+      else list.push(row.proposed_name);
+    }
+    return found;
+  }
+
+  /**
    * Point the loser at the winner. Both ids stay alive: decisions have already been
    * logged against the loser's id, and the decision log must never acquire a
    * dangling subject.

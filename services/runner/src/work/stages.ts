@@ -70,6 +70,7 @@ import {
   nameKey,
   rankByVelocity,
   seedStory,
+  withNameCarriers,
   type PictureInputs,
 } from '@insidor/core';
 import type {
@@ -136,7 +137,24 @@ const GROUP_LOOKBACK_MS = 2 * MS_PER_DAY;
 const OBSERVATION_WINDOW_MS = 7 * MS_PER_DAY;
 /** Open stories an arriving item is scored against. Bounded by recency, per StoryRepo. */
 const GROUP_CANDIDATE_WINDOW_MS = 12 * MS_PER_HOUR;
-const GROUP_CANDIDATE_LIMIT = 200;
+/**
+ * ★ SIZED TO HOLD THE WHOLE WINDOW, NOT A PAGE OF IT. This was 200, newest first — and
+ * since nearly every post starts a story, 200 stories were the last ~20 minutes of posts,
+ * so the 12h window above was 20 minutes in practice and a post an hour after the first one
+ * about the same moment never saw it. About 600 posts an hour arrive; 12h is ~7,000 stories.
+ * Scoring a pair is a pure in-memory step; the window, not this cap, should be the bound.
+ */
+const GROUP_CANDIDATE_LIMIT = 10_000;
+/**
+ * Posts that started a story on their own, re-asked per pass once the judge has named them
+ * (see `rehomes` in groupWork). Most posts are judged minutes after GROUP first saw them.
+ */
+const GROUP_REHOME_PER_PASS = 150;
+/**
+ * The prompt label of the judge's kind question (score-posts.ts `KIND_PROMPT_LABEL`). Its
+ * answers sit in the same table with the kind as the "name", and are never a post's name.
+ */
+const KIND_PROMPT_LABEL = 'post-kind';
 
 /**
  * The re-read budget one TRACK pass may spend.
@@ -764,25 +782,37 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
   /* Posts the backfill fetched for one story. Decided against that story alone, and a post
      that does not join it seeds nothing: a backfill finds a story's start, never a new story. */
   const fromBackfill = new WeakSet<GroupInput>();
+  /* A post re-asked after the judge named it, with the one-post story it started (`rehomes`
+     below). Its block is the live block WITHOUT that story — a post always matches itself. */
+  const rehomeOf = new WeakMap<GroupInput, StoryId>();
+  /* Every array a story may sit in this pass: the live block per origin, and each re-asked
+     post's copy of it. A story that grows or is folded away is updated in all of them. */
+  let views: Story[][] = [];
 
-  /** The judge's names for the posts on this page and for the open stories' posts and selves. */
+  /**
+   * The judge's names for the posts on this page and for the open stories' posts and selves.
+   *
+   * Post names are every PROPOSED name the judge gave the post, never the kind question's
+   * answer ("SPORT" is not a name — see `judgedNames`). A story's own QUALIFY answer adds its
+   * name and alternates, for the picture evidence.
+   */
   async function pictureNames(items: readonly Item[], open: readonly Story[]) {
     const byItem = new Map<string, readonly string[]>();
     const byStory = new Map<string, readonly string[]>();
-    if (grouping === null) return { byItem, byStory };
     const members = await repos.stories.membersForStories(open.map((s) => s.storyId));
+    if (grouping === null) return { byItem, byStory, members };
     const memberIds = [...members.values()].flat().map((m) => m.itemId);
-    const scored = await grouping.postScores.latest([...items.map((i) => i.itemId), ...memberIds]);
+    const named = await repos.stories.judgedNames([...items.map((i) => i.itemId), ...memberIds], KIND_PROMPT_LABEL);
+    for (const id of [...items.map((i) => i.itemId), ...memberIds]) byItem.set(id, named.get(id) ?? []);
     const namesOf = (j: { proposedName: string | null; alternateNames: readonly string[] } | undefined): string[] =>
       j === undefined ? [] : [...(j.proposedName === null ? [] : [j.proposedName]), ...j.alternateNames];
-    for (const item of items) byItem.set(item.itemId, namesOf(scored.get(item.itemId)));
     const storyJudged = await grouping.storyJudgements.latest(open.map((s) => s.storyId));
     for (const story of open) {
       const own = namesOf(storyJudged.get(story.storyId)?.judgement);
-      const fromPosts = (members.get(story.storyId) ?? []).flatMap((m) => namesOf(scored.get(m.itemId)));
+      const fromPosts = (members.get(story.storyId) ?? []).flatMap((m) => named.get(m.itemId) ?? []);
       byStory.set(story.storyId, [...own, ...fromPosts]);
     }
-    return { byItem, byStory };
+    return { byItem, byStory, members };
   }
 
   /** One post's picture evidence against its candidate stories. */
@@ -794,9 +824,12 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
     const similarity: Record<string, Record<string, number>> = {};
     const storyNames: Record<string, readonly string[]> = {};
     const confirmed: Record<string, boolean> = {};
+    /* An explicit "not the same subject" also vetoes the post's name carriers for that story
+       (match.ts `withoutDeniedNames`): two raccoons both called Jimothy are two stories. */
+    const denied: Record<string, boolean> = {};
     const itemNames = names.byItem.get(item.itemId) ?? [];
     for (const story of block) storyNames[story.storyId] = names.byStory.get(story.storyId) ?? [];
-    if (grouping === null || block.length === 0) return { similarity, inputs: { itemNames, storyNames, confirmed } };
+    if (grouping === null || block.length === 0) return { similarity, inputs: { itemNames, storyNames, confirmed, denied } };
 
     const space = policy.group.image.space;
     const best = await grouping.images.bestMatches(item.itemId, block.map((s) => s.storyId), space);
@@ -806,10 +839,12 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
       const borderline = match.similarity >= policy.group.image.borderline && match.similarity < policy.group.image.likely;
       const named = (storyNames[storyId] ?? []).some((n) => mine.has(nameKey(n)));
       if (borderline && named && grouping.pairs !== null) {
-        confirmed[storyId] = (await checkPair(grouping.pairs, match.itemUri, match.memberUri)) === 'yes';
+        const answer = await checkPair(grouping.pairs, match.itemUri, match.memberUri);
+        confirmed[storyId] = answer === 'yes';
+        denied[storyId] = answer === 'no';
       }
     }
-    return { similarity, inputs: { itemNames, storyNames, confirmed } };
+    return { similarity, inputs: { itemNames, storyNames, confirmed, denied } };
   }
 
   /**
@@ -841,6 +876,17 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
     return input;
   }
 
+  /** Put the story's newest row into every array it sits in, or take it out of all of them. */
+  function refreshViews(id: StoryId, next: Story | null, home: Story[] | undefined): void {
+    for (const view of home === undefined || views.includes(home) ? views : [...views, home]) {
+      const index = view.findIndex((s) => s.storyId === id);
+      if (next === null) {
+        if (index !== -1) view.splice(index, 1);
+      } else if (index !== -1) view[index] = next;
+      else if (view === home) view.push(next);
+    }
+  }
+
   /** Read the story back after a membership write, add carriers, promote if it clears the bar. */
   async function settle(id: StoryId, item: Item, at: Millis, block: Story[] | undefined): Promise<void> {
     const fresh = await repos.stories.byId(id);
@@ -848,14 +894,13 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
     const next = afterMembership(fresh, item, policy, at);
     if (next !== fresh) await repos.stories.upsert(next);
     if (block === undefined) return;
-    const index = block.findIndex((s) => s.storyId === id);
-    if (index === -1) block.push(next);
-    else block[index] = next;
+    refreshViews(id, next, block);
   }
 
   return {
     async pull(limit, ctx) {
       const now = ctx.now();
+      views = [];
       const page = await repos.items.admittedSince(
         now - GROUP_LOOKBACK_MS,
         limit * PULL_OVERSCAN,
@@ -864,7 +909,7 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
       /* ★ MEMBERSHIP IS GROUP'S DURABLE FILTER, as the note on REDECIDE_AFTER_MS says it
          had to be. A post that already belongs to a story is not asked again — without this
          it would be scored against its own story every pass and, the day a second story
-         shared one of its carriers, could land in both. */
+         shared one of its carriers, could land in both. The one exception is `rehomes`. */
       const homes = await repos.stories.storiesOfItems(page.map((i) => i.itemId));
 
       /* ★ EVERY POST, NOT ONLY WHAT ADMIT LET IN, and that is deliberate. ADMIT answers
@@ -879,12 +924,11 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
         /* Oldest first, so an original seeds its story before the copies in the same page
            are decided against it. */
         .sort((a, b) => a.firstSeenAt - b.firstSeenAt);
-      if (items.length === 0) return [];
 
-      const open = await repos.stories.openSince(
+      const open = [...(await repos.stories.openSince(
         now - GROUP_CANDIDATE_WINDOW_MS,
         GROUP_CANDIDATE_LIMIT,
-      );
+      ))];
       /* ★ A REAL POST IS ONLY EVER COMPARED WITH REAL STORIES, and a seeded post with seeded
          ones. A fixture story may name invented coins; a real post joining one would carry
          that permission onto something a person actually posted. */
@@ -894,9 +938,69 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
         if (block === undefined) {
           block = open.filter((s) => s.origin === origin);
           blocks.set(origin, block);
+          views.push(block);
         }
         return block;
       };
+
+      /* ★ THE PICTURE AND NAME EVIDENCE, RESOLVED HERE AND HANDED TO CORE AS DATA (core/src/
+         group/picture.ts, name-span.ts). The judge's names for every post in play, read once
+         for the page; for each post, its best image similarity to each candidate story; and,
+         only for a borderline picture whose names already match, the judge's same-subject
+         answer — asked once per pair, inside its daily cap. Without an image vendor, a judge
+         or any names, every map below is empty and GROUP groups on the free tiers alone. */
+      const names = await pictureNames(items, open);
+      const named = (item: Item): Item => withNameCarriers(item, names.byItem.get(item.itemId) ?? [], policy);
+
+      /* ★ REHOMES: A POST THAT STARTED A STORY ALONE, ASKED AGAIN ONCE THE JUDGE HAS NAMED IT.
+         GROUP decides a post within minutes of finding it; the judge names it only once its
+         views clear the bar, usually later. So the second post about a moment found the first
+         one still unnamed, and each started a story alone — measured: 775 of 788 stories had
+         one post. A one-post story whose post now carries a name its story does not is
+         re-asked against every other open story. If it joins one, its own story is folded
+         into that one (`merge`, which keeps both ids); if not, its story takes the name, so
+         the next post saying it finds it — and so it is not asked again.
+
+         A story of two or more is not re-asked — its posts already agreed on something — but
+         it takes its posts' late names here, so a named post re-asked after it can find it.
+         That write happens in the pull because no decision is owed for it: it only adds
+         carriers its own members already hold, and doing it twice changes nothing. */
+      const memberIds = new Set<ItemId>();
+      for (const story of open) {
+        for (const m of names.members.get(story.storyId) ?? []) {
+          if ((names.byItem.get(m.itemId) ?? []).length > 0) memberIds.add(m.itemId);
+        }
+      }
+      const memberItems = await repos.items.byIds([...memberIds]);
+      const rehomes: { story: Story; item: Item }[] = [];
+      /* Oldest story first, so the earliest post takes the name and a later one folds into
+         it — merge.ts's direction, which keeps a story's start where it was. */
+      const oldestFirst = [...open].sort((a, b) => a.earliestPostAt - b.earliestPostAt || (a.storyId < b.storyId ? -1 : a.storyId > b.storyId ? 1 : 0));
+      for (const story of oldestFirst) {
+        if (story.state !== 'candidate' && story.state !== 'promoted') continue;
+        const held = new Set(story.carriers.map((f) => `${f.kind}\u0000${f.key}`));
+        const late: Item[] = [];
+        for (const m of names.members.get(story.storyId) ?? []) {
+          const found = memberIds.has(m.itemId) ? memberItems.get(m.itemId) : undefined;
+          if (found === undefined) continue;
+          const item = named(found);
+          if (item.fingerprints.some((f) => !held.has(`${f.kind}\u0000${f.key}`))) late.push(item);
+        }
+        const first = late[0];
+        if (first === undefined) continue;
+        if (story.memberCount === 1 && story.state === 'candidate') {
+          if (rehomes.length < GROUP_REHOME_PER_PASS) rehomes.push({ story, item: first });
+          continue;
+        }
+        let next = story;
+        for (const item of late) next = afterMembership(next, item, policy, now);
+        if (next !== story) {
+          await repos.stories.upsert(next);
+          const index = open.indexOf(story);
+          if (index !== -1) open[index] = next;
+        }
+      }
+      if (items.length === 0 && rehomes.length === 0) return [];
 
       /* ★ THE LINEAGE LOOKUP, WHICH IS WHY IT IS AN INPUT AND NOT SOMETHING THE STAGE
          DOES. GroupInput.lineage's own doc: "`Item.reproductionOf` names an ITEM and
@@ -904,33 +1008,52 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
          into story S' is a store lookup. A stage that could do a lookup could do a
          fetch." */
       const pointers: ItemId[] = [];
-      for (const item of items) {
+      for (const item of [...items, ...rehomes.map((r) => r.item)]) {
         const target = item.reproductionOf ?? item.rebroadcastOf;
         if (target !== null) pointers.push(target);
       }
       const storyOf = await repos.stories.storiesOfItems(pointers);
+      const lineageOf = (item: Item): GroupInput['lineage'] => {
+        const reproduction = item.reproductionOf;
+        const target = reproduction ?? item.rebroadcastOf;
+        const story = target === null ? undefined : storyOf.get(target);
+        if (target === null || story === undefined) return null;
+        return { via: reproduction !== null ? 'reproduction' : 'rebroadcast', toItem: target, story };
+      };
 
-      /* ★ THE PICTURE EVIDENCE, RESOLVED HERE AND HANDED TO CORE AS DATA (core/src/group/
-         picture.ts). The judge's names for every post in play, read once for the page; for
-         each post, its best image similarity to each candidate story; and, only for a
-         borderline picture whose names already match, the judge's same-subject answer —
-         asked once per pair, inside its daily cap. Without an image vendor, a judge or any
-         names, every map below is empty and GROUP groups on the free tiers alone. */
-      const names = await pictureNames(items, open);
       const fetchedFor = repos.backfill === undefined ? new Map<ItemId, BackfilledPost>() : await repos.backfill.ofItems(items.map((i) => i.itemId));
 
+      /* Rehomes first: a named post folding into an older story should happen before this
+         page's new posts are decided, so they meet one story with the name rather than two. */
       const inputs: GroupInput[] = [];
-      for (const item of items) {
-        const fetched = fetchedFor.get(item.itemId);
+      for (const { story, item } of rehomes) {
+        const shared = blockFor(item.origin);
+        const block = shared.filter((s) => s.storyId !== story.storyId);
+        views.push(block);
+        const picture = await pictureFor(item, block, names);
+        const input: GroupInput = {
+          item,
+          candidates: block,
+          similarity: picture.similarity,
+          lineage: lineageOf(item),
+          corpus: {},
+          picture: picture.inputs,
+          costUsd: 0,
+        };
+        blockOf.set(input, shared);
+        rehomeOf.set(input, story.storyId);
+        inputs.push(input);
+      }
+
+      for (const arrival of items) {
+        const fetched = fetchedFor.get(arrival.itemId);
         if (fetched !== undefined) {
-          const input = await backfilledInput(item, fetched, open, names);
+          const input = await backfilledInput(arrival, fetched, open, names);
           if (input !== null) inputs.push(input);
           continue;
         }
-        const reproduction = item.reproductionOf;
-        const rebroadcast = item.rebroadcastOf;
-        const target = reproduction ?? rebroadcast;
-        const story = target === null ? undefined : storyOf.get(target);
+        /* The post as GROUP matches it: its own carriers plus the judge's names it says. */
+        const item = named(arrival);
         const block = blockFor(item.origin);
         const picture = await pictureFor(item, block, names);
 
@@ -940,14 +1063,7 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
           /* The image space's best similarity per candidate story. A story with no
              pictures, or a post with none, is absent — not consulted, never zero. */
           similarity: picture.similarity,
-          lineage:
-            target === undefined || target === null || story === undefined
-              ? null
-              : {
-                  via: reproduction !== null ? ('reproduction' as const) : ('rebroadcast' as const),
-                  toItem: target,
-                  story,
-                },
+          lineage: lineageOf(item),
           /* Empty is the honest day-one state, and carriers.ts handles it by weighting
              a carrier the corpus has never seen at FULL strength rather than at zero —
              "A zero default would mean nothing joins until fourteen days of history
@@ -977,6 +1093,10 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
      * input changed between decide and apply, and writing a member then would record a
      * reason nobody decided.
      *
+     * A re-asked post (`rehomes`) that joins takes its one-post story with it: the story is
+     * merged into the one it joined. One that does not join seeds nothing — it already has a
+     * story — and that story takes the post's name carriers instead.
+     *
      * `M4_ambiguous_match` and `M9_member_cap` owe nothing: the first waits for a person,
      * the second for room.
      */
@@ -984,6 +1104,7 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
       const { decision } = receipt;
       const at = decision.decidedAt;
       const block = blockOf.get(input);
+      const own = rehomeOf.get(input);
 
       if (decision.verdict === 'pass') {
         const match = joinTarget(input, policy);
@@ -991,7 +1112,16 @@ function groupWork(repos: StageRepos, policy: Policy, grouping: GroupingDeps | n
           throw new Error(`group.apply: the join for ${decision.subjectId} no longer reproduces`);
         }
         await repos.stories.addMembers([joinMember(input.item, match, at)]);
+        if (own !== undefined) {
+          await repos.stories.merge(own, match.story.storyId, at);
+          refreshViews(own, null, block);
+        }
         await settle(match.story.storyId, input.item, at, block);
+        return;
+      }
+
+      if (own !== undefined) {
+        await settle(own, input.item, at, block);
         return;
       }
 

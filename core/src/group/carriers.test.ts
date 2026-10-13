@@ -16,7 +16,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Fingerprint } from '@insidor/contracts/vocabulary.ts';
 
-import { carrierMatches, corpusKey } from './carriers.ts';
+import { carrierMatches, corpusKey, weightOf } from './carriers.ts';
 import type { CarrierCorpus } from './carriers.ts';
 
 const P = DEFAULT_POLICY;
@@ -281,4 +281,16 @@ test('an exact carrier outranks a near one at equal weight', () => {
   assert.equal(matches.length, 2);
   assert.equal(matches[0]?.carrier.kind, 'formatId');
   assert.equal(matches[0]?.distance, null);
+});
+
+test('★ a generic symbol is worth nothing as a span key too: "cashtag:BTC" is the word BTC', () => {
+  // The keys arrive prefixed with their kind; the generic list holds bare words. Asked with
+  // the whole key it never matched, and two posts that both said $BTC joined at full weight.
+  assert.equal(weightOf({ kind: 'entitySpan', key: 'cashtag:BTC' }, DEFAULT_POLICY), 0);
+  assert.equal(weightOf({ kind: 'entitySpan', key: 'hashtag:memes' }, DEFAULT_POLICY), 0);
+  assert.ok(weightOf({ kind: 'entitySpan', key: 'hashtag:andyshole' }, DEFAULT_POLICY) > 0);
+});
+
+test('a tag that says how a post is written, not what about, is worth nothing: #breaking', () => {
+  assert.equal(weightOf({ kind: 'entitySpan', key: 'hashtag:breaking' }, DEFAULT_POLICY), 0);
 });

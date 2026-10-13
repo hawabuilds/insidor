@@ -537,6 +537,32 @@ export interface GroupPolicy {
     readonly borderline: number;
     readonly pairChecksPerDay: number;
   };
+  /**
+   * The judge's name for a post, as a carrier (core/src/group/name-span.ts). A post's
+   * proposed name becomes an exact carrier only when the name is WRITTEN in the post's own
+   * words (or as one hashtag-style word), so it is a named span the post carries, not the
+   * judge's guess about a picture. Measured on 36h of named posts (817): 425 such names, and
+   * nearly every group of two or more posts read as one moment; an old post resurfacing under
+   * a name a new story also had is kept out by `maxPostAgeMs`. In a replay of 13 October
+   * (04:00–14:15 UTC) 28 posts joined on a name and 2 were wrong ("swarm" as a slogan and as
+   * a product; "bull" and "bear" market chatter). Proposed names only, never the alternates,
+   * which is where the bare common words are.
+   *
+   * `minChars` is on the name with its spaces removed: "pig" or "cat" alone is a word many
+   * unrelated posts share. `maxPostAgeMs` is the oldest post, by its own post time when
+   * seen, whose name may carry it: a days-old post found today is not today's moment.
+   */
+  readonly name: {
+    readonly minChars: number;
+    readonly maxPostAgeMs: number;
+  };
+  /**
+   * Tags that say how a post is written, not what it is about — worth nothing as a carrier,
+   * like the generic coin symbols (core/src/group/carriers.ts). Lower case, no sigil. With the
+   * candidate window holding the whole 12h, "#BREAKING" alone put a politics post into the
+   * roller-coaster story in a replay of 12 October.
+   */
+  readonly genericSpans: readonly string[];
 }
 
 /* ── QUALIFY ──────────────────────────────────────────────────────────── */
@@ -2253,6 +2279,8 @@ const POLICY_V1: Policy = {
     mergeCarrierOverlap: 0.6,
     imagesPerPass: 40,
     image: { space: 'multimodal-3.1024', nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200 },
+    name: { minChars: 4, maxPostAgeMs: 86_400_000 },
+    genericSpans: ['breaking', 'breakingnews', 'justin', 'news', 'update', 'viral', 'trending', 'trend', 'fyp', 'foryou', 'foryoupage', 'meme', 'memes', 'memecoin', 'memecoins', 'crypto', 'cryptocurrency', 'funny', 'video', 'thread', 'usa'],
     maxMembersPerInterval: 200,
   },
 

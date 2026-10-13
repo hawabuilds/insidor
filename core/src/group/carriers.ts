@@ -145,7 +145,24 @@ const UNKNOWN_TO_THE_CORPUS: CarrierStats = { idf24h: 1, dfByBucket: [] };
  */
 export function weightOf(carrier: Fingerprint, p: Policy, corpus: CarrierCorpus = {}): number {
   const stats = corpus[corpusKey(carrier)] ?? UNKNOWN_TO_THE_CORPUS;
-  return carrierWeight(carrier.key, stats.idf24h, stats.dfByBucket, p);
+  const term = spanTerm(carrier);
+  if (carrier.kind === 'entitySpan' && p.group.genericSpans.includes(term.toLowerCase())) return 0;
+  return carrierWeight(term, stats.idf24h, stats.dfByBucket, p);
+}
+
+/**
+ * ★ THE WORD THE BY-NATURE LIST IS ASKED ABOUT: a named span's key without its kind prefix.
+ *
+ * Span keys arrive as `<kind>:<word>` ("cashtag:BTC", "hashtag:memes", "name:hodl"), and the
+ * generic list holds bare words. Asked with the whole key, the list never matched anything,
+ * so "$BTC" joined unrelated posts at full weight — two such joins in the last day. Only
+ * span keys are stripped: a hash key is hex and has no prefix to lose. A tag that says how a
+ * post is written ("#breaking") is zeroed the same way, from `policy.group.genericSpans`.
+ */
+function spanTerm(carrier: Fingerprint): string {
+  if (carrier.kind !== 'entitySpan') return carrier.key;
+  const at = carrier.key.indexOf(':');
+  return at === -1 ? carrier.key : carrier.key.slice(at + 1);
 }
 
 /** Ranking order for the exact-match kinds, so a tie breaks the same way on replay. */
