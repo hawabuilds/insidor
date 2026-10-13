@@ -3,12 +3,19 @@
  * picture, shown whole.
  *
  * The video is an HTML video element on the post's own file (services/read post-sheet.ts passes
- * one only when it is an https mp4 the source serves unsigned). It starts muted and still; a tap
- * plays or pauses it; under it sit the sound toggle, a progress bar you can tap to seek, the
- * current and total time, and full screen (the box's own full screen where the browser has one,
- * the iPhone's video player where it does not). A GIF arrives as a picture with a file
+ * one only when it is an https mp4 the source serves unsigned). It starts muted and still; the
+ * round play button plays it and the pause control stops it; under it sit the sound toggle, a
+ * progress bar you can tap to seek, the current and total time, and full screen (the viewer
+ * below). A GIF arrives as a picture with a file
  * (`kind: 'image'` and a `playUrl`): it plays at once, muted, over and over, with no controls,
  * the way the source shows it.
+ *
+ * ★ A TAP ON THE MEDIA OPENS IT FULL SCREEN (`Viewer`), over the sheet: the picture whole, or the
+ * video playing with its own controls from where it was. The box in the sheet is small (never more
+ * than 200px tall, PostSheet.tsx), so this is where it is seen properly. On a video the round play
+ * button plays it right there, and the controls under it work as before; a tap anywhere else on the
+ * video, or the full-screen control, opens the viewer. The viewer closes with its X, a swipe down,
+ * back or Escape, and the sheet is where it was.
  *
  * ★ PLAYED HERE, NEVER SENT OUT — EXCEPT WHEN IT CANNOT PLAY. A video with no file, or whose file
  * fails (an error, or a browser that refuses it), shows its full still and a small "Play on X"
@@ -33,8 +40,11 @@
  */
 
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 
 import type { SheetMedia } from '../../shared/api/index.ts';
+import { useDismiss, useSwipeClose } from '../../shared/ui/dismiss.ts';
+import { CloseIcon } from '../../shared/ui/icons.tsx';
 import { FullIcon, OpenIcon, PauseIcon, PlayFillIcon, SoundOffIcon, SoundOnIcon } from './sheet-icons.tsx';
 import styles from './post-sheet.module.css';
 import own from './post-media.module.css';
@@ -65,24 +75,78 @@ export interface PostMediaProps {
   readonly sourceLabel?: string | null;
 }
 
+/** What the full-screen viewer shows: the picture, or the video from a time, with or without sound. */
+type Full = { readonly kind: 'picture' } | { readonly kind: 'video'; readonly at: number; readonly muted: boolean; readonly loop: boolean };
+
 export function PostMedia({ media, height, onGone, postUrl = null, sourceLabel = null }: PostMediaProps) {
   const [broken, setBroken] = useState(false);
+  const [full, setFull] = useState<Full | null>(null);
   const fail = () => setBroken(true);
+  let box;
   if (media.playUrl === null || broken) {
     const out = media.kind === 'video' || media.playUrl !== null ? postUrl : null;
-    return (
-      <div className={styles['media']} style={{ height }}>
+    box = (
+      <div className={`${styles['media']} ${own['tappable']}`} style={{ height }} onClick={() => setFull({ kind: 'picture' })}>
         <img className={styles['mediaImg']} src={media.posterUrl} alt="" onError={onGone} />
         {out !== null ? (
-          <a className={own['out']} href={out} target="_blank" rel="noopener noreferrer" data-no-swipe>
+          <a className={own['out']} href={out} target="_blank" rel="noopener noreferrer" data-no-swipe onClick={(e) => e.stopPropagation()}>
             Play on {sourceLabel ?? 'the source'} <OpenIcon size={14} />
           </a>
         ) : null}
       </div>
     );
+  } else if (media.kind === 'image') {
+    box = <Loop media={media} height={height} onBroken={fail} onFull={() => setFull({ kind: 'video', at: 0, muted: true, loop: true })} />;
+  } else {
+    box = <Player media={media} height={height} onBroken={fail} onFull={(at, muted) => setFull({ kind: 'video', at, muted, loop: false })} />;
   }
-  if (media.kind === 'image') return <Loop media={media} height={height} onBroken={fail} />;
-  return <Player media={media} height={height} onBroken={fail} />;
+  return (
+    <>
+      {box}
+      {full !== null ? <Viewer media={media} full={broken ? { kind: 'picture' } : full} onClose={() => setFull(null)} /> : null}
+    </>
+  );
+}
+
+/**
+ * The media full screen, over everything (a portal on the page, so no sheet clips it): black, the
+ * picture or video whole at its own shape, a 44px X at the top right. Closes with the X, a swipe
+ * down, back or Escape, one layer like any pop-up (shared/ui/dismiss.ts), back to the sheet.
+ */
+function Viewer({ media, full, onClose }: { media: SheetMedia; full: Full; onClose: () => void }) {
+  const panel = useRef<HTMLDivElement>(null);
+  const video = useRef<HTMLVideoElement>(null);
+  useDismiss(onClose);
+  useSwipeClose(panel, onClose);
+  useEffect(() => {
+    const v = video.current;
+    if (v === null || full.kind !== 'video') return;
+    v.currentTime = full.at;
+    void v.play().catch(() => undefined);
+  }, [full]);
+  return createPortal(
+    <div ref={panel} className={own['viewer']} role="dialog" aria-modal="true" aria-label="Full screen" data-sheet-grab>
+      {full.kind === 'video' && media.playUrl !== null ? (
+        <video
+          ref={video}
+          className={own['viewerMedia']}
+          src={media.playUrl}
+          poster={media.posterUrl}
+          muted={full.muted}
+          loop={full.loop}
+          controls={!full.loop}
+          playsInline
+          autoPlay
+        />
+      ) : (
+        <img className={own['viewerMedia']} src={media.posterUrl} alt="" />
+      )}
+      <button type="button" className={own['viewerClose']} aria-label="Close" onClick={onClose}>
+        <CloseIcon size={18} />
+      </button>
+    </div>,
+    document.body,
+  );
 }
 
 /** Whether a rejected `play()` means the file cannot play, rather than a pause or a policy. */
@@ -91,15 +155,16 @@ function unplayable(v: HTMLVideoElement, e: unknown): boolean {
 }
 
 /** A GIF: muted, looping, playing as soon as it can, no controls. */
-function Loop({ media, height, onBroken }: { media: SheetMedia; height: number; onBroken: () => void }) {
+function Loop({ media, height, onBroken, onFull }: { media: SheetMedia; height: number; onBroken: () => void; onFull: () => void }) {
   const video = useRef<HTMLVideoElement>(null);
-  /* A phone that holds back autoplay (low power) starts it on a tap instead. */
+  /* A tap opens it full screen; a phone that held back autoplay (low power) starts it then too. */
   const start = () => {
     const v = video.current;
     if (v !== null && v.paused) void v.play().catch((e: unknown) => unplayable(v, e) && onBroken());
+    onFull();
   };
   return (
-    <div className={styles['media']} style={{ height }}>
+    <div className={`${styles['media']} ${own['tappable']}`} style={{ height }}>
       <video
         ref={video}
         className={styles['mediaVideo']}
@@ -117,8 +182,7 @@ function Loop({ media, height, onBroken }: { media: SheetMedia; height: number; 
   );
 }
 
-function Player({ media, height, onBroken }: { media: SheetMedia; height: number; onBroken: () => void }) {
-  const box = useRef<HTMLDivElement>(null);
+function Player({ media, height, onBroken, onFull }: { media: SheetMedia; height: number; onBroken: () => void; onFull: (at: number, muted: boolean) => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(true);
@@ -167,18 +231,18 @@ function Player({ media, height, onBroken }: { media: SheetMedia; height: number
     v.currentTime = Math.min(total, Math.max(0, ((e.clientX - r.left) / r.width) * total));
     setTime(v.currentTime);
   };
-  /* The box's own full screen keeps these controls; an iPhone has none, and gets its video player. */
+  /* Full screen is the viewer: the video carries on there from where it was, and pauses here. */
   const full = () => {
-    const v = video.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
-    const el = box.current;
-    if (document.fullscreenElement != null) void document.exitFullscreen().catch(() => undefined);
-    else if (el !== null && typeof el.requestFullscreen === 'function' && document.fullscreenEnabled) void el.requestFullscreen().catch(() => v?.webkitEnterFullscreen?.());
-    else v?.webkitEnterFullscreen?.();
+    const v = video.current;
+    if (v === null) return;
+    const at = v.currentTime;
+    v.pause();
+    onFull(at, v.muted);
   };
   const shown = total > 0 ? Math.min(1, time / total) : 0;
 
   return (
-    <div ref={box} className={styles['media']} style={{ height }}>
+    <div className={`${styles['media']} ${own['tappable']}`} style={{ height }}>
       <video
         ref={video}
         className={styles['mediaVideo']}
@@ -187,7 +251,7 @@ function Player({ media, height, onBroken }: { media: SheetMedia; height: number
         muted
         playsInline
         preload="metadata"
-        onClick={toggle}
+        onClick={full}
         onError={onBroken}
       />
       {!playing ? (
