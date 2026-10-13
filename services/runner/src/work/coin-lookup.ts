@@ -23,6 +23,10 @@
  * than `hitsPerTerm`, or a source cut its answer, so the card can say "10+" instead of a count
  * that is only the part we kept.
  *
+ * ★ AND A POST'S OLDER COINS ARE NOTED, NOT ADDED (0060). Every coin a post's search returned
+ * whose market predates the post goes to internal.older_coin through `older`: never the post's
+ * coin, never a candidate, only measured for whether its trading jumped since (older-coins.ts).
+ *
  * What breaks if changed carelessly: a term both sources failed on is NOT recorded as a search,
  * only as a failed attempt. Recording it would mark the post "searched, nothing found" and show
  * "no coin yet" on the strength of an outage. A failed name is tried again on later passes,
@@ -33,7 +37,7 @@ import type { Millis } from '@insidor/contracts';
 import { assetKey } from '@insidor/contracts/ids.ts';
 import type { CoinSearch } from '@insidor/contracts/ports/coin-search.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import type { PgAssetRepo, PgCoinUniverseRepo } from '@insidor/store';
+import type { PgAssetRepo, PgCoinUniverseRepo, PgOlderCoinRepo } from '@insidor/store';
 import { mergeHits } from '@insidor/core';
 import { assetFromSearch, CHAIN } from '@insidor/venue-solana-pumpfun';
 
@@ -48,6 +52,8 @@ export interface LookupDeps {
   readonly policy: Policy;
   readonly log: Logger;
   readonly now: () => Millis;
+  /** Where a post's older coins are noted (0060). Absent: they are not. */
+  readonly older?: Pick<PgOlderCoinRepo, 'recordFound'>;
 }
 
 const DAY_MS = 86_400_000;
@@ -88,7 +94,17 @@ export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
       else deps.log.warn('coin search unavailable on every source; the name is searched again next pass', { term: term.term, tries, err: why });
       continue;
     }
-    const recent = mergeHits(read)
+    const merged = mergeHits(read);
+    if (term.kind === 'post' && deps.older !== undefined) {
+      const dated = merged.flatMap((h) => (h.createdAt === null ? [] : [{ address: h.address, name: h.name, ticker: h.ticker, launchedAt: h.createdAt as Millis }]));
+      /* Never at the lookup's expense: a failure here (0060 not applied yet) loses only the note. */
+      try {
+        await deps.older.recordFound(term.id, dated, deps.policy.origin.launchAllowanceMs, now);
+      } catch (e) {
+        deps.log.warn('older coins for a post could not be noted; the lookup goes on', { post: term.id, err: errorText(e) });
+      }
+    }
+    const recent = merged
       .filter((h) => h.createdAt !== null && h.createdAt >= now - l.withinMs)
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     const hits = recent.slice(0, l.hitsPerTerm);

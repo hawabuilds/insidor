@@ -67,6 +67,7 @@ import {
   PgDecisionRepo,
   PgBackfillRepo,
   PgCoinUniverseRepo,
+  PgOlderCoinRepo,
   PgFeedFloorRepo,
   PgImageEmbeddingRepo,
   PgImagePairRepo,
@@ -99,6 +100,7 @@ import { dexscreenerSearch, dexscreenerStandings } from '@insidor/market-dexscre
 import { geckoterminal } from '@insidor/market-geckoterminal';
 import { keepCoins } from './work/coin-keep.ts';
 import { lookUpCoins } from './work/coin-lookup.ts';
+import { checkOlderCoins } from './work/older-coins.ts';
 import { measureDiscovery } from './work/discovery-settings.ts';
 import { SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
 import { pictureCoinMatches } from './work/coin-match.ts';
@@ -589,9 +591,10 @@ export async function withRuntime<T>(
          keeps its own per-minute count and a minute's cache of answers; made afresh each pass,
          both were thrown away every minute and the count guarded nothing. With a CoinGecko key
          `cfg.marketData` is the paid plan at its own host, and its limit is that plan's. */
+      const onChainMarket = geckoterminal({ ...cfg.marketData, fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS, now: Date.now });
       const lookupSources = [
         dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS }),
-        geckoterminal({ ...cfg.marketData, fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS, now: Date.now }),
+        onChainMarket,
       ];
       log.info('coin lookup sources', { onChainPlan: cfg.marketData.plan });
 
@@ -662,9 +665,12 @@ export async function withRuntime<T>(
             policy,
             log,
           },
-          /* The lookup, then the picture evidence for what it found (work/coin-match.ts). */
+          /* The lookup, then the picture evidence for what it found (work/coin-match.ts), then
+             whether the older coins it saw are trading since their posts (work/older-coins.ts),
+             read through the lookup's own on-chain instance so one per-minute count covers both. */
           lookUpCoins: async () => {
             const looked = await lookUpCoins({
+              older: new PgOlderCoinRepo(db),
               coins: new PgCoinUniverseRepo(db),
               assets: repos.assets,
               sources: lookupSources,
@@ -697,6 +703,11 @@ export async function withRuntime<T>(
               },
               policy.universe.matchWindowMs,
             );
+            try {
+              await checkOlderCoins({ older: new PgOlderCoinRepo(db), candles: onChainMarket, log: log.child({ step: 'older-coins' }), now: () => Date.now() as Millis });
+            } catch (e) {
+              log.warn('older coins could not be measured this pass; tried again next pass', { err: e instanceof Error ? e.message : String(e) });
+            }
             return looked;
           },
           /* ★ THE LEARNING BOOK, NOT THE LIVE ONE. Each pass with work opens its own meter on
