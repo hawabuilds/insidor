@@ -62,7 +62,8 @@ export const judgeId = (model: string, question: JudgeQuestion = 'story'): strin
 export const promptId = (question: JudgeQuestion = 'story'): string => `${QUESTION[question].label}@${QUESTION[question].sha()}`;
 
 /** What the vendor's own token counts say a call cost. */
-export const usdOf = (price: ModelPrice, usage: Usage): number => usdForTokens(price, usage.inputTokens, usage.outputTokens);
+export const usdOf = (price: ModelPrice, usage: Usage): number =>
+  usdForTokens(price, usage.inputTokens, usage.outputTokens, usage.cacheWriteTokens ?? 0, usage.cacheReadTokens ?? 0);
 
 export interface AnthropicJudgeDeps {
   readonly client: JudgeClient;
@@ -97,14 +98,18 @@ const bookFor = (usd: number, endpoint: string = ENDPOINT): PriceBook => ({
 
 /**
  * A pessimistic token estimate for one batch: every character of the request at
- * `charsPerToken`, a frame at `tokensPerFrame`, and the full output ceiling.
+ * `charsPerToken`, a frame at `tokensPerFrame`, and the full output ceiling. The fixed prefix
+ * (system prompt and instructions) is counted as a cache WRITE, the dearest way it can be
+ * billed now that it carries the cache mark — so the estimate stays an upper bound.
  */
 export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubject[], question: JudgeQuestion = 'story'): Usage {
-  const chars = QUESTION[question].system.length + QUESTION[question].instructions.length + JSON.stringify(subjects.map((s) => s.texts)).length;
+  const prefixChars = QUESTION[question].system.length + QUESTION[question].instructions.length;
+  const chars = JSON.stringify(subjects.map((s) => s.texts)).length;
   const frames = subjects.filter((s) => lookedAtFor(s) === 'videoFrame' || pictureUriFor(s) !== null).length;
   return {
     inputTokens: Math.ceil(chars / policy.charsPerToken) + frames * policy.tokensPerFrame,
     outputTokens: policy.maxOutputTokens,
+    cacheWriteTokens: Math.ceil(prefixChars / policy.charsPerToken),
   };
 }
 
@@ -279,7 +284,7 @@ export { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, pictureUriFor, toJu
 export type { JudgementContext } from './to-judgement.ts';
 export { PROMPTS, PROMPT_NAMES, PROMPT_SET_SHA } from './prompts.ts';
 export type { Prompt, PromptName } from './prompts.ts';
-export { ANSWER_SCHEMA, JudgeNotConfigured, buildRequestBody, decodeReply, httpClient } from './client.ts';
+export { ANSWER_SCHEMA, JudgeNotConfigured, buildRequestBody, decodeReply, httpClient, usageOf } from './client.ts';
 export type { Frame, JudgeClient, JudgeClientConfig, JudgeRequest, JudgeResponse, Usage } from './client.ts';
 export { MODEL_PRICES, PRICES_READ_AT, priceFor, usdForTokens } from './prices.ts';
 export type { ModelPrice } from './prices.ts';
