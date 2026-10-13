@@ -39,6 +39,7 @@ import { boughtEarly, earnsRep, nextRank, rankFor, rankedUp, seasonOf, standings
 
 import { json, type Reply, type Request } from './http.ts';
 import { missedRoute } from './missed.ts';
+import type { CoinCheck } from './coin-check.ts';
 import { ownerRoute } from './owner.ts';
 import { blockedWord, cleanBody, parseSubject, proofLinkOf, type Subject } from './rules.ts';
 
@@ -65,6 +66,8 @@ export interface SocialDeps {
   readonly policy: SocialPolicy;
   /** Who the owner is (policy `owner`). Absent: nobody is, and every /owner route refuses. */
   readonly owner?: OwnerPolicy;
+  /** The owner's pasted-address check (coin-check.ts); absent, it answers "not set up". */
+  readonly coinCheck?: CoinCheck;
   readonly now: () => number;
   readonly pace: (client: string, now: number) => boolean;
 }

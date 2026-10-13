@@ -1,7 +1,8 @@
 /**
  * The social service, assembled: the people role's database, Privy's identity check, and the
  * chain for holdings, first buys and proof transactions. Every read of the chain is kept for a
- * while (policy), so one busy comment does not become a burst of RPC calls.
+ * while (policy), so one busy comment does not become a burst of RPC calls. The owner's coin check
+ * (coin-sources.ts) reads the same chain and the free market sources, for the owner only.
  */
 
 import pg from 'pg';
@@ -11,6 +12,7 @@ import { portfolioReader, tradesFromTx } from '@insidor/chain-portfolio';
 import { privyIdentity } from '@insidor/identity-privy';
 import { launchPriceSol } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
 
+import { liveCoinCheck } from './coin-sources.ts';
 import { loadSocialConfig } from './config.ts';
 import { pacer, serve } from './http.ts';
 import { handle, type Chain } from './routes.ts';
@@ -70,7 +72,7 @@ const chain: Chain | null = (() => {
   };
 })();
 
-const deps = { db, identity: privyIdentity({ appId: cfg.appId }), chain, policy: P, owner: DEFAULT_POLICY.owner, now: Date.now, pace: pacer(P.perClient, P.windowMs) };
+const deps = { db, identity: privyIdentity({ appId: cfg.appId }), chain, policy: P, owner: DEFAULT_POLICY.owner, coinCheck: liveCoinCheck(cfg.rpcUrl), now: Date.now, pace: pacer(P.perClient, P.windowMs) };
 
 serve(cfg.allowedOrigins, async (req) => {
   try {

@@ -20,6 +20,8 @@
     "@insidor/contracts": "workspace:*",
     "@insidor/core": "workspace:*",
     "@insidor/identity-privy": "workspace:*",
+    "@insidor/market-dexscreener": "workspace:*",
+    "@insidor/market-geckoterminal": "workspace:*",
     "@insidor/venue-solana-pumpfun": "workspace:*",
     "pg": "^8.16.0"
   },

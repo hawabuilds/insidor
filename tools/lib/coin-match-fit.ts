@@ -63,7 +63,10 @@ interface OwnerCase {
   readonly decision: PostCoinMatch;
 }
 
-/** The owner's coin labels, newest per post: `right` with its coin, `none`; `wrong` counted apart. */
+/**
+ * The owner's coin labels, newest per post: `right` with its coin, `none`; `wrong` counted apart.
+ * A newest `cleared` ("Remove my label", 0072) is no label: neither case nor tap.
+ */
 async function ownerLabels(db: Db): Promise<{ readonly labels: readonly { itemId: string; right: string | null }[]; readonly wrongTaps: number }> {
   const rows = await db.query<{ item_id: string; verdict: string; coin_address: string | null }>(
     `select distinct on (item_id) item_id, verdict, coin_address
