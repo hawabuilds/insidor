@@ -1,6 +1,6 @@
 /**
- * The meter a paid tool spends under: its own stage cap AND the owner's daily lines, on the same
- * ledger (internal.spend) the live runner writes.
+ * The meter a paid tool spends under: its own stage cap AND the jobs' daily lines
+ * (Policy.budget.jobLines), in the jobs' own book on the ledger the live runner writes.
  *
  * Separate from the tools because every paid tool must take it the same way. A tool on a private
  * in-memory meter is invisible to the runner: both would spend the whole of a line each, and the
@@ -19,7 +19,7 @@ import { DEFAULT_POLICY } from '../../contracts/src/policy.ts';
 import { JOB_ENDPOINT_PREFIX, type Meter } from '../../contracts/src/ports/meter.ts';
 import { inMemoryMeter, openDurableMeter } from '../../adapters/meter/spend/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgSpendRepo } from '../../store/src/index.ts';
-import { vendorLines } from '../../services/runner/src/vendor-lines.ts';
+import { jobVendorLines } from '../../services/runner/src/vendor-lines.ts';
 
 const P = DEFAULT_POLICY;
 
@@ -31,11 +31,12 @@ export interface SharedMeter {
 export async function openSharedMeter(stageCapUsd: number, env: Record<string, string | undefined> = process.env): Promise<SharedMeter> {
   const url = env['DATABASE_URL_INTERNAL'] || env['DATABASE_URL'];
   const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-paid-job' });
-  const asked = Number(env['DAILY_BUDGET_USD']);
   const shared = await openDurableMeter({
     ledger: new PgSpendRepo(asDb(pool)),
-    dailyCapUsd: Number.isFinite(asked) && asked > 0 ? Math.min(asked, P.budget.dailyUsd) : P.budget.dailyUsd,
-    perVendorCapUsd: vendorLines(P),
+    /* The jobs' own book and lines: a job never spends the live feed's money (Policy.budget.jobLines). */
+    book: 'jobs',
+    dailyCapUsd: P.budget.jobLines.dailyUsd,
+    perVendorCapUsd: jobVendorLines(P),
     defaultVendorCapUsd: P.budget.perSourceUsdPerDay,
     softStop: P.budget.softStopFraction,
     now: Date.now,

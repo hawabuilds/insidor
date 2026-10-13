@@ -16,6 +16,17 @@ import { VENDOR as EMBED_VENDOR } from '@insidor/embed-voyage';
 import { VENDOR as JUDGE_VENDOR } from '@insidor/judge-anthropic';
 import { SUPPLIER_VENDORS } from '@insidor/platform-registry';
 
+/** The one-off jobs' lines (Policy.budget.jobLines), keyed the same way. */
+export function jobVendorLines(policy: Policy): Readonly<Record<string, number>> {
+  const lines = policy.budget.jobLines;
+  return {
+    [SUPPLIER_VENDORS.posts]: lines.posts,
+    [SUPPLIER_VENDORS.video]: lines.video,
+    [JUDGE_VENDOR]: lines.judge,
+    [EMBED_VENDOR]: lines.embeddings,
+  };
+}
+
 export function vendorLines(policy: Policy): Readonly<Record<string, number>> {
   const lines = policy.budget.supplierLines;
   return {
