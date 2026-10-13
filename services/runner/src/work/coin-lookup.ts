@@ -12,9 +12,16 @@
  * narrative is the projector's call, and for a search-found coin it requires the picture, the
  * name and the timing to agree (services/project). Free reads only, so it runs on a dry run.
  *
- * What breaks if changed carelessly: a term both sources failed on is NOT recorded, so it is
- * searched again next pass. Recording it would mark the narrative "searched, nothing found" and
- * show "no coin yet" on the strength of an outage.
+ * ★ THREE CAPS, ALL COUNTED IN THE STORE, SO A RESTART OR A ONE-OFF RUN SHARES THEM. Each pass
+ * searches at most `termsPerPass` names, never more than `perMinute` in any rolling minute and
+ * `perDay` in a UTC day, finished and failed searches alike. Feed posts come first, newest into
+ * the feed first, then narratives (the store's `lookupTerms`). Every waiting subject is noted
+ * before the caps apply, so one the caps leave for later still has the moment it began waiting.
+ *
+ * What breaks if changed carelessly: a term both sources failed on is NOT recorded as a search,
+ * only as a failed attempt. Recording it would mark the post "searched, nothing found" and show
+ * "no coin yet" on the strength of an outage. A failed name is tried again on later passes,
+ * `1 + retries` times in all; after that the projector's "Couldn't check" is the honest answer.
  */
 
 import type { Millis } from '@insidor/contracts';
@@ -28,7 +35,7 @@ import { assetFromSearch, CHAIN } from '@insidor/venue-solana-pumpfun';
 import { errorText, type Logger } from '../log.ts';
 
 export interface LookupDeps {
-  readonly coins: Pick<PgCoinUniverseRepo, 'lookupTerms' | 'recordLookup' | 'lookupsSince' | 'knownAssets'>;
+  readonly coins: Pick<PgCoinUniverseRepo, 'queueLookups' | 'lookupTerms' | 'recordLookup' | 'recordFailedLookup' | 'searchesSince' | 'knownAssets'>;
   readonly assets: Pick<PgAssetRepo, 'upsert'>;
   readonly sources: readonly CoinSearch[];
   /** The chain, for a candidate's metadata link and launch time. Null: neither is read. */
@@ -39,21 +46,41 @@ export interface LookupDeps {
 }
 
 const DAY_MS = 86_400_000;
+const MINUTE_MS = 60_000;
 
-export async function lookUpCoins(deps: LookupDeps): Promise<{ readonly searched: number; readonly added: number }> {
+export interface LookupResult {
+  /** Names whose search finished on at least one source. */
+  readonly searched: number;
+  readonly added: number;
+  /** Names every source failed on this pass; each is tried again later, up to `retries` times. */
+  readonly failed: number;
+}
+
+export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
   const now = deps.now();
   const l = deps.policy.universe.lookup;
-  const done = await deps.coins.lookupsSince((Math.floor(now / DAY_MS) * DAY_MS) as Millis);
-  const room = Math.min(l.termsPerPass, l.perDay - done);
-  if (room <= 0) return { searched: 0, added: 0 };
+  await deps.coins.queueLookups(now);
+  const today = await deps.coins.searchesSince((Math.floor(now / DAY_MS) * DAY_MS) as Millis);
+  const thisMinute = await deps.coins.searchesSince((now - MINUTE_MS) as Millis);
+  const room = Math.min(l.termsPerPass, l.perMinute - thisMinute, l.perDay - today);
+  if (room <= 0) {
+    deps.log.info('coin lookup held back by its caps; the names wait for the next pass', { today, thisMinute });
+    return { searched: 0, added: 0, failed: 0 };
+  }
 
   let searched = 0;
   let added = 0;
-  for (const term of await deps.coins.lookupTerms((now - l.keepMs) as Millis, room)) {
+  let failed = 0;
+  for (const term of await deps.coins.lookupTerms((now - l.keepMs) as Millis, l.retries, room)) {
     const answers = await Promise.allSettled(deps.sources.map((s) => s.search(term.term)));
     const read = answers.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []));
     if (read.length === 0) {
-      deps.log.warn('coin search unavailable on every source; the name is searched again later', { term: term.term });
+      const why = answers.map((a) => (a.status === 'rejected' ? errorText(a.reason) : '')).filter((e) => e !== '').join('; ');
+      await deps.coins.recordFailedLookup(term, why, deps.now());
+      failed += 1;
+      const tries = term.attempts + 1;
+      if (tries > l.retries) deps.log.warn('coin search failed on every source, the last try; the post shows it could not be checked', { term: term.term, tries, err: why });
+      else deps.log.warn('coin search unavailable on every source; the name is searched again next pass', { term: term.term, tries, err: why });
       continue;
     }
     const hits = mergeHits(read)
@@ -80,10 +107,11 @@ export async function lookUpCoins(deps: LookupDeps): Promise<{ readonly searched
       await deps.assets.upsert([asset]);
       newHere += 1;
     }
-    await deps.coins.recordLookup(term, hits.length, newHere, now);
+    /* Stamped when the search ran, not when the pass began: the rolling minute counts by it. */
+    await deps.coins.recordLookup(term, hits.length, newHere, deps.now());
     searched += 1;
     added += newHere;
   }
-  if (searched > 0) deps.log.info('coins looked up by name', { searched, added });
-  return { searched, added };
+  if (searched > 0 || failed > 0) deps.log.info('coins looked up by name', { searched, added, failed, room });
+  return { searched, added, failed };
 }

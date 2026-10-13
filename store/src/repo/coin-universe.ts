@@ -99,6 +99,40 @@ const KEPT_ALWAYS = `(
 /** Statuses a later post could change, so they are looked at once more. */
 const RECHECKED: readonly OriginStatus[] = ['unlinked', 'account_only', 'promo_only'];
 
+/**
+ * The feed's narratives and posts with no coin, each by the judge's name for it. A subject the
+ * judge has not named has nothing to search and is not here. Shared by `queueLookups`, which
+ * notes when each was first seen waiting, and `lookupTerms`, which picks what to search.
+ *
+ * ★ A POST'S "NO COIN" IS READ AS `coins ->> 'kind'`, the same way as a narrative's. The post
+ * half used to test `payload -> 'coins' is null or payload ->> 'coins' = 'null'`, and a JSON
+ * null matches neither (`->` gives the jsonb `null`, `->>` gives SQL NULL), so no post was ever
+ * returned and the lookup searched nothing, silently, every pass. A coins value that is JSON
+ * null, `none`, `pending` or `unchecked` is "no coin"; `one`, `several` and `unsure` are not
+ * searched.
+ */
+const WAITING = `
+       stories as (
+         select 'story' as subject_kind, s.story_id as subject_id, j.proposed_name as term, s.promoted_at as seen_at
+           from public.story s
+           join public.story_view v on v.story_id = s.story_id
+           join lateral (
+             select proposed_name from internal.judgement jj
+              where jj.story_id = s.story_id and jj.proposed_name is not null
+              order by jj.judged_at desc limit 1
+           ) j on true
+          where s.state = 'promoted' and coalesce(v.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending')
+       ),
+       posts as (
+         select distinct on (r.item_id) 'post' as subject_kind, r.item_id as subject_id, pj.proposed_name as term, i.first_seen_at as seen_at
+           from public.rising_row r
+           join public.item i on i.item_id = r.item_id
+           join internal.post_judgement pj on pj.item_id = r.item_id and pj.proposed_name is not null
+          where coalesce(r.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending', 'unchecked')
+          order by r.item_id, pj.judged_at desc
+       ),
+       waiting as (select * from posts union all select * from stories)`;
+
 export class PgCoinUniverseRepo {
   readonly #db: Db;
 
@@ -210,51 +244,56 @@ export class PgCoinUniverseRepo {
   }
 
   /**
-   * Names to search: promoted narratives whose page shows no coin, and For You posts with no
-   * coin, each by the judge's name for it — newest first, skipping any searched since
-   * `keepBefore`. A subject the judge has not named has nothing to search and is not returned.
-   *
-   * ★ A POST'S "NO COIN" IS READ AS `coins ->> 'kind'`, the same way as a narrative's. The post
-   * half used to test `payload -> 'coins' is null or payload ->> 'coins' = 'null'`, and a JSON
-   * null matches neither (`->` gives the jsonb `null`, `->>` gives SQL NULL), so no post was ever
-   * returned and the lookup searched nothing, silently, every pass. A coins value that is JSON
-   * null, `none` or `pending` is "no coin"; `one`, `several` and `unsure` are not searched.
+   * Notes every waiting subject not yet noted, at `at`. Run at the start of each pass, before the
+   * caps decide how many are searched, so a post the caps leave for a later pass still has the
+   * moment it was first seen waiting — the clock "Couldn't check" runs on. Never moves a time
+   * already written (0048). Returns how many were new.
    */
-  async lookupTerms(keepBefore: Millis, limit: number): Promise<readonly LookupTerm[]> {
-    const rows = await this.#db.query<{ subject_kind: 'story' | 'post'; subject_id: string; term: string }>(
-      `with stories as (
-         select 'story' as subject_kind, s.story_id as subject_id, j.proposed_name as term, s.promoted_at as at
-           from public.story s
-           join public.story_view v on v.story_id = s.story_id
-           join lateral (
-             select proposed_name from internal.judgement jj
-              where jj.story_id = s.story_id and jj.proposed_name is not null
-              order by jj.judged_at desc limit 1
-           ) j on true
-          where s.state = 'promoted' and coalesce(v.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending')
-       ),
-       posts as (
-         select distinct on (r.item_id) 'post' as subject_kind, r.item_id as subject_id, pj.proposed_name as term, i.first_seen_at as at
-           from public.rising_row r
-           join public.item i on i.item_id = r.item_id
-           join internal.post_judgement pj on pj.item_id = r.item_id and pj.proposed_name is not null
-          where coalesce(r.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending')
-          order by r.item_id, pj.judged_at desc
+  async queueLookups(at: Millis): Promise<number> {
+    const rows = await this.#db.query<{ n: string | number }>(
+      `with ${WAITING},
+       added as (
+         insert into internal.coin_lookup_attempt (subject_kind, subject_id, queued_at)
+         select w.subject_kind, w.subject_id, $1 from waiting w
+         on conflict (subject_kind, subject_id) do nothing
+         returning 1
        )
-       select c.subject_kind, c.subject_id, c.term
-         from (select * from stories union all select * from posts) c
-         left join internal.coin_lookup l on l.subject_kind = c.subject_kind and l.subject_id = c.subject_id
-        where l.subject_id is null or l.looked_at < $1
-        order by c.at desc nulls last
-        limit $2`,
-      [toTimestamp(keepBefore), limit],
+       select count(*) as n from added`,
+      [toTimestamp(at)],
     );
-    return rows.map((r) => ({ kind: r.subject_kind, id: r.subject_id, term: r.term }));
+    return Number(rows[0]?.n ?? 0);
   }
 
+  /**
+   * Names to search, in the order they are owed: feed posts first, newest into the feed first,
+   * then narratives, newest promoted first. Skipped: a subject searched since `keepBefore`, and
+   * one whose search failed `1 + retries` times in a row, until `keepBefore` has passed its last
+   * failure — a source that is down for the day is not asked again every minute.
+   */
+  async lookupTerms(keepBefore: Millis, retries: number, limit: number): Promise<readonly LookupTerm[]> {
+    const rows = await this.#db.query<{ subject_kind: 'story' | 'post'; subject_id: string; term: string; attempts: number | null }>(
+      `with ${WAITING}
+       select w.subject_kind, w.subject_id, w.term, a.attempts
+         from waiting w
+         left join internal.coin_lookup l on l.subject_kind = w.subject_kind and l.subject_id = w.subject_id
+         left join internal.coin_lookup_attempt a on a.subject_kind = w.subject_kind and a.subject_id = w.subject_id
+        where (l.subject_id is null or l.looked_at < $1)
+          and (a.subject_id is null or a.attempts <= $2 or a.last_failed_at < $1)
+        order by (w.subject_kind = 'post') desc, a.queued_at desc nulls first, w.seen_at desc nulls last, w.subject_id
+        limit $3`,
+      [toTimestamp(keepBefore), retries, limit],
+    );
+    return rows.map((r) => ({ kind: r.subject_kind, id: r.subject_id, term: r.term, attempts: Number(r.attempts ?? 0) }));
+  }
+
+  /** A finished search: written over the last one, and the failed-attempt count starts again. */
   async recordLookup(term: LookupTerm, found: number, added: number, at: Millis): Promise<void> {
     await this.#db.query(
-      `insert into internal.coin_lookup (subject_kind, subject_id, term, looked_at, found, added)
+      `with reset as (
+         update internal.coin_lookup_attempt set attempts = 0, last_error = null
+          where subject_kind = $1 and subject_id = $2
+       )
+       insert into internal.coin_lookup (subject_kind, subject_id, term, looked_at, found, added)
        values ($1, $2, $3, $4, $5, $6)
        on conflict (subject_kind, subject_id) do update set
          term = excluded.term, looked_at = excluded.looked_at, found = excluded.found, added = excluded.added`,
@@ -262,9 +301,34 @@ export class PgCoinUniverseRepo {
     );
   }
 
-  /** Searches since an instant — the day's count for the cap. */
-  async lookupsSince(at: Millis): Promise<number> {
-    const rows = await this.#db.query<{ n: string | number }>(`select count(*) as n from internal.coin_lookup where looked_at >= $1`, [toTimestamp(at)]);
+  /**
+   * A search every source failed on. Counted, never written to coin_lookup: an outage is not
+   * "searched, nothing found". The error is kept bounded, for whoever reads the table.
+   */
+  async recordFailedLookup(term: LookupTerm, error: string, at: Millis): Promise<void> {
+    await this.#db.query(
+      `insert into internal.coin_lookup_attempt (subject_kind, subject_id, queued_at, attempts, last_failed_at, last_error)
+       values ($1, $2, $3, 1, $3, $4)
+       on conflict (subject_kind, subject_id) do update set
+         attempts = internal.coin_lookup_attempt.attempts + 1, last_failed_at = excluded.last_failed_at, last_error = excluded.last_error`,
+      [term.kind, term.id, toTimestamp(at), error.slice(0, 500)],
+    );
+  }
+
+  /**
+   * Searches made since an instant, finished or failed — what the per-minute and per-day caps
+   * count. One per subject at most: a subject searched twice in the window counts once, which
+   * can only happen across `keepMs` and so never inside a minute.
+   */
+  async searchesSince(at: Millis): Promise<number> {
+    const rows = await this.#db.query<{ n: string | number }>(
+      `select (select count(*) from internal.coin_lookup where looked_at >= $1)
+            + (select count(*) from internal.coin_lookup_attempt a
+                where a.last_failed_at >= $1
+                  and not exists (select 1 from internal.coin_lookup l
+                                   where l.subject_kind = a.subject_kind and l.subject_id = a.subject_id and l.looked_at >= $1)) as n`,
+      [toTimestamp(at)],
+    );
     return Number(rows[0]?.n ?? 0);
   }
 
@@ -351,4 +415,6 @@ export interface LookupTerm {
   readonly kind: 'story' | 'post';
   readonly id: string;
   readonly term: string;
+  /** Searches for it that failed on every source since the last one that finished. */
+  readonly attempts: number;
 }

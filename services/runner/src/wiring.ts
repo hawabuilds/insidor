@@ -510,6 +510,16 @@ export async function withRuntime<T>(
           (await decisions.unapplied(sinceMs, limit)).length,
       };
 
+      /* The coin lookup's sources, made once for the life of the process. The on-chain search
+         keeps its own per-minute count and a minute's cache of answers; made afresh each pass,
+         both were thrown away every minute and the count guarded nothing. With a CoinGecko key
+         `cfg.marketData` is the paid plan at its own host, and its limit is that plan's. */
+      const lookupSources = [
+        dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS }),
+        geckoterminal({ ...cfg.marketData, fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS, now: Date.now }),
+      ];
+      log.info('coin lookup sources', { onChainPlan: cfg.marketData.plan });
+
       return {
         value: await use({
           db,
@@ -576,10 +586,7 @@ export async function withRuntime<T>(
             lookUpCoins({
               coins: new PgCoinUniverseRepo(db),
               assets: repos.assets,
-              sources: [
-                dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS }),
-                geckoterminal({ ...cfg.marketData, fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS, now: Date.now }),
-              ],
+              sources: lookupSources,
               chain: cfg.chainRpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.chainRpcUrl, fetch: globalThis.fetch }),
               policy,
               log: log.child({ step: 'coin-lookup' }),

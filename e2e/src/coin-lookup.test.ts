@@ -1,8 +1,9 @@
 /**
  * ★ LOOKING UP COINS WE NEVER SAW MINTED: a promoted narrative with no coin has its name
  * searched; recent launchpad coins go into the universe as candidates (`backfill`), old ones and
- * ones we hold do not; the name is not searched again inside the keep time; and an outage on
- * every source is never recorded as "searched, nothing found".
+ * ones we hold do not; the name is not searched again inside the keep time; an outage on
+ * every source is never recorded as "searched, nothing found", only as a failed attempt that is
+ * tried again `retries` times and then left; and the per-minute cap holds across passes.
  *
  * Real schema (PGlite), the real step. The two sources and the chain are stand-ins.
  */
@@ -48,13 +49,13 @@ function sources(fail = false): CoinSearch[] {
   return [one('dex', [hit(RECENT, DAY, 'dex'), hit(OLD, 30 * DAY, 'dex')]), one('gecko', [hit(RECENT, DAY, 'gecko'), hit(HELD, DAY, 'gecko')])];
 }
 
-function deps(fail = false): LookupDeps {
+function deps(fail = false, policy = P): LookupDeps {
   return {
     coins: new PgCoinUniverseRepo(db),
     assets: new PgAssetRepo(db),
     sources: sources(fail),
     chain: { metadataUri: async () => 'https://ipfs.io/ipfs/bafkreiexampleexampleexampleexampleexampleexampleexample', oldestSignatureBlockTime: async () => Math.floor((NOW - DAY) / 1000) },
-    policy: P,
+    policy,
     log: quiet,
     now: () => NOW,
   };
@@ -79,15 +80,20 @@ before(async () => {
 
 test('★ an outage on every source is not recorded as "searched, nothing found"', async () => {
   const result = await lookUpCoins(deps(true));
-  assert.deepEqual(result, { searched: 0, added: 0 });
+  assert.deepEqual(result, { searched: 0, added: 0, failed: 1 });
   assert.equal((await db.query(`select 1 from internal.coin_lookup`)).length, 0);
+  const tried = await db.query<{ attempts: number; last_error: string }>(`select attempts, last_error from internal.coin_lookup_attempt where subject_id = $1`, [STORY]);
+  assert.equal(Number(tried[0]?.attempts), 1, 'counted as a failed attempt, to be tried again');
+  assert.ok(tried[0]?.last_error.includes('down'));
 });
 
 test('★ a narrative with no coin: its name searched, recent launchpad coins added as candidates, old and held ones not', async () => {
   asked.length = 0;
   const result = await lookUpCoins(deps());
-  assert.deepEqual(result, { searched: 1, added: 1 });
-  assert.deepEqual(asked.sort(), ['dex:Jimothy', 'gecko:Jimothy']);
+  assert.deepEqual(result, { searched: 1, added: 1, failed: 0 });
+  assert.deepEqual(asked.sort(), ['dex:Jimothy', 'gecko:Jimothy'], 'the failed name is tried again on the next pass');
+  const reset = await db.query<{ attempts: number }>(`select attempts from internal.coin_lookup_attempt where subject_id = $1`, [STORY]);
+  assert.equal(Number(reset[0]?.attempts), 0, 'a finished search starts the retry count again');
   const rows = await db.query<{ address: string; origin: string; minted_at_source: string; declared_social: { metadata?: string } }>(
     `select address, origin, minted_at_source, declared_social from public.asset where origin = 'backfill'`,
   );
@@ -100,6 +106,45 @@ test('★ a narrative with no coin: its name searched, recent launchpad coins ad
 
 test('the same name is not searched again inside the keep time', async () => {
   asked.length = 0;
-  assert.deepEqual(await lookUpCoins(deps()), { searched: 0, added: 0 });
+  assert.deepEqual(await lookUpCoins(deps()), { searched: 0, added: 0, failed: 0 });
   assert.deepEqual(asked, []);
+});
+
+const OTHER = storyId('heron');
+
+test('★ a name every source fails on is tried 1 + retries times, then left, and its first wait never moves', async () => {
+  await new PgStoryRepo(db).upsert({
+    storyId: OTHER, state: 'promoted', origin: 'observed', createdAt: (NOW - DAY) as Millis, promotedAt: (NOW - DAY) as Millis,
+    earliestPostAt: (NOW - DAY) as Millis, lastMemberAt: (NOW - DAY) as Millis, memberCount: 3, distinctAuthors: 3, distinctSources: 1, carriers: [], mergedInto: null,
+  });
+  await db.query(`insert into public.story_view (story_id, payload) values ($1, $2::jsonb)`, [OTHER, JSON.stringify({ id: OTHER, coins: { kind: 'pending' } })]);
+  await new PgJudgementRepo(db).record(OTHER, 3, {
+    judgeId: 'judge:test', promptId: 'p', judgedAt: NOW, coinable: true, confidence: 0.9, lookedAt: 'text', proposedName: 'Heron', alternateNames: [], subjectSpans: [], rationaleRef: null, costUsd: 0,
+  });
+  const firstSeen = (NOW - 300_000) as Millis;
+  assert.equal(await new PgCoinUniverseRepo(db).queueLookups(firstSeen), 1, 'only the new narrative is noted; the searched one already was');
+  for (let pass = 1; pass <= P.universe.lookup.retries + 1; pass += 1) {
+    asked.length = 0;
+    assert.deepEqual(await lookUpCoins(deps(true)), { searched: 0, added: 0, failed: 1 }, `pass ${pass}`);
+    assert.deepEqual(asked.sort(), ['dex:Heron', 'gecko:Heron']);
+  }
+  asked.length = 0;
+  assert.deepEqual(await lookUpCoins(deps(true)), { searched: 0, added: 0, failed: 0 }, 'given up: not asked again inside the keep time');
+  assert.deepEqual(asked, []);
+  const row = await db.query<{ attempts: number; queued_at: Date }>(`select attempts, queued_at from internal.coin_lookup_attempt where subject_id = $1`, [OTHER]);
+  assert.equal(Number(row[0]?.attempts), P.universe.lookup.retries + 1);
+  assert.equal(new Date(row[0]!.queued_at).getTime(), firstSeen, 'the first wait is kept: "Couldn\'t check" runs from it');
+  assert.equal((await db.query(`select 1 from internal.coin_lookup where subject_id = $1`, [OTHER])).length, 0, 'still never "searched, nothing found"');
+});
+
+test('★ the per-minute cap counts finished and failed searches across passes, and holds the next pass back', async () => {
+  await db.query(`update internal.coin_lookup_attempt set attempts = 0 where subject_id = $1`, [OTHER]);
+  /* Two searches stamped in this minute (one finished, one failed): a cap of two leaves no room. */
+  const capped = { ...P, universe: { ...P.universe, lookup: { ...P.universe.lookup, perMinute: 2 } } };
+  asked.length = 0;
+  assert.deepEqual(await lookUpCoins(deps(false, capped)), { searched: 0, added: 0, failed: 0 });
+  assert.deepEqual(asked, [], 'nothing is sent past the cap');
+  const roomForOne = { ...P, universe: { ...P.universe, lookup: { ...P.universe.lookup, perMinute: 3 } } };
+  assert.deepEqual(await lookUpCoins(deps(false, roomForOne)), { searched: 1, added: 0, failed: 0 });
+  assert.deepEqual(asked.sort(), ['dex:Heron', 'gecko:Heron'], 'one more fits, and only one');
 });
