@@ -96,6 +96,7 @@ import { errorText, type Logger } from '../log.ts';
 import { NotImplemented } from '../not-implemented.ts';
 import { judgeStories, type JudgingDeps } from './judge.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
+import { worthRereading } from './track-gate.ts';
 
 /* ── operational constants ────────────────────────────────────────────────
    Cadences, page sizes and lookbacks — how much is fetched, never what is decided.
@@ -444,10 +445,15 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
       /* The posts that are on screen, newest first — see `PgItemRepo.trackable`. */
       /* Back as far as tracking lasts, and no further: a post past `maxTrackedHours` would
          only be pulled to be told it is finished, every thirty seconds. */
-      const page = await repos.items.trackable(
+      const onScreen = await repos.items.trackable(
         now - policy.track.maxTrackedHours * MS_PER_HOUR,
         limit * PULL_OVERSCAN,
       );
+      /* ★ NO PAID READ FOR A POST THAT CAN NEVER BE SHOWN — a firm "no", a failed name test, a
+         hidden narrative's unjudged watch post. See work/track-gate.ts for what is kept and
+         why: unjudged catch-all posts always are, because their reach decides their judging. */
+      const facts = await repos.items.trackingFacts(onScreen.map((i) => i.itemId));
+      const page = onScreen.filter((i) => worthRereading(i.itemId, facts, policy));
       const items = await undecided(repos, 'track', page, (i) => i.itemId, limit, now);
       if (items.length === 0) return [];
 

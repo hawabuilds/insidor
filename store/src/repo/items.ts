@@ -45,6 +45,26 @@ interface FingerprintRow {
   key: string;
 }
 
+/** The judge's newest answer about one post, as much of it as the per-post rule reads. */
+export interface TrackingJudgement {
+  readonly coinable: boolean;
+  readonly confidence: number;
+  readonly lookedAt: 'text' | 'picture' | 'videoFrame';
+  readonly proposedName: string | null;
+}
+
+/** See `PgItemRepo.trackingFacts`. Keyed by item id and story id as strings. */
+export interface TrackingFacts {
+  readonly onFeed: ReadonlySet<string>;
+  readonly catchAll: ReadonlySet<string>;
+  /** The promoted, unmerged stories each post is in. A post in none is absent. */
+  readonly storiesOf: ReadonlyMap<string, readonly string[]>;
+  /** Every member of those stories. */
+  readonly membersOf: ReadonlyMap<string, readonly string[]>;
+  /** The newest judgement per post and per member. A post never judged is absent, never a "no". */
+  readonly judged: ReadonlyMap<string, TrackingJudgement>;
+}
+
 const SELECT_ITEM = `
   select item_id, source, source_item_id, origin, author_key, posted_at, first_seen_at,
          lang, body, media, counters, rebroadcast_of, reproduction_of,
@@ -230,6 +250,9 @@ export class PgItemRepo implements ItemRepo {
    * What this no longer includes, said so it is not rediscovered as a bug: posts ADMIT
    * passed, and with them ADMIT's holdout lane. Tracking every admitted post cost several
    * times the daily budget.
+   *
+   * TRACK narrows this further with `trackingFacts` (the runner's work/track-gate.ts): a story
+   * member that can never be shown — a firm "no", a failed name test — is not re-read.
    */
   async trackable(at: Millis, limit: number): Promise<readonly Item[]> {
     const rows = await this.#db.query<ItemRow>(
@@ -247,6 +270,65 @@ export class PgItemRepo implements ItemRepo {
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => this.#toItem(row, fingerprints));
+  }
+
+  /**
+   * What TRACK needs to know before it pays to re-read these posts: which are on a feed now,
+   * which a catch-all lane found, the promoted stories each is in, every member of those
+   * stories, and the newest per-post judgement of each post and each member.
+   *
+   * Facts only — what the judge said and where the post sits. Whether that is worth a read is
+   * the runner's call (work/track-gate.ts), held to core's own per-post rule, because the rule
+   * has thresholds and a word count that do not belong in SQL.
+   */
+  async trackingFacts(itemIds: readonly ItemId[]): Promise<TrackingFacts> {
+    const onFeed = new Set<string>();
+    const catchAll = new Set<string>();
+    const storiesOf = new Map<string, string[]>();
+    const membersOf = new Map<string, string[]>();
+    const judged = new Map<string, TrackingJudgement>();
+    if (itemIds.length === 0) return { onFeed, catchAll, storiesOf, membersOf, judged };
+    const ids = [...itemIds];
+
+    const where = await this.#db.query<{ item_id: string; on_feed: boolean; catch_all: boolean }>(
+      `select i.id as item_id,
+              exists (select 1 from public.rising_row r where r.item_id = i.id) as on_feed,
+              exists (select 1 from internal.item_found_by f where f.item_id = i.id) as catch_all
+         from unnest($1::text[]) as i(id)`,
+      [ids],
+    );
+    for (const row of where) {
+      if (row.on_feed) onFeed.add(row.item_id);
+      if (row.catch_all) catchAll.add(row.item_id);
+    }
+
+    const members = await this.#db.query<{ story_id: string; item_id: string; member_id: string }>(
+      `select m.story_id, m.item_id, all_m.item_id as member_id
+         from public.story_member m
+         join public.story s on s.story_id = m.story_id
+         join public.story_member all_m on all_m.story_id = m.story_id
+        where m.item_id = any($1::text[]) and s.state = 'promoted' and s.merged_into is null`,
+      [ids],
+    );
+    for (const row of members) {
+      const stories = storiesOf.get(row.item_id) ?? [];
+      if (!stories.includes(row.story_id)) storiesOf.set(row.item_id, [...stories, row.story_id]);
+      const list = membersOf.get(row.story_id) ?? [];
+      if (!list.includes(row.member_id)) membersOf.set(row.story_id, [...list, row.member_id]);
+    }
+
+    const everyone = [...new Set([...ids, ...members.map((m) => m.member_id)])];
+    const answers = await this.#db.query<{ item_id: string; coinable: boolean; confidence: number; looked_at: TrackingJudgement['lookedAt']; proposed_name: string | null }>(
+      `select distinct on (item_id) item_id, coinable, confidence, looked_at, proposed_name
+         from internal.post_judgement
+        where item_id = any($1::text[])
+        order by item_id, judged_at desc, id desc`,
+      [everyone],
+    );
+    for (const a of answers) {
+      judged.set(a.item_id, { coinable: a.coinable, confidence: Number(a.confidence), lookedAt: a.looked_at, proposedName: a.proposed_name });
+    }
+    return { onFeed, catchAll, storiesOf, membersOf, judged };
   }
 
   /**
