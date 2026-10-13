@@ -2,7 +2,8 @@
  * THE ALERT ROUTES, for the phone app. Every route needs a signed-in person; each reads or
  * writes only that person's rows.
  *
- *   GET    /alerts                  the list, newest first, with which are unread
+ *   GET    /alerts                  the list, newest first, with which are unread; ?list=feed|notifications
+ *                                    pages one side of it, twenty at a time (list.ts)
  *   POST   /alerts/seen             everything up to now is read
  *   GET    /prefs                   settings, the multiples offered, the hourly ceiling, push state
  *   PUT    /prefs { prefs }         saved as normalised (core): a bad value is corrected, not stored
@@ -21,6 +22,7 @@ import { normalisePrefs, type AlertPrefs } from '@insidor/core';
 
 import { prefsOf, type Db } from './deliver.ts';
 import { json, type Reply, type Request } from './http.ts';
+import { bellCount, parseList, readPage } from './list.ts';
 
 export interface NotifyDeps {
   readonly db: Db;
@@ -56,23 +58,19 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
   const path = seg.join('/');
 
   if (m === 'GET' && path === 'alerts') {
+    const q = parseList(url.searchParams, P.inboxLimit);
+    if (q === null) return bad('bad request');
     const [seen] = await deps.db.query<{ seenAt: string }>('select seen_at as "seenAt" from people.alert_seen where user_id = $1', [me.userId]);
     const seenAt = seen === undefined ? 0 : new Date(seen.seenAt).getTime();
-    const rows = await deps.db.query<{ id: number; kind: string; title: string; body: string; href: string; at: string; facts: unknown }>(
-      /* Nothing about a post or narrative the feeds have since hidden (0050): the alert stays in
-         the table, it is just not listed. A coin match's subject is "story id|coin". */
-      `select a.alert_id::int as id, a.kind, a.title, a.body, a.href, a.at, a.facts from people.alert a
-        where a.user_id = $1
-          and not exists (select 1 from public.feed_rejection r where r.subject_id = split_part(a.subject, '|', 1))
-        order by a.at desc, a.alert_id desc limit $2`,
-      [me.userId, P.inboxLimit],
-    );
-    const alerts = rows.map((r) => {
+    const page = await readPage(deps.db, me.userId, q);
+    const alerts = page.rows.map((r) => {
       const facts = (typeof r.facts === 'string' ? JSON.parse(r.facts) : r.facts) as Record<string, unknown>;
       const at = new Date(r.at).getTime();
       return { id: r.id, kind: r.kind, title: r.title, body: r.body, href: r.href, at, unread: at > seenAt, symbol: typeof facts['symbol'] === 'string' ? facts['symbol'] : null, rank: typeof facts['rank'] === 'string' ? facts['rank'] : null, season: typeof facts['season'] === 'number' ? facts['season'] : null };
     });
-    return json(200, { unread: alerts.filter((a) => a.unread).length, alerts });
+    /* `unread` is this reply's unread rows, as before; `bell` is every unread notification; `seenAt`
+       lets the app keep the line between new and read where it was when the screen opened. */
+    return json(200, { unread: alerts.filter((a) => a.unread).length, bell: await bellCount(deps.db, me.userId), seenAt, alerts, cursor: page.cursor });
   }
   if (m === 'POST' && path === 'alerts/seen') {
     await deps.db.query('insert into people.alert_seen (user_id, seen_at) values ($1, now()) on conflict (user_id) do update set seen_at = now()', [me.userId]);

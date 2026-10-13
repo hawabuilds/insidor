@@ -47,6 +47,15 @@ export const ALERT_KINDS = [
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
+/**
+ * The kinds the app's Feed tab shows: what is happening on the pipeline, not what happened to
+ * you. Every other kind is a notification, and only notifications are counted on the bell. The
+ * alert service pages each side on its own with this list; the phone keeps a copy of it
+ * (mobile/src/features/alerts/split.ts) because the app may not import core. A kind added later
+ * and left off this list lands in Notifications, seen and counted, rather than nowhere.
+ */
+export const FEED_KINDS: readonly AlertKind[] = ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched'];
+
 /** The switches a person sees, one per row of the settings screen. */
 export const SWITCHES = ['follows', 'replies', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins'] as const;
 export type AlertSwitch = (typeof SWITCHES)[number];

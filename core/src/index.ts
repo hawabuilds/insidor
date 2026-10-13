@@ -143,5 +143,5 @@ export { biggestFirst, groupCoins } from './history/group.ts';
 export type { HistoryCoin, HistoryNarrative, PicturePair } from './history/group.ts';
 export { RANKS, boughtEarly, earnsRep, goatCount, nextRank, rankFor, rankedUp, seasonOf, standings, votePoints } from './social/rank.ts';
 export type { RankId, Standing } from './social/rank.ts';
-export { ALERT_KINDS, SWITCHES, defaultPrefs, deliveryFor, highestMilestone, isQuiet, normalisePrefs, spentWith, wants } from './notify/alerts.ts';
+export { ALERT_KINDS, FEED_KINDS, SWITCHES, defaultPrefs, deliveryFor, highestMilestone, isQuiet, normalisePrefs, spentWith, wants } from './notify/alerts.ts';
 export type { AlertKind, AlertPrefs, AlertSwitch, Delivery } from './notify/alerts.ts';
