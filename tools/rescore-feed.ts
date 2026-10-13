@@ -41,7 +41,7 @@ import type { Item } from '../contracts/src/vocabulary.ts';
 import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgItemRepo, PgPostJudgementRepo } from '../store/src/index.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
-import { HELD_KINDS } from '../services/runner/src/work/score-posts.ts';
+import { heldKind } from '../core/src/qualify/kinds.ts';
 
 const P = DEFAULT_POLICY;
 const USD_PER_POST = 0.01;
@@ -105,7 +105,7 @@ try {
   const keep = async (item: Item, o: JudgeOutcome | undefined): Promise<void> => {
     if (o?.kind !== 'judged') return;
     /* The kind question files only a holding answer; OTHER leaves the post's answer as it is. */
-    if (!KIND || HELD_KINDS.has((o.judgement.proposedName ?? '').trim().toUpperCase())) await scores.record(item.itemId, o.judgement);
+    if (!KIND || heldKind(o.judgement.proposedName, P.judge.heldKinds) !== null) await scores.record(item.itemId, o.judgement);
     if (o.judgement.coinable) passed += 1;
     else failed += 1;
     console.log(`${o.judgement.coinable ? 'yes' : 'no '} ${o.judgement.confidence.toFixed(2)} ${(o.judgement.proposedName ?? '-').padEnd(20)} ${item.text.replace(/\s+/g, ' ').slice(0, 80)}`);

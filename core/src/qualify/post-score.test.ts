@@ -72,12 +72,16 @@ test('★ a "no" is never lifted by the picture, however unsure or alike (the ti
   for (const c of [0, 0.15, 0.3, 0.5, 0.9]) assert.equal(postScore(no(c), DEFAULT_POLICY, 0.99), 'below', `no at ${c}`);
 });
 
-test('★ a held kind fails whatever the picture, the confidence or the yes/no it was filed with', () => {
+test('★ a held kind fails whatever the picture, the confidence or the yes/no it was filed with — held means policy holds it', () => {
   /* The Goliath coaster death passed the first question as GOLIATH at 0.92. */
   const goliath = judged({ confidence: 0.92, proposedName: 'GOLIATH' });
+  const all = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, heldKinds: ['TRAGEDY', 'AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'CORP_NEWS', 'MEDIA_NEWS'] } };
   for (const kind of ['TRAGEDY', 'AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'CORP_NEWS', 'MEDIA_NEWS', ' tragedy ']) {
-    assert.equal(postScoreReason(goliath, DEFAULT_POLICY, 0.99, kind), 'not_memeable', kind);
+    assert.equal(postScoreReason(goliath, all, 0.99, kind), 'not_memeable', kind);
   }
+  const adsOnly = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, heldKinds: ['AD'] } };
+  assert.equal(postScoreReason(goliath, adsOnly, 0.99, 'AD'), 'not_memeable');
+  assert.equal(postScoreReason(goliath, adsOnly, null, 'TRAGEDY'), 'passes', 'a label policy does not hold holds nothing');
 });
 
 test('★ an OTHER kind answer (or an unknown label) holds nothing: the two stray rows of 2026-10-13', () => {

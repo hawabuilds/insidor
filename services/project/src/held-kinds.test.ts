@@ -1,5 +1,5 @@
 /**
- * The kind question's hold, as the projector reads it: a held kind keeps a post off For You
+ * The kind question's hold, as the projector reads it: a kind policy holds keeps a post off For You
  * whatever its picture or confidence, an OTHER answer holds nothing, and a held post's rejection
  * names the kind. Recorded cases from 2026-10-13: the tiger-mauling and Goliath posts, and the
  * two stray OTHER rows that hid two posts.
@@ -12,7 +12,8 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { kindDetail, postHeldKind, postStanding, type RisingRow } from './rising.ts';
 
-const P = DEFAULT_POLICY;
+/* Every label held, so these cases read the same whichever set the owner picks for live. */
+const P = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'TRAGEDY', 'CORP_NEWS', 'MEDIA_NEWS'] } };
 const ROW: RisingRow = {
   item_id: 'x:2109759454858379456',
   source: 'x',
@@ -36,7 +37,10 @@ test('★ a tragedy fails whatever the confidence and the picture (the Goliath c
   assert.equal(postStanding(ROW, P), 'passes', 'without its kind answer it passed');
   const held = { ...ROW, kind_label: 'TRAGEDY' };
   assert.equal(postStanding(held, P), 'not_memeable');
-  assert.equal(postHeldKind(held), 'TRAGEDY');
+  assert.equal(postHeldKind(held, P), 'TRAGEDY');
+  const adsOnly = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, heldKinds: ['AD'] } };
+  assert.equal(postStanding(held, adsOnly), 'passes', 'a kind policy does not hold holds nothing');
+  assert.equal(postHeldKind(held, adsOnly), null);
 });
 
 test('★ the picture boost never lifts a "no" (the tiger-mauling post: "no" at 0.3, picture 0.9 alike)', () => {
@@ -47,7 +51,7 @@ test('★ the picture boost never lifts a "no" (the tiger-mauling post: "no" at 
 test('★ the two stray OTHER rows hide nothing: an OTHER kind label leaves the first answer to decide', () => {
   const stray = { ...ROW, item_id: 'x:2109834323989774835', proposed_name: 'CHILLGUY', kind_label: 'OTHER' };
   assert.equal(postStanding(stray, P), 'passes');
-  assert.equal(postHeldKind(stray), null);
+  assert.equal(postHeldKind(stray, P), null);
 });
 
 test('a held post is recorded with its kind; anything else with no detail', () => {

@@ -144,7 +144,7 @@ export interface RisingRow {
  * The kind a post was held by, or null: what feed_rejection's detail records and what a News
  * surface sorts by. The same rule `postStanding` applies, so the two never disagree.
  */
-export const postHeldKind = (row: Pick<RisingRow, 'kind_label'>): HeldKind | null => heldKind(row.kind_label ?? null);
+export const postHeldKind = (row: Pick<RisingRow, 'kind_label'>, policy = DEFAULT_POLICY): HeldKind | null => heldKind(row.kind_label ?? null, policy.judge.heldKinds);
 
 const toMs = (value: Date | string | null): Millis | null => {
   if (value === null) return null;
@@ -394,7 +394,7 @@ export async function buildRising(
   const rows = (await loadCandidates(db, sinceMs)).filter((row) => {
     const why = postStanding(row, policy);
     if (why !== 'passes') whyNot.set(row.item_id, why);
-    const held = postHeldKind(row);
+    const held = postHeldKind(row, policy);
     if (why !== 'passes' && held !== null) heldBy.set(row.item_id, held);
     return why === 'passes';
   });
