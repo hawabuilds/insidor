@@ -1,0 +1,24 @@
+/*
+ * The post sheet's media, its own few pieces (PostMedia.tsx): the "Play on X" link a video shows
+ * only when it cannot play here. Its own file so the sheet's layout styles (post-sheet.module.css)
+ * and the player's way out change apart. Sits over the still, bottom right, small: it must read as
+ * a way to watch elsewhere, never as the still's own play button.
+ */
+
+.out {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 72%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
