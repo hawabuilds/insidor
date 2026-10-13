@@ -216,13 +216,22 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       log('info', 'retune testing a block', { slot: slot.toISOString(), posts: posts.length, gold: posts.filter((p) => p.group === 'gold').length, liveNegatives: block.testNegatives.length, missed: block.testMissed.length, examples: block.exampleIds.length, chars: block.text.length });
       /* Bounded by the learning book's lines, not a guess per post: the test either fits what is left
          of them (mustFit) or is not started. */
+      /* ★ A PICTURE IS EMBEDDED ONCE PER RUN. The block's test and the baseline grade the same
+         posts minutes apart, and two embeddings of one file minutes apart came back bit-identical
+         (2026-10-13), so the second grading reads the first's vectors. Not across runs: vectors
+         stored hours earlier differed by up to 0.0003 cosine, which is not provably the same answer. */
+      const held = new Map<string, readonly number[]>();
+      const vectors = {
+        stored: async (uris: readonly string[]) => new Map(uris.flatMap((u) => { const v = held.get(u); return v === undefined ? [] : [[u, v] as const]; })),
+        keep: async (_id: string, uri: string, _space: string, v: readonly number[]) => void held.set(uri, v),
+      };
       const shared = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning');
       let rows: readonly EvalRow<G>[] = [];
       let used: Usage | null = null;
       let batched = false;
       try {
         const coined = await repo.coinedPictureVectors();
-        ({ rows, used, batched } = await gradePosts(posts, { env, meter: shared.meter, examples: block.text, batch: true, mustFit: true, coined }));
+        ({ rows, used, batched } = await gradePosts(posts, { env, meter: shared.meter, examples: block.text, batch: true, mustFit: true, coined, vectors }));
       } finally {
         await shared.close();
       }
@@ -235,7 +244,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         const again = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning');
         try {
           const coined = await repo.coinedPictureVectors();
-          const base = await gradePosts(posts, { env, meter: again.meter, examples: null, batch: true, mustFit: true, coined });
+          const base = await gradePosts(posts, { env, meter: again.meter, examples: null, batch: true, mustFit: true, coined, vectors });
           const said = base.rows.filter((r) => r.coinable !== null);
           baseline = { gold: rateOf(said, 'gold'), negatives: rateOf(said, 'live-not'), missed: rateOf(said, 'missed') };
           log('info', 'retune baseline: the same posts, rules alone', { slot: slot.toISOString(), gold: baseline.gold, liveNegatives: baseline.negatives, missed: baseline.missed, unanswered: base.rows.length - said.length });
