@@ -1883,7 +1883,12 @@ export interface LearningPolicy {
    * one run with its batched test and a baseline took about 17 minutes.
    */
   readonly startAheadMs: number;
-  /** Gold origin posts that must still pass. */
+  /**
+   * Hand gold that must pass, with `maxLiveNegativePass` the one gate: the committed gold sheets,
+   * the owner's missed posts and the posts the owner put in eval/src/gold/hand-gold.json — memes,
+   * news and tragedies alike, since For You is one feed for anything people could coin. The recall
+   * check's other additions are auto gold, reported and never gated.
+   */
   readonly minGoldPass: number;
   /** Held-out live non-memes that may pass, at most. */
   readonly maxLiveNegativePass: number;

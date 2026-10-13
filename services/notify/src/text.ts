@@ -84,13 +84,18 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
     }
     case 'retune_summary': {
       const applied = f['applied'] === true;
-      const tests = `Gold ${ofN(f['goldPassed'], f['goldN'])}, live non-memes ${ofN(f['negativePassed'], f['negativeN'])}, missed ${ofN(f['missedPassed'], f['missedN'])} passed.`;
+      /* The gate (hand gold and live non-memes), then the missed posts. Auto gold is information,
+         never a gate, and says so; a regression is named because it alone keeps a block out. */
+      const tests = `Hand gold ${ofN(f['goldPassed'], f['goldN'])}, live non-memes ${ofN(f['negativePassed'], f['negativeN'])}, missed ${ofN(f['missedPassed'], f['missedN'])} passed.`;
+      const auto = n(f['autoN']) === null ? '' : ` Auto gold ${ofN(f['autoPassed'], f['autoN'])} (not a gate).`;
+      const regressed = n(f['regressions']);
+      const regress = regressed === null || regressed === 0 ? '' : ` ${regressed} missed post${regressed === 1 ? '' : 's'} caught now would fail.`;
       const c = (k: string): string => String(n(f[k]) ?? '–');
       const from = `From ${c('taps')} taps, ${c('missed')} missed posts, ${c('names')} name calls; +${c('added')} −${c('removed')} examples.`;
       const kept = applied ? '' : ` Kept the current examples: ${s(f['why'], 'a test fell short')}.`;
       const reasons = typeof f['missReasons'] === 'object' && f['missReasons'] !== null ? Object.entries(f['missReasons'] as Record<string, unknown>).filter(([, v]) => n(v) !== null) : [];
       const missedWhy = reasons.length === 0 ? '' : ` Missed today: ${reasons.map(([k, v]) => `${k.replaceAll('_', ' ')} ${n(v)}`).join(', ')}.`;
-      return { title: applied ? 'Judge examples updated' : 'Judge examples kept', body: `${tests} ${from}${kept}${missedWhy}` };
+      return { title: applied ? 'Judge examples updated' : 'Judge examples kept', body: `${tests}${auto}${regress} ${from}${kept}${missedWhy}` };
     }
   }
 }

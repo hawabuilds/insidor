@@ -18,6 +18,11 @@
  * ★ BALANCED, NEWEST FIRST, CAPPED. Each side gets half the room; room a short side leaves goes to
  * the other, so twelve memes do not throw away a hundred careful "no"s. Within a side, newest first.
  *
+ * ★ ONE GATE AND A REGRESSION RULE, BOTH HERE AND PURE (the owner's decision, 2026-10-13). For
+ * You is one feed for anything people could coin — memes, news, tragedies — so hand gold is one
+ * set held to one bar beside the live non-memes. And a block that makes a missed post the judge
+ * in use catches fail is never applied, whatever its rates.
+ *
  * `latestSlot` is here too: which 08:00 or 20:00 London (Policy.learning) a run belongs to, pure so
  * the clock change is tested rather than found out in October.
  *
@@ -29,6 +34,7 @@
 import { createHash } from 'node:crypto';
 
 import type { LearningPolicy } from '@insidor/contracts/policy.ts';
+import { heldKind } from '@insidor/core';
 
 /** Examples or test, by the post id alone. */
 export const isExample = (itemId: string): boolean => (createHash('sha256').update(itemId).digest()[0] ?? 0) % 2 === 0;
@@ -126,6 +132,47 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
   };
 }
 
+/* ── whether a graded post reaches the feed ─────────────────────────────────────────────────────── */
+
+/** One post as the test graded it: the first question's answer and the kind question's label. */
+export interface GradedPost {
+  readonly id: string;
+  readonly group: string;
+  /** null: the judge did not answer — out of every rate. */
+  readonly coinable: boolean | null;
+  /** The first question passed (core's postScore, picture boost included). */
+  readonly firstPass: boolean;
+  /** The kind label, upper case; null when it was never asked or not answered. */
+  readonly kind: string | null;
+}
+
+/**
+ * On For You: the first question passed and the kind it got is not one policy holds
+ * (`held` is Policy.judge.heldKinds, or a set being measured). The labels are core's.
+ */
+export const inFeed = (r: GradedPost, held: readonly string[]): boolean => r.firstPass && heldKind(r.kind, held) === null;
+/** Caught: on For You; null when unanswered. */
+export const caught = (r: GradedPost, held: readonly string[]): boolean | null => (r.coinable === null ? null : inFeed(r, held));
+
+/**
+ * The rates the gate reads, from one grading under one held set. `hand` names the groups that make
+ * hand gold (the gold sheets, the owner's missed posts, the owner's hand-gold list); `auto` the
+ * unapproved recall additions, reported only. An unanswered post is out of every rate.
+ */
+export function ratesOf(rows: readonly GradedPost[], held: readonly string[], groups: { readonly hand: readonly string[]; readonly auto: string; readonly negatives: string; readonly missed: string }) {
+  const answered = rows.filter((r) => r.coinable !== null);
+  const rate = (g: (r: GradedPost) => boolean): Rate => {
+    const of = answered.filter(g);
+    return { passed: of.filter((r) => inFeed(r, held)).length, tested: of.length };
+  };
+  return {
+    hand: rate((r) => groups.hand.includes(r.group)),
+    auto: rate((r) => r.group === groups.auto),
+    negatives: rate((r) => r.group === groups.negatives),
+    missed: rate((r) => r.group === groups.missed),
+  };
+}
+
 /** Passed of tested, for one group. `tested` 0 means nobody could tell. */
 export interface Rate {
   readonly passed: number;
@@ -133,23 +180,49 @@ export interface Rate {
 }
 export const share = (r: Rate): number | null => (r.tested === 0 ? null : r.passed / r.tested);
 
+/** What a block is held to: the one gate, the held-out missed posts, and the regression list. */
+export interface GateInput {
+  /** Hand gold: memes, news and the rest alike, shown on For You. */
+  readonly hand: Rate;
+  readonly negatives: Rate;
+  readonly missed: Rate;
+  /** Missed posts the judge in use catches that this block does not: any one blocks it. */
+  readonly regressions: readonly string[];
+}
+
 /**
- * May this block replace the one in use? Every gate must hold. Gold and the live non-memes must
- * have been tested; with no missed posts held out, "most missed posts pass" cannot be asked and
- * does not block — it is recorded as untested, never as zero.
+ * May this block replace the one in use? Every rule must hold.
+ *
+ *   gate       hand gold passes at least minGoldPass AND live non-memes pass at most
+ *              maxLiveNegativePass. Both must have been tested: a block is never applied on a
+ *              test nobody ran.
+ *   missed     the held-out missed posts pass at least minMissedPass; untested does not block —
+ *              recorded as untested, never as zero.
+ *   no regress ★ the owner's rule: no block is ever applied that makes a missed post the judge in
+ *              use catches fail. One is enough.
  */
-export function gate(r: { readonly gold: Rate; readonly negatives: Rate; readonly missed: Rate }, L: LearningPolicy): { readonly apply: boolean; readonly why: string | null } {
+export function gate(r: GateInput, L: LearningPolicy): { readonly apply: boolean; readonly why: string | null } {
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const fails: string[] = [];
-  const gold = share(r.gold);
+  const hand = share(r.hand);
   const neg = share(r.negatives);
   const missed = share(r.missed);
-  if (gold === null) fails.push('no gold post could be tested');
-  else if (gold < L.minGoldPass) fails.push(`gold ${r.gold.passed}/${r.gold.tested} is under ${pct(L.minGoldPass)}`);
+  if (hand === null) fails.push('no hand gold post could be tested');
+  else if (hand < L.minGoldPass) fails.push(`hand gold ${r.hand.passed}/${r.hand.tested} is under ${pct(L.minGoldPass)}`);
   if (neg === null) fails.push('no live non-meme could be tested');
   else if (neg > L.maxLiveNegativePass) fails.push(`live non-memes ${r.negatives.passed}/${r.negatives.tested} is over ${pct(L.maxLiveNegativePass)}`);
   if (missed !== null && missed < L.minMissedPass) fails.push(`missed posts ${r.missed.passed}/${r.missed.tested} is under ${pct(L.minMissedPass)}`);
+  if (r.regressions.length > 0) fails.push(`${r.regressions.length} missed post${r.regressions.length === 1 ? '' : 's'} caught now would fail: ${r.regressions.join(', ')}`);
   return { apply: fails.length === 0, why: fails.length === 0 ? null : fails.join('; ') };
+}
+
+/**
+ * The missed posts that would regress: caught (`ok`) under the judge in use, not under the new
+ * block. A post either side did not answer is not a regression — an outage is not a verdict, and
+ * the run already refuses to apply a block whose test went unanswered.
+ */
+export function regressions(current: ReadonlyMap<string, boolean | null>, next: ReadonlyMap<string, boolean | null>): readonly string[] {
+  return [...current].filter(([id, ok]) => ok === true && next.get(id) === false).map(([id]) => id).sort();
 }
 
 /** Examples added to and removed from the block in use. */

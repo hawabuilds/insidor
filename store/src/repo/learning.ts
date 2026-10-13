@@ -1,7 +1,7 @@
 /**
  * The judge's learning, as rows: every learned-examples block built and how it tested (0056), the
- * scheduled re-tunes that built them, the gold set's live additions (0057), and the reads of the
- * owner's own input the re-tune learns from.
+ * scheduled re-tunes that built them, the gold set's live additions (0057), the posts on the
+ * owner's hand-gold list, and the reads of the owner's own input the re-tune learns from.
  *
  * Its own repository because these rows teach the judge rather than record the world: the runner
  * reads exactly one thing here (the latest APPLIED block), and nothing a surface shows comes from
@@ -205,6 +205,13 @@ export class PgLearningRepo {
   async coinedPictureVectors(): Promise<readonly { readonly coinRef: string; readonly uri: string; readonly v: readonly number[] }[]> {
     const rows = await this.#db.query<{ coin_ref: string; uri: string; embedding: string }>('select coin_ref, uri, embedding::text as embedding from internal.coined_picture');
     return rows.map((r) => ({ coinRef: r.coin_ref, uri: r.uri, v: JSON.parse(r.embedding) as number[] }));
+  }
+
+  /** Posts as we hold them, for the owner's hand-gold list: text and media, by feed id. */
+  async heldPosts(itemIds: readonly string[]): Promise<readonly { readonly itemId: string; readonly body: string; readonly media: unknown }[]> {
+    if (itemIds.length === 0) return [];
+    const rows = await this.#db.query<{ item_id: string; body: string | null; media: unknown }>('select item_id, body, media from public.item where item_id = any($1)', [[...itemIds]]);
+    return rows.flatMap((r) => (r.body === null || r.body.trim() === '' ? [] : [{ itemId: r.item_id, body: r.body, media: r.media }]));
   }
 
   /* ── the owner's input (0054 owner_feedback, 0055 missed_post) ───────────────────────────────── */
