@@ -11,6 +11,11 @@
  * for GROUP's name-plus-picture join), not yet scored, newest first, inside the feed's window. An answer is recorded the moment it arrives, so a restart does
  * not pay for it twice.
  *
+ * ★ FREE CHECKS FIRST. A catch-all post goes to the paid judge only once its reach clears For
+ * You's bar (core's `clearsReachBar`) — a post that cannot show is not worth a judgement yet. One
+ * that has not cleared it waits, unscored and off the feed, and is checked again after its next
+ * re-read. A post a story's backfill fetched is judged regardless: GROUP needs its name.
+ *
  * ★ NO ANSWER IS NOT A NO. A dry run prices the batch and sends nothing; a budget pause or
  * an unavailable answer records nothing. Each leaves the post waiting — off the feed, and
  * back in the queue next pass — and none is ever read as a pass.
@@ -26,14 +31,18 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePort, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PgItemRepo, PgPostJudgementRepo } from '@insidor/store';
+import { clearsReachBar } from '@insidor/core';
 import { BudgetRefused } from '@insidor/vendor-kit';
+
+/** How many unscored posts are read per pass for each one that may be judged: the rest are below the bar. */
+const PREFETCH_FACTOR = 5;
 
 import { errorText, type Logger } from '../log.ts';
 
 export interface ScoringDeps {
   /** null when the judge is dormant: nothing is asked and every post waits. */
   readonly judge: JudgePort | null;
-  readonly items: Pick<PgItemRepo, 'catchAllUnscored'>;
+  readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'reachReadings' | 'backfilled'>;
   readonly scores: Pick<PgPostJudgementRepo, 'record'>;
   readonly meter: Meter;
   readonly mode: 'dry' | 'live';
@@ -69,10 +78,17 @@ function subjectFor(item: Item, p: Policy): JudgeSubject {
 
 export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   const now = deps.now();
-  const queue = await deps.items.catchAllUnscored(
-    (now - deps.policy.rising.windowMs) as Millis,
-    deps.policy.rising.postsPerPass,
-  );
+  const r = deps.policy.rising;
+  const since = (now - r.windowMs) as Millis;
+  /* The database narrows to posts some reading has put at the lowest reach any path to the feed
+     starts from; core then holds each to the exact bar. Fetched wide, so posts still below it
+     cannot crowd out the ones above it. */
+  const wide = await deps.items.catchAllUnscored(since, r.postsPerPass * PREFETCH_FACTOR, Math.min(r.fypFastReachPerMinute, r.fypEarlyReach, r.fypMinReach));
+  const readings = await deps.items.reachReadings(wide.map((i) => i.itemId), since);
+  const backfilled = await deps.items.backfilled(wide.map((i) => i.itemId));
+  const queue = wide
+    .filter((item) => backfilled.has(String(item.itemId)) || clearsReachBar('fyp', readings.get(String(item.itemId)) ?? [], item.postedAt, deps.policy))
+    .slice(0, r.postsPerPass);
   const empty = { queued: queue.length, scored: 0, waiting: queue.length, wouldSpendUsd: 0, spentUsd: 0 };
   if (queue.length === 0 || deps.judge === null) return empty;
   const judge = deps.judge;
