@@ -30,6 +30,7 @@ import { FilterIcon, StarIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { PostRow } from '../../shared/ui/PostRow.tsx';
+import { SameNameCoins } from './SameNameCoins.tsx';
 import { StoryRow } from '../../shared/ui/StoryRow.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { FilterPanel } from './FilterPanel.tsx';
@@ -55,6 +56,8 @@ export function Feed({
   const [tab, setTab] = useState<FeedTab>('fyp');
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
   const [panel, setPanel] = useState(false);
+  /* The post whose same-named coins are open ("See 3 coins"), or none. */
+  const [seeing, setSeeing] = useState<RisingPost | null>(null);
   const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
   /* One loader per feed, so switching tabs never shows one feed's order under the other's name. */
   const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
@@ -106,6 +109,7 @@ export function Feed({
             p.storyId !== null ? { screen: 'coin', storyId: p.storyId, coinId: coin.coinId } : { screen: 'token', coinId: coin.coinId },
           )),
         create: () => onCreatePost(p),
+        seeCoins: () => setSeeing(p),
         viewCoins: () => {
           if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId });
         },
@@ -244,6 +248,16 @@ export function Feed({
             </p>
           ) : null}
         </>
+      ) : null}
+      {seeing !== null ? (
+        <SameNameCoins
+          post={seeing}
+          onClose={() => setSeeing(null)}
+          onCreate={() => {
+            setSeeing(null);
+            onCreatePost(seeing);
+          }}
+        />
       ) : null}
     </section>
   );

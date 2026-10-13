@@ -17,9 +17,9 @@
  */
 
 import { notImplemented } from '../not-implemented.ts';
-import { decodeBoardTick, decodeCoinMarket, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeSearch, decodeSearchedCoin, decodeStory } from './decode.ts';
+import { decodeBoardTick, decodeCoinMarket, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
-import type { SearchedCoin, SearchResults } from './wire/search.ts';
+import type { SameNameCoins, SearchedCoin, SearchResults } from './wire/search.ts';
 import type { BuildResult, Holding, TradeQuote, TradeVenue } from './wire/trade.ts';
 import type { CoinMarket, MarketTimeframe } from './wire/market.ts';
 import type { BoardTick } from './wire/board.ts';
@@ -102,6 +102,14 @@ export async function fetchWalletHistory(address: string, range: '1d' | '1w' | '
 /** The Search tab: narratives, posts and coins matching a term. A 429 means slow down. */
 export async function fetchSearch(term: string, signal?: AbortSignal): Promise<SearchResults> {
   return decodeSearch(await read(`/search?q=${encodeURIComponent(term)}`, signal));
+}
+
+/**
+ * The coins an unsure feed post shares its name with: what "See 3 coins" opens. A 404 means the
+ * post is no longer unsure on a feed; a 429 means slow down, as for Search.
+ */
+export async function fetchPostCoins(postId: string, signal?: AbortSignal): Promise<SameNameCoins> {
+  return decodeSameNameCoins(await read(`/post/${encodeURIComponent(postId)}/coins`, signal));
 }
 
 /** A coin opened from search: what the search said about it. */

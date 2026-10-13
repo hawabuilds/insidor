@@ -10,14 +10,16 @@
 
 import type { OriginGap, SearchCoin, SearchResults } from '../../shared/api/index.ts';
 
-export type CoinOrder = 'cap' | 'new';
+/** Biggest market cap first, newest launch first, or earliest launch first (the same-name list). */
+export type CoinOrder = 'cap' | 'new' | 'first';
 
 export function orderCoins(items: readonly SearchCoin[], by: CoinOrder): readonly SearchCoin[] {
   const key = (c: SearchCoin): number | null =>
     by === 'cap' ? (c.marketCapUsd.known ? c.marketCapUsd.amount : null) : c.launchedAt.known ? c.launchedAt.at : null;
+  const down = by !== 'first';
   return items
     .map((c, i) => ({ c, i, k: key(c) }))
-    .sort((a, b) => (a.k === null ? (b.k === null ? a.i - b.i : 1) : b.k === null ? -1 : b.k - a.k || a.i - b.i))
+    .sort((a, b) => (a.k === null ? (b.k === null ? a.i - b.i : 1) : b.k === null ? -1 : (down ? b.k - a.k : a.k - b.k) || a.i - b.i))
     .map((x) => x.c);
 }
 

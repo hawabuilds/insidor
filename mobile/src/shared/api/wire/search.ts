@@ -53,6 +53,18 @@ export interface SearchCoin {
   readonly matched: { readonly storyId: string | null; readonly title: string } | null;
 }
 
+/**
+ * The coins an unsure feed post shares its name with (`GET /post/:id/coins`): each as Search
+ * shows it, `matched` always null. `more` says the post's search found more coins than it kept,
+ * so this list is the newest of them; `sourcesMissing` that a market could not be read, so a
+ * coin's market may be a dash for that reason.
+ */
+export interface SameNameCoins {
+  readonly more: boolean;
+  readonly sourcesMissing: number;
+  readonly items: readonly SearchCoin[];
+}
+
 export type SearchCoins =
   | { readonly kind: 'read'; readonly capped: boolean; readonly sourcesMissing: number; readonly items: readonly SearchCoin[] }
   | { readonly kind: 'unavailable' };

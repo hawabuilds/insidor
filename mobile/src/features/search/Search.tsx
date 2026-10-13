@@ -168,7 +168,9 @@ function PostRow({ p, now }: { p: SearchPost; now: number }) {
   );
 }
 
-function CoinRow({ c, now }: { c: SearchCoin; now: number }) {
+/** A coin: its picture, ticker, market line, launch and cap. Opens its token page. Shared with
+    the same-name list (features/feed/SameNameCoins.tsx), so both lists draw a coin alike. */
+export function CoinRow({ c, now }: { c: SearchCoin; now: number }) {
   const label = c.ticker ?? c.name ?? c.address.slice(0, 6);
   return (
     <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: c.coinId })}>
