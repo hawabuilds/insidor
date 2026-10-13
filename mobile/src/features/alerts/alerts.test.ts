@@ -23,6 +23,7 @@ test('the bell shows nothing at zero and 9+ past nine', () => {
 test("the owner's supplier warning gets the dollar mark; coins, ranks and the rest keep theirs", () => {
   const ranks = ['intern', 'goat'];
   assert.deepEqual(markOf({ kind: 'supplier_warning', rank: null, symbol: null }, ranks), { kind: 'money', label: 'Supplier spend' });
+  assert.deepEqual(markOf({ kind: 'retune_summary', rank: null, symbol: null }, ranks), { kind: 'learned', label: 'Learning from your calls' });
   assert.deepEqual(markOf({ kind: 'holding_multiple', rank: null, symbol: 'FERRY' }, ranks), { kind: 'coin', letter: 'F' });
   assert.deepEqual(markOf({ kind: 'rank_up', rank: 'goat', symbol: null }, ranks), { kind: 'rank', rank: 'goat' });
   assert.deepEqual(markOf({ kind: 'rising_post', rank: null, symbol: null }, ranks), { kind: 'bell' });

@@ -30,3 +30,15 @@ test("a supplier warning names the role and the money, and says so plainly when 
   assert.deepEqual(alertText('supplier_warning', { role: 'short video', share: 0.95, spentUsd: 2.86, capUsd: 3 }), { title: 'Short video at 95% of its daily line', body: '$2.86 of $3.00 spent today (UTC).' });
   assert.deepEqual(alertText('supplier_warning', {}), { title: 'A supplier at a warning share of its daily line', body: 'Its spend today reached that share of the line.' });
 });
+
+test("a re-tune summary says applied or kept, each test as passed-of-tested, and a dash for a test nobody could run", () => {
+  assert.deepEqual(alertText('retune_summary', { applied: true, goldPassed: 30, goldN: 41, negativePassed: 1, negativeN: 90, missedPassed: 3, missedN: 4, taps: 5, missed: 2, names: 1, added: 6, removed: 2 }), {
+    title: 'Judge examples updated',
+    body: 'Gold 30/41, live non-memes 1/90, missed 3/4 passed. From 5 taps, 2 missed posts, 1 name calls; +6 −2 examples.',
+  });
+  assert.deepEqual(alertText('retune_summary', { applied: false, goldPassed: 20, goldN: 41, negativePassed: 0, negativeN: 90, missedPassed: 0, missedN: 0, taps: 1, missed: 0, names: 0, added: 1, removed: 0, why: 'gold 20/41 is under 65%' }), {
+    title: 'Judge examples kept',
+    body: 'Gold 20/41, live non-memes 0/90, missed – passed. From 1 taps, 0 missed posts, 0 name calls; +1 −0 examples. Kept the current examples: gold 20/41 is under 65%.',
+  });
+  assert.match(alertText('retune_summary', { applied: true, missReasons: { never_found: 2, rejected: 1 } }).body, /Missed today: never found 2, rejected 1\.$/);
+});

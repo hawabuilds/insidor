@@ -9,6 +9,11 @@
  * A supplier warning names the supplier by its role (posts, judge, short video, pictures), never
  * by the vendor behind it: the role is what the owner set a line for, and a vendor's name on a
  * lock screen says nothing the role does not.
+ *
+ * A re-tune summary is the owner's twice-daily report on the judge's learned examples: applied or
+ * kept, how each test group did as passed-of-tested, and what it learned from. A group nobody could
+ * test is a dash, never 0 of 0 read as a failure; the reason a block was kept is the job's own
+ * sentence about which gate it missed.
  */
 
 import type { AlertKind } from '@insidor/core';
@@ -28,6 +33,11 @@ export function compact(value: number): string {
 
 const RANK_NAME: Record<string, string> = { intern: 'Intern', analyst: 'Analyst', quant: 'Quant', wolf: 'Wolf', goat: 'GOAT' };
 const usd = (v: number): string => `$${v.toFixed(2)}`;
+const ofN = (passed: unknown, tested: unknown): string => {
+  const p = n(passed);
+  const t = n(tested);
+  return p === null || t === null || t === 0 ? '–' : `${p}/${t}`;
+};
 const ticker = (f: Facts) => `$${s(f['symbol'], 'COIN').replace(/^\$/, '')}`;
 
 export function alertText(kind: AlertKind, f: Facts): { readonly title: string; readonly body: string } {
@@ -68,6 +78,16 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const cap = n(f['capUsd']);
       const title = `${role.charAt(0).toUpperCase()}${role.slice(1)} at ${share === null ? 'a warning share' : `${Math.round(share * 100)}%`} of its daily line`;
       return { title, body: spent === null || cap === null ? "Its spend today reached that share of the line." : `${usd(spent)} of ${usd(cap)} spent today (UTC).` };
+    }
+    case 'retune_summary': {
+      const applied = f['applied'] === true;
+      const tests = `Gold ${ofN(f['goldPassed'], f['goldN'])}, live non-memes ${ofN(f['negativePassed'], f['negativeN'])}, missed ${ofN(f['missedPassed'], f['missedN'])} passed.`;
+      const c = (k: string): string => String(n(f[k]) ?? '–');
+      const from = `From ${c('taps')} taps, ${c('missed')} missed posts, ${c('names')} name calls; +${c('added')} −${c('removed')} examples.`;
+      const kept = applied ? '' : ` Kept the current examples: ${s(f['why'], 'a test fell short')}.`;
+      const reasons = typeof f['missReasons'] === 'object' && f['missReasons'] !== null ? Object.entries(f['missReasons'] as Record<string, unknown>).filter(([, v]) => n(v) !== null) : [];
+      const missedWhy = reasons.length === 0 ? '' : ` Missed today: ${reasons.map(([k, v]) => `${k.replaceAll('_', ' ')} ${n(v)}`).join(', ')}.`;
+      return { title: applied ? 'Judge examples updated' : 'Judge examples kept', body: `${tests} ${from}${kept}${missedWhy}` };
     }
   }
 }
