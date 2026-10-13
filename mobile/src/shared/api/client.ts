@@ -250,8 +250,10 @@ export async function previewLaunch(p: { readonly wallet: string; readonly name:
 }
 
 /** The launch, its metadata stored and its transaction built and simulated — or why not, with nothing to sign. */
-export async function buildLaunchTx(p: { readonly wallet: string; readonly name: string; readonly symbol: string; readonly description: string; readonly imageDataUrl: string; readonly devBuyLamports: string }): Promise<{ readonly kind: 'ready'; readonly transaction: string; readonly mint: string } | { readonly kind: 'blocked'; readonly why: string }> {
-  const r = await trade('/launch/build', { method: 'POST', body: JSON.stringify({ ...p, links: {} }) });
+export async function buildLaunchTx(p: { readonly wallet: string; readonly name: string; readonly symbol: string; readonly description: string; readonly imageDataUrl: string; readonly devBuyLamports: string; readonly links: { readonly twitter: string; readonly telegram: string; readonly website: string } }): Promise<{ readonly kind: 'ready'; readonly transaction: string; readonly mint: string } | { readonly kind: 'blocked'; readonly why: string }> {
+  /* An empty social is left out, so the coin's metadata carries no blank link. */
+  const links = Object.fromEntries(Object.entries(p.links).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v !== ''));
+  const r = await trade('/launch/build', { method: 'POST', body: JSON.stringify({ ...p, links }) });
   const tx = r.body['transaction'];
   const mint = r.body['mint'];
   return r.ok && typeof tx === 'string' && typeof mint === 'string' ? { kind: 'ready', transaction: tx, mint } : { kind: 'blocked', why: said(r.body, 'The launch could not be prepared just now.') };

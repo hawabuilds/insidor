@@ -1,11 +1,25 @@
+/*
+ * The Create sheet (CreateCoin.tsx, NameSuggestions.tsx), sized after Trador's CreateSheet: a
+ * 76px picture beside two 36px fields, one row of chips, one dev-buy row, one cost line and a 52px
+ * button. The closed sheet is about 400px tall inside the modal, so it fits a 390×844 phone with
+ * room for the keyboard's first rows.
+ *
+ * What breaks if changed carelessly: the main sheet's height. Anything that can grow — the
+ * ticker's coin list, More options — has a max-height and scrolls inside itself, because the
+ * modal is centred in a fixed scrim and does not scroll; a block that grows unbounded pushes the
+ * Create button off the screen with no way to reach it. The why line is amber, not red: red
+ * means a price going down (tokens.css rule 1).
+ */
+
 .notice > div {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
 }
 
 .identity {
   display: flex;
-  gap: 14px;
-  align-items: center;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 14px;
 }
 
 .picture {
@@ -13,17 +27,31 @@
   flex: none;
 }
 
+.picked {
+  display: block;
+  width: 76px;
+  height: 76px;
+  border-radius: 13px;
+  object-fit: cover;
+}
+
 .change {
   position: absolute;
   left: 50%;
-  bottom: -9px;
+  bottom: -8px;
   transform: translateX(-50%);
-  padding: 3px 9px;
+  padding: 2px 8px;
   border-radius: 8px;
   background: var(--popup);
   box-shadow: inset 0 0 0 1px var(--border);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.file {
+  display: none;
 }
 
 .inputs {
@@ -31,18 +59,18 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .inputs input {
   width: 100%;
-  height: 40px;
+  height: 36px;
   padding: 0 12px;
   border: 0;
   border-radius: 11px;
   background: var(--input);
   box-shadow: inset 0 0 0 1px var(--border-subtle);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   outline: none;
 }
@@ -55,40 +83,81 @@
   text-transform: uppercase;
 }
 
-.check {
-  margin: 18px 0 0;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--card);
-  font-size: 13px;
+/* The one line under the ticker: Free, Taken by N coins (a link), Couldn't check. */
+.tickerLine {
+  align-self: flex-start;
+  padding: 0 0 0 4px;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.free {
   color: var(--text-2);
+}
+
+.taken {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.coins {
+  margin: 8px -18px 0;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+.note {
+  margin: 6px 18px 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* The other name ideas: one row, scrolling sideways, never wrapping. */
+.chips {
+  display: flex;
+  gap: 6px;
+  margin: 12px -18px 0;
+  padding: 0 18px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+  background: var(--card);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .devBuy {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  margin-top: 16px;
+  gap: 8px;
+  margin-top: 14px;
 }
 
-.devBuy > div:first-child {
-  display: flex;
-  flex-direction: column;
-  font-size: 14px;
-}
-
-.devBuy span {
-  font-size: 11.5px;
-  color: var(--text-3);
-  line-height: 1.3;
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
 }
 
 .presets {
   display: flex;
   align-items: center;
-  gap: 5px;
-  flex: none;
+  gap: 4px;
 }
 
 .preset {
@@ -98,8 +167,8 @@
   border-radius: 14px;
   background: var(--card);
   color: var(--text-2);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .presetOn {
@@ -107,156 +176,153 @@
   color: #fff;
 }
 
-.devBuy .amount {
-  margin-left: 4px;
-  font-size: 14px;
+.custom {
+  display: flex;
+  align-items: center;
+  width: 92px;
+  height: 28px;
+  padding-right: 8px;
+  border-radius: 14px;
+  background: var(--input);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+
+.custom:focus-within {
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+.custom input {
+  width: 100%;
+  min-width: 0;
+  padding: 0 0 0 8px;
+  border: 0;
+  background: none;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
   font-weight: 700;
+  text-align: right;
+  outline: none;
+}
+
+.custom small {
+  padding-left: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.cost {
+  margin: 14px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.moreLink {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.more {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 34vh;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.more input,
+.more textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--input);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  outline: none;
+  resize: none;
+}
+
+.fee {
+  display: flex;
+  justify-content: space-between;
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.fee b {
   color: var(--text-1);
 }
 
-.amount small {
-  font-size: 10.5px;
-  color: var(--text-3);
+.call {
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12.5px;
 }
 
-.terms {
+.why {
+  margin: 10px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--amber);
+}
+
+.working {
   margin: 14px 0 0;
-}
-
-.terms > div {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  font-size: 13.5px;
-}
-
-.terms dt {
-  color: var(--text-3);
-}
-
-.terms dd {
-  margin: 0;
-}
-
-.unknown {
-  color: var(--text-3);
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-2);
 }
 
 .create {
   width: 100%;
-  margin-top: 16px;
-}
-
-.foot {
-  margin: 10px 0 0;
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-3);
-}
-
-.file {
-  display: none;
-}
-
-.picked {
-  width: 92px;
-  height: 92px;
-  border-radius: 13px;
-  object-fit: cover;
-}
-
-.customInput {
-  width: 74px;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
-  background: var(--input);
-  color: var(--text-1);
-  font: inherit;
-  font-size: 13px;
-}
-
-.sub dt,
-.sub dd {
-  color: var(--text-3);
-  font-size: 12.5px;
-}
-
-.createdLogo {
-  display: flex;
-  justify-content: center;
-  padding-top: 8px;
-}
-
-.link {
-  color: var(--brand-400);
-  font-weight: 800;
-}
-
-/* The name chips (NameSuggestions.tsx): one per idea, its ticker's standing beside it. */
-.ideas {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   margin-top: 14px;
 }
 
-.ideaRow {
+/* Trador's Launched: the logo, then View coin and Share on X. */
+.launched {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.view,
+.share {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+  border-radius: var(--r-control);
+  font-weight: 800;
 }
 
-.ideaChip {
-  min-height: 34px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 17px;
-  background: var(--input);
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
-  color: var(--text-1, inherit);
+.view {
+  height: 46px;
+  margin-top: 6px;
+  background: var(--brand);
+  color: #fff;
   font-size: 14px;
-  text-align: left;
 }
 
-.ideaChip b {
-  margin-left: 4px;
-  font-weight: 600;
-}
-
-.ideaOn {
-  box-shadow: inset 0 0 0 1px var(--brand);
-}
-
-.ideaFree,
-.ideaUnknown,
-.ideaTaken {
-  font-size: 12px;
-  color: var(--text-3);
-}
-
-.ideaFree {
+.share {
+  height: 40px;
+  background: var(--card);
   color: var(--text-2);
-  font-weight: 600;
-}
-
-.ideaTaken {
-  border: 0;
-  background: none;
-  padding: 6px 0;
-  text-decoration: underline;
-}
-
-.ideaCoins {
-  margin: 6px -18px 0;
-  max-height: 40vh;
-  overflow-y: auto;
-}
-
-.ideaNote {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--text-3);
+  font-size: 12.5px;
 }
