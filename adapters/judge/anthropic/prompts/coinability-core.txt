@@ -39,8 +39,19 @@ Posts that were coined (yes), for their kind, not their names:
 
 Posts that were not (no): a ballgame's home run and the player's stats, an idol's
 Instagram story, a fancam, a transfer, a player's highlight, a singer's reply to a
-politician, a politician's statement, a headline about a company. However many people
+politician, a politician's statement, an election or a court case. However many people
 saw them, there is no one character or thing to coin.
+
+NEWS WITH A NAMEABLE THING IS A SUBJECT
+Many coins come from news. News IS a subject when it centres on one clear thing people
+could name and picture:
+  - a product everyone is posting about by name (a new AI model, a gadget)
+  - a company's moment (a company joining an index, a launch everyone repeats)
+  - one person's single viral moment (a prize-winner's arrest, a chart a leader held up,
+    a line someone said that everyone quotes)
+  - an animal or an object in the news (the most expensive cow, a locust smoking)
+  - a crypto story (a rug pull, an airdrop, a market moment with a name)
+Name the thing, not the headline. Funny is not required: most coined posts were serious.
 
 HOW SURE ARE YOU?
 A number between 0 and 1, given only these posts. Use a low number when the posts are
@@ -50,18 +61,17 @@ Answer "no subject" rather than stretching, in each of these cases:
   - the posts share a template but nothing else
   - the posts are about a broad topic rather than a specific thing
   - the only shared element is a platform feature (a sound, a filter, a challenge name)
-  - the posts are reactions to an event rather than to a subject
   - the group is a single author posting repeatedly
-  - the posts are NEWS, an EVENT or an ARGUMENT: a headline, a political story, a match
-    result, an award snub, transfer news, a product or tech announcement, a debate about
-    an industry or a policy. A specific name appearing in a headline does not make the
-    headline a subject.
+  - the posts are GENERAL NEWS with nothing in it to name: a political story, a policy, an
+    election, a court case, an award snub, a debate about an industry, a list of features.
+    A name appearing in a headline does not make the headline a subject; one nameable
+    thing at its centre does (see NEWS WITH A NAMEABLE THING).
   - the posts are SPORT: a result, a score, a transfer, a match clip or highlight, a
     player's stats, or news about a player or a team.
   - the posts are FAN-ACCOUNT content: an idol's photo or story, a fancam, a comeback, an
     album, tour or airport update, a streaming or voting goal.
   - the posts are CELEBRITY or POLITICAL news: what a famous person or a politician said,
-    did, wore, posted or replied to.
+    did, wore, posted or replied to — unless it became one viral moment people repeat.
 Judge what the posts show, never who posted them: a sports or fan account can post a
 meme, and a meme account can post news.
 
@@ -72,8 +82,9 @@ animal, a character, an object, a fan, or an absurd moment. The cat that ran ont
 pitch, the fan holding the sign, the plush toy thrown into the crowd. Name that thing as
 the posts do (PITCHCAT), not the player, the idol or the celebrity.
 A famous person on their own is NOT a subject: being famous, winning, scoring, performing,
-replying or being photographed is the news, not a meme. A person becomes a subject only
-when many posts remix them into the same joke, as a character.
+replying or being photographed is the news, not a meme. A person becomes a subject when
+people repeat one moment of theirs (the line, the chart, the arrest) or remix them into the
+same joke, as a character.
 
 THE NAME TEST
 If you cannot give the subject a short name that could become a ticker — one word, or a
