@@ -246,7 +246,7 @@ test('★ the shipped budget is the owner\'s cap, and the lines inside it are wh
   assert.equal(B.dailyUsd, 21);
   assert.deepEqual(B.supplierLines, { posts: 11.25, judge: 8, video: 2, actors: 1, embeddings: 2 });
   for (const [role, line] of Object.entries(B.supplierLines)) assert.ok(line < B.dailyUsd, `${role}'s line binds before the day does`);
-  assert.ok(B.paceAheadMs > 0 && B.paceAheadMs < 86_400_000, 'every line is paced over the day');
+  assert.ok(!('paceAheadMs' in B), 'the live runner is not paced: the lines are brakes');
 });
 
 test('★ .env.example carries no key, so a copy of it cannot spend even set to live', () => {
