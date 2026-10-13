@@ -28,6 +28,8 @@
  *                        question of every "yes", so a looser bar can be tried on the same answers;
  *                        `--no-auto` leaves auto gold out.
  *   status               the last runs and the block in use. Free.
+ *   compose              what the next run would teach and test, counted (examples, taps taught
+ *                        and tested, hand gold, coin calls, non-memes). Free: no judge, no writes.
  *
  * A RUN, IN ORDER:
  *   1. gold grows from live (internal.gold_addition, 0057): the recall check's bonded coins whose
@@ -223,7 +225,7 @@ async function ownerCalls(repo: PgLearningRepo) {
 
 type G = 'gold' | 'auto' | 'live-not' | 'missed' | 'missed-taught';
 
-async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean; readonly rulesOnly?: boolean; readonly maxBatch?: number; readonly rowsFile?: string; readonly extraInstructions?: string; readonly kindCoinable?: boolean; readonly noAuto?: boolean }): Promise<void> {
+async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean; readonly rulesOnly?: boolean; readonly maxBatch?: number; readonly rowsFile?: string; readonly extraInstructions?: string; readonly kindCoinable?: boolean; readonly noAuto?: boolean; readonly composeOnly?: boolean }): Promise<void> {
   await withRepo(async (repo, owner) => {
     if (opts.record && !(await repo.claimSlot(slot, new Date()))) {
       log('info', 'this slot already ran', { slot: slot.toISOString() });
@@ -265,6 +267,11 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       /* Every missed post the owner gave, taught or held out: the held-out half is the `missed`
          group; the taught half is graded only for the regression rule. */
       const missedTaught = allMissed.filter((c) => !testMissedIds.has(c.itemId));
+      /* ★ THE OWNER'S COIN LABELS. "This is the coin" on a post is a confirmed coined post: it joins
+         hand gold for the run, with its coin. "No coin is from this" is a matching negative only —
+         it says nothing about whether the post could be coined, so it is never a judge negative. */
+      const coinCalls = await soft(repo.matchCalls(), []);
+      const coinRight = coinCalls.filter((m) => m.verdict === 'right' && m.coinAddress !== null);
       const posts: EvalPost<G>[] = [
         ...goldOriginPosts(),
         ...additions
@@ -275,6 +282,24 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         ...testMissed.map((c) => ({ group: 'missed' as const, id: c.itemId, kind: 'missed', text: c.text, imageUri: c.imageUri })),
         ...missedTaught.map((c) => ({ group: 'missed-taught' as const, id: c.itemId, kind: 'missed (taught)', text: c.text, imageUri: c.imageUri })),
       ];
+      /* The owner's "meme" calls the cap left out of the block, and the posts the owner confirmed a
+         coin for: hand gold, unless already in the test or taught. */
+      const inTest = new Set(posts.map((p) => p.id));
+      const fresh = (id: string) => !inTest.has(id) && !taught.has(id);
+      const tappedMemes = block.testMemes.filter((c) => fresh(c.itemId));
+      for (const c of tappedMemes) { posts.push({ group: 'gold', id: c.itemId, kind: "the owner's meme call", text: c.text, imageUri: c.imageUri }); inTest.add(c.itemId); }
+      const coinGold = await soft(repo.heldPosts(coinRight.map((m) => m.itemId).filter(fresh)), []);
+      for (const h of coinGold) posts.push({ group: 'gold', id: h.itemId, kind: "the owner's coin call: this is the coin", text: h.body, imageUri: pictureOf(h.media)?.uri ?? null, coinRef: coinRight.find((m) => m.itemId === h.itemId)?.coinAddress ?? h.itemId });
+      const composition = {
+        examples: block.exampleIds.length, tapsTaught: block.taps.taught, tapsTested: block.taps.tested,
+        handGold: posts.filter((p) => p.group === 'gold' || p.group === 'missed').length, ownerMemeCallsTested: tappedMemes.length, coinRightAddedToGold: coinGold.length,
+        coinRight: coinCalls.filter((m) => m.verdict === 'right').length, coinNone: coinCalls.filter((m) => m.verdict === 'none').length,
+        liveNegatives: block.testNegatives.length, missedTested: testMissed.length, autoGold: posts.filter((p) => p.group === 'auto').length,
+      };
+      if (opts.composeOnly === true) {
+        console.log(JSON.stringify({ msg: 'retune composition (nothing asked, nothing written)', slot: slot.toISOString(), ...composition }, null, 1));
+        return;
+      }
       /* The kind answers one grading gets are reused by the next this run, so the block, the
          baseline and the judge in use are held back on the same labels and pay for them once. */
       const kinds = new Map<string, string>();
@@ -381,7 +406,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         slot: slot.toISOString(), version: versionId, outcome, why,
         handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, withoutCryptoFacts: noFacts,
         autoGold: rates.auto, missed: rates.missed, regressions: regressed, judgeInUse: inUse === null ? 'rules alone' : `block ${inUse.versionId}`,
-        unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true,
+        unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true, composition,
         learnedFrom: block.used, examples: block.exampleIds.length, added: delta.added, removed: delta.removed, chars: block.text.length,
         costUsd: Number(costUsd.toFixed(4)), batched: tested.batched, usage: tested.used, goldAdded: gold.added, missReasons, matchingLessons: lessons,
       };
@@ -402,7 +427,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
                 applied: apply, why,
                 goldPassed: rates.hand.passed, goldN: rates.hand.tested, negativePassed: rates.negatives.passed, negativeN: rates.negatives.tested, missedPassed: rates.missed.passed, missedN: rates.missed.tested,
                 autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length, ...order.facts,
-                taps: block.used.taps, missed: block.used.missed, names: block.used.names, added: delta.added, removed: delta.removed, missReasons,
+                taps: block.used.taps, tapsTested: block.taps.tested, missed: block.used.missed, names: block.used.names, added: delta.added, removed: delta.removed, missReasons,
               },
               href: '/#/alerts',
             });
@@ -432,6 +457,9 @@ if (command === 'status') {
     console.log(applied === null ? 'no block applied: the judge reads its rules alone' : `in use: version ${applied.versionId} (${applied.sha}), applied ${applied.appliedAt.toISOString()}, ${applied.text.length} characters`);
     for (const r of await repo.recentRuns(10)) console.log(`${r.slot.toISOString()}  ${r.outcome.padEnd(8)} ${r.costUsd === null ? '      ' : `$${r.costUsd.toFixed(3)}`}  ${r.versionId ?? ''}  ${r.detail ?? ''}`);
   });
+} else if (command === 'compose') {
+  /* Free: which posts the next run would teach and test, from today's data. No judge, no writes. */
+  await run(new Date(), { dry: true, force: true, record: false, composeOnly: true });
 } else if (command === 'measure') {
   if (process.env['SPEND'] !== 'live' || !flag('--yes')) {
     console.error('retune refused: this calls the paid judge. Set SPEND=live and pass --yes.');
