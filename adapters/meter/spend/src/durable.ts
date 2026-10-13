@@ -131,6 +131,14 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
      explicitly-undefined optional a different type from an omitted one — and the
      difference matters here: an explicit `undefined` cap would read as a declared
      absence of a ceiling rather than as a question nobody asked. */
+  /* The pace starts from what was spent before this process by anything that is NOT a one-off
+     job; the jobs' share goes in the caps only (`external`). See SpendTotals.jobs. */
+  const jobsAtOpen = openedWith.jobs ?? { totalUsd: 0, byVendor: {} };
+  const paceOpening: SpendTotals = {
+    totalUsd: Math.max(openedWith.totalUsd - jobsAtOpen.totalUsd, 0),
+    byVendor: Object.fromEntries(Object.entries(openedWith.byVendor).map(([v, usd]) => [v, Math.max(usd - (jobsAtOpen.byVendor[v] ?? 0), 0)])),
+  };
+
   const inner = inMemoryMeter({
     dailyCapUsd: opts.dailyCapUsd,
     ...(opts.perVendorCapUsd === undefined ? {} : { perVendorCapUsd: opts.perVendorCapUsd }),
@@ -138,9 +146,10 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
     softStop: opts.softStop,
     ...(opts.paceAheadMs === undefined ? {} : { paceAheadMs: opts.paceAheadMs }),
     now: opts.now,
-    opening: openedWith,
+    opening: paceOpening,
     onRecord: persist,
   });
+  inner.setExternal({ totalUsd: jobsAtOpen.totalUsd, byVendor: jobsAtOpen.byVendor });
 
   return {
     openedWith,
@@ -167,8 +176,8 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
       const ledger = await opts.ledger.totalsSince(dayStart(at) as Millis);
       /* Another process's spending since this one opened: the ledger, less what was there when
          this one opened, less this process's own entries. It goes in the caps, not the pace. */
-      const known: Record<string, number> = { ...openedWith.byVendor };
-      let knownTotal = openedWith.totalUsd;
+      const known: Record<string, number> = { ...paceOpening.byVendor };
+      let knownTotal = paceOpening.totalUsd;
       for (const e of inner.entries()) {
         if (e.at < dayStart(at)) continue;
         known[e.vendor] = (known[e.vendor] ?? 0) + e.usd;

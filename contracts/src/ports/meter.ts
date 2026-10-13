@@ -173,4 +173,13 @@ export interface SpendTotals {
   readonly totalUsd: number;
   /** Keyed by the same opaque vendor token `Spend` carries. */
   readonly byVendor: Readonly<Record<string, number>>;
+  /**
+   * The part of the above a one-off paid job spent: rows whose endpoint starts `JOB_ENDPOINT_PREFIX`.
+   * In every cap, never in the runner's pace — see `external` in adapters/meter/spend. Absent
+   * from a ledger that cannot tell, which then counts everything as the runner's.
+   */
+  readonly jobs?: { readonly totalUsd: number; readonly byVendor: Readonly<Record<string, number>> };
 }
+
+/** How a one-off paid job's ledger rows are told apart from the runner's: `job:<endpoint>`. */
+export const JOB_ENDPOINT_PREFIX = 'job:';
