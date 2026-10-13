@@ -60,8 +60,10 @@ export type JudgeQuestion = 'story' | 'post' | 'kind';
 const QUESTION: Readonly<Record<JudgeQuestion, { system: string; instructions: string; sha: () => string; label: string }>> = {
   story: { system: SYSTEM, instructions: INSTRUCTIONS, sha: () => PROMPT_SET_SHA, label: 'coinability' },
   post: { system: PROMPTS['post-system'].text, instructions: PROMPTS['post-coinability'].text, sha: () => POST_PROMPT_SET_SHA, label: 'post-coinability' },
-  /* The feed's second question: which kind of post (AD, SPORT, FANDOM, SHOWBIZ, POLITICS, OTHER),
-     answered in the same fields — coinable is "kind is OTHER", proposedName is the kind. */
+  /* The feed's second question: which kind of post (TRAGEDY, AD, SPORT, FANDOM, SHOWBIZ,
+     MEDIA_NEWS, CORP_NEWS, POLITICS, OTHER — core's kinds.ts holds which of them hold), answered in
+     the same fields — coinable is "kind is OTHER", proposedName is the kind. Its prompt id carries
+     the prompt files' hash, so a wording change files every answer after it under a new id. */
   kind: { system: PROMPTS['post-veto-system'].text, instructions: PROMPTS['post-veto'].text, sha: () => VETO_PROMPT_SET_SHA, label: 'post-kind' },
 };
 
