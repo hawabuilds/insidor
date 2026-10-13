@@ -153,7 +153,12 @@ export class PgCoinUniverseRepo {
     this.#db = db;
   }
 
-  /** Observed coins whose metadata is unread, or unavailable fewer than `maxAttempts` times — newest first. */
+  /**
+   * Observed coins whose metadata is unread, or unavailable — or recorded not content-addressed —
+   * fewer than `maxAttempts` times, newest first. Not content-addressed is asked again because
+   * the runner now reads such a link from its own host (adapter declared-metadata.ts); before
+   * that reader, 40% of new coins were recorded with no picture and no links, for good.
+   */
   async unread(sinceMs: Millis, maxAttempts: number, limit: number): Promise<readonly UnreadCoin[]> {
     const rows = await this.#db.query<{ asset_key: string; metadata_uri: string | null }>(
       `select a.asset_key, a.declared_social ->> 'metadata' as metadata_uri
@@ -161,7 +166,7 @@ export class PgCoinUniverseRepo {
          left join internal.coin_metadata m using (asset_key)
         where a.origin in ('live_stream', 'backfill')
           and a.first_seen_at >= $1
-          and (m.asset_key is null or (m.outcome = 'unavailable' and m.attempts < $2))
+          and (m.asset_key is null or (m.outcome in ('unavailable', 'not_content_addressed') and m.attempts < $2))
         order by a.first_seen_at desc
         limit $3`,
       [toTimestamp(sinceMs), maxAttempts, limit],

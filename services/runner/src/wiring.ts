@@ -95,7 +95,7 @@ import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type UniverseDeps } from './work/universe.ts';
-import { chainClient, fetchMetadata } from '@insidor/venue-solana-pumpfun';
+import { chainClient, fetchDeclaredMetadata, fetchMetadata } from '@insidor/venue-solana-pumpfun';
 import { dexscreenerSearch, dexscreenerStandings } from '@insidor/market-dexscreener';
 import { geckoterminal } from '@insidor/market-geckoterminal';
 import { keepCoins } from './work/coin-keep.ts';
@@ -676,6 +676,8 @@ export async function withRuntime<T>(
                 throw failure ?? new Error('no metadata gateway configured');
               },
             },
+            /* A link with no content id, from its own host behind the adapter's address fence. */
+            declared: (uri) => fetchDeclaredMetadata(uri, { fetch: globalThis.fetch, timeoutMs: policy.universe.metadataTimeoutMs, maxBytes: policy.universe.metadataMaxBytes }),
             platforms,
             items: repos.items,
             authors: repos.authors,

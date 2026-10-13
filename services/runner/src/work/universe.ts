@@ -3,8 +3,11 @@
  *
  * Two steps a pass, both newest first and both bounded by `policy.universe`:
  *
- *   metadata  the coin's metadata document, by content id through our own gateway — free.
- *             Runs on a dry run too: it spends nothing.
+ *   metadata  the coin's metadata document, by content id through our own gateway, or — when
+ *             the link names no content id — from the creator's host behind the adapter's
+ *             address fence (`cid` null then). Free; runs on a dry run too. A link recorded
+ *             not content-addressed before that reader existed is read again, up to
+ *             `metadataAttempts` times (store `unread`).
  *   origin    the creator's link (contracts/src/origin.ts, core's `checkCreatorLink`), then
  *             the posts we already hold that name the coin (core's `matchCandidates`): picture
  *             plus name plus timing, never a name alone. `decideOrigin` gives the status.
@@ -40,16 +43,21 @@ import { checkPair, type PairCheckDeps } from './image-pairs.ts';
 
 export interface MetadataReader {
   read(uri: string | null): Promise<
-    | { readonly kind: 'read'; readonly cid: string; readonly metadata: { readonly name: string | null; readonly ticker: string | null; readonly description: string | null; readonly imageUri: string | null; readonly links: { readonly social: string | null; readonly website: string | null; readonly chat: string | null } } }
+    | { readonly kind: 'read'; readonly cid: string | null; readonly metadata: { readonly name: string | null; readonly ticker: string | null; readonly description: string | null; readonly imageUri: string | null; readonly links: { readonly social: string | null; readonly website: string | null; readonly chat: string | null } } }
     | { readonly kind: 'notContentAddressed' }
   >;
 }
 
 export interface UniverseDeps {
   readonly coins: Pick<PgCoinUniverseRepo, 'unread' | 'recordMetadata' | 'unchecked' | 'recordOrigin' | 'postsNaming'>;
+/** The creator's own host, read behind the adapter's address fence; `refused` is a link we will not fetch. */
+export type DeclaredReader = (uri: string | null) => Promise<{ readonly kind: 'read'; readonly metadata: Extract<Awaited<ReturnType<MetadataReader['read']>>, { kind: 'read' }>['metadata'] } | { readonly kind: 'refused'; readonly why: string }>;
+
   readonly metadata: MetadataReader;
   readonly platforms: Pick<PlatformRegistry, 'all'>;
   readonly items: Pick<PgItemRepo, 'byIds'>;
+  /** A link that names no content id, read from its own host. Absent: recorded not content-addressed, as before. */
+  readonly declared?: DeclaredReader;
   readonly authors: Pick<PgAuthorRepo, 'byKeys'>;
   readonly postScores: Pick<PgPostJudgementRepo, 'latest' | 'record'>;
   readonly images: Pick<PgImageEmbeddingRepo, 'has' | 'record' | 'coinSimilarity'>;
@@ -110,7 +118,11 @@ export async function universePass(deps: UniverseDeps): Promise<UniverseResult> 
     await Promise.all(
       unread.slice(i, i + u.metadataConcurrency).map(async (coin) => {
         try {
-          const read = await deps.metadata.read(coin.metadataUri);
+          let read = await deps.metadata.read(coin.metadataUri);
+          if (read.kind === 'notContentAddressed' && deps.declared !== undefined) {
+            const own = await deps.declared(coin.metadataUri);
+            if (own.kind === 'read') read = { kind: 'read', cid: null, metadata: own.metadata };
+          }
           if (read.kind === 'notContentAddressed') {
             await deps.coins.recordMetadata(coin.assetKey, { outcome: 'not_content_addressed', contentId: null, name: null, ticker: null, description: null, imageUri: null, socialLink: null, website: null, chatLink: null }, now);
           } else {
