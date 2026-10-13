@@ -93,7 +93,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
-import { asDb, createPool, DB_ROLE, PgLearningRepo, PgOwnerAlertRepo, type GoldAddition } from '../store/src/index.ts';
+import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwnerAlertRepo, type GoldAddition } from '../store/src/index.ts';
+import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
 import { buildBlock, caught, changed, currentCalls, gate, goalsText, latestSlot, ratesOf, regressions, share, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
@@ -144,10 +145,10 @@ const url = process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'];
 /* `--model=<id>` (measure only) grades with another judge model than JUDGE_MODEL. */
 const env = { ...process.env, ...(url === undefined ? {} : { DATABASE_URL_INTERNAL: url }), ...(command === 'measure' && arg('model') !== null ? { JUDGE_MODEL: arg('model') ?? '' } : {}) };
 
-async function withRepo<T>(f: (repo: PgLearningRepo, owner: PgOwnerAlertRepo) => Promise<T>): Promise<T> {
+async function withRepo<T>(f: (repo: PgLearningRepo, owner: PgOwnerAlertRepo, labels: PgLabelEmbeddingRepo) => Promise<T>): Promise<T> {
   const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-retune' });
   try {
-    return await f(new PgLearningRepo(asDb(pool)), new PgOwnerAlertRepo(asDb(pool)));
+    return await f(new PgLearningRepo(asDb(pool)), new PgOwnerAlertRepo(asDb(pool)), new PgLabelEmbeddingRepo(asDb(pool)));
   } finally {
     await pool.end();
   }
@@ -228,7 +229,7 @@ async function ownerCalls(repo: PgLearningRepo) {
 type G = 'gold' | 'auto' | 'live-not' | 'missed' | 'missed-taught';
 
 async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean; readonly rulesOnly?: boolean; readonly maxBatch?: number; readonly rowsFile?: string; readonly extraInstructions?: string; readonly kindCoinable?: boolean; readonly noAuto?: boolean; readonly composeOnly?: boolean }): Promise<void> {
-  await withRepo(async (repo, owner) => {
+  await withRepo(async (repo, owner, labelRepo) => {
     if (opts.record && !(await repo.claimSlot(slot, new Date()))) {
       log('info', 'this slot already ran', { slot: slot.toISOString() });
       return;
@@ -323,13 +324,18 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       };
       let spentUsd = 0;
       const coined = await repo.coinedPictureVectors();
+      /* ★ THE OWNER'S LABELS AS PRECEDENT, AS LIVE: every test post is sent with its closest labelled
+         posts and held when very close to a "Not a meme" one (tools/lib/pass-rates.ts `precedents`).
+         No stored labels (0069 not applied): graded without, as live then runs. */
+      const labelled = await soft(labelRepo.all(POST_SPACE), []);
+      const precedents = labelled.length === 0 ? null : { labels: labelled };
       /* One grading on the learning book. The kind labels it learns are kept, so a later grading
          this run splits gold exactly as this one did and does not pay to ask again. */
       const grade = async (of: readonly EvalPost<G>[], block: string | null) => {
         const examples = [block, opts.extraInstructions ?? null].filter((x): x is string => x !== null && x.trim() !== '').join('\n\n') || null;
         const shared = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning');
         try {
-          const out = await gradePosts(of, { env, meter: shared.meter, examples, batch: true, mustFit: true, coined, vectors, knownKinds: kinds, maxBatch, ...(opts.kindCoinable === true ? { kindAlso: (p: EvalPost<string>) => (p as EvalRow<string>).coinable === true } : {}) });
+          const out = await gradePosts(of, { env, meter: shared.meter, examples, batch: true, mustFit: true, coined, vectors, knownKinds: kinds, maxBatch, precedents, ...(opts.kindCoinable === true ? { kindAlso: (p: EvalPost<string>) => (p as EvalRow<string>).coinable === true } : {}) });
           for (const r of out.rows) if (r.postKind !== null) kinds.set(r.id, r.postKind);
           return out;
         } finally {
@@ -406,7 +412,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const outcome = opts.dry ? 'dry' : apply ? 'applied' : 'kept';
       const summary = {
         slot: slot.toISOString(), version: versionId, outcome, why,
-        handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, goals: verdict.goals, goal: goalsText(rates, L), withoutCryptoFacts: noFacts,
+        handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, goals: verdict.goals, goal: goalsText(rates, L), withoutCryptoFacts: noFacts, precedentLabels: labelled.length,
         autoGold: rates.auto, missed: rates.missed, regressions: regressed, judgeInUse: inUse === null ? 'rules alone' : `block ${inUse.versionId}`,
         unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true, composition,
         learnedFrom: block.used, examples: block.exampleIds.length, added: delta.added, removed: delta.removed, chars: block.text.length,
@@ -488,7 +494,7 @@ if (command === 'status') {
     log('info', 'retune started, detached', { slot: slot.toISOString() });
     process.exit(0);
   }
-  await run(slot, { dry: flag('--dry'), force: flag('--force'), record: true, baseline: flag('--baseline') });
+  await run(slot, { dry: flag('--dry'), force: flag('--force'), record: true, baseline: flag('--baseline'), ...(arg('rows') === null ? {} : { rowsFile: arg('rows') ?? '' }) });
 } else {
   console.error('usage: tools/retune.ts due|run|measure|status [--yes] [--dry] [--force] [--baseline] [--detach] [--slot=<iso>]');
   process.exit(2);
