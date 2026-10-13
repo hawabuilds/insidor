@@ -340,6 +340,19 @@ test('★ posts answered under an older prompt are re-judged after the new ones,
   assert.ok(!recorded.has(post(100 + P.rising.rescorePerPass).itemId), 'and no more than the cap');
 });
 
+test('the stale cut, on, re-judges no post over six hours old after a prompt change; off, it does', async () => {
+  const old = { ...post(200), postedAt: (NOW - P.feed.fresh.staleAfterMs - 60_000) as Millis };
+  const young = { ...post(201), postedAt: (NOW - 60_000) as Millis };
+  const on = { ...P, feed: { ...P.feed, fresh: { ...P.feed.fresh, cutStale: true } } };
+  const a = deps([], recordedJudge(0.82), 'live', undefined, undefined, nothingFound, [old, young]);
+  await scorePosts({ ...a.deps, policy: on });
+  assert.ok(a.recorded.has(young.itemId));
+  assert.ok(!a.recorded.has(old.itemId), 'its first answer stands');
+  const b = deps([], recordedJudge(0.82), 'live', undefined, undefined, nothingFound, [old, young]);
+  await scorePosts(b.deps);
+  assert.ok(b.recorded.has(old.itemId), 'off: as today');
+});
+
 test('★ the owner\'s closest labels ride along with each post, and a post very close to a "not a meme" label is held, not asked its kind', async () => {
   const judge = recordedJudge(0.82, true);
   const filed: { id: string; name: string | null; promptId: string }[] = [];

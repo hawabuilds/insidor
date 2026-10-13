@@ -1102,7 +1102,8 @@ export interface FeedPolicy {
    *
    * With `cutStale`, TRACK stops re-reading a post older than `staleAfterMs` that has not passed
    * the bar (no judgement) and is not on a feed: measured, 51 such posts in a day, none reached
-   * For You.
+   * For You. And a post older than `staleAfterMs` is not re-judged after a prompt change (about
+   * 1,000 re-judges a day, $1.34): its first answer stands.
    */
   readonly fresh: {
     readonly enabled: boolean;
