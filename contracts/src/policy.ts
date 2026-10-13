@@ -1159,7 +1159,7 @@ export interface RisingPolicy {
    * average at any reading inside `fypFastWindowMs`. Popular needs `popularMinReach`. A post
    * whose reach we have not read is on neither: an unread count is not a small one.
    *
-   * The owner's numbers (2026-10-13). Checked against the gold sheets: a third of coins launch
+   * The owner's numbers (2026-10-13), the growth paths tightened the same day (below). Checked against the gold sheets: a third of coins launch
    * within 30 minutes of their post, which only the growth paths can catch in time; 4 of 41
    * origin posts never passed 60k reach at all, and 40k shuts those out.
    */
@@ -1960,7 +1960,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v52',
+  version: 'policy.v53',
 
   admit: {
     maxAgeMin: 240,
@@ -2472,10 +2472,13 @@ const POLICY_V1: Policy = {
     postsPerPass: 200,
     maxNameWords: 3,
     fypMinReach: 40_000,
-    fypEarlyReach: 10_000,
+    /* Tightened 2026-10-13: at 10k-in-15m / 1,000-a-minute-in-an-hour, 34 of the day's 140 shown
+       posts got in by growth and then stalled under 40k (14k–29k at half an hour). At 20k / 2,000 a
+       minute in the first 30 minutes, 7 do; the 57 that reached 40k are untouched. */
+    fypEarlyReach: 20_000,
     fypEarlyWindowMs: 900_000, // fifteen minutes
-    fypFastReachPerMinute: 1_000,
-    fypFastWindowMs: 3_600_000, // the first hour
+    fypFastReachPerMinute: 2_000,
+    fypFastWindowMs: 1_800_000, // the first half hour
     popularMinReach: 250_000,
     narrativeMinPassingPosts: 2,
     boostMinSimilarity: 0.44,
