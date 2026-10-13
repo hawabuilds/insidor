@@ -329,6 +329,23 @@ export function decodeSameSubject(body: unknown): { readonly answer: SameSubject
 const RETRYABLE = new Set([429, 500, 502, 503, 504, 529]);
 const FRAME_TYPES = new Set<Frame['mediaType']>(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
+/**
+ * ★ A PICTURE'S ADDRESS IS NOT A BASE URL. `httpUrlProblem` refuses a query string because every
+ * request built on a base address would silently carry it; a picture is fetched once, as is, and
+ * the short-video source's covers are signed addresses whose query string IS the permission to
+ * read them. Refusing it showed the judge no picture for every TikTok video, so none was ever
+ * judged (2026-10-13). A picture needs only to be a well-formed https address.
+ */
+function pictureUrlProblem(uri: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    return 'not a URL';
+  }
+  return url.protocol === 'https:' ? null : 'not https';
+}
+
 /** Seconds from a retry-after header, or null. The date form is ignored rather than guessed at. */
 function retryAfterMs(headers: Headers): number | null {
   const raw = headers.get('retry-after');
@@ -483,7 +500,7 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
    * from it only by the size query it added — so it is let through with that query.
    */
   const readFrame = async (uri: string, sized = false): Promise<Frame | null> => {
-    if (!sized && httpUrlProblem(uri) !== null) return null;
+    if (!sized && pictureUrlProblem(uri) !== null) return null;
     try {
       const response = await config.fetch(uri, { signal: AbortSignal.timeout(config.timeoutMs) });
       const type = (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
@@ -532,7 +549,7 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
       const size = config.pictureSize ?? null;
       if (size !== null) {
         const smaller = sizedPictureUri(uri, size);
-        if (smaller !== uri && httpUrlProblem(uri) === null) {
+        if (smaller !== uri && pictureUrlProblem(uri) === null) {
           const small = await readFrame(smaller, true);
           if (small !== null) return small;
         }
