@@ -31,9 +31,10 @@ import type { ItemId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { ResponseAsk } from '@insidor/contracts/ports/responses.ts';
-import { attentionFacts, clearsReachBar, othersSignal } from '@insidor/core';
+import { attentionFacts, clearsReachBar, isShill, isShillText, othersSignal } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
-import type { PgCryptoAttentionRepo, PgItemRepo } from '@insidor/store';
+import type { Judgement } from '@insidor/contracts';
+import type { PgCryptoAttentionRepo, PgItemRepo, PgPostJudgementRepo } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
@@ -45,9 +46,38 @@ const DAY_MS = 86_400_000;
 /** The source held to the short-video bars (Policy.rising.shortVideoReachScale), as the scorer does. */
 const SHORT_VIDEO_SOURCE = 'tiktok';
 
+/**
+ * ★ THE SHILL RULE'S ANSWER, FILED AS A KIND ANSWER (the owner, 2026-10-13): a post whose own text,
+ * or whose author's own replies, name a coin is an ad. It is filed in internal.post_judgement as
+ * the kind question files a held kind — the kind ('AD') as its name, coinable false — so the
+ * projector's held-kind check hides it with no new path. The prompt id starts `post-kind@`, so every
+ * reader that skips kind answers (`post-kind%`) and the scorer's re-score check (`post-kind@%`)
+ * treat it as a kind answer, never as an answer to the post question. A rule, not a model: cost 0.
+ */
+export const SHILL_PROMPT_ID = 'post-kind@shill-rule-1';
+export const SHILL_JUDGE_ID = 'rule:crypto-shill@1';
+/** How many shills whose label a newer answer covered are re-filed per pass. */
+const REFILE_PER_PASS = 20;
+
+const shillAnswer = (at: Millis): Judgement => ({
+  judgeId: SHILL_JUDGE_ID,
+  promptId: SHILL_PROMPT_ID,
+  judgedAt: at,
+  coinable: false,
+  confidence: 1,
+  lookedAt: 'text',
+  proposedName: 'AD',
+  alternateNames: [],
+  subjectSpans: [],
+  rationaleRef: null,
+  costUsd: 0,
+});
+
 export interface AttentionDeps {
   readonly platforms: Pick<PlatformRegistry, 'all'>;
-  readonly attention: Pick<PgCryptoAttentionRepo, 'readsSince' | 'due' | 'record'>;
+  readonly attention: Pick<PgCryptoAttentionRepo, 'readsSince' | 'due' | 'record'> & Partial<Pick<PgCryptoAttentionRepo, 'shillsToRefile'>>;
+  /** Where the shill rule's AD answer is filed. Absent: shills are stored as facts only. */
+  readonly kinds?: Pick<PgPostJudgementRepo, 'record'>;
   readonly items: Pick<PgItemRepo, 'reachReadings'>;
   readonly meter: Meter;
   readonly mode: 'dry' | 'live';
@@ -90,6 +120,27 @@ export async function readCryptoAttention(deps: AttentionDeps): Promise<Attentio
     .filter((d) => clearsReachBar('fyp', readings.get(d.itemId) ?? [], d.postedAt, deps.policy, d.source === SHORT_VIDEO_SOURCE ? r.shortVideoReachScale : 1))
     .slice(0, room);
 
+  /* A shill is filed whatever the budget: the rule costs nothing. Live only — a dry run writes nothing. */
+  const fileShill = async (itemId: string) => {
+    if (deps.kinds === undefined || deps.mode !== 'live') return;
+    try {
+      await deps.kinds.record(itemId as ItemId, shillAnswer(deps.now()));
+    } catch (e) {
+      deps.log.warn('a shill could not be filed as an ad; tried again next pass', { post: itemId, err: errorText(e) });
+    }
+  };
+  let shills = 0;
+  if (deps.kinds !== undefined && deps.mode === 'live' && deps.attention.shillsToRefile !== undefined) {
+    try {
+      for (const id of await deps.attention.shillsToRefile(since, SHILL_PROMPT_ID, REFILE_PER_PASS)) {
+        await fileShill(id);
+        shills += 1;
+      }
+    } catch (e) {
+      deps.log.warn('shills to re-file could not be read; tried again next pass', { err: errorText(e) });
+    }
+  }
+
   const ask: ResponseAsk = { maxReplies: a.repliesPerPost, maxReproductions: a.reproductionsPerPost, untilMs: null };
   let read = 0;
   let withSignal = 0;
@@ -98,6 +149,12 @@ export async function readCryptoAttention(deps: AttentionDeps): Promise<Attentio
   for (const post of queue) {
     const adapter = readers.get(post.source);
     if (adapter === undefined) continue;
+    /* The post's own words naming a coin need no read to be called a shill. */
+    const textShill = post.text !== null && isShillText(post.text, a);
+    if (textShill) {
+      await fileShill(post.itemId);
+      shills += 1;
+    }
     const estimate = adapter.estimateResponses!(ask);
     if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) {
       deps.log.warn('crypto attention paused for budget; these posts wait', { posts: queue.length - read });
@@ -134,6 +191,10 @@ export async function readCryptoAttention(deps: AttentionDeps): Promise<Attentio
       });
       read += 1;
       if (othersSignal(f)) withSignal += 1;
+      if (!textShill && isShill(f)) {
+        await fileShill(post.itemId);
+        shills += 1;
+      }
     } catch (e) {
       if (e instanceof BudgetRefused) {
         deps.log.warn('crypto attention paused for budget at the vendor edge; these posts wait', { posts: queue.length - read });
@@ -144,6 +205,6 @@ export async function readCryptoAttention(deps: AttentionDeps): Promise<Attentio
   }
 
   if (deps.mode === 'dry') deps.log.info('DRY RUN — crypto attention priced, not read', { posts: queue.length, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
-  else if (queue.length > 0) deps.log.info('crypto attention read', { due: queue.length, read, withSignal, today: today + read, usd: Number(spentUsd.toFixed(6)) });
+  else if (queue.length > 0 || shills > 0) deps.log.info('crypto attention read', { due: queue.length, read, withSignal, shills, today: today + read, usd: Number(spentUsd.toFixed(6)) });
   return { read, withSignal, wouldSpendUsd, spentUsd };
 }
