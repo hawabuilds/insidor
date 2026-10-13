@@ -97,6 +97,9 @@ export { liveCount, sourceState } from './sources/state.ts';
  */
 export { tickerUse } from './create/ticker.ts';
 export type { TickerEvidence, TickerUse } from './create/ticker.ts';
+/* The Create sheet's name chips, from the judge's names for a post (create/name-ideas.ts). */
+export { nameIdeas, tickerFor } from './create/name-ideas.ts';
+export type { NameIdea, NameIdeaBars } from './create/name-ideas.ts';
 
 /**
  * A re-read turned into the observations it appends. Not a stage: TRACK decides a read is
@@ -120,6 +123,10 @@ export type { Diagnosed, MissedCase, MissedContext, MissedDiagnosis, MissedFailu
 export { checkCreatorLink, decideOrigin, earliestByReproduction, matchCandidates, namesCoin } from './origin/check.ts';
 export type { Candidate, CoinFacts, CreatorCheck, CreatorLink, MatchResult, OriginDecision, PostFacts } from './origin/check.ts';
 export { mergeHits } from './search/merge.ts';
+/* A feed post's coin, by evidence: the projector decides with it and the gold eval scores it,
+   so both run the one rule (match/post-coin.ts). */
+export { byEvidence, coinEvidence, compactName, matchPostCoin, nameMatch, pictureVerdict } from './match/post-coin.ts';
+export type { CoinEvidence as PostCoinEvidence, CoinSide, MatchBars, NameMatch, PostCoinMatch, PostSide } from './match/post-coin.ts';
 export { biggestFirst, groupCoins } from './history/group.ts';
 export type { HistoryCoin, HistoryNarrative, PicturePair } from './history/group.ts';
 export { RANKS, boughtEarly, earnsRep, goatCount, nextRank, rankFor, rankedUp, seasonOf, standings, votePoints } from './social/rank.ts';
