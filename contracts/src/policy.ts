@@ -2009,7 +2009,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v61',
+  version: 'policy.v62',
 
   admit: {
     maxAgeMin: 240,
@@ -2639,7 +2639,11 @@ const POLICY_V1: Policy = {
     /* $7.25 from 2026-10-13 12:50 UTC: the 07:00 run was not tested ($1.15 left of the judge, the
        test's worst case $2.97), and two runs today need room for that worst case each. Paid by
        raising the day's total, never by the live lines. */
-    learningLines: { dailyUsd: 7.25, posts: 1, judge: 5.75, video: 0, embeddings: 0.5 },
+    /* $10.50 from 2026-10-13 13:20 UTC (the owner's one-off re-tune on top of the two scheduled
+       ones): a run with its baseline cost $1.45, and each run must have its test's worst case
+       (~$3) left when it starts. Paid by raising the day to $35.75 under the owner's $38, never
+       by the live lines. */
+    learningLines: { dailyUsd: 10.5, posts: 1, judge: 9, video: 0, embeddings: 0.5 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
