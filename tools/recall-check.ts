@@ -50,6 +50,18 @@ import { asDb, createPool, DB_ROLE, PgFeedFloorRepo, PgRecallRepo, withTransacti
 import { median, missReasonBefore, type PostFacts } from '../eval/src/recall/model.ts';
 import { goldCoins } from '../eval/src/gold/coin-origins.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
+import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
+
+/* A supplier refusing for billing is logged at error level once per vendor per run: its misses then
+   read as post_unread, and this line is what says why. The runner sends the owner's push. */
+const billingLogged = new Set<string>();
+onOutOfCredit({
+  refused: (e) => {
+    if (billingLogged.has(e.vendor)) return;
+    billingLogged.add(e.vendor);
+    console.error(JSON.stringify({ level: 'error', msg: 'supplier out of credit', job: 'recall-check', vendor: e.vendor, endpoint: e.endpoint, reason: e.reason, status: e.status ?? null }));
+  },
+});
 import { measureDiscovery, type SettingsSnapshot } from '../services/runner/src/work/discovery-settings.ts';
 
 const P = DEFAULT_POLICY;
