@@ -20,6 +20,8 @@ export interface TradeConfig {
   readonly allowedOrigins: readonly string[];
   /** Creating coins: where their metadata is stored, and the database role that records them. Any null: no create path. */
   readonly launch: { readonly storageUrl: string; readonly storageKey: string; readonly databaseUrl: string } | null;
+  /** The app role's database, where every trade is recorded (public.trade, 0064). Null: nothing is recorded. */
+  readonly recordsDatabaseUrl: string | null;
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -50,6 +52,7 @@ export function loadTradeConfig(env: Env): TradeConfig {
        is served but rate limited, so JUPITER_API_KEY is recommended for more than one person. */
     jupiter: { baseUrl: trimmed(env, 'JUPITER_API_URL') ?? 'https://api.jup.ag', apiKey: jupiterKey },
     allowedOrigins: origins.length > 0 ? origins : DEV_ORIGINS,
+    recordsDatabaseUrl: trimmed(env, 'DATABASE_URL_APP'),
     launch: (() => {
       const storageUrl = trimmed(env, 'SUPABASE_URL');
       const storageKey = trimmed(env, 'SUPABASE_SERVICE_ROLE_KEY');
