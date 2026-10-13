@@ -62,19 +62,41 @@
  * scraping, and the caller slices it to `limit` regardless. One is a correctness
  * claim we would be unable to keep; the other is a hint about how much work to do.
  * That asymmetry — not the parameter's provenance — is what decides whether an
- * unverifiable bound may be relied on.
+ * unverifiable bound may be relied on. It is also capped (`DISCOVER_RESULTS_CAP`): the
+ * vendor charges per post returned, and the run's quoted price is only a bound because
+ * the size is.
+ *
+ * ── ★ KEYWORD SEARCH, NEWEST FIRST — AND WHY THAT IS NOT A CUTOFF IN DISGUISE ──
+ *
+ * The scraper's video search (`searchQueries`, the `/video` section) is the first entry
+ * point because the owner asked for it over hashtags when it exists, and it matches a word
+ * in a caption as well as a tag. It is sorted newest first, which is a paid add-on and is
+ * worth it: discovery wants posts in their first minutes, and the default "most relevant"
+ * order returns last year's hits for a word like "meme". An ORDERING is not a cutoff — it
+ * excludes nothing and makes no claim about blindness — so the refusal above is untouched,
+ * and the vendor's "past 24 hours" search filter is deliberately not sent: it is a date
+ * filter with every one of the four problems listed there.
+ *
+ * Keyword search is still not a catch-all. It needs words, and there is no trending or
+ * explore feed on this scraper to stand in for "whatever is moving"; the caller supplies
+ * the words (the owner's watch list in policy).
  */
 
 import type { Author, Item, Millis } from '@insidor/contracts';
 import type { DiscoveryQuery } from '@insidor/contracts/ports/platform.ts';
 import { NotImplemented } from '@insidor/vendor-kit';
 
-import { CAPABILITIES } from './capabilities.ts';
+import { CAPABILITIES, DISCOVER_RESULTS_CAP } from './capabilities.ts';
 import type { TikTokClient } from './client.ts';
 import { toAuthor, toItem } from './to-item.ts';
 
 /** What the actor is asked to do. Keys are this scraper family's; nothing else knows them. */
 export interface ActorInput {
+  readonly searchQueries?: readonly string[];
+  /** `/video`: posts only, not the accounts a word also matches. */
+  readonly searchSection?: '/video';
+  /** Newest first. See the header: an ordering, never a cutoff. */
+  readonly videoSearchSorting?: 'LATEST';
   readonly hashtags?: readonly string[];
   readonly profiles?: readonly string[];
   /** A hint, not a guarantee — see the header's last section for why that is fine. */
@@ -108,17 +130,21 @@ export function toActorInput(query: DiscoveryQuery): ActorInput {
     );
   }
 
-  // A cap on how much of a feed we ask the actor to scrape, not a correctness filter.
-  const resultsPerPage = Math.max(1, Math.trunc(query.limit));
+  // A cap on how much of a feed we ask the actor to scrape, not a correctness filter —
+  // and never above the cap the run's price is quoted at.
+  const resultsPerPage = Math.min(DISCOVER_RESULTS_CAP, Math.max(1, Math.trunc(query.limit)));
 
+  if (query.mode === 'keyword') {
+    return { searchQueries: [term], searchSection: '/video', videoSearchSorting: 'LATEST', resultsPerPage };
+  }
   return query.mode === 'account'
     ? { profiles: [term], resultsPerPage }
     : { hashtags: [term], resultsPerPage };
 }
 
 /**
- * One run, translated. The client call is the only line that costs anything, and it
- * costs the same whether it returns a thousand items or none.
+ * One run, translated. The client call is the only line that costs anything: a start
+ * fee, plus a fee per post that `resultsPerPage` bounds.
  */
 export async function discoverRun(
   client: TikTokClient,

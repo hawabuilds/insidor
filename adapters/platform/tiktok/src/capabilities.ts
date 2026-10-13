@@ -63,17 +63,45 @@ export const CAPABILITIES: Capabilities = {
   counters: ['reach', 'approval', 'conversation', 'rebroadcast', 'retention'],
   absent: ['reproduction'],
   fidelity: FIDELITY,
-  /** No keyword search: hashtag, feed and account are the only entry points. */
-  discovery: ['hashtag', 'feed', 'account'],
+  /**
+   * Keyword search first: the scraper's video search, newest first (checked against its input
+   * schema on 2026-10-13 — `searchQueries`). There is no trending or explore feed to enter by,
+   * so nothing here is a catch-all; hashtag and account remain for a caller that wants them.
+   */
+  discovery: ['keyword', 'hashtag', 'feed', 'account'],
   observeBatchSize: 50,
   /** A lineage pointer exists (stitch, duet) even though a count does not. */
   lineage: true,
-  /** This vendor bills per actor run. It cannot be priced per item returned. */
+  /**
+   * The ledger's unit is the run: the vendor charges per run AND per post, and the posts are
+   * bounded per run, so each run is quoted at its full bill — see `PRICES`.
+   */
   billing: 'per-run',
 };
 
 export const DISCOVER = 'discover';
 export const OBSERVE = 'observe';
+
+/**
+ * ★ THE MOST POSTS ONE DISCOVERY RUN MAY ASK FOR, AND THE REASON THE PRICE BELOW IS TRUE.
+ *
+ * The scraper is billed per run started AND per post it returns (pay-per-event, read from
+ * the actor's own pricing on 2026-10-13). The ledger counts runs, so a run's price is only
+ * an honest bound if the number of posts in it is bounded — which is this cap: `discover.ts`
+ * never asks for more, whatever `query.limit` says. Raising it raises the quoted price with
+ * it, so a bigger run can never be cheaper on paper than it is on the invoice.
+ */
+export const DISCOVER_RESULTS_CAP = 20;
+
+/**
+ * The scraper's per-event charges on our plan tier (BRONZE), in dollars. Vendor prices, not
+ * product choices, which is why they sit at the vendor edge and not in policy. A lower plan
+ * tier charges about a quarter more per post; re-measure if the plan changes.
+ */
+const RUN_START_USD = 0.001;
+const PER_POST_USD = 0.003;
+/** The add-on charged per post when a video search is sorted newest first. */
+const NEWEST_FIRST_PER_POST_USD = 0.001;
 
 const price = (endpoint: string, usdPerUnit: number): Price => ({
   vendor: VENDOR,
@@ -81,10 +109,21 @@ const price = (endpoint: string, usdPerUnit: number): Price => ({
   unit: 'per-run',
   usdPerUnit,
   unitName: 'actor run',
-  measuredAt: '2026-08-05',
+  measuredAt: '2026-10-13',
 });
 
+/**
+ * ★ EACH RUN IS QUOTED AT ITS LARGEST POSSIBLE BILL, and that is deliberate. The unit stays
+ * the run — the ledger cannot see how many posts came back before it records — so the quote
+ * is the start fee plus a full run's posts: `DISCOVER_RESULTS_CAP` sorted search results, or
+ * a full observe batch. A short run is therefore over-recorded, never under-recorded. The
+ * flat two cents that was here before was about a seventh of a full observe batch's real
+ * bill, which made the supplier line a cap on paper only.
+ */
 export const PRICES: PriceBook = {
-  [`${VENDOR}:${DISCOVER}`]: price(DISCOVER, 0.02),
-  [`${VENDOR}:${OBSERVE}`]: price(OBSERVE, 0.02),
+  [`${VENDOR}:${DISCOVER}`]: price(
+    DISCOVER,
+    RUN_START_USD + DISCOVER_RESULTS_CAP * (PER_POST_USD + NEWEST_FIRST_PER_POST_USD),
+  ),
+  [`${VENDOR}:${OBSERVE}`]: price(OBSERVE, RUN_START_USD + (CAPABILITIES.observeBatchSize ?? 1) * PER_POST_USD),
 };

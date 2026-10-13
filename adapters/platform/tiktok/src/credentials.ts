@@ -59,12 +59,12 @@ export const CREDENTIALS: CredentialSpec = {
   requires: [
     {
       variable: TOKEN,
-      note: 'the scraper platform API token. Billed per RUN, so a run that returns nothing still costs.',
+      note: 'the scraper platform API token. Billed per run started and per post returned, so a run that returns nothing still costs.',
       fallback: null,
     },
     {
       variable: DISCOVERY_ACTOR,
-      note: 'the actor id run for hashtag, feed and account discovery. This source has no keyword search.',
+      note: 'the actor id run for keyword, hashtag and account discovery. Its input keys are one scraper family\'s (searchQueries, hashtags, profiles).',
       fallback: null,
     },
     {

@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import type { DiscoveryQuery } from '@insidor/contracts/ports/platform.ts';
 import { NotImplemented } from '@insidor/vendor-kit';
 
-import { CAPABILITIES } from './capabilities.ts';
+import { CAPABILITIES, DISCOVER_RESULTS_CAP, PRICES } from './capabilities.ts';
 import type { RunResult, TikTokClient } from './client.ts';
 import { discoverRun, toActorInput } from './discover.ts';
 
@@ -29,7 +29,7 @@ const query = (over: Partial<DiscoveryQuery> = {}): DiscoveryQuery => ({
   term: 'chillguy',
   sinceMs: null,
   untilMs: null,
-  limit: 25,
+  limit: 15,
   cursor: null,
   ...over,
 });
@@ -93,10 +93,12 @@ test('★ the refusal fires before any run is created, so it costs nothing', asy
 
 test('★ the capability list still tells the truth about what this source cannot do', () => {
   // Declaring a mode no code path renders is the same lie as returning an empty page
-  // for it. `searchQueries` exists on one actor family and is deliberately not
-  // claimed, because which actor is configured is not knowable here.
-  assert.equal(CAPABILITIES.discovery.includes('keyword'), false, 'keyword search was claimed');
-  assert.deepEqual([...CAPABILITIES.discovery].sort(), ['account', 'feed', 'hashtag']);
+  // for it. Keyword search is declared because the scraper's input schema has it
+  // (`searchQueries`, checked 2026-10-13); a catch-all is not, because it has no
+  // trending feed to stand in for one.
+  assert.equal(CAPABILITIES.discovery[0], 'keyword', 'keyword search is not the first entry point');
+  assert.equal(CAPABILITIES.discovery.includes('catchall'), false, 'a catch-all was claimed');
+  assert.deepEqual([...CAPABILITIES.discovery].sort(), ['account', 'feed', 'hashtag', 'keyword']);
   assert.deepEqual(CAPABILITIES.absent, ['reproduction']);
   assert.equal(CAPABILITIES.billing, 'per-run');
 });
@@ -106,7 +108,7 @@ test('★ the capability list still tells the truth about what this source canno
 test('a mode this source cannot express is an error, never an empty page', () => {
   // An empty result reads downstream as "nothing is happening", which is the failure
   // the capability list exists to design out.
-  for (const mode of ['keyword', 'catalog'] as const) {
+  for (const mode of ['catchall', 'catalog'] as const) {
     assert.throws(() => toActorInput(query({ mode })), (error: unknown) => {
       assert.ok(error instanceof NotImplemented);
       assert.equal(error.endpoint, `tiktok:discover:${mode}`);
@@ -119,16 +121,37 @@ test('a mode this source cannot express is an error, never an empty page', () =>
 test('a hashtag and an account go into different keys, because the actor reads them differently', () => {
   assert.deepEqual(toActorInput(query({ mode: 'hashtag', term: ' chillguy ' })), {
     hashtags: ['chillguy'],
-    resultsPerPage: 25,
+    resultsPerPage: 15,
   });
   assert.deepEqual(toActorInput(query({ mode: 'account', term: 'someone' })), {
     profiles: ['someone'],
-    resultsPerPage: 25,
+    resultsPerPage: 15,
   });
   assert.deepEqual(toActorInput(query({ mode: 'feed', term: 'someone' })), {
     hashtags: ['someone'],
-    resultsPerPage: 25,
+    resultsPerPage: 15,
   });
+});
+
+test('★ a keyword is a newest-first video search, and carries no date filter', () => {
+  const input = toActorInput(query({ mode: 'keyword', term: ' memecoin ' }));
+  assert.deepEqual(input, {
+    searchQueries: ['memecoin'],
+    searchSection: '/video',
+    videoSearchSorting: 'LATEST',
+    resultsPerPage: 15,
+  });
+  // The vendor's search date filter is a cutoff with every flaw the header lists.
+  assert.equal('videoSearchDateFilter' in input, false);
+  // And the cutoff is refused on this mode exactly as on the others.
+  assert.throws(() => toActorInput(query({ mode: 'keyword', untilMs: 1 })), NotImplemented);
+});
+
+test('★ a run never asks for more posts than its price was quoted at', () => {
+  // The vendor charges per post returned and the ledger records per run, so the run's
+  // price is a bound only while the size is.
+  assert.equal(toActorInput(query({ limit: 100 })).resultsPerPage, DISCOVER_RESULTS_CAP);
+  assert.equal(toActorInput(query({ mode: 'keyword', limit: 1_000 })).resultsPerPage, DISCOVER_RESULTS_CAP);
 });
 
 test('★ a size hint IS sent, and the asymmetry with the cutoff is the whole argument', () => {
@@ -167,4 +190,14 @@ test('the read instant is injected and shared by every item in one run', async (
   for (const translated of result.items) {
     assert.equal(translated.firstSeenAt, AT);
   }
+});
+
+/* ── the price ────────────────────────────────────────────────────────── */
+
+test('★ a run is quoted at its full bill: the start fee plus every post it may return', () => {
+  // The flat two cents that was here first was about a seventh of a full observe batch.
+  const discover = PRICES['apify:discover']?.usdPerUnit ?? 0;
+  const observe = PRICES['apify:observe']?.usdPerUnit ?? 0;
+  assert.ok(Math.abs(discover - (0.001 + DISCOVER_RESULTS_CAP * 0.004)) < 1e-9, `discover quoted at ${discover}`);
+  assert.ok(Math.abs(observe - (0.001 + (CAPABILITIES.observeBatchSize ?? 1) * 0.003)) < 1e-9, `observe quoted at ${observe}`);
 });
