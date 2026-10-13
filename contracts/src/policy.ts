@@ -2677,8 +2677,9 @@ const POLICY_V1: Policy = {
   },
 
   trade: {
-    /* 0.05 SOL: a first real trade is a test of the plumbing, not a position. */
-    maxSolPerTrade: 0.05,
+    /* 0.06 SOL, amount plus slippage (the owner, 2026-10-13): room for a 0.05 SOL buy at up to 20%
+       slippage, so the quick buy's 0.05 preset shows. Still a test of the plumbing, not a position. */
+    maxSolPerTrade: 0.06,
     defaultSlippageBps: 300,
     /* 15%: past this a launchpad coin's quote says little about what the trade will fill at. */
     maxSlippageBps: 1_500,
