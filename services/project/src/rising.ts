@@ -25,9 +25,16 @@
  *                                       with its story id (if the read has a story, the story
  *                                       decides) — so a Buy button is the board's confident
  *                                       answer and nothing else;
- *   the post's name was searched (internal.coin_lookup) and nothing came back → `none`;
- *   it was searched and launchpad coins came back → `unsure` with that count: coins exist,
- *                                       and nothing has said which, if any, is this post's;
+ *   the post's name was searched (internal.coin_lookup) and no coin we hold by name came back
+ *                                       → `none`;
+ *   it was searched and launchpad coins came back → `unsure` with how many: coins exist, and
+ *                                       nothing has said which, if any, is this post's. The
+ *                                       count is the length of the list written beside it
+ *                                       (public.same_name_coin, same-name.ts), and `more`
+ *                                       says the search found more than it kept;
+ *   it was searched before the addresses were kept (0051) and coins came back → `pending`
+ *                                       until it is searched again, which the lookup does at
+ *                                       once: a count with no list behind it is not offered;
  *   the post's story was searched and has none → `none`;
  *   no search has finished `universe.lookup.giveUpMs` after the post entered the feed (as the
  *                                       lookup first saw it, internal.coin_lookup_attempt) →
@@ -48,6 +55,7 @@ import { clearsReachBar, postScoreReason, type ReachLevel } from '@insidor/core'
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
 
 import { loadReach, pictureOf, sourceLabel } from './db.ts';
+import { writeSameNameCoins } from './same-name.ts';
 import { permalinkFor } from './permalinks.ts';
 import { projectReach, projectSpark } from './project.ts';
 import type { ReachReading } from './project.ts';
@@ -141,48 +149,63 @@ async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingR
 }
 
 /**
- * Which posts have had their name searched for coins, and how many launchpad coins came back;
+ * Which posts have had their name searched for coins, and which launchpad coins came back — the
+ * addresses the search kept that we hold by name (public.coin_name: observed coins only, so a
+ * fixture is never listed), newest launch first;
  * and which have waited `giveUpMs` since the lookup first saw them in the feed with no search
  * finished. A post in neither has not been searched yet. `term` is not selected: the name is the
  * judge's. A post the lookup has never seen waiting is never given up on: the clock starts when
  * the lookup saw it, not when the post was made, so a post that reaches the feed late is not
  * "Couldn't check" on arrival.
  */
-async function loadPostLookups(
+export async function loadPostLookups(
   db: Db,
   itemIds: readonly string[],
   nowMs: number = Date.now(),
   giveUpMs: number = DEFAULT_POLICY.universe.lookup.giveUpMs,
 ): Promise<ReadonlyMap<string, PostLookup>> {
   if (itemIds.length === 0) return new Map();
-  const rows = await db.query<{ subject_id: string; found: number | null }>(
-    `select a.subject_id, l.found
+  /* A search from before 0051 that found coins has a count and no list: it is left out, as if
+     not searched (a dash), and never given up on — the lookup searches it again at once. */
+  const rows = await db.query<{ subject_id: string; searched: boolean; listed: string[] | null; more: boolean | null }>(
+    `select a.subject_id, (l.subject_id is not null) as searched, l.more,
+            (select array_agg(h.address order by h.ord)
+               from unnest(l.hits) with ordinality as h(address, ord)
+               join public.coin_name n on n.address = h.address) as listed
        from (select unnest($1::text[]) as subject_id) a
        left join internal.coin_lookup l on l.subject_kind = 'post' and l.subject_id = a.subject_id
+                                       and (l.hits is not null or l.found = 0)
        left join internal.coin_lookup_attempt q on q.subject_kind = 'post' and q.subject_id = a.subject_id
-      where l.subject_id is not null or q.queued_at <= $2`,
+      where l.subject_id is not null
+         or (q.queued_at <= $2
+             and not exists (select 1 from internal.coin_lookup o where o.subject_kind = 'post' and o.subject_id = a.subject_id))`,
     [[...itemIds], new Date(nowMs - giveUpMs).toISOString()],
   );
-  return new Map(rows.map((r) => [r.subject_id, r.found === null ? { gaveUp: true } : { found: Number(r.found) }]));
+  return new Map(rows.map((r) => [r.subject_id, r.searched ? { coins: r.listed ?? [], more: r.more === true } : { gaveUp: true }]));
 }
 
-/** A finished search for a post's name and how many launchpad coins it returned, or none in time. */
-export type PostLookup = { readonly found: number } | { readonly gaveUp: true };
+/**
+ * A finished search for a post's name — the coins it kept that we can list, newest launch first,
+ * and whether it found more than it kept — or none in time.
+ */
+export type PostLookup = { readonly coins: readonly string[]; readonly more: boolean } | { readonly gaveUp: true };
 
 /** The row's coin line and the story it came from, by the rule in the header. */
 export function postCoins(
   storyLink: WireCoinLink | undefined,
   lookup: PostLookup | null,
-): { readonly coins: WirePostCoinLink; readonly fromStory: boolean } {
+): { readonly coins: WirePostCoinLink; readonly fromStory: boolean; readonly sameName: readonly string[] } {
   if (storyLink !== undefined && (storyLink.kind === 'one' || storyLink.kind === 'several' || storyLink.kind === 'unsure')) {
-    return { coins: storyLink, fromStory: true };
+    return { coins: storyLink, fromStory: true, sameName: [] };
   }
-  if (lookup !== null && 'found' in lookup) {
-    return { coins: lookup.found === 0 ? { kind: 'none' } : { kind: 'unsure', claimCount: lookup.found }, fromStory: false };
+  if (lookup !== null && 'coins' in lookup) {
+    const n = lookup.coins.length;
+    if (n === 0) return { coins: { kind: 'none' }, fromStory: false, sameName: [] };
+    return { coins: lookup.more ? { kind: 'unsure', claimCount: n, more: true } : { kind: 'unsure', claimCount: n }, fromStory: false, sameName: lookup.coins };
   }
-  if (storyLink !== undefined && storyLink.kind === 'none') return { coins: storyLink, fromStory: true };
-  if (lookup !== null) return { coins: { kind: 'unchecked' }, fromStory: false };
-  return { coins: { kind: 'pending' }, fromStory: false };
+  if (storyLink !== undefined && storyLink.kind === 'none') return { coins: storyLink, fromStory: true, sameName: [] };
+  if (lookup !== null) return { coins: { kind: 'unchecked' }, fromStory: false, sameName: [] };
+  return { coins: { kind: 'pending' }, fromStory: false, sameName: [] };
 }
 
 function authorLabelOf(row: RisingRow): string {
@@ -250,6 +273,8 @@ export interface RisingFrame {
    * Read only to record why a post that WAS showing left (public.feed_rejection); never sent.
    */
   readonly whyNot: ReadonlyMap<string, FeedRejectionReason>;
+  /** The coins behind each shown post's own unsure count, by post id (same-name.ts). */
+  readonly sameName: ReadonlyMap<string, readonly string[]>;
 }
 
 /** Load, filter by the per-post score and each feed's view bar, project, and order both feeds. Writes nothing. */
@@ -275,8 +300,10 @@ export async function buildRising(
        later time it would overstate how fast the post grew. */
     const views: ReachLevel[] = readings.map((x) => ({ atMs: x.atMs, reach: x.rate.kind === 'measured' ? x.rate.level : null }));
     const postedAt = toMs(row.posted_at);
+    const lookup = lookups.get(row.item_id) ?? null;
     return {
-      post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookups.get(row.item_id) ?? null),
+      post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup),
+      sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
       fyp: clearsReachBar('fyp', views, postedAt, policy),
       unread: views.every((v) => v.reach === null),
@@ -294,7 +321,10 @@ export async function buildRising(
   });
   const cap = (list: typeof posts) => list.slice(0, policy.rising.maxRows).map((p) => p.post);
   for (const p of posts) if (!p.fyp) whyNot.set(p.post.id, p.unread ? 'reach_unread' : 'under_reach_bar');
-  return { fyp: cap(fyp), popular: cap(popular), whyNot };
+  const shown = { fyp: cap(fyp), popular: cap(popular) };
+  const ids = new Set([...shown.fyp, ...shown.popular].map((p) => p.id));
+  const sameName = new Map(posts.filter((p) => ids.has(p.post.id) && p.sameName.length > 0).map((p) => [p.post.id, p.sameName] as const));
+  return { ...shown, whyNot, sameName };
 }
 
 /** Write one feed's frame: the view row first, then its rows, in the caller's transaction. */
@@ -339,5 +369,7 @@ export async function projectRisingFeeds(
     return why === undefined ? [] : [{ kind: 'post' as const, id: item_id, reason: why, detail: null }];
   });
   await new PgFeedRejectionRepo(db).record(left);
+  /* The coins behind each unsure post's count, in this transaction with the rows that show it. */
+  await writeSameNameCoins(db, 'post', frame.sameName);
   return (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
 }
