@@ -1960,7 +1960,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v53',
+  version: 'policy.v54',
 
   admit: {
     maxAgeMin: 240,
@@ -2572,8 +2572,9 @@ const POLICY_V1: Policy = {
        judge can be re-tuned on the live negative set today. The day stays $29.75. */
     /* $4.75 from 2026-10-13 07:00 UTC, with the learning work moved to its own $4 line below. Live
        $21 + jobs $4.75 + learning $4 = $29.75 a day, under the owner's $30. */
-    jobLines: { dailyUsd: 4.75, posts: 0.5, judge: 3.75, video: 0.25, embeddings: 0.25 },
-    learningLines: { dailyUsd: 4, posts: 1, judge: 2.5, video: 0, embeddings: 0.5 },
+    jobLines: { dailyUsd: 3.75, posts: 0.5, judge: 2.75, video: 0.25, embeddings: 0.25 },
+    /* $5: $1 moved from jobs on 2026-10-13 so today's re-tune could finish and re-check the feed. */
+    learningLines: { dailyUsd: 5, posts: 1, judge: 3.5, video: 0, embeddings: 0.5 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
