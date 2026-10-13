@@ -11,7 +11,7 @@
  * the service reads, so a health check always lands on a server that answers it.
  *
  * ★ THE PROJECTOR IS A SCHEDULE, NOT A PROCESS. `project` runs the one-shot jobs (`db.mjs
- * project` every minute; `market`, `pairs` and the source indicator every five; `label` hourly; the
+ * project` every minute; coin logos every two; `market`, `pairs` and the source indicator every five; `label` hourly; the
  * daily recall check and the twice-daily judge re-tune, both detached), one at a time,
  * and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
  * otherwise — so Railway restarts it when the board stops moving, not just when it crashes.
@@ -60,6 +60,9 @@ if (service in MAIN) {
     { name: 'market', everyMs: 300_000, args: ['tools/db.mjs', 'market'] },
     { name: 'pairs', everyMs: 300_000, args: ['tools/db.mjs', 'pairs'] },
     { name: 'sources', everyMs: 300_000, args: ['services/project/src/sources-main.ts'] },
+    /* Copies the logos of coins on screen into our storage (services/project/src/logos-main.ts).
+       Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on this service; without them it says so and exits. */
+    { name: 'logos', everyMs: 120_000, args: ['services/project/src/logos-main.ts'] },
     { name: 'label', everyMs: 3_600_000, args: ['tools/db.mjs', 'label'] },
     /* Once a day: did discovery hold each bonded coin's linked X post before it launched
        (internal.recall_check). Detached, because a day's reads outlast the board's health bar. */
