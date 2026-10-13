@@ -89,12 +89,41 @@ export async function assetsToRead(
   chain: string,
   limit: number,
 ): Promise<readonly AssetRow[]> {
+  /* ★ THE COINS ON SCREEN COME FIRST. The newest-first bound reads about five minutes of
+     mints, and a coin on a For You or Popular card is usually older than that — measured on
+     2026-10-13, the six coins on the cards ranked 7,864th to 10,603rd newest, so they were
+     read once when they were new and then never again, and every card showed a stale
+     absence and no Buy. So every coin a projected feed or board names (`coinId`, at any
+     depth of its payload) is read first, then the newest fill the rest of the bound. The
+     origin allowlist holds on both halves. */
   return db.query<AssetRow>(
-    `select chain, address
-       from public.asset
-      where chain = $1
-        and origin = any($3::text[])
-      order by first_seen_at desc, asset_key asc
+    `with on_screen as (
+       select distinct c #>> '{}' as asset_key
+         from (select payload from public.rising_row
+               union all
+               select payload from public.board_row) p,
+              jsonb_path_query(p.payload, 'strict $.**.coinId') c
+     ),
+     screen as (
+       select a.chain, a.address, a.asset_key, a.first_seen_at, 0 as tier
+         from public.asset a
+         join on_screen s on s.asset_key = a.asset_key
+        where a.chain = $1
+          and a.origin = any($3::text[])
+     ),
+     newest as (
+       select chain, address, asset_key, first_seen_at, 1 as tier
+         from public.asset
+        where chain = $1
+          and origin = any($3::text[])
+        order by first_seen_at desc, asset_key asc
+        limit $2
+     )
+     select chain, address
+       from (select * from screen
+             union all
+             select * from newest where asset_key not in (select asset_key from screen)) picked
+      order by tier, first_seen_at desc, asset_key asc
       limit $2`,
     /* A bound parameter and never an interpolated list, the rule this whole file holds
        to. The list arrives from contracts, where 0013's CHECK is held to it by a test,
