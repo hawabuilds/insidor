@@ -30,3 +30,14 @@ export function postScore(judgement: Pick<Judgement, 'coinable' | 'confidence' |
   if (words === 0 || words > p.rising.maxNameWords) return 'below';
   return judgement.confidence >= p.qualify.minJudgeConfidence[judgement.lookedAt] ? 'passes' : 'below';
 }
+
+/** Why a post is not on the feed, or 'passes': the same checks as `postScore`, named. */
+export type PostScoreReason = 'passes' | 'not_scored' | 'not_memeable' | 'judge_unsure' | 'name_test';
+
+export function postScoreReason(judgement: Pick<Judgement, 'coinable' | 'confidence' | 'lookedAt' | 'proposedName'> | null, p: Policy): PostScoreReason {
+  if (judgement === null) return 'not_scored';
+  if (!judgement.coinable) return 'not_memeable';
+  const words = wordsIn(judgement.proposedName ?? '');
+  if (words === 0 || words > p.rising.maxNameWords) return 'name_test';
+  return judgement.confidence >= p.qualify.minJudgeConfidence[judgement.lookedAt] ? 'passes' : 'judge_unsure';
+}
