@@ -6,6 +6,8 @@
  * views first, in the order the server committed. Watchlist is the narratives you starred,
  * read from `GET /board/default` (`feed-tabs.ts`). The site pills and the filter panel narrow
  * whichever list is showing (`feed-filters.ts`).
+ * Pulling the list down from the top reads it again (alerts/pull.ts); For You comes newest first, so
+ * new posts land at the top.
  *
  * ★ THE "Sample data" BAR IS NOT THIS SCREEN'S TO TURN OFF. It shows only while the server's own
  * provenance says the board's stories were written by hand or does not say, and it goes away by
@@ -30,7 +32,7 @@
  * a hidden post back.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BOARD_VIEW, fetchBoard, fetchRising, type BoardRow, type RisingPost } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { boardNotice } from '../../shared/notice.ts';
@@ -50,6 +52,8 @@ import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyFilters, applyPostFilters,
 import { rowsInOrder, tabView, type FeedTab } from './feed-tabs.ts';
 import { useLeadPosts } from './useLeadPosts.ts';
 import { PostSheet } from '../post-sheet/index.ts';
+import { PullIndicator } from '../alerts/Parts.tsx';
+import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
 import { HiddenByMe } from '../owner/HiddenByMe.tsx';
 import { OwnerCardStrip } from '../owner/OwnerCard.tsx';
 import { HideBar } from '../owner/OwnerPost.tsx';
@@ -101,6 +105,28 @@ export function Feed({
     document.addEventListener('visibilitychange', onShow);
     return () => document.removeEventListener('visibilitychange', onShow);
   }, [reload]);
+
+  /* Pull to refresh: everything is read again, and the spinner stops when this tab's list is back.
+     For You comes newest first from the server, so new posts arrive at the top; a post the owner
+     hid stays out (withoutHidden below runs on every read). */
+  const settled = useRef<(() => void) | null>(null);
+  const shownLoad = tab === 'popular' ? popular : tab === 'fyp' ? fyp : board;
+  useEffect(() => {
+    if (shownLoad.state !== 'loading') {
+      settled.current?.();
+      settled.current = null;
+    }
+  }, [shownLoad]);
+  const { pull, refreshing } = usePullToRefresh(
+    useCallback(
+      () =>
+        new Promise<void>((done) => {
+          settled.current = done;
+          reload();
+        }),
+      [reload],
+    ),
+  );
 
   const tick = board.state === 'ready' ? board.value : null;
   const ordered = useMemo(() => (tick ? rowsInOrder(tick.order, tick.rows) : []), [tick]);
@@ -158,127 +184,130 @@ export function Feed({
   };
 
   return (
-    <section className={styles['screen']}>
-      <header className={styles['header']}>
-        <span className={styles['wordmark']}>INSIDOR</span>
-      </header>
+    <>
+      <PullIndicator pull={pull} refreshing={refreshing} />
+      <section className={styles['screen']} style={pullStyle(pull)}>
+        <header className={styles['header']}>
+          <span className={styles['wordmark']}>INSIDOR</span>
+        </header>
 
-      <UnderlineTabs tabs={TABS} current={tab} onChange={setTab} label="Feed" />
+        <UnderlineTabs tabs={TABS} current={tab} onChange={setTab} label="Feed" />
 
-      <div className={styles['filterRow']}>
-        <button
-          type="button"
-          className={`${styles['filterButton']} ${isFiltered(filters) ? styles['filterOn'] : ''}`}
-          aria-label="Filters"
-          aria-expanded={panel}
-          onClick={() => setPanel((p) => !p)}
-        >
-          <FilterIcon size={18} />
-        </button>
-        <div className={styles['quick']}>
+        <div className={styles['filterRow']}>
           <button
             type="button"
-            className={`${styles['quickPill']} ${filters.sites.length === 0 ? styles['quickOn'] : ''}`}
-            onClick={() => setFilters((f) => ({ ...f, sites: [] }))}
+            className={`${styles['filterButton']} ${isFiltered(filters) ? styles['filterOn'] : ''}`}
+            aria-label="Filters"
+            aria-expanded={panel}
+            onClick={() => setPanel((p) => !p)}
           >
-            All
+            <FilterIcon size={18} />
           </button>
-          {FILTER_PLATFORMS.map((p) => (
+          <div className={styles['quick']}>
             <button
-              key={p.key}
               type="button"
-              className={`${styles['quickPill']} ${filters.sites.includes(p.key) ? styles['quickOn'] : ''}`}
-              onClick={() => setFilters((f) => ({ ...f, sites: quickSite === p.key ? [] : [p.key] }))}
+              className={`${styles['quickPill']} ${filters.sites.length === 0 ? styles['quickOn'] : ''}`}
+              onClick={() => setFilters((f) => ({ ...f, sites: [] }))}
             >
-              <PlatformMark platform={p.key} size={14} /> {p.label}
+              All
             </button>
-          ))}
+            {FILTER_PLATFORMS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                className={`${styles['quickPill']} ${filters.sites.includes(p.key) ? styles['quickOn'] : ''}`}
+                onClick={() => setFilters((f) => ({ ...f, sites: quickSite === p.key ? [] : [p.key] }))}
+              >
+                <PlatformMark platform={p.key} size={14} /> {p.label}
+              </button>
+            ))}
+          </div>
+          {panel ? (
+            <FilterPanel
+              applied={filters}
+              steps={VIEW_STEPS}
+              windows={POSTED_WINDOWS}
+              onApply={(f) => {
+                setFilters(f);
+                setPanel(false);
+              }}
+              onClose={() => setPanel(false)}
+            />
+          ) : null}
         </div>
-        {panel ? (
-          <FilterPanel
-            applied={filters}
-            steps={VIEW_STEPS}
-            windows={POSTED_WINDOWS}
-            onApply={(f) => {
-              setFilters(f);
-              setPanel(false);
-            }}
-            onClose={() => setPanel(false)}
-          />
+
+        <Notice notice={notice} />
+
+        {owner && onPosts ? (
+          <div className={styles['ownerRow']}>
+            <Button look="quiet" onClick={() => setHiddenList(true)}>Hidden by me</Button>
+          </div>
         ) : null}
-      </div>
 
-      <Notice notice={notice} />
+        {onPosts ? (
+          <>
+            {feed.state === 'loading' ? <p className={styles['empty']}>Reading the feed.</p> : null}
+            {feed.state === 'failed' ? (
+              <div className={styles['empty']}>
+                <p>Couldn't reach the read service, so there is nothing to show. This is not an empty feed.</p>
+                <Button look="quiet" onClick={reload}>Try again</Button>
+              </div>
+            ) : null}
+            {feed.state === 'ready' && posts !== null ? (
+              <>
+                {posts.rows.map(post)}
+                {feed.value.posts.length === 0 ? <p className={styles['empty']}>No posts yet.</p> : null}
+                {feed.value.posts.length > 0 && posts.rows.length === 0 && posts.unknown === 0 ? (
+                  <p className={styles['empty']}>No posts match these filters.</p>
+                ) : null}
+                {posts.unknown > 0 ? (
+                  <p className={styles['hidden']}>
+                    {posts.unknown === 1 ? '1 more post is' : `${posts.unknown} more posts are`} left out because we can't tell yet whether{' '}
+                    {posts.unknown === 1 ? 'it matches' : 'they match'} these filters.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+          </>
+        ) : null}
 
-      {owner && onPosts ? (
-        <div className={styles['ownerRow']}>
-          <Button look="quiet" onClick={() => setHiddenList(true)}>Hidden by me</Button>
-        </div>
-      ) : null}
+        {!onPosts && board.state === 'loading' ? <p className={styles['empty']}>Reading the board.</p> : null}
+        {!onPosts && board.state === 'failed' ? (
+          <div className={styles['empty']}>
+            <p>Couldn't reach the read service, so there is nothing to show. This is not an empty board.</p>
+            <Button look="quiet" onClick={reload}>Try again</Button>
+          </div>
+        ) : null}
 
-      {onPosts ? (
-        <>
-          {feed.state === 'loading' ? <p className={styles['empty']}>Reading the feed.</p> : null}
-          {feed.state === 'failed' ? (
-            <div className={styles['empty']}>
-              <p>Couldn't reach the read service, so there is nothing to show. This is not an empty feed.</p>
-              <Button look="quiet" onClick={reload}>Try again</Button>
-            </div>
-          ) : null}
-          {feed.state === 'ready' && posts !== null ? (
-            <>
-              {posts.rows.map(post)}
-              {feed.value.posts.length === 0 ? <p className={styles['empty']}>No posts yet.</p> : null}
-              {feed.value.posts.length > 0 && posts.rows.length === 0 && posts.unknown === 0 ? (
-                <p className={styles['empty']}>No posts match these filters.</p>
-              ) : null}
-              {posts.unknown > 0 ? (
-                <p className={styles['hidden']}>
-                  {posts.unknown === 1 ? '1 more post is' : `${posts.unknown} more posts are`} left out because we can't tell yet whether{' '}
-                  {posts.unknown === 1 ? 'it matches' : 'they match'} these filters.
-                </p>
-              ) : null}
-            </>
-          ) : null}
-        </>
-      ) : null}
-
-      {!onPosts && board.state === 'loading' ? <p className={styles['empty']}>Reading the board.</p> : null}
-      {!onPosts && board.state === 'failed' ? (
-        <div className={styles['empty']}>
-          <p>Couldn't reach the read service, so there is nothing to show. This is not an empty board.</p>
-          <Button look="quiet" onClick={reload}>Try again</Button>
-        </div>
-      ) : null}
-
-      {!onPosts && tick !== null ? (
-        <>
-          {shown.rows.map(row)}
-          {shownUncounted.rows.length > 0 ? (
-            <>
-              <h2 className={styles['group']}>Views not reported</h2>
-              {shownUncounted.rows.map(row)}
-            </>
-          ) : null}
-          <EmptyLine
-            boardEmpty={ordered.length === 0}
-            tab={tab}
-            nothingShown={shown.rows.length + shownUncounted.rows.length === 0}
-            filtered={isFiltered(filters)}
-            starredOffBoard={view.starredOffBoard}
-          />
-          {hidden > 0 ? (
-            <p className={styles['hidden']}>
-              {hidden === 1 ? '1 more post is' : `${hidden} more posts are`} left out because we can't tell yet whether{' '}
-              {hidden === 1 ? 'it matches' : 'they match'} these filters.
-            </p>
-          ) : null}
-        </>
-      ) : null}
-      {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}
-      {owner ? <HideBar /> : null}
-      {sheet !== null ? <PostSheet key={sheet.id} postId={sheet.id} start={sheet.start} onClose={() => setSheet(null)} /> : null}
-    </section>
+        {!onPosts && tick !== null ? (
+          <>
+            {shown.rows.map(row)}
+            {shownUncounted.rows.length > 0 ? (
+              <>
+                <h2 className={styles['group']}>Views not reported</h2>
+                {shownUncounted.rows.map(row)}
+              </>
+            ) : null}
+            <EmptyLine
+              boardEmpty={ordered.length === 0}
+              tab={tab}
+              nothingShown={shown.rows.length + shownUncounted.rows.length === 0}
+              filtered={isFiltered(filters)}
+              starredOffBoard={view.starredOffBoard}
+            />
+            {hidden > 0 ? (
+              <p className={styles['hidden']}>
+                {hidden === 1 ? '1 more post is' : `${hidden} more posts are`} left out because we can't tell yet whether{' '}
+                {hidden === 1 ? 'it matches' : 'they match'} these filters.
+              </p>
+            ) : null}
+          </>
+        ) : null}
+        {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}
+        {owner ? <HideBar /> : null}
+        {sheet !== null ? <PostSheet key={sheet.id} postId={sheet.id} start={sheet.start} onClose={() => setSheet(null)} /> : null}
+      </section>
+    </>
   );
 }
 

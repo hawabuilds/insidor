@@ -1,5 +1,5 @@
 /**
- * PULL TO REFRESH, Trador's (components/Refresh.tsx usePullToRefresh) on the Feed and its
+ * PULL TO REFRESH, Trador's (components/Refresh.tsx usePullToRefresh) on For You, the Feed and its
  * Notifications: pull the list down from the very top and let go to read it again.
  *
  * Trador's numbers: the list follows half the finger's travel, up to 96px; letting go past 64px
@@ -46,6 +46,8 @@ export function usePullToRefresh(refresh: () => Promise<void>): { readonly pull:
     const top = () => (document.scrollingElement?.scrollTop ?? window.scrollY) <= 0;
     const onStart = (e: TouchEvent) => {
       if (!top() || busy.current || e.touches.length !== 1) return;
+      /* A drag inside an open sheet or pop-up is that sheet's (its swipe to close), never a refresh. */
+      if (e.target instanceof Element && e.target.closest('[role="dialog"]') !== null) return;
       startY = e.touches[0]?.clientY ?? null;
       tracking = startY !== null;
     };
