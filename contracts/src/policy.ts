@@ -1919,7 +1919,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v49',
+  version: 'policy.v51',
 
   admit: {
     maxAgeMin: 240,
@@ -2493,7 +2493,7 @@ const POLICY_V1: Policy = {
     /* $23.25: the lines below, as brakes. Measured 2026-10-13 02:33–03:30 UTC at full speed with the
        cost cuts on: X $5.72/day, judge $4.48, short video $2.34, pictures $0.09. Lines are that, ×1.5
        for daytime volume, +25%. With the jobs' $6.50 the day is $29.75, under the owner's $30. */
-    dailyUsd: 23.25,
+    dailyUsd: 21,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
@@ -2505,10 +2505,13 @@ const POLICY_V1: Policy = {
     /* 0.97: the lines are brakes now, set above the measured cost; stopping at 90% wasted a tenth
        of each and meant the owner's 95% warning could never fire. */
     softStopFraction: 0.97,
-    supplierLines: { posts: 11.25, judge: 8.5, video: 2, actors: 1, embeddings: 0.5 },
+    supplierLines: { posts: 10, judge: 7.5, video: 2, actors: 1, embeddings: 0.5 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
-    jobLines: { dailyUsd: 6.5, posts: 1, judge: 6, video: 0.5, embeddings: 0.5 },
+    /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured
+       full-speed X is $5.72 a day) and $1 from the live judge ($8.50 → $7.50; measured $4.48), so the
+       judge can be re-tuned on the live negative set today. The day stays $29.75. */
+    jobLines: { dailyUsd: 8.75, posts: 1, judge: 8.25, video: 0.5, embeddings: 0.5 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
