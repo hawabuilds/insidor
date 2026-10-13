@@ -22,6 +22,7 @@
  * envelope. If something here starts computing, it belongs in services/project.
  */
 
+import { coinAbout, type AboutDeps } from './coin-about.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
 import { errorText, type Logger } from './log.ts';
 import type { Search } from './search.ts';
@@ -53,6 +54,8 @@ export interface Deps {
   readonly log: Logger;
   /** A coin's market data (market.ts). Absent: the coin market route is a 404. */
   readonly market?: Omit<MarketDeps, 'db' | 'log' | 'recent'>;
+  /** A coin's links, day numbers, holders, creator and posts (coin-about.ts). Absent: a 404. */
+  readonly about?: Omit<AboutDeps, 'db' | 'log' | 'recent'>;
   /** The Search tab's live search (search.ts). Absent: /search and /coin/:id are 404s. */
   readonly search?: Search;
   /** The Portfolio tab (wallet.ts). Absent: /wallet/:address is a 404. */
@@ -415,6 +418,12 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       const search = deps.search;
       const recent = search === undefined ? {} : { recent: (address: string) => search.recent(address) !== null };
       return (await coinMarket(param, tf, { ...deps.market, ...recent, db: deps.db, log: deps.log })) ?? NOT_FOUND;
+    }
+
+    if (segments.length === 3 && head === 'coin' && param !== undefined && segments[2] === 'about' && deps.about !== undefined) {
+      const search = deps.search;
+      const recent = search === undefined ? {} : { recent: (address: string) => search.recent(address) !== null };
+      return (await coinAbout(param, { ...deps.about, ...recent, db: deps.db, log: deps.log })) ?? NOT_FOUND;
     }
 
     if (deps.wallet !== undefined && segments.length === 3 && head === 'wallet' && param !== undefined && segments[2] === 'history') {
