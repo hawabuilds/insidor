@@ -30,9 +30,9 @@ function fakeDb(): { db: Db; sent: string[] } {
 
 test('★ a feed row with no coin is read by its kind, the same way for posts and narratives', async () => {
   const { db, sent } = fakeDb();
-  await new PgCoinUniverseRepo(db).lookupTerms(0 as Millis, 5);
+  await new PgCoinUniverseRepo(db).lookupTerms(0 as Millis, 3, 5);
   const sql = sent[0] ?? '';
-  assert.ok(sql.includes(`coalesce(r.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending')`), 'posts: JSON null, none and pending are "no coin"');
+  assert.ok(sql.includes(`coalesce(r.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending', 'unchecked')`), 'posts: JSON null, none, pending and unchecked are "no coin"');
   assert.ok(sql.includes(`coalesce(v.payload -> 'coins' ->> 'kind', 'none') in ('none', 'pending')`), 'narratives: the same test');
   assert.ok(!sql.includes(`->> 'coins' = 'null'`), 'the spelling no JSON null ever matched is gone');
 });
