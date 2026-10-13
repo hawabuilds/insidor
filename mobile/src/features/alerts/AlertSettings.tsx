@@ -8,7 +8,8 @@
  * ★ NO DISABLED CONTROLS. While muted, the switches stay usable and a line says nothing is sent.
  *
  * It opens as Trador's does, in a sheet over Notifications (the gear there), rather than as a page;
- * the content stays Insidor's, which is Trador's plus the hourly limit and Insidor's own kinds.
+ * the content stays Insidor's, which is Trador's plus the hourly limit and Insidor's own kinds. The
+ * sheet is the shared one (shared/ui/Sheet.tsx), so it closes every way the others do.
  */
 
 import { useEffect, useState } from 'react';
@@ -16,7 +17,7 @@ import { useEffect, useState } from 'react';
 import { fetchAlertSettings, saveAlertPrefs, sendTestPush, type AlertPrefs, type AlertSettings as Settings, type AlertSwitch } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { CloseIcon } from '../../shared/ui/icons.tsx';
+import { Sheet, SheetBody, SheetHead } from '../../shared/ui/Sheet.tsx';
 import { currentPush, disablePush, enablePush, pushPlace } from './push.ts';
 import styles from './alerts.module.css';
 
@@ -40,33 +41,18 @@ function Switch({ on, label, onChange }: { on: boolean; label: string; onChange:
   );
 }
 
-/**
- * Feed settings as Trador shows its notification settings: a sheet over Notifications, titled,
- * with a close button, the settings in one card. Escape and a tap on the scrim close it too.
- */
+/** Feed settings as Trador shows its notification settings: a titled sheet over Notifications. */
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
   const [loaded] = useLoad('alert-settings', () => fetchAlertSettings());
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
   return (
-    <div className={styles['scrim']} onClick={onClose}>
-      <div className={styles['sheet']} role="dialog" aria-modal="true" aria-label="Feed settings" onClick={(e) => e.stopPropagation()}>
-        <div className={styles['sheetHead']}>
-          <h2 className={styles['sheetTitle']}>Feed settings</h2>
-          <button type="button" className={styles['sheetClose']} aria-label="Close" onClick={onClose}>
-            <CloseIcon size={16} />
-          </button>
-        </div>
+    <Sheet label="Feed settings" onClose={onClose}>
+      <SheetHead title="Feed settings" />
+      <SheetBody last>
         {loaded.state === 'loading' ? <p className={styles['sheetNote']}>Loading</p> : null}
         {loaded.state === 'failed' ? <p className={styles['sheetNote']}>Your settings couldn't be read just now.</p> : null}
         {loaded.state === 'ready' ? <Body initial={loaded.value} /> : null}
-      </div>
-    </div>
+      </SheetBody>
+    </Sheet>
   );
 }
 
