@@ -35,11 +35,12 @@ const READINGS = [
   { atMs: 1_755_079_780_000, fidelity: 'quantized' as const, rate: { kind: 'measured' as const, perMin: 75, overMs: 480_000, level: 5_600 } },
 ];
 
-test('★ the row is the thirteen facts and nothing else', () => {
+test('★ the row is the fourteen facts and nothing else', () => {
   const post = projectRisingPost(ROW, READINGS, new Map(), 1_800_000);
   assert.deepEqual(Object.keys(post).sort(), [
-    'authorLabel', 'coins', 'excerpt', 'id', 'permalink', 'postedAt', 'reach', 'readAt', 'sourceLabel', 'spark', 'storyId', 'thumbIsVideo', 'thumbUrl',
+    'authorLabel', 'coins', 'excerpt', 'id', 'permalink', 'postedAt', 'reach', 'readAt', 'runningOlder', 'sourceLabel', 'spark', 'storyId', 'thumbIsVideo', 'thumbUrl',
   ]);
+  assert.deepEqual(post.runningOlder, [], 'no older coin running is an empty list, never absent');
   assert.equal(post.authorLabel, '@hippofan');
   assert.equal(post.permalink, 'https://x.com/hippofan/status/1900000000000000001');
   assert.equal(post.excerpt, 'moo deng yawning to the remix');
