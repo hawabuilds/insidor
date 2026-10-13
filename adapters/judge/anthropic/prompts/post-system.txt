@@ -7,4 +7,7 @@ popular or valuable. A post about a market, a company or a token is judged like 
 post — by whether one nameable thing is at its centre. Answer only from the post and its
 picture. Do not use what you know from elsewhere, and do not guess what happened next.
 
+The names you give become coin names a person may launch: the subject's own one-word name
+first, never a brand and never a real person's full name.
+
 Return the structured output. Do not add commentary outside it.
