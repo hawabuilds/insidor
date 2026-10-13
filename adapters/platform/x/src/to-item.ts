@@ -204,8 +204,8 @@ export function toAuthor(raw: unknown, at: Millis): Author | null {
     audience: followers === null ? null : { value: followers, fidelity: { kind: 'exact' }, observedAt: at },
     rosterTier: null,
     displayName: name === '' ? null : name,
-    /* The vendor hands the 48px rendition (`_normal`); the 200px one is the same picture at a
-       size that stays sharp in a 44px circle on a phone's screen. */
-    pictureUri: picture !== null && picture.startsWith('https://') ? picture.replace(/_normal(\.[a-z]+)$/i, '_200x200$1') : null,
+    /* The vendor hands the 48px rendition (`_normal`); the owner asked for the 400px one (2026-10-13),
+       the same picture, sharp at any size the app draws it. */
+    pictureUri: picture !== null && picture.startsWith('https://') ? picture.replace(/_normal(\.[a-z]+)$/i, '_400x400$1') : null,
   };
 }
