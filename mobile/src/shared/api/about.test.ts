@@ -25,6 +25,12 @@ test('★ only https links of the page\'s four kinds; numbers pending with their
   assert.deepEqual(a.liquidityUsd, { known: false, pending: 'not_reported' });
   assert.deepEqual(a.holders, { known: true, amount: 12 });
   assert.deepEqual(a.posts[0]?.evidence, { linksPost: null, samePicture: true, launchedAfterMs: 60_000 });
+  assert.deepEqual(a.posts[0]?.views, { known: false, pending: 'not_reported' }, 'a post with no views read is pending, never 0');
+});
+
+test('a post\'s views come through as read', () => {
+  const a = decodeCoinAbout({ links: [], posts: [{ postId: 'x:1', views: { v: 751_000 } }, { postId: 'x:2', views: { v: null, why: 'unreadable' } }] });
+  assert.deepEqual(a.posts.map((p) => p.views), [{ known: true, amount: 751_000 }, { known: false, pending: 'unreadable' }]);
 });
 
 test('a reply carrying an internal word is refused loudly, not drawn', () => {

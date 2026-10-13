@@ -14,7 +14,9 @@
  *   posts          feed posts that name this coin: a post whose own coin it is (its card's
  *                  `matched` link, with the card's evidence) and unsure posts whose "See N coins"
  *                  list holds it (public.same_name_coin, 0058), each with its narrative when it is
- *                  on one. Facts only: links this post, same picture, launched this long after.
+ *                  on one, and its views as its card last read them (the token page's viral
+ *                  post is the most-viewed). Facts only: links this post, same picture,
+ *                  launched this long after.
  *
  * ★ ONLY FOR A COIN WE HOLD OR A SEARCH JUST RETURNED, as GET /coin/:id/market (market.ts), so
  * this route cannot be used to make us fetch an arbitrary address.
@@ -164,6 +166,10 @@ export interface AboutDeps {
 const measured = (v: number | null | undefined, why: string) => (v === null || v === undefined || !Number.isFinite(v) ? { v: null, why } : { v });
 const text = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 const fact = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
+const views = (v: unknown) => {
+  const n = typeof v === 'object' && v !== null ? (v as Record<string, unknown>)['v'] : null;
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? { v: n } : { v: null, why: 'not_reported' };
+};
 
 /** The post's own facts, read from its feed payload: only the fields the card already shows. */
 function postOf(r: Row): Record<string, unknown> | null {
@@ -182,6 +188,9 @@ function postOf(r: Row): Record<string, unknown> | null {
     excerpt: text(p['excerpt']) ?? '',
     thumbUrl: text(p['thumbUrl']),
     postedAt: p['postedAt'] ?? null,
+    /* The post's views as its feed card last read them ({ v } or { v: null, why }): the token
+       page leads with the most-viewed post, so a missing count must stay missing, not zero. */
+    views: views(p['reach']),
     story: storyId !== null && title !== null ? { storyId, title } : null,
     evidence: { linksPost: fact(r['links_post']), samePicture: fact(r['same_picture']), launchedAfterMs: after !== null && Number.isFinite(after) ? after : null },
   };
