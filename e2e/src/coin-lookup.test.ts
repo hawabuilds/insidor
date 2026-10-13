@@ -142,12 +142,14 @@ test('★ a name every source fails on is tried 1 + retries times, then left, an
 
 test('★ the per-minute cap counts finished and failed searches across passes, and holds the next pass back', async () => {
   await db.query(`update internal.coin_lookup_attempt set attempts = 0 where subject_id = $1`, [OTHER]);
-  /* Two searches stamped in this minute (one finished, one failed): a cap of two leaves no room. */
-  const capped = { ...P, universe: { ...P.universe, lookup: { ...P.universe.lookup, perMinute: 2 } } };
+  /* Two searches stamped in this minute (one finished, one failed). The cap counts calls, and each
+     stamped search may have used `namesPerSubject` of them, so two searches' worth leaves no room. */
+  const names = P.universe.lookup.namesPerSubject;
+  const capped = { ...P, universe: { ...P.universe, lookup: { ...P.universe.lookup, perMinute: 2 * names } } };
   asked.length = 0;
   assert.deepEqual(await lookUpCoins(deps(false, capped)), { searched: 0, added: 0, failed: 0 });
   assert.deepEqual(asked, [], 'nothing is sent past the cap');
-  const roomForOne = { ...P, universe: { ...P.universe, lookup: { ...P.universe.lookup, perMinute: 3 } } };
+  const roomForOne = { ...P, universe: { ...P.universe, lookup: { ...P.universe.lookup, perMinute: 3 * names } } };
   assert.deepEqual(await lookUpCoins(deps(false, roomForOne)), { searched: 1, added: 0, failed: 0 });
   assert.deepEqual(asked.sort(), ['dex:Heron', 'gecko:Heron'], 'one more fits, and only one');
 });
