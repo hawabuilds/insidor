@@ -967,12 +967,24 @@ export interface FeedPolicy {
    * post in its first `windowMin`, so a post that takes an hour to cross the floor is never
    * seen at all. This lane looks back `windowMin` (hours, not minutes) every `everyMs`, with a
    * floor never below `floorMultiple` × the main lane's sent floor so it returns the posts
-   * that kept going rather than the whole afternoon again. Same paging, same posts line.
+   * that kept going rather than the whole afternoon again. One page per time slice (`slices`),
+   * on the same posts line.
    */
   readonly slow: {
     readonly windowMin: number;
     readonly everyMs: number;
     readonly floorMultiple: number;
+    /**
+     * ★ HOW THE SIX HOURS ARE ACTUALLY REACHED: in this many time slices, one page each. Asked
+     * newest first over the whole window, three pages filled inside the newest hour (2026-10-13:
+     * every pass returned 60, the oldest 66 minutes old), so nothing older was ever seen. Now
+     * slice k asks for the posts aged k·(windowMin/slices) minus `everyMs` to k·(windowMin/slices)
+     * minutes, at the lane's floor — six quarter-hour bands, one at each hour of age. The bands
+     * move a quarter-hour each pass, so every post is looked at once as it turns one, two, … six
+     * hours old. Six pages a pass where it was three: about $0.86 a day more at worst on the posts
+     * line ($1.73 against $0.86), and the floor's target keeps the usual day near $1.20.
+     */
+    readonly slices: number;
     /**
      * The share of the catch-all's money its floor steers toward. The rest is the main
      * lanes'. A target, not a reservation: the paced line is still the only limit.
@@ -2411,6 +2423,7 @@ const POLICY_V1: Policy = {
       windowMin: 360, // six hours
       everyMs: 900_000, // every 15 minutes
       floorMultiple: 5,
+      slices: 6, // one band at each hour of age
       /* 0.2: a fifth of the search money, uncalibrated. The lane's floor adapts to it, so
          a wrong share moves the floor, not the bill. */
       share: 0.2,
