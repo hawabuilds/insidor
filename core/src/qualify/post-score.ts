@@ -11,7 +11,7 @@
  *
  * ★ A HELD KIND COMES FIRST. A post the kind question filed as an ad, sport, a tragedy and so on
  * (kinds.ts) fails before anything else is weighed: no picture and no confidence lifts it. Only a
- * label in HELD_KINDS holds — an OTHER answer, whatever yes/no it was filed with, holds nothing.
+ * label in Policy.judge.heldKinds holds — an OTHER answer, whatever yes/no it was filed with, holds nothing.
  *
  * ★ THE PICTURE BOOST lifts only a "yes" just under its bar (`rising.boostBarMargin`) whose
  * picture is close to a coined post's (`rising.boostMinSimilarity`). A "no" is never lifted:
@@ -64,7 +64,7 @@ export function postScoreReason(
   kindLabel: string | null = null,
 ): PostScoreReason {
   if (judgement === null) return 'not_scored';
-  if (heldKind(kindLabel) !== null) return 'not_memeable';
+  if (heldKind(kindLabel, p.judge.heldKinds) !== null) return 'not_memeable';
   if (!judgement.coinable) return 'not_memeable';
   const words = wordsIn(judgement.proposedName ?? '');
   if (words === 0 || words > p.rising.maxNameWords) return 'name_test';

@@ -35,7 +35,7 @@ import type { JudgeOutcome } from '../../contracts/src/ports/judge.ts';
 import type { Meter } from '../../contracts/src/ports/meter.ts';
 import { createHash } from 'node:crypto';
 
-import { HELD_KINDS } from '../../services/runner/src/work/score-posts.ts';
+import { heldKind } from '../../core/src/qualify/kinds.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
 import { BATCH_PRICE_FRACTION, anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
 import { SPACE as EMBED_SPACE, voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
@@ -91,7 +91,7 @@ export interface GradeOptions {
   readonly mustFit?: boolean;
   /**
    * Ask the posts the first question passes the second — which kind of post — and hold back the
-   * kinds the live feed holds back (HELD_KINDS). On unless false: a re-tune graded without the
+   * kinds the live feed holds back (Policy.judge.heldKinds). On unless false: a re-tune graded without the
    * live feed's second question measures a gate nobody runs.
    */
   readonly kind?: boolean;
@@ -99,6 +99,8 @@ export interface GradeOptions {
   readonly kindAlso?: (p: EvalPost<string>) => boolean;
   /** Kind labels already known, by post id (stored answers, or an earlier grading this run): not asked again. */
   readonly knownKinds?: ReadonlyMap<string, string>;
+  /** The kinds held back from the memes feed; Policy.judge.heldKinds unless a caller measures another set. */
+  readonly heldKinds?: readonly string[];
   /** Posts per judge call. Defaults to the live scorer's (Policy.qualify.batchSize). */
   readonly maxBatch?: number;
   /** The coined pictures for the boost; null leaves the boost out. */
@@ -268,9 +270,9 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
       const kind = out?.kind === 'judged' ? (out.judgement.proposedName ?? '').trim().toUpperCase() : '';
       if (kind !== '') rows[i] = { ...rows[i]!, postKind: kind };
     });
-    /* Held back as the live feed holds back: the runner's held kinds (core's list). */
+    /* Held back as the live feed holds back: Policy.judge.heldKinds, or the set a caller measures. */
     rows.forEach((r, i) => {
-      if (r.postKind !== null && HELD_KINDS.has(r.postKind)) rows[i] = { ...r, passes: false };
+      if (heldKind(r.postKind, o.heldKinds ?? P.judge.heldKinds) !== null) rows[i] = { ...r, passes: false };
     });
   }
   return { rows, used, batched };
@@ -282,10 +284,10 @@ export const rateOf = <G extends string>(rows: readonly EvalRow<G>[], g: G): { r
   return { passed: of.filter((r) => r.passes).length, tested: of.length };
 };
 
-/** The owner's approved recall additions (eval/src/gold/approved-auto-gold.json): these count as hand gold. */
-export const APPROVED_AUTO_GOLD = new URL('../../eval/src/gold/approved-auto-gold.json', import.meta.url);
-export function approvedAutoGold(): ReadonlySet<string> {
-  return new Set((JSON.parse(readFileSync(APPROVED_AUTO_GOLD, 'utf8')) as { approved: string[] }).approved);
+/** The posts the owner put in hand gold by hand (eval/src/gold/hand-gold.json): an approved recall addition, or a post we hold. */
+export const HAND_GOLD = new URL('../../eval/src/gold/hand-gold.json', import.meta.url);
+export function handGoldIds(): ReadonlySet<string> {
+  return new Set((JSON.parse(readFileSync(HAND_GOLD, 'utf8')) as { itemIds: string[] }).itemIds);
 }
 
 /** The live scorer's picture size (services/runner/src/wiring.ts buildJudge). */

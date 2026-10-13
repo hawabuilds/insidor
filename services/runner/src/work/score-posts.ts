@@ -58,9 +58,6 @@ import { BudgetRefused } from '@insidor/vendor-kit';
 /** How many unscored posts are read per pass for each one that may be judged: the rest are below the bar. */
 const PREFETCH_FACTOR = 5;
 
-/** The kinds the second question holds back (core kinds.ts, the prompt's own labels): re-exported for the tools. */
-export { HELD_KINDS } from '@insidor/core';
-
 /** What a kind answer's prompt id starts with when no kind judge is wired to say. */
 const KIND_PROMPT_LABEL = 'post-kind';
 
@@ -71,8 +68,8 @@ export interface ScoringDeps {
   readonly judge: JudgePort | null;
   /**
    * The second question, asked of a post the first answer passed OR could pass with the picture
-   * boost (core `couldPassWithBoost`): which kind of post it is. A held kind (core HELD_KINDS: AD,
-   * SPORT, FANDOM, SHOWBIZ, POLITICS, TRAGEDY, CORP_NEWS, MEDIA_NEWS) holds it back — the kind
+   * boost (core `couldPassWithBoost`): which kind of post it is. A kind in Policy.judge.heldKinds
+   * (the labels are core kinds.ts) holds it back — the kind
    * answer (coinable false, the kind as its name) is filed as the post's latest judgement, so every
    * reader of the latest answer hides it. OTHER files nothing: the first answer stands. Absent:
    * one question only.
@@ -286,7 +283,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
           const a = asked[index];
           /* Decided by the kind named, not the yes/no beside it: a reply that says OTHER and "not
              coinable" in one breath is OTHER. */
-          if (a === undefined || outcome.kind !== 'judged' || heldKind(outcome.judgement.proposedName) === null) continue;
+          if (a === undefined || outcome.kind !== 'judged' || heldKind(outcome.judgement.proposedName, deps.policy.judge.heldKinds) === null) continue;
           await deps.scores.record(a.itemId, outcome.judgement);
           heldBack += 1;
         }

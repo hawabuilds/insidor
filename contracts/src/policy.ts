@@ -629,6 +629,18 @@ export interface JudgePolicy {
    * makes the batch unavailable: those posts wait and are asked again next pass.
    */
   readonly postBatchMaxOutputTokens: number;
+  /**
+   * ★ WHICH KIND ANSWERS KEEP A POST OFF FOR YOU. The second question names a kind for every post
+   * the first passes (core/src/qualify/kinds.ts lists the labels); a post is held back only when
+   * the label it got is in this list. A policy field so the owner can widen or narrow it without a
+   * code change. Chosen by measurement on 2026-10-13 (tools/retune.ts measure --rows, rules
+   * alone, ten posts a call), three held sets on the same answers: no kind gate passed hand gold
+   * 22/50 and live non-memes 25/93; ads only 21/50 and 20/93; these five 20/50 and 12/93; missed
+   * posts 3/7 under all three. The kind gate costs hand gold one or two posts and keeps eight to
+   * thirteen non-memes off For You, so the five old categories hold. Tragedies and company or
+   * media news are named by the kind question but not held.
+   */
+  readonly heldKinds: readonly string[];
   /** The answer budget for the same-subject question: one word in a small JSON object. */
   readonly pairMaxOutputTokens: number;
   /** For the pre-call estimate only: characters per input token, set low so the estimate runs high. */
@@ -2361,6 +2373,7 @@ const POLICY_V1: Policy = {
        would make the whole batch unavailable. */
     maxOutputTokens: 2_048,
     postBatchMaxOutputTokens: 800,
+    heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS'],
     pairMaxOutputTokens: 64,
     /* Typical English runs about four characters a token; three makes the estimate the
        meter checks against run high, which is the safe direction. */

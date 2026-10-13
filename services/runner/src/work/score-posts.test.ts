@@ -20,7 +20,8 @@ import type { Logger } from '../log.ts';
 import { reusableFor, scorePosts } from './score-posts.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
-const P = DEFAULT_POLICY;
+/* Every kind label held, so the kind-question cases read the same whichever set the owner picks for live. */
+const P = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'TRAGEDY', 'CORP_NEWS', 'MEDIA_NEWS'] } };
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
 
 function post(n: number): Item {
