@@ -30,5 +30,36 @@ test("the owner's supplier warning gets the dollar mark; coins, ranks and the re
   assert.deepEqual(markOf({ kind: 'graduated', rank: null, symbol: 'FERRY', href: `/#/token/${encodeURIComponent(`solana:${mint}`)}` }, ranks), { kind: 'coin', letter: 'F', address: mint });
   assert.deepEqual(markOf({ kind: 'narrative_coin', rank: null, symbol: 'FERRY', href: '/#/story/s1' }, ranks), { kind: 'coin', letter: 'F' });
   assert.deepEqual(markOf({ kind: 'rank_up', rank: 'goat', symbol: null }, ranks), { kind: 'rank', rank: 'goat' });
-  assert.deepEqual(markOf({ kind: 'rising_post', rank: null, symbol: null }, ranks), { kind: 'bell' });
+  assert.deepEqual(markOf({ kind: 'narrative_promoted', rank: null, symbol: null }, ranks), { kind: 'bell' });
+});
+
+test("Trador's split: the Feed is what is happening, the bell's list is what happened to you", async () => {
+  const { bellCount, feedTab, notifications, onFeed, storyOf, withTicker } = await import('./split.ts');
+  for (const k of ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched']) assert.ok(onFeed(k), k);
+  for (const k of ['follow', 'reply', 'rank_up', 'holding_multiple', 'watchlist_multiple', 'graduating_soon', 'graduated', 'supplier_warning', 'supplier_account', 'retune_summary', 'a_kind_added_later']) assert.ok(!onFeed(k), `${k} is a notification`);
+  const now = new Date(2026, 9, 12, 15).getTime();
+  const old = new Date(2026, 8, 1).getTime();
+  const items = [
+    { id: 1, kind: 'rising_post', href: '/#/story/s9', at: now, unread: true },
+    { id: 2, kind: 'rising_post', href: '/#/story/s9', at: old, unread: false },
+    { id: 3, kind: 'narrative_coin', href: '/#/story/s1', at: now, unread: true },
+    { id: 4, kind: 'coin_matched', href: '/#/story/s2', at: now, unread: false },
+    { id: 5, kind: 'graduated', href: '/#/token/x', at: now, unread: true },
+    { id: 6, kind: 'supplier_account', href: '/#/', at: now, unread: false },
+  ];
+  const ids = (xs: readonly { id: number }[]) => xs.map((x) => x.id);
+  assert.deepEqual(ids(feedTab(items, 'latest', { starred: [], window: 'week', now })), [1, 2, 3, 4]);
+  assert.deepEqual(ids(feedTab(items, 'rising', { starred: [], window: 'week', now })), [1], 'This week leaves out the older post');
+  assert.deepEqual(ids(feedTab(items, 'rising', { starred: [], window: 'all', now })), [1, 2]);
+  assert.deepEqual(ids(feedTab(items, 'watching', { starred: ['s1'], window: 'week', now })), [3, 4], 'news about a starred narrative, and every matched coin');
+  assert.deepEqual(ids(notifications(items)), [5, 6]);
+  assert.equal(bellCount(items), 1, 'the bell counts unread notifications only');
+  assert.equal(storyOf('/#/story/a%2Fb'), 'a/b');
+  assert.equal(storyOf('/#/token/x'), null);
+  assert.deepEqual(withTicker('$FERRY is up 5x since you bought', 'FERRY'), ['', '$FERRY', ' is up 5x since you bought']);
+  assert.deepEqual(withTicker('New narrative', null), ['New narrative', '', '']);
+});
+
+test("a rising post's face is Trador's up arrow", () => {
+  assert.deepEqual(markOf({ kind: 'rising_post', rank: null, symbol: null }, []), { kind: 'rising', label: 'Rising post' });
 });

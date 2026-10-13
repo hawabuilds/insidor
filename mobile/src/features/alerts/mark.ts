@@ -1,7 +1,9 @@
 /**
- * What sits at the left of an alert row: a rank badge, a coin's logo (its first letter when it has
- * none, and the address read from the alert's own token link), a dollar sign for
- * the owner's supplier warning and supplier account alert, a turn arrow for the owner's twice-daily learning report, or the bell.
+ * What sits at the left of a Feed or Notifications row: a rank badge, a coin's logo (its first letter
+ * when it has none, and the address read from the alert's own token link), an up arrow for a rising
+ * post (Trador's face for a row that belongs to no one person), a dollar sign for the owner's
+ * supplier warning and supplier account alert, a turn arrow for the owner's twice-daily learning
+ * report, or the bell.
  *
  * Its own pure file so the choice is tested without rendering. The supplier warning gets its own
  * mark because it is the one row about the owner's own money rather than a coin or a person, and
@@ -14,13 +16,14 @@
  * no symbol; a coin before the bell because most rows are coins.
  */
 
-export type MarkKind = { readonly kind: 'rank'; readonly rank: string } | { readonly kind: 'coin'; readonly letter: string; readonly address?: string } | { readonly kind: 'money'; readonly label: string } | { readonly kind: 'learned'; readonly label: string } | { readonly kind: 'bell' };
+export type MarkKind = { readonly kind: 'rank'; readonly rank: string } | { readonly kind: 'coin'; readonly letter: string; readonly address?: string } | { readonly kind: 'rising'; readonly label: string } | { readonly kind: 'money'; readonly label: string } | { readonly kind: 'learned'; readonly label: string } | { readonly kind: 'bell' };
 
 export function markOf(a: { readonly kind: string; readonly rank: string | null; readonly symbol: string | null; readonly href?: string }, ranks: readonly string[]): MarkKind {
   if (a.rank !== null && ranks.includes(a.rank)) return { kind: 'rank', rank: a.rank };
   if (a.kind === 'supplier_warning') return { kind: 'money', label: 'Supplier spend' };
   if (a.kind === 'supplier_account') return { kind: 'money', label: 'Supplier account' };
   if (a.kind === 'retune_summary') return { kind: 'learned', label: 'Learning from your calls' };
+  if (a.kind === 'rising_post') return { kind: 'rising', label: 'Rising post' };
   if (a.symbol !== null && a.symbol !== '') {
     const address = tokenAddress(a.href ?? '');
     return address === null ? { kind: 'coin', letter: a.symbol.charAt(0) } : { kind: 'coin', letter: a.symbol.charAt(0), address };
