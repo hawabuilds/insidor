@@ -89,8 +89,14 @@ export function tickerCheck(ticker: string, read: { readonly kind: 'checking' } 
   return { text: tickerUseLine(read.use), opens: read.use.kind === 'taken' };
 }
 
-/** Dev-buy presets, in SOL, as Trador's sheet offers them. A menu of amounts, not advice. */
-export const DEV_BUY_PRESETS: readonly number[] = [0, 0.5, 1, 2];
+/**
+ * Dev-buy presets, in SOL. A menu of amounts, not advice. While the trade service caps a dev buy
+ * at 0.05 SOL (policy `trade.maxDevBuySol`), the menu is the small amounts under it; Trador's
+ * 0.5, 1 and 2 come back when the cap is raised past them. The live sheet still drops any preset
+ * above the cap the service reports (`presetsWithin`), so a lowered cap never shows a preset the
+ * service would refuse — and the not-live sheet, which reads no cap, shows only these.
+ */
+export const DEV_BUY_PRESETS: readonly number[] = [0, 0.01, 0.02, 0.05];
 
 /** The preset the sheet opens on: no dev buy. */
 export const DEV_BUY_DEFAULT = 0;
