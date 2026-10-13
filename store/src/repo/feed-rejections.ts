@@ -21,6 +21,8 @@ export const FEED_REJECTION_REASONS = [
   'too_few_passing_posts',
   /* The owner tapped "Not a meme" (0054): the owner's no, kept apart from the judge's. */
   'owner_not_meme',
+  /* The rules passed it; the order model's applied fit put it under Policy.rising.scorePassBar (0065). */
+  'under_score_bar',
 ] as const;
 export type FeedRejectionReason = (typeof FEED_REJECTION_REASONS)[number];
 
