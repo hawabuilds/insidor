@@ -52,3 +52,13 @@ test("Trador's defaults: the watchlist starts off, a bad multiple is dropped, an
   assert.deepEqual(normalisePrefs({ multiples: [7, 5] }, P).multiples, [5]);
   assert.deepEqual(normalisePrefs({ multiples: [] }, P).multiples, [...P.defaultMultiples]);
 });
+
+test("★ a supplier warning is on for everyone with no switch to lose it, and the hourly limit never holds it", () => {
+  assert.deepEqual(at('supplier_warning'), { kind: 'push' }, 'on by default');
+  const allOff = normalisePrefs({ ...base, on: Object.fromEntries(Object.keys(base.on).map((k) => [k, false])) as never }, P);
+  assert.deepEqual(at('supplier_warning', allOff), { kind: 'push' }, 'no switch on the settings screen turns it off');
+  assert.deepEqual(at('supplier_warning', base, P.maxPerHour + 1), { kind: 'push' }, 'past the hourly limit it is still pushed');
+  assert.deepEqual(at('supplier_warning', { ...base, muted: true }), { kind: 'skip', why: 'muted' }, 'mute is the owner\'s own choice and still holds');
+  const quiet = normalisePrefs({ quietStart: '22:00', quietEnd: '07:00', timezone: 'UTC' }, P);
+  assert.deepEqual(at('supplier_warning', quiet, 0, 1, 3 * 60), { kind: 'list', why: 'quiet' }, 'quiet hours list it and withhold the push');
+});

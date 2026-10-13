@@ -17,13 +17,16 @@ import { BellIcon, GearIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { RankBadge } from '../people/RankBadge.tsx';
 import { grouped } from './group.ts';
+import { markOf } from './mark.ts';
 import styles from './alerts.module.css';
 
 const RANKS: readonly string[] = ['intern', 'analyst', 'quant', 'wolf', 'goat'];
 
 function Mark({ a }: { a: Alert }) {
-  if (a.rank !== null && RANKS.includes(a.rank)) return <RankBadge rank={a.rank as RankId} size={40} />;
-  if (a.symbol !== null) return <span className={styles['coin']}>{a.symbol.charAt(0)}</span>;
+  const m = markOf(a, RANKS);
+  if (m.kind === 'rank') return <RankBadge rank={m.rank as RankId} size={40} />;
+  if (m.kind === 'coin') return <span className={styles['coin']}>{m.letter}</span>;
+  if (m.kind === 'money') return <span className={styles['coin']} role="img" aria-label={m.label}>$</span>;
   return <span className={styles['coin']}><BellIcon size={18} /></span>;
 }
 
