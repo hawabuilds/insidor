@@ -36,6 +36,8 @@ import type { PriceBook } from '@insidor/meter';
 
 import type { BatchAnswer, Frame, JudgeClient, JudgeRequest, JudgeResponse, Usage } from './client.ts';
 import { VENDOR } from './client.ts';
+import { createHash } from 'node:crypto';
+
 import { POST_PROMPT_SET_SHA, PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT } from './prompts.ts';
 import { BATCH_PRICE_FRACTION, priceFor, usdForTokens, type ModelPrice } from './prices.ts';
 import { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, pictureUriFor, toOutcomes } from './to-judgement.ts';
@@ -65,8 +67,25 @@ const QUESTION: Readonly<Record<JudgeQuestion, { system: string; instructions: s
  * AND the prompt set, because a prompt edit or a model change changes the answers,
  * and an unversioned judge makes every judgement before and after look identical.
  */
-export const judgeId = (model: string, question: JudgeQuestion = 'story'): string => `judge:${VENDOR}/${model}@${QUESTION[question].sha()}`;
-export const promptId = (question: JudgeQuestion = 'story'): string => `${QUESTION[question].label}@${QUESTION[question].sha()}`;
+/**
+ * ★ LEARNED EXAMPLES. The post question can carry a block of labelled posts after its rules —
+ * the owner's own "is a meme" / "not a meme" calls, built by tools/judge-examples.ts and
+ * re-tuned hourly. The rules stay a reviewed file; the examples are data. They change the
+ * prompt, so they change its hash: an answer always names the exact examples it saw.
+ */
+interface PromptSet { readonly system: string; readonly instructions: string; readonly sha: string; readonly label: string }
+function promptFor(question: JudgeQuestion, examples: string | null): PromptSet {
+  const q = QUESTION[question];
+  if (examples === null || examples.trim() === '' || question !== 'post') return { system: q.system, instructions: q.instructions, sha: q.sha(), label: q.label };
+  const sha = createHash('sha256').update(`${q.sha()}|${examples}`).digest('hex').slice(0, 8);
+  return { system: q.system, instructions: `${q.instructions}\n\n${examples.trim()}`, sha, label: q.label };
+}
+
+export const judgeId = (model: string, question: JudgeQuestion = 'story', examples: string | null = null): string => `judge:${VENDOR}/${model}@${promptFor(question, examples).sha}`;
+export const promptId = (question: JudgeQuestion = 'story', examples: string | null = null): string => {
+  const p = promptFor(question, examples);
+  return `${p.label}@${p.sha}`;
+};
 
 /** What the vendor's own token counts say a call cost. */
 export const usdOf = (price: ModelPrice, usage: Usage): number =>
@@ -85,6 +104,8 @@ export interface AnthropicJudgeDeps {
   readonly question?: JudgeQuestion;
   /** Send each `judge()` as one Message Batch, at half price. Jobs only; see the header. */
   readonly batch?: boolean;
+  /** Labelled examples after the post question's rules; ignored for the story question. */
+  readonly examples?: string | null;
 }
 
 /** A batch's result inside the meter: the reply, or the vendor error that came with a status. */
@@ -111,8 +132,9 @@ const bookFor = (usd: number, endpoint: string = ENDPOINT): PriceBook => ({
  * (system prompt and instructions) is counted as a cache WRITE, the dearest way it can be
  * billed now that it carries the cache mark — so the estimate stays an upper bound.
  */
-export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubject[], question: JudgeQuestion = 'story'): Usage {
-  const prefixChars = QUESTION[question].system.length + QUESTION[question].instructions.length;
+export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubject[], question: JudgeQuestion = 'story', examples: string | null = null): Usage {
+  const set = promptFor(question, examples);
+  const prefixChars = set.system.length + set.instructions.length;
   const chars = JSON.stringify(subjects.map((s) => s.texts)).length;
   const frames = subjects.filter((s) => lookedAtFor(s) === 'videoFrame' || pictureUriFor(s) !== null).length;
   return {
@@ -132,7 +154,9 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
     return out;
   };
   const question = deps.question ?? 'story';
-  const estimateUsd = (batch: readonly JudgeSubject[]): number => usdOf(price, estimateTokens(deps.policy, batch, question));
+  const examples = deps.examples ?? null;
+  const prompt = promptFor(question, examples);
+  const estimateUsd = (batch: readonly JudgeSubject[]): number => usdOf(price, estimateTokens(deps.policy, batch, question, examples));
   /** Two pictures, the prompt, and the small answer budget — the most a pair can cost. */
   const pairEstimateUsd = (): number =>
     usdOf(price, {
@@ -141,8 +165,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
     });
 
   return {
-    id: judgeId(deps.model, question),
-    promptId: promptId(question),
+    id: judgeId(deps.model, question, examples),
+    promptId: promptId(question, examples),
     maxBatch: deps.maxBatch,
 
     estimate(subjects): CostEstimate {
@@ -230,8 +254,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
       if (deps.batch === true && judgeBatch !== undefined && subjects.length > 0) {
         const parts = batches(subjects);
         const requests: JudgeRequest[] = parts.map((batch) => ({
-          system: QUESTION[question].system,
-          instructions: QUESTION[question].instructions,
+          system: prompt.system,
+          instructions: prompt.instructions,
           subjects: batch,
           frames,
         }));
@@ -267,8 +291,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
           const answered =
             reply?.kind === 'answered'
               ? toOutcomes(batch, reply.response.answers, {
-                  judgeId: judgeId(deps.model, question),
-                  promptId: promptId(question),
+                  judgeId: judgeId(deps.model, question, examples),
+                  promptId: promptId(question, examples),
                   judgedAt,
                   costUsdPerSubject: (usdOf(price, reply.response.usage) * BATCH_PRICE_FRACTION) / batch.length,
                 }, pictured)
@@ -287,8 +311,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
           const call = await metered<Attempted>(deps.meter, bookFor(usd), spec, async () => {
             try {
               const response = await deps.client.judge({
-                system: QUESTION[question].system,
-                instructions: QUESTION[question].instructions,
+                system: prompt.system,
+                instructions: prompt.instructions,
                 subjects: batch,
                 frames,
               });
@@ -313,8 +337,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
           spends.push(call.spend);
           if (call.value.response === null) throw call.value.refusedWith ?? new Error('judge: no reply and no error');
           answered = toOutcomes(batch, call.value.response.answers, {
-            judgeId: judgeId(deps.model, question),
-            promptId: promptId(question),
+            judgeId: judgeId(deps.model, question, examples),
+            promptId: promptId(question, examples),
             judgedAt,
             costUsdPerSubject: batch.length === 0 ? 0 : call.spend.usd / batch.length,
           }, pictured);
