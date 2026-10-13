@@ -49,6 +49,7 @@ import type { FingerprintKind, Item } from '@insidor/contracts/vocabulary.ts';
 
 import { clamp01 } from '../math.ts';
 import { carrierMatches, type CarrierCorpus, type CarrierMatch } from './carriers.ts';
+import { NAME_SPAN_PREFIX } from './name-span.ts';
 import { NO_PICTURE_INPUTS, readPicture, type PictureInputs } from './picture.ts';
 
 export interface MatchResult {
@@ -408,7 +409,7 @@ function floorAtZero(total: number): number {
  * that has neither does not, and the vector records which of those happened.
  */
 export function matchScore(
-  item: Item,
+  rawItem: Item,
   story: Story,
   similarityBySpace: Readonly<Record<string, number>>,
   p: Policy,
@@ -416,6 +417,7 @@ export function matchScore(
 ): MatchResult {
   const w = p.group.matchWeights;
   const { lineage } = context;
+  const item = withoutDeniedNames(rawItem, story, context);
   const carriers = carrierChannel(item, story, p, context.corpus);
 
   const pointsHere = lineage !== null && lineage.story === story.storyId;
@@ -487,6 +489,18 @@ export function matchScore(
           : freeEvidence;
 
   return { story, score: floorAtZero(total), evidence };
+}
+
+/**
+ * ★ THE POST AS IT MAY BE MATCHED AGAINST THIS STORY: without its judge-named spans (name-span.ts)
+ * when the judge, shown both pictures, said they are not the same subject. A shared name is
+ * strong evidence; an explicit "these are two different raccoons" is stronger, and a second
+ * raccoon also called Jimothy is not part of Jimothy's story. Every other carrier still counts.
+ */
+export function withoutDeniedNames(item: Item, story: Story, context: PairContext): Item {
+  if (context.picture?.denied?.[story.storyId] !== true) return item;
+  const kept = item.fingerprints.filter((f) => !(f.kind === 'entitySpan' && f.key.startsWith(NAME_SPAN_PREFIX)));
+  return kept.length === item.fingerprints.length ? item : { ...item, fingerprints: kept };
 }
 
 /**

@@ -41,6 +41,12 @@ export interface PictureInputs {
   readonly storyNames: Readonly<Record<string, readonly string[]>>;
   /** Stories whose borderline picture the judge confirmed: "yes", the same subject. */
   readonly confirmed: Readonly<Record<string, boolean>>;
+  /**
+   * Stories whose picture the judge, shown both, said is NOT the same subject. An explicit
+   * "no" outranks a shared name: the post's name carriers do not count against such a story
+   * (match.ts `withoutDeniedNames`). Absent means nobody asked, which vetoes nothing.
+   */
+  readonly denied?: Readonly<Record<string, boolean>>;
 }
 
 export const NO_PICTURE_INPUTS: PictureInputs = Object.freeze({

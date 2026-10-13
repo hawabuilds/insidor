@@ -60,6 +60,7 @@ import {
   type MatchOutcome,
   type MatchResult,
   type PairContext,
+  withoutDeniedNames,
 } from './match.ts';
 
 export const NAME = 'group' as const;
@@ -217,7 +218,7 @@ function vector(
   }
 
   const story = best.story;
-  const channel = carrierChannel(item, story, p, input.corpus);
+  const channel = carrierChannel(withoutDeniedNames(item, story, contextOf(input)), story, p, input.corpus);
   const image = channel.byKind.imageHash;
   const text = channel.byKind.textShingle;
   const format = channel.byKind.formatId;
