@@ -156,6 +156,7 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
     ...(opts.defaultVendorCapUsd === undefined ? {} : { defaultVendorCapUsd: opts.defaultVendorCapUsd }),
     softStop: opts.softStop,
     ...(opts.paceAheadMs === undefined ? {} : { paceAheadMs: opts.paceAheadMs }),
+    ...(opts.vendorLinesWarnOnly === undefined ? {} : { vendorLinesWarnOnly: opts.vendorLinesWarnOnly }),
     now: opts.now,
     opening: paceOpening,
     onRecord: persist,

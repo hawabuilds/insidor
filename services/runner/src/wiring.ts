@@ -389,6 +389,8 @@ export async function withRuntime<T>(
            here from role to the vendor that bills under it. Not paced: full speed every pass,
            the lines are brakes (see the note where policy once held `paceAheadMs`). */
         perVendorCapUsd: vendorLines(policy),
+        /* Warn, never stop: only the day's total refuses a call (Policy.budget.vendorLinesStop). */
+        vendorLinesWarnOnly: !policy.budget.vendorLinesStop,
         softStop: policy.budget.softStopFraction,
         now: () => Date.now(),
         /* Reported, not acted on. A write that failed means the NEXT process will not
@@ -421,10 +423,43 @@ export async function withRuntime<T>(
          at 80% or 95% of its line (Policy.budget.warnAt) is logged and queued for the owner,
          once a level a day. See supplier-warnings.ts. A failed re-read still checks, against
          the last balance, which is the most the meter itself knows. */
+      /* The learning and jobs books are watched as well: their lines warn the same way. Opened to
+         be read and refreshed, never spent through — each paid tool opens its own. */
+      const otherBooks = await Promise.all(
+        (['learning', 'jobs'] as const).map(async (book) => ({
+          book,
+          meter: await openDurableMeter({
+            ledger: new PgSpendRepo(db),
+            book,
+            dailyCapUsd: book === 'learning' ? policy.budget.learningLines.dailyUsd : policy.budget.jobLines.dailyUsd,
+            perVendorCapUsd: jobVendorLines(policy, book),
+            vendorLinesWarnOnly: !policy.budget.vendorLinesStop,
+            softStop: policy.budget.softStopFraction,
+            now: () => Date.now(),
+            onWriteFailure: () => undefined,
+          }),
+        })),
+      );
+      const owner = new PgOwnerAlertRepo(db);
+      const bookWarnings = otherBooks.map(({ book, meter: m }) =>
+        supplierWarnings({
+          roles: supplierRoles()
+            .filter((r) => (jobVendorLines(policy, book)[r.vendor] ?? 0) > 0)
+            .map((r) => ({ role: `${book} ${r.role}`, vendor: r.vendor })),
+          line: (vendor) => m.line(vendor),
+          warnAt: policy.budget.warnAt,
+          buffer: policy.budget.lineBuffer,
+          ownerWallets: cfg.ownerWallets,
+          owner,
+          log: log.child({ step: 'supplier-warnings', book }),
+          now: () => Date.now(),
+        }),
+      );
       const warnings = supplierWarnings({
         roles: supplierRoles(),
         line: (vendor) => meter.line(vendor),
         warnAt: policy.budget.warnAt,
+        buffer: policy.budget.lineBuffer,
         ownerWallets: cfg.ownerWallets,
         owner: new PgOwnerAlertRepo(db),
         log: log.child({ step: 'supplier-warnings' }),
@@ -443,6 +478,8 @@ export async function withRuntime<T>(
             }),
           )
           .then(() => warnings.check())
+          .then(() => Promise.all(otherBooks.map(({ meter: m }) => m.refresh())))
+          .then(() => Promise.all(bookWarnings.map((w) => w.check())))
           .catch((error: unknown) =>
             log.error('the supplier warning check failed', { err: error instanceof Error ? error.message : String(error) }),
           );
@@ -725,6 +762,7 @@ export async function withRuntime<T>(
                   dailyCapUsd: policy.budget.learningLines.dailyUsd,
                   perVendorCapUsd: jobVendorLines(policy, 'learning'),
                   defaultVendorCapUsd: policy.budget.perSourceUsdPerDay,
+                  vendorLinesWarnOnly: !policy.budget.vendorLinesStop,
                   softStop: policy.budget.softStopFraction,
                   now: () => Date.now(),
                   onWriteFailure: (spend, error) =>

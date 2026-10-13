@@ -40,6 +40,7 @@ export async function openSharedMeter(stageCapUsd: number, env: Record<string, s
     dailyCapUsd: lines.dailyUsd,
     perVendorCapUsd: jobVendorLines(P, book),
     defaultVendorCapUsd: P.budget.perSourceUsdPerDay,
+    vendorLinesWarnOnly: !P.budget.vendorLinesStop,
     softStop: P.budget.softStopFraction,
     now: Date.now,
     onWriteFailure: (spend, error) => console.error(`a ${spend.vendor} spend of $${spend.usd.toFixed(4)} did not reach the ledger: ${error instanceof Error ? error.message : String(error)}`),

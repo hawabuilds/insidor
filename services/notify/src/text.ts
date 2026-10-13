@@ -77,7 +77,10 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const spent = n(f['spentUsd']);
       const cap = n(f['capUsd']);
       const title = `${role.charAt(0).toUpperCase()}${role.slice(1)} at ${share === null ? 'a warning share' : `${Math.round(share * 100)}%`} of its daily line`;
-      return { title, body: spent === null || cap === null ? "Its spend today reached that share of the line." : `${usd(spent)} of ${usd(cap)} spent today (UTC).` };
+      const raise = n(f['raiseByUsd']);
+      const projected = n(f['projectedUsd']);
+      const advice = raise !== null && raise > 0 ? ` Raise it by ${usd(raise)} to carry the day${projected === null ? '' : ` (about ${usd(projected)} at this rate)`}.` : raise === 0 ? ' At this rate the line carries the day.' : '';
+      return { title, body: spent === null || cap === null ? `Its spend today reached that share of the line.${advice}` : `${usd(spent)} of ${usd(cap)} spent today (UTC).${advice}` };
     }
     case 'retune_summary': {
       const applied = f['applied'] === true;

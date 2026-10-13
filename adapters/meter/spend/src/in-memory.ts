@@ -71,6 +71,13 @@ export interface InMemoryMeterOptions {
    * Absent, a line may be spent at any hour, which is how a busy morning spends the day.
    */
   readonly paceAheadMs?: number;
+  /**
+   * ★ VENDOR LINES THAT WARN AND NEVER STOP (the owner's rule, 2026-10-13: nothing is ever
+   * skipped). Set, a vendor's line is a number to warn against — `line(vendor)` still reports it
+   * as the cap — but a call is refused only by the TOTAL, so a busy day's discovery or scoring is
+   * never paused by its own line. Absent, every line binds, as it always did.
+   */
+  readonly vendorLinesWarnOnly?: boolean;
   /** Injected, never `Date.now` — a meter that reads a clock cannot be replayed. */
   readonly now: () => number;
   /**
@@ -207,6 +214,7 @@ export function inMemoryMeter(opts: InMemoryMeterOptions): InMemoryMeter {
       rollover(opts.now());
       if (spentUsd() + usd > opts.dailyCapUsd * opts.softStop) return false;
       if (paceSpentUsd() + usd > paced(opts.dailyCapUsd) * opts.softStop) return false;
+      if (opts.vendorLinesWarnOnly === true) return true;
       const vendorCap = vendorCapFor(vendor);
       if (vendorCap !== undefined && spentUsd(vendor) + usd > vendorCap * opts.softStop) return false;
       if (vendorCap !== undefined && paceSpentUsd(vendor) + usd > paced(vendorCap) * opts.softStop) return false;
@@ -223,10 +231,21 @@ export function inMemoryMeter(opts: InMemoryMeterOptions): InMemoryMeter {
     line: (vendor): BudgetLine => {
       rollover(opts.now());
       const capUsd = capFor(vendor);
+      const spent = spentUsd(vendor);
+      /* A warn-only vendor line stops nothing: what may be spent is what the total has left. */
+      if (opts.vendorLinesWarnOnly === true && vendor !== undefined) {
+        const totalStop = paced(opts.dailyCapUsd) * opts.softStop;
+        return {
+          capUsd,
+          spentUsd: spent,
+          stopAtUsd: totalStop,
+          remainingUsd: Math.max(Math.min(totalStop - paceSpentUsd(), opts.dailyCapUsd * opts.softStop - spentUsd()), 0),
+          unrecordedUsd: 0,
+        };
+      }
       /* The stop is where the PACED line ends, so `remainingUsd` is what may be spent now,
          not what may be spent by midnight. */
       const stopAtUsd = paced(capUsd) * opts.softStop;
-      const spent = spentUsd(vendor);
       return {
         capUsd,
         spentUsd: spent,
