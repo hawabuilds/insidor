@@ -26,13 +26,20 @@
 
 export const NEWS_KINDS = ['SPORT', 'SHOWBIZ', 'POLITICS', 'CORP_NEWS', 'MEDIA_NEWS'] as const;
 export const NEVER_SHOWN_KINDS = ['AD', 'FANDOM', 'TRAGEDY'] as const;
+/**
+ * Not the kind question's: the label the runner files, by rule and with no model asked, when a post
+ * is very close to one the owner called "not a meme" (precedents.ts, Policy.judge.precedents). Filed
+ * like a kind answer so every reader of a held kind — the projector, its rejection detail
+ * `kind:NOT_MEME_MATCH`, the measuring tools — holds it the same way.
+ */
+export const NOT_MEME_MATCH = 'NOT_MEME_MATCH';
 
 export type NewsKind = (typeof NEWS_KINDS)[number];
 export type NeverShownKind = (typeof NEVER_SHOWN_KINDS)[number];
-export type HeldKind = NewsKind | NeverShownKind;
+export type HeldKind = NewsKind | NeverShownKind | typeof NOT_MEME_MATCH;
 
-/** Every label the kind question can name other than OTHER: the labels policy may hold. */
-export const KIND_LABELS: ReadonlySet<string> = new Set<string>([...NEVER_SHOWN_KINDS, ...NEWS_KINDS]);
+/** Every label that may hold a post other than OTHER: the labels policy may hold. */
+export const KIND_LABELS: ReadonlySet<string> = new Set<string>([...NEVER_SHOWN_KINDS, ...NEWS_KINDS, NOT_MEME_MATCH]);
 const NEWS: ReadonlySet<string> = new Set<string>(NEWS_KINDS);
 
 /**

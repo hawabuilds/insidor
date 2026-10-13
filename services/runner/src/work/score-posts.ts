@@ -39,8 +39,10 @@
  *
  * ★ THE OWNER'S LABELS RIDE ALONG (2026-10-13). Before a pass is judged, each post is embedded
  * (words and picture together) and sent with its closest labelled posts and their labels
- * (work/precedents.ts, Policy.judge.precedents). With no vectors (the vendor down, the line spent,
- * 0069 not applied) posts are judged as before.
+ * (work/precedents.ts, Policy.judge.precedents). A post that could pass and is at least
+ * `holdNotSimilarity` close to one the owner called "not a meme" is held as NOT_MEME_MATCH, filed
+ * like a held kind, and is not asked the kind question. With no vectors (the vendor down, the line
+ * spent, 0069 not applied) posts are judged as before and nothing is held.
  *
  * ★ NO ANSWER IS NOT A NO. A dry run prices the batch and sends nothing; a budget pause or
  * an unavailable answer records nothing. Each leaves the post waiting — off the feed, and
@@ -51,13 +53,13 @@
  * subject id that collided would file one post's answer under another.
  */
 
-import type { Item, Millis } from '@insidor/contracts';
+import type { Item, Judgement, Millis } from '@insidor/contracts';
 import { storyId, type ItemId, type StoryId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePort, JudgePrecedent, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PgItemRepo, PgPostJudgementRepo, ReusableAnswer } from '@insidor/store';
-import { clearsReachBar, couldPassWithBoost, heldKind } from '@insidor/core';
+import { NOT_MEME_MATCH, clearsReachBar, couldPassWithBoost, heldAsNotMeme, heldKind } from '@insidor/core';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 /** How many unscored posts are read per pass for each one that may be judged: the rest are below the bar. */
@@ -68,6 +70,26 @@ const KIND_PROMPT_LABEL = 'post-kind';
 
 import { errorText, type Logger } from '../log.ts';
 import type { PostPrecedents, PrecedentSource } from './precedents.ts';
+
+/**
+ * The not-a-meme hold's answer, filed as a kind answer (as the shill rule files its AD): the label
+ * NOT_MEME_MATCH as its name, coinable false, how close the post is to the "not a meme" label as
+ * its confidence. A rule, not a model: cost 0. The prompt id starts with the kind question's label,
+ * so every reader that skips kind answers, and the re-score check, treat it as one.
+ */
+const notMatchAnswer = (kindLabel: string, at: Millis, similarity: number, lookedAt: Judgement['lookedAt'], p: Policy): Judgement => ({
+  judgeId: `rule:not-meme-match@${p.judge.precedents.holdNotSimilarity}`,
+  promptId: `${kindLabel}@not-meme-match-1`,
+  judgedAt: at,
+  coinable: false,
+  confidence: Math.min(1, Math.max(0, similarity)),
+  lookedAt,
+  proposedName: NOT_MEME_MATCH,
+  alternateNames: [],
+  subjectSpans: [],
+  rationaleRef: null,
+  costUsd: 0,
+});
 
 export interface ScoringDeps {
   /** null when the judge is dormant: nothing is asked and every post waits. */
@@ -82,8 +104,9 @@ export interface ScoringDeps {
    */
   readonly kindJudge?: JudgePort | null;
   /**
-   * The owner's labelled posts closest to each post, sent with it as precedent
-   * (work/precedents.ts, Policy.judge.precedents). Absent, or nothing found: judged without them.
+   * The owner's labelled posts closest to each post, sent with it as precedent, and the not-a-meme
+   * hold (work/precedents.ts, Policy.judge.precedents). Absent, or nothing found: judged without
+   * precedents, and nothing is held by it.
    */
   readonly precedents?: PrecedentSource | null;
   readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'catchAllStale' | 'reachReadings' | 'backfilled'>;
@@ -207,7 +230,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   let copied = 0;
   const toJudge: Item[] = [];
   /* Posts the first question passed, or could pass with the boost, this pass: for the second. */
-  const askKind: { itemId: ItemId; subject: JudgeSubject | undefined }[] = [];
+  const askKind: { itemId: ItemId; subject: JudgeSubject | undefined; lookedAt: Judgement['lookedAt'] }[] = [];
   const found = deps.mode === 'live' ? await findReusable(deps, queue, judge.id, judge.promptId, since) : null;
   for (const item of queue) {
     const answer = found === null ? null : reusableFor(item, found);
@@ -219,7 +242,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
       await deps.scores.recordCopy(item.itemId, { ...answer.judgement, judgedAt: now, costUsd: 0, rationaleRef: null }, answer.sourceId);
       copied += 1;
       /* A copied answer is still asked the kind: the source's kind answer is not copied with it. */
-      if (couldPassWithBoost(answer.judgement, deps.policy)) askKind.push({ itemId: item.itemId, subject: subjectFor(item, deps.policy) });
+      if (couldPassWithBoost(answer.judgement, deps.policy)) askKind.push({ itemId: item.itemId, subject: subjectFor(item, deps.policy), lookedAt: answer.judgement.lookedAt });
     } catch (e) {
       deps.log.warn('could not file a reused answer; the post is judged instead', { post: String(item.itemId), err: errorText(e) });
       toJudge.push(item);
@@ -227,11 +250,12 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   }
 
   /* ★ THE OWNER'S LABELS FIRST: new taps embedded, then each post's closest labelled posts. Live
-     only, and never in the way: with nothing found every post is judged as before. */
+     only, and never in the way: with nothing found every post is judged as before. Copied posts
+     too, for the hold — they are few. */
   const near: ReadonlyMap<string, PostPrecedents> =
-    deps.precedents === undefined || deps.precedents === null || deps.mode !== 'live' || toJudge.length === 0
+    deps.precedents === undefined || deps.precedents === null || deps.mode !== 'live' || queue.length === 0
       ? new Map()
-      : await deps.precedents.refresh().then(() => deps.precedents!.forPosts(toJudge));
+      : await deps.precedents.refresh().then(() => deps.precedents!.forPosts(queue));
 
   let scored = copied;
   let wouldSpendUsd = 0;
@@ -269,7 +293,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
         scored += 1;
         /* ★ The boost's posts too: a post the picture may lift must meet the kind question like a
            pass, or a boosted ad or news post reaches For You (the zoo-mauling post, 2026-10-13). */
-        if (couldPassWithBoost(outcome.judgement, deps.policy)) askKind.push({ itemId, subject: subjects[index] });
+        if (couldPassWithBoost(outcome.judgement, deps.policy)) askKind.push({ itemId, subject: subjects[index], lookedAt: outcome.judgement.lookedAt });
       }
     } catch (e) {
       if (e instanceof BudgetRefused) {
@@ -284,9 +308,28 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
      post back by filing the kind answer as its latest judgement. A budget pause or an outage here
      leaves the first answer standing — the post is not hidden for want of a second answer. */
   let heldBack = 0;
+  /* ★ THE NOT-A-MEME HOLD before the kind question: a post this close to one the owner called "not
+     a meme" is held as NOT_MEME_MATCH, and not asked its kind (the answer could not free it). */
+  let notMatched = 0;
+  const stillAsk: typeof askKind = [];
+  for (const a of askKind) {
+    const n = near.get(String(a.itemId));
+    if (deps.mode !== 'live' || n === undefined || n.closestNot === null || !heldAsNotMeme(n.closestNot, deps.policy)) {
+      stillAsk.push(a);
+      continue;
+    }
+    try {
+      await deps.scores.record(a.itemId, notMatchAnswer(kindLabel, deps.now(), n.closestNot, a.lookedAt, deps.policy));
+      notMatched += 1;
+      deps.log.info('post held: very close to one the owner called not a meme', { post: String(a.itemId), like: n.closestNotId });
+    } catch (e) {
+      deps.log.warn('could not file the not-a-meme hold; the kind question is asked instead', { post: String(a.itemId), err: errorText(e) });
+      stillAsk.push(a);
+    }
+  }
   const kindJudge = deps.kindJudge ?? null;
-  if (kindJudge !== null && deps.mode === 'live' && askKind.length > 0) {
-    const asked = askKind.flatMap((p) => (p.subject === undefined ? [] : [{ itemId: p.itemId, subject: p.subject }]));
+  if (kindJudge !== null && deps.mode === 'live' && stillAsk.length > 0) {
+    const asked = stillAsk.flatMap((p) => (p.subject === undefined ? [] : [{ itemId: p.itemId, subject: p.subject }]));
     const estimate = kindJudge.estimate(asked.map((a) => a.subject));
     if (deps.meter.mayspend(estimate.vendor, estimate.usd)) {
       try {
@@ -315,7 +358,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   if (deps.mode === 'dry') {
     deps.log.info('DRY RUN — posts priced for scoring, not sent', { posts: queue.length, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
   } else {
-    deps.log.info('posts scored', { queued: queue.length, rescoring: rescoring.length, scored, heldBack, withPrecedents: near.size, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
+    deps.log.info('posts scored', { queued: queue.length, rescoring: rescoring.length, scored, heldBack, notMatched, withPrecedents: near.size, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
   }
   return { queued: queue.length, scored, copied, waiting: queue.length - scored, wouldSpendUsd, spentUsd };
 }
