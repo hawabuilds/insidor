@@ -3,16 +3,20 @@
  *
  * Which posts: the earlier build's rule. A post the catch-all search found (0025's
  * `item_found_by`), observed rather than seeded, posted inside `rising.windowMs`, whose
- * meme score — the judge's answer about that post alone — clears core's `postScore`. A post
- * with no score yet is not here: it waits, and is never shown as if it had passed.
+ * meme score — the judge's answer about that post alone — clears core's `postScore`, OR whose
+ * kind is not held and other accounts answered it with a cashtag, an address or CA (core
+ * `passesWithSignal`, the stored crypto read, 0064); a shill — its own text or its author's own
+ * replies naming a coin — never passes. A post with no score yet is not here: it waits, and is
+ * never shown as if it had passed.
  * And it must clear the feed's view bar (core's `clearsReachBar`): For You at 40k views or fast
  * early growth, Popular at 250k. A post whose views we have not read is on neither.
  *
- * In what order: `fyp` by the re-tune's applied order model (core `postRankScore`, 0065), highest
- * first, ties newest first by post time — and with no fit applied (or 0065 not yet migrated),
- * newest first as before. With `rising.scorePassBar` set, a post the rules passed but the fit puts
- * under the bar is not on For You (`under_score_bar`). The fit's number orders and gates here and
- * goes nowhere else: not on the row, not in the payload, not in the log. `popular` most views
+ * In what order (the owner, 2026-10-13): `fyp` judge yes WITH other accounts' crypto signal first,
+ * judge yes alone next, the signal alone last; within each, faster growth over the last hour first,
+ * then newest (`forYouOrder`). The order model (core `postRankScore`, 0065) does not order; with
+ * `rising.scorePassBar` set, a post the rules passed but the fit puts under the bar is not on For
+ * You (`under_score_bar`), and its number goes nowhere else: not on the row, not in the payload,
+ * not in the log. `popular` most views
  * first, and a post whose views we have not read goes after every post whose views we have. The
  * client never sorts.
  *
@@ -69,7 +73,8 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import { clearsReachBar, heldKind, postRankScore, postScoreReason, postSignals, type HeldKind, type ReachLevel, type ScoreFit } from '@insidor/core';
+import { clearsReachBar, heldKind, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
+import { recentGrowthPerMinute } from './fyp-freshness.ts';
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
 
@@ -372,25 +377,99 @@ export interface RisingFrame {
   readonly sameNameEvidence: ReadonlyMap<string, ReadonlyMap<string, WireCoinEvidence>>;
 }
 
-/**
- * Whether one loaded post passes: the judge's answer held to `postScoreReason`, with the owner's
- * call over it. A row with no answer is here only because the owner called it a meme.
- */
-export function postStanding(row: RisingRow, policy = DEFAULT_POLICY): FeedRejectionReason | 'passes' {
-  const similarity = row.picture_similarity === null ? null : Number(row.picture_similarity);
-  const judge =
-    row.coinable === null || row.confidence === null || row.looked_at === null
-      ? undefined
-      : postScoreReason({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy, similarity, row.kind_label ?? null);
-  return withOwnerCall(judge, row.owner_call ?? undefined) ?? 'not_scored';
+/** What a post's newest split crypto read said (0064): other accounts' coin talk, and the author's own. */
+export interface CryptoRead {
+  readonly others: boolean;
+  readonly ownTalk: boolean;
 }
 
 /**
- * For You's order: the order model's number, highest first; equal numbers — or no fit, when every
- * number is null — newest first by post time, then by id so a frame is stable.
+ * ★ THE CRYPTO SIGNAL FOR THE PASS RULE (the owner, 2026-10-13): other accounts' cashtags,
+ * addresses or CA from the post's newest split read; a shill when its own text names a coin (core
+ * `isShillText`, no read needed) or its author's own replies did. Null when there is nothing to say:
+ * no read and a clean text.
  */
-export function forYouOrder(a: { readonly score: number | null; readonly at: number; readonly id: string }, b: { readonly score: number | null; readonly at: number; readonly id: string }): number {
-  return (b.score ?? 0) - (a.score ?? 0) || b.at - a.at || a.id.localeCompare(b.id);
+export function cryptoSignalFor(row: Pick<RisingRow, 'body'>, read: CryptoRead | undefined, policy = DEFAULT_POLICY): CryptoSignal | null {
+  const shill = isShillText(row.body ?? '', policy.attention) || read?.ownTalk === true;
+  if (read === undefined && !shill) return null;
+  return { others: read?.others === true, shill };
+}
+
+/**
+ * Whether one loaded post passes, and by which route: core `passesWithSignal` (the judge, the judge
+ * with other accounts' crypto signal, or the signal alone on a kind not held; a shill never), with
+ * the owner's call over it. A row with no answer is here only because the owner called it a meme.
+ */
+export function postRoute(row: RisingRow, policy = DEFAULT_POLICY, signal: CryptoSignal | null = null): { readonly why: FeedRejectionReason | 'passes'; readonly route: PassRoute | null } {
+  const similarity = row.picture_similarity === null ? null : Number(row.picture_similarity);
+  const answer =
+    row.coinable === null || row.confidence === null || row.looked_at === null
+      ? null
+      : { coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name };
+  const kind = row.kind_label ?? null;
+  const judge = answer === null ? undefined : postScoreReason(answer, policy, similarity, kind);
+  const call = row.owner_call ?? undefined;
+  if (call === 'meme') return { why: 'passes', route: signal?.others === true && signal.shill !== true ? 'judge+signal' : 'judge' };
+  if (call === 'not') return { why: withOwnerCall(judge, call) ?? 'owner_not_meme', route: null };
+  const route = answer === null ? null : passesWithSignal(answer, policy, similarity, kind, signal);
+  if (route !== null) return { why: 'passes', route };
+  /* Not passed: the judge's own reason, or — when the judge passed it and a shill stopped it — not memeable. */
+  return { why: judge === undefined ? 'not_scored' : judge === 'passes' ? 'not_memeable' : judge, route: null };
+}
+
+/** Whether one loaded post passes (`postRoute`'s answer without the route). */
+export function postStanding(row: RisingRow, policy = DEFAULT_POLICY, signal: CryptoSignal | null = null): FeedRejectionReason | 'passes' {
+  return postRoute(row, policy, signal).why;
+}
+
+/** For You's groups, first to last (the owner, 2026-10-13). */
+const ROUTE_ORDER: Readonly<Record<PassRoute, number>> = { 'judge+signal': 0, judge: 1, signal: 2 };
+
+/**
+ * ★ FOR YOU'S ORDER (the owner, 2026-10-13): the judge's yes WITH other accounts' crypto signal
+ * first, the judge's yes alone next, the signal alone last; within each, faster growth first (views
+ * a minute over the last hour, `recentGrowthPerMinute`, on the short-video scale for a short video;
+ * a post whose growth cannot be read goes after those whose can), then newest, then by id so a
+ * frame is stable. The order model's number is not in it.
+ */
+export function forYouOrder(
+  a: { readonly route: PassRoute; readonly growth: number | null; readonly at: number; readonly id: string },
+  b: { readonly route: PassRoute; readonly growth: number | null; readonly at: number; readonly id: string },
+): number {
+  const byRoute = ROUTE_ORDER[a.route] - ROUTE_ORDER[b.route];
+  if (byRoute !== 0) return byRoute;
+  if (a.growth !== b.growth) {
+    if (a.growth === null) return 1;
+    if (b.growth === null) return -1;
+    if (b.growth !== a.growth) return b.growth - a.growth;
+  }
+  return b.at - a.at || a.id.localeCompare(b.id);
+}
+
+/**
+ * Each post's newest split crypto read (0064; rows from before the split are not read). Empty when
+ * the table cannot be read: every post then passes or not by the judge alone, as before.
+ */
+async function loadCryptoReads(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, CryptoRead>> {
+  if (itemIds.length === 0) return new Map();
+  try {
+    const rows = await db.query<{ item_id: string; others: boolean; own_talk: boolean }>(
+      `select item_id,
+              (coalesce(cashtags->'_others'->'cashtags', '{}'::jsonb) <> '{}'::jsonb
+               or coalesce((cashtags->'_others'->>'addresses')::int, 0) > 0
+               or coalesce((cashtags->'_others'->>'ca')::int, 0) > 0) as others,
+              (coalesce(cashtags->'_own'->'cashtags', '{}'::jsonb) <> '{}'::jsonb
+               or coalesce((cashtags->'_own'->>'addresses')::int, 0) > 0
+               or coalesce((cashtags->'_own'->>'ca')::int, 0) > 0) as own_talk
+         from (select distinct on (item_id) item_id, cashtags from internal.crypto_attention
+                where item_id = any($1::text[]) and cashtags ? '_others'
+                order by item_id, read_at desc) r`,
+      [[...itemIds]],
+    );
+    return new Map(rows.map((r) => [r.item_id, { others: r.others, ownTalk: r.own_talk }] as const));
+  } catch {
+    return new Map();
+  }
 }
 
 /**
@@ -413,11 +492,15 @@ export async function buildRising(
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
   const heldBy = new Map<string, HeldKind>();
-  const rows = (await loadCandidates(db, sinceMs)).filter((row) => {
-    const why = postStanding(row, policy);
+  const candidates = await loadCandidates(db, sinceMs);
+  const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
+  const routes = new Map<string, PassRoute>();
+  const rows = candidates.filter((row) => {
+    const { why, route } = postRoute(row, policy, cryptoSignalFor(row, crypto.get(row.item_id), policy));
     if (why !== 'passes') whyNot.set(row.item_id, why);
     const held = postHeldKind(row, policy);
     if (why !== 'passes' && held !== null) heldBy.set(row.item_id, held);
+    if (route !== null) routes.set(row.item_id, route);
     return why === 'passes';
   });
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
@@ -446,6 +529,11 @@ export async function buildRising(
     return {
       score,
       underBar,
+      route: routes.get(row.item_id) ?? 'judge',
+      growth: (() => {
+        const g = recentGrowthPerMinute(views, nowMs, policy);
+        return g === null ? null : g / scale;
+      })(),
       post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? []),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
@@ -455,7 +543,7 @@ export async function buildRising(
     };
   });
 
-  const fyp = posts.filter((p) => p.fyp).sort((a, b) => forYouOrder({ score: a.score, at: a.at, id: a.post.id }, { score: b.score, at: b.at, id: b.post.id }));
+  const fyp = posts.filter((p) => p.fyp).sort((a, b) => forYouOrder({ route: a.route, growth: a.growth, at: a.at, id: a.post.id }, { route: b.route, growth: b.growth, at: b.at, id: b.post.id }));
   const views = (p: WireRisingPost): number | null => p.reach.v;
   const popular = posts.filter((p) => p.popular).sort((a, b) => {
     const va = views(a.post);

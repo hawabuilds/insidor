@@ -1,24 +1,51 @@
 /**
- * For You's order and the order model's bar, as the projector applies them: highest number first,
- * newest first on a tie or with no fit; the bar holds a post back only when set, with a fit, and
- * never over the owner's "meme" call. The number itself is never on a row: WireRisingPost has no
- * field for it, and projectRisingPost's assertNoInternalVocabulary refuses an internal word on one.
+ * For You's order and the pass routes, as the projector applies them (the owner, 2026-10-13): judge
+ * yes with other accounts' crypto signal first, judge yes alone next, the signal alone last; faster
+ * growth first within each, then newest. A shill never passes; the owner's call outranks all of it.
+ * And the order model's bar still holds a post back only when set, with a fit, never over a meme call.
  */
 
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { forYouOrder, underScoreBar } from './rising.ts';
+import { cryptoSignalFor, forYouOrder, postRoute, underScoreBar, type RisingRow } from './rising.ts';
 
-const sorted = (posts: { score: number | null; at: number; id: string }[]) => [...posts].sort(forYouOrder).map((p) => p.id);
+type P = { route: 'judge+signal' | 'judge' | 'signal'; growth: number | null; at: number; id: string };
+const sorted = (posts: P[]) => [...posts].sort(forYouOrder).map((p) => p.id);
 
-test('the order model ranks For You, ties newest first, then by id', () => {
-  assert.deepEqual(sorted([{ score: 0.2, at: 3, id: 'a' }, { score: 0.9, at: 1, id: 'b' }, { score: 0.2, at: 5, id: 'c' }]), ['b', 'c', 'a']);
-  assert.deepEqual(sorted([{ score: 0.5, at: 1, id: 'b' }, { score: 0.5, at: 1, id: 'a' }]), ['a', 'b']);
+test('★ the routes in the owner\'s order, then growth (unread growth last), then newest', () => {
+  assert.deepEqual(
+    sorted([
+      { route: 'signal', growth: 9_000, at: 9, id: 'sig' },
+      { route: 'judge', growth: 10, at: 1, id: 'slow' },
+      { route: 'judge', growth: 500, at: 1, id: 'fast' },
+      { route: 'judge+signal', growth: null, at: 1, id: 'both' },
+      { route: 'judge', growth: null, at: 5, id: 'unread-new' },
+      { route: 'judge', growth: null, at: 2, id: 'unread-old' },
+    ]),
+    ['both', 'fast', 'slow', 'unread-new', 'unread-old', 'sig'],
+  );
+  assert.deepEqual(sorted([{ route: 'judge', growth: 1, at: 1, id: 'b' }, { route: 'judge', growth: 1, at: 1, id: 'a' }]), ['a', 'b']);
 });
 
-test('★ with no fit applied every number is null and For You is newest first, as before', () => {
-  assert.deepEqual(sorted([{ score: null, at: 1, id: 'a' }, { score: null, at: 9, id: 'b' }, { score: null, at: 4, id: 'c' }]), ['b', 'c', 'a']);
+const ROW: RisingRow = {
+  item_id: 'x:1', source: 'x', source_item_id: '1', posted_at: null, first_seen_at: new Date(0), body: 'my dog did a thing', media: [],
+  handle: 'h', display_name: null, source_author_id: 'a', coinable: true, confidence: 0.95, looked_at: 'picture', proposed_name: 'DOG',
+  picture_similarity: null, story_id: null, owner_call: null, kind_label: null,
+};
+const NO = { ...ROW, coinable: false, confidence: 0.9, proposed_name: null };
+
+test('★ the routes: judge, judge with the signal, the signal alone on a kind not held; a shill never', () => {
+  assert.deepEqual(postRoute(ROW), { why: 'passes', route: 'judge' });
+  assert.equal(postRoute(ROW, undefined, cryptoSignalFor(ROW, { others: true, ownTalk: false })).route, 'judge+signal');
+  assert.equal(postRoute(NO, undefined, cryptoSignalFor(NO, { others: true, ownTalk: false })).route, 'signal');
+  assert.equal(postRoute({ ...NO, kind_label: 'SPORT' }, undefined, { others: true, shill: false }).route, null, 'a held kind is not lifted by the signal');
+  const shillText = { ...ROW, body: 'my dog $DOG is live' };
+  assert.deepEqual(postRoute(shillText, undefined, cryptoSignalFor(shillText, undefined)), { why: 'not_memeable', route: null });
+  assert.equal(postRoute(ROW, undefined, cryptoSignalFor(ROW, { others: true, ownTalk: true })).route, null, "the author's own CA is a shill");
+  assert.equal(postRoute({ ...NO, owner_call: 'meme' }).why, 'passes');
+  assert.equal(postRoute({ ...ROW, owner_call: 'not' }, undefined, { others: true, shill: false }).why, 'owner_not_meme');
+  assert.equal(cryptoSignalFor(ROW, undefined), null, 'no read and a clean text: nothing to say');
 });
 
 test('★ the bar holds a post back only when set, with a number, and never over the owner\'s meme call', () => {
