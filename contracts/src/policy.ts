@@ -2009,7 +2009,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v62',
+  version: 'policy.v63',
 
   admit: {
     maxAgeMin: 240,
@@ -2643,7 +2643,10 @@ const POLICY_V1: Policy = {
        ones): a run with its baseline cost $1.45, and each run must have its test's worst case
        (~$3) left when it starts. Paid by raising the day to $35.75 under the owner's $38, never
        by the live lines. */
-    learningLines: { dailyUsd: 10.5, posts: 1, judge: 9, video: 0, embeddings: 0.5 },
+    /* $12.75 from 2026-10-13 14:00 UTC: today's after-audit measurements (the clean baseline, coin
+       matching on gold, the slow-lane and TikTok tests) are paid here, because the jobs book spent
+       its line this morning. The day is $38.00, the owner's approved ceiling. */
+    learningLines: { dailyUsd: 12.75, posts: 1.5, judge: 10, video: 0.5, embeddings: 0.75 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
