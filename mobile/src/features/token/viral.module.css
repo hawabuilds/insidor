@@ -1,0 +1,97 @@
+/* The viral post card under the token page's chart: one rounded card row, the post's picture on
+   the left with the site's badge cut out of the card colour, three lines of text, a chevron. */
+
+.card {
+  width: 100%;
+  margin: 0 0 20px;
+  padding: 14px 14px 14px 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: var(--r-card);
+  background: var(--card);
+  color: var(--text-3);
+  text-align: left;
+}
+
+.card:active {
+  background: var(--overlay-wash);
+}
+
+.pic {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--overlay-wash);
+}
+
+/* The shared picture's empty tile is the card colour, which on this card is no tile at all: let
+   this box's lighter wash show through so a post with no picture still reads as a picture slot. */
+.pic > span > span:first-child {
+  background: transparent;
+}
+
+/* The site's mark, in the site's own colours (X and TikTok are black), cut out of the card. */
+.badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  background: #000;
+  color: #fff;
+}
+
+.text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Two facts side by side with space between them, never a dot. */
+.line {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.line > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.line > .fixed {
+  flex: none;
+}
+
+.story {
+  min-width: 0;
+}
+
+.excerpt {
+  color: var(--text-1);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proven {
+  color: var(--up);
+  font-weight: 700;
+}

@@ -2,8 +2,9 @@
  * THE TOKEN PAGE'S BODY — Trador's `AssetPage.tsx` for a launchpad coin, rebuilt in our CSS
  * modules and purple: the logo, ticker and name with the coin's own links beside them; the pair,
  * launchpad and fact chips; the address chip with copy and explorer; curve progress while on the
- * curve; the price, chart and timeframe rail; then Trades, Comments and Info under tabs that stick
- * to the top once the chart scrolls away; and Buy and Sell pinned above the tab bar.
+ * curve; the price, chart and timeframe rail; the most-viewed feed post naming the coin, when there
+ * is one (ViralPost, which opens the post sheet); then Trades, Comments and Info under tabs that
+ * stick to the top once the chart scrolls away; and Buy and Sell pinned above the tab bar.
  *
  * ★ ONE BODY FOR BOTH WAYS IN. A coin opened from a narrative (TokenPage) and one opened from
  * Search (SearchedToken) are the same page, as Trador's one AssetPage is for every coin: they
@@ -34,6 +35,7 @@ import { InfoPanel, latestPrice } from './InfoPanel.tsx';
 import { SocialRow } from './SocialRow.tsx';
 import type { TokenFacts } from './token-facts.ts';
 import { TradesPanel } from './TradesPanel.tsx';
+import { ViralPost } from './ViralPost.tsx';
 
 export type { TokenFacts } from './token-facts.ts';
 import styles from './token.module.css';
@@ -141,6 +143,8 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
       {venue === 'curve' && progress !== null ? <CurveProgress pct={progress} /> : null}
 
       <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={facts.price} change24h={facts.change24h} cap={facts.marketCapUsd} liquidity={facts.liquidityUsd ?? about?.liquidityUsd ?? null} />
+
+      {about !== null ? <ViralPost posts={about.posts} /> : null}
 
       {/* Stuck under the top once the chart scrolls away; a second tap on the open tab returns to it. */}
       <div ref={tabs} className={styles['panelTabs']} role="tablist" aria-label="Coin">
