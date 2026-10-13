@@ -181,8 +181,18 @@ export type SpendConfig =
   | { readonly kind: 'live'; readonly dailyBudgetUsd: number };
 
 export interface RunnerConfig {
-  /** Session mode (port 5432). Transaction mode cannot hold the singleton lock. */
+  /**
+   * The work pool's URL, from DATABASE_URL. May be the transaction-mode pooler (6543):
+   * every repository call is one statement or one `withTransaction`, which lose nothing there.
+   */
   readonly databaseUrl: string;
+  /**
+   * The singleton lock's URL, from DATABASE_URL_SESSION, or DATABASE_URL when that is unset
+   * (a local database, where both are the same session). Session mode is REQUIRED: the lock is
+   * a session advisory lock, and createPool refuses a transaction-pooler URL for it at boot.
+   * One client, held for the life of the process — the only session-mode client the runner keeps.
+   */
+  readonly lockDatabaseUrl: string;
   readonly healthPort: number;
   /** Recorded on every run row, so two instances are distinguishable. */
   readonly host: string;
@@ -363,6 +373,7 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
   const r = reader(env, problems);
 
   const databaseUrl = r.text('DATABASE_URL');
+  const lockDatabaseUrl = env['DATABASE_URL_SESSION']?.trim() || databaseUrl;
   const healthPort = r.int('HEALTH_PORT', 1, 65_535);
   const shutdownGraceMs = r.int('SHUTDOWN_GRACE_MS', 1_000, 300_000);
   const singletonLockName = r.text('SINGLETON_LOCK_NAME');
@@ -432,6 +443,7 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
 
   return {
     databaseUrl,
+    lockDatabaseUrl,
     healthPort,
     host: hostname(),
     shutdownGraceMs,
