@@ -115,3 +115,16 @@ test('★ a follow row says who followed and whether I follow them back', async 
   const rows = (await get('?list=notifications')).body.alerts as unknown as { kind: string; actor: { userId: string; iFollow: boolean } | null }[];
   assert.deepEqual(rows.map((r) => r.actor), [{ userId: 'did:privy:j', handle: 'jonas', name: 'Jonas', iFollow: false }, { userId: 'did:privy:k', handle: 'kim', name: 'Kim', iFollow: true }, null]);
 });
+
+test('one row per comment found useful, the newest count, in the list and on the bell', async () => {
+  const { db, get } = await setup();
+  const useful = (subject: string, count: number, minute: number) =>
+    db.query(`insert into people.alert (user_id, kind, subject, rung, title, body, href, facts, delivery, at) values ($1, 'comment_useful', $2, $3, $4, 'c', '/#/', '{}', 'push', $5)`, [ME.userId, subject, count, count === 1 ? 'Someone found your comment useful' : `${count} people found your comment useful`, new Date(BASE - minute * 60_000).toISOString()]);
+  await useful('7', 1, 30);
+  await useful('7', 2, 20);
+  await useful('8', 1, 10);
+  await useful('7', 3, 5);
+  const r = await get('?list=notifications');
+  assert.deepEqual(r.body.alerts.map((a) => (a as unknown as { title: string }).title), ['3 people found your comment useful', 'Someone found your comment useful']);
+  assert.equal(r.body.bell, 2);
+});

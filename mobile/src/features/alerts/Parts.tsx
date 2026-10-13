@@ -39,6 +39,7 @@ export function Mark({ a }: { a: Alert }) {
     const arrow = <span className={styles['face']} role="img" aria-label={m.label}>↑</span>;
     return m.picture !== undefined ? <Picture src={m.picture} fallback={arrow} /> : arrow;
   }
+  if (m.kind === 'useful') return <span className={styles['face']} role="img" aria-label={m.label}>↑</span>;
   if (m.kind === 'money') return <span className={styles['face']} role="img" aria-label={m.label}>$</span>;
   if (m.kind === 'learned') return <span className={styles['face']} role="img" aria-label={m.label}>↻</span>;
   return <span className={styles['face']}><BellIcon size={18} /></span>;
@@ -51,8 +52,10 @@ function Picture({ src, fallback }: { src: string; fallback: ReactNode }) {
   return <img src={src} alt="" width={40} height={40} loading="lazy" decoding="async" className={styles['picture']} onError={() => setFailed(true)} />;
 }
 
-/** The alert's title with its ticker bold, as Trador writes "<b>FERRY</b> graduated". */
+/** The alert's title with its ticker bold, as Trador writes "<b>FERRY</b> graduated", and "<b>3 people</b> found your comment useful". */
 export function Headline({ a }: { a: Alert }) {
+  const people = a.kind === 'comment_useful' ? /^(\d+ people)( .*)$/.exec(a.title) : null;
+  if (people?.[1] !== undefined) return <><b>{people[1]}</b>{people[2]}</>;
   const [before, ticker, after] = withTicker(a.title, a.symbol);
   return (
     <>

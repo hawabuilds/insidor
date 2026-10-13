@@ -29,6 +29,7 @@ const ROWS: readonly { readonly key: AlertSwitch; readonly label: string; readon
   { key: 'graduations', label: 'Graduations', hint: 'When a coin you hold or watch is close to finishing its curve, and when it does.' },
   { key: 'follows', label: 'New followers', hint: '' },
   { key: 'replies', label: 'Replies to your comments', hint: '' },
+  { key: 'useful', label: 'Comments found useful', hint: 'When holders of a coin like a comment of yours.' },
 ];
 
 function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (on: boolean) => void }) {
