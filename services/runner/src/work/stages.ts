@@ -455,6 +455,7 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
           since: now - policy.rising.fypFastWindowMs,
           minPerMinute: policy.rising.watchMinReachPerMinute,
           judgedSince: now - policy.track.youngWindowMin * MS_PER_MINUTE,
+          judgedMinReach: policy.rising.fypEarlyReach,
         },
       );
       /* ★ NO PAID READ FOR A POST THAT CAN NEVER BE SHOWN — a firm "no", a failed name test, a
