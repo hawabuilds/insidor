@@ -16,7 +16,9 @@
  * gold-origin-pictures.json, which later runs use; the gold evidence kept still images only.
  * The picture boost is applied as the projector applies it: each post's picture against the
  * coined pictures (internal.coined_picture), a gold post never against its OWN coin's picture.
- * `--no-boost` leaves it out. Results go to var/pass-rates-<label>.json; the summary is printed.
+ * `--no-boost` leaves it out. Results go to var/pass-rates-<label>.json; the summary is printed,
+ * with the judge's token usage summed from each reply (fresh input, cache writes, cache reads,
+ * output, and input per post) so a change to what the judge is sent can be costed, not guessed.
  *
  * Separate from gold-rejudge because it measures the feed's gate on both sides at once: a prompt
  * that lets fewer non-memes through is only better if it does not shut out the coins too.
@@ -31,7 +33,7 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { storyId } from '../contracts/src/ids.ts';
 import { postScore } from '../core/src/qualify/post-score.ts';
-import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
+import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient } from '../adapters/judge/anthropic/src/index.ts';
 import { tuning } from '../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../eval/src/gold/coin-evidence.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
@@ -83,12 +85,32 @@ const posts = [...gold, ...nonMeme];
 console.log(`${gold.length} gold origin posts, ${nonMeme.length} non-meme posts${TEXT_ONLY ? ', text only' : ', with pictures'}; at most $${(posts.length * USD_PER_POST).toFixed(2)}.`);
 
 const { meter, close } = await openSharedMeter(posts.length * USD_PER_POST);
+const http = judgeClient({
+  apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: setup.model, maxOutputTokens: P.judge.postBatchMaxOutputTokens, effort: price.effort,
+  timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
+  maxFrameBytes: P.judge.maxFrameBytes, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+});
+/* Every reply's usage, summed, for the report. Read through, never changed. */
+const used = { calls: 0, pictures: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0, inputWithPicture: 0, inputWithout: 0 };
+const client: JudgeClient = {
+  ...http,
+  async judge(request) {
+    const reply = await http.judge(request);
+    const pictured = request.subjects.filter((x) => request.frames.has(String(x.storyId))).length;
+    const all = reply.usage.inputTokens + (reply.usage.cacheWriteTokens ?? 0) + (reply.usage.cacheReadTokens ?? 0);
+    used.calls += 1;
+    used.pictures += pictured;
+    if (pictured > 0) used.inputWithPicture += all;
+    else used.inputWithout += all;
+    used.input += reply.usage.inputTokens;
+    used.cacheWrite += reply.usage.cacheWriteTokens ?? 0;
+    used.cacheRead += reply.usage.cacheReadTokens ?? 0;
+    used.output += reply.usage.outputTokens;
+    return reply;
+  },
+};
 const judge = anthropicJudge({
-  client: judgeClient({
-    apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: setup.model, maxOutputTokens: P.judge.postBatchMaxOutputTokens, effort: price.effort,
-    timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
-    maxFrameBytes: P.judge.maxFrameBytes, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-  }),
+  client,
   meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post',
 });
 
@@ -151,4 +173,9 @@ for (const k of [...new Set(nonMeme.map((p) => p.kind))]) {
 }
 mkdirSync(new URL('../var/', import.meta.url), { recursive: true });
 writeFileSync(new URL(`../var/pass-rates-${LABEL}.json`, import.meta.url), `${JSON.stringify(rows, null, 1)}\n`);
+const allInput = used.input + used.cacheWrite + used.cacheRead;
+const pct = (n: number) => `${Math.round((100 * n) / Math.max(allInput, 1))}%`;
+console.log(`judge usage: ${used.calls} calls, ${used.pictures} with a picture; input ${allInput} tokens = fresh ${used.input} (${pct(used.input)}) + cache write ${used.cacheWrite} (${pct(used.cacheWrite)}) + cache read ${used.cacheRead} (${pct(used.cacheRead)}); output ${used.output}`);
+console.log(`judge input per post: ${Math.round(allInput / Math.max(used.calls, 1))} tokens (with a picture ${Math.round(used.inputWithPicture / Math.max(used.pictures, 1))}, without ${Math.round(used.inputWithout / Math.max(used.calls - used.pictures, 1))}); output per post: ${Math.round(used.output / Math.max(used.calls, 1))}`);
+writeFileSync(new URL(`../var/pass-rates-${LABEL}.usage.json`, import.meta.url), `${JSON.stringify(used, null, 1)}\n`);
 console.log(`spent $${meter.line().spentUsd.toFixed(4)}`);
