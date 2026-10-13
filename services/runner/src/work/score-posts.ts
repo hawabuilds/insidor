@@ -213,7 +213,12 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   const seen = new Set(everyLane.map((i) => String(i.itemId)));
   const wide = [...everyLane, ...watchLane.filter((i) => !seen.has(String(i.itemId)))];
   for (const i of wide) seen.add(String(i.itemId));
-  const stale = staleWide.filter((i) => !seen.has(String(i.itemId)));
+  /* ★ THE STALE CUT (`feed.fresh.cutStale`, off by default): a post over `fresh.staleAfterMs` old is
+     not re-judged after a prompt change. Measured 2026-10-13, about 1,000 such re-judges a day, some
+     $1.34, for posts For You's six-hour rule mostly keeps off the feed. Its first answer stands. */
+  const fresh = deps.policy.feed.fresh;
+  const tooOld = (i: Item): boolean => fresh.cutStale && i.postedAt !== null && now - i.postedAt > fresh.staleAfterMs;
+  const stale = staleWide.filter((i) => !seen.has(String(i.itemId)) && !tooOld(i));
   const readings = await deps.items.reachReadings([...wide, ...stale].map((i) => i.itemId), since);
   const backfilled = await deps.items.backfilled(wide.map((i) => i.itemId));
   const reaches = (item: Item): boolean =>
