@@ -46,11 +46,13 @@
  *      approved recall additions and any post we hold); every other recall addition is AUTO GOLD, graded and
  *      reported, never gated. A post passes when it would be on For You: the first question passes
  *      and its kind is not one Policy.judge.heldKinds holds (eval/src/feed/examples.ts):
- *        gate        hand gold (memes, news, tragedies alike) ≥ minGoldPass AND held-out live
- *                    non-memes ≤ maxLiveNegativePass
- *        missed      the held-out half of missed posts caught ≥ minMissedPass
- *        not worse   no worse than the setup live now (its applied block, or its rules alone)
- *                    on any of the three, graded on the same posts beside the block's test
+ *        applied     when it BEATS the setup live now (its applied block, or its rules alone),
+ *                    graded on the same posts beside the block's test: strictly more hand gold
+ *                    (memes, news, tragedies alike) AND strictly fewer held-out live non-memes,
+ *                    AND no missed post live catches is lost. Strict is the noise rule: both
+ *                    sides run together at temperature 0, so a tie is not an improvement.
+ *        goal        hand gold ≥ minGoldPass, live non-memes ≤ maxLiveNegativePass, missed ≥
+ *                    minMissedPass: reported met or not met, never a block
  *      A post passes as live decides (core passesWithSignal): the judge, or — its kind not held —
  *      other accounts' crypto talk from its crypto-attention read; a shill never. A post with no
  *      such read is decided by the judge alone, and the run says how many.
@@ -93,7 +95,7 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { asDb, createPool, DB_ROLE, PgLearningRepo, PgOwnerAlertRepo, type GoldAddition } from '../store/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
-import { buildBlock, caught, changed, currentCalls, gate, latestSlot, ratesOf, regressions, share, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
+import { buildBlock, caught, changed, currentCalls, gate, goalsText, latestSlot, ratesOf, regressions, share, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
@@ -404,7 +406,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const outcome = opts.dry ? 'dry' : apply ? 'applied' : 'kept';
       const summary = {
         slot: slot.toISOString(), version: versionId, outcome, why,
-        handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, withoutCryptoFacts: noFacts,
+        handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, goals: verdict.goals, goal: goalsText(rates, L), withoutCryptoFacts: noFacts,
         autoGold: rates.auto, missed: rates.missed, regressions: regressed, judgeInUse: inUse === null ? 'rules alone' : `block ${inUse.versionId}`,
         unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true, composition,
         learnedFrom: block.used, examples: block.exampleIds.length, added: delta.added, removed: delta.removed, chars: block.text.length,
@@ -412,7 +414,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       };
       log(apply || opts.dry ? 'info' : 'warn', `retune ${outcome}`, summary);
       const ofN = (r: Rate) => `${r.passed}/${r.tested}`;
-      const tally = `hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), regressions ${regressed.length}${liveRates === null ? '' : `; live now: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone)`;
+      const tally = `hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), regressions ${regressed.length}${liveRates === null ? '' : `; live now: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone); ${goalsText(rates, L)}`;
       await end(outcome, versionId, why === null ? `applied: ${tally}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}` : `${why} (${tally})`, costUsd);
 
       /* The owner's alert, once per slot (the claim is on the subject). A dry run tells nobody. */
@@ -426,7 +428,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
               facts: {
                 applied: apply, why,
                 goldPassed: rates.hand.passed, goldN: rates.hand.tested, negativePassed: rates.negatives.passed, negativeN: rates.negatives.tested, missedPassed: rates.missed.passed, missedN: rates.missed.tested,
-                autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length, ...order.facts,
+                autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length, goal: goalsText(rates, L), ...order.facts,
                 taps: block.used.taps, tapsTested: block.taps.tested, missed: block.used.missed, names: block.used.names, added: delta.added, removed: delta.removed, missReasons,
               },
               href: '/#/alerts',
