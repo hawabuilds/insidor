@@ -5,6 +5,8 @@
  * with its platform badge, its words as the title, who posted it and how long ago, its views
  * and views line. This is the card as it looked before the post sheet was built, kept that way
  * on purpose: the owner asked for the old look back.
+ * A post with no picture or video has no thumbnail box at all, so its words use the card's full
+ * width; a card with media is unchanged.
  *
  * ★ A TAP ON THE CARD OPENS THE POST SHEET (features/post-sheet): the card, its title, Buy and View
  * coins. Two buttons go straight to where they say: Create coin opens the create flow from the
@@ -58,15 +60,18 @@ export function PostRow({ post, now, handlers, extra = null }: { post: RisingPos
   return (
     <article className={styles['card']} onClick={handlers.open}>
       <div className={styles['body']}>
-        <Thumb
-          url={post.thumbUrl}
-          video={post.thumbIsVideo}
-          width={84}
-          height={98}
-          radius={14}
-          platform={platformOf(post.sourceLabel)}
-          platformLabel={post.sourceLabel}
-        />
+        {/* A post with no picture or video has no thumbnail box: its words take the card's width. */}
+        {post.thumbUrl !== null || post.thumbIsVideo ? (
+          <Thumb
+            url={post.thumbUrl}
+            video={post.thumbIsVideo}
+            width={84}
+            height={98}
+            radius={14}
+            platform={platformOf(post.sourceLabel)}
+            platformLabel={post.sourceLabel}
+          />
+        ) : null}
         <div className={styles['content']}>
           <div className={styles['top']}>
             <a
