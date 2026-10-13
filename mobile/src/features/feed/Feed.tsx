@@ -35,6 +35,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BOARD_VIEW, fetchBoard, fetchRising, type BoardRow, type RisingPost } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
+import { usePreloadCreate } from '../create/preload.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { FILTER_PLATFORMS } from '../../shared/platform.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -84,6 +85,7 @@ export function Feed({
   /* One loader per feed, so switching tabs never shows one feed's order under the other's name. */
   const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
   const [popular, reloadPopular] = useLoad('rising:popular', (signal) => fetchRising('popular', signal));
+  usePreloadCreate(); /* Create coin then opens with the launchpad's rules already read. */
   const reload = useCallback(() => {
     reloadBoard();
     reloadFyp();
