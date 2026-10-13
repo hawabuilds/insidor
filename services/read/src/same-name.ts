@@ -3,6 +3,10 @@
  * opens. Each coin as Search shows it (search.ts): picture, ticker, market cap, launch, and
  * "On curve x%" or "Bonded".
  *
+ * IN WHAT ORDER, AND WHY EACH: the projector's order (0058 `position`: links this post, same
+ * picture, launched after it in time, name, then the earliest launch), each coin with those
+ * facts as the projector found them. The list never re-sorts; the screen never decides.
+ *
  * WHICH COINS: exactly the rows the projector committed beside the post (public.same_name_coin,
  * 0051) — the narrative's when the post is on an unsure narrative, else the post's own search —
  * and only while the post is on a feed and still unsure. The card's count is the length of that
@@ -39,13 +43,15 @@ with post as (
    limit 1
 )
 select n.address, coalesce(a.symbol, n.ticker) as symbol, coalesce(a.name, n.name) as name, a.image_uri,
-       coalesce(a.minted_at, n.launched_at) as minted_at, (p.payload #>> '{coins,more}') = 'true' as more
+       coalesce(a.minted_at, n.launched_at) as minted_at, (p.payload #>> '{coins,more}') = 'true' as more,
+       c.links_post, c.same_picture, c.launched_after_ms
   from post p
   left join public.same_name_coin c
     on (p.payload ->> 'storyId' is not null and c.subject_kind = 'story' and c.subject_id = p.payload ->> 'storyId')
     or (p.payload ->> 'storyId' is null and c.subject_kind = 'post' and c.subject_id = $1)
   left join public.coin_name n on n.address = c.address
-  left join public.asset a on a.chain = 'solana' and a.address = n.address`;
+  left join public.asset a on a.chain = 'solana' and a.address = n.address
+ order by c.position asc nulls last, coalesce(a.minted_at, n.launched_at) asc nulls last, n.address`;
 
 /**
  * Distinct names searched per list. The coins on one list share a name by construction, so one
@@ -54,6 +60,17 @@ select n.address, coalesce(a.symbol, n.ticker) as symbol, coalesce(a.name, n.nam
  */
 export const NAMES_SEARCHED = 3;
 
+/**
+ * What is known about a coin against the post (0058): its links name the post, its picture is
+ * the post's, it launched this long after it. Null is "not known", never "no"; a narrative's
+ * list carries nulls, since its coins were weighed by the board and not against one post.
+ */
+export interface CoinEvidence {
+  readonly linksPost: boolean | null;
+  readonly samePicture: boolean | null;
+  readonly launchedAfterMs: number | null;
+}
+
 /** A coin on the list, as we hold it: its address, what it is called, its picture and launch. */
 export interface HeldCoin {
   readonly address: string;
@@ -61,6 +78,7 @@ export interface HeldCoin {
   readonly ticker: string | null;
   readonly imageUrl: string | null;
   readonly launchedAt: number | null;
+  readonly evidence: CoinEvidence;
 }
 
 /** The post's list from the rows, and whether its count is "at least"; null when the post is not here. */
@@ -71,7 +89,12 @@ export function heldCoins(rows: readonly Row[]): { readonly coins: readonly Held
     const address = str(r['address']);
     if (address === null) return [];
     const minted = r['minted_at'] instanceof Date ? r['minted_at'].getTime() : typeof r['minted_at'] === 'string' ? Date.parse(r['minted_at']) : null;
-    return [{ address, name: str(r['name']), ticker: str(r['symbol']), imageUrl: str(r['image_uri']), launchedAt: minted !== null && Number.isFinite(minted) ? minted : null }];
+    const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
+    const after = r['launched_after_ms'] === null || r['launched_after_ms'] === undefined ? null : Number(r['launched_after_ms']);
+    return [{
+      address, name: str(r['name']), ticker: str(r['symbol']), imageUrl: str(r['image_uri']), launchedAt: minted !== null && Number.isFinite(minted) ? minted : null,
+      evidence: { linksPost: bool(r['links_post']), samePicture: bool(r['same_picture']), launchedAfterMs: after !== null && Number.isFinite(after) ? after : null },
+    }];
   });
   return { coins, more: rows.some((r) => r['more'] === true) };
 }

@@ -430,6 +430,9 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       if (segments.length === 2 && head === 'ticker' && param !== undefined) return await deps.search.ticker(param, client);
       /* An unsure feed post's same-named coins: what "See 3 coins" opens (same-name.ts). */
       if (segments.length === 3 && head === 'post' && param !== undefined && segments[2] === 'coins') return await deps.search.postCoins(param, client);
+      /* A feed post's name ideas for Create, and the coins already using a ticker (name-ideas.ts). */
+      if (segments.length === 3 && head === 'post' && param !== undefined && segments[2] === 'names') return await deps.search.postNames(param, client);
+      if (segments.length === 3 && head === 'ticker' && param !== undefined && segments[2] === 'coins') return await deps.search.tickerCoins(param, client);
     }
 
     if (segments.length === 2 && param !== undefined) {
