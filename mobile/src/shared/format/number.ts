@@ -44,12 +44,29 @@ export function formatCount(m: Measured): Rendered {
   return m.known ? value(compact(m.amount)) : pendingRendered(m.pending);
 }
 
-/** Dollars at market-cap or liquidity scale: "$4.3K". */
+/**
+ * Dollars at market-cap or liquidity scale: "$3.2K", "$84K", "$1.24M". From a million up, a
+ * single-digit figure keeps two decimals: a cap moves in tens of thousands, and "$1.2M" would
+ * hide every move below a hundred thousand. Counts keep `compact`'s one decimal.
+ */
 export function formatUsd(m: Measured): Rendered {
   if (!m.known) return pendingRendered(m.pending);
   /* A real amount under a cent is never "$0", which is a zero by another name. */
   if (m.amount > 0 && m.amount < 0.01) return value('<$0.01');
-  return value(`$${compact(m.amount)}`);
+  return value(`$${compactMoney(m.amount)}`);
+}
+
+/** `compact`, except 1M–10M and 1B–10B carry two decimals (trailing zeros dropped): 1_240_000 → "1.24M". */
+export function compactMoney(n: number): string {
+  const a = Math.abs(n);
+  for (const [size, suffix] of [[1_000_000_000, 'B'], [1_000_000, 'M']] as const) {
+    if (a < size) continue;
+    const text = (a / size).toFixed(2).replace(/\.?0+$/, '');
+    /* 9.996M rounds to "10": hand it to `compact`, which writes "10M". */
+    if (Number(text) >= 10) break;
+    return `${n < 0 ? '-' : ''}${text}${suffix}`;
+  }
+  return compact(n);
 }
 
 /**

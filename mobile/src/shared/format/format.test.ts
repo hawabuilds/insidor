@@ -12,6 +12,11 @@ test('counts read the way the designs write them', () => {
   assert.equal(compact(1_000_000), '1M');
   assert.equal(compact(999), '999');
   assert.equal(formatUsd(known(4_310)).text, '$4.3K');
+  assert.equal(formatUsd(known(84_200)).text, '$84K');
+  assert.equal(formatUsd(known(1_240_000)).text, '$1.24M', 'a cap in the millions keeps two decimals');
+  assert.equal(formatUsd(known(1_200_000)).text, '$1.2M');
+  assert.equal(formatUsd(known(9_996_000)).text, '$10M');
+  assert.equal(formatUsd(known(950_000_000)).text, '$950M');
   assert.equal(formatUsd(known(0.000035)).text, '<$0.01', 'a real amount under a cent is never $0');
 });
 
