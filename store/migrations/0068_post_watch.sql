@@ -1,4 +1,4 @@
--- 0069_post_watch.sql
+-- 0068_post_watch.sql
 --
 -- A PERSON WATCHING ONE POST FOR ITS COIN: the post sheet's bell (services/notify).
 --

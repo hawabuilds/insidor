@@ -10,7 +10,7 @@
  * the app draws as the post's coin with a Buy; `unsure`, `several` and the rest are not proven,
  * and never alert.
  *
- * ★ ONCE PER PERSON AND POST. people.post_watch.notified_at (0069) is set when the alert is
+ * ★ ONCE PER PERSON AND POST. people.post_watch.notified_at (0068) is set when the alert is
  * queued and never cleared, and the claim on (person, post_coin, post) backs it up. A post whose
  * coin was already proven when the bell was tapped is marked at once and sends nothing: the
  * sheet already shows that coin.
