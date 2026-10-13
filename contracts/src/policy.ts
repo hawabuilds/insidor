@@ -1353,6 +1353,13 @@ export interface RisingPolicy {
    * the live judge line instead of landing as one burst.
    */
   readonly rescorePerPass: number;
+  /**
+   * ★ THE ORDER MODEL'S PASS BAR. For You is ordered by the re-tune's applied fit (core
+   * `postRankScore`, internal.score_model) whatever this is; a number here also holds back a post
+   * the rules passed but the fit puts under it. Null: no extra gate, today's rules decide. The
+   * owner picks it from the trade-off table each re-tune reports. The number never reaches a screen.
+   */
+  readonly scorePassBar: number | null;
 }
 
 export interface IngestPolicy {
@@ -1898,6 +1905,15 @@ export interface LearningPolicy {
   readonly maxExamples: number;
   /** Missed-post links the owner may paste at once. */
   readonly maxMissedPerPaste: number;
+  /**
+   * The order model's fit (tools/lib/score-model.ts), re-fitted at each re-tune on every label so
+   * far. `scoreHeldOutShare` of labelled posts, chosen by a hash of the post id so a post is held
+   * out in every fit or in none, are never fitted on and are the gate's test. `scoreL2` is the
+   * ridge on the standardised weights: the label set is small (about 150 posts with stored facts,
+   * 2026-10-13), and an unpenalised fit memorises it.
+   */
+  readonly scoreHeldOutShare: number;
+  readonly scoreL2: number;
 }
 
 /**
@@ -2676,6 +2692,8 @@ const POLICY_V1: Policy = {
     minMissedPass: 0.5,
     maxExamples: 120,
     maxMissedPerPaste: 10,
+    scoreHeldOutShare: 0.3,
+    scoreL2: 1,
   },
 
   notify: {
@@ -2756,6 +2774,7 @@ const POLICY_V1: Policy = {
        day (2026-10-13) re-score in about 3.5 hours after a prompt change, near $0.70 an hour at
        the measured $0.0012 a post, on the live judge line and under its cap. */
     rescorePerPass: 15,
+    scorePassBar: null,
   },
 
   rank: {
