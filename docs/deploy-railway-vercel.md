@@ -61,7 +61,9 @@ wallet address only), `JUPITER_API_KEY` (optional), `JUPITER_API_URL` (optional)
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `TRADE_ALLOWED_ORIGINS`.
 
 **project** — `DATABASE_URL` (owner; the projector writes the board), `HELIUS_API_KEY`,
-`COINGECKO_API_KEY` (optional).
+`COINGECKO_API_KEY` (optional), `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (the same two as
+trade: the coin-logo job copies the logos of coins on screen into the launch-metadata bucket
+under `coin-logos/`; without them it skips and the app shows each coin's own picture).
 
 **chainwatch** — `DATABASE_URL`, `MINT_STREAM_URL`†, `MINT_FEED_ID`†, `MINT_FEED_CHAIN`†,
 `MINT_FEED_TRANSPORT`†, `MINT_OBSERVATION_LAG_S`†, `MINT_STREAM_BUFFER_LIMIT`†,
@@ -85,6 +87,8 @@ and `SINGLETON_LOCK_NAME` are filled by the launcher.
 **Vercel `insidor-mobile`** — `VITE_PRIVY_APP_ID`, `VITE_TRADING` (`on` to show Buy/Sell),
 `READ_SERVICE_URL`, `TRADE_SERVICE_URL`, `SOCIAL_SERVICE_URL`, `NOTIFY_SERVICE_URL` (each the
 Railway public domain, `https://…up.railway.app`), `ENABLE_EXPERIMENTAL_COREPACK` (`1`).
+`VITE_COIN_LOGO_BASE` (`<SUPABASE_URL>/storage/v1/object/public/launch-metadata/coin-logos`:
+where the app asks for a coin's copied logo first; unset, it uses the coin's own picture).
 Leave `VITE_READ_URL`, `VITE_TRADE_URL`, `VITE_SOCIAL_URL`, `VITE_NOTIFY_URL` unset: the app
 then calls `/api/*` on its own origin and `api/proxy.js` forwards. Remove `VITE_SAMPLE_DATA`.
 

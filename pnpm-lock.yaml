@@ -493,6 +493,9 @@ importers:
       '@insidor/core':
         specifier: workspace:*
         version: link:../../core
+      '@insidor/market-dexscreener':
+        specifier: workspace:*
+        version: link:../../adapters/market/dexscreener
       '@insidor/platform-reddit':
         specifier: workspace:*
         version: link:../../adapters/platform/reddit
@@ -502,6 +505,9 @@ importers:
       '@insidor/platform-x':
         specifier: workspace:*
         version: link:../../adapters/platform/x
+      '@insidor/storage-supabase':
+        specifier: workspace:*
+        version: link:../../adapters/storage/supabase
       '@insidor/store':
         specifier: workspace:*
         version: link:../../store
