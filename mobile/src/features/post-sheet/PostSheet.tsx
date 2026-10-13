@@ -27,7 +27,7 @@
  * which renders this sheet knowing nothing else about the post.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ReadError, fetchPostSheet, type PostSheetData, type SheetCoin } from '../../shared/api/index.ts';
 import { evidenceFacts } from '../../shared/coin-status.ts';
@@ -60,26 +60,31 @@ export interface PostSheetProps {
   readonly start?: 'post' | 'coins';
 }
 
-const CHART_HEIGHT = 120;
+const CHART_HEIGHT = 96;
 /** The sheet's side padding, both sides, and the widest the app's column gets. */
 const SIDES = 32;
+/** The post card's own padding, both sides (post-sheet.module.css .postCard), inside the sheet's. */
+const CARD_SIDES = 16;
 const COLUMN = 480;
 /**
- * The tallest the media box may be, as a share of the screen's height. A third, so on a 390x844
- * phone the post's words, the media, Views and the views chart all show above the fixed coin area
- * when the sheet opens; a taller frame is shown whole, letterboxed, never cropped or squashed.
+ * The tallest the media box may be, in px (the owner, 2026-10-13): 200, so on a 390x844 phone the
+ * whole sheet, post card, views, chart, tiles, coin row and buttons, fits without scrolling. A
+ * taller or portrait frame is shown whole inside it with dark bars at the sides, never cropped or
+ * squashed; a tap opens it full screen (PostMedia.tsx).
  */
-const MEDIA_TALLEST = 0.32;
+const MEDIA_TALLEST = 200;
+/** How many lines of the post's words show before a tap: fewer above media, more with none. */
+const TEXT_LINES = { withMedia: 2, alone: 6 } as const;
 
 /**
  * The media box's height: the media's own shape at the sheet's real width, so the whole frame
- * shows; a very tall video stops at about a third of the screen and is shown whole inside it. A post
+ * shows; a taller frame stops at MEDIA_TALLEST and is shown whole inside it. A post
  * that does not say its shape gets a square box. (PostMedia.tsx draws the media in it, contained.)
  */
 function mediaHeight(width: number | null, height: number | null): number {
-  const inner = Math.min(window.innerWidth, COLUMN) - SIDES;
+  const inner = Math.min(window.innerWidth, COLUMN) - SIDES - CARD_SIDES;
   const shape = width !== null && height !== null && width > 0 && height > 0 ? height / width : 1;
-  return Math.round(Math.min(inner * shape, window.innerHeight * MEDIA_TALLEST));
+  return Math.round(Math.min(inner * shape, MEDIA_TALLEST));
 }
 
 export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
@@ -142,6 +147,30 @@ export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
       ) : null}
       <SheetToast note={note} onDone={clearNote} />
     </>
+  );
+}
+
+/**
+ * The post's words, always at the top of the sheet: cut to `lines`, and when they are cut a tap
+ * shows them all (and another tap cuts them again). Words that fit are plain text, not a button.
+ */
+function PostText({ text, lines }: { text: string; lines: number }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [open, setOpen] = useState(false);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const p = ref.current;
+    if (p !== null && !open) setCut(p.scrollHeight > p.clientHeight + 1);
+  }, [text, lines, open]);
+  return (
+    <p
+      ref={ref}
+      className={`${styles['text']} ${cut ? styles['textCut'] : ''}`}
+      style={open ? { WebkitLineClamp: 'unset', display: 'block' } : { WebkitLineClamp: lines }}
+      {...(cut ? { role: 'button', tabIndex: 0, 'aria-expanded': open, onClick: () => setOpen((o) => !o), onKeyDown: (e: { key: string }) => e.key === 'Enter' && setOpen((o) => !o) } : {})}
+    >
+      {text}
+    </p>
   );
 }
 
@@ -209,8 +238,12 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
 
       <SheetBody>
         <div className={styles['scroll']}>
-          {post.excerpt !== '' ? <p className={styles['text']}>{post.excerpt}</p> : null}
-          {media !== null ? <PostMedia media={media} height={mediaHeight(media.width, media.height)} onGone={() => setMediaGone(true)} postUrl={post.permalink} sourceLabel={post.sourceLabel} /> : null}
+          {post.excerpt !== '' || media !== null ? (
+            <section className={styles['postCard']}>
+              {post.excerpt !== '' ? <PostText text={post.excerpt} lines={media !== null ? TEXT_LINES.withMedia : TEXT_LINES.alone} /> : null}
+              {media !== null ? <PostMedia media={media} height={mediaHeight(media.width, media.height)} onGone={() => setMediaGone(true)} postUrl={post.permalink} sourceLabel={post.sourceLabel} /> : null}
+            </section>
+          ) : null}
 
           <section className={styles['views']}>
             <div className={styles['viewsLeft']}>

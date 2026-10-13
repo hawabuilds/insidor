@@ -1,6 +1,6 @@
 /*
  * The post sheet's media, its own few pieces (PostMedia.tsx): the "Play on X" link a video shows
- * only when it cannot play here. Its own file so the sheet's layout styles (post-sheet.module.css)
+ * only when it cannot play here, and the full-screen viewer a tap on the media opens. Its own file so the sheet's layout styles (post-sheet.module.css)
  * and the player's way out change apart. Sits over the still, bottom right, small: it must read as
  * a way to watch elsewhere, never as the still's own play button.
  */
@@ -21,4 +21,42 @@
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
+}
+
+/* The media box opens the viewer on a tap. */
+.tappable {
+  cursor: zoom-in;
+}
+
+/* Full screen over everything, sheet included: black, the media whole and centred. */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  background: #000;
+  touch-action: none;
+}
+
+.viewerMedia {
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.viewerClose {
+  position: absolute;
+  top: calc(var(--safe-top) + 12px);
+  right: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgb(255 255 255 / 14%);
+  color: #fff;
 }
