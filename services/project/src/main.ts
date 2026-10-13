@@ -27,6 +27,7 @@ import { asDb, createPool, DB_ROLE, PgAssetRepo, withTransaction } from '@insido
 import { loadLaunchFacts, nextLaunchTick, writeLaunches } from './db.ts';
 import { projectStoryFrame } from './frame.ts';
 import { projectRisingFeeds } from './rising.ts';
+import { keepFeedHistory } from './feed-history.ts';
 import { announceBoard } from './notify.ts';
 import { projectFeedSource, projectLaunch } from './project.ts';
 import type { ProjectOptions } from './project.ts';
@@ -136,6 +137,8 @@ async function main(): Promise<void> {
       /* The For You and Popular feeds, in the same transaction as the board they read their
          coins from — see rising.ts. */
       const risingRows = await projectRisingFeeds(db, nowMs as Millis, frame.coinsByStory, SPARK_WINDOW_MS);
+      /* What the feeds showed this hour, kept past the next frame (0065; skipped until applied). */
+      await keepFeedHistory(db, nowMs);
 
 
       /* ── the launches rail ──
