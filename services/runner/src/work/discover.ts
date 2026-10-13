@@ -372,6 +372,31 @@ export function feedQueryFor(lane: FeedLane, floors: LaneFloors, now: Millis, po
   };
 }
 
+/**
+ * ★ THE SLOW LANE, AS TIME SLICES (`feed.slow.slices`). Asked newest first over its whole six
+ * hours, its pages filled inside the newest hour and it never saw anything older — the exact
+ * posts it exists for. So it asks one page for each of `slices` bands instead: band k holds the
+ * posts aged k·(window/slices) − `slow.everyMs` to k·(window/slices) minutes, newest first, at
+ * the lane's floor. Each band is as wide as the lane's own spacing, so the bands move by their
+ * width each pass and every post is looked at once as it turns one, two, … six hours old — the
+ * moments a post that crossed the floor late can still be caught — rather than the newest hour
+ * six times over.
+ *
+ * What breaks if changed carelessly: a band wider than the spacing double-counts posts on
+ * consecutive passes and pays for them twice; narrower leaves gaps no pass looks at. A full band
+ * is not paged: its floor rises with the lane's target instead, which is the money lever.
+ */
+export function slowSliceQueries(floors: LaneFloors, now: Millis, policy: Policy): readonly DiscoveryQuery[] {
+  const base = feedQueryFor('slow', floors, now, policy);
+  const slices = Math.max(1, Math.floor(policy.feed.slow.slices));
+  const step = (laneWindowMin('slow', policy) * MS_PER_MINUTE) / slices;
+  const width = Math.min(policy.feed.slow.everyMs, step);
+  return Array.from({ length: slices }, (_, i) => {
+    const oldest = now - (i + 1) * step;
+    return { ...base, sinceMs: Math.round(oldest) as Millis, untilMs: Math.round(oldest + width) as Millis };
+  });
+}
+
 /* ── the pass ─────────────────────────────────────────────────────────────── */
 
 /**
@@ -479,6 +504,8 @@ interface SourcePlan {
   readonly spaced: boolean;
   /** An ask from the owner's watch list: its fresh posts are credited to the 'watch' lane (0061), so they are judged. */
   readonly watch: boolean;
+  /** One time slice of the slow lane (`slowSliceQueries`): one page, never more. */
+  readonly slice: boolean;
 }
 
 export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResult> {
@@ -530,9 +557,12 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
 
     /* ★ THE CATCH-ALL FIRST, ON EVERY SOURCE THAT CAN BE ASKED FOR IT: two lanes, no
        keyword. Then the optional term on top. */
-    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean; readonly watch?: boolean }[] = [];
+    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean; readonly watch?: boolean; readonly slice?: boolean }[] = [];
     if (adapter.capabilities.discovery.includes('catchall')) {
-      for (const lane of deps.lanes ?? MAIN_LANES) asks.push({ query: feedQueryFor(lane, floors, now, deps.policy), lane });
+      for (const lane of deps.lanes ?? MAIN_LANES) {
+        if (lane === 'slow') for (const query of slowSliceQueries(floors, now, deps.policy)) asks.push({ query, lane, slice: true });
+        else asks.push({ query: feedQueryFor(lane, floors, now, deps.policy), lane });
+      }
     }
     const catchAll = asks.length > 0;
     if (catchAll && term !== null) {
@@ -586,7 +616,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       continue;
     }
 
-    for (const { query, lane, spaced, watch } of asks) {
+    for (const { query, lane, spaced, watch, slice } of asks) {
       let estimate: CostEstimate;
       try {
         estimate = adapter.estimate({ kind: 'discover', query });
@@ -599,7 +629,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         deps.log.error('source cannot be priced; not asking it', { source, err: errorText(e) });
         continue;
       }
-      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true, watch: watch === true });
+      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true, watch: watch === true, slice: slice === true });
     }
   }
 
@@ -624,7 +654,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       sentFloors: sentFloors(floors, deps.policy),
       targets,
       targetUsd: ((targets.all + targets.media) * passesPerDay + targets.slow * slowPassesPerDay) * usdPerPost,
-      worstUsd: usdPerPage * pages * (MAIN_LANES.length * passesPerDay + slowPassesPerDay),
+      worstUsd: usdPerPage * (pages * MAIN_LANES.length * passesPerDay + deps.policy.feed.slow.slices * slowPassesPerDay),
     };
     feedDays.push(day);
     deps.log.info(deps.mode === 'dry' ? 'DRY RUN — a day of catch-all search, priced' : 'catch-all search, priced', {
@@ -676,7 +706,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
      short-video run used to hold the text search, the feed's main input, for as long. */
   const runPlan = async (plan: SourcePlan): Promise<void> => {
     if (deps.signal.aborted) return;
-    const { adapter, source, query, estimate, lane, spaced, watch } = plan;
+    const { adapter, source, query, estimate, lane, spaced, watch, slice } = plan;
     const tag = lane === null ? {} : { lane };
     const coverKey = lane === null ? query.term : `feed:${lane}`;
 
@@ -777,7 +807,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
          paging. A short page means the window is exhausted; a refused check means the line
          is, for now. Either way the lane stops with what it has. */
       let cursor = result.value.cursor;
-      for (let page = 2; lane !== null && page <= deps.policy.feed.maxPagesPerLane; page += 1) {
+      for (let page = 2; lane !== null && !slice && page <= deps.policy.feed.maxPagesPerLane; page += 1) {
         if (cursor === null || !hasMore || items.length < (page - 1) * query.limit) break;
         if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) break;
         if (deps.signal.aborted) break;
@@ -843,7 +873,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     if (estimate.usd === 0 && items.length > 0 && !covered.has(coverKey)) {
       covered.set(coverKey, source);
     }
-    if (lane !== null) laneReturned.set(source, { ...laneReturned.get(source), [lane]: items.length });
+    /* A slow lane's slices add up: the lane's floor moves on what all of them returned. */
+    if (lane !== null) laneReturned.set(source, { ...laneReturned.get(source), [lane]: (slice ? (laneReturned.get(source)?.[lane] ?? 0) : 0) + items.length });
 
     let stored: number | null = null;
     if (items.length > 0) {

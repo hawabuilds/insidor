@@ -141,7 +141,8 @@ test('★ a dry run prices a whole day and asks nobody', async () => {
   const passes = 86_400_000 / CADENCE_MS;
   assert.ok(Math.abs(day.targetUsd - 1 * DEFAULT_POLICY.feed.budgetShare) < 1e-9, `at target: ${day.targetUsd}`);
   assert.ok(
-    Math.abs(day.worstUsd - DEFAULT_POLICY.feed.pageLimit * DEFAULT_POLICY.feed.maxPagesPerLane * USD_PER_POST * (2 * passes + 96)) < 1e-9,
+    // Two main lanes of up to three pages every pass; the slow lane one page per slice, 96 times a day.
+    Math.abs(day.worstUsd - DEFAULT_POLICY.feed.pageLimit * USD_PER_POST * (DEFAULT_POLICY.feed.maxPagesPerLane * 2 * passes + DEFAULT_POLICY.feed.slow.slices * 96)) < 1e-9,
     `worst: ${day.worstUsd}`,
   );
   assert.equal(result.planned, 2);
@@ -174,15 +175,30 @@ test('a stored floor is the one sent on the next pass', async () => {
   assert.deepEqual(seen.map((q) => q.filter?.minApproval), [333, 67], 'a sixth of each, for a 10-minute window');
 });
 
-test('★ when the slow lane is due it looks back six hours, at five times the main floor at least', async () => {
+test('★ when the slow lane is due it looks back six hours in hourly slices, at five times the main floor at least', async () => {
   const seen: DiscoveryQuery[] = [];
   const floors = floorsStore({ all: 2_000, media: 400, slow: 100 });
   await run(feedSource({ all: 10, media: 3 }, seen), 'live', floors, [], [...MAIN_LANES, 'slow']);
-  assert.equal(seen.length, 3);
-  const slow = seen[2];
-  assert.equal(slow?.sinceMs, NOW - 6 * 60 * 60_000);
-  assert.equal(slow?.filter?.mediaOnly, false);
-  assert.equal(slow?.filter?.minApproval, 333 * 5, 'its own floor adapted low; held at 5x what the main lane sends');
+  const slices = DEFAULT_POLICY.feed.slow.slices;
+  assert.equal(seen.length, 2 + slices, 'one page per slice, never paged');
+  const slow = seen.slice(2);
+  const hour = 60 * 60_000;
+  const width = DEFAULT_POLICY.feed.slow.everyMs;
+  // A band as wide as the lane's spacing, ending a quarter-hour after each hour of age.
+  assert.deepEqual(slow.map((q) => [NOW - (q.sinceMs ?? 0), NOW - (q.untilMs ?? 0)]), Array.from({ length: slices }, (_, i) => [(i + 1) * hour, (i + 1) * hour - width]));
+  assert.equal(slow.at(-1)?.sinceMs, NOW - 6 * hour, 'the oldest slice reaches the whole six hours');
+  for (const q of slow) {
+    assert.equal(q.filter?.mediaOnly, false);
+    assert.equal(q.filter?.minApproval, 333 * 5, 'its own floor adapted low; held at 5x what the main lane sends');
+  }
+});
+
+test('the slow lane\'s floor moves on what all its slices returned together', async () => {
+  const floors = floorsStore({ all: 2_000, media: 400, slow: 1_000 });
+  // Three a slice is under the lane's target band on its own (target ≈ 8.3 a pass at $1 a day),
+  // and eighteen over all six is over it: the floor must rise, not fall.
+  await run(feedSource({ all: 3, media: 3 }, []), 'live', floors, [], [...MAIN_LANES, 'slow']);
+  assert.equal(floors.held['slow'], Math.ceil(1_000 * DEFAULT_POLICY.feed.raiseFactor));
 });
 
 test('DISCOVER_TERMS are extra searches on top of the catch-all, not instead of it', async () => {

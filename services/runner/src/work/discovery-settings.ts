@@ -77,7 +77,9 @@ export async function measureDiscovery(
       lanes: [
         { lane: 'all', floor: sent.all, reachMin: round(reach('all')), everyMin: round(mainEvery), mediaOnly: false },
         { lane: 'media', floor: sent.media, reachMin: round(reach('media')), everyMin: round(mainEvery), mediaOnly: true },
-        { lane: 'slow', floor: sent.slow, reachMin: round(reach('slow')), everyMin: P.feed.slow.everyMs / MS_PER_MINUTE, mediaOnly: false },
+        /* The slow lane looks at a post once an hour of its age (one time slice each, see
+           work/discover.ts `slowSliceQueries`), so that is how often it checks any one post. */
+        { lane: 'slow', floor: sent.slow, reachMin: round(reach('slow')), everyMin: P.feed.slow.windowMin / Math.max(1, P.feed.slow.slices), mediaOnly: false },
       ],
     },
     measured: { baseFloors: base, lanes, growthPairs: pairs.length, configuredWindowMin: window },
