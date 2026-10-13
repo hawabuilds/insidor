@@ -1,20 +1,23 @@
-.page {
-  padding-bottom: calc(var(--tabbar-space) + 80px);
-}
+/* The token page: Trador's AssetPage, its tape, its tabs and its trade bar, in Insidor's tokens.
+   Sizes, weights and spacings are Trador's Tailwind values written out (mt-3 is 12px, and so on),
+   so a side-by-side lines up; colours are ours (tokens.css). */
 
-.top {
-  padding: 14px 12px 4px;
+.page {
+  padding: 10px var(--gutter) calc(var(--tabbar-space) + 84px);
 }
 
 .back {
-  width: 40px;
-  height: 40px;
+  margin-left: -6px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
+  border-radius: 50%;
+  color: var(--text-2);
 }
 
 .note {
-  margin: 14px var(--gutter);
+  margin: 14px 0;
   color: var(--text-3);
   font-size: 14px;
   line-height: 1.5;
@@ -28,162 +31,164 @@
   color: var(--text-3);
 }
 
-/* ── from narrative ────────────────────────────────────────────────── */
-
-.from {
-  display: block;
-  margin: 0 var(--gutter);
-  padding: 12px 14px;
-  border-radius: var(--r-card);
-  background: var(--card);
+.up {
+  color: var(--up);
 }
 
-.fromHead {
+.down {
+  color: var(--down);
+}
+
+.right {
+  text-align: right;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* ── header ────────────────────────────────────────────────────────── */
+
+.head {
+  margin-top: 12px;
   display: flex;
-  justify-content: space-between;
-  color: var(--text-3);
-}
-
-.fromTitle {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 2px 0 10px;
-  border-bottom: 1px solid var(--border);
-  font-size: 15px;
-}
-
-.fromTitle > span {
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--text-2);
-}
-
-.fromPost {
-  display: flex;
+  align-items: flex-start;
   gap: 12px;
-  align-items: center;
-  padding-top: 10px;
 }
 
-.fromPostText {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  font-size: 14px;
-  line-height: 1.35;
+.headText {
+  min-width: 0;
+  flex: 1;
 }
 
-.fromBy {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  font-size: 13px;
-  color: var(--text-3);
-}
-
-.fromBy b {
-  color: var(--text-2);
-}
-
-/* ── coin head ─────────────────────────────────────────────────────── */
-
-.coinHead {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 18px var(--gutter) 0;
-}
-
-.coinHead h1 {
+.headText h1 {
   margin: 0;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .name {
-  font-size: 13.5px;
+  margin-top: -2px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chips {
+  margin-top: 10px;
   display: flex;
-  gap: 6px;
   flex-wrap: wrap;
-  padding: 12px var(--gutter) 0;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Trador's PairTicker: what the coin is priced in. */
+.pair {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--overlay-wash);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.03em;
 }
 
 .chip {
   padding: 4px 8px;
   border-radius: 8px;
-  background: var(--card);
-  color: var(--text-2);
-  font-size: 11.5px;
-  font-weight: 700;
-}
-
-.chipBold {
+  background: var(--overlay-wash);
   color: var(--text-1);
+  font-size: 11.5px;
+  font-weight: 800;
 }
 
 .chipBrand {
   background: var(--brand-wash);
   color: var(--brand-300);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
-.address {
-  margin: 8px var(--gutter) 0;
-  padding: 5px 9px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--card);
-  color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+.mintRow {
+  margin-top: 8px;
+  display: flex;
 }
 
-.mono {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  word-break: break-all;
-}
-
-.curve {
+.mint {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px var(--gutter) 0;
-  font-size: 12.5px;
-  font-weight: 700;
+  gap: 2px;
+  padding: 2px 2px 2px 8px;
+  border-radius: 8px;
+  background: var(--overlay-wash);
   color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.mint button,
+.mint a {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-3);
+}
+
+/* Trador's CurveProgress, at most 280px wide under the chips. */
+.curve {
+  margin-top: 12px;
+  max-width: 280px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .curveTrack {
   flex: 1;
   height: 5px;
-  border-radius: 3px;
-  background: var(--card);
+  border-radius: 999px;
+  background: var(--segment-track);
   overflow: hidden;
 }
 
-.curveFill {
-  display: block;
+.curveFill,
+.curveFillUp {
   height: 100%;
+  border-radius: 999px;
   background: var(--brand);
+  transition: width 500ms;
 }
 
-/* ── price ─────────────────────────────────────────────────────────── */
+.curveFillUp {
+  background: var(--up);
+}
+
+.curvePct {
+  color: var(--text-2);
+}
+
+/* ── price (CoinChart) ─────────────────────────────────────────────── */
 
 .priceRow {
+  margin-top: 16px;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  padding: 10px var(--gutter) 4px;
+  align-items: flex-end;
+  gap: 12px;
 }
 
 .priceRow > div:first-child {
@@ -194,11 +199,13 @@
 .price {
   font-size: 32px;
   font-weight: 800;
-  letter-spacing: -0.04em;
+  line-height: 1;
+  letter-spacing: -0.035em;
 }
 
 .change {
-  font-size: 14px;
+  margin-top: 6px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--text-2);
 }
@@ -208,43 +215,40 @@
   font-weight: 600;
 }
 
-.up {
-  color: var(--up);
-}
-
-.down {
-  color: var(--down);
-}
-
 .cap {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 2px;
+  text-align: right;
+}
+
+.cap .kicker {
+  font-size: 10px;
+  letter-spacing: 0.08em;
 }
 
 .capN {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 .liq {
-  padding: 2px 7px;
-  border-radius: 7px;
-  background: var(--card);
+  margin-top: 2px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: var(--overlay-wash);
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
 }
-
-/* ── chart ─────────────────────────────────────────────────────────── */
 
 .chart {
   position: relative;
   display: block;
-  width: calc(100% - 2 * var(--gutter));
-  height: 190px;
-  margin: 8px var(--gutter) 0;
+  width: 100%;
+  height: 220px;
+  margin-top: 12px;
   touch-action: pan-y;
   user-select: none;
 }
@@ -266,9 +270,11 @@
 }
 
 .tfRow {
+  margin: 8px 0 20px;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  padding: 10px var(--gutter);
+  gap: 8px;
 }
 
 .tfs,
@@ -299,7 +305,7 @@
 .kinds {
   padding: 3px;
   border-radius: 10px;
-  background: var(--card);
+  background: var(--segment-track);
 }
 
 .kinds button {
@@ -314,54 +320,197 @@
 .kinds .kindOn {
   background: var(--input);
   color: var(--text-1);
+  box-shadow: var(--shadow-tab-active);
 }
 
-/* ── trades and info ───────────────────────────────────────────────── */
+/* ── the tabs: Trador's PanelTabs, stuck under the top ─────────────── */
 
-.trades {
-  width: calc(100% - 2 * var(--gutter));
-  margin: 4px var(--gutter);
-  border-collapse: collapse;
-  font-size: 14px;
+.panelTabs {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin: 0 calc(-1 * var(--gutter));
+  padding: 4px var(--gutter) 0;
+  display: flex;
+  background: var(--bg);
 }
 
-.trades th {
-  padding: 10px 0 8px;
-  text-align: left;
-  font-size: 11px;
+.panelTabs button {
+  position: relative;
+  flex: 1;
+  padding: 4px 0 10px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+
+.panelTabs .panelTabOn {
+  color: var(--text-1);
+  font-weight: 800;
+}
+
+.panelTabOn::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--brand);
+}
+
+.panel {
+  padding-top: 12px;
+}
+
+.panelNote {
+  min-height: 96px;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0 24px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* ── the filter rail: Trador's FilterRail ──────────────────────────── */
+
+.rail {
+  margin: 0 calc(-1 * var(--gutter));
+  padding: 0 var(--gutter) 12px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.rail button {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--overlay-wash);
+  color: var(--text-3);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.rail .railOn {
+  background: var(--input);
+  color: var(--text-1);
+  font-weight: 800;
+  box-shadow: var(--shadow-tab-active);
+}
+
+/* ── the tape: Trador's TradesPanel ────────────────────────────────── */
+
+.tape {
+  margin: 0 calc(-1 * var(--gutter));
+}
+
+.tape ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tapeRow {
+  display: grid;
+  grid-template-columns: 58px 1fr 76px 72px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px var(--gutter);
+}
+
+.tapeHead {
+  padding-top: 0;
+  padding-bottom: 8px;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--text-3);
 }
 
-.trades th:last-child,
-.trades td:last-child {
-  text-align: right;
-}
-
-.trades td {
-  padding: 9px 0;
-  border-top: 1px solid var(--border-subtle);
-  font-weight: 700;
-  vertical-align: top;
-}
-
-.trades small {
+.side {
   display: block;
-  margin-top: 2px;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1;
 }
 
-.dim {
-  font-size: 11px;
+.sub {
+  display: block;
+  margin-top: 4px;
   color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+.amount {
+  min-width: 0;
+}
+
+.amountN {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unit {
+  margin-left: 4px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.usd {
+  text-align: right;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.txn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+@keyframes trade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tradeIn {
+  animation: trade-in 220ms ease-out;
+}
+
+/* ── Info ──────────────────────────────────────────────────────────── */
 
 .info {
-  margin: 4px var(--gutter);
+  margin: 4px 0 16px;
 }
 
 .info > div {
@@ -385,7 +534,68 @@
   min-width: 0;
 }
 
-/* ── the floating buy and sell bar ─────────────────────────────────── */
+/* ── Insidor's part of Info: the narrative and where the coin came from ── */
+
+.from {
+  display: block;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+
+.fromHead {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-3);
+}
+
+.fromTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 0 10px;
+  font-size: 15px;
+}
+
+.fromTitle > span {
+  flex: none;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.fromPost {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.fromPostText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.fromBy {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.fromBy b {
+  color: var(--text-2);
+}
+
+/* ── the floating buy and sell bar (trading off) ───────────────────── */
 
 .tradeBar {
   position: fixed;
@@ -394,7 +604,7 @@
   width: calc(100% - 2 * var(--gutter));
   max-width: calc(480px - 2 * var(--gutter));
   bottom: calc(84px + env(safe-area-inset-bottom));
-  z-index: 35;
+  z-index: 30;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
@@ -411,10 +621,4 @@
   background: var(--up-wash);
   color: var(--up);
   box-shadow: none;
-}
-
-.txn {
-  color: var(--text-2);
-  font-weight: 600;
-  text-decoration: none;
 }

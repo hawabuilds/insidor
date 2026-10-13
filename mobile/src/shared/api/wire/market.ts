@@ -29,6 +29,8 @@ export interface MarketTrade {
   /** What one token went for in this trade, as the source reported it. */
   readonly priceUsd: Measured;
   readonly at: Instant;
+  /** The wallet that made it; null when the source did not say. Compared with yours for "Mine". */
+  readonly maker: string | null;
 }
 
 export type CoinMarket =

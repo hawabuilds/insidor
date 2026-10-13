@@ -466,7 +466,7 @@ export function fixtureMarket(coinId: string, timeframe: string): unknown {
     const o = closes[i - 1] ?? c;
     return { t: T0 - (closes.length - i) * step, o, h: Math.max(o, c) * 1.01, l: Math.min(o, c) * 0.99, c };
   });
-  const trade = (side: 'buy' | 'sell', agoMs: number, tokens: number, usd: number) => ({ tx: null, side, tokenAmount: m(tokens), usd: m(usd), priceUsd: m(usd / tokens), at: ago(agoMs) });
+  const trade = (side: 'buy' | 'sell', agoMs: number, tokens: number, usd: number) => ({ tx: null, side, tokenAmount: m(tokens), usd: m(usd), priceUsd: m(usd / tokens), at: ago(agoMs), maker: null });
   const mcap = (coin['marketCapUsd'] as { v?: number } | undefined)?.v ?? 0;
   return {
     kind: 'read',

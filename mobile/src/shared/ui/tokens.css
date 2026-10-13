@@ -70,6 +70,20 @@
   --tabbar-space: calc(96px + env(safe-area-inset-bottom));
 
   --shadow-panel: 0 18px 50px rgb(0 0 0 / 55%), 0 0 0 1px var(--border-subtle);
+
+  /* Trador's washes, tracks and shadows, as its brand-tokens.css names them: the token page,
+     its trade bar and the order sheet are drawn with these, so they match Trador's to the value. */
+  --overlay-wash: rgb(255 255 255 / 6%);
+  --overlay-wash-hover: rgb(255 255 255 / 10%);
+  --segment-track: rgb(255 255 255 / 4%);
+  --up-wash-hover: rgb(74 222 128 / 22%);
+  --down-wash-hover: rgb(239 69 74 / 24%);
+  --shadow-up: 0 16px 32px -14px rgb(74 222 128 / 34%);
+  --shadow-down: 0 16px 32px -14px rgb(239 69 74 / 34%);
+  --shadow-brand: 0 16px 32px -14px rgb(153 69 255 / 45%);
+  --shadow-tab-active: 0 6px 18px -10px rgb(153 69 255 / 45%);
+  --shadow-inset-soft: inset 0 2px 8px rgb(0 0 0 / 46%);
+  --shadow-inset-focus: inset 0 2px 8px rgb(0 0 0 / 46%), 0 0 0 2px rgb(153 69 255 / 18%);
 }
 
 *,

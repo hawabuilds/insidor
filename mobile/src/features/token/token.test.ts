@@ -9,7 +9,7 @@ import { chartNote } from './chart-format.ts';
 
 const MIN = 60_000;
 const p = (t: number, price: number, extra: Partial<ChartPoint> = {}): ChartPoint => ({ t, price, ...extra });
-const fill = (at: number, priceUsd: number, usd = 5): MarketTrade => ({ tx: null, side: 'buy', tokenAmount: { known: true, amount: usd / priceUsd }, usd: { known: true, amount: usd }, priceUsd: { known: true, amount: priceUsd }, at: { known: true, at: at as never } });
+const fill = (at: number, priceUsd: number, usd = 5): MarketTrade => ({ tx: null, side: 'buy', tokenAmount: { known: true, amount: usd / priceUsd }, usd: { known: true, amount: usd }, priceUsd: { known: true, amount: priceUsd }, at: { known: true, at: at as never }, maker: null });
 
 test('the header move: across the view, or inside the one candle under the finger', () => {
   assert.equal(changePctForPoints([p(0, 1), p(MIN, 1.5)]), 50);

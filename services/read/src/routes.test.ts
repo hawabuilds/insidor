@@ -634,7 +634,7 @@ test('★ a coin\'s market: only for a coin we hold; candles, trades and, on a c
   assert.equal(body.timeframe, '5m');
   assert.equal(body.venue, 'curve');
   assert.deepEqual(body.curveProgress, { v: 0.218 });
-  assert.deepEqual(body.trades[0], { tx: 'tx1', side: 'buy', tokenAmount: { v: 10 }, usd: { v: 2 }, priceUsd: { v: 0.2 }, at: { at: 5 } });
+  assert.deepEqual(body.trades[0], { tx: 'tx1', side: 'buy', tokenAmount: { v: 10 }, usd: { v: 2 }, priceUsd: { v: 0.2 }, at: { at: 5 }, maker: 'm' });
 
   assert.equal((await handle('GET', '/coin/solana%3AUnknown/market', { ...fakeDb({}).deps, market })).status, 404, 'a coin we do not hold is never fetched');
   assert.equal((await handle('GET', '/coin/solana%3AMint1/market?tf=7y', { ...known.deps, market })).status, 400);
