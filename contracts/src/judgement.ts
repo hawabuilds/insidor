@@ -29,13 +29,15 @@ import type { Millis } from './vocabulary.ts';
  * source can send either, and a source name in this package is a vendor leaking into
  * the vocabulary.
  *
- *   text        the judge read member text only (a still image, if any, was not judged on)
+ *   text        the judge read member text only (no picture, or none it could fetch)
+ *   picture     the judge read the text AND was shown the subject's still picture — most coined
+ *               posts carry their meme in the picture (82% "works as a photo" in the gold sheets)
  *   videoFrame  the judge was shown at least one frame from a video member
  *
  * A story whose video the judge could not see is not judged as text instead: the adapter
  * returns it as unavailable, and QUALIFY abstains.
  */
-export const JUDGE_EVIDENCE = ['text', 'videoFrame'] as const;
+export const JUDGE_EVIDENCE = ['text', 'picture', 'videoFrame'] as const;
 export type JudgeEvidence = (typeof JUDGE_EVIDENCE)[number];
 
 /**
