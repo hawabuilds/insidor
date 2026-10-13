@@ -10,7 +10,8 @@
  * ★ A FIXED HALF IS HELD BACK, BY THE POST ID ALONE. Each non-meme and each missed post is put in
  * the examples or in the test by a hash of its id, so a test is always made of posts the judge was
  * never shown; a test made of the examples would grade nothing. Memes the owner tapped or labelled
- * all go in: the gold set is the test for "yes".
+ * may all go in. And nothing is dropped: a call the cap leaves out of the block is tested instead
+ * (non-memes with the live non-memes, memes with gold), so every tap is used every run.
  *
  * ★ THE OWNER'S NEWEST CALL WINS. A post tapped "not" after the labels file said "meme" is a "not";
  * a missed post the owner later tapped "not" is a "not". One post, one call, one place in the block.
@@ -68,6 +69,10 @@ export interface Block {
   /** Held back to test the block: non-memes and missed posts, by `isExample`. */
   readonly testNegatives: readonly OwnerCall[];
   readonly testMissed: readonly OwnerCall[];
+  /** The owner's own "meme" calls (taps, the labels file) the cap left out of the block: tested as gold. */
+  readonly testMemes: readonly OwnerCall[];
+  /** The owner's taps, counted: in the block, or in the test. Every tap is one or the other. */
+  readonly taps: { readonly taught: number; readonly tested: number };
   /** What it learned from, counted in the block. */
   readonly used: { readonly taps: number; readonly missed: number; readonly labels: number; readonly names: number };
 }
@@ -118,11 +123,16 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
     ...(nameCalls.length === 0 ? [] : ['', 'NAMES — the owner\'s calls on names suggested for posts; name the way the owner does:', ...nameCalls.map(nameLine)]),
   ];
   const inBlock = [...yes, ...no];
+  const taught = new Set(inBlock.map((p) => p.itemId));
   return {
     text: lines.join('\n'),
     exampleIds: inBlock.map((p) => p.itemId),
-    testNegatives: current.filter((c) => c.label === 'not' && !isExample(c.itemId)),
-    testMissed: current.filter((c) => c.label === 'meme' && isMissed(c) && !isExample(c.itemId)),
+    /* ★ NO CALL IS DROPPED. A call on the taught side of the split that the cap left out goes to
+       the test, so every label the owner taps is used each run: as an example, or tested. */
+    testNegatives: current.filter((c) => c.label === 'not' && !taught.has(c.itemId)),
+    testMissed: current.filter((c) => c.label === 'meme' && isMissed(c) && !taught.has(c.itemId)),
+    testMemes: current.filter((c) => c.label === 'meme' && !isMissed(c) && !taught.has(c.itemId)),
+    taps: { taught: inBlock.filter((p) => p.from === 'tap').length, tested: current.filter((c) => c.from === 'tap' && !taught.has(c.itemId)).length },
     used: {
       taps: inBlock.filter((p) => p.from === 'tap').length,
       missed: inBlock.filter(isMissed).length,
