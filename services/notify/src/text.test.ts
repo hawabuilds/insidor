@@ -73,3 +73,7 @@ test("a re-tune summary carries the order model's refit: each signal's weight, a
   assert.match(alertText('retune_summary', { applied: true, orderApplied: false, orderWhy: 'the order model could not be fitted: timeout' }).body, /Order model kept: the order model could not be fitted: timeout\.$/);
   assert.doesNotMatch(alertText('retune_summary', { applied: true }).body, /Order model/, 'no refit in the facts, no sentence');
 });
+
+test('a re-tune summary counts the taps it tested as well as the ones it taught', () => {
+  assert.match(alertText('retune_summary', { applied: false, taps: 58, tapsTested: 121, missed: 5, names: 0, added: 1, removed: 0 }).body, /From 58 taps \(121 more taps tested\), 5 missed posts/);
+});

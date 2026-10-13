@@ -36,6 +36,17 @@ test('balanced and capped: a short side leaves its room to the other, newest fir
   assert.deepEqual(nots.filter((n) => b.exampleIds.includes(n.itemId)).map((n) => n.itemId).sort(), newest.sort(), 'the newest no examples of the taught half');
 });
 
+test('★ no tap is dropped: a call the cap leaves out of the block is tested instead', () => {
+  const memes = ids(30, 'm').map((id, i) => call(id, 'meme', 'tap', i));
+  const nots = ids(400, 'n').map((id, i) => call(id, 'not', 'tap', i));
+  const b = buildBlock([...memes, ...nots], [], 20);
+  assert.equal(b.exampleIds.length, 20);
+  assert.equal(b.taps.taught + b.taps.tested, 430, 'every tap is an example or tested');
+  const used = new Set([...b.exampleIds, ...b.testNegatives.map((c) => c.itemId), ...b.testMemes.map((c) => c.itemId)]);
+  for (const c of [...memes, ...nots]) assert.ok(used.has(c.itemId), c.itemId);
+  for (const c of [...b.testNegatives, ...b.testMemes]) assert.ok(!b.exampleIds.includes(c.itemId), 'never both taught and tested');
+});
+
 test("missed posts are split like non-memes: half taught, half held back to test", () => {
   const missed = ids(30, 'k').map((id) => call(id, 'meme', 'missed'));
   const b = buildBlock(missed, [], 120);
