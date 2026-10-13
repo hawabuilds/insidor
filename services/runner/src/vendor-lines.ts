@@ -9,6 +9,10 @@
  * What breaks if changed carelessly: a vendor missing here falls back to the default per-source
  * line, which is far below the owner's line for the big suppliers — so the symptom is a source
  * refused from mid-morning, not an overspend.
+ *
+ * `supplierRoles` is the same four suppliers named by role, for the owner's warnings: a warning
+ * says "judge", never the vendor's name, and it is built here so a supplier added to the lines
+ * cannot be missed by the warnings.
  */
 
 import type { Policy } from '@insidor/contracts/policy.ts';
@@ -37,4 +41,19 @@ export function vendorLines(policy: Policy): Readonly<Record<string, number>> {
     [JUDGE_VENDOR]: lines.judge,
     [EMBED_VENDOR]: lines.embeddings,
   };
+}
+
+/** The role a supplier's line is warned under, and the vendor token its spend is metered as. */
+export interface SupplierRole {
+  readonly role: 'posts' | 'judge' | 'short video' | 'pictures';
+  readonly vendor: string;
+}
+
+export function supplierRoles(): readonly SupplierRole[] {
+  return [
+    { role: 'posts', vendor: SUPPLIER_VENDORS.posts },
+    { role: 'judge', vendor: JUDGE_VENDOR },
+    { role: 'short video', vendor: SUPPLIER_VENDORS.video },
+    { role: 'pictures', vendor: EMBED_VENDOR },
+  ];
 }
