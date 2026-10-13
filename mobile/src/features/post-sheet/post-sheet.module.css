@@ -1,6 +1,24 @@
-/* The post sheet: a bottom sheet over whichever screen opened it, sized to one phone screen. */
+/*
+ * The post sheet and Choose coin: a bottom sheet over whichever screen opened it, sized so a video
+ * post, a picture post and a text post each fit a 390 by 844 screen without scrolling.
+ *
+ * The owner's colours for this flow are set once at the top as custom properties (Trador's purple,
+ * ink and lavender, the grey labels, and the green and red of a price move) and used by name below.
+ * Every touch target is at least 44px. What breaks if changed carelessly: the vertical sizes. The
+ * sheet is measured to fit one screen; a few pixels added to a row here pushes the coin area into
+ * a scroll on a phone, which the design forbids.
+ */
 
 .scrim {
+  --ps-purple: #9945ff;
+  --ps-ink: #111116;
+  --ps-mist: #f4eeff;
+  --ps-grey: #8b8794;
+  --ps-up: #2fd47a;
+  --ps-down: #ff5c5c;
+  --ps-panel: #1b1a21;
+  --ps-panel-2: #24232b;
+  --badge-ring: var(--ps-panel);
   position: fixed;
   inset: 0;
   z-index: 60;
@@ -16,19 +34,721 @@
   position: relative;
   width: 100%;
   max-width: 520px;
-  max-height: calc(100dvh - var(--safe-top) - 24px);
+  max-height: calc(100dvh - var(--safe-top) - 12px);
   overflow-y: auto;
-  padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
-  border-radius: 28px 28px 0 0;
-  background: var(--popup);
+  padding: 0 16px calc(14px + env(safe-area-inset-bottom));
+  border-radius: 30px 30px 0 0;
+  background: var(--ps-ink);
   box-shadow: var(--shadow-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gripButton {
+  align-self: center;
+  width: 88px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
 }
 
 .grip {
   display: block;
   width: 36px;
   height: 4px;
-  margin: 0 auto 10px;
   border-radius: 2px;
-  background: var(--border);
+  background: #3a3942;
+}
+
+.note {
+  margin: 0;
+  color: var(--ps-grey);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.label {
+  color: var(--ps-grey);
+  font-size: 13px;
+}
+
+.up {
+  color: var(--ps-up);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.down {
+  color: var(--ps-down);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.upText {
+  color: var(--ps-up);
+}
+
+/* ── the post card ─────────────────────────────────────────────────── */
+
+.postCard {
+  background: var(--ps-panel);
+  border-radius: 22px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.avatar {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.avatar > span[title] {
+  right: -4px;
+  bottom: -4px;
+  width: 20px;
+  height: 20px;
+}
+
+.avatar > span[title] svg {
+  width: 10px;
+  height: 10px;
+}
+
+.avatarImg,
+.avatarLetter {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  background: var(--ps-panel-2);
+  color: var(--ps-mist);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.whoText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.name {
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.byline {
+  display: flex;
+  gap: 6px;
+  color: var(--ps-grey);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.round {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--ps-panel-2);
+  color: var(--ps-mist);
+  text-decoration: none;
+}
+
+.roundOn {
+  background: var(--ps-purple);
+  color: #fff;
+}
+
+.text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── media ─────────────────────────────────────────────────────────── */
+
+.media {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #000;
+}
+
+.mediaImg,
+.mediaVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.bigPlay {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 70%);
+  color: #fff;
+}
+
+.controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  background: linear-gradient(to top, rgb(0 0 0 / 65%), transparent);
+}
+
+.ctl {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.ctlDot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 55%);
+}
+
+.track {
+  flex: 1;
+  height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.trackBar {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 30%);
+  overflow: hidden;
+}
+
+.trackFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #fff;
+}
+
+.clock {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+
+/* ── views ─────────────────────────────────────────────────────────── */
+
+.views {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.viewsLeft {
+  display: flex;
+  flex-direction: column;
+}
+
+.viewsLine {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.bigNumber {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.viewsLine .up,
+.viewsLine .down {
+  font-size: 15px;
+}
+
+.tags {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+
+.tag,
+.tagFound {
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: var(--ps-panel-2);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tagFound {
+  background: rgb(153 69 255 / 22%);
+  color: var(--ps-mist);
+}
+
+/* ── chart ─────────────────────────────────────────────────────────── */
+
+.chart {
+  padding: 0 4px;
+}
+
+.chartRow {
+  display: flex;
+  gap: 8px;
+}
+
+.plot {
+  position: relative;
+  flex: 1;
+}
+
+.plotSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.grid {
+  stroke: rgb(255 255 255 / 9%);
+  stroke-width: 1;
+}
+
+.marker {
+  stroke: rgb(244 238 255 / 55%);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.line {
+  fill: none;
+  stroke: var(--ps-purple);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.markDot,
+.lastDot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: 0 0 -5px -5px;
+  border-radius: 50%;
+  background: var(--ps-mist);
+}
+
+.lastDot {
+  width: 14px;
+  height: 14px;
+  margin: 0 0 -7px -7px;
+  background: var(--ps-purple);
+  box-shadow: 0 0 0 3px rgb(153 69 255 / 30%);
+}
+
+.axis {
+  position: relative;
+  color: var(--ps-grey);
+  font-size: 11px;
+  min-width: 34px;
+}
+
+.axis span {
+  position: absolute;
+  left: 0;
+  transform: translateY(-50%);
+}
+
+.axis span:nth-child(1) {
+  top: 0;
+}
+
+.axis span:nth-child(2) {
+  top: 50%;
+}
+
+.axis span:nth-child(3) {
+  top: 100%;
+}
+
+.times {
+  display: flex;
+  justify-content: space-between;
+  margin: 6px 42px 0 0;
+  color: var(--ps-grey);
+  font-size: 11px;
+}
+
+/* ── tiles ─────────────────────────────────────────────────────────── */
+
+.tiles {
+  display: flex;
+  gap: 8px;
+}
+
+.tile {
+  flex: 1;
+  min-width: 0;
+  max-width: calc((100% - 16px) / 3);
+  padding: 9px 12px;
+  border-radius: 18px;
+  background: var(--ps-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  min-height: 56px;
+}
+
+.tileLink {
+  cursor: pointer;
+}
+
+.tileValue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 17px;
+  font-weight: 800;
+  min-width: 0;
+}
+
+.tileValue svg {
+  flex-shrink: 0;
+  color: var(--ps-grey);
+}
+
+.clip {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── the coin area ─────────────────────────────────────────────────── */
+
+.coinArea {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.coinHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+  color: var(--ps-grey);
+  font-size: 13px;
+}
+
+.coinHead span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coinHead span:last-child {
+  text-align: right;
+}
+
+.coinRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 10px;
+  border-radius: 20px;
+  background: var(--ps-panel);
+  cursor: pointer;
+  min-height: 60px;
+}
+
+.coinText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ticker {
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coinSub {
+  display: flex;
+  gap: 6px;
+  color: var(--ps-grey);
+  font-size: 13px;
+}
+
+.coinNums {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.cap {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.buy,
+.bolted {
+  min-width: 72px;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: var(--ps-purple);
+  color: #fff;
+  font-weight: 800;
+  font-size: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.bolted {
+  font-size: 15px;
+  padding: 0 12px;
+}
+
+.pair {
+  display: flex;
+  gap: 8px;
+}
+
+.dark {
+  flex: 1;
+  height: 48px;
+  border-radius: 18px;
+  background: var(--ps-panel);
+  color: var(--ps-mist);
+  font-weight: 800;
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.wide {
+  width: 100%;
+  flex: none;
+  margin-top: auto;
+}
+
+.stack {
+  display: inline-flex;
+}
+
+.stackItem {
+  display: inline-flex;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--ps-panel);
+}
+
+.stackItem + .stackItem {
+  margin-left: -9px;
+}
+
+/* ── Choose coin ───────────────────────────────────────────────────── */
+
+.choose {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: calc(100dvh - var(--safe-top) - 60px);
+}
+
+.chooseHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chooseTitle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chooseTitle b {
+  font-size: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chooseTitle span {
+  color: var(--ps-grey);
+  font-size: 13px;
+}
+
+.chip {
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ps-purple);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.chip span {
+  color: var(--ps-grey);
+}
+
+.bolt {
+  color: var(--ps-purple);
+}
+
+.panel {
+  position: absolute;
+  top: 54px;
+  right: 0;
+  left: 28px;
+  z-index: 2;
+  padding: 14px;
+  border-radius: 22px;
+  background: var(--ps-panel);
+  border: 1px solid #2e2d36;
+  box-shadow: var(--shadow-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panelScrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.choices {
+  display: flex;
+  gap: 8px;
+}
+
+.choices button {
+  flex: 1;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--ps-panel-2);
+  font-weight: 700;
+  border: 1.5px solid transparent;
+}
+
+.choices .choiceOn {
+  border-color: var(--ps-purple);
+  background: rgb(153 69 255 / 18%);
+}
+
+.panelNote {
+  margin: 2px 0 0;
+  color: var(--ps-grey);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.banner {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: var(--ps-panel);
+  color: var(--ps-grey);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.chooseList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── the toast ─────────────────────────────────────────────────────── */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 90;
+  max-width: calc(100% - 32px);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: #1f1e26;
+  box-shadow: var(--shadow-panel);
+  color: var(--ps-mist, #f4eeff);
+  font-size: 14px;
+}
+
+.toast a {
+  color: #b688ff;
+  font-weight: 700;
+  white-space: nowrap;
 }

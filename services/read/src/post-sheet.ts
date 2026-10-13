@@ -230,7 +230,8 @@ export function createPostSheet(deps: PostSheetDeps) {
       },
       foundAt: instant(ms(row['first_seen_at']), 'not_reported'),
       media: sheetMedia(row['media']),
-      narrative: storyId === null ? null : { storyId, title: str(storyRow?.['story_id']) === storyId ? str(storyRow?.['title']) : str((await deps.db.query(SHEET_TITLE_SQL, [storyId]))[0]?.['title']) },
+      /* `story` on the wire, as coin-about.ts sends it: the app's censor refuses the other word as a key. */
+      story: storyId === null ? null : { storyId, title: str(storyRow?.['story_id']) === storyId ? str(storyRow?.['title']) : str((await deps.db.query(SHEET_TITLE_SQL, [storyId]))[0]?.['title']) },
       coinName: sharedName(coins),
       sourcesMissing: marketDown ? 1 : 0,
       coins,
