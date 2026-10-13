@@ -143,10 +143,12 @@ function feedOperators(query: DiscoveryQuery): string[] {
   }
   const out = [`min_faves:${filter.minApproval}`];
   if (filter.mediaOnly) out.push('filter:media');
-  if (filter.lang !== null) {
-    if (!/^[a-z]{2,3}$/.test(filter.lang)) throw new NotImplemented('x:discover:catchall', `no such language code: ${filter.lang}`);
-    out.push(`lang:${filter.lang}`);
+  for (const lang of filter.langs) {
+    if (!/^[a-z]{2,3}$/.test(lang)) throw new NotImplemented('x:discover:catchall', `no such language code: ${lang}`);
   }
+  /* One code is a bare operator; several are one OR group, so a post in any of them matches. */
+  if (filter.langs.length === 1) out.push(`lang:${filter.langs[0]}`);
+  else if (filter.langs.length > 1) out.push(`(${filter.langs.map((l) => `lang:${l}`).join(' OR ')})`);
   if (filter.originalsOnly) out.push('-filter:replies', '-filter:retweets');
   return out;
 }

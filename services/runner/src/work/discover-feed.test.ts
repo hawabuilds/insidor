@@ -125,7 +125,7 @@ test('★ with no terms, a source with a catch-all search is asked both lanes, w
     assert.equal(q.term, '');
     assert.equal(q.untilMs, NOW, 'the window ends now');
     assert.equal(q.sinceMs, NOW - DEFAULT_POLICY.feed.windowMin * 60_000);
-    assert.equal(q.filter?.lang, DEFAULT_POLICY.feed.lang);
+    assert.deepEqual(q.filter?.langs, DEFAULT_POLICY.feed.langs);
     assert.equal(q.filter?.originalsOnly, true);
   }
   assert.deepEqual(seen.map((q) => q.filter?.mediaOnly), [false, true]);
