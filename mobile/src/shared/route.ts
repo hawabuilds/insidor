@@ -10,6 +10,12 @@
  * `#/sample/…` pages are gone with the sample data; a saved link to one opens the feed rather
  * than sending a made-up id to the real service.
  *
+ * ★ THE FEED TAB IS `alerts` IN CODE AND `#/feed` ON SCREEN. The tab people call Feed was called
+ * Alerts until it was rebuilt as Trador's Feed; its route value kept the old name because `feed`
+ * already means the For you screen at `#/`. Its links say `#/feed`, and every link written before
+ * the rename (`#/alerts`, `#/alerts/settings`, `#/calls`, which are in pushes already on phones)
+ * still opens it.
+ *
  * WHAT BREAKS IF THIS IS CHANGED CARELESSLY: `hrefFor` and `parseRoute` must stay inverse.
  * The tests assert the round trip for every screen; a route that parses but cannot be built,
  * or the reverse, is a link that lands somewhere else.
@@ -25,6 +31,7 @@ export type Route =
   | { readonly screen: 'search' }
   /* A coin opened from search: no narrative around it, so none in the route. */
   | { readonly screen: 'token'; readonly coinId: string }
+  /* The Feed tab (see above). */
   | { readonly screen: 'alerts' }
   | { readonly screen: 'portfolio' }
   /* How Insidor works, from the profile menu: part of the Portfolio tab. */
@@ -65,7 +72,11 @@ export function parseRoute(hash: string): Route {
     return FEED;
   }
   if (head === 'token' && id !== undefined && sub === undefined) return { screen: 'token', coinId: id };
-  if (head === 'alerts' && id === 'settings' && sub === undefined) return { screen: 'alert-settings' };
+  if ((head === 'feed' || head === 'alerts') && sub === undefined) {
+    if (id === undefined) return { screen: 'alerts' };
+    if (id === 'settings') return { screen: 'alert-settings' };
+    return FEED;
+  }
   if (head === 'u' && id !== undefined && coinId === undefined) {
     if (sub === undefined) return { screen: 'profile', key: id };
     if (sub === 'followers' || sub === 'following') return { screen: 'follows', key: id, which: sub };
@@ -78,7 +89,6 @@ export function parseRoute(hash: string): Route {
       return FEED;
     case 'narratives':
     case 'search':
-    case 'alerts':
     case 'portfolio':
     case 'learn':
     case 'leaderboard':
@@ -110,8 +120,10 @@ export function hrefFor(route: Route): string {
       return `#/u/${enc(route.key)}`;
     case 'follows':
       return `#/u/${enc(route.key)}/${route.which}`;
+    case 'alerts':
+      return '#/feed';
     case 'alert-settings':
-      return '#/alerts/settings';
+      return '#/feed/settings';
     default:
       return `#/${route.screen}`;
   }

@@ -1,5 +1,6 @@
 /**
- * THE ALERTS TAB — Trador's notifications screen: everything that happened to your coins, the
+ * THE FEED TAB (called Alerts until it took Trador's Feed name; its files keep the old name because
+ * `features/feed` is the For you screen) — Trador's notifications screen: everything that happened to your coins, the
  * narratives you watch and your comments, grouped Today, This week, Earlier, with what is new
  * since you last looked highlighted. Opening it marks everything read, as Trador does.
  *
@@ -45,14 +46,14 @@ export function AlertsScreen({ onSeen }: { onSeen: () => void }) {
   return (
     <section className={styles['screen']}>
       <header className={styles['top']}>
-        <h1 className={styles['title']}>Alerts</h1>
-        <a className={styles['gear']} href={hrefFor({ screen: 'alert-settings' })} aria-label="Alert settings">
+        <h1 className={styles['title']}>Feed</h1>
+        <a className={styles['gear']} href={hrefFor({ screen: 'alert-settings' })} aria-label="Feed settings">
           <GearIcon size={20} />
         </a>
       </header>
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
-      {loaded.state === 'failed' ? <p className={styles['note']}>Your alerts couldn't be read just now.</p> : null}
-      {loaded.state === 'ready' && loaded.value.alerts.length === 0 ? <p className={styles['note']}>No alerts yet. Alerts about your coins, the narratives you watch and replies to you land here.</p> : null}
+      {loaded.state === 'failed' ? <p className={styles['note']}>Your feed couldn't be read just now.</p> : null}
+      {loaded.state === 'ready' && loaded.value.alerts.length === 0 ? <p className={styles['note']}>Nothing yet. News about your coins, the narratives you watch and replies to you land here.</p> : null}
       {loaded.state === 'ready'
         ? grouped(loaded.value.alerts, now).map((g) => (
             <div key={g.section}>

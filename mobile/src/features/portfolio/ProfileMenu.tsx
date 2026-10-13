@@ -12,7 +12,7 @@
  *   import a wallet        kept (#/import): a warning, then the key from a box straight into the
  *                          provider's SDK (@insidor/wallet-embedded KeyImport), never our servers
  *   link a wallet          ours (#/wallets): Phantom joined through the provider's window, view only
- *   notifications          kept: the alert settings (#/alerts/settings)
+ *   notifications          kept: the Feed settings (#/feed/settings)
  *   leaderboard, profile   ours: the season's ranks, and your own profile
  *   learn the basics       kept, as How Insidor works (#/learn)
  *   add missed posts       ours, the owner only: a sheet of its own (features/missed/MissedPosts.tsx),

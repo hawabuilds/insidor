@@ -53,9 +53,10 @@ export const SearchIcon = (p: IconProps) => (
   </Stroke>
 );
 
+/* The Feed tab's glyph, Trador's Feed tab's own: a rounded speech bubble with its tail at the bottom left. */
 export const ChatIcon = (p: IconProps) => (
   <Stroke {...p}>
-    <path d="M20 11.5a7.5 7.5 0 0 1-11 6.6L4 19.5l1.4-4.4A7.5 7.5 0 1 1 20 11.5z" />
+    <path d="M4.5 17.5V7a2.5 2.5 0 0 1 2.5-2.5h10A2.5 2.5 0 0 1 19.5 7v6a2.5 2.5 0 0 1-2.5 2.5H9l-4.5 3.5z" />
   </Stroke>
 );
 

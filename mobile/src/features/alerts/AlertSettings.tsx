@@ -1,6 +1,6 @@
 /**
- * ALERT SETTINGS — Trador's NotificationSettings, with Insidor's alerts and the hourly limit it
- * lacked: this phone's push switch, mute, one switch per kind of alert, the multiples that count,
+ * FEED SETTINGS (once Alert settings) — Trador's NotificationSettings, with Insidor's kinds and the
+ * hourly limit it lacked: this phone's push switch, mute, one switch per kind of alert, the multiples that count,
  * quiet hours, pushes per hour, and the Add to Home Screen guide where the phone needs it.
  *
  * ★ THE SERVER'S STATE IS SAID, NOT HIDDEN. If the alert service has push off (NOTIFY) or no keys,
@@ -43,7 +43,7 @@ export function AlertSettings() {
       <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
         <BackIcon size={22} />
       </button>
-      <h1 className={styles['title']}>Alert settings</h1>
+      <h1 className={styles['title']}>Feed settings</h1>
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {loaded.state === 'failed' ? <p className={styles['note']}>Your settings couldn't be read just now.</p> : null}
       {loaded.state === 'ready' ? <Body initial={loaded.value} /> : null}
@@ -81,7 +81,7 @@ function Body({ initial }: { initial: Settings }) {
     if (r === 'failed') toast("Couldn't turn notifications on", 'Try again in a moment.');
   };
   const test = async () => {
-    const r = await sendTestPush().catch(() => ({ sent: 0, why: 'The alert service could not be reached.' }));
+    const r = await sendTestPush().catch(() => ({ sent: 0, why: 'Notifications could not be reached just now.' }));
     toast(r.sent > 0 ? 'Test sent' : 'Nothing sent', r.why ?? 'Check your phone.');
   };
   const serverPush = s.push.on && s.push.configured;
@@ -104,17 +104,17 @@ function Body({ initial }: { initial: Settings }) {
           <span>On iPhone, Safari only delivers notifications to apps on the Home Screen.</span>
         </div>
       ) : null}
-      {place === 'unsupported' ? <p className={styles['note']}>This browser can't show push notifications. Alerts still land in your list.</p> : null}
-      {!serverPush ? <p className={styles['note']}>Alerts are listed here, but this server is not sending pushes yet.</p> : null}
+      {place === 'unsupported' ? <p className={styles['note']}>This browser can't show push notifications. Everything still lands in your feed.</p> : null}
+      {!serverPush ? <p className={styles['note']}>Your feed fills in here, but this server is not sending pushes yet.</p> : null}
 
       {place === 'ready' && serverPush ? (
         <div className={styles['set']}>
           <div className={styles['setRow']}>
             <div>
-              <b>Push notifications</b>
-              <span>{device === 'denied' ? 'Blocked in your browser settings: allow it there.' : device === 'on' ? 'This phone gets your alerts.' : 'Get your alerts on this phone.'}</span>
+              <b>Feed notifications</b>
+              <span>{device === 'denied' ? 'Blocked in your browser settings: allow it there.' : device === 'on' ? 'This phone gets your feed notifications.' : 'Turn on feed notifications on this phone.'}</span>
             </div>
-            {device !== 'denied' ? <Switch on={device === 'on'} label="Push notifications" onChange={(on) => void togglePush(on)} /> : null}
+            {device !== 'denied' ? <Switch on={device === 'on'} label="Feed notifications" onChange={(on) => void togglePush(on)} /> : null}
           </div>
           {device === 'on' ? <button type="button" className={styles['link']} onClick={() => void test()}>Send a test push</button> : null}
         </div>
@@ -141,7 +141,7 @@ function Body({ initial }: { initial: Settings }) {
               <Switch on={p.on[r.key]} label={r.label} onChange={(on) => void save({ ...p, on: { ...p.on, [r.key]: on } })} />
             </div>
             {r.key === 'holdings' ? (
-              <div className={styles['chips']} role="group" aria-label="Multiples that alert">
+              <div className={styles['chips']} role="group" aria-label="Multiples that notify you">
                 {s.multiplesOffered.map((m) => (
                   <button key={m} type="button" aria-pressed={p.multiples.includes(m)} className={p.multiples.includes(m) ? styles['chipOn'] : styles['chip']} onClick={() => multiple(m)}>
                     {m}x
@@ -157,7 +157,7 @@ function Body({ initial }: { initial: Settings }) {
         <div className={styles['setRow']}>
           <div>
             <b>Pushes per hour</b>
-            <span>Past this, alerts wait in your list.</span>
+            <span>Past this, the rest wait in your feed.</span>
           </div>
           <div className={styles['stepper']}>
             {p.perHour > 1 ? <button type="button" aria-label="Fewer" onClick={() => void save({ ...p, perHour: p.perHour - 1 })}>−</button> : <span />}
@@ -168,7 +168,7 @@ function Body({ initial }: { initial: Settings }) {
         <div className={styles['setRow']}>
           <div>
             <b>Quiet hours</b>
-            <span>{p.quietStart !== null && p.quietEnd !== null ? `${p.quietStart} to ${p.quietEnd}, ${p.timezone}. Alerts are listed, not pushed.` : 'Off'}</span>
+            <span>{p.quietStart !== null && p.quietEnd !== null ? `${p.quietStart} to ${p.quietEnd}, ${p.timezone}. They land in your feed, not as pushes.` : 'Off'}</span>
           </div>
           <Switch
             on={p.quietStart !== null}
