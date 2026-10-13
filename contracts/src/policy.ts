@@ -2428,8 +2428,9 @@ const POLICY_V1: Policy = {
     maxSlippageBps: 1_500,
     platformFeeBps: 0,
     probeSol: 0.001,
-    /* 2 SOL: the largest preset the founders chose for a dev buy. Lower it for a first test. */
-    maxDevBuySol: 2,
+    /* 0.05 SOL, the same as a buy: a first launch is a test of the plumbing, not a position. The
+       founders' presets go to 2 SOL; the app offers only those at or under this cap. */
+    maxDevBuySol: 0.05,
   },
 
   social: {

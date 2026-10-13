@@ -58,10 +58,10 @@ test('the ticker words in the server\'s three answers', () => {
   assert.equal(tickerUseLine({ kind: 'taken', count: 10, more: true }), 'Taken by 10+ coins');
 });
 
-test('★ dev buy presets are Trador\'s 0, 0.5, 1, 2, start at 0, and one above the cap is not offered', () => {
+test('★ dev buy presets start at 0, none is above the 0.05 SOL cap, and one above the cap is not offered', () => {
   assert.equal(DEV_BUY_DEFAULT, 0);
-  assert.deepEqual(presetsWithin(2_000_000_000n), [0, 0.5, 1, 2]);
-  assert.deepEqual(presetsWithin(1_000_000_000n), [0, 0.5, 1]);
+  assert.deepEqual(presetsWithin(50_000_000n), [0, 0.01, 0.02, 0.05]);
+  assert.deepEqual(presetsWithin(20_000_000n), [0, 0.01, 0.02]);
   assert.deepEqual(presetsWithin(0n), [0]);
 });
 
