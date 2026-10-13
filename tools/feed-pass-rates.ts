@@ -11,7 +11,12 @@
  *              these should FAIL
  *
  * `--text-only` withholds the pictures, to measure what the judge did before it was shown them.
- * Results go to var/pass-rates-<label>.json; the summary is printed.
+ * `--refresh-pictures` first re-reads each gold origin post on X (a fraction of a cent) and records
+ * the picture the feed would show — a video's preview included — in eval/src/feed/
+ * gold-origin-pictures.json, which later runs use; the gold evidence kept still images only.
+ * The picture boost is applied as the projector applies it: each post's picture against the
+ * coined pictures (internal.coined_picture), a gold post never against its OWN coin's picture.
+ * `--no-boost` leaves it out. Results go to var/pass-rates-<label>.json; the summary is printed.
  *
  * Separate from gold-rejudge because it measures the feed's gate on both sides at once: a prompt
  * that lets fewer non-memes through is only better if it does not shut out the coins too.
@@ -20,7 +25,7 @@
  * own "yes" examples must stay out of it — a test made of the prompt's examples grades nothing.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
@@ -30,6 +35,10 @@ import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } f
 import { tuning } from '../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../eval/src/gold/coin-evidence.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
+import { xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
+import { voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
+import { asDb, createPool, DB_ROLE } from '../store/src/index.ts';
+import { pictureOf } from '../services/project/src/db.ts';
 
 const P = DEFAULT_POLICY;
 const USD_PER_POST = 0.01;
@@ -47,9 +56,26 @@ if (price === null) throw new Error(`JUDGE_MODEL ${setup.model} has no price`);
 
 interface Post { readonly group: 'gold' | 'non-meme'; readonly id: string; readonly kind: string; readonly text: string; readonly imageUri: string | null }
 const evidence = loadEvidence();
+const PICTURES = new URL('../eval/src/feed/gold-origin-pictures.json', import.meta.url);
+if (process.argv.includes('--refresh-pictures')) {
+  const ids = tuning().flatMap((c) => {
+    const p = evidence.get(c.id)?.origin?.post ?? null;
+    return p === null ? [] : [p.postId];
+  });
+  const shared = await openSharedMeter(0.05);
+  const x = xPlatform({ client: xClient({ apiKey: process.env['X_API_KEY'] ?? '', baseUrl: process.env['X_API_BASE'] ?? 'https://api.twitterapi.io', fetch: globalThis.fetch }), meter: shared.meter, now: () => Date.now() });
+  const line = shared.meter.line();
+  const read = await x.lookup!(ids, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
+  const pictures: Record<string, string | null> = {};
+  for (const item of read.value.items) pictures[item.sourceItemId] = pictureOf(item.media)?.uri ?? null;
+  await shared.close();
+  writeFileSync(PICTURES, `${JSON.stringify({ about: 'Each gold origin post\'s picture as the feed would show it (a video\'s preview included), re-read on X by tools/feed-pass-rates.ts --refresh-pictures.', readAt: new Date().toISOString().slice(0, 10), pictures }, null, 1)}\n`);
+  console.log(`re-read ${read.value.items.length} of ${ids.length} origin posts; ${Object.values(pictures).filter(Boolean).length} with a picture.`);
+}
+const recorded = existsSync(PICTURES) ? (JSON.parse(readFileSync(PICTURES, 'utf8')) as { pictures: Record<string, string | null> }).pictures : {};
 const gold: Post[] = tuning().flatMap((c) => {
   const post = evidence.get(c.id)?.origin?.post ?? null;
-  return post === null ? [] : [{ group: 'gold' as const, id: c.id, kind: 'origin', text: post.text, imageUri: post.imageUri }];
+  return post === null ? [] : [{ group: 'gold' as const, id: c.id, kind: 'origin', text: post.text, imageUri: recorded[post.postId] ?? post.imageUri }];
 });
 const sample = JSON.parse(readFileSync(new URL('../eval/src/feed/non-meme-sample.json', import.meta.url), 'utf8')) as { posts: { itemId: string; kind: string; text: string; imageUri: string | null }[] };
 const nonMeme: Post[] = sample.posts.map((p) => ({ group: 'non-meme', id: p.itemId, kind: p.kind, text: p.text, imageUri: p.imageUri }));
@@ -63,8 +89,34 @@ const judge = anthropicJudge({
     timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
     maxFrameBytes: P.judge.maxFrameBytes, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   }),
-  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1,
+  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post',
 });
+
+/* The coined pictures, and each post's own picture embedded, for the boost. */
+const BOOST = !process.argv.includes('--no-boost') && !TEXT_ONLY;
+const coined: { coinRef: string; uri: string; v: number[] }[] = [];
+const postVectors = new Map<string, number[] | null>();
+if (BOOST) {
+  const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'] }, applicationName: 'insidor-pass-rates' });
+  for (const r of await asDb(pool).query<{ coin_ref: string; uri: string; embedding: string }>('select coin_ref, uri, embedding::text as embedding from internal.coined_picture')) {
+    coined.push({ coinRef: r.coin_ref, uri: r.uri, v: JSON.parse(r.embedding) as number[] });
+  }
+  await pool.end();
+  const embed = voyageEmbed({ client: voyageClient({ apiKey: (process.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: process.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter, now: Date.now });
+  for (const p of posts) {
+    if (p.imageUri === null || postVectors.has(p.imageUri)) continue;
+    const line = meter.line();
+    const r = await embed.embedMedia!([{ kind: 'image', uri: p.imageUri, width: null, height: null, durationMs: null }], { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: 1, deadline: Date.now() + 60_000 });
+    const v = r.value[0];
+    postVectors.set(p.imageUri, v === null || v === undefined ? null : Array.from(v.values));
+  }
+}
+const similarityOf = (p: Post): number | null => {
+  const v = p.imageUri === null ? null : (postVectors.get(p.imageUri) ?? null);
+  if (v === null) return null;
+  const others = coined.filter((c) => c.coinRef !== p.id && c.uri !== p.imageUri);
+  return others.length === 0 ? null : Math.max(...others.map((c) => c.v.reduce((s, x, i) => s + x * (v[i] ?? 0), 0)));
+};
 
 const rows: (Post & { coinable: boolean | null; name: string | null; confidence: number | null; lookedAt: string | null; passes: boolean })[] = [];
 try {
@@ -80,7 +132,7 @@ try {
     const result = await judge.judge([subject], { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: 1, deadline: Date.now() + 120_000 });
     const o = result.value[0];
     const j = o?.kind === 'judged' ? o.judgement : null;
-    rows.push({ ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, passes: j !== null && postScore(j, P) === 'passes' });
+    rows.push({ ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, passes: j !== null && postScore(j, P, similarityOf(p)) === 'passes' });
   }
 } finally {
   await close();
