@@ -338,19 +338,3 @@
   box-shadow: inset 0 0 0 1px var(--border-subtle), 0 6px 18px -8px var(--brand-glow);
 }
 
-/* The bell's unread count, Trador's: hidden at zero, 9+ past nine. */
-.tabBadge {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: var(--brand);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 16px;
-  text-align: center;
-}

@@ -14,7 +14,8 @@
  * Alerts until it was rebuilt as Trador's Feed; its route value kept the old name because `feed`
  * already means the For you screen at `#/`. Its links say `#/feed`, and every link written before
  * the rename (`#/alerts`, `#/alerts/settings`, `#/calls`, which are in pushes already on phones)
- * still opens it.
+ * still opens it. The bell's list is `#/feed/notifications`; `#/feed/settings` opens that list
+ * with the settings sheet up, as Trador's `?settings=1` does.
  *
  * WHAT BREAKS IF THIS IS CHANGED CARELESSLY: `hrefFor` and `parseRoute` must stay inverse.
  * The tests assert the round trip for every screen; a route that parses but cannot be built,
@@ -31,8 +32,9 @@ export type Route =
   | { readonly screen: 'search' }
   /* A coin opened from search: no narrative around it, so none in the route. */
   | { readonly screen: 'token'; readonly coinId: string }
-  /* The Feed tab (see above). */
+  /* The Feed tab (see above), and the bell's list inside it. */
   | { readonly screen: 'alerts' }
+  | { readonly screen: 'notifications' }
   | { readonly screen: 'portfolio' }
   /* How Insidor works, from the profile menu: part of the Portfolio tab. */
   | { readonly screen: 'learn' }
@@ -75,6 +77,7 @@ export function parseRoute(hash: string): Route {
   if ((head === 'feed' || head === 'alerts') && sub === undefined) {
     if (id === undefined) return { screen: 'alerts' };
     if (id === 'settings') return { screen: 'alert-settings' };
+    if (id === 'notifications') return { screen: 'notifications' };
     return FEED;
   }
   if (head === 'u' && id !== undefined && coinId === undefined) {
@@ -100,6 +103,8 @@ export function parseRoute(hash: string): Route {
       return { screen: 'portfolio' };
     case 'calls':
       return { screen: 'alerts' };
+    case 'notifications':
+      return { screen: 'notifications' };
     default:
       return FEED;
   }
@@ -122,6 +127,8 @@ export function hrefFor(route: Route): string {
       return `#/u/${enc(route.key)}/${route.which}`;
     case 'alerts':
       return '#/feed';
+    case 'notifications':
+      return '#/feed/notifications';
     case 'alert-settings':
       return '#/feed/settings';
     default:
@@ -137,6 +144,7 @@ export function tabOf(route: Route): Tab {
       return 'feed';
     case 'token':
       return 'search';
+    case 'notifications':
     case 'alert-settings':
       return 'alerts';
     case 'learn':

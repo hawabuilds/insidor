@@ -1,110 +1,409 @@
-/* The Alerts tab and its settings: Trador's notifications screen and settings, in Insidor's tokens. */
+/*
+ * The Feed tab, its Notifications and the Feed settings sheet: Trador's Feed, Notifications and
+ * notification settings, measured from its Tailwind classes and written in Insidor's tokens (the
+ * same purple, washes and shadows). Kept in one module because the three screens share the
+ * header, the faces and the rows. What breaks if changed carelessly: the sticky header must stay
+ * opaque, or rows scroll visibly through the title.
+ */
 
-.screen {
-  padding: 12px var(--gutter) var(--tabbar-space);
+.page {
+  position: relative;
+  padding: 0 var(--gutter) var(--tabbar-space);
 }
 
-.top {
+/* Trador's StickyPageHeader: the safe area plus 26px, opaque, a soft shadow under it. */
+.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0 calc(-1 * var(--gutter));
+  padding: calc(26px + var(--safe-top)) var(--gutter) 0;
+  background: var(--bg);
+  box-shadow: 0 8px 24px -20px rgb(0 0 0 / 68%);
+}
+
+.titleRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  position: sticky;
-  top: var(--safe-top);
-  z-index: 2;
-  margin: 0 calc(-1 * var(--gutter));
-  padding: 8px var(--gutter);
-  background: var(--bg);
+  margin-bottom: 12px;
+}
+
+/* Notifications has no tabs under its title, so nothing to leave room for. */
+.titleOnly {
+  margin-bottom: 0;
 }
 
 .title {
-  margin: 6px 0 8px;
+  margin: 0;
   font-size: 28px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.03em;
+  color: var(--text-1);
 }
 
-.gear,
-.back {
-  width: 40px;
-  height: 40px;
+.iconButton {
+  position: relative;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
+  border-radius: 50%;
+  color: var(--text-2);
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.iconButton:hover {
+  background: var(--overlay-wash);
+  color: var(--text-1);
+}
+
+/* The bell's count: Trador's 18px brand pill at the top right, 9+ past nine. */
+.count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Trador's PanelTabs at md, start: labels together, 24px apart, a 2px brand rule under the current one. */
+.tabs {
+  display: flex;
+  gap: 24px;
+}
+
+.tab {
+  position: relative;
+  padding: 4px 0 10px;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-3);
+  transition: color 0.15s;
+}
+
+.tab:hover {
   color: var(--text-2);
 }
 
-.back {
-  margin-left: -8px;
+.tabOn {
   color: var(--text-1);
+  font-weight: 600;
 }
 
-.note {
-  color: var(--text-3);
-  font-size: 14px;
-  line-height: 1.5;
+.tabOn::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--brand);
 }
 
-.section {
-  margin: 18px 0 6px;
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.row {
+.windowRow {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0 -10px;
-  padding: 10px;
-  border-radius: 14px;
+  justify-content: flex-end;
+  padding: 12px 0 4px;
+}
+
+/* Trador's SegmentedToggle. */
+.segment {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--segment-track);
+  box-shadow: var(--shadow-inset-soft);
+}
+
+.segment button {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-3);
+  transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.segment .segmentOn {
+  background: var(--input);
   color: var(--text-1);
-  text-decoration: none;
+  box-shadow: var(--shadow-tab-active);
 }
 
-.unread {
-  background: rgb(153 69 255 / 12%);
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.coin {
+/* The row's face when it is not a coin or a rank: Trador's brand-wash circle. */
+.face {
   width: 40px;
   height: 40px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--card);
-  color: var(--text-2);
-  font-weight: 800;
+  background: var(--brand-wash);
+  color: var(--brand);
+  font-size: 15px;
+  font-weight: 600;
 }
 
-.text {
+/* A Feed row, Trador's FeedTradeRow: no box, the whole row opens it. */
+.feedRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 0;
+  color: var(--text-1);
+  text-decoration: none;
+  transition: background-color 0.15s;
+}
+
+.feedRow:hover {
+  background: var(--overlay-wash);
+}
+
+.feedText {
   min-width: 0;
   flex: 1;
 }
 
-.text b {
-  display: block;
-  font-size: 14.5px;
-  line-height: 1.3;
+.feedLine {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
-.text span {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  color: var(--text-3);
-  font-size: 13px;
-  line-height: 1.4;
+.feedTitle {
+  min-width: 0;
+  flex: 1;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--text-1);
+}
+
+.feedTitle b,
+.noteHead b {
+  font-weight: 600;
 }
 
 .age {
+  flex-shrink: 0;
+  font-size: 13px;
   color: var(--text-3);
-  font-size: 12px;
+}
+
+.feedDetail {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+/* Trador's loading rows. */
+.skeletonRow {
+  display: flex;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.skeletonRow > div {
+  flex: 1;
+}
+
+.skeletonFace,
+.skeletonBar {
+  display: block;
+  background: var(--hover);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.skeletonFace {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.skeletonBar {
+  height: 14px;
+  border-radius: 4px;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.centred {
+  margin: 0;
+  padding: 64px 8px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.emptyBox {
+  padding: 64px 8px;
+  text-align: center;
+}
+
+.emptyText {
+  max-width: 30ch;
+  margin: 0 auto;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.emptyAction {
+  margin-top: 12px;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--overlay-wash);
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.emptyAction:hover {
+  background: var(--overlay-wash-hover);
+}
+
+.end {
+  margin: 0;
+  padding: 32px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* Notifications: Trador's group headings and rows. */
+.section {
+  margin: 0;
+  padding: 20px 16px 4px;
+  font-size: 13px;
   font-weight: 600;
-  align-self: flex-start;
+  color: var(--text-3);
+}
+
+.note {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  color: var(--text-1);
+  text-decoration: none;
+  transition: background-color 0.15s;
+}
+
+.note:hover {
+  background: var(--hover);
+}
+
+/* What is new: Trador's soft purple row rather than a dot. */
+.note.unread {
+  background: var(--brand-wash);
+}
+
+.noteText {
+  min-width: 0;
+  flex: 1;
+}
+
+.noteHead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--text-1);
+}
+
+.noteBody {
+  display: -webkit-box;
+  margin: 2px 0 0;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+
+.noteAge {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* Feed settings: Trador's sheet, rising from the bottom over a scrim, the settings in one card. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  background: var(--scrim);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.sheet {
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+  background: var(--popup);
+  box-shadow: var(--shadow-panel);
+}
+
+.sheetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 4px 6px;
+}
+
+.sheetTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.sheetClose {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--overlay-wash);
+  color: var(--text-2);
+}
+
+.sheetNote {
+  margin: 8px 4px;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .guide {

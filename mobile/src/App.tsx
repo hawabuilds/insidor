@@ -18,8 +18,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { CreateCoin, type CreateFrom } from './features/create/CreateCoin.tsx';
 import { Feed } from './features/feed/Feed.tsx';
 import { Learn } from './features/learn/Learn.tsx';
-import { AlertSettings } from './features/alerts/AlertSettings.tsx';
 import { AlertsScreen } from './features/alerts/AlertsScreen.tsx';
+import { NotificationsScreen } from './features/alerts/NotificationsScreen.tsx';
+import { bellCount } from './features/alerts/split.ts';
 import { FollowList } from './features/people/FollowList.tsx';
 import { Leaderboard } from './features/people/Leaderboard.tsx';
 import { ProfileScreen } from './features/people/ProfileScreen.tsx';
@@ -46,7 +47,7 @@ import { noticeFor } from './shared/story-source.ts';
 import { ComingSoonProvider } from './shared/ui/ComingSoon.tsx';
 import { TabBar } from './shared/ui/TabBar.tsx';
 
-function Screen({ route, create, onAlertsSeen }: { route: Route; create: (from: CreateFrom) => void; onAlertsSeen: () => void }) {
+function Screen({ route, create, unread, onAlertsSeen, readUnread }: { route: Route; create: (from: CreateFrom) => void; unread: number; onAlertsSeen: () => void; readUnread: () => void }) {
   switch (route.screen) {
     case 'feed':
       return (
@@ -76,9 +77,10 @@ function Screen({ route, create, onAlertsSeen }: { route: Route; create: (from: 
     case 'learn':
       return <Learn />;
     case 'alerts':
-      return <AlertsScreen onSeen={onAlertsSeen} />;
+      return <AlertsScreen unread={unread} onRefreshed={readUnread} />;
+    case 'notifications':
     case 'alert-settings':
-      return <AlertSettings />;
+      return <NotificationsScreen settings={route.screen === 'alert-settings'} onSeen={onAlertsSeen} />;
     case 'profile':
       return <ProfileScreen key={route.key} profileKey={route.key} />;
     case 'follows':
@@ -126,9 +128,9 @@ export function App() {
   useEffect(() => {
     if (signedIn) void syncWatch(watchedKey === '' ? [] : watchedKey.split(',')).catch(() => undefined);
   }, [signedIn, watchedKey]);
-  /* The bell's count, read every minute while the app is open. */
+  /* The Feed bell's count (unread notifications, not the Feed's own rows), read every minute while the app is open. */
   const readUnread = useCallback(() => {
-    void fetchAlerts().then((a) => setUnread(a.unread), () => undefined);
+    void fetchAlerts().then((a) => setUnread(bellCount(a.alerts)), () => undefined);
   }, []);
   useEffect(() => {
     if (!inside) return;
@@ -153,10 +155,10 @@ export function App() {
   return (
     <ComingSoonProvider>
       <main>
-        <Screen route={route} create={setCreating} onAlertsSeen={() => setUnread(0)} />
+        <Screen route={route} create={setCreating} unread={unread} onAlertsSeen={() => setUnread(0)} readUnread={readUnread} />
       </main>
       {route.screen === 'feed' ? <InstallPrompt /> : null}
-      <TabBar current={tabOf(route)} unread={unread} />
+      <TabBar current={tabOf(route)} />
       <RankUp signedIn={inside} />
       {creating !== null ? <CreateCoin key={creating.title} from={creating} onClose={() => setCreating(null)} /> : null}
     </ComingSoonProvider>

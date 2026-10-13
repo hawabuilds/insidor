@@ -16,6 +16,7 @@ const EVERY: readonly Route[] = [
   { screen: 'follows', key: 'hawa', which: 'following' },
   { screen: 'leaderboard' },
   { screen: 'alert-settings' },
+  { screen: 'notifications' },
   { screen: 'wallets' },
   { screen: 'import' },
   { screen: 'story', storyId: 'goose' },
@@ -56,6 +57,7 @@ test('the Feed tab is #/feed, and every Alerts link from before the rename still
   assert.equal(hrefFor({ screen: 'alert-settings' }), '#/feed/settings');
   assert.deepEqual(parseRoute('#/alerts'), { screen: 'alerts' }, 'pushes already on phones carry /#/alerts');
   assert.deepEqual(parseRoute('#/alerts/settings'), { screen: 'alert-settings' });
+  assert.deepEqual(parseRoute('#/alerts/notifications'), { screen: 'notifications' });
   assert.deepEqual(parseRoute('#/feed/nope'), { screen: 'feed' });
-  for (const r of [{ screen: 'alerts' }, { screen: 'alert-settings' }] as const) assert.equal(tabOf(r), 'alerts');
+  for (const r of [{ screen: 'alerts' }, { screen: 'notifications' }, { screen: 'alert-settings' }] as const) assert.equal(tabOf(r), 'alerts');
 });

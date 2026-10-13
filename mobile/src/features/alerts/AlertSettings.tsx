@@ -6,6 +6,9 @@
  * ★ THE SERVER'S STATE IS SAID, NOT HIDDEN. If the alert service has push off (NOTIFY) or no keys,
  * the screen says alerts are listed but not pushed, instead of offering a switch that does nothing.
  * ★ NO DISABLED CONTROLS. While muted, the switches stay usable and a line says nothing is sent.
+ *
+ * It opens as Trador's does, in a sheet over Notifications (the gear there), rather than as a page;
+ * the content stays Insidor's, which is Trador's plus the hourly limit and Insidor's own kinds.
  */
 
 import { useEffect, useState } from 'react';
@@ -13,7 +16,7 @@ import { useEffect, useState } from 'react';
 import { fetchAlertSettings, saveAlertPrefs, sendTestPush, type AlertPrefs, type AlertSettings as Settings, type AlertSwitch } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { BackIcon } from '../../shared/ui/icons.tsx';
+import { CloseIcon } from '../../shared/ui/icons.tsx';
 import { currentPush, disablePush, enablePush, pushPlace } from './push.ts';
 import styles from './alerts.module.css';
 
@@ -36,18 +39,33 @@ function Switch({ on, label, onChange }: { on: boolean; label: string; onChange:
   );
 }
 
-export function AlertSettings() {
+/**
+ * Feed settings as Trador shows its notification settings: a sheet over Notifications, titled,
+ * with a close button, the settings in one card. Escape and a tap on the scrim close it too.
+ */
+export function SettingsSheet({ onClose }: { onClose: () => void }) {
   const [loaded] = useLoad('alert-settings', () => fetchAlertSettings());
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   return (
-    <section className={styles['screen']}>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
-        <BackIcon size={22} />
-      </button>
-      <h1 className={styles['title']}>Feed settings</h1>
-      {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
-      {loaded.state === 'failed' ? <p className={styles['note']}>Your settings couldn't be read just now.</p> : null}
-      {loaded.state === 'ready' ? <Body initial={loaded.value} /> : null}
-    </section>
+    <div className={styles['scrim']} onClick={onClose}>
+      <div className={styles['sheet']} role="dialog" aria-modal="true" aria-label="Feed settings" onClick={(e) => e.stopPropagation()}>
+        <div className={styles['sheetHead']}>
+          <h2 className={styles['sheetTitle']}>Feed settings</h2>
+          <button type="button" className={styles['sheetClose']} aria-label="Close" onClick={onClose}>
+            <CloseIcon size={16} />
+          </button>
+        </div>
+        {loaded.state === 'loading' ? <p className={styles['sheetNote']}>Loading</p> : null}
+        {loaded.state === 'failed' ? <p className={styles['sheetNote']}>Your settings couldn't be read just now.</p> : null}
+        {loaded.state === 'ready' ? <Body initial={loaded.value} /> : null}
+      </div>
+    </div>
   );
 }
 
@@ -104,8 +122,8 @@ function Body({ initial }: { initial: Settings }) {
           <span>On iPhone, Safari only delivers notifications to apps on the Home Screen.</span>
         </div>
       ) : null}
-      {place === 'unsupported' ? <p className={styles['note']}>This browser can't show push notifications. Everything still lands in your feed.</p> : null}
-      {!serverPush ? <p className={styles['note']}>Your feed fills in here, but this server is not sending pushes yet.</p> : null}
+      {place === 'unsupported' ? <p className={styles['sheetNote']}>This browser can't show push notifications. Everything still lands in your feed.</p> : null}
+      {!serverPush ? <p className={styles['sheetNote']}>Your feed fills in here, but this server is not sending pushes yet.</p> : null}
 
       {place === 'ready' && serverPush ? (
         <div className={styles['set']}>
