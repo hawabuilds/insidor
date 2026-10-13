@@ -1969,7 +1969,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v56',
+  version: 'policy.v57',
 
   admit: {
     maxAgeMin: 240,
@@ -2562,7 +2562,12 @@ const POLICY_V1: Policy = {
     /* $23.25: the lines below, as brakes. Measured 2026-10-13 02:33–03:30 UTC at full speed with the
        cost cuts on: X $5.72/day, judge $4.48, short video $2.34, pictures $0.09. Lines are that, ×1.5
        for daytime volume, +25%. With the jobs' $6.50 the day is $29.75, under the owner's $30. */
-    dailyUsd: 21,
+    /* $18.75 from 2026-10-13 12:50 UTC: $1.50 from posts ($10 → $8.50; X paces $7.07 a day with the
+       new re-reads), $0.75 from short video ($3 → $2.25; paces $1.75), $0.50 from the judge to
+       pictures ($7.50 → $7; pictures paced $0.91 against a $0.50 line and would have stopped). The
+       $2.25 goes to the learning judge so the owner's missed-post re-tune and the 20:00 one can both
+       be tested. The day stays $29.75. */
+    dailyUsd: 18.75,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
@@ -2574,7 +2579,7 @@ const POLICY_V1: Policy = {
     /* 0.97: the lines are brakes now, set above the measured cost; stopping at 90% wasted a tenth
        of each and meant the owner's 95% warning could never fire. */
     softStopFraction: 0.97,
-    supplierLines: { posts: 10, judge: 7.5, video: 2, actors: 1, embeddings: 0.5 },
+    supplierLines: { posts: 8.5, judge: 7, video: 1.5, actors: 0.75, embeddings: 1 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured
@@ -2584,7 +2589,9 @@ const POLICY_V1: Policy = {
        $21 + jobs $4.75 + learning $4 = $29.75 a day, under the owner's $30. */
     jobLines: { dailyUsd: 3.75, posts: 0.5, judge: 2.75, video: 0.25, embeddings: 0.25 },
     /* $5: $1 moved from jobs on 2026-10-13 so today's re-tune could finish and re-check the feed. */
-    learningLines: { dailyUsd: 5, posts: 1, judge: 3.5, video: 0, embeddings: 0.5 },
+    /* $7.25 from 2026-10-13 12:50 UTC: the 07:00 run was not tested ($1.15 left of the judge, the
+       test's worst case $2.97), and two runs today need room for that worst case each. */
+    learningLines: { dailyUsd: 7.25, posts: 1, judge: 5.75, video: 0, embeddings: 0.5 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
