@@ -17,6 +17,9 @@
  * value the filter needs is unknown — five different sentences, because they call for five
  * different responses and a blank list answers none of them.
  *
+ * Tapping a post card, its Buy or its Choose coin opens the post sheet (features/post-sheet): the
+ * post, its views, and its coins with Buy. Create on a card opens the Create sheet from the post.
+ *
  * Under a post's coin line, when the server says so, a line of its own: an older coin named for
  * the post's subject is trading more since it (OlderCoins.tsx) — never the post's coin, never a
  * Buy on the card; tapping opens that coin's page, or the list when there are several.
@@ -46,6 +49,7 @@ import { FilterPanel } from './FilterPanel.tsx';
 import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyFilters, applyPostFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
 import { rowsInOrder, tabView, type FeedTab } from './feed-tabs.ts';
 import { useLeadPosts } from './useLeadPosts.ts';
+import { PostSheet } from '../post-sheet/index.ts';
 import { HiddenByMe } from '../owner/HiddenByMe.tsx';
 import { OwnerCardStrip } from '../owner/OwnerCard.tsx';
 import { HideBar } from '../owner/OwnerPost.tsx';
@@ -72,6 +76,8 @@ export function Feed({
   const [panel, setPanel] = useState(false);
   /* The post whose same-named coins are open ("See 3 coins"), or none. */
   const [seeing, setSeeing] = useState<RisingPost | null>(null);
+  /* The post whose post sheet is open, or none. */
+  const [sheet, setSheet] = useState<string | null>(null);
   const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
   /* One loader per feed, so switching tabs never shows one feed's order under the other's name. */
   const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
@@ -123,20 +129,18 @@ export function Feed({
           {/* An older coin trading on the subject since the post: its own line, never a Buy (OlderCoins.tsx). */}
           <OlderCoinsLine post={p} now={now} />
           {owner ? <OwnerCardStrip post={p} /> : null}
+          {/* The owner's call on which of an unsure post's coins is its own lives in the same-name list. */}
+          {owner && p.coins.kind === 'unsure' && p.coins.claimCount > 0 ? (
+            <div className={styles['ownerRow']} onClick={(e) => e.stopPropagation()}>
+              <Button look="quiet" onClick={() => setSeeing(p)}>Which coin is it</Button>
+            </div>
+          ) : null}
         </>
       }
       handlers={{
-        open: () => {
-          if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId });
-          else if (p.permalink !== null) window.open(p.permalink, '_blank', 'noopener');
-        },
-        /* A post's coin is always its narrative's, so its page opens with the narrative on top. */
-        buy: (coin) =>
-          (window.location.hash = hrefFor(
-            p.storyId !== null ? { screen: 'coin', storyId: p.storyId, coinId: coin.coinId } : { screen: 'token', coinId: coin.coinId },
-          )),
+        /* The card, its Buy and its Choose coin all open the post sheet (features/post-sheet). */
+        open: () => setSheet(p.id),
         create: () => onCreatePost(p),
-        seeCoins: () => setSeeing(p),
         viewCoins: () => {
           if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId });
         },
@@ -284,6 +288,7 @@ export function Feed({
       ) : null}
       {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}
       {owner ? <HideBar /> : null}
+      {sheet !== null ? <PostSheet key={sheet} postId={sheet} onClose={() => setSheet(null)} /> : null}
       {seeing !== null ? (
         <SameNameCoins
           post={seeing}
