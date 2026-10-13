@@ -74,7 +74,7 @@ export interface Alert {
   readonly actor?: { readonly userId: string; readonly handle: string | null; readonly name: string | null; readonly iFollow: boolean } | null;
 }
 
-export type AlertSwitch = 'follows' | 'replies' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins';
+export type AlertSwitch = 'follows' | 'replies' | 'useful' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins';
 export interface AlertPrefs {
   readonly muted: boolean;
   readonly on: Readonly<Record<AlertSwitch, boolean>>;

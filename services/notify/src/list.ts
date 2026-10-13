@@ -83,8 +83,11 @@ export interface ListRow {
 }
 
 /* Nothing about a post or narrative the feeds have since hidden (0050): the alert stays in the
-   table, it is just not listed. A coin match's subject is "story id|coin". */
-const VISIBLE = `not exists (select 1 from public.feed_rejection r where r.subject_id = split_part(a.subject, '|', 1))`;
+   table, it is just not listed. A coin match's subject is "story id|coin". And one row per comment
+   found useful, the newest, as Trador groups its votes: each new liker files a new row with the
+   new count, and the older counts for the same comment are history, not news. */
+const VISIBLE = `not exists (select 1 from public.feed_rejection r where r.subject_id = split_part(a.subject, '|', 1))
+  and (a.kind <> 'comment_useful' or not exists (select 1 from people.alert b where b.user_id = a.user_id and b.kind = 'comment_useful' and b.subject = a.subject and b.alert_id > a.alert_id))`;
 
 /**
  * A watched narrative's alerts: its id is the subject (or the subject's first part, for a coin

@@ -84,6 +84,11 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       return { title: 'New follower', body: `${s(f['who'], 'Someone')} followed you` };
     case 'reply':
       return { title: `${s(f['who'], 'Someone')} replied`, body: s(f['excerpt'], 'Someone replied to your comment') };
+    case 'comment_useful': {
+      /* Trador's votes line: the people counted, never the points they gave. */
+      const count = n(f['count']);
+      return { title: count === null || count <= 1 ? 'Someone found your comment useful' : `${count} people found your comment useful`, body: s(f['excerpt'], 'A holder liked your comment.') };
+    }
     case 'rank_up':
       return { title: `You reached ${RANK_NAME[s(f['rank'], '')] ?? 'a new rank'}`, body: 'Holders liked your calls.' };
     case 'holding_multiple': {

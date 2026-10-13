@@ -2,7 +2,8 @@
  * What sits at the left of a Feed or Notifications row: a rank badge, a coin's logo (the address the
  * alert service sends, else the one in the alert's own token link; its first letter only when there
  * is no logo), a rising post's poster's picture (an up arrow, Trador's face for a row that belongs to
- * no one person, when the poster has none), a person's picture for a follow or a reply (their
+ * no one person, when the poster has none; the same arrow on "N people found your comment useful", which
+ * belongs to no one person either), a person's picture for a follow or a reply (their
  * monogram only when they have no picture: the name comes from the link or the title), a dollar sign for the owner's
  * supplier warning and supplier account alert, a turn arrow for the owner's twice-daily learning
  * report, or the bell.
@@ -18,7 +19,7 @@
  * no symbol; a coin before the bell because most rows are coins.
  */
 
-export type MarkKind = { readonly kind: 'rank'; readonly rank: string } | { readonly kind: 'person'; readonly name: string; readonly picture?: string } | { readonly kind: 'coin'; readonly letter: string; readonly address?: string } | { readonly kind: 'rising'; readonly label: string; readonly picture?: string } | { readonly kind: 'money'; readonly label: string } | { readonly kind: 'learned'; readonly label: string } | { readonly kind: 'bell' };
+export type MarkKind = { readonly kind: 'rank'; readonly rank: string } | { readonly kind: 'person'; readonly name: string; readonly picture?: string } | { readonly kind: 'coin'; readonly letter: string; readonly address?: string } | { readonly kind: 'rising'; readonly label: string; readonly picture?: string } | { readonly kind: 'useful'; readonly label: string } | { readonly kind: 'money'; readonly label: string } | { readonly kind: 'learned'; readonly label: string } | { readonly kind: 'bell' };
 
 export function markOf(a: { readonly kind: string; readonly rank: string | null; readonly symbol: string | null; readonly href?: string; readonly title?: string; readonly picture?: string | null; readonly coin?: string | null }, ranks: readonly string[]): MarkKind {
   const picture = typeof a.picture === 'string' && a.picture.startsWith('https://') ? a.picture : null;
@@ -26,6 +27,7 @@ export function markOf(a: { readonly kind: string; readonly rank: string | null;
   if (a.kind === 'supplier_warning') return { kind: 'money', label: 'Supplier spend' };
   if (a.kind === 'supplier_account') return { kind: 'money', label: 'Supplier account' };
   if (a.kind === 'retune_summary') return { kind: 'learned', label: 'Learning from your calls' };
+  if (a.kind === 'comment_useful') return { kind: 'useful', label: 'Found useful' };
   if (a.kind === 'rising_post') return picture === null ? { kind: 'rising', label: 'Rising post' } : { kind: 'rising', label: 'Rising post', picture };
   const person = personOf(a);
   if (person !== null) return picture === null ? { kind: 'person', name: person } : { kind: 'person', name: person, picture };

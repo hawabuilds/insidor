@@ -78,3 +78,9 @@ test('a real picture wins over the letter: the person, the poster, and the coin 
   const mint = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
   assert.deepEqual(markOf({ kind: 'coin_matched', rank: null, symbol: 'FERRY', href: '/#/story/s1', coin: mint }, []), { kind: 'coin', letter: 'F', address: mint });
 });
+
+test('"N people found your comment useful" is a notification with the arrow face, as Trador shows a grouped vote', async () => {
+  const { onFeed } = await import('./split.ts');
+  assert.ok(!onFeed('comment_useful'));
+  assert.deepEqual(markOf({ kind: 'comment_useful', rank: null, symbol: null }, []), { kind: 'useful', label: 'Found useful' });
+});

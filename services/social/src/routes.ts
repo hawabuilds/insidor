@@ -28,7 +28,7 @@
  * ★ PEOPLE'S OWN NUMBERS ONLY. A rank, rep and like counts are about people and what they did;
  * nothing here scores a coin or a post.
  *
- * Follows, replies and rank-ups queue an alert (people.alert_queue); the alert service decides
+ * Follows, replies, likes on a comment and rank-ups queue an alert (people.alert_queue); the alert service decides
  * whether it is pushed. A follow or a reply carries who it is from (their id and their sign-in
  * picture) so the alert row shows their face and a follow can be followed back.
  */
@@ -258,7 +258,7 @@ async function shaped(deps: SocialDeps, rows: readonly CommentRow[], viewer: str
 
 /* ── alerts, queued for the alert service ─────────────────────────── */
 
-async function queueAlert(db: Db, a: { userId: string; kind: 'follow' | 'reply' | 'rank_up'; subject: string; rung: number; facts: Record<string, unknown>; href: string }): Promise<void> {
+async function queueAlert(db: Db, a: { userId: string; kind: 'follow' | 'reply' | 'rank_up' | 'comment_useful'; subject: string; rung: number; facts: Record<string, unknown>; href: string }): Promise<void> {
   await db.query('insert into people.alert_queue (user_id, kind, subject, rung, facts, href) values ($1, $2, $3, $4, $5, $6)', [a.userId, a.kind, a.subject, a.rung, JSON.stringify(a.facts), a.href]);
 }
 
@@ -460,6 +460,12 @@ async function like(deps: SocialDeps, me: Person, commentId: number, c: { author
   const added = await deps.db.query('insert into people.comment_like (comment_id, voter_id) values ($1, $2) on conflict do nothing returning 1', [commentId, me.userId]);
   let earned = 0;
   if (added.length > 0) {
+    /* Trador's "N people found your comment useful": one alert per comment, its level the count of holders who liked it. */
+    const [liked] = await deps.db.query<{ n: number; body: string }>('select (select count(*)::int from people.comment_like where comment_id = $1) as n, body from people.comment where comment_id = $1', [commentId]);
+    if (liked !== undefined) {
+      const subject: Subject = { kind: c.subjectKind as Subject['kind'], id: c.subjectId };
+      await queueAlert(deps.db, { userId: c.authorId, kind: 'comment_useful', subject: String(commentId), rung: liked.n, facts: { count: liked.n, excerpt: liked.body.slice(0, 80) }, href: await hrefOf(deps.db, subject) });
+    }
     const now = deps.now();
     const dayStart = new Date(now);
     dayStart.setUTCHours(0, 0, 0, 0);

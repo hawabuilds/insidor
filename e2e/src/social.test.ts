@@ -108,8 +108,8 @@ test('a reply and a follow queue an alert for the person they are about; a rank-
   const holderA = { ...a, wallets: [{ address: wallet(2), kind: 'linked' as const }] };
   await as(holderA)('POST', `/comments/${(bComment.body['comment'] as { id: number }).id}/like`);
   const queued = await db.query<{ userId: string; kind: string; subject: string }>('select user_id as "userId", kind, subject from people.alert_queue order by queue_id');
-  assert.deepEqual(queued.map((q) => [q.userId, q.kind]), [[a.userId, 'reply'], [a.userId, 'follow'], [b.userId, 'rank_up']]);
-  assert.equal(queued[2]?.subject, 'analyst', 'Intern to Analyst at 250 rep');
+  assert.deepEqual(queued.map((q) => [q.userId, q.kind]), [[a.userId, 'reply'], [a.userId, 'follow'], [b.userId, 'comment_useful'], [b.userId, 'rank_up']]);
+  assert.equal(queued[3]?.subject, 'analyst', 'Intern to Analyst at 250 rep');
 });
 
 test('three reports hide a comment from everyone; hide is for me only', async () => {
@@ -153,4 +153,21 @@ test('a profile carries its rank card, and the leaderboard ranks the season by r
   assert.deepEqual(card['next'], { rank: 'wolf', repToGo: 3_800 });
   const board = (await as(b)('GET', '/leaderboard')).body as { rows: { handle: string; rep: number; position: number }[] };
   assert.deepEqual(board.rows.map((r) => [r.position, r.handle, r.rep]), [[1, 'user1', 1_200]], 'only people with rep this season are ranked');
+});
+
+test("★ a holder's like queues Trador's \"N people found your comment useful\" for the author, counted per comment", async () => {
+  const author = person(1);
+  const { as, db } = await setup(new Set([wallet(2), wallet(3)]));
+  await as(author)('POST', '/me');
+  const posted = await as(author)('POST', '/comments', { subject: `coin:solana:${MINT}`, body: 'FERRY has a horn now' });
+  const id = (posted.body['comment'] as { id: number }).id;
+  for (const n of [2, 3]) {
+    await as(person(n))('POST', '/me');
+    assert.equal((await as(person(n))('POST', `/comments/${id}/like`)).status, 200);
+  }
+  const queued = await db.query<{ userId: string; subject: string; rung: number; facts: { count: number; excerpt: string } }>(`select user_id as "userId", subject, rung, facts from people.alert_queue where kind = 'comment_useful' order by queue_id`);
+  assert.deepEqual(queued.map((q) => [q.userId, q.subject, q.rung, q.facts.count, q.facts.excerpt]), [
+    [author.userId, String(id), 1, 1, 'FERRY has a horn now'],
+    [author.userId, String(id), 2, 2, 'FERRY has a horn now'],
+  ]);
 });

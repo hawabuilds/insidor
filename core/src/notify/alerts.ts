@@ -18,6 +18,9 @@
  *   4b. A SUPPLIER ACCOUNT ALERT IS THE SAME KIND OF ALARM: a supplier refused a call because its
  *      account is out of credit (or recovered). The owner's, no switch, past the hourly limit;
  *      mute and quiet hours still hold. The runner sends it at most once per supplier an hour.
+ *   4c. "N PEOPLE FOUND YOUR COMMENT USEFUL" is Trador's votes notification: holders liking a
+ *      comment of yours, one alert per comment that counts them (its level is the count, so each
+ *      new liker is a new level and the list shows the newest). Its own switch, on to start.
  *   5. A RE-TUNE SUMMARY IS THE OWNER'S TOO: twice a day, what the judge learned from the owner's
  *      own calls and whether it was applied (tools/retune.ts). No switch, like the warning, but
  *      it waits behind the hourly limit like any other alert — it is a report, not an alarm.
@@ -44,6 +47,7 @@ export const ALERT_KINDS = [
   'supplier_warning',
   'retune_summary',
   'supplier_account',
+  'comment_useful',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -57,7 +61,7 @@ export type AlertKind = (typeof ALERT_KINDS)[number];
 export const FEED_KINDS: readonly AlertKind[] = ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched'];
 
 /** The switches a person sees, one per row of the settings screen. */
-export const SWITCHES = ['follows', 'replies', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins'] as const;
+export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins'] as const;
 export type AlertSwitch = (typeof SWITCHES)[number];
 
 const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
@@ -75,6 +79,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   supplier_warning: 'always',
   retune_summary: 'always',
   supplier_account: 'always',
+  comment_useful: 'useful',
 };
 
 export interface AlertPrefs {
@@ -94,7 +99,7 @@ export interface AlertPrefs {
 export function defaultPrefs(P: NotifyPolicy): AlertPrefs {
   return {
     muted: false,
-    on: { follows: true, replies: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true },
+    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true },
     multiples: [...P.defaultMultiples],
     quietStart: null,
     quietEnd: null,
