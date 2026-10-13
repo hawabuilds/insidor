@@ -34,6 +34,18 @@
  * reconnects and the `ready` on attach forces the refetch. Buffering for a reader who has
  * stopped reading is how a read surface runs out of memory on behalf of one bad connection.
  *
+ * ★ THE SECOND KIND: `GET /stream/rising/:feedId`, "THIS FEED CHANGED". For You's live list
+ * (mobile/src/features/feed/useLiveFeed.ts) needs to know a new frame exists, not to be sent it:
+ * the phone already reads `GET /rising/:feedId`, and a feed frame is far larger than a board's
+ * notification-sized reason to refetch. So a feed subscriber gets `changed` with the feed's new
+ * tick and nothing else, and refetches. There is no separate announcement for the feeds: the
+ * projector writes them in the SAME transaction as every board frame it announces
+ * (services/project/src/main.ts), so any announcement means "the feeds may have moved", and one
+ * read of every feed's tick (RISING_TICKS_SQL) answers whether they did. That read runs only
+ * while somebody is watching a feed, and once per announcement however many are. If the
+ * projector ever writes the feeds on their own, this stream goes quiet and the phone's
+ * 30-second tick check (`GET /rising/:feedId/tick`) still finds every frame, only later.
+ *
  * NOTHING IN THIS FILE COMPUTES A BOARD. It calls the same `board()` the polled route calls,
  * which runs the same two frozen SELECTs under the same app credential and returns the same
  * already-censored payload. The live path and the polled path cannot disagree, because there
@@ -42,7 +54,7 @@
 
 import { errorText } from './log.ts';
 import { board, type Deps, type Reply } from './routes.ts';
-import { BOARD_VIEW_SQL } from './queries.ts';
+import { BOARD_VIEW_SQL, RISING_TICKS_SQL, RISING_VIEW_SQL } from './queries.ts';
 
 /**
  * The slice of `node:http`'s ServerResponse this file uses. Narrow on purpose: it is what
@@ -138,6 +150,15 @@ function record(event: string, data: string): string {
 const READY = record('ready', '1');
 /** Delivered to the app as `onDropped`. The board is no longer being told when it changes. */
 const HOLD = record('hold', '1');
+/**
+ * How a feed subscriber is keyed among the board ones: the feed id behind this prefix. A board
+ * id that starts with it is refused at `match`, so a board URL can never reach a feed's
+ * subscribers or the other way round.
+ */
+const FEED_KEY = 'rising:';
+
+const feedOf = (viewId: string): string | null => (viewId.startsWith(FEED_KEY) ? viewId.slice(FEED_KEY.length) : null);
+
 /** Liveness only. Carries no board state and is never queued for a blocked client. */
 const BEAT = record('beat', '1');
 
@@ -179,6 +200,9 @@ export function createBoardStream(deps: Deps, options: StreamOptions = {}): Boar
   const building = new Set<string>();
   /** Views that were notified while their build was in flight and must be rebuilt once. */
   const restack = new Set<string>();
+  /** The feeds' tick read is in flight, and whether another announcement arrived meanwhile. */
+  let feedsReading = false;
+  let feedsAgain = false;
 
   /**
    * Whether the database listener currently holds its subscription. A client attaching while
@@ -272,6 +296,43 @@ export function createBoardStream(deps: Deps, options: StreamOptions = {}): Boar
     return false;
   }
 
+  /**
+   * An announcement arrived: tell every feed subscriber its feed's tick, so the phone refetches
+   * only when the tick moved past the one it holds. One read for every feed and every phone,
+   * and none at all while nobody is watching a feed — a forged announcement buys nothing then.
+   */
+  function feedsChanged(): void {
+    if (closed) return;
+    let anyone = false;
+    for (const sub of subscribers) if (feedOf(sub.viewId) !== null) anyone = true;
+    if (!anyone) return;
+    if (feedsReading) {
+      feedsAgain = true;
+      return;
+    }
+    feedsReading = true;
+    deps.db
+      .query(RISING_TICKS_SQL, [])
+      .then((rows) => {
+        for (const row of rows) {
+          const tick = Number(row['tick']);
+          if (typeof row['feed_id'] !== 'string' || !Number.isSafeInteger(tick)) continue;
+          broadcast(record('changed', JSON.stringify({ tick })), `${FEED_KEY}${row['feed_id']}`);
+        }
+      })
+      .catch((e: unknown) => {
+        /* Nothing goes on the wire: the phone's tick check finds the frame on its own. */
+        deps.log.error('the feeds\' ticks could not be read', { err: errorText(e) });
+      })
+      .finally(() => {
+        feedsReading = false;
+        if (feedsAgain) {
+          feedsAgain = false;
+          feedsChanged();
+        }
+      });
+  }
+
   function refuse(sink: StreamSink, status: number, body: string, headers: Readonly<Record<string, string>>): void {
     sink.writeHead(status, { ...headers, 'content-type': JSON_TYPE });
     sink.end(body);
@@ -284,7 +345,7 @@ export function createBoardStream(deps: Deps, options: StreamOptions = {}): Boar
    * itself to drain `restack` and a `this.publish` would break the moment a caller
    * destructured it — which server.ts and the tests both do.
    */
-  function publish(viewId: string): void {
+  function publishBoard(viewId: string): void {
     if (closed) return;
     /* Nobody is watching this view, so there is nothing to read it for. This is also what
        bounds the cost of a forged notification: anything holding the app credential can
@@ -316,8 +377,14 @@ export function createBoardStream(deps: Deps, options: StreamOptions = {}): Boar
       })
       .finally(() => {
         building.delete(viewId);
-        if (restack.delete(viewId)) publish(viewId);
+        if (restack.delete(viewId)) publishBoard(viewId);
       });
+  }
+
+  /** An announcement: the feeds' ticks (see the header), then the board it names. */
+  function publish(viewId: string): void {
+    feedsChanged();
+    publishBoard(viewId);
   }
 
   /* One timer for every client, not one per client. It also doubles as the flush that stops
@@ -338,7 +405,9 @@ export function createBoardStream(deps: Deps, options: StreamOptions = {}): Boar
         return null;
       }
       const [head, kind, viewId] = segments;
-      if (segments.length !== 3 || head !== 'stream' || kind !== 'board' || viewId === undefined) return null;
+      if (segments.length !== 3 || head !== 'stream' || viewId === undefined) return null;
+      if (kind === 'rising') return `${FEED_KEY}${viewId}`;
+      if (kind !== 'board' || feedOf(viewId) !== null) return null;
       return viewId;
     },
 
@@ -366,7 +435,8 @@ export function createBoardStream(deps: Deps, options: StreamOptions = {}): Boar
          is a green pip over a board that will never arrive, which is precisely the lie the
          status line is being rebuilt to stop telling. One indexed single-row read. */
       try {
-        const views = await deps.db.query(BOARD_VIEW_SQL, [viewId]);
+        const feed = feedOf(viewId);
+        const views = feed === null ? await deps.db.query(BOARD_VIEW_SQL, [viewId]) : await deps.db.query(RISING_VIEW_SQL, [feed]);
         if (views[0] === undefined) {
           refuse(sink, 404, NOT_FOUND_BODY, headers);
           return;

@@ -12,7 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { SILENT } from './log.ts';
-import { BOARD_ROWS_SQL, BOARD_VIEW_SQL, type Row } from './queries.ts';
+import { BOARD_ROWS_SQL, BOARD_VIEW_SQL, RISING_TICKS_SQL, RISING_VIEW_SQL, type Row } from './queries.ts';
 import { createBoardStream, type StreamSink } from './stream.ts';
 
 /** Lets the promise chain inside `publish` run to completion. */
@@ -83,6 +83,8 @@ function fakeDb(views: readonly string[] = ['default']): FakeDb {
           ? [{ tick: String(db.tick), provenance: { kind: 'observed' } }]
           : [];
       if (sql === BOARD_ROWS_SQL) return [{ story_id: 'st_ferry', payload: { id: 'st_ferry' } }];
+      if (sql === RISING_VIEW_SQL) return viewId === 'fyp' ? [{ tick: String(db.tick) }] : [];
+      if (sql === RISING_TICKS_SQL) return [{ feed_id: 'fyp', tick: String(db.tick) }, { feed_id: 'popular', tick: String(db.tick) }];
       return [];
     },
   };
@@ -485,6 +487,57 @@ test('no event carries an id, because there is no replay to promise', async () =
     stream.publish('default');
     await settle();
     assert.doesNotMatch(sink.text(), /^id:/m, 'an id invites Last-Event-ID catch-up, which does not exist');
+  } finally {
+    stream.close();
+  }
+});
+
+test('GET /stream/rising/:feedId is a feed stream, and a board id can never pose as one', () => {
+  const stream = createBoardStream({ db: fakeDb(), log: SILENT });
+  try {
+    assert.equal(stream.match('GET', '/stream/rising/fyp'), 'rising:fyp');
+    assert.equal(stream.match('GET', '/stream/board/rising%3Afyp'), null);
+    assert.equal(stream.match('GET', '/stream/rising'), null);
+    assert.equal(stream.match('POST', '/stream/rising/fyp'), null);
+  } finally {
+    stream.close();
+  }
+});
+
+test('★ a feed subscriber is told its feed\'s tick on every announcement, and never sent the feed', async () => {
+  const db = fakeDb();
+  const stream = createBoardStream({ db, log: SILENT });
+  try {
+    stream.linkUp();
+    const phone = fakeSink();
+    const other = fakeSink();
+    await stream.attach(phone, 'rising:fyp', CORS);
+    await stream.attach(other, 'rising:fyp', CORS);
+    assert.equal(phone.head?.status, 200);
+    assert.ok(phone.text().includes('event: ready'), 'attaching forces a refetch, as on the board');
+    db.calls.length = 0;
+    db.tick = 42;
+    stream.publish('default');
+    await settle();
+    assert.ok(phone.text().includes('event: changed\ndata: {"tick":42}\n\n'));
+    assert.ok(other.text().includes('event: changed'));
+    assert.deepEqual(db.calls, [RISING_TICKS_SQL], 'one read for every phone, and the board is not read for nobody');
+  } finally {
+    stream.close();
+  }
+});
+
+test('an unknown feed is a 404, and no feed subscriber means an announcement reads no ticks', async () => {
+  const db = fakeDb();
+  const stream = createBoardStream({ db, log: SILENT });
+  try {
+    const sink = fakeSink();
+    await stream.attach(sink, 'rising:nope', CORS);
+    assert.equal(sink.head?.status, 404);
+    db.calls.length = 0;
+    stream.publish('default');
+    await settle();
+    assert.deepEqual(db.calls, []);
   } finally {
     stream.close();
   }

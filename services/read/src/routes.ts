@@ -260,6 +260,19 @@ async function rising(feedId: string, deps: Deps): Promise<Reply> {
   return json(200, { tick: tickNumber(view['tick']), posts: rows.map(payloadOf) });
 }
 
+/**
+ * Only the feed's tick: the phone's 30-second backup check while For You is open (live feed,
+ * mobile/src/features/feed/useLiveFeed.ts). One indexed single-row read and a dozen bytes, so a
+ * phone can ask twice a minute for nearly nothing and fetch the whole feed only when the tick has
+ * moved past the one it holds. Same 404 as the feed for a feed that was never projected.
+ */
+async function risingTick(feedId: string, deps: Deps): Promise<Reply> {
+  const views = await deps.db.query(RISING_VIEW_SQL, [feedId]);
+  const view = views[0];
+  if (view === undefined) return NOT_FOUND;
+  return json(200, { tick: tickNumber(view['tick']) });
+}
+
 async function launches(feedId: string, deps: Deps): Promise<Reply> {
   const views = await deps.db.query(LAUNCH_VIEW_SQL, [feedId]);
   const view = views[0];
@@ -451,6 +464,8 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       if (segments.length === 3 && head === 'post' && param !== undefined && segments[2] === 'names') return await deps.search.postNames(param, client);
       if (segments.length === 3 && head === 'ticker' && param !== undefined && segments[2] === 'coins') return await deps.search.tickerCoins(param, client);
     }
+
+    if (segments.length === 3 && head === 'rising' && param !== undefined && segments[2] === 'tick') return await risingTick(param, deps);
 
     if (segments.length === 2 && param !== undefined) {
       if (head === 'board') return await board(param, deps);

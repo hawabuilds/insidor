@@ -122,6 +122,13 @@ export const LAUNCH_ROWS_SQL =
  */
 export const RISING_VIEW_SQL = 'select tick from public.rising_view where feed_id = $1';
 
+/**
+ * Every feed's tick in one read, for the live For You stream (stream.ts): run once per project
+ * pass while at least one phone is watching a feed, however many phones that is, and never
+ * otherwise.
+ */
+export const RISING_TICKS_SQL = 'select feed_id, tick from public.rising_view';
+
 export const RISING_ROWS_SQL =
   `select (r.payload - 'sheet') || jsonb_build_object('authorPictureUrl', to_jsonb(a) ->> 'picture_url') as payload
      from public.rising_row r
