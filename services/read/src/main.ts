@@ -30,6 +30,7 @@ import { chainClient, curveProgressOf } from '@insidor/venue-solana-pumpfun';
 import { loadReadConfig } from './config.ts';
 import { BOARD_CHANNEL, createNotifier, type ListenSocket } from './listen.ts';
 import { createLogger, errorText } from './log.ts';
+import { createPostSheet } from './post-sheet.ts';
 import { createSearch } from './search.ts';
 import { createWallet } from './wallet.ts';
 import { createReadServer } from './server.ts';
@@ -246,7 +247,17 @@ async function main(): Promise<void> {
     holders: (address: string) => holders.holders(address),
   };
 
-  const server = createReadServer({ ...deps, market, search, wallet, about, allowedOrigins: cfg.allowedOrigins, stream });
+  /* The phone's post sheet (post-sheet.ts): the post, its author and its coins by market cap,
+     priced by the same keyless token read the Portfolio tab uses, kept a minute per post. */
+  const postSheet = createPostSheet({
+    ...deps,
+    quotes: dexscreenerQuotes({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: MARKET_TIMEOUT_MS }),
+    images: chain === null ? null : (mints) => chain.imageUris(mints),
+    keepMs: DEFAULT_POLICY.search.keepMs,
+    now: Date.now,
+  });
+
+  const server = createReadServer({ ...deps, market, search, wallet, about, postSheet, allowedOrigins: cfg.allowedOrigins, stream });
 
   server.listen(cfg.port, () => log.info('listening', { port: cfg.port, origins: cfg.allowedOrigins }));
   notifier.start();

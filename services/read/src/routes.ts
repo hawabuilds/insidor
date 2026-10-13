@@ -25,6 +25,7 @@
 import { coinAbout, type AboutDeps } from './coin-about.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
 import { errorText, type Logger } from './log.ts';
+import type { PostSheet } from './post-sheet.ts';
 import type { Search } from './search.ts';
 import type { WalletRoute } from './wallet.ts';
 import {
@@ -60,6 +61,8 @@ export interface Deps {
   readonly search?: Search;
   /** The Portfolio tab (wallet.ts). Absent: /wallet/:address is a 404. */
   readonly wallet?: WalletRoute;
+  /** The phone's post sheet (post-sheet.ts). Absent: /post/:id/sheet is a 404. */
+  readonly postSheet?: PostSheet;
 }
 
 /*
@@ -431,6 +434,11 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
     }
     if (deps.wallet !== undefined && segments.length === 2 && head === 'wallet' && param !== undefined) {
       return await deps.wallet.wallet(param, new URLSearchParams(rawUrl.split('?')[1] ?? '').get('range'), client);
+    }
+
+    /* One feed post as the phone's post sheet shows it (post-sheet.ts). */
+    if (deps.postSheet !== undefined && segments.length === 3 && head === 'post' && param !== undefined && segments[2] === 'sheet') {
+      return await deps.postSheet.sheet(param);
     }
 
     if (deps.search !== undefined) {
