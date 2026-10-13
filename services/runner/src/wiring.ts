@@ -71,6 +71,7 @@ import {
   PgCoinUniverseRepo,
   PgOlderCoinRepo,
   PgCryptoAttentionRepo,
+  PgPostRefillRepo,
   PgFeedFloorRepo,
   PgImageEmbeddingRepo,
   PgImagePairRepo,
@@ -96,6 +97,7 @@ import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
+import { refillMemory, refillPosts, type RefillResult } from './work/post-refill.ts';
 import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type UniverseDeps } from './work/universe.ts';
@@ -144,6 +146,8 @@ export interface Runtime {
   readonly scorePosts: () => Promise<ScoringResult>;
   /** Crypto talk under For You posts, read on the posts line and stored as facts. See work/crypto-attention.ts. */
   readonly cryptoAttention: () => Promise<AttentionResult>;
+  /** Older feed posts' video files read again, every half minute. See work/post-refill.ts. */
+  readonly refillPosts: () => Promise<RefillResult>;
   /** Embed the first image of each new post once, for GROUP's image evidence. */
   readonly embedImages: () => Promise<unknown>;
   /** Follow promoted stories' quotes back to where they started. See work/backfill.ts. */
@@ -513,6 +517,8 @@ export async function withRuntime<T>(
                         holds refuses to run, and the dry run never asks it to.
            configured   the real client. In SPEND=dry it is still never called. */
       const judge = buildJudge(cfg, meter, policy, log);
+      /* The video fill-in's tries and day count, kept across passes for this process (work/post-refill.ts). */
+      const refills = refillMemory();
       /* The per-post score's judge: the same model and prompt, with a smaller answer budget
          so ten short answers are not reserved at the cost of two long ones. */
       /* ★ WITH THE OWNER'S LEARNED EXAMPLES: the latest block the re-tune APPLIED (0056), read at
@@ -848,6 +854,19 @@ export async function withRuntime<T>(
               log: log.child({ step: 'crypto-attention' }),
               now: () => Date.now() as Millis,
             }),
+          refillPosts: () =>
+            refillPosts(
+              {
+                platforms,
+                refill: new PgPostRefillRepo(db),
+                meter,
+                mode: cfg.spend.kind,
+                policy,
+                log: log.child({ step: 'post-refill' }),
+                now: () => Date.now() as Millis,
+              },
+              refills,
+            ),
         }),
       };
     });

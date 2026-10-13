@@ -36,6 +36,7 @@ import { detectLoop } from './loops/detect.ts';
 import { discoverLoop } from './loops/discover.ts';
 import { universeLoop } from './loops/universe.ts';
 import { missedLoop } from './loops/missed.ts';
+import { refillLoop } from './loops/refill.ts';
 import { groupLoop } from './loops/group.ts';
 import { qualifyLoop } from './loops/qualify.ts';
 import { rankLoop } from './loops/rank.ts';
@@ -189,6 +190,9 @@ async function main(): Promise<void> {
       /* The owner's pasted missed posts, on the learning book: its own loop so a paste is worked
          within a minute whether discovery is on or not (loops/missed.ts). */
       missedLoop(runtime.missedPosts),
+      /* Older feed posts' video files, read again on the posts line: its own loop so a post opened
+         in the sheet with no playable file gets one within a minute (loops/refill.ts). */
+      refillLoop(runtime.refillPosts),
       admitLoop(runtime.loopDeps),
       trackLoop(runtime.loopDeps),
       detectLoop(runtime.loopDeps),

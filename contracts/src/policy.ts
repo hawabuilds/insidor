@@ -1390,6 +1390,16 @@ export interface RisingPolicy {
    * owner picks it from the trade-off table each re-tune reports. The number never reaches a screen.
    */
   readonly scorePassBar: number | null;
+  /**
+   * ★ OLDER FEED POSTS' VIDEOS, READ AGAIN (the owner, 2026-10-13: "so older posts play too"). A
+   * text-source post on For You, Popular or a Feed alert whose video was stored with no playable
+   * file is read again by id (services/runner/src/work/post-refill.ts) on the live posts line: at
+   * most `refillPerPass` posts a pass (batched reads), `refillPerDay` a UTC day, and each post
+   * at most `refillMaxTries` times.
+   */
+  readonly refillPerPass: number;
+  readonly refillPerDay: number;
+  readonly refillMaxTries: number;
 }
 
 export interface IngestPolicy {
@@ -2816,6 +2826,10 @@ const POLICY_V1: Policy = {
        the measured $0.0012 a post, on the live judge line and under its cap. */
     rescorePerPass: 15,
     scorePassBar: null,
+    /* Two batched reads of 50 a pass; 1,000 posts a day is at most $0.15 at $0.00015 a post. */
+    refillPerPass: 100,
+    refillPerDay: 1_000,
+    refillMaxTries: 3,
   },
 
   rank: {
