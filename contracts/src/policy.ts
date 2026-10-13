@@ -3019,10 +3019,10 @@ const POLICY_V1: Policy = {
     /* $25.50 from 2026-10-13 20:45 UTC: the judge sees the 10 closest labelled posts in every call
        (+$2.75 a day) and each judged post is embedded (+$0.90). Paid by moving $4 from the jobs and
        learning lines, which run well under them most days; the day stays $38. */
-    /* $28 for 2026-10-13 only, the owner's call: the day is over $38 (this morning's $7.22 of jobs ran
-       before jobs had a line) and re-scoring after the new judge prompt must not pause discovery. Back to
-       $25.50 after 00:00 UTC. */
-    dailyUsd: 28,
+    /* $38 from 2026-10-13 21:40 UTC, the owner's call: the live feed's own ceiling is the whole $38 a
+       day, so discovery, scoring and re-scoring never pause before it. The supplier lines below still
+       warn at 80% and 95%. */
+    dailyUsd: 38,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
