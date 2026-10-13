@@ -6,10 +6,10 @@
  * and views line. This is the card as it looked before the post sheet was built, kept that way
  * on purpose: the owner asked for the old look back.
  *
- * ★ EVERY TAP ON THE CARD OPENS THE POST SHEET (features/post-sheet). The card, its title, and its
- * coin button (Buy, See N coins, Create coin, View coins) all call one handler the feed gives; the
- * sheet is where a coin is bought, chosen or created. The button's WORDS still come from the coin
- * line below, so the card says what the post's coin is before anyone taps.
+ * ★ A TAP ON THE CARD OPENS THE POST SHEET (features/post-sheet): the card, its title, Buy and View
+ * coins. Two buttons go straight to where they say: Create coin opens the create flow from the
+ * post, and See N coins opens the sheet on Choose coin, with its quick buy. The button's WORDS come
+ * from the coin line below, so the card says what the post's coin is before anyone taps.
  *
  * ★ EVERY CARD HAS A COIN LINE, AND IT IS THE SERVER'S ANSWER, NOT OURS (`postCoinStatus`):
  *
@@ -43,8 +43,12 @@ import { Value } from './Value.tsx';
 import styles from './row.module.css';
 
 export interface PostHandlers {
-  /** Opens the post sheet: a tap on the card, its title, or its coin button. */
+  /** Opens the post sheet: a tap on the card, its title, Buy or View coins. */
   readonly open: () => void;
+  /** Opens the create flow from this post. */
+  readonly create: () => void;
+  /** Opens the post sheet on Choose coin: every coin with the post's name. */
+  readonly seeCoins: () => void;
 }
 
 /** `extra`: a strip under the coin line that the card does not decide (the owner's controls). */
@@ -120,12 +124,12 @@ function ActionButton({ action, handlers }: { action: PostAction; handlers: Post
   };
   switch (action.kind) {
     case 'create':
-      return <Button look="primary" onClick={tap(handlers.open)}>Create coin</Button>;
+      return <Button look="primary" onClick={tap(handlers.create)}>Create coin</Button>;
     case 'buy':
       return <Button look="buy" onClick={tap(handlers.open)}>Buy ${action.coin.ticker}</Button>;
     case 'view':
       return <Button look="quiet" onClick={tap(handlers.open)}>View coins</Button>;
     case 'see':
-      return <Button look="quiet" onClick={tap(handlers.open)}>{seeCoinsLabel(action.count, action.more)}</Button>;
+      return <Button look="quiet" onClick={tap(handlers.seeCoins)}>{seeCoinsLabel(action.count, action.more)}</Button>;
   }
 }
