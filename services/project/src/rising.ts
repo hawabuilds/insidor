@@ -49,6 +49,11 @@
  * A search alone never puts a coin on a post: `matched` needs evidence beyond the name, and the
  * board's `one` only ever comes from a story's row.
  *
+ * ★ AN OLDER COIN TRADING ON THE SUBJECT IS ITS OWN FIELD, `runningOlder` (older-coins.ts, 0060):
+ * coins launched before the post, named for its subject, whose trading jumped since it — as
+ * dollars and prices, busiest first, empty when none. Never in `coins`, never a Buy: a coin
+ * launched before a post cannot be its coin.
+ *
  * ★ THE OWNER'S CALL WINS OVER THE JUDGE'S (owner-calls.ts). "Not a meme" keeps a post off both
  * feeds, recorded as `owner_not_meme`; "Is a meme" passes it whatever the judge said, judged or
  * not — and it must still clear the feed's reach bar like any other post.
@@ -68,6 +73,7 @@ import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from '.
 import { projectCoin } from './project.ts';
 import { withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { writeSameNameCoins } from './same-name.ts';
+import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { permalinkFor } from './permalinks.ts';
 import { projectReach, projectSpark } from './project.ts';
 import type { ReachReading } from './project.ts';
@@ -79,7 +85,7 @@ export type RisingFeed = (typeof RISING_FEEDS)[number];
 
 const EXCERPT_MAX_CHARS = 280;
 
-/** One single post on a feed. Thirteen keys, every one a fact. */
+/** One single post on a feed. Fourteen keys, every one a fact. */
 export interface WireRisingPost {
   readonly id: string;
   readonly sourceLabel: string;
@@ -99,6 +105,8 @@ export interface WireRisingPost {
   readonly storyId: string | null;
   /** Where the post's coin stands. `one` and `several` only ever arrive with `storyId`. */
   readonly coins: WirePostCoinLink;
+  /** Older coins named for the subject whose trading jumped since the post; never its coin. */
+  readonly runningOlder: readonly WireOlderCoin[];
 }
 
 export interface RisingRow {
@@ -289,6 +297,7 @@ export function projectRisingPost(
   coinsByStory: ReadonlyMap<string, WireCoinLink>,
   sparkWindowMs: number,
   lookup: PostLookup | null = null,
+  runningOlder: readonly WireOlderCoin[] = [],
 ): WireRisingPost {
   const latest = readings[readings.length - 1];
   const link = row.story_id === null ? undefined : coinsByStory.get(row.story_id);
@@ -309,6 +318,7 @@ export function projectRisingPost(
     spark: projectSpark(readings, sparkWindowMs),
     storyId: coin.fromStory ? row.story_id : null,
     coins: coin.coins,
+    runningOlder,
   };
   assertNoInternalVocabulary(post, `$.rising[${row.item_id}]`);
   return post;
@@ -358,6 +368,7 @@ export async function buildRising(
   });
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
   const lookups = await withMatches(db, rows, await loadPostLookups(db, rows.map((row) => row.item_id)), coinsByStory, nowMs, sparkWindowMs, policy);
+  const older = await loadRunningOlder(db, rows.map((row) => row.item_id));
   const posts = rows.map((row) => {
     const readings = reach.get(row.item_id) ?? [];
     /* Measured counts only: a censored reading's last level is an older number, and read at a
@@ -366,7 +377,7 @@ export async function buildRising(
     const postedAt = toMs(row.posted_at);
     const lookup = lookups.get(row.item_id) ?? null;
     return {
-      post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup),
+      post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? []),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
       fyp: clearsReachBar('fyp', views, postedAt, policy),
