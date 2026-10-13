@@ -99,4 +99,17 @@ test("a video keeps its own mp4 to play in the app: the best rendition a phone p
   assert.equal(item.media[0]?.playUri, 'https://video.twimg.com/mid.mp4');
   assert.equal(item.media[0]?.uri, 'https://pbs.twimg.com/v.jpg', 'the still stays the picture');
   assert.equal(toItem(PLAIN, AT).media[0]?.playUri, undefined, 'a photo has nothing to play');
+  assert.equal(item.media[0]?.loops, undefined, 'a real video is not a loop');
+});
+
+test('a GIF keeps its mp4 and is marked to loop', () => {
+  const item = toItem({
+    id: '10', author: { id: '1' },
+    extendedEntities: { media: [{ type: 'animated_gif', media_url_https: 'https://pbs.twimg.com/tweet_video_thumb/g.jpg', video_info: { variants: [
+      { content_type: 'video/mp4', bitrate: 0, url: 'https://video.twimg.com/tweet_video/g.mp4' },
+    ] } }] },
+  }, AT);
+  assert.equal(item.media[0]?.kind, 'video');
+  assert.equal(item.media[0]?.playUri, 'https://video.twimg.com/tweet_video/g.mp4');
+  assert.equal(item.media[0]?.loops, true);
 });

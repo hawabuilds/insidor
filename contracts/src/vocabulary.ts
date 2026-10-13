@@ -221,6 +221,12 @@ export interface MediaRef {
    * shows its still, and is never sent out to the source to be watched.
    */
   readonly playUri?: string | null;
+  /**
+   * True for a short silent clip the source shows looping on its own, like a picture that moves:
+   * played muted, over and over, with no player controls. Absent on a real video and on posts
+   * stored before 2026-10-13 (a stored clip with a file and no length is one of these).
+   */
+  readonly loops?: boolean;
 }
 
 /* ── AUTHOR ───────────────────────────────────────────────────────────── */

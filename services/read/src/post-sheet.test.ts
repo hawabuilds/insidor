@@ -66,3 +66,14 @@ test('a video is offered to play only with an https mp4 of its own; otherwise it
   assert.equal(sheetMedia([]), null);
   assert.equal(sheetMedia([{ kind: 'image', uri: 'http://p/i.jpg' }]), null);
 });
+
+test('a GIF goes out as a picture with a file that loops; a real video stays a video', () => {
+  const gif = sheetMedia([{ kind: 'video', uri: 'https://p/g.jpg', durationMs: null, playUri: 'https://v/g.mp4', loops: true }]);
+  assert.deepEqual([gif?.kind, gif?.playUrl, gif?.loops], ['image', 'https://v/g.mp4', true]);
+  const older = sheetMedia([{ kind: 'video', uri: 'https://p/g.jpg', durationMs: null, playUri: 'https://v/g.mp4' }]);
+  assert.deepEqual([older?.kind, older?.loops], ['image', true], 'stored before the mark: a file and no length');
+  const real = sheetMedia([{ kind: 'video', uri: 'https://p/v.jpg', durationMs: 14_000, playUri: 'https://v/a.mp4' }]);
+  assert.deepEqual([real?.kind, real?.loops], ['video', false]);
+  const still = sheetMedia([{ kind: 'video', uri: 'https://p/v.jpg', durationMs: 14_000 }]);
+  assert.deepEqual([still?.kind, still?.playUrl, still?.loops], ['video', null, false]);
+});
