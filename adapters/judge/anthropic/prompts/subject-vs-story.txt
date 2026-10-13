@@ -35,8 +35,9 @@ difference, not the names.
   posts: "Messi's team lost the final", with reactions
   story: a sports result
   subject: NONE. Not coinable.
-  posts: one Messi photo or moment reposted and remixed as a meme
-  subject: Messi. Coinable.
+  posts: a dog that ran onto the pitch during Messi's final, clipped and joked about by
+         many accounts
+  subject: the dog (PITCHDOG), not Messi. Coinable.
 
   posts: "Therapy industry criticised as ineffective", with people agreeing and arguing
   story: an argument
@@ -55,8 +56,16 @@ difference, not the names.
   posts: "Stray Kids unveil single" passed around as an announcement
   story: a press release
   subject: NONE. Not coinable.
-  posts: fans reposting a Stray Kids member's moment, edits, the same joke about them
-  subject: the member or the group, named as fans name them (STRAY). Coinable.
+  posts: fan accounts reposting a Stray Kids member's photos, fancams and streaming goals
+  story: fan content
+  subject: NONE. Not coinable. Fans posting their idol is fandom, not a meme.
+  posts: the plush toy a Stray Kids member threw into the crowd, edited into jokes by
+         many accounts
+  subject: the toy, named as the posts name it. Coinable.
+
+  posts: a singer replies to a politician's post about her, with reactions
+  story: celebrity and political news
+  subject: NONE. Not coinable, however sharp the reply.
 
 When the story is clear and the subject is not, say there is no subject. A story with no
 subject is a normal and frequent outcome. It is not a failure to be avoided, and a
