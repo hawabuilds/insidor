@@ -18,7 +18,7 @@ import { OBSERVED_ASSET_ORIGINS } from '@insidor/contracts/asset.ts';
 import type { Db } from '@insidor/store';
 
 import { numberOf, reasonOf } from './reading.ts';
-import type { MarketReading } from './reading.ts';
+import type { LastAnswer, MarketReading } from './reading.ts';
 
 export interface AssetRow {
   chain: string;
@@ -130,6 +130,27 @@ export async function assetsToRead(
        rather than being typed into the string above as a fifth copy of one closed list. */
     [chain, limit, [...OBSERVED_ASSET_ORIGINS]],
   );
+}
+
+/**
+ * Each coin's latest stored trade answer, so the pass can reuse the aggregator's answer
+ * instead of asking again (reading.ts `reusableRoute`). The same latest-per-asset seek the
+ * projector makes, on `market_reading_latest_idx`.
+ */
+export async function lastAnswers(db: Db, assetKeys: readonly string[]): Promise<ReadonlyMap<string, LastAnswer>> {
+  const out = new Map<string, LastAnswer>();
+  if (assetKeys.length === 0) return out;
+  const rows = await db.query<{ asset_key: string; taken_at: Date | string; tradable: boolean; quoted_by: string | null }>(
+    `select distinct on (asset_key) asset_key, taken_at, tradable, quoted_by
+       from public.market_reading
+      where asset_key = any($1::text[])
+      order by asset_key, taken_at desc`,
+    [assetKeys],
+  );
+  for (const r of rows) {
+    out.set(r.asset_key, { takenAt: new Date(r.taken_at).getTime(), tradable: r.tradable, quotedBy: r.quoted_by });
+  }
+  return out;
 }
 
 /**

@@ -19,16 +19,19 @@
  * absence they already had. Rolling them back would discard something we learned in
  * order to preserve a consistency that was never claimed.
  *
- * ★ AND `tradable` IS FALSE ON EVERY ROW THIS PROCESS WRITES, which is not a bug and
- * not a pessimistic default. Tradability is decided by asking a venue for a quote. The
- * venue here declares `read` and not `trade` — deliberately; the conformance suite
- * fails a venue whose declaration and implementation disagree — so there is nothing to
- * ask, no quote, and nothing to stand behind. A `true` we cannot back would put a Buy
- * button in front of an order that cannot fill, and 0010's
- * `tradable_requires_a_quoting_venue` makes that unwritable rather than merely unwise.
+ * ★ AND `tradable` IS THE TRADE SERVICE'S OWN ROUTE, ASKED THE SAME WAY. The price
+ * vendor cannot fill an order, so it is never asked whether a coin trades. Instead every
+ * coin read gets the route the trade service's GET /venue would give it, through the same
+ * rule (`routeAfter` in adapters/venue/solana-pumpfun/src/route.ts): its curve read from
+ * the chain, a hundred accounts to a call, on every pass; and for a coin off its curve a
+ * small quote from the aggregator, reused within Policy.market.poolRouteReuseMs and at
+ * most Policy.market.maxPoolProbesPerPass a pass. Without chain access (no HELIUS_API_KEY)
+ * nobody is asked and every row says so: not tradable, nobody named as quoting. A `true`
+ * always carries the name of the route that would fill it, which 0010's
+ * `tradable_requires_a_quoting_venue` insists on.
  */
 
-import { DEFAULT_POLICY } from '@insidor/contracts';
+import { DEFAULT_POLICY, assetKey } from '@insidor/contracts';
 import type { AssetRef, Millis } from '@insidor/contracts';
 import type { Budget } from '@insidor/contracts/ports/meter.ts';
 import {
@@ -40,10 +43,13 @@ import {
 } from '@insidor/market-dexscreener';
 import { inMemoryMeter } from '@insidor/meter';
 import { asDb, createPool, DB_ROLE, withTransaction } from '@insidor/store';
+import { jupiter, NATIVE } from '@insidor/venue-jupiter';
+import { curveStates } from '@insidor/venue-solana-pumpfun/route.ts';
 
-import { assetsToRead, writeReadings } from './db.ts';
-import { quotableBy, toReading } from './reading.ts';
+import { assetsToRead, lastAnswers, writeReadings } from './db.ts';
+import { toReading, tradeAnswer } from './reading.ts';
 import type { MarketReading } from './reading.ts';
+import { routesFor } from './trade-route.ts';
 
 /**
  * The vendor's host, overridable so a test or a staging run can point somewhere else.
@@ -62,6 +68,15 @@ const DEFAULT_BASE_URL = 'https://api.dexscreener.com';
  * than a number buried in a client.
  */
 const REQUEST_TIMEOUT_MS = 15_000;
+
+/** The trade service's own ceiling on one aggregator quote (services/trade/src/main.ts). */
+const ROUTER_TIMEOUT_MS = 8_000;
+const LAMPORTS_PER_SOL = 1_000_000_000;
+
+const trimmed = (name: string): string | null => {
+  const v = (process.env[name] ?? '').trim();
+  return v === '' ? null : v;
+};
 
 function connectionUrl(env: Readonly<Record<string, string | undefined>>): string {
   const url = env['DATABASE_URL'];
@@ -155,6 +170,36 @@ async function main(): Promise<void> {
       address: row.address,
     }));
 
+    /* Where the trade service would route each coin, before any price is read: the same
+       rule as its GET /venue (trade-route.ts). The RPC and the aggregator are the trade
+       service's own: HELIUS_API_KEY, and JUPITER_API_KEY when it is set. */
+    const heliusKey = trimmed('HELIUS_API_KEY');
+    const rpcUrl = heliusKey === null ? null : `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
+    const router = jupiter({
+      baseUrl: trimmed('JUPITER_API_URL') ?? 'https://api.jup.ag',
+      apiKey: trimmed('JUPITER_API_KEY'),
+      fetch: globalThis.fetch,
+      timeoutMs: ROUTER_TIMEOUT_MS,
+    });
+    const probeLamports = BigInt(Math.round(DEFAULT_POLICY.trade.probeSol * LAMPORTS_PER_SOL));
+    const keyOf = (address: string): string => String(assetKey({ chain: CHAIN, address }));
+    const addresses = assets.map((row) => row.address);
+    const { routes, counts: routeCounts } = await routesFor(
+      addresses,
+      await lastAnswers(asDb(pool), addresses.map(keyOf)),
+      keyOf,
+      {
+        curveStates: rpcUrl === null ? null : (mints) => curveStates(rpcUrl, mints),
+        probe: (mint) =>
+          router.quote({ inputMint: NATIVE, outputMint: mint, amount: probeLamports, slippageBps: DEFAULT_POLICY.trade.defaultSlippageBps }),
+      },
+      {
+        nowMs: now(),
+        reuseMs: DEFAULT_POLICY.market.poolRouteReuseMs,
+        maxProbes: DEFAULT_POLICY.market.maxPoolProbesPerPass,
+      },
+    );
+
     const batches = chunk(refs, MAX_ADDRESSES_PER_CALL);
     const budget = budgetFor(now(), batches.length);
 
@@ -168,7 +213,7 @@ async function main(): Promise<void> {
       try {
         const result = await read.states(batch, budget);
         readings = result.value.map((state) =>
-          toReading(state, { venueId: String(VENUE_ID), quotedBy: quotableBy(venue) }),
+          toReading(state, { venueId: String(VENUE_ID), trade: tradeAnswer(routes.get(state.asset.address) ?? null) }),
         );
       } catch (error: unknown) {
         /* One chunk's worth of coins keeps the absence it already had, and the pass
@@ -193,7 +238,10 @@ async function main(): Promise<void> {
     console.log(
       `read venue=${String(VENUE_ID)} asked=${refs.length} calls=${batches.length} ` +
         `written=${written} priced=${priced} no_market=${noMarket} unread=${failed} ` +
-        `spent_usd=${meter.spentUsd().toFixed(4)}`,
+        `spent_usd=${meter.spentUsd().toFixed(4)} ` +
+        `route curve=${routeCounts.curve} pool=${routeCounts.pool} none=${routeCounts.none} ` +
+        `not_asked=${routeCounts.notAsked} unavailable=${routeCounts.unavailable} ` +
+        `probed=${routeCounts.probed} reused=${routeCounts.reused}${rpcUrl === null ? ' (no HELIUS_API_KEY: nobody asked)' : ''}`,
     );
 
     /* A pass in which every call failed is an outage, not an empty market, and the two

@@ -861,6 +861,21 @@ export interface MarketPolicy {
    * endpoint is its rate limit, and a rate limit spent is exactly as gone as money.
    */
   readonly maxAssetsPerPass: number;
+  /**
+   * How long a coin's aggregator answer (a route, or "no route") is reused before the
+   * aggregator is asked again. Only for a coin off its curve: a curve's state is read
+   * again on every pass, because a curve that just finished can no longer be traded on
+   * it and a card must not say otherwise. A route that appears or vanishes shows on the
+   * cards within this window, which is the price of not asking a rate-limited quote
+   * service about the same coin every five minutes.
+   */
+  readonly poolRouteReuseMs: number;
+  /**
+   * How many coins one pass may ask the aggregator about. Coins over it are written as
+   * not asked (not tradable, nobody named as quoting), never as "no route". The coins on
+   * screen are read first, so they are the last to be dropped at this bound.
+   */
+  readonly maxPoolProbesPerPass: number;
 }
 
 /* ── ASSETS ───────────────────────────────────────────────────────────── */
@@ -2630,6 +2645,8 @@ const POLICY_V1: Policy = {
   market: {
     readingFreshnessMs: 300_000, // five minutes
     maxAssetsPerPass: 300,
+    poolRouteReuseMs: 900_000, // fifteen minutes
+    maxPoolProbesPerPass: 40,
   },
 
   assets: {
