@@ -27,7 +27,7 @@ import type { MediaRef } from '@insidor/contracts/vocabulary.ts';
 import { mergeSpend, metered } from '@insidor/meter';
 import type { Price, PriceBook } from '@insidor/meter';
 
-import { VendorUnavailable } from '@insidor/vendor-kit';
+import { OutOfCredit, VendorUnavailable } from '@insidor/vendor-kit';
 
 import { VENDOR, type EmbedInput, type EmbedReply, type VoyageClient } from './client.ts';
 
@@ -77,7 +77,9 @@ export interface VoyageEmbedDeps {
   readonly prices?: PriceBook;
 }
 
-const refusedInput = (error: unknown): boolean => error instanceof VendorUnavailable && error.status === 400;
+/* A billing refusal is never one bad picture, whatever its status: halving the batch over it would
+   turn an empty account into a column of nulls. */
+const refusedInput = (error: unknown): boolean => error instanceof VendorUnavailable && !(error instanceof OutOfCredit) && error.status === 400;
 
 /** Ask for a batch; on a 400, halve it until each refused input stands alone and is null. */
 async function embedAround(client: VoyageClient, inputs: readonly EmbedInput[]): Promise<EmbedReply> {

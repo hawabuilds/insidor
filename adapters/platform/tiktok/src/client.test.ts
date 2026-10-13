@@ -16,9 +16,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
+import { OutOfCredit, VendorShapeError, VendorUnavailable, onOutOfCredit } from '@insidor/vendor-kit';
 
 import {
+  billingReason,
   decodeDataset,
   decodeRun,
   requireSearchFinished,
@@ -330,6 +331,33 @@ test('★ 402 and 403 are outages — an exhausted plan is not a quiet internet'
       return true;
     });
   }
+});
+
+test('★ an exhausted plan is a billing refusal, heard by the listener, with none of the body in it', async () => {
+  const heard: string[] = [];
+  const off = onOutOfCredit({ refused: (e) => heard.push(e.reason) });
+  try {
+    for (const respond of [
+      /* The platform's recorded error shapes, ids and amounts made up. */
+      () => json({ error: { type: 'not-enough-usage-to-run-paid-actor', message: 'You do not have enough usage left to run this paid Actor (user abc123).' } }, 402),
+      () => json({ error: { type: 'platform-feature-disabled', message: 'You have exceeded your monthly usage limit of $19.00. Upgrade your plan.' } }, 403),
+      () => new Response('<html>plan exhausted</html>', { status: 402, headers: { 'content-type': 'text/html' } }),
+      (url: string) => (isDataset(url) ? json([]) : json(run('FAILED', { statusMessage: 'Monthly usage hard limit exceeded' }))),
+    ]) {
+      const h = harness(respond);
+      await assert.rejects(httpClient(h.config).runDiscovery({ hashtags: ['x'] }), (error: unknown) => {
+        assert.ok(error instanceof OutOfCredit && error instanceof VendorUnavailable);
+        assert.doesNotMatch(error.message, /abc123|\$19/);
+        return true;
+      });
+    }
+    assert.deepEqual(heard, ['not enough credit for a paid run', 'monthly usage limit reached', 'payment required', 'monthly usage limit reached']);
+  } finally {
+    off();
+  }
+  assert.equal(billingReason(403, JSON.stringify({ error: { type: 'insufficient-permissions', message: 'token cannot run this actor' } })), null);
+  assert.equal(billingReason(401, 'usage limit'), null);
+  assert.equal(billingReason(429, 'usage limit'), null);
 });
 
 test('404 says a mistyped actor id looks exactly like this', async () => {

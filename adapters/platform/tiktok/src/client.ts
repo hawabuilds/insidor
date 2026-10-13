@@ -58,7 +58,7 @@
  * a new integration.
  */
 
-import { arr, rec, str, VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
+import { arr, outOfCredit, rec, str, vendorAnswered, VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
 /* The transport half of the kit, imported by its own path rather than through the
    barrel. Two vendors need these predicates and neither may own a private copy. */
 import {
@@ -375,6 +375,24 @@ export function decodeRun(body: unknown, endpoint: string): RunRecord {
   return { id, status: bounded(status, 32), datasetId, statusMessage: message === null ? null : bounded(message, 200) };
 }
 
+/** The platform's own words for an account that cannot pay for more runs. */
+const USAGE_TEXT = /usage (hard )?limit|not[- ]enough[- ]usage|insufficient[- ](credit|fund|balance)|exceed(ed)? (your|the) (monthly )?(usage|limit|credit)/i;
+
+/**
+ * ★ A REFUSAL FOR BILLING, as a short reason we wrote, or null. 402 is "payment required"; any
+ * other 4xx (not a wrong token, not pacing) whose error type or message talks about the usage
+ * limit, usage to run a paid actor, credit or payment. A run that ended FAILED with that text is
+ * classified where the run is read.
+ */
+export function billingReason(status: number, text: string): string | null {
+  if (status === 401 || status === 429 || status < 400 || status >= 500) return null;
+  const head = text.slice(0, 2000);
+  if (/usage (hard )?limit|exceed(ed)? (your|the) (monthly )?(usage|limit)/i.test(head)) return 'monthly usage limit reached';
+  if (USAGE_TEXT.test(head) || /payment|billing|credit card/i.test(head)) return 'not enough credit for a paid run';
+  if (status === 402) return 'payment required';
+  return null;
+}
+
 /**
  * ★ A SEARCH RUN THAT SUCCEEDED WITHOUT FINISHING ITS SEARCH IS AN OUTAGE.
  *
@@ -562,6 +580,12 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
       );
     }
 
+    /* ★ AN EXHAUSTED PLAN IS ITS OWN ERROR (`OutOfCredit`, still an outage to every caller): 402,
+       or a refusal whose error type or text is about the usage limit, usage or payment. The owner's
+       account has a monthly cap, and reaching it looks exactly like this. Matched, never quoted. */
+    const billing = billingReason(response.status, response.text);
+    if (billing !== null) throw outOfCredit(VENDOR, endpoint, billing, response.status);
+
     if (response.status === 402 || response.status === 403) {
       /* ★ AN OUTAGE, NOT AN EMPTY RESULT, AND THE BODY IS NEVER PARSED FOR CONTENT.
          On a platform billed per run this is the shape an exhausted plan or a revoked
@@ -617,7 +641,9 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
     }
 
     try {
-      return JSON.parse(response.text) as unknown;
+      const parsed = JSON.parse(response.text) as unknown;
+      vendorAnswered(VENDOR);
+      return parsed;
     } catch {
       /* ★ 200 WITH A BODY THAT IS NOT JSON IS AN OUTAGE WEARING A SUCCESS CODE.
          Calling it a shape error would send the next person hunting a schema change;
@@ -675,6 +701,11 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
         ),
         RUN_STATUS_ENDPOINT,
       );
+    }
+
+    /* A run the platform ended because the account hit its usage limit is the billing error too. */
+    if (run.status !== SUCCEEDED && USAGE_TEXT.test(run.statusMessage ?? '')) {
+      throw outOfCredit(VENDOR, RUN_ENDPOINT, 'monthly usage limit reached', 200);
     }
 
     if (run.status !== SUCCEEDED) {

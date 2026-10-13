@@ -37,7 +37,7 @@
  */
 
 import type { JudgeSubject } from '@insidor/contracts/ports/judge.ts';
-import { VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
+import { VendorShapeError, VendorUnavailable, outOfCredit, vendorAnswered } from '@insidor/vendor-kit';
 import { headerValueProblem, httpUrlProblem, messageOf, snippet, trimTrailingSlash } from '@insidor/vendor-kit/http.ts';
 
 import { sizedPictureUri, type PictureSize } from './pictures.ts';
@@ -340,6 +340,31 @@ export function decodeSameSubject(body: unknown): { readonly answer: SameSubject
 /* ── the client ───────────────────────────────────────────────────────── */
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504, 529]);
+
+/**
+ * ★ A REFUSAL FOR BILLING, from the vendor's own signal, as a short reason we wrote — or null.
+ * An empty account answers 400 with an `invalid_request_error` whose message is about the credit
+ * balance ("Your credit balance is too low to access the API…"), and the vendor also uses a
+ * `billing_error` type and 402/403 for billing. Matched on the error's type and message, never on
+ * the status alone: a 400 is usually our own malformed request, and calling that "out of credit"
+ * would send the owner to top up an account that is fine. The body is read, never repeated.
+ */
+export function billingReason(status: number, text: string): string | null {
+  if (status < 400 || status >= 500 || status === 429) return null;
+  let type = '';
+  let message = '';
+  try {
+    const body = JSON.parse(text) as { error?: { type?: unknown; message?: unknown } } | null;
+    type = typeof body?.error?.type === 'string' ? body.error.type : '';
+    message = typeof body?.error?.message === 'string' ? body.error.message : '';
+  } catch {
+    message = text.slice(0, 500);
+  }
+  if (/credit balance/i.test(message)) return 'credit balance too low';
+  if (type === 'billing_error' || /billing|purchase credits|payment/i.test(message)) return 'billing refused';
+  if (status === 402) return 'payment required';
+  return null;
+}
 const FRAME_TYPES = new Set<Frame['mediaType']>(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 /**
@@ -418,7 +443,12 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
           if (!route.retryLost) break;
           continue;
         }
-        if (res.status >= 200 && res.status < 300) return res.text;
+        if (res.status >= 200 && res.status < 300) {
+          vendorAnswered(VENDOR);
+          return res.text;
+        }
+        const billing = billingReason(res.status, res.text);
+        if (billing !== null) throw outOfCredit(VENDOR, route.label, billing, res.status);
         if (!RETRYABLE.has(res.status)) {
           throw new VendorUnavailable(VENDOR, route.label, `answered ${res.status}: ${snippet(res.text)}`, res.status);
         }

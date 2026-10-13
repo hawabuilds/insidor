@@ -15,9 +15,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
+import { OutOfCredit, VendorShapeError, VendorUnavailable, onOutOfCredit } from '@insidor/vendor-kit';
 
 import {
+  billingReason,
   decodeCursor,
   decodeLookup,
   decodeSearchPage,
@@ -226,6 +227,44 @@ test('401 is unavailability with the status, and never echoes the body', async (
 
 test('★ 402 and 403 are outages, not empty results — this is a lapsed plan, not a quiet internet', async () => {
   for (const status of [402, 403]) {
+    const h = harness(() => new Response('<html>forbidden</html>', { status, headers: { 'content-type': 'text/html' } }));
+    await assert.rejects(httpClient(h.config).search('q', null), (error: unknown) => {
+      assert.ok(error instanceof VendorUnavailable, `status ${status} was not an outage`);
+      assert.equal(error.status, status);
+      /* 402 is "payment required" on its face, so it is the billing error; a bare 403 is not. */
+      assert.equal(error instanceof OutOfCredit, status === 402);
+      return true;
+    });
+  }
+});
+
+test('★ an empty balance is a billing refusal, heard by the listener, with none of the body in it', async () => {
+  const heard: string[] = [];
+  const off = onOutOfCredit({ refused: (e) => heard.push(e.reason) });
+  try {
+    for (const respond of [
+      () => json({ status: 'error', msg: 'Credits are not enough. Please recharge, account acct_123' }, 402),
+      () => json({ status: 'error', message: 'Insufficient credits, please recharge' }),
+      () => json({ error: 'Your balance is too low' }, 403),
+    ]) {
+      const h = harness(respond);
+      await assert.rejects(httpClient(h.config).search('q', null), (error: unknown) => {
+        assert.ok(error instanceof OutOfCredit && error instanceof VendorUnavailable);
+        assert.doesNotMatch(error.message, /acct_123|recharge/);
+        return true;
+      });
+    }
+    assert.deepEqual(heard, ['payment required', 'credits used up', 'credits used up']);
+  } finally {
+    off();
+  }
+  assert.equal(billingReason(401, 'insufficient credits'), null, 'a wrong key is not an empty one');
+  assert.equal(billingReason(429, 'out of credits'), null, 'pacing is not billing');
+  assert.equal(billingReason(200, 'invalid api key'), null);
+});
+
+test('a 403 page is attached by content type so it is recognisable', async () => {
+  for (const status of [403]) {
     const h = harness(() => new Response('<html>payment required</html>', { status, headers: { 'content-type': 'text/html' } }));
     await assert.rejects(httpClient(h.config).search('q', null), (error: unknown) => {
       assert.ok(error instanceof VendorUnavailable, `status ${status} was not an outage`);

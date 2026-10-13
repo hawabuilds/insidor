@@ -9,10 +9,11 @@ import { test } from 'node:test';
 
 import type { Meter, Spend } from '@insidor/contracts/ports/meter.ts';
 import type { MediaRef } from '@insidor/contracts/vocabulary.ts';
-import { VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
+import { OutOfCredit, VendorShapeError, VendorUnavailable, onOutOfCredit } from '@insidor/vendor-kit';
 
 import { BAD_INDEX, TWO_IMAGES } from './__fixtures__/replies.ts';
 import { DIMENSIONS, SPACE, readReply, voyageEmbed } from './index.ts';
+import { billingReason, httpClient } from './client.ts';
 
 const image = (uri: string): MediaRef => ({ kind: 'image', uri, width: null, height: null, durationMs: null });
 
@@ -96,4 +97,38 @@ test('a batch refused in full is still an outage, never a column of nulls', asyn
     port.embedMedia!([image('https://example.invalid/a.jpg'), image('https://example.invalid/b.jpg')], { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: 1 }),
     VendorUnavailable,
   );
+});
+
+test('★ a billing refusal is its own error, heard by the listener, and never halved into a column of nulls', async () => {
+  const heard: string[] = [];
+  const off = onOutOfCredit({ refused: (e) => heard.push(e.reason) });
+  try {
+    /* The vendor's recorded error shape: `{ detail }`. */
+    for (const [status, detail] of [
+      [429, 'You have not yet added your payment method in the billing page and will have reduced rate limits of 3 RPM.'],
+      [402, 'Request refused'],
+      [403, 'Your account billing is past due (org org_x1).'],
+    ] as const) {
+      const client = httpClient({ apiKey: 'k', baseUrl: 'https://embed.invalid', fetch: (async () => new Response(JSON.stringify({ detail }), { status })) as typeof fetch });
+      await assert.rejects(client.embed({ model: 'm', inputs: [{ text: 'a' }] }), (e: unknown) => {
+        assert.ok(e instanceof OutOfCredit && e instanceof VendorUnavailable);
+        assert.doesNotMatch(e.message, /org_x1|3 RPM/);
+        return true;
+      });
+    }
+    assert.deepEqual(heard, ['no payment method on file', 'payment required', 'billing refused']);
+  } finally {
+    off();
+  }
+  assert.equal(billingReason(429, JSON.stringify({ detail: 'Rate limit exceeded' })), null, 'pacing is not billing');
+  assert.equal(billingReason(400, JSON.stringify({ detail: 'Unable to fetch image from URL' })), null, 'one bad picture is not billing');
+
+  let calls = 0;
+  const port = voyageEmbed({
+    client: { embed: async () => { calls += 1; throw new OutOfCredit('voyage', 'embed', 'billing refused', 400); } },
+    meter: meter(),
+    now: () => 0,
+  });
+  await assert.rejects(port.embedMedia!([image('https://example.invalid/a.jpg'), image('https://example.invalid/b.jpg')], { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: 1 }), OutOfCredit);
+  assert.equal(calls, 1, 'not split and asked again');
 });

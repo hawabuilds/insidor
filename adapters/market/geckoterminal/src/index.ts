@@ -17,7 +17,9 @@
  * which side of the pool to price, so a pool listed as SOL/COIN is never read inverted.
  */
 
-import { VendorUnavailable } from '@insidor/vendor-kit';
+import { outOfCredit, vendorAnswered, VendorUnavailable } from '@insidor/vendor-kit';
+
+import { billingReason } from './billing.ts';
 
 import type { CoinSearch, CoinSearchHit } from '@insidor/contracts/ports/coin-search.ts';
 
@@ -154,8 +156,14 @@ export function geckoterminal(config: GeckoConfig): MarketData {
     } catch (error) {
       throw new VendorUnavailable(VENDOR, path.split('?')[0] ?? path, `request failed: ${error instanceof Error ? error.message : 'unknown'}`);
     }
-    if (!response.ok) throw new VendorUnavailable(VENDOR, path.split('?')[0] ?? path, `responded ${response.status}`, response.status);
-    return response.json();
+    if (!response.ok) {
+      const billing = billingReason(response.status, await response.text().catch(() => ''));
+      if (billing !== null) throw outOfCredit(VENDOR, path.split('?')[0] ?? path, billing, response.status);
+      throw new VendorUnavailable(VENDOR, path.split('?')[0] ?? path, `responded ${response.status}`, response.status);
+    }
+    const body: unknown = await response.json();
+    vendorAnswered(VENDOR);
+    return body;
   }
 
   return {
