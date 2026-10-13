@@ -78,7 +78,7 @@ import type { RisingPost } from '../../shared/api/index.ts';
 const onePost = (over: Partial<RisingPost>): RisingPost => ({
   id: 'p', sourceLabel: 'X', authorLabel: '@a', permalink: null, excerpt: 'e', thumbUrl: null, thumbIsVideo: false,
   postedAt: { known: true, at: 1_000 }, reach: { known: true, amount: 50_000 }, readAt: { known: true, at: 1_000 },
-  spark: { points: [], windowMs: 1 }, storyId: null, coins: { kind: 'pending' }, ...over,
+  spark: { points: [], windowMs: 1 }, storyId: null, coins: { kind: 'pending' }, runningOlder: [], ...over,
 });
 
 test('★ the coin filter never calls an unsearched post "no coin": it is unknown', () => {

@@ -79,6 +79,19 @@ export const RISING_POST_FIELDS = [
   'spark',
   'storyId',
   'coins',
+  'runningOlder',
+] as const;
+
+/** An older coin trading since a post (`RisingPost.runningOlder`): facts, and an address to open. */
+export const OLDER_COIN_FIELDS = [
+  'address',
+  'name',
+  'ticker',
+  'launchedAt',
+  'hourBeforeUsd',
+  'peakHourUsd',
+  'priceChangeSincePost',
+  'readAt',
 ] as const;
 
 export const COIN_FIELDS = [
