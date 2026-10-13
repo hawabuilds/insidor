@@ -111,8 +111,13 @@ export interface FeedFilter {
   readonly mediaOnly: boolean;
   /** Language codes a post may be in; empty for every language. */
   readonly langs: readonly string[];
-  /** Leave out replies and rebroadcasts: the originals are what spread. */
-  readonly originalsOnly: boolean;
+  /**
+   * Leave out plain rebroadcasts — the same post re-shown, which adds no new authorship and
+   * would only fill the page with copies of what was already found. Replies and reproductions
+   * (quotes) are kept, by the owner's choice (2026-10-13): a meme often starts as a reply or a
+   * quote, and leaving them out was a gold origin post the search could never return.
+   */
+  readonly excludeRebroadcasts: boolean;
 }
 
 export interface Discovered {

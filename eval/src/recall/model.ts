@@ -12,8 +12,8 @@
  *
  * A lane asks, every `everyMin`, for posts newer than its window that already carry `floor`
  * approvals, newest first, a capped number of results. So a post is caught by a lane when, at a
- * pass, it is (a) a post the query matches at all — the language, an original rather than a reply
- * or a repost, a picture for the media lane; (b) over the floor; and (c) still young enough that
+ * pass, it is (a) a post the query matches at all — the language, not a plain repost (and not a
+ * reply, when replies are left out), a picture for the media lane; (b) over the floor; and (c) still young enough that
  * the lane reaches back to it. (c) is `reachMin`, MEASURED from the ages at which the lane really
  * found its posts, not the window it asked for: a lane whose result cap fills before the window
  * ends reaches only as far back as its last result (store/src/repo/recall.ts says why).
@@ -61,8 +61,10 @@ export interface DiscoverySettings {
   readonly lanes: readonly LaneSetting[];
   /** The languages a catch-all query accepts, as the source tags them, or null for any. */
   readonly langs: readonly string[] | null;
-  /** Replies and reposts are excluded by the query. */
-  readonly originalsOnly: boolean;
+  /** Replies are left out by the query. No longer, since 2026-10-13: replies are searched. */
+  readonly excludeReplies: boolean;
+  /** Plain reposts are left out by the query. */
+  readonly excludeRebroadcasts: boolean;
   /** Minutes: the growth curve's time constant. */
   readonly tauMin: number;
 }
@@ -73,8 +75,10 @@ export interface PostFacts {
   readonly approvals: number;
   readonly lang: string | null;
   readonly hasMedia: boolean;
-  /** A reply or a repost: what an originals-only query never returns. */
-  readonly notOriginal: boolean;
+  /** A reply: returned unless the query leaves replies out. */
+  readonly isReply: boolean;
+  /** A plain repost: the same post re-shown, which the query leaves out. */
+  readonly isRebroadcast: boolean;
 }
 
 export type Verdict =
@@ -96,7 +100,8 @@ export function crossingAgeMin(final: number, floor: number, tauMin: number): nu
 /** Whether the query a lane sends would match this post at all, approvals aside. */
 export function inSearch(post: PostFacts, lane: LaneSetting | null, s: DiscoverySettings): boolean {
   if (s.langs !== null && (post.lang === null || !s.langs.includes(post.lang))) return false;
-  if (s.originalsOnly && post.notOriginal) return false;
+  if (s.excludeReplies && post.isReply) return false;
+  if (s.excludeRebroadcasts && post.isRebroadcast) return false;
   if (lane !== null && lane.mediaOnly && !post.hasMedia) return false;
   return true;
 }

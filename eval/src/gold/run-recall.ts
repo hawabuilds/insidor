@@ -85,6 +85,8 @@ const base = judge(S);
 const tune = base.filter((r) => r.coin.split === 'tune');
 const held = base.filter((r) => r.coin.split === 'holdout');
 const slow = judge({ ...S, tauMin: S.tauMin * SLOW_GROWTH });
+/* The query as it was before 2026-10-13, which also left replies out: the comparison the change rests on. */
+const withReplies = judge({ ...S, excludeReplies: true });
 
 const REASONS: readonly Reason[] = ['under_floor', 'not_in_search', 'between_checks', 'deleted', 'not_on_x'];
 const breakdown = (rows: readonly Row[]) => REASONS.map((k) => `${k} ${rows.filter((r) => reasonOf(r) === k).length}`).join(', ');
@@ -194,7 +196,7 @@ function postRow(r: Row): string {
   const before = delay === null || f?.postedAt == null ? '—' : `${((launched - (f.postedAt + delay * 60_000)) / 60_000).toFixed(0)}`;
   const slowV = slow.find((s) => s.coin.id === r.coin.id)?.v;
   const platform = r.coin.origin.kind === 'post' ? r.coin.origin.platform : '—';
-  return `| ${r.coin.id} | ${r.coin.split} | ${r.coin.ticker.replace(/\|/g, '/')} | ${platform} | ${handle(r.coin)} | ${iso(f?.postedAt ?? null)} | ${f?.approvals ?? '—'} | ${f?.lang ?? '—'} | ${f === null ? '—' : f.hasMedia ? 'yes' : 'no'} | ${f === null ? '—' : f.notOriginal ? 'reply' : 'original'} | ${r.v.kind === 'caught' ? `caught (${r.v.lane})` : r.v.reason} | ${mins(delay)} | ${before} | ${slowV === undefined ? '—' : slowV.kind === 'caught' ? 'caught' : slowV.reason} |`;
+  return `| ${r.coin.id} | ${r.coin.split} | ${r.coin.ticker.replace(/\|/g, '/')} | ${platform} | ${handle(r.coin)} | ${iso(f?.postedAt ?? null)} | ${f?.approvals ?? '—'} | ${f?.lang ?? '—'} | ${f === null ? '—' : f.hasMedia ? 'yes' : 'no'} | ${f === null ? '—' : f.isRebroadcast ? 'repost' : f.isReply ? 'reply' : 'original'} | ${r.v.kind === 'caught' ? `caught (${r.v.lane})` : r.v.reason} | ${mins(delay)} | ${before} | ${slowV === undefined ? '—' : slowV.kind === 'caught' ? 'caught' : slowV.reason} |`;
 }
 
 const laneRows = S.lanes.map((l) => {
@@ -228,12 +230,12 @@ Caught before the coin launched: ${caughtOf(xAll).filter((r) => r.v.kind === 'ca
 |---|---|---|---|---|---|---|---|
 ${laneRows.join('\n')}
 
-- Language: ${S.langs === null ? 'any' : S.langs.map((l) => `\`lang:${l}\``).join(' or ')}; replies and reposts excluded (\`-filter:replies -filter:retweets\`). No keyword term runs: the runner's pass logs show only the catch-all lanes, so a post is found by its approvals alone, never by what it says.
+- Language: ${S.langs === null ? 'any' : S.langs.map((l) => `\`lang:${l}\``).join(' or ')}; ${S.excludeReplies ? 'replies and plain reposts left out' : 'plain reposts left out (`-filter:retweets`); replies and quote posts are searched'}. Leaving replies out as well, as the query did before 2026-10-13, catches ${pct(caughtOf(xRows(withReplies)).length, xRows(withReplies).length)}. No keyword term runs: the runner's pass logs show only the catch-all lanes, so a post is found by its approvals alone, never by what it says.
 - **Floor sent** is the stored base floor (internal.feed_floor) scaled to the lane's window (core \`effectiveFloor\`); it adapts after every pass toward the day's budget, so it moves over the day.
 - **Reach measured** is the 95th percentile of the age at which the lane first found its posts (internal.item_found_by), capped at the window it asks for. The slow lane asks for ${ev.measured.configuredWindowMin['slow'] ?? '—'} minutes, but it takes ${slowPages} pages of ${PAGE_POSTS} posts newest first, and those fill within the first ~${slowLane.reachMin.toFixed(0)} minutes: a post that crosses ${slowLane.floor} approvals later than that is never returned.
 - **Every** is the median gap between passes that found something (main lanes) or the policy cadence (slow lane).
 - **Growth.** Approvals at age t are assumed to be \`final × (1 − e^(−t/τ))\`, with the count read now as final and τ = ${S.tauMin} min fitted to ${ev.measured.growthPairs} live posts' first and last readings. A post is caught at the first pass after it crosses a lane's floor (taken as half a pass later), if that is still within the lane's reach. The ${SLOW_GROWTH}× slower row shows how much rests on τ.
-- Replies are detected by the text opening with a mention (the read post carries no reply flag); \`zxx\` is X's language for a post with no words.
+- Replies are detected by the text opening with a mention (the read post carries no reply flag); \`zxx\` is X's language for a post with no words. Evidence read before 2026-10-13 recorded one flag for "reply or repost"; it is read as a reply, as this report always labelled it — a coin's origin is the post people saw, and a repost's link opens the original under its own author.
 
 ## Cheapest change that catches the most misses
 

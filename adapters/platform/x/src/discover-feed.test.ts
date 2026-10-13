@@ -27,31 +27,38 @@ const feed = (over: Partial<DiscoveryQuery> = {}): DiscoveryQuery => ({
   untilMs: AT,
   limit: 20,
   cursor: null,
-  filter: { minApproval: 50, mediaOnly: false, langs: ['en'], originalsOnly: true },
+  filter: { minApproval: 50, mediaOnly: false, langs: ['en'], excludeRebroadcasts: true },
   ...over,
 });
 
-test('★ the catch-all lane renders the earlier build\'s query, with no keyword', () => {
+test('★ the catch-all lane renders the earlier build\'s query, with no keyword, leaving out only plain reposts', () => {
   assert.equal(
     toSearchQuery(feed()),
-    `min_faves:50 lang:en -filter:replies -filter:retweets since_time:${SINCE / 1000} until_time:${cutoffSecond(AT)}`,
+    `min_faves:50 lang:en -filter:retweets since_time:${SINCE / 1000} until_time:${cutoffSecond(AT)}`,
   );
 });
 
+test('★ replies and quote posts are never filtered out: a meme can start as either', () => {
+  const q = toSearchQuery(feed());
+  assert.ok(!q.includes('filter:replies'), q);
+  assert.ok(!q.includes('filter:quote'), q);
+  assert.ok(!toSearchQuery(feed({ filter: { minApproval: 50, mediaOnly: false, langs: ['en'], excludeRebroadcasts: false } })).includes('filter:'), 'and nothing at all when reposts are wanted too');
+});
+
 test('★ the media lane is the same query with filter:media', () => {
-  const q = toSearchQuery(feed({ filter: { minApproval: 50, mediaOnly: true, langs: ['en'], originalsOnly: true } }));
-  assert.equal(q, `min_faves:50 filter:media lang:en -filter:replies -filter:retweets since_time:${SINCE / 1000} until_time:${cutoffSecond(AT)}`);
+  const q = toSearchQuery(feed({ filter: { minApproval: 50, mediaOnly: true, langs: ['en'], excludeRebroadcasts: true } }));
+  assert.equal(q, `min_faves:50 filter:media lang:en -filter:retweets since_time:${SINCE / 1000} until_time:${cutoffSecond(AT)}`);
 });
 
 test('a null language searches every language', () => {
-  assert.ok(!toSearchQuery(feed({ filter: { minApproval: 50, mediaOnly: false, langs: [], originalsOnly: true } })).includes('lang:'));
+  assert.ok(!toSearchQuery(feed({ filter: { minApproval: 50, mediaOnly: false, langs: [], excludeRebroadcasts: true } })).includes('lang:'));
 });
 
 test('★ a catch-all search with no floor is refused rather than sent unbounded', () => {
   const { filter: _omitted, ...unbounded } = feed();
   assert.throws(() => toSearchQuery(unbounded), NotImplemented);
-  assert.throws(() => toSearchQuery(feed({ filter: { minApproval: 0, mediaOnly: false, langs: ['en'], originalsOnly: true } })), NotImplemented);
-  assert.throws(() => toSearchQuery(feed({ filter: { minApproval: 12.5, mediaOnly: false, langs: ['en'], originalsOnly: true } })), NotImplemented);
+  assert.throws(() => toSearchQuery(feed({ filter: { minApproval: 0, mediaOnly: false, langs: ['en'], excludeRebroadcasts: true } })), NotImplemented);
+  assert.throws(() => toSearchQuery(feed({ filter: { minApproval: 12.5, mediaOnly: false, langs: ['en'], excludeRebroadcasts: true } })), NotImplemented);
 });
 
 test('a term on a catch-all search is refused, so it cannot quietly become a keyword search', () => {
@@ -59,7 +66,7 @@ test('a term on a catch-all search is refused, so it cannot quietly become a key
 });
 
 test('a language code that is not one is refused rather than pasted into the query', () => {
-  assert.throws(() => toSearchQuery(feed({ filter: { minApproval: 50, mediaOnly: false, langs: ['en', 'en OR x'], originalsOnly: true } })), NotImplemented);
+  assert.throws(() => toSearchQuery(feed({ filter: { minApproval: 50, mediaOnly: false, langs: ['en', 'en OR x'], excludeRebroadcasts: true } })), NotImplemented);
 });
 
 test('★ a recorded page comes back as posts with their authors, and the units are what was returned', async () => {
@@ -79,6 +86,6 @@ test('★ a recorded page comes back as posts with their authors, and the units 
 });
 
 test('several languages are one OR group, so a post with no words (zxx) is found beside English', () => {
-  const q = toSearchQuery(feed({ filter: { minApproval: 50, mediaOnly: false, langs: ['en', 'zxx'], originalsOnly: true } }));
+  const q = toSearchQuery(feed({ filter: { minApproval: 50, mediaOnly: false, langs: ['en', 'zxx'], excludeRebroadcasts: true } }));
   assert.ok(q.includes('(lang:en OR lang:zxx)'), q);
 });
