@@ -18,6 +18,7 @@
 import type { Author, Item, CounterKind, CounterSet, Fidelity, Millis } from '../vocabulary.ts';
 import type { SourceId } from '../ids.ts';
 import type { Budget, BillingUnit, Metered, CostEstimate } from './meter.ts';
+import type { PostResponses, ResponseAsk } from './responses.ts';
 
 export const DISCOVERY_MODES = ['keyword', 'hashtag', 'feed', 'catalog', 'account', 'catchall'] as const;
 /* `feed` is ONE stream the source names — a community's newest posts — and takes a term.
@@ -221,6 +222,15 @@ export interface PlatformAdapter {
 
   /** When a post was made, from its id alone. Null when this source's ids carry no time. */
   postTimeFromId?(sourceItemId: string): Millis | null;
+
+  /**
+   * A post's replies and reproductions, newest first, capped by `ask` — read for the facts in
+   * core/src/qualify/attention.ts. Optional: a source that cannot read a post's conversation has
+   * none to read, and its posts carry no such facts rather than empty ones. Priced per response
+   * returned, with the source's per-request floor; `estimateResponses` is the most `ask` can cost.
+   */
+  responses?(sourceItemId: string, ask: ResponseAsk, budget: Budget): Promise<Metered<PostResponses>>;
+  estimateResponses?(ask: ResponseAsk): CostEstimate;
 
   /**
    * The ONLY function permitted to know this source's field names.

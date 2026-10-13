@@ -27,6 +27,7 @@ import type { XClient } from './client.ts';
 import { searchPage } from './discover.ts';
 import { chunk, observeBatch } from './observe.ts';
 import { toAuthor, toItem } from './to-item.ts';
+import { estimateResponses, readResponses } from './responses.ts';
 
 export interface XAdapterDeps {
   readonly client: XClient;
@@ -162,6 +163,10 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
         ),
       };
     },
+
+    /* A post's replies and quote posts (responses.ts), for the crypto-attention facts. */
+    responses: (sourceItemId, ask, _budget) => readResponses(deps.client, deps.meter, prices, sourceItemId, ask, deps.now()),
+    estimateResponses: (ask) => estimateResponses(prices, ask),
 
     parseLink: (url: string) => parseLinkOf(url),
     postTimeFromId: (id: string) => postTimeOf(id) as Millis | null,
