@@ -76,7 +76,7 @@ import { toAuthor, toItem } from './to-item.ts';
 /** What the actor is asked to do. Keys are this scraper family's; nothing else knows them. */
 export interface ActorInput {
   readonly hashtags?: readonly string[];
-  readonly accounts?: readonly string[];
+  readonly profiles?: readonly string[];
   /** A hint, not a guarantee — see the header's last section for why that is fine. */
   readonly resultsPerPage?: number;
 }
@@ -112,7 +112,7 @@ export function toActorInput(query: DiscoveryQuery): ActorInput {
   const resultsPerPage = Math.max(1, Math.trunc(query.limit));
 
   return query.mode === 'account'
-    ? { accounts: [term], resultsPerPage }
+    ? { profiles: [term], resultsPerPage }
     : { hashtags: [term], resultsPerPage };
 }
 

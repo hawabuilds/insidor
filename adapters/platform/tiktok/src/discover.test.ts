@@ -122,7 +122,7 @@ test('a hashtag and an account go into different keys, because the actor reads t
     resultsPerPage: 25,
   });
   assert.deepEqual(toActorInput(query({ mode: 'account', term: 'someone' })), {
-    accounts: ['someone'],
+    profiles: ['someone'],
     resultsPerPage: 25,
   });
   assert.deepEqual(toActorInput(query({ mode: 'feed', term: 'someone' })), {

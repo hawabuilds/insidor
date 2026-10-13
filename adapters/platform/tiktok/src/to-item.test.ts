@@ -74,3 +74,17 @@ test('★ the handle is uniqueId, the @name in the post URL, never the free-text
 test('a payload with no usable author object has no author row', () => {
   assert.equal(toAuthor(DEGRADED, AT), null);
 });
+
+test("★ the configured scraper's flattened post becomes the same Item: text, account, cover, counts", async () => {
+  const { SCRAPER_POST } = await import('./__fixtures__/posts.ts');
+  const item = toItem(SCRAPER_POST, 1_800_000_000_000 as never);
+  assert.equal(item.text, 'the hippo is back #moodeng');
+  assert.equal(item.media[0]?.uri, 'https://p16-sign.tiktokcdn.com/obj/cover.jpeg');
+  assert.equal(item.media[0]?.durationMs, 15_000, 'a cover with a duration: the feed draws it as a video');
+  assert.equal(item.counters.reach?.value, 310_000);
+  assert.equal(item.counters.approval?.value, 8_100);
+  assert.equal(item.postedAt, 1_791_430_248_000);
+  assert.ok(item.fingerprints.some((f) => f.kind === 'entitySpan'));
+  assert.ok(item.formatIds.includes('tiktok:sound:7400000000000000002'));
+  assert.equal(toAuthor(SCRAPER_POST, 0 as never)?.handle, 'zookeeperdiary');
+});
