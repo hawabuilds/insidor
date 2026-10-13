@@ -74,7 +74,9 @@ describe('matchPostCoin', () => {
     assert.equal(r.kind, 'unsure');
   });
 
-  it('is confident on timing and an exact name only when it is the only coin of the name in the window', () => {
+  it('is confident on timing and an exact name only when it is the only coin of the name at all', () => {
+    const before = coin({ address: 'B', launchedAt: (POSTED - 3_600_000) as Millis });
+    assert.equal(matchPostCoin(post, [coin({ address: 'A' }), before], BARS).kind, 'unsure');
     assert.equal(matchPostCoin(post, [coin({ address: 'A' })], BARS).kind, 'confident');
     assert.equal(matchPostCoin(post, [coin({ address: 'A' }), coin({ address: 'B', name: 'AuraBirdy', ticker: null })], BARS).kind, 'unsure');
     assert.equal(matchPostCoin(post, [coin({ address: 'A', samePicture: false })], BARS).kind, 'unsure');
