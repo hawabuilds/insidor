@@ -1159,6 +1159,12 @@ export interface RisingPolicy {
   readonly fypFastReachPerMinute: number;
   readonly fypFastWindowMs: number;
   readonly popularMinReach: number;
+  /**
+   * A promoted narrative stays on the board only while at least this many of its posts pass the
+   * same per-post rules as For You (scored, memeable, confident, a short name). Below it the board
+   * hides it; above it, only its passing posts are listed. The owner's rule (2026-10-13).
+   */
+  readonly narrativeMinPassingPosts: number;
 }
 
 export interface IngestPolicy {
@@ -1885,7 +1891,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v40',
+  version: 'policy.v41',
 
   admit: {
     maxAgeMin: 240,
@@ -2385,6 +2391,7 @@ const POLICY_V1: Policy = {
     fypFastReachPerMinute: 1_000,
     fypFastWindowMs: 3_600_000, // the first hour
     popularMinReach: 250_000,
+    narrativeMinPassingPosts: 2,
   },
 
   rank: {
