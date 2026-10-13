@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import type { Millis } from '@insidor/contracts';
 
-import { linksPost, matchPostCoin, nameMatch, pictureVerdict, skeleton, type CoinSide, type MatchBars } from './post-coin.ts';
+import { linksPost, matchPostCoin, nameMatch, pictureVerdict, postPictureVerdict, skeleton, type CoinSide, type MatchBars } from './post-coin.ts';
 
 const BARS: MatchBars = { launchAllowanceMs: 600_000, windowMs: 172_800_000, minLinkIdLength: 8, minVariantLength: 4 };
 const POSTED = 1_000_000_000_000 as Millis;
@@ -46,6 +46,12 @@ describe('picture verdict', () => {
     assert.equal(pictureVerdict(0.5, true, bars), false);
     assert.equal(pictureVerdict(null, true, bars), null);
   });
+  it('★ for a post\'s coin only near-identical is the same picture: the judge\'s "same subject" leaves it unknown, its no is a no', () => {
+    assert.equal(postPictureVerdict(0.97, null, bars), true);
+    assert.equal(postPictureVerdict(0.8, 'yes', bars), null);
+    assert.equal(postPictureVerdict(0.8, 'no', bars), false);
+    assert.equal(postPictureVerdict(0.5, 'yes', bars), false);
+  });
 });
 
 describe('matchPostCoin', () => {
@@ -63,7 +69,7 @@ describe('matchPostCoin', () => {
 
   it('is confident on same picture plus timing, and never on a picture alone', () => {
     const late = (POSTED + 3 * 86_400_000) as Millis;
-    assert.equal(matchPostCoin(post, [coin({ address: 'A', samePicture: true }), coin({ address: 'B' })], BARS).kind, 'confident');
+    assert.equal(matchPostCoin(post, [coin({ address: 'A', samePicture: true }), coin({ address: 'B', samePicture: false })], BARS).kind, 'confident');
     const other = coin({ address: 'B', name: 'Dog', ticker: 'DOG' });
     assert.equal(matchPostCoin(post, [coin({ address: 'A', samePicture: true, launchedAt: late }), other], BARS).kind, 'unsure');
   });
@@ -74,11 +80,12 @@ describe('matchPostCoin', () => {
     assert.equal(r.kind, 'unsure');
   });
 
-  it('is confident on timing and an exact name only when it is the only coin of the name at all', () => {
-    const before = coin({ address: 'B', launchedAt: (POSTED - 3_600_000) as Millis });
-    assert.equal(matchPostCoin(post, [coin({ address: 'A' }), before], BARS).kind, 'unsure');
-    assert.equal(matchPostCoin(post, [coin({ address: 'A' })], BARS).kind, 'confident');
-    assert.equal(matchPostCoin(post, [coin({ address: 'A' }), coin({ address: 'B', name: 'AuraBirdy', ticker: null })], BARS).kind, 'unsure');
+  it('★ is unsure on the one same picture while another coin in the window was never compared', () => {
+    assert.equal(matchPostCoin(post, [coin({ address: 'A', samePicture: true }), coin({ address: 'B' })], BARS).kind, 'unsure');
+  });
+
+  it('★ never confident on a name: launched after, exact, and the only coin of the name is still unsure', () => {
+    assert.equal(matchPostCoin(post, [coin({ address: 'A' })], BARS).kind, 'unsure');
     assert.equal(matchPostCoin(post, [coin({ address: 'A', samePicture: false })], BARS).kind, 'unsure');
   });
 

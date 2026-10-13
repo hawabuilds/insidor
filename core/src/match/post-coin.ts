@@ -5,17 +5,21 @@
  * is weighed here on four kinds of evidence, strongest first:
  *
  *   1. links    the coin's own links or description name this exact post, or its picture
- *   2. picture  the coin's picture is the post's: near-identical, or borderline and the judge
- *               said "the same subject" (the caller hands in the verdict, never asks here)
+ *   2. picture  the coin's picture is the post's: near-identical (`postPictureVerdict`; the
+ *               caller hands in the verdict, never asks here)
  *   3. timing   launched after the post, within `windowMs`. A coin launched before the post
  *               (beyond `launchAllowanceMs`, the origin rule's grace) can never be its coin
  *   4. name     the subject's names against the coin's name and ticker: the same once spaces
  *               and punctuation go (`exact`), or a looser spelling (`variant`)
  *
- * CONFIDENT is only: (1) on exactly one coin; or (2)+(3) on exactly one coin; or (3) with an
- * exact name when it is the ONLY coin the search found under any form of the name, whenever it
- * launched. Anything else is unsure, and an unsure answer carries no coin a button could be
- * built from.
+ * CONFIDENT is only: (1) on exactly one coin; or (2)+(3) on exactly one coin while every other
+ * coin in the window has had its picture compared. Anything else is unsure, and an unsure answer
+ * carries no coin a button could be built from. ★ A NAME NEVER MAKES A CARD CONFIDENT (since
+ * 2026-10-13): with every name searched and nearly every coin's metadata read, the gold set's
+ * "launched after, the only coin of the name" answers were 4 wrong and 0 right that the other
+ * routes did not already find (eval/src/gold/matching-report.md). Names only order the list.
+ * And "only one has the same picture" is not a claim we can make while another coin in the
+ * window has a picture we never compared: on gold that was a wrong link.
  *
  * Why a fixed rule and not a weighted sum: the card says WHY it matched as facts ("Links this
  * post", "Same picture", "Launched 12m after"). A sum would let two weak facts outvote a
@@ -88,7 +92,7 @@ export interface CoinEvidence {
 }
 
 export type PostCoinMatch =
-  | { readonly kind: 'confident'; readonly address: string; readonly because: 'links' | 'pictureAndTiming' | 'timingAndName'; readonly ranked: readonly CoinEvidence[] }
+  | { readonly kind: 'confident'; readonly address: string; readonly because: 'links' | 'pictureAndTiming'; readonly ranked: readonly CoinEvidence[] }
   | { readonly kind: 'unsure'; readonly ranked: readonly CoinEvidence[] }
   | { readonly kind: 'none' };
 
@@ -102,6 +106,22 @@ export function pictureVerdict(
   if (similarity >= bars.nearIdentical) return true;
   if (similarity < bars.borderline) return false;
   return confirmed;
+}
+
+/**
+ * Same picture, for a post's coin: near-identical only. A borderline pair the judge called "the
+ * same subject" is NOT the same picture — on the gold set (2026-10-13) every confident link made
+ * on a judge's "same subject" between the bars was a different coin from the gold's, or an
+ * unrelated post's — so the judge's yes leaves it unknown, and only its no counts against.
+ * The origin check (`matchCandidates`) still takes a confirmed subject; there the name is
+ * required too.
+ */
+export function postPictureVerdict(
+  similarity: number | null,
+  said: 'yes' | 'no' | 'unsure' | null,
+  bars: { readonly nearIdentical: number; readonly borderline: number },
+): boolean | null {
+  return pictureVerdict(similarity, said === 'no' ? false : null, bars);
 }
 
 /** A name with spaces and punctuation gone: "Moo Deng!" and "moodeng" are one name. */
@@ -183,16 +203,8 @@ export function matchPostCoin(post: PostSide, coins: readonly CoinSide[], bars: 
 
   const pictured = possible.filter((e) => e.samePicture === true && e.inWindow);
   const picture = only(pictured);
-  if (picture !== null) return { kind: 'confident', address: picture.address, because: 'pictureAndTiming', ranked };
-  if (pictured.length > 1) return { kind: 'unsure', ranked };
-
-  /* The ONLY coin of the name at all — launched before, in or after the window — not merely the
-     only one in the window: on the gold set the narrower test linked 21 viral posts that only
-     mentioned a coin's name (6.5% wrong links); this one, 4 (eval/src/gold/matching-report.md). */
-  const named = only(ranked.filter((e) => e.name !== 'none'));
-  if (named !== null && named.inWindow && named.name === 'exact' && named.samePicture !== false) {
-    return { kind: 'confident', address: named.address, because: 'timingAndName', ranked };
-  }
+  const uncompared = possible.some((e) => e.inWindow && e.samePicture === null);
+  if (picture !== null && !uncompared) return { kind: 'confident', address: picture.address, because: 'pictureAndTiming', ranked };
   return { kind: 'unsure', ranked };
 }
 

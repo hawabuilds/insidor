@@ -4,8 +4,11 @@
  * GATHERS WHAT THE POST-TO-COIN MATCHING EVAL NEEDS, ONE STAGE AT A TIME, into
  * eval/src/gold/match-evidence.json. The eval (eval/src/gold/run-matching.ts) replays it offline.
  *
- *   search   each case's name searched on both free market sources, as the runner's lookup does.  Free.
- *   meta     each found coin's metadata document — its links and picture — through our gateways. Free (RPC credits).
+ *   search   each case's every name (name, ticker, the judge's name) on both market sources, as the
+ *            runner's lookup does. Free (the on-chain source on the owner's plan when its key is set).
+ *   meta     each found coin's metadata document — its links and picture — through our gateways, or
+ *            from the creator's host behind the adapter's address fence when the link names no
+ *            content id, for every coin not launched before its post. Free (RPC credits).
  *   posts    a picture for each origin post we never read: X posts by id, TikTok covers.        Paid: X (a few posts).
  *   images   each post's picture against each coin that could still be its coin (launched after it). Paid: Voyage.
  *   pairs    the judge's same-subject answer on borderline pairs, capped at `PAIRS_CAP`.        Paid: Anthropic.
@@ -36,7 +39,7 @@ import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } f
 import { xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { dexscreenerSearch } from '../adapters/market/dexscreener/src/index.ts';
 import { geckoterminal } from '../adapters/market/geckoterminal/src/index.ts';
-import { fetchMetadata } from '../adapters/venue/solana-pumpfun/src/index.ts';
+import { fetchDeclaredMetadata, fetchMetadata } from '../adapters/venue/solana-pumpfun/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 import { matchCases, MATCH_EVIDENCE_FILE, loadMatchEvidence, pairKey, type FoundCoin, type MatchCase } from '../eval/src/gold/match-cases.ts';
@@ -51,6 +54,8 @@ const DEADLINE_MS = 120_000;
 const SEARCH_TIMEOUT_MS = 8_000;
 /* The free market-data plan answers about thirty requests a minute. */
 const SEARCH_PAUSE_MS = 2_200;
+/* The other source allows 300 a minute, and the owner's plan 500: a fifth of a second is ample. */
+const SEARCH_PAUSE_KEYED_MS = 400;
 const METADATA_GATEWAYS = ['https://pump.mypinata.cloud', 'https://gateway.pinata.cloud'];
 const RPC_BATCH = 100;
 const RPC_CONCURRENCY = 5;
@@ -97,7 +102,14 @@ const budget = (meter: Meter) => {
 };
 
 const imageOf = (c: MatchCase): string | null => c.imageUri ?? postImages[c.postId] ?? null;
-const found = (c: MatchCase): readonly FoundCoin[] => searches[c.term] ?? [];
+/** Every name's results, merged by address: the lookup's union. */
+const found = (c: MatchCase): readonly FoundCoin[] => [...new Map(c.terms.flatMap((t) => searches[t] ?? []).map((f) => [f.address, f])).values()];
+/** Coins not launched before the post (with the grace): any could link it, whenever it launched. */
+const notBefore = (c: MatchCase): readonly FoundCoin[] =>
+  c.postedAt === null ? found(c) : found(c).filter((f) => {
+    const at = launchOf(f);
+    return at === null || at >= c.postedAt! - P.origin.launchAllowanceMs;
+  });
 /** Coins that could still be the post's: launched after it, with the grace, inside the window. */
 const launchOf = (f: FoundCoin): number | null => launched[f.address] ?? f.createdAt;
 const possible = (c: MatchCase): readonly FoundCoin[] =>
@@ -112,12 +124,18 @@ const coinImage = (f: FoundCoin): string | null => meta[f.address]?.imageUri ?? 
 /* ── the stages ─────────────────────────────────────────────────────────── */
 
 async function search(): Promise<void> {
+  const gecko = (process.env['COINGECKO_API_KEY'] ?? '').trim();
+  const pause = gecko === '' ? SEARCH_PAUSE_MS : SEARCH_PAUSE_KEYED_MS;
   const sources: CoinSearch[] = [
     dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS }),
-    geckoterminal({ plan: 'free', baseUrl: 'https://api.geckoterminal.com/api/v2', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS, now: Date.now }),
+    geckoterminal(
+      gecko === ''
+        ? { plan: 'free', baseUrl: 'https://api.geckoterminal.com/api/v2', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS, now: Date.now }
+        : { plan: 'pro', apiKey: gecko, baseUrl: 'https://pro-api.coingecko.com/api/v3/onchain', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS, now: Date.now },
+    ),
   ];
   const byTerm = new Map<string, MatchCase[]>();
-  for (const c of cases) byTerm.set(c.term, [...(byTerm.get(c.term) ?? []), c]);
+  for (const c of cases) for (const t of c.terms) byTerm.set(t, [...(byTerm.get(t) ?? []), c]);
   let done = 0;
   for (const [term, mine] of byTerm) {
     if (searches[term] !== undefined) continue;
@@ -125,7 +143,7 @@ async function search(): Promise<void> {
     const read = answers.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []));
     if (read.length === 0) {
       console.warn(`  ${term}: every source failed; left for the next run`);
-      await sleep(SEARCH_PAUSE_MS);
+      await sleep(pause);
       continue;
     }
     const times = mine.flatMap((c) => (c.postedAt === null ? [] : [c.postedAt]));
@@ -141,7 +159,7 @@ async function search(): Promise<void> {
       save();
       console.log(`  ${done} names searched`);
     }
-    await sleep(SEARCH_PAUSE_MS);
+    await sleep(pause);
   }
   save();
   const right = cases.filter((c) => c.right !== null && found(c).some((f) => f.address === c.right)).length;
@@ -177,7 +195,9 @@ async function metaStage(): Promise<void> {
     }
   }
   save();
-  const want = [...new Set(cases.flatMap((c) => possible(c).map((f) => f.address)))].filter((a) => meta[a] === undefined);
+  /* Every coin not launched before its post, and again any not read last time: the creator's-host
+     reader may read what the gateway could not. */
+  const want = [...new Set(cases.flatMap((c) => notBefore(c).map((f) => f.address)))].filter((a) => meta[a] === undefined || meta[a] === null);
   console.log(`meta: ${want.length} coins to read.`);
   for (let i = 0; i < want.length; i += RPC_BATCH) {
     const batch = want.slice(i, i + RPC_BATCH);
@@ -188,15 +208,23 @@ async function metaStage(): Promise<void> {
     await Promise.all(
       batch.map(async (address) => {
         const uri = uris.get(address) ?? null;
+        const keep = (m: { links: { social: string | null; website: string | null; chat: string | null }; description: string | null; imageUri: string | null }, from: 'contentId' | 'creatorHost') => {
+          meta[address] = { links: [m.links.social, m.links.website, m.links.chat, m.description].filter((l): l is string => l !== null), imageUri: m.imageUri, from };
+        };
         for (const gateway of METADATA_GATEWAYS) {
           try {
             const read = await fetchMetadata(uri, { gateway, fetch: globalThis.fetch, timeoutMs: P.universe.metadataTimeoutMs, maxBytes: P.universe.metadataMaxBytes });
             if (read.kind === 'notContentAddressed') {
-              meta[address] = null;
+              try {
+                const own = await fetchDeclaredMetadata(uri, { fetch: globalThis.fetch, timeoutMs: P.universe.metadataTimeoutMs, maxBytes: P.universe.metadataMaxBytes });
+                if (own.kind === 'read') keep(own.metadata, 'creatorHost');
+                else meta[address] = null;
+              } catch {
+                meta[address] = null;
+              }
               return;
             }
-            const m = read.metadata;
-            meta[address] = { links: [m.links.social, m.links.website, m.links.chat, m.description].filter((l): l is string => l !== null), imageUri: m.imageUri };
+            keep(read.metadata, 'contentId');
             return;
           } catch {
             /* the next gateway */
