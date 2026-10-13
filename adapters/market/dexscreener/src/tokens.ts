@@ -69,6 +69,8 @@ export interface CoinQuote {
   /** The deepest pool's liquidity in dollars; null when the reply did not say. */
   readonly liquidityUsd: number | null;
   readonly change: { readonly h1: number | null; readonly h6: number | null; readonly h24: number | null };
+  /** True when any pool it trades in is off its launchpad's curve: it has bonded. */
+  readonly bonded: boolean;
 }
 
 const numText = (v: unknown): number | null => {
@@ -79,10 +81,13 @@ const numText = (v: unknown): number | null => {
 /** One quote per coin, from its deepest pool. A coin the reply does not list is absent. */
 export function readQuotes(raw: unknown): ReadonlyMap<string, CoinQuote> {
   const best = new Map<string, { liquidity: number; quote: CoinQuote }>();
+  const bonded = new Set<string>();
   for (const p of arr(raw)) {
     const r = rec(p);
     const address = str(rec(r.baseToken).address);
     if (str(r.chainId) !== 'solana' || address === null) continue;
+    const dex = str(r.dexId);
+    if (dex !== null && !CURVE_DEX_IDS.has(dex)) bonded.add(address);
     const liquidity = num(rec(r.liquidity).usd) ?? -1;
     const held = best.get(address);
     if (held !== undefined && held.liquidity >= liquidity) continue;
@@ -97,10 +102,11 @@ export function readQuotes(raw: unknown): ReadonlyMap<string, CoinQuote> {
         marketCapUsd: num(r.marketCap) ?? num(r.fdv),
         liquidityUsd: liquidity >= 0 ? liquidity : null,
         change: { h1: num(change.h1), h6: num(change.h6), h24: num(change.h24) },
+        bonded: false,
       },
     });
   }
-  return new Map([...best].map(([a, b]) => [a, b.quote]));
+  return new Map([...best].map(([a, b]) => [a, { ...b.quote, bonded: bonded.has(a) }]));
 }
 
 /** Prices for many coins, a batch a call. Throws on an outage; never answers "no prices". */
