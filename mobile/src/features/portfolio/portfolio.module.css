@@ -7,7 +7,7 @@
 
 .header {
   position: sticky;
-  top: 0;
+  top: var(--safe-top);
   z-index: 2;
   margin: 0 calc(-1 * var(--gutter));
   padding: 16px var(--gutter) 10px;
