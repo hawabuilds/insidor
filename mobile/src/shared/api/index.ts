@@ -6,7 +6,7 @@
 export type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 export type { Coin, CoinEvidence, CoinLink, PostCoinLink } from './wire/coin.ts';
 export type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
-export type { DiscussionPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
+export type { DiscussionPost, Evidence, NarrativeStage, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 export type { OlderCoin, RisingFeed, RisingFeedId, RisingPost } from './wire/rising.ts';
 export type { LaunchPreview, LaunchRules } from './client.ts';
 export type { AboutLink, AboutLinkKind, AboutPost, CoinAbout } from './about.ts';

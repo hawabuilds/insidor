@@ -1213,6 +1213,8 @@ test('the story page is the row minus isNew, plus the change, the evidence, the 
      subject — it is the fact about whether the subject happened, which a reader needs
      before believing any of the others. `earliestPost` is a post and its time, which are
      facts; its one claim, "started by", is made only on a quote or the same picture.
+     `stage` is a name for two counts on the page itself — the posts listed and the top
+     post's views — under bars in policy, so it says nothing the page does not already show.
      Anything else appearing in this list is a leak until somebody argues otherwise in
      this comment. */
   const page = projectStory(story(), OPTIONS, OBSERVED_STORY);
@@ -1228,6 +1230,7 @@ test('the story page is the row minus isNew, plus the change, the evidence, the 
     'reach',
     'reachDelta24h',
     'spark',
+    'stage',
     'summary',
     'thumbUrl',
     'title',

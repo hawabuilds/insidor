@@ -4,6 +4,9 @@
  *   New      newest first, by when the narrative began.
  *   Popular  most viewed first.
  *
+ * And the stage's word for a row (Early, Forming, Big), which the server names from the posts
+ * listed and the top post's views; this file only spells it.
+ *
  * ★ AN UNKNOWN NEVER SORTS AS ZERO OR AS "BRAND NEW". A narrative whose start nobody read, or
  * whose views were not reported, goes after every one that has the fact, in the order it came,
  * so a missing number cannot promote a row to the top or bury it as the least seen.
@@ -21,6 +24,14 @@ export function orderNarratives(list: readonly Story[], order: NarrativeOrder): 
   const withKey = list.filter((s) => key(s) !== null);
   const without = list.filter((s) => key(s) === null);
   return [...withKey].sort((a, b) => (key(b) ?? 0) - (key(a) ?? 0)).concat(without);
+}
+
+/** The stage's word on the row. Null when the server named none: no label, never a guess. */
+export function stageLabel(s: Story): string | null {
+  if (s.stage === 'early') return 'Early';
+  if (s.stage === 'forming') return 'Forming';
+  if (s.stage === 'big') return 'Big';
+  return null;
 }
 
 /** "9 posts on X, TikTok". A count of the posts we list, and the sites they are on. */

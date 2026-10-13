@@ -52,8 +52,10 @@ import type {
   SourceHealth,
 } from '@insidor/contracts';
 import type { StoryOrigin } from '@insidor/contracts/story.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { sourceState } from '@insidor/core';
 
+import { narrativeStage } from './narrative-stage.ts';
 import { orderByRecency } from './order.ts';
 import type { Orderable } from './order.ts';
 import {
@@ -1478,6 +1480,9 @@ export function projectStory(
     earliestPost: projectEarliestPost(story.members),
     coins,
     evidence: projectEvidence(story.members),
+    /* Early, Forming or Big: a name for the count of posts listed and its top post's views,
+       from the same members and readings this page shows (narrative-stage.ts). */
+    stage: narrativeStage(story.members.length, knownLevel(readings), DEFAULT_POLICY),
     /* There is no discussion table. An empty list says "nobody has said anything here",
        which is true, and it is the only honest thing to send until the table exists. */
     discussion: [],

@@ -60,6 +60,7 @@ export const STORY_FIELDS = [
   'earliestPost',
   'coins',
   'evidence',
+  'stage',
   'discussion',
   'provenance',
 ] as const;

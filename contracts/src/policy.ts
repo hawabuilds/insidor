@@ -1284,6 +1284,19 @@ export interface RisingPolicy {
    */
   readonly narrativeMinPassingPosts: number;
   /**
+   * ★ A NARRATIVE'S STAGE ON THE BOARD, from facts a reader could count: how many posts it
+   * lists, and how many views its most-viewed post has. Early: fewer than `formingMinPosts`
+   * posts. Forming: at least that many. Big: at least `bigMinPosts` posts, or a Forming one
+   * whose top post has `bigMinReach` views. A name for a count, never a score: the same two
+   * numbers give the same stage, whatever we think of the narrative (services/project
+   * narrative-stage.ts).
+   */
+  readonly narrativeStages: {
+    readonly formingMinPosts: number;
+    readonly bigMinPosts: number;
+    readonly bigMinReach: number;
+  };
+  /**
    * ★ THE PICTURE BOOST. It lifts only a post the judge was unsure about NEAR THE BAR, and never
    * a "no". "Near the bar" is exact: the judge said YES, named it in a short name, and its
    * confidence fell short of the bar for what it looked at (`qualify.minJudgeConfidence`) by at
@@ -2644,6 +2657,9 @@ const POLICY_V1: Policy = {
     watchMinReachPerMinute: 500,
     shortVideoReachScale: 12.5,
     narrativeMinPassingPosts: 2,
+    /* 3 posts is where GROUP promotes a story; 8 posts, or a top post at 5M views (125 times
+       the For You views bar), is a narrative most of the timeline has seen. */
+    narrativeStages: { formingMinPosts: 3, bigMinPosts: 8, bigMinReach: 5_000_000 },
     boostMinSimilarity: 0.44,
     /* A "yes" up to a tenth under its bar: 0.60 on text or a picture, 0.65 with a video frame. */
     boostBarMargin: 0.1,

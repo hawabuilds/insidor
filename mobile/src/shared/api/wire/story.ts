@@ -66,6 +66,9 @@ export interface DiscussionPost {
   readonly postedAt: Instant;
 }
 
+/** A narrative's size, as the server names it. */
+export type NarrativeStage = 'early' | 'forming' | 'big';
+
 export interface Story {
   readonly id: string;
   readonly title: string;
@@ -87,6 +90,11 @@ export interface Story {
 
   readonly coins: CoinLink;
   readonly evidence: readonly Evidence[];
+  /**
+   * Early, Forming or Big: the server's name for two counts this page already shows — the
+   * posts listed and its top post's views. Null when the server sent none (an older frame).
+   */
+  readonly stage: NarrativeStage | null;
   readonly discussion: readonly DiscussionPost[];
   /**
    * ★ WHETHER THIS STORY HAPPENED.

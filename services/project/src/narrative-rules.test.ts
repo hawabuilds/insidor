@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY as P } from '@insidor/contracts/policy.ts';
 
 import { checkNarratives } from './narrative-rules.ts';
+import { narrativeStage } from './narrative-stage.ts';
 import type { StoryFacts } from './project.ts';
 
 const story = (id: string, members: readonly string[]): StoryFacts => ({ storyId: id, members: members.map((itemId) => ({ itemId })) }) as unknown as StoryFacts;
@@ -30,4 +31,14 @@ test("★ the owner's \"Not a meme\" drops a post from its narrative, and too fe
   const gone = checkNarratives([story('s4', ['a', 'b'])], new Map([['a', 'passes'], ['b', 'owner_not_meme']]), P);
   assert.deepEqual(gone.kept, []);
   assert.equal(gone.rejections[0]?.reason, 'too_few_passing_posts');
+});
+
+test('★ the stage is a name for counts: Early under the forming bar, Forming at it, Big by posts or by a top post that big', () => {
+  const s = P.rising.narrativeStages;
+  assert.equal(narrativeStage(s.formingMinPosts - 1, null, P), 'early');
+  // A huge post does not make two posts Big: a stage counts posts first.
+  assert.equal(narrativeStage(s.formingMinPosts - 1, s.bigMinReach * 10, P), 'early');
+  assert.equal(narrativeStage(s.formingMinPosts, null, P), 'forming');
+  assert.equal(narrativeStage(s.formingMinPosts, s.bigMinReach, P), 'big');
+  assert.equal(narrativeStage(s.bigMinPosts, null, P), 'big');
 });
