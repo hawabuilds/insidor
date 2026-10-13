@@ -14,14 +14,19 @@
  *                        the block but never applies it; `--force` builds even with nothing new;
  *                        `--baseline` also grades the same test posts with no learned block, for a
  *                        before-and-after on the same posts (about doubles the run's cost).
- *   measure [--baseline] [--rules-only] [--max-batch=<n>] [--rows=<file>]
+ *   measure [--baseline] [--rules-only] [--max-batch=<n>] [--rows=<file>] [--model=<id>]
+ *           [--instructions=<file>] [--kind-coinable] [--no-auto]
  *                        build and test a block now and print the result, writing nothing to the
  *                        database (no slot, no gold additions, no version, no alert) and reading
  *                        any table not yet migrated as empty. Paid like a run, on the learning book.
  *                        `--rules-only` grades the judge's rules alone (no block, no regression
  *                        check): the baseline by itself, at half the cost. `--max-batch` measures
  *                        another number of posts per call than the live scorer's; `--rows` writes
- *                        every graded post's answers to a file.
+ *                        every graded post's answers to a file. For experiments: `--model=<id>`
+ *                        another judge model; `--instructions=<file>` text added after the rules
+ *                        (a prompt variant, never the live file); `--kind-coinable` asks the kind
+ *                        question of every "yes", so a looser bar can be tried on the same answers;
+ *                        `--no-auto` leaves auto gold out.
  *   status               the last runs and the block in use. Free.
  *
  * A RUN, IN ORDER:
@@ -110,7 +115,8 @@ const soft = <T,>(read: Promise<T>, empty: T): Promise<T> => read.catch((e: unkn
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const url = process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'];
-const env = { ...process.env, ...(url === undefined ? {} : { DATABASE_URL_INTERNAL: url }) };
+/* `--model=<id>` (measure only) grades with another judge model than JUDGE_MODEL. */
+const env = { ...process.env, ...(url === undefined ? {} : { DATABASE_URL_INTERNAL: url }), ...(command === 'measure' && arg('model') !== null ? { JUDGE_MODEL: arg('model') ?? '' } : {}) };
 
 async function withRepo<T>(f: (repo: PgLearningRepo, owner: PgOwnerAlertRepo) => Promise<T>): Promise<T> {
   const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-retune' });
@@ -195,7 +201,7 @@ async function ownerCalls(repo: PgLearningRepo) {
 
 type G = 'gold' | 'auto' | 'live-not' | 'missed' | 'missed-taught';
 
-async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean; readonly rulesOnly?: boolean; readonly maxBatch?: number; readonly rowsFile?: string }): Promise<void> {
+async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean; readonly rulesOnly?: boolean; readonly maxBatch?: number; readonly rowsFile?: string; readonly extraInstructions?: string; readonly kindCoinable?: boolean; readonly noAuto?: boolean }): Promise<void> {
   await withRepo(async (repo, owner) => {
     if (opts.record && !(await repo.claimSlot(slot, new Date()))) {
       log('info', 'this slot already ran', { slot: slot.toISOString() });
@@ -240,7 +246,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const posts: EvalPost<G>[] = [
         ...goldOriginPosts(),
         ...additions
-          .filter((g) => !taught.has(g.itemId) && !testMissedIds.has(g.itemId))
+          .filter((g) => !taught.has(g.itemId) && !testMissedIds.has(g.itemId) && !(opts.noAuto === true && g.source === 'recall' && !listed.has(g.itemId)))
           .map((g) => ({ group: g.source === 'recall' && !listed.has(g.itemId) ? ('auto' as const) : ('gold' as const), id: g.itemId, kind: `added ${g.addedOn} (${g.source})`, text: g.postText, imageUri: g.imageUri, coinRef: g.coinMint })),
         ...listedHeld.map((h) => ({ group: 'gold' as const, id: h.itemId, kind: "the owner's hand-gold list", text: h.body, imageUri: pictureOf(h.media)?.uri ?? null })),
         ...block.testNegatives.map((c) => ({ group: 'live-not' as const, id: c.itemId, kind: c.why, text: c.text, imageUri: c.imageUri })),
@@ -270,10 +276,11 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const coined = await repo.coinedPictureVectors();
       /* One grading on the learning book. The kind labels it learns are kept, so a later grading
          this run splits gold exactly as this one did and does not pay to ask again. */
-      const grade = async (of: readonly EvalPost<G>[], examples: string | null) => {
+      const grade = async (of: readonly EvalPost<G>[], block: string | null) => {
+        const examples = [block, opts.extraInstructions ?? null].filter((x): x is string => x !== null && x.trim() !== '').join('\n\n') || null;
         const shared = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning');
         try {
-          const out = await gradePosts(of, { env, meter: shared.meter, examples, batch: true, mustFit: true, coined, vectors, knownKinds: kinds, maxBatch });
+          const out = await gradePosts(of, { env, meter: shared.meter, examples, batch: true, mustFit: true, coined, vectors, knownKinds: kinds, maxBatch, ...(opts.kindCoinable === true ? { kindAlso: (p: EvalPost<string>) => (p as EvalRow<string>).coinable === true } : {}) });
           for (const r of out.rows) if (r.postKind !== null) kinds.set(r.id, r.postKind);
           return out;
         } finally {
@@ -311,7 +318,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const rates = ratesOf(graded(answered), held, GROUPS);
       const verdict = gate({ ...rates, regressions: regressed }, L);
       /* `--rows=<file>`: every graded post's answers, for comparing held-kind sets on one run. */
-      if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, text: r.text.slice(0, 120) })), null, 1));
+      if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, lookedAt: r.lookedAt, similarity: r.similarity, imageUri: r.imageUri, text: r.text.slice(0, 120) })), null, 1));
       const why = unanswered > 0 ? `${unanswered} of ${rows.length} test posts went unanswered (outage or the learning line)${verdict.why === null ? '' : `; ${verdict.why}`}` : verdict.why;
       const apply = verdict.apply && unanswered === 0 && !opts.dry;
       const before = await soft(repo.appliedExampleIds(), []);
@@ -399,7 +406,8 @@ if (command === 'status') {
     process.exit(1);
   }
   const mb = arg('max-batch');
-  await run(new Date(), { dry: true, force: true, record: false, baseline: flag('--baseline'), rulesOnly: flag('--rules-only'), ...(mb === null ? {} : { maxBatch: Number(mb) }), ...(arg('rows') === null ? {} : { rowsFile: arg('rows') ?? '' }) });
+  await run(new Date(), { dry: true, force: true, record: false, baseline: flag('--baseline'), rulesOnly: flag('--rules-only'), ...(mb === null ? {} : { maxBatch: Number(mb) }), ...(arg('rows') === null ? {} : { rowsFile: arg('rows') ?? '' }),
+    ...(arg('instructions') === null ? {} : { extraInstructions: readFileSync(arg('instructions') ?? '', 'utf8') }), kindCoinable: flag('--kind-coinable'), noAuto: flag('--no-auto') });
 } else if (command === 'due' || command === 'run') {
   if (process.env['SPEND'] !== 'live' || !flag('--yes')) {
     console.error('retune refused: this calls the paid judge. Set SPEND=live and pass --yes.');
