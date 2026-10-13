@@ -1743,6 +1743,11 @@ export interface LearningPolicy {
   /** Local times the re-tune runs, in `timeZone`. */
   readonly retuneAt: readonly string[];
   readonly timeZone: string;
+  /**
+   * How long before each `retuneAt` a run starts, so it is finished by then: measured 2026-10-13,
+   * one run with its batched test and a baseline took about 17 minutes.
+   */
+  readonly startAheadMs: number;
   /** Gold origin posts that must still pass. */
   readonly minGoldPass: number;
   /** Held-out live non-memes that may pass, at most. */
@@ -2004,7 +2009,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v60',
+  version: 'policy.v61',
 
   admit: {
     maxAgeMin: 240,
@@ -2460,6 +2465,7 @@ const POLICY_V1: Policy = {
   learning: {
     retuneAt: ['08:00', '20:00'],
     timeZone: 'Europe/London',
+    startAheadMs: 1_200_000, // twenty minutes
     minGoldPass: 0.65,
     maxLiveNegativePass: 0.05,
     minMissedPass: 0.5,
