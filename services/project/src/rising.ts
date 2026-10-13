@@ -44,8 +44,8 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import { clearsReachBar, postScore, type ReachLevel } from '@insidor/core';
-import type { Db } from '@insidor/store';
+import { clearsReachBar, postScoreReason, type ReachLevel } from '@insidor/core';
+import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
 
 import { loadReach, pictureOf, sourceLabel } from './db.ts';
 import { permalinkFor } from './permalinks.ts';
@@ -245,6 +245,11 @@ export function projectRisingPost(
 export interface RisingFrame {
   readonly fyp: readonly WireRisingPost[];
   readonly popular: readonly WireRisingPost[];
+  /**
+   * Why each scored post in the window is not on For You: the failed check, or a reach reason.
+   * Read only to record why a post that WAS showing left (public.feed_rejection); never sent.
+   */
+  readonly whyNot: ReadonlyMap<string, FeedRejectionReason>;
 }
 
 /** Load, filter by the per-post score and each feed's view bar, project, and order both feeds. Writes nothing. */
@@ -256,9 +261,12 @@ export async function buildRising(
   policy = DEFAULT_POLICY,
 ): Promise<RisingFrame> {
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
-  const rows = (await loadCandidates(db, sinceMs)).filter(
-    (row) => postScore({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy) === 'passes',
-  );
+  const whyNot = new Map<string, FeedRejectionReason>();
+  const rows = (await loadCandidates(db, sinceMs)).filter((row) => {
+    const why = postScoreReason({ coinable: row.coinable, confidence: row.confidence, lookedAt: row.looked_at, proposedName: row.proposed_name }, policy);
+    if (why !== 'passes') whyNot.set(row.item_id, why);
+    return why === 'passes';
+  });
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
   const lookups = await loadPostLookups(db, rows.map((row) => row.item_id));
   const posts = rows.map((row) => {
@@ -271,6 +279,7 @@ export async function buildRising(
       post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookups.get(row.item_id) ?? null),
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
       fyp: clearsReachBar('fyp', views, postedAt, policy),
+      unread: views.every((v) => v.reach === null),
       popular: clearsReachBar('popular', views, postedAt, policy),
     };
   });
@@ -284,7 +293,8 @@ export async function buildRising(
     return vb - va || b.at - a.at;
   });
   const cap = (list: typeof posts) => list.slice(0, policy.rising.maxRows).map((p) => p.post);
-  return { fyp: cap(fyp), popular: cap(popular) };
+  for (const p of posts) if (!p.fyp) whyNot.set(p.post.id, p.unread ? 'reach_unread' : 'under_reach_bar');
+  return { fyp: cap(fyp), popular: cap(popular), whyNot };
 }
 
 /** Write one feed's frame: the view row first, then its rows, in the caller's transaction. */
@@ -319,5 +329,15 @@ export async function projectRisingFeeds(
   policy = DEFAULT_POLICY,
 ): Promise<number> {
   const frame = await buildRising(db, nowMs, coinsByStory, sparkWindowMs, policy);
+  /* ★ WHAT LEFT, AND WHY. A post that was on a feed and is not now is recorded with the check it
+     failed — kept as a "no" example, never deleted. A post that only aged out of the window is
+     not a rejection and has no reason here, so it is not recorded. */
+  const showing = await db.query<{ item_id: string }>(`select distinct item_id from public.rising_row`);
+  const now = new Set([...frame.fyp, ...frame.popular].map((p) => p.id));
+  const left = showing.flatMap(({ item_id }) => {
+    const why = now.has(item_id) ? undefined : frame.whyNot.get(item_id);
+    return why === undefined ? [] : [{ kind: 'post' as const, id: item_id, reason: why, detail: null }];
+  });
+  await new PgFeedRejectionRepo(db).record(left);
   return (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
 }
