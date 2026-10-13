@@ -2375,7 +2375,8 @@ const POLICY_V1: Policy = {
     langs: ['en', 'zxx'],
     hashtags: ['meme', 'memes', 'funny', 'fyp', 'viral', 'cat', 'dog', 'animals', 'pet', 'cute', 'trend', 'crypto', 'memecoin', 'solana'], // vocab-allow: solana  — a hashtag the owner chose to watch, not a chain this code knows
     /* 20, sorted by most liked over the past day: a live run on 2026-10-13 returned 20 videos, all
-       under 24 hours old, the top five at 1.5M to 3M views, for $0.071. */
+       under 24 hours old, the top five at 1.5M to 3M views, for $0.101 once its charges settled
+       ($0.071 was read before they had). Asks now alternate newest-first and most-liked. */
     hashtagResults: 20,
     watchMaxAgeMs: 86_400_000, // a day
     pageLimit: 20,

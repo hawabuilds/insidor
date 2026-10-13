@@ -92,7 +92,7 @@ export async function observeBatch(
   client: TikTokClient,
   batch: readonly Addressed[],
   at: Millis,
-): Promise<{ readonly counters: Map<string, CounterSet>; readonly runId: string | null }> {
+): Promise<{ readonly counters: Map<string, CounterSet>; readonly runId: string | null; readonly billedPosts: number }> {
   const run = await client.runObserve(batch.map((entry) => entry.url));
   const counters = new Map<string, CounterSet>();
   for (const entry of run.items) {
@@ -105,5 +105,6 @@ export async function observeBatch(
     if (id === null) continue;
     counters.set(id, toCounters(entry, at));
   }
-  return { counters, runId: run.runId };
+  /* Every entry the run returned was billed, read or not. */
+  return { counters, runId: run.runId, billedPosts: run.items.length };
 }

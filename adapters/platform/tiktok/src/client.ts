@@ -149,6 +149,8 @@ export interface TikTokClient {
     readonly hashtags?: readonly string[];
     readonly profiles?: readonly string[];
     readonly resultsPerPage?: number;
+    readonly videoSearchSorting?: string;
+    readonly videoSearchDateFilter?: string;
   }): Promise<RunResult>;
   /** Re-read by URL, batched. The actor takes a list, not an id list. */
   runObserve(urls: readonly string[]): Promise<RunResult>;
@@ -320,6 +322,8 @@ export interface RunRecord {
   readonly status: string;
   /** Absent until the run has one. Only read once the run has SUCCEEDED. */
   readonly datasetId: string | null;
+  /** The actor's own last word on the run ("Scraped 1/1 search queries"), or null. */
+  readonly statusMessage?: string | null;
 }
 
 export const isTerminal = (status: string): boolean => (TERMINAL as readonly string[]).includes(status);
@@ -367,7 +371,39 @@ export function decodeRun(body: unknown, endpoint: string): RunRecord {
     );
   }
 
-  return { id, status: bounded(status, 32), datasetId };
+  const message = str(data.statusMessage);
+  return { id, status: bounded(status, 32), datasetId, statusMessage: message === null ? null : bounded(message, 200) };
+}
+
+/**
+ * ★ A SEARCH RUN THAT SUCCEEDED WITHOUT FINISHING ITS SEARCH IS AN OUTAGE.
+ *
+ * The scraper's sorted and date-filtered search goes through a mobile route that fails for
+ * stretches at device registration, and the run still ends SUCCEEDED — with "Scraped 0/1
+ * search queries" as its last word and nothing, or one stale post from a first page, in its
+ * dataset. Read as an answer, that is a word nobody posted under all day; on 2026-10-13 it was
+ * four runs in a row from 13:20 to 13:56 UTC. So a discovery run whose own message says it
+ * scraped fewer queries than it was given is refused here as unavailability, before its
+ * dataset is read. A message in any other shape says nothing either way and is let through:
+ * this guards the one failure we have seen, and guessing at the actor's other phrasings would
+ * turn a wording change into an outage.
+ *
+ * Exported and pure so the rule is testable without a socket.
+ */
+export function requireSearchFinished(run: RunRecord): void {
+  const m = /Scraped (\d+)\/(\d+) (?:search queries|hashtags|profiles)/.exec(run.statusMessage ?? '');
+  if (m === null) return;
+  const done = Number(m[1]);
+  const asked = Number(m[2]);
+  if (done < asked) {
+    throw new VendorUnavailable(
+      VENDOR,
+      RUN_ENDPOINT,
+      `run ${run.id} ended ${run.status} but scraped ${done} of its ${asked} queries; its dataset is not a ` +
+        'measurement of anything and is not read',
+      200,
+    );
+  }
 }
 
 /**
@@ -602,7 +638,7 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
    * The only function in this file that costs money: a start fee whatever it returns, plus
    * a fee per post, which is why the caller caps the posts a run may ask for.
    */
-  const runActor = async (actorId: string, input: unknown): Promise<RunResult> => {
+  const runActor = async (actorId: string, input: unknown, search = false): Promise<RunResult> => {
     let run = decodeRun(
       await json(
         RUN_ENDPOINT,
@@ -656,6 +692,8 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
       );
     }
 
+    if (search) requireSearchFinished(run);
+
     if (run.datasetId === null) {
       throw new VendorShapeError(
         VENDOR,
@@ -681,7 +719,7 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
   };
 
   return {
-    runDiscovery: async (input) => runActor(discoveryActorId, input),
+    runDiscovery: async (input) => runActor(discoveryActorId, input, true),
     runObserve: async (urls) => {
       if (urls.length === 0) {
         // A run of nothing still costs a run. Refusing is a caller bug with a stack

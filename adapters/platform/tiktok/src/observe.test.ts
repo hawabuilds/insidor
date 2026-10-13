@@ -197,3 +197,49 @@ test('lookup reads whole posts from the observe run, skips an entry with no id, 
   assert.equal(none.value.items.length, 0);
   assert.equal(runs, 1, 'an id with no handle bought a run');
 });
+
+test('★ a post the adapter found itself can be re-read with no handle from the caller, and the run is recorded at its real bill', async () => {
+  const { tiktokPlatform } = await import('./index.ts');
+  const { inMemoryMeter } = await import('@insidor/meter');
+  const urls: string[][] = [];
+  const found = { id: '9', desc: 'post 9', stats: { playCount: 10 }, authorMeta: { id: '42', name: 'maker' } };
+  const client: TikTokClient = {
+    runDiscovery: async () => ({ items: [found], runId: 'd1' }),
+    runObserve: async (asked) => {
+      urls.push([...asked]);
+      return { items: [item('9')], runId: 'r1' };
+    },
+  };
+  const meter = inMemoryMeter({ dailyCapUsd: 10, softStop: 1, now: () => AT });
+  const adapter = tiktokPlatform({ client, meter, now: () => AT as never, handleOf: () => null });
+  const budget = { capUsd: 10, spentUsd: 0, maxCalls: null, deadline: (AT + 60_000) as never };
+  const asked = await adapter.discover({ mode: 'keyword', term: 'meme', sinceMs: null, untilMs: null, limit: 20, cursor: null }, budget);
+  // One post and both search filters, not a full run of twenty.
+  assert.ok(Math.abs(asked.spend.usd - (0.001 + 0.005)) < 1e-9, `search recorded at ${asked.spend.usd}`);
+  // The re-read is quoted at the one post it asks about, and goes out by the handle the search carried.
+  assert.ok(Math.abs(adapter.estimate({ kind: 'observe', sourceItemIds: ['9'] }).usd - 0.004) < 1e-9);
+  const read = await adapter.observe(['9'], budget);
+  assert.deepEqual(urls, [['https://www.tiktok.com/@maker/video/9']]);
+  assert.equal(read.value.size, 1);
+  assert.ok(Math.abs(read.spend.usd - 0.004) < 1e-9, `re-read recorded at ${read.spend.usd}`);
+});
+
+test('★ keyword asks take the two orders by turns', async () => {
+  const { tiktokPlatform } = await import('./index.ts');
+  const { inMemoryMeter } = await import('@insidor/meter');
+  const orders: (string | undefined)[] = [];
+  const client: TikTokClient = {
+    runDiscovery: async (input) => {
+      orders.push(input.videoSearchSorting);
+      return { items: [], runId: null };
+    },
+    runObserve: async () => ({ items: [], runId: null }),
+  };
+  const meter = inMemoryMeter({ dailyCapUsd: 10, softStop: 1, now: () => AT });
+  const adapter = tiktokPlatform({ client, meter, now: () => AT as never, handleOf: () => null });
+  const budget = { capUsd: 10, spentUsd: 0, maxCalls: null, deadline: (AT + 60_000) as never };
+  for (let i = 0; i < 3; i += 1) await adapter.discover({ mode: 'keyword', term: 'meme', sinceMs: null, untilMs: null, limit: 20, cursor: null }, budget);
+  assert.equal(new Set(orders).size, 2);
+  assert.equal(orders[0], orders[2]);
+  assert.notEqual(orders[0], orders[1]);
+});
