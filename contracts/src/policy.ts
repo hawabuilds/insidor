@@ -217,6 +217,11 @@ export interface TrackPolicy {
    * found its fastest under-an-hour videos at 280 to 480 a minute and the rest under 150; the
    * most-liked search's young ones were at 310 and 580. A raw view rate, not scaled by
    * `rising.shortVideoReachScale`: it is measured on this source alone.
+   * ★ 500 SINCE 16:40 UTC THAT DAY, when the newest-first actor began finding about 120 videos a
+   * run every 43 minutes: at 250, 5 of 58 measured young videos were "fast" (about 10 a run)
+   * against 8 re-read places every half hour, and the growth path they are re-read for needs
+   * 1,500 a minute (`rising.shortVideoFastReachPerMinute`). At 500, 3 of 58 (1,821, 930 and 707
+   * a minute; about 6 a run). Fastest first, so the ones that can clear the path are read first.
    */
   readonly paidFastMinReachPerMinute: number;
 
@@ -982,6 +987,15 @@ export interface FeedPolicy {
   /** Posts asked for per hashtag ask: a run bills per post returned, so this is the ask's price. */
   readonly hashtagResults: number;
   /**
+   * ★ WATCH WORDS PER ASK on the short-video source's newest-first search: consecutive words of
+   * `hashtags`, rotated by the clock, each searched at once in its own run. At 4 an ask is quoted
+   * at $0.0546 (4 × ($0.00022 to start + $0.00233 for the word + 30 × $0.00037 a video)), so
+   * `budgetShare` of the $3 line ($1.80) spaces asks 44 minutes apart: 33 asks a day, each of the
+   * 14 words searched every 2.6 hours, and 83 to 117 new videos an ask as measured (some words come
+   * back short or empty). More words an ask is the same money in fewer, larger asks.
+   */
+  readonly watchWordsPerAsk: number;
+  /**
    * The oldest a watch-list post may be and still be judged and shown. The short-video search is
    * asked for its most-liked videos of the past day; anything older the vendor sends anyway is
    * stored and never credited to the watch lane (0061), so it never reaches the feed.
@@ -1304,6 +1318,22 @@ export interface RisingPolicy {
    * (250k in fifteen minutes, or 25k a minute in its first half hour) and about 3.1M for Popular.
    */
   readonly shortVideoReachScale: number;
+  /**
+   * ★ THE SHORT-VIDEO SOURCE'S OWN GROWTH PATHS, in place of the scaled `fypEarly*` / `fypFast*`
+   * ones. Scaled, they asked for 250k views inside fifteen minutes or 25k a minute inside the
+   * first half hour, and its newest-first search finds videos 0.5 to 6.6 hours old (median 1.35,
+   * 2026-10-13 16:12 UTC) and re-reads them every half hour — no reading ever lands inside those
+   * windows, so only the 500k total could ever fire. Measured that afternoon: the fastest young
+   * video had 130k at 72 minutes (1,800 a minute); the next 53k at 76 (700); a stored one went on
+   * from 391k at 3.6 hours (1,830 a minute). 150k inside two hours (1,250 a minute at its end, the
+   * same shape as the text bars' 20k in fifteen minutes under 2,000 a minute) or 1,500 a minute at
+   * any reading inside four hours lets the first and third in and holds the rest to the 500k bar:
+   * about 1 in 60 newly found videos. Raw views, not scaled.
+   */
+  readonly shortVideoEarlyReach: number;
+  readonly shortVideoEarlyWindowMs: number;
+  readonly shortVideoFastReachPerMinute: number;
+  readonly shortVideoFastWindowMs: number;
   /**
    * A promoted narrative stays on the board only while at least this many of its posts pass the
    * same per-post rules as For You (scored, memeable, confident, a short name). Below it the board
@@ -2256,7 +2286,7 @@ const POLICY_V1: Policy = {
     paidReadMinMinutes: 180,
     paidRunEveryMinutes: 30,
     paidReadMaxPosts: 8,
-    paidFastMinReachPerMinute: 250,
+    paidFastMinReachPerMinute: 500,
 
     lifecycleMargin: 0.1,
     /* 2 / 4 / 6. The ordering is the cost of being wrong on each edge, and the edges
@@ -2543,6 +2573,7 @@ const POLICY_V1: Policy = {
        under 24 hours old, the top five at 1.5M to 3M views, for $0.101 once its charges settled
        ($0.071 was read before they had). Asks now alternate newest-first and most-liked. */
     hashtagResults: 20,
+    watchWordsPerAsk: 4,
     watchMaxAgeMs: 86_400_000, // a day
     pageLimit: 20,
     maxPagesPerLane: 3,
@@ -2768,6 +2799,10 @@ const POLICY_V1: Policy = {
     fypStillGrowingPerMinute: 1_000, // half the early-growth bar
     watchMinReachPerMinute: 500,
     shortVideoReachScale: 12.5,
+    shortVideoEarlyReach: 150_000,
+    shortVideoEarlyWindowMs: 7_200_000, // two hours
+    shortVideoFastReachPerMinute: 1_500,
+    shortVideoFastWindowMs: 14_400_000, // four hours
     narrativeMinPassingPosts: 2,
     /* 3 posts is where GROUP promotes a story; 8 posts, or a top post at 5M views (125 times
        the For You views bar), is a narrative most of the timeline has seen. */

@@ -305,6 +305,20 @@ export function watchTermFor(watch: readonly string[], everyMs: number, now: Mil
 }
 
 /**
+ * ★ SEVERAL WATCH WORDS FOR ONE ASK (`feed.watchWordsPerAsk`): the next `perAsk` words of the list
+ * from the clock, each ask starting where the last one ended, so one ask (and one wait between
+ * asks) covers several words and the whole list comes round `perAsk` times as often. Never more words than the
+ * list holds, never one twice. From the clock for the same reason as `watchTermFor`.
+ */
+export function watchTermsFor(watch: readonly string[], perAsk: number, everyMs: number, now: Millis): readonly string[] {
+  const words = [...new Set(watch.map((w) => w.trim()).filter((w) => w.length > 0))];
+  if (words.length === 0) return [];
+  const n = Math.min(words.length, Math.max(1, Math.trunc(perAsk)));
+  const start = (Math.floor(now / Math.max(everyMs, 1)) * n) % words.length;
+  return Array.from({ length: n }, (_, k) => words[(start + k) % words.length] ?? '').filter((w) => w.length > 0);
+}
+
+/**
  * When each source with no catch-all was last asked, kept by the loop between passes. In
  * memory on purpose: a restart forgets it and asks at once, which costs one extra ask per
  * deploy and never a missed one — the slow lane's trade.
@@ -576,7 +590,10 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
        is its price on a per-post source, so the spacing below is priced at that size: half the
        posts an ask, twice the asks a day for the same money. */
     if (!catchAll) {
-      const probe = queryFor(adapter, term ?? deps.policy.feed.hashtags[0] ?? '', now);
+      /* Priced with as many words as an ask of the watch list will carry. */
+      const perAsk = term === null ? Math.min(deps.policy.feed.watchWordsPerAsk, Math.max(1, deps.policy.feed.hashtags.length)) : 1;
+      const probeQuery = queryFor(adapter, term ?? deps.policy.feed.hashtags[0] ?? '', now);
+      const probe = probeQuery === null || term !== null ? probeQuery : { ...probeQuery, terms: deps.policy.feed.hashtags.slice(0, perAsk) };
       if (probe !== null) {
         let priced: CostEstimate | null = null;
         try {
@@ -592,10 +609,11 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
           outcomes.push({ kind: 'resting', source, everyMs, nextAtMs: last + everyMs });
           continue;
         }
-        const word = term ?? watchTermFor(deps.policy.feed.hashtags, everyMs, now);
+        const words = term === null ? watchTermsFor(deps.policy.feed.hashtags, perAsk, everyMs, now) : [term];
+        const word = words[0] ?? null;
         const query = word === null ? null : queryFor(adapter, word, now);
-        /* The watch list is asked for `feed.hashtagResults` posts; a configured term keeps its own size. */
-        if (query !== null) asks.push({ query: term === null ? { ...query, limit: deps.policy.feed.hashtagResults } : query, lane: null, spaced: true, watch: term === null });
+        /* The watch list is asked for `feed.hashtagResults` posts and `feed.watchWordsPerAsk` words; a configured term keeps its own size. */
+        if (query !== null) asks.push({ query: term === null ? { ...query, terms: words, limit: deps.policy.feed.hashtagResults } : query, lane: null, spaced: true, watch: term === null });
       }
     }
 

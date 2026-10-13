@@ -74,6 +74,7 @@ const ALL: Record<string, string> = {
   APIFY_TOKEN: 'scrape-token',
   TIKTOK_DISCOVERY_ACTOR_ID: 'insidor~discover',
   TIKTOK_OBSERVE_ACTOR_ID: 'insidor~observe',
+  TIKTOK_SEARCH_ACTOR_ID: 'insidor~search',
   REDDIT_CLIENT_ID: 'client-id',
   REDDIT_CLIENT_SECRET: 'client-secret',
   REDDIT_USER_AGENT: 'script:com.insidor.adapter:v0.1.0 (by /u/insidor_bot)',
@@ -89,7 +90,7 @@ const only = (...keys: readonly string[]): Record<string, string> => {
 };
 
 const X_ONLY = only('X_API_KEY');
-const TIKTOK_ONLY = only('APIFY_TOKEN', 'TIKTOK_DISCOVERY_ACTOR_ID', 'TIKTOK_OBSERVE_ACTOR_ID');
+const TIKTOK_ONLY = only('APIFY_TOKEN', 'TIKTOK_DISCOVERY_ACTOR_ID', 'TIKTOK_OBSERVE_ACTOR_ID', 'TIKTOK_SEARCH_ACTOR_ID');
 const REDDIT_ONLY = only('REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET', 'REDDIT_USER_AGENT');
 
 const ids = (v: readonly { readonly id: unknown }[]): readonly string[] =>

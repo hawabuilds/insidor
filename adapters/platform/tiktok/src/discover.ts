@@ -91,6 +91,13 @@
  * the last day to the feed (services/runner/src/work/arrivals.ts, Policy.feed.watchMaxAgeMs), so
  * a filter the vendor ignored costs a little money and never puts an old post on screen.
  *
+ * ★ SINCE 16:30 UTC ON 2026-10-13 A KEYWORD ASK GOES TO A SECOND ACTOR WHEN ONE IS CONFIGURED
+ * (`TIKTOK_SEARCH_ACTOR_ID`, search-actor.ts): newest first over the past day, several watch words
+ * a run, a median 1.35 hours old when measured, at about a tenth of this scraper's price a video.
+ * Every video it returns is kept, not sliced to `limit`: each was billed, and its floor is 30 a
+ * word whatever is asked. Without that variable keyword asks stay here, with every word in
+ * `searchQueries`, and the rule above still makes a partly scraped run an outage.
+ *
  * Keyword search is still not a catch-all. It needs words, and there is no trending or
  * explore feed on this scraper to stand in for "whatever is moving"; the caller supplies
  * the words (the owner's watch list in policy).
@@ -98,10 +105,11 @@
 
 import type { Author, Item, Millis } from '@insidor/contracts';
 import type { DiscoveryQuery } from '@insidor/contracts/ports/platform.ts';
-import { NotImplemented } from '@insidor/vendor-kit';
+import { NotImplemented, rec, str } from '@insidor/vendor-kit';
 
 import { CAPABILITIES, DISCOVER_RESULTS_CAP } from './capabilities.ts';
 import type { TikTokClient } from './client.ts';
+import { fromSearchActor, SEARCH_ACTOR_RESULTS_PER_WORD, toSearchActorInput } from './search-actor.ts';
 import { toAuthor, toItem } from './to-item.ts';
 
 /** Which order a keyword search asks for. The adapter alternates them (index.ts `nextOrder`). */
@@ -137,6 +145,7 @@ export function toActorInput(query: DiscoveryQuery, order: SearchOrder = 'most_l
 
   const term = query.term.trim();
   if (term.length === 0) throw new NotImplemented('tiktok:discover', 'no hashtag or account to enter by');
+  const words = wordsOf(query);
 
   if (query.untilMs !== null) {
     // See the ★ block at the top of this file. This is a refusal, not a gap, and the
@@ -156,7 +165,7 @@ export function toActorInput(query: DiscoveryQuery, order: SearchOrder = 'most_l
 
   if (query.mode === 'keyword') {
     return {
-      searchQueries: [term],
+      searchQueries: words,
       searchSection: '/video',
       resultsPerPage,
       videoSearchSorting: order === 'newest' ? 'LATEST' : 'MOST_LIKED',
@@ -168,6 +177,12 @@ export function toActorInput(query: DiscoveryQuery, order: SearchOrder = 'most_l
     : { hashtags: [term], resultsPerPage };
 }
 
+/** The words an ask carries: `terms` when given, else `term`; trimmed, empty ones dropped, no repeats. */
+export function wordsOf(query: DiscoveryQuery): readonly string[] {
+  const all = (query.terms ?? [query.term]).map((w) => w.trim()).filter((w) => w.length > 0);
+  return [...new Set(all.length > 0 ? all : [query.term.trim()])];
+}
+
 /**
  * One run, translated. The client call is the only line that costs anything: a start
  * fee, plus a fee per post that `resultsPerPage` bounds.
@@ -177,7 +192,42 @@ export async function discoverRun(
   query: DiscoveryQuery,
   at: Millis,
   order: SearchOrder = 'most_liked',
-): Promise<{ readonly items: readonly Item[]; readonly authors: readonly Author[]; readonly runId: string | null; readonly billedPosts: number }> {
+): Promise<{ readonly items: readonly Item[]; readonly authors: readonly Author[]; readonly runId: string | null; readonly billedPosts: number; readonly searchWords: number | null }> {
+  if (query.mode === 'keyword' && client.runSearch !== undefined) {
+    /* The cutoff and the mode are refused here exactly as for the first actor. */
+    toActorInput(query, order);
+    const words = wordsOf(query);
+    const runSearch = client.runSearch.bind(client);
+    /* ★ ONE RUN PER WORD, ALL AT ONCE. The actor's limit is for the whole run and it stops taking
+       words when it is reached, so four words in one run searched three, one of them twice over
+       (16:22 UTC: 72, 29, 16 and none). A run's start fee is $0.00022, so a run a word costs
+       almost nothing more and every word gets its 30. A word whose run fails loses only its own
+       videos; the others' are kept, and only when every word failed is the ask an outage. */
+    const runs = await Promise.allSettled(words.map((word) => runSearch(toSearchActorInput([word]))));
+    const done = runs.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+    if (done.length === 0) {
+      const first = runs.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+      throw first?.reason ?? new Error('tiktok:discover: no word was searched');
+    }
+    const failed = runs.length - done.length;
+    /* An entry with no id is skipped, never keyed by a guess; it was still billed. */
+    const seen = new Set<string>();
+    /* A video two words both found is one video. */
+    const raws = done.flatMap((run) => run.items).map(fromSearchActor).filter((raw) => {
+      const id = str(rec(raw).id);
+      if (id === null || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    return {
+      items: raws.map((raw) => toItem(raw, at)),
+      authors: raws.flatMap((raw) => toAuthor(raw, at) ?? []),
+      runId: done[0]?.runId ?? null,
+      /* What each run returned, and a failed word's run at its full quote: what it was billed is not known. */
+      billedPosts: done.reduce((n, run) => n + run.items.length, 0) + failed * SEARCH_ACTOR_RESULTS_PER_WORD,
+      searchWords: words.length,
+    };
+  }
   const run = await client.runDiscovery(toActorInput(query, order));
   // A client-side slice, which is safe because it caps how much of an
   // already-paid-for run we translate rather than filtering for correctness.
@@ -188,5 +238,6 @@ export async function discoverRun(
     runId: run.runId,
     /* Every post the run returned was billed, including any past `limit`. */
     billedPosts: run.items.length,
+    searchWords: null,
   };
 }
