@@ -1,13 +1,14 @@
 /**
- * Filling in older feed posts' videos: one batched read, the media stored only where the re-read
- * has a playable file, each post asked at most a few times and not again straight away, the day's
- * cap held, a dry run priced and nothing read.
+ * Filling in older feed posts' videos and authors: one batched read, the media stored only where
+ * the re-read has a playable file, the account stored from the same read with one post asked per
+ * author and none on a source billed by the run, each post asked at most a few times and not again
+ * straight away, the day's cap held, a dry run priced and nothing read.
  */
 
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import type { Item, MediaRef, Millis } from '@insidor/contracts';
+import type { Author, Item, MediaRef, Millis } from '@insidor/contracts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
@@ -27,17 +28,18 @@ const meter = {
 
 const video = (playUri?: string): MediaRef => ({ kind: 'video', uri: 'https://pbs/still.jpg', width: null, height: null, durationMs: null, ...(playUri === undefined ? {} : { playUri }) });
 
-function setup(mode: 'dry' | 'live' = 'live', policy = DEFAULT_POLICY) {
+const videoDue = (n: string): RefillDue => ({ itemId: `x:${n}`, source: 'x', sourceItemId: n, needsVideo: true, needsAuthor: false, authorKey: 'x:a1' });
+
+function setup(mode: 'dry' | 'live' = 'live', policy = DEFAULT_POLICY, due: RefillDue[] = [videoDue('1'), videoDue('2')], usdPerPost = 0.00015) {
   const written: { id: string; media: readonly MediaRef[] }[] = [];
+  const stored: Author[] = [];
   const asked: string[][] = [];
   let clock = NOW;
-  const due: RefillDue[] = [
-    { itemId: 'x:1', source: 'x', sourceItemId: '1' },
-    { itemId: 'x:2', source: 'x', sourceItemId: '2' },
-  ];
+  const account = (key: string) => ({ authorKey: key, displayName: 'Name', pictureUri: 'https://pic/400.jpg' }) as unknown as Author;
   const x = {
     id: 'x',
-    estimate: () => ({ vendor: 'v', endpoint: 'lookup', unit: 'per-item-returned', estUnits: 2, usd: 0.0003 }),
+    capabilities: { observeBatchSize: 50 },
+    estimate: (call: { sourceItemIds: readonly string[] }) => ({ vendor: 'v', endpoint: 'lookup', unit: 'per-item-returned', estUnits: 2, usd: usdPerPost * call.sourceItemIds.length }),
     lookup: async (ids: readonly string[]) => {
       asked.push([...ids]);
       return {
@@ -46,7 +48,7 @@ function setup(mode: 'dry' | 'live' = 'live', policy = DEFAULT_POLICY) {
             { sourceItemId: '1', media: [video('https://video/1.mp4')] } as unknown as Item,
             { sourceItemId: '2', media: [video()] } as unknown as Item,
           ],
-          authors: [],
+          authors: [account('x:a1'), account('x:a2')],
           cursor: null,
           hasMore: false,
         },
@@ -57,13 +59,14 @@ function setup(mode: 'dry' | 'live' = 'live', policy = DEFAULT_POLICY) {
   const deps: RefillDeps = {
     platforms: { all: () => [x] },
     refill: { due: async () => due, setMedia: async (id, m) => (written.push({ id, media: m }), true) },
+    authors: { upsert: async (a) => (stored.push(...a), a.length) },
     meter,
     mode,
     policy,
     log: quiet,
     now: () => clock as Millis,
   };
-  return { deps, written, asked, tick: (ms: number) => void (clock += ms) };
+  return { deps, written, stored, asked, tick: (ms: number) => void (clock += ms) };
 }
 
 test('★ one read: the media stored only where the re-read has a playable file', async () => {
@@ -73,6 +76,29 @@ test('★ one read: the media stored only where the re-read has a playable file'
   assert.deepEqual(written.map((m) => m.id), ['x:1'], 'post 2 came back with no mp4: its media is left alone');
   assert.equal(out.filled, 1);
   assert.equal(out.spentUsd, 0.0003);
+  assert.equal(out.authors, 0, 'no post asked for its author: no account is stored');
+});
+
+test('★ an author with no picture: one post read per author, the account stored from that read', async () => {
+  const due: RefillDue[] = [
+    { itemId: 'x:1', source: 'x', sourceItemId: '1', needsVideo: false, needsAuthor: true, authorKey: 'x:a1' },
+    { itemId: 'x:2', source: 'x', sourceItemId: '2', needsVideo: false, needsAuthor: true, authorKey: 'x:a1' },
+    { itemId: 'x:3', source: 'x', sourceItemId: '3', needsVideo: false, needsAuthor: true, authorKey: 'x:a2' },
+  ];
+  const { deps, written, stored, asked } = setup('live', DEFAULT_POLICY, due);
+  const out = await refillPosts(deps, refillMemory());
+  assert.deepEqual(asked, [['1', '3']], 'post 2 has the same author as post 1');
+  assert.deepEqual(stored.map((a) => String(a.authorKey)), ['x:a1', 'x:a2']);
+  assert.equal(written.length, 0, 'no post needed a video: no media is touched');
+  assert.equal(out.authors, 2);
+});
+
+test('a source billed by the run is never read for an author alone', async () => {
+  const due: RefillDue[] = [{ itemId: 'x:1', source: 'x', sourceItemId: '1', needsVideo: false, needsAuthor: true, authorKey: 'x:a1' }];
+  const { deps, asked } = setup('live', DEFAULT_POLICY, due, DEFAULT_POLICY.rising.refillAuthorMaxUsdPerPost * 2);
+  const out = await refillPosts(deps, refillMemory());
+  assert.equal(asked.length, 0);
+  assert.equal(out.due, 0);
 });
 
 test('a post is not asked again straight away, and at most refillMaxTries times', async () => {
