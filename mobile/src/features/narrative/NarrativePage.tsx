@@ -39,6 +39,9 @@ import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { Comments } from '../comments/Comments.tsx';
+import { NotAMeme, HideBar } from '../owner/OwnerPost.tsx';
+import { useIsOwner, useOwnerState } from '../owner/hooks.ts';
+import { withoutHidden } from '../owner/owner-store.ts';
 import styles from './narrative.module.css';
 
 type Section = 'coins' | 'posts' | 'comments' | 'stats';
@@ -221,14 +224,18 @@ function Coins({ story, coins, line, now }: {
 
 function Posts({ story, now }: { story: Story; now: number }) {
   const [open, setOpen] = useState<{ id: string; author: string } | null>(null);
+  /* The owner's "Not a meme" on each post, and a hidden one leaving the list at once (features/owner). */
+  const owner = useIsOwner();
+  const { hidden } = useOwnerState();
   return (
     <>
+      {owner ? <HideBar /> : null}
       {open !== null ? (
         <Modal title="Comments" subtitle={`On ${open.author}'s post`} onClose={() => setOpen(null)}>
           <Comments subject={`post:${open.id}`} holdersOf="this narrative" />
         </Modal>
       ) : null}
-      {story.evidence.map((e) => {
+      {withoutHidden(story.evidence, hidden, (e) => e.evidenceId).map((e) => {
         const platform = platformOf(e.sourceLabel);
         const body = (
           <>
@@ -251,6 +258,7 @@ function Posts({ story, now }: { story: Story; now: number }) {
               {body}
             </a>
             {talk}
+            {owner ? <NotAMeme item={{ itemId: e.evidenceId, shown: { excerpt: e.excerpt, authorLabel: e.authorLabel, sourceLabel: e.sourceLabel, permalink: e.permalink } }} /> : null}
           </div>
         );
       })}

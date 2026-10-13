@@ -21,6 +21,8 @@ import { hrefFor } from '../../shared/route.ts';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { GAP_LINE, marketLine, orderCoins, showingTop, type CoinOrder } from './search-view.ts';
+import { useOwnerState } from '../owner/hooks.ts';
+import { withoutHidden } from '../owner/owner-store.ts';
 import styles from './search.module.css';
 
 /** Typing settles for this long before a search goes out. */
@@ -69,7 +71,10 @@ function Results({ term }: { term: string }) {
 function Sections({ results }: { results: SearchResults }) {
   const now = useNow();
   const [order, setOrder] = useState<CoinOrder>('cap');
-  const { narratives, posts, coins } = results;
+  const { narratives, coins } = results;
+  /* A post the owner just hid is left out now; the next projection leaves it out of search too. */
+  const { hidden } = useOwnerState();
+  const posts = { ...results.posts, items: withoutHidden(results.posts.items, hidden, (p) => p.id) };
   const nothing = narratives.items.length === 0 && posts.items.length === 0 && coins.kind === 'read' && coins.items.length === 0;
   if (nothing) return <p className={styles['hint']}>Nothing found for “{results.term}”.</p>;
 

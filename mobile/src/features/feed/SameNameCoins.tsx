@@ -27,12 +27,16 @@ import { CoinRow } from '../search/Search.tsx';
 import { orderCoins, type CoinOrder } from '../search/search-view.ts';
 import searchStyles from '../search/search.module.css';
 import { sameNameTitle } from './same-name-view.ts';
+import { useIsOwner } from '../owner/hooks.ts';
+import { CoinPickList } from '../owner/OwnerCoin.tsx';
+import { coinAsk } from '../owner/owner-view.ts';
 import styles from './same-name.module.css';
 
 export function SameNameCoins({ post, onCreate, onClose }: { post: RisingPost; onCreate: () => void; onClose: () => void }) {
   const [loaded] = useLoad(`post-coins:${post.id}`, (signal) => fetchPostCoins(post.id, signal));
   const [order, setOrder] = useState<CoinOrder>('first');
   const now = useNow();
+  const owner = useIsOwner();
   const list = loaded.state === 'ready' ? loaded.value : null;
 
   return (
@@ -64,6 +68,13 @@ export function SameNameCoins({ post, onCreate, onClose }: { post: RisingPost; o
           <div className={styles['list']}>
             {orderCoins(list.items, order).map((c) => <CoinRow key={c.coinId} c={c} now={now} />)}
           </div>
+          {/* The owner's call on which coin this post's is (features/owner/OwnerCoin.tsx). */}
+          {owner ? (
+            <>
+              <p className={styles['note']}>Which one is from this post?</p>
+              <CoinPickList post={post} items={orderCoins(list.items, order)} pickedCall={coinAsk(post.coins)?.kind === 'confirm' ? 'wrong' : 'right'} onDone={onClose} />
+            </>
+          ) : null}
         </>
       ) : null}
       <div className={styles['create']}>
