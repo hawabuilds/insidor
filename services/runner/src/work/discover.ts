@@ -299,7 +299,7 @@ export function feedQueryFor(lane: FeedLane, floors: LaneFloors, now: Millis, po
     filter: {
       minApproval: effectiveFloor(lane, floors, policy),
       mediaOnly: lane === 'media',
-      lang: policy.feed.lang,
+      langs: policy.feed.langs,
       originalsOnly: true,
     },
   };

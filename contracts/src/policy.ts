@@ -897,10 +897,12 @@ export interface FeedPolicy {
   /** The share of each pass's posts the media lane is aimed at. */
   readonly mediaShare: number;
   /**
-   * One language code, or null for all. ★ A PRODUCT CHOICE WITH A COST: a language filter
-   * makes every post in every other language invisible. Set to English to start.
+   * Language codes a post may be in; empty for all. ★ A PRODUCT CHOICE WITH A COST: a language
+   * filter makes every post in every other language invisible. English, plus `zxx` — the code the
+   * platform gives a picture or video with no words, which is how 4 of the gold set's missed
+   * origin posts were filtered out (eval/src/gold/recall-report.md; about $0.10 a day more).
    */
-  readonly lang: string | null;
+  readonly langs: readonly string[];
   /**
    * Posts asked for per lane per pass: one page. Also the reservation the budget is
    * checked against before the call, since a source picks its own page size.
@@ -1891,7 +1893,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v41',
+  version: 'policy.v42',
 
   admit: {
     maxAgeMin: 240,
@@ -2219,7 +2221,7 @@ const POLICY_V1: Policy = {
     emptyFactor: 0.6,
     budgetShare: 0.6,
     mediaShare: 0.25,
-    lang: 'en',
+    langs: ['en', 'zxx'],
     pageLimit: 20,
     maxPagesPerLane: 3,
     slow: {

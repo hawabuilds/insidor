@@ -109,8 +109,8 @@ export interface FeedFilter {
   readonly minApproval: number;
   /** Only posts carrying an image or a video. */
   readonly mediaOnly: boolean;
-  /** One language code, or null for every language. */
-  readonly lang: string | null;
+  /** Language codes a post may be in; empty for every language. */
+  readonly langs: readonly string[];
   /** Leave out replies and rebroadcasts: the originals are what spread. */
   readonly originalsOnly: boolean;
 }
