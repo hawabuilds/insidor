@@ -29,6 +29,9 @@
  *   it was searched and launchpad coins came back → `unsure` with that count: coins exist,
  *                                       and nothing has said which, if any, is this post's;
  *   the post's story was searched and has none → `none`;
+ *   no search has finished `universe.lookup.giveUpMs` after the post entered the feed (as the
+ *                                       lookup first saw it, internal.coin_lookup_attempt) →
+ *                                       `unchecked`, "Couldn't check", with no button;
  *   nothing searched yet                → `pending`, a dash — never "no coin yet", which
  *                                       would be a claim about the world we had not checked.
  *
@@ -49,7 +52,7 @@ import { permalinkFor } from './permalinks.ts';
 import { projectReach, projectSpark } from './project.ts';
 import type { ReachReading } from './project.ts';
 import { assertNoInternalVocabulary, instant } from './wire.ts';
-import type { WireCoinLink, WireInstant, WireMeasured, WireSpark } from './wire.ts';
+import type { WireCoinLink, WireInstant, WireMeasured, WirePostCoinLink, WireSpark } from './wire.ts';
 
 export const RISING_FEEDS = ['fyp', 'popular'] as const;
 export type RisingFeed = (typeof RISING_FEEDS)[number];
@@ -75,7 +78,7 @@ export interface WireRisingPost {
   /** The narrative this post is part of — only when `coins` below is that narrative's own link. */
   readonly storyId: string | null;
   /** Where the post's coin stands. `one` and `several` only ever arrive with `storyId`. */
-  readonly coins: WireCoinLink;
+  readonly coins: WirePostCoinLink;
 }
 
 interface RisingRow {
@@ -138,35 +141,47 @@ async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingR
 }
 
 /**
- * Which posts have had their name searched for coins, and how many launchpad coins came back.
- * A post with no row has not been searched. `term` is not selected: the name is the judge's.
+ * Which posts have had their name searched for coins, and how many launchpad coins came back;
+ * and which have waited `giveUpMs` since the lookup first saw them in the feed with no search
+ * finished. A post in neither has not been searched yet. `term` is not selected: the name is the
+ * judge's. A post the lookup has never seen waiting is never given up on: the clock starts when
+ * the lookup saw it, not when the post was made, so a post that reaches the feed late is not
+ * "Couldn't check" on arrival.
  */
-async function loadPostLookups(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, PostLookup>> {
+async function loadPostLookups(
+  db: Db,
+  itemIds: readonly string[],
+  nowMs: number = Date.now(),
+  giveUpMs: number = DEFAULT_POLICY.universe.lookup.giveUpMs,
+): Promise<ReadonlyMap<string, PostLookup>> {
   if (itemIds.length === 0) return new Map();
-  const rows = await db.query<{ subject_id: string; found: number }>(
-    `select subject_id, found from internal.coin_lookup where subject_kind = 'post' and subject_id = any($1::text[])`,
-    [[...itemIds]],
+  const rows = await db.query<{ subject_id: string; found: number | null }>(
+    `select a.subject_id, l.found
+       from (select unnest($1::text[]) as subject_id) a
+       left join internal.coin_lookup l on l.subject_kind = 'post' and l.subject_id = a.subject_id
+       left join internal.coin_lookup_attempt q on q.subject_kind = 'post' and q.subject_id = a.subject_id
+      where l.subject_id is not null or q.queued_at <= $2`,
+    [[...itemIds], new Date(nowMs - giveUpMs).toISOString()],
   );
-  return new Map(rows.map((r) => [r.subject_id, { found: Number(r.found) }]));
+  return new Map(rows.map((r) => [r.subject_id, r.found === null ? { gaveUp: true } : { found: Number(r.found) }]));
 }
 
-/** A finished search for a post's name: how many launchpad coins it returned. */
-export interface PostLookup {
-  readonly found: number;
-}
+/** A finished search for a post's name and how many launchpad coins it returned, or none in time. */
+export type PostLookup = { readonly found: number } | { readonly gaveUp: true };
 
 /** The row's coin line and the story it came from, by the rule in the header. */
 export function postCoins(
   storyLink: WireCoinLink | undefined,
   lookup: PostLookup | null,
-): { readonly coins: WireCoinLink; readonly fromStory: boolean } {
+): { readonly coins: WirePostCoinLink; readonly fromStory: boolean } {
   if (storyLink !== undefined && (storyLink.kind === 'one' || storyLink.kind === 'several' || storyLink.kind === 'unsure')) {
     return { coins: storyLink, fromStory: true };
   }
-  if (lookup !== null) {
+  if (lookup !== null && 'found' in lookup) {
     return { coins: lookup.found === 0 ? { kind: 'none' } : { kind: 'unsure', claimCount: lookup.found }, fromStory: false };
   }
   if (storyLink !== undefined && storyLink.kind === 'none') return { coins: storyLink, fromStory: true };
+  if (lookup !== null) return { coins: { kind: 'unchecked' }, fromStory: false };
   return { coins: { kind: 'pending' }, fromStory: false };
 }
 
