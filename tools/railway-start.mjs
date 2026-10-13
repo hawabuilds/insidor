@@ -11,7 +11,8 @@
  * the service reads, so a health check always lands on a server that answers it.
  *
  * ★ THE PROJECTOR IS A SCHEDULE, NOT A PROCESS. `project` runs the one-shot jobs (`db.mjs
- * project` every minute; `market`, `pairs` and the source indicator every five; `label` hourly), one at a time,
+ * project` every minute; `market`, `pairs` and the source indicator every five; `label` hourly; the
+ * daily recall check and the twice-daily judge re-tune, both detached), one at a time,
  * and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
  * otherwise — so Railway restarts it when the board stops moving, not just when it crashes.
  *
@@ -63,6 +64,10 @@ if (service in MAIN) {
     /* Once a day: did discovery hold each bonded coin's linked X post before it launched
        (internal.recall_check). Detached, because a day's reads outlast the board's health bar. */
     { name: 'recall', everyMs: 86_400_000, args: ['tools/recall-check.ts', 'daily', '--yes', '--detach'] },
+    /* The judge learns from the owner at 08:00 and 20:00 London (Policy.learning): asked every ten
+       minutes whether the latest slot has run; the run itself is detached, like the recall check,
+       because a batch of a hundred-odd posts outlasts the board's health bar. */
+    { name: 'retune', everyMs: 600_000, args: ['tools/retune.ts', 'due', '--yes', '--detach'] },
   ];
   const last = new Map();
   const due = (job, now) => now - (last.get(job.name)?.at ?? 0) >= job.everyMs;
