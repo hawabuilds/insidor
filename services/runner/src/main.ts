@@ -171,6 +171,7 @@ async function main(): Promise<void> {
         floors: runtime.feedFloors,
         afterPass: [
           ['score-posts', runtime.scorePosts],
+          ['crypto-attention', runtime.cryptoAttention],
           ['embed-images', runtime.embedImages],
           ['backfill', runtime.backfill],
         ],

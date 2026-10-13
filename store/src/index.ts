@@ -31,6 +31,8 @@ export { PgCoinUniverseRepo } from './repo/coin-universe.ts';
 export type { AgedCoin, CoinMetadataRow, CoinToCheck, LookupTerm, NamingPost, PostCoinPicture, StandingRow, UnreadCoin } from './repo/coin-universe.ts';
 export { PgOlderCoinRepo } from './repo/older-coin.ts';
 export type { DueOlderCoin, FoundOlderCoin, OlderCoinReading } from './repo/older-coin.ts';
+export { PgCryptoAttentionRepo } from './repo/crypto-attention.ts';
+export type { AttentionRow, DueAttention } from './repo/crypto-attention.ts';
 export type { BackfilledPost, BackfillRun, BackfillVia } from './repo/backfill.ts';
 export { PgFeedFloorRepo } from './repo/feed-floor.ts';
 export { PgOwnerAlertRepo } from './repo/owner-alerts.ts';
