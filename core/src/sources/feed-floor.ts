@@ -18,7 +18,7 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { FeedLane } from '@insidor/contracts/ports/platform.ts';
 
-import { MS_PER_DAY } from '../math.ts';
+import { MS_PER_DAY, MS_PER_MINUTE } from '../math.ts';
 
 export type LaneFloors = Readonly<Record<FeedLane, number>>;
 
@@ -43,6 +43,40 @@ export function effectiveFloor(lane: FeedLane, floors: LaneFloors, p: Policy): n
   return Math.min(Math.max(scaled, scaledFloor(floors.all, p.feed.windowMin, p) * p.feed.slow.floorMultiple), p.feed.floorMax);
 }
 
+/**
+ * ★ A FRESH BAND'S FLOOR (`feed.fresh`): the 'all' lane's base, scaled to the age the band looks
+ * at — the same scaling the main window gets, so a post climbing at the same pace clears every
+ * band. A band at the full window or older asks the base in full.
+ */
+export function bandFloor(ageMin: number, floors: LaneFloors, p: Policy): number {
+  return scaledFloor(floors.all, ageMin, p);
+}
+
+/**
+ * The posting-time window one fresh band asks this pass: from where its last answered ask ended
+ * to `ageMin` minutes before now, so consecutive asks tile time with no gap and no overlap. With
+ * no earlier ask (a start), or one further back than `fresh.maxWindowMin`, it reaches back that
+ * far and no further. Null when there is nothing new to ask (the last ask already ended there).
+ *
+ * What breaks if changed carelessly: starting a window before `lastUntil` re-buys posts the band
+ * already returned; starting it after leaves posts no band ever looks at at this age.
+ */
+export function bandWindow(ageMin: number, lastUntil: number | null, now: number, p: Policy): { readonly since: number; readonly until: number } | null {
+  const until = now - ageMin * MS_PER_MINUTE;
+  const earliest = until - p.feed.fresh.maxWindowMin * MS_PER_MINUTE;
+  const since = lastUntil === null ? earliest : Math.max(lastUntil, earliest);
+  return since < until ? { since, until } : null;
+}
+
+/**
+ * Whether a slow-lane slice is already covered by the fresh bands: its youngest age is no older
+ * than the oldest band, so the band has looked at those posts at about that age.
+ */
+export function sliceCoveredByBands(youngestAgeMin: number, p: Policy): boolean {
+  if (!p.feed.fresh.enabled) return false;
+  return youngestAgeMin <= Math.max(0, ...p.feed.fresh.bandAgesMin);
+}
+
 function scaledFloor(base: number, windowMin: number, p: Policy): number {
   const f = p.feed;
   const kept = Math.min(Math.max(base, f.floorMin), f.floorMax);
@@ -58,7 +92,8 @@ export function sentFloors(floors: LaneFloors, p: Policy): LaneFloors {
 /**
  * Posts per pass each lane is aimed at, so that a day of passes spends the catch-all's
  * share of the daily budget and no more. The slow lane runs on its own, slower clock, so
- * its per-pass target is its share over its own passes.
+ * its per-pass target is its share over its own passes. With `feed.fresh` on, the media lane's
+ * money goes to the bands' 'all' target, scaled by `fresh.targetScale`.
  *
  * @param usdPerPost what the source bills for one post returned
  * @param passesPerDay how many main discovery passes a day holds at the current cadence
@@ -69,7 +104,11 @@ export function laneTargets(dailyCapUsd: number, usdPerPost: number, passesPerDa
   const perPass = (posts * (1 - p.feed.slow.share)) / passesPerDay;
   const media = perPass * p.feed.mediaShare;
   const slowPassesPerDay = MS_PER_DAY / p.feed.slow.everyMs;
-  return { all: perPass - media, media, slow: (posts * p.feed.slow.share) / slowPassesPerDay };
+  const slow = (posts * p.feed.slow.share) / slowPassesPerDay;
+  /* Fresh bands (`feed.fresh`) replace both main lanes: they steer the 'all' floor toward both
+     lanes' money, less the share that pays for the longer re-reads. The media lane is not asked. */
+  if (p.feed.fresh.enabled) return { all: perPass * p.feed.fresh.targetScale, media: 0, slow };
+  return { all: perPass - media, media, slow };
 }
 
 /**

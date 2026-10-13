@@ -7,7 +7,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { effectiveFloor, laneTargets, nextFloor, sentFloors, slowLaneDue, startFloors } from './feed-floor.ts';
+import { bandFloor, bandWindow, effectiveFloor, laneTargets, nextFloor, sentFloors, sliceCoveredByBands, slowLaneDue, startFloors } from './feed-floor.ts';
 
 const P = DEFAULT_POLICY;
 
@@ -69,4 +69,49 @@ test('the floors never pass the ceiling', () => {
 
 test('every lane starts where policy says; the slow lane at 5x the main start', () => {
   assert.deepEqual(startFloors(P), { all: P.feed.startFloor, media: P.feed.mediaStartFloor, slow: P.feed.startFloor * P.feed.slow.floorMultiple });
+});
+
+/* ── fresh bands (feed.fresh) ── */
+
+const FRESH = { ...P, feed: { ...P.feed, fresh: { ...P.feed.fresh, enabled: true } } };
+const MIN = 60_000;
+
+test('fresh is off by default, and off it changes no target and covers no slow slice', () => {
+  assert.equal(P.feed.fresh.enabled, false);
+  assert.equal(P.feed.fresh.cutStale, false);
+  const t = laneTargets(1, 0.00015, 720, P);
+  assert.ok(t.media > 0);
+  assert.equal(sliceCoveredByBands(45, P), false);
+});
+
+test('a band floor scales the base to the band age, in full from the full window on', () => {
+  assert.equal(bandFloor(30, at(600), P), 300);
+  assert.equal(bandFloor(6, at(600), P), 60);
+  assert.equal(bandFloor(120, at(600), P), 600);
+  assert.equal(bandFloor(1, at(600), P), P.feed.effectiveFloorMin);
+});
+
+test('band windows tile posting time: each starts where the last ended, never further back than the cap', () => {
+  const now = 1_000 * MIN;
+  const first = bandWindow(25, null, now, P);
+  assert.deepEqual(first, { since: now - (25 + P.feed.fresh.maxWindowMin) * MIN, until: now - 25 * MIN });
+  const next = bandWindow(25, first!.until, now + 2 * MIN, P);
+  assert.deepEqual(next, { since: first!.until, until: now - 23 * MIN }, 'no gap, no overlap');
+  assert.equal(bandWindow(25, now - 25 * MIN, now, P), null, 'nothing new to ask');
+  const late = bandWindow(25, now - 200 * MIN, now, P);
+  assert.equal(late!.since, now - (25 + P.feed.fresh.maxWindowMin) * MIN, 'a long outage reaches back the cap only');
+});
+
+test('fresh on: the media lane gets no target, the all lane both lanes\' money times the scale, the slow lane its own', () => {
+  const off = laneTargets(1, 0.00015, 720, P);
+  const on = laneTargets(1, 0.00015, 720, FRESH);
+  assert.equal(on.media, 0);
+  assert.ok(Math.abs(on.all - (off.all + off.media) * P.feed.fresh.targetScale) < 1e-9);
+  assert.equal(on.slow, off.slow);
+});
+
+test('fresh on: a slow slice whose youngest age is inside the oldest band is covered', () => {
+  const oldest = Math.max(...P.feed.fresh.bandAgesMin);
+  assert.equal(sliceCoveredByBands(oldest - 5, FRESH), true);
+  assert.equal(sliceCoveredByBands(oldest + 55, FRESH), false);
 });
