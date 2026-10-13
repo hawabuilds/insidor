@@ -17,6 +17,10 @@
  * value the filter needs is unknown — five different sentences, because they call for five
  * different responses and a blank list answers none of them.
  *
+ * Under a post's coin line, when the server says so, a line of its own: an older coin named for
+ * the post's subject is trading more since it (OlderCoins.tsx) — never the post's coin, never a
+ * Buy on the card; tapping opens that coin's page, or the list when there are several.
+ *
  * The owner, and only the owner, also gets a strip under each card (features/owner): "Not a meme",
  * which takes the post out of this list at once, and the coin call; and "Hidden by me" to bring
  * a hidden post back.
@@ -35,6 +39,7 @@ import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { PostRow } from '../../shared/ui/PostRow.tsx';
 import { SameNameCoins } from './SameNameCoins.tsx';
+import { OlderCoinsLine } from './OlderCoins.tsx';
 import { StoryRow } from '../../shared/ui/StoryRow.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { FilterPanel } from './FilterPanel.tsx';
@@ -113,7 +118,13 @@ export function Feed({
       key={p.id}
       post={p}
       now={now}
-      extra={owner ? <OwnerCardStrip post={p} /> : null}
+      extra={
+        <>
+          {/* An older coin trading on the subject since the post: its own line, never a Buy (OlderCoins.tsx). */}
+          <OlderCoinsLine post={p} now={now} />
+          {owner ? <OwnerCardStrip post={p} /> : null}
+        </>
+      }
       handlers={{
         open: () => {
           if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId });

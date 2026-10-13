@@ -25,7 +25,7 @@ import type { Instant, Measured, Delta, Millis, PendingReason } from '../format/
 import { instantFrom, measuredFrom } from '../format/measure.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
-import type { RisingFeed, RisingPost } from './wire/rising.ts';
+import type { OlderCoin, RisingFeed, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -35,6 +35,7 @@ import {
   COIN_FIELDS,
   FORBIDDEN_KEYS,
   FORBIDDEN_SUBSTRINGS,
+  OLDER_COIN_FIELDS,
   RISING_POST_FIELDS,
   STORY_FIELDS,
 } from './wire/fields.ts';
@@ -513,6 +514,27 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     spark: decodeSpark(o.spark, `${path}.spark`),
     storyId,
     coins,
+    /* Absent from a row projected before the field existed: no older coin is said to be running. */
+    runningOlder: o.runningOlder === undefined || o.runningOlder === null ? [] : arr(o.runningOlder, `${path}.runningOlder`).map((c, i) => decodeOlderCoin(c, `${path}.runningOlder[${i}]`)),
+  };
+}
+
+/** One older coin trading since a post: a number we were not sent is a dash, never zero. */
+function decodeOlderCoin(raw: unknown, path: string): OlderCoin {
+  const o = pick(obj(raw, path), OLDER_COIN_FIELDS);
+  const usd = (v: unknown, at: string): Measured => {
+    if (v === null || v === undefined) return measuredFrom(null, 'not_read_yet');
+    return measuredFrom(int(v, at), 'not_read_yet');
+  };
+  return {
+    address: str(o.address, `${path}.address`),
+    name: optStr(o.name),
+    ticker: optStr(o.ticker),
+    launchedAt: instantAt(o.launchedAt, `${path}.launchedAt`, 'not_reported'),
+    hourBeforeUsd: usd(o.hourBeforeUsd, `${path}.hourBeforeUsd`),
+    peakHourUsd: usd(o.peakHourUsd, `${path}.peakHourUsd`),
+    priceChangeSincePost: o.priceChangeSincePost === null || o.priceChangeSincePost === undefined ? null : int(o.priceChangeSincePost, `${path}.priceChangeSincePost`),
+    readAt: instantAt(o.readAt, `${path}.readAt`, 'not_read_yet'),
   };
 }
 
@@ -552,6 +574,7 @@ export function decodeCoinMarket(raw: unknown, path = '$.market'): CoinMarket {
       usd: measured(r['usd'], `${path}.trades[${i}].usd`, 'not_reported'),
       priceUsd: measured(r['priceUsd'], `${path}.trades[${i}].priceUsd`, 'not_reported'),
       at: instantAt(r['at'], `${path}.trades[${i}].at`, 'not_reported'),
+      maker: optStr(r['maker']),
     }];
   });
   const venue = o['venue'] === 'curve' || o['venue'] === 'pool' ? o['venue'] : null;
