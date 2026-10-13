@@ -484,9 +484,6 @@ export interface LookupTerm {
   readonly kind: 'story' | 'post';
   readonly id: string;
   readonly term: string;
-  /** Searches for it that failed on every source since the last one that finished. */
-  readonly attempts: number;
-}
   /**
    * Every name the judge gave the subject: `term` (its proposed name) first, then its alternates,
    * then its short subject spans — the words it read in the post or its picture (the judge has
@@ -495,3 +492,6 @@ export interface LookupTerm {
    * for only 25 of 71 gold origin posts). `term` stays the row's key and label.
    */
   readonly names?: readonly string[];
+  /** Searches for it that failed on every source since the last one that finished. */
+  readonly attempts: number;
+}
