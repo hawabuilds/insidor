@@ -2149,7 +2149,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v63',
+  version: 'policy.v64',
 
   admit: {
     maxAgeMin: 240,
@@ -2377,7 +2377,9 @@ const POLICY_V1: Policy = {
        well under this. Set with room so a long answer is not cut off mid-JSON, which
        would make the whole batch unavailable. */
     maxOutputTokens: 2_048,
-    postBatchMaxOutputTokens: 800,
+    /* 1,200 from 2026-10-13: at 800, 14 of 218 batched answers ran past the budget in a matched test
+       and were dropped, and live pays to ask those posts again on its next pass. */
+    postBatchMaxOutputTokens: 1_200,
     heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS'],
     pairMaxOutputTokens: 64,
     /* Typical English runs about four characters a token; three makes the estimate the
