@@ -68,6 +68,11 @@ export interface DiscoveryQuery {
   readonly mode: DiscoveryMode;
   /** Interpreted by the adapter in its own terms; opaque to core. */
   readonly term: string;
+  /**
+   * Several words for one ask, `term` first, on a source that bills per run and takes a list in
+   * one (the short-video source's watch list, `feed.watchWordsPerAsk`). Absent means `term` alone.
+   */
+  readonly terms?: readonly string[];
   readonly sinceMs: Millis | null;
   /**
    * ★ THE ANTI-CONTAMINATION CUTOFF. Nothing published at or after this instant may

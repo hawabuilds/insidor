@@ -141,6 +141,27 @@ export const PRICES: PriceBook = {
 /** What a run that came back with `posts` posts was billed: the start fee and each post's fees. */
 export const runCostUsd = (posts: number, perPostUsd: number): number => RUN_START_USD + Math.max(0, posts) * perPostUsd;
 
+/**
+ * ★ THE NEWEST-FIRST SEARCH ACTOR'S CHARGES (search-actor.ts), BRONZE tier, read from its own pricing
+ * and checked against a settled run on 2026-10-13 (16:11 UTC: 2 words, 58 videos, $0.0264 = $0.00022
+ * + 2 × $0.00233 + 58 × $0.00037). A start fee, a fee per word searched, a fee per video. Its
+ * `result-item` event is listed at the same price and was not charged on that run; if it ever is,
+ * the recorded cost below runs under the invoice by that much and this is the line to change.
+ */
+export const SEARCH_ACTOR_START_USD = 0.00022;
+export const SEARCH_ACTOR_PER_WORD_USD = 0.00233;
+export const SEARCH_ACTOR_PER_POST_USD = 0.00037;
+
+/**
+ * A newest-first ask of `words` words — one run a word (discover.ts) — quoted at the actor's 30
+ * videos a run, and what one that came back with `posts` videos in all was billed. The quote is the
+ * ask's price before the call and what the runner spaces its asks by: four words, $0.0546.
+ */
+export const searchActorQuoteUsd = (words: number, perWordPosts: number): number =>
+  Math.max(1, words) * (SEARCH_ACTOR_START_USD + SEARCH_ACTOR_PER_WORD_USD + perWordPosts * SEARCH_ACTOR_PER_POST_USD);
+export const searchActorCostUsd = (words: number, posts: number): number =>
+  Math.max(1, words) * (SEARCH_ACTOR_START_USD + SEARCH_ACTOR_PER_WORD_USD) + Math.max(0, posts) * SEARCH_ACTOR_PER_POST_USD;
+
 /** The per-post fee of a search ask (the post and both filters) and of a re-read. */
 export const SEARCH_POST_USD = PER_POST_USD + SEARCH_FILTERS_PER_POST_USD;
 export const READ_POST_USD = PER_POST_USD;

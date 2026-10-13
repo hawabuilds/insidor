@@ -50,6 +50,7 @@ export const TOKEN = 'APIFY_TOKEN';
 export const BASE_URL = 'TIKTOK_API_BASE';
 export const DISCOVERY_ACTOR = 'TIKTOK_DISCOVERY_ACTOR_ID';
 export const OBSERVE_ACTOR = 'TIKTOK_OBSERVE_ACTOR_ID';
+export const SEARCH_ACTOR = 'TIKTOK_SEARCH_ACTOR_ID';
 
 /** The scraper platform's public host. Not a credential; see the header. */
 export const DEFAULT_BASE_URL = 'https://api.apify.com';
@@ -73,6 +74,11 @@ export const CREDENTIALS: CredentialSpec = {
       fallback: null,
     },
     {
+      variable: SEARCH_ACTOR,
+      note: 'the actor id run for newest-first keyword search, one run a word (search-actor.ts). Its input keys are another scraper family\'s (keywords, sortType, publishTime).',
+      fallback: null,
+    },
+    {
       variable: BASE_URL,
       note: 'the scraper platform host. Override only to point at a staging or recorded endpoint.',
       fallback: DEFAULT_BASE_URL,
@@ -92,6 +98,7 @@ export function clientConfig(values: CredentialValues, runtime: ClientRuntime): 
     baseUrl: values(BASE_URL),
     discoveryActorId: values(DISCOVERY_ACTOR),
     observeActorId: values(OBSERVE_ACTOR),
+    searchActorId: values(SEARCH_ACTOR),
     fetch: runtime.fetch,
   };
 }

@@ -23,7 +23,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { Logger } from '../log.ts';
-import { discoverPass, memoryWatchClock, watchEveryMs, watchTermFor, type WatchClock } from './discover.ts';
+import { discoverPass, memoryWatchClock, watchEveryMs, watchTermFor, watchTermsFor, type WatchClock } from './discover.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
 const CADENCE_MS = 120_000;
@@ -132,6 +132,15 @@ test('the watch word rotates through the list as the clock steps, and skips blan
   const words = [0, 1, 2, 3].map((k) => watchTermFor(['a', ' ', 'b', 'c'], every, (k * every) as Millis));
   assert.deepEqual(words, ['a', 'b', 'c', 'a']);
   assert.equal(watchTermFor([], every, NOW), null);
+});
+
+test('★ several watch words an ask: each ask takes the next ones, the list comes round, never a word twice', () => {
+  const every = 3_600_000;
+  const list = ['a', 'b', ' ', 'c', 'd', 'e', 'b'];
+  const asks = [0, 1, 2].map((k) => watchTermsFor(list, 2, every, (k * every) as Millis));
+  assert.deepEqual(asks, [['a', 'b'], ['c', 'd'], ['e', 'a']]);
+  assert.deepEqual(watchTermsFor(['a', 'b'], 6, every, NOW), ['a', 'b'], 'never more words than the list holds');
+  assert.deepEqual(watchTermsFor([], 4, every, NOW), []);
 });
 
 /* ── the pass ─────────────────────────────────────────────────────────────── */

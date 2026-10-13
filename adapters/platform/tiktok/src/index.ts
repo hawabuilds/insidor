@@ -41,9 +41,10 @@ import type { PriceBook } from '@insidor/meter';
 import { discovered } from '@insidor/vendor-kit';
 import { parseLink as parseLinkOf, postTimeFromId as postTimeOf } from './post-time.ts';
 
-import { CAPABILITIES, DISCOVER, OBSERVE, PRICES, READ_POST_USD, runCostUsd, SEARCH_POST_USD, SOURCE, VENDOR } from './capabilities.ts';
+import { CAPABILITIES, DISCOVER, OBSERVE, PRICES, READ_POST_USD, runCostUsd, searchActorCostUsd, searchActorQuoteUsd, SEARCH_POST_USD, SOURCE, VENDOR } from './capabilities.ts';
 import type { TikTokClient } from './client.ts';
-import { discoverRun, SEARCH_ORDERS, type SearchOrder } from './discover.ts';
+import { discoverRun, SEARCH_ORDERS, wordsOf, type SearchOrder } from './discover.ts';
+import { SEARCH_ACTOR_RESULTS_PER_WORD } from './search-actor.ts';
 import { addressable, chunk, observeBatch } from './observe.ts';
 import { toAuthor, toItem } from './to-item.ts';
 
@@ -101,6 +102,14 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
       ? prices
       : { ...prices, [`${VENDOR}:${OBSERVE}`]: { ...PRICES[`${VENDOR}:${OBSERVE}`]!, usdPerUnit: runCostUsd(posts, READ_POST_USD) } };
 
+  /* ★ A KEYWORD ASK ON THE NEWEST-FIRST ACTOR is quoted by its words (capabilities.ts
+     `searchActorQuoteUsd`); every other discovery run keeps the flat quote of a full run. */
+  const onSearchActor = (query: DiscoveryQuery): boolean => query.mode === 'keyword' && deps.client.runSearch !== undefined;
+  const discoverBook = (query: DiscoveryQuery): PriceBook =>
+    deps.prices !== undefined || !onSearchActor(query)
+      ? prices
+      : { ...prices, [`${VENDOR}:${DISCOVER}`]: { ...PRICES[`${VENDOR}:${DISCOVER}`]!, usdPerUnit: searchActorQuoteUsd(wordsOf(query).length, SEARCH_ACTOR_RESULTS_PER_WORD) } };
+
   return {
     id: SOURCE,
     capabilities: CAPABILITIES,
@@ -110,7 +119,7 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
 
       const result = await metered(
         deps.meter,
-        prices,
+        discoverBook(query),
         // One run is one unit. Counting returned items here would price a per-run
         // vendor with per-item arithmetic.
         { vendor: VENDOR, endpoint: DISCOVER, unit: 'per-run', estUnits: 1, at },
@@ -119,6 +128,9 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
           const run = await discoverRun(deps.client, query, at, keyword ? nextOrder() : 'most_liked');
           /* What the vendor billed: the start fee and each post returned, with the two search
              filters on a keyword ask. Recorded instead of the full-run quote. */
+          if (run.searchWords !== null) {
+            return { value: run, units: 1, ...(deps.prices === undefined ? { usdActual: searchActorCostUsd(run.searchWords, run.billedPosts) } : {}) };
+          }
           return { value: run, units: 1, ...billed(run.billedPosts, keyword ? SEARCH_POST_USD : READ_POST_USD) };
         },
       );
@@ -147,7 +159,7 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
      * charge that overstatement is the whole number.
      */
     estimate(call: PlannedCall): CostEstimate {
-      if (call.kind === 'discover') return estimateFor(prices, VENDOR, DISCOVER, 1);
+      if (call.kind === 'discover') return estimateFor(discoverBook(call.query), VENDOR, DISCOVER, 1);
       const batches = chunk(addressable(call.sourceItemIds, handleOf), batchSize);
       if (deps.prices !== undefined) return estimateFor(prices, VENDOR, OBSERVE, batches.length);
       const usd = batches.reduce((sum, batch) => sum + runCostUsd(batch.length, READ_POST_USD), 0);

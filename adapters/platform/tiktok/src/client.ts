@@ -154,6 +154,11 @@ export interface TikTokClient {
   }): Promise<RunResult>;
   /** Re-read by URL, batched. The actor takes a list, not an id list. */
   runObserve(urls: readonly string[]): Promise<RunResult>;
+  /**
+   * The newest-first keyword search on its own actor (search-actor.ts), one word a run (discover.ts).
+   * Absent when `TIKTOK_SEARCH_ACTOR_ID` is not set: keyword asks then go to `runDiscovery`.
+   */
+  runSearch?(input: object & { readonly keywords: readonly string[] }): Promise<RunResult>;
 }
 
 export interface TikTokClientConfig {
@@ -161,6 +166,8 @@ export interface TikTokClientConfig {
   readonly baseUrl: string;
   readonly discoveryActorId: string;
   readonly observeActorId: string;
+  /** The newest-first search actor; empty or absent for none. */
+  readonly searchActorId?: string;
   readonly fetch: typeof globalThis.fetch;
   /** Seconds the vendor holds one request open. Its documented ceiling is 60. */
   readonly waitForFinishSeconds?: number;
@@ -207,7 +214,7 @@ const QUOTA_HEADERS = {
  * first is a person editing a file, the second is a retry.
  *
  * ★ AND THIS IS THE SOURCE WHERE IT MATTERS MOST, BECAUSE IT IS THE ONLY ONE WITH
- * THREE SECRETS. A token with no actor ids, or actor ids with no token, is somebody
+ * FOUR SECRETS. A token with no actor ids, or actor ids with no token, is somebody
  * who turned this on and got it wrong — which the credential reader already reports
  * as `misconfigured` rather than as dormant. This class covers the half of that
  * judgement the reader cannot make: whether the values somebody DID supply are
@@ -222,14 +229,14 @@ export class TikTokNotConfigured extends Error {
   constructor(variable: string, note: string) {
     super(
       `tiktok adapter is not configured: ${variable} ${note}. ` +
-        'This source needs THREE values, not one: APIFY_TOKEN, TIKTOK_DISCOVERY_ACTOR_ID and ' +
-        'TIKTOK_OBSERVE_ACTOR_ID. None of them has a default — the token because a defaulted ' +
+        'This source needs FOUR values, not one: APIFY_TOKEN, TIKTOK_DISCOVERY_ACTOR_ID, ' +
+        'TIKTOK_OBSERVE_ACTOR_ID and TIKTOK_SEARCH_ACTOR_ID. None of them has a default — the token because a defaulted ' +
         'credential authenticates as somebody else, and the actor ids because a plausible wrong ' +
         'id constructs happily, runs, IS BILLED, and returns a dataset in a shape we cannot read. ' +
         'The token comes from the scraper platform console; the actor ids identify which ' +
         'third-party scraper we run and are written in the API form "username~actor-name" or as ' +
         'the bare generated id. TIKTOK_API_BASE is optional and defaults to the public host. ' +
-        'Put the three secrets in .env.local, which is gitignored.',
+        'Put the four secrets in .env.local, which is gitignored.',
     );
     this.name = 'TikTokNotConfigured';
     this.variable = variable;
@@ -494,6 +501,8 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
   const token = requireToken(config.token);
   const discoveryActorId = requireActorId(config.discoveryActorId, 'TIKTOK_DISCOVERY_ACTOR_ID');
   const observeActorId = requireActorId(config.observeActorId, 'TIKTOK_OBSERVE_ACTOR_ID');
+  /* Optional: unset means keyword asks stay on the discovery actor. Set, it is held to the same gate. */
+  const searchActorId = (config.searchActorId ?? '').trim() === '' ? null : requireActorId(config.searchActorId ?? '', 'TIKTOK_SEARCH_ACTOR_ID');
   const baseUrl = requireBaseUrl(config.baseUrl);
 
   const waitForFinish = config.waitForFinishSeconds ?? DEFAULT_WAIT_FOR_FINISH_S;
@@ -759,5 +768,14 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
       }
       return runActor(observeActorId, { postURLs: urls });
     },
+    ...(searchActorId === null
+      ? {}
+      : {
+          runSearch: async (input: { readonly keywords: readonly string[] }) => {
+            /* A run of no words still costs a start fee; refused like an empty re-read. */
+            if (input.keywords.length === 0) throw new RangeError('tiktok client: asked to search no words; a run of nothing is a caller bug');
+            return runActor(searchActorId, input, true);
+          },
+        }),
   };
 }
