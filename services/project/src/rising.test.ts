@@ -173,9 +173,9 @@ test('★ a post whose coins were weighed lists them strongest first; one settle
   const evidence = new Map([['B2', { linksPost: null, samePicture: true, launchedAfterMs: 60_000 }]]);
   const unsure = postCoins(undefined, { coins: ['A1', 'B2', 'C3'], more: false, match: { kind: 'unsure', order: ['B2', 'C3', 'A1'], evidence } });
   assert.deepEqual(unsure.sameName, ['B2', 'C3', 'A1']);
-  const one = { kind: 'one', coin: { coinId: 'solana:B2' } } as unknown as { kind: 'one'; coin: never };
+  const one = { kind: 'one', coin: { coinId: 'solana:B2', address: 'B2' } } as unknown as { kind: 'one'; coin: never };
   const matched = postCoins(undefined, { coins: ['A1', 'B2'], more: false, match: { kind: 'matched', coin: one.coin, evidence: { linksPost: true, samePicture: null, launchedAfterMs: 60_000 } } });
   assert.equal(matched.coins.kind, 'matched');
   assert.equal(matched.fromStory, false);
-  assert.deepEqual(matched.sameName, []);
+  assert.deepEqual(matched.sameName, ['B2', 'A1'], 'the settled coin first, then the others with the name, for the post sheet');
 });

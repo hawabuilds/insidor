@@ -39,6 +39,8 @@
  *                                       links this post, or same picture and launched after,
  *                                       or the only coin launched after under the exact name)
  *                                       → `matched`, with the coin and the facts that settled it;
+ *                                       the other coins with the name are written beside it
+ *                                       too, settled coin first, for the post sheet's list;
  *   it was searched and launchpad coins came back → `unsure` with how many: coins exist, and
  *                                       nothing has said which, if any, is this post's. The
  *                                       count is the length of the list written beside it
@@ -120,6 +122,30 @@ export interface WireRisingPost {
   readonly coins: WirePostCoinLink;
   /** Older coins named for the subject whose trading jumped since the post; never its coin. */
   readonly runningOlder: readonly WireOlderCoin[];
+  /**
+   * What only the post sheet shows, read by `GET /post/:id/sheet` and cut from the feed replies
+   * (services/read queries.ts), so the cards do not carry a chart each. Absent on a row projected
+   * before it existed.
+   */
+  readonly sheet?: WirePostSheetFacts;
+}
+
+/**
+ * The post sheet's facts that only this process can read (public.observation and the crypto
+ * reads are not the app role's):
+ *
+ *   views          every view reading we took, oldest first; a censored one is null and breaks
+ *                  the chart's line rather than dropping it to the floor
+ *   perMinute      views a minute lately (fyp-freshness.ts `recentGrowthPerMinute`, the same
+ *                  rate For You is ordered by); null when the readings cannot say
+ *   tickersInReplies  how many times other accounts named a $ticker in the newest replies and
+ *                  quote posts we read (0064, `_others`); null when we have not read them —
+ *                  never zero for "not read"
+ */
+export interface WirePostSheetFacts {
+  readonly views: readonly { readonly atMs: number; readonly value: number | null }[];
+  readonly perMinute: number | null;
+  readonly tickersInReplies: number | null;
 }
 
 export interface RisingRow {
@@ -291,7 +317,8 @@ export function postCoins(
     const n = lookup.coins.length;
     if (n === 0) return { coins: { kind: 'none' }, fromStory: false, sameName: [] };
     const m = lookup.match;
-    if (m?.kind === 'matched') return { coins: { kind: 'matched', coin: m.coin, evidence: m.evidence }, fromStory: false, sameName: [] };
+    /* The settled coin first, then every other coin with the name: the post sheet's "All N coins". */
+    if (m?.kind === 'matched') return { coins: { kind: 'matched', coin: m.coin, evidence: m.evidence }, fromStory: false, sameName: [m.coin.address, ...lookup.coins.filter((a) => a !== m.coin.address)] };
     /* Strongest evidence first when the coins were weighed; the list is the same coins either way. */
     const listed = new Set(lookup.coins);
     const sameName = m?.kind === 'unsure' ? [...m.order.filter((a) => listed.has(a)), ...lookup.coins.filter((a) => !m.order.includes(a))] : lookup.coins;
@@ -335,6 +362,7 @@ export function projectRisingPost(
   sparkWindowMs: number,
   lookup: PostLookup | null = null,
   runningOlder: readonly WireOlderCoin[] = [],
+  sheet: WirePostSheetFacts | null = null,
 ): WireRisingPost {
   const latest = readings[readings.length - 1];
   const link = row.story_id === null ? undefined : coinsByStory.get(row.story_id);
@@ -356,6 +384,7 @@ export function projectRisingPost(
     storyId: coin.fromStory ? row.story_id : null,
     coins: coin.coins,
     runningOlder,
+    ...(sheet === null ? {} : { sheet }),
   };
   assertNoInternalVocabulary(post, `$.rising[${row.item_id}]`);
   return post;
@@ -381,6 +410,8 @@ export interface RisingFrame {
 export interface CryptoRead {
   readonly others: boolean;
   readonly ownTalk: boolean;
+  /** Other accounts' $ticker mentions in that read, summed over the tickers (the post sheet's tile). */
+  readonly othersTickers?: number;
 }
 
 /**
@@ -453,8 +484,11 @@ export function forYouOrder(
 async function loadCryptoReads(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, CryptoRead>> {
   if (itemIds.length === 0) return new Map();
   try {
-    const rows = await db.query<{ item_id: string; others: boolean; own_talk: boolean }>(
+    const rows = await db.query<{ item_id: string; others: boolean; own_talk: boolean; others_tickers: number | string | null }>(
       `select item_id,
+              (select coalesce(sum(case when jsonb_typeof(t.value) = 'number' then (t.value #>> '{}')::numeric else 0 end), 0)
+                 from jsonb_each(case when jsonb_typeof(cashtags->'_others'->'cashtags') = 'object'
+                                      then cashtags->'_others'->'cashtags' else '{}'::jsonb end) t) as others_tickers,
               (coalesce(cashtags->'_others'->'cashtags', '{}'::jsonb) <> '{}'::jsonb
                or coalesce((cashtags->'_others'->>'addresses')::int, 0) > 0
                or coalesce((cashtags->'_others'->>'ca')::int, 0) > 0) as others,
@@ -466,7 +500,7 @@ async function loadCryptoReads(db: Db, itemIds: readonly string[]): Promise<Read
                 order by item_id, read_at desc) r`,
       [[...itemIds]],
     );
-    return new Map(rows.map((r) => [r.item_id, { others: r.others, ownTalk: r.own_talk }] as const));
+    return new Map(rows.map((r) => [r.item_id, { others: r.others, ownTalk: r.own_talk, othersTickers: r.others_tickers === null ? 0 : Number(r.others_tickers) }] as const));
   } catch {
     return new Map();
   }
@@ -534,7 +568,14 @@ export async function buildRising(
         const g = recentGrowthPerMinute(views, nowMs, policy);
         return g === null ? null : g / scale;
       })(),
-      post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? []),
+      post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? [], {
+        views: views.map((v) => ({ atMs: v.atMs, value: v.reach })),
+        perMinute: (() => {
+          const g = recentGrowthPerMinute(views, nowMs, policy);
+          return g === null ? null : Math.round(g);
+        })(),
+        tickersInReplies: crypto.get(row.item_id)?.othersTickers ?? null,
+      }),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
       fyp: !underBar && clearsReachBar('fyp', views, postedAt, policy, scale),
@@ -560,6 +601,7 @@ export async function buildRising(
   for (const id of sameName.keys()) {
     const l = lookups.get(id);
     if (l !== undefined && 'coins' in l && l.match?.kind === 'unsure') sameNameEvidence.set(id, l.match.evidence);
+    if (l !== undefined && 'coins' in l && l.match?.kind === 'matched') sameNameEvidence.set(id, new Map([[l.match.coin.address, l.match.evidence]]));
   }
   return { ...shown, whyNot, heldBy, sameName, sameNameEvidence };
 }
