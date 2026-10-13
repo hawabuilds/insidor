@@ -2490,7 +2490,8 @@ const POLICY_V1: Policy = {
     /* 1,200 from 2026-10-13: at 800, 14 of 218 batched answers ran past the budget in a matched test
        and were dropped, and live pays to ask those posts again on its next pass. */
     postBatchMaxOutputTokens: 1_200,
-    heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS'],
+    /* NOT_MEME_MATCH (2026-10-13): a post very close to one the owner called "not a meme" (`precedents`). */
+    heldKinds: ['AD', 'SPORT', 'FANDOM', 'SHOWBIZ', 'POLITICS', 'NOT_MEME_MATCH'],
     pairMaxOutputTokens: 64,
     /* Typical English runs about four characters a token; three makes the estimate the
        meter checks against run high, which is the safe direction. */

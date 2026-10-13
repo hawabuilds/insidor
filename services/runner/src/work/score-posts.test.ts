@@ -49,7 +49,7 @@ function post(n: number): Item {
  * The Messages API reply as the judge sends it, recorded shape, answering every subject in
  * the request it is handed with the given confidence. `calls` counts requests.
  */
-function recordedJudge(confidence: number | 'garbled') {
+function recordedJudge(confidence: number | 'garbled', precedents = false) {
   const calls: unknown[] = [];
   const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as { messages: { content: { type: string; text?: string }[] }[] };
@@ -78,7 +78,7 @@ function recordedJudge(confidence: number | 'garbled') {
     fetch,
     sleep: async () => {},
   });
-  const judge = anthropicJudge({ client, meter, now: () => NOW, model: 'claude-haiku-4-5', policy: P.judge, maxBatch: P.qualify.batchSize });
+  const judge = anthropicJudge({ client, meter, now: () => NOW, model: 'claude-haiku-4-5', policy: P.judge, maxBatch: P.qualify.batchSize, precedents, ...(precedents ? { question: 'post' as const } : {}) });
   return { judge, calls, meter };
 }
 
@@ -338,4 +338,36 @@ test('★ posts answered under an older prompt are re-judged after the new ones,
   assert.ok(recorded.has(post(1).itemId), 'the never-judged post first');
   assert.ok(recorded.has(post(100).itemId), 'then the newest stale one');
   assert.ok(!recorded.has(post(100 + P.rising.rescorePerPass).itemId), 'and no more than the cap');
+});
+
+test('★ the owner\'s closest labels ride along with each post, and a post very close to a "not a meme" label is held, not asked its kind', async () => {
+  const judge = recordedJudge(0.82, true);
+  const filed: { id: string; name: string | null; promptId: string }[] = [];
+  const { deps: d } = deps([post(1), post(2)], judge);
+  const { kindJudge, asked } = kindJudgeAnswering(judge, () => 'OTHER');
+  const bar = P.judge.precedents.holdNotSimilarity;
+  const near = new Map([
+    [String(post(1).itemId), { precedents: [{ ref: 'x:900', text: 'a team scored a goal', label: 'not' as const, why: 'sport' }], closestNot: bar + 0.01, closestNotId: 'x:900' }],
+    [String(post(2).itemId), { precedents: [{ ref: 'x:900', text: 'a team scored a goal', label: 'not' as const, why: 'sport' }, { ref: 'x:901', text: 'a hippo yawning', label: 'meme' as const, why: null }], closestNot: bar - 0.2, closestNotId: 'x:900' }],
+  ]);
+  const precedents = { refresh: async () => ({ embedded: 0, relabelled: 0 }), forPosts: async () => near };
+  const scores = { ...d.scores, record: async (id: ItemId, j: Judgement) => void filed.push({ id: String(id), name: j.proposedName, promptId: j.promptId }) };
+  await scorePosts({ ...d, scores, kindJudge, precedents });
+  const body = JSON.stringify(judge.calls[0]);
+  assert.match(body, /a team scored a goal/);
+  assert.equal((body.match(/a team scored a goal/g) ?? []).length, 1, 'a label near two posts is sent once a call');
+  assert.match(body, /labelledLike/);
+  const held = filed.filter((f) => f.name === 'NOT_MEME_MATCH');
+  assert.deepEqual(held.map((h) => h.id), [String(post(1).itemId)]);
+  assert.match(held[0]!.promptId, /^post-kind@/, 'filed as a kind answer, so every held-kind reader holds it');
+  assert.equal(asked.length, 1, 'the held post is not asked its kind');
+});
+
+test('with no precedents found, posts are judged as before and nothing is held', async () => {
+  const judge = recordedJudge(0.82, true);
+  const { deps: d, recorded } = deps([post(1)], judge);
+  await scorePosts({ ...d, precedents: { refresh: async () => ({ embedded: 0, relabelled: 0 }), forPosts: async () => new Map() } });
+  assert.doesNotMatch(JSON.stringify(judge.calls[0]), /labelledLike/);
+  assert.equal(recorded.size, 1);
+  assert.notEqual(recorded.get(post(1).itemId)?.proposedName, 'NOT_MEME_MATCH');
 });

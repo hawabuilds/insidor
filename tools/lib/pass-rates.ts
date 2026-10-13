@@ -23,7 +23,7 @@
  * the same answers, but minutes of waiting. Right for a run nobody watches.
  *
  * ★ THE OWNER'S LABELS AS PRECEDENT, AS LIVE (`precedents`): each test post sent with its closest
- * labelled posts, chosen by the same core functions
+ * labelled posts and held when very close to a "not a meme" one, chosen by the same core functions
  * the live scorer uses, with a test post never its own precedent.
  *
  * What breaks if changed carelessly: the judge must be the live one's question and output budget
@@ -39,8 +39,8 @@ import type { JudgeOutcome } from '../../contracts/src/ports/judge.ts';
 import type { Meter } from '../../contracts/src/ports/meter.ts';
 import { createHash } from 'node:crypto';
 
-import { heldKind } from '../../core/src/qualify/kinds.ts';
-import { embedInput, nearestLabelled, precedentsFor, type LabelledVector } from '../../core/src/qualify/precedents.ts';
+import { NOT_MEME_MATCH, heldKind } from '../../core/src/qualify/kinds.ts';
+import { closestNot, embedInput, heldAsNotMeme, nearestLabelled, precedentsFor, type LabelledVector } from '../../core/src/qualify/precedents.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
 import { BATCH_PRICE_FRACTION, anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
 import { POST_SPACE, SPACE as EMBED_SPACE, voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
@@ -111,8 +111,9 @@ export interface GradeOptions {
    * vectors (internal.label_embedding, `PgLabelEmbeddingRepo.all(POST_SPACE)`). Each test post is
    * embedded the same way (core `embedInput`; a post that is itself a label reuses that vector, so
    * nothing is paid twice), sent with its Policy.judge.precedents.k closest labels — never itself:
-   * not its id, its own picture or its own words.
-   * Absent: no precedents (the judge as it ran before 2026-10-13).
+   * not its id, its own picture or its own words — and a post the first question passes that is
+   * `holdNotSimilarity` close to a "not a meme" label is held as NOT_MEME_MATCH, as live holds it.
+   * Absent: no precedents and no hold (the judge as it ran before 2026-10-13).
    */
   readonly precedents?: { readonly labels: readonly LabelledVector[] } | null;
   /** Kind labels already known, by post id (stored answers, or an earlier grading this run): not asked again. */
@@ -203,7 +204,7 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
   const chunks = <T,>(xs: readonly T[]): T[][] => Array.from({ length: Math.ceil(xs.length / maxBatch) }, (_, k) => xs.slice(k * maxBatch, (k + 1) * maxBatch));
 
   /* Each post's precedents and closeness to a "not a meme" label, filled below before any judging. */
-  const near = new Map<string, { readonly precedents: ReturnType<typeof precedentsFor> }>();
+  const near = new Map<string, { readonly precedents: ReturnType<typeof precedentsFor>; readonly closestNot: number | null }>();
   const subjectOf = (p: EvalPost<G>) => {
     const precedents = near.get(p.id)?.precedents ?? [];
     return {
@@ -291,7 +292,7 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
       const v = vectors.get(p.id);
       if (v === undefined) continue;
       const self = selfOf(p);
-      near.set(p.id, { precedents: precedentsFor(nearestLabelled(v, labels, P.judge.precedents.k, self), P) });
+      near.set(p.id, { precedents: precedentsFor(nearestLabelled(v, labels, P.judge.precedents.k, self), P), closestNot: closestNot(v, labels, self)?.similarity ?? null });
     }
   }
 
@@ -317,7 +318,9 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
     const out = outcomeOf.get(i);
     const j = out?.kind === 'judged' ? out.judgement : null;
     const firstPass = j !== null && postScore(j, P, similarityOf(p)) === 'passes';
-    return { ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, similarity: similarityOf(p), firstPass, postKind: o.knownKinds?.get(p.id) ?? null, passes: firstPass };
+    /* Held as live holds it: a post the first question passed, close to a "not a meme" label. */
+    const notMatch = firstPass && heldAsNotMeme(near.get(p.id)?.closestNot ?? null, P);
+    return { ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, similarity: similarityOf(p), firstPass, postKind: notMatch ? NOT_MEME_MATCH : (o.knownKinds?.get(p.id) ?? null), passes: firstPass && !notMatch };
   });
   if (o.kind !== false) {
     const kindJudge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy, maxBatch, question: 'kind', batch: batched });
