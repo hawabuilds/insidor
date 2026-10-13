@@ -996,6 +996,17 @@ export interface UniversePolicy {
     readonly withinMs: number;
     /** Candidates kept per name, newest launch first. */
     readonly hitsPerTerm: number;
+    /**
+     * Names searched per minute, across passes, so no source blocks us. The on-chain search runs
+     * on the owner's paid market-data plan (500 calls a minute, shared with the read service's
+     * and the projector's market reads); the other search source allows 300. Every post in the feed should be
+     * looked up within about a minute of entering it, which this rate covers many times over.
+     */
+    readonly perMinute: number;
+    /** A failed search is tried again this many times before it is given up. */
+    readonly retries: number;
+    /** A post still not looked up this long after entering the feed shows "Couldn't check". */
+    readonly giveUpMs: number;
   };
   /**
    * ★ WHICH COINS THE UNIVERSE KEEPS. Every coin chainwatch sees is kept for `allMs`. After that a
@@ -1858,7 +1869,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v39',
+  version: 'policy.v40',
 
   admit: {
     maxAgeMin: 240,
@@ -2233,12 +2244,17 @@ const POLICY_V1: Policy = {
     candidatesPerCoin: 20,
     recheckAfterMs: 86_400_000, // a day
     lookup: {
-      termsPerPass: 5,
-      /* 1,000: two free sources, a call each per name; well inside both free tiers a day. */
-      perDay: 1_000,
+      /* 60 a pass, a pass a minute: every new feed post looked up within a minute. */
+      termsPerPass: 60,
+      /* 20,000: the sources are free; the per-minute rate is what keeps us unblocked. */
+      perDay: 20_000,
       keepMs: 21_600_000, // six hours
       withinMs: 604_800_000, // seven days
       hitsPerTerm: 10,
+      /* 100: a fifth of the Analyst plan's 500 a minute, the rest left to market reads. */
+      perMinute: 100,
+      retries: 3,
+      giveUpMs: 600_000, // ten minutes
     },
     keep: {
       allMs: 1_209_600_000, // fourteen days
