@@ -385,8 +385,14 @@ export class PgItemRepo implements ItemRepo {
   }
 
   /**
-   * Items admitted since an instant, oldest first — the query every stage that
-   * walks forward in time lives on.
+   * Items admitted since an instant, NEWEST first — the query ADMIT, DETECT and GROUP pull from.
+   *
+   * ★ NEWEST FIRST SINCE 2026-10-13. It was oldest first, with a limit: once two days of
+   * discovery held more posts than one page, every page was the same oldest few thousand posts,
+   * all already decided, and no stage ever reached a new one — GROUP placed nothing from 23:04
+   * UTC on 2026-10-12 and the board emptied. Newest first, a stage that cannot keep up drops its
+   * oldest work instead of all its new work. A stage that needs order inside a page (GROUP: an
+   * original before its copies) sorts the page itself.
    *
    * `first_seen_at` IS the admission clock: an item is in this table because the
    * admit stage put it there, and the column is never moved forward on a re-arrival
@@ -395,7 +401,7 @@ export class PgItemRepo implements ItemRepo {
    */
   async admittedSince(at: Millis, limit: number): Promise<readonly Item[]> {
     const rows = await this.#db.query<ItemRow>(
-      `${SELECT_ITEM} where first_seen_at >= $1 order by first_seen_at asc limit $2`,
+      `${SELECT_ITEM} where first_seen_at >= $1 order by first_seen_at desc limit $2`,
       [toTimestamp(at), limit],
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
