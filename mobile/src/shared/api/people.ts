@@ -59,6 +59,8 @@ async function call(service: 'social' | 'notify', method: string, path: string, 
 
 const social = (method: string, path: string, body?: unknown) => call('social', method, path, body);
 const notify = (method: string, path: string, body?: unknown) => call('notify', method, path, body);
+/** The social service, signed and key-checked, for the owner's calls (shared/api/owner.ts). */
+export const socialCall = social;
 
 /* ── social ───────────────────────────────────────────────────────── */
 

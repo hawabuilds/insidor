@@ -179,3 +179,10 @@
   font-size: 13px;
   line-height: 1.45;
 }
+
+/* The owner's "Hidden by me", above the posts; drawn only for the owner. */
+.ownerRow {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--gutter) 6px;
+}

@@ -16,6 +16,10 @@
  * empty, nothing is starred, the filters matched nothing, or rows were left out because a
  * value the filter needs is unknown — five different sentences, because they call for five
  * different responses and a blank list answers none of them.
+ *
+ * The owner, and only the owner, also gets a strip under each card (features/owner): "Not a meme",
+ * which takes the post out of this list at once, and the coin call; and "Hidden by me" to bring
+ * a hidden post back.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -37,6 +41,11 @@ import { FilterPanel } from './FilterPanel.tsx';
 import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyFilters, applyPostFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
 import { rowsInOrder, tabView, type FeedTab } from './feed-tabs.ts';
 import { useLeadPosts } from './useLeadPosts.ts';
+import { HiddenByMe } from '../owner/HiddenByMe.tsx';
+import { OwnerCardStrip } from '../owner/OwnerCard.tsx';
+import { HideBar } from '../owner/OwnerPost.tsx';
+import { useIsOwner, useOwnerState, useSavedCalls } from '../owner/hooks.ts';
+import { withoutHidden } from '../owner/owner-store.ts';
 import styles from './feed.module.css';
 
 const TABS = [
@@ -70,6 +79,10 @@ export function Feed({
   const starred = useWatchlist();
   const now = useNow();
   const soon = useComingSoon();
+  /* The owner's controls (features/owner): drawn only when the services say this is the owner. */
+  const owner = useIsOwner();
+  const { hidden: hiddenNow } = useOwnerState();
+  const [hiddenList, setHiddenList] = useState(false);
 
   /* Coming back to the app is when somebody expects it to be current. */
   useEffect(() => {
@@ -92,12 +105,15 @@ export function Feed({
 
   const notice = boardNotice(tick?.provenance ?? null);
   const feed = tab === 'popular' ? popular : fyp;
-  const posts = feed.state === 'ready' ? applyPostFilters(feed.value.posts, filters, now) : null;
+  /* A post the owner just hid leaves the list now; the projection drops it on its next run. */
+  const posts = feed.state === 'ready' ? applyPostFilters(withoutHidden(feed.value.posts, hiddenNow, (p) => p.id), filters, now) : null;
+  useSavedCalls('coin_match', posts === null ? [] : posts.rows.map((p) => p.id), owner);
   const post = (p: RisingPost) => (
     <PostRow
       key={p.id}
       post={p}
       now={now}
+      extra={owner ? <OwnerCardStrip post={p} /> : null}
       handlers={{
         open: () => {
           if (p.storyId !== null) window.location.hash = hrefFor({ screen: 'story', storyId: p.storyId });
@@ -190,6 +206,12 @@ export function Feed({
 
       <Notice notice={notice} />
 
+      {owner && onPosts ? (
+        <div className={styles['ownerRow']}>
+          <Button look="quiet" onClick={() => setHiddenList(true)}>Hidden by me</Button>
+        </div>
+      ) : null}
+
       {onPosts ? (
         <>
           {feed.state === 'loading' ? <p className={styles['empty']}>Reading the feed.</p> : null}
@@ -249,6 +271,8 @@ export function Feed({
           ) : null}
         </>
       ) : null}
+      {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}
+      {owner ? <HideBar /> : null}
       {seeing !== null ? (
         <SameNameCoins
           post={seeing}

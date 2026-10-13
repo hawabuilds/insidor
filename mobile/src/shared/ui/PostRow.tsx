@@ -23,6 +23,7 @@
  *   several  → how many, and View coins, which opens the narrative
  */
 
+import type { ReactNode } from 'react';
 import type { Coin, RisingPost } from '../api/index.ts';
 import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
 import { formatAge } from '../format/duration.ts';
@@ -46,7 +47,8 @@ export interface PostHandlers {
   readonly seeCoins: () => void;
 }
 
-export function PostRow({ post, now, handlers }: { post: RisingPost; now: number; handlers: PostHandlers }) {
+/** `extra`: a strip under the coin line that the card does not decide (the owner's controls). */
+export function PostRow({ post, now, handlers, extra = null }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode }) {
   const status = postCoinStatus(post.coins);
 
   return (
@@ -97,6 +99,7 @@ export function PostRow({ post, now, handlers }: { post: RisingPost; now: number
           </span>
         ) : null}
       </div>
+      {extra}
     </article>
   );
 }
