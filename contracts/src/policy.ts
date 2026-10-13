@@ -1183,6 +1183,60 @@ export interface UniversePolicy {
 }
 
 /**
+ * WHICH COIN IS A FEED POST'S (core/src/match/post-coin.ts): the facts that PROVE a coin came from
+ * a post, and the weights that rank the rest. Fitted on the gold set's tuning half
+ * (eval/src/gold/run-matching.ts) and refitted by the twice-daily re-tune with the owner's coin
+ * labels (tools/lib/coin-match-fit.ts); a refit is stored, not written here, so these are the
+ * starting weights and the fallback.
+ */
+export interface PostCoinPolicy {
+  /** A post id shorter than this is never looked for in a coin's links: too likely by chance. */
+  readonly minLinkIdLength: number;
+  /** A looser spelling of a name counts only from this many letters. */
+  readonly minVariantLength: number;
+  /** Two pictures whose perceptual hashes differ in at most this many of 64 bits are the same picture. */
+  readonly sameHashDistance: number;
+  /** A coin whose picture is this close to the post's is a candidate even when its name is not. */
+  readonly widenHashDistance: number;
+  /** Below this picture similarity the embedding says nothing for the coin (GROUP's borderline). */
+  readonly pictureFloor: number;
+  /** How fast "launched soon after" fades: the timing signal halves every this many minutes. */
+  readonly timingHalfLifeMin: number;
+  /** Words shorter than this are not compared between a coin's description and the post's words. */
+  readonly descriptionMinWord: number;
+  /** A coin is LIKELY when its share of the ranking — a softmax over the candidates and "none of these" — is at least this. */
+  readonly likelyMinShare: number;
+  /** The ranking weights, one per signal; the score is their sum, and never leaves the server. */
+  readonly weights: PostCoinWeights;
+  /** Pictures hashed per runner pass: new coins' logos, then feed posts' pictures (free; a brake on bandwidth). */
+  readonly hashCoinsPerPass: number;
+  readonly hashPostsPerPass: number;
+  /** A picture that could not be read this many times is not asked about again. */
+  readonly hashMaxAttempts: number;
+  readonly hashTimeoutMs: number;
+  /** Coins a post's picture may add as candidates, closest first. */
+  readonly pictureCandidatesPerPost: number;
+  /** Coins the mint stream's own copy may add by name per post, newest first. */
+  readonly nameCandidatesPerPost: number;
+}
+
+export interface PostCoinWeights {
+  /** Added to every candidate: against "none of these", which scores 0. */
+  readonly base: number;
+  readonly linksPost: number;
+  readonly linksAccount: number;
+  readonly picture: number;
+  readonly hash: number;
+  readonly description: number;
+  readonly authorAddress: number;
+  readonly othersAddress: number;
+  readonly timing: number;
+  readonly nameExact: number;
+  readonly nameVariant: number;
+  readonly tradingJump: number;
+}
+
+/**
  * Buying and selling (services/trade). Everything here is behind the TRADING switch, which is off
  * unless the deploy turns it on, and the allowlist of wallets, which is empty unless it names one.
  */
@@ -2029,6 +2083,7 @@ export interface Policy {
   readonly backfill: BackfillPolicy;
   readonly origin: OriginPolicy;
   readonly universe: UniversePolicy;
+  readonly postCoin: PostCoinPolicy;
   readonly search: SearchPolicy;
   readonly trade: TradePolicy;
   readonly wallet: WalletPolicy;
@@ -2665,6 +2720,32 @@ const POLICY_V1: Policy = {
     launchAllowanceMs: 600_000, // ten minutes
     influencerFollowers: 50_000,
     viralReach: 50_000,
+  },
+
+  postCoin: {
+    minLinkIdLength: 8,
+    minVariantLength: 4,
+    /* On gold, every right coin found by its picture was within 14 bits, no unrelated post's coin
+       closer than 16; a same picture is held to 10, where the right coins sat at 0 to 2. */
+    sameHashDistance: 10,
+    widenHashDistance: 14,
+    pictureFloor: 0.72,
+    timingHalfLifeMin: 360,
+    descriptionMinWord: 4,
+    /* The lowest share at which the tuning half's likely coins were right three times in four. */
+    likelyMinShare: 0.3,
+    /* Fitted 2026-10-13 on the gold set's tuning half (eval/src/gold/run-matching.ts --fit): the
+       order on the 25 posts whose right coin was one of several unproven candidates, then the base on all
+       305 unproven posts against "none of these". Signals with no data yet (an address in the
+       replies never named a gold coin; trading not measured on gold) stay at 0 until a refit. */
+    /* The launchpad mints about 20 coins a minute; 60 a one-minute pass keeps up with a busy hour. */
+    hashCoinsPerPass: 60,
+    hashPostsPerPass: 40,
+    hashMaxAttempts: 3,
+    hashTimeoutMs: 10_000,
+    pictureCandidatesPerPost: 5,
+    nameCandidatesPerPost: 10,
+    weights: { base: -7.232, linksPost: 1.175, linksAccount: -0.218, picture: 0.825, hash: 0.495, description: 0.205, authorAddress: 0, othersAddress: 0, timing: 2.134, nameExact: 2.768, nameVariant: -0.46, tradingJump: 0 },
   },
 
   universe: {

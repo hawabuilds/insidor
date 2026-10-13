@@ -135,8 +135,10 @@ export type { Candidate, CoinFacts, CreatorCheck, CreatorLink, MatchResult, Orig
 export { mergeHits } from './search/merge.ts';
 /* A feed post's coin, by evidence: the projector decides with it and the gold eval scores it,
    so both run the one rule (match/post-coin.ts). */
-export { byEvidence, coinEvidence, compactName, matchPostCoin, nameMatch, pictureVerdict, postPictureVerdict } from './match/post-coin.ts';
-export type { CoinEvidence as PostCoinEvidence, CoinSide, MatchBars, NameMatch, PostCoinMatch, PostSide } from './match/post-coin.ts';
+export { byEvidence, coinEvidence, compactName, descriptionMatch, linksAccount, matchPostCoin, nameMatch, pictureVerdict, postPictureVerdict, scoreOf, signals as postCoinSignals } from './match/post-coin.ts';
+export type { CoinEvidence as PostCoinEvidence, CoinSide, MatchBars, NameMatch, PostCoinMatch, PostSide, ProvenBy } from './match/post-coin.ts';
+export { postedAddresses } from './match/posted-addresses.ts';
+export type { PostedAddress } from './match/posted-addresses.ts';
 /* An older coin's trading against a post's time: the runner measures with it (match/older-coin.ts). */
 export { olderCoinRun } from './match/older-coin.ts';
 export type { OlderRun, OlderRunBars, VolumeBucket } from './match/older-coin.ts';

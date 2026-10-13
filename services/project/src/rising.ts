@@ -315,8 +315,11 @@ export function postCoins(
   }
   if (lookup !== null && 'coins' in lookup) {
     const n = lookup.coins.length;
-    if (n === 0) return { coins: { kind: 'none' }, fromStory: false, sameName: [] };
     const m = lookup.match;
+    /* A proven coin is shown even when the name search found none: its picture or the poster's
+       own reply found it. Anything less on an empty search stays "no coin yet" — the list's
+       wording is "N coins use this name", which a coin found by its picture does not. */
+    if (n === 0 && m?.kind !== 'matched') return { coins: { kind: 'none' }, fromStory: false, sameName: [] };
     /* The settled coin first, then every other coin with the name: the post sheet's "All N coins". */
     if (m?.kind === 'matched') return { coins: { kind: 'matched', coin: m.coin, evidence: m.evidence }, fromStory: false, sameName: [m.coin.address, ...lookup.coins.filter((a) => a !== m.coin.address)] };
     /* Strongest evidence first when the coins were weighed; the list is the same coins either way. */
@@ -604,7 +607,9 @@ async function withMatches(
     const story = row.story_id === null ? undefined : coinsByStory.get(row.story_id)?.kind;
     if (story === 'one' || story === 'several' || story === 'unsure') continue;
     const l = lookups.get(row.item_id);
-    if (l !== undefined && 'coins' in l && l.coins.length > 0) lists.set(row.item_id, l.coins);
+    /* A search that found nothing is weighed too: the coin may be one its picture or its replies
+       found (post-match.ts widens the list). */
+    if (l !== undefined && 'coins' in l) lists.set(row.item_id, l.coins);
   }
   if (lists.size === 0) return lookups;
   const weighed: ReadonlyMap<string, PostMatch> = await weighPostCoins(db, lists, policy);

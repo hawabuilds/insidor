@@ -22,9 +22,10 @@ packages:
   # The pipeline end to end, as a test. Its own package so no service has to depend on
   # another service, or on an in-process database, to be tested.
   - 'e2e'
-# Install scripts from the wallet vendor's and the launchpad SDK's dependency trees. None is run:
-# none is needed (bigint-buffer has a pure-JS fallback), and an install script is code from a
-# package we did not choose directly.
+# Install scripts from the wallet vendor's and the launchpad SDK's dependency trees, and the image
+# library's. None is run: none is needed (bigint-buffer has a pure-JS fallback; sharp ships its
+# prebuilt binary as a per-platform package), and an install script is code from a package we did
+# not choose directly.
 # `strictDepBuilds: false` because pnpm 11.0.0 fails the install over scripts that are listed
 # here as not to run; an unlisted package's scripts still never run without approval.
 strictDepBuilds: false
@@ -33,4 +34,5 @@ allowBuilds:
   bigint-buffer: false
   bufferutil: false
   keccak: false
+  sharp: false
   utf-8-validate: false

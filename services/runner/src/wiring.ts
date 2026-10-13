@@ -69,6 +69,7 @@ import {
   PgDecisionRepo,
   PgBackfillRepo,
   PgCoinUniverseRepo,
+  PgImageHashRepo,
   PgOlderCoinRepo,
   PgCryptoAttentionRepo,
   PgPostRefillRepo,
@@ -113,6 +114,7 @@ import { measureDiscovery } from './work/discovery-settings.ts';
 import { sourceHandles } from './work/handle-cache.ts';
 import { readOutages, SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
 import { pictureCoinMatches } from './work/coin-match.ts';
+import { hashPictures } from './work/picture-hashes.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
 const SEARCH_TIMEOUT_MS = 8_000;
@@ -790,6 +792,13 @@ export async function withRuntime<T>(
               },
               policy.universe.matchWindowMs,
             );
+            /* Every new coin's logo and every feed post's picture hashed (work/picture-hashes.ts):
+               free, so the coin match can find a coin by its picture whatever it is named. */
+            try {
+              await hashPictures({ hashes: new PgImageHashRepo(db), gateways: cfg.metadataGateways, fetch: globalThis.fetch, policy, log: log.child({ step: 'picture-hashes' }), now: () => Date.now() as Millis });
+            } catch (e) {
+              log.warn('pictures could not be hashed this pass; tried again next pass', { err: e instanceof Error ? e.message : String(e) });
+            }
             try {
               await checkOlderCoins({ older: new PgOlderCoinRepo(db), candles: onChainMarket, log: log.child({ step: 'older-coins' }), now: () => Date.now() as Millis });
             } catch (e) {

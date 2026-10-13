@@ -1,85 +1,128 @@
 /**
- * `node --experimental-strip-types eval/src/gold/run-matching.ts`
+ * `node --experimental-strip-types eval/src/gold/run-matching.ts [--fit]`
  *
  * Prints the post-to-coin matching report and writes it to matching-report.md beside it.
  * Offline: it reads the gold set and match-evidence.json (tools/gold-match-fetch.ts) only. What
  * each outcome means is in match-eval.ts, and is printed with the numbers so neither is read
  * without the other.
  *
- * The held-out half is reported in its own rows and was not looked at while the bars were set;
- * it carries origin posts only (the search back for unrelated posts ran on the tuning half).
+ * The weights: with `--fit` the ranking's weights are fitted on the TUNING half's unproven posts
+ * (match-fit.ts) and printed, to be copied into Policy.postCoin.weights; without it the policy's
+ * weights are scored as they ship. The held-out half is reported in its own rows and is never fitted
+ * on — its numbers are the honest after-score.
  */
 
 import { writeFileSync } from 'node:fs';
+import process from 'node:process';
 
-import { evaluateCase, MATCH_BARS, type CaseResult, type MatchOutcome, type RuleName } from './match-eval.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+
+import { evaluateCase, matchBarsOf, type CaseResult, type MatchOutcome, type MissReason } from './match-eval.ts';
 import { loadMatchEvidence, matchCases } from './match-cases.ts';
+import { fitWeights, logLikelihood, pickLikelyShare, SIGNAL_KEYS } from './match-fit.ts';
 
 const ev = loadMatchEvidence();
-const results = matchCases().map((c) => evaluateCase(c, ev));
-const searched = results.filter((r) => ev.searches[r.c.term] !== undefined);
+const cases = matchCases();
+const run = (bars = matchBarsOf(), universe = true) => cases.map((c) => evaluateCase(c, ev, bars, DEFAULT_POLICY, universe)).filter((r) => ev.searches[r.c.term] !== undefined);
 
-const count = (rs: readonly CaseResult[], rule: RuleName, o: MatchOutcome) => rs.filter((r) => r.outcomes[rule] === o).length;
+let weights = DEFAULT_POLICY.postCoin.weights;
+let likelyMinShare = DEFAULT_POLICY.postCoin.likelyMinShare;
+const fitting = process.argv.includes('--fit');
+if (fitting) {
+  const choices = run().filter((r) => r.c.split === 'tune').flatMap((r) => (r.choice === null ? [] : [r.choice]));
+  weights = fitWeights(choices, DEFAULT_POLICY.postCoin.weights);
+  const bar = pickLikelyShare(weights, choices);
+  likelyMinShare = bar.share;
+  console.log(`fitted on ${choices.length} tuning-half choices: ${JSON.stringify(weights)}; likely bar ${bar.share} (${bar.right} right, ${bar.wrong} wrong on the tuning half)`);
+}
+const bars = { ...matchBarsOf(DEFAULT_POLICY, weights), likelyMinShare };
+/* The live-like candidates (the mint stream's own copy searched by name too) are what the rule is
+   fitted and judged on; the market search alone, months late, is reported beside it. */
+const searched = run(bars, true);
+const marketOnly = run(bars, false);
+
+const count = (rs: readonly CaseResult[], o: MatchOutcome) => rs.filter((r) => r.outcome === o).length;
 const pct = (n: number, d: number) => (d === 0 ? '—' : `${((100 * n) / d).toFixed(1)}% (${n})`);
-const RULES: readonly [RuleName, string][] = [
-  ['today', "today's rule (a post's search never names a coin)"],
-  ['nameOnly', 'name only (the one coin with the exact name)'],
-  ['oneName', 'evidence rule, one name searched (before 2026-10-13)'],
-  ['evidence', 'evidence rule, every name searched (this change)'],
-];
 
 function table(title: string, rs: readonly CaseResult[]): string[] {
   const origin = rs.filter((r) => r.c.kind === 'origin');
   const neg = rs.filter((r) => r.c.kind !== 'origin');
-  const lines = [
+  const wrongAll = count(rs, 'provenWrong');
+  return [
     `### ${title}`,
     '',
-    `${origin.length} origin posts (the right coin was among the search results for ${origin.filter((r) => r.rightFound).length}), ${neg.length} posts whose right answer is no coin (${neg.filter((r) => r.c.kind === 'afterLaunch').length} viral after launch, ${neg.filter((r) => r.c.kind === 'unrelated').length} unrelated).`,
+    `${origin.length} origin posts (the right coin among the candidates for ${origin.filter((r) => r.rightFound).length}), ${neg.length} posts whose right answer is no coin (${neg.filter((r) => r.c.kind === 'afterLaunch').length} viral after launch, ${neg.filter((r) => r.c.kind === 'unrelated').length} unrelated).`,
     '',
-    '| rule | origin posts: right | wrong | missed | no-coin posts: wrong | wrong links, all posts |',
+    '| | proven right | proven wrong | likely right | likely wrong | missed |',
     '|---|---|---|---|---|---|',
+    `| origin posts | ${pct(count(origin, 'provenRight'), origin.length)} | ${pct(count(origin, 'provenWrong'), origin.length)} | ${pct(count(origin, 'likelyRight'), origin.length)} | ${pct(count(origin, 'likelyWrong'), origin.length)} | ${pct(count(origin, 'missed'), origin.length)} |`,
+    `| no-coin posts | — | ${pct(count(neg, 'provenWrong'), neg.length)} | — | ${pct(count(neg, 'likelyWrong'), neg.length)} | — |`,
+    '',
+    `Wrong links (proven, the only answer with a Buy), all posts: **${pct(wrongAll, rs.length)}**; on posts a feed can show (the shill rule holds ${rs.filter((r) => r.shillHeld).length} of these as ads): **${pct(rs.filter((r) => !r.shillHeld && r.outcome === 'provenWrong').length, rs.filter((r) => !r.shillHeld).length)}**. Likely shown on a wrong coin, all posts: ${pct(count(rs, 'likelyWrong'), rs.length)}.`,
+    '',
   ];
-  for (const [rule, label] of RULES) {
-    const wrongAll = count(rs, rule, 'wrong');
-    lines.push(
-      `| ${label} | ${pct(count(origin, rule, 'right'), origin.length)} | ${pct(count(origin, rule, 'wrong'), origin.length)} | ${pct(count(origin, rule, 'missed'), origin.length)} | ${pct(count(neg, rule, 'wrong'), neg.length)} | ${pct(wrongAll, rs.length)} |`,
-    );
-  }
-  return [...lines, ''];
 }
 
-const why = (r: CaseResult) => (r.evidence.kind === 'confident' ? r.evidence.because : r.evidence.kind);
-const examples = (rs: readonly CaseResult[], o: MatchOutcome) =>
-  rs.filter((r) => r.outcomes.evidence === o).slice(0, 12).map((r) => `- ${r.c.id} (${r.c.kind}, ${r.c.names.join(' / ')}): ${why(r)}, ${r.coins} coins weighed`);
+const REASONS: readonly [MissReason, string][] = [
+  ['notFound', 'the right coin was not among the candidates'],
+  ['rankedFirst', 'it was a candidate, ranked first, but nothing proved it'],
+  ['rankedLower', 'it was a candidate but ranked lower'],
+  ['nameNoMatch', "it was a candidate and the subject's name did not match it"],
+];
+
+const why = (r: CaseResult) => (r.evidence.kind === 'confident' ? r.evidence.because : r.evidence.kind === 'unsure' ? (r.evidence.likely === null ? 'unsure' : 'likely') : 'none');
+const examples = (rs: readonly CaseResult[], os: readonly MatchOutcome[]) =>
+  rs.filter((r) => os.includes(r.outcome)).map((r) => `- ${r.c.id} (${r.c.kind}, ${r.c.split}, ${r.c.names.join(' / ')}): ${r.outcome}, ${why(r)}, ${r.coins} candidates${r.shillHeld ? ', held as an ad by the shill rule' : ''}`);
 
 const tune = searched.filter((r) => r.c.split === 'tune');
 const held = searched.filter((r) => r.c.split === 'holdout');
-const confident = searched.flatMap((r) => (r.evidence.kind === 'confident' ? [r.evidence.because] : []));
-const because = (b: string) => confident.filter((x) => x === b).length;
+const origin = searched.filter((r) => r.c.kind === 'origin');
+const proven = searched.flatMap((r) => (r.evidence.kind === 'confident' ? [r.evidence.because] : []));
+const because = (b: string) => proven.filter((x) => x === b).length;
+const rightBy = (b: 'name' | 'replies' | 'picture' | 'universe') => origin.filter((r) => r.rightFound && r.rightBy.includes(b)).length;
+const onlyBy = (b: 'name' | 'replies' | 'picture' | 'universe') => origin.filter((r) => r.rightFound && r.rightBy.length === 1 && r.rightBy[0] === b).length;
+const tuneChoices = tune.flatMap((r) => (r.choice === null ? [] : [r.choice]));
+const heldChoices = held.flatMap((r) => (r.choice === null ? [] : [r.choice]));
 
 const report = [
-  '# Gold-set matching: which coin is a feed post\'s',
+  "# Gold-set matching: which coin is a feed post's",
   '',
-  'Rendered by `eval/src/gold/run-matching.ts` from `match-evidence.json` (`tools/gold-match-fetch.ts`). Each case is a post and the coins a search for its subject\'s name finds; the subject\'s name is taken to be the coin\'s own (the best case for finding the right coin and the worst case for wrong links). See `match-cases.ts` for the three kinds of post and `match-eval.ts` for what each outcome means.',
+  "Rendered by `eval/src/gold/run-matching.ts` from `match-evidence.json` (`tools/gold-match-fetch.ts`). Each case is a post and its candidate coins: every name's search results, the coins whose address was posted in the replies under it, and the coins whose picture's hash is close to the post's (searched over every coin the evidence holds, the 851 gold coins included, as the mint stream would have held them). The subject's name is the coin's own (the best case for finding the right coin and the worst case for wrong links). See `match-cases.ts` for the three kinds of post and `match-eval.ts` for what each outcome means.",
   '',
-  `Bars: grace before the post ${MATCH_BARS.launchAllowanceMs / 60_000} min, timing window ${MATCH_BARS.windowMs / 3_600_000} h after it, a post id in a link at least ${MATCH_BARS.minLinkIdLength} characters, a looser spelling at least ${MATCH_BARS.minVariantLength} letters; "same picture" is GROUP's near-identical bar only (a judge's "same subject" on a borderline pair leaves it unknown; its "no" counts against). A name alone never makes an answer confident.`,
+  `Proven is only: the one coin whose links name the post; the one coin with the post's picture (embedding near-identical, or hashes within ${bars.sameHashDistance} of 64 bits) launched after it inside ${bars.windowMs / 3_600_000} h with every other such coin compared; or the one coin whose address the poster's own account posted under it. Likely: the top coin of the score when its share against the other candidates and "none of these" is at least ${bars.likelyMinShare}. Grace before the post ${bars.launchAllowanceMs / 60_000} min.`,
   '',
-  'Before 2026-10-13 (commit a72648c, one name searched, metadata read for 31 of 68 coins, a judge\'s "same subject" counted as the same picture, and "the only coin of the exact name" made a confident answer): 7 of 71 origin posts right, 1 wrong, 63 missed; 6 wrong links in 353 posts (1.7%).',
+  `Weights${fitting ? ' (fitted on the tuning half now)' : ' (Policy.postCoin.weights)'}: ${SIGNAL_KEYS.map((k) => `${k} ${weights[k]}`).join(', ')}. Mean log-likelihood of the unproven choices: tuning ${logLikelihood(weights, tuneChoices).toFixed(3)} (${tuneChoices.length}), held out ${logLikelihood(weights, heldChoices).toFixed(3)} (${heldChoices.length}).`,
   '',
-  `Cases with a finished search: ${searched.length} of ${results.length}. Picture comparisons held: ${Object.keys(ev.similarity).length}; judge answers on borderline pairs: ${Object.keys(ev.sameSubject).length}; coins whose metadata was read: ${Object.values(ev.meta).filter((m) => m !== null).length} of ${Object.keys(ev.meta).length} (${Object.values(ev.meta).filter((m) => m?.from === 'creatorHost').length} from the creator's own host, the link naming no content id).`,
+  'Before 2026-10-13 evening (commit 731b339: name search only, proof by links or by same picture, no score): 13 of 71 origin posts right, 3 wrong, 55 missed; 4 wrong links in 354 posts (1.1%). Of the 58 origin posts it did not get right: 30 the right coin was not among the candidates, 13 it ranked first but nothing proved it, 12 it ranked lower, 0 the name did not match, 3 another coin was proven.',
   '',
-  ...table('Tuning half', tune),
-  ...table('Held out (origin posts only)', held),
+  `Cases with a finished search: ${searched.length} of ${cases.length}. Picture comparisons: ${Object.keys(ev.similarity).length} embedding pairs, ${Object.values(ev.hashes).filter((h) => h !== null).length} pictures hashed. Replies read under ${Object.keys(ev.replies).length} X posts (${Object.values(ev.replies).filter((r) => r.addresses.length > 0).length} with an address). Coin metadata read: ${Object.values(ev.meta).filter((m) => m !== null).length} of ${Object.keys(ev.meta).length}.`,
+  '',
+  '## Candidates as the live projector finds them (name searches, replies, picture, and the mint stream by name)',
+  '',
+  ...table('Tuning half (fitted on)', tune),
+  ...table('Held out (never fitted on; origin posts only)', held),
   ...table('All', searched),
-  `Confident answers by reason: links this post ${because('links')}, same picture and timing ${because('pictureAndTiming')} (a name alone never makes one).`,
+  '## Candidates from the market search alone (as measured before; a coin that died is no longer listed)',
   '',
-  '## Wrong links (evidence rule)',
+  ...table('All, market search, replies and picture only', marketOnly),
+  `Ranked first among the candidates where nothing proved a coin but the right one was there: ${searched.filter((r) => r.c.kind === 'origin' && r.reason === 'rankedFirst').length} of ${searched.filter((r) => r.c.kind === 'origin' && (r.reason === 'rankedFirst' || r.reason === 'rankedLower' || r.reason === 'nameNoMatch')).length}.`,
   '',
-  ...examples(searched, 'wrong'),
+  `Proven answers by reason: links this post ${because('links')}, same picture and timing ${because('pictureAndTiming')}, the poster posted its address ${because('authorPostedAddress')}.`,
   '',
-  '## Origin posts found',
+  `How the right coin became a candidate (origin posts where it was one, ${origin.filter((r) => r.rightFound).length}): by a market name search ${rightBy('name')}, by the replies ${rightBy('replies')}, by its picture ${rightBy('picture')}, by the mint stream's names ${rightBy('universe')}; by its picture alone ${onlyBy('picture')}, by the replies alone ${onlyBy('replies')}, by the mint stream's names alone ${onlyBy('universe')}.`,
   '',
-  ...examples(searched, 'right'),
+  '## Why an origin post was not proven right (after)',
+  '',
+  ...REASONS.map(([k, label]) => `- ${label}: ${origin.filter((r) => r.reason === k).length}`),
+  `- of these, the likely coin was the right one: ${count(origin, 'likelyRight')}`,
+  '',
+  '## Proven wrong',
+  '',
+  ...examples(searched, ['provenWrong']),
+  '',
+  '## Origin posts proven or likely right',
+  '',
+  ...examples(searched, ['provenRight', 'likelyRight']),
   '',
 ];
 

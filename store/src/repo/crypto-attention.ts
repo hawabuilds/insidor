@@ -12,7 +12,8 @@
  * own replies'), `_postShill` (the post's own text names a coin; null when not read), `_authorKnown`,
  * `_othersFirstAt`, `_cutAt` (responses only before this instant; absent for a live read) and
  * `_readFor` ('live', or 'test' for the one-off re-read of the judge's test posts, which is kept out
- * of the live step's queue and its day's cap). A row without `_others` predates the split: its
+ * of the live step's queue and its day's cap), and `_addresses` (each address posted, by the post's
+ * own account or by how many others: the coin match's candidates and its "the poster posted it"). A row without `_others` predates the split: its
  * columns count every response, the author's too. The columns always count every response.
  *
  * What breaks if changed carelessly: `due` hands out a post for its first read, and for its second
@@ -64,6 +65,8 @@ export interface AttentionRow {
   readonly othersFirstAt?: Millis | null;
   readonly cutAt?: Millis | null;
   readonly readFor?: 'live' | 'test';
+  /** Each address posted, and by whom (core `postedAddresses`): what the coin match reads. */
+  readonly addresses?: readonly { readonly address: string; readonly byAuthor: boolean; readonly byOthers: number }[];
 }
 
 export interface CoinTalkRow {
@@ -87,6 +90,7 @@ function cashtagsJson(row: AttentionRow): string {
         _othersFirstAt: row.othersFirstAt == null ? null : new Date(row.othersFirstAt).toISOString(),
         ...(row.cutAt == null ? {} : { _cutAt: new Date(row.cutAt).toISOString() }),
         _readFor: row.readFor ?? 'live',
+        ...(row.addresses === undefined ? {} : { _addresses: row.addresses }),
       };
   return JSON.stringify({ ...row.cashtags, ...split });
 }
@@ -154,6 +158,31 @@ export class PgCryptoAttentionRepo {
         row.coinWords, row.caMentions, row.contractAddresses, row.cryptoQuoters, row.cryptoRepliers, toTimestamp(row.firstSignalAt), row.costUsd,
       ],
     );
+  }
+
+  /**
+   * Each post's addresses posted under it, over all its reads: by its own account if any read
+   * said so, and the most other accounts any one read saw. A post never read is absent — not
+   * "nobody posted one".
+   */
+  async addressesFor(itemIds: readonly string[]): Promise<ReadonlyMap<string, readonly { readonly address: string; readonly byAuthor: boolean; readonly byOthers: number }[]>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await this.#db.query<{ item_id: string; address: string | null; by_author: boolean | null; by_others: number | null }>(
+      `select a.item_id, x.address, bool_or(x."byAuthor") as by_author, max(x."byOthers")::int as by_others
+         from internal.crypto_attention a
+         left join lateral jsonb_to_recordset(coalesce(a.cashtags->'_addresses', '[]'::jsonb)) as x(address text, "byAuthor" boolean, "byOthers" int)
+                on true
+        where a.item_id = any($1::text[]) and ${LIVE_READ.replaceAll('cashtags', 'a.cashtags')}
+        group by a.item_id, x.address`,
+      [[...itemIds]],
+    );
+    const out = new Map<string, { address: string; byAuthor: boolean; byOthers: number }[]>();
+    for (const r of rows) {
+      const list = out.get(r.item_id) ?? [];
+      if (r.address !== null) list.push({ address: r.address, byAuthor: r.by_author === true, byOthers: Number(r.by_others ?? 0) });
+      out.set(r.item_id, list);
+    }
+    return out;
   }
 
   /**

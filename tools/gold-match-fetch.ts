@@ -12,6 +12,15 @@
  *   posts    a picture for each origin post we never read: X posts by id, TikTok covers.        Paid: X (a few posts).
  *   images   each post's picture against each coin that could still be its coin (launched after it). Paid: Voyage.
  *   pairs    the judge's same-subject answer on borderline pairs, capped at `PAIRS_CAP`.        Paid: Anthropic.
+ *   reads    an X post we never read, by id, for its words and its author.                     Paid: X (a few posts).
+ *   replies  the newest replies under each X post before the timing window closed, and its own
+ *            account's replies apart, for the addresses posted there.                          Paid: X.
+ *   replycoins  each address the replies named that no name search found: its name, launch and
+ *            metadata from the chain, so it can be weighed as a candidate. Free (RPC credits).
+ *   universe every gold coin's name, picture and launch from the chain, so the picture search runs
+ *            over coins that existed when the posts were made. Free (RPC credits).
+ *   hashes   every post picture's and coin picture's perceptual hash (services/runner
+ *            picture-hash.ts), for "same picture" and for finding a coin by its picture. Free.
  *
  * Why a separate tool from gold-fetch.ts: that one gathers evidence about a COIN (its origin);
  * this one gathers the coins a POST's name search finds, which is the other direction, and its
@@ -42,7 +51,14 @@ import { geckoterminal } from '../adapters/market/geckoterminal/src/index.ts';
 import { fetchDeclaredMetadata, fetchMetadata } from '../adapters/venue/solana-pumpfun/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
-import { matchCases, MATCH_EVIDENCE_FILE, loadMatchEvidence, pairKey, type FoundCoin, type MatchCase } from '../eval/src/gold/match-cases.ts';
+import { goldCoins } from '../eval/src/gold/coin-origins.ts';
+import { matchCases, MATCH_EVIDENCE_FILE, loadMatchEvidence, pairKey, type FoundCoin, type MatchCase, type PostReplies } from '../eval/src/gold/match-cases.ts';
+import { addressesIn } from '../core/src/qualify/attention.ts';
+import { nameMatch } from '../core/src/match/post-coin.ts';
+import { readResponses } from '../adapters/platform/x/src/responses.ts';
+import { billedUnits, PRICES as X_PRICES, VENDOR as X_VENDOR } from '../adapters/platform/x/src/capabilities.ts';
+import { metered } from '../adapters/meter/spend/src/index.ts';
+import { hashPicture, hashDistance } from '../services/runner/src/work/picture-hash.ts';
 
 const P = DEFAULT_POLICY;
 const X_USD_PER_POST = 0.000_15;
@@ -75,8 +91,13 @@ const launched = { ...evidence.launched };
 const postImages = { ...evidence.postImages };
 const similarity = { ...evidence.similarity };
 const sameSubject = { ...evidence.sameSubject };
+const postReads = { ...evidence.postReads };
+const replies: Record<string, PostReplies> = { ...evidence.replies };
+const replyCoins: Record<string, FoundCoin> = { ...evidence.replyCoins };
+const universeCoins: Record<string, FoundCoin> = { ...evidence.universeCoins };
+const hashes = { ...evidence.hashes };
 const save = (): void => {
-  writeFileSync(MATCH_EVIDENCE_FILE, `${JSON.stringify({ searches, launched, meta, postImages, similarity, sameSubject }, null, 1)}\n`);
+  writeFileSync(MATCH_EVIDENCE_FILE, `${JSON.stringify({ searches, launched, meta, postImages, similarity, sameSubject, postReads, replies, replyCoins, universeCoins, hashes }, null, 1)}\n`);
 };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -102,8 +123,37 @@ const budget = (meter: Meter) => {
 };
 
 const imageOf = (c: MatchCase): string | null => c.imageUri ?? postImages[c.postId] ?? null;
-/** Every name's results, merged by address: the lookup's union. */
-const found = (c: MatchCase): readonly FoundCoin[] => [...new Map(c.terms.flatMap((t) => searches[t] ?? []).map((f) => [f.address, f])).values()];
+/** Every name's results, merged by address: the lookup's union; then the coins its replies named, and those its picture found. */
+const found = (c: MatchCase): readonly FoundCoin[] => {
+  const byName = c.terms.flatMap((t) => searches[t] ?? []);
+  const byReply = (replies[c.postId]?.addresses ?? []).flatMap((a) => (replyCoins[a.address] === undefined ? [] : [replyCoins[a.address]!]));
+  return [...new Map([...byName, ...byReply, ...byPicture(c), ...byUniverseName(c)].map((f) => [f.address, f])).values()];
+};
+/** Coins the evidence holds whose name meets the subject's, launched after the post inside the window (eval's `universe` scenario). */
+function byUniverseName(c: MatchCase): readonly FoundCoin[] {
+  if (c.postedAt === null) return [];
+  return universe().filter((f) => {
+    const at = launched[f.address] ?? f.createdAt;
+    return at !== null && at >= c.postedAt! - P.origin.launchAllowanceMs && at <= c.postedAt! + KEEP_AFTER_MS && nameMatch(c.names, f, P.postCoin) !== 'none';
+  });
+}
+/* Every coin any search or reply found: the universe a picture search runs over. */
+let universeCache: readonly FoundCoin[] | null = null;
+const universe = (): readonly FoundCoin[] =>
+  (universeCache ??= [...new Map([...Object.values(searches).flat(), ...Object.values(replyCoins), ...Object.values(universeCoins)].map((f) => [f.address, f])).values()]);
+/** Coins whose picture's hash is within the widen bar of the post's, launched after it inside the window. */
+function byPicture(c: MatchCase): readonly FoundCoin[] {
+  const img = c.imageUri ?? postImages[c.postId] ?? null;
+  const ph = img === null ? null : (hashes[img] ?? null);
+  if (ph === null || c.postedAt === null) return [];
+  return universe().filter((f) => {
+    const at = launched[f.address] ?? f.createdAt;
+    if (at === null || at < c.postedAt! - P.origin.launchAllowanceMs || at > c.postedAt! + KEEP_AFTER_MS) return false;
+    const u = meta[f.address]?.imageUri ?? f.imageUrl;
+    const h = u === null ? null : (hashes[u] ?? null);
+    return h !== null && hashDistance(ph, h) <= P.postCoin.widenHashDistance;
+  });
+}
 /** Coins not launched before the post (with the grace): any could link it, whenever it launched. */
 const notBefore = (c: MatchCase): readonly FoundCoin[] =>
   c.postedAt === null ? found(c) : found(c).filter((f) => {
@@ -352,7 +402,157 @@ async function pairs(): Promise<void> {
   console.log(`pairs: ${todo.length} asked; spent $${meter.line().spentUsd.toFixed(4)}.`);
 }
 
-const stages: Record<string, () => Promise<void>> = { search, meta: metaStage, posts, images, pairs };
+/** X posts read by id for their words and author: origin posts we never read. */
+async function reads(): Promise<void> {
+  const ids = cases.filter((c) => c.platform === 'x' && c.kind !== 'unrelated' && (c.text === null || c.author === null) && postReads[c.postId] === undefined).map((c) => c.postId);
+  if (ids.length === 0) return void console.log('reads: nothing to read.');
+  const meter = await paid(ids.length * X_USD_PER_POST, `reads: ${ids.length} X posts by id`);
+  const apiKey = process.env['X_API_KEY'] ?? '';
+  if (apiKey === '') refuse('X_API_KEY is not set.');
+  const x = xPlatform({ client: xClient({ apiKey, baseUrl: process.env['X_API_BASE'] ?? 'https://api.twitterapi.io', fetch: globalThis.fetch }), meter, now: () => Date.now() });
+  const result = await x.lookup!(ids, budget(meter));
+  const handles = new Map(result.value.authors.map((a) => [a.authorKey, a.handle]));
+  const got = new Map(result.value.items.map((i) => [i.sourceItemId, { text: i.text, author: handles.get(i.authorKey) ?? null }]));
+  for (const id of ids) postReads[id] = got.get(id) ?? null;
+  for (const i of result.value.items) if (postImages[i.sourceItemId] === undefined) postImages[i.sourceItemId] = pictureOf(i.media)?.uri ?? null;
+  save();
+  console.log(`reads: ${got.size} of ${ids.length} read; spent $${meter.line().spentUsd.toFixed(4)}.`);
+}
+
+/* The newest replies before the window closed, one page; the post's own account's apart. */
+const REPLIES_PER_POST = 20;
+const REPLY_PAGE_USD = REPLIES_PER_POST * X_USD_PER_POST;
+
+async function repliesStage(): Promise<void> {
+  const todo = cases.filter((c) => c.platform === 'x' && c.postedAt !== null && replies[c.postId] === undefined);
+  const unique = [...new Map(todo.map((c) => [c.postId, c])).values()];
+  if (unique.length === 0) return void console.log('replies: nothing to read.');
+  const meter = await paid(unique.length * (REPLY_PAGE_USD + X_USD_PER_POST * 2), `replies: ${unique.length} X posts, ${REPLIES_PER_POST} replies each and the author's own`);
+  const apiKey = process.env['X_API_KEY'] ?? '';
+  if (apiKey === '') refuse('X_API_KEY is not set.');
+  const client = xClient({ apiKey, baseUrl: process.env['X_API_BASE'] ?? 'https://api.twitterapi.io', fetch: globalThis.fetch });
+  let n = 0;
+  for (const c of unique) {
+    const until = c.postedAt! + KEEP_AFTER_MS;
+    const author = c.author ?? postReads[c.postId]?.author ?? null;
+    try {
+      const read = await readResponses(client, meter, X_PRICES, c.postId, { maxReplies: REPLIES_PER_POST, maxReproductions: 0, untilMs: until as never }, Date.now() as never);
+      let own: readonly { text: string; authorHandle: string | null }[] = [];
+      if (author !== null && /^[A-Za-z0-9_]{1,15}$/.test(author)) {
+        const q = `conversation_id:${c.postId} from:${author} until_time:${Math.floor(until / 1_000)}`;
+        const page = await metered(meter, X_PRICES, { vendor: X_VENDOR, endpoint: 'responses', unit: 'per-item-returned', estUnits: REPLIES_PER_POST, at: Date.now() as never }, async () => {
+          const p = await client.search(q, null);
+          return { value: p, units: billedUnits(p.items.length) };
+        });
+        own = page.value.items.flatMap((raw) => {
+          const r = raw as { id?: string; text?: string; author?: { userName?: string } };
+          return r.id === c.postId ? [] : [{ text: r.text ?? '', authorHandle: r.author?.userName ?? author }];
+        });
+      }
+      const mine = (h: string | null) => author !== null && h !== null && h.toLowerCase() === author.toLowerCase();
+      const by = new Map<string, { byAuthor: boolean; others: Set<string> }>();
+      for (const r of [...read.value.replies, ...own]) {
+        for (const a of addressesIn(r.text, P.attention)) {
+          const e = by.get(a) ?? { byAuthor: false, others: new Set<string>() };
+          if (mine(r.authorHandle)) e.byAuthor = true;
+          else e.others.add(r.authorHandle ?? `?${e.others.size}`);
+          by.set(a, e);
+        }
+      }
+      replies[c.postId] = {
+        read: read.value.replies.length,
+        cut: read.value.repliesCut,
+        authorRead: own.length,
+        addresses: [...by].map(([address, e]) => ({ address, byAuthor: e.byAuthor, byOthers: e.others.size })),
+        until,
+      };
+    } catch (e) {
+      console.warn(`  ${c.postId}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    n += 1;
+    if (n % 20 === 0) {
+      save();
+      console.log(`  ${n} of ${unique.length}; spent $${meter.line().spentUsd.toFixed(4)}`);
+    }
+  }
+  save();
+  const withAddr = Object.values(replies).filter((r) => r.addresses.length > 0).length;
+  console.log(`replies: ${n} posts read, ${withAddr} with an address; spent $${meter.line().spentUsd.toFixed(4)}.`);
+}
+
+/** Each reply-named address no search found: what the chain says it is. */
+async function replyCoinsStage(): Promise<void> {
+  const key = process.env['HELIUS_API_KEY'] ?? '';
+  if (key === '') refuse('HELIUS_API_KEY is not set.');
+  const url = `https://mainnet.helius-rpc.com/?api-key=${key}`;
+  const known = new Set(Object.values(searches).flat().map((f) => f.address));
+  const want = [...new Set(Object.values(replies).flatMap((r) => r.addresses.map((a) => a.address)))].filter((a) => !known.has(a) && replyCoins[a] === undefined);
+  console.log(`replycoins: ${want.length} addresses to read.`);
+  /* One at a time: an address-shaped string that is no address fails a whole batch. */
+  for (let i = 0; i < want.length; i += RPC_CONCURRENCY) {
+    await Promise.all(want.slice(i, i + RPC_CONCURRENCY).map(async (id) => {
+      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getAsset', params: { id } }) });
+      const j = r.ok ? ((await r.json()) as { result?: { id?: string; interface?: string; content?: { metadata?: { name?: string; symbol?: string }; links?: { image?: string } } } }) : {};
+      const a = j.result;
+      if (a?.id === undefined || a.interface !== 'FungibleToken') return;
+      replyCoins[a.id] = { address: a.id, name: a.content?.metadata?.name ?? null, ticker: a.content?.metadata?.symbol ?? null, createdAt: null, imageUrl: a.content?.links?.image ?? null };
+    }));
+  }
+  save();
+  console.log(`replycoins: ${Object.keys(replyCoins).length} coins known from replies; run \`meta\` next for their launch and links.`);
+}
+
+/** Every gold coin as the chain describes it: the picture search's universe holds them all. */
+async function universeStage(): Promise<void> {
+  const key = process.env['HELIUS_API_KEY'] ?? '';
+  if (key === '') refuse('HELIUS_API_KEY is not set.');
+  const url = `https://mainnet.helius-rpc.com/?api-key=${key}`;
+  const gold = goldCoins().filter((g) => universeCoins[g.mint] === undefined);
+  for (let i = 0; i < gold.length; i += RPC_BATCH) {
+    const batch = gold.slice(i, i + RPC_BATCH);
+    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getAssetBatch', params: { ids: batch.map((g) => g.mint) } }) });
+    if (!r.ok) refuse(`the chain read responded ${r.status}; stopped.`);
+    const j = (await r.json()) as { result?: ({ id?: string; content?: { links?: { image?: string } } } | null)[] };
+    const images = new Map((j.result ?? []).flatMap((a) => (a?.id === undefined ? [] : [[a.id, a.content?.links?.image ?? null] as const])));
+    for (const g of batch) {
+      universeCoins[g.mint] = { address: g.mint, name: g.name, ticker: g.ticker, createdAt: Date.parse(g.createdAt), imageUrl: images.get(g.mint) ?? null };
+      if (launched[g.mint] === undefined) launched[g.mint] = Date.parse(g.createdAt);
+    }
+    save();
+  }
+  console.log(`universe: ${Object.keys(universeCoins).length} gold coins held; run \`meta\` and \`hashes\` next.`);
+}
+
+/** A picture's address our gateway reads: the public gateway answers bursts with refusals. */
+const readable = (uri: string): string => uri.replace(/^https:\/\/(?:ipfs\.io|cf-ipfs\.com|cloudflare-ipfs\.com|gateway\.pinata\.cloud)\/ipfs\//, 'https://pump.mypinata.cloud/ipfs/');
+const HASH_CONCURRENCY = 8;
+const HASH_TIMEOUT_MS = 15_000;
+
+async function hashesStage(): Promise<void> {
+  const posts = cases.flatMap((c) => {
+    const u = c.imageUri ?? postImages[c.postId] ?? null;
+    return u === null ? [] : [u];
+  });
+  const coins = universe().flatMap((f) => {
+    const u = meta[f.address]?.imageUri ?? f.imageUrl;
+    return u === null ? [] : [u];
+  });
+  const want = [...new Set([...posts, ...coins])].filter((u) => hashes[u] === undefined);
+  console.log(`hashes: ${want.length} pictures to hash (${new Set(posts).size} post pictures).`);
+  for (let i = 0; i < want.length; i += HASH_CONCURRENCY) {
+    await Promise.all(want.slice(i, i + HASH_CONCURRENCY).map(async (u) => {
+      hashes[u] = await hashPicture(readable(u), globalThis.fetch, HASH_TIMEOUT_MS);
+    }));
+    if (i % (HASH_CONCURRENCY * 25) === 0) {
+      save();
+      console.log(`  ${i} of ${want.length}`);
+    }
+  }
+  save();
+  console.log(`hashes: ${Object.values(hashes).filter((h) => h !== null).length} of ${Object.keys(hashes).length} pictures hashed.`);
+}
+
+const stages: Record<string, () => Promise<void>> = { search, meta: metaStage, posts, images, pairs, reads, replies: repliesStage, replycoins: replyCoinsStage, universe: universeStage, hashes: hashesStage };
 const stage = process.argv[2] ?? '';
 const run = stages[stage];
 if (run === undefined) refuse(`stage must be one of: ${Object.keys(stages).join(', ')}`);

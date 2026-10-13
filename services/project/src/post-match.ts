@@ -2,56 +2,88 @@
  * A FEED POST'S OWN COIN, DECIDED BY EVIDENCE — and the post's name ideas for Create.
  *
  * rising.ts has, for each post on a feed, the coins its name search kept (internal.coin_lookup).
- * This module gathers what we hold about each of those coins against that post and hands it to
- * core's `matchPostCoin`, which answers confident (one coin) or unsure (a ranked list):
+ * This module widens that list, gathers what we hold about each candidate against the post, and
+ * hands it to core's `matchPostCoin`, which answers PROVEN (one coin, a Buy), or a ranked list
+ * whose first coin may be LIKELY (never a Buy), or none:
  *
- *   links      the coin's metadata document (internal.coin_metadata, read by the universe loop)
- *              — its social link, website, chat link and description — carries the post's id
- *              or its picture's. Unread metadata is "not known", never "no".
- *   picture    the post's vector against the coin's (internal.image_embedding, embedded by the
- *              runner's coin-match step). Only near-identical is "same picture" (core
- *              `postPictureVerdict`): the judge's "same subject" on a borderline pair
- *              (internal.image_pair_check) leaves it unknown, and only its "no" counts against.
- *              The coin's picture is its metadata document's, now read from the creator's own
- *              host too when the link names no content id (runner universe loop).
- *   timing     the coin's launch (public.coin_name, else public.asset) against the post's time.
- *   name       the judge's names for the subject against the coin's name and ticker. Orders the
- *              list only: since 2026-10-13 a name never makes a card confident (core header).
+ *   candidates  the name search's coins; the coins whose address was posted under the post
+ *               (internal.crypto_attention `_addresses`); the coins whose logo's perceptual hash is
+ *               within `postCoin.widenHashDistance` of the post's picture, over every coin minted
+ *               in the window (internal.image_hash, 0070); and the mint stream's own coins whose
+ *               name or ticker is a short form, misspelling or longer form of the subject's names
+ *   links       the coin's metadata document (internal.coin_metadata) — its social link, website,
+ *               chat link and description — names the post, or the poster's account. Unread
+ *               metadata is "not known", never "no".
+ *   picture     the embedding's similarity on the coin's picture (internal.image_embedding, by the
+ *               runner's coin-match step) and the two pictures' hash distance. Near-identical by
+ *               either is "same picture"; the judge's borderline "same subject" leaves it unknown.
+ *   words       the coin's description against the post's own words
+ *   address     the poster's own account, or others, posted the coin's address under the post
+ *   timing      the coin's launch (public.coin_name, else public.asset) against the post's time.
+ *   name        the judge's names for the subject against the coin's name and ticker.
+ *   weights     the newest re-tune refit (internal.coin_match_fit, 0070), else Policy.postCoin.
  *
- * ★ ONLY THE FACTS LEAVE. The similarity, the judge's answer and the rule's reason stay here;
- * the wire carries "links this post", "same picture" and "launched 12m after" (wire.ts
- * `WireCoinEvidence`), true or unknown, and the list's order.
+ * ★ ONLY THE FACTS LEAVE. The similarity, the hash distance, the score and the rule's reason stay
+ * here; the wire carries "links this post", "same picture", "launched 12m after" and "the poster
+ * posted its address" (wire.ts `WireCoinEvidence`), true or unknown, and the list's order.
+ *
+ * ★ BEFORE 0070 every read of the new tables answers nothing and the match runs on what it had: no
+ * hash is "not compared", no refit is the policy's weights.
  *
  * Name ideas: core's `nameIdeas` over the judge's proposed and alternate names, with the brand
  * names below dropped. Written to public.post_name_idea for the read service, which adds
  * whether each ticker is free when a person opens Create.
  *
- * What breaks if changed carelessly: the bars. They must equal the gold eval's
- * (eval/src/gold/match-eval.ts MATCH_BARS), which measured this rule's wrong links on the gold
- * set; a bar changed here alone ships a rule nobody measured.
+ * What breaks if changed carelessly: the bars. They come from the policy object the gold eval reads
+ * too (eval/src/gold/match-eval.ts `matchBarsOf`), so the rule that ships is the rule measured; a
+ * bar set here alone ships a rule nobody measured.
  */
 
 import type { Millis } from '@insidor/contracts';
-import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { matchPostCoin, nameIdeas, postPictureVerdict, type CoinSide, type MatchBars, type NameIdea, type PostCoinMatch } from '@insidor/core';
-import type { Db } from '@insidor/store';
+import { DEFAULT_POLICY, type Policy, type PostCoinWeights } from '@insidor/contracts/policy.ts';
+import { compactName, matchPostCoin, nameIdeas, nameMatch, postPictureVerdict, type CoinSide, type MatchBars, type NameIdea, type PostCoinMatch } from '@insidor/core';
+import { missingTable, PgCryptoAttentionRepo, PgImageHashRepo, type Db } from '@insidor/store';
 
 import { pictureOf } from './db.ts';
 import type { WireCoinEvidence } from './wire.ts';
 
-/* ★ POLICY NUMBERS, to move into contracts/src/policy.ts (the session owner adds them). The
-     timing window and the grace are already policy (universe.matchWindowMs, origin.launchAllowanceMs).
-     MIN_LINK_ID_LENGTH  a post id shorter than this is never looked for in a coin's links.
-     MIN_VARIANT_LENGTH  a looser spelling of a name counts only from this many letters.
+/* ★ POLICY NUMBERS, to move into contracts/src/policy.ts (the session owner adds them).
      MIN_TICKER, MAX_TICKER, MAX_NAME_IDEAS  the owner's sheet: 3 to 10 capitals, at most 5 ideas. */
-export const MIN_LINK_ID_LENGTH = 8;
-export const MIN_VARIANT_LENGTH = 4;
 export const MIN_TICKER = 3;
 export const MAX_TICKER = 10;
 export const MAX_NAME_IDEAS = 5;
+/** The hash the runner writes (services/runner picture-hash.ts HASH_VERSION); another is never compared. */
+const HASH_VERSION = 'dct64-1';
 
-export function matchBars(p: Policy = DEFAULT_POLICY): MatchBars {
-  return { launchAllowanceMs: p.origin.launchAllowanceMs, windowMs: p.universe.matchWindowMs, minLinkIdLength: MIN_LINK_ID_LENGTH, minVariantLength: MIN_VARIANT_LENGTH };
+/** The match's bars from the policy, with the re-tune's weights and likely bar when it has refitted. */
+export function matchBars(p: Policy = DEFAULT_POLICY, fit: { readonly weights: PostCoinWeights; readonly likelyMinShare: number } | null = null): MatchBars {
+  const pc = p.postCoin;
+  return {
+    launchAllowanceMs: p.origin.launchAllowanceMs,
+    windowMs: p.universe.matchWindowMs,
+    minLinkIdLength: pc.minLinkIdLength,
+    minVariantLength: pc.minVariantLength,
+    sameHashDistance: pc.sameHashDistance,
+    pictureFloor: pc.pictureFloor,
+    timingHalfLifeMin: pc.timingHalfLifeMin,
+    descriptionMinWord: pc.descriptionMinWord,
+    likelyMinShare: fit?.likelyMinShare ?? pc.likelyMinShare,
+    weights: fit?.weights ?? pc.weights,
+  };
+}
+
+/** The newest refit of the weights (0070), or null: none yet, or the table not there. */
+export async function loadFit(db: Db): Promise<{ readonly weights: PostCoinWeights; readonly likelyMinShare: number } | null> {
+  try {
+    const rows = await db.query<{ weights: PostCoinWeights; likely_min_share: number }>(
+      `select weights, likely_min_share from internal.coin_match_fit order by fitted_at desc limit 1`,
+    );
+    const r = rows[0];
+    return r === undefined ? null : { weights: { ...DEFAULT_POLICY.postCoin.weights, ...r.weights }, likelyMinShare: Number(r.likely_min_share) };
+  } catch (e) {
+    if (missingTable(e)) return null;
+    throw e;
+  }
 }
 
 /**
@@ -103,6 +135,8 @@ interface PostRow {
   posted_at: Date | string | null;
   first_seen_at: Date | string;
   media: unknown;
+  body: string | null;
+  handle: string | null;
   proposed_name: string | null;
   alternate_names: string[] | null;
 }
@@ -112,6 +146,7 @@ interface CoinRow {
   address: string;
   name: string | null;
   ticker: string | null;
+  image_uri: string | null;
   launched_at: Date | string | null;
   outcome: string | null;
   social_link: string | null;
@@ -138,8 +173,9 @@ function pictureIds(media: unknown): string[] {
 /** The judge's newest names for each post, and the post's own time and ids. */
 async function loadPosts(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, PostRow>> {
   const rows = await db.query<PostRow>(
-    `select i.item_id, i.source_item_id, i.posted_at, i.first_seen_at, i.media, j.proposed_name, j.alternate_names
+    `select i.item_id, i.source_item_id, i.posted_at, i.first_seen_at, i.media, i.body, au.handle, j.proposed_name, j.alternate_names
        from public.item i
+       left join public.author au on au.author_key = i.author_key
        left join lateral (
               select pj.proposed_name, pj.alternate_names from internal.post_judgement pj
                where pj.item_id = i.item_id and pj.prompt_id not like 'post-kind%'
@@ -160,6 +196,7 @@ async function loadCoins(db: Db, pairs: readonly { itemId: string; address: stri
   if (pairs.length === 0) return [];
   return db.query<CoinRow>(
     `select p.item_id, p.address, coalesce(n.name, a.name) as name, coalesce(n.ticker, a.symbol) as ticker,
+            coalesce(m.image_uri, a.image_uri) as image_uri,
             coalesce(a.minted_at, n.launched_at) as launched_at,
             m.outcome, m.social_link, m.website, m.chat_link, m.description,
             pic.similarity, pic.same_subject
@@ -184,37 +221,113 @@ async function loadCoins(db: Db, pairs: readonly { itemId: string; address: stri
 }
 
 /**
- * Every post's coins weighed by the rule. `lists` is each post's name-search coins (rising.ts
- * loadPostLookups); a post without any is absent from the result.
+ * The mint stream's own coins, minted in each post's window, whose name or ticker holds a form of
+ * the subject's names: what a market search months later, or a crowded name, does not return.
+ * The SQL is a wide first cut (the names' first `minVariantLength` letters); core's `nameMatch`
+ * keeps the short forms, misspellings and longer forms, newest first.
  */
-export async function weighPostCoins(db: Db, lists: ReadonlyMap<string, readonly string[]>, p: Policy = DEFAULT_POLICY): Promise<ReadonlyMap<string, PostMatch>> {
+async function nameCandidates(db: Db, posts: readonly { itemId: string; postedAt: Millis; names: readonly string[]; text: string | null }[], p: Policy): Promise<ReadonlyMap<string, readonly string[]>> {
+  const pc = p.postCoin;
+  const out = new Map<string, string[]>();
+  for (const post of posts) {
+    const stems = [...new Set(post.names.map((n) => compactName(n.replace(/^\s*the\s+/i, ''))).filter((n) => n.length >= pc.minVariantLength).map((n) => n.slice(0, pc.minVariantLength)))];
+    if (stems.length === 0) continue;
+    const rows = await db.query<{ address: string; name: string | null; symbol: string | null }>(
+      `select a.address, a.name, a.symbol
+         from public.asset a
+        where a.minted_at between $1::timestamptz - make_interval(secs => $3::double precision / 1000)
+                              and $1::timestamptz + make_interval(secs => $4::double precision / 1000)
+          and (lower(regexp_replace(coalesce(a.name, ''), '[^a-zA-Z0-9]', '', 'g')) like any ($2::text[])
+               or lower(regexp_replace(coalesce(a.symbol, ''), '[^a-zA-Z0-9]', '', 'g')) like any ($2::text[]))
+        order by a.minted_at desc
+        limit $5`,
+      [new Date(post.postedAt).toISOString(), stems.map((s) => `%${s}%`), p.origin.launchAllowanceMs, p.universe.matchWindowMs, pc.nameCandidatesPerPost * pc.nameCandidatesPerPost],
+    );
+    const kept = rows.filter((r) => nameMatch(post.names, { name: r.name, ticker: r.symbol }, pc, post.text) !== 'none').slice(0, pc.nameCandidatesPerPost).map((r) => r.address);
+    if (kept.length > 0) out.set(post.itemId, kept);
+  }
+  return out;
+}
+
+const bitsApart = (a: string, b: string): number => {
+  let x = BigInt(`0x${a}`) ^ BigInt(`0x${b}`);
+  let n = 0;
+  for (; x > 0n; x >>= 1n) n += Number(x & 1n);
+  return n;
+};
+
+/**
+ * Every post's coins weighed by the rule. `lists` is each post's name-search coins (rising.ts
+ * loadPostLookups), empty when the search found none; the candidates are widened here. A post
+ * with no candidate at all is absent from the result.
+ */
+export async function weighPostCoins(db: Db, lists: ReadonlyMap<string, readonly string[]>, p: Policy = DEFAULT_POLICY, opts: { readonly ignoreFit?: boolean } = {}): Promise<ReadonlyMap<string, PostMatch>> {
   const ids = [...lists.keys()];
   const posts = await loadPosts(db, ids);
-  const pairs = [...lists].flatMap(([itemId, addresses]) => addresses.map((address) => ({ itemId, address })));
-  const coins = await loadCoins(db, pairs, p.group.image.space);
+  const pc = p.postCoin;
+  const namesOf = (post: PostRow) => [post.proposed_name, ...(post.alternate_names ?? [])].filter((n): n is string => n !== null && n.trim() !== '');
+  const timed = [...posts.values()].flatMap((post) => {
+    const at = ms(post.posted_at) ?? ms(post.first_seen_at);
+    return at === null ? [] : [{ post, at }];
+  });
+
+  /* Widen: addresses posted under the post, coins with its picture, the mint stream's names. */
+  const replies = await new PgCryptoAttentionRepo(db).addressesFor(ids);
+  const hashes = new PgImageHashRepo(db);
+  const pictured = timed.flatMap(({ post, at }) => {
+    const uri = pictureOf(post.media)?.uri ?? null;
+    return uri === null ? [] : [{ itemId: post.item_id, uri, postedAt: at }];
+  });
+  const neighbours = await hashes.neighbours(pictured, p.origin.launchAllowanceMs, p.universe.matchWindowMs, pc.widenHashDistance, pc.pictureCandidatesPerPost, HASH_VERSION);
+  const named = await nameCandidates(db, timed.map(({ post, at }) => ({ itemId: post.item_id, postedAt: at, names: namesOf(post), text: post.body })), p);
+  const wide = new Map<string, Set<string>>([...lists].map(([id, xs]) => [id, new Set(xs)]));
+  const add = (id: string, address: string) => wide.get(id)?.add(address);
+  for (const [id, list] of replies) for (const a of list) add(id, a.address);
+  for (const n of neighbours) add(n.itemId, n.address);
+  for (const [id, xs] of named) for (const a of xs) add(id, a);
+
+  const pairs = [...wide].flatMap(([itemId, addresses]) => [...addresses].map((address) => ({ itemId, address })));
+  /* An address posted under a post that is no coin we hold has no row: it is dropped here. */
+  const coins = (await loadCoins(db, pairs, p.group.image.space)).filter((c) => c.launched_at !== null || c.name !== null || c.ticker !== null);
+  const pictureHashes = await hashes.hashesOf([...new Set([...pictured.map((x) => x.uri), ...coins.flatMap((c) => (c.image_uri === null ? [] : [c.image_uri]))])], HASH_VERSION);
   const byPost = new Map<string, CoinRow[]>();
   for (const c of coins) byPost.set(c.item_id, [...(byPost.get(c.item_id) ?? []), c]);
 
-  const bars = matchBars(p);
+  /* The re-tune weighs with the weights it is testing (`ignoreFit`); the feed with the newest refit. */
+  const bars = matchBars(p, opts.ignoreFit === true ? null : await loadFit(db));
   const matches = new Map<string, PostMatch>();
   for (const [itemId, rows] of byPost) {
     const post = posts.get(itemId);
     if (post === undefined) continue;
-    const names = [post.proposed_name, ...(post.alternate_names ?? [])].filter((n): n is string => n !== null && n.trim() !== '');
-    const sides: CoinSide[] = rows.map((r) => ({
-      address: r.address,
-      name: r.name,
-      ticker: r.ticker,
-      launchedAt: ms(r.launched_at),
-      links: r.outcome === 'read' ? [r.social_link, r.website, r.chat_link, r.description].filter((l): l is string => l !== null) : null,
-      samePicture: postPictureVerdict(r.similarity === null ? null : Number(r.similarity), r.same_subject, p.group.image),
-    }));
+    const postPicture = pictureOf(post.media)?.uri ?? null;
+    const postHash = postPicture === null ? undefined : pictureHashes.get(postPicture);
+    const posted = replies.get(itemId);
+    const sides: CoinSide[] = rows.map((r) => {
+      const coinHash = r.image_uri === null ? undefined : pictureHashes.get(r.image_uri);
+      const said = posted?.find((a) => a.address === r.address);
+      return {
+        address: r.address,
+        name: r.name,
+        ticker: r.ticker,
+        launchedAt: ms(r.launched_at),
+        links: r.outcome === 'read' ? [r.social_link, r.website, r.chat_link, r.description].filter((l): l is string => l !== null) : null,
+        samePicture: postPictureVerdict(r.similarity === null ? null : Number(r.similarity), r.same_subject, p.group.image),
+        pictureSimilarity: r.similarity === null ? null : Number(r.similarity),
+        hashDistance: postHash === undefined || coinHash === undefined ? null : bitsApart(postHash, coinHash),
+        description: r.outcome === 'read' ? r.description : null,
+        addressByAuthor: posted === undefined ? null : (said?.byAuthor ?? false),
+        addressByOthers: posted === undefined ? null : (said?.byOthers ?? 0),
+        tradingJump: null,
+      };
+    });
     const decision = matchPostCoin(
-      { postedAt: ms(post.posted_at) ?? ms(post.first_seen_at), linkIds: [post.source_item_id, ...pictureIds(post.media)], names },
+      { postedAt: ms(post.posted_at) ?? ms(post.first_seen_at), linkIds: [post.source_item_id, ...pictureIds(post.media)], names: namesOf(post), author: post.handle, text: post.body },
       sides,
       bars,
     );
-    const evidence = decision.kind === 'none' ? [] : decision.ranked.map((e) => ({ address: e.address, linksPost: e.linksPost, samePicture: e.samePicture, launchedAfterMs: e.launchedAfterMs }));
+    const evidence = decision.kind === 'none'
+      ? []
+      : decision.ranked.map((e) => ({ address: e.address, linksPost: e.linksPost, samePicture: e.samePicture, launchedAfterMs: e.launchedAfterMs, posterPostedAddress: e.addressByAuthor }));
     matches.set(itemId, { decision, evidence });
   }
   return matches;
