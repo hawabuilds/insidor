@@ -34,6 +34,8 @@ export { PgFeedFloorRepo } from './repo/feed-floor.ts';
 export { PgOwnerAlertRepo } from './repo/owner-alerts.ts';
 export type { OwnerAlert } from './repo/owner-alerts.ts';
 export { PgRecallRepo } from './repo/recall.ts';
+export { PgMissedPostRepo } from './repo/missed-posts.ts';
+export type { HeldPost, MissedJudgement, MissedOutcome, MissedPostFacts, MissedRow, NamedCoin, QueuedMissedPost } from './repo/missed-posts.ts';
 export { PgLearningRepo } from './repo/learning.ts';
 export type { AppliedExamples, ExamplesVersion, GoldAddition, MissedPost, OwnerNameCall, OwnerPostCall, RecallOrigin, RetuneOutcome } from './repo/learning.ts';
 export type { GrowthPair, LaneMeasured, RecallDay, RecallRow, RecallRun } from './repo/recall.ts';

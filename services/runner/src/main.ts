@@ -35,6 +35,7 @@ import { admitLoop } from './loops/admit.ts';
 import { detectLoop } from './loops/detect.ts';
 import { discoverLoop } from './loops/discover.ts';
 import { universeLoop } from './loops/universe.ts';
+import { missedLoop } from './loops/missed.ts';
 import { groupLoop } from './loops/group.ts';
 import { qualifyLoop } from './loops/qualify.ts';
 import { rankLoop } from './loops/rank.ts';
@@ -184,6 +185,9 @@ async function main(): Promise<void> {
       /* Every new coin's metadata, and where it came from. Its own loop so a slow gateway
          never holds up the search. */
       universeLoop(runtime.universe, runtime.lookUpCoins, runtime.keepCoins),
+      /* The owner's pasted missed posts, on the learning book: its own loop so a paste is worked
+         within a minute whether discovery is on or not (loops/missed.ts). */
+      missedLoop(runtime.missedPosts),
       admitLoop(runtime.loopDeps),
       trackLoop(runtime.loopDeps),
       detectLoop(runtime.loopDeps),

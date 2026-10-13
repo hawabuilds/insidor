@@ -85,7 +85,9 @@ export type SupervisedStage = (typeof SUPERVISED_STAGES)[number];
  * writes to it under its own name; see the ★ in services/chainwatch/src/wiring.ts,
  * which is the same widening argued at length.
  */
-export const SUPERVISED_TASKS = ['discover', 'universe'] as const;
+/* `missed`: the owner's pasted missed posts, read and diagnosed (work/missed-posts.ts). With
+   HEARTBEAT=on it needs HEARTBEAT_SLUG_MISSED like every other supervised loop. */
+export const SUPERVISED_TASKS = ['discover', 'universe', 'missed'] as const;
 
 export type SupervisedTask = (typeof SUPERVISED_TASKS)[number];
 
