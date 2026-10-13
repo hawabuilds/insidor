@@ -366,7 +366,8 @@ export function feedQueryFor(lane: FeedLane, floors: LaneFloors, now: Millis, po
       minApproval: effectiveFloor(lane, floors, policy),
       mediaOnly: lane === 'media',
       langs: policy.feed.langs,
-      originalsOnly: true,
+      /* Plain reposts only: replies and quotes are searched (the owner, 2026-10-13). */
+      excludeRebroadcasts: true,
     },
   };
 }

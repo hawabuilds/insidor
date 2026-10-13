@@ -4,7 +4,8 @@
   "langs": [
    "en"
   ],
-  "originalsOnly": true,
+  "excludeReplies": false,
+  "excludeRebroadcasts": true,
   "tauMin": 64.3,
   "lanes": [
    {
@@ -72,294 +73,336 @@
    "approvals": 4571,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1783339030000
   },
   "2071972414653632892": {
    "approvals": 584,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": true,
+   "isReply": true,
+   "isRebroadcast": false,
    "postedAt": 1782831693000
   },
   "2076257881465192450": {
    "approvals": 43697,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1783853428000
   },
   "2081884301096784210": {
    "approvals": 99437,
    "lang": "zxx",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1785194871000
   },
   "2080165738464280725": {
    "approvals": 18384,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1784785134000
   },
   "2080759984069947864": {
    "approvals": 14,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1784926813000
   },
   "2079837600689332595": {
    "approvals": 76143,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1784706900000
   },
   "2074111506992583138": {
    "approvals": 3193,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1783341693000
   },
   "2073034775569330570": {
    "approvals": 3883,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1783084980000
   },
   "2078521506007560474": {
    "approvals": 124044,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1784393118000
   },
   "2072634580675235965": {
    "approvals": 40289,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782989566000
   },
   "2074224204132864115": {
    "approvals": 1390,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1783368562000
   },
   "2071421006858866961": {
    "approvals": 198,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782700227000
   },
   "2072681271566708832": {
    "approvals": 177815,
    "lang": "zxx",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1783000698000
   },
   "2075190553185030606": {
    "approvals": 9304,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1783598957000
   },
   "2081761712659739063": {
    "approvals": 3003,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1785165644000
   },
   "2081892242289991803": {
    "approvals": 205,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1785196764000
   },
   "2081434948485939422": {
    "approvals": 6899,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1785087737000
   },
   "2081733077198327841": {
    "approvals": 50603,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1785158816000
   },
   "2078472356377645226": {
    "approvals": 21963,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1784381400000
   },
   "2072722702914220335": {
    "approvals": 40182,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1783010576000
   },
   "1942482533972677031": {
    "approvals": 488,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1751958900000
   },
   "2071770035425624410": {
    "approvals": 6359,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782783442000
   },
   "2077387825255690569": {
    "approvals": 3344,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1784122828000
   },
   "2068770326599577842": {
    "approvals": 126,
    "lang": "qme",
    "hasMedia": true,
-   "notOriginal": true,
+   "isReply": true,
+   "isRebroadcast": false,
    "postedAt": 1782068256000
   },
   "2071667886469394717": {
    "approvals": 2331,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782759088000
   },
   "2069498273346310313": {
    "approvals": 1582033,
    "lang": "es",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782241812000
   },
   "2066518673053868543": {
    "approvals": 3772,
    "lang": "ru",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1781531420000
   },
   "2080371426909913165": {
    "approvals": 15794,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1784834174000
   },
   "2068615404919140775": {
    "approvals": 15791,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782031320000
   },
   "2071655261949788658": {
    "approvals": 1836,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782756078000
   },
   "2069526985475244388": {
    "approvals": 45892,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782248657000
   },
   "2041805671365029988": {
    "approvals": 4446,
    "lang": "th",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1775639381000
   },
   "2065107430787178590": {
    "approvals": 141352,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1781194953000
   },
   "2069788716642582699": {
    "approvals": 4479,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782311059000
   },
   "2072778994416603185": {
    "approvals": 16305,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1783023997000
   },
   "2036399822312292486": {
    "approvals": 13448,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1774350526000
   },
   "2069911846812053747": {
    "approvals": 2928,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782340416000
   },
   "2073439229695136043": {
    "approvals": 4519,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1783181409000
   },
   "2079993377324437620": {
    "approvals": 1695,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1784744040000
   },
   "2061783664745193776": {
    "approvals": 2099,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1780402506000
   },
   "2080002774582850025": {
    "approvals": 1712,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1784746280000
   },
   "2061558621658394925": null,
@@ -367,14 +410,16 @@
    "approvals": 23781,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1780530054000
   },
   "2063406281130398012": {
    "approvals": 2514,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1780789368000
   },
   "2072444649525092454": null,
@@ -382,63 +427,72 @@
    "approvals": 470,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1781708402000
   },
   "2069514787852034259": {
    "approvals": 286,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782245749000
   },
   "2070253292383252879": {
    "approvals": 41276,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782421823000
   },
   "2081699755965505804": {
    "approvals": 218065,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1785150872000
   },
   "2068525578358047028": {
    "approvals": 4430,
    "lang": "zxx",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782009903000
   },
   "2071915554651209979": {
    "approvals": 1262,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1782818137000
   },
   "2062062058376663408": {
    "approvals": 354979,
    "lang": "en",
    "hasMedia": false,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1780468880000
   },
   "2063258328508039411": {
    "approvals": 1196,
    "lang": "en",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1780754093000
   },
   "2081816360879899060": {
    "approvals": 75304,
    "lang": "zxx",
    "hasMedia": true,
-   "notOriginal": false,
+   "isReply": false,
+   "isRebroadcast": false,
    "postedAt": 1785178673000
   }
  }

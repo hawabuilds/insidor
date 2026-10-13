@@ -126,7 +126,7 @@ test('★ with no terms, a source with a catch-all search is asked both lanes, w
     assert.equal(q.untilMs, NOW, 'the window ends now');
     assert.equal(q.sinceMs, NOW - DEFAULT_POLICY.feed.windowMin * 60_000);
     assert.deepEqual(q.filter?.langs, DEFAULT_POLICY.feed.langs);
-    assert.equal(q.filter?.originalsOnly, true);
+    assert.equal(q.filter?.excludeRebroadcasts, true, 'plain reposts are left out; replies and quotes are not');
   }
   assert.deepEqual(seen.map((q) => q.filter?.mediaOnly), [false, true]);
   assert.equal(seen[0]?.filter?.minApproval, DEFAULT_POLICY.feed.effectiveFloorMin, 'the start floor of 100 is 17 for a 10-minute window, lifted to the minimum');

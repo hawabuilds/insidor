@@ -12,7 +12,7 @@ Rendered by `eval/src/gold/run-recall.ts` from `recall-evidence.json` (settings 
 | every origin post (TikTok and Instagram count as misses) | 54% (38 of 71) | 1.8 min |
 | X origin posts, all, if approvals grew 3× slower | 58% (32 of 55) | 2.1 min |
 
-Misses, X posts: under_floor 1, not_in_search 9, between_checks 5, deleted 2, not_on_x 0. Every origin post: under_floor 1, not_in_search 9, between_checks 5, deleted 2, not_on_x 16.
+Misses, X posts: under_floor 1, not_in_search 8, between_checks 6, deleted 2, not_on_x 0. Every origin post: under_floor 1, not_in_search 8, between_checks 6, deleted 2, not_on_x 16.
 
 Caught before the coin launched: 37 of the 38 caught X posts.
 
@@ -24,12 +24,12 @@ Caught before the coin launched: 37 of the 38 caught X posts.
 | media | 135 (base 809) | 10 min | 9.9 min | 6.7 min | 2.2 min | yes | 236 |
 | slow | 500 (base 500) | 360 min | 43.2 min | 35.6 min | 15 min | no | 98 |
 
-- Language: `lang:en`; replies and reposts excluded (`-filter:replies -filter:retweets`). No keyword term runs: the runner's pass logs show only the catch-all lanes, so a post is found by its approvals alone, never by what it says.
+- Language: `lang:en`; plain reposts left out (`-filter:retweets`); replies and quote posts are searched. Leaving replies out as well, as the query did before 2026-10-13, catches 69% (38 of 55). No keyword term runs: the runner's pass logs show only the catch-all lanes, so a post is found by its approvals alone, never by what it says.
 - **Floor sent** is the stored base floor (internal.feed_floor) scaled to the lane's window (core `effectiveFloor`); it adapts after every pass toward the day's budget, so it moves over the day.
 - **Reach measured** is the 95th percentile of the age at which the lane first found its posts (internal.item_found_by), capped at the window it asks for. The slow lane asks for 360 minutes, but it takes 3 pages of 20 posts newest first, and those fill within the first ~43 minutes: a post that crosses 500 approvals later than that is never returned.
 - **Every** is the median gap between passes that found something (main lanes) or the policy cadence (slow lane).
 - **Growth.** Approvals at age t are assumed to be `final × (1 − e^(−t/τ))`, with the count read now as final and τ = 64.3 min fitted to 258 live posts' first and last readings. A post is caught at the first pass after it crosses a lane's floor (taken as half a pass later), if that is still within the lane's reach. The 3× slower row shows how much rests on τ.
-- Replies are detected by the text opening with a mention (the read post carries no reply flag); `zxx` is X's language for a post with no words.
+- Replies are detected by the text opening with a mention (the read post carries no reply flag); `zxx` is X's language for a post with no words. Evidence read before 2026-10-13 recorded one flag for "reply or repost"; it is read as a reply, as this report always labelled it — a coin's origin is the post people saw, and a repost's link opens the original under its own author.
 
 ## Cheapest change that catches the most misses
 
@@ -55,7 +55,7 @@ Delay is minutes from posting to the first pass that would return it; "before la
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | bt2:1 | tune | Stork | tiktok | @cazy.chan | — | — | — | — | — | not_on_x | — | — | not_on_x |
 | bt2:4 | tune | AOP | x | blkiz06 | 2026-07-06 11:57 | 4571 | en | yes | original | caught (all) | 2.3 min | 27 | caught |
-| bt2:28 | holdout | HIM | x | himgajria | 2026-06-30 15:01 | 584 | en | no | reply | not_in_search | — | — | not_in_search |
+| bt2:28 | holdout | HIM | x | himgajria | 2026-06-30 15:01 | 584 | en | no | reply | between_checks | — | — | between_checks |
 | bt2:45 | holdout | Ivy | tiktok | @ivyvibing | — | — | — | — | — | not_on_x | — | — | not_on_x |
 | bt2:49 | holdout | WINGIT | x | bayraktar_1love | 2026-07-12 10:50 | 43697 | en | yes | original | caught (all) | 1.2 min | 3197 | caught |
 | bt2:62 | tune | MeiMei | tiktok | @meimeiwarrior | — | — | — | — | — | not_on_x | — | — | not_on_x |

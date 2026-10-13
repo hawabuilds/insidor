@@ -11,14 +11,15 @@ import { MISS_REASONS, crossingAgeMin, fitGrowthTau, missReasonBefore, verdict, 
 
 const S: DiscoverySettings = {
   langs: ['en'],
-  originalsOnly: true,
+  excludeReplies: false,
+  excludeRebroadcasts: true,
   tauMin: 60,
   lanes: [
     { lane: 'all', floor: 60, reachMin: 10, everyMin: 2, mediaOnly: false },
     { lane: 'slow', floor: 500, reachMin: 45, everyMin: 15, mediaOnly: false },
   ],
 };
-const post = (approvals: number, extra: Partial<PostFacts> = {}): PostFacts => ({ approvals, lang: 'en', hasMedia: false, notOriginal: false, ...extra });
+const post = (approvals: number, extra: Partial<PostFacts> = {}): PostFacts => ({ approvals, lang: 'en', hasMedia: false, isReply: false, isRebroadcast: false, ...extra });
 
 test('the miss reasons are the CHECK list of 0047', () => {
   const sql = readFileSync(new URL('../../../store/migrations/0047_recall_check.sql', import.meta.url), 'utf8');
@@ -43,8 +44,13 @@ test('a post that crosses only after every reach is between checks, one that nev
 
 test('not in search outranks every floor', () => {
   assert.deepEqual(verdict(post(1e6, { lang: 'ja' }), S), { kind: 'missed', reason: 'not_in_search' });
-  assert.deepEqual(verdict(post(1e6, { notOriginal: true }), S), { kind: 'missed', reason: 'not_in_search' });
+  assert.deepEqual(verdict(post(1e6, { isRebroadcast: true }), S), { kind: 'missed', reason: 'not_in_search' });
   assert.equal(missReasonBefore(post(1e6, { lang: 'es' }), 30, S), 'not_in_search');
+});
+
+test('★ a reply is in the search now; it was not while replies were left out', () => {
+  assert.equal(verdict(post(10_000, { isReply: true }), S).kind, 'caught');
+  assert.deepEqual(verdict(post(10_000, { isReply: true }), { ...S, excludeReplies: true }), { kind: 'missed', reason: 'not_in_search' });
 });
 
 test('before a launch, a floor counts only if it was crossed by then', () => {

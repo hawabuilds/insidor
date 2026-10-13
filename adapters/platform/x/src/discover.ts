@@ -125,8 +125,11 @@ export class CutoffNotHonoured extends Error {
 
 /**
  * The catch-all search: no keyword, only what bounds it. Ported from the earlier build's
- * query builder: `min_faves:<floor> [filter:media] lang:<code> -filter:replies
- * -filter:retweets`, with the time window appended by the caller below.
+ * query builder: `min_faves:<floor> [filter:media] lang:<code> -filter:retweets`, with the
+ * time window appended by the caller below. The earlier build also sent `-filter:replies`; it
+ * is no longer sent (2026-10-13), so replies and quote posts come back and only plain reposts
+ * are left out. `-filter:retweets` does not match a quote post on this vendor: quotes have been
+ * arriving under it all along.
  *
  * Refuses rather than guesses. A catch-all query without a floor would ask for every post in
  * the language — the one query this vendor bills enough for to matter — so a missing or
@@ -149,7 +152,7 @@ function feedOperators(query: DiscoveryQuery): string[] {
   /* One code is a bare operator; several are one OR group, so a post in any of them matches. */
   if (filter.langs.length === 1) out.push(`lang:${filter.langs[0]}`);
   else if (filter.langs.length > 1) out.push(`(${filter.langs.map((l) => `lang:${l}`).join(' OR ')})`);
-  if (filter.originalsOnly) out.push('-filter:replies', '-filter:retweets');
+  if (filter.excludeRebroadcasts) out.push('-filter:retweets');
   return out;
 }
 

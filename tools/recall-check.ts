@@ -86,8 +86,9 @@ const STATUS_DAYS = 14;
    used only when the database has too few passes to measure it. */
 const MAIN_EVERY_MIN_FALLBACK = 2;
 /* The reply heuristic: the read post carries no reply flag of its own, and a post whose text opens
-   with a mention is a reply, which an originals-only search never returns. A reply that does not
-   open with a mention is counted as an original — this errs toward "it was in the search". */
+   with a mention is a reply. Replies are searched since 2026-10-13, so this only matters to a
+   model run with `excludeReplies` (the settings before that day). A reply that does not open with
+   a mention is counted as an original. */
 const REPLY_OPENING = /^@\w/;
 
 const EVIDENCE_FILE = new URL('../eval/src/gold/recall-evidence.json', import.meta.url);
@@ -141,8 +142,10 @@ async function readSettings(db: ReturnType<typeof asDb>): Promise<SettingsSnapsh
   return {
     readAt: new Date(now).toISOString(),
     settings: {
-      langs: P.feed.lang === null ? null : [P.feed.lang],
-      originalsOnly: true,
+      langs: P.feed.langs.length === 0 ? null : [...P.feed.langs],
+      /* What services/runner/src/work/discover.ts sends: plain reposts left out, replies kept. */
+      excludeReplies: false,
+      excludeRebroadcasts: true,
       tauMin: round(tau),
       lanes: [
         { lane: 'all', floor: sent.all, reachMin: round(reach('all')), everyMin: round(mainEvery), mediaOnly: false },
@@ -188,7 +191,8 @@ async function readXPosts(ids: readonly string[], meter: Meter): Promise<Map<str
       approvals: item.counters.approval?.value ?? 0,
       lang: item.lang,
       hasMedia: item.media.length > 0,
-      notOriginal: item.rebroadcastOf !== null || REPLY_OPENING.test(item.text.trim()),
+      isReply: REPLY_OPENING.test(item.text.trim()),
+      isRebroadcast: item.rebroadcastOf !== null,
       postedAt: item.postedAt,
     });
   }
