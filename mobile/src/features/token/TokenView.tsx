@@ -160,7 +160,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       <div className={styles['panel']}>
         {panel === 'trades' ? <TradesPanel ticker={ticker} trades={read?.trades != null && read.trades.length > 0 ? read.trades : null} note={tradesNote(loaded.state, market)} account={account} now={now} /> : null}
-        {panel === 'comments' ? <Comments subject={`coin:${facts.coinId}`} holdersOf={facts.ticker !== null ? `$${facts.ticker}` : 'this coin'} /> : null}
+        {panel === 'comments' ? <Comments subject={`coin:${facts.coinId}`} holdersOf={facts.ticker !== null ? `$${facts.ticker}` : 'this coin'} about={ticker} /> : null}
         {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} tradable={facts.tradable} now={now} insidor={insidor} /> : null}
       </div>
 
