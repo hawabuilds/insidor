@@ -172,6 +172,10 @@ function buildJudge(
   const client: JudgeClient =
     setup.state === 'configured'
       ? httpClient({
+          /* The host's smaller named size: ~25% less input per post. Tested 2026-10-13 twice each
+             against full size: gold 27 and 30 of 41 vs 29 and 28, non-meme 2 and 0 of 43 vs 2 and 1 —
+             the same within the judge's own run-to-run noise. */
+          pictureSize: 'small',
           apiKey: setup.apiKey,
           baseUrl: setup.baseUrl,
           model: setup.model,
