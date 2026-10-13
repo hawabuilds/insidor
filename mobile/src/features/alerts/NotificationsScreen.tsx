@@ -9,6 +9,10 @@
  * not a dot, and the line between new and read is fixed when the screen opens so rows do not lose
  * their tint while being read; opening it marks everything read. The gear opens Feed settings in a
  * sheet over the list, and `#/feed/settings` opens the list with the sheet already up.
+ *
+ * Twenty at a time, with "Load more" under the last (Trador's Feed paging; its own Notifications
+ * stop at forty). Rows on later pages are tinted by the same line: the time the list was last
+ * marked read, as the first page told it, so marking it read on opening does not untint page two.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -23,21 +27,25 @@ import { SettingsSheet } from './AlertSettings.tsx';
 import { linkOf } from './AlertsScreen.tsx';
 import { grouped } from './group.ts';
 import { useAlertList } from './list.ts';
-import { Headline, Mark, PullIndicator } from './Parts.tsx';
+import { Headline, LoadMore, Mark, PullIndicator } from './Parts.tsx';
 import { pullStyle, usePullToRefresh } from './pull.ts';
 import { notifications } from './split.ts';
 import styles from './alerts.module.css';
 
+const ASK = { list: 'notifications' } as const;
+
 export function NotificationsScreen({ settings, onSeen }: { settings: boolean; onSeen: () => void }) {
   const now = useNow();
-  const { list, refresh } = useAlertList();
+  const { list, refresh, loadMore, loadingMore } = useAlertList(ASK, 'notifications');
   const [sheet, setSheet] = useState(settings);
   useEffect(() => setSheet(settings), [settings]);
   const { pull, refreshing } = usePullToRefresh(refresh);
 
-  /* Unread as it stood when the list first arrived: marking it read does not untint what is on screen. */
-  const openedUnread = useRef<ReadonlySet<number> | null>(null);
-  if (openedUnread.current === null && list.state === 'ready') openedUnread.current = new Set(list.value.alerts.filter((a) => a.unread).map((a) => a.id));
+  /* Unread as it stood when the list first arrived: marking it read does not untint what is on
+     screen. The line is the last time it was read; a server without it tells unread rows by id. */
+  const opened = useRef<{ readonly line: number | null; readonly ids: ReadonlySet<number> } | null>(null);
+  if (opened.current === null && list.state === 'ready') opened.current = { line: list.value.seenAt, ids: new Set(list.value.alerts.filter((a) => a.unread).map((a) => a.id)) };
+  const isNew = (a: { id: number; at: number }): boolean => (opened.current === null ? false : opened.current.line !== null ? a.at > opened.current.line : opened.current.ids.has(a.id));
   const marked = useRef(false);
   useEffect(() => {
     if (list.state !== 'ready' || marked.current) return;
@@ -73,7 +81,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
             <ul className={styles['list']}>
               {g.items.map((a) => (
                 <li key={a.id}>
-                  <a href={linkOf(a.href)} className={`${styles['note']} ${openedUnread.current?.has(a.id) === true ? styles['unread'] : ''}`}>
+                  <a href={linkOf(a.href)} className={`${styles['note']} ${isNew(a) ? styles['unread'] : ''}`}>
                     <Mark a={a} />
                     <div className={styles['noteText']}>
                       <p className={styles['noteHead']}>
@@ -90,6 +98,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
             </ul>
           </section>
         ))}
+        {list.state === 'ready' && list.value.cursor !== null ? <LoadMore onLoad={loadMore} loading={loadingMore} /> : null}
       </section>
       {sheet ? <SettingsSheet onClose={closeSheet} /> : null}
     </>

@@ -91,7 +91,28 @@ export const fetchLeaderboard = async (): Promise<{ season: { id: number; endsAt
 
 /* ── alerts ───────────────────────────────────────────────────────── */
 
-export const fetchAlerts = async (): Promise<{ unread: number; alerts: readonly Alert[] }> => (await notify('GET', '/alerts')) as { unread: number; alerts: readonly Alert[] };
+/** Which side of the list, and which page: the Feed by tab (Rising bounded by `since`), or Notifications. */
+export type AlertListAsk = { readonly list: 'notifications' } | { readonly list: 'feed'; readonly tab: 'latest' | 'rising' | 'watching'; readonly since?: number };
+export interface AlertPage {
+  readonly unread: number;
+  /** Every unread notification (a server from before paging sends none). */
+  readonly bell?: number;
+  /** When the list was last marked read, ms; 0 when never. */
+  readonly seenAt?: number;
+  readonly alerts: readonly Alert[];
+  /** The next page's cursor; null or absent at the end. */
+  readonly cursor?: string | null;
+}
+/** One page of alerts, Notifications' first unless asked otherwise. */
+export const fetchAlerts = async (ask: AlertListAsk = { list: 'notifications' }, cursor: string | null = null): Promise<AlertPage> => {
+  const q = new URLSearchParams({ list: ask.list });
+  if (ask.list === 'feed') {
+    q.set('tab', ask.tab);
+    if (ask.since !== undefined) q.set('since', String(Math.round(ask.since)));
+  }
+  if (cursor !== null) q.set('cursor', cursor);
+  return (await notify('GET', `/alerts?${q.toString()}`)) as AlertPage;
+};
 export const markAlertsSeen = async (): Promise<void> => void (await notify('POST', '/alerts/seen'));
 export const fetchAlertSettings = async (): Promise<AlertSettings> => (await notify('GET', '/prefs')) as AlertSettings;
 export const saveAlertPrefs = async (prefs: AlertPrefs): Promise<AlertSettings> => (await notify('PUT', '/prefs', { prefs })) as AlertSettings;

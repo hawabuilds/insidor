@@ -6,8 +6,9 @@
  * Trador's page, piece by piece: a sticky "Feed" title with the bell at its right (the only place
  * the unread count is shown; it opens Notifications), three tabs under the title, the This week /
  * All time toggle on the second, rows with no box, four skeleton rows while loading, a centred
- * sentence when a tab is empty (with "See all time" on an empty week), "You have seen everything"
- * at the end, and pull to refresh.
+ * sentence when a tab is empty (with "See all time" on an empty week), twenty rows at a time with
+ * "Load more" under them, "You have seen everything" at the end, and pull to refresh. Each tab
+ * (and each window of Rising) is its own paged list, read from the alert service by itself.
  *
  * Trador's tabs are Following, Top calls and Latest, about people's trades and comments; Insidor
  * has neither, so its tabs are Watching (narratives you starred), Rising (rising posts) and Latest
@@ -25,9 +26,9 @@ import { formatAge } from '../../shared/format/duration.ts';
 import { useNow, useWatchlist } from '../../shared/hooks.ts';
 import { Value } from '../../shared/ui/Value.tsx';
 import { useAlertList } from './list.ts';
-import { Bell, Headline, Mark, PageTabs, PullIndicator, Segmented } from './Parts.tsx';
+import { Bell, Headline, LoadMore, Mark, PageTabs, PullIndicator, Segmented } from './Parts.tsx';
 import { pullStyle, usePullToRefresh } from './pull.ts';
-import { feedTab, type FeedTab, type FeedWindow } from './split.ts';
+import { feedTab, weekStart, type FeedTab, type FeedWindow } from './split.ts';
 import styles from './alerts.module.css';
 
 const TABS: readonly { readonly key: FeedTab; readonly label: string }[] = [
@@ -49,7 +50,9 @@ export function AlertsScreen({ unread, onRefreshed }: { unread: number; onRefres
   const starred = useWatchlist();
   const [tab, setTab] = useState<FeedTab>(starred.length > 0 ? 'watching' : 'rising');
   const [period, setPeriod] = useState<FeedWindow>('week');
-  const { list, refresh } = useAlertList();
+  /* Rising's week starts at this morning's midnight minus six days, read when the list is asked for. */
+  const ask = tab === 'rising' && period === 'week' ? { list: 'feed' as const, tab, since: weekStart(Date.now()) } : { list: 'feed' as const, tab };
+  const { list, refresh, loadMore, loadingMore } = useAlertList(ask, `${tab}:${tab === 'rising' ? period : ''}`);
   const { pull, refreshing } = usePullToRefresh(async () => {
     await refresh();
     onRefreshed();
@@ -89,6 +92,7 @@ export function AlertsScreen({ unread, onRefreshed }: { unread: number; onRefres
             items={feedTab(list.value.alerts, tab, { starred, window: period, now })}
             now={now}
             empty={empty}
+            more={list.value.cursor !== null ? { onLoad: loadMore, loading: loadingMore } : null}
             {...(tab === 'rising' && period === 'week' ? { emptyAction: { label: 'See all time', onAct: () => setPeriod('all') } } : {})}
           />
         ) : null}
@@ -114,8 +118,8 @@ function Skeleton() {
   );
 }
 
-function Rows({ items, now, empty, emptyAction }: { items: readonly Alert[]; now: number; empty: string; emptyAction?: { label: string; onAct: () => void } }) {
-  if (items.length === 0) {
+function Rows({ items, now, empty, emptyAction, more }: { items: readonly Alert[]; now: number; empty: string; emptyAction?: { label: string; onAct: () => void }; more: { onLoad: () => void; loading: boolean } | null }) {
+  if (items.length === 0 && more === null) {
     return (
       <div className={styles['emptyBox']}>
         <p className={styles['emptyText']}>{empty}</p>
@@ -149,7 +153,7 @@ function Rows({ items, now, empty, emptyAction }: { items: readonly Alert[]; now
           </li>
         ))}
       </ul>
-      <p className={styles['end']}>You have seen everything</p>
+      {more !== null ? <LoadMore onLoad={more.onLoad} loading={more.loading} /> : <p className={styles['end']}>You have seen everything</p>}
     </>
   );
 }

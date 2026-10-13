@@ -1,7 +1,8 @@
 /**
  * THE PIECES THE FEED AND ITS NOTIFICATIONS SHARE, each one Trador's: the face at the left of a
  * row, a title with its ticker in bold, the bell with its count, the underline tabs under a page
- * title, the This week / All time toggle, and the spinner that follows a pull down.
+ * title, the This week / All time toggle, the spinner that follows a pull down, and Load more at
+ * the bottom of a list with more to read.
  *
  * Here rather than in shared/ui because only these two screens use them in this form; the app's
  * own UnderlineTabs is spread across the width with a rule under the row, which is not how
@@ -11,6 +12,8 @@
  * counted (the tab bar has no badge, as in Trador), so the bell must render whenever there is a
  * count, and nothing at zero.
  */
+
+import { useEffect, useRef } from 'react';
 
 import type { Alert, RankId } from '../../shared/api/people.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -98,6 +101,37 @@ export function PullIndicator({ pull, refreshing }: { pull: number; refreshing: 
           <path d="M20 11a8 8 0 0 0-13.7-5.3L4 8m0 0V4m0 4h4M4 13a8 8 0 0 0 13.7 5.3L20 16m0 0v4m0-4h-4" />
         </svg>
       </span>
+    </div>
+  );
+}
+
+/**
+ * Trador's LoadMore: the next page is read as the bottom comes within 400px (an observer, not a
+ * scroll listener, so a fast flick does not stutter), and a button does the same for anyone not
+ * scrolling. While a page is on its way the button says so and a second tap does nothing; it is
+ * never shown disabled.
+ */
+export function LoadMore({ onLoad, loading }: { onLoad: () => void; loading: boolean }) {
+  const sentinel = useRef<HTMLDivElement | null>(null);
+  /* Read through a ref: onLoad changes with every page, and rebuilding the observer mid-scroll can miss the crossing. */
+  const latest = useRef(onLoad);
+  useEffect(() => {
+    latest.current = onLoad;
+  }, [onLoad]);
+  useEffect(() => {
+    const node = sentinel.current;
+    if (node === null || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) latest.current();
+    }, { rootMargin: '400px 0px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={sentinel} className={styles['more']}>
+      <button type="button" className={styles['moreButton']} aria-busy={loading} onClick={() => (loading ? undefined : onLoad())}>
+        {loading ? 'Loading' : 'Load more'}
+      </button>
     </div>
   );
 }
