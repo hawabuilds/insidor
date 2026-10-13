@@ -2,8 +2,9 @@
  * `SPEND=live node --env-file=.env.local --experimental-strip-types tools/feed-pass-rates.ts --yes [--text-only] [--label=name]`
  *
  * HOW MANY REAL COIN POSTS, AND HOW MANY NON-MEME POSTS, WOULD REACH THE FEED UNDER THE JUDGE AS
- * IT IS NOW. Two groups, each post judged alone exactly as the live scorer judges it (its text and
- * its picture), and held to core's `postScore` (the confidence bar and the name test):
+ * IT IS NOW. Two groups, each post judged exactly as the live scorer judges it — ten posts a call
+ * (Policy.qualify.batchSize), the picture at the live size, its text and its picture — and held
+ * to core's `postScore` (the confidence bar and the name test):
  *
  *   gold       each gold coin's origin post (eval/src/gold/coin-evidence.json) — these should PASS
  *   non-meme   the recorded sample of today's feed the owner would reject (eval/src/feed/
@@ -11,8 +12,10 @@
  *              these should FAIL
  *
  * `--text-only` withholds the pictures, to measure what the judge did before it was shown them.
- * `--pictures=small` (or `=360x360`) shows the judge the picture host's smaller named size
- * (adapters/judge/anthropic/src/pictures.ts), to measure whether that cut costs any coins.
+ * `--pictures=full` (or `=360x360`) shows the judge another picture size than the live scorer's
+ * smaller named one (adapters/judge/anthropic/src/pictures.ts); `--max-batch=<n>` another number
+ * of posts a call. Measured 2026-10-13 on 218 posts: one a call graded the same as ten a call
+ * (meme gold 20/39 both) at 2.6 times the cost, so the live ten is what this measures by default.
  * `--batch` sends every post as one Message Batch at half price: the same request per post, so
  * the same answers, but minutes of waiting instead of seconds. Off by default, so a quick check
  * stays quick; worth it for a run that is not watched.
@@ -56,7 +59,12 @@ const BOOK: 'jobs' | 'learning' = process.argv.includes('--book=learning') ? 'le
 /* `--kind` asks every post that passes a second question — which kind it is — and holds back
    AD, SPORT, FANDOM, SHOWBIZ and POLITICS: the two-question gate. */
 const KIND = process.argv.includes('--kind');
-const PICTURE_SIZE = ((v) => (v === 'small' || v === '360x360' ? v : null))(process.argv.find((a) => a.startsWith('--pictures='))?.slice('--pictures='.length));
+/* The live scorer's picture size ('small') unless `--pictures=full` or `=360x360` measures another. */
+const PICTURE_SIZE = ((v) => (v === 'full' ? null : v === '360x360' ? v : 'small'))(process.argv.find((a) => a.startsWith('--pictures='))?.slice('--pictures='.length));
+/* Posts per call: the live scorer's (Policy.qualify.batchSize) unless `--max-batch=<n>` measures another. */
+const MAX_BATCH = Number(process.argv.find((a) => a.startsWith('--max-batch='))?.slice('--max-batch='.length) ?? P.qualify.batchSize);
+const LIVE_JUDGE = { ...P.judge, maxOutputTokens: P.judge.postBatchMaxOutputTokens };
+const inCalls = <T,>(xs: readonly T[]): T[][] => Array.from({ length: Math.ceil(xs.length / MAX_BATCH) }, (_, k) => xs.slice(k * MAX_BATCH, (k + 1) * MAX_BATCH));
 const BATCH = process.argv.includes('--batch');
 const LABEL = process.argv.find((a) => a.startsWith('--label='))?.slice('--label='.length) ?? (TEXT_ONLY ? 'text-only' : 'now');
 
@@ -147,7 +155,7 @@ const client: JudgeClient = {
 };
 const judge = anthropicJudge({
   client,
-  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post', examples: examples?.text ?? null, batch: BATCH,
+  meter, now: Date.now, model: setup.model, policy: LIVE_JUDGE, maxBatch: MAX_BATCH, question: 'post', examples: examples?.text ?? null, batch: BATCH,
 });
 
 /* The coined pictures, and each post's own picture embedded, for the boost. */
@@ -185,7 +193,7 @@ try {
     distinctAuthors: 1,
     distinctSources: 1,
   });
-  /* One post a call either way (maxBatch 1), as the live scorer asks; batched, all of them go
+  /* MAX_BATCH posts a call either way, as the live scorer asks; batched, all of them go
      in one judge() so they leave as one Message Batch. */
   const budget = () => ({ capUsd: meter.line().capUsd, spentUsd: meter.line().spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
   /* `--reuse=<file>` takes the first question's answers from an earlier run's results instead of
@@ -199,7 +207,7 @@ try {
   const toAsk = posts.filter((p) => !reused.has(`${p.group}|${p.id}`));
   const outcomes: JudgeOutcome[] = [];
   if (BATCH) outcomes.push(...(await judge.judge(toAsk.map(subjectOf), budget())).value);
-  else for (const p of toAsk) outcomes.push(...(await judge.judge([subjectOf(p)], budget())).value);
+  else for (const part of inCalls(toAsk)) outcomes.push(...(await judge.judge(part.map(subjectOf), budget())).value);
   const asked = new Map(toAsk.map((p, i) => [`${p.group}|${p.id}`, i]));
   for (const p of posts) {
     const old = reused.get(`${p.group}|${p.id}`);
@@ -214,11 +222,11 @@ try {
   }
   /* The second question, only for the posts that passed the first: which kind of post it is. */
   if (KIND) {
-    const kindJudge = anthropicJudge({ client, meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'kind', batch: BATCH });
+    const kindJudge = anthropicJudge({ client, meter, now: Date.now, model: setup.model, policy: LIVE_JUDGE, maxBatch: MAX_BATCH, question: 'kind', batch: BATCH });
     const passing = rows.map((r, i) => ({ r, i })).filter(({ r }) => r.passes);
     const kinds: JudgeOutcome[] = [];
     if (BATCH) kinds.push(...(await kindJudge.judge(passing.map(({ r }) => subjectOf(r)), budget())).value);
-    else for (const { r } of passing) kinds.push(...(await kindJudge.judge([subjectOf(r)], budget())).value);
+    else for (const part of inCalls(passing)) kinds.push(...(await kindJudge.judge(part.map(({ r }) => subjectOf(r)), budget())).value);
     passing.forEach(({ i }, k) => {
       const o = kinds[k];
       const kind = o?.kind === 'judged' ? (o.judgement.proposedName ?? 'OTHER') : 'OTHER';

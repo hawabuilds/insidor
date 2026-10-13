@@ -3,16 +3,23 @@
  * tools/feed-pass-rates.ts (by hand) and tools/retune.ts (twice a day), in one place so the gate a
  * re-tune is held to is the same gate the owner measures by hand.
  *
- * Each post is judged alone (one post a call, as the live scorer asks), with its text and its
- * picture, by the feed's post question with the given learned examples, and held to core's
- * `postScore`. The picture boost is applied as the projector applies it: the post's picture
+ * ★ ASKED EXACTLY AS LIVE ASKS (the owner's rule, 2026-10-13): the same number of posts per call
+ * (`maxBatch`, the live scorer's Policy.qualify.batchSize unless a caller measures another), the
+ * same picture size, the same answer budget per call, with the posts mixed across groups by a
+ * hash of their ids the way a live call mixes whatever the feed held — a test that sent one post
+ * a call measured a judge that answered ten at a time in production. Measured both ways on the
+ * same 218 posts, rules alone, 2026-10-13: meme gold 20/39 either way, live non-memes 7/89 at ten
+ * and 8/93 at one, and one a call cost 2.6 times as much ($0.50 against $0.19) — so ten, in both
+ * places. Each post is judged with
+ * its text and its picture, by the feed's post question with the given learned examples, held to
+ * core's `postScore`. The picture boost is applied as the projector applies it: the post's picture
  * against the coined pictures, a post never against its OWN coin's picture.
  *
  * ★ EVERY REPLY'S TOKENS ARE COUNTED, fresh input, cache writes and cache reads apart, so the
  * cost of a block of examples is measured, not guessed; prompt caching makes a long block mostly
  * cache reads after the first call.
  *
- * ★ `batch` SENDS EVERY POST AS ONE MESSAGE BATCH, at half price: the same request per post, so
+ * ★ `batch` SENDS EVERY CALL AS ONE MESSAGE BATCH, at half price: the same requests as without it, so
  * the same answers, but minutes of waiting. Right for a run nobody watches.
  *
  * What breaks if changed carelessly: the judge must be the live one's question and output budget
@@ -26,6 +33,8 @@ import { DEFAULT_POLICY } from '../../contracts/src/policy.ts';
 import { storyId } from '../../contracts/src/ids.ts';
 import type { JudgeOutcome } from '../../contracts/src/ports/judge.ts';
 import type { Meter } from '../../contracts/src/ports/meter.ts';
+import { createHash } from 'node:crypto';
+
 import { HELD_KINDS } from '../../services/runner/src/work/score-posts.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
 import { BATCH_PRICE_FRACTION, anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
@@ -51,6 +60,11 @@ export interface EvalRow<G extends string = string> extends EvalPost<G> {
   readonly name: string | null;
   readonly confidence: number | null;
   readonly lookedAt: string | null;
+  /** The first question passed (postScore with the picture boost), before the kind question. */
+  readonly firstPass: boolean;
+  /** The kind question's label, upper case: asked this run, or given in `knownKinds`; null when neither. */
+  readonly postKind: string | null;
+  /** Shown on the memes feed: the first question passed and the kind does not hold it back. */
   readonly passes: boolean;
 }
 
@@ -81,6 +95,12 @@ export interface GradeOptions {
    * live feed's second question measures a gate nobody runs.
    */
   readonly kind?: boolean;
+  /** Ask the kind question of these posts too, passing or not (a gold post's kind decides which gate it counts in). */
+  readonly kindAlso?: (p: EvalPost<string>) => boolean;
+  /** Kind labels already known, by post id (stored answers, or an earlier grading this run): not asked again. */
+  readonly knownKinds?: ReadonlyMap<string, string>;
+  /** Posts per judge call. Defaults to the live scorer's (Policy.qualify.batchSize). */
+  readonly maxBatch?: number;
   /** The coined pictures for the boost; null leaves the boost out. */
   readonly coined: readonly { readonly coinRef: string; readonly uri: string; readonly v: readonly number[] }[] | null;
   /**
@@ -120,7 +140,7 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
   const http = judgeClient({
     apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: setup.model, maxOutputTokens: P.judge.postBatchMaxOutputTokens, effort: price.effort,
     timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
-    maxFrameBytes: P.judge.maxFrameBytes, pictureSize: o.pictureSize ?? null, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    maxFrameBytes: P.judge.maxFrameBytes, pictureSize: o.pictureSize === undefined ? LIVE_PICTURE_SIZE : o.pictureSize, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   });
   /* Every reply's usage, summed, for the report. Read through, never changed. */
   const used: Usage = { calls: 0, pictures: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0, inputWithPicture: 0, inputWithout: 0 };
@@ -152,7 +172,14 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
       return answers;
     },
   };
-  const judge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post', examples: o.examples, batch: o.batch });
+  /* The live scorer's judge (services/runner/src/wiring.ts buildJudge): its batch size, and the
+     per-post answer budget as the whole call's budget. */
+  const maxBatch = o.maxBatch ?? P.qualify.batchSize;
+  const policy = { ...P.judge, maxOutputTokens: P.judge.postBatchMaxOutputTokens };
+  const judge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy, maxBatch, question: 'post', examples: o.examples, batch: o.batch });
+  /* Graded in a fixed mixed order (a hash of the id), answered back in the caller's order. */
+  const order = posts.map((p, i) => ({ i, h: createHash('sha256').update(p.id).digest('hex') })).sort((a, b) => (a.h < b.h ? -1 : a.h > b.h ? 1 : a.i - b.i)).map((x) => x.i);
+  const chunks = <T,>(xs: readonly T[]): T[][] => Array.from({ length: Math.ceil(xs.length / maxBatch) }, (_, k) => xs.slice(k * maxBatch, (k + 1) * maxBatch));
 
   const subjectOf = (p: EvalPost<G>) => ({
     storyId: storyId(`rate-${p.id.replaceAll(':', '-')}`),
@@ -161,8 +188,8 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
     distinctAuthors: 1,
     distinctSources: 1,
   });
-  /* One post a call either way (maxBatch 1), as the live scorer asks; batched, all of them go in
-     one judge() so they leave as one Message Batch. */
+  /* `maxBatch` posts a call either way, as the live scorer asks; batched, all of them go in one
+     judge() so they leave as one Message Batch of such calls. */
   const budget = () => ({ capUsd: o.meter.line().capUsd, spentUsd: o.meter.line().spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
   const outcomes: JudgeOutcome[] = [];
   /* Batched only when the whole batch's pessimistic estimate fits what is left of the line: a
@@ -173,9 +200,9 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
   const batched = o.batch && whole.usd * BATCH_PRICE_FRACTION <= remaining;
   /* A test the line cannot cover is not started: a run that dribbles one call at a time as the
      ledger frees a cent grades a handful of posts in an hour and says nothing. */
-  /* The second question is asked only of the posts the first passes; half again over the first
-     question's estimate covers it with room. */
-  const kindShare = o.kind === false ? 1 : 1.5;
+  /* The second question is asked only of the posts the first passes (half again over the first
+     question's estimate covers it with room) — or of every post `kindAlso` names (twice). */
+  const kindShare = o.kind === false ? 1 : o.kindAlso === undefined ? 1.5 : 2;
   if (o.mustFit === true && (batched ? whole.usd * BATCH_PRICE_FRACTION : whole.usd) * kindShare > remaining) {
     throw new LineTooShort(remaining, whole.usd * (o.batch ? BATCH_PRICE_FRACTION : 1) * kindShare);
   }
@@ -203,24 +230,47 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
     return others.length === 0 ? null : Math.max(...others.map((c) => c.v.reduce((s, x, i) => s + x * (v[i] ?? 0), 0)));
   };
 
-  if (batched) outcomes.push(...(await judge.judge(posts.map(subjectOf), budget())).value);
-  else for (const p of posts) outcomes.push(...(await judge.judge([subjectOf(p)], budget())).value);
+  const mixed = order.map((i) => posts[i]!);
+  if (batched) outcomes.push(...(await judge.judge(mixed.map(subjectOf), budget())).value);
+  else for (const part of chunks(mixed)) outcomes.push(...(await judge.judge(part.map(subjectOf), budget())).value);
+  const outcomeOf = new Map(order.map((i, k) => [i, outcomes[k]]));
+  /* ★ ASKED AGAIN ONCE, AS LIVE ASKS AGAIN NEXT PASS. A call whose answer is cut off at the output
+     budget comes back unanswered whole; the live scorer leaves those posts unjudged and asks them
+     on its next pass. Measured 2026-10-13 at ten a call: 14 of 218 posts came back unanswered the
+     first time. Without this the test would grade an outage the feed does not have, and a re-tune
+     would never apply (an unanswered post blocks it). */
+  const again = order.filter((i) => outcomeOf.get(i)?.kind !== 'judged');
+  if (again.length > 0) {
+    const retried: JudgeOutcome[] = [];
+    if (batched) retried.push(...(await judge.judge(again.map((i) => subjectOf(posts[i]!)), budget())).value);
+    else for (const part of chunks(again)) retried.push(...(await judge.judge(part.map((i) => subjectOf(posts[i]!)), budget())).value);
+    again.forEach((i, k) => {
+      if (retried[k]?.kind === 'judged') outcomeOf.set(i, retried[k]);
+    });
+  }
   const rows = posts.map((p, i): EvalRow<G> => {
-    const out = outcomes[i];
+    const out = outcomeOf.get(i);
     const j = out?.kind === 'judged' ? out.judgement : null;
-    return { ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, passes: j !== null && postScore(j, P, similarityOf(p)) === 'passes' };
+    const firstPass = j !== null && postScore(j, P, similarityOf(p)) === 'passes';
+    return { ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, firstPass, postKind: o.knownKinds?.get(p.id) ?? null, passes: firstPass };
   });
   if (o.kind !== false) {
-    const kindJudge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'kind', batch: batched });
-    const passing = rows.map((r, i) => ({ r, i })).filter(({ r }) => r.passes);
+    const kindJudge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy, maxBatch, question: 'kind', batch: batched });
+    const asked = order.filter((i) => {
+      const r = rows[i]!;
+      return r.postKind === null && r.coinable !== null && (r.firstPass || o.kindAlso?.(r) === true);
+    });
     const kinds: JudgeOutcome[] = [];
-    if (batched) kinds.push(...(await kindJudge.judge(passing.map(({ r }) => subjectOf(r)), budget())).value);
-    else for (const { r } of passing) kinds.push(...(await kindJudge.judge([subjectOf(r)], budget())).value);
-    passing.forEach(({ i }, k) => {
+    if (batched) kinds.push(...(await kindJudge.judge(asked.map((i) => subjectOf(rows[i]!)), budget())).value);
+    else for (const part of chunks(asked)) kinds.push(...(await kindJudge.judge(part.map((i) => subjectOf(rows[i]!)), budget())).value);
+    asked.forEach((i, k) => {
       const out = kinds[k];
       const kind = out?.kind === 'judged' ? (out.judgement.proposedName ?? '').trim().toUpperCase() : '';
-      const row = rows[i];
-      if (row !== undefined && HELD_KINDS.has(kind)) rows[i] = { ...row, passes: false };
+      if (kind !== '') rows[i] = { ...rows[i]!, postKind: kind };
+    });
+    /* Held back as the live feed holds back: the runner's held kinds (core's list). */
+    rows.forEach((r, i) => {
+      if (r.postKind !== null && HELD_KINDS.has(r.postKind)) rows[i] = { ...r, passes: false };
     });
   }
   return { rows, used, batched };
@@ -231,6 +281,15 @@ export const rateOf = <G extends string>(rows: readonly EvalRow<G>[], g: G): { r
   const of = rows.filter((r) => r.group === g);
   return { passed: of.filter((r) => r.passes).length, tested: of.length };
 };
+
+/** The owner's approved recall additions (eval/src/gold/approved-auto-gold.json): these count as hand gold. */
+export const APPROVED_AUTO_GOLD = new URL('../../eval/src/gold/approved-auto-gold.json', import.meta.url);
+export function approvedAutoGold(): ReadonlySet<string> {
+  return new Set((JSON.parse(readFileSync(APPROVED_AUTO_GOLD, 'utf8')) as { approved: string[] }).approved);
+}
+
+/** The live scorer's picture size (services/runner/src/wiring.ts buildJudge). */
+const LIVE_PICTURE_SIZE = 'small' as const;
 
 /** Each gold origin post's picture as the feed shows it, re-read by feed-pass-rates --refresh-pictures. */
 export const GOLD_PICTURES = new URL('../../eval/src/feed/gold-origin-pictures.json', import.meta.url);
