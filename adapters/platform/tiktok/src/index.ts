@@ -12,10 +12,11 @@
  * addressed — and a refusal inlined in an adapter method cannot be tested without
  * standing up a meter and a clock. What is left below is assembly and metering.
  *
- * ★ EVERY PAID CALL GOES THROUGH `metered`, AND THE UNIT IS THE RUN. A run costs the
- * same whether it returns a thousand items or none, so `units: 1` per call is the
- * measured truth here, and counting returned items would price a per-run vendor with
- * per-item arithmetic. The Budget is handed in and never read from a global: the
+ * ★ EVERY PAID CALL GOES THROUGH `metered`, AND THE UNIT IS THE RUN. The vendor charges a
+ * start fee plus a fee per post returned, and the posts in a run are capped, so each run
+ * is recorded as one unit quoted at its full bill (`PRICES`) — over-recorded when it comes
+ * back short, never under. Counting returned items instead would need the count before
+ * the ledger is written, which is after the money is spent. The Budget is handed in and never read from a global: the
  * adapter reports, the meter refuses, and what to give up when money runs short is a
  * product judgement that lives in core.
  */
@@ -86,9 +87,9 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
      * What a call would cost, without making it.
      *
      * ★ THE UNIT IS THE RUN, AND THAT MAKES THIS SOURCE'S ESTIMATE THE MOST DIFFERENT OF
-     * THE THREE. A discovery run costs the same whether it returns nothing or a
-     * thousand posts, so the estimate does not depend on `query.limit` at all — it is one
-     * run, flat. Quoting it per item would price a per-run vendor with per-item
+     * THE THREE. A discovery run is quoted at its full capped bill whatever `query.limit`
+     * says — `discover.ts` never asks for more than the cap — so the estimate is one run,
+     * flat. Quoting it per item would price a per-run vendor with per-item
      * arithmetic, which is the exact leak `BillingMismatch` exists to make impossible
      * on the live path, and a dry run is where it would otherwise sneak back in.
      *

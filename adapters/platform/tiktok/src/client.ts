@@ -140,8 +140,11 @@ export interface RunResult {
 }
 
 export interface TikTokClient {
-  /** Hashtag / feed / account actor. No keyword search exists on this source. */
+  /** Keyword search / hashtag / account actor. The input is rendered by `discover.ts`. */
   runDiscovery(input: {
+    readonly searchQueries?: readonly string[];
+    readonly searchSection?: string;
+    readonly videoSearchSorting?: string;
     readonly hashtags?: readonly string[];
     readonly profiles?: readonly string[];
     readonly resultsPerPage?: number;
@@ -595,8 +598,8 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
   /**
    * Create the run, wait for it to reach a terminal state, then read its dataset.
    *
-   * The only function in this file that costs money, and it costs the same whether it
-   * returns a thousand items or none.
+   * The only function in this file that costs money: a start fee whatever it returns, plus
+   * a fee per post, which is why the caller caps the posts a run may ask for.
    */
   const runActor = async (actorId: string, input: unknown): Promise<RunResult> => {
     let run = decodeRun(
