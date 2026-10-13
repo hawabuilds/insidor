@@ -1473,6 +1473,14 @@ export interface RisingPolicy {
   readonly refillPerPass: number;
   readonly refillPerDay: number;
   readonly refillMaxTries: number;
+  /**
+   * ★ OLDER FEED POSTS' AUTHORS, FILLED IN (the owner, 2026-10-13: "for posts already in FYP and
+   * Feed that don't have one, look up the authors"). The same re-read, under the same three caps,
+   * also asks for a post whose author has no picture, name or follower count — one post per author
+   * — but only on a source whose re-read quotes at most this many dollars a post. A source billed
+   * by the run, whose quote is a full batch, is never re-read only for a picture.
+   */
+  readonly refillAuthorMaxUsdPerPost: number;
 }
 
 export interface IngestPolicy {
@@ -2943,6 +2951,9 @@ const POLICY_V1: Policy = {
     refillPerPass: 100,
     refillPerDay: 1_000,
     refillMaxTries: 3,
+    /* The text source's read by id quotes $0.00015 a post; the short-video source's quotes a full
+       run (over $0.15), so only the first is asked for authors. */
+    refillAuthorMaxUsdPerPost: 0.0005,
   },
 
   rank: {

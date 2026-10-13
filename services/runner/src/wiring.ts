@@ -150,7 +150,7 @@ export interface Runtime {
   readonly scorePosts: () => Promise<ScoringResult>;
   /** Crypto talk under For You posts, read on the posts line and stored as facts. See work/crypto-attention.ts. */
   readonly cryptoAttention: () => Promise<AttentionResult>;
-  /** Older feed posts' video files read again, every half minute. See work/post-refill.ts. */
+  /** Older feed posts' video files and authors read again, every half minute. See work/post-refill.ts. */
   readonly refillPosts: () => Promise<RefillResult>;
   /** Embed the first image of each new post once, for GROUP's image evidence. */
   readonly embedImages: () => Promise<unknown>;
@@ -524,7 +524,7 @@ export async function withRuntime<T>(
                         holds refuses to run, and the dry run never asks it to.
            configured   the real client. In SPEND=dry it is still never called. */
       const judge = buildJudge(cfg, meter, policy, log);
-      /* The video fill-in's tries and day count, kept across passes for this process (work/post-refill.ts). */
+      /* The video and author fill-in's tries and day count, kept across passes for this process (work/post-refill.ts). */
       const refills = refillMemory();
       /* The per-post score's judge: the same model and prompt, with a smaller answer budget
          so ten short answers are not reserved at the cost of two long ones. */
@@ -894,6 +894,7 @@ export async function withRuntime<T>(
               {
                 platforms,
                 refill: new PgPostRefillRepo(db),
+                authors: repos.authors,
                 meter,
                 mode: cfg.spend.kind,
                 policy,

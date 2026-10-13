@@ -1,5 +1,5 @@
 /**
- * THE POST-REFILL LOOP — older feed posts' video files read again, every half minute.
+ * THE POST-REFILL LOOP — older feed posts' video files and authors read again, every half minute.
  *
  * Its own supervised loop rather than a step after discovery, because a person may be looking at
  * the post: the post sheet opens only posts a feed holds, every one of those is in this step's
@@ -27,7 +27,7 @@ export function refillLoop(work: () => Promise<RefillResult>): Loop {
     offsetMs: OFFSET_MS,
     async run(): Promise<LoopCounts> {
       const r = await work();
-      return { in: r.due, out: r.filled, failed: 0, firstError: null };
+      return { in: r.due, out: r.filled + r.authors, failed: 0, firstError: null };
     },
   };
 }
