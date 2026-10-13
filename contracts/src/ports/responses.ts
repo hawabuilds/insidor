@@ -27,6 +27,8 @@ export interface ResponsePost {
   /** When it was posted, from the source. Null when unreadable. */
   readonly at: Millis | null;
   readonly text: string;
+  /** The account's id on the source: how a response by the post's own author is told apart. Null when absent. */
+  readonly authorId: string | null;
   /** The account's handle, name and profile text: what "a crypto account" is read from. */
   readonly authorHandle: string | null;
   readonly authorName: string | null;

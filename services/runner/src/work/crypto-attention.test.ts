@@ -24,7 +24,7 @@ const meter = {
   line: () => ({ capUsd: 10, spentUsd: 0, stopAtUsd: 10, remainingUsd: 10, unrecordedUsd: 0 }),
 } as unknown as Meter;
 
-const due = (id: string, source = 'x'): DueAttention => ({ itemId: `${source}:${id}`, source, sourceItemId: id, postedAt: (NOW - 3_600_000) as Millis, reads: 0, judgedYes: false });
+const due = (id: string, source = 'x'): DueAttention => ({ itemId: `${source}:${id}`, source, sourceItemId: id, postedAt: (NOW - 3_600_000) as Millis, reads: 0, judgedYes: false, text: 'a dog', authorId: 'au', authorHandle: 'poster' });
 
 function deps(over: { readsToday?: number; fail?: boolean; mode?: 'dry' | 'live' } = {}) {
   const recorded: { id: string; row: AttentionRow }[] = [];
@@ -35,7 +35,7 @@ function deps(over: { readsToday?: number; fail?: boolean; mode?: 'dry' | 'live'
       asked.push(id);
       if (over.fail === true) throw new Error('vendor down');
       return {
-        value: { replies: [{ sourceItemId: 'r', at: NOW, text: '$DOG', authorHandle: 'a', authorName: null, authorBio: null }], reproductions: [], repliesCut: false, reproductionsCut: false },
+        value: { replies: [{ sourceItemId: 'r', at: NOW, text: '$DOG', authorId: 'other', authorHandle: 'a', authorName: null, authorBio: null }], reproductions: [], repliesCut: false, reproductionsCut: false },
         spend: { vendor: 'v', endpoint: 'responses', unit: 'per-item-returned', units: 1, usd: 0.00015, at: NOW },
       };
     },
@@ -73,6 +73,8 @@ test('★ only the post over the bar, on a source that reads responses, is read 
   assert.equal(out.withSignal, 1);
   assert.deepEqual(recorded[0]?.row.cashtags, { DOG: 1 });
   assert.equal(recorded[0]?.row.costUsd, 0.00015);
+  assert.deepEqual(recorded[0]?.row.others?.cashtags, { DOG: 1 }, "another account's cashtag is the signal");
+  assert.equal(recorded[0]?.row.postShill, false);
 });
 
 test('the day\'s cap, counted from the table, stops the step', async () => {

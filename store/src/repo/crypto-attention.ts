@@ -6,6 +6,15 @@
  * repo answers "what may show", and a method there would invite a reader of feed posts to start
  * filtering on these counts before the owner has chosen to.
  *
+ * ★ OWN AND OTHERS, INSIDE THE `cashtags` JSONB (no migration, 2026-10-13). Ticker keys are capitals
+ * and digits; keys starting `_` are not tickers and carry the split the owner asked for:
+ * `_others` and `_own` ({cashtags, addresses, ca}: other accounts' coin talk, and the post author's
+ * own replies'), `_postShill` (the post's own text names a coin; null when not read), `_authorKnown`,
+ * `_othersFirstAt`, `_cutAt` (responses only before this instant; absent for a live read) and
+ * `_readFor` ('live', or 'test' for the one-off re-read of the judge's test posts, which is kept out
+ * of the live step's queue and its day's cap). A row without `_others` predates the split: its
+ * columns count every response, the author's too. The columns always count every response.
+ *
  * What breaks if changed carelessly: `due` hands out a post for its first read, and for its second
  * once `rereadAfterMs` has passed since the first — never a third. The day's cap is counted from
  * these rows (`readsSince`), so a read must be recorded the moment it is made or a restart pays
@@ -27,6 +36,10 @@ export interface DueAttention {
   readonly reads: number;
   /** The post's newest answer to the post question said yes. */
   readonly judgedYes: boolean;
+  /** The post's own words and its author: what tells a shill and the author's own replies apart. */
+  readonly text: string | null;
+  readonly authorId: string | null;
+  readonly authorHandle: string | null;
 }
 
 /** One read's facts, in the table's terms. */
@@ -43,6 +56,39 @@ export interface AttentionRow {
   readonly cryptoRepliers: number;
   readonly firstSignalAt: Millis | null;
   readonly costUsd: number;
+  /** The split (see the header). Absent on a caller that predates it. */
+  readonly others?: CoinTalkRow;
+  readonly own?: CoinTalkRow;
+  readonly authorKnown?: boolean;
+  readonly postShill?: boolean | null;
+  readonly othersFirstAt?: Millis | null;
+  readonly cutAt?: Millis | null;
+  readonly readFor?: 'live' | 'test';
+}
+
+export interface CoinTalkRow {
+  readonly cashtags: Readonly<Record<string, number>>;
+  readonly addresses: number;
+  readonly ca: number;
+}
+
+/** Only the live step's own reads count toward its queue and its day. */
+const LIVE_READ = `coalesce(cashtags->>'_readFor', 'live') = 'live'`;
+
+/** The `cashtags` jsonb: the tickers, then the split under `_` keys. */
+function cashtagsJson(row: AttentionRow): string {
+  const split = row.others === undefined
+    ? {}
+    : {
+        _others: row.others,
+        _own: row.own ?? null,
+        _authorKnown: row.authorKnown ?? false,
+        _postShill: row.postShill ?? null,
+        _othersFirstAt: row.othersFirstAt == null ? null : new Date(row.othersFirstAt).toISOString(),
+        ...(row.cutAt == null ? {} : { _cutAt: new Date(row.cutAt).toISOString() }),
+        _readFor: row.readFor ?? 'live',
+      };
+  return JSON.stringify({ ...row.cashtags, ...split });
 }
 
 export class PgCryptoAttentionRepo {
@@ -54,7 +100,7 @@ export class PgCryptoAttentionRepo {
 
   /** Reads recorded since `at` (the day's cap). */
   async readsSince(at: Millis): Promise<number> {
-    const rows = await this.#db.query<{ n: string }>('select count(*)::text as n from internal.crypto_attention where read_at >= $1', [toTimestamp(at)]);
+    const rows = await this.#db.query<{ n: string }>(`select count(*)::text as n from internal.crypto_attention where read_at >= $1 and ${LIVE_READ}`, [toTimestamp(at)]);
     return Number(rows[0]?.n ?? 0);
   }
 
@@ -65,13 +111,14 @@ export class PgCryptoAttentionRepo {
    */
   async due(sources: readonly string[], since: Millis, minReach: number, rereadBefore: Millis | null, limit: number): Promise<readonly DueAttention[]> {
     if (limit <= 0 || sources.length === 0) return [];
-    const rows = await this.#db.query<{ item_id: string; source: string; source_item_id: string; posted_at: Date | null; reads: number; judged_yes: boolean }>(
-      `select i.item_id, i.source, i.source_item_id, i.posted_at, c.reads,
+    const rows = await this.#db.query<{ item_id: string; source: string; source_item_id: string; posted_at: Date | null; reads: number; judged_yes: boolean; body: string | null; handle: string | null; source_author_id: string | null }>(
+      `select i.item_id, i.source, i.source_item_id, i.posted_at, c.reads, i.body, au.handle, au.source_author_id,
               coalesce((select j.coinable from internal.post_judgement j where j.item_id = i.item_id
                          order by j.judged_at desc, j.id desc limit 1), false) as judged_yes
          from public.item i
+         left join public.author au on au.author_key = i.author_key
          cross join lateral (select count(*)::int as reads, max(read_at) as last_read
-                               from internal.crypto_attention a where a.item_id = i.item_id) c
+                               from internal.crypto_attention a where a.item_id = i.item_id and ${LIVE_READ.replaceAll('cashtags', 'a.cashtags')}) c
         where i.origin = 'observed'
           and i.source = any($1::text[])
           and i.first_seen_at >= $2
@@ -89,6 +136,9 @@ export class PgCryptoAttentionRepo {
       postedAt: toMillis(r.posted_at),
       reads: Number(r.reads),
       judgedYes: r.judged_yes,
+      text: r.body,
+      authorId: r.source_author_id,
+      authorHandle: r.handle,
     }));
   }
 
@@ -100,7 +150,7 @@ export class PgCryptoAttentionRepo {
        values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14)
        on conflict (item_id, read_at) do nothing`,
       [
-        itemId, toTimestamp(readAt), row.repliesRead, row.quotesRead, row.repliesCut, row.quotesCut, JSON.stringify(row.cashtags),
+        itemId, toTimestamp(readAt), row.repliesRead, row.quotesRead, row.repliesCut, row.quotesCut, cashtagsJson(row),
         row.coinWords, row.caMentions, row.contractAddresses, row.cryptoQuoters, row.cryptoRepliers, toTimestamp(row.firstSignalAt), row.costUsd,
       ],
     );

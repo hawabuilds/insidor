@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { ResponsePost } from '@insidor/contracts/ports/responses.ts';
 
-import { addressesIn, attentionFacts, cashtagsIn, hasCryptoSignal, isCryptoAccount, saysCa } from './attention.ts';
+import { addressesIn, attentionFacts, cashtagsIn, hasCryptoSignal, isCryptoAccount, isShill, isShillText, othersSignal, saysCa } from './attention.ts';
 
 const P = DEFAULT_POLICY.attention;
 const ADDR = '6omoGgUH5zDgd5Xwf3K7u56qn1JgMnV9njaNCAejpump';
@@ -18,6 +18,7 @@ const r = (id: string, text: string, at: number | null, who: Partial<ResponsePos
   sourceItemId: id,
   at: at as ResponsePost['at'],
   text,
+  authorId: `id${id}`,
   authorHandle: `user${id}`,
   authorName: null,
   authorBio: null,
@@ -77,4 +78,36 @@ test('no responses: no signal, and no time', () => {
   const f = attentionFacts({ replies: [], reproductions: [], repliesCut: false, reproductionsCut: false }, P);
   assert.equal(hasCryptoSignal(f), false);
   assert.equal(f.firstSignalAt, null);
+});
+
+test('★ the author apart from others: only others are the signal; the author naming a coin is a shill', () => {
+  const read = {
+    replies: [r('1', `CA: ${ADDR}`, 10, { authorId: 'me', authorHandle: 'Poster' }), r('2', 'cute', 20), r('3', 'buy $CAT', 30)],
+    reproductions: [r('4', 'look', 5, { authorBio: 'crypto trader' })],
+    repliesCut: false,
+    reproductionsCut: false,
+  };
+  const f = attentionFacts(read, P, { text: 'my cat', authorId: 'me', authorHandle: '@poster' });
+  assert.deepEqual(f.own, { cashtags: {}, addresses: 1, ca: 1 });
+  assert.deepEqual(f.others, { cashtags: { CAT: 1 }, addresses: 0, ca: 0 });
+  assert.equal(f.postShill, false);
+  assert.equal(isShill(f), true, "the author's own CA");
+  assert.equal(othersSignal(f), true);
+  assert.equal(f.othersFirstAt, 30, 'the crypto quoter is not in the others signal');
+
+  const byHandle = attentionFacts(read, P, { text: 'gm $MYCOIN', authorId: null, authorHandle: 'user3' });
+  assert.equal(byHandle.postShill, true);
+  assert.equal(othersSignal(byHandle), true, 'matched by handle: the $CAT reply is the author\'s, the CA reply is another account\'s');
+  assert.deepEqual(byHandle.own.cashtags, { CAT: 1 });
+
+  const unknown = attentionFacts(read, P);
+  assert.equal(unknown.authorKnown, false);
+  assert.equal(unknown.postShill, null);
+  assert.equal(isShill(unknown), false);
+});
+
+test('a shill text: a cashtag, an address or a CA in the post itself', () => {
+  assert.equal(isShillText('$DOG is live', P), true);
+  assert.equal(isShillText(`ca ${ADDR}`, P), true);
+  assert.equal(isShillText('my dog in Los Angeles, CA', P), false);
 });

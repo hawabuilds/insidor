@@ -56,6 +56,7 @@ export function toResponse(raw: unknown): ResponsePost | null {
     sourceItemId: id,
     at: (dateToMillis(r.createdAt) ?? dateToMillis(r.created_at)) as Millis | null,
     text: str(r.text) ?? '',
+    authorId: str(author.id) ?? str(author.id_str),
     authorHandle: (str(author.userName) ?? str(author.screen_name))?.replace(/^@+/, '') ?? null,
     authorName: str(author.name),
     authorBio: str(rec(author.profile_bio).description) ?? str(author.description),
