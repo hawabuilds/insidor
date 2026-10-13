@@ -14,6 +14,9 @@ test('a brand is caught as a word, run together, or split over neighbouring word
   assert.equal(isBrand('SIX FLAGS GOLIATH'), true);
   assert.equal(isBrand('Coasters at Six Flags'), true);
   assert.equal(isBrand('Burger King Crown'), true);
+  assert.equal(isBrand('GTABUCK'), false); // run together with a non-brand word: the judge's rule, not this list
+  assert.equal(isBrand('GTA BUCK'), true);
+  assert.equal(isBrand('STREETFIGHTER'), true);
   assert.equal(isBrand('GOLIATH'), false);
   assert.equal(isBrand('COASTER FALL'), false);
 });

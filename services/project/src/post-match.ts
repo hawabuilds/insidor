@@ -68,7 +68,7 @@ const BRANDS: ReadonlySet<string> = new Set([
   'sanrio', 'ferrari', 'lamborghini', 'porsche', 'bmw', 'mercedes', 'toyota', 'chatgpt', 'openai', 'nvidia', 'facebook',
   'instagram', 'whatsapp', 'tiktok', 'youtube', 'twitter', 'snapchat', 'discord', 'twitch', 'reddit', 'spotify', 'uber',
   'airbnb', 'doordash', 'fedex', 'redbull', 'doritos', 'cheetos', 'skittles', 'oreo', 'nutella', 'shrek', 'minecraft',
-  'fortnite', 'roblox', 'sixflags', 'universalstudios', 'seaworld', 'legoland', 'wwe', 'nfl', 'nba', 'fifa', 'gopro',
+  'fortnite', 'roblox', 'gta', 'grandtheftauto', 'streetfighter', 'callofduty', 'sixflags', 'universalstudios', 'seaworld', 'legoland', 'wwe', 'nfl', 'nba', 'fifa', 'gopro',
 ]);
 
 const words = (s: string): string[] => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w !== '');
