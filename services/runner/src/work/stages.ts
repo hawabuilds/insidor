@@ -97,7 +97,7 @@ import { errorText, type Logger } from '../log.ts';
 import { NotImplemented } from '../not-implemented.ts';
 import { judgeStories, type JudgingDeps } from './judge.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
-import { worthRereading } from './track-gate.ts';
+import { staleUnpassed, worthRereading } from './track-gate.ts';
 import { pickPaidReads } from './paid-reads.ts';
 
 /** The source held to the short-video growth window (Policy.rising.shortVideoFastWindowMs), as score-posts.ts names it. */
@@ -472,13 +472,18 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
          only be pulled to be told it is finished, every thirty seconds. */
       /* And the new catch-all posts still young enough to clear a reach bar by growing, so the
          judge ever sees them — see `rising.watchMinReachPerMinute`. */
+      /* ★ FRESH RE-READS (`feed.fresh`, off by default): unjudged catch-all posts keep being re-read
+         until `fresh.rereadMaxAgeMs` while their views average `fresh.rereadMinReachPerMinute`, so
+         the speed bar (30 to 90 minutes) has readings to fire on. Off: the first half hour at
+         `watchMinReachPerMinute`, as before. */
+      const fresh = policy.feed.fresh;
       const onScreen = await repos.items.trackable(
         now - policy.track.maxTrackedHours * MS_PER_HOUR,
         limit * PULL_OVERSCAN,
         {
           now,
-          since: now - policy.rising.fypFastWindowMs,
-          minPerMinute: policy.rising.watchMinReachPerMinute,
+          since: now - (fresh.enabled ? Math.max(fresh.rereadMaxAgeMs, policy.rising.fypFastWindowMs) : policy.rising.fypFastWindowMs),
+          minPerMinute: fresh.enabled ? Math.min(fresh.rereadMinReachPerMinute, policy.rising.watchMinReachPerMinute) : policy.rising.watchMinReachPerMinute,
           judgedSince: now - policy.track.youngWindowMin * MS_PER_MINUTE,
           judgedMinReach: policy.rising.fypEarlyReach,
           /* ★ The short-video source's unjudged posts over its own growth window, at the rate its
@@ -490,7 +495,7 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
          hidden narrative's unjudged watch post. See work/track-gate.ts for what is kept and
          why: unjudged catch-all posts always are, because their reach decides their judging. */
       const facts = await repos.items.trackingFacts(onScreen.map((i) => i.itemId));
-      const worth = onScreen.filter((i) => worthRereading(i.itemId, facts, policy));
+      const worth = onScreen.filter((i) => worthRereading(i.itemId, facts, policy) && !staleUnpassed(i.itemId, i.postedAt, now, facts, policy));
       /* ★ A SOURCE THAT BILLS EVERY RE-READ AS A RUN is re-read in one run at most every
          `track.paidRunEveryMinutes`, of at most `track.paidReadMaxPosts` posts: its young posts
          growing fast on every run, the rest once their reading is `track.paidReadMinMinutes`
