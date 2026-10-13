@@ -12,10 +12,26 @@ describe('tickerFor', () => {
   });
   it('uses the first word of a long phrase, else its initials', () => {
     assert.equal(tickerFor('Toly The Claynosaur', BARS), 'TOLY');
-    assert.equal(tickerFor('A Big Old Dog Named Fred', BARS), 'ABODNF');
+    assert.equal(tickerFor('Al Bo Cy Dee Eli Flo', BARS), 'ABCDEF');
   });
   it('drops a name too short for a ticker', () => {
     assert.equal(tickerFor('Al', BARS), null);
+  });
+  it('never makes a ticker of a filler word', () => {
+    assert.equal(tickerFor('the Buck Me ad', BARS), 'BUCKMEAD');
+    assert.equal(tickerFor('The Bloodline', BARS), 'BLOODLINE');
+    assert.equal(tickerFor('the void', BARS), 'VOID');
+    assert.equal(tickerFor('A Big Old Dog Named Fred', BARS), 'BIG');
+    assert.equal(tickerFor('My Cat', BARS), 'CAT');
+    assert.equal(tickerFor('The', BARS), null);
+  });
+  it('shortens a long word by its vowels from the end, never by cutting its tail', () => {
+    assert.equal(tickerFor('ROLLERDEATH', BARS), 'ROLLERDETH');
+    assert.equal(tickerFor('ROLLCOASTER DEATH', BARS), 'ROLLCOASTR');
+    assert.equal(tickerFor('Hippopotamus', BARS), 'HIPPOPOTMS');
+  });
+  it('drops a word no shortening can fit rather than cutting it', () => {
+    assert.equal(tickerFor('Supercalifragilistic', BARS), null);
   });
 });
 
