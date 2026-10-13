@@ -1,0 +1,112 @@
+/* The owner's missed-posts sheet (MissedPosts.tsx): a paste box, then the list, in the app's tokens. */
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 72vh;
+  overflow-y: auto;
+}
+
+.intro,
+.note {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.box {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--input);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  resize: vertical;
+}
+
+.suggestion {
+  padding: 10px 12px;
+  border-radius: var(--r-card);
+  background: var(--brand-wash);
+  color: var(--text-1);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.suggestion p {
+  margin: 4px 0 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-card);
+  background: var(--card);
+}
+
+.rowHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.rowHead span {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.link {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.line a {
+  color: var(--brand);
+}
+
+.wait {
+  color: var(--text-2);
+}
+
+.missed {
+  color: var(--down);
+}
+
+.late {
+  color: var(--amber);
+}
+
+.ok {
+  color: var(--up);
+}
+
+.failed {
+  color: var(--text-3);
+}

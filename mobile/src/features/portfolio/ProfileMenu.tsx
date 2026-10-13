@@ -15,6 +15,8 @@
  *   notifications          kept: the alert settings (#/alerts/settings)
  *   leaderboard, profile   ours: the season's ranks, and your own profile
  *   learn the basics       kept, as How Insidor works (#/learn)
+ *   add missed posts       ours, the owner only: a sheet of its own (features/missed/MissedPosts.tsx),
+ *                          drawn outside the panel so closing the menu does not close it
  *   referrals, public page not ported: Insidor has neither
  *   sign out               kept, in red; it returns to the front door (shared/sign-in.ts)
  *
@@ -25,7 +27,9 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { hrefFor } from '../../shared/route.ts';
-import { BellIcon, CapIcon, CopyIcon, ExternalIcon, GearIcon, LockIcon, LogoutIcon, TrophyIcon, UserIcon, WalletIcon } from '../../shared/ui/icons.tsx';
+import { BellIcon, CapIcon, CopyIcon, ExternalIcon, GearIcon, LockIcon, LogoutIcon, PlusIcon, TrophyIcon, UserIcon, WalletIcon } from '../../shared/ui/icons.tsx';
+import { MissedPostsSheet } from '../missed/MissedPosts.tsx';
+import { useIsOwner } from '../owner/hooks.ts';
 import styles from './profile-menu.module.css';
 
 /** "86xCnP…2MMY": six and four, as Trador's wallet card shows it. */
@@ -47,6 +51,8 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profil
   leave: { readonly label: string; readonly run: () => void };
 }) {
   const [open, setOpen] = useState(false);
+  const [missed, setMissed] = useState(false);
+  const owner = useIsOwner();
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -134,6 +140,19 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profil
           <a className={styles['row']} role="menuitem" href={hrefFor({ screen: 'learn' })} onClick={() => setOpen(false)}>
             <CapIcon size={16} /> How Insidor works
           </a>
+          {owner ? (
+            <button
+              type="button"
+              role="menuitem"
+              className={styles['row']}
+              onClick={() => {
+                setOpen(false);
+                setMissed(true);
+              }}
+            >
+              <PlusIcon size={16} /> Add missed posts
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"
@@ -147,6 +166,7 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profil
           </button>
         </div>
       ) : null}
+      {missed ? <MissedPostsSheet onClose={() => setMissed(false)} /> : null}
     </div>
   );
 }
