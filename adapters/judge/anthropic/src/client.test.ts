@@ -14,7 +14,9 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Budget } from '@insidor/contracts/ports/meter.ts';
 import type { JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import { inMemoryMeter } from '@insidor/meter';
-import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
+import { BudgetRefused, OutOfCredit, VendorUnavailable, onOutOfCredit } from '@insidor/vendor-kit';
+
+import { billingReason } from './client.ts';
 
 import {
   JudgeNotConfigured,
@@ -189,6 +191,42 @@ test('retries are bounded: past maxAttempts it is unavailable, and a 400 is neve
   const bad = fakeFetch([() => json(400, { error: 'bad request' })]);
   await assert.rejects(httpClient(config(bad.fetch)).judge(REQUEST), VendorUnavailable);
   assert.equal(bad.calls.length, 1);
+});
+
+/* The 400 the vendor sent on the day the account ran dry, in its recorded shape (message cut). */
+const OUT_OF_CREDIT = {
+  type: 'error',
+  error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.' },
+};
+
+test('★ an empty account is a billing refusal, told to the listener once, never retried, with no body in the message', async () => {
+  const heard: string[] = [];
+  const off = onOutOfCredit({ refused: (e) => heard.push(`${e.vendor}: ${e.reason}`) });
+  try {
+    const dry = fakeFetch([() => json(400, OUT_OF_CREDIT)]);
+    const err = await httpClient(config(dry.fetch)).judge(REQUEST).then(
+      () => assert.fail('should refuse'),
+      (e: unknown) => e,
+    );
+    assert.ok(err instanceof OutOfCredit && err instanceof VendorUnavailable);
+    assert.equal(err.reason, 'credit balance too low');
+    assert.equal(err.status, 400);
+    assert.doesNotMatch(err.message, /Plans & Billing|sk-test/);
+    assert.equal(dry.calls.length, 1);
+    assert.deepEqual(heard, ['anthropic: credit balance too low']);
+  } finally {
+    off();
+  }
+});
+
+test('billing is read from the error type and message, never from a 400 alone', () => {
+  assert.equal(billingReason(400, JSON.stringify(OUT_OF_CREDIT)), 'credit balance too low');
+  assert.equal(billingReason(402, JSON.stringify({ type: 'error', error: { type: 'billing_error', message: 'x' } })), 'billing refused');
+  assert.equal(billingReason(403, JSON.stringify({ error: { type: 'permission_error', message: 'Your organization has a billing issue' } })), 'billing refused');
+  assert.equal(billingReason(402, 'not json'), 'payment required');
+  assert.equal(billingReason(400, JSON.stringify({ error: { type: 'invalid_request_error', message: 'max_tokens: field required' } })), null);
+  assert.equal(billingReason(429, JSON.stringify({ error: { type: 'rate_limit_error', message: 'billing period rate' } })), null);
+  assert.equal(billingReason(500, JSON.stringify(OUT_OF_CREDIT)), null);
 });
 
 test('a timeout is a transport failure, retried and then unavailable', async () => {

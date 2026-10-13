@@ -15,7 +15,9 @@
  * (about thirty a minute). Raising this one without lowering the client's runs both into 429s.
  */
 
-import { num, rec, VendorUnavailable } from '@insidor/vendor-kit';
+import { num, outOfCredit, rec, VendorUnavailable } from '@insidor/vendor-kit';
+
+import { billingReason } from './billing.ts';
 
 /** Holder reads a minute, beside the market client's own; together under the free limit. */
 export const HOLDER_CALLS_PER_MINUTE = 4;
@@ -58,7 +60,11 @@ export function geckoterminalHolders(config: { readonly baseUrl: string; readonl
         throw new VendorUnavailable('geckoterminal', '/tokens/{mint}/info', `request failed: ${e instanceof Error ? e.message : 'unknown'}`);
       }
       if (!response.ok) {
+        /* Told to the owner even when a kept count covers this read. */
+        const billing = billingReason(response.status, await response.text().catch(() => ''));
+        const refused = billing === null ? null : outOfCredit('geckoterminal', '/tokens/{mint}/info', billing, response.status);
         if (hit !== undefined) return hit.count;
+        if (refused !== null) throw refused;
         throw new VendorUnavailable('geckoterminal', '/tokens/{mint}/info', `responded ${response.status}`, response.status);
       }
       const count = readHolders(await response.json());

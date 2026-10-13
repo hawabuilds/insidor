@@ -42,7 +42,7 @@
  * payload is decoded, on every response, and it raises unavailability.
  */
 
-import { arr, rec, str, VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
+import { arr, outOfCredit, rec, str, vendorAnswered, VendorShapeError, VendorUnavailable } from '@insidor/vendor-kit';
 /* The transport half of the kit, imported by its own path rather than through the
    barrel. Two vendors need these predicates and neither may own a private copy —
    `Number('')` being 0 is a bug that was paid for once already. */
@@ -174,6 +174,20 @@ export interface XClientConfig {
  * number. See `onQuota` above for why reading undocumented headers is safe when
  * absence is a first-class answer and nothing paces on the result.
  */
+/**
+ * ★ A REFUSAL FOR BILLING, as a short reason we wrote, or null. 402 is "payment required" on
+ * its face; otherwise a 4xx, or the vendor's 200 error envelope, whose text speaks of credits, a
+ * balance or a recharge. A 401 is a wrong key, not an empty one, and a 429 is pacing.
+ */
+export function billingReason(status: number, text: string): string | null {
+  if (status === 401 || status === 429 || status >= 500) return null;
+  if (status === 402) return 'payment required';
+  if (status >= 300 && status < 400) return null;
+  return /insufficient (credit|balance|fund)|credits? (are |is )?(exhausted|used up|depleted|run out)|out of credits?|(low|no|zero|negative) (credit|balance)|balance (is )?(too low|insufficient|exhausted)|recharge|top ?up/i.test(text.slice(0, 2000))
+    ? 'credits used up'
+    : null;
+}
+
 const QUOTA_HEADERS = {
   used: 'x-ratelimit-used',
   remaining: 'x-ratelimit-remaining',
@@ -406,6 +420,12 @@ export function httpClient(config: XClientConfig): XClient {
       );
     }
 
+    /* ★ AN EMPTY BALANCE IS ITS OWN ERROR (`OutOfCredit`, still an outage to every caller):
+       402 always, and any other refusal whose text talks about credits or a balance. The text is
+       only matched against those phrases, never quoted. */
+    const billing = billingReason(response.status, response.text);
+    if (billing !== null) throw outOfCredit(VENDOR, endpoint, billing, response.status);
+
     if (response.status === 402 || response.status === 403) {
       /* ★ AN OUTAGE, NOT AN EMPTY RESULT, AND THE BODY IS NEVER PARSED FOR CONTENT.
          On a metered reseller this is the shape a lapsed subscription or an
@@ -477,6 +497,8 @@ export function httpClient(config: XClientConfig): XClient {
        status is recorded as 200 rather than invented. */
     const envelope = rec(body);
     if (str(envelope.status) === 'error') {
+      const enveloped = billingReason(response.status, str(envelope.message) ?? '');
+      if (enveloped !== null) throw outOfCredit(VENDOR, endpoint, enveloped, response.status);
       throw new VendorUnavailable(
         VENDOR,
         endpoint,
@@ -486,6 +508,7 @@ export function httpClient(config: XClientConfig): XClient {
       );
     }
 
+    vendorAnswered(VENDOR);
     return body;
   };
 
