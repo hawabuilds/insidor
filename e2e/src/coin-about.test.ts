@@ -4,7 +4,8 @@
  * What this holds: the app role's view of a coin's launch links (public.coin_link) shows only
  * read documents; GET /coin/:id/about merges the market's links with the launch ones and lists
  * the feed posts naming the coin with their evidence and narrative; and the logo mirror finds
- * the coins on screen, records what it stored, and does not ask again about a stored one.
+ * the coins on screen, records what it stored, does not ask again about a stored one, and records
+ * why for a coin left as a letter (0071).
  */
 
 import { strict as assert } from 'node:assert';
@@ -67,13 +68,48 @@ test('a coin with no read metadata has no launch links; one we do not hold is a 
   assert.equal((await handle('GET', '/coin/solana%3AGone111111111111111111111111111111111pump/about', read())).status, 404);
 });
 
-test('★ the mirror finds the coin on screen, prefers the launch picture through our gateway, and stores it once', async () => {
+test('★ the mirror finds the coin on screen, prefers the picture its metadata names, and stores it once', async () => {
   const due = await dueCoins(db, NOW);
-  assert.deepEqual(due.map((c) => c.address), [A]);
-  assert.equal(due[0]?.metadataImage, 'https://gw.example/ipfs/cid');
+  assert.deepEqual(due.shown.map((c) => c.address), [A]);
+  assert.equal(due.shown[0]?.metadataImage, 'https://gw.example/ipfs/cid');
   const copied: string[] = [];
-  const r = await mirrorPass({ db, nowMs: NOW, marketImages: async () => new Map(), copy: async (_a, url) => void copied.push(url), log: () => {} });
-  assert.deepEqual(r, { stored: 1, none: 0, failed: 0 });
-  assert.deepEqual(copied, ['https://gw.example/ipfs/cid']);
-  assert.deepEqual(await dueCoins(db, NOW), []);
+  const r = await mirrorPass({
+    db,
+    nowMs: NOW,
+    elapsedMs: () => 0,
+    metadataPicture: async () => null,
+    venuePicture: async () => null,
+    marketImages: async () => new Map(),
+    pictureUrls: (link) => [link],
+    copy: async (_a, url) => void copied.push(url),
+    log: () => {},
+  });
+  assert.equal(r.stored, 1);
+  assert.deepEqual(due.backfill.map((c) => c.address), [B]);
+  assert.equal(r.bySource.launch, 1);
+  assert.equal(copied[0], 'https://gw.example/ipfs/cid');
+  const after = await dueCoins(db, NOW);
+  assert.deepEqual([...after.shown, ...after.backfill], []);
+});
+
+test('★ a coin no source has a picture for is recorded with why, and counted as a letter', async () => {
+  await db.query(`delete from internal.coin_logo where address = $1`, [B]);
+  await db.query(`insert into public.same_name_coin (subject_kind, subject_id, address) values ('post', 'x:1', $1)`, [B]);
+  const logged: string[] = [];
+  const r = await mirrorPass({
+    db,
+    nowMs: NOW,
+    elapsedMs: () => 0,
+    metadataPicture: async () => null,
+    venuePicture: async () => null,
+    marketImages: async () => new Map(),
+    pictureUrls: () => [],
+    copy: async () => {},
+    log: (m) => void logged.push(m),
+  });
+  assert.equal(r.letters, 1);
+  assert.ok(logged.includes('coin logo is a letter'));
+  const rows = await db.query<{ outcome: string; why: string | null }>(`select outcome, why from internal.coin_logo where address = $1`, [B]);
+  assert.equal(rows[0]?.outcome, 'none');
+  assert.match(rows[0]?.why ?? '', /venue: no picture/);
 });

@@ -115,6 +115,19 @@ export function readDeclared(raw: unknown): CoinMetadata {
 }
 
 export async function fetchDeclaredMetadata(uri: string | null, config: DeclaredFetchConfig): Promise<DeclaredRead> {
+  const doc = await fetchDeclaredDocument(uri, config);
+  return doc.kind === 'refused' ? doc : { kind: 'read', metadata: readDeclared(doc.raw) };
+}
+
+/**
+ * The parsed document behind the same fence, unread. The logo mirror needs the picture link as
+ * written (an `ipfs://` one included), which readDeclared narrows to https; the fence is shared so
+ * there is one place a creator's link is let through.
+ */
+export async function fetchDeclaredDocument(
+  uri: string | null,
+  config: DeclaredFetchConfig,
+): Promise<{ readonly kind: 'document'; readonly raw: unknown } | { readonly kind: 'refused'; readonly why: string }> {
   const url = fetchableUrl(uri);
   if (url === null) return { kind: 'refused', why: 'not an https link to a public name' };
   let addresses: readonly string[];
@@ -138,7 +151,7 @@ export async function fetchDeclaredMetadata(uri: string | null, config: Declared
   } catch {
     throw new VendorShapeError(VENDOR, 'body', 'is not JSON');
   }
-  return { kind: 'read', metadata: readDeclared(parsed) };
+  return { kind: 'document', raw: parsed };
 }
 
 async function readCapped(response: Response, maxBytes: number): Promise<string> {
