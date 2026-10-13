@@ -589,14 +589,6 @@ test('★ a feed of single posts is the tick and the payloads, verbatim and in t
   assert.deepEqual(calls[1]?.params, ['fyp']);
 });
 
-test('the News feed is served like the others, from its own rows', async () => {
-  const { deps, calls } = fakeDb({ [RISING_VIEW_SQL]: [{ tick: '2' }], [RISING_ROWS_SQL]: [{ payload: POST }] });
-  const reply = await handle('GET', '/rising/news', deps);
-  assert.equal(reply.status, 200);
-  assert.deepEqual(JSON.parse(reply.body), { tick: 2, posts: [POST] });
-  assert.deepEqual(calls.map((c) => c.params), [['news'], ['news']]);
-});
-
 test('★ a feed reply carries no score and no internal word', async () => {
   const { deps } = fakeDb({ [RISING_VIEW_SQL]: [{ tick: '1' }], [RISING_ROWS_SQL]: [{ payload: POST }] });
   const body = (await handle('GET', '/rising/popular', deps)).body.toLowerCase();

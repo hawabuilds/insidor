@@ -2,11 +2,8 @@
  * FOR YOU — the feed.
  *
  * FYP and Popular are feeds of SINGLE POSTS from `GET /rising/fyp` and `GET /rising/popular`:
- * memes the catch-all search found whose meme score clears the bar, newest first and most
- * views first, in the order the server committed. News (`GET /rising/news`) is the same kind of
- * feed for news posts with a coin in them — sport, show business, politics, company and media news
- * — newest first, with the same card, coin line, Buy, Create and owner strip. Which post goes where
- * is the server's call (services/project news.ts); this screen only picks the list. Watchlist is the narratives you starred,
+ * posts the catch-all search found whose meme score clears the bar, newest first and most
+ * views first, in the order the server committed. Watchlist is the narratives you starred,
  * read from `GET /board/default` (`feed-tabs.ts`). The site pills and the filter panel narrow
  * whichever list is showing (`feed-filters.ts`).
  *
@@ -60,7 +57,6 @@ const TABS = [
   { key: 'watchlist', label: <><StarIcon size={16} /> Watchlist</> },
   { key: 'fyp', label: 'FYP' },
   { key: 'popular', label: 'Popular' },
-  { key: 'news', label: 'News' },
 ] as const;
 
 export function Feed({
@@ -80,13 +76,11 @@ export function Feed({
   /* One loader per feed, so switching tabs never shows one feed's order under the other's name. */
   const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
   const [popular, reloadPopular] = useLoad('rising:popular', (signal) => fetchRising('popular', signal));
-  const [news, reloadNews] = useLoad('rising:news', (signal) => fetchRising('news', signal));
   const reload = useCallback(() => {
     reloadBoard();
     reloadFyp();
     reloadPopular();
-    reloadNews();
-  }, [reloadBoard, reloadFyp, reloadPopular, reloadNews]);
+  }, [reloadBoard, reloadFyp, reloadPopular]);
   const starred = useWatchlist();
   const now = useNow();
   const soon = useComingSoon();
@@ -115,7 +109,7 @@ export function Feed({
   const hidden = shown.unknown + shownUncounted.unknown;
 
   const notice = boardNotice(tick?.provenance ?? null);
-  const feed = tab === 'popular' ? popular : tab === 'news' ? news : fyp;
+  const feed = tab === 'popular' ? popular : fyp;
   /* A post the owner just hid leaves the list now; the projection drops it on its next run. */
   const posts = feed.state === 'ready' ? applyPostFilters(withoutHidden(feed.value.posts, hiddenNow, (p) => p.id), filters, now) : null;
   useSavedCalls('coin_match', posts === null ? [] : posts.rows.map((p) => p.id), owner);
