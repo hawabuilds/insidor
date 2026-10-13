@@ -28,7 +28,7 @@ export { PgAssetRepo } from './repo/assets.ts';
 export { PgDecisionRepo, featureHash } from './repo/decisions.ts';
 export { PgBackfillRepo } from './repo/backfill.ts';
 export { PgCoinUniverseRepo } from './repo/coin-universe.ts';
-export type { AgedCoin, CoinMetadataRow, CoinToCheck, LookupTerm, NamingPost, StandingRow, UnreadCoin } from './repo/coin-universe.ts';
+export type { AgedCoin, CoinMetadataRow, CoinToCheck, LookupTerm, NamingPost, PostCoinPicture, StandingRow, UnreadCoin } from './repo/coin-universe.ts';
 export type { BackfilledPost, BackfillRun, BackfillVia } from './repo/backfill.ts';
 export { PgFeedFloorRepo } from './repo/feed-floor.ts';
 export { PgOwnerAlertRepo } from './repo/owner-alerts.ts';
