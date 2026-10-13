@@ -50,7 +50,7 @@ const judge = anthropicJudge({
     timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
     maxFrameBytes: P.judge.maxFrameBytes, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   }),
-  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1,
+  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post',
 });
 
 try {

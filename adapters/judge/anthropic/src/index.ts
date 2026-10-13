@@ -29,7 +29,7 @@ import type { PriceBook } from '@insidor/meter';
 
 import type { Frame, JudgeClient, JudgeResponse, Usage } from './client.ts';
 import { VENDOR } from './client.ts';
-import { PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT } from './prompts.ts';
+import { POST_PROMPT_SET_SHA, PROMPT_SET_SHA, PROMPTS, SAME_SUBJECT_PROMPT } from './prompts.ts';
 import { priceFor, usdForTokens, type ModelPrice } from './prices.ts';
 import { NO_FRAME, allUnavailable, frameUriFor, lookedAtFor, pictureUriFor, toOutcomes } from './to-judgement.ts';
 
@@ -43,12 +43,23 @@ const SYSTEM = PROMPTS.system.text;
 const INSTRUCTIONS = `${PROMPTS['coinability-core'].text}\n\n${PROMPTS['subject-vs-story'].text}`;
 
 /**
+ * Which question a judge asks. `story` (the default): does this GROUP of posts share one subject —
+ * QUALIFY's question about a narrative. `post`: could people make a coin about this ONE post — the
+ * feed's question, with its own prompt set and ids (POST_PROMPT_SET_SHA), so the two never mix.
+ */
+export type JudgeQuestion = 'story' | 'post';
+const QUESTION: Readonly<Record<JudgeQuestion, { system: string; instructions: string; sha: () => string; label: string }>> = {
+  story: { system: SYSTEM, instructions: INSTRUCTIONS, sha: () => PROMPT_SET_SHA, label: 'coinability' },
+  post: { system: PROMPTS['post-system'].text, instructions: PROMPTS['post-coinability'].text, sha: () => POST_PROMPT_SET_SHA, label: 'post-coinability' },
+};
+
+/**
  * The id recorded on every Decision this judge contributes to. It names the model
  * AND the prompt set, because a prompt edit or a model change changes the answers,
  * and an unversioned judge makes every judgement before and after look identical.
  */
-export const judgeId = (model: string): string => `judge:${VENDOR}/${model}@${PROMPT_SET_SHA}`;
-export const promptId = (): string => `coinability@${PROMPT_SET_SHA}`;
+export const judgeId = (model: string, question: JudgeQuestion = 'story'): string => `judge:${VENDOR}/${model}@${QUESTION[question].sha()}`;
+export const promptId = (question: JudgeQuestion = 'story'): string => `${QUESTION[question].label}@${QUESTION[question].sha()}`;
 
 /** What the vendor's own token counts say a call cost. */
 export const usdOf = (price: ModelPrice, usage: Usage): number => usdForTokens(price, usage.inputTokens, usage.outputTokens);
@@ -62,6 +73,8 @@ export interface AnthropicJudgeDeps {
   readonly policy: JudgePolicy;
   /** Subjects per call. A cost/latency tradeoff, so it arrives from policy. */
   readonly maxBatch: number;
+  /** Which question this judge asks; `story` when absent. See JudgeQuestion. */
+  readonly question?: JudgeQuestion;
 }
 
 /** A batch's result inside the meter: the reply, or the vendor error that came with a status. */
@@ -86,8 +99,8 @@ const bookFor = (usd: number, endpoint: string = ENDPOINT): PriceBook => ({
  * A pessimistic token estimate for one batch: every character of the request at
  * `charsPerToken`, a frame at `tokensPerFrame`, and the full output ceiling.
  */
-export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubject[]): Usage {
-  const chars = SYSTEM.length + INSTRUCTIONS.length + JSON.stringify(subjects.map((s) => s.texts)).length;
+export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubject[], question: JudgeQuestion = 'story'): Usage {
+  const chars = QUESTION[question].system.length + QUESTION[question].instructions.length + JSON.stringify(subjects.map((s) => s.texts)).length;
   const frames = subjects.filter((s) => lookedAtFor(s) === 'videoFrame' || pictureUriFor(s) !== null).length;
   return {
     inputTokens: Math.ceil(chars / policy.charsPerToken) + frames * policy.tokensPerFrame,
@@ -104,7 +117,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
     for (let i = 0; i < subjects.length; i += deps.maxBatch) out.push(subjects.slice(i, i + deps.maxBatch));
     return out;
   };
-  const estimateUsd = (batch: readonly JudgeSubject[]): number => usdOf(price, estimateTokens(deps.policy, batch));
+  const question = deps.question ?? 'story';
+  const estimateUsd = (batch: readonly JudgeSubject[]): number => usdOf(price, estimateTokens(deps.policy, batch, question));
   /** Two pictures, the prompt, and the small answer budget — the most a pair can cost. */
   const pairEstimateUsd = (): number =>
     usdOf(price, {
@@ -113,8 +127,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
     });
 
   return {
-    id: judgeId(deps.model),
-    promptId: promptId(),
+    id: judgeId(deps.model, question),
+    promptId: promptId(question),
     maxBatch: deps.maxBatch,
 
     estimate(subjects): CostEstimate {
@@ -206,8 +220,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
           const call = await metered<Attempted>(deps.meter, bookFor(usd), spec, async () => {
             try {
               const response = await deps.client.judge({
-                system: SYSTEM,
-                instructions: INSTRUCTIONS,
+                system: QUESTION[question].system,
+                instructions: QUESTION[question].instructions,
                 subjects: batch,
                 frames,
               });
@@ -232,8 +246,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
           spends.push(call.spend);
           if (call.value.response === null) throw call.value.refusedWith ?? new Error('judge: no reply and no error');
           answered = toOutcomes(batch, call.value.response.answers, {
-            judgeId: judgeId(deps.model),
-            promptId: promptId(),
+            judgeId: judgeId(deps.model, question),
+            promptId: promptId(question),
             judgedAt,
             costUsdPerSubject: batch.length === 0 ? 0 : call.spend.usd / batch.length,
           }, pictured);
