@@ -2938,7 +2938,10 @@ const POLICY_V1: Policy = {
     /* $25.50 from 2026-10-13 20:45 UTC: the judge sees the 10 closest labelled posts in every call
        (+$2.75 a day) and each judged post is embedded (+$0.90). Paid by moving $4 from the jobs and
        learning lines, which run well under them most days; the day stays $38. */
-    dailyUsd: 25.5,
+    /* $28 for 2026-10-13 only, the owner's call: the day is over $38 (this morning's $7.22 of jobs ran
+       before jobs had a line) and re-scoring after the new judge prompt must not pause discovery. Back to
+       $25.50 after 00:00 UTC. */
+    dailyUsd: 28,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
