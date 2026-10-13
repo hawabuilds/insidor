@@ -15,6 +15,7 @@
  *   POST   /comments/:id/report { reason }    POST /comments/:id/hide (for me only)
  *   GET    /leaderboard                this season's standings
  *   GET    /me/owner, /owner/…         the owner's calls on posts, coin matches and names (owner.ts)
+ *   GET    /missed, POST /missed       the owner's missed posts (missed.ts; the owner only)
  *
  * ★ ONLY A HOLDER CAN LIKE, CHECKED ON THE CHAIN AT THE TIME OF THE LIKE (Trador's rule). The
  * voter's wallets come from their signed sign-in token, never from the request; a chain that
@@ -31,11 +32,12 @@
  * whether it is pushed.
  */
 
-import type { OwnerPolicy, SocialPolicy } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY, type OwnerPolicy, type SocialPolicy } from '@insidor/contracts/policy.ts';
 import type { IdentityCheck, Person } from '@insidor/contracts/ports/people.ts';
 import { boughtEarly, earnsRep, nextRank, rankFor, rankedUp, seasonOf, standings, votePoints, type RankId, type Standing } from '@insidor/core';
 
 import { json, type Reply, type Request } from './http.ts';
+import { missedRoute } from './missed.ts';
 import { ownerRoute } from './owner.ts';
 import { blockedWord, cleanBody, parseSubject, proofLinkOf, type Subject } from './rules.ts';
 
@@ -287,6 +289,7 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
 
   const owned = await ownerRoute({ method: m, seg, query: url.searchParams, body: req.body }, me, deps);
   if (owned !== null) return owned;
+  if (head === 'missed' && seg.length === 1) return missedRoute(m, req.body, me, { db: deps.db, owner: deps.owner, learning: DEFAULT_POLICY.learning });
 
   if (head === 'me' && seg.length === 1) {
     if (me === null) return SIGN_IN;

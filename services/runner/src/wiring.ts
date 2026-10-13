@@ -51,15 +51,15 @@ import type { Author, Item, Millis } from '@insidor/contracts';
 import type { DurableMeter } from '@insidor/meter';
 import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { supplierRoles, vendorLines } from './vendor-lines.ts';
+import { jobVendorLines, supplierRoles, vendorLines } from './vendor-lines.ts';
 import { supplierWarnings } from './supplier-warnings.ts';
 import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
-import type { Meter } from '@insidor/contracts/ports/meter.ts';
+import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openDurableMeter } from '@insidor/meter';
 import { httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
-import { resolvePlatforms, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
+import { resolvePlatforms, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
   DB_ROLE,
   PgAssetRepo,
@@ -74,10 +74,12 @@ import {
   PgLearningRepo,
   PgPostJudgementRepo,
   PgItemRepo,
+  PgMissedPostRepo,
   PgObservationRepo,
   PgOwnerAlertRepo,
   PgSourceHealthRepo,
   PgSpendRepo,
+  PgRecallRepo,
   PgStageRunRepo,
   PgStoryRepo,
   asDb,
@@ -97,6 +99,8 @@ import { dexscreenerSearch, dexscreenerStandings } from '@insidor/market-dexscre
 import { geckoterminal } from '@insidor/market-geckoterminal';
 import { keepCoins } from './work/coin-keep.ts';
 import { lookUpCoins } from './work/coin-lookup.ts';
+import { measureDiscovery } from './work/discovery-settings.ts';
+import { SPEND_WINDOW_MS, workMissedPosts, type MissedResult } from './work/missed-posts.ts';
 
 /** A coin search is abandoned after this long; the next pass asks again. */
 const SEARCH_TIMEOUT_MS = 8_000;
@@ -140,6 +144,8 @@ export interface Runtime {
   readonly lookUpCoins: () => Promise<unknown>;
   /** Old coins asked about once, and the ones that do not matter deleted. See work/coin-keep.ts. */
   readonly keepCoins: () => Promise<unknown>;
+  /** The owner's pasted missed posts, read on the learning book and diagnosed. See work/missed-posts.ts. */
+  readonly missedPosts: () => Promise<MissedResult>;
 }
 
 
@@ -655,6 +661,40 @@ export async function withRuntime<T>(
               chain: cfg.chainRpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.chainRpcUrl, fetch: globalThis.fetch }),
               policy,
               log: log.child({ step: 'coin-lookup' }),
+              now: () => Date.now() as Millis,
+            }),
+          /* ★ THE LEARNING BOOK, NOT THE LIVE ONE. Each pass with work opens its own meter on
+             `learning` (Policy.budget.learningLines), reading today's ledger fresh, with every
+             spend labelled `learn:` as tools/lib/shared-meter.ts labels it, and its own sources
+             built on that meter with the handles the pasted links carry. The live meter above is
+             never handed to it. */
+          missedPosts: () =>
+            workMissedPosts({
+              missed: new PgMissedPostRepo(db),
+              openLearning: async (handles) => {
+                const book = await openDurableMeter({
+                  ledger: new PgSpendRepo(db),
+                  book: 'learning',
+                  dailyCapUsd: policy.budget.learningLines.dailyUsd,
+                  perVendorCapUsd: jobVendorLines(policy, 'learning'),
+                  defaultVendorCapUsd: policy.budget.perSourceUsdPerDay,
+                  softStop: policy.budget.softStopFraction,
+                  now: () => Date.now(),
+                  onWriteFailure: (spend, error) =>
+                    log.error('a learning spend could not be persisted', { vendor: spend.vendor, usd: spend.usd, err: error instanceof Error ? error.message : String(error) }),
+                });
+                const learning: Meter = { ...book, record: (spend) => book.record({ ...spend, endpoint: `${LEARN_ENDPOINT_PREFIX}${spend.endpoint}` }) };
+                const sources = resolvePlatforms(cfg.sourceEnv, { meter: learning, now: () => Date.now() as Millis, fetch: globalThis.fetch, handles: (source, id) => handles(String(source), id) });
+                return { sources: sources.all(), meter: learning, close: () => book.drain() };
+              },
+              store: storeArrivals(repos, policy, () => Date.now() as Millis),
+              coinSearch: lookupSources,
+              settings: async () => (await measureDiscovery({ recall: new PgRecallRepo(db), floors: new PgFeedFloorRepo(db) }, Date.now() as Millis, policy))?.settings ?? null,
+              /* The posts supplier's catch-all endpoint, as its adapter records it (its SEARCH). */
+              searchUsdPerDay: () => new PgMissedPostRepo(db).liveSpendSince(SUPPLIER_VENDORS.posts, 'search', (Date.now() - SPEND_WINDOW_MS) as Millis),
+              mode: cfg.spend.kind,
+              policy,
+              log: log.child({ step: 'missed-posts' }),
               now: () => Date.now() as Millis,
             }),
           keepCoins: () =>
