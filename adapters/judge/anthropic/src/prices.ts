@@ -17,6 +17,10 @@
  * cacheable prefix is longer than ours (Haiku 4.5: 4,096 tokens; our post prefix is ~1,600)
  * simply reports zero cache tokens and is billed as before.
  *
+ * ★ THE BATCH DISCOUNT IS A MULTIPLIER ON EVERYTHING. A request sent through the Message Batches
+ * API is billed at half of every rate above, cache rates included (read 2026-10-13). Only
+ * one-off jobs use it, never the live feed, whose answers cannot wait for a batch.
+ *
  * WHAT BREAKS IF THIS IS CHANGED CARELESSLY: a stale rate makes every estimate wrong in the
  * same direction, and the meter's pre-call check is only as good as the estimate it is
  * handed. Change a rate together with its date.
@@ -39,6 +43,9 @@ export interface ModelPrice {
 }
 
 export const PRICES_READ_AT = '2026-10-13';
+
+/** What a Message Batches request costs against the same request sent directly. */
+export const BATCH_PRICE_FRACTION = 0.5;
 
 export const MODEL_PRICES: Readonly<Record<string, ModelPrice>> = {
   'claude-haiku-4-5': { usdPerMillionInput: 1, usdPerMillionOutput: 5, usdPerMillionCacheWrite: 1.25, usdPerMillionCacheRead: 0.1, effort: null },

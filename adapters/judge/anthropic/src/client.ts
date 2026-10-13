@@ -1,6 +1,7 @@
 /**
- * THE HTTP SURFACE, AND NOTHING ELSE: one structured-output call to the Messages API, and
- * the fetch of a video frame to show it.
+ * THE HTTP SURFACE, AND NOTHING ELSE: one structured-output call to the Messages API, the
+ * same calls sent together as a Message Batch (for one-off jobs, at half price), and the
+ * fetch of a video frame to show it.
  *
  * The only file in this package that touches the network, and `fetch` is INJECTED, never
  * imported and never read off `globalThis` — for the X adapter's reason: a unit test that
@@ -24,7 +25,9 @@
  *    retry-after asks for more. 400, 401, 402, 403, 404 and 413 are not: asking again gets
  *    the same answer. The numbers are policy (`Policy.judge`), never literals here. The
  *    whole retried call is ONE metered call above this file, so the ledger sees one charge
- *    per batch however many attempts it took.
+ *    per batch however many attempts it took. The one exception: a lost reply to the
+ *    request that CREATES a Message Batch is not retried, because the batch may exist and a
+ *    second one would be billed twice.
  *
  * 3. A REPLY THAT DOES NOT PARSE IS AN ABSENT ANSWER, NEVER A GUESSED ONE. A refusal, a
  *    reply cut off at `max_tokens`, or text that is not the JSON we asked for returns an
@@ -42,6 +45,28 @@ import { sizedPictureUri, type PictureSize } from './pictures.ts';
 export const VENDOR = 'anthropic';
 export const MESSAGES_ENDPOINT = 'POST /v1/messages';
 const MESSAGES_PATH = '/v1/messages';
+export const BATCHES_ENDPOINT = '/v1/messages/batches';
+const BATCHES_PATH = '/v1/messages/batches';
+
+/**
+ * How often a running Message Batch is asked whether it has ended, and how long it may run
+ * before it is cancelled and what finished is kept. Adapter constants rather than policy
+ * because only one-off jobs use batches; a caller may override both (`JudgeClientConfig`).
+ * The vendor finishes most batches within minutes and promises 24 hours; an hour is as long
+ * as a person running a tool should be kept waiting.
+ */
+const BATCH_POLL_MS = 15_000;
+const BATCH_MAX_WAIT_MS = 60 * 60_000;
+
+/** Where a request goes, and whether a lost reply to it may be retried. */
+interface Route {
+  readonly method: 'GET' | 'POST';
+  readonly path: string;
+  /** The endpoint named on an error. */
+  readonly label: string;
+  /** False for a request that creates something: a lost reply may mean it was created. */
+  readonly retryLost: boolean;
+}
 export const API_VERSION = '2023-06-01';
 
 /**
@@ -86,8 +111,19 @@ export interface SameSubjectRequest {
   readonly maxOutputTokens: number;
 }
 
+/** One request's outcome inside a Message Batch: its reply, or why there is none (not billed). */
+export type BatchAnswer =
+  | { readonly kind: 'answered'; readonly response: JudgeResponse }
+  | { readonly kind: 'failed'; readonly note: string };
+
 export interface JudgeClient {
   judge(request: JudgeRequest): Promise<JudgeResponse>;
+  /**
+   * The same requests through the Message Batches API, at half price and minutes-to-hours of
+   * latency; answers in the order asked. Optional: a client without it is never asked. For
+   * one-off jobs only — the live feed cannot wait for a batch.
+   */
+  judgeBatch?(requests: readonly JudgeRequest[]): Promise<readonly BatchAnswer[]>;
   /** Show both pictures with the same-subject prompt. Optional: a client without it is never asked. */
   sameSubject?(request: SameSubjectRequest): Promise<{ readonly answer: SameSubjectAnswer | null; readonly usage: Usage }>;
   /** Read a video frame to show the judge, or null when there is no usable image at `uri`. */
@@ -112,6 +148,9 @@ export interface JudgeClientConfig {
    * default because a smaller picture can change the answer; see pictures.ts.
    */
   readonly pictureSize?: PictureSize | null;
+  /** Overrides BATCH_POLL_MS / BATCH_MAX_WAIT_MS (see there). */
+  readonly batchPollMs?: number;
+  readonly batchMaxWaitMs?: number;
   readonly fetch: typeof globalThis.fetch;
   /** Injected so a test can retry without waiting. */
   readonly sleep: (ms: number) => Promise<void>;
@@ -304,24 +343,28 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
   if (urlProblem !== null) throw new JudgeNotConfigured('ANTHROPIC_BASE_URL', urlProblem);
   if (config.model.trim() === '') throw new JudgeNotConfigured('JUDGE_MODEL', 'is empty');
   if (config.maxAttempts < 1) throw new RangeError('judge client: maxAttempts must be at least 1');
-  const url = `${trimTrailingSlash(config.baseUrl)}${MESSAGES_PATH}`;
+  const root = trimTrailingSlash(config.baseUrl);
 
   /** One attempt. Returns the status and body, or throws for a transport failure. */
-  const attempt = async (body: string): Promise<{ status: number; headers: Headers; text: string }> => {
-    const response = await config.fetch(url, {
-      method: 'POST',
+  const attempt = async (route: Route, body: string | undefined): Promise<{ status: number; headers: Headers; text: string }> => {
+    const response = await config.fetch(`${root}${route.path}`, {
+      method: route.method,
       // The key goes in a header and nowhere else: a keyed URL ends up in a proxy log.
-      headers: { 'x-api-key': config.apiKey, 'anthropic-version': API_VERSION, 'content-type': 'application/json' },
-      body,
+      headers: {
+        'x-api-key': config.apiKey,
+        'anthropic-version': API_VERSION,
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body }),
       signal: AbortSignal.timeout(config.timeoutMs),
     });
     // Always drained, even on a status we are about to reject, so the socket is freed.
     return { status: response.status, headers: response.headers, text: await response.text() };
   };
 
-  /** POST one body, with the policy's retries, and return the parsed reply. */
-  const send = async (payload: Record<string, unknown>): Promise<unknown> => {
-      const body = JSON.stringify(payload);
+  /** One exchange, with the policy's retries; the body text of a 2xx reply. */
+  const exchange = async (route: Route, payload?: Record<string, unknown>): Promise<string> => {
+      const body = payload === undefined ? undefined : JSON.stringify(payload);
       let lastNote = 'no attempt was made';
       /* The status of the last attempt when the vendor answered it, undefined when the
          last attempt got no answer at all. Carried on the final error, because an answered
@@ -336,32 +379,102 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
 
         let res: { status: number; headers: Headers; text: string };
         try {
-          res = await attempt(body);
+          res = await attempt(route, body);
         } catch (error) {
           lastNote = `request failed: ${messageOf(error)}`;
           lastStatus = undefined;
+          /* A lost reply to a request that CREATES something is not retried: it may have
+             been created, and a second one would be billed twice. */
+          if (!route.retryLost) break;
           continue;
         }
-        if (res.status >= 200 && res.status < 300) {
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(res.text);
-          } catch {
-            /* Not JSON at all is a broken transport, not an answer. Thrown, so the meter
-               charges the estimate rather than recording a call that cost nothing. */
-            throw new VendorShapeError(VENDOR, 'body', `is not JSON: ${snippet(res.text)}`);
-          }
-          return parsed;
-        }
+        if (res.status >= 200 && res.status < 300) return res.text;
         if (!RETRYABLE.has(res.status)) {
-          throw new VendorUnavailable(VENDOR, MESSAGES_ENDPOINT, `answered ${res.status}: ${snippet(res.text)}`, res.status);
+          throw new VendorUnavailable(VENDOR, route.label, `answered ${res.status}: ${snippet(res.text)}`, res.status);
         }
         lastNote = `answered ${res.status}`;
         lastStatus = res.status;
         const asked = retryAfterMs(res.headers);
         if (asked !== null) wait = Math.min(config.maxWaitMs, asked);
       }
-      throw new VendorUnavailable(VENDOR, MESSAGES_ENDPOINT, `gave up after ${config.maxAttempts} attempts: ${lastNote}`, lastStatus);
+      throw new VendorUnavailable(VENDOR, route.label, `gave up after ${config.maxAttempts} attempts: ${lastNote}`, lastStatus);
+  };
+
+  /** A 2xx body as JSON. Not JSON at all is a broken transport, not an answer. */
+  const asJson = (text: string): unknown => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      /* Thrown, so the meter charges the estimate rather than recording a call that cost nothing. */
+      throw new VendorShapeError(VENDOR, 'body', `is not JSON: ${snippet(text)}`);
+    }
+  };
+
+  /** POST one body to the Messages API, with the policy's retries, and return the parsed reply. */
+  const send = async (payload: Record<string, unknown>): Promise<unknown> =>
+    asJson(await exchange({ method: 'POST', path: MESSAGES_PATH, label: MESSAGES_ENDPOINT, retryLost: true }, payload));
+
+  /**
+   * Several judge requests as ONE Message Batch: created, polled until it ends, its results
+   * read and matched back by custom id (never by position — results come in any order).
+   *
+   * ★ ONCE THE BATCH EXISTS, EVERY FAILURE IS "MAYBE BILLED". A create the vendor refused with
+   * a status made nothing and is thrown with that status ($0 above this file). Anything after
+   * a successful create — a poll or a result read that fails — is rethrown WITHOUT a status,
+   * so the meter charges the estimate: the batch is running and will be billed whether or not
+   * we hear back. A batch still running at `batchMaxWaitMs` is cancelled and what finished is
+   * kept; a request that errored, was cancelled or expired is not billed and is no answer.
+   */
+  const judgeBatch = async (requests: readonly JudgeRequest[]): Promise<readonly BatchAnswer[]> => {
+    if (requests.length === 0) return [];
+    const created = asJson(
+      await exchange(
+        { method: 'POST', path: BATCHES_PATH, label: BATCHES_ENDPOINT, retryLost: false },
+        { requests: requests.map((r, i) => ({ custom_id: `r${i}`, params: buildRequestBody(config, r) })) },
+      ),
+    ) as Record<string, unknown> | null;
+    const id = created?.['id'];
+    if (typeof id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(id)) {
+      throw new VendorUnavailable(VENDOR, BATCHES_ENDPOINT, `created a batch with no usable id: ${snippet(JSON.stringify(created))}`);
+    }
+    const at = `${BATCHES_PATH}/${id}`;
+    try {
+      const pollMs = config.batchPollMs ?? BATCH_POLL_MS;
+      const polls = Math.max(1, Math.ceil((config.batchMaxWaitMs ?? BATCH_MAX_WAIT_MS) / pollMs));
+      const status = async (): Promise<unknown> =>
+        (asJson(await exchange({ method: 'GET', path: at, label: BATCHES_ENDPOINT, retryLost: true })) as Record<string, unknown> | null)?.['processing_status'];
+      let ended = (created?.['processing_status'] ?? null) === 'ended';
+      for (let n = 0; n < polls && !ended; n += 1) {
+        await config.sleep(pollMs);
+        ended = (await status()) === 'ended';
+      }
+      if (!ended) {
+        await exchange({ method: 'POST', path: `${at}/cancel`, label: BATCHES_ENDPOINT, retryLost: true });
+        for (let n = 0; n < polls && !ended; n += 1) {
+          await config.sleep(pollMs);
+          ended = (await status()) === 'ended';
+        }
+        if (!ended) throw new Error(`batch ${id} did not end after it was cancelled`);
+      }
+      const byId = new Map<string, BatchAnswer>();
+      const text = await exchange({ method: 'GET', path: `${at}/results`, label: BATCHES_ENDPOINT, retryLost: true });
+      for (const line of text.split('\n')) {
+        if (line.trim() === '') continue;
+        const row = asJson(line) as Record<string, unknown> | null;
+        const result = (row?.['result'] ?? {}) as Record<string, unknown>;
+        const customId = row?.['custom_id'];
+        if (typeof customId !== 'string') continue;
+        byId.set(
+          customId,
+          result['type'] === 'succeeded'
+            ? { kind: 'answered', response: decodeReply(result['message']) }
+            : { kind: 'failed', note: `batch request ${String(result['type'])}: ${snippet(JSON.stringify(result['error'] ?? null))}` },
+        );
+      }
+      return requests.map((_, i) => byId.get(`r${i}`) ?? { kind: 'failed', note: 'batch returned no result for this request' });
+    } catch (error) {
+      throw new VendorUnavailable(VENDOR, BATCHES_ENDPOINT, `batch ${id} was created but not read back, and may be billed: ${messageOf(error)}`);
+    }
   };
 
   /**
@@ -390,6 +503,8 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
     async judge(request) {
       return decodeReply(await send(buildRequestBody(config, request)));
     },
+
+    judgeBatch,
 
     async sameSubject(request) {
       const parsed = await send({
