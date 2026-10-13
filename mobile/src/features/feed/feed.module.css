@@ -79,47 +79,26 @@
 
 /* ── the filter panel ──────────────────────────────────────────────── */
 
-.panelScrim {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  background: var(--scrim);
-}
-
-.panel {
-  position: absolute;
-  z-index: 31;
-  top: calc(100% + 2px);
-  left: var(--gutter);
-  right: var(--gutter);
-  max-width: 310px;
-  padding: 18px 16px 16px;
-  border-radius: var(--r-card);
-  background: var(--popup);
-  box-shadow: var(--shadow-panel);
-}
-
-.panelHead {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.panelHead h2 {
+/* On the shared sheet (FilterPanel.tsx): the sheet draws the ground, the X and the closing; these
+   are only the title, Reset and the sections inside it. */
+.panelTitle {
   margin: 0;
-  font-size: 17px;
+  flex: 1;
+  font-size: 18px;
   font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 .reset {
+  min-height: 44px;
+  padding: 0 8px;
   color: var(--brand-400);
   font-weight: 700;
   font-size: 14px;
 }
 
 .panel h3 {
-  margin: 14px 0 8px;
+  margin: 16px 0 8px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-3);
@@ -132,7 +111,7 @@
 }
 
 .pill {
-  height: 32px;
+  height: 44px;
   padding: 0 12px;
   border-radius: 10px;
   display: inline-flex;
@@ -152,7 +131,6 @@
 
 .show {
   width: 100%;
-  margin-top: 18px;
 }
 
 /* ── lists and their empty states ──────────────────────────────────── */

@@ -1,15 +1,21 @@
 /**
- * The filter dropdown under the feed's filter button.
+ * The feed's filters, opened from the filter button, on the shared bottom sheet (shared/ui/Sheet.tsx)
+ * so it closes the five ways every sheet does: the X, a swipe down, a tap on the dimmed page, the
+ * phone's back, and Escape. Closing any of those ways applies nothing; only "Show posts" does.
  *
  * Edits a draft and applies it on "Show posts", so a half-made choice never reshuffles the
- * feed behind the panel. The view steps and posted windows are handed in as named constants
+ * feed behind the sheet. The view steps and posted windows are handed in as named constants
  * (`feed-filters.ts`) — this component compares nothing against a number of its own.
+ *
+ * What breaks if changed carelessly: Show posts lives in the sheet's fixed foot; moved into the
+ * body it can scroll off a short phone and leave the filters with no way to apply.
  */
 
 import { useState } from 'react';
 import { FILTER_PLATFORMS, type Platform } from '../../shared/platform.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
+import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
 import { NO_FILTERS, type CoinFilter, type FeedFilters, type PostedWindow, type ViewStep } from './feed-filters.ts';
 import styles from './feed.module.css';
 
@@ -45,15 +51,15 @@ export function FilterPanel({
     setDraft((d) => ({ ...d, sites: d.sites.includes(p) ? d.sites.filter((s) => s !== p) : [...d.sites, p] }));
 
   return (
-    <>
-      <div className={styles['panelScrim']} onClick={onClose} />
-      <div className={styles['panel']} role="dialog" aria-label="Filters">
-        <div className={styles['panelHead']}>
-          <h2>Filters</h2>
-          <button type="button" className={styles['reset']} onClick={() => setDraft(NO_FILTERS)}>
-            Reset
-          </button>
-        </div>
+    <Sheet label="Filters" onClose={onClose} fit>
+      <SheetHead>
+        <h2 className={styles['panelTitle']}>Filters</h2>
+        <button type="button" className={styles['reset']} onClick={() => setDraft(NO_FILTERS)}>
+          Reset
+        </button>
+      </SheetHead>
+      <SheetBody>
+        <div className={styles['panel']}>
 
         <h3>Social site</h3>
         <div className={styles['pills']}>
@@ -96,10 +102,13 @@ export function FilterPanel({
           ))}
         </div>
 
+        </div>
+      </SheetBody>
+      <SheetFoot>
         <Button look="primary" size="large" className={styles['show']} onClick={() => onApply(draft)}>
           Show posts
         </Button>
-      </div>
-    </>
+      </SheetFoot>
+    </Sheet>
   );
 }
