@@ -113,6 +113,8 @@ export type { VelocityRank } from './track/velocity.ts';
  */
 export { effectiveFloor, laneTargets, laneWindowMin, nextFloor, sentFloors, slowLaneDue, startFloors } from './sources/feed-floor.ts';
 export type { FloorMove, LaneFloors } from './sources/feed-floor.ts';
+export { approvalsAt, crossingAgeMin, fitGrowthTau, inSearch, missReasonBefore, searchFilter, verdict } from './sources/recall.ts';
+export type { DiscoverySettings, LaneSetting, PostFacts as RecallPostFacts, Verdict } from './sources/recall.ts';
 export { checkCreatorLink, decideOrigin, earliestByReproduction, matchCandidates, namesCoin } from './origin/check.ts';
 export type { Candidate, CoinFacts, CreatorCheck, CreatorLink, MatchResult, OriginDecision, PostFacts } from './origin/check.ts';
 export { mergeHits } from './search/merge.ts';

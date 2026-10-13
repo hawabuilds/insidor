@@ -42,15 +42,15 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import type { Millis } from '../contracts/src/vocabulary.ts';
 import type { Meter } from '../contracts/src/ports/meter.ts';
-import { sentFloors, startFloors } from '../core/src/sources/feed-floor.ts';
 import { duneClient, fillParameters } from '../adapters/history/dune/src/index.ts';
 import { fetchMetadata } from '../adapters/venue/solana-pumpfun/src/index.ts';
 import { parseLink as xLink, postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { parseLink as tiktokLink } from '../adapters/platform/tiktok/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgFeedFloorRepo, PgRecallRepo, withTransaction, type RecallRow } from '../store/src/index.ts';
-import { fitGrowthTau, median, missReasonBefore, type DiscoverySettings, type PostFacts } from '../eval/src/recall/model.ts';
+import { median, missReasonBefore, type PostFacts } from '../eval/src/recall/model.ts';
 import { goldCoins } from '../eval/src/gold/coin-origins.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
+import { measureDiscovery, type SettingsSnapshot } from '../services/runner/src/work/discovery-settings.ts';
 
 const P = DEFAULT_POLICY;
 const MS_PER_MINUTE = 60_000;
@@ -66,11 +66,6 @@ const BONDED_HOURS = 24;
 const CREATE_DAYS = 30;
 /* A run in the last 20 hours means today is done: a restart does not re-pay for it. */
 const RERUN_AFTER_MS = 20 * MS_PER_HOUR;
-/* The span the lane measurements and the growth fit read: the last week of live discovery. */
-const MEASURE_SPAN_MS = 7 * 24 * MS_PER_HOUR;
-/* A growth pair needs its two readings this far apart to say anything about the curve. */
-const GROWTH_MIN_SPAN_MIN = 20;
-const TAU_GRID = { fromMin: 5, toMin: 5_000, step: 1.02 };
 /* Metadata documents read at once. The gateways throttle; a few at a time keeps a day's read
    to minutes. The first gateway is the launchpad's own and fastest; the second answers what it
    refuses. Overridden by METADATA_GATEWAY. */
@@ -82,9 +77,6 @@ const DUNE_TIMEOUT_MS = 600_000;
 const DUNE_POLL_MS = 5_000;
 const DEADLINE_MS = 120_000;
 const STATUS_DAYS = 14;
-/* The main lanes run on the runner's discovery cadence (services/runner/src/loops/discover.ts);
-   used only when the database has too few passes to measure it. */
-const MAIN_EVERY_MIN_FALLBACK = 2;
 /* The reply heuristic: the read post carries no reply flag of its own, and a post whose text opens
    with a mention is a reply. Replies are searched since 2026-10-13, so this only matters to a
    model run with `excludeReplies` (the settings before that day). A reply that does not open with
@@ -108,53 +100,14 @@ function openDb() {
 
 /* ── the settings ──────────────────────────────────────────────────────────────────────────── */
 
-export interface SettingsSnapshot {
-  readonly readAt: string;
-  readonly settings: DiscoverySettings;
-  /** What the settings were read from, so the report can show its working. */
-  readonly measured: {
-    readonly baseFloors: Readonly<Record<string, number>>;
-    readonly lanes: readonly { lane: string; found: number; medianAgeMin: number | null; p95AgeMin: number | null; passGapMin: number | null }[];
-    readonly growthPairs: number;
-    readonly configuredWindowMin: Readonly<Record<string, number>>;
-  };
-}
+export type { SettingsSnapshot } from '../services/runner/src/work/discovery-settings.ts';
 
+/* The settings are measured by the runner's own module, so the missed-post diagnosis and this
+   check read the same floors, reaches and growth curve. */
 async function readSettings(db: ReturnType<typeof asDb>): Promise<SettingsSnapshot> {
-  const now = Date.now();
-  const recall = new PgRecallRepo(db);
-  const stored = await new PgFeedFloorRepo(db).floors();
-  const base = { ...startFloors(P) } as Record<'all' | 'media' | 'slow', number>;
-  for (const lane of ['all', 'media', 'slow'] as const) {
-    const held = stored[lane];
-    if (held !== undefined && Number.isFinite(held) && held > 0) base[lane] = held;
-  }
-  const sent = sentFloors(base, P);
-  const lanes = await recall.lanes((now - MEASURE_SPAN_MS) as Millis);
-  const pairs = await recall.growthPairs('x', (now - MEASURE_SPAN_MS) as Millis, GROWTH_MIN_SPAN_MIN);
-  const tau = fitGrowthTau(pairs, TAU_GRID);
-  if (tau === null) refuse('no post has two approval readings yet; the growth curve cannot be fitted.');
-  const of = (lane: string) => lanes.find((l) => l.lane === lane);
-  const window = { all: P.feed.windowMin, media: P.feed.windowMin, slow: P.feed.slow.windowMin };
-  /* A lane reaches as far back as it really found posts, and never past the window it asked for. */
-  const reach = (lane: 'all' | 'media' | 'slow') => Math.min(window[lane], of(lane)?.p95AgeMin ?? window[lane]);
-  const mainEvery = of('all')?.passGapMin ?? MAIN_EVERY_MIN_FALLBACK;
-  return {
-    readAt: new Date(now).toISOString(),
-    settings: {
-      langs: P.feed.langs.length === 0 ? null : [...P.feed.langs],
-      /* What services/runner/src/work/discover.ts sends: plain reposts left out, replies kept. */
-      excludeReplies: false,
-      excludeRebroadcasts: true,
-      tauMin: round(tau),
-      lanes: [
-        { lane: 'all', floor: sent.all, reachMin: round(reach('all')), everyMin: round(mainEvery), mediaOnly: false },
-        { lane: 'media', floor: sent.media, reachMin: round(reach('media')), everyMin: round(mainEvery), mediaOnly: true },
-        { lane: 'slow', floor: sent.slow, reachMin: round(reach('slow')), everyMin: P.feed.slow.everyMs / MS_PER_MINUTE, mediaOnly: false },
-      ],
-    },
-    measured: { baseFloors: base, lanes, growthPairs: pairs.length, configuredWindowMin: window },
-  };
+  const snapshot = await measureDiscovery({ recall: new PgRecallRepo(db), floors: new PgFeedFloorRepo(db) }, Date.now() as Millis, P);
+  if (snapshot === null) refuse('no post has two approval readings yet; the growth curve cannot be fitted.');
+  return snapshot;
 }
 
 /* ── paid reads ────────────────────────────────────────────────────────────────────────────── */

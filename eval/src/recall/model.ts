@@ -2,9 +2,11 @@
  * THE RECALL MODEL: given a post and today's discovery settings, would a catch-all lane have
  * returned it, and how many minutes after it was posted?
  *
- * Used twice: the gold set's recall report (eval/src/gold/run-recall.ts), which asks it of every
- * founder-labelled origin post, and the daily check (tools/recall-check.ts), which asks it only to
- * NAME the reason for a post we did not have. The daily check's caught/not-caught is never the
+ * ★ THE FUNCTIONS LIVE IN CORE NOW (core/src/sources/recall.ts) and are re-exported below; this
+ * file keeps the reason list and the report's helpers. Used three times: the gold set's recall
+ * report (eval/src/gold/run-recall.ts), which asks it of every founder-labelled origin post, and the daily check (tools/recall-check.ts), which asks it only to
+ * NAME the reason for a post we did not have, and the owner's missed posts (core/src/learning/
+ * missed.ts), named the same way. The daily check's caught/not-caught is never the
  * model's — it is what public.item held — so the model can only be wrong about why, never about
  * whether.
  *
@@ -46,121 +48,11 @@ export const MISS_REASONS = [
 ] as const;
 export type MissReason = (typeof MISS_REASONS)[number];
 
-export interface LaneSetting {
-  readonly lane: string;
-  /** Approvals the query asks for, as sent. */
-  readonly floor: number;
-  /** How far back, in minutes of a post's age, the lane really reaches. */
-  readonly reachMin: number;
-  /** Minutes between two passes of this lane. */
-  readonly everyMin: number;
-  readonly mediaOnly: boolean;
-}
-
-export interface DiscoverySettings {
-  readonly lanes: readonly LaneSetting[];
-  /** The languages a catch-all query accepts, as the source tags them, or null for any. */
-  readonly langs: readonly string[] | null;
-  /** Replies are left out by the query. No longer, since 2026-10-13: replies are searched. */
-  readonly excludeReplies: boolean;
-  /** Plain reposts are left out by the query. */
-  readonly excludeRebroadcasts: boolean;
-  /** Minutes: the growth curve's time constant. */
-  readonly tauMin: number;
-}
-
-/** What we know about one post, as read. */
-export interface PostFacts {
-  /** Approvals when read — taken as the post's final count. */
-  readonly approvals: number;
-  readonly lang: string | null;
-  readonly hasMedia: boolean;
-  /** A reply: returned unless the query leaves replies out. */
-  readonly isReply: boolean;
-  /** A plain repost: the same post re-shown, which the query leaves out. */
-  readonly isRebroadcast: boolean;
-}
-
-export type Verdict =
-  | { readonly kind: 'caught'; readonly lane: string; readonly delayMin: number }
-  | { readonly kind: 'missed'; readonly reason: 'not_in_search' | 'under_floor' | 'between_checks' };
-
-/** Approvals at `ageMin`, on the assumed curve. */
-export function approvalsAt(final: number, ageMin: number, tauMin: number): number {
-  return ageMin <= 0 ? 0 : final * (1 - Math.exp(-ageMin / tauMin));
-}
-
-/** The age at which a post with `final` approvals crossed `floor`, or null when it never did. */
-export function crossingAgeMin(final: number, floor: number, tauMin: number): number | null {
-  if (final < floor || final <= 0) return null;
-  if (final === floor) return Number.POSITIVE_INFINITY;
-  return -tauMin * Math.log(1 - floor / final);
-}
-
-/** Whether the query a lane sends would match this post at all, approvals aside. */
-export function inSearch(post: PostFacts, lane: LaneSetting | null, s: DiscoverySettings): boolean {
-  if (s.langs !== null && (post.lang === null || !s.langs.includes(post.lang))) return false;
-  if (s.excludeReplies && post.isReply) return false;
-  if (s.excludeRebroadcasts && post.isRebroadcast) return false;
-  if (lane !== null && lane.mediaOnly && !post.hasMedia) return false;
-  return true;
-}
-
-/**
- * The earliest lane to catch this post and the minutes after posting, or the reason none did.
- * The first pass after a crossing is taken at half a pass — the expected wait for a post made at
- * a random moment — and a lane catches only if that pass is still within its reach.
- */
-export function verdict(post: PostFacts, s: DiscoverySettings): Verdict {
-  if (!inSearch(post, null, s)) return { kind: 'missed', reason: 'not_in_search' };
-  let best: { lane: string; delayMin: number } | null = null;
-  let crossedAny = false;
-  for (const lane of s.lanes) {
-    if (!inSearch(post, lane, s)) continue;
-    const at = crossingAgeMin(post.approvals, lane.floor, s.tauMin);
-    if (at === null) continue;
-    crossedAny = true;
-    const seen = at + lane.everyMin / 2;
-    if (seen > lane.reachMin) continue;
-    if (best === null || seen < best.delayMin) best = { lane: lane.lane, delayMin: seen };
-  }
-  if (best !== null) return { kind: 'caught', ...best };
-  return { kind: 'missed', reason: crossedAny ? 'between_checks' : 'under_floor' };
-}
-
-/**
- * Why a post we did not have before a launch was missed, given its age at the launch: the same
- * order as `verdict`, but a floor counts as crossed only if it was crossed BEFORE the launch.
- */
-export function missReasonBefore(post: PostFacts, ageAtLaunchMin: number, s: DiscoverySettings): 'not_in_search' | 'under_floor' | 'between_checks' {
-  if (!inSearch(post, null, s)) return 'not_in_search';
-  const atLaunch = approvalsAt(post.approvals, ageAtLaunchMin, s.tauMin);
-  const crossed = s.lanes.some((lane) => inSearch(post, lane, s) && atLaunch >= lane.floor);
-  return crossed ? 'between_checks' : 'under_floor';
-}
-
-/**
- * τ, in minutes, that best explains how our own posts grew between their first and last reading:
- * least squares on the log of the ratio, over a geometric grid. Null with no pairs to fit.
- */
-export function fitGrowthTau(
-  pairs: readonly { readonly ageFirstMin: number; readonly approvalsFirst: number; readonly ageLastMin: number; readonly approvalsLast: number }[],
-  grid: { readonly fromMin: number; readonly toMin: number; readonly step: number },
-): number | null {
-  const usable = pairs.filter((p) => p.ageFirstMin > 0 && p.ageLastMin > p.ageFirstMin && p.approvalsFirst > 0 && p.approvalsLast > 0);
-  if (usable.length === 0) return null;
-  let best: { tau: number; err: number } | null = null;
-  for (let tau = grid.fromMin; tau <= grid.toMin; tau *= grid.step) {
-    let err = 0;
-    for (const p of usable) {
-      const model = Math.log((1 - Math.exp(-p.ageFirstMin / tau)) / (1 - Math.exp(-p.ageLastMin / tau)));
-      const seen = Math.log(p.approvalsFirst / p.approvalsLast);
-      err += (model - seen) ** 2;
-    }
-    if (best === null || err < best.err) best = { tau, err };
-  }
-  return best?.tau ?? null;
-}
+/* The model itself is core's (core/src/sources/recall.ts): the runner diagnoses the owner's missed
+   posts with it, and a service may import core but not eval. Re-exported here so every caller of
+   this file, and its test, read the one copy. */
+export { approvalsAt, crossingAgeMin, fitGrowthTau, inSearch, missReasonBefore, searchFilter, verdict } from '@insidor/core';
+export type { DiscoverySettings, LaneSetting, RecallPostFacts as PostFacts, Verdict } from '@insidor/core';
 
 /** The median of a list, or null when it is empty. */
 export function median(values: readonly number[]): number | null {
