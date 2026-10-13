@@ -43,6 +43,7 @@ import { PlatformBadge } from '../../shared/ui/PlatformMark.tsx';
 import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { CreateCoin } from '../create/CreateCoin.tsx';
+import { usePreloadCreate } from '../create/preload.ts';
 import { BuyOpen, SheetToast, type SheetNote } from './BuyOpen.tsx';
 import { ChooseCoin } from './ChooseCoin.tsx';
 import { CoinLine } from './CoinLine.tsx';
@@ -89,6 +90,7 @@ function mediaHeight(width: number | null, height: number | null): number {
 
 export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
   const [loaded, reload] = useLoad(`post-sheet:${postId}`, (signal) => fetchPostSheet(postId, signal));
+  usePreloadCreate(postId); /* Create coin then opens on this post's own names, with nothing filling in. */
   const [view, setView] = useState<'post' | 'coins'>(start);
   const [buying, setBuying] = useState<SheetCoin | null>(null);
   const [creating, setCreating] = useState(false);
