@@ -2,16 +2,24 @@
  * CREATE COIN — the pop-up, after Trador's `components/CreateSheet.tsx` minus every stock step,
  * and its `Launched` success screen.
  *
- * The main sheet is five things and nothing else: the picture (the post's, with "Change"), the
- * name and ticker (the post's top name idea, its other ideas as one row of chips), the dev buy
- * (0, 0.5, 1, 2 SOL or a typed amount, in one row, 0 to start), one line for what the launch costs,
- * and the Create button. Description, socials, the creator fee and the owner's name feedback sit
- * behind "More options", closed when the sheet opens.
+ * The sheet is the whole form, all of it on screen at once: the picture (the post's, with
+ * "Change"), the name and ticker (the post's top name idea, its other ideas as one row of chips),
+ * the description, the socials as one row of three short fields, the dev buy (the presets or a
+ * typed amount, 0 to start), the launch cost and the creator fee, and the Create button. Only
+ * the owner's name calls sit behind a link.
  *
- * ★ IT MUST FIT A 390×844 PHONE WITHOUT SCROLLING. A new line on the main sheet costs a line of
- * height that this sheet was cut down to earn; put it behind More options instead. More options
- * and the ticker's coin list each scroll inside their own box, so opening them never pushes the
- * button off the screen (the modal itself does not scroll).
+ * ★ IT OPENS IN ONE GO AND NOTHING MOVES AFTER. The pop-up is centred, so any line that appears,
+ * disappears or changes height once it is open moves every field. Every slot is drawn at its
+ * final size on the first frame: the chips row holds blank chips while the ideas are read, the
+ * ticker, cost and fee lines are one fixed line each, the presets show in full until the cap is
+ * read, and the button's slot is always 52px — holding the button, Sign in, the working line or
+ * the reason Create isn't offered. The fields are filled from what the post already has (its
+ * words, its picture, and its name ideas when the post sheet or For You asked for them ahead,
+ * preload.ts); a later answer only changes text inside its slot.
+ *
+ * ★ IT MUST FIT A 390×844 PHONE WITHOUT SCROLLING. A new line costs height this sheet has to
+ * earn. The owner's name calls and the ticker's coin list each scroll inside their own box, so
+ * opening them never pushes the button off the screen.
  *
  * ★ WITH TRADING OFF, OR FROM A STORY WRITTEN BY HAND, THE BUTTON SAYS "COMING SOON" AND DOES
  * NOTHING ELSE. No coin is minted and no cost is shown; the cost line says it is not live.
@@ -28,7 +36,7 @@
 import { useEffect, useState } from 'react';
 
 import {
-  buildLaunchTx, confirmLaunch, fetchLaunchRules, fetchPostNames, fetchTickerCoins, imageAsDataUrl, previewLaunch,
+  buildLaunchTx, confirmLaunch, fetchTickerCoins, imageAsDataUrl, previewLaunch,
   type LaunchPreview, type LaunchRules, type NameIdea, type SameNameCoins,
 } from '../../shared/api/index.ts';
 import { useLoad } from '../../shared/hooks.ts';
@@ -50,8 +58,9 @@ import { useIsOwner } from '../owner/hooks.ts';
 import { NameChips, TickerCoins } from './NameSuggestions.tsx';
 import {
   DEV_BUY_DEFAULT, DEV_BUY_PRESETS, FIRST_SHEET, NAME_MAX, TICKER_MAX, cleanTicker, coinPageUrl, costLine, devBuyLamports, feeRate,
-  firstFill, firstLinks, otherIdeas, presetsWithin, shareOnX, solText, tickerCheck, useOfList, type Links, type SheetState, type TickerUse,
+  firstFill, firstLinks, otherIdeas, presetsShown, shareOnX, solText, tickerCheck, useOfList, type Links, type SheetState, type TickerUse,
 } from './create-form.ts';
+import { loadNames, loadRules, peekNames, peekRules } from './preload.ts';
 import styles from './create.module.css';
 
 export interface CreateFrom {
@@ -98,9 +107,12 @@ type TickerRead = { kind: 'checking' } | { kind: 'failed' } | { kind: 'read'; us
 
 /** Everything both sheets hold: the fields, the name ideas, the ticker check, More options. */
 function useForm(from: CreateFrom) {
-  const [ideasLoad] = useLoad(`post-names:${from.postId ?? ''}`, (signal) => (from.postId ? fetchPostNames(from.postId, signal) : Promise.resolve(NO_IDEAS)));
-  const ideas = ideasLoad.state === 'ready' ? ideasLoad.value : NO_IDEAS;
-  const first = firstFill([], from.title);
+  /* Names asked for ahead (preload.ts) are here on the first frame; else they arrive into the fields. */
+  const held = from.postId ? peekNames(from.postId) : NO_IDEAS;
+  const [ideasLoad] = useLoad(`post-names:${from.postId ?? ''}`, () => (from.postId ? loadNames(from.postId) : Promise.resolve(NO_IDEAS)));
+  const ideas = ideasLoad.state === 'ready' ? ideasLoad.value : held ?? NO_IDEAS;
+  const reading = ideasLoad.state === 'loading' && held === undefined;
+  const [first] = useState(() => firstFill(held ?? [], from.title));
   const [name, setName] = useState(first.name);
   const [ticker, setTicker] = useState(first.ticker);
   const [touched, setTouched] = useState(false);
@@ -112,13 +124,17 @@ function useForm(from: CreateFrom) {
   const [sheet, setSheet] = useState<SheetState>(FIRST_SHEET);
   const [check, setCheck] = useState<TickerRead>({ kind: 'checking' });
 
-  /* The top idea fills the fields when it arrives, unless the person already typed. */
-  useEffect(() => {
-    if (touched || ideas.length === 0) return;
-    const f = firstFill(ideas, from.title);
-    setName(f.name);
-    setTicker(f.ticker);
-  }, [ideas]);
+  /* The top idea fills the fields when it arrives, unless the person already typed. Set during the
+     render that receives it, not in an effect, so no frame draws the chips beside the old ticker. */
+  const [applied, setApplied] = useState<readonly NameIdea[] | null>(held ?? null);
+  if (ideas !== applied && ideas.length > 0) {
+    setApplied(ideas);
+    if (!touched) {
+      const f = firstFill(ideas, from.title);
+      setName(f.name);
+      setTicker(f.ticker);
+    }
+  }
 
   useEffect(() => {
     setSheet((s) => ({ ...s, coinsOpen: false }));
@@ -133,7 +149,7 @@ function useForm(from: CreateFrom) {
   }, [ticker]);
 
   return {
-    from, ideas, name, ticker, picked, preset, custom, description, links, sheet, check,
+    from, ideas, reading, name, ticker, picked, preset, custom, description, links, sheet, check,
     devLamports: devBuyLamports(preset, custom),
     typeName: (v: string) => { setTouched(true); setName(v.slice(0, NAME_MAX)); },
     typeTicker: (v: string) => { setTouched(true); setTicker(cleanTicker(v)); },
@@ -155,7 +171,7 @@ function useForm(from: CreateFrom) {
 
 type Form = ReturnType<typeof useForm>;
 
-/** Picture, name, ticker, chips, the ticker line and the dev buy row. */
+/** Picture, name, ticker, the ticker line, chips, description, socials and the dev buy row. */
 function Fields({ f, presets, live }: { f: Form; presets: readonly number[]; live: boolean }) {
   const soon = useComingSoon();
   const line = tickerCheck(f.ticker, f.check);
@@ -185,7 +201,14 @@ function Fields({ f, presets, live }: { f: Form; presets: readonly number[]; liv
       </div>
       {f.sheet.coinsOpen && f.check.kind === 'read' ? <TickerCoins ticker={f.ticker} list={f.check.list} /> : null}
 
-      <NameChips ideas={otherIdeas(f.ideas, f.ticker)} onPick={f.pickIdea} />
+      <NameChips ideas={otherIdeas(f.ideas, f.ticker)} reading={f.reading} onPick={f.pickIdea} />
+
+      <textarea className={styles['description']} aria-label="Description" placeholder="Description" rows={2} value={f.description} onChange={(e) => f.setDescription(e.target.value)} />
+      <div className={styles['socials']}>
+        <input aria-label="X link" placeholder="X link" value={f.links.twitter} onChange={(e) => f.setLinks({ ...f.links, twitter: e.target.value })} />
+        <input aria-label="Telegram link" placeholder="Telegram" value={f.links.telegram} onChange={(e) => f.setLinks({ ...f.links, telegram: e.target.value })} />
+        <input aria-label="Website" placeholder="Website" value={f.links.website} onChange={(e) => f.setLinks({ ...f.links, website: e.target.value })} />
+      </div>
 
       <div className={styles['devBuy']}>
         <span className={styles['label']}>Dev buy</span>
@@ -206,31 +229,40 @@ function Fields({ f, presets, live }: { f: Form; presets: readonly number[]; liv
   );
 }
 
-/** The link and what it opens: description, socials, the creator fee, the owner's name calls. */
-function MoreOptions({ f, creatorFee }: { f: Form; creatorFee: string }) {
+/**
+ * The two fixed lines under the dev buy: what the launch costs, then what the creator earns — or,
+ * in the fee's place, why the last try failed (or, signed out, why Create would not be offered).
+ * One line each, so a new answer never moves the button.
+ */
+function Lines({ cost, creatorFee, failed }: { cost: string; creatorFee: string; failed: string | null }) {
+  return (
+    <div className={styles['lines']}>
+      <p className={styles['cost']}>{cost}</p>
+      {failed !== null
+        ? <p className={styles['failed']} role="alert">{failed}</p>
+        : <p className={styles['fee']}><span>You earn as creator</span><b>{creatorFee}</b></p>}
+    </div>
+  );
+}
+
+/** The owner's name calls on this post's ideas, behind a link only the owner sees. */
+function NameCalls({ f }: { f: Form }) {
   const owner = useIsOwner();
   const postId = f.from.postId ?? null;
-  if (!f.sheet.more) {
-    return <button type="button" className={styles['moreLink']} aria-expanded={false} onClick={f.toggleMore}>More options</button>;
-  }
+  if (!owner || postId === null || f.ideas.length === 0) return null;
   return (
     <>
-      <button type="button" className={styles['moreLink']} aria-expanded onClick={f.toggleMore}>Fewer options</button>
-      <div className={styles['more']}>
-        <textarea aria-label="Description" placeholder="Description" rows={2} value={f.description} onChange={(e) => f.setDescription(e.target.value)} />
-        <input aria-label="X link" placeholder="X link" value={f.links.twitter} onChange={(e) => f.setLinks({ ...f.links, twitter: e.target.value })} />
-        <input aria-label="Telegram link" placeholder="Telegram link" value={f.links.telegram} onChange={(e) => f.setLinks({ ...f.links, telegram: e.target.value })} />
-        <input aria-label="Website" placeholder="Website" value={f.links.website} onChange={(e) => f.setLinks({ ...f.links, website: e.target.value })} />
-        <p className={styles['fee']}><span>You earn as creator</span><b>{creatorFee}</b></p>
-        {owner && postId !== null
-          ? f.ideas.map((idea) => (
+      <button type="button" className={styles['moreLink']} aria-expanded={f.sheet.more} onClick={f.toggleMore}>{f.sheet.more ? 'Hide name calls' : 'Name calls'}</button>
+      {f.sheet.more ? (
+        <div className={styles['more']}>
+          {f.ideas.map((idea) => (
             <div key={idea.ticker} className={styles['call']}>
               <b>{idea.name} ${idea.ticker}</b>
               <NameCallButtons itemId={postId} suggestion={{ name: idea.name, ticker: idea.ticker }} />
             </div>
-          ))
-          : null}
-      </div>
+          ))}
+        </div>
+      ) : null}
     </>
   );
 }
@@ -242,11 +274,13 @@ function SoonCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
     <Modal title="Create coin" onClose={onClose}>
       {from.labelled ? <div className={styles['notice']}><Notice notice={HAND_WRITTEN} /></div> : null}
       <Fields f={f} presets={DEV_BUY_PRESETS} live={false} />
-      <p className={styles['cost']}>{costLine({ kind: 'off' })}</p>
-      <MoreOptions f={f} creatorFee="— not live yet" />
-      <Button look="primary" size="large" className={styles['create']} onClick={() => soon('Creating a coin')}>
-        <RocketIcon size={18} /> Create coin
-      </Button>
+      <Lines cost={costLine({ kind: 'off' })} creatorFee="— not live yet" failed={null} />
+      <div className={styles['action']}>
+        <Button look="primary" size="large" className={styles['create']} onClick={() => soon('Creating a coin')}>
+          <RocketIcon size={18} /> Create coin
+        </Button>
+      </div>
+      <NameCalls f={f} />
     </Modal>
   );
 }
@@ -266,7 +300,10 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
   const f = useForm(from);
   const [priced, setPriced] = useState<Priced>({ kind: 'none' });
   const [outcome, setOutcome] = useState<Outcome>(null);
-  const [rules] = useLoad('launch-rules', (signal) => fetchLaunchRules(signal));
+  /* Rules asked for ahead (preload.ts) are here on the first frame; the read below then reuses them. */
+  const heldRules = peekRules();
+  const [rulesLoad] = useLoad('launch-rules', () => loadRules());
+  const rules = rulesLoad.state === 'loading' && heldRules !== undefined ? { state: 'ready' as const, value: heldRules } : rulesLoad;
   const r: LaunchRules | null = rules.state === 'ready' ? rules.value : null;
   const cap = r === null ? 0n : BigInt(r.maxDevBuyLamports);
   const dev = f.devLamports;
@@ -289,7 +326,8 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
   }, [account, r?.open, f.name, f.ticker, dev?.toString()]);
 
   const create = async () => {
-    if (account === null || wallet === null || dev === null) return;
+    /* Tapped in the moment before the rules arrive: nothing is built until they say yes. */
+    if (account === null || wallet === null || dev === null || !offered) return;
     setOutcome('working');
     const imageDataUrl = f.picked ?? (from.thumbUrl === null ? null : await imageAsDataUrl(from.thumbUrl));
     if (imageDataUrl === null) {
@@ -323,7 +361,7 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
       : priced.kind === 'asking' ? costLine({ kind: 'measuring' })
         : costLine({ kind: 'unread' });
 
-  /* Why Create is not offered, if it is not; else why the last try failed. One line, never both. */
+  /* Why Create is not offered, if it is not (in the button's slot); else why the last try failed. */
   const stop = rules.state === 'loading' ? null
     : r === null ? "The launchpad couldn't be read just now."
       : !r.open ? 'pump.fun has new coins paused right now.'
@@ -333,27 +371,30 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
               : dev > cap ? `The dev buy is capped at ${solText(Number(cap))}.`
                 : priced.kind === 'refused' ? priced.why
                   : null;
-  const failed = outcome !== null && outcome !== 'working' ? failedLine(outcome) : null;
-  const why = stop ?? failed;
+  const failed = outcome !== null && outcome !== 'working' && stop === null ? failedLine(outcome) : null;
   const offered = rules.state === 'ready' && stop === null;
 
+  /* The button's slot is always the same 52px: the button, Sign in, the working line, or why not. */
   return (
     <Modal title="Create coin" onClose={outcome === 'working' ? () => undefined : onClose}>
-      <Fields f={f} presets={presetsWithin(cap)} live />
-      <p className={styles['cost']}>{cost}</p>
-      <MoreOptions f={f} creatorFee={r === null ? "— couldn't be read" : feeRate(r.creatorFeeBps)} />
-      {why !== null ? <p className={styles['why']} role="alert">{why}</p> : null}
-      {account === null ? (
-        wallet !== null && state.kind !== 'unavailable' && state.kind !== 'connecting'
-          ? <Button look="primary" size="large" className={styles['create']} onClick={() => void wallet.connect()}>Sign in to create</Button>
-          : <p className={styles['why']}>Sign-in isn't set up in this build.</p>
-      ) : outcome === 'working' ? (
-        <p className={styles['working']}>Checking the launch, then your wallet asks to sign.</p>
-      ) : !offered ? null : (
-        <Button look="primary" size="large" className={styles['create']} onClick={() => void create()}>
-          <RocketIcon size={18} /> Create coin
-        </Button>
-      )}
+      <Fields f={f} presets={presetsShown(r === null ? null : cap)} live />
+      <Lines cost={cost} creatorFee={rules.state === 'loading' ? '— being read' : r === null ? "— couldn't be read" : feeRate(r.creatorFeeBps)} failed={account === null ? stop : failed} />
+      <div className={styles['action']}>
+        {account === null ? (
+          wallet !== null && state.kind !== 'unavailable' && state.kind !== 'connecting'
+            ? <Button look="primary" size="large" className={styles['create']} onClick={() => void wallet.connect()}>Sign in to create</Button>
+            : <p className={styles['why']}>Sign-in isn't set up in this build.</p>
+        ) : outcome === 'working' ? (
+          <p className={styles['working']}>Checking the launch, then your wallet asks to sign.</p>
+        ) : stop !== null ? (
+          <p className={styles['why']} role="alert">{stop}</p>
+        ) : (
+          <Button look="primary" size="large" className={styles['create']} onClick={() => void create()}>
+            <RocketIcon size={18} /> Create coin
+          </Button>
+        )}
+      </div>
+      <NameCalls f={f} />
     </Modal>
   );
 }
