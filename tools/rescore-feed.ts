@@ -1,5 +1,5 @@
 /**
- * `SPEND=live node --env-file=.env.local --experimental-strip-types tools/rescore-feed.ts --yes [--unscored]`
+ * `SPEND=live node --env-file=.env.local --experimental-strip-types tools/rescore-feed.ts --yes [--unscored] [--sync]`
  *
  * RE-CHECKS EVERY POST NOW ON FOR YOU OR POPULAR AGAINST THE JUDGE AS IT IS TODAY. A post's score
  * is recorded once, under the prompt of its day; when the rules change (the sport, fandom and
@@ -11,6 +11,12 @@
  *
  * `--unscored` instead scores the runner's own waiting queue (catch-all posts never scored, inside
  * the feed's window, newest first) — the catch-up after the runner's scorer was paused.
+ *
+ * ★ SENT AS ONE MESSAGE BATCH BY DEFAULT, at half the judge's price: every post is the same
+ * request the live scorer would send, so the answers are the same, but they arrive together
+ * after minutes rather than one a second. Nobody watches a re-score, so the wait costs nothing
+ * and the saving is real. `--sync` asks one post at a time instead (each answer recorded as it
+ * comes), for when the answers are wanted now.
  *
  * Separate from the runner's scorer because that one only asks about posts never scored. Paid,
  * on the shared ledger as a job (tools/lib/shared-meter.ts): in the day's caps, not the runner's
@@ -24,6 +30,8 @@ import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { storyId, type ItemId } from '../contracts/src/ids.ts';
+import type { JudgeOutcome } from '../contracts/src/ports/judge.ts';
+import type { Item } from '../contracts/src/vocabulary.ts';
 import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgItemRepo, PgPostJudgementRepo } from '../store/src/index.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
@@ -31,6 +39,7 @@ import { openSharedMeter } from './lib/shared-meter.ts';
 const P = DEFAULT_POLICY;
 const USD_PER_POST = 0.01;
 const UNSCORED = process.argv.includes('--unscored');
+const SYNC = process.argv.includes('--sync');
 
 if (process.env['SPEND'] !== 'live' || !process.argv.includes('--yes')) {
   console.error('rescore-feed refused: this calls the paid judge. Set SPEND=live and pass --yes.');
@@ -50,7 +59,7 @@ const judge = anthropicJudge({
     timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
     maxFrameBytes: P.judge.maxFrameBytes, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   }),
-  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post',
+  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post', batch: !SYNC,
 });
 
 try {
@@ -66,22 +75,28 @@ try {
   const scores = new PgPostJudgementRepo(db);
   let passed = 0;
   let failed = 0;
-  for (const item of items.values()) {
-    const subject = {
-      storyId: storyId(`post-${String(item.itemId).replaceAll(':', '-').replaceAll('|', '-')}`),
-      texts: item.text.trim() === '' ? [] : [item.text.trim().slice(0, P.judge.maxCharsPerText)],
-      media: item.media,
-      distinctAuthors: 1,
-      distinctSources: 1,
-    };
-    const line = meter.line();
-    const result = await judge.judge([subject], { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: 1, deadline: Date.now() + 120_000 });
-    const o = result.value[0];
-    if (o?.kind !== 'judged') continue;
+  const subjectOf = (item: Item) => ({
+    storyId: storyId(`post-${String(item.itemId).replaceAll(':', '-').replaceAll('|', '-')}`),
+    texts: item.text.trim() === '' ? [] : [item.text.trim().slice(0, P.judge.maxCharsPerText)],
+    media: item.media,
+    distinctAuthors: 1,
+    distinctSources: 1,
+  });
+  const budget = () => ({ capUsd: meter.line().capUsd, spentUsd: meter.line().spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
+  const keep = async (item: Item, o: JudgeOutcome | undefined): Promise<void> => {
+    if (o?.kind !== 'judged') return;
     await scores.record(item.itemId, o.judgement);
     if (o.judgement.coinable) passed += 1;
     else failed += 1;
     console.log(`${o.judgement.coinable ? 'yes' : 'no '} ${o.judgement.confidence.toFixed(2)} ${(o.judgement.proposedName ?? '-').padEnd(20)} ${item.text.replace(/\s+/g, ' ').slice(0, 80)}`);
+  };
+  const list = [...items.values()];
+  if (SYNC) {
+    for (const item of list) await keep(item, (await judge.judge([subjectOf(item)], budget())).value[0]);
+  } else if (list.length > 0) {
+    console.log(`sent as one batch at half price; waiting for it to end (minutes, at most an hour). --sync asks one at a time.`);
+    const outcomes = (await judge.judge(list.map(subjectOf), budget())).value;
+    for (const [i, item] of list.entries()) await keep(item, outcomes[i]);
   }
   console.log(`\nre-scored ${passed + failed}: ${passed} still memeable, ${failed} not; spent $${meter.line().spentUsd.toFixed(4)}. The projector's next frame applies it.`);
 } finally {
