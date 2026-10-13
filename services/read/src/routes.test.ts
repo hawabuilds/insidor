@@ -603,6 +603,16 @@ test('a feed that has never been projected is 404 and never asks for its rows', 
   assert.deepEqual(calls.map((c) => c.sql), [RISING_VIEW_SQL]);
 });
 
+test('a feed\'s tick alone is one single-row read and never the rows, for the phone\'s backup check', async () => {
+  const { deps, calls } = fakeDb({ [RISING_VIEW_SQL]: [{ tick: '12' }] });
+  const reply = await handle('GET', '/rising/fyp/tick', deps);
+  assert.equal(reply.status, 200);
+  assert.deepEqual(JSON.parse(reply.body), { tick: 12 });
+  assert.deepEqual(calls.map((c) => c.sql), [RISING_VIEW_SQL]);
+  assert.equal((await handle('GET', '/rising/nope/tick', fakeDb({}).deps)).status, 404);
+  assert.equal((await handle('GET', '/rising/fyp/other', deps)).status, 404);
+});
+
 test('★ the narratives list is the board\'s stories as whole pages, in board order, with the board\'s provenance', async () => {
   const { deps, calls } = fakeDb({
     [BOARD_VIEW_SQL]: [{ tick: '9', provenance: OBSERVED }],
