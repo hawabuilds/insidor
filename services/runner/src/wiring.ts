@@ -68,6 +68,7 @@ import {
   PgBackfillRepo,
   PgCoinUniverseRepo,
   PgOlderCoinRepo,
+  PgCryptoAttentionRepo,
   PgFeedFloorRepo,
   PgImageEmbeddingRepo,
   PgImagePairRepo,
@@ -92,6 +93,7 @@ import {
 import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
+import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
 import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type UniverseDeps } from './work/universe.ts';
@@ -138,6 +140,8 @@ export interface Runtime {
   readonly feedFloors: PgFeedFloorRepo;
   /** Score the catch-all posts the judge has not seen, alone and once each. */
   readonly scorePosts: () => Promise<ScoringResult>;
+  /** Crypto talk under For You posts, read on the posts line and stored as facts. See work/crypto-attention.ts. */
+  readonly cryptoAttention: () => Promise<AttentionResult>;
   /** Embed the first image of each new post once, for GROUP's image evidence. */
   readonly embedImages: () => Promise<unknown>;
   /** Follow promoted stories' quotes back to where they started. See work/backfill.ts. */
@@ -815,6 +819,17 @@ export async function withRuntime<T>(
               mode: cfg.spend.kind,
               policy,
               log: log.child({ step: 'score-posts' }),
+              now: () => Date.now() as Millis,
+            }),
+          cryptoAttention: () =>
+            readCryptoAttention({
+              platforms,
+              attention: new PgCryptoAttentionRepo(db),
+              items: repos.items,
+              meter,
+              mode: cfg.spend.kind,
+              policy,
+              log: log.child({ step: 'crypto-attention' }),
               now: () => Date.now() as Millis,
             }),
         }),
