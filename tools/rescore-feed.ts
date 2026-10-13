@@ -9,6 +9,9 @@
  * projector's next frame then holds them to it, and a post that now fails leaves the feed with
  * its reason kept (public.feed_rejection).
  *
+ * `--recent` instead re-scores every catch-all post inside the feed's window whose latest answer
+ * came from an older prompt — the catch-up after the rules change, newest first, at most
+ * `rising.postsPerPass` posts a run.
  * `--unscored` instead scores the runner's own waiting queue (catch-all posts never scored, inside
  * the feed's window, newest first) — the catch-up after the runner's scorer was paused.
  *
@@ -40,6 +43,7 @@ const P = DEFAULT_POLICY;
 const USD_PER_POST = 0.01;
 const UNSCORED = process.argv.includes('--unscored');
 const SYNC = process.argv.includes('--sync');
+const RECENT = process.argv.includes('--recent');
 
 if (process.env['SPEND'] !== 'live' || !process.argv.includes('--yes')) {
   console.error('rescore-feed refused: this calls the paid judge. Set SPEND=live and pass --yes.');
@@ -52,7 +56,7 @@ if (price === null) throw new Error(`JUDGE_MODEL ${setup.model} has no price`);
 
 const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'] }, applicationName: 'insidor-rescore-feed' });
 const db = asDb(pool);
-const { meter, close } = await openSharedMeter(UNSCORED ? 2 : 1);
+const { meter, close } = await openSharedMeter(UNSCORED || RECENT ? 2 : 1);
 const judge = anthropicJudge({
   client: judgeClient({
     apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: setup.model, maxOutputTokens: P.judge.postBatchMaxOutputTokens, effort: price.effort,
@@ -63,14 +67,22 @@ const judge = anthropicJudge({
 });
 
 try {
-  const showing = UNSCORED
+  const showing = RECENT
+    ? await db.query<{ item_id: string }>(
+        `select i.item_id from internal.item_found_by f join public.item i on i.item_id = f.item_id
+          where i.origin = 'observed' and i.first_seen_at >= now() - ($2::bigint * interval '1 millisecond')
+            and (select pj.prompt_id from internal.post_judgement pj where pj.item_id = i.item_id order by pj.judged_at desc, pj.id desc limit 1) is distinct from $1
+          order by i.first_seen_at desc limit $3`,
+        [judge.promptId, P.rising.windowMs, P.rising.postsPerPass * 2],
+      )
+    : UNSCORED
     ? (await new PgItemRepo(db).catchAllUnscored((Date.now() - P.rising.windowMs) as never, P.rising.postsPerPass)).map((i) => ({ item_id: String(i.itemId) }))
     : await db.query<{ item_id: string }>(
     `select distinct r.item_id from public.rising_row r
       where (select pj.prompt_id from internal.post_judgement pj where pj.item_id = r.item_id order by pj.judged_at desc, pj.id desc limit 1) is distinct from $1`,
     [judge.promptId],
   );
-  console.log(`${showing.length} ${UNSCORED ? 'posts waiting for a first score' : 'posts on the feeds were scored under an older prompt'}; at most $${(showing.length * USD_PER_POST).toFixed(2)}.`);
+  console.log(`${showing.length} ${RECENT ? 'recent posts were scored under an older prompt' : UNSCORED ? 'posts waiting for a first score' : 'posts on the feeds were scored under an older prompt'}; at most $${(showing.length * USD_PER_POST).toFixed(2)}.`);
   const items = await new PgItemRepo(db).byIds(showing.map((r) => r.item_id as ItemId));
   const scores = new PgPostJudgementRepo(db);
   let passed = 0;
