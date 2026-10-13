@@ -69,6 +69,8 @@ const social = (method: string, path: string, body?: unknown) => call('social', 
 const notify = (method: string, path: string, body?: unknown) => call('notify', method, path, body);
 /** The social service, signed and key-checked, for the owner's calls (shared/api/owner.ts). */
 export const socialCall = social;
+/** The alert service, signed and key-checked, for the post sheet's bell (shared/api/post-watch.ts). */
+export const notifyCall = notify;
 
 /* ── social ───────────────────────────────────────────────────────── */
 

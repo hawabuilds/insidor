@@ -10,6 +10,7 @@
  *   POST   /push/subscribe { endpoint, keys }     DELETE the same to stop this device
  *   POST   /push/test               "Notifications are on", to this person's devices only
  *   PUT    /watch { stories }       the narratives this person stars, mirrored for alerts
+ *   GET|PUT|DELETE /post-watch/:itemId    the post sheet's bell on one post (post-watch.ts)
  *
  * ★ PUSH STATE IS TOLD AS IT IS. `push.on` is NOTIFY; `push.configured` is whether VAPID keys are
  * present. The app shows "alerts are listed but not pushed" from these, rather than a switch that
@@ -24,6 +25,7 @@ import { prefsOf, type Db } from './deliver.ts';
 import { json, type Reply, type Request } from './http.ts';
 import { coinOf, httpsOrNull, peopleOf, posterPictures } from './faces.ts';
 import { bellCount, parseList, readPage } from './list.ts';
+import { postWatchRoute } from './post-watch.ts';
 
 export interface NotifyDeps {
   readonly db: Db;
@@ -87,6 +89,8 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
        lets the app keep the line between new and read where it was when the screen opened. */
     return json(200, { unread: alerts.filter((a) => a.unread).length, bell: await bellCount(deps.db, me.userId), seenAt, alerts, cursor: page.cursor });
   }
+  const watchedPost = await postWatchRoute(deps.db, m, seg, me.userId);
+  if (watchedPost !== null) return watchedPost;
   if (m === 'POST' && path === 'alerts/seen') {
     await deps.db.query('insert into people.alert_seen (user_id, seen_at) values ($1, now()) on conflict (user_id) do update set seen_at = now()', [me.userId]);
     return json(200, { seen: true });

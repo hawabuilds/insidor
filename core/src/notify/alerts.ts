@@ -21,6 +21,8 @@
  *   4c. "N PEOPLE FOUND YOUR COMMENT USEFUL" is Trador's votes notification: holders liking a
  *      comment of yours, one alert per comment that counts them (its level is the count, so each
  *      new liker is a new level and the list shows the newest). Its own switch, on to start.
+ *   4d. A POST'S COIN IS PROVEN: someone tapped the bell on a post, and a coin was then proven to
+ *      come from it. Once per person and post, on the coins switch (coins for what you watch).
  *   5. A RE-TUNE SUMMARY IS THE OWNER'S TOO: twice a day, what the judge learned from the owner's
  *      own calls and whether it was applied (tools/retune.ts). No switch, like the warning, but
  *      it waits behind the hourly limit like any other alert — it is a report, not an alarm.
@@ -48,6 +50,7 @@ export const ALERT_KINDS = [
   'retune_summary',
   'supplier_account',
   'comment_useful',
+  'post_coin',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -80,6 +83,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   retune_summary: 'always',
   supplier_account: 'always',
   comment_useful: 'useful',
+  post_coin: 'coins',
 };
 
 export interface AlertPrefs {

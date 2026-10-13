@@ -10,6 +10,8 @@
  * recorded as seen and nothing is sent — turning alerts on must not send a hundred alerts about
  * the board as it already was.
  *
+ * The same pass tells the people who put the bell on a post when its coin is proven (post-watch.ts).
+ *
  * Each alert carries the face its row shows: a rising post its poster's picture, a coin its address.
  *
  * ★ ONLY OBSERVED, NEVER SAMPLE. Stories are read where `origin = 'observed'`; a fixture never
@@ -24,6 +26,7 @@ import type { AlertKind } from '@insidor/core';
 
 import { queue, type Db } from './deliver.ts';
 import { posterPictures } from './faces.ts';
+import { checkPostCoins } from './post-watch.ts';
 import type { Facts } from './text.ts';
 
 export interface RisingRow {
@@ -168,6 +171,14 @@ export async function checkPipeline(db: Db): Promise<number> {
   const events = coinEvents(board, c.keys);
   if (c.seeded) queued += await send(db, events.proposed);
   await markSeen(db, 'story-coin', [SEEDED, ...events.keys]);
+
+  /* Posts with the bell on whose coin is now proven (post-watch.ts). Last, and before 0069 its
+     table is missing (42P01): that one error is skipped, so it never stops the pass. */
+  try {
+    queued += await checkPostCoins(db);
+  } catch (e) {
+    if ((e as { code?: unknown }).code !== '42P01') throw e;
+  }
 
   return queued;
 }
