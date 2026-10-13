@@ -56,3 +56,23 @@ test('amounts are exact decimals in base units, never floats', () => {
   assert.equal(fromBaseUnits('248401937865', 6), '248401.937865');
   assert.equal(fromBaseUnits('50000000', 9), '0.05');
 });
+
+const LIMITS = { maxBuyLamports: '50000000', defaultSlippageBps: 300, maxSlippageBps: 1500, feeBps: 0 };
+
+test('★ no buy preset the gate would refuse: the last is the largest buy at this slippage', async () => {
+  const { buyPresets, largestBuy } = await import('./order-flow.ts');
+  const presets = buyPresets(LIMITS, 300);
+  assert.deepEqual(presets.map((p) => p.label), ['0.01 SOL', '0.025 SOL', 'Max']);
+  const max = presets[presets.length - 1]?.lamports ?? 0n;
+  assert.equal(max, largestBuy(LIMITS, 300));
+  assert.ok(max + (max * 300n) / 10_000n <= 50_000_000n, 'the largest, plus its slippage, is within the cap');
+  assert.deepEqual(buyPresets(null, 300), [], 'no limits read, no presets: the amount is typed');
+});
+
+test('the amount field keeps digits and one point; shares round down and 100% is the whole balance', async () => {
+  const { impactLevel, sanitizeAmount, shareOf } = await import('./order-flow.ts');
+  assert.equal(sanitizeAmount('1.2.345678x9', 6), '1.234567');
+  assert.equal(shareOf(999n, 50), 499n);
+  assert.equal(shareOf(999n, 100), 999n);
+  assert.deepEqual([impactLevel(1), impactLevel(3), impactLevel(20), impactLevel(60), impactLevel(null)], ['ok', 'caution', 'warn', 'block', 'ok']);
+});

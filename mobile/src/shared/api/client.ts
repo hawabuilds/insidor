@@ -21,7 +21,7 @@ import { decodeCoinAbout, type CoinAbout } from './about.ts';
 import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, SameNameCoins, SearchedCoin, SearchResults } from './wire/search.ts';
-import type { BuildResult, Holding, TradeQuote, TradeVenue } from './wire/trade.ts';
+import type { BuildResult, Holding, TradeLimits, TradeQuote, TradeVenue } from './wire/trade.ts';
 import type { CoinMarket, MarketTimeframe } from './wire/market.ts';
 import type { BoardTick } from './wire/board.ts';
 import type { RisingFeed, RisingFeedId } from './wire/rising.ts';
@@ -167,11 +167,16 @@ async function trade(path: string, init: RequestInit = {}, signal?: AbortSignal)
 
 const said = (body: Record<string, unknown>, fallback: string): string => (typeof body['error'] === 'string' ? body['error'] : fallback);
 
-/** Where a coin can be traded now: its curve, its pool, nowhere, or "could not tell". */
-export async function fetchTradeVenue(mint: string, signal?: AbortSignal): Promise<TradeVenue> {
+/** Where a coin can be traded now (its curve, its pool, nowhere, or "could not tell"), with the limits a ticket sizes against. */
+export async function fetchTradeVenue(mint: string, signal?: AbortSignal): Promise<{ readonly venue: TradeVenue; readonly limits: TradeLimits | null }> {
   const r = await trade(`/venue/${encodeURIComponent(mint)}`, {}, signal);
   const kind = r.body['kind'];
-  return r.ok && (kind === 'curve' || kind === 'pool' || kind === 'none') ? kind : 'unavailable';
+  const venue: TradeVenue = r.ok && (kind === 'curve' || kind === 'pool' || kind === 'none') ? kind : 'unavailable';
+  const l = typeof r.body['limits'] === 'object' && r.body['limits'] !== null ? (r.body['limits'] as Record<string, unknown>) : null;
+  const n = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null);
+  const max = typeof l?.['maxBuyLamports'] === 'string' && /^\d+$/.test(l['maxBuyLamports']) ? l['maxBuyLamports'] : null;
+  const [def, top, fee] = [n(l?.['defaultSlippageBps']), n(l?.['maxSlippageBps']), n(l?.['feeBps'])];
+  return { venue, limits: max !== null && def !== null && top !== null && fee !== null ? { maxBuyLamports: max, defaultSlippageBps: def, maxSlippageBps: top, feeBps: fee } : null };
 }
 
 /** A quote, or the server's reason there is none. */

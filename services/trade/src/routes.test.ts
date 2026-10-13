@@ -185,6 +185,7 @@ test('★ a failed simulation blocks signing: the reply says why and carries no 
 test('a coin on its curve trades there, a bonded one through the router, and one with no route says so', async () => {
   const { d } = deps();
   assert.equal(body(await handle('GET', `/venue/${CURVE_COIN}`, null, d)).kind, 'curve');
+  assert.deepEqual(body(await handle('GET', `/venue/${CURVE_COIN}`, null, d)).limits, { maxBuyLamports: capLamports(d.policy).toString(), defaultSlippageBps: d.policy.defaultSlippageBps, maxSlippageBps: d.policy.maxSlippageBps, feeBps: d.policy.platformFeeBps }, 'the ticket sizes against the gate\'s own numbers');
   assert.equal(body(await handle('GET', `/venue/${BONDED_COIN}`, null, d)).kind, 'pool');
   assert.equal(body(await handle('GET', `/venue/${DEAD_COIN}`, null, d)).kind, 'none');
   const r = await handle('GET', quoteUrl(DEAD_COIN, '1000'), null, d);
