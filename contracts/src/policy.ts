@@ -1960,7 +1960,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v54',
+  version: 'policy.v55',
 
   admit: {
     maxAgeMin: 240,
@@ -2406,7 +2406,7 @@ const POLICY_V1: Policy = {
 
   owner: {
     wallets: ['A1e82D9Lw4irgKMpXRpJbvLw8c7xCCyA42NdcxzKvvdL'],
-    xHandles: [],
+    xHandles: ['hawabuilds'],
   },
 
   learning: {
