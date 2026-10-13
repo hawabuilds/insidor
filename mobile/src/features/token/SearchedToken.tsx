@@ -1,41 +1,36 @@
 /**
- * A COIN OPENED FROM SEARCH. The token page without a narrative around it: what the search
- * said about the coin (or what chainwatch recorded), and its market read live — price history,
- * the latest trades, and how far along its curve it is.
+ * A COIN OPENED FROM SEARCH (or a "See N coins" list, Portfolio, an alert, Create). The same page
+ * as a narrative's coin — TokenView, Trador's AssetPage — fed with what the search said about the
+ * coin, or what chainwatch recorded.
  *
- * ★ NO NARRATIVE. A search result is a coin with that name and nothing more, so this page names
- * no narrative. It is a page the person opened themselves, so once trading is on it offers Buy
- * and Sell like any coin with somewhere to trade (features/trade/TradeBar.tsx) — and "Can't be
- * traded right now" for one without, never a broken button.
+ * ★ NO NARRATIVE IS ASSUMED. A search result is a coin with that name and nothing more, so this
+ * file names no narrative of its own; the Info tab says which feed posts name the coin, with
+ * their evidence, only as the read service lists them. It is a page the person opened themselves,
+ * so once trading is on it offers Buy and Sell like any coin with somewhere to trade
+ * (features/trade/TradeBar.tsx) — and "Can't be traded right now" for one without.
+ *
+ * What breaks if changed carelessly: a search result carries no price, 24-hour move or liquidity
+ * of its own. They are dashes ("not reported") until the market is read, never zeros.
  */
 
-import { useEffect, useState } from 'react';
-import { fetchCoinMarket, fetchSearchedCoin, type CoinMarket, type MarketTimeframe, type SearchedCoin } from '../../shared/api/index.ts';
+import { fetchSearchedCoin, type CoinMarket, type SearchedCoin } from '../../shared/api/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import type { Measured } from '../../shared/format/measure.ts';
-import { formatCount } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
-import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { BackIcon, CopyIcon } from '../../shared/ui/icons.tsx';
-import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
-import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
+import { BackIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
-import { TradeBar } from '../trade/TradeBar.tsx';
-import { defaultTimeframe } from './chart-data.ts';
-import { Comments } from '../comments/Comments.tsx';
-import { CoinChart } from './CoinChart.tsx';
-import { MARKET_POLL_MS, shortAddress, Trades, tradesNote } from './TokenPage.tsx';
+import { TokenView, type TokenFacts } from './TokenView.tsx';
 import styles from './token.module.css';
 
 export function SearchedToken({ coinId }: { coinId: string }) {
   const [coin] = useLoad(`searched:${coinId}`, (signal) => fetchSearchedCoin(coinId, signal));
   return (
     <section className={styles['page']}>
-      <div className={styles['top']}>
+      {coin.state !== 'ready' ? (
         <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
-          <BackIcon size={22} />
+          <BackIcon size={20} />
         </button>
-      </div>
+      ) : null}
       {coin.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {coin.state === 'failed' ? <p className={styles['note']}>This coin couldn't be opened. Search for it again.</p> : null}
       {coin.state === 'ready' ? <Body coin={coin.value} /> : null}
@@ -47,86 +42,37 @@ export function SearchedToken({ coinId }: { coinId: string }) {
 const NOT_LISTED: Measured = { known: false, pending: 'not_reported' };
 
 function Body({ coin }: { coin: SearchedCoin }) {
-  const now = useNow();
-  const toast = useToast();
-  const [tf, setTf] = useState<MarketTimeframe>(() => defaultTimeframe({ onCurve: coin.venue === 'curve', launchedAt: coin.launchedAt.known ? coin.launchedAt.at : null, now: Date.now() }));
-  const [section, setSection] = useState<'trades' | 'comments' | 'info'>('trades');
-  const [loaded, reload] = useLoad(`market:search:${coin.coinId}:${tf}`, (signal) => fetchCoinMarket(coin.coinId, tf, signal));
-  useEffect(() => {
-    const timer = setInterval(reload, MARKET_POLL_MS);
-    return () => clearInterval(timer);
-  }, [reload]);
-  const market: CoinMarket | null = loaded.state === 'ready' ? loaded.value : null;
-  const read = market?.kind === 'read' ? market : null;
-  const progress = read?.curveProgress?.known ? Math.round(read.curveProgress.amount * 1000) / 10 : null;
-  const venue = read?.venue ?? coin.venue;
-  const ticker = coin.ticker ?? '—';
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(coin.address);
-      toast('Address copied');
-    } catch {
-      toast('Could not copy', 'Select the address under Info instead.');
-    }
+  const facts: TokenFacts = {
+    coinId: coin.coinId,
+    address: coin.address,
+    ticker: coin.ticker,
+    name: coin.name,
+    imageUrl: coin.imageUrl,
+    launchedAt: coin.launchedAt,
+    price: NOT_LISTED,
+    change24h: NOT_LISTED,
+    marketCapUsd: coin.marketCapUsd,
+    liquidityUsd: null,
+    venue: coin.venue,
+    venueLabel: 'pump.fun',
   };
-
   return (
-    <>
-      <div className={styles['coinHead']}>
-        <CoinLogo address={coin.address} ticker={coin.ticker ?? coin.name} imageUrl={coin.imageUrl} size={44} />
-        <div>
-          <h1>{ticker}</h1>
-          <span className={styles['name']}>{coin.name ?? ''}</span>
-        </div>
-      </div>
+    <TokenView
+      facts={facts}
+      info={(market) => <SearchedInfo coin={coin} market={market} />}
+      offBar={<p className={styles['note']}>Opened from search. Buying and selling are coming soon.</p>}
+    />
+  );
+}
 
-      <div className={styles['chips']}>
-        <span className={styles['chip']}>SOL</span>
-        <span className={`${styles['chip']} ${styles['chipBold']}`}>pump.fun</span>
-        <span className={styles['chip']}>{venue === 'pool' ? 'Bonded' : venue === 'curve' ? 'On curve' : 'Not listed yet'}</span>
-      </div>
-      <button type="button" className={styles['address']} onClick={() => void copy()} aria-label={`Copy address ${coin.address}`}>
-        {shortAddress(coin.address)} <CopyIcon size={13} />
-      </button>
-
-      {read?.curveProgress != null ? (
-        <div className={styles['curve']} aria-label="Bonding curve progress">
-          <span className={styles['curveTrack']}>
-            <span className={styles['curveFill']} style={{ width: `${progress ?? 0}%` }} />
-          </span>
-          {progress === null ? <Value r={formatCount(read.curveProgress)} /> : <span>{progress}% of the curve</span>}
-        </div>
-      ) : null}
-
-      <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={NOT_LISTED} change24h={NOT_LISTED} cap={coin.marketCapUsd} liquidity={null} />
-
-      <UnderlineTabs
-        label="Coin"
-        current={section}
-        onChange={setSection}
-        tabs={[
-          { key: 'trades', label: 'Trades' },
-          { key: 'comments', label: 'Comments' },
-          { key: 'info', label: 'Info' },
-        ]}
-      />
-      {section === 'trades' ? (read?.trades != null && read.trades.length > 0 ? <Trades ticker={ticker} trades={read.trades} now={now} /> : <p className={styles['note']}>{tradesNote(loaded.state, market)}</p>) : null}
-      {section === 'comments' ? <Comments subject={`coin:${coin.coinId}`} holdersOf={coin.ticker !== null ? `$${coin.ticker}` : 'this coin'} /> : null}
-      {section === 'info' ? (
-        <dl className={styles['info']}>
-          <div><dt>Name</dt><dd>{coin.name ?? '—'}</dd></div>
-          <div><dt>Ticker</dt><dd>{ticker}</dd></div>
-          <div><dt>Launched</dt><dd><Value r={formatAge(coin.launchedAt, now)} /></dd></div>
-          <div><dt>Address</dt><dd className={styles['mono']}>{coin.address}</dd></div>
-        </dl>
-      ) : null}
-
-      <TradeBar
-        mint={coin.address}
-        ticker={ticker}
-        off={<p className={styles['note']}>Opened from search. Buying and selling are coming soon.</p>}
-      />
-    </>
+function SearchedInfo({ coin, market: _market }: { coin: SearchedCoin; market: CoinMarket | null }) {
+  const now = useNow();
+  return (
+    <dl className={styles['info']}>
+      <div><dt>Name</dt><dd>{coin.name ?? '—'}</dd></div>
+      <div><dt>Ticker</dt><dd>{coin.ticker ?? '—'}</dd></div>
+      <div><dt>Launched</dt><dd><Value r={formatAge(coin.launchedAt, now as never)} /></dd></div>
+      <div><dt>Address</dt><dd className={styles['mono']}>{coin.address}</dd></div>
+    </dl>
   );
 }

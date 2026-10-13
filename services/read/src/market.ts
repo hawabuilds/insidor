@@ -1,5 +1,6 @@
 /**
- * GET /coin/:assetKey/market?tf=1m|5m|1h|6h — a coin's price history, its latest trades, and,
+ * GET /coin/:assetKey/market?tf=1m|5m|1h|6h — a coin's price history, its latest trades (each with
+ * the wallet that made it), and,
  * while it is still on its launchpad curve, how far along the curve it is.
  *
  * ★ THE ONE PLACE THIS SERVICE CALLS OUT, AND WHY IT IS ALLOWED TO. Everything else here is a
@@ -86,6 +87,8 @@ export async function coinMarket(assetKey: string, rawTf: string | null, deps: M
         usd: measured(t.usd, 'not_reported'),
         priceUsd: measured(t.priceUsd, 'not_reported'),
         at: t.at === null ? { at: null, why: 'not_reported' } : { at: t.at },
+        /* The wallet that made it, as the chain shows it: the page's "Mine" filter compares it to yours. */
+        maker: t.maker,
       })),
       curveProgress: onCurve ? measured(progress, progressWhy) : null,
     });
