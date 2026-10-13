@@ -7,7 +7,7 @@
  * the unread count is shown; it opens Notifications), three tabs under the title, the This week /
  * All time toggle on the second, rows with no box, four skeleton rows while loading, a centred
  * sentence when a tab is empty (with "See all time" on an empty week), "You have seen everything"
- * at the end.
+ * at the end, and pull to refresh.
  *
  * Trador's tabs are Following, Top calls and Latest, about people's trades and comments; Insidor
  * has neither, so its tabs are Watching (narratives you starred), Rising (rising posts) and Latest
@@ -25,7 +25,8 @@ import { formatAge } from '../../shared/format/duration.ts';
 import { useNow, useWatchlist } from '../../shared/hooks.ts';
 import { Value } from '../../shared/ui/Value.tsx';
 import { useAlertList } from './list.ts';
-import { Bell, Headline, Mark, PageTabs, Segmented } from './Parts.tsx';
+import { Bell, Headline, Mark, PageTabs, PullIndicator, Segmented } from './Parts.tsx';
+import { pullStyle, usePullToRefresh } from './pull.ts';
 import { feedTab, type FeedTab, type FeedWindow } from './split.ts';
 import styles from './alerts.module.css';
 
@@ -43,12 +44,16 @@ const WINDOWS: readonly { readonly key: FeedWindow; readonly label: string }[] =
 /** An alert's link as an in-app hash: the service writes `/#/…`. */
 export const linkOf = (href: string): string => (href.startsWith('/') ? href.replace(/^\//, '') || '#/' : '#/');
 
-export function AlertsScreen({ unread }: { unread: number; onRefreshed: () => void }) {
+export function AlertsScreen({ unread, onRefreshed }: { unread: number; onRefreshed: () => void }) {
   const now = useNow();
   const starred = useWatchlist();
   const [tab, setTab] = useState<FeedTab>(starred.length > 0 ? 'watching' : 'rising');
   const [period, setPeriod] = useState<FeedWindow>('week');
-  const { list } = useAlertList();
+  const { list, refresh } = useAlertList();
+  const { pull, refreshing } = usePullToRefresh(async () => {
+    await refresh();
+    onRefreshed();
+  });
 
   const empty =
     tab === 'watching'
@@ -61,7 +66,8 @@ export function AlertsScreen({ unread }: { unread: number; onRefreshed: () => vo
 
   return (
     <>
-      <section className={styles['page']}>
+      <PullIndicator pull={pull} refreshing={refreshing} />
+      <section className={styles['page']} style={pullStyle(pull)}>
         <header className={styles['sticky']}>
           <div className={styles['titleRow']}>
             <h1 className={styles['title']}>Feed</h1>
@@ -77,7 +83,7 @@ export function AlertsScreen({ unread }: { unread: number; onRefreshed: () => vo
         ) : null}
 
         {list.state === 'loading' ? <Skeleton /> : null}
-        {list.state === 'failed' ? <p className={styles['centred']}>Your feed couldn't be read just now.</p> : null}
+        {list.state === 'failed' ? <p className={styles['centred']}>Your feed couldn't be read just now. Pull down to try again.</p> : null}
         {list.state === 'ready' ? (
           <Rows
             items={feedTab(list.value.alerts, tab, { starred, window: period, now })}

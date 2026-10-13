@@ -1,7 +1,7 @@
 /**
  * THE PIECES THE FEED AND ITS NOTIFICATIONS SHARE, each one Trador's: the face at the left of a
  * row, a title with its ticker in bold, the bell with its count, the underline tabs under a page
- * title, and the This week / All time toggle.
+ * title, the This week / All time toggle, and the spinner that follows a pull down.
  *
  * Here rather than in shared/ui because only these two screens use them in this form; the app's
  * own UnderlineTabs is spread across the width with a rule under the row, which is not how
@@ -20,6 +20,7 @@ import { RankBadge } from '../people/RankBadge.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import { badgeText } from './group.ts';
 import { markOf } from './mark.ts';
+import { pullProgress } from './pull.ts';
 import { withTicker } from './split.ts';
 import styles from './alerts.module.css';
 
@@ -82,6 +83,21 @@ export function Segmented<K extends string>({ options, current, onChange }: { op
           {o.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** The spinner that follows the pull down from under the status bar. */
+export function PullIndicator({ pull, refreshing }: { pull: number; refreshing: boolean }) {
+  if (pull <= 0 && !refreshing) return null;
+  const p = pullProgress(pull);
+  return (
+    <div aria-hidden="true" className={styles['pull']} style={{ transform: `translateY(${pull * 0.6}px)`, opacity: refreshing ? 1 : p }}>
+      <span className={refreshing ? styles['spinning'] : ''} style={refreshing ? undefined : { transform: `rotate(${p * 270}deg)` }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 11a8 8 0 0 0-13.7-5.3L4 8m0 0V4m0 4h4M4 13a8 8 0 0 0 13.7 5.3L20 16m0 0v4m0-4h-4" />
+        </svg>
+      </span>
     </div>
   );
 }
