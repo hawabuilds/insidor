@@ -51,6 +51,11 @@ import { pictureOf } from '../services/project/src/db.ts';
 const P = DEFAULT_POLICY;
 const USD_PER_POST = 0.01;
 const TEXT_ONLY = process.argv.includes('--text-only');
+/* `--book=learning` spends on the learning work's own line (re-tuning) instead of the jobs'. */
+const BOOK: 'jobs' | 'learning' = process.argv.includes('--book=learning') ? 'learning' : 'jobs';
+/* `--kind` asks every post that passes a second question — which kind it is — and holds back
+   AD, SPORT, FANDOM, SHOWBIZ and POLITICS: the two-question gate. */
+const KIND = process.argv.includes('--kind');
 const PICTURE_SIZE = ((v) => (v === 'small' || v === '360x360' ? v : null))(process.argv.find((a) => a.startsWith('--pictures='))?.slice('--pictures='.length));
 const BATCH = process.argv.includes('--batch');
 const LABEL = process.argv.find((a) => a.startsWith('--label='))?.slice('--label='.length) ?? (TEXT_ONLY ? 'text-only' : 'now');
@@ -72,7 +77,7 @@ if (process.argv.includes('--refresh-pictures')) {
     const p = evidence.get(c.id)?.origin?.post ?? null;
     return p === null ? [] : [p.postId];
   });
-  const shared = await openSharedMeter(0.05);
+  const shared = await openSharedMeter(0.05, process.env, BOOK);
   const x = xPlatform({ client: xClient({ apiKey: process.env['X_API_KEY'] ?? '', baseUrl: process.env['X_API_BASE'] ?? 'https://api.twitterapi.io', fetch: globalThis.fetch }), meter: shared.meter, now: () => Date.now() });
   const line = shared.meter.line();
   const read = await x.lookup!(ids, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
@@ -104,7 +109,7 @@ const liveSet: Post[] = live.posts.filter((p) => !heldOut.has(p.itemId)).flatMap
 const posts = [...gold, ...nonMeme, ...liveSet];
 console.log(`${gold.length} gold origin posts, ${nonMeme.length} non-meme posts${TEXT_ONLY ? ', text only' : PICTURE_SIZE === null ? ', with pictures' : `, with pictures at ${PICTURE_SIZE}`}; at most $${(posts.length * USD_PER_POST).toFixed(2)}.`);
 
-const { meter, close } = await openSharedMeter(posts.length * USD_PER_POST);
+const { meter, close } = await openSharedMeter(posts.length * USD_PER_POST * (KIND ? 2 : 1), process.env, BOOK);
 const http = judgeClient({
   apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: setup.model, maxOutputTokens: P.judge.postBatchMaxOutputTokens, effort: price.effort,
   timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
@@ -183,13 +188,43 @@ try {
   /* One post a call either way (maxBatch 1), as the live scorer asks; batched, all of them go
      in one judge() so they leave as one Message Batch. */
   const budget = () => ({ capUsd: meter.line().capUsd, spentUsd: meter.line().spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
+  /* `--reuse=<file>` takes the first question's answers from an earlier run's results instead of
+     asking again — for tuning the second question alone. Posts not in the file are asked. */
+  const REUSE = process.argv.find((x) => x.startsWith('--reuse='))?.slice('--reuse='.length) ?? null;
+  const reused = new Map<string, { coinable: boolean | null; name: string | null; confidence: number | null; lookedAt: string | null; passes: boolean }>();
+  if (REUSE !== null) for (const r of JSON.parse(readFileSync(REUSE, 'utf8')) as { id: string; group: string; coinable: boolean | null; name: string | null; confidence: number | null; lookedAt: string | null; passes: boolean }[]) {
+    const firstPass = r.passes || /held back/.test(r.name ?? '');
+    reused.set(`${r.group}|${r.id}`, { coinable: r.coinable, name: (r.name ?? '').replace(/ \(held back: \w+\)$/, '') || null, confidence: r.confidence, lookedAt: r.lookedAt, passes: firstPass });
+  }
+  const toAsk = posts.filter((p) => !reused.has(`${p.group}|${p.id}`));
   const outcomes: JudgeOutcome[] = [];
-  if (BATCH) outcomes.push(...(await judge.judge(posts.map(subjectOf), budget())).value);
-  else for (const p of posts) outcomes.push(...(await judge.judge([subjectOf(p)], budget())).value);
-  for (const [i, p] of posts.entries()) {
+  if (BATCH) outcomes.push(...(await judge.judge(toAsk.map(subjectOf), budget())).value);
+  else for (const p of toAsk) outcomes.push(...(await judge.judge([subjectOf(p)], budget())).value);
+  const asked = new Map(toAsk.map((p, i) => [`${p.group}|${p.id}`, i]));
+  for (const p of posts) {
+    const old = reused.get(`${p.group}|${p.id}`);
+    if (old !== undefined) {
+      rows.push({ ...p, ...old });
+      continue;
+    }
+    const i = asked.get(`${p.group}|${p.id}`) ?? -1;
     const o = outcomes[i];
     const j = o?.kind === 'judged' ? o.judgement : null;
     rows.push({ ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, passes: j !== null && postScore(j, P, similarityOf(p)) === 'passes' });
+  }
+  /* The second question, only for the posts that passed the first: which kind of post it is. */
+  if (KIND) {
+    const kindJudge = anthropicJudge({ client, meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'kind', batch: BATCH });
+    const passing = rows.map((r, i) => ({ r, i })).filter(({ r }) => r.passes);
+    const kinds: JudgeOutcome[] = [];
+    if (BATCH) kinds.push(...(await kindJudge.judge(passing.map(({ r }) => subjectOf(r)), budget())).value);
+    else for (const { r } of passing) kinds.push(...(await kindJudge.judge([subjectOf(r)], budget())).value);
+    passing.forEach(({ i }, k) => {
+      const o = kinds[k];
+      const kind = o?.kind === 'judged' ? (o.judgement.proposedName ?? 'OTHER') : 'OTHER';
+      const row = rows[i];
+      if (row !== undefined && kind !== 'OTHER') rows[i] = { ...row, passes: false, name: `${row.name ?? '-'} (held back: ${kind})` };
+    });
   }
 } finally {
   await close();
