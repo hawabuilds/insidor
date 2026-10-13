@@ -235,16 +235,16 @@ test('★ .env.example ships SILENT AND FREE, and the first run costs nothing', 
 });
 
 test('★ the shipped budget is the owner\'s cap, and the lines inside it are what bind', () => {
-  /* The owner set the day at $21 with a line per supplier (2026-10-12; before that a $3
-     starter cap, and a $1 default in .env.example that held discovery to a dollar a day).
-     Above the ceiling it would not boot; at the ceiling it is the owner's number. What
-     binds day to day is each supplier's own line, every one of them below the day and
-     paced over it — so no single supplier can take the day by breakfast. */
+  /* The owner's day: $23.25 with a line per supplier, set 2026-10-13 from the measured full-speed
+     cost (before that $21, a $3 starter cap, and a $1 default in .env.example that held discovery
+     to a dollar a day). Above the ceiling it would not boot; at the ceiling it is the owner's
+     number. The lines are brakes, not a pace: each is below the day, so no single supplier can
+     take the whole day. */
   const cfg = loadRunnerConfig(shippedEnv());
   const B = DEFAULT_POLICY.budget;
   assert.equal(cfg.spend.dailyBudgetUsd, B.dailyUsd, 'shipped at the owner\'s cap');
-  assert.equal(B.dailyUsd, 21);
-  assert.deepEqual(B.supplierLines, { posts: 11.25, judge: 8, video: 2, actors: 1, embeddings: 2 });
+  assert.equal(B.dailyUsd, 23.25);
+  assert.deepEqual(B.supplierLines, { posts: 11.25, judge: 8.5, video: 2, actors: 1, embeddings: 0.5 });
   for (const [role, line] of Object.entries(B.supplierLines)) assert.ok(line < B.dailyUsd, `${role}'s line binds before the day does`);
   assert.ok(!('paceAheadMs' in B), 'the live runner is not paced: the lines are brakes');
 });
