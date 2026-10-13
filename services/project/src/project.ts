@@ -128,6 +128,12 @@ export interface ReachReading {
   readonly atMs: Millis;
   readonly fidelity: Fidelity['kind'];
   readonly rate: Rate;
+  /**
+   * The counter as read at `atMs`, whatever its rate: null when unreadable, absent when the
+   * caller did not load it. Only the feeds' views bars read it (`rising.feedBarCountsEveryReading`),
+   * to hold a post to the same readings the scorer did; it is never put on the wire.
+   */
+  readonly count?: number | null;
 }
 
 /**
