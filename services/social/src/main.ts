@@ -18,7 +18,13 @@ import { handle, type Chain } from './routes.ts';
 
 const P = DEFAULT_POLICY.social;
 const cfg = loadSocialConfig(process.env);
-const pool = new pg.Pool({ connectionString: cfg.databaseUrl, max: 5, application_name: 'insidor-social' });
+/* The people role's pool. Every statement here is one standalone query — no LISTEN, no lock, no
+   SET, no transaction held across calls — so DATABASE_URL_PEOPLE may be the transaction-mode
+   pooler (6543), and is on Railway. Three clients and closed after ten idle seconds: each
+   process's pool adds up against the same pooler, and a request here is short. */
+const POOL_MAX = 3;
+const IDLE_CLIENT_MS = 10_000;
+const pool = new pg.Pool({ connectionString: cfg.databaseUrl, max: POOL_MAX, idleTimeoutMillis: IDLE_CLIENT_MS, application_name: 'insidor-social' });
 const db = { query: async <R>(sql: string, params?: readonly unknown[]) => (await pool.query(sql, params as unknown[])).rows as R[] };
 const log = (level: 'info' | 'error', msg: string, f: Record<string, unknown> = {}) => (level === 'error' ? console.error : console.log)(JSON.stringify({ level, msg, ...f }));
 

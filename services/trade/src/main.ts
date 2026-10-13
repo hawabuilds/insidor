@@ -41,13 +41,19 @@ const refusals = async <T>(work: () => Promise<T>): Promise<T> => {
   }
 };
 
+/** The launch pool's size and idle close; see where it is opened. */
+const LAUNCH_POOL_MAX = 2;
+const LAUNCH_IDLE_CLIENT_MS = 10_000;
+
 /* Creating coins: metadata stored in our own bucket, the coin recorded through 0042's function —
    the only thing the app role this service holds may write. */
 const launch: LaunchPort | null = (() => {
   const l = cfg.launch;
   if (l === null) return null;
   const storage = supabaseStorage({ url: l.storageUrl, serviceKey: l.storageKey, fetch: globalThis.fetch, id: randomUUID });
-  const pool = new pg.Pool({ connectionString: l.databaseUrl, max: 2, application_name: 'insidor-trade' });
+  /* One standalone statement per launch, so the app role's URL may be the transaction-mode
+     pooler (6543), and is on Railway. Two clients at most, closed after ten idle seconds. */
+  const pool = new pg.Pool({ connectionString: l.databaseUrl, max: LAUNCH_POOL_MAX, idleTimeoutMillis: LAUNCH_IDLE_CLIENT_MS, application_name: 'insidor-trade' });
   return {
     rules: () => launchRules(rpc),
     build: (r) => refusals(() => buildLaunch(rpc, r)),
