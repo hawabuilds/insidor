@@ -1,5 +1,5 @@
 {
- "about": "The news-versus-subject contrasts the prompts teach. Each case is a story the judge could be asked about, the answer it should give, and the prompt lines that teach that answer. Answers marked \"recorded\" are the judge's real answers under the current prompts (claude-haiku-4-5, 2026-10-12), written by tools/record-news-contrasts.ts; rerun it after any prompt edit.",
+ "about": "The news-versus-subject contrasts the prompts teach. Each case is a story the judge could be asked about, the answer it should give, and the prompt lines that teach that answer. Answers marked \"recorded\" are the judge's real answers under the current prompts (claude-haiku-4-5, 2026-10-13), written by tools/record-news-contrasts.ts; rerun it after any prompt edit.",
  "cases": [
   {
    "id": "biden-news",
@@ -42,8 +42,8 @@
    "answerSource": "recorded",
    "answer": {
     "coinable": true,
-    "proposedName": "Biden",
-    "confidence": 0.85
+    "proposedName": "BIDENCONFUSION",
+    "confidence": 0.72
    }
   },
   {
@@ -66,7 +66,7 @@
    "answer": {
     "coinable": false,
     "proposedName": null,
-    "confidence": 0.98
+    "confidence": 0.99
    }
   },
   {
@@ -88,7 +88,7 @@
    "answer": {
     "coinable": true,
     "proposedName": "PITCHDOG",
-    "confidence": 0.95
+    "confidence": 0.92
    }
   },
   {
@@ -110,7 +110,7 @@
    "answer": {
     "coinable": false,
     "proposedName": null,
-    "confidence": 0.99
+    "confidence": 0.95
    }
   },
   {
@@ -154,7 +154,7 @@
    "answer": {
     "coinable": false,
     "proposedName": null,
-    "confidence": 0.98
+    "confidence": 0.95
    }
   },
   {
@@ -177,7 +177,7 @@
    "answer": {
     "coinable": false,
     "proposedName": null,
-    "confidence": 0.99
+    "confidence": 0.95
    }
   },
   {
@@ -198,7 +198,7 @@
    "answerSource": "recorded",
    "answer": {
     "coinable": true,
-    "proposedName": "flying plush toy",
+    "proposedName": "STRAY KIDS PLUSH TOY",
     "confidence": 0.85
    }
   },
@@ -219,8 +219,8 @@
    "answerSource": "recorded",
    "answer": {
     "coinable": true,
-    "proposedName": "jungkook mic face",
-    "confidence": 0.92
+    "proposedName": "JUNGKOOK MIC FACE",
+    "confidence": 0.85
    }
   },
   {
@@ -242,7 +242,7 @@
    "answer": {
     "coinable": false,
     "proposedName": null,
-    "confidence": 0.95
+    "confidence": 0.98
    }
   },
   {
@@ -264,7 +264,7 @@
    "answer": {
     "coinable": false,
     "proposedName": null,
-    "confidence": 0.99
+    "confidence": 0.98
    }
   },
   {
@@ -285,8 +285,8 @@
    "answerSource": "recorded",
    "answer": {
     "coinable": true,
-    "proposedName": "pitch cat",
-    "confidence": 0.95
+    "proposedName": "PITCHCAT",
+    "confidence": 0.92
    }
   },
   {
@@ -350,7 +350,7 @@
    "answer": {
     "coinable": false,
     "proposedName": null,
-    "confidence": 0.98
+    "confidence": 0.95
    }
   },
   {
@@ -371,7 +371,7 @@
    "answerSource": "recorded",
    "answer": {
     "coinable": true,
-    "proposedName": "plush toy girl",
+    "proposedName": "PLUSH TOY",
     "confidence": 0.92
    }
   },
@@ -438,7 +438,7 @@
    "answerSource": "recorded",
    "answer": {
     "coinable": true,
-    "proposedName": "shoe in the soup",
+    "proposedName": "SOUP SHOE",
     "confidence": 0.85
    }
   },
@@ -460,7 +460,7 @@
    "answer": {
     "coinable": false,
     "proposedName": null,
-    "confidence": 0.98
+    "confidence": 0.95
    }
   }
  ]

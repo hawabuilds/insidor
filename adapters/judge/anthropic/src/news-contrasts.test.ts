@@ -55,9 +55,9 @@ test('every contrast the fixtures rely on is still taught by the prompts', () =>
   }
 });
 
-test('news is named as "no subject" in the core instructions, not only in examples', () => {
+test('the news rules are in the core instructions, not only in examples: which news is no, and which is a subject', () => {
   const core = flat(PROMPTS['coinability-core'].text);
-  for (const word of ['NEWS', 'EVENT', 'ARGUMENT', 'match result', 'product or tech announcement', 'transfer news']) {
+  for (const word of ['GENERAL NEWS', 'SPORT', 'FAN-ACCOUNT', 'CELEBRITY or POLITICAL', 'NEWS WITH A NAMEABLE THING', 'a crypto story', 'Funny is not required']) {
     assert.ok(core.includes(word), `coinability-core no longer names "${word}"`);
   }
 });

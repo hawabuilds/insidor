@@ -50,8 +50,10 @@ difference, not the names.
 
   posts: "Apple and LG leak new HomeKit features", reposted by tech accounts
   story: product news
-  subject: NONE. Not coinable, even though Apple is a specific name. A company named in
-           a headline is not a meme.
+  subject: NONE. Not coinable, even though Apple is a specific name: a list of features
+           has no one thing at its centre.
+  posts: a new AI model everyone is posting about by name, its answers screenshotted
+  subject: the model, named as the posts name it. Coinable.
 
   posts: "Stray Kids unveil single" passed around as an announcement
   story: a press release
@@ -68,5 +70,5 @@ difference, not the names.
   subject: NONE. Not coinable, however sharp the reply.
 
 When the story is clear and the subject is not, say there is no subject. A story with no
-subject is a normal and frequent outcome. It is not a failure to be avoided, and a
-labelling run where almost everything has a subject is wrong.
+subject is a normal outcome. It is not a failure to be avoided — and neither is a subject:
+when one nameable thing is at the centre, say so.
