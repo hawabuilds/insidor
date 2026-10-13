@@ -29,7 +29,7 @@ import type { Meter } from '../../contracts/src/ports/meter.ts';
 import { HELD_KINDS } from '../../services/runner/src/work/score-posts.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
 import { BATCH_PRICE_FRACTION, anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
-import { voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
+import { SPACE as EMBED_SPACE, voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
 import { tuning } from '../../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../../eval/src/gold/coin-evidence.ts';
 
@@ -83,6 +83,16 @@ export interface GradeOptions {
   readonly kind?: boolean;
   /** The coined pictures for the boost; null leaves the boost out. */
   readonly coined: readonly { readonly coinRef: string; readonly uri: string; readonly v: readonly number[] }[] | null;
+  /**
+   * ★ NEVER PAY TWICE FOR A PICTURE. Vectors this caller already holds for these pictures: one found
+   * here is not sent to the vendor. The caller decides what is safe to hold — the re-tune holds a
+   * run's own vectors only, the span over which a re-embed was measured bit-identical.
+   */
+  readonly vectors?: {
+    readonly stored: (uris: readonly string[], space: string) => Promise<ReadonlyMap<string, readonly number[]>>;
+    /** A vector the vendor just returned, kept so the next run finds it. Failing to keep it costs a re-embed later, nothing else. */
+    readonly keep: (postId: string, uri: string, space: string, values: readonly number[]) => Promise<void>;
+  };
 }
 
 /** The line has less left than the test's pessimistic estimate: nothing was asked. */
@@ -174,12 +184,16 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
   const postVectors = new Map<string, number[] | null>();
   if (o.coined !== null && o.textOnly !== true) {
     const embed = voyageEmbed({ client: voyageClient({ apiKey: (o.env['VOYAGE_API_KEY'] ?? '').trim(), baseUrl: o.env['VOYAGE_API_BASE'] ?? 'https://api.voyageai.com', fetch: globalThis.fetch }), meter: o.meter, now: Date.now });
+    const uris = [...new Set(posts.flatMap((p) => (p.imageUri === null ? [] : [p.imageUri])))];
+    const stored = o.vectors === undefined ? new Map<string, readonly number[]>() : await o.vectors.stored(uris, EMBED_SPACE).catch(() => new Map<string, readonly number[]>());
+    for (const [uri, v] of stored) postVectors.set(uri, [...v]);
     for (const p of posts) {
       if (p.imageUri === null || postVectors.has(p.imageUri)) continue;
       const line = o.meter.line();
       const r = await embed.embedMedia!([{ kind: 'image', uri: p.imageUri, width: null, height: null, durationMs: null }], { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: 1, deadline: Date.now() + 60_000 });
       const v = r.value[0];
       postVectors.set(p.imageUri, v === null || v === undefined ? null : Array.from(v.values));
+      if (v !== null && v !== undefined && o.vectors !== undefined) await o.vectors.keep(p.id, p.imageUri, v.space, Array.from(v.values)).catch(() => undefined);
     }
   }
   const similarityOf = (p: EvalPost<G>): number | null => {
