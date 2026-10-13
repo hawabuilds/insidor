@@ -295,6 +295,12 @@ export class PgItemRepo implements ItemRepo {
    *     `watch.minPerMinute` reach a minute at its latest reading. Its reach decides whether it
    *     is judged at all; a slow one keeps its one reading.
    *
+   *   - ★ and a post of `watch.longer.source` nobody has judged, posted within `watch.longer.since`
+   *     and averaging `watch.longer.minPerMinute` — the short-video source, found 30 minutes to
+   *     6 hours after posting, which the half-hour window above never holds (its growth paths run
+   *     to four hours, `rising.shortVideoFastWindowMs`). Its re-reads are paid runs, capped by the
+   *     runner's work/paid-reads.ts, so a wider window here costs nothing it has not budgeted.
+   *
    * On-screen and judged posts sort first, so the unjudged watch list can never crowd them out
    * of the page TRACK pulls.
    *
@@ -310,11 +316,12 @@ export class PgItemRepo implements ItemRepo {
       readonly minPerMinute: number;
       readonly judgedSince: Millis;
       readonly judgedMinReach: number;
+      readonly longer?: { readonly source: string; readonly since: Millis; readonly minPerMinute: number };
     },
   ): Promise<readonly Item[]> {
     const rows = await this.#db.query<ItemRow>(
       `with recent as (
-         select i.item_id, i.posted_at, i.first_seen_at,
+         select i.item_id, i.source, i.posted_at, i.first_seen_at,
                 (exists (select 1 from public.story_member m
                            join public.story s on s.story_id = m.story_id
                           where m.item_id = i.item_id and s.state = 'promoted' and s.merged_into is null)
@@ -331,13 +338,13 @@ export class PgItemRepo implements ItemRepo {
        ), picked as (
          select r.item_id, r.kept, r.first_seen_at from recent r
           where r.kept
-             or (r.posted_at >= $3
+             or (r.posted_at >= (case when r.source = $8 then $9::timestamptz else $3::timestamptz end)
                  and exists (select 1 from internal.item_found_by f where f.item_id = r.item_id)
                  and not exists (select 1 from internal.post_judgement j where j.item_id = r.item_id)
                  and (select o.value from public.observation o
                        where o.item_id = r.item_id and o.kind = 'reach' and o.value is not null
                        order by o.captured_at desc limit 1)
-                     >= $4 * greatest(extract(epoch from ($5::timestamptz - r.posted_at)) / 60, 1))
+                     >= (case when r.source = $8 then $10::float8 else $4::float8 end) * greatest(extract(epoch from ($5::timestamptz - r.posted_at)) / 60, 1))
           order by r.kept desc, r.first_seen_at desc
           limit $2
        )
@@ -347,7 +354,11 @@ export class PgItemRepo implements ItemRepo {
          from picked p
          join public.item item on item.item_id = p.item_id
         order by p.kept desc, p.first_seen_at desc`,
-      [toTimestamp(at), limit, toTimestamp(watch.since), watch.minPerMinute, toTimestamp(watch.now), toTimestamp(watch.judgedSince), watch.judgedMinReach],
+      [
+        toTimestamp(at), limit, toTimestamp(watch.since), watch.minPerMinute, toTimestamp(watch.now), toTimestamp(watch.judgedSince), watch.judgedMinReach,
+        /* No longer window: a source name nothing has, so every post takes the half-hour one. */
+        watch.longer?.source ?? '', toTimestamp(watch.longer?.since ?? watch.since), watch.longer?.minPerMinute ?? watch.minPerMinute,
+      ],
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => this.#toItem(row, fingerprints));

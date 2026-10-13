@@ -13,6 +13,12 @@
  * ★ AN UNREAD COUNT IS NOT A SMALL ONE, AND IT IS NOT A PASS. A post with no view reading, or no
  * post time for the growth paths, does not clear a bar on that path — it waits, off the feed.
  *
+ * ★ THE SHORT-VIDEO SOURCE HAS ITS OWN GROWTH PATHS (`rising.shortVideoEarly*` / `shortVideoFast*`),
+ * not the text ones scaled: it is found 30 minutes to 6 hours after posting and re-read every half
+ * hour, so a fifteen-minute or half-hour window never holds one of its readings. The caller says
+ * which source by the scale it passes — 1 for a text post, anything else is the short-video
+ * source's — so every caller that already scales its bars gets the paths with no change.
+ *
  * What breaks if changed carelessly: growth is reach over minutes SINCE THE POST, never since we
  * first saw it. Measured from our own first sight, a two-day-old post read once would look like it
  * had gained every view it ever had in one minute.
@@ -31,9 +37,9 @@ export interface ReachLevel {
 export type ReachBar = 'fyp' | 'popular';
 
 /**
- * @param scale every bar times this: 1 for a text post, `rising.shortVideoReachScale` for the
- *   short-video source, whose views run an order of magnitude higher. The caller knows the source;
- *   core does not name it.
+ * @param scale the total bars times this: 1 for a text post, `rising.shortVideoReachScale` for the
+ *   short-video source, whose views run an order of magnitude higher; any scale but 1 also takes
+ *   that source's own growth paths. The caller knows the source; core does not name it.
  */
 export function clearsReachBar(bar: ReachBar, readings: readonly ReachLevel[], postedAtMs: number | null, p: Policy, scale = 1): boolean {
   const r = p.rising;
@@ -42,10 +48,13 @@ export function clearsReachBar(bar: ReachBar, readings: readonly ReachLevel[], p
   if (bar === 'popular') return most >= r.popularMinReach * scale;
   if (most >= r.fypMinReach * scale) return true;
   if (postedAtMs === null) return false;
+  const short = scale !== 1;
+  const early = short ? { reach: r.shortVideoEarlyReach, windowMs: r.shortVideoEarlyWindowMs } : { reach: r.fypEarlyReach, windowMs: r.fypEarlyWindowMs };
+  const fast = short ? { perMinute: r.shortVideoFastReachPerMinute, windowMs: r.shortVideoFastWindowMs } : { perMinute: r.fypFastReachPerMinute, windowMs: r.fypFastWindowMs };
   return read.some((x) => {
     const ageMs = x.atMs - postedAtMs;
     if (ageMs <= 0) return false;
-    if (ageMs <= r.fypEarlyWindowMs && x.reach >= r.fypEarlyReach * scale) return true;
-    return ageMs <= r.fypFastWindowMs && x.reach / (ageMs / MS_PER_MINUTE) >= r.fypFastReachPerMinute * scale;
+    if (ageMs <= early.windowMs && x.reach >= early.reach) return true;
+    return ageMs <= fast.windowMs && x.reach / (ageMs / MS_PER_MINUTE) >= fast.perMinute;
   });
 }
