@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { MarketTrade } from '../../shared/api/index.ts';
-import { arrivals, emptyLine, filterTape, filtersFor, tradeKey } from './trades-view.ts';
+import { arrivals, emptyLine, filterTape, filtersFor, shortWallet, tradeKey, tradeUsd } from './trades-view.ts';
 
 const t = (tx: string, side: 'buy' | 'sell', maker: string | null): MarketTrade => ({
   tx, side, maker,
@@ -37,4 +37,13 @@ test('★ the first read marks nothing new; a later read marks only what arrived
   assert.equal(first.fresh.size, 0);
   const next = arrivals(first.seen, [tradeKey(t('d', 'buy', null)), ...TAPE.map(tradeKey)]);
   assert.deepEqual([...next.fresh], ['d:buy']);
+});
+
+test('a row says its dollars to the cent under $1,000 and its wallet by both ends; a missing amount is never $0', () => {
+  assert.deepEqual(tradeUsd({ known: true, amount: 2.1 }), { kind: 'value', text: '$2.10' });
+  assert.deepEqual(tradeUsd({ known: true, amount: 4_300 }), { kind: 'value', text: '$4.3K' });
+  assert.deepEqual(tradeUsd({ known: true, amount: 0.004 }), { kind: 'value', text: '<$0.01' });
+  assert.equal(tradeUsd({ known: false, pending: 'not_reported' }).kind, 'pending');
+  assert.equal(shortWallet('3rpfQ8aZk1mN2pXyMDA'), '3rpf...yMDA');
+  assert.equal(shortWallet('short'), 'short');
 });

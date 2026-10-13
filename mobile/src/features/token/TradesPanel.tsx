@@ -1,8 +1,9 @@
 /**
  * THE TRADES TAB — Trador's `panels/TradesPanel.tsx` and the filter rail above it, rebuilt in our
- * CSS modules: four columns in the order a fill is read (what happened and when, how much of the
- * coin moved and at what price, what it was worth, where to verify it), one fixed grid shared by
- * the header and every row so the labels sit on their numbers, no rules between rows.
+ * CSS modules and laid out as the owner's token page design: three columns in the order a fill is
+ * read (Buy or Sell and how long ago; how much of the coin moved; what it was worth, with the
+ * wallet that made it under it, opening the transaction), a hairline between rows, no header row
+ * (each column says what it is by its own words and colours).
  *
  * Live: the page reads the coin's market again every few seconds (TokenView), and a trade that
  * was not there before slides in, as Trador's tape does. The first read animates nothing.
@@ -15,10 +16,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { MarketTrade } from '../../shared/api/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
-import { formatCount, formatPrice, formatUsd } from '../../shared/format/number.ts';
+import { formatCount } from '../../shared/format/number.ts';
 import { ExternalIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
-import { arrivals, emptyLine, filterTape, filtersFor, tradeKey, type TapeFilter } from './trades-view.ts';
+import { arrivals, emptyLine, filterTape, filtersFor, shortWallet, tradeKey, tradeUsd, type TapeFilter } from './trades-view.ts';
 import styles from './token.module.css';
 
 /** How long a new row stays marked: longer than its slide-in, shorter than the next read. */
@@ -55,44 +56,35 @@ export function TradesPanel({ ticker, trades, note, account, now }: {
       ) : shown.length === 0 ? (
         <p className={styles['panelNote']}>{trades.length === 0 ? note : emptyLine(filter, ticker)}</p>
       ) : (
-        <div className={styles['tape']}>
-          <div className={`${styles['tapeRow']} ${styles['tapeHead']}`}>
-            <span>Type</span>
-            <span>Amount</span>
-            <span className={styles['right']}>USD</span>
-            <span className={styles['right']}>TXN</span>
-          </div>
-          <ul>
-            {shown.map((t) => {
-              const key = tradeKey(t);
-              const buy = t.side === 'buy';
-              return (
-                <li key={key} className={`${styles['tapeRow']} ${fresh.has(key) ? styles['tradeIn'] : ''}`}>
-                  <div>
-                    <span className={`${styles['side']} ${buy ? styles['up'] : styles['down']}`}>{buy ? 'Buy' : 'Sell'}</span>
-                    <span className={styles['sub']}><Value r={formatAge(t.at, now as never)} /></span>
-                  </div>
-                  <div className={styles['amount']}>
-                    <span className={styles['amountN']}>
-                      <Value r={formatCount(t.tokenAmount)} />
-                      <span className={styles['unit']}>{ticker}</span>
-                    </span>
-                    <span className={styles['sub']}><Value r={formatPrice(t.priceUsd)} /></span>
-                  </div>
-                  <span className={`${styles['usd']} ${buy ? styles['up'] : styles['down']}`}><Value r={formatUsd(t.usd)} /></span>
-                  {t.tx === null ? (
-                    <span className={`${styles['txn']} ${styles['right']}`}>—</span>
-                  ) : (
+        <ul className={styles['tape']}>
+          {shown.map((t) => {
+            const key = tradeKey(t);
+            const buy = t.side === 'buy';
+            const wallet = t.maker === null ? null : shortWallet(t.maker);
+            return (
+              <li key={key} className={`${styles['tapeRow']} ${fresh.has(key) ? styles['tradeIn'] : ''}`}>
+                <div>
+                  <span className={`${styles['side']} ${buy ? styles['up'] : styles['down']}`}>{buy ? 'Buy' : 'Sell'}</span>
+                  <span className={styles['sub']}><Value r={formatAge(t.at, now as never)} /></span>
+                </div>
+                <span className={styles['amountN']}>
+                  <Value r={formatCount(t.tokenAmount)} /> {ticker}
+                </span>
+                <div className={styles['right']}>
+                  <span className={`${styles['usd']} ${buy ? styles['up'] : styles['down']}`}><Value r={tradeUsd(t.usd)} /></span>
+                  {t.tx !== null ? (
                     <a className={styles['txn']} href={`https://solscan.io/tx/${t.tx}`} target="_blank" rel="noopener noreferrer" aria-label="View transaction">
-                      {t.tx.slice(0, 4)}…{t.tx.slice(-4)}
+                      {wallet}
                       <ExternalIcon size={11} />
                     </a>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+                  ) : wallet !== null ? (
+                    <span className={styles['txn']}>{wallet}</span>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );
