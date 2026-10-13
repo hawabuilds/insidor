@@ -108,7 +108,7 @@
   color: var(--text-2);
 }
 
-/* Across the bottom of the card: the coin status, and at most one button. */
+/* Across the bottom of the card: the coin status, and its buttons (two only on an unsure post). */
 .foot {
   margin-top: 16px;
   min-height: 36px;
@@ -139,4 +139,22 @@
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: -0.01em;
+}
+
+/* An unsure post's two buttons, side by side and never shrunk under the line beside them. */
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* With two buttons the sentence takes the full width and the buttons go under it, at the right,
+   rather than squeezing a two-line sentence into a third of a phone. */
+.footWrap {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.footWrap .status {
+  flex: 1 1 100%;
 }

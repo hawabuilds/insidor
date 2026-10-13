@@ -29,7 +29,7 @@ import type { RisingFeed, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
-import type { OriginGap, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
+import type { OriginGap, SameNameCoins, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 import {
   BOARD_ROW_FIELDS,
   COIN_FIELDS,
@@ -285,8 +285,11 @@ export function decodeCoinLink(raw: unknown, path = '$.coins'): CoinLink {
       return { kind: 'none' };
     case 'pending':
       return { kind: 'pending' };
-    case 'unsure':
-      return { kind: 'unsure', claimCount: int(o['claimCount'], `${path}.claimCount`) };
+    case 'unsure': {
+      const claimCount = int(o['claimCount'], `${path}.claimCount`);
+      /* Only a literal true is "at least": anything else is the whole count. */
+      return o['more'] === true ? { kind: 'unsure', claimCount, more: true } : { kind: 'unsure', claimCount };
+    }
     case 'one':
       return { kind: 'one', coin: decodeCoin(o['coin'], `${path}.coin`) };
     case 'several': {
@@ -617,31 +620,47 @@ export function decodeSearch(raw: unknown, path = '$'): SearchResults {
         kind: 'read',
         capped: c['capped'] === true,
         sourcesMissing: typeof c['sourcesMissing'] === 'number' ? c['sourcesMissing'] : 0,
-        items: arr(c['items'], `${path}.coins.items`).map((x, i): SearchCoin => {
-          const q = `${path}.coins.items[${i}]`;
-          const r = obj(x, q);
-          const venue = venueOf(r['venue']);
-          const m = r['matched'] === null || r['matched'] === undefined ? null : obj(r['matched'], `${q}.matched`);
-          return {
-            coinId: str(r['coinId'], `${q}.coinId`),
-            address: str(r['address'], `${q}.address`),
-            name: optStr(r['name']),
-            ticker: optStr(r['ticker']),
-            imageUrl: optStr(r['imageUrl']),
-            marketCapUsd: measured(r['marketCapUsd'], `${q}.marketCapUsd`, 'not_reported'),
-            launchedAt: instantAt(r['launchedAt'], `${q}.launchedAt`, 'not_reported'),
-            venue,
-            /* Progress belongs to a curve; on anything else it is not shown at all. */
-            curveProgress: venue === 'curve' ? measured(r['curveProgress'], `${q}.curveProgress`, 'not_read_yet') : null,
-            matched: m === null ? null : { storyId: optStr(m['storyId']), title: str(m['title'], `${q}.matched.title`) },
-          };
-        }),
+        items: arr(c['items'], `${path}.coins.items`).map((x, i) => decodeSearchCoin(x, `${path}.coins.items[${i}]`)),
       };
   return {
     term: str(o['term'], `${path}.term`),
     narratives: { capped: n['capped'] === true, items: narratives },
     posts: { capped: p['capped'] === true, items: posts },
     coins,
+  };
+}
+
+/** One coin row as Search and the same-name list show it. */
+function decodeSearchCoin(x: unknown, q: string): SearchCoin {
+  const r = obj(x, q);
+  const venue = venueOf(r['venue']);
+  const m = r['matched'] === null || r['matched'] === undefined ? null : obj(r['matched'], `${q}.matched`);
+  return {
+    coinId: str(r['coinId'], `${q}.coinId`),
+    address: str(r['address'], `${q}.address`),
+    name: optStr(r['name']),
+    ticker: optStr(r['ticker']),
+    imageUrl: optStr(r['imageUrl']),
+    marketCapUsd: measured(r['marketCapUsd'], `${q}.marketCapUsd`, 'not_reported'),
+    launchedAt: instantAt(r['launchedAt'], `${q}.launchedAt`, 'not_reported'),
+    venue,
+    /* Progress belongs to a curve; on anything else it is not shown at all. */
+    curveProgress: venue === 'curve' ? measured(r['curveProgress'], `${q}.curveProgress`, 'not_read_yet') : null,
+    matched: m === null ? null : { storyId: optStr(m['storyId']), title: str(m['title'], `${q}.matched.title`) },
+  };
+}
+
+/**
+ * An unsure post's same-named coins. Each is a coin with that name and nothing more: `matched`
+ * is dropped whatever the server sent, since this list never says which coin is the post's.
+ */
+export function decodeSameNameCoins(raw: unknown, path = '$'): SameNameCoins {
+  assertNoInternalVocabulary(raw, path);
+  const o = obj(raw, path);
+  return {
+    more: o['more'] === true,
+    sourcesMissing: typeof o['sourcesMissing'] === 'number' && Number.isInteger(o['sourcesMissing']) && o['sourcesMissing'] >= 0 ? o['sourcesMissing'] : 0,
+    items: arr(o['items'], `${path}.items`).map((x, i) => ({ ...decodeSearchCoin(x, `${path}.items[${i}]`), matched: null })),
   };
 }
 

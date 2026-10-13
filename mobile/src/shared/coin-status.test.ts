@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decodeCoin, decodeCoinLink } from './api/decode.ts';
-import { coinStatus, oneCoinLine, settledCoins } from './coin-status.ts';
+import { coinStatus, oneCoinLine, postCoinStatus, seeCoinsLabel, settledCoins } from './coin-status.ts';
 
 const coin = (over: Record<string, unknown> = {}) =>
   decodeCoin({
@@ -50,4 +50,40 @@ test('a post\'s confident coin line: ticker and market cap; an unread cap is lef
 
 test('★ a post that could not be checked says so, with no button: no Create, no guess', () => {
   assert.deepEqual(coinStatus({ kind: 'unchecked' }), { line: "Couldn't check", action: null });
+});
+
+/* ── the For You card's four states (postCoinStatus) ── */
+
+test('★ a confident match on a post card: Buy, with the ticker and market cap on the line', () => {
+  const s = postCoinStatus({ kind: 'one', coin: coin({ marketCapUsd: { v: 42_000 } }) });
+  assert.equal(s.line, '$FERRY, $42K market cap');
+  assert.deepEqual(s.actions.map((a) => a.kind), ['buy']);
+});
+
+test('★ an unsure post card keeps its sentence and offers "See N coins" and Create, never Buy', () => {
+  const s = postCoinStatus({ kind: 'unsure', claimCount: 3 });
+  assert.equal(s.line, "3 coins use this name. We can't tell which one came from here.");
+  assert.deepEqual(s.actions, [{ kind: 'see', count: 3, more: false }, { kind: 'create' }]);
+  assert.equal(s.actions.some((a) => a.kind === 'buy'), false);
+});
+
+test('★ a count the search cut short is said as "10+", on the line and on the button', () => {
+  const s = postCoinStatus(decodeCoinLink({ kind: 'unsure', claimCount: 10, more: true }));
+  assert.match(s.line, /^10\+ coins use this name/);
+  assert.deepEqual(s.actions[0], { kind: 'see', count: 10, more: true });
+  assert.equal(seeCoinsLabel(10, true), 'See 10+ coins');
+  assert.equal(seeCoinsLabel(3, false), 'See 3 coins');
+  assert.equal(seeCoinsLabel(1, false), 'See 1 coin');
+});
+
+test('★ no coin on a post card: "No coin yet" and Create; not looked up yet: a dash and nothing', () => {
+  assert.deepEqual(postCoinStatus({ kind: 'none' }), { line: 'No coin yet', actions: [{ kind: 'create' }] });
+  const pending = postCoinStatus({ kind: 'pending' });
+  assert.match(pending.line, /^— /);
+  assert.deepEqual(pending.actions, []);
+  assert.deepEqual(postCoinStatus({ kind: 'unchecked' }), { line: "Couldn't check", actions: [] });
+});
+
+test('a narrative\'s unsure line still has no button: the list is a feed card\'s', () => {
+  assert.equal(coinStatus({ kind: 'unsure', claimCount: 3 }).action, null);
 });

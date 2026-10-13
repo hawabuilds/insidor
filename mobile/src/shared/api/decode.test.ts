@@ -36,6 +36,8 @@ test('an absence decodes to pending with its reason, and a censored point stays 
 test('an unsure match carries no coin, even if the server sends one', () => {
   const link = decodeCoinLink({ kind: 'unsure', claimCount: 3, coin: { coinId: 'x' } });
   assert.deepEqual(link, { kind: 'unsure', claimCount: 3 });
+  assert.deepEqual(decodeCoinLink({ kind: 'unsure', claimCount: 10, more: true }), { kind: 'unsure', claimCount: 10, more: true }, '"at least", only from a literal true');
+  assert.deepEqual(decodeCoinLink({ kind: 'unsure', claimCount: 3, more: 'yes' }), { kind: 'unsure', claimCount: 3 });
 });
 
 test('a board that does not state its provenance is unstated, never observed', () => {

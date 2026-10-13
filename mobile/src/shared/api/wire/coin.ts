@@ -108,8 +108,11 @@ export type CoinLink =
    * exposed here, and the number is a fact rather than our arithmetic: it counts coins
    * that named themselves after this story, which is true whether or not we looked.
    * The pipeline's own word for one of them is not on this wire and must not appear here.
+   * `more`: a feed post's search found more coins of the name than it kept, so the count is
+   * "at least" and is said as "10+". The coins themselves are listed by `fetchPostCoins`, which
+   * a person opens on purpose, never carried here.
    */
-  | { readonly kind: 'unsure'; readonly claimCount: number }
+  | { readonly kind: 'unsure'; readonly claimCount: number; readonly more?: true }
   | { readonly kind: 'one'; readonly coin: Coin }
   /** At least two, ordered by the server. The tuple type makes "several" mean several. */
   | { readonly kind: 'several'; readonly coins: readonly [Coin, Coin, ...Coin[]] };

@@ -11,7 +11,7 @@ export type { RisingFeed, RisingFeedId, RisingPost } from './wire/rising.ts';
 export type { LaunchPreview, LaunchRules } from './client.ts';
 export type { BuildResult, Holding as TradeHolding, TradeQuote, TradeVenue } from './wire/trade.ts';
 export type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
-export type { OriginGap, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
+export type { OriginGap, SameNameCoins, SearchCoin, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 
 export {
   BOARD_VIEW,
@@ -36,6 +36,7 @@ export {
   fetchTradeVenue,
   sendSigned,
   fetchSearchedCoin,
+  fetchPostCoins,
   fetchStory,
   submitTrade,
 } from './client.ts';

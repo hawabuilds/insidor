@@ -18,6 +18,18 @@
  * is" is an absent affordance and a sentence. The type makes the mistake unwritable: `unsure`
  * carries no coin on the wire, so there is nothing a Buy button could be built from.
  *
+ * ★ A FEED POST'S CARD IS THE ONE PLACE `unsure` HAS BUTTONS (`postCoinStatus`), and neither is
+ * Buy: "See 3 coins" opens the list of coins that use the name, each opening its own page, and
+ * Create, since the person may make the coin they meant. The owner's four card states:
+ *
+ *   one       → "$TICKER, $42K market cap" + Buy $TICKER
+ *   unsure    → "3 coins use this name. We can't tell which one came from here." + See 3 coins
+ *               + Create coin (never Buy on the card)
+ *   none      → "No coin yet" + Create coin
+ *   pending   → a dash; unchecked → "Couldn't check"; both with no button
+ *
+ * The narrative screens keep `coinStatus`: a narrative's unsure line has no button there.
+ *
  * ★ A COIN THE SERVER CANNOT QUOTE GETS NO BUTTON EITHER. `tradable` is the server's call,
  * made by asking for a quote, and this only obeys it.
  */
@@ -29,6 +41,15 @@ export type CoinAction =
   | { readonly kind: 'create' }
   | { readonly kind: 'buy'; readonly coin: Coin }
   | { readonly kind: 'view'; readonly count: number };
+
+/** A feed card's buttons: the story actions, and the list of coins that use a post's name. */
+export type PostAction = CoinAction | { readonly kind: 'see'; readonly count: number; readonly more: boolean };
+
+export interface PostCoinStatus {
+  readonly line: string;
+  /** In the order they are drawn. Empty is no button at all, never a disabled one. */
+  readonly actions: readonly PostAction[];
+}
 
 export interface CoinStatus {
   readonly line: string;
@@ -44,12 +65,7 @@ export function coinStatus(coins: PostCoinLink): CoinStatus {
     case 'unchecked':
       return { line: "Couldn't check", action: null };
     case 'unsure':
-      return {
-        line: coins.claimCount === 1
-          ? "A coin uses this name. We can't tell if it came from here."
-          : `${coins.claimCount} coins use this name. We can't tell which one came from here.`,
-        action: null,
-      };
+      return { line: unsureLine(coins.claimCount, coins.more === true), action: null };
     case 'one':
       return coins.coin.tradable
         ? { line: '1 coin', action: { kind: 'buy', coin: coins.coin } }
@@ -60,6 +76,35 @@ export function coinStatus(coins: PostCoinLink): CoinStatus {
       return { line: `${coins.coins.length} coins${venue}`, action: { kind: 'view', count: coins.coins.length } };
     }
   }
+}
+
+/** "3 coins use this name…", or "10+ coins…" when the search found more than it kept. */
+function unsureLine(count: number, more: boolean): string {
+  if (count === 1 && !more) return "A coin uses this name. We can't tell if it came from here.";
+  return `${count}${more ? '+' : ''} coins use this name. We can't tell which one came from here.`;
+}
+
+/** "See 3 coins", "See 1 coin", "See 10+ coins": the real count, and "+" when there are more. */
+export function seeCoinsLabel(count: number, more: boolean): string {
+  return `See ${count}${more ? '+' : ''} ${count === 1 && !more ? 'coin' : 'coins'}`;
+}
+
+/**
+ * A feed post's card: its line and its buttons. The same as `coinStatus` but for `unsure`, which
+ * on a post offers the list of same-named coins and Create, and for `one`, whose line is the
+ * ticker and market cap (`oneCoinLine`).
+ */
+export function postCoinStatus(coins: PostCoinLink): PostCoinStatus {
+  if (coins.kind === 'unsure') {
+    const more = coins.more === true;
+    return {
+      line: unsureLine(coins.claimCount, more),
+      /* No list to open when nothing is listed: Create alone, never a "See 0 coins". */
+      actions: coins.claimCount > 0 ? [{ kind: 'see', count: coins.claimCount, more }, { kind: 'create' }] : [{ kind: 'create' }],
+    };
+  }
+  const status = coinStatus(coins);
+  return { line: coins.kind === 'one' ? oneCoinLine(coins.coin) : status.line, actions: status.action === null ? [] : [status.action] };
 }
 
 /**
