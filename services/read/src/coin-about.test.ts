@@ -51,3 +51,11 @@ test('★ a source that failed is a dash with its reason, never a zero; a coin n
 
   assert.equal(await coinAbout(`solana:${MINT}`, deps({}, async () => null, null)), null);
 });
+
+test('each post carries its views as its card read them; a count that is missing stays missing', async () => {
+  const post = (id: string, reach: unknown) => ({ item_id: id, payload: { sourceLabel: 'X', excerpt: 'post', reach }, own: true, links_post: true, same_picture: null, launched_after_ms: null, story_title: null });
+  const held = { [ASSET_SQL]: [{ chain: 'solana', address: MINT }], [POSTS_SQL]: [post('x:1', { v: 751_000 }), post('x:2', { v: null, why: 'unreadable' }), post('x:3', undefined)] };
+  const r = await coinAbout(`solana:${MINT}`, deps(held, async () => null, null));
+  assert.ok(r);
+  assert.deepEqual(JSON.parse(r.body).posts.map((p: { views: unknown }) => p.views), [{ v: 751_000 }, { v: null, why: 'not_reported' }, { v: null, why: 'not_reported' }]);
+});

@@ -36,6 +36,8 @@ export interface AboutPost {
   readonly excerpt: string;
   readonly thumbUrl: string | null;
   readonly postedAt: Instant;
+  /** Its views as its feed card last read them; pending with its reason when unread, never zero. */
+  readonly views: Measured;
   /** The narrative the post is on, when it is on one. `story` on the wire: the word is ours. */
   readonly story: { readonly storyId: string; readonly title: string } | null;
   readonly evidence: CoinEvidence;
@@ -112,6 +114,7 @@ export function decodeCoinAbout(raw: unknown, path = '$.about'): CoinAbout {
       excerpt: text(r['excerpt']) ?? '',
       thumbUrl: text(r['thumbUrl']),
       postedAt: instantOf(r['postedAt']),
+      views: measuredOf(r['views']),
       story: storyId !== null && title !== null ? { storyId, title } : null,
       evidence: r['evidence'] === null || r['evidence'] === undefined ? { linksPost: null, samePicture: null, launchedAfterMs: null } : decodeCoinEvidence(r['evidence'], `${path}.posts[${i}].evidence`),
     }];
