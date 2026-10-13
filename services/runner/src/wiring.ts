@@ -621,13 +621,18 @@ export async function withRuntime<T>(
           universe: {
             coins: new PgCoinUniverseRepo(db),
             metadata: {
-              read: (uri) =>
-                fetchMetadata(uri, {
-                  gateway: cfg.metadataGateway,
-                  fetch: globalThis.fetch,
-                  timeoutMs: policy.universe.metadataTimeoutMs,
-                  maxBytes: policy.universe.metadataMaxBytes,
-                }),
+              /* Each gateway in turn; the last one's failure is the coin's, retried later. */
+              read: async (uri) => {
+                let failure: unknown = null;
+                for (const gateway of cfg.metadataGateways) {
+                  try {
+                    return await fetchMetadata(uri, { gateway, fetch: globalThis.fetch, timeoutMs: policy.universe.metadataTimeoutMs, maxBytes: policy.universe.metadataMaxBytes });
+                  } catch (e) {
+                    failure = e;
+                  }
+                }
+                throw failure ?? new Error('no metadata gateway configured');
+              },
             },
             platforms,
             items: repos.items,
