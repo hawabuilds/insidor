@@ -327,7 +327,7 @@
 
 .panelTabs {
   position: sticky;
-  top: 0;
+  top: var(--safe-top);
   z-index: 10;
   margin: 0 calc(-1 * var(--gutter));
   padding: 4px var(--gutter) 0;

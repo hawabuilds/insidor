@@ -69,6 +69,11 @@
   /* Room the floating tab bar takes at the bottom, so the last row can scroll clear of it. */
   --tabbar-space: calc(96px + env(safe-area-inset-bottom));
 
+  /* Room the phone's status bar takes at the top. Opened from the home screen the app draws
+     under it (viewport-fit=cover, black-translucent in index.html), so without this the top
+     row sits behind the clock and the notch and cannot be tapped. Zero in a browser tab. */
+  --safe-top: env(safe-area-inset-top, 0px);
+
   --shadow-panel: 0 18px 50px rgb(0 0 0 / 55%), 0 0 0 1px var(--border-subtle);
 
   /* Trador's washes, tracks and shadows, as its brand-tokens.css names them: the token page,
@@ -130,4 +135,16 @@ a {
   min-height: 100dvh;
   margin: 0 auto;
   position: relative;
+  padding-top: var(--safe-top);
+}
+
+/* A solid strip under the status bar, so rows scrolling up pass behind it rather than under
+   the clock. Above every sticky header. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  height: var(--safe-top);
+  background: var(--bg);
+  z-index: 50;
 }
