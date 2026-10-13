@@ -103,6 +103,7 @@ import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 import { LineTooShort, goldOriginPosts, handGoldIds, gradePosts, judgeSetup, type EvalPost, type EvalRow } from './lib/pass-rates.ts';
 import { refitForRetune } from './lib/score-model.ts';
+import { refitCoinMatchForRetune, withCoinMatch } from './lib/coin-match-fit.ts';
 
 const P = DEFAULT_POLICY;
 const L = P.learning;
@@ -240,7 +241,9 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const gold = opts.record ? await growGold(repo) : { added: 0, waiting: 0, xUsd: 0 };
       if (opts.record) log('info', 'gold from live', { slot: slot.toISOString(), added: gold.added, waiting: gold.waiting, xUsd: gold.xUsd });
       /* The For You order model (tools/lib/score-model.ts): free, so refitted at every slot before the skip below; never fails the run. */
-      const order = await refitForRetune(url, { record: opts.record && !opts.dry });
+      /* The coin-matching weights are refitted on the owner's coin labels and gold at every slot too, and
+         their score rides in the same order log and alert facts (tools/lib/coin-match-fit.ts). */
+      const order = withCoinMatch(await refitForRetune(url, { record: opts.record && !opts.dry }), await refitCoinMatchForRetune(url, { record: opts.record && !opts.dry }));
       log('info', 'order model refitted', { slot: slot.toISOString(), ...order.log });
 
       const { calls, names, labelsSha } = await ownerCalls(repo);
