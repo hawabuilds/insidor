@@ -8,6 +8,10 @@
  * it. Keeping the re-tune's reads in one file also keeps "what counts as new since the last run"
  * in one place — the skip and the build must agree on which inputs exist.
  *
+ * ★ A TABLE NOT YET MIGRATED IS "NOTHING APPLIED". The runner may deploy before 0056 is applied;
+ * `latestApplied` then answers null (the judge's rules alone) instead of failing the boot or the
+ * five-minute check. Only an undefined table is read that way — any other error still throws.
+ *
  * What breaks if changed carelessly: `latestApplied` filters on `applied`. Reading the latest row
  * instead would put a block that FAILED its gates in front of the live judge.
  */
@@ -79,8 +83,10 @@ export class PgLearningRepo {
 
   /** The block the live judge reads, or null: no block (the judge's rules alone). */
   async latestApplied(): Promise<AppliedExamples | null> {
-    const rows = await this.#db.query<{ version_id: string; text: string; sha: string; applied_at: Date }>(
-      'select version_id, text, sha, applied_at from internal.judge_examples_version where applied order by applied_at desc limit 1',
+    const rows = await orNoTable(() =>
+      this.#db.query<{ version_id: string; text: string; sha: string; applied_at: Date }>(
+        'select version_id, text, sha, applied_at from internal.judge_examples_version where applied order by applied_at desc limit 1',
+      ),
     );
     const r = rows[0];
     return r === undefined ? null : { versionId: Number(r.version_id), text: r.text, sha: r.sha, appliedAt: r.applied_at };
@@ -301,6 +307,18 @@ export interface MissedPost {
   /** The one coin of its name found after it; null when none, or several (never a pick). */
   readonly coinAddress: string | null;
   readonly firstCoinAt: Date | null;
+}
+
+/** Postgres's "undefined table": the migration that makes it has not been applied here yet. */
+const UNDEFINED_TABLE = '42P01';
+export const isMissingTable = (e: unknown): boolean => typeof e === 'object' && e !== null && (e as { code?: unknown }).code === UNDEFINED_TABLE;
+async function orNoTable<R>(read: () => Promise<R[]>): Promise<R[]> {
+  try {
+    return await read();
+  } catch (e) {
+    if (isMissingTable(e)) return [];
+    throw e;
+  }
 }
 
 /* What the owner's screen showed, as the client sent it: read for display context only. */
