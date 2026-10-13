@@ -15,6 +15,7 @@ import pg from 'pg';
 import { randomUUID } from 'node:crypto';
 
 import { LaunchRefusedError, type LaunchPort } from './routes.ts';
+import { NO_RECORDS, pgRecords, watchSettlement } from './records.ts';
 
 import { loadTradeConfig, tradingOpen } from './config.ts';
 import { createTradeServer } from './server.ts';
@@ -65,6 +66,17 @@ const launch: LaunchPort | null = (() => {
   };
 })();
 
+/* The trade record (public.trade): one client, closed when idle, apart from the launch pool so a
+   slow record write never holds a launch's connection. */
+const records = (() => {
+  if (cfg.recordsDatabaseUrl === null) return NO_RECORDS;
+  const pool = new pg.Pool({ connectionString: cfg.recordsDatabaseUrl, max: 1, idleTimeoutMillis: LAUNCH_IDLE_CLIENT_MS, application_name: 'insidor-trade-records' });
+  /* An idle client dropped by the database is a log line, never a crashed trade service. */
+  pool.on('error', (e) => log.error('trade record pool', { err: e.message.slice(0, 200) }));
+  return pgRecords(pool, log);
+})();
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 const server = createTradeServer({
   cfg,
   policy: DEFAULT_POLICY.trade,
@@ -78,6 +90,8 @@ const server = createTradeServer({
   transfer: { build: (r) => buildTransfer(rpc, r) },
   launch,
   payerOf,
+  records,
+  settle: (id, signature) => void watchSettlement(id, signature, { landed: (sig) => chain.landed(sig), records, sleep }),
   log,
   allowedOrigins: cfg.allowedOrigins,
 });

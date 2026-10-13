@@ -31,6 +31,9 @@
  *
  * Coins on the launchpad's curve are traded with the launchpad's own instructions; coins that
  * bonded are routed through the aggregator. The platform fee is off (policy).
+ *
+ * Every build, send and landing is recorded (records.ts, public.trade): a record that cannot be
+ * written never stops a trade, and a reply never waits on one.
  */
 
 import type { TradePolicy } from '@insidor/contracts/policy.ts';
@@ -39,6 +42,7 @@ import { NATIVE, readQuote, type PoolQuote } from '@insidor/venue-jupiter';
 
 import { tradingOpen, type TradeConfig } from './config.ts';
 import { capLamports, checkRequest, REFUSAL_TEXT, type Refusal, type Side } from './gate.ts';
+import { messageKey, type BuiltRecord, type TradeRecords } from './records.ts';
 
 export interface Reply {
   readonly status: number;
@@ -73,6 +77,10 @@ export interface TradeDeps {
   /** Creating a coin; null when metadata storage or the database is not configured. */
   readonly launch: LaunchPort | null;
   readonly payerOf: (signedBase64: string) => string;
+  /** Where builds and sends are recorded; absent records nothing. */
+  readonly records?: TradeRecords;
+  /** Started after a send, not awaited: watches for the transaction to land and records how it ended. */
+  readonly settle?: (id: string, signature: string) => void;
   readonly log: { info(msg: string, f?: Record<string, unknown>): void; error(msg: string, f?: Record<string, unknown>): void };
 }
 
@@ -160,6 +168,13 @@ function readBack(raw: unknown): { readonly quote: CurveQuote | PoolQuote; reado
   return null;
 }
 
+/** Writes a build's record without holding the reply; a transaction that is not one is not recorded. */
+function recordBuilt(deps: TradeDeps, transactionBase64: string, r: Omit<BuiltRecord, 'id'>): void {
+  if (deps.records === undefined) return;
+  const id = messageKey(transactionBase64);
+  if (id !== null) void deps.records.built({ id, ...r });
+}
+
 export async function handle(method: string, rawUrl: string, body: string | null, deps: TradeDeps): Promise<Reply> {
   const url = new URL(rawUrl, 'http://trade');
   const parts = url.pathname.split('/').filter((s) => s !== '');
@@ -224,6 +239,10 @@ export async function handle(method: string, rawUrl: string, body: string | null
       if (refusal !== null) return refuse(403, refusal);
       const built = quote.venue === 'curve' ? await deps.curve.build(quote, wallet) : await deps.pool.build(quote, wallet);
       const simulation = await deps.chain.simulate(built.transactionBase64);
+      recordBuilt(deps, built.transactionBase64, {
+        wallet, kind: side, venue: quote.venue, mint: back.mint, to: null, inAmount: quote.inAmount, outAmount: quote.outAmount, bound: quote.bound,
+        slippageBps: quote.slippageBps, feeBps: deps.policy.platformFeeBps, costLamports: null, simulatedOk: simulation.ok, simulationError: simulation.ok ? null : simulation.message,
+      });
       if (!simulation.ok) {
         deps.log.info('simulation refused a trade', { side, venue: quote.venue });
         /* No transaction in this reply: nothing here can be signed. */
@@ -244,6 +263,10 @@ export async function handle(method: string, rawUrl: string, body: string | null
       if (mint === null && BigInt(amount) > capLamports(deps.policy)) return refuse(403, 'over_cap');
       const built = await deps.transfer.build({ from: wallet, to, mint, amount: BigInt(amount) });
       const simulation = await deps.chain.simulate(built.transactionBase64);
+      recordBuilt(deps, built.transactionBase64, {
+        wallet, kind: 'transfer', venue: null, mint, to, inAmount: amount, outAmount: amount, bound: null,
+        slippageBps: null, feeBps: null, costLamports: null, simulatedOk: simulation.ok, simulationError: simulation.ok ? null : simulation.message,
+      });
       if (!simulation.ok) return json(422, { error: simulation.message, logs: simulation.logs.slice(-20) });
       return json(200, { transaction: built.transactionBase64, lastValidBlockHeight: built.lastValidBlockHeight, simulated: true });
     }
@@ -292,6 +315,11 @@ export async function handle(method: string, rawUrl: string, body: string | null
           const imageDataUrl = typeof b['imageDataUrl'] === 'string' ? b['imageDataUrl'] : '';
           const stored = await launch.upload({ name, symbol, description, imageDataUrl, links: { twitter: links['twitter'], telegram: links['telegram'], website: links['website'] } });
           const built = await launch.build({ creator: wallet, name, symbol, uri: stored.uri, devBuyLamports: dev });
+          /* A launch the port built was simulated there; a failed one threw a refusal above. */
+          recordBuilt(deps, built.transactionBase64, {
+            wallet, kind: 'launch', venue: 'curve', mint: built.mint, to: null, inAmount: dev.toString(), outAmount: built.devBuy?.tokensOut ?? null, bound: null,
+            slippageBps: null, feeBps: null, costLamports: built.totalLamports, simulatedOk: true, simulationError: null,
+          });
           return json(200, { transaction: built.transactionBase64, mint: built.mint, costs: built.costs, totalLamports: built.totalLamports, devBuy: built.devBuy, simulated: true });
         }
       } catch (e) {
@@ -314,7 +342,19 @@ export async function handle(method: string, rawUrl: string, body: string | null
         return json(400, { error: 'bad request' });
       }
       if (!deps.cfg.allowlist.has(payer)) return refuse(403, 'not_allowed');
-      return json(200, { signature: await deps.chain.send(tx) });
+      const id = messageKey(tx);
+      let signature: string;
+      try {
+        signature = await deps.chain.send(tx);
+      } catch (e) {
+        if (id !== null) void deps.records?.sent(id, payer, null, e instanceof Error ? e.message : String(e));
+        throw e;
+      }
+      if (id !== null) {
+        void deps.records?.sent(id, payer, signature, null);
+        deps.settle?.(id, signature);
+      }
+      return json(200, { signature });
     }
 
     return json(404, { error: 'not found' });
