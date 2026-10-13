@@ -60,6 +60,7 @@ import type { Item, Millis } from '@insidor/contracts';
 import type { Budget, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import type { SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
 import type { PlannedCall, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
+import type { ResponseAsk } from '@insidor/contracts/ports/responses.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -141,6 +142,9 @@ export function watched(adapter: PlatformAdapter, deps: WatchDeps): PlatformAdap
     ...(adapter.lookup === undefined ? {} : { lookup: (ids: readonly string[], budget: Budget) => around(() => adapter.lookup!(ids, budget)) }),
     ...(adapter.parseLink === undefined ? {} : { parseLink: (url: string) => adapter.parseLink!(url) }),
     ...(adapter.postTimeFromId === undefined ? {} : { postTimeFromId: (id: string) => adapter.postTimeFromId!(id) }),
+    /* A post's replies and reproductions is a call like a lookup, recorded like one; its estimate is arithmetic. */
+    ...(adapter.responses === undefined ? {} : { responses: (id: string, ask: ResponseAsk, budget: Budget) => around(() => adapter.responses!(id, ask, budget)) }),
+    ...(adapter.estimateResponses === undefined ? {} : { estimateResponses: (ask: ResponseAsk) => adapter.estimateResponses!(ask) }),
   };
 }
 

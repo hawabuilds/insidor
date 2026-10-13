@@ -76,10 +76,14 @@ const price = (endpoint: string, usdPerUnit: number): Price => ({
 
 export const SEARCH = 'search';
 export const LOOKUP = 'lookup';
+/* A post's replies and reproductions (responses.ts): the same search, billed the same, under its
+   own label so the ledger says what the posts line was spent on. */
+export const RESPONSES = 'responses';
 
 export const PRICES: PriceBook = {
   [`${VENDOR}:${SEARCH}`]: price(SEARCH, 0.00015),
   [`${VENDOR}:${LOOKUP}`]: price(LOOKUP, 0.00015),
+  [`${VENDOR}:${RESPONSES}`]: price(RESPONSES, 0.00015),
 };
 
 /**
