@@ -14,8 +14,9 @@ const FIRST_POST_MS = Date.UTC(2016, 8, 1);
 /**
  * A pasted link on this source: a post and its id, an account, or null when the link is not
  * this source's — or is a share link, whose id is only known after a request (short-link.ts).
+ * A post link carries its account's handle, which is how a post is addressed here (observe.ts).
  */
-export function parseLink(url: string): { readonly kind: 'post'; readonly sourceItemId: string } | { readonly kind: 'account' } | null {
+export function parseLink(url: string): { readonly kind: 'post'; readonly sourceItemId: string; readonly handle: string } | { readonly kind: 'account' } | null {
   let u: URL;
   try {
     u = new URL(url.trim());
@@ -23,8 +24,8 @@ export function parseLink(url: string): { readonly kind: 'post'; readonly source
     return null;
   }
   if (!/^(?:www\.|m\.)?tiktok\.com$/i.test(u.hostname)) return null;
-  const post = /^\/@[^/]+\/(?:video|photo)\/(\d+)/.exec(u.pathname)?.[1];
-  if (post !== undefined) return { kind: 'post', sourceItemId: post };
+  const post = /^\/@([^/]+)\/(?:video|photo)\/(\d+)/.exec(u.pathname);
+  if (post?.[1] !== undefined && post[2] !== undefined) return { kind: 'post', sourceItemId: post[2], handle: post[1] };
   return /^\/@[^/]+\/?$/.test(u.pathname) ? { kind: 'account' } : null;
 }
 

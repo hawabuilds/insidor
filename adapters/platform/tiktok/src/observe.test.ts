@@ -172,3 +172,28 @@ test('the urls the run is given are the ones addressing produced, in order', asy
     'https://www.tiktok.com/@someone/video/2',
   ]);
 });
+
+/* ── whole posts by id (the owner's missed posts) ─────────────────────── */
+
+test('lookup reads whole posts from the observe run, skips an entry with no id, and starts no run for an id with no handle', async () => {
+  const { tiktokPlatform } = await import('./index.ts');
+  const { inMemoryMeter } = await import('@insidor/meter');
+  let runs = 0;
+  const client: TikTokClient = {
+    runDiscovery: async () => ({ items: [], runId: null }),
+    runObserve: async () => {
+      runs += 1;
+      return { items: [item('7'), { desc: 'no id' }], runId: 'r1' };
+    },
+  };
+  const meter = inMemoryMeter({ dailyCapUsd: 10, softStop: 1, now: () => AT });
+  const handles: Record<string, string> = { '7': 'someone' };
+  const adapter = tiktokPlatform({ client, meter, now: () => AT as never, handleOf: (id) => handles[id] ?? null });
+  const budget = { capUsd: 10, spentUsd: 0, maxCalls: null, deadline: (AT + 60_000) as never };
+  const read = await adapter.lookup!(['7'], budget);
+  assert.deepEqual(read.value.items.map((i) => i.sourceItemId), ['7']);
+  assert.equal(runs, 1);
+  const none = await adapter.lookup!(['8'], budget);
+  assert.equal(none.value.items.length, 0);
+  assert.equal(runs, 1, 'an id with no handle bought a run');
+});

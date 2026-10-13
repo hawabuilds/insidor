@@ -213,9 +213,11 @@ export interface PlatformAdapter {
   /**
    * A link a person pasted — a coin creator's, say — read without a request: a post on this
    * source and its id, an account or community on it, or null when it is not this source's
-   * link at all. Optional; a source without it simply recognises no links.
+   * link at all. Optional; a source without it simply recognises no links. `handle` is the
+   * account the link names, when it names one: a source that reads a post by its address needs
+   * it, and a pasted link is the one place we hold it before the post is stored.
    */
-  parseLink?(url: string): { readonly kind: 'post'; readonly sourceItemId: string } | { readonly kind: 'account' } | null;
+  parseLink?(url: string): { readonly kind: 'post'; readonly sourceItemId: string; readonly handle?: string } | { readonly kind: 'account' } | null;
 
   /** When a post was made, from its id alone. Null when this source's ids carry no time. */
   postTimeFromId?(sourceItemId: string): Millis | null;
