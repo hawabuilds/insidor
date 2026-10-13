@@ -2644,7 +2644,7 @@ const POLICY_V1: Policy = {
        (~$3) left when it starts. Paid by raising the day to $35.75 under the owner's $38, never
        by the live lines. */
     /* $12.75 from 2026-10-13 14:00 UTC: today's after-audit measurements (the clean baseline, coin
-       matching on gold, the slow-lane and TikTok tests) are paid here, because the jobs book spent
+       matching on gold, the slow-lane and short-video tests) are paid here, because the jobs book spent
        its line this morning. The day is $38.00, the owner's approved ceiling. */
     learningLines: { dailyUsd: 12.75, posts: 1.5, judge: 10, video: 0.5, embeddings: 0.75 },
     ledgerRefreshMs: 60_000,
