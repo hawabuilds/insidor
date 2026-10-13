@@ -104,3 +104,14 @@ test('★ every row carries its face: the person, the poster and the coin, saved
   assert.equal(faces.get('graduated')?.coin, mint);
   assert.equal(faces.get('follow')?.coin, null);
 });
+
+test('★ a follow row says who followed and whether I follow them back', async () => {
+  const { db, get, add } = await setup();
+  await db.query(`insert into people.profile (user_id, handle, name) values ('did:privy:j', 'jonas', 'Jonas'), ('did:privy:k', 'kim', 'Kim')`);
+  await db.query(`insert into people.follow (follower_id, followee_id) values ($1, 'did:privy:k')`, [ME.userId]);
+  await add('follow', 1, '/#/u/jonas', 'jonas');
+  await add('follow', 2, '/#/u/kim', 'did:privy:k');
+  await add('graduated', 3);
+  const rows = (await get('?list=notifications')).body.alerts as unknown as { kind: string; actor: { userId: string; iFollow: boolean } | null }[];
+  assert.deepEqual(rows.map((r) => r.actor), [{ userId: 'did:privy:j', handle: 'jonas', name: 'Jonas', iFollow: false }, { userId: 'did:privy:k', handle: 'kim', name: 'Kim', iFollow: true }, null]);
+});

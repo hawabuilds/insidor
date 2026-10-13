@@ -307,6 +307,34 @@
   background: var(--card);
 }
 
+/* Trador's Follow back on a follow row: a 36px brand pill, centred on the row, in a 44px tap area. */
+.followBack {
+  align-self: center;
+  flex-shrink: 0;
+  height: 44px;
+  padding: 0;
+  background: none;
+}
+
+.followBack span {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.following {
+  align-self: center;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
 /* Trador's LoadMore: a soft pill under the last row, 24px above and below. */
 .more {
   display: flex;
