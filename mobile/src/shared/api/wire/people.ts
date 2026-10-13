@@ -66,6 +66,10 @@ export interface Alert {
   readonly symbol: string | null;
   readonly rank: string | null;
   readonly season: number | null;
+  /** The face for the row: the person's or the poster's picture (https); null or absent when there is none. */
+  readonly picture?: string | null;
+  /** The coin the alert is about, by address, for its logo; null or absent when it is about no coin. */
+  readonly coin?: string | null;
 }
 
 export type AlertSwitch = 'follows' | 'replies' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins';

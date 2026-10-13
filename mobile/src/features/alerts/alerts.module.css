@@ -296,6 +296,17 @@
   color: var(--text-3);
 }
 
+/* A poster's picture in the face's place: the same 40px circle. */
+.picture {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--card);
+}
+
 /* Trador's LoadMore: a soft pill under the last row, 24px above and below. */
 .more {
   display: flex;

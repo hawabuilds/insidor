@@ -1,8 +1,9 @@
 /**
- * What sits at the left of a Feed or Notifications row: a rank badge, a coin's logo (its first letter
- * when it has none, and the address read from the alert's own token link), an up arrow for a rising
- * post (Trador's face for a row that belongs to no one person), a person's monogram for a follow or
- * a reply (Trador shows the person; the alert carries their name in its link or its title only), a dollar sign for the owner's
+ * What sits at the left of a Feed or Notifications row: a rank badge, a coin's logo (the address the
+ * alert service sends, else the one in the alert's own token link; its first letter only when there
+ * is no logo), a rising post's poster's picture (an up arrow, Trador's face for a row that belongs to
+ * no one person, when the poster has none), a person's picture for a follow or a reply (their
+ * monogram only when they have no picture: the name comes from the link or the title), a dollar sign for the owner's
  * supplier warning and supplier account alert, a turn arrow for the owner's twice-daily learning
  * report, or the bell.
  *
@@ -17,18 +18,19 @@
  * no symbol; a coin before the bell because most rows are coins.
  */
 
-export type MarkKind = { readonly kind: 'rank'; readonly rank: string } | { readonly kind: 'person'; readonly name: string } | { readonly kind: 'coin'; readonly letter: string; readonly address?: string } | { readonly kind: 'rising'; readonly label: string } | { readonly kind: 'money'; readonly label: string } | { readonly kind: 'learned'; readonly label: string } | { readonly kind: 'bell' };
+export type MarkKind = { readonly kind: 'rank'; readonly rank: string } | { readonly kind: 'person'; readonly name: string; readonly picture?: string } | { readonly kind: 'coin'; readonly letter: string; readonly address?: string } | { readonly kind: 'rising'; readonly label: string; readonly picture?: string } | { readonly kind: 'money'; readonly label: string } | { readonly kind: 'learned'; readonly label: string } | { readonly kind: 'bell' };
 
-export function markOf(a: { readonly kind: string; readonly rank: string | null; readonly symbol: string | null; readonly href?: string; readonly title?: string }, ranks: readonly string[]): MarkKind {
+export function markOf(a: { readonly kind: string; readonly rank: string | null; readonly symbol: string | null; readonly href?: string; readonly title?: string; readonly picture?: string | null; readonly coin?: string | null }, ranks: readonly string[]): MarkKind {
+  const picture = typeof a.picture === 'string' && a.picture.startsWith('https://') ? a.picture : null;
   if (a.rank !== null && ranks.includes(a.rank)) return { kind: 'rank', rank: a.rank };
   if (a.kind === 'supplier_warning') return { kind: 'money', label: 'Supplier spend' };
   if (a.kind === 'supplier_account') return { kind: 'money', label: 'Supplier account' };
   if (a.kind === 'retune_summary') return { kind: 'learned', label: 'Learning from your calls' };
-  if (a.kind === 'rising_post') return { kind: 'rising', label: 'Rising post' };
+  if (a.kind === 'rising_post') return picture === null ? { kind: 'rising', label: 'Rising post' } : { kind: 'rising', label: 'Rising post', picture };
   const person = personOf(a);
-  if (person !== null) return { kind: 'person', name: person };
+  if (person !== null) return picture === null ? { kind: 'person', name: person } : { kind: 'person', name: person, picture };
   if (a.symbol !== null && a.symbol !== '') {
-    const address = tokenAddress(a.href ?? '');
+    const address = typeof a.coin === 'string' && a.coin !== '' ? a.coin : tokenAddress(a.href ?? '');
     return address === null ? { kind: 'coin', letter: a.symbol.charAt(0) } : { kind: 'coin', letter: a.symbol.charAt(0), address };
   }
   return { kind: 'bell' };
