@@ -167,3 +167,14 @@ test('★ the trailing t.co links are hidden and the words kept; a link mid-sent
   assert.equal(withoutTrailingShortLinks('https://t.co/abc123'), '');
   assert.equal(withoutTrailingShortLinks('no links here'), 'no links here');
 });
+
+test('★ a post whose coins were weighed lists them strongest first; one settled by evidence is matched, with its facts', () => {
+  const evidence = new Map([['B2', { linksPost: null, samePicture: true, launchedAfterMs: 60_000 }]]);
+  const unsure = postCoins(undefined, { coins: ['A1', 'B2', 'C3'], more: false, match: { kind: 'unsure', order: ['B2', 'C3', 'A1'], evidence } });
+  assert.deepEqual(unsure.sameName, ['B2', 'C3', 'A1']);
+  const one = { kind: 'one', coin: { coinId: 'solana:B2' } } as unknown as { kind: 'one'; coin: never };
+  const matched = postCoins(undefined, { coins: ['A1', 'B2'], more: false, match: { kind: 'matched', coin: one.coin, evidence: { linksPost: true, samePicture: null, launchedAfterMs: 60_000 } } });
+  assert.equal(matched.coins.kind, 'matched');
+  assert.equal(matched.fromStory, false);
+  assert.deepEqual(matched.sameName, []);
+});

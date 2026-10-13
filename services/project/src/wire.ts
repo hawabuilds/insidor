@@ -171,7 +171,26 @@ export type WireCoinLink =
  * a button could be built from. Kept off `WireCoinLink` so a narrative can never carry it: a
  * narrative's coins are decided by the board, not by whether one search went through.
  */
-export type WirePostCoinLink = WireCoinLink | { readonly kind: 'unchecked' };
+export type WirePostCoinLink =
+  | WireCoinLink
+  | { readonly kind: 'unchecked' }
+  /* The post's OWN coin, found by its name search and settled by evidence (post-match.ts, core
+     `matchPostCoin`): links this post, or the same picture and launched after it, or launched
+     after it under the subject's exact name as the only such coin. The card says which facts
+     held (`evidence`), never how sure we are. Post-only, like `unchecked`, so a narrative's
+     `one` keeps meaning "the board's confident coin" and nothing else. */
+  | { readonly kind: 'matched'; readonly coin: WireCoin; readonly evidence: WireCoinEvidence };
+
+/**
+ * What is known about a coin against one post, each a fact that would be true without us:
+ * the coin's own links name the post; its picture is the post's; it launched this long after
+ * the post (negative: before). Null is "not known" — not read, not compared — never "no".
+ */
+export interface WireCoinEvidence {
+  readonly linksPost: boolean | null;
+  readonly samePicture: boolean | null;
+  readonly launchedAfterMs: number | null;
+}
 
 export interface WireBoardRow {
   readonly id: string;
