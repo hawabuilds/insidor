@@ -158,7 +158,12 @@ export function OrderSheet({ mint, ticker, side, limits, priceUsd, onClose }: {
   const impact = impactLevel(impactPct);
   const presets = useMemo(() => buyPresets(limits, slippageBps), [limits, slippageBps]);
   const choices = SLIPPAGE_CHOICES.filter((b) => limits === null || b <= limits.maxSlippageBps);
-  const coinOut = (units: string) => `${fromBaseUnits(units, heldNow?.decimals ?? COIN_DECIMALS)}`;
+  /* A coin amount for reading, with thousands grouped (Trador's `units`); the field itself keeps exact digits. */
+  const coinOut = (units: string) => {
+    const exact = fromBaseUnits(units, heldNow?.decimals ?? COIN_DECIMALS);
+    const n = Number(exact);
+    return n >= 1 ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : exact;
+  };
   const sent = status.kind === 'done' && status.outcome.kind === 'sent' ? status.outcome.ref : null;
 
   const reset = (next: () => void) => {
