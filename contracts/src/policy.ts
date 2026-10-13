@@ -1067,6 +1067,15 @@ export interface UniversePolicy {
   /** An `unlinked`, `account_only` or `promo_only` coin is looked at once more after this. */
   readonly recheckAfterMs: number;
   /**
+   * ★ THE SAME PICTURE LEADS BACK. Once a post that names the coin and shows its subject is
+   * matched, the earliest post we hold with that post's own picture (group.image.nearIdentical),
+   * named or not, becomes the origin — a repost rarely carries the coin's exact name. How far
+   * before the launch such a post may be, and how many are read per coin, earliest first. A
+   * picture without a named, pictured post never links anything.
+   */
+  readonly pictureLookbackMs: number;
+  readonly picturePostsPerCoin: number;
+  /**
    * ★ LOOKING UP COINS WE NEVER SAW MINTED. A promoted narrative or a For You post with no coin
    * has its name searched on the market data sources; launchpad coins launched within
    * `withinMs` go into the universe as CANDIDATES and through the same checks as any coin. A
@@ -2510,6 +2519,10 @@ const POLICY_V1: Policy = {
     matchWindowMs: 172_800_000, // two days before launch
     candidatesPerCoin: 20,
     recheckAfterMs: 86_400_000, // a day
+    /* 30 days: the owner's 4nMTfs origin was posted 22 days before its coin and its reposts of
+       the same picture days before; 20 posts, earliest first, so the first of them is the one. */
+    pictureLookbackMs: 2_592_000_000,
+    picturePostsPerCoin: 20,
     lookup: {
       /* 60 a pass, a pass a minute: every new feed post looked up within a minute. */
       termsPerPass: 60,

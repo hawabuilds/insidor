@@ -125,7 +125,7 @@ export { MISSED_DIAGNOSES, MISSED_FAILURES, crossedBarAt, diagnoseMissed, missed
 export { outageGapMs, outages, postWindow } from './learning/outage.ts';
 export type { Outage, PassRecord, PostWindow } from './learning/outage.ts';
 export type { Diagnosed, MissedCase, MissedContext, MissedDiagnosis, MissedFailure, MissedJudgeAnswer, SearchKind, Suggestion, SuggestionInput } from './learning/missed.ts';
-export { checkCreatorLink, decideOrigin, earliestByReproduction, matchCandidates, namesCoin } from './origin/check.ts';
+export { checkCreatorLink, decideOrigin, earliestByReproduction, earliestBySamePicture, matchCandidates, namesCoin } from './origin/check.ts';
 export type { Candidate, CoinFacts, CreatorCheck, CreatorLink, MatchResult, OriginDecision, PostFacts } from './origin/check.ts';
 export { mergeHits } from './search/merge.ts';
 /* A feed post's coin, by evidence: the projector decides with it and the gold eval scores it,
