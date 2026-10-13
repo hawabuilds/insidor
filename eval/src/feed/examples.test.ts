@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { buildBlock, caught, changed, currentCalls, gate, isExample, latestSlot, ratesOf, regressions, type GradedPost, type OwnerCall } from './examples.ts';
+import { buildBlock, caught, changed, currentCalls, gate, goalsText, isExample, latestSlot, ratesOf, regressions, type GradedPost, type OwnerCall } from './examples.ts';
 
 const L = DEFAULT_POLICY.learning;
 const call = (itemId: string, label: 'meme' | 'not', from: OwnerCall['from'], at: number | null = null): OwnerCall => ({ itemId, text: `post ${itemId}`, imageUri: null, label, why: 'because', at, from });
@@ -61,14 +61,25 @@ test("the owner's names go in a names section", () => {
   assert.equal(b.used.names, 1);
 });
 
-const ok = { hand: { passed: 30, tested: 41 }, negatives: { passed: 2, tested: 90 }, missed: { passed: 0, tested: 0 }, regressions: [] as string[] };
+const live = { hand: { passed: 28, tested: 41 }, negatives: { passed: 4, tested: 90 }, missed: { passed: 1, tested: 2 } };
+const ok = { hand: { passed: 30, tested: 41 }, negatives: { passed: 2, tested: 90 }, missed: { passed: 0, tested: 0 }, regressions: [] as string[], live };
 
-test('★ applied only when every gate holds; an untested missed group does not block, an untested hand gold group does', () => {
-  assert.deepEqual(gate(ok, L), { apply: true, why: null });
-  assert.equal(gate({ ...ok, hand: { passed: 20, tested: 41 } }, L).apply, false);
-  assert.equal(gate({ ...ok, negatives: { passed: 15, tested: 90 } }, L).apply, false);
-  assert.equal(gate({ ...ok, missed: { passed: 1, tested: 4 } }, L).apply, false);
+test('★ applied when it beats live on hand gold AND on non-memes; a tie on either is not an improvement', () => {
+  assert.equal(gate(ok, L).apply, true);
+  assert.equal(gate({ ...ok, hand: { passed: 28, tested: 41 } }, L).apply, false, 'equal gold');
+  assert.equal(gate({ ...ok, negatives: { passed: 4, tested: 90 } }, L).apply, false, 'equal non-memes');
+  assert.equal(gate({ ...ok, hand: { passed: 27, tested: 41 } }, L).apply, false);
+  assert.equal(gate({ ...ok, live: null }, L).apply, false, 'nothing to beat');
   assert.equal(gate({ ...ok, hand: { passed: 0, tested: 0 } }, L).apply, false);
+});
+
+test('★ the 65% / 15% / 50% bars are the goal: reported met or not met, never a block', () => {
+  const below = { ...ok, hand: { passed: 20, tested: 41 }, negatives: { passed: 20, tested: 90 }, live: { ...live, hand: { passed: 18, tested: 41 }, negatives: { passed: 25, tested: 90 } } };
+  const v = gate(below, L);
+  assert.equal(v.apply, true, 'an improvement under the goal is applied');
+  assert.deepEqual(v.goals, { hand: false, negatives: false, missed: null });
+  assert.match(goalsText(below, L), /hand gold 49% of 65% \(not met\), live non-memes 22% of at most 15% \(not met\), missed — of 50% \(not tested\)/);
+  assert.deepEqual(gate(ok, L).goals, { hand: true, negatives: true, missed: null });
 });
 
 test('★ no block is applied that makes a missed post the judge in use catches fail', () => {
@@ -115,14 +126,6 @@ test('the re-tune slot is the latest 08:00 or 20:00 London at or before now, thr
   assert.equal(new Date(latestSlot(Date.UTC(2026, 9, 13, 19, 0), times, tz)).toISOString(), '2026-10-13T19:00:00.000Z');
   /* Winter (after 25 October): London is UTC. */
   assert.equal(new Date(latestSlot(Date.UTC(2026, 10, 2, 9), times, tz)).toISOString(), '2026-11-02T08:00:00.000Z');
-});
-
-test('★ never worse than live: a block worse on gold, non-memes or missed posts than the setup live now is kept out', () => {
-  const live = { hand: { passed: 30, tested: 41 }, negatives: { passed: 2, tested: 90 }, missed: { passed: 1, tested: 2 } };
-  assert.equal(gate({ ...ok, live }, L).apply, true, 'equal is not worse');
-  assert.match(gate({ ...ok, hand: { passed: 29, tested: 41 }, live: { ...live, hand: { passed: 30, tested: 41 } } }, { ...L, minGoldPass: 0.5 }).why ?? '', /hand gold 29\/41 is worse than live's 30\/41/);
-  assert.equal(gate({ ...ok, negatives: { passed: 3, tested: 90 }, live }, L).apply, false);
-  assert.equal(gate({ ...ok, missed: { passed: 1, tested: 2 }, live: { ...live, missed: { passed: 2, tested: 2 } } }, L).apply, false);
 });
 
 test("★ the crypto signal lifts a post the judge failed, never a held kind, and a shill never passes", () => {

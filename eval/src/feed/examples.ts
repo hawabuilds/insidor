@@ -19,10 +19,10 @@
  * ★ BALANCED, NEWEST FIRST, CAPPED. Each side gets half the room; room a short side leaves goes to
  * the other, so twelve memes do not throw away a hundred careful "no"s. Within a side, newest first.
  *
- * ★ ONE GATE AND A REGRESSION RULE, BOTH HERE AND PURE (the owner's decision, 2026-10-13). For
- * You is one feed for anything people could coin — memes, news, tragedies — so hand gold is one
- * set held to one bar beside the live non-memes. And a block that makes a missed post the judge
- * in use catches fail is never applied, whatever its rates.
+ * ★ BEAT LIVE, AND KEEP EVERY MISSED POST (the owner's rule, 2026-10-13). For You is one feed for
+ * anything people could coin, so hand gold is one set. A block is applied when it beats the setup
+ * live now on hand gold and on live non-memes, graded together in one run, and loses no missed
+ * post live catches. The 65% / 15% / 50% bars are the goal, reported, not a block.
  *
  * `latestSlot` is here too: which 08:00 or 20:00 London (Policy.learning) a run belongs to, pure so
  * the clock change is tested rather than found out in October.
@@ -208,44 +208,57 @@ export interface GateInput {
   readonly live?: { readonly hand: Rate; readonly negatives: Rate; readonly missed: Rate } | null;
 }
 
+/** Whether a run met the owner's goals (Policy.learning). Reported; no longer a bar to applying. */
+export interface Goals {
+  readonly hand: boolean | null;
+  readonly negatives: boolean | null;
+  readonly missed: boolean | null;
+}
+
 /**
- * May this block replace the one in use? Every rule must hold.
+ * May this block replace the one in use? The owner's rule (2026-10-13): apply a version that BEATS
+ * the setup live now — more hand gold AND fewer live non-memes, on the same test posts graded in the
+ * same run — and keeps every missed post live already catches. The 65% / 15% / 50% bars stay as the
+ * goal and are reported met or not met, but they no longer block an improvement.
  *
- *   gate       hand gold passes at least minGoldPass AND live non-memes pass at most
- *              maxLiveNegativePass. Both must have been tested: a block is never applied on a
- *              test nobody ran.
- *   missed     the held-out missed posts pass at least minMissedPass; untested does not block —
- *              recorded as untested, never as zero.
- *   no regress ★ the owner's rule: no block is ever applied that makes a missed post the judge in
- *              use catches fail. One is enough.
- *   not worse  ★ and none that is worse than the setup live now on hand gold, non-memes or
- *              missed posts, graded on the same posts in the same run.
+ * ★ "BEATS" IS STRICT, AND THAT IS THE WHOLE NOISE RULE. Both sides are graded in the same run at
+ * temperature 0, on the same posts in the same calls, so a tie is no evidence of a change and is
+ * not applied; one post better on each side is. Compared as shares, so a post one side left
+ * unanswered does not tip it (and any unanswered post keeps the block out anyway).
+ *
+ * With no live grading to compare (`live` null: the measure-only paths) nothing can be beaten and
+ * nothing is applied.
  */
-export function gate(r: GateInput, L: LearningPolicy): { readonly apply: boolean; readonly why: string | null } {
-  const pct = (x: number) => `${Math.round(x * 100)}%`;
+export function gate(r: GateInput, L: LearningPolicy): { readonly apply: boolean; readonly why: string | null; readonly goals: Goals } {
   const fails: string[] = [];
   const hand = share(r.hand);
   const neg = share(r.negatives);
   const missed = share(r.missed);
+  const goals: Goals = {
+    hand: hand === null ? null : hand >= L.minGoldPass,
+    negatives: neg === null ? null : neg <= L.maxLiveNegativePass,
+    missed: missed === null ? null : missed >= L.minMissedPass,
+  };
   if (hand === null) fails.push('no hand gold post could be tested');
-  else if (hand < L.minGoldPass) fails.push(`hand gold ${r.hand.passed}/${r.hand.tested} is under ${pct(L.minGoldPass)}`);
   if (neg === null) fails.push('no live non-meme could be tested');
-  else if (neg > L.maxLiveNegativePass) fails.push(`live non-memes ${r.negatives.passed}/${r.negatives.tested} is over ${pct(L.maxLiveNegativePass)}`);
-  if (missed !== null && missed < L.minMissedPass) fails.push(`missed posts ${r.missed.passed}/${r.missed.tested} is under ${pct(L.minMissedPass)}`);
-  /* ★ NEVER WORSE THAN THE SETUP LIVE NOW, on each of the three, measured on the same posts. */
   const live = r.live ?? null;
-  if (live !== null) {
-    const worse = (name: string, now: Rate, next: Rate, higherIsBetter: boolean) => {
-      const a = share(now);
-      const b = share(next);
-      if (a !== null && b !== null && (higherIsBetter ? b < a : b > a)) fails.push(`${name} ${next.passed}/${next.tested} is worse than live's ${now.passed}/${now.tested}`);
-    };
-    worse('hand gold', live.hand, r.hand, true);
-    worse('live non-memes', live.negatives, r.negatives, false);
-    worse('missed posts', live.missed, r.missed, true);
+  if (live === null) fails.push('no live setup was graded to compare with');
+  else if (hand !== null && neg !== null) {
+    const liveHand = share(live.hand);
+    const liveNeg = share(live.negatives);
+    if (liveHand !== null && !(hand > liveHand)) fails.push(`hand gold ${r.hand.passed}/${r.hand.tested} does not beat live's ${live.hand.passed}/${live.hand.tested}`);
+    if (liveNeg !== null && !(neg < liveNeg)) fails.push(`live non-memes ${r.negatives.passed}/${r.negatives.tested} are not fewer than live's ${live.negatives.passed}/${live.negatives.tested}`);
   }
   if (r.regressions.length > 0) fails.push(`${r.regressions.length} missed post${r.regressions.length === 1 ? '' : 's'} caught now would fail: ${r.regressions.join(', ')}`);
-  return { apply: fails.length === 0, why: fails.length === 0 ? null : fails.join('; ') };
+  return { apply: fails.length === 0, why: fails.length === 0 ? null : fails.join('; '), goals };
+}
+
+/** The goals as one line: "hand gold 61% (goal 65%, not met); …". */
+export function goalsText(r: Pick<GateInput, 'hand' | 'negatives' | 'missed'>, L: LearningPolicy): string {
+  const pct = (x: number | null) => (x === null ? '—' : `${Math.round(x * 100)}%`);
+  const g = gate({ ...r, regressions: [], live: null }, L).goals;
+  const met = (b: boolean | null) => (b === null ? 'not tested' : b ? 'met' : 'not met');
+  return `goal: hand gold ${pct(share(r.hand))} of ${pct(L.minGoldPass)} (${met(g.hand)}), live non-memes ${pct(share(r.negatives))} of at most ${pct(L.maxLiveNegativePass)} (${met(g.negatives)}), missed ${pct(share(r.missed))} of ${pct(L.minMissedPass)} (${met(g.missed)})`;
 }
 
 /**
