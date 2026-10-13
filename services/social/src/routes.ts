@@ -29,7 +29,8 @@
  * nothing here scores a coin or a post.
  *
  * Follows, replies and rank-ups queue an alert (people.alert_queue); the alert service decides
- * whether it is pushed.
+ * whether it is pushed. A follow or a reply carries who it is from (their id and their sign-in
+ * picture) so the alert row shows their face and a follow can be followed back.
  */
 
 import { DEFAULT_POLICY, type OwnerPolicy, type SocialPolicy } from '@insidor/contracts/policy.ts';
@@ -333,7 +334,7 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
     if (m === 'POST') {
       const added = await deps.db.query('insert into people.follow (follower_id, followee_id) values ($1, $2) on conflict do nothing returning 1', [me.userId, target.userId]);
       if (added.length > 0) {
-        await queueAlert(deps.db, { userId: target.userId, kind: 'follow', subject: me.handle ?? me.userId, rung: 0, facts: { who: whoOf(me) }, href: profileHref({ handle: me.handle, userId: me.userId }) });
+        await queueAlert(deps.db, { userId: target.userId, kind: 'follow', subject: me.handle ?? me.userId, rung: 0, facts: { who: whoOf(me), userId: me.userId, picture: me.pictureUrl }, href: profileHref({ handle: me.handle, userId: me.userId }) });
       }
       return json(200, { following: true });
     }
@@ -383,7 +384,7 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
         [me.userId, s.kind, s.id, parentId, body, proofUrl, proof, coin],
       );
       if (parentAuthor !== null && parentAuthor.authorId !== me.userId && row !== undefined) {
-        await queueAlert(deps.db, { userId: parentAuthor.authorId, kind: 'reply', subject: String(row.id), rung: 0, facts: { who: whoOf(me), excerpt: body.slice(0, 80) }, href: await hrefOf(deps.db, s) });
+        await queueAlert(deps.db, { userId: parentAuthor.authorId, kind: 'reply', subject: String(row.id), rung: 0, facts: { who: whoOf(me), excerpt: body.slice(0, 80), userId: me.userId, picture: me.pictureUrl }, href: await hrefOf(deps.db, s) });
       }
       const created = await deps.db.query<CommentRow>(`${COMMENT_SELECT} and c.comment_id = $1`, [row?.id ?? 0, me.userId]);
       return json(201, { comment: (await shaped(deps, created, me.userId))[0] ?? null });

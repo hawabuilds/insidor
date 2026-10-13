@@ -13,7 +13,7 @@
  * count, and nothing at zero.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import type { Alert, RankId } from '../../shared/api/people.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -29,16 +29,26 @@ import styles from './alerts.module.css';
 
 const RANKS: readonly string[] = ['intern', 'analyst', 'quant', 'wolf', 'goat'];
 
-/** The row's face: rank, coin, or Trador's brand-wash circle with a glyph. */
+/** The row's face: a picture (person, poster), a rank, a coin's logo, or Trador's brand-wash circle with a glyph. */
 export function Mark({ a }: { a: Alert }) {
   const m = markOf(a, RANKS);
   if (m.kind === 'rank') return <RankBadge rank={m.rank as RankId} size={40} />;
   if (m.kind === 'coin') return <CoinLogo address={m.address ?? null} ticker={m.letter} size={40} />;
-  if (m.kind === 'person') return <Avatar name={m.name} seed={m.name} src={null} size={40} />;
-  if (m.kind === 'rising') return <span className={styles['face']} role="img" aria-label={m.label}>↑</span>;
+  if (m.kind === 'person') return <Avatar name={m.name} seed={m.name} src={m.picture ?? null} size={40} />;
+  if (m.kind === 'rising') {
+    const arrow = <span className={styles['face']} role="img" aria-label={m.label}>↑</span>;
+    return m.picture !== undefined ? <Picture src={m.picture} fallback={arrow} /> : arrow;
+  }
   if (m.kind === 'money') return <span className={styles['face']} role="img" aria-label={m.label}>$</span>;
   if (m.kind === 'learned') return <span className={styles['face']} role="img" aria-label={m.label}>↻</span>;
   return <span className={styles['face']}><BellIcon size={18} /></span>;
+}
+
+/** A 40px round picture; when it fails to load, the row's own fallback face instead of a broken image. */
+function Picture({ src, fallback }: { src: string; fallback: ReactNode }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <>{fallback}</>;
+  return <img src={src} alt="" width={40} height={40} loading="lazy" decoding="async" className={styles['picture']} onError={() => setFailed(true)} />;
 }
 
 /** The alert's title with its ticker bold, as Trador writes "<b>FERRY</b> graduated". */

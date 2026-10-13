@@ -69,3 +69,12 @@ test("a follow or a reply shows the person's monogram, as Trador shows the perso
   assert.deepEqual(markOf({ kind: 'reply', rank: null, symbol: null, href: '/#/story/s1', title: 'maya replied' }, []), { kind: 'person', name: 'maya' });
   assert.deepEqual(markOf({ kind: 'reply', rank: null, symbol: null, href: '/#/story/s1', title: 'Someone replied' }, []), { kind: 'bell' });
 });
+
+test('a real picture wins over the letter: the person, the poster, and the coin by the address the service sends', () => {
+  const pic = 'https://pictures.example/p.jpg';
+  assert.deepEqual(markOf({ kind: 'follow', rank: null, symbol: null, href: '/#/u/jonas', title: 'New follower', picture: pic }, []), { kind: 'person', name: 'jonas', picture: pic });
+  assert.deepEqual(markOf({ kind: 'rising_post', rank: null, symbol: null, picture: pic }, []), { kind: 'rising', label: 'Rising post', picture: pic });
+  assert.deepEqual(markOf({ kind: 'rising_post', rank: null, symbol: null, picture: 'javascript:alert(1)' }, []), { kind: 'rising', label: 'Rising post' }, 'only an https link is a picture');
+  const mint = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+  assert.deepEqual(markOf({ kind: 'coin_matched', rank: null, symbol: 'FERRY', href: '/#/story/s1', coin: mint }, []), { kind: 'coin', letter: 'F', address: mint });
+});

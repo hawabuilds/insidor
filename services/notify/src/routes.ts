@@ -22,6 +22,7 @@ import { normalisePrefs, type AlertPrefs } from '@insidor/core';
 
 import { prefsOf, type Db } from './deliver.ts';
 import { json, type Reply, type Request } from './http.ts';
+import { coinOf, httpsOrNull, peopleOf, posterPictures } from './faces.ts';
 import { bellCount, parseList, readPage } from './list.ts';
 
 export interface NotifyDeps {
@@ -63,10 +64,20 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
     const [seen] = await deps.db.query<{ seenAt: string }>('select seen_at as "seenAt" from people.alert_seen where user_id = $1', [me.userId]);
     const seenAt = seen === undefined ? 0 : new Date(seen.seenAt).getTime();
     const page = await readPage(deps.db, me.userId, q);
-    const alerts = page.rows.map((r) => {
-      const facts = (typeof r.facts === 'string' ? JSON.parse(r.facts) : r.facts) as Record<string, unknown>;
+    const rows = page.rows.map((r) => ({ ...r, facts: (typeof r.facts === 'string' ? JSON.parse(r.facts) : r.facts) as Record<string, unknown> }));
+    /* The face on each row (faces.ts): saved with the alert, or looked up where it was not. */
+    const people = await peopleOf(deps.db, rows);
+    const posters = await posterPictures(deps.db, rows.filter((r) => r.kind === 'rising_post' && httpsOrNull(r.facts['picture']) === null).map((r) => r.subject));
+    const alerts = rows.map((r) => {
+      const facts = r.facts;
       const at = new Date(r.at).getTime();
-      return { id: r.id, kind: r.kind, title: r.title, body: r.body, href: r.href, at, unread: at > seenAt, symbol: typeof facts['symbol'] === 'string' ? facts['symbol'] : null, rank: typeof facts['rank'] === 'string' ? facts['rank'] : null, season: typeof facts['season'] === 'number' ? facts['season'] : null };
+      const person = people.get(r.id) ?? null;
+      const picture = httpsOrNull(facts['picture']) ?? person?.picture ?? (r.kind === 'rising_post' ? (posters.get(r.subject) ?? null) : null);
+      return {
+        id: r.id, kind: r.kind, title: r.title, body: r.body, href: r.href, at, unread: at > seenAt,
+        symbol: typeof facts['symbol'] === 'string' ? facts['symbol'] : null, rank: typeof facts['rank'] === 'string' ? facts['rank'] : null, season: typeof facts['season'] === 'number' ? facts['season'] : null,
+        picture, coin: coinOf(r),
+      };
     });
     /* `unread` is this reply's unread rows, as before; `bell` is every unread notification; `seenAt`
        lets the app keep the line between new and read where it was when the screen opened. */

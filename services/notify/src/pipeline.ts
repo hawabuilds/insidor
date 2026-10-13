@@ -10,6 +10,8 @@
  * recorded as seen and nothing is sent — turning alerts on must not send a hundred alerts about
  * the board as it already was.
  *
+ * Each alert carries the face its row shows: a rising post its poster's picture, a coin its address.
+ *
  * ★ ONLY OBSERVED, NEVER SAMPLE. Stories are read where `origin = 'observed'`; a fixture never
  * alerts anyone.
  *
@@ -21,6 +23,7 @@
 import type { AlertKind } from '@insidor/core';
 
 import { queue, type Db } from './deliver.ts';
+import { posterPictures } from './faces.ts';
 import type { Facts } from './text.ts';
 
 export interface RisingRow {
@@ -79,11 +82,11 @@ export function coinEvents(stories: readonly BoardStory[], seen: ReadonlySet<str
     if (fresh.length === 0) continue;
     if (!storiesWithCoins.has(s.storyId)) {
       const first = fresh[0];
-      if (first !== undefined) proposed.push({ kind: 'narrative_coin', subject: s.storyId, facts: { title: s.title, symbol: first.ticker }, href: storyHref(s.storyId), audience: 'everyone' });
+      if (first !== undefined) proposed.push({ kind: 'narrative_coin', subject: s.storyId, facts: { title: s.title, symbol: first.ticker, address: first.address }, href: storyHref(s.storyId), audience: 'everyone' });
     }
     for (const c of fresh) {
       keys.push(`${s.storyId}|${c.address}`);
-      proposed.push({ kind: 'coin_matched', subject: `${s.storyId}|${c.address}`, facts: { title: s.title, symbol: c.ticker }, href: storyHref(s.storyId), audience: { watchers: s.storyId } });
+      proposed.push({ kind: 'coin_matched', subject: `${s.storyId}|${c.address}`, facts: { title: s.title, symbol: c.ticker, address: c.address }, href: storyHref(s.storyId), audience: { watchers: s.storyId } });
     }
   }
   return { proposed, keys };
@@ -132,6 +135,15 @@ async function send(db: Db, proposed: readonly Proposed[]): Promise<number> {
   return n;
 }
 
+/** A rising post's alert carries its poster's picture (faces.ts), saved with it; none when it cannot be read. */
+async function withPosterPictures(db: Db, proposed: readonly Proposed[]): Promise<Proposed[]> {
+  const pictures = await posterPictures(db, proposed.map((p) => p.subject));
+  return proposed.map((p) => {
+    const picture = pictures.get(p.subject);
+    return picture === undefined ? p : { ...p, facts: { ...p.facts, picture } };
+  });
+}
+
 /** One pass over the projection. Returns how many alerts were queued. */
 export async function checkPipeline(db: Db): Promise<number> {
   const rising = await db.query<RisingRow>(RISING_SQL);
@@ -144,7 +156,7 @@ export async function checkPipeline(db: Db): Promise<number> {
   let queued = 0;
 
   const r = await seenSet(db, 'rising');
-  if (r.seeded) queued += await send(db, newRising(rising, r.keys));
+  if (r.seeded) queued += await send(db, await withPosterPictures(db, newRising(rising, r.keys)));
   await markSeen(db, 'rising', [SEEDED, ...rising.map((x) => x.itemId)]);
 
   const p = await seenSet(db, 'promoted');

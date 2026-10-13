@@ -83,3 +83,24 @@ test('the Feed pages its own side, by tab: Rising takes rising posts inside its 
   assert.equal((await get('?list=feed&tab=nope')).status, 400);
   assert.equal((await get('?list=notifications&cursor=junk')).status, 400);
 });
+
+test('★ every row carries its face: the person, the poster and the coin, saved or looked up', async () => {
+  const { db, get, add } = await setup();
+  const pic = 'https://pictures.example/jonas.jpg';
+  await db.query(`insert into people.profile (user_id, handle, name, picture_url) values ('did:privy:j', 'jonas', 'Jonas', $1)`, [pic]);
+  await db.query(`insert into public.author (author_key, source, source_author_id, handle, picture_url) values ('x:1', 'x', '1', '@poster', 'https://pictures.example/poster.jpg')`);
+  await db.query(`insert into public.item (item_id, source, source_item_id, author_key, first_seen_at, raw_ref, origin) values ('x:post', 'x', 'post', 'x:1', now(), 'r', 'observed')`);
+  const mint = 'FerryHorn1111111111111111111111111111111pump';
+  await add('follow', 1, '/#/u/jonas', 'jonas');
+  await add('rising_post', 2, '/#/', 'x:post');
+  await add('coin_matched', 3, '/#/story/st', `st|${mint}`);
+  await add('graduated', 4, `/#/token/${encodeURIComponent(`solana:${mint}`)}`, mint);
+  await db.query(`insert into people.alert (user_id, kind, subject, rung, title, body, href, facts, delivery) values ($1, 'reply', '77', 0, 'x replied', 'b', '/#/', $2, 'push')`, [ME.userId, JSON.stringify({ picture: 'https://pictures.example/saved.jpg', userId: 'did:privy:j' })]);
+  const faces = new Map((await get('')).body.alerts.map((a) => [a.kind, a as unknown as { picture: string | null; coin: string | null }]));
+  assert.equal(faces.get('follow')?.picture, pic, "a follow from before pictures were saved gets the follower's picture");
+  assert.equal(faces.get('rising_post')?.picture, 'https://pictures.example/poster.jpg', "and a rising post its poster's");
+  assert.equal(faces.get('reply')?.picture, 'https://pictures.example/saved.jpg', 'a saved picture is used as saved');
+  assert.equal(faces.get('coin_matched')?.coin, mint);
+  assert.equal(faces.get('graduated')?.coin, mint);
+  assert.equal(faces.get('follow')?.coin, null);
+});
