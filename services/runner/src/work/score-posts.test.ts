@@ -87,13 +87,17 @@ function openMeter(allow = true): Meter {
   } as unknown as Meter;
 }
 
-function deps(queue: readonly Item[], judge: ReturnType<typeof recordedJudge> | null, mode: 'dry' | 'live' = 'live', meter?: Meter) {
+function deps(queue: readonly Item[], judge: ReturnType<typeof recordedJudge> | null, mode: 'dry' | 'live' = 'live', meter?: Meter, reach: (id: string) => number | null = () => 1_000_000) {
   const recorded = new Map<ItemId, Judgement>();
   return {
     recorded,
     deps: {
       judge: judge?.judge ?? null,
-      items: { catchAllUnscored: async () => queue },
+      items: {
+        catchAllUnscored: async () => queue,
+        reachReadings: async (ids: readonly ItemId[]) => new Map(ids.map((id) => [String(id), [{ atMs: NOW, reach: reach(String(id)) }]])),
+        backfilled: async () => new Set<string>(),
+      },
       scores: { record: async (id: ItemId, j: Judgement) => void recorded.set(id, j) },
       meter: meter ?? judge?.meter ?? openMeter(),
       mode,
@@ -143,4 +147,13 @@ test('a budget that refuses means no call and no score', async () => {
 test('with no judge configured every post waits', async () => {
   const { deps: d } = deps([post(1), post(2)], null);
   assert.deepEqual(await scorePosts(d), { queued: 2, scored: 0, waiting: 2, wouldSpendUsd: 0, spentUsd: 0 });
+});
+
+test('★ free check first: a post below For You\'s reach bar is not sent to the judge; it waits', async () => {
+  const judge = recordedJudge(0.82);
+  const small = String(post(2).itemId);
+  const { deps: d, recorded } = deps([post(1), post(2)], judge, 'live', undefined, (id) => (id === small ? 900 : 1_000_000));
+  await scorePosts(d);
+  assert.ok(recorded.has(post(1).itemId));
+  assert.ok(!recorded.has(post(2).itemId), 'under the bar: waits, unscored');
 });

@@ -138,20 +138,51 @@ export class PgItemRepo implements ItemRepo {
    * only join on a near-identical picture. Scoring one does not put it on the For You feed;
    * only a catch-all lane does that.
    */
-  async catchAllUnscored(at: Millis, limit: number): Promise<readonly Item[]> {
+  async catchAllUnscored(at: Millis, limit: number, minReach: number | null = null): Promise<readonly Item[]> {
+    /* With `minReach`, a catch-all post waits until some reading of its reach has reached it —
+       the free check before the paid judge. A backfilled post is never held back: it is scored
+       for GROUP's name join, not for the feed. */
     const rows = await this.#db.query<ItemRow>(
       `${SELECT_ITEM}
         where origin = 'observed'
           and first_seen_at >= $1
-          and (exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id)
+          and ((exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id)
+                and ($3::double precision is null
+                     or exists (select 1 from public.observation o
+                                 where o.item_id = public.item.item_id and o.kind = 'reach' and o.value >= $3)))
                or exists (select 1 from internal.item_backfill b where b.item_id = public.item.item_id))
           and not exists (select 1 from internal.post_judgement j where j.item_id = public.item.item_id)
         order by first_seen_at desc
         limit $2`,
-      [toTimestamp(at), limit],
+      [toTimestamp(at), limit, minReach],
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => this.#toItem(row, fingerprints));
+  }
+
+  /** Every reach reading of these posts since `at`, oldest first: the counter as read, null when unreadable. */
+  async reachReadings(itemIds: readonly ItemId[], at: Millis): Promise<ReadonlyMap<string, readonly { atMs: number; reach: number | null }[]>> {
+    const out = new Map<string, { atMs: number; reach: number | null }[]>();
+    if (itemIds.length === 0) return out;
+    const rows = await this.#db.query<{ item_id: string; captured_at: Date; value: number | null; fidelity_kind: string }>(
+      `select item_id, captured_at, value, fidelity_kind from public.observation
+        where item_id = any($1::text[]) and kind = 'reach' and captured_at >= $2
+        order by item_id, captured_at`,
+      [[...itemIds], toTimestamp(at)],
+    );
+    for (const r of rows) {
+      const list = out.get(r.item_id) ?? [];
+      list.push({ atMs: new Date(r.captured_at).getTime(), reach: r.fidelity_kind === 'absent' || r.value === null ? null : Number(r.value) });
+      out.set(r.item_id, list);
+    }
+    return out;
+  }
+
+  /** Which of these posts a story's backfill fetched. */
+  async backfilled(itemIds: readonly ItemId[]): Promise<ReadonlySet<string>> {
+    if (itemIds.length === 0) return new Set();
+    const rows = await this.#db.query<{ item_id: string }>('select item_id from internal.item_backfill where item_id = any($1::text[])', [[...itemIds]]);
+    return new Set(rows.map((r) => r.item_id));
   }
 
   async byId(id: ItemId): Promise<Item | null> {

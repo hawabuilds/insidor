@@ -343,7 +343,10 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
 
   /* 5. Each catch-all post scored alone, against a recorded judge reply: the moment's posts
      clear the bar, the weather post does not. */
-  const scored = await scorePosts({
+  /* ★ FREE CHECK FIRST: under the owner's reach bar only the post already past it is sent to the
+     judge; the small ones wait. The rest of this test lowers the bar to one view, so every
+     catch-all post is scored once and the board below has its posts. */
+  const held = await scorePosts({
     judge: recordedPostJudge(),
     items: new PgItemRepo(db),
     scores: new PgPostJudgementRepo(db),
@@ -353,14 +356,26 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
     log: quiet,
     now: () => clock,
   });
-  assert.equal(scored.scored, 5, 'every catch-all post scored, once');
+  assert.ok(held.scored < 5, 'posts under the reach bar wait, unscored');
+  const LOW_BAR = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, fypEarlyReach: 1, fypFastReachPerMinute: 1 } };
+  const scored = await scorePosts({
+    judge: recordedPostJudge(),
+    items: new PgItemRepo(db),
+    scores: new PgPostJudgementRepo(db),
+    meter,
+    mode: 'live',
+    policy: LOW_BAR,
+    log: quiet,
+    now: () => clock,
+  });
+  assert.equal(held.scored + scored.scored, 5, 'every catch-all post scored, once');
   const rescored = await scorePosts({
     judge: recordedPostJudge(),
     items: new PgItemRepo(db),
     scores: new PgPostJudgementRepo(db),
     meter,
     mode: 'live',
-    policy: DEFAULT_POLICY,
+    policy: LOW_BAR,
     log: quiet,
     now: () => clock,
   });
