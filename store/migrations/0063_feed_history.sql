@@ -1,4 +1,4 @@
--- 0065_feed_history.sql
+-- 0063_feed_history.sql
 --
 -- WHAT EACH FEED SHOWED, HOUR BY HOUR: one row for every post that was on a feed at any
 -- projection within an hour, so "how many posts did For You show per hour" is a count, not a

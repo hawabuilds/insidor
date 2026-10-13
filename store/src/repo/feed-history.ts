@@ -1,5 +1,5 @@
 /**
- * What each feed showed per hour (0065): copied from the frame the projector just wrote to
+ * What each feed showed per hour (0063): copied from the frame the projector just wrote to
  * public.rising_row, so the hour's set survives the next frame replacing it.
  *
  * Separate from the feed's own writer (services/project/src/rising.ts) because the frame is
@@ -7,7 +7,7 @@
  * pruned by age.
  *
  * ★ A MISSING TABLE IS SKIPPED, NOT AN ERROR. It runs inside the projector's one transaction,
- * where any failed statement aborts the whole frame. So it first asks whether 0065 is applied,
+ * where any failed statement aborts the whole frame. So it first asks whether 0063 is applied,
  * and works inside a savepoint: a failure here rolls back only the history, never the feed.
  *
  * What breaks if changed carelessly: the conflict rule. Overwriting `first_seen_at` or
@@ -17,7 +17,7 @@
 
 import type { Db } from '../client.ts';
 
-/** How long an hour's rows are kept. See 0065's header. */
+/** How long an hour's rows are kept. See 0063's header. */
 export const FEED_HISTORY_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 
 export type FeedHistoryOutcome = { readonly kind: 'recorded'; readonly rows: number } | { readonly kind: 'not_migrated' } | { readonly kind: 'failed'; readonly error: string };

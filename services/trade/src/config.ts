@@ -20,7 +20,7 @@ export interface TradeConfig {
   readonly allowedOrigins: readonly string[];
   /** Creating coins: where their metadata is stored, and the database role that records them. Any null: no create path. */
   readonly launch: { readonly storageUrl: string; readonly storageKey: string; readonly databaseUrl: string } | null;
-  /** The app role's database, where every trade is recorded (public.trade, 0064). Null: nothing is recorded. */
+  /** The app role's database, where every trade is recorded (public.trade, 0062). Null: nothing is recorded. */
   readonly recordsDatabaseUrl: string | null;
 }
 

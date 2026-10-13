@@ -137,7 +137,7 @@ async function main(): Promise<void> {
       /* The For You and Popular feeds, in the same transaction as the board they read their
          coins from — see rising.ts. */
       const risingRows = await projectRisingFeeds(db, nowMs as Millis, frame.coinsByStory, SPARK_WINDOW_MS);
-      /* What the feeds showed this hour, kept past the next frame (0065; skipped until applied). */
+      /* What the feeds showed this hour, kept past the next frame (0063; skipped until applied). */
       await keepFeedHistory(db, nowMs);
 
 
