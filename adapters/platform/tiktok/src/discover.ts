@@ -70,14 +70,18 @@
  *
  * The scraper's video search (`searchQueries`, the `/video` section) is the first entry
  * point because the owner asked for it over hashtags when it exists, and it matches a word
- * in a caption as well as a tag. It is sent with NO sort, which is the vendor's
- * "most relevant" order — in a live run on 2026-10-13 that came back as posts from the last
- * two weeks, much as the hashtag feed did. The newest-first sort exists and was tried first:
- * it is a paid add-on that goes through the scraper's mobile route, and that run SUCCEEDED
- * with nothing in it after four minutes of failed device registrations. A sort that turns a
- * vendor failure into an empty, successful run is the one failure this package cannot see,
- * so it is not sent. Nor is the vendor's "past 24 hours" search filter: it is a date filter
- * with every one of the four problems listed above.
+ * in a caption as well as a tag. ★ SINCE 2026-10-13 IT IS SENT MOST-LIKED FIRST OVER THE PAST
+ * DAY (`videoSearchSorting: MOST_LIKED`, `videoSearchDateFilter: PAST_24_HOURS`, both charged
+ * filters): the owner wants new viral videos, and the vendor's default "most relevant" order
+ * came back as posts from the last two weeks. A live run that day returned 20 videos, every one
+ * under 24 hours old, the top five at 1.5M to 3M views, for $0.071 against $0.061 unfiltered.
+ * The newest-first sort is still not sent: it goes through the scraper's mobile route, and that
+ * run SUCCEEDED with nothing in it after four minutes of failed device registrations.
+ *
+ * The date filter is a hint here in the same sense as the size bound below, not a correctness
+ * claim this package makes: the runner checks each post's own time and credits only posts from
+ * the last day to the feed (services/runner/src/work/arrivals.ts, Policy.feed.watchMaxAgeMs), so
+ * a filter the vendor ignored costs a little money and never puts an old post on screen.
  *
  * Keyword search is still not a catch-all. It needs words, and there is no trending or
  * explore feed on this scraper to stand in for "whatever is moving"; the caller supplies
@@ -101,6 +105,10 @@ export interface ActorInput {
   readonly profiles?: readonly string[];
   /** A hint, not a guarantee — see the header's last section for why that is fine. */
   readonly resultsPerPage?: number;
+  /** The video search's order: most liked first (a charged filter). */
+  readonly videoSearchSorting?: 'MOST_LIKED';
+  /** The video search's window: the past day (a charged filter). */
+  readonly videoSearchDateFilter?: 'PAST_24_HOURS';
 }
 
 /**
@@ -135,7 +143,7 @@ export function toActorInput(query: DiscoveryQuery): ActorInput {
   const resultsPerPage = Math.min(DISCOVER_RESULTS_CAP, Math.max(1, Math.trunc(query.limit)));
 
   if (query.mode === 'keyword') {
-    return { searchQueries: [term], searchSection: '/video', resultsPerPage };
+    return { searchQueries: [term], searchSection: '/video', resultsPerPage, videoSearchSorting: 'MOST_LIKED', videoSearchDateFilter: 'PAST_24_HOURS' };
   }
   return query.mode === 'account'
     ? { profiles: [term], resultsPerPage }

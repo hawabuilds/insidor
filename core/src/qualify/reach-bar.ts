@@ -30,17 +30,22 @@ export interface ReachLevel {
 
 export type ReachBar = 'fyp' | 'popular';
 
-export function clearsReachBar(bar: ReachBar, readings: readonly ReachLevel[], postedAtMs: number | null, p: Policy): boolean {
+/**
+ * @param scale every bar times this: 1 for a text post, `rising.shortVideoReachScale` for the
+ *   short-video source, whose views run an order of magnitude higher. The caller knows the source;
+ *   core does not name it.
+ */
+export function clearsReachBar(bar: ReachBar, readings: readonly ReachLevel[], postedAtMs: number | null, p: Policy, scale = 1): boolean {
   const r = p.rising;
   const read = readings.filter((x): x is { atMs: number; reach: number } => x.reach !== null);
   const most = read.reduce((m, x) => Math.max(m, x.reach), Number.NEGATIVE_INFINITY);
-  if (bar === 'popular') return most >= r.popularMinReach;
-  if (most >= r.fypMinReach) return true;
+  if (bar === 'popular') return most >= r.popularMinReach * scale;
+  if (most >= r.fypMinReach * scale) return true;
   if (postedAtMs === null) return false;
   return read.some((x) => {
     const ageMs = x.atMs - postedAtMs;
     if (ageMs <= 0) return false;
-    if (ageMs <= r.fypEarlyWindowMs && x.reach >= r.fypEarlyReach) return true;
-    return ageMs <= r.fypFastWindowMs && x.reach / (ageMs / MS_PER_MINUTE) >= r.fypFastReachPerMinute;
+    if (ageMs <= r.fypEarlyWindowMs && x.reach >= r.fypEarlyReach * scale) return true;
+    return ageMs <= r.fypFastWindowMs && x.reach / (ageMs / MS_PER_MINUTE) >= r.fypFastReachPerMinute * scale;
   });
 }

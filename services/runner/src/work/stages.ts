@@ -439,6 +439,8 @@ export interface TrackingDeps {
 }
 
 function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): StageWork<TrackInput> {
+  /* When each source that bills a re-read as a run was last given a batch: see the gate in `pull`. */
+  const lastPaidBatch = new Map<string, number>();
   const work: StageWork<TrackInput> = {
     async pull(limit, ctx) {
       const now = ctx.now();
@@ -462,7 +464,16 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
          hidden narrative's unjudged watch post. See work/track-gate.ts for what is kept and
          why: unjudged catch-all posts always are, because their reach decides their judging. */
       const facts = await repos.items.trackingFacts(onScreen.map((i) => i.itemId));
-      const page = onScreen.filter((i) => worthRereading(i.itemId, facts, policy));
+      const worth = onScreen.filter((i) => worthRereading(i.itemId, facts, policy));
+      /* ★ A SOURCE THAT BILLS EVERY RE-READ AS A RUN is re-read in one batch, at most every
+         `track.paidReadMinMinutes`: a run is quoted at a full batch whatever it holds, so posts
+         read one by one on their own tiers would each pay a whole run. Its posts wait between
+         batches on the reading they have. A restart may give one extra batch. */
+      const paidSource = (source: string): boolean =>
+        tracking.platforms.has(source as never) && tracking.platforms.get(source as never).capabilities.billing === 'per-run';
+      const due = (source: string): boolean => now - (lastPaidBatch.get(source) ?? 0) >= policy.track.paidReadMinMinutes * MS_PER_MINUTE;
+      const page = worth.filter((i) => !paidSource(String(i.source)) || due(String(i.source)));
+      for (const source of new Set(page.map((i) => String(i.source)).filter(paidSource))) lastPaidBatch.set(source, now);
       const items = await undecided(repos, 'track', page, (i) => i.itemId, limit, now);
       if (items.length === 0) return [];
 

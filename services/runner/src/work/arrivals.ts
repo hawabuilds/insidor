@@ -20,13 +20,20 @@ export function storeArrivals(
   repos: { readonly authors: PgAuthorRepo; readonly items: PgItemRepo; readonly observations: PgObservationRepo },
   policy: Policy,
   now: () => Millis,
-): (items: readonly Item[], authors: readonly Author[], lane?: FeedLane | null) => Promise<number> {
+): (items: readonly Item[], authors: readonly Author[], lane?: FeedLane | 'watch' | null) => Promise<number> {
   return async (items, authors, lane = null) => {
     await repos.authors.upsert(authors);
     const stored = await repos.items.upsert(items.map((item) => withTextHash(item, policy)));
     /* Which catch-all lane found these, for the per-post score and the For You feed (0025).
-       A keyword search writes nothing here, and that is what keeps its posts off the feed. */
-    if (lane !== null) await repos.items.markFoundBy(items.map((item) => item.itemId), lane, now());
+       A keyword search writes nothing here, and that is what keeps its posts off the feed.
+       ★ THE WATCH LANE (0061) is the owner's watch list on a source with no catch-all. Only its
+       posts from the last `feed.watchMaxAgeMs` are credited: older ones the vendor sends anyway
+       are stored and never judged. A post with no time is not shown to be fresh, so it is not. */
+    const credited =
+      lane === 'watch'
+        ? items.filter((item) => item.postedAt !== null && now() - item.postedAt <= policy.feed.watchMaxAgeMs)
+        : items;
+    if (lane !== null) await repos.items.markFoundBy(credited.map((item) => item.itemId), lane, now());
 
     /* ★ THE READING DISCOVERY ALREADY PAID FOR. A search result carries each post's counts,
        and they are a real reading taken the moment we fetched it. Saved as observations
