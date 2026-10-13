@@ -28,6 +28,15 @@ test('the facts read as facts', () => {
 test("a supplier warning names the role and the money, and says so plainly when a number is missing", () => {
   assert.deepEqual(alertText('supplier_warning', { role: 'judge', share: 0.8, spentUsd: 6.4, capUsd: 8 }), { title: 'Judge at 80% of its daily line', body: '$6.40 of $8.00 spent today (UTC).' });
   assert.deepEqual(alertText('supplier_warning', { role: 'short video', share: 0.95, spentUsd: 2.86, capUsd: 3 }), { title: 'Short video at 95% of its daily line', body: '$2.86 of $3.00 spent today (UTC).' });
+  assert.deepEqual(alertText('supplier_account', { supplier: 'Anthropic', uses: 'the judge', reason: 'credit balance too low', state: 'refused' }), {
+    title: 'Anthropic out of credit (the judge)',
+    body: 'Anthropic refused a call for billing: credit balance too low. Top up its account; work using it is paused until then.',
+  });
+  assert.deepEqual(alertText('supplier_account', { supplier: 'Apify', uses: 'short videos', state: 'recovered' }), {
+    title: 'Apify is answering again',
+    body: 'Apify (short videos) accepted a call again; work using it has resumed.',
+  });
+  assert.deepEqual(alertText('supplier_account', {}).title, 'A supplier out of credit');
   assert.deepEqual(alertText('supplier_warning', {}), { title: 'A supplier at a warning share of its daily line', body: 'Its spend today reached that share of the line.' });
 });
 

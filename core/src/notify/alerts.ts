@@ -15,6 +15,9 @@
  *      screen; mute still silences it and quiet hours still withhold its push, because both are
  *      the owner's own explicit choices. The hourly limit is not: a busy hour of coin alerts must
  *      not be what keeps the one about money off the phone.
+ *   4b. A SUPPLIER ACCOUNT ALERT IS THE SAME KIND OF ALARM: a supplier refused a call because its
+ *      account is out of credit (or recovered). The owner's, no switch, past the hourly limit;
+ *      mute and quiet hours still hold. The runner sends it at most once per supplier an hour.
  *   5. A RE-TUNE SUMMARY IS THE OWNER'S TOO: twice a day, what the judge learned from the owner's
  *      own calls and whether it was applied (tools/retune.ts). No switch, like the warning, but
  *      it waits behind the hourly limit like any other alert — it is a report, not an alarm.
@@ -40,6 +43,7 @@ export const ALERT_KINDS = [
   'coin_matched',
   'supplier_warning',
   'retune_summary',
+  'supplier_account',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -61,6 +65,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   coin_matched: 'coins',
   supplier_warning: 'always',
   retune_summary: 'always',
+  supplier_account: 'always',
 };
 
 export interface AlertPrefs {
@@ -157,7 +162,7 @@ export function deliveryFor(r: { readonly kind: AlertKind; readonly prefs: Alert
   if (!wants(r.prefs, r.kind)) return { kind: 'skip', why: 'off' };
   if (r.kind === 'rank_up') return { kind: 'list', why: 'list-only' };
   if (isQuiet(r.localMinutes, r.prefs)) return { kind: 'list', why: 'quiet' };
-  if (r.kind !== 'supplier_warning' && r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
+  if (r.kind !== 'supplier_warning' && r.kind !== 'supplier_account' && r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
   if (r.devices === 0) return { kind: 'list', why: 'no-device' };
   return { kind: 'push' };
 }

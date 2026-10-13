@@ -53,6 +53,8 @@ import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/st
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { jobVendorLines, supplierRoles, vendorLines } from './vendor-lines.ts';
 import { supplierWarnings } from './supplier-warnings.ts';
+import { billingAlerts } from './billing-alerts.ts';
+import { onOutOfCredit } from '@insidor/vendor-kit';
 import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
@@ -470,6 +472,18 @@ export async function withRuntime<T>(
         log: log.child({ step: 'supplier-warnings' }),
         now: () => Date.now(),
       });
+      /* ★ THE OWNER'S ALARM FOR AN EMPTY SUPPLIER ACCOUNT. Every adapter tells the process when a
+         vendor refuses a call for billing (vendor-kit onOutOfCredit), whatever its caller then
+         does with the error; this registry logs it at error level and queues a `supplier_account`
+         alert once per supplier an hour, and once more when it answers again. Its pending alerts
+         ride the same minute as the warnings. See billing-alerts.ts. */
+      const billing = billingAlerts({
+        ownerWallets: cfg.ownerWallets,
+        owner: new PgOwnerAlertRepo(db),
+        log: log.child({ step: 'supplier-billing' }),
+        now: () => Date.now(),
+      });
+      onOutOfCredit({ refused: (e) => billing.refused(e), answered: (vendor) => billing.answered(vendor) });
       log.info('supplier warnings', {
         at: policy.budget.warnAt,
         alert: cfg.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : 'queued for the owner',
@@ -483,6 +497,7 @@ export async function withRuntime<T>(
             }),
           )
           .then(() => warnings.check())
+          .then(() => billing.flush())
           .then(() => Promise.all(otherBooks.map(({ meter: m }) => m.refresh())))
           .then(() => Promise.all(bookWarnings.map((w) => w.check())))
           .catch((error: unknown) =>

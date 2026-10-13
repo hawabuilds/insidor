@@ -62,3 +62,10 @@ test("★ a supplier warning is on for everyone with no switch to lose it, and t
   const quiet = normalisePrefs({ quietStart: '22:00', quietEnd: '07:00', timezone: 'UTC' }, P);
   assert.deepEqual(at('supplier_warning', quiet, 0, 1, 3 * 60), { kind: 'list', why: 'quiet' }, 'quiet hours list it and withhold the push');
 });
+
+test('a supplier billing alert is the same alarm: no switch, past the hourly limit, mute still holds', () => {
+  const allOff = normalisePrefs({ ...base, on: Object.fromEntries(Object.keys(base.on).map((k) => [k, false])) as never }, P);
+  assert.deepEqual(at('supplier_account', allOff), { kind: 'push' });
+  assert.deepEqual(at('supplier_account', base, P.maxPerHour + 1), { kind: 'push' });
+  assert.deepEqual(at('supplier_account', { ...base, muted: true }), { kind: 'skip', why: 'muted' });
+});

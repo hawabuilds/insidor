@@ -1,7 +1,7 @@
 /**
  * What sits at the left of an alert row: a rank badge, a coin's logo (its first letter when it has
  * none, and the address read from the alert's own token link), a dollar sign for
- * the owner's supplier warning, a turn arrow for the owner's twice-daily learning report, or the bell.
+ * the owner's supplier warning and supplier account alert, a turn arrow for the owner's twice-daily learning report, or the bell.
  *
  * Its own pure file so the choice is tested without rendering. The supplier warning gets its own
  * mark because it is the one row about the owner's own money rather than a coin or a person, and
@@ -19,6 +19,7 @@ export type MarkKind = { readonly kind: 'rank'; readonly rank: string } | { read
 export function markOf(a: { readonly kind: string; readonly rank: string | null; readonly symbol: string | null; readonly href?: string }, ranks: readonly string[]): MarkKind {
   if (a.rank !== null && ranks.includes(a.rank)) return { kind: 'rank', rank: a.rank };
   if (a.kind === 'supplier_warning') return { kind: 'money', label: 'Supplier spend' };
+  if (a.kind === 'supplier_account') return { kind: 'money', label: 'Supplier account' };
   if (a.kind === 'retune_summary') return { kind: 'learned', label: 'Learning from your calls' };
   if (a.symbol !== null && a.symbol !== '') {
     const address = tokenAddress(a.href ?? '');
