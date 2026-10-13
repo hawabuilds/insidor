@@ -27,7 +27,14 @@ const ENTRY = {
   desc: 'Relatable #tiktok #trending #funny #comedyvideo #viral ',
   create_time: 1791906070,
   desc_language: 'en',
-  author: { uid: '6977076764012315653', unique_id: 'fardeenkimastiyan', nickname: 'Fardeen ki Mastiyan' },
+  author: {
+    uid: '6977076764012315653',
+    unique_id: 'fardeenkimastiyan',
+    nickname: 'Fardeen ki Mastiyan',
+    follower_count: 816,
+    avatar_thumb: { url_list: ['https://p19-common-sign.tiktokcdn-us.com/avt/a~tplv-tiktokx-cropcenter:100:100.webp?x-expires=1&x-signature=a'] },
+    avatar_300x300: { url_list: ['https://p16-common-sign.tiktokcdn-us.com/avt/a~tplv-tiktokx-cropcenter:300:300.webp?x-expires=1&x-signature=b'] },
+  },
   statistics: { aweme_id: '7696177940781944085', collect_count: 8, comment_count: 6, digg_count: 93, download_count: 2, play_count: 1957, share_count: 3 },
   video: { duration: 64388, width: 576, height: 1024, cover: { height: 720, width: 720, url_list: ['https://p19-common-sign.tiktokcdn-us.com/tos-alisg-p-0037/cover.jpeg?x-expires=1&x-signature=a'] } },
   music: { id: 7696178768922037000, id_str: '7696178768922037123', mid: '7696178768922037123', title: 'original sound - fardeenkimastiyan' },
@@ -63,6 +70,17 @@ test('★ an entry reads into the same Item the first scraper gives: id, time, c
   assert.ok(item.fingerprints.some((f) => f.kind === 'entitySpan' && f.key.includes('funny')));
   assert.equal(String(item.authorKey), 'tiktok:6977076764012315653');
   assert.equal(toAuthor(fromSearchActor(ENTRY), AT as never)?.handle, 'fardeenkimastiyan');
+});
+
+test("★ the account's name, follower count and 300px picture are kept from the same entry", () => {
+  const a = toAuthor(fromSearchActor(ENTRY), AT as never);
+  assert.equal(a?.displayName, 'Fardeen ki Mastiyan');
+  assert.equal(a?.audience?.value, 816);
+  assert.equal(a?.pictureUri, ENTRY.author.avatar_300x300.url_list[0]);
+  const bare = toAuthor(fromSearchActor({ ...ENTRY, author: { uid: '1', unique_id: 'someone' } }), AT as never);
+  assert.equal(bare?.audience, null, 'no count is no counter, never zero');
+  assert.equal(bare?.pictureUri, null);
+  assert.equal(bare?.displayName, null);
 });
 
 test("'un' is no language, and a missing count is unread rather than zero", () => {

@@ -65,6 +65,15 @@ export function toSearchActorInput(words: readonly string[]): SearchActorInput {
 /** A number the vendor may send as a string or a number; null when it is neither. */
 const count = (v: unknown): number | null => (typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : num(v));
 
+/** The account's picture link: the 300px rendition, else the next one the entry carries; null for none. */
+function avatarOf(author: Record<string, unknown>): string | null {
+  for (const key of ['avatar_300x300', 'avatar_medium', 'avatar_larger', 'avatar_168x168', 'avatar_thumb']) {
+    const url = arr(rec(author[key]).url_list).map(str).find((u): u is string => u !== null && u.startsWith('https://'));
+    if (url !== undefined) return url;
+  }
+  return null;
+}
+
 /**
  * One entry of this actor's dataset, in the first scraper's field names. An entry with no id comes
  * back unchanged, and `toItem` refuses it as it refuses any other.
@@ -87,7 +96,18 @@ export function fromSearchActor(raw: unknown): unknown {
     createTime: num(r.create_time),
     /* 'un' is the platform's "undetermined": no language, not a language. */
     textLanguage: lang === null || lang === 'un' ? null : lang,
-    authorMeta: { id: str(author.uid), name: str(author.unique_id) },
+    /* The account's display name, follower count and picture ride along in the same entry (the
+       owner, 2026-10-13: the post sheet shows the poster's real picture). Until this was read,
+       every account the search found was stored with none of the three. The picture is the 300px
+       one, enough for any size the app draws it; its link is signed and expires in a day or two,
+       and the next time a search returns the account the link is stored fresh. */
+    authorMeta: {
+      id: str(author.uid),
+      name: str(author.unique_id),
+      nickName: str(author.nickname),
+      fans: count(author.follower_count),
+      avatar: avatarOf(author),
+    },
     playCount: count(stats.play_count),
     diggCount: count(stats.digg_count),
     commentCount: count(stats.comment_count),
