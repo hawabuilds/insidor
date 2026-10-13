@@ -24,7 +24,9 @@ const PROMPT_DIR = join(import.meta.dirname, '..', 'prompts');
 export const PROMPT_NAMES = ['system', 'coinability-core', 'subject-vs-story'] as const;
 /** The single-post question the feed asks: a set of its own, hashed apart. See POST_PROMPT_SET_SHA. */
 export const POST_PROMPT_NAMES = ['post-system', 'post-coinability'] as const;
-export type PromptName = (typeof PROMPT_NAMES)[number] | (typeof POST_PROMPT_NAMES)[number];
+/** The feed's second question: which kind of post this is, so marketing, sport, fandom and showbiz are held back. */
+export const VETO_PROMPT_NAMES = ['post-veto-system', 'post-veto'] as const;
+export type PromptName = (typeof PROMPT_NAMES)[number] | (typeof POST_PROMPT_NAMES)[number] | (typeof VETO_PROMPT_NAMES)[number];
 
 export interface Prompt {
   readonly name: PromptName;
@@ -46,6 +48,8 @@ export const PROMPTS: Readonly<Record<PromptName, Prompt>> = Object.freeze({
   'subject-vs-story': load('subject-vs-story'),
   'post-system': load('post-system'),
   'post-coinability': load('post-coinability'),
+  'post-veto-system': load('post-veto-system'),
+  'post-veto': load('post-veto'),
 });
 
 /**
@@ -66,6 +70,12 @@ export const PROMPT_SET_SHA: string = createHash('sha256')
  */
 export const POST_PROMPT_SET_SHA: string = createHash('sha256')
   .update(POST_PROMPT_NAMES.map((n) => PROMPTS[n].sha).join('|'))
+  .digest('hex')
+  .slice(0, 8);
+
+/** The kind question's own hash: an answer to it is never mistaken for the coinability answer. */
+export const VETO_PROMPT_SET_SHA: string = createHash('sha256')
+  .update(VETO_PROMPT_NAMES.map((n) => PROMPTS[n].sha).join('|'))
   .digest('hex')
   .slice(0, 8);
 
