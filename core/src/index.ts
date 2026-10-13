@@ -127,6 +127,9 @@ export { mergeHits } from './search/merge.ts';
    so both run the one rule (match/post-coin.ts). */
 export { byEvidence, coinEvidence, compactName, matchPostCoin, nameMatch, pictureVerdict } from './match/post-coin.ts';
 export type { CoinEvidence as PostCoinEvidence, CoinSide, MatchBars, NameMatch, PostCoinMatch, PostSide } from './match/post-coin.ts';
+/* An older coin's trading against a post's time: the runner measures with it (match/older-coin.ts). */
+export { olderCoinRun } from './match/older-coin.ts';
+export type { OlderRun, OlderRunBars, VolumeBucket } from './match/older-coin.ts';
 export { biggestFirst, groupCoins } from './history/group.ts';
 export type { HistoryCoin, HistoryNarrative, PicturePair } from './history/group.ts';
 export { RANKS, boughtEarly, earnsRep, goatCount, nextRank, rankFor, rankedUp, seasonOf, standings, votePoints } from './social/rank.ts';
