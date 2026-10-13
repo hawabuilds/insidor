@@ -188,14 +188,37 @@ export interface TrackPolicy {
   /** Consecutive censored reads before the lifecycle demotes a tier. */
   readonly flatReadsToDemote: number;
   /**
-   * ★ THE FASTEST A SOURCE THAT BILLS EVERY RE-READ AS A RUN IS RE-READ, in minutes. A text post's
-   * re-read costs $0.00015; a short video's is a scraper run at $0.001 plus $0.003 a post, twenty
-   * times as much, and the four-minute top tier would spend the source's whole line on re-reads by
-   * midday. Its posts arrive up to a day old with their views already large, so its posts are
-   * re-read together, one batch every three hours: a run is quoted at a full batch ($0.151), so
-   * eight runs a day is about $1.20 of the source's $3, the rest for discovery.
+   * ★ HOW OFTEN A POST FROM A SOURCE THAT BILLS EVERY RE-READ AS A RUN IS RE-READ, once it is not
+   * a young post growing fast (`paidFastMinReachPerMinute`), in minutes. A text post's re-read
+   * costs $0.00015; a short video's is a scraper run at $0.001 plus $0.003 a post, twenty times as
+   * much, and the four-minute top tier would spend the source's whole line on re-reads by midday.
+   * Which posts go into a run, and how many: services/runner/src/work/paid-reads.ts.
    */
   readonly paidReadMinMinutes: number;
+  /**
+   * The closest together two re-read runs on such a source may go out, in minutes. Every post due
+   * goes into the next run together, so one run's start fee covers them all and TRACK is not held
+   * by a run that takes a minute or two more often than this.
+   */
+  readonly paidRunEveryMinutes: number;
+  /**
+   * ★ THE MOST POSTS ONE SUCH RUN READS, AND THE CAP THAT HOLDS RE-READS INSIDE THEIR SHARE OF THE
+   * LINE. The short-video line is $3 a day; discovery may plan `feed.budgetShare` (60%) of it,
+   * $1.80 — an ask of 20 at $0.101 every 81 minutes. Re-reads have the other $1.20: 48 runs a day
+   * (one every `paidRunEveryMinutes`) × ($0.001 + 8 × $0.003) = $1.20. So 8, and a slower post
+   * waits for a later run when young fast ones fill one.
+   */
+  readonly paidReadMaxPosts: number;
+  /**
+   * ★ A YOUNG SHORT VIDEO GROWING AT LEAST THIS MANY VIEWS A MINUTE IS RE-READ ON EVERY RUN, while
+   * it is inside `rising.fypMaxAgeMs` — so the growth paths get the second and third readings
+   * they need, instead of one three hours later. Views a minute between its last two readings, or
+   * since it was posted when it has one. 250: the newest-first search on 2026-10-13 14:05 UTC
+   * found its fastest under-an-hour videos at 280 to 480 a minute and the rest under 150; the
+   * most-liked search's young ones were at 310 and 580. A raw view rate, not scaled by
+   * `rising.shortVideoReachScale`: it is measured on this source alone.
+   */
+  readonly paidFastMinReachPerMinute: number;
 
   /*
    * ── the lifecycle bars ──────────────────────────────────────────────
@@ -2097,6 +2120,9 @@ const POLICY_V1: Policy = {
     maxTrackedHours: 24,
     flatReadsToDemote: 3,
     paidReadMinMinutes: 180,
+    paidRunEveryMinutes: 30,
+    paidReadMaxPosts: 8,
+    paidFastMinReachPerMinute: 250,
 
     lifecycleMargin: 0.1,
     /* 2 / 4 / 6. The ordering is the cost of being wrong on each edge, and the edges

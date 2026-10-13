@@ -97,6 +97,8 @@ import { NotImplemented } from '../not-implemented.ts';
 import { judgeStories, type JudgingDeps } from './judge.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
 import { worthRereading } from './track-gate.ts';
+import { pickPaidReads } from './paid-reads.ts';
+import { sourceHandles } from './handle-cache.ts';
 
 /* ── operational constants ────────────────────────────────────────────────
    Cadences, page sizes and lookbacks — how much is fetched, never what is decided.
@@ -465,15 +467,24 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
          why: unjudged catch-all posts always are, because their reach decides their judging. */
       const facts = await repos.items.trackingFacts(onScreen.map((i) => i.itemId));
       const worth = onScreen.filter((i) => worthRereading(i.itemId, facts, policy));
-      /* ★ A SOURCE THAT BILLS EVERY RE-READ AS A RUN is re-read in one batch, at most every
-         `track.paidReadMinMinutes`: a run is quoted at a full batch whatever it holds, so posts
-         read one by one on their own tiers would each pay a whole run. Its posts wait between
-         batches on the reading they have. A restart may give one extra batch. */
+      /* ★ A SOURCE THAT BILLS EVERY RE-READ AS A RUN is re-read in one run at most every
+         `track.paidRunEveryMinutes`, of at most `track.paidReadMaxPosts` posts: its young posts
+         growing fast on every run, the rest once their reading is `track.paidReadMinMinutes`
+         old (work/paid-reads.ts). Its other posts wait on the reading they have. The clock is
+         set only when a run has posts to read, so a pass with nothing due does not hold the
+         next one back; a restart may give one extra run. */
       const paidSource = (source: string): boolean =>
         tracking.platforms.has(source as never) && tracking.platforms.get(source as never).capabilities.billing === 'per-run';
-      const due = (source: string): boolean => now - (lastPaidBatch.get(source) ?? 0) >= policy.track.paidReadMinMinutes * MS_PER_MINUTE;
-      const page = worth.filter((i) => !paidSource(String(i.source)) || due(String(i.source)));
-      for (const source of new Set(page.map((i) => String(i.source)).filter(paidSource))) lastPaidBatch.set(source, now);
+      const runDue = (source: string): boolean => now - (lastPaidBatch.get(source) ?? 0) >= policy.track.paidRunEveryMinutes * MS_PER_MINUTE;
+      const page = worth.filter((i) => !paidSource(String(i.source)));
+      for (const source of new Set(worth.map((i) => String(i.source)).filter((s) => paidSource(s) && runDue(s)))) {
+        const mine = worth.filter((i) => String(i.source) === source);
+        const read = await repos.observations.seriesForItems(mine.map((i) => i.itemId), now - OBSERVATION_WINDOW_MS);
+        const picked = pickPaidReads(mine.map((item) => ({ item, observations: read.get(item.itemId) ?? [] })), now as Millis, policy);
+        if (picked.length === 0) continue;
+        lastPaidBatch.set(source, now);
+        page.unshift(...picked);
+      }
       const items = await undecided(repos, 'track', page, (i) => i.itemId, limit, now);
       if (items.length === 0) return [];
 
@@ -589,6 +600,18 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
         }
         const adapter = tracking.platforms.get(sourceId);
         const ids = entries.map((e) => e.input.item.sourceItemId);
+        /* A source that addresses a post by URL needs each author's handle; the adapter reads it
+           synchronously from this cache, so it is filled from the store first (handle-cache.ts). */
+        if (adapter.capabilities.billing === 'per-run') {
+          const authors = await repos.authors.byKeys([...new Set(entries.map((e) => e.input.item.authorKey))]);
+          sourceHandles.warm(
+            source,
+            entries.flatMap((e) => {
+              const handle = authors.get(e.input.item.authorKey)?.handle;
+              return handle === null || handle === undefined ? [] : [[e.input.item.sourceItemId, handle] as const];
+            }),
+          );
+        }
         const estimate = adapter.estimate({ kind: 'observe', sourceItemIds: ids });
 
         if (!tracking.meter.mayspend(estimate.vendor, estimate.usd)) {
