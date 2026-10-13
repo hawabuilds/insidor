@@ -53,6 +53,19 @@ Give a ticker-style name of at most three words, as the post or its picture woul
 people say it: the cow is CARINA, the fish on a roller coaster is FISHCOASTER, the hippo
 is MOODENG. Not a description of the post. If you cannot name it in three words, answer no.
 
+When you answer yes, give 3 to 5 names in all: the main name, then 2 to 4 alternate names.
+  - The first name is ONE word: the subject's own name or nickname, as the post calls it
+    (MOODENG, PNUT, CARINA). Only if it has none, the one word people would call it.
+  - The others may be short phrases or words run together (FISHCOASTER), each a name a
+    coin could carry, never a sentence or a description.
+  - Never start a name with "the", "a", "an" or "my".
+  - Never a brand, a company, a product line or a theme park as a name, even when it is
+    in the picture or the post is about a product: name the creature, the character, the
+    moment or the nickname people give it, not the logo behind it.
+  - Never a real person's full name. A real person may be named only by the nickname the
+    post itself gives them.
+When you answer no, give no names.
+
 HOW SURE ARE YOU?
 A number between 0 and 1, given only this post. High when one thing clearly stands out;
 low when the post could be about several things.
