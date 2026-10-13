@@ -207,6 +207,30 @@ export class PgLearningRepo {
     return rows.map((r) => ({ coinRef: r.coin_ref, uri: r.uri, v: JSON.parse(r.embedding) as number[] }));
   }
 
+  /**
+   * The crypto signal on each of these posts, from its crypto-attention read (internal.crypto_attention,
+   * 0064): other accounts' coin talk (a cashtag, an address or "CA" in their replies or quotes), and
+   * whether the post is a shill (its own text, or its author's own replies, names a coin). Only reads
+   * that carry the own/others split count; a post with none is absent — no facts, the judge alone
+   * decides. An early read (cut before the coin, `_cutAt`) is preferred over a later one, because
+   * talk after a coin launched says the coin exists, not that people would coin the post.
+   */
+  async cryptoSignals(itemIds: readonly string[]): Promise<ReadonlyMap<string, { readonly others: boolean; readonly shill: boolean }>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await this.#db.query<{ item_id: string; split: Record<string, unknown> }>(
+      `select distinct on (item_id) item_id, cashtags as split from internal.crypto_attention
+        where item_id = any($1) and cashtags ? '_others'
+        order by item_id, (cashtags ? '_cutAt') desc, read_at desc`,
+      [[...itemIds]],
+    );
+    const talks = (t: unknown): boolean => {
+      if (typeof t !== 'object' || t === null) return false;
+      const o = t as { cashtags?: Record<string, number>; addresses?: number; ca?: number };
+      return Object.keys(o.cashtags ?? {}).length > 0 || (o.addresses ?? 0) > 0 || (o.ca ?? 0) > 0;
+    };
+    return new Map(rows.map((r) => [r.item_id, { others: talks(r.split['_others']), shill: r.split['_postShill'] === true || talks(r.split['_own']) }] as const));
+  }
+
   /** Posts as we hold them, for the owner's hand-gold list: text and media, by feed id. */
   async heldPosts(itemIds: readonly string[]): Promise<readonly { readonly itemId: string; readonly body: string; readonly media: unknown }[]> {
     if (itemIds.length === 0) return [];

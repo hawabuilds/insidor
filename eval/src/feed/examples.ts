@@ -34,7 +34,7 @@
 import { createHash } from 'node:crypto';
 
 import type { LearningPolicy } from '@insidor/contracts/policy.ts';
-import { heldKind } from '@insidor/core';
+import { heldKind, type CryptoSignal } from '@insidor/core';
 
 /** Examples or test, by the post id alone. */
 export const isExample = (itemId: string): boolean => (createHash('sha256').update(itemId).digest()[0] ?? 0) % 2 === 0;
@@ -144,13 +144,19 @@ export interface GradedPost {
   readonly firstPass: boolean;
   /** The kind label, upper case; null when it was never asked or not answered. */
   readonly kind: string | null;
+  /** Other accounts' crypto talk under it and whether it is a shill; null or absent: no facts (the judge alone decides). */
+  readonly signal?: CryptoSignal | null;
 }
 
 /**
- * On For You: the first question passed and the kind it got is not one policy holds
- * (`held` is Policy.judge.heldKinds, or a set being measured). The labels are core's.
+ * On For You, by core's rule (`passesWithSignal`): never a shill; otherwise the kind it got is
+ * not one policy holds (`held` is Policy.judge.heldKinds, or a set being measured) and either
+ * the first question passed or other accounts' crypto signal is present. Mirrors core rather than
+ * calling it because a graded row carries the first answer already decided (with its picture
+ * boost); the core test and this one hold the same cases.
  */
-export const inFeed = (r: GradedPost, held: readonly string[]): boolean => r.firstPass && heldKind(r.kind, held) === null;
+export const inFeed = (r: GradedPost, held: readonly string[]): boolean =>
+  r.signal?.shill !== true && heldKind(r.kind, held) === null && (r.firstPass || r.signal?.others === true);
 /** Caught: on For You; null when unanswered. */
 export const caught = (r: GradedPost, held: readonly string[]): boolean | null => (r.coinable === null ? null : inFeed(r, held));
 
@@ -188,6 +194,8 @@ export interface GateInput {
   readonly missed: Rate;
   /** Missed posts the judge in use catches that this block does not: any one blocks it. */
   readonly regressions: readonly string[];
+  /** The setup live now, graded on the same posts in the same run; null when it was not. */
+  readonly live?: { readonly hand: Rate; readonly negatives: Rate; readonly missed: Rate } | null;
 }
 
 /**
@@ -200,6 +208,8 @@ export interface GateInput {
  *              recorded as untested, never as zero.
  *   no regress ★ the owner's rule: no block is ever applied that makes a missed post the judge in
  *              use catches fail. One is enough.
+ *   not worse  ★ and none that is worse than the setup live now on hand gold, non-memes or
+ *              missed posts, graded on the same posts in the same run.
  */
 export function gate(r: GateInput, L: LearningPolicy): { readonly apply: boolean; readonly why: string | null } {
   const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -212,6 +222,18 @@ export function gate(r: GateInput, L: LearningPolicy): { readonly apply: boolean
   if (neg === null) fails.push('no live non-meme could be tested');
   else if (neg > L.maxLiveNegativePass) fails.push(`live non-memes ${r.negatives.passed}/${r.negatives.tested} is over ${pct(L.maxLiveNegativePass)}`);
   if (missed !== null && missed < L.minMissedPass) fails.push(`missed posts ${r.missed.passed}/${r.missed.tested} is under ${pct(L.minMissedPass)}`);
+  /* ★ NEVER WORSE THAN THE SETUP LIVE NOW, on each of the three, measured on the same posts. */
+  const live = r.live ?? null;
+  if (live !== null) {
+    const worse = (name: string, now: Rate, next: Rate, higherIsBetter: boolean) => {
+      const a = share(now);
+      const b = share(next);
+      if (a !== null && b !== null && (higherIsBetter ? b < a : b > a)) fails.push(`${name} ${next.passed}/${next.tested} is worse than live's ${now.passed}/${now.tested}`);
+    };
+    worse('hand gold', live.hand, r.hand, true);
+    worse('live non-memes', live.negatives, r.negatives, false);
+    worse('missed posts', live.missed, r.missed, true);
+  }
   if (r.regressions.length > 0) fails.push(`${r.regressions.length} missed post${r.regressions.length === 1 ? '' : 's'} caught now would fail: ${r.regressions.join(', ')}`);
   return { apply: fails.length === 0, why: fails.length === 0 ? null : fails.join('; ') };
 }

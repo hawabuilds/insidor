@@ -55,7 +55,7 @@ const ok = { hand: { passed: 30, tested: 41 }, negatives: { passed: 2, tested: 9
 test('★ applied only when every gate holds; an untested missed group does not block, an untested hand gold group does', () => {
   assert.deepEqual(gate(ok, L), { apply: true, why: null });
   assert.equal(gate({ ...ok, hand: { passed: 20, tested: 41 } }, L).apply, false);
-  assert.equal(gate({ ...ok, negatives: { passed: 9, tested: 90 } }, L).apply, false);
+  assert.equal(gate({ ...ok, negatives: { passed: 15, tested: 90 } }, L).apply, false);
   assert.equal(gate({ ...ok, missed: { passed: 1, tested: 4 } }, L).apply, false);
   assert.equal(gate({ ...ok, hand: { passed: 0, tested: 0 } }, L).apply, false);
 });
@@ -105,3 +105,20 @@ test('the re-tune slot is the latest 08:00 or 20:00 London at or before now, thr
   /* Winter (after 25 October): London is UTC. */
   assert.equal(new Date(latestSlot(Date.UTC(2026, 10, 2, 9), times, tz)).toISOString(), '2026-11-02T08:00:00.000Z');
 });
+
+test('★ never worse than live: a block worse on gold, non-memes or missed posts than the setup live now is kept out', () => {
+  const live = { hand: { passed: 30, tested: 41 }, negatives: { passed: 2, tested: 90 }, missed: { passed: 1, tested: 2 } };
+  assert.equal(gate({ ...ok, live }, L).apply, true, 'equal is not worse');
+  assert.match(gate({ ...ok, hand: { passed: 29, tested: 41 }, live: { ...live, hand: { passed: 30, tested: 41 } } }, { ...L, minGoldPass: 0.5 }).why ?? '', /hand gold 29\/41 is worse than live's 30\/41/);
+  assert.equal(gate({ ...ok, negatives: { passed: 3, tested: 90 }, live }, L).apply, false);
+  assert.equal(gate({ ...ok, missed: { passed: 1, tested: 2 }, live: { ...live, missed: { passed: 2, tested: 2 } } }, L).apply, false);
+});
+
+test("★ the crypto signal lifts a post the judge failed, never a held kind, and a shill never passes", () => {
+  const others = { others: true, shill: false };
+  assert.equal(inFeedOf(g('a', 'gold', false, null), others), true);
+  assert.equal(inFeedOf(g('a', 'gold', false, 'SPORT'), others), false);
+  assert.equal(inFeedOf(g('a', 'gold', true, null), { others: false, shill: true }), false);
+  assert.equal(inFeedOf(g('a', 'gold', true, null), null), true, 'no facts: the judge alone');
+});
+const inFeedOf = (r: GradedPost, signal: { others: boolean; shill: boolean } | null) => ratesOf([{ ...r, signal }], ['AD', 'SPORT'], { hand: ['gold'], auto: 'auto', negatives: 'live-not', missed: 'missed' }).hand.passed === 1;
