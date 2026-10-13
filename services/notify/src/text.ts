@@ -89,6 +89,9 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const count = n(f['count']);
       return { title: count === null || count <= 1 ? 'Someone found your comment useful' : `${count} people found your comment useful`, body: s(f['excerpt'], 'A holder liked your comment.') };
     }
+    case 'post_coin':
+      /* A post someone put the bell on now has its own coin, proven from the post. */
+      return { title: `${ticker(f)} is proven from a post you watch`, body: f['author'] === undefined || f['author'] === null ? s(f['excerpt'], 'A post you watch has its coin.') : `A post by ${s(f['author'], 'someone')}${typeof f['excerpt'] === 'string' && f['excerpt'].trim() !== '' ? `: ${f['excerpt'].trim()}` : ''}` };
     case 'rank_up':
       return { title: `You reached ${RANK_NAME[s(f['rank'], '')] ?? 'a new rank'}`, body: 'Holders liked your calls.' };
     case 'holding_multiple': {

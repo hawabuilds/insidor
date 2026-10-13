@@ -23,7 +23,7 @@ import styles from './alerts.module.css';
 const ROWS: readonly { readonly key: AlertSwitch; readonly label: string; readonly hint: string }[] = [
   { key: 'rising', label: 'Rising posts', hint: 'A post taking off right now, as the feed sees it.' },
   { key: 'narratives', label: 'New narratives', hint: 'When a narrative reaches the board, and when one gets its first coin.' },
-  { key: 'coins', label: 'Coins for narratives you watch', hint: 'When a coin is matched to a narrative you starred.' },
+  { key: 'coins', label: 'Coins for what you watch', hint: 'When a coin is matched to a narrative you starred, or proven from a post you put the bell on.' },
   { key: 'holdings', label: 'Your holdings', hint: 'When a coin you hold reaches a multiple of what you paid.' },
   { key: 'watchlist', label: 'Your watchlist', hint: 'When a coin of a narrative you watch reaches a multiple. Off to start: a watchlist is for browsing.' },
   { key: 'graduations', label: 'Graduations', hint: 'When a coin you hold or watch is close to finishing its curve, and when it does.' },

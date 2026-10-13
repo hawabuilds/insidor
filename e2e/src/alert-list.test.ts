@@ -128,3 +128,31 @@ test('one row per comment found useful, the newest count, in the list and on the
   assert.deepEqual(r.body.alerts.map((a) => (a as unknown as { title: string }).title), ['3 people found your comment useful', 'Someone found your comment useful']);
   assert.equal(r.body.bell, 2);
 });
+
+test("★ the post sheet's bell: a watched post alerts once when its coin is proven, and not at all if it already was", async () => {
+  const { db } = await setup();
+  const { checkPostCoins } = await import('@insidor/notify/post-watch.ts');
+  const as = async (method: string, path: string) => {
+    const deps = { db, identity: { verify: async () => ME }, push: { configured: false, publicKey: null, send: async () => 'sent' as const }, pushOn: false, policy: P, now: () => BASE, pace: () => true };
+    const r = await handle({ method, url: path, body: null, token: ME.userId, client: 't' }, deps as never);
+    return JSON.parse(r.body) as { watching: boolean };
+  };
+  const mint = 'FerryHorn1111111111111111111111111111111pump';
+  await db.query(`insert into public.rising_view (feed_id, tick) values ('fyp', 1)`);
+  const line = (id: string, coins: unknown) => db.query(`insert into public.rising_row (feed_id, item_id, position, payload) values ('fyp', $1, 0, $2) on conflict (feed_id, item_id) do update set payload = excluded.payload`, [id, JSON.stringify({ authorLabel: '@ferrycat', excerpt: 'the ferry cat', coins })]);
+  await line('x:new', { kind: 'unsure', claimCount: 3 });
+  await line('x:old', { kind: 'matched', coin: { address: mint, ticker: 'OLD' }, evidence: { linksPost: true } });
+  assert.deepEqual(await as('GET', '/post-watch/x%3Anew'), { watching: false });
+  assert.deepEqual(await as('PUT', '/post-watch/x%3Anew'), { watching: true });
+  assert.deepEqual(await as('PUT', '/post-watch/x%3Aold'), { watching: true });
+  assert.deepEqual(await as('GET', '/post-watch/x%3Anew'), { watching: true });
+  assert.equal(await checkPostCoins(db), 0, 'three coins with the name, none proven: nothing');
+  await line('x:new', { kind: 'matched', coin: { address: mint, ticker: 'FERRY' }, evidence: { linksPost: true } });
+  assert.equal(await checkPostCoins(db), 1, 'proven now: one alert, and none for the post that was already proven');
+  assert.equal(await checkPostCoins(db), 0, 'and only once');
+  const [q] = await db.query<{ kind: string; subject: string; href: string; facts: { symbol: string; address: string } }>('select kind, subject, href, facts from people.alert_queue');
+  assert.equal(q?.kind, 'post_coin');
+  assert.equal(q?.subject, 'x:new');
+  assert.equal(q?.facts.address, mint);
+  assert.deepEqual(await as('DELETE', '/post-watch/x%3Anew'), { watching: false });
+});

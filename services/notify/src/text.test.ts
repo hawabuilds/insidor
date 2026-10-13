@@ -23,6 +23,7 @@ test('the facts read as facts', () => {
   assert.deepEqual(alertText('rising_post', POISON), { title: 'Rising on X', body: 'A post by @nordkyst_ferge: 41K views' });
   assert.deepEqual(alertText('rank_up', { rank: 'analyst' }), { title: 'You reached Analyst', body: 'Holders liked your calls.' });
   assert.deepEqual(alertText('comment_useful', { count: 3, excerpt: 'FERRY has a horn now' }), { title: '3 people found your comment useful', body: 'FERRY has a horn now' });
+  assert.deepEqual(alertText('post_coin', { symbol: 'FERRY', author: '@ferrycat', excerpt: 'the ferry cat' }), { title: '$FERRY is proven from a post you watch', body: 'A post by @ferrycat: the ferry cat' });
   assert.deepEqual(alertText('comment_useful', { count: 1 }), { title: 'Someone found your comment useful', body: 'A holder liked your comment.' });
   assert.deepEqual(alertText('rising_post', {}), { title: 'Rising on social', body: 'A post by someone is rising.' }, 'a missing fact is said plainly, never a zero');
 });
