@@ -15,13 +15,13 @@ import assert from 'node:assert/strict';
 import { chainId, venueId } from '@insidor/contracts';
 import type { Depth, MarketState } from '@insidor/contracts';
 
-import { quotableBy, numberOf, reasonOf, toReading } from './reading.ts';
+import { numberOf, reasonOf, reusableRoute, toReading, tradeAnswer } from './reading.ts';
 
 const CHAIN = chainId('solana');
 const VENUE = venueId(CHAIN, 'pool');
 const TAKEN_AT = 1_785_913_500_000;
 
-const CTX = { venueId: String(VENUE), quotedBy: null };
+const CTX = { venueId: String(VENUE), trade: tradeAnswer(null) };
 
 /** A MarketState as the mapper hands one over: every market field absent by default. */
 function state(overrides: Partial<MarketState> = {}): MarketState {
@@ -172,36 +172,47 @@ test('a non-finite number is unreadable rather than becoming NaN in a column', (
 
 /* ── tradability: decided by asking, never by a number in this row ────── */
 
-test('★ a venue that cannot be asked for a quote cannot make a coin tradable', () => {
-  /* The data vendor this service reads through declares `read` and not `trade`, so
-     there is nobody to ask and nothing to stand behind. Note what is NOT consulted:
-     this coin has a deep pool and a live price, and it is still not tradable — because
-     liquidity is not quotability, and gating on it is forbidden by name in
+test('★ a coin nobody asked about is not tradable, however rich its market', () => {
+  /* No route was asked (no chain access, or over the pass's bound). Note what is NOT
+     consulted: this coin has a deep pool and a live price, and it is still not tradable —
+     because liquidity is not quotability, and gating on it is forbidden by name in
      contracts/src/asset.ts. */
-  const readOnly = { id: VENUE };
-  assert.equal(quotableBy(readOnly), null);
-
   const rich = toReading(
     state({ depth: POOL, liquidityUsd: 42_000, priceUsd: 0.0031, marketCapUsd: 61_000, marketCapBasis: 'circulating' }),
-    { venueId: String(VENUE), quotedBy: quotableBy(readOnly) },
+    { venueId: String(VENUE), trade: tradeAnswer(null) },
   );
   assert.equal(rich.tradable, false);
   assert.equal(rich.quotedBy, null);
+  assert.deepEqual(tradeAnswer('unavailable'), { tradable: false, quotedBy: null });
 });
 
-test('tradable is true only beside the name of the venue that quoted', () => {
-  /* 0010's `tradable_requires_a_quoting_venue` refuses the row otherwise, so the two
-     move together or neither moves. A `true` with nobody's name on it is a Buy button
-     in front of an order that cannot fill. */
-  const quoting = { id: venueId(CHAIN, 'curve'), trade: {} };
-  assert.equal(quotableBy(quoting), 'solana:curve');
-
-  const reading = toReading(state({ depth: CURVE, priceUsd: 0.0000214 }), {
-    venueId: String(VENUE),
-    quotedBy: quotableBy(quoting),
-  });
+test('tradable is true only beside the name of the route that would fill it', () => {
+  /* 0010's `tradable_requires_a_quoting_venue` refuses the row otherwise. A curve coin with
+     no market at the price vendor is still tradable: the curve is the market. */
+  const reading = toReading(state({ depth: null }), { venueId: String(VENUE), trade: tradeAnswer('curve') });
   assert.equal(reading.tradable, true);
   assert.equal(reading.quotedBy, 'solana:curve');
+  assert.deepEqual(tradeAnswer('pool'), { tradable: true, quotedBy: 'solana:pool' });
+});
+
+test('"no route" names who was asked and is not tradable; it is a different row from "not asked"', () => {
+  assert.deepEqual(tradeAnswer('none'), { tradable: false, quotedBy: 'solana:pool' });
+  assert.notDeepEqual(tradeAnswer('none'), tradeAnswer(null));
+});
+
+test('★ an aggregator answer is reused only inside the window it was written in', () => {
+  const WINDOW = 900_000;
+  const start = 10 * WINDOW;
+  const pool = { takenAt: start + 1_000, tradable: true, quotedBy: 'solana:pool' };
+  /* Same window: reused, both answers. */
+  assert.equal(reusableRoute(pool, start + WINDOW - 1, WINDOW), 'pool');
+  assert.equal(reusableRoute({ ...pool, tradable: false }, start + 60_000, WINDOW), 'none');
+  /* Next window: asked again, so a row written every pass cannot carry one answer forever. */
+  assert.equal(reusableRoute(pool, start + WINDOW, WINDOW), null);
+  /* A curve answer, or nobody asked, is never reused: the curve is read every pass. */
+  assert.equal(reusableRoute({ ...pool, quotedBy: 'solana:curve' }, start + 2_000, WINDOW), null);
+  assert.equal(reusableRoute({ ...pool, tradable: false, quotedBy: null }, start + 2_000, WINDOW), null);
+  assert.equal(reusableRoute(undefined, start, WINDOW), null);
 });
 
 /* ── provenance and the instant ───────────────────────────────────────── */

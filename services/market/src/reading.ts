@@ -69,7 +69,7 @@ export interface MarketReading {
   readonly liquidityUsd: ReadNumber;
   readonly priceChange24hPct: ReadNumber;
 
-  /** See `quotableBy` below. A read-only venue can never make this true. */
+  /** See `tradeAnswer` below: the trade service's route, never a number in this row. */
   readonly tradable: boolean;
   readonly quotedBy: string | null;
 
@@ -101,8 +101,26 @@ function signedQuantity(value: number | null, whenAbsent: MarketAbsenceReason): 
 }
 
 /**
- * Whether this venue would actually QUOTE the coin — which is the only thing that may
- * ever make a row `tradable`.
+ * Where the trade service would route an order for this coin, as its own module says it
+ * (adapters/venue/solana-pumpfun/src/route.ts `routeAfter`): the curve, the aggregator, no
+ * route, or "could not tell". Spelled here as a plain union so this file stays free of the
+ * module that reads the chain.
+ */
+export type TradeRoute = 'curve' | 'pool' | 'none' | 'unavailable';
+
+/** The venue ids a route is recorded under, in `quoted_by`. */
+export const ROUTE_VENUE = { curve: 'solana:curve', pool: 'solana:pool' } as const;
+
+/** Whether the row says the coin can be traded, and who was asked. */
+export interface TradeAnswer {
+  readonly tradable: boolean;
+  /** The venue that was asked and answered; null when nobody was, or nobody answered. */
+  readonly quotedBy: string | null;
+}
+
+/**
+ * The trade service's route, as the two columns 0010 keeps for it — which is the only thing
+ * that may ever make a row `tradable`.
  *
  * ★ IT IS NOT DERIVED FROM ANY NUMBER IN THE READING, and the temptation to derive it
  * from liquidity is the specific mistake contracts/src/asset.ts forbids by name:
@@ -110,25 +128,56 @@ function signedQuantity(value: number | null, whenAbsent: MarketAbsenceReason): 
  * no reserve object is perfectly tradable; a pool with a large reserve can be
  * unquotable because the token freezes transfers. Liquidity answers neither question.
  *
- * A venue that does not implement `trade` cannot be asked, so there is no quote, so
- * there is nothing to stand behind — and 0010's `tradable_requires_a_quoting_venue`
- * makes that a constraint rather than a habit. The market data vendor this service
- * reads through declares `read` and nothing else, deliberately, so this returns null
- * for every reading it writes today. That is honest and not pessimistic: the honest
- * render of "nobody has been asked" is no Buy affordance at all.
+ * ★ "NO ROUTE" AND "NOT ASKED" ARE DIFFERENT ROWS. `none` names the aggregator in
+ * `quoted_by` beside `tradable = false`: it was asked and said no, a fact about the coin.
+ * `unavailable` and a coin nobody asked (no chain access, over the pass's probe bound) leave
+ * `quoted_by` null. Both render the same on a card — no Buy — but only the first may be
+ * reused by a later pass (`reusableRoute`). 0010's `tradable_requires_a_quoting_venue`
+ * holds either way: a `true` always carries the name of the venue that would fill it.
  */
-export function quotableBy(venue: { readonly trade?: unknown; readonly id: unknown }): string | null {
-  return venue.trade === undefined ? null : String(venue.id);
+export function tradeAnswer(route: TradeRoute | null): TradeAnswer {
+  switch (route) {
+    case 'curve':
+      return { tradable: true, quotedBy: ROUTE_VENUE.curve };
+    case 'pool':
+      return { tradable: true, quotedBy: ROUTE_VENUE.pool };
+    case 'none':
+      return { tradable: false, quotedBy: ROUTE_VENUE.pool };
+    default:
+      return { tradable: false, quotedBy: null };
+  }
+}
+
+/** A coin's latest stored answer, as `reusableRoute` reads it. */
+export interface LastAnswer extends TradeAnswer {
+  readonly takenAt: Millis;
+}
+
+/**
+ * The aggregator's last answer for a coin off its curve, if it may stand in for asking again.
+ *
+ * ★ REUSED WITHIN A FIXED WINDOW OF THE CLOCK, NOT FOR "N MINUTES SINCE THE LAST ROW". Every
+ * pass writes a new row, so "the last row is recent" would be true forever and one answer
+ * would be carried along indefinitely. Instead the clock is cut into windows of `reuseMs`
+ * (Policy.market.poolRouteReuseMs): an answer is reused only inside the window it was written
+ * in, so every coin is asked again at least once per window and no answer is ever older than
+ * one window. A coin the previous pass could not ask (over the bound, or an outage) has no
+ * answer to reuse and is asked on the next pass.
+ *
+ * Only the aggregator's answers are reused. A curve's state is read on every pass: a curve
+ * that has just finished cannot be traded on it, and the card must say so within one pass.
+ */
+export function reusableRoute(last: LastAnswer | undefined, nowMs: Millis, reuseMs: number): 'pool' | 'none' | null {
+  if (last === undefined || last.quotedBy !== ROUTE_VENUE.pool) return null;
+  if (Math.floor(last.takenAt / reuseMs) !== Math.floor(nowMs / reuseMs)) return null;
+  return last.tradable ? 'pool' : 'none';
 }
 
 export interface ReadingContext {
   /** The venue that answered, as an id. Never the vendor we bought the reading from. */
   readonly venueId: string;
-  /**
-   * The venue that would fill an order for this coin, when one was actually asked.
-   * null is the ordinary answer and forces `tradable` false — see `quotableBy`.
-   */
-  readonly quotedBy: string | null;
+  /** The trade route's answer for this coin (`tradeAnswer`). */
+  readonly trade: TradeAnswer;
 }
 
 export function toReading(state: MarketState, ctx: ReadingContext): MarketReading {
@@ -179,8 +228,8 @@ export function toReading(state: MarketState, ctx: ReadingContext): MarketReadin
     liquidityUsd,
     priceChange24hPct,
 
-    tradable: ctx.quotedBy !== null,
-    quotedBy: ctx.quotedBy,
+    tradable: ctx.trade.tradable && ctx.trade.quotedBy !== null,
+    quotedBy: ctx.trade.quotedBy,
 
     /* Provenance, kept so a disagreement between two vendors is diagnosable. It never
        leaves the store: the projector's SELECT does not list these two columns, and a
