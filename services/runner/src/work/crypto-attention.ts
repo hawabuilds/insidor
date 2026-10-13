@@ -17,6 +17,10 @@
  * ★ ONLY SOURCES THAT CAN READ A POST'S RESPONSES. A source without the platform port's optional
  * `responses` (the short-video source today) is skipped, not read as "no crypto talk".
  *
+ * ★ THE AUTHOR APART (2026-10-13): the post's text and author go with the read, so the stored facts
+ * keep other accounts' coin talk (the signal) apart from the author's own (a shill); `withSignal`
+ * counts other accounts' cashtags, addresses or CA only.
+ *
  * What breaks if changed carelessly: a failed or refused read records nothing — a row of zeros
  * would be a claim made of an outage — and the post stays due for a later pass. The reach bar is
  * core's `clearsReachBar`, the same rule the scorer and the projector hold a post to.
@@ -27,7 +31,7 @@ import type { ItemId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { ResponseAsk } from '@insidor/contracts/ports/responses.ts';
-import { attentionFacts, clearsReachBar, hasCryptoSignal } from '@insidor/core';
+import { attentionFacts, clearsReachBar, othersSignal } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import type { PgCryptoAttentionRepo, PgItemRepo } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
@@ -107,7 +111,7 @@ export async function readCryptoAttention(deps: AttentionDeps): Promise<Attentio
     try {
       const result = await adapter.responses!(post.sourceItemId, ask, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: (now + DAY_MS) as Millis });
       spentUsd += result.spend.usd;
-      const f = attentionFacts(result.value, a);
+      const f = attentionFacts(result.value, a, { text: post.text, authorId: post.authorId, authorHandle: post.authorHandle });
       await deps.attention.record(post.itemId, deps.now(), {
         repliesRead: f.repliesRead,
         quotesRead: f.reproductionsRead,
@@ -121,9 +125,15 @@ export async function readCryptoAttention(deps: AttentionDeps): Promise<Attentio
         cryptoRepliers: f.cryptoRepliers,
         firstSignalAt: f.firstSignalAt as Millis | null,
         costUsd: result.spend.usd,
+        others: f.others,
+        own: f.own,
+        authorKnown: f.authorKnown,
+        postShill: f.postShill,
+        othersFirstAt: f.othersFirstAt as Millis | null,
+        readFor: 'live',
       });
       read += 1;
-      if (hasCryptoSignal(f)) withSignal += 1;
+      if (othersSignal(f)) withSignal += 1;
     } catch (e) {
       if (e instanceof BudgetRefused) {
         deps.log.warn('crypto attention paused for budget at the vendor edge; these posts wait', { posts: queue.length - read });

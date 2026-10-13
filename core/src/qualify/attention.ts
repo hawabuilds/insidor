@@ -22,6 +22,12 @@
  * a CA, or a crypto account carrying the post). It is what lets a reader of a weeks-old post ask
  * whether the attention came before the coin or after it — see `hasCryptoSignal`.
  *
+ * ★ OTHERS AND THE AUTHOR ARE KEPT APART (the owner, 2026-10-13). Only OTHER accounts' cashtags,
+ * addresses and CA are the signal (`othersSignal`); crypto quoters are measured but are not in it,
+ * because they were as common under crypto-adjacent non-memes as under gold. A post whose own text,
+ * or whose author's own replies, name a coin is a shill (`isShill`): it is filed as an ad, not passed.
+ * The author is matched by account id, else by handle; with neither, every response is "others".
+ *
  * What breaks if changed carelessly: the address pattern. It is the address alphabet (no 0, O, I
  * or l) at `addressMinChars`–`addressMaxChars`, bounded on both sides by a character outside the
  * alphabet; loosen the bounds and every long hashtag or link path starts counting as an address.
@@ -49,6 +55,29 @@ export interface AttentionFacts {
   readonly cryptoRepliers: number;
   /** The earliest response carrying the strict signal; null when none did or none had a time. */
   readonly firstSignalAt: number | null;
+  /** Coin talk by other accounts, and by the post's own author in its replies (see the header). */
+  readonly others: CoinTalk;
+  readonly own: CoinTalk;
+  /** The post's author was known, so own and others could be told apart; when not, all is others. */
+  readonly authorKnown: boolean;
+  /** The post's own text has a cashtag, an address or a CA. Null when the text was not given. */
+  readonly postShill: boolean | null;
+  /** The earliest other account's response with a cashtag, address or CA; null when none. */
+  readonly othersFirstAt: number | null;
+}
+
+/** Cashtags (each, and how many responses named it), distinct addresses, and CA mentions. */
+export interface CoinTalk {
+  readonly cashtags: Readonly<Record<string, number>>;
+  readonly addresses: number;
+  readonly ca: number;
+}
+
+/** The post the responses answer: its own words and its author, as far as they are known. */
+export interface AnsweredPost {
+  readonly text: string | null;
+  readonly authorId: string | null;
+  readonly authorHandle: string | null;
 }
 
 const ADDRESS_ALPHABET = '1-9A-HJ-NP-Za-km-z';
@@ -105,8 +134,22 @@ export function isCryptoAccount(r: ResponsePost, p: AttentionPolicy): boolean {
   return cashtagsIn(r.text, p).length > 0 || addressesIn(r.text, p).length > 0;
 }
 
-export function attentionFacts(read: PostResponses, p: AttentionPolicy): AttentionFacts {
+/** A post's own text names a coin: a cashtag, an address or a CA. The owner's shill rule. */
+export function isShillText(text: string, p: AttentionPolicy): boolean {
+  return cashtagsIn(text, p).length > 0 || addressesIn(text, p).length > 0 || saysCa(text);
+}
+
+export function attentionFacts(read: PostResponses, p: AttentionPolicy, post: AnsweredPost | null = null): AttentionFacts {
   const coin = new Set(p.coinWords.map((w) => w.toLowerCase()));
+  const authorId = post?.authorId ?? null;
+  const authorHandle = post?.authorHandle?.replace(/^@+/, '').toLowerCase() ?? null;
+  const authorKnown = authorId !== null || (authorHandle !== null && authorHandle !== '');
+  const byAuthor = (r: ResponsePost): boolean =>
+    (authorId !== null && r.authorId === authorId) || (authorHandle !== null && authorHandle !== '' && r.authorHandle?.toLowerCase() === authorHandle);
+  const talk = () => ({ cashtags: {} as Record<string, number>, addresses: new Set<string>(), ca: 0 });
+  const others = talk();
+  const own = talk();
+  let othersFirstAt: number | null = null;
   const cashtags: Record<string, number> = {};
   const addresses = new Set<string>();
   const reproducers = new Set<string>();
@@ -128,6 +171,12 @@ export function attentionFacts(read: PostResponses, p: AttentionPolicy): Attenti
     if (crypto) (kind === 'reproduction' ? reproducers : repliers).add(who);
     const strict = tags.length > 0 || found.length > 0 || ca || (kind === 'reproduction' && crypto);
     if (strict && r.at !== null && (firstSignalAt === null || r.at < firstSignalAt)) firstSignalAt = r.at;
+    const side = byAuthor(r) ? own : others;
+    for (const t of tags) side.cashtags[t] = (side.cashtags[t] ?? 0) + 1;
+    for (const a of found) side.addresses.add(a);
+    if (ca) side.ca += 1;
+    const talked = tags.length > 0 || found.length > 0 || ca;
+    if (side === others && talked && r.at !== null && (othersFirstAt === null || r.at < othersFirstAt)) othersFirstAt = r.at;
   };
   for (const r of read.replies) each(r, 'reply');
   for (const r of read.reproductions) each(r, 'reproduction');
@@ -144,8 +193,21 @@ export function attentionFacts(read: PostResponses, p: AttentionPolicy): Attenti
     cryptoReproducers: reproducers.size,
     cryptoRepliers: repliers.size,
     firstSignalAt,
+    others: { cashtags: others.cashtags, addresses: others.addresses.size, ca: others.ca },
+    own: { cashtags: own.cashtags, addresses: own.addresses.size, ca: own.ca },
+    authorKnown,
+    postShill: post?.text == null ? null : isShillText(post.text, p),
+    othersFirstAt,
   };
 }
+
+const talks = (t: CoinTalk): boolean => Object.keys(t.cashtags).length > 0 || t.addresses > 0 || t.ca > 0;
+
+/** ★ THE SIGNAL USED FOR PASSING (the owner, 2026-10-13): other accounts' cashtags, addresses or CA. No crypto quoters. */
+export const othersSignal = (f: AttentionFacts): boolean => talks(f.others);
+
+/** ★ A SHILL: the post's own text, or its author's own replies, name a coin. It gets the AD kind, never a pass. */
+export const isShill = (f: AttentionFacts): boolean => f.postShill === true || talks(f.own);
 
 /** The strict signal the owner named: any cashtag, CA, address, or crypto account carrying the post. */
 export function hasCryptoSignal(f: AttentionFacts): boolean {

@@ -19,7 +19,7 @@ import { DEFAULT_POLICY } from '../../contracts/src/policy.ts';
 import { JOB_ENDPOINT_PREFIX, LEARN_ENDPOINT_PREFIX, type Meter } from '../../contracts/src/ports/meter.ts';
 import { inMemoryMeter, openDurableMeter } from '../../adapters/meter/spend/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgSpendRepo } from '../../store/src/index.ts';
-import { jobVendorLines } from '../../services/runner/src/vendor-lines.ts';
+import { jobVendorLines, vendorLines } from '../../services/runner/src/vendor-lines.ts';
 
 const P = DEFAULT_POLICY;
 
@@ -28,9 +28,11 @@ export interface SharedMeter {
   readonly close: () => Promise<void>;
 }
 
-export async function openSharedMeter(stageCapUsd: number, env: Record<string, string | undefined> = process.env, book: 'jobs' | 'learning' = 'jobs'): Promise<SharedMeter> {
-  const lines = book === 'learning' ? P.budget.learningLines : P.budget.jobLines;
-  const prefix = book === 'learning' ? LEARN_ENDPOINT_PREFIX : JOB_ENDPOINT_PREFIX;
+/* `live` is for a one-off the owner asked to bill to the live supplier lines (the crypto re-read of
+   the test posts, 2026-10-13): no endpoint prefix, the runner's own lines and day's cap. */
+export async function openSharedMeter(stageCapUsd: number, env: Record<string, string | undefined> = process.env, book: 'jobs' | 'learning' | 'live' = 'jobs'): Promise<SharedMeter> {
+  const lines = book === 'learning' ? P.budget.learningLines : book === 'live' ? { dailyUsd: P.budget.dailyUsd } : P.budget.jobLines;
+  const prefix = book === 'learning' ? LEARN_ENDPOINT_PREFIX : book === 'live' ? '' : JOB_ENDPOINT_PREFIX;
   const url = env['DATABASE_URL_INTERNAL'] || env['DATABASE_URL'];
   const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-paid-job' });
   const shared = await openDurableMeter({
@@ -38,7 +40,7 @@ export async function openSharedMeter(stageCapUsd: number, env: Record<string, s
     /* The jobs' own book and lines: a job never spends the live feed's money (Policy.budget.jobLines). */
     book,
     dailyCapUsd: lines.dailyUsd,
-    perVendorCapUsd: jobVendorLines(P, book),
+    perVendorCapUsd: book === 'live' ? vendorLines(P) : jobVendorLines(P, book),
     defaultVendorCapUsd: P.budget.perSourceUsdPerDay,
     vendorLinesWarnOnly: !P.budget.vendorLinesStop,
     softStop: P.budget.softStopFraction,
