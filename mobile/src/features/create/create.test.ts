@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  DEV_BUY_DEFAULT, FIRST_SHEET, cleanTicker, costLine, devBuyLamports, feeRate, firstFill, firstLinks, otherIdeas, presetsWithin,
+  DEV_BUY_DEFAULT, FIRST_SHEET, cleanTicker, costLine, devBuyLamports, feeRate, firstFill, firstLinks, otherIdeas, presetsShown, presetsWithin,
   shareOnX, suggestTicker, tickerCheck, tickerUseLine, useOfList, type Idea,
 } from './create-form.ts';
 
@@ -108,4 +108,9 @@ test('★ TRADING off means no create path: the sheet is the Coming soon one', a
   const { tradingOn } = await import('../../shared/trading.ts');
   assert.equal(tradingOn({}), false);
   assert.equal(tradingOn({ VITE_TRADING: 'yes' }), false);
+});
+
+test('the live presets: all of them while the cap is unread, so the row never changes width; the ones under it after', () => {
+  assert.deepEqual(presetsShown(null), [0, 0.01, 0.02, 0.05]);
+  assert.deepEqual(presetsShown(20_000_000n), [0, 0.01, 0.02]);
 });

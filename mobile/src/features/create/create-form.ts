@@ -10,8 +10,10 @@
  * check", never "Free". The cost line is the sum the chain's simulation measured for this exact
  * launch; when nothing was measured it is a dash and why, never a guess at a typical fee.
  *
- * ★ MORE OPTIONS START CLOSED. The main sheet is image, name, ticker, dev buy, cost and the
- * button, and must fit a 390×844 phone without scrolling; everything else waits behind the link.
+ * ★ THE WHOLE FORM IS THERE THE MOMENT IT OPENS. Picture, name, ticker, description, socials,
+ * dev buy and the button all show at once, at their full size, and must fit a 390×844 phone
+ * without scrolling. Anything still being read fills a slot that is already its final size, so
+ * nothing moves when it arrives. Only the owner's name calls wait behind a link.
  */
 
 import type { NameIdea, TickerUse } from '../../shared/api/index.ts';
@@ -107,6 +109,15 @@ export function presetsWithin(maxDevBuyLamports: bigint): readonly number[] {
 }
 
 /**
+ * The presets on the live sheet: every one while the cap is still being read (or couldn't be), so
+ * the row never redraws narrower and wider as the answer lands; those under the cap once it is
+ * known. A dev buy over the cap is still refused by the sheet's why line and by the service.
+ */
+export function presetsShown(maxDevBuyLamports: bigint | null): readonly number[] {
+  return maxDevBuyLamports === null ? DEV_BUY_PRESETS : presetsWithin(maxDevBuyLamports);
+}
+
+/**
  * The dev buy in lamports: a typed amount wins over the preset. Null when what was typed is not
  * an amount of SOL (letters, two points, more than nine decimals).
  */
@@ -161,7 +172,7 @@ export function firstLinks(postLink: string | null | undefined): Links {
   return { twitter: onX ? link : '', telegram: '', website: onX ? '' : link };
 }
 
-/** The sheet's open/closed state: More options start closed. */
+/** The sheet's open/closed state: the owner's name calls and the ticker's coin list start closed. */
 export interface SheetState {
   readonly more: boolean;
   readonly coinsOpen: boolean;
