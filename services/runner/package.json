@@ -21,6 +21,7 @@
     "@insidor/platform-registry": "workspace:*",
     "@insidor/store": "workspace:*",
     "@insidor/vendor-kit": "workspace:*",
-    "@insidor/venue-solana-pumpfun": "workspace:*"
+    "@insidor/venue-solana-pumpfun": "workspace:*",
+    "sharp": "0.34.4"
   }
 }

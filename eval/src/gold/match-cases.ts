@@ -56,6 +56,10 @@ export interface MatchCase {
    * `term` first, then the ticker, then the judge's own proposed name when it read the post.
    */
   readonly terms: readonly string[];
+  /** The post's own words, when we read it; null for a post we never read (most short videos). */
+  readonly text: string | null;
+  /** The account that posted it, without the @; null when unknown. */
+  readonly author: string | null;
   /** The right coin's address; null when no coin is right. */
   readonly right: string | null;
   /** The gold coin of the case, which the search may or may not have found. */
@@ -92,6 +96,13 @@ export function distinctNames(names: readonly string[]): string[] {
   }).map((n) => n.trim());
 }
 
+/** The account in a post's link: x.com/<handle>/status/…, tiktok.com/@<handle>/video/…; null for the rest. */
+export function handleInUrl(url: string): string | null {
+  const m = /^https?:\/\/(?:www\.|mobile\.)?(?:x\.com|twitter\.com)\/([A-Za-z0-9_]{1,15})\/status\//i.exec(url) ?? /^https?:\/\/(?:www\.)?tiktok\.com\/@([A-Za-z0-9_.]{1,24})\//i.exec(url);
+  const h = m?.[1] ?? null;
+  return h === null || h.toLowerCase() === 'i' ? null : h;
+}
+
 const namesOf = (c: GoldCoin): string[] => [...new Set([c.name, c.ticker].filter((n) => n.trim() !== ''))];
 
 export function matchCases(coins: readonly GoldCoin[] = goldCoins(), evidence: ReadonlyMap<string, CoinEvidence> = loadEvidence()): readonly MatchCase[] {
@@ -104,6 +115,7 @@ export function matchCases(coins: readonly GoldCoin[] = goldCoins(), evidence: R
     if (c.origin.kind === 'post' || c.origin.kind === 'afterLaunch') {
       const o = c.origin;
       const read = ev?.origin?.post ?? null;
+      const handle = read?.authorHandle ?? handleInUrl(o.url);
       out.push({
         ...base,
         id: `${c.id}/${o.postId}`,
@@ -114,6 +126,8 @@ export function matchCases(coins: readonly GoldCoin[] = goldCoins(), evidence: R
         postUrl: o.url,
         postedAt: read?.postedAt ?? timeFromId(o.platform, o.postId),
         imageUri: read?.imageUri ?? null,
+        text: read?.text ?? null,
+        author: handle,
         right: o.kind === 'post' ? c.mint : null,
       });
       continue;
@@ -122,7 +136,7 @@ export function matchCases(coins: readonly GoldCoin[] = goldCoins(), evidence: R
     const launch = Date.parse(c.createdAt);
     for (const p of ev.search.results) {
       if (p.postedAt === null || p.postedAt > launch || p.postedAt < launch - WINDOW_MS || (p.reach ?? 0) < FEED_VIEWS) continue;
-      out.push({ ...base, terms: termsFor(p.postId), id: `${c.id}/${p.postId}`, kind: 'unrelated', platform: 'x', postId: p.postId, postUrl: p.url, postedAt: p.postedAt, imageUri: p.imageUri, right: null });
+      out.push({ ...base, terms: termsFor(p.postId), id: `${c.id}/${p.postId}`, kind: 'unrelated', platform: 'x', postId: p.postId, postUrl: p.url, postedAt: p.postedAt, imageUri: p.imageUri, text: p.text, author: p.authorHandle, right: null });
     }
   }
   return out;
@@ -162,12 +176,39 @@ export interface MatchEvidence {
   readonly similarity: Record<string, number>;
   /** The judge's same-subject answer for a borderline pair, by `<post id>|<address>`. */
   readonly sameSubject: Record<string, 'yes' | 'no' | 'unsure'>;
+  /** A post we had not read, read by id for its words and its author (X), by post id; null when it could not be. */
+  readonly postReads: Record<string, { readonly text: string; readonly author: string | null } | null>;
+  /** Addresses posted in the replies under a post (X), by post id; absent when not read. */
+  readonly replies: Record<string, PostReplies>;
+  /** Coins known only because an address in the replies named them: not found by any name search. */
+  readonly replyCoins: Record<string, FoundCoin>;
+  /**
+   * Every gold coin, by address: coins that existed when the gold posts were made, so a search by
+   * picture runs over a universe holding the right coins as the mint stream would have held them
+   * (a name search months later no longer finds a coin that died). Only a picture search reads it.
+   */
+  readonly universeCoins: Record<string, FoundCoin>;
+  /** Each picture's perceptual hash by its address (services/runner picture-hash.ts); null when unreadable. */
+  readonly hashes: Record<string, string | null>;
+}
+
+/** What the replies under one post said about coins, read once. */
+export interface PostReplies {
+  /** The newest replies before the cutoff, and whether the source had more. */
+  readonly read: number;
+  readonly cut: boolean;
+  /** Replies by the post's own account, read apart so a busy thread cannot hide them. */
+  readonly authorRead: number;
+  /** Each address and who posted it: the post's own account, or how many others. */
+  readonly addresses: readonly { readonly address: string; readonly byAuthor: boolean; readonly byOthers: number }[];
+  /** The replies were read up to this instant (the post plus the timing window). */
+  readonly until: number;
 }
 
 export const MATCH_EVIDENCE_FILE = new URL('./match-evidence.json', import.meta.url);
 
 export function loadMatchEvidence(): MatchEvidence {
-  const empty: MatchEvidence = { searches: {}, launched: {}, meta: {}, postImages: {}, similarity: {}, sameSubject: {} };
+  const empty: MatchEvidence = { searches: {}, launched: {}, meta: {}, postImages: {}, similarity: {}, sameSubject: {}, postReads: {}, replies: {}, replyCoins: {}, universeCoins: {}, hashes: {} };
   if (!existsSync(MATCH_EVIDENCE_FILE)) return empty;
   return { ...empty, ...(JSON.parse(readFileSync(MATCH_EVIDENCE_FILE, 'utf8')) as Partial<MatchEvidence>) };
 }

@@ -30,6 +30,8 @@ export { PgBackfillRepo } from './repo/backfill.ts';
 export { PgCoinUniverseRepo } from './repo/coin-universe.ts';
 export type { AgedCoin, CoinMetadataRow, CoinToCheck, LookupTerm, NamingPost, PostCoinPicture, StandingRow, UnreadCoin } from './repo/coin-universe.ts';
 export { PgOlderCoinRepo } from './repo/older-coin.ts';
+export { fromBits, missingTable, PgImageHashRepo, toBits } from './repo/image-hash.ts';
+export type { DuePicture, PictureNeighbour } from './repo/image-hash.ts';
 export type { DueOlderCoin, FoundOlderCoin, OlderCoinReading } from './repo/older-coin.ts';
 export { PgCryptoAttentionRepo } from './repo/crypto-attention.ts';
 export type { AttentionRow, DueAttention } from './repo/crypto-attention.ts';

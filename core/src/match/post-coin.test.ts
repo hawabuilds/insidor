@@ -3,9 +3,16 @@ import assert from 'node:assert/strict';
 
 import type { Millis } from '@insidor/contracts';
 
-import { linksPost, matchPostCoin, nameMatch, pictureVerdict, postPictureVerdict, skeleton, type CoinSide, type MatchBars } from './post-coin.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-const BARS: MatchBars = { launchAllowanceMs: 600_000, windowMs: 172_800_000, minLinkIdLength: 8, minVariantLength: 4 };
+import { descriptionMatch, linksAccount, linksPost, matchPostCoin, nameMatch, pictureVerdict, postPictureVerdict, skeleton, type CoinSide, type MatchBars } from './post-coin.ts';
+
+const PC = DEFAULT_POLICY.postCoin;
+const BARS: MatchBars = {
+  launchAllowanceMs: 600_000, windowMs: 172_800_000, minLinkIdLength: 8, minVariantLength: 4,
+  sameHashDistance: PC.sameHashDistance, pictureFloor: PC.pictureFloor, timingHalfLifeMin: PC.timingHalfLifeMin,
+  descriptionMinWord: PC.descriptionMinWord, likelyMinShare: PC.likelyMinShare, weights: PC.weights,
+};
 const POSTED = 1_000_000_000_000 as Millis;
 const post = { postedAt: POSTED, linkIds: ['2080077693593223329', 'HM1lpuvXMAARRu1'], names: ['Aura Bird', 'Stork'] };
 const coin = (over: Partial<CoinSide>): CoinSide => ({
@@ -21,6 +28,16 @@ describe('name matching', () => {
     assert.equal(skeleton('Peanut'), skeleton('PNUT'));
     assert.equal(nameMatch(['Peanut'], { name: null, ticker: 'PNUT' }, BARS), 'variant');
   });
+  it('★ is a variant for a short form, a longer name holding it, a misspelling, or words the post itself says', () => {
+    assert.equal(nameMatch(['Goliath'], { name: null, ticker: 'GOLI' }, BARS), 'variant');
+    assert.equal(nameMatch(['Goliath'], { name: 'RIP Goliath', ticker: 'RIPGOLIATH' }, BARS), 'variant');
+    assert.equal(nameMatch(['Goliath'], { name: 'Golaith', ticker: null }, BARS), 'variant', 'vowels swapped: the same skeleton');
+    assert.equal(nameMatch(['Goliath'], { name: 'Gxliath', ticker: null }, BARS), 'variant', 'one letter changed');
+    assert.equal(nameMatch(['Cat'], { name: 'Cut', ticker: null }, BARS), 'none', 'too short to be a misspelling');
+    assert.equal(nameMatch(['Goliath'], { name: 'Goliat', ticker: null }, BARS), 'variant');
+    assert.equal(nameMatch(['Goliath'], { name: 'Six Flags', ticker: 'SIXFLAGS' }, BARS, 'Goliath at Six Flags tonight'), 'variant');
+    assert.equal(nameMatch(['Goliath'], { name: 'Six Flags', ticker: 'SIXFLAGS' }, BARS), 'none');
+  });
   it('is none for a different word, and short names never count as variants', () => {
     assert.equal(nameMatch(['Aura Bird'], { name: 'Dog', ticker: 'DOG' }, BARS), 'none');
     assert.equal(nameMatch(['Cat'], { name: 'Cut', ticker: null }, BARS), 'none');
@@ -34,6 +51,22 @@ describe('links', () => {
   });
   it('is unknown when the links were not read', () => {
     assert.equal(linksPost(null, post.linkIds, BARS), null);
+  });
+});
+
+describe('the account and the words', () => {
+  it("finds the poster's own account in a coin's links, its profile or a post of its own", () => {
+    assert.equal(linksAccount(['https://social.example/blknoiz06'], 'blknoiz06'), true);
+    assert.equal(linksAccount(['https://social.example/Blknoiz06/status/1'], 'blknoiz06'), true);
+    assert.equal(linksAccount(['https://www.video.example/@cazy.chan/video/1'], 'cazy.chan'), true);
+    assert.equal(linksAccount(['https://social.example/blknoiz06x'], 'blknoiz06'), false);
+    assert.equal(linksAccount(null, 'blknoiz06'), null);
+    assert.equal(linksAccount(['https://social.example/a'], null), null);
+  });
+  it("measures the share of the description's words the post says, links dropped", () => {
+    assert.equal(descriptionMatch('TOTAL BEAR DEATH', 'total bear death incoming', BARS), 1);
+    assert.equal(descriptionMatch('Bear market https://x.test/bear', 'bear', BARS), 0.5);
+    assert.equal(descriptionMatch(null, 'x', BARS), null);
   });
 });
 
@@ -89,7 +122,7 @@ describe('matchPostCoin', () => {
     assert.equal(matchPostCoin(post, [coin({ address: 'A', samePicture: false })], BARS).kind, 'unsure');
   });
 
-  it('ranks by evidence, then the earliest launch, and puts coins launched before the post last', () => {
+  it('ranks by score, then the earliest launch, and puts coins launched before the post last', () => {
     const r = matchPostCoin(
       post,
       [
@@ -101,6 +134,27 @@ describe('matchPostCoin', () => {
     );
     assert.equal(r.kind, 'unsure');
     assert.deepEqual(r.kind === 'unsure' && r.ranked.map((e) => e.address), ['early', 'late', 'before']);
+  });
+
+  it('★ is confident on the one coin whose picture hashes the same as the post, launched after it', () => {
+    const r = matchPostCoin(post, [coin({ address: 'A', hashDistance: 2 }), coin({ address: 'B', hashDistance: 30 })], BARS);
+    assert.equal(r.kind === 'confident' && r.because, 'pictureAndTiming');
+    assert.equal(r.kind === 'confident' && r.address, 'A');
+  });
+
+  it("★ is confident on the one coin whose address the poster's own account posted, and not on others posting it", () => {
+    const own = matchPostCoin(post, [coin({ address: 'A', addressByAuthor: true, addressByOthers: 0 }), coin({ address: 'B', addressByAuthor: false })], BARS);
+    assert.equal(own.kind === 'confident' && own.because, 'authorPostedAddress');
+    const others = matchPostCoin(post, [coin({ address: 'A', addressByAuthor: false, addressByOthers: 5 }), coin({ address: 'B', addressByAuthor: false })], BARS);
+    assert.equal(others.kind, 'unsure');
+  });
+
+  it('★ a likely coin is never confident, and an unknown adds nothing to the score', () => {
+    const r = matchPostCoin(post, [coin({ address: 'A', pictureSimilarity: 0.9, launchedAt: (POSTED + 60_000) as Millis })], BARS);
+    assert.equal(r.kind, 'unsure');
+    const bare = matchPostCoin(post, [coin({ address: 'A' })], BARS);
+    const known = matchPostCoin(post, [coin({ address: 'A', pictureSimilarity: null, hashDistance: null, addressByAuthor: null })], BARS);
+    assert.equal(bare.kind === 'unsure' && bare.ranked[0]?.score, known.kind === 'unsure' && known.ranked[0]?.score);
   });
 
   it('is none with no coins at all', () => {

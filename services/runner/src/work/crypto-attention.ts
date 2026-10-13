@@ -31,7 +31,7 @@ import type { ItemId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { ResponseAsk } from '@insidor/contracts/ports/responses.ts';
-import { attentionFacts, clearsReachBar, isShill, isShillText, othersSignal } from '@insidor/core';
+import { attentionFacts, clearsReachBar, isShill, isShillText, othersSignal, postedAddresses } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import type { Judgement } from '@insidor/contracts';
 import type { PgCryptoAttentionRepo, PgItemRepo, PgPostJudgementRepo } from '@insidor/store';
@@ -168,7 +168,8 @@ export async function readCryptoAttention(deps: AttentionDeps): Promise<Attentio
     try {
       const result = await adapter.responses!(post.sourceItemId, ask, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: (now + DAY_MS) as Millis });
       spentUsd += result.spend.usd;
-      const f = attentionFacts(result.value, a, { text: post.text, authorId: post.authorId, authorHandle: post.authorHandle });
+      const answered = { text: post.text, authorId: post.authorId, authorHandle: post.authorHandle };
+      const f = attentionFacts(result.value, a, answered);
       await deps.attention.record(post.itemId, deps.now(), {
         repliesRead: f.repliesRead,
         quotesRead: f.reproductionsRead,
@@ -188,6 +189,8 @@ export async function readCryptoAttention(deps: AttentionDeps): Promise<Attentio
         postShill: f.postShill,
         othersFirstAt: f.othersFirstAt as Millis | null,
         readFor: 'live',
+        /* Which addresses, and whose: the coin match's candidates and its "the poster posted it". */
+        addresses: postedAddresses(result.value, a, answered),
       });
       read += 1;
       if (othersSignal(f)) withSignal += 1;
