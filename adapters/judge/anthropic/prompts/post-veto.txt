@@ -1,0 +1,36 @@
+Each item below is one post (one storyId, one text). For each, decide whether it is one of
+these kinds. Judge what the post shows, never who posted it.
+
+  AD       someone promoting THEIR OWN thing to their own audience: a game or app's own ad
+           (download now, an event or banner, a new or free character, patch or update notes,
+           a wallpaper, a game character's birthday); a brand's own product, merch or show
+           promotion; a sponsored code, raffle or giveaway; a post shilling a token ("$TICKER is
+           the next...", "been looking into $X", hype for a coin someone is selling); a
+           project's routine status update to its followers; a stream schedule or
+           "going live" post; a creator's own art, comic, doodle, selfie or cosplay.
+           NOT AD: news ABOUT a company, a product, an animal, a zoo or a person, told as news
+           ("X has named...", "X will be added to...", "X just solved..."): that is OTHER
+  SPORT    a score or result, a game highlight or clip, a player's stats or news, a team or
+           league account celebrating or promoting its own game, wrestling storylines
+  FANDOM   fans posting about an idol, a game, a show or a franchise: an idol's photo or
+           story, a fancam, a comeback, a tour or airport update, a streaming or voting goal,
+           an idol's birthday; fan art and fan comics, game tips and builds, leaks and
+           datamines, theories, character discussion
+  SHOWBIZ  film, TV, music and celebrity news: casting, release dates, ratings, award
+           submissions, anniversaries, a creator's own milestone
+  POLITICS a politician's statement, a policy, an election, a party, an ideology
+  OTHER    none of the above
+
+Answer with the fields of the structured output like this:
+  coinable      true when the kind is OTHER; false for every other kind
+  proposedName  the kind, exactly one of: AD, SPORT, FANDOM, SHOWBIZ, POLITICS, OTHER
+  confidence    how sure you are of the kind, 0 to 1
+
+ALWAYS OTHER, whoever posts it: an animal or a creature with a story; a record or a striking
+real thing (the most expensive cow ever sold); a rallying cry around one person ("JUSTICE
+FOR ..."); one person's viral moment or a bet or stunt (a bounty tattoo); something that
+HAPPENED in crypto or AI (a rug pull, an airdrop, a model doing something remarkable, a
+company joining an index); a crypto figure's line or picture the timeline repeats; a slogan
+or a meme picture, a joke or a line people repeat — even from a brand,
+team or league account. If the post itself is that moment rather than the promotion, the
+result or the celebrity news, its kind is OTHER.
