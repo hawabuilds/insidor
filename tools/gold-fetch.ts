@@ -32,6 +32,7 @@ import { voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyag
 import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
 import { xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
+import { pictureOf } from '../services/project/src/db.ts';
 import { goldCoins, tuning, type GoldCoin } from '../eval/src/gold/coin-origins.ts';
 import { EVIDENCE_FILE, loadEvidence, type CoinEvidence, type PostRead } from '../eval/src/gold/coin-evidence.ts';
 
@@ -97,7 +98,10 @@ function toRead(item: Item, authors: ReadonlyMap<string, Author>, url: string): 
     authorHandle: author?.handle ?? null,
     authorFollowers: author?.audience?.value ?? null,
     reach: item.counters.reach?.value ?? null,
-    imageUri: item.media.find((m) => m.kind === 'image')?.uri ?? null,
+    /* The picture the feed would show: a still image, or a video's preview (pictureOf in the
+       projector) — X sends a video's thumbnail as its uri. Keeping images only dropped every
+       video origin's picture, so the judge and the picture bars read those posts blind. */
+    imageUri: pictureOf(item.media)?.uri ?? null,
     quotes: item.reproductionOf === null ? null : String(item.reproductionOf).split(':').slice(1).join(':'),
   };
 }
