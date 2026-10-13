@@ -143,7 +143,7 @@ test('★ with no term configured, a source with no catch-all is asked a word fr
   const q = seen[0]!;
   assert.equal(q.mode, 'keyword');
   assert.ok(DEFAULT_POLICY.feed.hashtags.includes(q.term), `asked "${q.term}", which is not on the watch list`);
-  assert.equal(q.limit, DEFAULT_POLICY.feed.pageLimit, 'one policy page');
+  assert.equal(q.limit, DEFAULT_POLICY.feed.hashtagResults, 'the policy\'s posts per hashtag ask');
   // The adapter refuses a cutoff on this source; the live watch never sends one.
   assert.equal(q.untilMs, null);
   assert.equal(q.filter, undefined, 'no filter of any kind, by account or otherwise');

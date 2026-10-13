@@ -90,8 +90,13 @@ export const OBSERVE = 'observe';
  * an honest bound if the number of posts in it is bounded — which is this cap: `discover.ts`
  * never asks for more, whatever `query.limit` says. Raising it raises the quoted price with
  * it, so a bigger run can never be cheaper on paper than it is on the invoice.
+ *
+ * ★ 10 SINCE 2026-10-13, EQUAL TO `policy.feed.hashtagResults` — the posts the runner asks for
+ * per hashtag ask. Above it, every run would be quoted (and recorded, and spaced by the runner's
+ * `watchEveryMs`) at a bill twice what is asked; below it, the policy's ask would be silently
+ * cut short. The test beside discover.ts holds the two equal: raise one, raise both.
  */
-export const DISCOVER_RESULTS_CAP = 20;
+export const DISCOVER_RESULTS_CAP = 10;
 
 /**
  * The scraper's per-event charges on our plan tier (BRONZE), in dollars. Vendor prices, not

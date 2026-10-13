@@ -18,6 +18,8 @@ import assert from 'node:assert/strict';
 import type { DiscoveryQuery } from '@insidor/contracts/ports/platform.ts';
 import { NotImplemented } from '@insidor/vendor-kit';
 
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+
 import { CAPABILITIES, DISCOVER_RESULTS_CAP, PRICES } from './capabilities.ts';
 import type { RunResult, TikTokClient } from './client.ts';
 import { discoverRun, toActorInput } from './discover.ts';
@@ -29,7 +31,7 @@ const query = (over: Partial<DiscoveryQuery> = {}): DiscoveryQuery => ({
   term: 'chillguy',
   sinceMs: null,
   untilMs: null,
-  limit: 15,
+  limit: 8,
   cursor: null,
   ...over,
 });
@@ -121,15 +123,15 @@ test('a mode this source cannot express is an error, never an empty page', () =>
 test('a hashtag and an account go into different keys, because the actor reads them differently', () => {
   assert.deepEqual(toActorInput(query({ mode: 'hashtag', term: ' chillguy ' })), {
     hashtags: ['chillguy'],
-    resultsPerPage: 15,
+    resultsPerPage: 8,
   });
   assert.deepEqual(toActorInput(query({ mode: 'account', term: 'someone' })), {
     profiles: ['someone'],
-    resultsPerPage: 15,
+    resultsPerPage: 8,
   });
   assert.deepEqual(toActorInput(query({ mode: 'feed', term: 'someone' })), {
     hashtags: ['someone'],
-    resultsPerPage: 15,
+    resultsPerPage: 8,
   });
 });
 
@@ -138,7 +140,7 @@ test('★ a keyword is a video search with no sort and no date filter', () => {
   assert.deepEqual(input, {
     searchQueries: ['memecoin'],
     searchSection: '/video',
-    resultsPerPage: 15,
+    resultsPerPage: 8,
   });
   // The newest-first sort goes through a route that returned an empty SUCCEEDED run live;
   // the date filter is a cutoff with every flaw the header lists.
@@ -146,6 +148,10 @@ test('★ a keyword is a video search with no sort and no date filter', () => {
   assert.equal('videoSearchDateFilter' in input, false);
   // And the cutoff is refused on this mode exactly as on the others.
   assert.throws(() => toActorInput(query({ mode: 'keyword', untilMs: 1 })), NotImplemented);
+});
+
+test('★ the cap is the policy\'s hashtag ask, so a run is quoted at exactly what is asked', () => {
+  assert.equal(DISCOVER_RESULTS_CAP, DEFAULT_POLICY.feed.hashtagResults);
 });
 
 test('★ a run never asks for more posts than its price was quoted at', () => {
@@ -163,7 +169,7 @@ test('★ a size hint IS sent, and the asymmetry with the cutoff is the whole ar
   // decides whether an unverifiable bound may be relied on.
   assert.equal(toActorInput(query({ limit: 7 })).resultsPerPage, 7);
   assert.equal(toActorInput(query({ limit: 0 })).resultsPerPage, 1);
-  assert.equal(toActorInput(query({ limit: 12.9 })).resultsPerPage, 12);
+  assert.equal(toActorInput(query({ limit: 9.9 })).resultsPerPage, 9);
 });
 
 /* ── the run ──────────────────────────────────────────────────────────── */

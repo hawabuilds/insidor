@@ -539,8 +539,10 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     }
 
     /* ★ NO CATCH-ALL: ASK BY WORD, SPACED. The configured term if one is set, else the owner's
-       watch list; one page of `feed.pageLimit` posts, no time cutoff; and on a paid source,
-       only once per `watchEveryMs` so a day of it stays inside its share of the line. */
+       watch list; `feed.hashtagResults` posts an ask, no time cutoff; and on a paid source, only
+       once per `watchEveryMs` so a day of it stays inside its share of the line. The ask's size
+       is its price on a per-post source, so the spacing below is priced at that size: half the
+       posts an ask, twice the asks a day for the same money. */
     if (!catchAll) {
       const probe = queryFor(adapter, term ?? deps.policy.feed.hashtags[0] ?? '', now);
       if (probe !== null) {
@@ -560,8 +562,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         }
         const word = term ?? watchTermFor(deps.policy.feed.hashtags, everyMs, now);
         const query = word === null ? null : queryFor(adapter, word, now);
-        /* The watch list is asked for one policy page; a configured term keeps its own size. */
-        if (query !== null) asks.push({ query: term === null ? { ...query, limit: deps.policy.feed.pageLimit } : query, lane: null, spaced: true });
+        /* The watch list is asked for `feed.hashtagResults` posts; a configured term keeps its own size. */
+        if (query !== null) asks.push({ query: term === null ? { ...query, limit: deps.policy.feed.hashtagResults } : query, lane: null, spaced: true });
       }
     }
 
