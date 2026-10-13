@@ -9,8 +9,9 @@
  * ★ THE POOL IS OPENED WITH cfg.databaseUrl, WHICH IS DATABASE_URL_APP AND NOTHING
  * ELSE. See config.ts: the app role has no USAGE on `internal` or `raw` and no
  * SELECT on `public.observation`, so the safety of this service is enforced by
- * Postgres rather than by review. There is no second connection string in this file
- * and there must never be one — the moment this process can also open a service-role
+ * Postgres rather than by review. There is no second credential in this file and
+ * there must never be one (the LISTEN connection's URL is the same app login on the
+ * session pooler, and config.ts refuses anything else) — the moment this process can also open a service-role
  * pool, every guarantee above becomes a claim about code that could be edited, and
  * the leak this whole architecture is arranged to make impossible becomes a leak
  * that is merely unlikely.
@@ -42,7 +43,11 @@ const log = createLogger();
  * has already failed as far as they are concerned. Better to release the connection
  * than to hold it for an answer nobody is still watching for.
  */
-const POOL_MAX = 5;
+/* Three, not five: the pool sits behind the transaction pooler and a page's reads are short,
+   and every process's pool adds up against the same pooler (store/src/client.ts counts it). */
+const POOL_MAX = 3;
+/** An unused client is closed after this long, so a burst of page loads does not hold its peak. */
+const IDLE_CLIENT_MS = 10_000;
 /** A market data request is abandoned after this long: a person is waiting on the token page. */
 const MARKET_TIMEOUT_MS = 6_000;
 /** A curve account read is kept this long; the page polls, and a curve moves trade by trade. */
@@ -67,8 +72,10 @@ const SAFE_CHANNEL = /^[a-z_][a-z0-9_]{0,62}$/;
  * with no error and no event. One `Client`, held for the process lifetime, reopened by the
  * notifier's reconnect loop whenever it dies.
  *
- * It uses cfg.databaseUrl — the SAME app credential as the pool. There is no second
- * connection string in this process and there must never be one; config.ts is the argument.
+ * It uses cfg.listenUrl — the SAME app credential as the pool, on the session pooler,
+ * because the pool may be on the transaction pooler where a LISTEN silently does nothing.
+ * There is no second credential in this process and there must never be one; config.ts
+ * refuses a listen URL with a different login, and is the argument.
  */
 function pgListenSocket(connectionString: string): ListenSocket {
   const client = new Client({
@@ -127,6 +134,7 @@ async function main(): Promise<void> {
     max: POOL_MAX,
     statement_timeout: STATEMENT_TIMEOUT_MS,
     idle_in_transaction_session_timeout: IDLE_IN_TRANSACTION_TIMEOUT_MS,
+    idleTimeoutMillis: IDLE_CLIENT_MS,
     keepAlive: true,
   });
 
@@ -147,7 +155,7 @@ async function main(): Promise<void> {
      about — and the telling is what makes a dead board look different from a quiet one. */
   const stream = createBoardStream(deps);
   const notifier = createNotifier({
-    open: () => pgListenSocket(cfg.databaseUrl),
+    open: () => pgListenSocket(cfg.listenUrl),
     log,
     /* The tick is not used to decide anything: the frame is re-read from the table through
        the same statements the polled route uses. Acting on a number from a payload anyone
