@@ -26,6 +26,7 @@ import { DEFAULT_POLICY } from '../../contracts/src/policy.ts';
 import { storyId } from '../../contracts/src/ids.ts';
 import type { JudgeOutcome } from '../../contracts/src/ports/judge.ts';
 import type { Meter } from '../../contracts/src/ports/meter.ts';
+import { HELD_KINDS } from '../../services/runner/src/work/score-posts.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
 import { BATCH_PRICE_FRACTION, anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
 import { voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
@@ -74,6 +75,12 @@ export interface GradeOptions {
   readonly pictureSize?: 'small' | '360x360' | null;
   /** Refuse to start (LineTooShort) when what is left of the line cannot cover the whole test. */
   readonly mustFit?: boolean;
+  /**
+   * Ask the posts the first question passes the second — which kind of post — and hold back the
+   * kinds the live feed holds back (HELD_KINDS). On unless false: a re-tune graded without the
+   * live feed's second question measures a gate nobody runs.
+   */
+  readonly kind?: boolean;
   /** The coined pictures for the boost; null leaves the boost out. */
   readonly coined: readonly { readonly coinRef: string; readonly uri: string; readonly v: readonly number[] }[] | null;
 }
@@ -156,8 +163,11 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
   const batched = o.batch && whole.usd * BATCH_PRICE_FRACTION <= remaining;
   /* A test the line cannot cover is not started: a run that dribbles one call at a time as the
      ledger frees a cent grades a handful of posts in an hour and says nothing. */
-  if (o.mustFit === true && (batched ? whole.usd * BATCH_PRICE_FRACTION : whole.usd) > remaining) {
-    throw new LineTooShort(remaining, whole.usd * (o.batch ? BATCH_PRICE_FRACTION : 1));
+  /* The second question is asked only of the posts the first passes; half again over the first
+     question's estimate covers it with room. */
+  const kindShare = o.kind === false ? 1 : 1.5;
+  if (o.mustFit === true && (batched ? whole.usd * BATCH_PRICE_FRACTION : whole.usd) * kindShare > remaining) {
+    throw new LineTooShort(remaining, whole.usd * (o.batch ? BATCH_PRICE_FRACTION : 1) * kindShare);
   }
 
   /* Each post's own picture embedded, for the boost. */
@@ -186,6 +196,19 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
     const j = out?.kind === 'judged' ? out.judgement : null;
     return { ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, passes: j !== null && postScore(j, P, similarityOf(p)) === 'passes' };
   });
+  if (o.kind !== false) {
+    const kindJudge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'kind', batch: batched });
+    const passing = rows.map((r, i) => ({ r, i })).filter(({ r }) => r.passes);
+    const kinds: JudgeOutcome[] = [];
+    if (batched) kinds.push(...(await kindJudge.judge(passing.map(({ r }) => subjectOf(r)), budget())).value);
+    else for (const { r } of passing) kinds.push(...(await kindJudge.judge([subjectOf(r)], budget())).value);
+    passing.forEach(({ i }, k) => {
+      const out = kinds[k];
+      const kind = out?.kind === 'judged' ? (out.judgement.proposedName ?? '').trim().toUpperCase() : '';
+      const row = rows[i];
+      if (row !== undefined && HELD_KINDS.has(kind)) rows[i] = { ...row, passes: false };
+    });
+  }
   return { rows, used, batched };
 }
 
