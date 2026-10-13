@@ -99,6 +99,9 @@ import { judgeStories, type JudgingDeps } from './judge.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
 import { worthRereading } from './track-gate.ts';
 import { pickPaidReads } from './paid-reads.ts';
+
+/** The source held to the short-video growth window (Policy.rising.shortVideoFastWindowMs), as score-posts.ts names it. */
+const SHORT_VIDEO_SOURCE = 'tiktok';
 import { sourceHandles } from './handle-cache.ts';
 
 /* ── operational constants ────────────────────────────────────────────────
@@ -478,6 +481,9 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
           minPerMinute: policy.rising.watchMinReachPerMinute,
           judgedSince: now - policy.track.youngWindowMin * MS_PER_MINUTE,
           judgedMinReach: policy.rising.fypEarlyReach,
+          /* ★ The short-video source's unjudged posts over its own growth window, at the rate its
+             paid re-reads take a post as fast (work/paid-reads.ts picks and caps them). */
+          longer: { source: SHORT_VIDEO_SOURCE, since: (now - policy.rising.shortVideoFastWindowMs) as Millis, minPerMinute: policy.track.paidFastMinReachPerMinute },
         },
       );
       /* ★ NO PAID READ FOR A POST THAT CAN NEVER BE SHOWN — a firm "no", a failed name test, a
