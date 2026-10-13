@@ -84,6 +84,7 @@ import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/pl
 import { pictureOf } from '../services/project/src/db.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 import { LineTooShort, goldOriginPosts, handGoldIds, gradePosts, judgeSetup, type EvalPost, type EvalRow } from './lib/pass-rates.ts';
+import { refitForRetune } from './lib/score-model.ts';
 
 const P = DEFAULT_POLICY;
 const L = P.learning;
@@ -205,6 +206,9 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
     try {
       const gold = opts.record ? await growGold(repo) : { added: 0, waiting: 0, xUsd: 0 };
       if (opts.record) log('info', 'gold from live', { slot: slot.toISOString(), added: gold.added, waiting: gold.waiting, xUsd: gold.xUsd });
+      /* The For You order model (tools/lib/score-model.ts): free, so refitted at every slot before the skip below; never fails the run. */
+      const order = await refitForRetune(url, { record: opts.record && !opts.dry });
+      log('info', 'order model refitted', { slot: slot.toISOString(), ...order.log });
 
       const { calls, names, labelsSha } = await ownerCalls(repo);
       const last = await soft(repo.lastBuilt(), null);
@@ -358,7 +362,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
               facts: {
                 applied: apply, why,
                 goldPassed: rates.hand.passed, goldN: rates.hand.tested, negativePassed: rates.negatives.passed, negativeN: rates.negatives.tested, missedPassed: rates.missed.passed, missedN: rates.missed.tested,
-                autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length,
+                autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length, ...order.facts,
                 taps: block.used.taps, missed: block.used.missed, names: block.used.names, added: delta.added, removed: delta.removed, missReasons,
               },
               href: '/#/alerts',

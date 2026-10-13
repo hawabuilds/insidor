@@ -180,7 +180,9 @@ export async function refit(db: Db, opts: { readonly record: boolean; readonly n
   const crossRulesOrder = ordering(examples, (r) => (r.rulesPass ? 1 : 0));
   const weights = signalWeights(fit);
   let id: number | null = null;
+  let why = gate.why;
   if (opts.record) {
+    /* Before 0065 is migrated there is nowhere to keep a fit: measured and said, never applied. */
     id = await repo.record({
       fittedAt: opts.now ?? new Date(),
       features: [...SCORE_SIGNALS],
@@ -190,9 +192,13 @@ export async function refit(db: Db, opts: { readonly record: boolean; readonly n
       heldOut: { bar, next: gate.next, ref: gate.ref, order: gate.order, refOrder: gate.refOrder, against: ref === null ? 'rules' : `fit ${inUse?.id}`, n: heldOut.length },
       applied: gate.apply,
       why: gate.why,
+    }).catch((e: unknown) => {
+      if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return null;
+      throw e;
     });
+    if (id === null) why = `not recorded: internal.score_model (0065) is not migrated yet${gate.why === null ? '' : `; ${gate.why}`}`;
   }
-  return { fitN: fitRows.length, heldOutN: heldOut.length, applied: gate.apply && opts.record, why: gate.why, id, bar, weights, gate, coverage, table, crossTable, crossNone, crossOrder, crossRulesOrder, examples, fit };
+  return { fitN: fitRows.length, heldOutN: heldOut.length, applied: gate.apply && opts.record && id !== null, why, id, bar, weights, gate, coverage, table, crossTable, crossNone, crossOrder, crossRulesOrder, examples, fit };
 }
 
 /**
