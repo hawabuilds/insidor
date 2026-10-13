@@ -10,6 +10,10 @@
  * by the vendor behind it: the role is what the owner set a line for, and a vendor's name on a
  * lock screen says nothing the role does not.
  *
+ * A supplier billing alert is the one place a vendor IS named: it says a supplier refused a call
+ * because its account cannot pay (or that it answers again), and the owner has to know which
+ * account to top up. The reason is the adapter's own short phrase, never the vendor's text.
+ *
  * A re-tune summary is the owner's twice-daily report on the judge's learned examples: applied or
  * kept, how each test group did as passed-of-tested, and what it learned from. A group nobody could
  * test is a dash, never 0 of 0 read as a failure; the reason a block was kept is the job's own
@@ -115,6 +119,16 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const projected = n(f['projectedUsd']);
       const advice = raise !== null && raise > 0 ? ` Raise it by ${usd(raise)} to carry the day${projected === null ? '' : ` (about ${usd(projected)} at this rate)`}.` : raise === 0 ? ' At this rate the line carries the day.' : '';
       return { title, body: spent === null || cap === null ? `Its spend today reached that share of the line.${advice}` : `${usd(spent)} of ${usd(cap)} spent today (UTC).${advice}` };
+    }
+    case 'supplier_account': {
+      /* Named by the vendor, unlike the spend warning: the owner has to know WHICH account to top up. */
+      const supplier = s(f['supplier'], 'A supplier');
+      const uses = typeof f['uses'] === 'string' && f['uses'].trim() !== '' ? ` (${f['uses'].trim()})` : '';
+      if (f['state'] === 'recovered') return { title: `${supplier} is answering again`, body: `${supplier}${uses} accepted a call again; work using it has resumed.` };
+      return {
+        title: `${supplier} out of credit${uses}`,
+        body: `${supplier} refused a call for billing: ${s(f['reason'], 'its account cannot pay')}. Top up its account; work using it is paused until then.`,
+      };
     }
     case 'retune_summary': {
       const applied = f['applied'] === true;
