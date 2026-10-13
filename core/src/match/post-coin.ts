@@ -13,8 +13,9 @@
  *               and punctuation go (`exact`), or a looser spelling (`variant`)
  *
  * CONFIDENT is only: (1) on exactly one coin; or (2)+(3) on exactly one coin; or (3) with an
- * exact name on the ONLY coin that launched in the window under any form of the name. Anything
- * else is unsure, and an unsure answer carries no coin a button could be built from.
+ * exact name when it is the ONLY coin the search found under any form of the name, whenever it
+ * launched. Anything else is unsure, and an unsure answer carries no coin a button could be
+ * built from.
  *
  * Why a fixed rule and not a weighted sum: the card says WHY it matched as facts ("Links this
  * post", "Same picture", "Launched 12m after"). A sum would let two weak facts outvote a
@@ -185,8 +186,11 @@ export function matchPostCoin(post: PostSide, coins: readonly CoinSide[], bars: 
   if (picture !== null) return { kind: 'confident', address: picture.address, because: 'pictureAndTiming', ranked };
   if (pictured.length > 1) return { kind: 'unsure', ranked };
 
-  const named = only(possible.filter((e) => e.inWindow && e.name !== 'none'));
-  if (named !== null && named.name === 'exact' && named.samePicture !== false) {
+  /* The ONLY coin of the name at all — launched before, in or after the window — not merely the
+     only one in the window: on the gold set the narrower test linked 21 viral posts that only
+     mentioned a coin's name (6.5% wrong links); this one, 4 (eval/src/gold/matching-report.md). */
+  const named = only(ranked.filter((e) => e.name !== 'none'));
+  if (named !== null && named.inWindow && named.name === 'exact' && named.samePicture !== false) {
     return { kind: 'confident', address: named.address, because: 'timingAndName', ranked };
   }
   return { kind: 'unsure', ranked };
