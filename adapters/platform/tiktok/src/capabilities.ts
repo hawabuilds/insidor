@@ -64,7 +64,7 @@ export const CAPABILITIES: Capabilities = {
   absent: ['reproduction'],
   fidelity: FIDELITY,
   /**
-   * Keyword search first: the scraper's video search, newest first (checked against its input
+   * Keyword search first: the scraper's video search (checked against its input
    * schema on 2026-10-13 — `searchQueries`). There is no trending or explore feed to enter by,
    * so nothing here is a catch-all; hashtag and account remain for a caller that wants them.
    */
@@ -100,8 +100,6 @@ export const DISCOVER_RESULTS_CAP = 20;
  */
 const RUN_START_USD = 0.001;
 const PER_POST_USD = 0.003;
-/** The add-on charged per post when a video search is sorted newest first. */
-const NEWEST_FIRST_PER_POST_USD = 0.001;
 
 const price = (endpoint: string, usdPerUnit: number): Price => ({
   vendor: VENDOR,
@@ -115,15 +113,12 @@ const price = (endpoint: string, usdPerUnit: number): Price => ({
 /**
  * ★ EACH RUN IS QUOTED AT ITS LARGEST POSSIBLE BILL, and that is deliberate. The unit stays
  * the run — the ledger cannot see how many posts came back before it records — so the quote
- * is the start fee plus a full run's posts: `DISCOVER_RESULTS_CAP` sorted search results, or
+ * is the start fee plus a full run's posts: `DISCOVER_RESULTS_CAP` search results, or
  * a full observe batch. A short run is therefore over-recorded, never under-recorded. The
  * flat two cents that was here before was about a seventh of a full observe batch's real
  * bill, which made the supplier line a cap on paper only.
  */
 export const PRICES: PriceBook = {
-  [`${VENDOR}:${DISCOVER}`]: price(
-    DISCOVER,
-    RUN_START_USD + DISCOVER_RESULTS_CAP * (PER_POST_USD + NEWEST_FIRST_PER_POST_USD),
-  ),
+  [`${VENDOR}:${DISCOVER}`]: price(DISCOVER, RUN_START_USD + DISCOVER_RESULTS_CAP * PER_POST_USD),
   [`${VENDOR}:${OBSERVE}`]: price(OBSERVE, RUN_START_USD + (CAPABILITIES.observeBatchSize ?? 1) * PER_POST_USD),
 };
