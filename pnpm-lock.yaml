@@ -511,6 +511,9 @@ importers:
       '@insidor/store':
         specifier: workspace:*
         version: link:../../store
+      '@insidor/venue-solana-pumpfun':
+        specifier: workspace:*
+        version: link:../../adapters/venue/solana-pumpfun
       pg:
         specifier: ^8.16.0
         version: 8.23.0

@@ -1,6 +1,7 @@
 /**
- * THE COIN-LOGO MIRROR, run once: find the coins on screen whose logo is not in our storage yet,
- * copy each one's picture there, record the outcome, exit. Scheduled every two minutes by
+ * THE COIN-LOGO MIRROR, run once: find the coins whose logo is not in our storage yet (the ones on
+ * screen first, then a slice of every other coin we hold), copy each one's picture there, record
+ * the outcome and, for a coin left as a letter, why; exit. Scheduled every two minutes by
  * tools/railway-start.mjs beside the board's projector.
  *
  * ★ WHY HERE AND NOT IN THE READ SERVICE. Copying into storage needs the storage service key,
@@ -21,11 +22,17 @@
 import { dexscreenerProfiles } from '@insidor/market-dexscreener';
 import { coinLogoStore } from '@insidor/storage-supabase/coin-logo.ts';
 import { asDb, createPool, DB_ROLE } from '@insidor/store';
+import { launchpadPicture, metadataPicture, pictureUrls } from '@insidor/venue-solana-pumpfun';
 
 import { MAX_LOGO_BYTES, mirrorPass } from './coin-logos.ts';
 
-/** One picture or one market call is abandoned after this long. */
+/** One market call is abandoned after this long. */
 const FETCH_TIMEOUT_MS = 8_000;
+/** One try at one host (a gateway, the launchpad, a picture host) is abandoned after this long, so
+ *  a slow gateway hands over to the next instead of holding the pass. */
+const TRY_TIMEOUT_MS = 4_000;
+/** A metadata document or a coin record is a few kilobytes; one bigger is not read. */
+const DOCUMENT_MAX_BYTES = 64 * 1024;
 
 async function main(): Promise<void> {
   const url = process.env['DATABASE_URL'] ?? '';
@@ -37,19 +44,47 @@ async function main(): Promise<void> {
     return;
   }
   const pool = createPool(DB_ROLE.service, { applicationName: 'insidor-project-logos', env: { DATABASE_URL_SERVICE: url } });
-  const store = coinLogoStore({ url: storageUrl, serviceKey: storageKey, fetch: globalThis.fetch, timeoutMs: FETCH_TIMEOUT_MS, maxBytes: MAX_LOGO_BYTES });
+  const store = coinLogoStore({ url: storageUrl, serviceKey: storageKey, fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: MAX_LOGO_BYTES });
   const market = dexscreenerProfiles({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: FETCH_TIMEOUT_MS });
+  const documents = { fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: DOCUMENT_MAX_BYTES };
+  const log = (msg: string, fields: Record<string, unknown>) => console.log(JSON.stringify({ level: 'info', msg, ...fields }));
+  await warnIfPrivate(storageUrl, storageKey, log);
+  const started = Date.now();
   try {
     const result = await mirrorPass({
       db: asDb(pool),
-      nowMs: Date.now(),
+      nowMs: started,
+      elapsedMs: () => Date.now() - started,
+      metadataPicture: (uri) => metadataPicture(uri, documents),
+      venuePicture: (address) => launchpadPicture(address, documents),
       marketImages: async (addresses) => new Map([...(await market.profiles(addresses))].map(([a, p]) => [a, p.imageUrl])),
+      pictureUrls,
       copy: async (address, source) => store.put(address, await store.download(source)),
-      log: (msg, fields) => console.log(JSON.stringify({ level: 'info', msg, ...fields })),
+      log,
     });
     console.log(JSON.stringify({ level: 'info', msg: 'coin logos mirrored', ...result }));
   } finally {
     await pool.end();
+  }
+}
+
+/**
+ * The app loads each copy from the bucket's PUBLIC path. A private bucket answers that path with
+ * 400 "Bucket not found", so every stored logo would still show as a letter: said loudly, once a
+ * pass. Only read here; making the bucket public is a storage setting the owner changes.
+ */
+async function warnIfPrivate(url: string, key: string, log: (msg: string, fields: Record<string, unknown>) => void): Promise<void> {
+  try {
+    const r = await fetch(`${url.replace(/\/+$/, '')}/storage/v1/bucket/launch-metadata`, {
+      headers: { apikey: key, authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    const body = (await r.json()) as { public?: unknown };
+    if (r.ok && body.public !== true) {
+      console.error(JSON.stringify({ level: 'error', msg: 'the launch-metadata bucket is private: the app cannot load any stored logo or launch metadata until it is made public' }));
+    }
+  } catch (e) {
+    log('bucket setting not read', { err: e instanceof Error ? e.message : String(e) });
   }
 }
 

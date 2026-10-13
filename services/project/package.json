@@ -19,6 +19,7 @@
     "@insidor/platform-x": "workspace:*",
     "@insidor/storage-supabase": "workspace:*",
     "@insidor/store": "workspace:*",
+    "@insidor/venue-solana-pumpfun": "workspace:*",
     "pg": "^8.16.0"
   }
 }

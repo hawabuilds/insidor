@@ -313,8 +313,11 @@ export { boundedText, httpsUri, mintAddress } from './hostile.ts';
 export { contentAddress, fetchMetadata, gatewayUrl, readMetadata } from './metadata.ts';
 export type { CoinMetadata, MetadataFetchConfig, MetadataRead } from './metadata.ts';
 /* …and, when the link names no content id, from the creator's own host behind an address fence. */
-export { fetchDeclaredMetadata, fetchableUrl, isPublicAddress, readDeclared } from './declared-metadata.ts';
+export { fetchDeclaredDocument, fetchDeclaredMetadata, fetchableUrl, isPublicAddress, readDeclared } from './declared-metadata.ts';
 export type { DeclaredFetchConfig, DeclaredRead } from './declared-metadata.ts';
+/* …and a coin's logo: its metadata picture through a chain of gateways, or the launchpad's own copy. */
+export { IPFS_GATEWAYS, documentPicture, launchpadPicture, metadataPicture, pictureUrls } from './logo-picture.ts';
+export type { LogoFetchConfig } from './logo-picture.ts';
 /* A curve read straight from its account: reserves, and progress as the launchpad measures it. */
 export { INITIAL_REAL_TOKEN_UNITS, PROGRAM_ID, curveProgressOf, readCurveAccount } from './curve-account.ts';
 export type { CurveAccount } from './curve-account.ts';
