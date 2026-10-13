@@ -109,6 +109,7 @@ import { dexscreenerSearch, dexscreenerStandings } from '@insidor/market-dexscre
 import { geckoterminal } from '@insidor/market-geckoterminal';
 import { keepCoins } from './work/coin-keep.ts';
 import { lookUpCoins } from './work/coin-lookup.ts';
+import { addOwnerCoins } from './work/owner-coins.ts';
 import { checkOlderCoins } from './work/older-coins.ts';
 import { measureDiscovery } from './work/discovery-settings.ts';
 import { sourceHandles } from './work/handle-cache.ts';
@@ -768,6 +769,19 @@ export async function withRuntime<T>(
               log: log.child({ step: 'coin-lookup' }),
               now: () => Date.now() as Millis,
             });
+            /* The coins the owner named by address and we do not hold yet (work/owner-coins.ts). */
+            try {
+              await addOwnerCoins({
+                learning: new PgLearningRepo(db),
+                assets: repos.assets,
+                sources: lookupSources,
+                chain: cfg.chainRpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.chainRpcUrl, fetch: globalThis.fetch }),
+                log: log.child({ step: 'owner-coins' }),
+                now: () => Date.now() as Millis,
+              });
+            } catch (e) {
+              log.warn("the coins the owner named could not be added this pass; tried again next pass", { err: e instanceof Error ? e.message : String(e) });
+            }
             await pictureCoinMatches(
               {
                 coins: new PgCoinUniverseRepo(db),
