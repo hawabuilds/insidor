@@ -12,6 +12,9 @@
  * `--recent` instead re-scores every catch-all post inside the feed's window whose latest answer
  * came from an older prompt — the catch-up after the rules change, newest first, at most
  * `rising.postsPerPass` posts a run.
+ * `--kind` asks every post on the feeds the second question (which kind of post) and files a
+ * holding answer for AD, SPORT, FANDOM, SHOWBIZ or POLITICS — the live scorer's two-question gate,
+ * applied to what is already showing. Spends on the learning line.
  * `--unscored` instead scores the runner's own waiting queue (catch-all posts never scored, inside
  * the feed's window, newest first) — the catch-up after the runner's scorer was paused.
  *
@@ -38,12 +41,14 @@ import type { Item } from '../contracts/src/vocabulary.ts';
 import { anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgItemRepo, PgPostJudgementRepo } from '../store/src/index.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
+import { HELD_KINDS } from '../services/runner/src/work/score-posts.ts';
 
 const P = DEFAULT_POLICY;
 const USD_PER_POST = 0.01;
 const UNSCORED = process.argv.includes('--unscored');
 const SYNC = process.argv.includes('--sync');
 const RECENT = process.argv.includes('--recent');
+const KIND = process.argv.includes('--kind');
 
 if (process.env['SPEND'] !== 'live' || !process.argv.includes('--yes')) {
   console.error('rescore-feed refused: this calls the paid judge. Set SPEND=live and pass --yes.');
@@ -56,18 +61,20 @@ if (price === null) throw new Error(`JUDGE_MODEL ${setup.model} has no price`);
 
 const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'] }, applicationName: 'insidor-rescore-feed' });
 const db = asDb(pool);
-const { meter, close } = await openSharedMeter(UNSCORED || RECENT ? 2 : 1);
+const { meter, close } = await openSharedMeter(UNSCORED || RECENT ? 2 : 1, process.env, KIND ? 'learning' : 'jobs');
 const judge = anthropicJudge({
   client: judgeClient({
     apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: setup.model, maxOutputTokens: P.judge.postBatchMaxOutputTokens, effort: price.effort,
     timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
     maxFrameBytes: P.judge.maxFrameBytes, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   }),
-  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: 'post', batch: !SYNC,
+  meter, now: Date.now, model: setup.model, policy: P.judge, maxBatch: 1, question: KIND ? 'kind' : 'post', batch: !SYNC,
 });
 
 try {
-  const showing = RECENT
+  const showing = KIND
+    ? await db.query<{ item_id: string }>('select distinct item_id from public.rising_row')
+    : RECENT
     ? await db.query<{ item_id: string }>(
         `select i.item_id from internal.item_found_by f join public.item i on i.item_id = f.item_id
           where i.origin = 'observed' and i.first_seen_at >= now() - ($2::bigint * interval '1 millisecond')
@@ -97,7 +104,8 @@ try {
   const budget = () => ({ capUsd: meter.line().capUsd, spentUsd: meter.line().spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
   const keep = async (item: Item, o: JudgeOutcome | undefined): Promise<void> => {
     if (o?.kind !== 'judged') return;
-    await scores.record(item.itemId, o.judgement);
+    /* The kind question files only a holding answer; OTHER leaves the post's answer as it is. */
+    if (!KIND || HELD_KINDS.has((o.judgement.proposedName ?? '').trim().toUpperCase())) await scores.record(item.itemId, o.judgement);
     if (o.judgement.coinable) passed += 1;
     else failed += 1;
     console.log(`${o.judgement.coinable ? 'yes' : 'no '} ${o.judgement.confidence.toFixed(2)} ${(o.judgement.proposedName ?? '-').padEnd(20)} ${item.text.replace(/\s+/g, ' ').slice(0, 80)}`);
