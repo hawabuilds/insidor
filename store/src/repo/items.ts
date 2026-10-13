@@ -183,6 +183,34 @@ export class PgItemRepo implements ItemRepo {
     return rows.map((row) => this.#toItem(row, fingerprints));
   }
 
+  /**
+   * Catch-all posts whose newest answer to the post question came from ANOTHER version of it than
+   * `promptId` — the queue the scorer re-judges after a prompt change, newest first, with the same
+   * window, lane and reach floor as `catchAllUnscored`. Kind answers (prompt ids starting
+   * `kindPrefix`) are not answers to the post question and are skipped when finding the newest;
+   * a post with only kind answers is not here. Observed posts only.
+   */
+  async catchAllStale(at: Millis, limit: number, promptId: string, kindPrefix: string, minReach: number | null = null): Promise<readonly Item[]> {
+    if (limit <= 0) return [];
+    const rows = await this.#db.query<ItemRow>(
+      `${SELECT_ITEM}
+        where origin = 'observed'
+          and first_seen_at >= $1
+          and exists (select 1 from internal.item_found_by f where f.item_id = public.item.item_id)
+          and ($4::double precision is null
+               or exists (select 1 from public.observation o
+                           where o.item_id = public.item.item_id and o.kind = 'reach' and o.value >= $4))
+          and (select j.prompt_id from internal.post_judgement j
+                where j.item_id = public.item.item_id and j.prompt_id not like $5
+                order by j.judged_at desc, j.id desc limit 1) <> $3
+        order by first_seen_at desc
+        limit $2`,
+      [toTimestamp(at), limit, promptId, minReach, `${kindPrefix}%`],
+    );
+    const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
+    return rows.map((row) => this.#toItem(row, fingerprints));
+  }
+
   /** Every reach reading of these posts since `at`, oldest first: the counter as read, null when unreadable. */
   async reachReadings(itemIds: readonly ItemId[], at: Millis): Promise<ReadonlyMap<string, readonly { atMs: number; reach: number | null }[]>> {
     const out = new Map<string, { atMs: number; reach: number | null }[]>();

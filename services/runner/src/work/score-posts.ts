@@ -6,10 +6,17 @@
  * posts. It uses the same judge and the same ported prompt (with its news rules), shown one
  * post. The bar the answer is held to is core's `postScore`.
  *
- * ★ ONLY CATCH-ALL POSTS, ONLY OBSERVED ONES, AND EACH ONCE. The queue is
+ * ★ ONLY CATCH-ALL POSTS, ONLY OBSERVED ONES, AND EACH ONCE PER PROMPT. The queue is
  * `PgItemRepo.catchAllUnscored`: found by a catch-all lane (or fetched by a story's backfill,
  * for GROUP's name-plus-picture join), not yet scored, newest first, inside the feed's window. An answer is recorded the moment it arrives, so a restart does
  * not pay for it twice.
+ *
+ * ★ A NEW PROMPT RE-SCORES THE DAY, SLOWLY (2026-10-13). A post whose newest answer came from
+ * another version of the post question (`PgItemRepo.catchAllStale`: a wording edit, a re-tune's
+ * new examples) is judged again, after the never-judged posts and at most `rising.rescorePerPass`
+ * a pass, so one prompt change drains over hours on the live line rather than as one burst. A
+ * re-scored post is asked the kind again too: the projector reads a kind label only while it is
+ * the post's newest answer.
  *
  * ★ THE KIND QUESTION MEETS EVERY POST THAT COULD SHOW. It is asked of a post the first answer
  * passed or that the picture boost could still lift (core `couldPassWithBoost`), and of a copied
@@ -54,6 +61,8 @@ const PREFETCH_FACTOR = 5;
 /** The kinds the second question holds back (core kinds.ts, the prompt's own labels): re-exported for the tools. */
 export { HELD_KINDS } from '@insidor/core';
 
+/** What a kind answer's prompt id starts with when no kind judge is wired to say. */
+const KIND_PROMPT_LABEL = 'post-kind';
 
 import { errorText, type Logger } from '../log.ts';
 
@@ -69,7 +78,7 @@ export interface ScoringDeps {
    * one question only.
    */
   readonly kindJudge?: JudgePort | null;
-  readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'reachReadings' | 'backfilled'>;
+  readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'catchAllStale' | 'reachReadings' | 'backfilled'>;
   readonly scores: Pick<PgPostJudgementRepo, 'record' | 'recordCopy' | 'reusable'>;
   readonly meter: Meter;
   readonly mode: 'dry' | 'live';
@@ -160,17 +169,25 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   const floor = Math.min(r.fypFastReachPerMinute, r.fypEarlyReach, r.fypMinReach);
   /* The watch lane read on its own as well: newest-first over every lane, the text lanes' hundreds
      of unscored posts an hour push a short video stored hours earlier off the page for good. */
-  const [everyLane, watchLane] = await Promise.all([
+  const kindLabel = deps.kindJudge?.promptId.split('@')[0] ?? KIND_PROMPT_LABEL;
+  const [everyLane, watchLane, staleWide] = await Promise.all([
     deps.items.catchAllUnscored(since, r.postsPerPass * PREFETCH_FACTOR, floor),
     deps.items.catchAllUnscored(since, r.postsPerPass, floor, 'watch'),
+    /* ★ RE-SCORE AFTER A PROMPT CHANGE: posts last answered by another version of the question.
+       After the never-judged ones, and at most `rescorePerPass` a pass, so a prompt change drains
+       over hours instead of landing as one burst on the live line. */
+    deps.judge === null ? Promise.resolve([] as readonly Item[]) : deps.items.catchAllStale(since, r.rescorePerPass * PREFETCH_FACTOR, deps.judge.promptId, `${kindLabel}@`, floor),
   ]);
   const seen = new Set(everyLane.map((i) => String(i.itemId)));
   const wide = [...everyLane, ...watchLane.filter((i) => !seen.has(String(i.itemId)))];
-  const readings = await deps.items.reachReadings(wide.map((i) => i.itemId), since);
+  for (const i of wide) seen.add(String(i.itemId));
+  const stale = staleWide.filter((i) => !seen.has(String(i.itemId)));
+  const readings = await deps.items.reachReadings([...wide, ...stale].map((i) => i.itemId), since);
   const backfilled = await deps.items.backfilled(wide.map((i) => i.itemId));
-  const queue = wide
-    .filter((item) => backfilled.has(String(item.itemId)) || clearsReachBar('fyp', readings.get(String(item.itemId)) ?? [], item.postedAt, deps.policy, String(item.source) === SHORT_VIDEO_SOURCE ? deps.policy.rising.shortVideoReachScale : 1))
-    .slice(0, r.postsPerPass);
+  const reaches = (item: Item): boolean =>
+    clearsReachBar('fyp', readings.get(String(item.itemId)) ?? [], item.postedAt, deps.policy, String(item.source) === SHORT_VIDEO_SOURCE ? deps.policy.rising.shortVideoReachScale : 1);
+  const rescoring = stale.filter(reaches).slice(0, r.rescorePerPass);
+  const queue = [...wide.filter((item) => backfilled.has(String(item.itemId)) || reaches(item)).slice(0, r.postsPerPass), ...rescoring];
   const empty = { queued: queue.length, scored: 0, copied: 0, waiting: queue.length, wouldSpendUsd: 0, spentUsd: 0 };
   if (queue.length === 0 || deps.judge === null) return empty;
   const judge = deps.judge;
@@ -282,7 +299,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   if (deps.mode === 'dry') {
     deps.log.info('DRY RUN — posts priced for scoring, not sent', { posts: queue.length, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
   } else {
-    deps.log.info('posts scored', { queued: queue.length, scored, heldBack, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
+    deps.log.info('posts scored', { queued: queue.length, rescoring: rescoring.length, scored, heldBack, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
   }
   return { queued: queue.length, scored, copied, waiting: queue.length - scored, wouldSpendUsd, spentUsd };
 }
