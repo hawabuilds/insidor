@@ -155,4 +155,30 @@ export class PgCryptoAttentionRepo {
       ],
     );
   }
+
+  /**
+   * Posts first seen since `since` whose newest read says shill (the post's own text, or its
+   * author's own replies, name a coin) and whose newest post answer is not the shill rule's
+   * `promptId` — a re-score filed after it would otherwise hide the AD label again.
+   */
+  async shillsToRefile(since: Millis, promptId: string, limit: number): Promise<readonly string[]> {
+    if (limit <= 0) return [];
+    const rows = await this.#db.query<{ item_id: string }>(
+      `select r.item_id
+         from (select distinct on (a.item_id) a.item_id, a.cashtags
+                 from internal.crypto_attention a
+                 join public.item i on i.item_id = a.item_id and i.first_seen_at >= $1
+                order by a.item_id, a.read_at desc) r
+        where r.cashtags ? '_own'
+          and ((r.cashtags->>'_postShill') = 'true'
+               or coalesce((r.cashtags->'_own'->>'addresses')::int, 0) > 0
+               or coalesce((r.cashtags->'_own'->>'ca')::int, 0) > 0
+               or coalesce(r.cashtags->'_own'->'cashtags', '{}'::jsonb) <> '{}'::jsonb)
+          and coalesce((select pj.prompt_id from internal.post_judgement pj where pj.item_id = r.item_id
+                         order by pj.judged_at desc, pj.id desc limit 1), '') <> $2
+        limit $3`,
+      [toTimestamp(since), promptId, limit],
+    );
+    return rows.map((r) => r.item_id);
+  }
 }

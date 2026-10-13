@@ -24,10 +24,12 @@ const meter = {
   line: () => ({ capUsd: 10, spentUsd: 0, stopAtUsd: 10, remainingUsd: 10, unrecordedUsd: 0 }),
 } as unknown as Meter;
 
-const due = (id: string, source = 'x'): DueAttention => ({ itemId: `${source}:${id}`, source, sourceItemId: id, postedAt: (NOW - 3_600_000) as Millis, reads: 0, judgedYes: false, text: 'a dog', authorId: 'au', authorHandle: 'poster' });
+const due = (id: string, source = 'x'): DueAttention => ({ itemId: `${source}:${id}`, source, sourceItemId: id, postedAt: (NOW - 3_600_000) as Millis, reads: 0, judgedYes: false, text: TEXT, authorId: 'au', authorHandle: 'poster' });
+let TEXT = 'a dog';
 
-function deps(over: { readsToday?: number; fail?: boolean; mode?: 'dry' | 'live' } = {}) {
+function deps(over: { readsToday?: number; fail?: boolean; mode?: 'dry' | 'live'; text?: string; ownReply?: boolean } = {}) {
   const recorded: { id: string; row: AttentionRow }[] = [];
+  const filed: { id: string; name: string | null; prompt: string }[] = [];
   const asked: string[] = [];
   const text = {
     id: 'x',
@@ -35,7 +37,7 @@ function deps(over: { readsToday?: number; fail?: boolean; mode?: 'dry' | 'live'
       asked.push(id);
       if (over.fail === true) throw new Error('vendor down');
       return {
-        value: { replies: [{ sourceItemId: 'r', at: NOW, text: '$DOG', authorId: 'other', authorHandle: 'a', authorName: null, authorBio: null }], reproductions: [], repliesCut: false, reproductionsCut: false },
+        value: { replies: [{ sourceItemId: 'r', at: NOW, text: '$DOG', authorId: over.ownReply === true ? 'au' : 'other', authorHandle: 'a', authorName: null, authorBio: null }], reproductions: [], repliesCut: false, reproductionsCut: false },
         spend: { vendor: 'v', endpoint: 'responses', unit: 'per-item-returned', units: 1, usd: 0.00015, at: NOW },
       };
     },
@@ -49,6 +51,7 @@ function deps(over: { readsToday?: number; fail?: boolean; mode?: 'dry' | 'live'
       due: async (sources) => [due('1'), due('2'), due('3', 'tiktok')].filter((x) => sources.includes(x.source)),
       record: async (id, _at, row) => void recorded.push({ id, row }),
     },
+    kinds: { record: async (id, j) => void filed.push({ id: String(id), name: j.proposedName, prompt: j.promptId }) },
     items: {
       reachReadings: async () =>
         new Map([
@@ -62,7 +65,7 @@ function deps(over: { readsToday?: number; fail?: boolean; mode?: 'dry' | 'live'
     log: quiet,
     now: () => NOW,
   };
-  return { d, recorded, asked };
+  return { d, recorded, asked, filed };
 }
 
 test('★ only the post over the bar, on a source that reads responses, is read and stored as facts', async () => {
@@ -95,4 +98,25 @@ test('★ a failed read records nothing: an outage is not "no crypto talk"', asy
   const { d, recorded } = deps({ fail: true });
   assert.equal((await readCryptoAttention(d)).read, 0);
   assert.equal(recorded.length, 0);
+});
+
+test('★ a shill is filed as an ad kind answer: by its own text before any read, or by the author\'s own replies', async () => {
+  const own = deps({ ownReply: true });
+  await readCryptoAttention(own.d);
+  assert.deepEqual(own.filed, [{ id: 'x:1', name: 'AD', prompt: 'post-kind@shill-rule-1' }]);
+  assert.equal(own.recorded[0]?.row.own?.cashtags.DOG, 1);
+
+  const clean = deps();
+  await readCryptoAttention(clean.d);
+  assert.deepEqual(clean.filed, [], "another account's cashtag is a signal, not a shill");
+
+  TEXT = 'buy $DOG now';
+  const text = deps({ fail: true });
+  await readCryptoAttention(text.d);
+  TEXT = 'a dog';
+  assert.deepEqual(text.filed.map((f) => f.name), ['AD'], 'filed even when the read fails');
+
+  const dry = deps({ mode: 'dry', ownReply: true });
+  await readCryptoAttention(dry.d);
+  assert.deepEqual(dry.filed, []);
 });

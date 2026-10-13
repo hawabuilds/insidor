@@ -825,6 +825,7 @@ export async function withRuntime<T>(
             readCryptoAttention({
               platforms,
               attention: new PgCryptoAttentionRepo(db),
+              kinds: new PgPostJudgementRepo(db),
               items: repos.items,
               meter,
               mode: cfg.spend.kind,
