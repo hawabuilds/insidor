@@ -162,7 +162,7 @@ describe('matchPostCoin', () => {
   });
 });
 
-describe('2026-10-14: copycat links (held-out gold: one more right, no new wrong)', () => {
+describe('2026-10-14: copycat links and close pictures (held-out gold: 7 to 10 right, no new wrong)', () => {
   const link = ['https://social.example/someone/status/2080077693593223329'];
   const DAY = 86_400_000;
   it('★ several coins link the post: the only one launched inside the window is proven (Himgajria)', () => {
@@ -173,5 +173,19 @@ describe('2026-10-14: copycat links (held-out gold: one more right, no new wrong
   it('two linking coins inside the window are still a tie', () => {
     const r = matchPostCoin(post, [coin({ address: 'A', links: link }), coin({ address: 'B', links: link, launchedAt: (POSTED + 3_600_000) as Millis })], BARS);
     assert.equal(r.kind, 'unsure');
+  });
+  const close = { ...BARS, closePicture: DEFAULT_POLICY.group.image.likely };
+  it('★ the one named coin in the window with a close picture is likely, never proven (Dr Trump, 0.93)', () => {
+    const r = matchPostCoin(post, [coin({ address: 'DRTRUMP', pictureSimilarity: 0.93, samePicture: false }), coin({ address: 'OLD', launchedAt: (POSTED + 100 * DAY) as Millis })], close);
+    assert.equal(r.kind, 'unsure');
+    assert.equal(r.kind === 'unsure' ? r.likely : null, 'DRTRUMP');
+  });
+  it('★ not when another named coin in the window was never compared (a copy may be closer)', () => {
+    const r = matchPostCoin(post, [coin({ address: 'A', pictureSimilarity: 0.86, samePicture: false }), coin({ address: 'B', pictureSimilarity: null, hashDistance: null })], close);
+    assert.equal(r.kind === 'unsure' ? r.likely : 'x', null);
+  });
+  it('not under the bar (an unrelated TRUMP COIN at 0.788), and not without the rule', () => {
+    assert.equal((r => (r.kind === 'unsure' ? r.likely : 'x'))(matchPostCoin(post, [coin({ address: 'A', pictureSimilarity: 0.788, samePicture: false })], close)), null);
+    assert.equal((r => (r.kind === 'unsure' ? r.likely : 'x'))(matchPostCoin(post, [coin({ address: 'A', pictureSimilarity: 0.93, samePicture: false })], BARS)), null);
   });
 });

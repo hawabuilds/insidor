@@ -18,7 +18,7 @@ Cases with a finished search: 354 of 354. Picture comparisons: 184 embedding pai
 
 | | proven right | proven wrong | likely right | likely wrong | missed |
 |---|---|---|---|---|---|
-| origin posts | 34.7% (17) | 4.1% (2) | 2.0% (1) | 0.0% (0) | 59.2% (29) |
+| origin posts | 34.7% (17) | 4.1% (2) | 4.1% (2) | 0.0% (0) | 57.1% (28) |
 | no-coin posts | — | 2.8% (8) | — | 0.0% (0) | — |
 
 Wrong links (proven, the only answer with a Buy), all posts: **3.0% (10)**; on posts a feed can show (the shill rule holds 26 of these as ads): **2.0% (6)**. Likely shown on a wrong coin, all posts: 0.0% (0).
@@ -29,7 +29,7 @@ Wrong links (proven, the only answer with a Buy), all posts: **3.0% (10)**; on p
 
 | | proven right | proven wrong | likely right | likely wrong | missed |
 |---|---|---|---|---|---|
-| origin posts | 36.4% (8) | 0.0% (0) | 0.0% (0) | 0.0% (0) | 63.6% (14) |
+| origin posts | 36.4% (8) | 0.0% (0) | 9.1% (2) | 0.0% (0) | 54.5% (12) |
 | no-coin posts | — | 0.0% (0) | — | 0.0% (0) | — |
 
 Wrong links (proven, the only answer with a Buy), all posts: **0.0% (0)**; on posts a feed can show (the shill rule holds 3 of these as ads): **0.0% (0)**. Likely shown on a wrong coin, all posts: 0.0% (0).
@@ -40,7 +40,7 @@ Wrong links (proven, the only answer with a Buy), all posts: **0.0% (0)**; on po
 
 | | proven right | proven wrong | likely right | likely wrong | missed |
 |---|---|---|---|---|---|
-| origin posts | 35.2% (25) | 2.8% (2) | 1.4% (1) | 0.0% (0) | 60.6% (43) |
+| origin posts | 35.2% (25) | 2.8% (2) | 5.6% (4) | 0.0% (0) | 56.3% (40) |
 | no-coin posts | — | 2.8% (8) | — | 0.0% (0) | — |
 
 Wrong links (proven, the only answer with a Buy), all posts: **2.8% (10)**; on posts a feed can show (the shill rule holds 29 of these as ads): **1.8% (6)**. Likely shown on a wrong coin, all posts: 0.0% (0).
@@ -53,7 +53,7 @@ Wrong links (proven, the only answer with a Buy), all posts: **2.8% (10)**; on p
 
 | | proven right | proven wrong | likely right | likely wrong | missed |
 |---|---|---|---|---|---|
-| origin posts | 21.1% (15) | 4.2% (3) | 1.4% (1) | 0.0% (0) | 73.2% (52) |
+| origin posts | 21.1% (15) | 4.2% (3) | 5.6% (4) | 0.0% (0) | 69.0% (49) |
 | no-coin posts | — | 2.1% (6) | — | 0.0% (0) | — |
 
 Wrong links (proven, the only answer with a Buy), all posts: **2.5% (9)**; on posts a feed can show (the shill rule holds 29 of these as ads): **1.8% (6)**. Likely shown on a wrong coin, all posts: 0.0% (0).
@@ -70,7 +70,7 @@ How the right coin became a candidate (origin posts where it was one, 67): by a 
 - it was a candidate, ranked first, but nothing proved it: 29
 - it was a candidate but ranked lower: 13
 - it was a candidate and the subject's name did not match it: 0
-- of these, the likely coin was the right one: 1
+- of these, the likely coin was the right one: 4
 
 ## Proven wrong
 
@@ -90,12 +90,14 @@ How the right coin became a candidate (origin posts where it was one, 67): by a 
 - bt2:1/7658657103057308942 (origin, tune, Aura Bird / Stork): provenRight, links, 18 candidates
 - bt2:4/2074100341155434793 (origin, tune, Attack On Pumpfun / AOP): likelyRight, likely, 37 candidates
 - bt2:28/2071972414653632892 (origin, holdout, Himgajria / HIM): provenRight, links, 26 candidates
+- bt2:63/2081884301096784210 (origin, holdout, I miss you / imy): likelyRight, likely, 19 candidates
 - bt2:72/2080759984069947864 (origin, tune, Justice for Iryna Gorb / Iryna): provenRight, links, 15 candidates
 - bt2:76/2079837600689332595 (origin, tune, Half Rep / NADIA): provenRight, links, 9 candidates
 - bt2:111/2074111506992583138 (origin, tune, Help Alex's Mom / KIRB): provenRight, links, 15 candidates, held as an ad by the shill rule
 - bt2:133/2073034775569330570 (origin, holdout, Happy Independence Day / July 4th): provenRight, links, 17 candidates
 - bt2:145/2078521506007560474 (origin, tune, Future Colosseum / CAGE): provenRight, links, 22 candidates
 - bt2:155/2074224204132864115 (origin, tune, SpaceXAI): provenRight, links, 2 candidates
+- bt2:165/2072681271566708832 (origin, holdout, Dr Trump / DR TRUMP): likelyRight, likely, 7 candidates
 - bt2:171/7666628409451121934 (origin, holdout, Nuannuan): provenRight, links, 5 candidates
 - bt2:179/2075190553185030606 (origin, tune, The Jinchuriki of Black Bull / Bullchuriki): provenRight, pictureAndTiming, 3 candidates
 - bt2:242/2081733077198327841 (origin, holdout, TERMINATE THE FILIBUSTER / $SAVEACT): provenRight, links, 13 candidates
@@ -112,5 +114,6 @@ How the right coin became a candidate (origin posts where it was one, 67): by a 
 - bt3:223/2080002774582850025 (origin, holdout, TOTAL BEAR DEATH / Bear Rippe): provenRight, links, 3 candidates
 - bt3:274/2062318641542988097 (origin, tune, Trump Mogged / MOGGED): provenRight, links, 11 candidates
 - bt3:327/2070253292383252879 (origin, tune, Eyes Up, Guardians / Guardians): provenRight, links, 12 candidates
+- bt3:409/2071915554651209979 (origin, tune, The White Bear / Becker): likelyRight, likely, 17 candidates
 - bt3:421/2062062058376663408 (origin, tune, Make Britain Great Again / MBGA): provenRight, links, 20 candidates
 

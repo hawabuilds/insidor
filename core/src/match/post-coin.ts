@@ -28,7 +28,8 @@
  * LIKELY: when nothing proves a coin, every candidate gets a score — the weighted sum of its
  * signals (Policy.postCoin.weights, fitted on the gold set and refitted by the re-tune) — and
  * the top coin is likely when its share of the ranking (a softmax over the candidates and "none
- * of these", which scores 0) reaches `likelyMinShare`. A likely coin is first in the list and never carries a Buy as proven; the
+ * of these", which scores 0) reaches `likelyMinShare` — or when it is the one named coin in the
+ * window whose picture is close to the post's (`closePicture`, every other named one compared). A likely coin is first in the list and never carries a Buy as proven; the
  * score never leaves the server. Otherwise the answer is unsure (a ranked list) or none.
  *
  * Why proof is a rule and not a score: the card says WHY a coin is the post's, as facts. A sum
@@ -67,6 +68,12 @@ export interface MatchBars {
   readonly descriptionMinWord: number;
   readonly likelyMinShare: number;
   readonly weights: PostCoinWeights;
+  /**
+   * A picture this close (embedding similarity) to the post's, on the one in-window candidate that
+   * has it and a matching name, makes that coin LIKELY when nothing proved one (Policy.group.image
+   * `likely`). Absent: no such rule.
+   */
+  readonly closePicture?: number;
 }
 
 /** The post, as the rule needs it. */
@@ -313,6 +320,21 @@ export function byEvidence(a: CoinEvidence, b: CoinEvidence): number {
   return la - lb || a.address.localeCompare(b.address);
 }
 
+/**
+ * The one in-window candidate whose picture is close to the post's (not near-identical: a creator
+ * redrew or cropped it) and whose name matches — while every other in-window candidate with a
+ * matching name had its picture compared, so a copy we never looked at cannot be the closer one.
+ * Likely, never proven: close is not the same picture.
+ */
+function closePictured(possible: readonly Omit<CoinEvidence, 'share'>[], bars: MatchBars): string | null {
+  const bar = bars.closePicture;
+  if (bar === undefined) return null;
+  const named = possible.filter((e) => e.inWindow && e.name !== 'none');
+  if (named.some((e) => e.pictureSimilarity === null && e.hashDistance === null)) return null;
+  const close = named.filter((e) => e.pictureSimilarity !== null && e.pictureSimilarity >= bar);
+  return close.length === 1 ? (close[0]?.address ?? null) : null;
+}
+
 /** The rule in the header, over every candidate. */
 export function matchPostCoin(post: PostSide, coins: readonly CoinSide[], bars: MatchBars): PostCoinMatch {
   if (coins.length === 0) return { kind: 'none' };
@@ -348,7 +370,7 @@ export function matchPostCoin(post: PostSide, coins: readonly CoinSide[], bars: 
   const ranked = weighed.map(withShare).sort(byEvidence);
   const first = ranked[0];
   const byShare = first !== undefined && !first.before && first.share >= bars.likelyMinShare ? first.address : null;
-  return { kind: 'unsure', likely: byShare, ranked };
+  return { kind: 'unsure', likely: byShare ?? closePictured(possible, bars), ranked };
 }
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
