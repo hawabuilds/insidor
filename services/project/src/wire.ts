@@ -196,6 +196,10 @@ export interface WireCoinEvidence {
   /** The owner checked this coin by hand and said it is the post's ("This is the coin", 0054):
       the card shows it as linking the post. Absent on every coin the evidence settled alone. */
   readonly ownerChecked?: true;
+  /** The owner confirmed this coin for a post about the same story, and this post does not prove it
+      itself: the card says "Coin for this story", never "Links this post" (services/project
+      story-coins.ts). Absent on every coin this post's own evidence or the owner's call on it settled. */
+  readonly storyCoin?: true;
 }
 
 export interface WireBoardRow {

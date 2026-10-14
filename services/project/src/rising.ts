@@ -32,9 +32,14 @@
  * ★ EVERY ROW SAYS WHERE ITS COIN STANDS. `coins` is never null; it is one of these, decided in
  * `postCoins` below:
  *
+ *   the owner said "No coin is from this" on the post → `none`, over everything below;
  *   the owner's current coin call names a coin we hold ("This is the coin", owner-calls.ts)
  *                                       → `matched` with that coin, over the story's link and
  *                                       the evidence, `ownerChecked` among its facts;
+ *   the owner confirmed a coin for a post about the same story (story-coins.ts) and we hold it
+ *                                       → `matched` with that coin, over the narrative's link:
+ *                                       the post's own facts when it proves the coin itself,
+ *                                       else `storyCoin` ("Coin for this story");
  *   the post's promoted story names one coin, several, or is unsure → that story's own link,
  *                                       with its story id (if the read has a story, the story
  *                                       decides) — so a Buy button is the board's confident
@@ -62,8 +67,12 @@
  *   nothing searched yet                → `pending`, a dash — never "no coin yet", which
  *                                       would be a claim about the world we had not checked.
  *
- * A search alone never puts a coin on a post: `matched` needs evidence beyond the name, and the
- * board's `one` only ever comes from a story's row.
+ * A search alone never puts a coin on a post: `matched` needs evidence beyond the name, or the
+ * owner's word on the post or its story, and the board's `one` only ever comes from a story's row.
+ *
+ * ★ A COIN THE OWNER CALLED WRONG IS NEVER SHOWN ON THE POST (`CoinCheck`): wrong on the post, or
+ * on a post of its story, it is taken out of the narrative's link, the search's list and the
+ * evidence's answer before any of them is shown.
  *
  * ★ AN OLDER COIN TRADING ON THE SUBJECT IS ITS OWN FIELD, `runningOlder` (older-coins.ts, 0060):
  * coins launched before the post, named for its subject, whose trading jumped since it — as
@@ -81,7 +90,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import { clearsReachBar, heldKind, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
+import { clearsReachBar, heldKind, type PostCoinCalls, type StoryCoin, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
 import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
@@ -92,7 +101,8 @@ import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.
 const SHORT_VIDEO_SOURCE = 'tiktok';
 import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from './post-match.ts';
 import { projectCoin } from './project.ts';
-import { loadOwnerCoins, withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
+import { loadCoinCalls, withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
+import { loadStoryCoins } from './story-coins.ts';
 import { writeSameNameCoins } from './same-name.ts';
 import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { permalinkFor } from './permalinks.ts';
@@ -308,20 +318,72 @@ export type PostLookup = { readonly coins: readonly string[]; readonly more: boo
  * list in evidence order with each coin's facts. Absent when nothing was weighed.
  */
 export type PostLookupMatch =
-  /* `owner`: the owner named this coin (owner-calls.ts `loadOwnerCoins`); it wins over a story's link. */
-  | { readonly kind: 'matched'; readonly coin: WireCoin; readonly evidence: WireCoinEvidence; readonly owner?: true }
+  /* `owner`: the owner named this coin (owner-calls.ts `loadCoinCalls`); it wins over a story's link.
+     `story`: the owner's coin for this post's story (story-coins.ts), or this post's proven coin when
+     it is that same coin; it wins over a narrative's link too, never over the owner's own call. */
+  | { readonly kind: 'matched'; readonly coin: WireCoin; readonly evidence: WireCoinEvidence; readonly owner?: true; readonly story?: true }
   | { readonly kind: 'unsure'; readonly order: readonly string[]; readonly evidence: ReadonlyMap<string, WireCoinEvidence> };
+
+/**
+ * The owner's coin labels as live checks on one post (the owner, 2026-10-14): coins the owner said
+ * are not this post's — on the post itself, or on a post of its story (story-coins.ts) — are never
+ * shown on it, and "No coin is from this" on it shows no coin at all.
+ */
+export interface CoinCheck {
+  readonly wrong: ReadonlySet<string>;
+  readonly none: boolean;
+}
+
+/** Each post's check from the owner's calls on it and on its story; a post with nothing to check is absent. */
+export function coinChecks(itemIds: readonly string[], calls: ReadonlyMap<string, PostCoinCalls>, stories: ReadonlyMap<string, StoryCoin>): ReadonlyMap<string, CoinCheck> {
+  const out = new Map<string, CoinCheck>();
+  for (const id of itemIds) {
+    const own = calls.get(id);
+    const story = stories.get(id);
+    const wrong = new Set([...(own?.wrong.keys() ?? []), ...(story?.wrong ?? [])]);
+    /* The owner's own coin on the post is never kept off it by a story's wrong call. */
+    if (own?.own !== null && own?.own !== undefined) wrong.delete(own.own.address);
+    const none = own?.none === true;
+    if (wrong.size > 0 || none) out.set(id, { wrong, none });
+  }
+  return out;
+}
+
+/** A narrative's link with the coins the owner called wrong taken out; a link left with fewer than it needs is no link. */
+export function withoutWrong(link: WireCoinLink | undefined, check: CoinCheck | null): WireCoinLink | undefined {
+  if (link === undefined || check === null || check.wrong.size === 0) return link;
+  if (link.kind === 'one') return check.wrong.has(link.coin.address) ? undefined : link;
+  if (link.kind === 'several') {
+    const kept = link.coins.filter((c) => !check.wrong.has(c.address));
+    if (kept.length === link.coins.length) return link;
+    const [a, b, ...rest] = kept;
+    /* One left is not "several", and is not the board's confident `one` either: the post decides. */
+    return a !== undefined && b !== undefined ? { kind: 'several', coins: [a, b, ...rest] } : undefined;
+  }
+  return link;
+}
+
+/** A post's finished search with the coins the owner called wrong taken out of its list. */
+export function lookupWithoutWrong(lookup: PostLookup, check: CoinCheck | undefined): PostLookup {
+  if (check === undefined || check.wrong.size === 0 || !('coins' in lookup)) return lookup;
+  return { ...lookup, coins: lookup.coins.filter((a) => !check.wrong.has(a)) };
+}
 
 /** The row's coin line and the story it came from, by the rule in the header. */
 export function postCoins(
-  storyLink: WireCoinLink | undefined,
+  linked: WireCoinLink | undefined,
   lookup: PostLookup | null,
+  check: CoinCheck | null = null,
 ): { readonly coins: WirePostCoinLink; readonly fromStory: boolean; readonly sameName: readonly string[] } {
-  /* The owner's own coin first: "This is the coin" outranks a narrative's link and the evidence. */
-  if (lookup !== null && 'coins' in lookup && lookup.match?.kind === 'matched' && lookup.match.owner === true) {
+  /* "No coin is from this": the owner said so, and no story, search or evidence says otherwise. */
+  if (check?.none === true) return { coins: { kind: 'none' }, fromStory: false, sameName: [] };
+  /* The owner's own coin first: "This is the coin" outranks a narrative's link and the evidence;
+     then the owner's coin for this post's story ("Coin for this story"). */
+  if (lookup !== null && 'coins' in lookup && lookup.match?.kind === 'matched' && (lookup.match.owner === true || lookup.match.story === true)) {
     const m = lookup.match;
     return { coins: { kind: 'matched', coin: m.coin, evidence: m.evidence }, fromStory: false, sameName: [m.coin.address, ...lookup.coins.filter((a) => a !== m.coin.address)] };
   }
+  const storyLink = withoutWrong(linked, check);
   if (storyLink !== undefined && (storyLink.kind === 'one' || storyLink.kind === 'several' || storyLink.kind === 'unsure')) {
     return { coins: storyLink, fromStory: true, sameName: [] };
   }
@@ -378,10 +440,11 @@ export function projectRisingPost(
   lookup: PostLookup | null = null,
   runningOlder: readonly WireOlderCoin[] = [],
   sheet: WirePostSheetFacts | null = null,
+  check: CoinCheck | null = null,
 ): WireRisingPost {
   const latest = readings[readings.length - 1];
   const link = row.story_id === null ? undefined : coinsByStory.get(row.story_id);
-  const coin = postCoins(link, lookup);
+  const coin = postCoins(link, lookup, check);
   const handle = (row.handle ?? '').trim().replace(/^@/, '');
   const picture = pictureOf(row.media);
   const post: WireRisingPost = {
@@ -548,7 +611,14 @@ export async function buildRising(
     return why === 'passes';
   });
   const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
-  const lookups = await withMatches(db, rows, await loadPostLookups(db, rows.map((row) => row.item_id)), coinsByStory, nowMs, sparkWindowMs, policy);
+  /* ★ THE OWNER'S COIN LABELS, LIVE: every coin call (the owner's own coin, the coins called wrong,
+     "No coin is from this") and the coin the owner confirmed for each post's story. */
+  const rowIds = rows.map((row) => row.item_id);
+  const calls = await loadCoinCalls(db, null);
+  const stories = await loadStoryCoins(db, rowIds, calls, policy);
+  const checks = coinChecks(rowIds, calls, stories);
+  const searched = new Map([...(await loadPostLookups(db, rowIds))].map(([id, l]) => [id, lookupWithoutWrong(l, checks.get(id))] as const));
+  const lookups = await withMatches(db, rows, searched, coinsByStory, nowMs, sparkWindowMs, policy, calls, stories, checks);
   const older = await loadRunningOlder(db, rows.map((row) => row.item_id));
   /* The order model: the latest applied fit, and crypto attention only when the fit weighs it. */
   const scores = new PgScoreModelRepo(db);
@@ -584,8 +654,8 @@ export async function buildRising(
           return g === null ? null : Math.round(g);
         })(),
         tickersInReplies: crypto.get(row.item_id)?.othersTickers ?? null,
-      }),
-      sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup).sameName,
+      }, checks.get(row.item_id) ?? null),
+      sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup, checks.get(row.item_id) ?? null).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
       fyp: !underBar && clearsReachBar('fyp', barViews, postedAt, policy, scale),
       /* Six hours, unless still climbing fast (fyp-freshness.ts), with `rising.fypMaxAgeOn`. For
@@ -621,7 +691,14 @@ export async function buildRising(
 /**
  * Each searched post's coins weighed by evidence (post-match.ts), the answer folded into its
  * lookup: a confident coin is projected as the board projects its coins, with its market. A post
- * whose narrative decides its coins is not weighed — if the read has a story, the story decides.
+ * whose narrative decides its coins is not weighed — if the read has a story, the story decides —
+ * unless the owner confirmed a coin for its story, which outranks the narrative's link: then the
+ * post is weighed to learn whether it proves that coin itself.
+ *
+ * Then the owner's labels, live: the owner's own coin over everything; else the story's coin —
+ * "Links this post" when the post's own evidence proves it, "Coin for this story" (`storyCoin`)
+ * when it does not; and a coin the owner called wrong for the post or its story is never the
+ * post's coin, proven or not.
  */
 async function withMatches(
   db: Db,
@@ -631,51 +708,94 @@ async function withMatches(
   nowMs: Millis,
   sparkWindowMs: number,
   policy: typeof DEFAULT_POLICY,
+  calls: ReadonlyMap<string, PostCoinCalls> = new Map(),
+  stories: ReadonlyMap<string, StoryCoin> = new Map(),
+  checks: ReadonlyMap<string, CoinCheck> = new Map(),
 ): Promise<ReadonlyMap<string, PostLookup>> {
+  const ownerCoins = new Map(rows.flatMap((row) => {
+    const own = calls.get(row.item_id)?.own;
+    return own === null || own === undefined ? [] : [[row.item_id, own.address] as const];
+  }));
+  /* The story's coin, for a post with no coin of the owner's own, no "none", and the coin not called wrong. */
+  const storyCoinOf = new Map(rows.flatMap((row) => {
+    const sc = stories.get(row.item_id)?.coin;
+    const check = checks.get(row.item_id);
+    if (sc === null || sc === undefined || ownerCoins.has(row.item_id) || check?.none === true || check?.wrong.has(sc.address) === true) return [];
+    return [[row.item_id, sc.address] as const];
+  }));
   const lists = new Map<string, readonly string[]>();
   for (const row of rows) {
-    const story = row.story_id === null ? undefined : coinsByStory.get(row.story_id)?.kind;
-    if (story === 'one' || story === 'several' || story === 'unsure') continue;
+    const story = row.story_id === null ? undefined : withoutWrong(coinsByStory.get(row.story_id), checks.get(row.item_id) ?? null)?.kind;
+    if ((story === 'one' || story === 'several' || story === 'unsure') && !storyCoinOf.has(row.item_id)) continue;
     const l = lookups.get(row.item_id);
     /* A search that found nothing is weighed too: the coin may be one its picture or its replies
        found (post-match.ts widens the list). */
     if (l !== undefined && 'coins' in l) lists.set(row.item_id, l.coins);
   }
-  const ownerCoins = await loadOwnerCoins(db, rows.map((row) => row.item_id));
-  if (lists.size === 0 && ownerCoins.size === 0) return lookups;
+  if (lists.size === 0 && ownerCoins.size === 0 && storyCoinOf.size === 0) return lookups;
   const weighed: ReadonlyMap<string, PostMatch> = lists.size === 0 ? new Map() : await weighPostCoins(db, lists, policy);
-  const confident = [...weighed.values()].flatMap((m) => (m.decision.kind === 'confident' ? [m.decision.address] : []));
-  const facts = await loadCoinFactsByAddress(db, [...new Set([...confident, ...ownerCoins.values()])]);
+  /* A coin the owner called wrong for the post is never its proven coin, whatever the evidence says. */
+  const wrongFor = (itemId: string, address: string): boolean => checks.get(itemId)?.wrong.has(address) === true;
+  const confident = [...weighed].flatMap(([id, m]) => (m.decision.kind === 'confident' && !wrongFor(id, m.decision.address) ? [m.decision.address] : []));
+  const facts = await loadCoinFactsByAddress(db, [...new Set([...confident, ...ownerCoins.values(), ...storyCoinOf.values()])]);
   const options = { nowMs, sparkWindowMs, marketFreshnessMs: policy.market.readingFreshnessMs, feedFreshnessMs: policy.assets.feedFreshnessMs };
   const out = new Map(lookups);
   for (const [itemId, m] of weighed) {
     const l = lookups.get(itemId);
     if (l === undefined || !('coins' in l)) continue;
-    const evidence = new Map(m.evidence.map(({ address, ...e }) => [address, e] as const));
+    const kept = m.evidence.filter((x) => !wrongFor(itemId, x.address));
+    const evidence = new Map(kept.map(({ address, ...e }) => [address, e] as const));
     const d = m.decision;
-    const coin = d.kind === 'confident' ? facts.get(d.address) : undefined;
-    const e = d.kind === 'confident' ? evidence.get(d.address) : undefined;
+    const settled = d.kind === 'confident' && !wrongFor(itemId, d.address) ? d.address : null;
+    const coin = settled === null ? undefined : facts.get(settled);
+    const e = settled === null ? undefined : evidence.get(settled);
     /* A confident coin we cannot project (not an observed coin we hold) stays in the list: the
        card never offers Buy on a coin it cannot show. */
     if (coin !== undefined && e !== undefined) {
-      out.set(itemId, { ...l, match: { kind: 'matched', coin: projectCoin(coin, options), evidence: e } });
+      out.set(itemId, { ...l, match: { kind: 'matched', coin: projectCoin(coin, options), evidence: e, ...(settled === storyCoinOf.get(itemId) ? { story: true as const } : {}) } });
     } else {
-      out.set(itemId, { ...l, match: { kind: 'unsure', order: m.evidence.map((x) => x.address), evidence } });
+      out.set(itemId, { ...l, match: { kind: 'unsure', order: kept.map((x) => x.address), evidence } });
     }
+  }
+  const postedAt = new Map(rows.map((row) => [row.item_id, toMs(row.posted_at) ?? toMs(row.first_seen_at)] as const));
+  const factsAgainst = (itemId: string, address: string, coin: WireCoin) => {
+    const weighedHere = weighed.get(itemId)?.evidence.find((x) => x.address === address);
+    const posted = postedAt.get(itemId) ?? null;
+    return {
+      weighedHere,
+      launchedAfterMs: weighedHere?.launchedAfterMs ?? (coin.mintedAt.at === null || posted === null ? null : coin.mintedAt.at - posted),
+    };
+  };
+  /* The story's coin, where the post itself did not prove it (a proof of it is already `story` above;
+     a proof of ANOTHER coin is a fact about this post and stays). A coin we do not hold yet waits. */
+  for (const [itemId, address] of storyCoinOf) {
+    const l = out.get(itemId);
+    const base = l !== undefined && 'coins' in l ? l : { coins: [], more: false };
+    if (base.match?.kind === 'matched') continue;
+    const f = facts.get(address);
+    if (f === undefined) continue;
+    const coin = projectCoin(f, options);
+    const { weighedHere, launchedAfterMs } = factsAgainst(itemId, address, coin);
+    const evidence: WireCoinEvidence = {
+      linksPost: weighedHere?.linksPost ?? null,
+      samePicture: weighedHere?.samePicture ?? null,
+      launchedAfterMs,
+      ...(weighedHere?.posterPostedAddress === undefined ? {} : { posterPostedAddress: weighedHere.posterPostedAddress }),
+      storyCoin: true,
+    };
+    out.set(itemId, { ...base, match: { kind: 'matched', coin, evidence, story: true } });
   }
   /* The owner's coin, over all of the above: proven for everyone, with the facts we hold about it
      against the post. A coin we do not hold yet waits for the runner to add it (owner-calls.ts). */
-  const postedAt = new Map(rows.map((row) => [row.item_id, toMs(row.posted_at) ?? toMs(row.first_seen_at)] as const));
   for (const [itemId, address] of ownerCoins) {
     const f = facts.get(address);
     if (f === undefined) continue;
     const coin = projectCoin(f, options);
-    const weighedHere = weighed.get(itemId)?.evidence.find((x) => x.address === address);
-    const posted = postedAt.get(itemId) ?? null;
+    const { weighedHere, launchedAfterMs } = factsAgainst(itemId, address, coin);
     const evidence: WireCoinEvidence = {
       linksPost: true,
       samePicture: weighedHere?.samePicture ?? null,
-      launchedAfterMs: weighedHere?.launchedAfterMs ?? (coin.mintedAt.at === null || posted === null ? null : coin.mintedAt.at - posted),
+      launchedAfterMs,
       ...(weighedHere?.posterPostedAddress === undefined ? {} : { posterPostedAddress: weighedHere.posterPostedAddress }),
       ownerChecked: true,
     };
