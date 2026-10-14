@@ -42,6 +42,15 @@ const ENTRY = {
   __search_terms: { keyword: 'funny', sort_type: 'Most recent', publish_time: 'YESTERDAY', region: 'US' },
 };
 
+test('★ the picture is the JPEG of the 300px rendition, not the HEIC links listed before it', () => {
+  const heic = (h: string) => `https://${h}-common-sign.tiktokcdn-us.com/avt/a~tplv-tiktokx-cropcenter-q:300:300:q70.heic?x-expires=1&x-signature=h`;
+  const jpeg = 'https://p16-common-sign.tiktokcdn-us.com/avt/a~tplv-tiktokx-cropcenter-q:300:300:q70.jpeg?x-expires=1&x-signature=j';
+  const entry = { ...ENTRY, author: { ...ENTRY.author, avatar_300x300: { url_list: [heic('p16'), heic('p19'), jpeg] } } };
+  assert.equal(toAuthor(fromSearchActor(entry), AT as never)?.pictureUri, jpeg);
+  const onlyHeic = { ...ENTRY, author: { uid: '1', unique_id: 'x', avatar_300x300: { url_list: [heic('p16')] } } };
+  assert.equal(toAuthor(fromSearchActor(onlyHeic), AT as never)?.pictureUri, heic('p16'), 'HEIC alone is still a picture Safari draws');
+});
+
 test('the actor is asked newest first, over the past day, every word in one run, 30 a word for the run', () => {
   assert.deepEqual(toSearchActorInput(['meme', 'funny']), {
     keywords: ['meme', 'funny'],
