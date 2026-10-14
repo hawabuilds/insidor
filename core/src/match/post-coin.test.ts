@@ -161,3 +161,17 @@ describe('matchPostCoin', () => {
     assert.equal(matchPostCoin(post, [], BARS).kind, 'none');
   });
 });
+
+describe('2026-10-14: copycat links (held-out gold: one more right, no new wrong)', () => {
+  const link = ['https://social.example/someone/status/2080077693593223329'];
+  const DAY = 86_400_000;
+  it('★ several coins link the post: the only one launched inside the window is proven (Himgajria)', () => {
+    const r = matchPostCoin(post, [coin({ address: 'ORIGIN', links: link }), coin({ address: 'LATE1', links: link, launchedAt: (POSTED + 104 * DAY) as Millis }), coin({ address: 'LATE2', links: link, launchedAt: (POSTED + 104 * DAY) as Millis })], BARS);
+    assert.equal(r.kind, 'confident');
+    assert.equal(r.kind === 'confident' ? r.address : null, 'ORIGIN');
+  });
+  it('two linking coins inside the window are still a tie', () => {
+    const r = matchPostCoin(post, [coin({ address: 'A', links: link }), coin({ address: 'B', links: link, launchedAt: (POSTED + 3_600_000) as Millis })], BARS);
+    assert.equal(r.kind, 'unsure');
+  });
+});
