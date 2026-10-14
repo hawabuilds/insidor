@@ -114,17 +114,28 @@ function pass(adapter: PlatformAdapter, at: number, watch: WatchClock, opts: { t
 
 /* ── the spacing ──────────────────────────────────────────────────────────── */
 
+/* The spacing derived from the line, as it is with no spacing set. */
+const DERIVED = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, watchAskEveryMs: null } };
+
 test('★ a paid ask is spaced so a day of them costs the discovery share of the line', () => {
-  const every = watchEveryMs(USD_PER_RUN, LINE_USD, CADENCE_MS, DEFAULT_POLICY);
+  const every = watchEveryMs(USD_PER_RUN, LINE_USD, CADENCE_MS, DERIVED);
   const asksPerDay = MS_PER_DAY / every;
   assert.ok(Math.abs(asksPerDay * USD_PER_RUN - LINE_USD * DEFAULT_POLICY.feed.budgetShare) < 1e-6);
+});
+
+test('★ a spacing the owner set wins over the derived one, never faster than the pass, and a free ask is not spaced', () => {
+  const set = DEFAULT_POLICY.feed.watchAskEveryMs;
+  assert.ok(set !== null);
+  assert.equal(watchEveryMs(USD_PER_RUN, LINE_USD, CADENCE_MS, DEFAULT_POLICY), Math.max(CADENCE_MS, set));
+  assert.equal(watchEveryMs(USD_PER_RUN, LINE_USD, set * 2, DEFAULT_POLICY), set * 2);
+  assert.equal(watchEveryMs(0, LINE_USD, CADENCE_MS, DEFAULT_POLICY), CADENCE_MS);
 });
 
 test('a free ask, or a line with no money on it, is not spaced: the pass cadence and the meter decide', () => {
   assert.equal(watchEveryMs(0, LINE_USD, CADENCE_MS, DEFAULT_POLICY), CADENCE_MS);
   assert.equal(watchEveryMs(USD_PER_RUN, 0, CADENCE_MS, DEFAULT_POLICY), CADENCE_MS);
   // Never more often than the pass itself runs, however rich the line.
-  assert.equal(watchEveryMs(0.000001, 1_000_000, CADENCE_MS, DEFAULT_POLICY), CADENCE_MS);
+  assert.equal(watchEveryMs(0.000001, 1_000_000, CADENCE_MS, DERIVED), CADENCE_MS);
 });
 
 test('the watch word rotates through the list as the clock steps, and skips blanks', () => {
