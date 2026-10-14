@@ -32,17 +32,18 @@ test('★ an ongoing story\'s coin launched days before stays while the venue st
 test('a coin launched long before, not quoted, is left out unless named exactly or linked', () => {
   const exact = coin('AURAFARMER', { launchedAtMs: POSTED - 90 * H, tradable: false });
   const linked = coin('ZZZ', { launchedAtMs: POSTED - 90 * H, tradable: false });
-  assert.deepEqual(run(['AURAFARMER'], [exact, linked], { ZZZ: { linksPost: true } }), ['AURAFARMER', 'ZZZ']);
+  assert.deepEqual(run(['AURAFARMER'], [exact, linked], { ZZZ: { linksPost: true } }), ['ZZZ', 'AURAFARMER'], 'a linked coin first');
 });
 
 test('★ a name that is only a generic word never counts ("VIRAL" under a viral post)', () => {
   assert.deepEqual(run(['Viral Cat'], [coin('VIRAL', { name: 'viral' })]), []);
 });
 
-test('at most ten, largest market cap first, an unread cap last', () => {
-  const many = Array.from({ length: 12 }, (_, i) => coin(`MOODENG${i}`, { name: 'Moo Deng', marketCapUsd: i === 3 ? null : i * 1000 }));
-  const out = run(['Moo Deng'], many);
-  assert.equal(out.length, 10);
-  assert.equal(out[0], 'MOODENG11');
-  assert.equal(out.includes('MOODENG3'), false);
+test('★ best fit first: linked, then the earliest launched (the first coin, not its copycats), then the larger cap; at most `maxCoins`', () => {
+  const many = Array.from({ length: 12 }, (_, i) => coin(`MOODENG${i}`, { name: 'Moo Deng', launchedAtMs: POSTED + (12 - i) * 60_000, marketCapUsd: i * 1000 }));
+  const out = run(['Moo Deng'], many, { MOODENG2: { linksPost: true } });
+  assert.equal(out.length, BARS.maxCoins);
+  assert.equal(out[0], 'MOODENG2', 'linked first');
+  assert.equal(out[1], 'MOODENG11', 'then the earliest launched, though its cap is the largest only by chance');
+  assert.equal(out.includes('MOODENG0'), false, 'the latest copycat is cut');
 });

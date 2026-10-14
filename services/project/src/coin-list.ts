@@ -17,9 +17,9 @@
  *   timing   launched after the post, or at most `graceBeforeMs` before it (an ongoing story);
  *            an unknown launch is not held against it
  *
- * and it is dropped when it is QUIET: launched over `quietAfterMs` ago, linked by nothing, and its
- * newest market reading says it cannot be traded. At most `maxCoins` stay, largest market cap
- * first (an unread cap after every read one). The card's count is the kept list's length; an
+ * and it is dropped when it is QUIET: launched over `quietAfterMs` ago, linked by nothing, not named
+ * exactly, and neither quotable nor worth `aliveCapUsd`. At most `maxCoins` stay, best fit first
+ * (`plausibleCoins`). The card's count is the kept list's length; an
  * empty list is "No coin yet" with Create (rising.ts `postCoins`).
  *
  * ★ "NO TRADES IN 24 HOURS" IS NOT SOMETHING WE READ. We hold no per-coin trade count; the nearest
@@ -52,13 +52,15 @@ export interface ListBars {
   readonly quietAfterMs: number;
   readonly maxCoins: number;
   readonly descriptionShare: number;
+  /** A market cap this large says a coin is alive even when the venue's last quote failed (Policy.universe.keep). */
+  readonly aliveCapUsd: number;
   readonly generic: readonly string[];
   readonly name: Pick<MatchBars, 'minVariantLength'>;
 }
 
 export function listBars(p: Policy): ListBars {
   const l = p.postCoin.list;
-  return { graceBeforeMs: l.graceBeforeMs, quietAfterMs: l.quietAfterMs, maxCoins: l.maxCoins, descriptionShare: l.descriptionShare, generic: p.group.genericSpans, name: p.postCoin };
+  return { graceBeforeMs: l.graceBeforeMs, quietAfterMs: l.quietAfterMs, maxCoins: l.maxCoins, descriptionShare: l.descriptionShare, aliveCapUsd: p.universe.keep.marketCapUsd, generic: p.group.genericSpans, name: p.postCoin };
 }
 
 /** Pure: the listed coins that could be the post's, at most `maxCoins`, largest market cap first. */
@@ -66,11 +68,12 @@ export function plausibleCoins(
   post: { readonly names: readonly string[]; readonly postedAtMs: number | null },
   listed: readonly string[],
   coins: ReadonlyMap<string, ListedCoin>,
-  evidence: ReadonlyMap<string, Pick<PostCoinEvidence, 'linksPost' | 'linksAccount' | 'samePicture' | 'descriptionMatch' | 'addressByAuthor' | 'addressByOthers'>>,
+  evidence: ReadonlyMap<string, Pick<PostCoinEvidence, 'linksPost' | 'linksAccount' | 'samePicture' | 'descriptionMatch' | 'addressByAuthor' | 'addressByOthers'> >,
   bars: ListBars,
   nowMs: number,
 ): readonly string[] {
   const generic = new Set(bars.generic.map((g) => compactName(g)));
+  const linkedTo = new Set<string>();
   const kept = listed.flatMap((address) => {
     const c = coins.get(address);
     if (c === undefined) return [];
@@ -85,12 +88,26 @@ export function plausibleCoins(
     const after = post.postedAtMs === null || c.launchedAtMs === null ? null : c.launchedAtMs - post.postedAtMs;
     /* Launched before the post: only a coin of an ongoing story — one the venue still quotes, or
        one named exactly for the subject. */
-    const timed = after === null || after >= -bars.graceBeforeMs || c.tradable === true || match === 'exact';
-    const quiet = !linked && match !== 'exact' && c.launchedAtMs !== null && c.launchedAtMs < nowMs - bars.quietAfterMs && c.tradable === false;
+    const alive = c.tradable === true || (c.marketCapUsd ?? 0) >= bars.aliveCapUsd;
+    const timed = after === null || after >= -bars.graceBeforeMs || alive || match === 'exact';
+    const quiet = !linked && match !== 'exact' && !alive && c.launchedAtMs !== null && c.launchedAtMs < nowMs - bars.quietAfterMs && c.tradable === false;
+    if (linked) linkedTo.add(address);
     return !quiet && (linked || (named && timed)) ? [c] : [];
   });
+  /* ★ BEST FIT FIRST, BY FACTS A PERSON CAN CHECK (the owner, 2026-10-14: "rank by how well each coin
+     fits, not just MC"). A coin linked to the post (its links, picture, description or an address
+     under it) first; then the earliest launched — an ongoing story's coin that still trades, then
+     the first coin launched after the post, ahead of the copycats that follow it; between equals the
+     larger market cap. On the owner's 22 coin labels this keeps his coin in 11 lists (9 by market
+     cap alone) with 5.3 other coins a list at six coins (9.2 at ten by market cap). */
   return kept
-    .sort((a, b) => (b.marketCapUsd ?? -1) - (a.marketCapUsd ?? -1) || listed.indexOf(a.address) - listed.indexOf(b.address))
+    .sort(
+      (a, b) =>
+        Number(linkedTo.has(b.address)) - Number(linkedTo.has(a.address)) ||
+        (a.launchedAtMs ?? Number.POSITIVE_INFINITY) - (b.launchedAtMs ?? Number.POSITIVE_INFINITY) ||
+        (b.marketCapUsd ?? -1) - (a.marketCapUsd ?? -1) ||
+        listed.indexOf(a.address) - listed.indexOf(b.address),
+    )
     .slice(0, bars.maxCoins)
     .map((c) => c.address);
 }

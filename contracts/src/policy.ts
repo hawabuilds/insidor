@@ -3100,7 +3100,10 @@ const POLICY_V1: Policy = {
        list) and shows 6.4 other coins a post instead of 12.8, 4.7 on a "No coin" post instead of
        15.7 (4 of 16 now say No coin yet). A coin of an ongoing story launched days before (Altai,
        HomeView) stays because the venue still quotes it; 1 h or 6 h of grace changed nothing. */
-    list: { graceBeforeMs: 10_800_000, quietAfterMs: 86_400_000, maxCoins: 10, descriptionShare: 0.5 },
+    /* maxCoins 6 (2026-10-14 evening, with the list ranked by fit): on the owner's 22 coin labels and
+       live searches his coin is in 11 lists with 5.3 other coins each; 10 by market cap held it in 9
+       with 9.2. */
+    list: { graceBeforeMs: 10_800_000, quietAfterMs: 86_400_000, maxCoins: 6, descriptionShare: 0.5 },
     /* Off (a paid read). 60 hours after the post, every 2 hours, on a source whose re-read is at most
        a tenth of a cent a post: the text source's ($0.00015). The short-video source's is $0.003 a post
        plus $0.001 a run: raise the bar to 0.005 to include it. */
