@@ -19,6 +19,11 @@
  * ★ A FIX IS A RECOMMENDATION, NEVER APPLIED. Discovery's cost is the posts it would return at
  * the supplier's price, scaled from today's measured volumes under the assumption stated in the line.
  *
+ * ★ THE POSTER'S PROFILE (0080): each post's coin — the one the owner gave, else his newest "this is
+ * the coin" for the post, else the runner's — is looked for in every profile text its poster ever
+ * showed us (core `bioAddresses`, the match's own reader), and the table says "the poster's bio
+ * names this coin" when one does, with when that text was first read. Free: our own tables.
+ *
  * What breaks if changed carelessly: the outage check must be the runner's (readOutages). A second
  * definition here would let the table say "down" where the app's list says "unexplained".
  */
@@ -28,7 +33,8 @@ import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import type { Millis } from '../contracts/src/index.ts';
-import { asDb, createPool, DB_ROLE, PgFeedFloorRepo, PgLearningRepo, PgMissedPostRepo, PgRecallRepo, type Db } from '../store/src/index.ts';
+import { bioAddresses } from '../core/src/match/poster-bio.ts';
+import { asDb, createPool, DB_ROLE, PgAuthorRepo, PgFeedFloorRepo, PgLearningRepo, PgMissedPostRepo, PgRecallRepo, type Db } from '../store/src/index.ts';
 import { measureDiscovery } from '../services/runner/src/work/discovery-settings.ts';
 import { readOutages } from '../services/runner/src/work/missed-posts.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
@@ -157,6 +163,35 @@ function fix(r: ReplayRow, vol: Volumes, lagMin: number | null, slow: { floor: n
   return out.length === 0 ? 'None needed on what is known.' : out.join(' ');
 }
 
+/**
+ * For each post, whether its poster's profile names its coin: "the poster's bio names this coin
+ * (read <when>)", "the poster's bio does not name it", or a dash with why. The coin is the post's
+ * recorded one, else the owner's newest "this is the coin" on it.
+ */
+export async function bioNotes(db: Db, posts: readonly { readonly itemId: string; readonly coin: { readonly address: string } | null }[]): Promise<ReadonlyMap<string, string>> {
+  const ids = posts.map((p) => p.itemId);
+  if (ids.length === 0) return new Map();
+  const authors = await db.query<{ item_id: string; author_key: string }>(`select item_id, author_key from public.item where item_id = any($1::text[])`, [ids]);
+  const owner = await db.query<{ item_id: string; coin_address: string }>(
+    `select distinct on (item_id) item_id, coin_address from internal.owner_feedback
+      where subject_kind = 'coin_match' and verdict = 'right' and coin_address is not null and item_id = any($1::text[])
+      order by item_id, created_at desc, id desc`,
+    [ids],
+  );
+  const authorOf = new Map(authors.map((a) => [a.item_id, a.author_key]));
+  const ownerCoin = new Map(owner.map((o) => [o.item_id, o.coin_address]));
+  const bios = await new PgAuthorRepo(db).biosOf([...new Set(authorOf.values())]);
+  return new Map(posts.map((p) => {
+    const coin = p.coin?.address ?? ownerCoin.get(p.itemId) ?? null;
+    const readings = bios.get(authorOf.get(p.itemId) ?? '') ?? [];
+    if (coin === null) return [p.itemId, '— no coin recorded for the post'] as const;
+    if (readings.length === 0) return [p.itemId, "— the poster's bio was never read"] as const;
+    const naming = readings.filter((r) => bioAddresses([r.bio], P.attention).includes(coin));
+    const first = naming.reduce<number | null>((m, r) => (m === null || r.firstReadAt < m ? r.firstReadAt : m), null);
+    return [p.itemId, first === null ? "no: the poster's bio does not name it" : `yes: the poster's bio names this coin (read ${new Date(first).toISOString().slice(0, 16).replace('T', ' ')})`] as const;
+  }));
+}
+
 async function main(): Promise<void> {
   const out = value('--out') ?? DEFAULT_OUT;
   const judge = flag('--judge');
@@ -193,6 +228,7 @@ async function main(): Promise<void> {
     const ctx = { settings: snap?.settings ?? null, outages, postToShownMin: m.postToShownMin, searchLagMin: m.searchLagMin, shortVideoSources: SHORT_VIDEO_SOURCES };
     const evidence = await Promise.all(posts.map((p) => (p.postedAtMs === null ? null : passEvidence(db, p.postedAtMs, m.searchLagMin ?? 0))));
     const rows = posts.map((p, i) => replayOne(p, ctx, fresh.get(p.itemId) ?? null, evidence[i] ?? null));
+    const bio = await bioNotes(db, posts);
     const slowLane = snap?.settings.lanes.find((l) => l.lane === 'slow') ?? null;
 
     const s = snap?.settings;
@@ -202,12 +238,12 @@ async function main(): Promise<void> {
     lines.push(`Today's discovery: ${s === undefined ? 'could not be measured' : s.lanes.map((l) => `${l.lane} floor ${l.floor} likes, reaches back ${l.reachMin} min, every ${l.everyMin} min`).join('; ')}; languages ${s?.langs?.join(' + ') ?? 'any'}; plain reposts left out, replies kept; growth τ ${s?.tauMin ?? '—'} min.`);
     lines.push(`Measured: a main-lane pass returns posts ${m.searchLagMin?.toFixed(1) ?? '—'} min old at the youngest (median); a found post is shown ${m.postToShownMin?.toFixed(1) ?? '—'} min after posting (median). Search today: ${Math.round(m.volumes.postsPerDay).toLocaleString('en')} posts, ${money(m.volumes.usdPerDay)} in the last day.`);
     lines.push(`Discovery not running: ${outages === null ? 'could not be read' : outages.map((o) => `${o.fromMs === null ? 'before the first pass' : new Date(o.fromMs).toISOString().slice(0, 16)} → ${o.toMs === null ? 'now' : new Date(o.toMs).toISOString().slice(0, 16)}`).join('; ')} (UTC; a gap longer than ${P.feed.windowMin} min with no post stored).`, '');
-    lines.push('| Post | Posted (UTC) | Discovery running then? | Today\'s settings find it? | Judge passes it? | Clears the views bar? | Shown before its coin? | Fix, at each step that said no |');
-    lines.push('|---|---|---|---|---|---|---|---|');
+    lines.push('| Post | Posted (UTC) | Discovery running then? | Today\'s settings find it? | Judge passes it? | Clears the views bar? | Shown before its coin? | Poster\'s bio names its coin? | Fix, at each step that said no |');
+    lines.push('|---|---|---|---|---|---|---|---|---|');
     for (const r of rows) {
       const who = r.post.url.match(/\.com\/([^/]+)\//)?.[1] ?? r.post.itemId;
       const c = (g: { ok: boolean | null; said: string }) => cell(`${yes(g.ok)}: ${g.said}`);
-      lines.push(`| [${who}](${r.post.url}) | ${r.post.postedAtMs === null ? '—' : new Date(r.post.postedAtMs).toISOString().slice(0, 16).replace('T', ' ')} | ${c(r.running)} | ${c(r.found)} | ${c(r.judge)} | ${c(r.bar)} | ${c(r.beforeLaunch)} | ${cell(fix(r, m.volumes, m.searchLagMin, slowLane))} |`);
+      lines.push(`| [${who}](${r.post.url}) | ${r.post.postedAtMs === null ? '—' : new Date(r.post.postedAtMs).toISOString().slice(0, 16).replace('T', ' ')} | ${c(r.running)} | ${c(r.found)} | ${c(r.judge)} | ${c(r.bar)} | ${c(r.beforeLaunch)} | ${cell(bio.get(r.post.itemId) ?? '—')} | ${cell(fix(r, m.volumes, m.searchLagMin, slowLane))} |`);
     }
     lines.push('', 'Read "not known" as not known: a missed post was read once, after the fact, so its likes and views over time were never measured.');
     const outPath = out;
