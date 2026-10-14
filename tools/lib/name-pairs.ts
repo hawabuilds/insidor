@@ -37,7 +37,7 @@ export interface PairPost {
   text: string;
   picture: string | null;
   postedAtMs: number | null;
-  readonly coins: { name: string; ticker: string; address: string | null; source: NamePair['source']; availableAtMs: number | null }[];
+  readonly coins: { name: string; ticker: string; address: string | null; source: NamePair['source']; availableAtMs: number | null; rejected: boolean }[];
   readonly sources: Set<NamePair['source']>;
 }
 
@@ -86,9 +86,12 @@ export async function allPairPosts(db: Db): Promise<Map<string, PairPost>> {
     if (post.text === '' && p.text.trim() !== '') post.text = p.text;
     if (post.picture === null && picture !== null) post.picture = picture;
     if (post.postedAtMs === null) post.postedAtMs = p.postedAtMs;
-    post.sources.add(p.source);
+    if (p.rejected !== true) post.sources.add(p.source);
     const key = `${p.name.toLowerCase()}|${p.ticker.toUpperCase()}`;
-    if (!post.coins.some((c) => `${c.name.toLowerCase()}|${c.ticker.toUpperCase()}` === key)) post.coins.push({ name: p.name, ticker: p.ticker.replace(/^\$+/, ''), address: p.address, source: p.source, availableAtMs: p.availableAtMs });
+    const had = post.coins.find((c) => `${c.name.toLowerCase()}|${c.ticker.toUpperCase()}` === key);
+    /* The owner's call on a pair decides whether it is rejected, as the store's `put` does. */
+    if (had === undefined) post.coins.push({ name: p.name, ticker: p.ticker.replace(/^\$+/, ''), address: p.address, source: p.source, availableAtMs: p.availableAtMs, rejected: p.rejected === true });
+    else if (p.source === 'owner') had.rejected = p.rejected === true;
     posts.set(p.itemId, post);
   }
   for (const [id, p] of posts) if (p.text.trim() === '' && p.picture === null) posts.delete(id);

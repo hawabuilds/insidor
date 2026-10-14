@@ -62,7 +62,8 @@ try {
   const ownerCalls = await db.query<{ item_id: string; verdict: string }>(
     `select distinct on (item_id) item_id, verdict from internal.owner_feedback where subject_kind = 'coin_match' order by item_id, created_at desc, id desc`,
   );
-  const coinless = ownerCalls.filter((c) => c.verdict === 'none').map((c) => c.item_id).filter((id) => !posts.has(id));
+  const coinless = ownerCalls.filter((c) => c.verdict === 'none').map((c) => c.item_id).filter((id) => !(posts.get(id)?.coins.some((c) => !c.rejected) ?? false));
+  for (const id of coinless) posts.delete(id);
   const coinlessRows = coinless.length === 0 ? [] : await db.query<{ item_id: string; body: string | null; media: unknown; posted_at: Date | null }>('select item_id, body, media, posted_at from public.item where item_id = any($1::text[])', [coinless]);
   const { postPicture } = await import('../core/src/qualify/precedents.ts');
   const none: PairPost[] = coinlessRows.map((r) => ({ itemId: r.item_id, text: r.body ?? '', picture: postPicture(r.media), postedAtMs: r.posted_at === null ? null : new Date(r.posted_at).getTime(), coins: [], sources: new Set() }));
@@ -101,8 +102,10 @@ try {
     return all.flatMap((e) => {
       const values = vectors.get(e.itemId);
       if (e.itemId === h.itemId || values === undefined || e.postedAtMs === null || e.postedAtMs >= at) return [];
-      const coins = e.coins.filter((c) => c.availableAtMs !== null && c.availableAtMs < at).map((c) => ({ name: c.name, ticker: c.ticker }));
-      return coins.length === 0 ? [] : [{ itemId: e.itemId, text: e.text, seen: null, coins, postedAtMs: e.postedAtMs, values }];
+      const ready = e.coins.filter((c) => c.availableAtMs !== null && c.availableAtMs < at);
+      const coins = ready.filter((c) => !c.rejected).map((c) => ({ name: c.name, ticker: c.ticker }));
+      const notCoins = ready.filter((c) => c.rejected).map((c) => ({ name: c.name, ticker: c.ticker }));
+      return coins.length + notCoins.length === 0 ? [] : [{ itemId: e.itemId, text: e.text, seen: null, coins, notCoins, postedAtMs: e.postedAtMs, values }];
     });
   };
 
@@ -134,14 +137,14 @@ try {
   process.stdout.write('\n');
 
   /* Scores. */
-  const scored = held.filter((h) => h.coins.length > 0);
+  const scored = held.filter((h) => h.coins.some((c) => !c.rejected));
   const createOrder = (h: PairPost): NameGuess[] => {
     const j = judgeNames.get(h.itemId) ?? [];
     return [...postNameIdeas(j[0]?.name ?? null, j.slice(1).map((g) => g.name))];
   };
   const pct = (n: number, d: number) => (d === 0 ? '—' : `${n}/${d} (${Math.round((100 * n) / d)}%)`);
   const line = (label: string, rows: PairPost[]) => {
-    const real = (h: PairPost) => h.coins.map((c) => ({ name: c.name, ticker: c.ticker }));
+    const real = (h: PairPost) => h.coins.filter((c) => !c.rejected).map((c) => ({ name: c.name, ticker: c.ticker }));
     const b1 = rows.filter((h) => guessHit(judgeNames.get(h.itemId) ?? [], real(h), 1, P.names)).length;
     const b5 = rows.filter((h) => guessHit(judgeNames.get(h.itemId) ?? [], real(h), P.names.guesses, P.names)).length;
     const c1 = rows.filter((h) => guessHit(createOrder(h), real(h), 1, P.names)).length;
@@ -160,7 +163,7 @@ try {
   console.log(`namer: ${after.size} of ${held.length} posts answered, $${spentNames.toFixed(4)} for ${held.length} posts = $${(spentNames / Math.max(1, held.length)).toFixed(5)} a post`);
 
   /* Ten examples: the first five hits and five misses of the owner's and known posts, then the rest. */
-  const real = (h: PairPost) => h.coins.map((c) => ({ name: c.name, ticker: c.ticker }));
+  const real = (h: PairPost) => h.coins.filter((c) => !c.rejected).map((c) => ({ name: c.name, ticker: c.ticker }));
   const order = [...scored].sort((a, b) => ['owner', 'known', 'gold', 'created', 'linked'].indexOf(set(a)) - ['owner', 'known', 'gold', 'created', 'linked'].indexOf(set(b)));
   const hits = order.filter((h) => guessHit(after.get(h.itemId)?.guesses ?? [], real(h), P.names.guesses, P.names));
   const misses = order.filter((h) => !guessHit(after.get(h.itemId)?.guesses ?? [], real(h), P.names.guesses, P.names));
@@ -171,15 +174,15 @@ try {
     console.log(`- ${h.itemId} [${set(h)}] "${h.text.replace(/\s+/g, ' ').slice(0, 110)}"${a?.seen ? ` (picture: ${a.seen})` : ''}`);
     console.log(`    ours:  ${(a?.guesses ?? []).map((g) => `${g.name} $${g.ticker}`).join(' | ') || '—'}`);
     console.log(`    judge: ${(judgeNames.get(h.itemId) ?? []).map((g) => g.name).join(' | ') || '—'}`);
-    console.log(`    real:  ${h.coins.map((c) => `${c.name} $${c.ticker}`).slice(0, 6).join(' | ')}${h.coins.length > 6 ? ` (+${h.coins.length - 6})` : ''}`);
+    console.log(`    real:  ${real(h).map((c) => `${c.name} $${c.ticker}`).slice(0, 6).join(' | ')}${real(h).length > 6 ? ` (+${real(h).length - 6})` : ''}`);
   }
 
   writeFileSync(OUT, JSON.stringify(Object.fromEntries(held.map((h) => [h.itemId, {
-    set: h.coins.length === 0 ? 'coinless' : set(h),
+    set: real(h).length === 0 ? 'coinless' : set(h),
     before: judgeNames.get(h.itemId) ?? [],
     after: after.get(h.itemId)?.guesses ?? null,
     seen: after.get(h.itemId)?.seen ?? null,
-    real: h.coins.map((c) => ({ name: c.name, ticker: c.ticker, address: c.address })),
+    real: h.coins.filter((c) => !c.rejected).map((c) => ({ name: c.name, ticker: c.ticker, address: c.address })),
     examplesShown: shownCount.get(h.itemId) ?? 0,
   }])), null, 1));
   console.log(`\nwrote ${OUT}; spent $${meter.spentUsd().toFixed(4)} on the learning book`);
