@@ -14,14 +14,29 @@
 /* The owner's row under a For You card: Not a meme and the coin call, once each, small and on
    one line so the card keeps its height; what the owner already said is a small grey tag after
    them, never a button. Only the card uses these; NameCall keeps .strip and .said. */
+/* ONE LINE, always (the owner, 2026-10-14): the buttons never shrink or wrap, and the grey tag is
+   the one thing that gives way, cut with an ellipsis and whole in its title. */
 .cardStrip {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
   align-items: center;
   gap: 6px;
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px dashed var(--border-subtle);
+}
+
+.cardStrip > * {
+  flex: none;
+  white-space: nowrap;
+}
+
+.cardStrip > .saidTag {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cardStrip .mini {
