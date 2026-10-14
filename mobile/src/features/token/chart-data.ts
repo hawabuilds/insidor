@@ -64,7 +64,24 @@ export function defaultTimeframe(r: { readonly onCurve: boolean; readonly launch
 
 export const toUtcSeconds = (ms: number): number => Math.floor(ms / 1000);
 
-export const pointsOf = (candles: readonly Candle[]): ChartPoint[] => candles.map((c) => ({ t: c.t, price: c.c, open: c.o, high: c.h, low: c.l }));
+/**
+ * The source's candles as points, oldest first and one per time. The market source can send two
+ * candles for the same minute (seen 2026-10-14); the chart library refuses that outright and the
+ * whole token page fell over. Two candles at one time are one period: its first open, highest
+ * high, lowest low and last close — no price is made up and none is dropped.
+ */
+export function pointsOf(candles: readonly Candle[]): ChartPoint[] {
+  const out: ChartPoint[] = [];
+  for (const c of [...candles].sort((a, b) => a.t - b.t)) {
+    const last = out[out.length - 1];
+    if (last !== undefined && last.t === c.t) {
+      out[out.length - 1] = { ...last, price: c.c, high: Math.max(last.high ?? last.price, c.h), low: Math.min(last.low ?? last.price, c.l) };
+    } else {
+      out.push({ t: c.t, price: c.c, open: c.o, high: c.h, low: c.l });
+    }
+  }
+  return out;
+}
 
 const finitePositive = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0;
 
