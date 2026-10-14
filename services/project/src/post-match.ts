@@ -69,6 +69,7 @@ export function matchBars(p: Policy = DEFAULT_POLICY, fit: { readonly weights: P
     descriptionMinWord: pc.descriptionMinWord,
     likelyMinShare: fit?.likelyMinShare ?? pc.likelyMinShare,
     weights: fit?.weights ?? pc.weights,
+    closePicture: p.group.image.likely,
   };
 }
 
