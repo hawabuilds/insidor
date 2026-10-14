@@ -279,6 +279,12 @@ export interface RunnerConfig {
    * boot failure: the warnings are then logged only, and the boot line says so.
    */
   readonly ownerWallets: readonly string[];
+  /**
+   * The sources whose posters' profiles the paid bio re-read may ask (work/bio-refresh.ts), from
+   * `BIO_REFRESH_SOURCES`, comma separated source ids. Empty asks nobody: the owner approves this
+   * spend per source (2026-10-14: the short-video source only), and the policy may not name one.
+   */
+  readonly bioRefreshSources: readonly string[];
 }
 
 export class ConfigError extends Error {
@@ -480,6 +486,10 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     chainRpcUrl: (env['HELIUS_API_KEY'] ?? '').trim() === '' ? null : `https://mainnet.helius-rpc.com/?api-key=${(env['HELIUS_API_KEY'] ?? '').trim()}`,
     marketData: marketDataFrom(env),
     ownerWallets: (env['OWNER_WALLET'] ?? '')
+      .split(',')
+      .map((w) => w.trim())
+      .filter((w) => w !== ''),
+    bioRefreshSources: (env['BIO_REFRESH_SOURCES'] ?? '')
       .split(',')
       .map((w) => w.trim())
       .filter((w) => w !== ''),

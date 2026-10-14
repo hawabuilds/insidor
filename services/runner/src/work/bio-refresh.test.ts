@@ -24,7 +24,7 @@ const meter = {
   spentUsd: () => 0,
   line: () => ({ capUsd: 10, spentUsd: 0, stopAtUsd: 10, remainingUsd: 10, unrecordedUsd: 0 }),
 } as unknown as Meter;
-const on = (over: Partial<Policy['postCoin']['bio']> = {}): Policy => ({ ...DEFAULT_POLICY, postCoin: { ...DEFAULT_POLICY.postCoin, bio: { ...DEFAULT_POLICY.postCoin.bio, refreshOn: true, ...over } } });
+const on = (over: Partial<Policy['postCoin']['bio']> = {}): Policy => ({ ...DEFAULT_POLICY, postCoin: { ...DEFAULT_POLICY.postCoin, bio: { ...DEFAULT_POLICY.postCoin.bio, refreshOn: true, refreshMaxUsdPerPost: 0.001, ...over } } });
 
 function setup(policy: Policy, mode: 'dry' | 'live' = 'live') {
   const asked: string[][] = [];
@@ -54,13 +54,14 @@ function setup(policy: Policy, mode: 'dry' | 'live' = 'live') {
     policy,
     log: quiet,
     now: () => NOW as never,
+    onlySources: ['cheap', 'dear'],
   };
   return { deps, asked, stored };
 }
 
-test('off by default: no read, no query', async () => {
-  const { deps, asked } = setup(DEFAULT_POLICY);
-  assert.equal(DEFAULT_POLICY.postCoin.bio.refreshOn, false);
+test('off: no read, no query', async () => {
+  const off = { ...DEFAULT_POLICY, postCoin: { ...DEFAULT_POLICY.postCoin, bio: { ...DEFAULT_POLICY.postCoin.bio, refreshOn: false } } };
+  const { deps, asked } = setup(off);
   assert.deepEqual(await refreshBios(deps, bioRefreshMemory()), { due: 0, asked: 0, read: 0, wouldSpendUsd: 0, spentUsd: 0 });
   assert.deepEqual(asked, []);
 });
@@ -83,4 +84,11 @@ test('the day cap holds, and a dry run prices without reading', async () => {
   const r = await refreshBios(dry.deps, bioRefreshMemory());
   assert.deepEqual(dry.asked, []);
   assert.ok(r.wouldSpendUsd > 0);
+});
+
+test('on, but no source allowed by the owner asks nobody', async () => {
+  const on = { ...DEFAULT_POLICY, postCoin: { ...DEFAULT_POLICY.postCoin, bio: { ...DEFAULT_POLICY.postCoin.bio, refreshOn: true } } };
+  const { deps, asked } = setup(on);
+  assert.equal((await refreshBios({ ...deps, onlySources: [] }, bioRefreshMemory())).asked, 0);
+  assert.deepEqual(asked, []);
 });

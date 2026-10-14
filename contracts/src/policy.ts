@@ -2558,7 +2558,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v75',
+  version: 'policy.v76',
 
   admit: {
     maxAgeMin: 240,
@@ -3064,7 +3064,9 @@ const POLICY_V1: Policy = {
     /* Off (a paid read). 60 hours after the post, every 2 hours, on a source whose re-read is at most
        a tenth of a cent a post: the text source's ($0.00015). The short-video source's is $0.003 a post
        plus $0.001 a run: raise the bar to 0.005 to include it. */
-    bio: { refreshOn: false, refreshForMs: 216_000_000, refreshEveryMs: 7_200_000, refreshMaxUsdPerPost: 0.001, refreshPerPass: 100, refreshPerDay: 6_000 },
+    /* On 2026-10-14 for the short-video source only (runner env BIO_REFRESH_SOURCES), the owner's call:
+       about $0.45–1.75 a day. 0.005 a post lets its re-read in. */
+    bio: { refreshOn: true, refreshForMs: 216_000_000, refreshEveryMs: 7_200_000, refreshMaxUsdPerPost: 0.005, refreshPerPass: 100, refreshPerDay: 6_000 },
     weights: { base: -7.232, linksPost: 1.175, linksAccount: -0.218, picture: 0.825, hash: 0.495, description: 0.205, authorAddress: 0, othersAddress: 0, timing: 2.134, nameExact: 2.768, nameVariant: -0.46, tradingJump: 0 },
   },
 
