@@ -2588,7 +2588,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v77',
+  version: 'policy.v78',
 
   admit: {
     maxAgeMin: 240,
@@ -3465,8 +3465,8 @@ const POLICY_V1: Policy = {
   },
 
   translate: {
-    /* Off until the owner says yes: about $0.01 a day at 2026-10-14's mix (tools/translate-backfill.ts). */
-    on: false,
+    /* On from 2026-10-14, the owner's yes: about $0.01 a day at that day's mix (tools/translate-backfill.ts). */
+    on: true,
     perCall: 10,
     perPass: 20,
     maxChars: 600,

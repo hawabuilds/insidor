@@ -61,7 +61,8 @@ test('a post with no answer writes nothing, so the next pass asks again', async 
 
 test('off, or a dry run, asks nobody and writes nothing', async () => {
   const s = setup([{ itemId: 'x:3', text: 'o rato caiu', lang: 'pt' }], (x) => ({ kind: 'kept', ref: x.ref, from: 'en' }));
-  assert.match((await translatePosts({ ...s.deps, policy: DEFAULT_POLICY })).skipped ?? '', /switched off/);
+  const off = { ...DEFAULT_POLICY, translate: { ...DEFAULT_POLICY.translate, on: false } };
+  assert.match((await translatePosts({ ...s.deps, policy: off })).skipped ?? '', /switched off/);
   assert.match((await translatePosts({ ...s.deps, mode: 'dry' })).skipped ?? '', /dry/);
   assert.equal(s.asked.length + s.written.length, 0);
 });
