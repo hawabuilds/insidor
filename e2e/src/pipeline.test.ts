@@ -486,8 +486,9 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   const back = await reproject();
   assert.ok(back.fyp.includes(HIDDEN) && back.popular.includes(HIDDEN) && back.story.includes(HIDDEN), '"Is a meme" brings it back everywhere');
   /* The weather post passes the owner's call and meets the reach bar like any other post: its
-     views were never read as a rate, so it waits, for that reason and not the judge's. */
-  const weather = await buildRising(db, clock, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1 } });
+     views were never read as a rate, so with only measured readings counted it waits, for that
+     reason and not the judge's. */
+  const weather = await buildRising(db, clock, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, feedBarCountsEveryReading: false } });
   assert.equal(weather.whyNot.get('x:1900000000000000005'), 'reach_unread', 'the owner says what a post is, not how many saw it');
 
   /* 6. A second GROUP pass has nothing to do. */

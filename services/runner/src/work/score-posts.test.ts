@@ -11,13 +11,17 @@ import { test } from 'node:test';
 import type { Item, Judgement, Millis } from '@insidor/contracts';
 import { authorKey, itemId, sourceId, type ItemId } from '@insidor/contracts/ids.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import { anthropicJudge, httpClient } from '@insidor/judge-anthropic';
 
 import type { ReusableAnswer } from '@insidor/store';
 
 import type { Logger } from '../log.ts';
 import { reusableFor, scorePosts } from './score-posts.ts';
+
+/* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
+   pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
+const DEFAULT_POLICY = { ...LIVE_POLICY, feed: { ...LIVE_POLICY.feed, fresh: { ...LIVE_POLICY.feed.fresh, enabled: false, cutStale: false } } };
 
 const NOW = 1_800_000_000_000 as Millis;
 /* Every kind label held, so the kind-question cases read the same whichever set the owner picks for live. */
