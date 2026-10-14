@@ -70,9 +70,10 @@ export function CoinCallButtons({ post }: { post: RisingPost }) {
     <>
       {said !== null ? (
         <>
-          <span className={styles['saidTag']}>{said}</span>
+          <span className={styles['saidTag']} title={said}>{said}</span>
           <button type="button" className={styles['textLink']} onClick={stop(() => setPicking('right'))}>Change</button>
-          <button type="button" className={styles['textLink']} onClick={stop(() => void call(post, 'cleared', null))}>Remove my label</button>
+          {/* "Remove", not "Remove my label": the strip is one line and the long words did not fit. */}
+          <button type="button" className={styles['textLink']} aria-label="Remove my label" onClick={stop(() => void call(post, 'cleared', null))}>Remove</button>
         </>
       ) : ask.kind === 'confirm' ? (
         <>
