@@ -61,6 +61,7 @@ import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/mete
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openDurableMeter } from '@insidor/meter';
 import { anthropicNamer } from '@insidor/judge-anthropic/name-guess.ts';
+import { anthropicTranslator } from '@insidor/judge-anthropic/translate.ts';
 import type { NamePort } from '@insidor/contracts/ports/names.ts';
 import { httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
 import { resolvePlatforms, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
@@ -83,6 +84,7 @@ import {
   PgPostEmbeddingRepo,
   PgNameExampleRepo,
   PgNameGuessRepo,
+  PgTranslationRepo,
   PgLearningRepo,
   PgPostJudgementRepo,
   PgItemRepo,
@@ -108,6 +110,7 @@ import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
 import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
 import { refillMemory, refillPosts, type RefillResult } from './work/post-refill.ts';
 import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
+import { translatePosts } from './work/translate-posts.ts';
 import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type UniverseDeps } from './work/universe.ts';
@@ -127,7 +130,7 @@ import { hashPictures } from './work/picture-hashes.ts';
 /** A coin search is abandoned after this long; the next pass asks again. */
 const SEARCH_TIMEOUT_MS = 8_000;
 import { advisoryLockKey, policyHash } from './hash.ts';
-import type { Logger } from './log.ts';
+import { errorText, type Logger } from './log.ts';
 import type { DecisionLog, LoopDeps } from './loop.ts';
 import type { StageRunRecorder } from './run-record.ts';
 import { declareSources, watchedRegistry, type WatchDeps } from './sources.ts';
@@ -278,6 +281,32 @@ function buildNamer(cfg: RunnerConfig, meter: Meter, policy: Policy): NamePort |
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });
   return anthropicNamer({ client, meter, now: () => Date.now() as Millis, model: setup.model, judge: policy.judge, names: policy.names, effort: price.effort });
+}
+
+/**
+ * The translator for this process (work/translate-posts.ts, Policy.translate, 0081), or null when
+ * the judge is not configured to call. The judge's key and retries, its own client so its answer
+ * budget is the translator's; always the cheap model (adapter translate.ts), metered on the
+ * judge's line under the `translate` endpoint.
+ */
+function buildTranslator(cfg: RunnerConfig, meter: Meter, policy: Policy): ReturnType<typeof anthropicTranslator> | null {
+  const setup = cfg.judge;
+  if (setup.state !== 'configured') return null;
+  const client = httpClient({
+    apiKey: setup.apiKey,
+    baseUrl: setup.baseUrl,
+    model: setup.model,
+    maxOutputTokens: policy.translate.maxOutputTokens,
+    effort: null,
+    timeoutMs: policy.judge.timeoutMs,
+    maxAttempts: policy.judge.maxAttempts,
+    backoffMs: policy.judge.backoffMs,
+    maxWaitMs: policy.judge.maxWaitMs,
+    maxFrameBytes: policy.judge.maxFrameBytes,
+    fetch: globalThis.fetch,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  });
+  return anthropicTranslator({ client, meter, now: () => Date.now() as Millis, judge: policy.judge, translate: policy.translate });
 }
 
 /**
@@ -566,6 +595,9 @@ export async function withRuntime<T>(
       const refills = refillMemory();
       /* Each poster's last profile re-read and the day's count (work/bio-refresh.ts). */
       const bioReads = bioRefreshMemory();
+      /* The feed's translator and its table (work/translate-posts.ts), built once for the process. */
+      const translator = buildTranslator(cfg, meter, policy);
+      const translations = new PgTranslationRepo(db);
       /* The per-post score's judge: the same model and prompt, with a smaller answer budget
          so ten short answers are not reserved at the cost of two long ones. */
       /* ★ WITH THE OWNER'S LEARNED EXAMPLES: the latest block the re-tune APPLIED (0056), read at
@@ -964,7 +996,9 @@ export async function withRuntime<T>(
               now: () => Date.now() as Millis,
             }),
           /* The poster-profile re-read rides the same half-minute loop after it (work/bio-refresh.ts):
-             off until Policy.postCoin.bio.refreshOn, and then only every refreshEveryMs per poster. */
+             off until Policy.postCoin.bio.refreshOn, and then only every refreshEveryMs per poster.
+             Then the feed's translations (work/translate-posts.ts): off until Policy.translate.on;
+             a failure there is logged and never fails the refill. */
           refillPosts: async () => {
             const r = await refillPosts(
               {
@@ -983,7 +1017,11 @@ export async function withRuntime<T>(
               { db, platforms, authors: repos.authors, meter, mode: cfg.spend.kind, policy, log: log.child({ step: 'bio-refresh' }), now: () => Date.now() as Millis, onlySources: cfg.bioRefreshSources },
               bioReads,
             );
-            return { ...r, due: r.due + bios.due, authors: r.authors + bios.read, wouldSpendUsd: r.wouldSpendUsd + bios.wouldSpendUsd, spentUsd: r.spentUsd + bios.spentUsd };
+            const translated = await translatePosts({ translator, translations, meter, mode: cfg.spend.kind, policy, log: log.child({ step: 'translate-posts' }), now: () => Date.now() as Millis }).catch((e: unknown) => {
+              log.warn('feed translations failed this pass', { err: errorText(e) });
+              return null;
+            });
+            return { ...r, due: r.due + bios.due, authors: r.authors + bios.read, wouldSpendUsd: r.wouldSpendUsd + bios.wouldSpendUsd, spentUsd: r.spentUsd + bios.spentUsd + (translated?.usd ?? 0) };
           },
         }),
       };
