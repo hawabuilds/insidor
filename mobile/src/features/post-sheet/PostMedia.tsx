@@ -23,9 +23,9 @@
  * play button that does nothing. A picture shows no link: there is nothing more to see.
  *
  * ★ A TIKTOK VIDEO PLAYS IN TIKTOK'S OWN PLAYER (`tiktokId`, TikTokPlayer.tsx). Its file is a 403 to
- * any page but TikTok's (tiktok-player.ts), so it never has a `playUrl`; with the post's id it opens
- * as its cover and our play button, and the tap brings up their player, with their controls, in
- * the same box. If that player cannot play, it is the still with "Play on TikTok", as above.
+ * any page but TikTok's (tiktok-player.ts), so it never has a `playUrl`; with the post's id their
+ * player sits in the same box, over the cover, and a tap on its own play button starts it with
+ * sound (a tap on ours could only start it muted). If that player cannot play, it is the still with "Play on TikTok", as above.
  *
  * ★ NEVER A BLANK BOX. A picture or still that will not load takes the media box away (`onGone`),
  * so the sheet closes up rather than showing an empty frame.

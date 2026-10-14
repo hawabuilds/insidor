@@ -15,8 +15,14 @@
  * page load itself sets the cookie, so the same page loaded again plays. `RETRIES` is that one
  * reload; a second failure is a real one (a deleted or private video) and the still comes back.
  *
+ * ★ IT NEVER STARTS ITSELF, SO IT HAS SOUND (the owner, 2026-10-14: "tiktok video not playing
+ * sound"). With `autoplay=1` the player always starts muted, whatever `muted` says (measured in
+ * Safari and Chrome), and a phone only lets sound start from a tap inside the frame: unmuting it
+ * from our page (its `unMute` message) makes Safari pause it instead. So the player loads still, and
+ * the viewer's tap on its own play button starts it, with sound.
+ *
  * What breaks if changed carelessly: reading messages from any origin lets another frame stop or
- * fake the player. `autoplay=1` on the first load starts a video nobody asked for.
+ * fake the player. `autoplay=1`, or `muted=1`, brings back a video with no sound on the iPhone.
  */
 
 export const PLAYER_ORIGIN = 'https://www.tiktok.com';
@@ -24,8 +30,9 @@ export const PLAYER_ORIGIN = 'https://www.tiktok.com';
 export const RETRIES = 1;
 /**
  * How long the player page has to say anything at all before it counts as blocked or down. Not
- * how long it has to be ready: TikTok's cookie notice (shown in some countries) holds `ready` back
- * until it is answered, and that wait is the viewer's, not a failure.
+ * how long it has to be ready: a player that is not playing says `ready` only once it is tapped,
+ * and TikTok's cookie notice (shown in some countries) waits for an answer; those waits are the
+ * viewer's, not a failure. The page's own hello comes within a second.
  */
 export const SILENT_WAIT_MS = 12_000;
 
@@ -36,15 +43,13 @@ export function tiktokVideoId(postId: string): string | null {
 }
 
 /**
- * The official player for one video: its own controls, muted at the start like our X videos, no
- * description, music line or related videos. `autoplay` only after a tap (the frame is created by
- * that tap) or on the reload after a failed first play.
+ * The official player for one video: its own controls, not playing until its play button is tapped
+ * (so it plays with sound, see the header), no description, music line or related videos.
  */
-export function playerUrl(id: string, autoplay: boolean): string {
+export function playerUrl(id: string): string {
   const q = new URLSearchParams({
     controls: '1',
-    autoplay: autoplay ? '1' : '0',
-    muted: '1',
+    autoplay: '0',
     loop: '0',
     description: '0',
     music_info: '0',

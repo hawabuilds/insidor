@@ -13,9 +13,10 @@ test('only a TikTok post id has a TikTok video id', () => {
   assert.equal(tiktokVideoId('tiktok:abc'), null);
 });
 
-test('the player starts muted, and plays by itself only when asked to', () => {
-  assert.match(playerUrl('7696270351092944149', false), /^https:\/\/www\.tiktok\.com\/player\/v1\/7696270351092944149\?.*autoplay=0.*muted=1/);
-  assert.match(playerUrl('7696270351092944149', true), /autoplay=1/);
+test("★ the player never starts itself and is never told to be muted, so a tap on it plays with sound", () => {
+  const url = playerUrl('7696270351092944149');
+  assert.match(url, /^https:\/\/www\.tiktok\.com\/player\/v1\/7696270351092944149\?.*autoplay=0/);
+  assert.doesNotMatch(url, /muted|autoplay=1/);
 });
 
 test("★ only the player's own messages count, and a playback error is a failure", () => {
