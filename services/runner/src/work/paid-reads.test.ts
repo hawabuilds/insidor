@@ -71,6 +71,16 @@ test('★ a run never reads more than its cap, fast growers before the slow re-r
   assert.equal(picked[3], `v${100 + P.track.paidReadMaxPosts - 1}`);
 });
 
+test('★ a video asked about in the last run that never answered waits like one that did', () => {
+  // Read three hours ago and never since: a deleted video, asked about in the run before this one.
+  const dead = video(1, 1_000, P.track.paidReadMinMinutes, 100_000);
+  const asked = (askedAt: number | null) => pickPaidReads([{ item: dead, observations: [], askedAt }], NOW, P).map((i) => i.sourceItemId);
+  assert.deepEqual(asked(null), ['v1']);
+  assert.deepEqual(asked(NOW - P.track.paidRunEveryMinutes * MIN), []);
+  // And once its slow clock has run out since that ask, it is asked again.
+  assert.deepEqual(asked(NOW - P.track.paidReadMinMinutes * MIN), ['v1']);
+});
+
 test('★ the cap and the run spacing keep re-reads inside the share of the line discovery leaves', () => {
   // $0.001 a run and $0.003 a post (the vendor's charges, adapters/platform/tiktok).
   const runsPerDay = (24 * 60) / P.track.paidRunEveryMinutes;

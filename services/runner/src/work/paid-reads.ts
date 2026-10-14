@@ -18,6 +18,12 @@
  * "Gaining" is the measured rate between its last two readings when there is one, and its
  * average since it was posted when there is only the reading its search came with.
  *
+ * ★ "LAST READ" IS THE LAST TIME WE ASKED, NOT THE LAST TIME IT ANSWERED. A deleted or private
+ * video is billed and returns nothing, so its newest reading never moves. Clocked by its readings
+ * alone it stayed the longest-unread post for good and took a place in every run: on 2026-10-13
+ * two such videos were asked about in each of the last five runs (2 of 8 places, about $0.29 a
+ * day). `askedAt`, when TRACK last sent it, moves on every ask, answered or not.
+ *
  * Its own file, apart from stages.ts, because it is the money rule for that source and has to
  * be testable without a database: the cap here is what keeps re-reads inside their share of the
  * line (see `track.paidReadMaxPosts` for the arithmetic).
@@ -35,6 +41,8 @@ const MS_PER_MINUTE = 60_000;
 export interface PaidCandidate {
   readonly item: Item;
   readonly observations: readonly Observation[];
+  /** When a re-read of it was last sent, answered or not; null or absent when never. */
+  readonly askedAt?: number | null;
 }
 
 /** The newest reach reading we hold for a post: a re-read's, or the one its search came with. */
@@ -51,9 +59,9 @@ function latestReach(c: PaidCandidate): { readonly value: number; readonly at: n
   return best;
 }
 
-/** When the post was last read: its newest reading of any kind, or when we first saw it. */
+/** When the post was last read or asked about: its newest reading, its last ask, or when we first saw it. */
 function lastReadAt(c: PaidCandidate): number {
-  let newest: number = c.item.firstSeenAt;
+  let newest: number = Math.max(c.item.firstSeenAt, c.askedAt ?? 0);
   for (const o of c.observations) if (o.capturedAt > newest) newest = o.capturedAt;
   const own = c.item.counters.reach;
   if (own !== undefined && own !== null && own.observedAt > newest) newest = own.observedAt;
