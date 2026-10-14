@@ -19,6 +19,10 @@
  * `closeSpelling.maxEdits` edits apart also match (PRINGLE / PRINGLES). A name is compared with a
  * name AND a ticker, both ways: people type $RIP for "Rest In Pringles".
  *
+ * ★ "NOT THIS COIN" IS AN EXAMPLE TOO (0077). A coin the owner called wrong for a post rides with
+ * that post as `notCoins`, so a post like it is shown the name to avoid; a post with only rejected
+ * coins (he said "No coin") is still a neighbour.
+ *
  * What breaks if changed carelessly: `isSelf`. A post must never be shown its own coins as an
  * example, live (it was confirmed a minute ago) or in the measurement (it is the held-out post):
  * the namer would copy the answer and the hit rate would measure nothing.
@@ -35,6 +39,8 @@ export interface ExampleVector {
   readonly text: string;
   readonly seen: string | null;
   readonly coins: readonly NameGuess[];
+  /** Coins the owner said are NOT this post's ("Wrong coin", "No coin"); none when absent. */
+  readonly notCoins?: readonly NameGuess[];
   /** When the post was made, in ms; null when unknown. */
   readonly postedAtMs: number | null;
   readonly values: ArrayLike<number>;
@@ -51,23 +57,26 @@ function dot(a: ArrayLike<number>, b: ArrayLike<number>): number {
 export function nearestExamples(v: ArrayLike<number>, examples: readonly ExampleVector[], k: number, isSelf: (e: ExampleVector) => boolean): readonly ExampleVector[] {
   if (k <= 0) return [];
   return examples
-    .filter((e) => !isSelf(e) && e.coins.length > 0)
+    .filter((e) => !isSelf(e) && (e.coins.length > 0 || (e.notCoins?.length ?? 0) > 0))
     .map((e) => ({ e, s: dot(v, e.values) }))
     .sort((a, b) => b.s - a.s || (a.e.itemId < b.e.itemId ? -1 : 1))
     .slice(0, k)
     .map((x) => x.e);
 }
 
-/** An example as the namer is shown it: words trimmed, each distinct coin name once. */
+/** An example as the namer is shown it: words trimmed, each distinct coin name once, and the owner's rejected ones apart. */
 export function exampleShown(e: ExampleVector, p: NamesPolicy): NameExample {
-  const seen = new Set<string>();
-  const coins = e.coins.filter((c) => {
-    const key = `${nameKeyOf(c.name)}|${nameKeyOf(c.ticker)}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  return { text: e.text.trim().slice(0, p.exampleChars), seen: e.seen, coins };
+  const once = (list: readonly NameGuess[]) => {
+    const seen = new Set<string>();
+    return list.filter((c) => {
+      const key = `${nameKeyOf(c.name)}|${nameKeyOf(c.ticker)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+  const notCoins = once(e.notCoins ?? []);
+  return { text: e.text.trim().slice(0, p.exampleChars), seen: e.seen, coins: once(e.coins), ...(notCoins.length > 0 ? { notCoins } : {}) };
 }
 
 /** Case, accents, '$', spaces and punctuation gone: what two spellings of one name share. */

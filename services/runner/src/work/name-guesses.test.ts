@@ -18,14 +18,16 @@ import { createLogger } from '../log.ts';
 import { nameGuesser } from './name-guesses.ts';
 
 const SPACE = 'post-space';
-const ON: Policy = { ...DEFAULT_POLICY, names: { ...DEFAULT_POLICY.names, on: true } };
+const ON: Policy = { ...DEFAULT_POLICY, names: { ...DEFAULT_POLICY.names, on: true, feedOnly: false } };
+const OFF: Policy = { ...DEFAULT_POLICY, names: { ...DEFAULT_POLICY.names, on: false } };
+const FEED: Policy = { ...DEFAULT_POLICY, names: { ...DEFAULT_POLICY.names, on: true, feedOnly: true } };
 const meter = { line: () => ({ capUsd: 1, spentUsd: 0 }) } as unknown as Meter;
 const embed = { id: 'fake', space: 'pic', dimensions: 2, maxBatch: 10, postSpace: SPACE, embedText: async () => ({ value: [] }), embedPosts: async () => ({ value: [] }) } as unknown as EmbedPort;
 const log = createLogger({ test: 'name-guesses' });
 
 const post = (itemId: string, over: Partial<NameCandidate> = {}): NameCandidate => ({ itemId, text: `post ${itemId}`, media: [], coinable: true, confidence: 0.9, lookedAt: 'text', proposedName: 'Tiger', kind: 'OTHER', postedAtMs: 0, ...over });
 
-function setup(policy: Policy, answer: (s: readonly NameSubject[]) => 'ok' | 'none') {
+function setup(policy: Policy, answer: (s: readonly NameSubject[]) => 'ok' | 'none', vetoed = false) {
   const order: string[] = [];
   const stored = new Map<string, readonly { name: string; ticker: string }[]>();
   const asked: NameSubject[] = [];
@@ -49,19 +51,20 @@ function setup(policy: Policy, answer: (s: readonly NameSubject[]) => 'ok' | 'no
       needingVectors: async () => [],
       putVectors: async () => true,
       version: async () => 'v',
-      all: async () => [{ itemId: 'x:ex', text: 'a tiger called Altai', seen: null, coins: [{ name: 'Altai', ticker: 'ALTAI' }], postedAtMs: 0, values: Float32Array.from([1, 0]) }],
+      all: async () => [{ itemId: 'x:ex', text: 'a tiger called Altai', seen: null, coins: [{ name: 'Altai', ticker: 'ALTAI' }], notCoins: [], postedAtMs: 0, values: Float32Array.from([1, 0]) }],
       postVectors: async (ids) => new Map(ids.map((id) => [id, Float32Array.from([1, 0])] as const)),
     },
     guesses: {
       candidates: async () => [post('x:1'), post('x:low', { confidence: 0.1 }), post('x:ad', { kind: 'AD' })],
       put: async (id, g) => { stored.set(id, g); return true; },
+      switchedOff: async () => vetoed,
     },
   });
   return { step, order, stored, asked };
 }
 
 test('switched off, nothing is read or asked', async () => {
-  const { step, order } = setup(DEFAULT_POLICY, () => 'ok');
+  const { step, order } = setup(OFF, () => 'ok');
   const r = await step.pass();
   assert.notEqual(r.skipped, null);
   assert.deepEqual(order, []);
@@ -82,4 +85,17 @@ test('no answer is not "no names": nothing is stored and the post waits', async 
   const r = await step.pass();
   assert.equal(stored.size, 0);
   assert.equal(r.absent, 1);
+});
+
+test('on For You and Popular every card is asked, whatever the judge said', async () => {
+  const { step, asked } = setup(FEED, () => 'ok');
+  await step.pass();
+  assert.deepEqual(asked.map((s) => s.ref).sort(), ['x:1', 'x:ad', 'x:low']);
+});
+
+test('★ the watch\'s veto stops the step as if the switch were off', async () => {
+  const { step, order } = setup(FEED, () => 'ok', true);
+  const r = await step.pass();
+  assert.notEqual(r.skipped, null);
+  assert.deepEqual(order, []);
 });
