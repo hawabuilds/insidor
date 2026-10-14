@@ -146,4 +146,7 @@ export interface CoinEvidence {
   readonly samePicture: boolean | null;
   /** The coin's launch minus the post's time; negative is before. */
   readonly launchedAfterMs: number | null;
+  /** The owner confirmed this coin for a post about the same story, and this post does not prove it
+      itself: "Coin for this story". Absent everywhere else. */
+  readonly storyCoin?: true;
 }
