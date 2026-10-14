@@ -73,6 +73,8 @@ export type { StoredCoinCall } from './repo/owner-coin-calls.ts';
 export { PgPostEmbeddingRepo } from './repo/post-embeddings.ts';
 export { PgNameExampleRepo, PgNameGuessRepo } from './repo/name-examples.ts';
 export type { NameCandidate, NameExampleSource, NamePair, StoredExample } from './repo/name-examples.ts';
+export { PgTranslationRepo } from './repo/translations.ts';
+export type { TranslateCandidate, TranslationRow } from './repo/translations.ts';
 export type { LabelKind, LabelledPost, StoredLabel } from './repo/label-embeddings.ts';
 export { FEED_REJECTION_REASONS, PgFeedRejectionRepo } from './repo/feed-rejections.ts';
 export type { FeedRejection, FeedRejectionReason } from './repo/feed-rejections.ts';

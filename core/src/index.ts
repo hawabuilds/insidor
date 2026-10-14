@@ -111,6 +111,9 @@ export type { NameIdea, NameIdeaBars } from './create/name-ideas.ts';
 /* The namer: example neighbours, clean guesses, and when a guess is a coin's name (create/name-guess.ts). */
 export { cleanGuesses, cleanTicker, exampleShown, guessHit, guessIsCoin, guessesFirst, nameKeyOf, nearestExamples, sameName } from './create/name-guess.ts';
 export type { ExampleVector } from './create/name-guess.ts';
+/* Whether a feed post's words are sent for translation (translate/need.ts, Policy.translate). */
+export { translateNeed, wordLetters } from './translate/need.ts';
+export type { TranslateNeed } from './translate/need.ts';
 
 /**
  * A re-read turned into the observations it appends. Not a stage: TRACK decides a read is

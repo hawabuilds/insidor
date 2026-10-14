@@ -2306,6 +2306,34 @@ export interface NamesPolicy {
   readonly watch: { readonly hours: number; readonly minWrong: number };
 }
 
+/**
+ * The feed's translations (services/runner work/translate-posts.ts, 0081): a post on For You,
+ * Popular or the scroll whose words are not English is translated once, on the judge's line under
+ * its own `translate` endpoint, and the card shows the English with "Translated from <language>"
+ * under it and the original one tap away. Measured 2026-10-14 over two days: 28 of 440 feed posts
+ * were not tagged English or wordless, 14 of them only hashtags; about 7 a day to translate.
+ */
+export interface TranslatePolicy {
+  /** The switch. Off: nothing is asked and every card shows its original words, as before. */
+  readonly on: boolean;
+  /** Posts per call. */
+  readonly perCall: number;
+  /** Posts translated per pass at most, newest on a feed first. */
+  readonly perPass: number;
+  /** A post's words as the model is shown them; the card shows fewer. */
+  readonly maxChars: number;
+  /** The answer's token ceiling for one call of `perCall` posts. */
+  readonly maxOutputTokens: number;
+  /** How far back a feed post is still translated: the scroll's members shown inside it. */
+  readonly windowMs: number;
+  /** Fewer letters than this once tags, handles, $tickers, links, digits and emoji are taken out: nothing to translate. */
+  readonly minLetters: number;
+  /** Source language tags that mean English: such a post is never sent. */
+  readonly englishCodes: readonly string[];
+  /** Source language tags that mean no words to translate (media only, tags only, unknown short text). */
+  readonly noWordsCodes: readonly string[];
+}
+
 export interface Policy {
   /** Bumped by hand on every edit. The hash is computed from the object, not this. */
   readonly version: string;
@@ -2339,6 +2367,8 @@ export interface Policy {
   readonly explore: ExplorePolicy;
   readonly budget: BudgetPolicy;
   readonly names: NamesPolicy;
+  /** The feed's translations of posts not written in English. */
+  readonly translate: TranslatePolicy;
   /**
    * The other half of the loop. Every stage above decides; this block is what says
    * whether the decision was right, and under which definition of right.
@@ -3432,6 +3462,20 @@ const POLICY_V1: Policy = {
     windowMs: 21_600_000, // six hours
     feedOnly: true,
     watch: { hours: 24, minWrong: 1 },
+  },
+
+  translate: {
+    /* Off until the owner says yes: about $0.01 a day at 2026-10-14's mix (tools/translate-backfill.ts). */
+    on: false,
+    perCall: 10,
+    perPass: 20,
+    maxChars: 600,
+    maxOutputTokens: 3_000,
+    windowMs: 21_600_000, // six hours
+    minLetters: 2,
+    englishCodes: ['en'],
+    /* 'zxx' no linguistic content, 'und'/'un' undetermined, 'qme' media only, 'qam' mentions only, 'qht' hashtags only, 'qst' very short, 'qct' cashtags only. */
+    noWordsCodes: ['zxx', 'und', 'un', 'qme', 'qam', 'qht', 'qst', 'qct'],
   },
 
   /* The numbers whose reasons are on `LabelPolicy` above. Read them there; every one of
