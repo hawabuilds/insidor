@@ -1021,7 +1021,8 @@ export interface FeedPolicy {
    * Language codes a post may be in; empty for all. ★ A PRODUCT CHOICE WITH A COST: a language
    * filter makes every post in every other language invisible. English, plus `zxx` — the code the
    * platform gives a picture or video with no words, which is how 4 of the gold set's missed
-   * origin posts were filtered out (eval/src/gold/recall-report.md; about $0.10 a day more).
+   * origin posts were filtered out (eval/src/gold/recall-report.md; about $0.10 a day more). And
+   * Portuguese, for a missed post of the owner's (2026-10-14).
    */
   readonly langs: readonly string[];
   /**
@@ -2817,7 +2818,11 @@ const POLICY_V1: Policy = {
     emptyFactor: 0.6,
     budgetShare: 0.6,
     mediaShare: 0.25,
-    langs: ['en', 'zxx'],
+    /* 'pt' added 2026-10-14: one of the owner's missed posts (a Brazilian video whose coin ran) was in
+       Portuguese, and today's search could not have found it even with discovery up. Measured at
+       11:40 UTC, Portuguese posts over the floor were 15 to the 56+ English ones at 6 minutes and 7 to
+       33 at 50; the bands' floor rises to keep the same posts a pass, so the cost does not move. */
+    langs: ['en', 'zxx', 'pt'],
     /* The owner's watch words, chosen 2026-10-14 by what the newest-first search returns for each
        (every run from 17:30 UTC on 2026-10-13, videos a run, median age, under two hours a run):
        cute 25.8, 1.3 h, 23.7; meme 18.8, 1.6 h, 15.3; dog 25.6, 2.0 h, 13.6; pet 22.3, 2.0 h, 12.2;
