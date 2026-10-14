@@ -17,7 +17,15 @@
  *
  * ★ "PASSES THE BAR" IS THE FEED'S OWN RULE, read from core (`postScoreReason`, with the luckiest
  * picture match so a post the picture boost could lift is guessed too, and a held kind not). With
- * `feedOnly` only posts on a feed now are guessed: about a fifth of the volume and the cost.
+ * `feedOnly` (the owner's choice, 2026-10-14) the posts are those on For You or Popular — the live
+ * frame and the scroll's members shown in the window — whatever the judge said: about a fifth of
+ * the volume and the cost.
+ *
+ * ★ THE WATCH CAN VETO IT (0077 internal.name_switch, tools/name-watch.ts): vetoed, the step asks
+ * nothing, exactly as if the policy were off.
+ *
+ * ★ THE OWNER'S CALLS ARE EXAMPLES THE SAME PASS: a confirmed coin, a "Wrong coin" or "No coin"
+ * (a "not this coin" example), and a name kept or typed on Create are all read by step 1.
  *
  * ★ OFF IS OFF, AND MISSING IS QUIET. With the switch off, the namer or its line missing, a dry
  * run, or 0076 not applied, the step does nothing and says so once in its result; the feed, the
@@ -52,7 +60,7 @@ export interface NameGuessDeps {
   /** Embeds example posts the runner never judged; null: only examples with a kept vector are used. */
   readonly embed: EmbedPort | null;
   readonly examples: Pick<PgNameExampleRepo, 'fromDatabase' | 'put' | 'copyKnownVectors' | 'needingVectors' | 'putVectors' | 'version' | 'all' | 'postVectors'>;
-  readonly guesses: Pick<PgNameGuessRepo, 'candidates' | 'put'>;
+  readonly guesses: Pick<PgNameGuessRepo, 'candidates' | 'put'> & Partial<Pick<PgNameGuessRepo, 'switchedOff'>>;
   readonly meter: Meter;
   readonly mode: 'dry' | 'live';
   readonly policy: Policy;
@@ -118,6 +126,7 @@ export function nameGuesser(deps: NameGuessDeps) {
     if (namer === null) return none('no namer: the judge is not configured');
     if (deps.mode !== 'live') return none('dry run');
     if (space === null) return none('no post space: the embeddings are not configured');
+    if ((await deps.guesses.switchedOff?.()) === true) return none('vetoed (internal.name_switch): the watch or the owner switched it off');
 
     let examplesAdded = 0;
     let vectorsAdded = 0;
@@ -131,7 +140,8 @@ export function nameGuesser(deps: NameGuessDeps) {
 
     const examples = await stored(space);
     const candidates = (await deps.guesses.candidates(p.windowMs, p.perPass * PREFETCH_FACTOR, namerPrompt(namer), KIND_PREFIX, p.feedOnly))
-      .filter((c) => postScoreReason({ coinable: c.coinable, confidence: c.confidence, lookedAt: c.lookedAt as JudgeEvidence, proposedName: c.proposedName }, deps.policy, BEST_PICTURE, c.kind) === 'passes')
+      /* A feed post is guessed because it is on screen, whatever the judge said; any other must pass the bar. */
+      .filter((c) => p.feedOnly || postScoreReason({ coinable: c.coinable, confidence: c.confidence, lookedAt: c.lookedAt as JudgeEvidence, proposedName: c.proposedName }, deps.policy, BEST_PICTURE, c.kind) === 'passes')
       .slice(0, p.perPass);
     if (candidates.length === 0) return { skipped: null, examplesAdded, vectorsAdded, guessed: 0, absent: 0, usd: 0 };
 

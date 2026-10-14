@@ -56,6 +56,8 @@ How people actually name these coins:
 
 Use the examples shown with each post: they are the closest posts people already coined, with every name they used. When an example is about the same subject, people usually launch the same name again, so put that name first. Otherwise copy their habits, not their names.
 
+Some examples carry "notThese": coins that were checked and are NOT that post's coin (a different story that shared a word, or no coin at all). Do not guess those names for a post like it unless the post itself says that name.
+
 Rules for the answer:
 - Tickers are capital letters and digits only, no $, at most 10 characters.
 - Five different coins: different names or tickers, not five spellings of one.
@@ -116,6 +118,7 @@ export function namePosts(subjects: readonly NameSubject[], pictured: ReadonlySe
       words: e.text === '' ? '(no words: a picture only)' : e.text,
       ...(e.seen === null || e.seen === '' ? {} : { picture: e.seen }),
       coins: e.coins.map((c) => `${c.name} ($${c.ticker})`),
+      ...((e.notCoins ?? []).length === 0 ? {} : { notThese: (e.notCoins ?? []).map((c) => `${c.name} ($${c.ticker})`) }),
     })),
   }));
 }

@@ -16,6 +16,10 @@
  * `right` (the pick after "Wrong coin" included, a retraction of the same coin excluded), so a
  * coin the owner took back never becomes an example, and one he picked after "Wrong" does.
  *
+ * ★ THE OWNER'S "NO" IS AN EXAMPLE TOO (0077 `rejected`): a coin he called wrong for a post is kept
+ * as "not this coin" for it, and his call on a pair overrides any other source's. And the runtime
+ * veto (0077 internal.name_switch, the first-day watch) empties every read of guesses (`top`).
+ *
  * What breaks if changed carelessly: `available_at`. A pair can only teach a post made AFTER the
  * coin existed (and, for the owner's call, after he made it); the measurement filters on it, and
  * a pair dated by when this row was written instead would hand a held-out post its own answer.
@@ -26,6 +30,9 @@ import { CURRENT_COIN_CALLS } from './owner-coin-calls.ts';
 
 const UNDEFINED_TABLE = '42P01';
 const missingTable = (e: unknown): boolean => typeof e === 'object' && e !== null && (e as { code?: unknown }).code === UNDEFINED_TABLE;
+/* A column a later migration adds (0077's `rejected`), read before it is applied. */
+const UNDEFINED_COLUMN = '42703';
+const missingColumn = (e: unknown): boolean => typeof e === 'object' && e !== null && (e as { code?: unknown }).code === UNDEFINED_COLUMN;
 
 /** The table's own bounds (0076): longer names are cut, never refused. */
 const NAME_MAX = 64;
@@ -48,6 +55,8 @@ export interface NamePair {
   readonly postedAtMs: number | null;
   /** When the pair existed: the coin's launch, or the owner's call. Null when unknown. */
   readonly availableAtMs: number | null;
+  /** The owner said this coin is NOT the post's ("Wrong coin", "No coin"): a "not this coin" example (0077). */
+  readonly rejected?: boolean;
 }
 
 /** One example post, all its coin names, and its vector. */
@@ -56,6 +65,8 @@ export interface StoredExample {
   readonly text: string;
   readonly seen: string | null;
   readonly coins: readonly { readonly name: string; readonly ticker: string }[];
+  /** Coins the owner said are not this post's (0077); empty before it. */
+  readonly notCoins: readonly { readonly name: string; readonly ticker: string }[];
   readonly postedAtMs: number | null;
   readonly values: Float32Array;
 }
@@ -109,12 +120,12 @@ export class PgNameExampleRepo {
    */
   async fromDatabase(opts: { readonly linkedDays: number | null; readonly linked: boolean } = { linkedDays: null, linked: true }): Promise<readonly NamePair[]> {
     type Row = { item_id: string; address: string | null; name: string | null; ticker: string | null; text: string | null; picture: string | null; media: unknown; posted_at: Date | null; available_at: Date | null };
-    const pairs = (rows: readonly Row[], source: NameExampleSource): NamePair[] =>
+    const pairs = (rows: readonly Row[], source: NameExampleSource, rejected = false): NamePair[] =>
       rows.flatMap((r) => {
         const name = (r.name ?? '').trim();
         const ticker = (r.ticker ?? '').replace(/^\$+/, '').trim();
         if (name === '' && ticker === '') return [];
-        return [{ itemId: r.item_id, address: r.address, name: name === '' ? ticker : name, ticker: ticker === '' ? name : ticker, source, text: r.text ?? '', picture: r.picture, media: r.media, postedAtMs: ms(r.posted_at), availableAtMs: ms(r.available_at) }];
+        return [{ itemId: r.item_id, address: r.address, name: name === '' ? ticker : name, ticker: ticker === '' ? name : ticker, source, text: r.text ?? '', picture: r.picture, media: r.media, postedAtMs: ms(r.posted_at), availableAtMs: ms(r.available_at), ...(rejected ? { rejected } : {}) }];
       });
 
     const owner = await this.#soft(() =>
@@ -125,6 +136,32 @@ export class PgNameExampleRepo {
                 i.posted_at, greatest(cur.created_at, names.launched_at) as available_at
            from cur join names on names.address = cur.coin_address
            left join public.item i on i.item_id = cur.item_id`,
+      ),
+    );
+    /* The owner's "Wrong coin" (with no pick, or taking back his own earlier right) and "No coin" on
+       a post that showed one: the coin he rejected, unless his current call on the post is that coin. */
+    const rejected = await this.#soft(() =>
+      this.#db.query<Row>(
+        `with f as (
+           select f.item_id, f.created_at, f.id,
+                  case when f.verdict = 'wrong' and f.coin_address is not null
+                             and exists (select 1 from internal.owner_feedback e
+                                          where e.subject_kind = 'coin_match' and e.item_id = f.item_id and e.verdict = 'right'
+                                            and e.coin_address = f.coin_address and (e.created_at, e.id) < (f.created_at, f.id))
+                         then f.coin_address
+                       when f.coin_address is null then nullif(split_part(coalesce(f.shown->>'coinId', ''), ':', 2), '')
+                       else null end as address
+             from internal.owner_feedback f
+            where f.subject_kind = 'coin_match' and f.verdict in ('wrong', 'none')),
+         neg as (
+           select distinct on (f.item_id, f.address) f.item_id, f.address, f.created_at from f
+            where f.address is not null
+              and not exists (select 1 from (${CURRENT_COIN_CALLS}) c where c.item_id = f.item_id and c.verdict = 'right' and c.coin_address = f.address)
+            order by f.item_id, f.address, f.created_at desc, f.id desc),
+         addrs as (select address from neg), names as (${COIN_NAMES})
+         select neg.item_id, neg.address, names.name, names.ticker, i.body as text, null::text as picture, i.media, i.posted_at, neg.created_at as available_at
+           from neg join names on names.address = neg.address
+           left join public.item i on i.item_id = neg.item_id`,
       ),
     );
     const gold = await this.#soft(() =>
@@ -161,33 +198,53 @@ export class PgNameExampleRepo {
         [opts.linkedDays],
       ),
     );
-    return [...pairs(owner, 'owner'), ...pairs(created, 'created'), ...pairs(gold, 'gold'), ...pairs(linked, 'linked')];
+    return [...pairs(owner, 'owner'), ...pairs(rejected, 'owner', true), ...pairs(created, 'created'), ...pairs(gold, 'gold'), ...pairs(linked, 'linked')];
   }
 
-  /** Writes new pairs; one already held (same post and name) is left as it is. The number written; 0 before 0076. */
+  /**
+   * Writes new pairs; one already held (same post and name) keeps its words and source, except that
+   * the owner's call on it decides whether it is rejected (0077). The number written or flipped; 0
+   * before 0076. Before 0077 the owner's rejections are not written and the rest are, as before.
+   */
   async put(pairs: readonly (NamePair & { readonly picture: string | null })[]): Promise<number> {
     if (pairs.length === 0) return 0;
+    const args = (list: readonly (NamePair & { readonly picture: string | null })[]) => [
+      list.map((p) => p.itemId), list.map((p) => p.address), list.map((p) => p.name.slice(0, NAME_MAX)), list.map((p) => p.ticker.slice(0, TICKER_MAX)),
+      list.map((p) => p.source), list.map((p) => p.text), list.map((p) => p.picture), list.map((p) => p.seen ?? null), list.map((p) => p.postedAtMs),
+      list.map((p) => p.rejected === true),
+    ];
+    const SEEN = `coalesce(u.seen, (select g.seen from internal.name_guess g where g.item_id = u.item_id and g.rank = 0))`;
+    const UNNEST = `unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::float8[], $10::boolean[])
+                  as u(item_id, address, name, ticker, source, text, picture, seen, posted_ms, rejected)`;
     try {
       const rows = await this.#db.query<{ n: string }>(
         `with ins as (
-           insert into internal.name_example (item_id, address, name, ticker, source, text, picture, seen, posted_at)
-           select u.item_id, u.address, u.name, u.ticker, u.source, u.text, u.picture,
-                  coalesce(u.seen, (select g.seen from internal.name_guess g where g.item_id = u.item_id and g.rank = 0)),
-                  to_timestamp(u.posted_ms / 1000.0)
-             from unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::float8[])
-                  as u(item_id, address, name, ticker, source, text, picture, seen, posted_ms)
-           on conflict do nothing returning 1)
+           insert into internal.name_example (item_id, address, name, ticker, source, text, picture, seen, posted_at, rejected)
+           select u.item_id, u.address, u.name, u.ticker, u.source, u.text, u.picture, ${SEEN}, to_timestamp(u.posted_ms / 1000.0), u.rejected
+             from ${UNNEST}
+           on conflict (item_id, lower(name), upper(ticker)) do update set rejected = excluded.rejected
+             where excluded.source = 'owner' and internal.name_example.rejected <> excluded.rejected
+           returning 1)
          select count(*)::text as n from ins`,
-        [
-          pairs.map((p) => p.itemId), pairs.map((p) => p.address), pairs.map((p) => p.name.slice(0, NAME_MAX)), pairs.map((p) => p.ticker.slice(0, TICKER_MAX)),
-          pairs.map((p) => p.source), pairs.map((p) => p.text), pairs.map((p) => p.picture), pairs.map((p) => p.seen ?? null), pairs.map((p) => p.postedAtMs),
-        ],
+        args(pairs),
       );
       return Number(rows[0]?.n ?? 0);
     } catch (e) {
       if (missingTable(e)) return 0;
-      throw e;
+      if (!missingColumn(e)) throw e;
     }
+    const kept = pairs.filter((p) => p.rejected !== true);
+    if (kept.length === 0) return 0;
+    const rows = await this.#db.query<{ n: string }>(
+      `with ins as (
+         insert into internal.name_example (item_id, address, name, ticker, source, text, picture, seen, posted_at)
+         select u.item_id, u.address, u.name, u.ticker, u.source, u.text, u.picture, ${SEEN}, to_timestamp(u.posted_ms / 1000.0)
+           from ${UNNEST}
+         on conflict do nothing returning 1)
+       select count(*)::text as n from ins`,
+      args(kept),
+    );
+    return Number(rows[0]?.n ?? 0);
   }
 
   /**
@@ -224,7 +281,7 @@ export class PgNameExampleRepo {
            from internal.name_example e left join public.item i on i.item_id = e.item_id
           where not exists (select 1 from internal.name_example_embedding v where v.item_id = e.item_id and v.space = $1)
           group by e.item_id
-          order by bool_or(e.source = 'owner') desc, max(e.added_at) desc
+          order by bool_or(e.source in ('owner', 'created')) desc, max(e.added_at) desc
           limit $2`,
         [space, limit],
       ),
@@ -273,18 +330,28 @@ export class PgNameExampleRepo {
 
   /** Every example post with a vector in `space`, all its coin names; empty before 0076. */
   async all(space: string): Promise<readonly StoredExample[]> {
-    const rows = await this.#soft(() =>
-      this.#db.query<{ item_id: string; text: string; seen: string | null; coins: { name: string; ticker: string }[]; posted_at: Date | null; embedding: unknown }>(
-        `select e.item_id, max(e.text) as text, max(e.seen) as seen,
-                jsonb_agg(jsonb_build_object('name', e.name, 'ticker', e.ticker) order by e.added_at, e.name) as coins,
-                min(e.posted_at) as posted_at, v.embedding::text as embedding
-           from internal.name_example e
-           join internal.name_example_embedding v on v.item_id = e.item_id and v.space = $1
-          group by e.item_id, v.embedding`,
-        [space],
-      ),
-    );
-    return rows.map((r) => ({ itemId: r.item_id, text: r.text, seen: r.seen, coins: r.coins, postedAtMs: ms(r.posted_at), values: parseVector(r.embedding) }));
+    type Row = { item_id: string; text: string; seen: string | null; coins: { name: string; ticker: string }[] | null; not_coins: { name: string; ticker: string }[] | null; posted_at: Date | null; embedding: unknown };
+    const read = (rejected: boolean) =>
+      this.#soft(() =>
+        this.#db.query<Row>(
+          `select e.item_id, max(e.text) as text, max(e.seen) as seen,
+                  jsonb_agg(jsonb_build_object('name', e.name, 'ticker', e.ticker) order by e.added_at, e.name) filter (where ${rejected ? 'not e.rejected' : 'true'}) as coins,
+                  ${rejected ? `jsonb_agg(jsonb_build_object('name', e.name, 'ticker', e.ticker) order by e.added_at, e.name) filter (where e.rejected)` : 'null::jsonb'} as not_coins,
+                  min(e.posted_at) as posted_at, v.embedding::text as embedding
+             from internal.name_example e
+             join internal.name_example_embedding v on v.item_id = e.item_id and v.space = $1
+            group by e.item_id, v.embedding`,
+          [space],
+        ),
+      );
+    let rows: Row[];
+    try {
+      rows = await read(true);
+    } catch (e) {
+      if (!missingColumn(e)) throw e;
+      rows = await read(false);
+    }
+    return rows.map((r) => ({ itemId: r.item_id, text: r.text, seen: r.seen, coins: r.coins ?? [], notCoins: r.not_coins ?? [], postedAtMs: ms(r.posted_at), values: parseVector(r.embedding) }));
   }
 }
 
@@ -299,13 +366,43 @@ export class PgNameGuessRepo {
   }
 
   /**
-   * Posts the judge said yes to inside the last `windowMs`, newest first, with no guess under
-   * `promptId` yet: each with its newest answer and kind label, for the caller to hold to the
-   * feed's bar (core `postScoreReason`). With `feedOnly`, only posts on a feed now. Empty before 0076.
+   * The posts the namer may be asked about, newest first, with no guess under `promptId` yet, each
+   * with its newest answer and kind label:
+   *   - `feedOnly` false: posts the judge said yes to inside the last `windowMs`, for the caller to
+   *     hold to the feed's bar (core `postScoreReason`);
+   *   - `feedOnly` true: posts on For You or Popular — the live frame (public.rising_row) and every
+   *     member of the scroll (public.feed_post, 0075) shown inside the last `windowMs` and not
+   *     withdrawn — whatever the judge said: they are on screen. A post with no answer comes with
+   *     `coinable` false and confidence 0.
+   * Empty before 0076.
    */
   async candidates(windowMs: number, limit: number, promptId: string, kindPrefix: string, feedOnly: boolean): Promise<readonly NameCandidate[]> {
+    type Row = { item_id: string; body: string | null; media: unknown; coinable: boolean | null; confidence: number | null; looked_at: string | null; proposed_name: string | null; kind: string | null; posted_at: Date | null };
+    const out = (rows: readonly Row[]): NameCandidate[] =>
+      rows.map((r) => ({ itemId: r.item_id, text: r.body ?? '', media: r.media, coinable: r.coinable === true, confidence: Number(r.confidence ?? 0), lookedAt: r.looked_at ?? 'text', proposedName: r.proposed_name, kind: r.kind, postedAtMs: ms(r.posted_at) }));
     try {
-      const rows = await this.#db.query<{ item_id: string; body: string | null; media: unknown; coinable: boolean; confidence: number; looked_at: string; proposed_name: string | null; kind: string | null; posted_at: Date | null }>(
+      if (feedOnly) {
+        return out(await this.#db.query<Row>(
+          `with scope as (
+             select item_id, max(at) as at from (
+               select r.item_id, now() as at from public.rising_row r
+               union all
+               select f.item_id, f.last_shown_at from public.feed_post f
+                where f.withdrawn_at is null and f.last_shown_at > now() - make_interval(secs => $1::float8 / 1000)) s
+              group by item_id)
+           select s.item_id, i.body, i.media, a.coinable, a.confidence, a.looked_at, a.proposed_name, k.kind, i.posted_at
+             from scope s join public.item i on i.item_id = s.item_id
+             left join lateral (select pj.coinable, pj.confidence, pj.looked_at, pj.proposed_name from internal.post_judgement pj
+                                 where pj.item_id = s.item_id and pj.prompt_id not like $4 || '%' order by pj.judged_at desc, pj.id desc limit 1) a on true
+             left join lateral (select pj.proposed_name as kind from internal.post_judgement pj
+                                 where pj.item_id = s.item_id and pj.prompt_id like $4 || '%' order by pj.judged_at desc, pj.id desc limit 1) k on true
+            where not exists (select 1 from internal.name_guess g where g.item_id = s.item_id and g.prompt_id = $3)
+            order by s.at desc, s.item_id
+            limit $2`,
+          [windowMs, limit, promptId, kindPrefix],
+        ));
+      }
+      return out(await this.#db.query<Row>(
         `with a as (
            select distinct on (item_id) item_id, coinable, confidence, looked_at, proposed_name, judged_at
              from internal.post_judgement
@@ -321,16 +418,34 @@ export class PgNameGuessRepo {
            left join k on k.item_id = a.item_id
           where a.coinable
             and not exists (select 1 from internal.name_guess g where g.item_id = a.item_id and g.prompt_id = $3)
-            and (not $5::boolean or exists (select 1 from public.rising_row r where r.item_id = a.item_id))
           order by a.judged_at desc
           limit $2`,
-        [windowMs, limit, promptId, kindPrefix, feedOnly],
-      );
-      return rows.map((r) => ({ itemId: r.item_id, text: r.body ?? '', media: r.media, coinable: r.coinable, confidence: Number(r.confidence), lookedAt: r.looked_at, proposedName: r.proposed_name, kind: r.kind, postedAtMs: ms(r.posted_at) }));
+        [windowMs, limit, promptId, kindPrefix],
+      ));
     } catch (e) {
       if (missingTable(e)) return [];
       throw e;
     }
+  }
+
+  /**
+   * ★ THE RUNTIME VETO (0077 internal.name_switch): true when the row says off — the watch turned
+   * the namer off, or the owner did. No row, or before 0077: false, and the policy decides.
+   */
+  async switchedOff(): Promise<boolean> {
+    try {
+      const rows = await this.#db.query<{ on: boolean }>('select "on" from internal.name_switch where id = 1');
+      return rows[0]?.on === false;
+    } catch (e) {
+      if (missingTable(e)) return false;
+      throw e;
+    }
+  }
+
+  /** Sets the veto (0077): off with why, or the row removed so the policy decides again. */
+  async setSwitch(on: boolean, why: string): Promise<void> {
+    if (on) await this.#db.query('delete from internal.name_switch where id = 1');
+    else await this.#db.query(`insert into internal.name_switch (id, "on", why) values (1, false, $1) on conflict (id) do update set "on" = false, why = excluded.why, changed_at = now()`, [why]);
   }
 
   /** Replaces a post's guesses. False before 0076. */
@@ -358,6 +473,8 @@ export class PgNameGuessRepo {
   async top(itemIds: readonly string[]): Promise<ReadonlyMap<string, readonly { readonly name: string; readonly ticker: string }[]>> {
     const out = new Map<string, { name: string; ticker: string }[]>();
     if (itemIds.length === 0) return out;
+    /* Vetoed: no reader sees a guess (the watch also deletes them; this holds for any written after). */
+    if (await this.switchedOff()) return out;
     try {
       const rows = await this.#db.query<{ item_id: string; name: string; ticker: string }>(
         'select item_id, name, ticker from internal.name_guess where item_id = any($1::text[]) order by item_id, rank',

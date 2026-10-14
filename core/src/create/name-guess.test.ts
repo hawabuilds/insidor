@@ -59,3 +59,9 @@ test('the Create ideas lead with the guesses, then the judge\'s, one per ticker'
   assert.deepEqual(ideas.map((i) => i.ticker), ['ALTAI', 'TIGER', 'BRAVE', 'ZOO']);
   assert.deepEqual(guessesFirst([], [{ name: 'Zoo', ticker: 'ZOO' }], bars), [{ name: 'Zoo', ticker: 'ZOO' }]);
 });
+
+test('a coin the owner rejected rides apart as "not this coin", and a post with only rejected coins is still a neighbour', () => {
+  const e: ExampleVector = { itemId: 'x:2', text: 'a cat', seen: null, coins: [], notCoins: [{ name: 'GTA', ticker: 'GTA' }], postedAtMs: null, values: [1] };
+  assert.deepEqual(exampleShown(e, P).notCoins, [{ name: 'GTA', ticker: 'GTA' }]);
+  assert.equal(nearestExamples([1], [e], 1, () => false).length, 1);
+});

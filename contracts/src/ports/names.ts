@@ -25,6 +25,8 @@ export interface NameExample {
   /** A few words on what its picture shows, when we have them; null otherwise. */
   readonly seen: string | null;
   readonly coins: readonly { readonly name: string; readonly ticker: string }[];
+  /** Coins the owner said are NOT this post's ("Wrong coin", "No coin"): names to avoid for a post like it. */
+  readonly notCoins?: readonly { readonly name: string; readonly ticker: string }[];
 }
 
 export interface NameSubject {
