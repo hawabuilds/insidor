@@ -9,7 +9,10 @@
  * a censored reading arrives as `null` and BREAKS the line rather than dropping it to the
  * floor, because a drop to zero reads as collapse on a chart whose job is to show
  * acceleration. Fewer than two known points is not a flat line either — a flat line is a claim
- * about stability — so it renders as a dash saying there is not enough to draw.
+ * about stability — so NOTHING is drawn. It used to be a grey "—" whose only reason was a hover
+ * title ("Not enough readings to draw yet") that a phone never shows, so on a card it read as a
+ * missing number beside the views. The views figure next to it is the fact; a line that cannot be
+ * drawn is simply absent, not a dash pretending to be a value.
  */
 
 import styles from './ui.module.css';
@@ -50,13 +53,7 @@ export function Sparkline({
 }) {
   const segments = runs(points);
   const known = segments.flat();
-  if (known.length < 2) {
-    return (
-      <span className={styles['sparkEmpty']} style={{ width }} title="Not enough readings to draw yet">
-        —
-      </span>
-    );
-  }
+  if (known.length < 2) return null;
 
   const pad = 2;
   const lastAt = known[known.length - 1]?.atMs ?? 0;
