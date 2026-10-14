@@ -124,3 +124,33 @@ export function pickLikelyShare(w: PostCoinWeights, choices: readonly Choice[]):
   }
   return pick;
 }
+
+/** A scored set of posts, as the re-tune tallies it (tools/lib/coin-match-fit.ts). */
+export interface FitTally {
+  readonly provenRight: number;
+  readonly provenWrong: number;
+  readonly likelyRight: number;
+  readonly likelyWrong: number;
+  readonly missed: number;
+  readonly clear: number;
+}
+
+/** Right answers: a coin proven or likely and right, or no coin named where the post has none. */
+export const rightAnswers = (t: FitTally): number => t.provenRight + t.likelyRight + t.clear;
+
+/**
+ * ★ THE GATE A REFIT MUST PASS before the feed ranks with it (the owner, 2026-10-14): no fewer
+ * right answers and no more likely-wrong coins than the weights in use, on the gold set AND on the
+ * owner's labels — each set checked on its own, so a gain on one never pays for a loss on the
+ * other. The 06:54 refit that day named one more likely-wrong coin on neither set and so passed
+ * the old gate, while it lost $TRUSTPROCESS (likely right → missed) on the owner's labels.
+ * Null when the refit may be kept; otherwise the reason, in words for the run's log.
+ */
+export function refitRefusal(before: { readonly gold: FitTally; readonly owner: FitTally }, after: { readonly gold: FitTally; readonly owner: FitTally }): string | null {
+  const why: string[] = [];
+  for (const [set, b, a] of [['gold', before.gold, after.gold], ["the owner's labels", before.owner, after.owner]] as const) {
+    if (rightAnswers(a) < rightAnswers(b)) why.push(`fewer right coins on ${set} (${rightAnswers(b)} to ${rightAnswers(a)})`);
+    if (a.likelyWrong > b.likelyWrong) why.push(`more likely coins named wrongly on ${set} (${b.likelyWrong} to ${a.likelyWrong})`);
+  }
+  return why.length === 0 ? null : `the refit was not kept: ${why.join('; ')}`;
+}

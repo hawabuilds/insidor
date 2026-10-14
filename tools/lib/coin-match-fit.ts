@@ -18,8 +18,11 @@
  * depends on the weights, so these move only with new facts), likely right and wrong, missed.
  *
  * ★ A REFIT ONLY ORDERS. The weights rank what no fact proved; a refit can move a coin between
- * likely and unsure, never onto a Buy. It is written only when it shows no more likely-wrong coins
- * than the weights in use, on gold and on the owner's labels alike; otherwise the run says why.
+ * likely and unsure, never onto a Buy. It is written only when it has no fewer right coins (proven,
+ * likely or clear) and no more likely-wrong ones than the weights in use, on gold and on the
+ * owner's labels each (eval match-fit.ts `refitRefusal`); otherwise the run says why. The first
+ * refit, 2026-10-14 06:54, passed the old gate (likely-wrong only) while losing $TRUSTPROCESS, and
+ * was rolled back by a newer row carrying the policy's weights — the table stays append-only.
  *
  * What breaks if changed carelessly: the owner's posts must be weighed by the projector's own code
  * (`weighPostCoins`), never a copy — a label scored on facts read another way teaches a ranking the
@@ -32,7 +35,7 @@ import { postCoinSignals, type PostCoinMatch } from '../../core/src/index.ts';
 import { asDb, createPool, DB_ROLE, missingTable, type Db } from '../../store/src/index.ts';
 import { evaluateCase, matchBarsOf, type CaseResult } from '../../eval/src/gold/match-eval.ts';
 import { loadMatchEvidence, matchCases } from '../../eval/src/gold/match-cases.ts';
-import { fitWeights, pickLikelyShare, type Choice } from '../../eval/src/gold/match-fit.ts';
+import { fitWeights, pickLikelyShare, refitRefusal, type Choice } from '../../eval/src/gold/match-fit.ts';
 import { loadFit, matchBars, weighPostCoins } from '../../services/project/src/post-match.ts';
 
 type Outcome = 'provenRight' | 'provenWrong' | 'likelyRight' | 'likelyWrong' | 'missed' | 'clear';
@@ -151,8 +154,11 @@ export async function refitCoinMatch(db: Db, opts: { readonly record: boolean },
     before: { goldHeld: held(goldBefore), owner: owner(ownerBefore) },
     after: { goldHeld: held(goldAfter), owner: owner(ownerAfter) },
   };
-  const worse = all(goldAfter).likelyWrong > all(goldBefore).likelyWrong || r.after.owner.likelyWrong > r.before.owner.likelyWrong;
-  let why: string | null = worse ? 'the refit named more likely coins wrongly than the weights in use' : null;
+  /* ★ THE GATE (eval match-fit.ts `refitRefusal`): fewer right coins, or more likely-wrong ones, on
+     the whole gold set or on the owner's labels, and the refit is not kept. */
+  const refused = refitRefusal({ gold: all(goldBefore), owner: r.before.owner }, { gold: all(goldAfter), owner: r.after.owner });
+  const worse = refused !== null;
+  let why: string | null = refused;
   let applied = false;
   if (!worse && opts.record) {
     try {
