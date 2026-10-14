@@ -171,6 +171,27 @@ export async function disablePush(): Promise<void> {
   }
 }
 
+/**
+ * Turning push on from a tap, as Feed settings' switch and the sign-in ask both do: the server's key
+ * checked, then `enablePush` (permission first, straight from the tap), and the outcome in words.
+ * `blocked` is true when the phone now refuses for good (only its own settings can undo that);
+ * `line` names the step that stopped and the browser's own words.
+ */
+export type TurnOn = { readonly kind: 'on' } | { readonly kind: 'denied'; readonly blocked: boolean } | { readonly kind: 'failed'; readonly line: string };
+
+export async function turnOnPush(publicKey: string | null): Promise<TurnOn> {
+  if (publicKey === null) return { kind: 'failed', line: 'The server has no push key.' };
+  const r = await enablePush(publicKey);
+  if (r.kind === 'on') return r;
+  if (r.kind === 'denied') return { kind: 'denied', blocked: permission() === 'denied' };
+  return { kind: 'failed', line: `Stopped at ${STEP_WORDS[r.step]}: ${r.error}` };
+}
+
+/** How to undo a block, which only the phone's own settings can do: said the same in Feed settings and the sign-in ask. */
+export function blockedHow(): string {
+  return standalone() ? 'On iPhone: Settings, Notifications, Insidor, then Allow Notifications. Then come back here.' : 'Allow notifications for this site in your browser settings, then come back here.';
+}
+
 /** The step's name in the person's words. */
 export const STEP_WORDS: Readonly<Record<PushStep, string>> = {
   permission: 'asking for permission',

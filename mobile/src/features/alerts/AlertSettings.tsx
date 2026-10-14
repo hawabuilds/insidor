@@ -18,7 +18,7 @@ import { fetchAlertSettings, saveAlertPrefs, sendTestPush, type AlertPrefs, type
 import { useLoad } from '../../shared/hooks.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { Sheet, SheetBody, SheetHead } from '../../shared/ui/Sheet.tsx';
-import { STEP_WORDS, currentPush, disablePush, enablePush, permission, pushPlace, standalone, type Permission } from './push.ts';
+import { blockedHow, currentPush, disablePush, permission, pushPlace, turnOnPush, type Permission } from './push.ts';
 import styles from './alerts.module.css';
 
 /* The owner's push list (2026-10-14) first, each with its own switch, then the rest. */
@@ -106,11 +106,7 @@ function Body({ initial }: { initial: Settings }) {
       setS(await fetchAlertSettings().catch(() => s));
       return;
     }
-    if (s.push.publicKey === null) {
-      toast("Couldn't turn notifications on", 'The server has no push key.');
-      return;
-    }
-    const r = await enablePush(s.push.publicKey);
+    const r = await turnOnPush(s.push.publicKey);
     if (r.kind === 'on') {
       setStopped(null);
       setDevice('on');
@@ -119,12 +115,11 @@ function Body({ initial }: { initial: Settings }) {
       return;
     }
     if (r.kind === 'denied') {
-      setDevice(permission() === 'denied' ? 'denied' : 'off');
+      setDevice(r.blocked ? 'denied' : 'off');
       return;
     }
-    const line = `Stopped at ${STEP_WORDS[r.step]}: ${r.error}`;
-    setStopped(line);
-    toast("Couldn't turn notifications on", line);
+    setStopped(r.line);
+    toast("Couldn't turn notifications on", r.line);
   };
   const test = async () => {
     setTesting(true);
@@ -166,9 +161,7 @@ function Body({ initial }: { initial: Settings }) {
             {device !== 'denied' ? <Switch on={device === 'on'} label="Feed notifications" onChange={(on) => void togglePush(on)} /> : null}
           </div>
           {device === 'denied' ? (
-            <p className={styles['sheetNote']}>
-              {standalone() ? 'On iPhone: Settings, Notifications, Insidor, then Allow Notifications. Then come back here.' : 'Allow notifications for this site in your browser settings, then come back here.'}
-            </p>
+            <p className={styles['sheetNote']}>{blockedHow()}</p>
           ) : null}
           {/* The state as it is, three facts: what the phone allows, whether our server holds this phone, and what the last push got back. */}
           <div className={styles['setRow']}>
