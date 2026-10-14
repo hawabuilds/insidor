@@ -2777,7 +2777,16 @@ const POLICY_V1: Policy = {
     budgetShare: 0.6,
     mediaShare: 0.25,
     langs: ['en', 'zxx'],
-    hashtags: ['meme', 'memes', 'funny', 'fyp', 'viral', 'cat', 'dog', 'animals', 'pet', 'cute', 'trend', 'crypto', 'memecoin', 'solana'], // vocab-allow: solana  — a hashtag the owner chose to watch, not a chain this code knows
+    /* The owner's watch words, chosen 2026-10-14 by what the newest-first search returns for each
+       (every run from 17:30 UTC on 2026-10-13, videos a run, median age, under two hours a run):
+       cute 25.8, 1.3 h, 23.7; meme 18.8, 1.6 h, 15.3; dog 25.6, 2.0 h, 13.6; pet 22.3, 2.0 h, 12.2;
+       memes 8.7, 2.0 h, 4.3; memecoin 22.3, 10.4 h, 3.5; solana 22.3, 8.1 h, 1.5; crypto 26.2, 10.7 h,
+       1.2. Dropped, because the search hands back one to nine stale videos for them: fyp 1.4 a run,
+       cat 0.6, trend 6.8 (median 6 h), funny 9.5 (4.8 h), viral 6.2 (3.9 h), animals 7.0 (4.8 h).
+       Tried the same night and not added, for the same reason: brainrot 2 videos (22 h old),
+       relatable 0, skit 2, dankmemes 14 (12 h), comedy 29 and humor 30 (but 7.3 h and 4.7 h old).
+       Interleaved so an ask of two words is never two pet words. */
+    hashtags: ['meme', 'cute', 'crypto', 'dog', 'memes', 'pet', 'memecoin', 'solana'], // vocab-allow: solana  — a hashtag the owner chose to watch, not a chain this code knows
     /* 20, sorted by most liked over the past day: a live run on 2026-10-13 returned 20 videos, all
        under 24 hours old, the top five at 1.5M to 3M views, for $0.101 once its charges settled
        ($0.071 was read before they had). Asks now alternate newest-first and most-liked. */
