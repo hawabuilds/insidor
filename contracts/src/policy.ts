@@ -2137,6 +2137,16 @@ export interface NotifyPolicy {
   readonly positionsKeepMs: number;
   /** How often queued alerts are delivered. */
   readonly deliverLoopMs: number;
+  /**
+   * How often the watched posts are checked: their coin lines, their coin lists, and every coin the
+   * mint stream stored since the last look, against each watched post's guessed names and its link.
+   * The owner asked to hear "within seconds"; each look is a few small reads of our own tables.
+   */
+  readonly watchLoopMs: number;
+  /** New coins whose own metadata document is read per look, to find a watched post's link in it. Free reads, capped so a burst of launches cannot stall the loop. */
+  readonly watchMetadataPerPass: number;
+  /** A guessed name or ticker shorter than this never matches a new coin on its own: three letters match too much by chance. */
+  readonly watchMinNameChars: number;
   /** A push undelivered after this long is dropped by the push service. */
   readonly pushTtlS: number;
   /** Reads and writes one person may make per `windowMs`. */
@@ -3152,14 +3162,20 @@ const POLICY_V1: Policy = {
     minPositionUsd: 10,
     /* Six an hour by default: a busy day still reads as alerts, not noise. */
     defaultPerHour: 6,
-    maxPerHour: 30,
+    /* Sixty: the owner asked for every new For You post, one by one, which is about twenty an hour. */
+    maxPerHour: 60,
     inboxLimit: 40,
     /* Two minutes: free price and curve reads for a handful of people, well inside the free tiers. */
     marketLoopMs: 120_000,
-    pipelineLoopMs: 60_000,
+    /* Twenty seconds: a coin found for a For You post is pushed "as soon as" the projector writes it. */
+    pipelineLoopMs: 20_000,
     /* Thirty minutes: two parse calls per wallet per half hour stays far inside a free tier. */
     positionsKeepMs: 1_800_000,
     deliverLoopMs: 5_000,
+    /* Five seconds: the mint stream stores a coin about five seconds after it is made. */
+    watchLoopMs: 5_000,
+    watchMetadataPerPass: 40,
+    watchMinNameChars: 4,
     pushTtlS: 86_400,
     perClient: 60,
     windowMs: 60_000,
