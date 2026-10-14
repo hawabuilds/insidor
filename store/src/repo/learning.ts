@@ -17,6 +17,7 @@
  */
 
 import type { Db } from '../client.ts';
+import { CURRENT_COIN_CALLS } from './owner-coin-calls.ts';
 
 export interface AppliedExamples {
   readonly versionId: number;
@@ -282,31 +283,25 @@ export class PgLearningRepo {
   }
 
   /**
-   * The owner's current call on each coin match: right, wrong (with the coin they say it is) or
-   * none. A post whose newest call is `cleared` ("Remove my label", 0072) has no call and is absent.
+   * The owner's current call on each coin match: right (with the coin), wrong or none. The owner's
+   * pick after "Wrong coin" — `wrong` with the coin picked — is `right` with it, unless it takes back
+   * a coin an earlier `right` named (owner-coin-calls.ts `CURRENT_COIN_CALLS`). A post whose newest
+   * call is `cleared` ("Remove my label", 0072) has no call and is absent.
    */
   async matchCalls(): Promise<readonly { readonly itemId: string; readonly verdict: 'right' | 'wrong' | 'none'; readonly coinAddress: string | null; readonly note: string | null; readonly at: Date }[]> {
     const rows = await this.#db.query<{ item_id: string; verdict: 'right' | 'wrong' | 'none'; coin_address: string | null; note: string | null; created_at: Date }>(
-      `select * from (
-         select distinct on (item_id) item_id, verdict, coin_address, note, created_at
-           from internal.owner_feedback where subject_kind = 'coin_match'
-          order by item_id, created_at desc, id desc
-       ) cur where verdict <> 'cleared'`,
+      `select * from (${CURRENT_COIN_CALLS}) cur where verdict <> 'cleared'`,
     );
     return rows.map((r) => ({ itemId: r.item_id, verdict: r.verdict, coinAddress: r.coin_address, note: r.note, at: r.created_at }));
   }
 
   /**
-   * The coins the owner's current `right` calls name that are not in our coin list yet, newest
+   * The coins the owner's current `right` calls name (the pick after "Wrong coin" included) that are not in our coin list yet, newest
    * call first: the runner adds each (services/runner work/owner-coins.ts) so the post can show it.
    */
   async ownerCoinsNotHeld(limit: number): Promise<readonly string[]> {
     const rows = await this.#db.query<{ coin_address: string }>(
-      `select coin_address from (
-         select distinct on (item_id) verdict, coin_address, created_at
-           from internal.owner_feedback where subject_kind = 'coin_match'
-          order by item_id, created_at desc, id desc
-       ) cur
+      `select coin_address from (${CURRENT_COIN_CALLS}) cur
        where verdict = 'right' and coin_address is not null
          and not exists (select 1 from public.asset a where a.address = cur.coin_address)
        group by coin_address

@@ -3,7 +3,9 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { loadOwnerPostCalls, withOwnerCall } from './owner-calls.ts';
+import { foldCoinCalls } from '@insidor/core';
+
+import { loadOwnerPostCalls, ownCoins, withOwnerCall } from './owner-calls.ts';
 import { postStanding, type RisingRow } from './rising.ts';
 
 const ROW: RisingRow = {
@@ -58,4 +60,14 @@ test('★ the newest call per post is read, and only post calls', async () => {
   assert.match(seen[0] ?? '', /subject_kind = 'post'/);
   assert.match(seen[0] ?? '', /order by item_id, created_at desc, id desc/);
   assert.deepEqual(await loadOwnerPostCalls(db as never, []), new Map());
+});
+
+test('★ the owner\'s pick after "Wrong coin" is the post\'s coin; taking back a "This is the coin" leaves none (KARL)', () => {
+  const calls = foldCoinCalls([
+    { itemId: 'x:picked', verdict: 'wrong', coinAddress: null, shownCoin: 'SHOWN', atMs: 1, id: 1 },
+    { itemId: 'x:picked', verdict: 'wrong', coinAddress: 'PICKED', shownCoin: 'SHOWN', atMs: 2, id: 2 },
+    { itemId: 'x:karl', verdict: 'right', coinAddress: 'KARL', shownCoin: null, atMs: 1, id: 3 },
+    { itemId: 'x:karl', verdict: 'wrong', coinAddress: 'KARL', shownCoin: null, atMs: 2, id: 4 },
+  ]);
+  assert.deepEqual([...ownCoins(calls)], [['x:picked', 'PICKED']]);
 });

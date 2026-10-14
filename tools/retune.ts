@@ -274,7 +274,9 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
          group; the taught half is graded only for the regression rule. */
       const missedTaught = allMissed.filter((c) => !testMissedIds.has(c.itemId));
       /* ★ THE OWNER'S COIN LABELS. "This is the coin" on a post is a confirmed coined post: it joins
-         hand gold for the run, with its coin. "No coin is from this" is a matching negative only —
+         hand gold for the run, with its coin. So is the owner's pick after "Wrong coin" (`wrong` WITH a
+         coin), which `matchCalls` already reads as `right` — unless it takes back a coin an earlier
+         `right` named (store owner-coin-calls.ts). "No coin is from this" is a matching negative only —
          it says nothing about whether the post could be coined, so it is never a judge negative. */
       const coinCalls = await soft(repo.matchCalls(), []);
       const coinRight = coinCalls.filter((m) => m.verdict === 'right' && m.coinAddress !== null);

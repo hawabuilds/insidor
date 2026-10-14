@@ -18,6 +18,7 @@
  */
 
 import type { Db } from '../client.ts';
+import { CURRENT_COIN_CALLS } from './owner-coin-calls.ts';
 
 /** Where a label came from, weakest first in LABEL_RANK. */
 export type LabelKind = 'tap' | 'gold' | 'coined' | 'missed' | 'labels';
@@ -154,11 +155,9 @@ export class PgLabelEmbeddingRepo {
     const coins = await soft(() =>
       this.#db.query<{ item_id: string; body: string | null; media: unknown }>(
         `select f.item_id, i.body, i.media
-           from (select distinct on (item_id) item_id, verdict
-                   from internal.owner_feedback where subject_kind = 'coin_match'
-                  order by item_id, created_at desc, id desc) f
+           from (${CURRENT_COIN_CALLS}) f
            join public.item i on i.item_id = f.item_id
-          where f.verdict = 'right'`,
+          where f.verdict = 'right' and f.coin_address is not null`,
       ),
     );
     const gold = await soft(() =>
