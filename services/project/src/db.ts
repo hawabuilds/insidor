@@ -36,6 +36,8 @@ import type {
 import { coinOriginsVisibleTo } from '@insidor/contracts/story.ts';
 import type { MatchEvidence, StoryOrigin } from '@insidor/contracts/story.ts';
 import type { Db } from '@insidor/store';
+import type { PostCoinCalls } from '@insidor/core';
+import { loadCoinCalls } from './owner-calls.ts';
 
 import { coinCandidates, corpusStats, holdSearchFound, orderedOnly } from './coins.ts';
 import type { CorpusStats } from './coins.ts';
@@ -757,6 +759,19 @@ function corpusFor(
   return corpus;
 }
 
+/** Pure: each story's coins the owner called wrong on one of its posts. */
+export function storyWrongCoins(members: readonly { readonly story_id: string; readonly item_id: string }[], calls: ReadonlyMap<string, PostCoinCalls>): ReadonlyMap<string, ReadonlySet<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const m of members) {
+    const wrong = calls.get(m.item_id)?.wrong;
+    if (wrong === undefined || wrong.size === 0) continue;
+    const set = out.get(m.story_id) ?? new Set<string>();
+    for (const a of wrong.keys()) set.add(a);
+    out.set(m.story_id, set);
+  }
+  return out;
+}
+
 /** The retrieved coins, bucketed by story, each carrying whatever reading and origin we hold. */
 function coinsByStory(
   rows: readonly AssetRow[],
@@ -1389,7 +1404,11 @@ export async function loadStoryFacts(db: Db, window: LoadWindow): Promise<StoryL
   const storyOrigins = new Map<string, StoryOrigin>(
     storyRows.map((row) => [row.story_id, row.origin]),
   );
-  const coinRows = await loadCoinsInWindow(db, coinWindows, storyOrigins);
+  /* ★ THE OWNER'S "WRONG COIN", LIVE (2026-10-14): a coin the owner called wrong on any post of a
+     story is not that story's coin, whatever its name and window say (owner-calls.ts). One more
+     round trip, over the members already read. */
+  const wrongByStory = storyWrongCoins(memberRows, await loadCoinCalls(db, [...new Set(memberRows.map((row) => row.item_id))]));
+  const coinRows = (await loadCoinsInWindow(db, coinWindows, storyOrigins)).filter((row) => wrongByStory.get(row.story_id)?.has(row.address) !== true);
   const corpora = await loadCorpusStats(db, new Set(storyOrigins.values()));
   /* Deduplicated: one coin can be in several stories' windows, and asking for its
      reading once per story would multiply the largest statement here by the number of

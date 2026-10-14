@@ -1293,6 +1293,13 @@ export interface PostCoinPolicy {
   readonly pictureCandidatesPerPost: number;
   /** Coins the mint stream's own copy may add by name per post, newest first. */
   readonly nameCandidatesPerPost: number;
+  /**
+   * "Coin for this story" (core match/story-coin.ts): when a feed post is about the same story as a
+   * post the owner confirmed a coin for, by the two posts' words-and-picture vectors. `meaning`:
+   * close enough alone. `near`: close enough when the judge gave both the same subject name, or the
+   * post shares a story with the confirmed post or with a post that met `meaning`.
+   */
+  readonly storyCoin: { readonly meaning: number; readonly near: number };
 }
 
 export interface PostCoinWeights {
@@ -2947,6 +2954,16 @@ const POLICY_V1: Policy = {
     hashTimeoutMs: 10_000,
     pictureCandidatesPerPost: 5,
     nameCandidatesPerPost: 10,
+    /* Measured 2026-10-14 on 1,026 post vectors (512 embedded for this: GTA, game and judged feed
+       posts; the rest the owner's labelled posts) against the 18 posts the owner confirmed a coin
+       for. Unrelated posts reach 0.573 (HUGGY WUGGY to the aura-farmer coin) and 0.566 (Putinu), so
+       0.62 alone; the same story's posts sit at 0.62 to 0.95 (OBSESSION 0.90, the tiger 0.77, GTA 6
+       on PC 0.65 to 0.95). With the same judge name or a shared story, 0.45: every GTA 6 post the
+       pair added was GTA 6, and no GTA 5, GTA meme or other game post reached $GTA (GTA 5 Browser
+       0.451 has no shared name or story). 32 of 66 GTA 6 posts get $GTA (8 of the 13 the judge
+       named; the 5 left are named for their own subject: GTA INDIA, DACITY COIN, GENNY, Buck Me,
+       VICECITY merch), and no post outside a confirmed story got any coin. */
+    storyCoin: { meaning: 0.62, near: 0.45 },
     weights: { base: -7.232, linksPost: 1.175, linksAccount: -0.218, picture: 0.825, hash: 0.495, description: 0.205, authorAddress: 0, othersAddress: 0, timing: 2.134, nameExact: 2.768, nameVariant: -0.46, tradingJump: 0 },
   },
 
