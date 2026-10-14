@@ -68,9 +68,9 @@ async function similarities(db: Db, postIds: readonly string[], anchorIds: reado
   return new Map(rows.map((r) => [`${r.item_id}|${r.anchor}`, Number(r.similarity)] as const));
 }
 
-async function namesAndStories(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, { readonly name: string | null; readonly stories: readonly string[] }>> {
-  const rows = await db.query<{ item_id: string; name: string | null; stories: string[] | null }>(
-    `select i.item_id,
+async function namesAndStories(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, { readonly name: string | null; readonly stories: readonly string[]; readonly text: string | null }>> {
+  const rows = await db.query<{ item_id: string; name: string | null; stories: string[] | null; body: string | null }>(
+    `select i.item_id, (select it.body from public.item it where it.item_id = i.item_id) as body,
             (select pj.proposed_name from internal.post_judgement pj
               where pj.item_id = i.item_id and pj.prompt_id not like 'post-kind%'
               order by pj.judged_at desc, pj.id desc limit 1) as name,
@@ -79,7 +79,7 @@ async function namesAndStories(db: Db, itemIds: readonly string[]): Promise<Read
        from unnest($1::text[]) as i(item_id)`,
     [[...itemIds]],
   );
-  return new Map(rows.map((r) => [r.item_id, { name: r.name, stories: r.stories ?? [] }] as const));
+  return new Map(rows.map((r) => [r.item_id, { name: r.name, stories: r.stories ?? [], text: r.body }] as const));
 }
 
 /** Each coin's own ticker and name, as we hold them: a post the judge names for the coin is named for its story. */
@@ -106,6 +106,33 @@ export async function loadStoryCoins(db: Db, postIds: readonly string[], calls: 
     names: [meta.get(a.itemId)?.name ?? null, ...(coinNames.get(a.coin) ?? [])].filter((n): n is string => n !== null && n.trim() !== ''),
     stories: meta.get(a.itemId)?.stories ?? [],
   }));
-  const posts = postIds.map((itemId) => ({ itemId, name: meta.get(itemId)?.name ?? null, stories: meta.get(itemId)?.stories ?? [] }));
-  return storyCoins(posts, anchors, (p, a) => sims.get(`${p}|${a}`), policy.postCoin.storyCoin);
+  const posts = postIds.map((itemId) => ({ itemId, name: meta.get(itemId)?.name ?? null, stories: meta.get(itemId)?.stories ?? [], text: meta.get(itemId)?.text ?? null }));
+  const pictures = await samePictures(db, [...sims.keys()], policy.group.image.space, policy.group.image.likely);
+  return storyCoins(
+    posts,
+    anchors,
+    (p, a) => sims.get(`${p}|${a}`),
+    policy.postCoin.storyCoin,
+    (a) => meta.get(a)?.text ?? null,
+    (p, a) => ({ picture: pictures.has(`${p}|${a}`) }),
+    policy.group.genericSpans,
+  );
+}
+
+/**
+ * The (post, confirmed post) pairs whose own pictures are the same picture or close to it (the
+ * group's picture vectors, at least `bar`): one of the shared details a story's coin needs.
+ */
+async function samePictures(db: Db, pairs: readonly string[], space: string, bar: number): Promise<ReadonlySet<string>> {
+  if (pairs.length === 0) return new Set();
+  const [a, b] = [pairs.map((k) => k.split('|')[0] ?? ''), pairs.map((k) => k.split('|')[1] ?? '')];
+  const rows = await db.query<{ k: string }>(
+    `select distinct x.p || '|' || x.a as k
+       from unnest($1::text[], $2::text[]) as x(p, a)
+       join internal.image_embedding pe on pe.subject_kind = 'item' and pe.subject_id = x.p and pe.space = $3
+       join internal.image_embedding ae on ae.subject_kind = 'item' and ae.subject_id = x.a and ae.space = $3
+      where 1 - (pe.embedding <=> ae.embedding) >= $4`,
+    [a, b, space, bar],
+  );
+  return new Set(rows.map((r) => r.k));
 }

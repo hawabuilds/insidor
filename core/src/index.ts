@@ -151,8 +151,8 @@ export type { PostedAddress } from './match/posted-addresses.ts';
 export { addressOfCoinId, coinLabelOf, foldCoinCalls } from './match/owner-coin-calls.ts';
 export type { CoinCallRow, PostCoinCalls } from './match/owner-coin-calls.ts';
 /* "Coin for this story": the owner's confirmed coin on new posts about the same story (match/story-coin.ts). */
-export { storyCoins } from './match/story-coin.ts';
-export type { StoryAnchor, StoryCoin, StoryCoinBars, StoryPost } from './match/story-coin.ts';
+export { postWords, storyCoins } from './match/story-coin.ts';
+export type { SharedDetail, StoryAnchor, StoryCoin, StoryCoinBars, StoryPost } from './match/story-coin.ts';
 /* An older coin's trading against a post's time: the runner measures with it (match/older-coin.ts). */
 export { olderCoinRun } from './match/older-coin.ts';
 export type { OlderRun, OlderRunBars, VolumeBucket } from './match/older-coin.ts';

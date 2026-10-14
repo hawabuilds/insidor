@@ -1304,7 +1304,7 @@ export interface PostCoinPolicy {
    * name, at least `minNameChars` run together), or it shares a story with a confirmed or a
    * strongly matched post.
    */
-  readonly storyCoin: { readonly alone: number; readonly together: number; readonly togetherPosts: number; readonly near: number; readonly minNameChars: number };
+  readonly storyCoin: { readonly alone: number; readonly together: number; readonly togetherPosts: number; readonly near: number; readonly minNameChars: number; readonly minWords: number; readonly minTopicChars: number };
   /**
    * "See N coins" and "Choose coin" (services/project coin-list.ts): only coins that could be the
    * post's. `graceBeforeMs`: how long before the post a coin may launch and still count by name and
@@ -2271,6 +2271,13 @@ export interface AttentionPolicy {
 export interface NamesPolicy {
   /** The switch. Off: no example is embedded, no guess is asked, and Create shows the judge's names as before. */
   readonly on: boolean;
+  /**
+   * Whether a coin found only through the namer's guessed names may be a card's own coin (with Buy).
+   * Off: such a coin is only ever in "See N coins", whatever proved it. On: it still needs a real
+   * check (a link, the picture, the address under the post) like every proven coin. The owner's
+   * demo safety net (2026-10-14): off until the gate passes on his labels, the 71 and held-out 22.
+   */
+  readonly cardsFromGuesses: boolean;
   /** Known pairs shown with each post: its closest example posts, all their coin names. */
   readonly k: number;
   /** Guesses asked for and kept per post. */
@@ -3084,7 +3091,10 @@ const POLICY_V1: Policy = {
        GTA Online shop post reached $GTA by "GTA"). Result: 146 posts get a story coin, one doubtful
        (a viral cat-lion meme to $Altai); 35 of 68 GTA 6 posts get $GTA and no GTA 5, GTA meme or
        Onitsuka Tiger post does; 25 tiger-story posts get $Altai. */
-    storyCoin: { alone: 0.7, together: 0.6, togetherPosts: 2, near: 0.45, minNameChars: 4 },
+    /* 2026-10-14 evening: never on a post of fewer than 3 words once hashtags, mentions and links go
+       ($ROAD had spread to three hashtag-only short videos), and every tier needs a shared detail —
+       the same name, picture, or a topic word of 4+ letters. */
+    storyCoin: { alone: 0.7, together: 0.6, togetherPosts: 2, near: 0.45, minNameChars: 4, minWords: 3, minTopicChars: 4 },
     /* Measured 2026-10-14 on the owner's coin labels (18 with a coin, 16 "No coin"): the list keeps
        the owner's coin as often as before (10 of 18; the other 8 were never in the name search's
        list) and shows 6.4 other coins a post instead of 12.8, 4.7 on a "No coin" post instead of
@@ -3447,6 +3457,9 @@ const POLICY_V1: Policy = {
   names: {
     /* On 2026-10-14 for For You and Popular only (the owner: "~$0.70/day"), watched for its first day. */
     on: true,
+    /* Off (the owner's safety net, 2026-10-14): a coin found only through a guessed name stays in
+       "See N coins" and is never a card's coin until the gate passes. */
+    cardsFromGuesses: false,
     k: 10,
     guesses: 5,
     createIdeas: 3,

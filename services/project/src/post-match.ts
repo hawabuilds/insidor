@@ -299,6 +299,7 @@ export async function weighPostCoins(
      names and tickers is searched in the mint stream and weighed as a name, the judge's first. None
      until the namer's switch is on (Policy.names.on); the re-tune may hand its own (`guesses`). */
   const guesses = opts.guesses ?? (await new PgNameGuessRepo(db).top(ids));
+  const judgeNamesOf = (post: PostRow) => [post.proposed_name, ...(post.alternate_names ?? [])].filter((n): n is string => n !== null && n.trim() !== '');
   const namesOf = (post: PostRow) => {
     const all = [post.proposed_name, ...(post.alternate_names ?? []), ...(guesses.get(post.item_id) ?? []).flatMap((g) => [g.name, g.ticker])];
     const seen = new Set<string>();
@@ -328,6 +329,8 @@ export async function weighPostCoins(
   const add = (id: string, address: string) => wide.get(id)?.add(address);
   for (const [id, list] of replies) for (const a of list) add(id, a.address);
   for (const n of neighbours) add(n.itemId, n.address);
+  const hashFound = new Map<string, Set<string>>();
+  for (const n of neighbours) hashFound.set(n.itemId, (hashFound.get(n.itemId) ?? new Set<string>()).add(n.address));
   for (const [id, xs] of named) for (const a of xs) add(id, a);
   /* The poster's profile: every address any read of it named is a candidate for each of their posts;
      the rule (core post-coin.ts (4)) decides which post, if any, it proves. */
@@ -379,11 +382,27 @@ export async function weighPostCoins(
         lastPostBeforeLaunch: profileNamed?.has(r.address) === true ? lastBefore(ms(r.launched_at)) : null,
       };
     });
-    const decision = matchPostCoin(
+    const weighedDecision = matchPostCoin(
       { postedAt: ms(post.posted_at) ?? ms(post.first_seen_at), linkIds: [post.source_item_id, ...pictureIds(post.media)], names: namesOf(post), author: post.handle, text: post.body },
       sides,
       bars,
     );
+    /* ★ A GUESSED NAME IS A SEARCH TERM, NEVER PROOF (the owner, 2026-10-14). A coin found only
+       through the namer's guesses — no judge's name meets it, no address under the post or in the
+       poster's profile named it, its picture's hash did not find it — is never the card's coin while
+       Policy.names.cardsFromGuesses is off: it stays in "See N coins" only. On, it is proven only
+       like any coin, by a link, the picture or an address. */
+    const guessOnly = (address: string): boolean => {
+      const r = rows.find((x) => x.address === address);
+      if (r === undefined || posted?.some((a) => a.address === address) === true || profileNamed?.has(address) === true || hashFound.get(itemId)?.has(address) === true) return false;
+      const judge = judgeNamesOf(post);
+      const guessed = (guesses.get(itemId) ?? []).flatMap((g) => [g.name, g.ticker]);
+      return guessed.length > 0 && nameMatch(judge, r, pc, post.body) === 'none' && nameMatch(guessed, r, pc) !== 'none';
+    };
+    const decision: PostCoinMatch =
+      weighedDecision.kind === 'confident' && !p.names.cardsFromGuesses && guessOnly(weighedDecision.address)
+        ? { kind: 'unsure', likely: null, ranked: weighedDecision.ranked }
+        : weighedDecision;
     const evidence = decision.kind === 'none'
       ? []
       : decision.ranked.map((e) => ({ address: e.address, linksPost: e.linksPost, samePicture: e.samePicture, launchedAfterMs: e.launchedAfterMs, posterPostedAddress: e.addressByAuthor, posterBioNamesCoin: e.bioNamesAddress }));
