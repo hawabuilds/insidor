@@ -22,7 +22,7 @@ import type { PriceBook } from '@insidor/meter';
 import { discovered } from '@insidor/vendor-kit';
 import { parseLink as parseLinkOf, postTimeFromId as postTimeOf } from './post-time.ts';
 
-import { billedUnits, CAPABILITIES, LOOKUP, PRICES, SEARCH, SOURCE, VENDOR } from './capabilities.ts';
+import { billedUnits, CAPABILITIES, LOOKUP, lookupBilledUnits, PRICES, SEARCH, SOURCE, VENDOR } from './capabilities.ts';
 import type { XClient } from './client.ts';
 import { searchPage } from './discover.ts';
 import { chunk, observeBatch } from './observe.ts';
@@ -88,7 +88,7 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
          one call's price multiplied by a count. On a vendor with a per-request floor
          those two differ, and they differ most on the small batches. */
       const estUnits = chunk(call.sourceItemIds, batchSize).reduce(
-        (units, batch) => units + billedUnits(batch.length),
+        (units, batch) => units + lookupBilledUnits(batch.length),
         0,
       );
       return estimateFor(prices, VENDOR, LOOKUP, estUnits);
@@ -139,7 +139,8 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
           { vendor: VENDOR, endpoint: LOOKUP, unit: 'per-item-returned', estUnits: batch.length, at },
           async () => {
             const raw = await deps.client.lookup(batch);
-            return { value: raw, units: billedUnits(raw.length) };
+            /* Billed by the ids asked, not the posts returned (capabilities.ts `lookupBilledUnits`). */
+            return { value: raw, units: lookupBilledUnits(batch.length) };
           },
         );
         for (const raw of result.value) {
