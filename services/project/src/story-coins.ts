@@ -12,7 +12,8 @@
  *                feed post's from internal.post_embedding (0074, kept by the runner's precedents),
  *                else its labelled vector; the anchor's from internal.label_embedding (0069, the
  *                runner embeds every coin-confirmed post), else its kept one
- *   names        the judge's subject name for each post (the newest answer to the first question)
+ *   names        the judge's subject name for each post (the newest answer to the first question),
+ *                and each confirmed coin's own ticker and name
  *   stories      the grouping's stories each post is a member of (public.story_member, unmerged)
  *
  * ★ BEFORE 0074 there are no feed-post vectors except for posts the owner labelled: the query
@@ -23,6 +24,9 @@
  * ★ ONLY THE ANSWER LEAVES. The similarity, the bars and which anchor matched stay here and in
  * core; the wire carries the coin and "Coin for this story" (`storyCoin` on the evidence).
  *
+ * ★ NOTHING HERE NAMES A STORY. Every coin the owner confirms, on any post, is read the same way
+ * the moment it is saved; the bars (Policy.postCoin.storyCoin) are one set for every story.
+ *
  * What breaks if changed carelessly: the space join. A post vector compared with a picture-only
  * vector is a number with no meaning, and Policy.postCoin.storyCoin was measured on post vectors.
  */
@@ -32,8 +36,8 @@ import { storyCoins, type PostCoinCalls, type StoryAnchor, type StoryCoin } from
 import type { Db } from '@insidor/store';
 
 /** Every anchor the owner's calls give: each post's own coin (right), and each coin called wrong on it. */
-export function anchorsOf(calls: ReadonlyMap<string, PostCoinCalls>): readonly Omit<StoryAnchor, 'name' | 'stories'>[] {
-  const out: Omit<StoryAnchor, 'name' | 'stories'>[] = [];
+export function anchorsOf(calls: ReadonlyMap<string, PostCoinCalls>): readonly Omit<StoryAnchor, 'names' | 'stories'>[] {
+  const out: Omit<StoryAnchor, 'names' | 'stories'>[] = [];
   for (const [itemId, c] of calls) {
     if (c.own !== null) out.push({ itemId, coin: c.own.address, atMs: c.own.atMs, kind: 'right' });
     for (const [coin, atMs] of c.wrong) out.push({ itemId, coin, atMs, kind: 'wrong' });
@@ -78,6 +82,16 @@ async function namesAndStories(db: Db, itemIds: readonly string[]): Promise<Read
   return new Map(rows.map((r) => [r.item_id, { name: r.name, stories: r.stories ?? [] }] as const));
 }
 
+/** Each coin's own ticker and name, as we hold them: a post the judge names for the coin is named for its story. */
+async function namesOfCoins(db: Db, addresses: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>> {
+  if (addresses.length === 0) return new Map();
+  const rows = await db.query<{ address: string; symbol: string | null; name: string | null }>(
+    `select distinct on (address) address, symbol, name from public.asset where address = any($1::text[]) order by address`,
+    [[...addresses]],
+  );
+  return new Map(rows.map((r) => [r.address, [r.symbol, r.name].filter((n): n is string => n !== null)] as const));
+}
+
 /** Each feed post's story coin and the coins called wrong on its story; a post with neither is absent. */
 export async function loadStoryCoins(db: Db, postIds: readonly string[], calls: ReadonlyMap<string, PostCoinCalls>, policy: Policy): Promise<ReadonlyMap<string, StoryCoin>> {
   const bare = anchorsOf(calls);
@@ -86,7 +100,12 @@ export async function loadStoryCoins(db: Db, postIds: readonly string[], calls: 
   const sims = await similarities(db, postIds, anchorIds);
   if (sims.size === 0) return new Map();
   const meta = await namesAndStories(db, [...new Set([...postIds, ...anchorIds])]);
-  const anchors: StoryAnchor[] = bare.map((a) => ({ ...a, name: meta.get(a.itemId)?.name ?? null, stories: meta.get(a.itemId)?.stories ?? [] }));
+  const coinNames = await namesOfCoins(db, [...new Set(bare.map((a) => a.coin))]);
+  const anchors: StoryAnchor[] = bare.map((a) => ({
+    ...a,
+    names: [meta.get(a.itemId)?.name ?? null, ...(coinNames.get(a.coin) ?? [])].filter((n): n is string => n !== null && n.trim() !== ''),
+    stories: meta.get(a.itemId)?.stories ?? [],
+  }));
   const posts = postIds.map((itemId) => ({ itemId, name: meta.get(itemId)?.name ?? null, stories: meta.get(itemId)?.stories ?? [] }));
   return storyCoins(posts, anchors, (p, a) => sims.get(`${p}|${a}`), policy.postCoin.storyCoin);
 }

@@ -1295,11 +1295,14 @@ export interface PostCoinPolicy {
   readonly nameCandidatesPerPost: number;
   /**
    * "Coin for this story" (core match/story-coin.ts): when a feed post is about the same story as a
-   * post the owner confirmed a coin for, by the two posts' words-and-picture vectors. `meaning`:
-   * close enough alone. `near`: close enough when the judge gave both the same subject name, or the
-   * post shares a story with the confirmed post or with a post that met `meaning`.
+   * post the owner confirmed a coin for, by the two posts' words-and-picture vectors. The same bars
+   * for every story. `alone`: close enough to one confirmed post. `together`: close enough to at
+   * least `togetherPosts` confirmed posts of the same coin — more confirmations, a lower bar.
+   * `near`: close enough when the judge named the post as the confirmed post or the coin (ticker or
+   * name, at least `minNameChars` run together), or it shares a story with a confirmed or a
+   * strongly matched post.
    */
-  readonly storyCoin: { readonly meaning: number; readonly near: number };
+  readonly storyCoin: { readonly alone: number; readonly together: number; readonly togetherPosts: number; readonly near: number; readonly minNameChars: number };
 }
 
 export interface PostCoinWeights {
@@ -2954,16 +2957,17 @@ const POLICY_V1: Policy = {
     hashTimeoutMs: 10_000,
     pictureCandidatesPerPost: 5,
     nameCandidatesPerPost: 10,
-    /* Measured 2026-10-14 on 1,026 post vectors (512 embedded for this: GTA, game and judged feed
-       posts; the rest the owner's labelled posts) against the 18 posts the owner confirmed a coin
-       for. Unrelated posts reach 0.573 (HUGGY WUGGY to the aura-farmer coin) and 0.566 (Putinu), so
-       0.62 alone; the same story's posts sit at 0.62 to 0.95 (OBSESSION 0.90, the tiger 0.77, GTA 6
-       on PC 0.65 to 0.95). With the same judge name or a shared story, 0.45: every GTA 6 post the
-       pair added was GTA 6, and no GTA 5, GTA meme or other game post reached $GTA (GTA 5 Browser
-       0.451 has no shared name or story). 32 of 66 GTA 6 posts get $GTA (8 of the 13 the judge
-       named; the 5 left are named for their own subject: GTA INDIA, DACITY COIN, GENNY, Buck Me,
-       VICECITY merch), and no post outside a confirmed story got any coin. */
-    storyCoin: { meaning: 0.62, near: 0.45 },
+    /* Measured 2026-10-14 on 3,300 post vectors (2,800 embedded for this: every post the judge said
+       yes to in the last day, GTA, tiger and game posts; the rest the owner's labelled posts) against
+       the 20 posts the owner confirmed one of 13 coins on. One confirmed post alone: unrelated posts
+       reach 0.686 (a 1986 gorilla-enclosure post to the tiger's $Altai) and 0.65 (OFFICER WHISKERS),
+       so 0.70. Two confirmed posts of one coin each at 0.60: the closest unrelated post is Putinu
+       (0.585 and 0.574 to two $Altai posts), so 0.60; this adds tiger and GTA 6 posts only. 0.45 with
+       the judge's name or a shared story; names under 4 letters ("GTA", "RIP") are too common (the
+       GTA Online shop post reached $GTA by "GTA"). Result: 146 posts get a story coin, one doubtful
+       (a viral cat-lion meme to $Altai); 35 of 68 GTA 6 posts get $GTA and no GTA 5, GTA meme or
+       Onitsuka Tiger post does; 25 tiger-story posts get $Altai. */
+    storyCoin: { alone: 0.7, together: 0.6, togetherPosts: 2, near: 0.45, minNameChars: 4 },
     weights: { base: -7.232, linksPost: 1.175, linksAccount: -0.218, picture: 0.825, hash: 0.495, description: 0.205, authorAddress: 0, othersAddress: 0, timing: 2.134, nameExact: 2.768, nameVariant: -0.46, tradingJump: 0 },
   },
 
