@@ -641,3 +641,21 @@
   font-size: 14px;
   font-weight: 700;
 }
+
+/* The notifications ask after sign-in (PushAsk.tsx), in the shared sheet: one line of what is sent, then its two buttons full width. */
+.askText {
+  margin: 4px 4px 8px;
+  color: var(--sheet-text);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.askButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.askButtons > button {
+  width: 100%;
+}

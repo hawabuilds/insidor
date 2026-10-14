@@ -28,6 +28,7 @@ import { RankUp } from './features/people/RankUp.tsx';
 import { ImportScreen } from './features/portfolio/ImportScreen.tsx';
 import { WalletsScreen } from './features/portfolio/WalletsScreen.tsx';
 import { resavePush } from './features/alerts/push.ts';
+import { PushAsk } from './features/alerts/PushAsk.tsx';
 import { fetchAlertSettings, fetchAlerts, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
 import { watchedPosts } from './shared/watched-posts.ts';
 import { useWatchlist } from './shared/hooks.ts';
@@ -174,6 +175,8 @@ export function App() {
       {route.screen === 'feed' ? <InstallPrompt /> : null}
       <TabBar current={tabOf(route)} />
       <RankUp signedIn={inside} />
+      {/* Trador's ask for notifications, after sign-in, when push-ask.ts says this phone can and has not answered. */}
+      <PushAsk signedIn={signedIn} />
       {creating !== null ? <CreateCoin key={creating.title} from={creating} onClose={() => setCreating(null)} /> : null}
     </ComingSoonProvider>
   );
