@@ -108,7 +108,7 @@ function ActionButton({ action, handlers }: { action: CoinAction | null; handler
     case 'create':
       return <Button look="primary" onClick={tap(handlers.create)}>Create coin</Button>;
     case 'buy':
-      return <Button look="buy" onClick={tap(() => handlers.buy(action.coin.ticker))}>Buy {tickerText(action.coin.ticker)}</Button>;
+      return <button type="button" className={styles['buy']} aria-label={`Buy ${tickerText(action.coin.ticker)}`} onClick={tap(() => handlers.buy(action.coin.ticker))}>Buy</button>;
     case 'view':
       return <Button look="quiet" onClick={tap(handlers.viewCoins)}>View coins</Button>;
   }
