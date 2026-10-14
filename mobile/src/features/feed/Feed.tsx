@@ -27,6 +27,13 @@
  * the post's subject is trading more since it (OlderCoins.tsx) — never the post's coin, never a
  * Buy on the card; tapping opens that coin's page, or the list when there are several.
  *
+ * ★ WITHOUT END (the owner, 2026-10-14). FYP and Popular show every post that was ever on them:
+ * the frame at the top, then older posts read twenty at a time about ten cards before the end
+ * (useOlderPosts.ts, older-feed.ts) — no Load more button, no pause. Only the cards near the screen
+ * are in the page (shared/ui/WindowList.tsx), so the list stays smooth however long it gets, and
+ * placeholder cards show only when the next page is slower than the scroll. Filters, the site pills
+ * and the owner's hides apply to the whole list. Pull to refresh starts the pages again.
+ *
  * LIVE (off unless the build sets VITE_LIVE_FEED=on; features/feed/live-feed.ts): while FYP is open
  * and on screen, a new post slides in at the top as soon as the projector commits it, and nothing
  * already on the list moves or disappears until pull to refresh (useLiveFeed.ts, LiveCard.tsx).
@@ -59,6 +66,9 @@ import { useLeadPosts } from './useLeadPosts.ts';
 import { LIVE_FEED } from './live-feed.ts';
 import { LiveCard } from './LiveCard.tsx';
 import { useLiveFeed } from './useLiveFeed.ts';
+import { PREFETCH_ROWS, withOlder } from './older-feed.ts';
+import { useOlderPosts } from './useOlderPosts.ts';
+import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { PostSheet } from '../post-sheet/index.ts';
 import { PullIndicator } from '../alerts/Parts.tsx';
 import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
@@ -70,6 +80,14 @@ import { useIsOwner, useOwnerState, useSavedCalls } from '../owner/hooks.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
 import styles from './feed.module.css';
 import { tickerText } from '../../shared/format/ticker.ts';
+
+/** A card's height before any is measured, and how far beyond the screen cards are kept drawn. */
+const CARD_GUESS_PX = 196;
+const DRAWN_BEYOND_PX = 1200;
+/** Placeholder cards under the list while the next page is on its way. */
+const PLACEHOLDERS = 3;
+
+const idOf = (p: RisingPost): string => p.id;
 
 const TABS = [
   { key: 'watchlist', label: <><StarIcon size={16} /> Watchlist</> },
@@ -97,6 +115,10 @@ export function Feed({
   usePreloadCreate(); /* Create coin then opens with the launchpad's rules already read. */
   /* FYP kept current while it is looked at, when the build switches it on; otherwise null and unused. */
   const live = useLiveFeed(LIVE_FEED && tab === 'fyp', fyp, reloadFyp);
+  /* Each feed's older pages, kept while the other tab is open. */
+  const fypOlder = useOlderPosts('fyp');
+  const popularOlder = useOlderPosts('popular');
+  const older = tab === 'popular' ? popularOlder : fypOlder;
   const reload = useCallback(() => {
     reloadBoard();
     reloadFyp();
@@ -136,11 +158,14 @@ export function Feed({
       () =>
         new Promise<void>((done) => {
           settled.current = done;
-          /* A pull is the one moment the live list takes the server's order and removals. */
+          /* A pull is the one moment the live list takes the server's order and removals, and the
+             older pages start again under the new frame. */
           live.rebuildNext();
+          fypOlder.reset();
+          popularOlder.reset();
           reload();
         }),
-      [reload, live.rebuildNext],
+      [reload, live.rebuildNext, fypOlder.reset, popularOlder.reset],
     ),
   );
 
@@ -157,9 +182,11 @@ export function Feed({
   const notice = boardNotice(tick?.provenance ?? null);
   const feed = tab === 'popular' ? popular : fyp;
   /* A post the owner just hid leaves the list now; the projection drops it on its next run. */
-  const feedPosts = tab === 'fyp' && live.rows !== null ? live.rows : feed.state === 'ready' ? feed.value.posts : null;
+  const headPosts = tab === 'fyp' && live.rows !== null ? live.rows : feed.state === 'ready' ? feed.value.posts : null;
+  const feedPosts = useMemo(() => (headPosts === null ? null : withOlder(headPosts, older.posts)), [headPosts, older.posts]);
   const posts = feed.state === 'ready' && feedPosts !== null ? applyPostFilters(withoutHidden(feedPosts, hiddenNow, (p) => p.id), filters, now) : null;
   useSavedCalls('coin_match', posts === null ? [] : posts.rows.map((p) => p.id), owner);
+  const liveOn = tab === 'fyp' && live.rows !== null;
   const post = (p: RisingPost) => (
     <PostRow
       key={p.id}
@@ -273,15 +300,33 @@ export function Feed({
             ) : null}
             {feed.state === 'ready' && posts !== null ? (
               <>
-                {tab === 'fyp' && live.rows !== null
-                  ? posts.rows.map((p) => (
-                      <LiveCard key={p.id} id={p.id} arrival={live.arrivals.get(p.id)}>
+                <WindowList
+                  key={tab}
+                  items={posts.rows}
+                  keyOf={idOf}
+                  render={(p) =>
+                    liveOn ? (
+                      <LiveCard id={p.id} arrival={live.arrivals.get(p.id)}>
                         {post(p)}
                       </LiveCard>
-                    ))
-                  : posts.rows.map(post)}
-                {feed.value.posts.length === 0 ? <p className={styles['empty']}>No posts yet.</p> : null}
-                {feed.value.posts.length > 0 && posts.rows.length === 0 && posts.unknown === 0 ? (
+                    ) : (
+                      post(p)
+                    )
+                  }
+                  guess={CARD_GUESS_PX}
+                  overscan={DRAWN_BEYOND_PX}
+                  nearEnd={PREFETCH_ROWS}
+                  onNearEnd={older.more}
+                />
+                {older.phase === 'loading' ? <Placeholders /> : null}
+                {older.phase === 'failed' ? (
+                  <div className={styles['empty']}>
+                    <p>Couldn't read older posts. The ones above are everything read so far.</p>
+                    <Button look="quiet" onClick={older.retry}>Try again</Button>
+                  </div>
+                ) : null}
+                {(feedPosts?.length ?? 0) === 0 && older.phase === 'done' ? <p className={styles['empty']}>No posts yet.</p> : null}
+                {(feedPosts?.length ?? 0) > 0 && posts.rows.length === 0 && posts.unknown === 0 && older.phase === 'done' ? (
                   <p className={styles['empty']}>No posts match these filters.</p>
                 ) : null}
                 {posts.unknown > 0 ? (
@@ -333,6 +378,24 @@ export function Feed({
         {sheet !== null ? <PostSheet key={sheet.id} postId={sheet.id} start={sheet.start} onClose={() => setSheet(null)} /> : null}
       </section>
     </>
+  );
+}
+
+/** Card-shaped placeholders under the list while the next page is on its way: only ever seen when the page is slower than the scroll. */
+function Placeholders() {
+  return (
+    <div aria-label="Reading older posts" role="status">
+      {Array.from({ length: PLACEHOLDERS }, (_, i) => (
+        <div key={i} className={styles['placeholder']} aria-hidden="true">
+          <span className={styles['placeholderPic']} />
+          <span className={styles['placeholderLines']}>
+            <span />
+            <span />
+            <span />
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
