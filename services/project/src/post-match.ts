@@ -295,9 +295,11 @@ export async function weighPostCoins(
   const ids = [...lists.keys()];
   const posts = await loadPosts(db, ids);
   const pc = p.postCoin;
-  /* ★ THE NAMER'S GUESSES JOIN THE JUDGE'S NAMES (internal.name_guess, 0076): each of its top five
-     names and tickers is searched in the mint stream and weighed as a name, the judge's first. None
-     until the namer's switch is on (Policy.names.on); the re-tune may hand its own (`guesses`). */
+  /* ★ THE NAMER'S GUESSES ARE SEARCH TERMS ONLY (internal.name_guess, 0076; the owner, 2026-10-14):
+     each of its top five names and tickers is searched in the mint stream, so its coins become
+     candidates, but only the judge's names are weighed as the subject's name — a guess is never
+     evidence. None until the namer's switch is on (Policy.names.on); the re-tune may hand its own
+     (`guesses`). Weighing with the guesses cost the owner's $TRUSTPROCESS its likely place. */
   const guesses = opts.guesses ?? (await new PgNameGuessRepo(db).top(ids));
   const judgeNamesOf = (post: PostRow) => [post.proposed_name, ...(post.alternate_names ?? [])].filter((n): n is string => n !== null && n.trim() !== '');
   const namesOf = (post: PostRow) => {
@@ -383,7 +385,7 @@ export async function weighPostCoins(
       };
     });
     const weighedDecision = matchPostCoin(
-      { postedAt: ms(post.posted_at) ?? ms(post.first_seen_at), linkIds: [post.source_item_id, ...pictureIds(post.media)], names: namesOf(post), author: post.handle, text: post.body },
+      { postedAt: ms(post.posted_at) ?? ms(post.first_seen_at), linkIds: [post.source_item_id, ...pictureIds(post.media)], names: judgeNamesOf(post), author: post.handle, text: post.body },
       sides,
       bars,
     );
