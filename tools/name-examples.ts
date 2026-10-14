@@ -45,7 +45,7 @@ try {
     const posts = [...(await allPairPosts(db)).values()];
     const repo = new PgNameExampleRepo(db);
     const pairs: (NamePair & { picture: string | null })[] = posts.flatMap((p) =>
-      p.coins.map((c) => ({ itemId: p.itemId, address: c.address, name: c.name, ticker: c.ticker, source: c.source, text: p.text, picture: p.picture, postedAtMs: p.postedAtMs, availableAtMs: c.availableAtMs })),
+      p.coins.map((c) => ({ itemId: p.itemId, address: c.address, name: c.name, ticker: c.ticker, source: c.source, text: p.text, picture: p.picture, postedAtMs: p.postedAtMs, availableAtMs: c.availableAtMs, rejected: c.rejected })),
     );
     let written = 0;
     for (let i = 0; i < pairs.length; i += 500) written += await repo.put(pairs.slice(i, i + 500));
