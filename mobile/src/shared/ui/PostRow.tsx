@@ -34,7 +34,7 @@
  * as well, and a card that opens anything but the post sheet sends the person out of the flow.
  */
 
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { RisingPost } from '../api/index.ts';
 import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
 import { useCoinCap } from '../useCoinCap.ts';
@@ -44,6 +44,7 @@ import { tickerText } from '../format/ticker.ts';
 import { platformOf } from '../platform.ts';
 import { Button } from './Button.tsx';
 import { CoinLogo } from './CoinLogo.tsx';
+import { usePosterPic } from './usePosterPic.ts';
 import { Sparkline } from './Sparkline.tsx';
 import { Thumb } from './Thumb.tsx';
 import { cardPictureUrl } from './picture-size.ts';
@@ -112,7 +113,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null }: { p
             </div>
             <div className={styles['byline']}>
               <span>
-                <PosterPic key={post.authorPictureUrl ?? ''} url={post.authorPictureUrl} label={post.authorLabel} />
+                <PosterPic key={`${post.authorPictureFile ?? ''} ${post.authorPictureUrl ?? ''}`} file={post.authorPictureFile} url={post.authorPictureUrl} label={post.authorLabel} />
                 {post.authorLabel}
               </span>
               <Value r={formatAge(post.postedAt, now)} className={styles['age']} />
@@ -147,12 +148,13 @@ export function PostRow({ post, now, handlers, extra = null, watch = null }: { p
 }
 
 /**
- * The poster's own profile picture beside the handle (the owner, 2026-10-13). The handle's first
- * letter only when the account has no picture stored or the picture will not load.
+ * The poster's own profile picture beside the handle (the owner, 2026-10-13): our storage's copy,
+ * else the source's link (usePosterPic.ts). The handle's first letter only when the account has no
+ * picture stored or none of them will load.
  */
-function PosterPic({ url, label }: { url: string | null; label: string }) {
-  const [failed, setFailed] = useState(false);
-  if (url !== null && !failed) return <img className={styles['posterPic']} src={url} alt="" loading="lazy" onError={() => setFailed(true)} />;
+function PosterPic({ file, url, label }: { file: string | null; url: string | null; label: string }) {
+  const { src, onError } = usePosterPic(file, url);
+  if (src !== null) return <img className={styles['posterPic']} src={src} alt="" loading="lazy" onError={onError} />;
   return <span className={styles['posterLetter']} aria-hidden="true">{(label.replace(/^@/, '').trim()[0] ?? '?').toUpperCase()}</span>;
 }
 

@@ -41,6 +41,7 @@ import { ChevronIcon } from '../../shared/ui/icons.tsx';
 import { WatchStar } from '../../shared/ui/WatchStar.tsx';
 import { PlatformBadge } from '../../shared/ui/PlatformMark.tsx';
 import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
+import { usePosterPic } from '../../shared/ui/usePosterPic.ts';
 import { Value } from '../../shared/ui/Value.tsx';
 import { CreateCoin } from '../create/CreateCoin.tsx';
 import { usePreloadCreate } from '../create/preload.ts';
@@ -212,7 +213,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
     <>
       <SheetHead>
         <span className={styles['avatar']}>
-          <Avatar url={data.author.pictureUrl} letter={name.replace(/^@/, '')} />
+          <Avatar file={data.author.pictureFile} url={data.author.pictureUrl} letter={name.replace(/^@/, '')} />
           {platform !== null ? <PlatformBadge platform={platform} label={post.sourceLabel} /> : null}
         </span>
         <span className={styles['whoText']}>
@@ -340,9 +341,9 @@ function topLine(main: SheetCoin, shared: string | null): string {
   return shared !== null && (same(main.name) || same(main.ticker)) ? `Top ${shared} coin by MC` : 'Top coin by MC';
 }
 
-/** The poster's picture, or the first letter of their name when there is none or it will not load. */
-function Avatar({ url, letter }: { url: string | null; letter: string }) {
-  const [failed, setFailed] = useState(false);
-  if (url !== null && !failed) return <img className={styles['avatarImg']} src={url} alt="" onError={() => setFailed(true)} />;
+/** The poster's picture (our copy, else the source's link), or the first letter of their name when there is none or none will load. */
+function Avatar({ file, url, letter }: { file: string | null; url: string | null; letter: string }) {
+  const { src, onError } = usePosterPic(file, url);
+  if (src !== null) return <img key={src} className={styles['avatarImg']} src={src} alt="" onError={onError} />;
   return <span className={styles['avatarLetter']} aria-hidden="true">{(letter.trim()[0] ?? '?').toUpperCase()}</span>;
 }
