@@ -123,6 +123,11 @@ body {
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   font-feature-settings: 'tnum' 1;
+  /* No rubber-band bounce at either end of the page. The page itself scrolls here, and in the
+     iPhone home-screen app a bounce carries the fixed tab bar with it, so the bar rose off the
+     bottom whenever For You's endless list reached its current end. Pull to refresh is our own
+     touch handling (features/alerts/pull.ts), never the bounce, so it is unaffected. */
+  overscroll-behavior-y: none;
 }
 
 button {
