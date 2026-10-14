@@ -63,8 +63,11 @@ export interface PostHandlers {
 
 const NO_COIN = { known: false, pending: 'not_minted' } as const;
 
-/** `extra`: a strip under the coin line that the card does not decide (the owner's controls). */
-export function PostRow({ post, now, handlers, extra = null }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode }) {
+/**
+ * `extra`: a strip under the coin line that the card does not decide (the owner's controls).
+ * `watch`: the Watch star, last on the coin line's row, drawn by the caller (shared/ui/WatchStar.tsx).
+ */
+export function PostRow({ post, now, handlers, extra = null, watch = null }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode; watch?: ReactNode }) {
   /* The coin line's cap is the shared one (shared/coin-cap.ts): live while a fresh price is held,
      so the card says what the sheet and token page say. The card itself never polls. */
   const own = post.coins.kind === 'one' || post.coins.kind === 'matched' ? post.coins.coin : null;
@@ -131,9 +134,10 @@ export function PostRow({ post, now, handlers, extra = null }: { post: RisingPos
           {status.line}
           {status.facts !== undefined && status.facts.length > 0 ? <span className={styles['facts']}>{status.facts.join(', ')}</span> : null}
         </span>
-        {status.actions.length > 0 ? (
+        {status.actions.length > 0 || watch !== null ? (
           <span className={styles['actions']}>
             {status.actions.map((action) => <ActionButton key={action.kind} action={action} handlers={handlers} />)}
+            {watch}
           </span>
         ) : null}
       </div>

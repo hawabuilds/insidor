@@ -3,8 +3,9 @@
  *
  * FYP and Popular are feeds of SINGLE POSTS from `GET /rising/fyp` and `GET /rising/popular`:
  * posts the catch-all search found whose meme score clears the bar, newest first and most
- * views first, in the order the server committed. Watchlist is the narratives you starred,
- * read from `GET /board/default` (`feed-tabs.ts`). The site pills and the filter panel narrow
+ * views first, in the order the server committed. Watchlist is the posts you watch (the star on a
+ * card or the post sheet, read from the alert service: useWatchedPosts.ts), then the narratives you
+ * starred, read from `GET /board/default` (`feed-tabs.ts`). The site pills and the filter panel narrow
  * whichever list is showing (`feed-filters.ts`).
  * Pulling the list down from the top reads it again (alerts/pull.ts); For You comes newest first, so
  * new posts land at the top.
@@ -50,7 +51,7 @@ import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { usePreloadCreate } from '../create/preload.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { FILTER_PLATFORMS } from '../../shared/platform.ts';
-import { hrefFor } from '../../shared/route.ts';
+import { hrefFor, parseRoute } from '../../shared/route.ts';
 import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
@@ -71,6 +72,8 @@ import { useLiveFeed } from './useLiveFeed.ts';
 import { PREFETCH_ROWS, withOlder } from './older-feed.ts';
 import { useOlderPosts } from './useOlderPosts.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
+import { WatchStar } from '../../shared/ui/WatchStar.tsx';
+import { useWatchedPosts } from './useWatchedPosts.ts';
 import { PostSheet } from '../post-sheet/index.ts';
 import { PullIndicator } from '../alerts/Parts.tsx';
 import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
@@ -110,6 +113,24 @@ export function Feed({
   const [panel, setPanel] = useState(false);
   /* The post whose post sheet is open and the view it opened on, or none. */
   const [sheet, setSheet] = useState<{ readonly id: string; readonly start: 'post' | 'coins' } | null>(null);
+  /*
+   * ★ `#/post/<id>` (a post notification) IS FOR YOU WITH THAT POST'S SHEET UP. The address is put
+   * back to For You at once, in place (no new history entry, no hashchange), and the sheet opens over
+   * it — so back and the sheet's close both land on For You, whether the app was closed, in the
+   * background or open. Taken on arrival and on every later change of address.
+   */
+  useEffect(() => {
+    const take = () => {
+      const r = parseRoute(window.location.hash);
+      if (r.screen !== 'post') return;
+      history.replaceState(history.state, '', hrefFor({ screen: 'feed' }));
+      setTab('fyp');
+      setSheet({ id: r.postId, start: 'post' });
+    };
+    take();
+    window.addEventListener('hashchange', take);
+    return () => window.removeEventListener('hashchange', take);
+  }, []);
   const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
   /* One loader per feed, so switching tabs never shows one feed's order under the other's name. */
   const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
@@ -127,6 +148,7 @@ export function Feed({
     reloadPopular();
   }, [reloadBoard, reloadFyp, reloadPopular]);
   const starred = useWatchlist();
+  const watchedRows = useWatchedPosts(tab === 'watchlist');
   const now = useNow();
   const soon = useComingSoon();
   /* The owner's controls (features/owner): drawn only when the services say this is the owner. */
@@ -201,6 +223,7 @@ export function Feed({
           {owner ? <OwnerCardStrip post={p} /> : null}
         </>
       }
+      watch={<WatchStar postId={p.id} />}
       handlers={{
         open: () => setSheet({ id: p.id, start: 'post' }),
         create: () => onCreatePost(p),
@@ -350,6 +373,21 @@ export function Feed({
             <p>Couldn't reach the read service, so there is nothing to show. This is not an empty board.</p>
             <Button look="quiet" onClick={reload}>Try again</Button>
           </div>
+        ) : null}
+
+        {!onPosts ? (
+          <>
+            <h2 className={styles['group']}>Posts you watch</h2>
+            {watchedRows.rows.map(post)}
+            {watchedRows.reading > 0 ? <p className={styles['hidden']}>Reading {watchedRows.reading === 1 ? '1 watched post' : `${watchedRows.reading} watched posts`}.</p> : null}
+            {watchedRows.failed > 0 ? <p className={styles['hidden']}>{watchedRows.failed === 1 ? "1 watched post couldn't" : `${watchedRows.failed} watched posts couldn't`} be read just now.</p> : null}
+            {watchedRows.state === 'ready' && watchedRows.rows.length + watchedRows.reading + watchedRows.failed === 0 ? (
+              <p className={styles['empty']}>No posts watched yet. Tap the star on a post to hear the moment a coin for it launches or is found.</p>
+            ) : null}
+            {watchedRows.state === 'loading' ? <p className={styles['hidden']}>Reading your watched posts.</p> : null}
+            {watchedRows.state === 'failed' ? <p className={styles['hidden']}>Your watched posts couldn't be read just now.</p> : null}
+            <h2 className={styles['group']}>Narratives you starred</h2>
+          </>
         ) : null}
 
         {!onPosts && tick !== null ? (

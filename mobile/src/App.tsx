@@ -27,7 +27,9 @@ import { ProfileScreen } from './features/people/ProfileScreen.tsx';
 import { RankUp } from './features/people/RankUp.tsx';
 import { ImportScreen } from './features/portfolio/ImportScreen.tsx';
 import { WalletsScreen } from './features/portfolio/WalletsScreen.tsx';
-import { fetchAlerts, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
+import { resavePush } from './features/alerts/push.ts';
+import { fetchAlertSettings, fetchAlerts, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
+import { watchedPosts } from './shared/watched-posts.ts';
 import { useWatchlist } from './shared/hooks.ts';
 import { InstallPrompt } from './features/install/InstallPrompt.tsx';
 import { NarrativePage } from './features/narrative/NarrativePage.tsx';
@@ -51,6 +53,8 @@ import { TabBar } from './shared/ui/TabBar.tsx';
 function Screen({ route, create, unread, onAlertsSeen, readUnread }: { route: Route; create: (from: CreateFrom) => void; unread: number; onAlertsSeen: () => void; readUnread: () => void }) {
   switch (route.screen) {
     case 'feed':
+    case 'post':
+      /* The same Feed for both: `#/post/<id>` is For You with that post's sheet open (Feed.tsx takes it). */
       return (
         <Feed
           onCreate={(row, labelled) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, labelled, storyId: row.id })}
@@ -123,6 +127,15 @@ export function App() {
   /* Signed in: the profile is brought up to date from the sign-in, once per session. */
   useEffect(() => {
     if (signedIn) void syncMe().catch(() => undefined);
+  }, [signedIn]);
+  /* This phone's notifications, made sure of on every launch: a phone that allowed them is saved
+     again, so a save that failed once heals itself (features/alerts/push.ts). No prompt is shown. */
+  useEffect(() => {
+    if (signedIn) void fetchAlertSettings().then((s) => resavePush(s.push.on && s.push.configured ? s.push.publicKey : null), () => undefined);
+  }, [signedIn]);
+  /* The posts watched here, read from the alert service once signed in (shared/watched-posts.ts). */
+  useEffect(() => {
+    if (signedIn) watchedPosts.load();
   }, [signedIn]);
   /* The narratives starred here are mirrored for alerts sent while the app is closed. */
   const watchedKey = watched.join(',');
