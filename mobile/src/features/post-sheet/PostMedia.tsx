@@ -22,6 +22,11 @@
  * link to the post: the one way out of the media, and only then (the owner, 2026-10-13). Never a
  * play button that does nothing. A picture shows no link: there is nothing more to see.
  *
+ * ★ A TIKTOK VIDEO PLAYS IN TIKTOK'S OWN PLAYER (`tiktokId`, TikTokPlayer.tsx). Its file is a 403 to
+ * any page but TikTok's (tiktok-player.ts), so it never has a `playUrl`; with the post's id it opens
+ * as its cover and our play button, and the tap brings up their player, with their controls, in
+ * the same box. If that player cannot play, it is the still with "Play on TikTok", as above.
+ *
  * ★ NEVER A BLANK BOX. A picture or still that will not load takes the media box away (`onGone`),
  * so the sheet closes up rather than showing an empty frame.
  *
@@ -39,12 +44,13 @@
  * it, and treating that as a failure would swap a working video for the still.
  */
 
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 
 import type { SheetMedia } from '../../shared/api/index.ts';
 import { useDismiss, useSwipeClose } from '../../shared/ui/dismiss.ts';
 import { CloseIcon } from '../../shared/ui/icons.tsx';
+import { TikTokPlayer } from './TikTokPlayer.tsx';
 import { FullIcon, OpenIcon, PauseIcon, PlayFillIcon, SoundOffIcon, SoundOnIcon } from './sheet-icons.tsx';
 import styles from './post-sheet.module.css';
 import own from './post-media.module.css';
@@ -73,17 +79,22 @@ export interface PostMediaProps {
   readonly postUrl?: string | null;
   /** The source's name, as the sheet's open button says it ("X"). */
   readonly sourceLabel?: string | null;
+  /** The video's TikTok id: with no file of its own, it plays in TikTok's player; null: not TikTok. */
+  readonly tiktokId?: string | null;
 }
 
 /** What the full-screen viewer shows: the picture, or the video from a time, with or without sound. */
 type Full = { readonly kind: 'picture' } | { readonly kind: 'video'; readonly at: number; readonly muted: boolean; readonly loop: boolean };
 
-export function PostMedia({ media, height, onGone, postUrl = null, sourceLabel = null }: PostMediaProps) {
+export function PostMedia({ media, height, onGone, postUrl = null, sourceLabel = null, tiktokId = null }: PostMediaProps) {
   const [broken, setBroken] = useState(false);
   const [full, setFull] = useState<Full | null>(null);
-  const fail = () => setBroken(true);
+  /* Stable, so the TikTok player's message listener is not rebuilt on every render of the sheet. */
+  const fail = useCallback(() => setBroken(true), []);
   let box;
-  if (media.playUrl === null || broken) {
+  if (media.playUrl === null && media.kind === 'video' && tiktokId !== null && !broken) {
+    box = <TikTokPlayer id={tiktokId} posterUrl={media.posterUrl} height={height} onFail={fail} />;
+  } else if (media.playUrl === null || broken) {
     const out = media.kind === 'video' || media.playUrl !== null ? postUrl : null;
     box = (
       <div className={`${styles['media']} ${own['tappable']}`} style={{ height }} onClick={() => setFull({ kind: 'picture' })}>

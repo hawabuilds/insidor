@@ -49,6 +49,7 @@ import { BuyOpen, SheetToast, type SheetNote } from './BuyOpen.tsx';
 import { ChooseCoin } from './ChooseCoin.tsx';
 import { CoinLine } from './CoinLine.tsx';
 import { PostMedia } from './PostMedia.tsx';
+import { tiktokVideoId } from './tiktok-player.ts';
 import { ReachChart } from './ReachChart.tsx';
 import { OpenIcon } from './sheet-icons.tsx';
 import { chartPlan, coinTag, firstCoinAfter, followersText, foundTag, gainText, provenWhy, recentGain } from './sheet-view.ts';
@@ -236,7 +237,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
           {post.excerpt !== '' || media !== null ? (
             <section className={styles['postCard']}>
               {post.excerpt !== '' ? <PostText text={post.excerpt} lines={media !== null ? TEXT_LINES.withMedia : TEXT_LINES.alone} /> : null}
-              {media !== null ? <PostMedia media={media} height={mediaHeight(media.width, media.height)} onGone={() => setMediaGone(true)} postUrl={post.permalink} sourceLabel={post.sourceLabel} /> : null}
+              {media !== null ? <PostMedia media={media} height={mediaHeight(media.width, media.height)} onGone={() => setMediaGone(true)} postUrl={post.permalink} sourceLabel={post.sourceLabel} tiktokId={platform === 'tiktok' ? tiktokVideoId(post.id) : null} /> : null}
             </section>
           ) : null}
 
