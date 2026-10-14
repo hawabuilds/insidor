@@ -1,5 +1,5 @@
 /**
- * `node --env-file=.env.local --experimental-strip-types tools/notify-test.ts [--dry]`
+ * `node --env-file=.env.local --experimental-strip-types tools/notify-test.ts [--all] [--dry]`
  *
  * ONE OF EACH NOTIFICATION, TO THE OWNER'S OWN PHONE (the owner, 2026-10-14: "send me one of each
  * type to my phone and tell me when to check"). Each one is built the way the alert service builds
@@ -145,7 +145,12 @@ if (!push.configured) {
   process.exit(1);
 }
 
-const { found, missing } = await samples();
+/* One clearly labelled test by default (the owner's call: the other kinds, built from posts he is
+   not watching, read as real alerts). `--all` sends one of each kind, for checking the wording. */
+const every = process.argv.includes('--all');
+const gathered = await samples();
+const found = every ? gathered.found : gathered.found.filter((s) => s.kind === 'push_test');
+const missing = every ? gathered.missing : [];
 const stamp = Date.now();
 console.log('What is sent (title, body, where a tap opens, the pictures):');
 for (const s of found) {
