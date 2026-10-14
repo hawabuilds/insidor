@@ -61,11 +61,16 @@ export function feedTab<T extends { readonly kind: string; readonly href: string
   });
 }
 
-/** Notifications: everything not on the Feed. */
-export const notifications = <T extends { readonly kind: string }>(items: readonly T[]): readonly T[] => items.filter((a) => !onFeed(a.kind));
+/**
+ * Notifications: everything not on the Feed, and anything that reached the phone as a push (the
+ * owner, 2026-10-14: "every notification also shows in the Notifications list") — a New on FYP post
+ * that was pushed is in both.
+ */
+export const isNotification = (a: { readonly kind: string; readonly pushed?: boolean }): boolean => !onFeed(a.kind) || a.pushed === true;
+export const notifications = <T extends { readonly kind: string; readonly pushed?: boolean }>(items: readonly T[]): readonly T[] => items.filter(isNotification);
 
 /** The bell's number: unread notifications only, as Trador's bell counts its own list. */
-export const bellCount = (items: readonly { readonly kind: string; readonly unread: boolean }[]): number => items.filter((a) => a.unread && !onFeed(a.kind)).length;
+export const bellCount = (items: readonly { readonly kind: string; readonly unread: boolean; readonly pushed?: boolean }[]): number => items.filter((a) => a.unread && isNotification(a)).length;
 
 /**
  * A title with its ticker picked out, for Trador's bold symbol: `["", "$FERRY", " graduated"]`.

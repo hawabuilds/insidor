@@ -26,6 +26,9 @@ export type Tab = 'feed' | 'narratives' | 'search' | 'alerts' | 'portfolio';
 
 export type Route =
   | { readonly screen: 'feed' }
+  /* One post's sheet over For You (`#/post/<id>`): what a post notification opens. Closing the
+     sheet goes to For You itself, so back and close both land there. */
+  | { readonly screen: 'post'; readonly postId: string }
   | { readonly screen: 'narratives' }
   | { readonly screen: 'story'; readonly storyId: string }
   | { readonly screen: 'coin'; readonly storyId: string; readonly coinId: string }
@@ -74,6 +77,7 @@ export function parseRoute(hash: string): Route {
     if (sub === 'coin' && coinId !== undefined) return { screen: 'coin', storyId: id, coinId };
     return FEED;
   }
+  if (head === 'post' && id !== undefined && sub === undefined) return { screen: 'post', postId: id };
   if (head === 'token' && id !== undefined && coinId === undefined) {
     if (sub === undefined) return { screen: 'token', coinId: id };
     if (sub === 'unproven') return { screen: 'token', coinId: id, unproven: true };
@@ -122,6 +126,8 @@ export function hrefFor(route: Route): string {
       return '#/';
     case 'story':
       return `#/story/${enc(route.storyId)}`;
+    case 'post':
+      return `#/post/${enc(route.postId)}`;
     case 'coin':
       return `#/story/${enc(route.storyId)}/coin/${enc(route.coinId)}`;
     case 'token':
@@ -146,6 +152,7 @@ export function tabOf(route: Route): Tab {
   switch (route.screen) {
     case 'story':
     case 'coin':
+    case 'post':
       return 'feed';
     case 'token':
       return 'search';

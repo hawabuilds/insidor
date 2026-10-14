@@ -118,7 +118,7 @@ export const fetchAlerts = async (ask: AlertListAsk = { list: 'notifications' },
 export const markAlertsSeen = async (): Promise<void> => void (await notify('POST', '/alerts/seen'));
 export const fetchAlertSettings = async (): Promise<AlertSettings> => (await notify('GET', '/prefs')) as AlertSettings;
 export const saveAlertPrefs = async (prefs: AlertPrefs): Promise<AlertSettings> => (await notify('PUT', '/prefs', { prefs })) as AlertSettings;
-export const registerDevice = async (sub: { endpoint: string; keys: { p256dh: string; auth: string } }): Promise<void> => void (await notify('POST', '/push/subscribe', sub));
+export const registerDevice = async (sub: { endpoint: string; keys: { p256dh: string; auth: string }; device?: string }): Promise<void> => void (await notify('POST', '/push/subscribe', sub));
 export const unregisterDevice = async (endpoint: string): Promise<void> => void (await notify('DELETE', '/push/subscribe', { endpoint }));
-export const sendTestPush = async (): Promise<{ sent: number; why: string | null }> => (await notify('POST', '/push/test')) as { sent: number; why: string | null };
+export const sendTestPush = async (): Promise<{ sent: number; devices?: number; why: string | null }> => (await notify('POST', '/push/test')) as { sent: number; devices?: number; why: string | null };
 export const syncWatch = async (stories: readonly string[]): Promise<void> => void (await notify('PUT', '/watch', { stories }));

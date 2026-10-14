@@ -22,6 +22,7 @@ const EVERY: readonly Route[] = [
   { screen: 'story', storyId: 'goose' },
   { screen: 'coin', storyId: 'jimothy', coinId: 'c1' },
   { screen: 'coin', storyId: 'a/b c', coinId: 'x%y' },
+  { screen: 'post', postId: 'x:2110370022296080596' },
   { screen: 'token', coinId: 'solana:Abc123pump' },
   { screen: 'token', coinId: 'solana:Abc123pump', unproven: true },
 ];

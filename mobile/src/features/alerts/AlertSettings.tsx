@@ -18,13 +18,18 @@ import { fetchAlertSettings, saveAlertPrefs, sendTestPush, type AlertPrefs, type
 import { useLoad } from '../../shared/hooks.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { Sheet, SheetBody, SheetHead } from '../../shared/ui/Sheet.tsx';
-import { currentPush, disablePush, enablePush, pushPlace } from './push.ts';
+import { STEP_WORDS, currentPush, disablePush, enablePush, permission, pushPlace, standalone, type Permission } from './push.ts';
 import styles from './alerts.module.css';
 
+/* The owner's push list (2026-10-14) first, each with its own switch, then the rest. */
 const ROWS: readonly { readonly key: AlertSwitch; readonly label: string; readonly hint: string }[] = [
-  { key: 'rising', label: 'Rising posts', hint: 'A post taking off right now, as the feed sees it.' },
+  { key: 'rising', label: 'New on FYP', hint: 'Every post that enters For You, one by one. A tap opens the post.' },
+  { key: 'fypCoins', label: 'Coin launched or found for an FYP post', hint: "As soon as a coin with the post's name exists. A tap opens the coin." },
+  { key: 'proven', label: 'Proven coin', hint: 'A coin whose own links carry an FYP post.' },
+  { key: 'storyCoins', label: 'Coin for this story', hint: 'A new FYP post on a story whose coin you confirmed.' },
+  { key: 'watchedPosts', label: 'Watched posts', hint: 'A coin for a post you starred, the moment it launches or is found. Not held back by the hourly limit.' },
   { key: 'narratives', label: 'New narratives', hint: 'When a narrative reaches the board, and when one gets its first coin.' },
-  { key: 'coins', label: 'Coins for what you watch', hint: 'When a coin is matched to a narrative you starred, or proven from a post you put the bell on.' },
+  { key: 'coins', label: 'Coins for narratives you star', hint: 'When a coin is matched to a narrative you starred.' },
   { key: 'holdings', label: 'Your holdings', hint: 'When a coin you hold reaches a multiple of what you paid.' },
   { key: 'watchlist', label: 'Your watchlist', hint: 'When a coin of a narrative you watch reaches a multiple. Off to start: a watchlist is for browsing.' },
   { key: 'graduations', label: 'Graduations', hint: 'When a coin you hold or watch is close to finishing its curve, and when it does.' },
@@ -32,6 +37,22 @@ const ROWS: readonly { readonly key: AlertSwitch; readonly label: string; readon
   { key: 'replies', label: 'Replies to your comments', hint: '' },
   { key: 'useful', label: 'Comments found useful', hint: 'When holders of a coin like a comment of yours.' },
 ];
+
+const PERMISSION_WORDS: Readonly<Record<Permission, string>> = {
+  granted: 'Allowed',
+  denied: 'Blocked',
+  default: 'Not asked yet',
+  unsupported: 'This browser has no notifications',
+};
+
+/** What the push service said to the last push, in words: a fact about the last send, never a guess about the next. */
+function lastPushWords(last: Settings['push']['last']): string {
+  if (last === null || last === undefined) return 'None sent yet';
+  const when = new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (last.result === 'taken') return `Taken by your phone's push service at ${when}`;
+  if (last.result === 'no-answer') return `Your phone's push service did not answer at ${when}`;
+  return `Refused by your phone's push service (${last.status}) at ${when}`;
+}
 
 function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (on: boolean) => void }) {
   return (
@@ -60,10 +81,13 @@ function Body({ initial }: { initial: Settings }) {
   const toast = useToast();
   const [s, setS] = useState(initial);
   const [device, setDevice] = useState<'on' | 'off' | 'denied'>('off');
+  /* Where the last try to turn push on stopped, kept on screen (the toast goes): the step and the browser's own words. */
+  const [stopped, setStopped] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
   const place = pushPlace();
   useEffect(() => {
-    void currentPush().then(setDevice, () => undefined);
-  }, []);
+    void currentPush(s.push.devices).then(setDevice, () => undefined);
+  }, [s.push.devices]);
   const p = s.prefs;
 
   const save = async (next: AlertPrefs) => {
@@ -74,20 +98,40 @@ function Body({ initial }: { initial: Settings }) {
       toast("Couldn't save that", e instanceof Error ? e.message : '');
     }
   };
+  /* ★ From the tap, with nothing awaited before the permission prompt (iPhone refuses a prompt that does not come straight from a tap). */
   const togglePush = async (on: boolean) => {
     if (!on) {
       await disablePush();
       setDevice('off');
+      setS(await fetchAlertSettings().catch(() => s));
       return;
     }
-    if (s.push.publicKey === null) return;
+    if (s.push.publicKey === null) {
+      toast("Couldn't turn notifications on", 'The server has no push key.');
+      return;
+    }
     const r = await enablePush(s.push.publicKey);
-    setDevice(r === 'on' ? 'on' : r === 'denied' ? 'denied' : 'off');
-    if (r === 'failed') toast("Couldn't turn notifications on", 'Try again in a moment.');
+    if (r.kind === 'on') {
+      setStopped(null);
+      setDevice('on');
+      setS(await fetchAlertSettings().catch(() => ({ ...s, push: { ...s.push, devices: Math.max(1, s.push.devices) } })));
+      toast('Notifications are on', 'Send a test to see one now.');
+      return;
+    }
+    if (r.kind === 'denied') {
+      setDevice(permission() === 'denied' ? 'denied' : 'off');
+      return;
+    }
+    const line = `Stopped at ${STEP_WORDS[r.step]}: ${r.error}`;
+    setStopped(line);
+    toast("Couldn't turn notifications on", line);
   };
   const test = async () => {
+    setTesting(true);
     const r = await sendTestPush().catch(() => ({ sent: 0, why: 'Notifications could not be reached just now.' }));
-    toast(r.sent > 0 ? 'Test sent' : 'Nothing sent', r.why ?? 'Check your phone.');
+    setTesting(false);
+    toast(r.sent > 0 ? 'Test sent' : 'Nothing sent', r.why ?? 'Check your phone now.');
+    setS(await fetchAlertSettings().catch(() => s));
   };
   const serverPush = s.push.on && s.push.configured;
   const multiple = (m: number) => {
@@ -117,11 +161,29 @@ function Body({ initial }: { initial: Settings }) {
           <div className={styles['setRow']}>
             <div>
               <b>Feed notifications</b>
-              <span>{device === 'denied' ? 'Blocked in your browser settings: allow it there.' : device === 'on' ? 'This phone gets your feed notifications.' : 'Turn on feed notifications on this phone.'}</span>
+              <span>{device === 'denied' ? 'Blocked for Insidor on this phone.' : device === 'on' ? 'This phone gets your notifications.' : 'Turn on notifications on this phone.'}</span>
             </div>
             {device !== 'denied' ? <Switch on={device === 'on'} label="Feed notifications" onChange={(on) => void togglePush(on)} /> : null}
           </div>
-          {device === 'on' ? <button type="button" className={styles['link']} onClick={() => void test()}>Send a test push</button> : null}
+          {device === 'denied' ? (
+            <p className={styles['sheetNote']}>
+              {standalone() ? 'On iPhone: Settings, Notifications, Insidor, then Allow Notifications. Then come back here.' : 'Allow notifications for this site in your browser settings, then come back here.'}
+            </p>
+          ) : null}
+          {/* The state as it is, three facts: what the phone allows, whether our server holds this phone, and what the last push got back. */}
+          <div className={styles['setRow']}>
+            <div>
+              <span>Permission: {PERMISSION_WORDS[permission()]}</span>
+              <span>Saved on our server: {s.push.devices > 0 ? (s.push.devices === 1 ? '1 device of yours' : `${s.push.devices} devices of yours`) : 'not yet'}</span>
+              <span>Last push: {lastPushWords(s.push.last)}</span>
+            </div>
+          </div>
+          {stopped !== null ? <p className={styles['sheetNote']}>{stopped}</p> : null}
+          {device === 'on' || s.push.devices > 0 ? (
+            <button type="button" className={styles['link']} aria-busy={testing} onClick={() => void test()}>
+              {testing ? 'Sending a test' : 'Send a test push'}
+            </button>
+          ) : null}
         </div>
       ) : null}
 
