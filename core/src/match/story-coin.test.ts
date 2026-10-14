@@ -17,8 +17,9 @@ const GTA = 'BsbsB3WL';
 const gta = (itemId: string, atMs: number, stories: readonly string[] = [`seed-${itemId}`]): StoryAnchor => ({ itemId, coin: GTA, atMs, kind: 'right', names: ['GTA6', 'GTA', 'GTA memes'], stories });
 const ANCHORS: StoryAnchor[] = [gta('x:4681', 1), gta('x:8387', 2), gta('x:0304', 3), gta('x:8291', 4)];
 const post = (itemId: string, name: string | null, stories: readonly string[] = []): StoryPost => ({ itemId, name, stories });
+/* The meaning tests below give every pair a shared detail (the same picture); the detail and thin-post tests do not. */
 const run = (posts: readonly StoryPost[], sims: Record<string, number>, anchors: readonly StoryAnchor[] = ANCHORS) =>
-  storyCoins(posts, anchors, (p, a) => sims[`${p}|${a}`] ?? sims[p], BARS);
+  storyCoins(posts, anchors, (p, a) => sims[`${p}|${a}`] ?? sims[p], BARS, () => null, () => ({ picture: true }));
 
 test('★ GTA 6 posts get the coin the owner confirmed for the GTA 6 story', () => {
   const out = run(
@@ -100,4 +101,28 @@ test('one confirmation alone needs more than two together: the same 0.66 passes 
   const one = [tiger('t:a', 1)];
   assert.equal(run([post('x:p', null)], { 'x:p|t:a': 0.66 }, one).size, 0);
   assert.equal(run([post('x:p', null)], { 'x:p|t:a': 0.66, 'x:p|t:b': 0.61 }, [...one, tiger('t:b', 2)]).get('x:p')?.coin?.address, ALTAI);
+});
+
+/* ★ 2026-10-14 evening: no story coin on a thin post, and never without a shared detail. */
+const bare = (posts: readonly StoryPost[], sims: Record<string, number>, anchors: readonly StoryAnchor[], texts: Record<string, string>) =>
+  storyCoins(posts, anchors, (p, a) => sims[`${p}|${a}`] ?? sims[p], BARS, (a) => texts[a] ?? null, () => ({ picture: false }));
+const ROAD = (atMs: number): StoryAnchor => ({ itemId: 't:minecraft', coin: 'ROAD', atMs, kind: 'right', names: ['hit the road dude', 'ROAD'], stories: [] });
+
+test('★ a hashtag-only post never takes a story coin, however close ($ROAD on "#Memes", "#MemeCut #Meme")', () => {
+  const out = run([{ itemId: 't:memes', name: 'MeM', stories: [], text: '#Memes ' }, { itemId: 't:memecut', name: 'EARS', stories: [], text: '#MemeCut #MemeCut #Meme #MemeCut ' }], { 't:memes': 0.9, 't:memecut': 0.9 }, [ROAD(1)]);
+  assert.equal(out.size, 0);
+});
+
+test('★ without a shared name, picture or topic word, meaning alone is not enough', () => {
+  const anchors = [tiger('t:enclosure', 1)];
+  const texts = { 't:enclosure': 'A man died after he entered the tiger enclosure at a wildlife park' };
+  const post = (itemId: string, text: string): StoryPost => ({ itemId, name: null, stories: [], text });
+  const out = bare([post('x:whiskers', 'YOOO 7H AND 1.5M VIEWS OFFICER WHISKERS run it'), post('x:tigerpark', 'Tiger at the wildlife park was not harmed, keepers say')], { 'x:whiskers': 0.75, 'x:tigerpark': 0.75 }, anchors, texts);
+  assert.equal(out.has('x:whiskers'), false);
+  assert.equal(out.get('x:tigerpark')?.coin?.address, ALTAI, 'tiger and wildlife are topic words both posts say');
+});
+
+test('the coin\'s own name said in the post is a shared detail ("Altai")', () => {
+  const out = bare([{ itemId: 'x:named', name: null, stories: [], text: 'Identity of the man killed by Altai is out' }], { 'x:named': 0.75 }, [tiger('t:a', 1)], {});
+  assert.equal(out.get('x:named')?.coin?.address, ALTAI);
 });
