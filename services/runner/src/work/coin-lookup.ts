@@ -19,6 +19,11 @@
  * narrative is the projector's call, and for a search-found coin it requires the picture, the
  * name and the timing to agree (services/project). Free reads only, so it runs on a dry run.
  *
+ * ★ AND THE NAMER'S GUESSES (2026-10-14). With the namer's switch on, a post is also searched
+ * under its top guessed names and tickers (internal.name_guess), up to `guessNamesPerSubject`
+ * after the judge's: on the owner's coin labels the real coin's own name or ticker is among the
+ * namer's five for 16 of 20 posts, among the judge's names for 11.
+ *
  * ★ THREE CAPS, ALL COUNTED IN THE STORE, SO A RESTART OR A ONE-OFF RUN SHARES THEM. Each pass
  * searches at most `termsPerPass` names, never more than `perMinute` in any rolling minute and
  * `perDay` in a UTC day, finished and failed searches alike. Feed posts come first, newest into
@@ -51,7 +56,7 @@ import { assetFromSearch, CHAIN } from '@insidor/venue-solana-pumpfun';
 import { errorText, type Logger } from '../log.ts';
 
 export interface LookupDeps {
-  readonly coins: Pick<PgCoinUniverseRepo, 'queueLookups' | 'lookupTerms' | 'recordLookup' | 'recordFailedLookup' | 'searchesSince' | 'knownAssets'>;
+  readonly coins: Pick<PgCoinUniverseRepo, 'queueLookups' | 'lookupTerms' | 'recordLookup' | 'recordFailedLookup' | 'searchesSince' | 'knownAssets'> & Partial<Pick<PgCoinUniverseRepo, 'withGuesses'>>;
   readonly assets: Pick<PgAssetRepo, 'upsert'>;
   readonly sources: readonly CoinSearch[];
   /** The chain, for a candidate's metadata link and launch time. Null: neither is read. */
@@ -75,17 +80,24 @@ export interface LookupResult {
 }
 
 /** The subject's names to search: distinct once case, spaces and punctuation go, at most `max`. */
-export function searchNames(term: Pick<LookupTerm, 'term' | 'names'>, max: number): readonly string[] {
+export function searchNames(term: Pick<LookupTerm, 'term' | 'names' | 'guesses'>, max: number, guessMax = 0): readonly string[] {
   const key = (n: string) => n.toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '');
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const n of [term.term, ...(term.names ?? [])]) {
-    const k = key(n);
-    if (k === '' || seen.has(k)) continue;
-    seen.add(k);
-    out.push(n.trim());
-    if (out.length >= max) break;
-  }
+  const take = (names: readonly string[], cap: number) => {
+    let n = 0;
+    for (const name of names) {
+      if (n >= cap) break;
+      const k = key(name);
+      if (k === '' || seen.has(k)) continue;
+      seen.add(k);
+      out.push(name.trim());
+      n += 1;
+    }
+  };
+  take([term.term, ...(term.names ?? [])], max);
+  /* The namer's guesses after the judge's names, each only when it is a name not already searched. */
+  take(term.guesses ?? [], guessMax);
   return out;
 }
 
@@ -95,7 +107,10 @@ export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
   await deps.coins.queueLookups(now);
   const today = await deps.coins.searchesSince((Math.floor(now / DAY_MS) * DAY_MS) as Millis);
   const thisMinute = await deps.coins.searchesSince((now - MINUTE_MS) as Millis);
-  const names = Math.max(1, l.namesPerSubject);
+  /* The namer's guesses are searched only while its switch is on (Policy.names.on): they are free
+     reads, but each is a call against the per-minute and per-day caps. */
+  const guessMax = deps.policy.names.on ? l.guessNamesPerSubject : 0;
+  const names = Math.max(1, l.namesPerSubject + guessMax);
   const room = Math.floor(Math.min(l.termsPerPass, l.perMinute - thisMinute * names, l.perDay - today * names) / names);
   if (room <= 0) {
     deps.log.info('coin lookup held back by its caps; the names wait for the next pass', { today, thisMinute });
@@ -105,8 +120,10 @@ export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
   let searched = 0;
   let added = 0;
   let failed = 0;
-  for (const term of await deps.coins.lookupTerms((now - l.keepMs) as Millis, l.retries, room)) {
-    const perName = await Promise.all(searchNames(term, names).map((n) => Promise.allSettled(deps.sources.map((s) => s.search(n)))));
+  const waiting = await deps.coins.lookupTerms((now - l.keepMs) as Millis, l.retries, room);
+  const terms = guessMax > 0 && deps.coins.withGuesses !== undefined ? await deps.coins.withGuesses(waiting) : waiting;
+  for (const term of terms) {
+    const perName = await Promise.all(searchNames(term, Math.max(1, l.namesPerSubject), guessMax).map((n) => Promise.allSettled(deps.sources.map((s) => s.search(n)))));
     const answers = perName.flat();
     const read = answers.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []));
     if (read.length === 0) {
