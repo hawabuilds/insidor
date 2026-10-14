@@ -7,12 +7,18 @@
  * from the quote's own body — for a pool quote, from the router's reply itself, which is what
  * the build will execute.
  *
- * What breaks if changed carelessly: the cap is on what a BUY spends at worst (the amount plus
- * its slippage), not on what the quote expects. A cap on the expected amount lets slippage
- * carry a buy past it.
+ * ★ NO CAP IS NULL, NOT A BIG NUMBER. Since 2026-10-15 policy sets no per-trade or dev-buy cap
+ * (the owner's decision); `capLamports` then answers null and no buy is refused for its size. A
+ * buy the wallet cannot pay for still fails its simulation, so nothing unaffordable is signable.
+ *
+ * What breaks if changed carelessly: the cap, when there is one, is on what a BUY spends at
+ * worst (the amount plus its slippage), not on what the quote expects. A cap on the expected
+ * amount lets slippage carry a buy past it.
  */
 
 import type { TradePolicy } from '@insidor/contracts/policy.ts';
+
+import { isAllowed, type Allowlist } from './config.ts';
 
 export type Side = 'buy' | 'sell';
 
@@ -35,15 +41,24 @@ export const REFUSAL_TEXT: Record<Refusal, string> = {
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 
-export function capLamports(p: TradePolicy): bigint {
-  return BigInt(Math.round(p.maxSolPerTrade * Number(LAMPORTS_PER_SOL)));
+const toLamports = (sol: number | null): bigint | null => (sol === null ? null : BigInt(Math.round(sol * Number(LAMPORTS_PER_SOL))));
+
+/** The most one buy may spend at worst, in lamports; null when policy sets no cap. */
+export function capLamports(p: TradePolicy): bigint | null {
+  return toLamports(p.maxSolPerTrade);
 }
 
-export function checkRequest(r: { readonly wallet: string; readonly side: Side; readonly amount: string; readonly slippageBps: number }, allowlist: ReadonlySet<string>, p: TradePolicy): Refusal | null {
-  if (!allowlist.has(r.wallet)) return 'not_allowed';
+/** The most a creator may buy of their own coin at launch, in lamports; null when policy sets no cap. */
+export function devBuyCapLamports(p: TradePolicy): bigint | null {
+  return toLamports(p.maxDevBuySol);
+}
+
+export function checkRequest(r: { readonly wallet: string; readonly side: Side; readonly amount: string; readonly slippageBps: number }, allowlist: Allowlist, p: TradePolicy): Refusal | null {
+  if (!isAllowed(allowlist, r.wallet)) return 'not_allowed';
   if (!/^\d+$/.test(r.amount) || BigInt(r.amount) === 0n) return 'bad_amount';
   if (!Number.isInteger(r.slippageBps) || r.slippageBps < 1 || r.slippageBps > p.maxSlippageBps) return 'bad_slippage';
-  if (r.side === 'buy' && worstSpend(BigInt(r.amount), r.slippageBps) > capLamports(p)) return 'over_cap';
+  const cap = capLamports(p);
+  if (r.side === 'buy' && cap !== null && worstSpend(BigInt(r.amount), r.slippageBps) > cap) return 'over_cap';
   return null;
 }
 

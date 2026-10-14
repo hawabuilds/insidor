@@ -56,8 +56,8 @@ origins, comma separated).
 `HELIUS_API_KEY`, `NOTIFY` (`on`), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`,
 `NOTIFY_ALLOWED_ORIGINS`. Copy the VAPID keys from your `.env.local`.
 
-**trade** — `DATABASE_URL_APP`, `HELIUS_API_KEY`, `TRADING` (`on`), `TRADING_ALLOWLIST` (your
-wallet address only), `JUPITER_API_KEY` (optional), `JUPITER_API_URL` (optional),
+**trade** — `DATABASE_URL_APP`, `HELIUS_API_KEY`, `TRADING` (`on`), `TRADING_ALLOWLIST` (`*` for
+every wallet, or a comma-separated list of addresses), `JUPITER_API_KEY` (optional), `JUPITER_API_URL` (optional),
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `TRADE_ALLOWED_ORIGINS`.
 
 **project** — `DATABASE_URL` (owner; the projector writes the board), `HELIUS_API_KEY`,
@@ -79,8 +79,9 @@ under `coin-logos/`; without them it skips and the app shows each coin's own pic
 `HELIUS_API_KEY`, `COINGECKO_API_KEY` (optional), `COINGECKO_API_PLAN` (optional),
 `METADATA_GATEWAY` (optional), `DISCOVER_TERMS` (optional), `RANK` (optional),
 `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` / `REDDIT_USER_AGENT` (optional),
-`SHUTDOWN_GRACE_MS`†, `HEARTBEAT`† (+ its three if on), `OWNER_WALLET` (optional: set it to
-the reference `${{trade.TRADING_ALLOWLIST}}`; whoever signs in with that wallet gets the
+`SHUTDOWN_GRACE_MS`†, `HEARTBEAT`† (+ its three if on), `OWNER_WALLET` (optional: your own
+wallet address, typed in, not a reference to `TRADING_ALLOWLIST`, which may be `*`; an entry that
+is not an address is ignored; whoever signs in with that wallet gets the
 supplier warnings at 80% and 95% of a daily line, which are otherwise only logged). `HEALTH_PORT`
 and `SINGLETON_LOCK_NAME` are filled by the launcher.
 
@@ -129,8 +130,8 @@ Already there from the first launch, keep: `A @ 216.150.1.1`, `A @ 216.150.16.1`
 ## 6. Switch on, and off fast
 
 On, in order: runner `SPEND=dry` (one hour) → `SPEND=live`, `DISCOVER=on`,
-`DAILY_BUDGET_USD=21` → notify `NOTIFY=on` → trade `TRADING=on` with your wallet in
-`TRADING_ALLOWLIST`.
+`DAILY_BUDGET_USD=21` → notify `NOTIFY=on` → trade `TRADING=on` with `TRADING_ALLOWLIST`
+set (`*` for everyone, or named wallets).
 
 Off, fastest first:
 1. **Spending:** runner `SPEND=dry` (or set `DAILY_BUDGET_USD=0.01`). Railway redeploys on save.

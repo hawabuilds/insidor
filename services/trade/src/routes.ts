@@ -4,14 +4,14 @@
  * against stand-ins for the venues and the chain.
  *
  *   GET  /venue/:mint                        curve | pool | none | unavailable, with the limits a
- *                                            ticket sizes against: the buy cap, the slippage
- *                                            bounds and the platform fee, all from policy
+ *                                            ticket sizes against: the buy cap (null: none), the
+ *                                            slippage bounds and the platform fee, all from policy
  *   GET  /quote?mint&side&amount&wallet&slippageBps
  *   POST /build   { quote, wallet }          → { transaction } only if the simulation passed
  *   POST /send    { transaction }            → { signature }
  *   GET  /balance?mint&wallet                how much of the coin the wallet holds, for Sell
  *   POST /transfer { wallet, to, mint, amount }  Send: SOL (mint null) or a coin, unsigned and simulated;
- *                                            a SOL send is capped like a buy
+ *                                            a SOL send is capped like a buy, when buys are
  *   GET  /launch/rules                       open or paused, and the fees, read from the chain
  *   POST /launch/preview { wallet, name, symbol, devBuyLamports }  the launch's real costs, no transaction
  *   POST /launch/build   { …, description, imageDataUrl, links }   metadata stored, launch built and simulated
@@ -42,8 +42,8 @@ import type { CurveQuote } from '@insidor/venue-solana-pumpfun/curve-trade.ts';
 import { routeAfter, type TradeRoute } from '@insidor/venue-solana-pumpfun/route.ts';
 import { NATIVE, readQuote, type PoolQuote } from '@insidor/venue-jupiter';
 
-import { tradingOpen, type TradeConfig } from './config.ts';
-import { capLamports, checkRequest, REFUSAL_TEXT, type Refusal, type Side } from './gate.ts';
+import { isAllowed, tradingOpen, type TradeConfig } from './config.ts';
+import { capLamports, checkRequest, devBuyCapLamports, REFUSAL_TEXT, type Refusal, type Side } from './gate.ts';
 import { messageKey, type BuiltRecord, type TradeRecords } from './records.ts';
 
 export interface Reply {
@@ -221,7 +221,8 @@ export async function handle(method: string, rawUrl: string, body: string | null
       return json(200, {
         kind: await venueOf(mint, deps),
         limits: {
-          maxBuyLamports: capLamports(deps.policy).toString(),
+          /* Null: no cap. Said explicitly, so the app can tell "no cap" from "could not read". */
+          maxBuyLamports: capLamports(deps.policy)?.toString() ?? null,
           defaultSlippageBps: deps.policy.defaultSlippageBps,
           maxSlippageBps: deps.policy.maxSlippageBps,
           feeBps: deps.policy.platformFeeBps,
@@ -254,7 +255,7 @@ export async function handle(method: string, rawUrl: string, body: string | null
       const mint = url.searchParams.get('mint') ?? '';
       const wallet = url.searchParams.get('wallet') ?? '';
       if (!ADDRESS.test(mint) || !ADDRESS.test(wallet)) return json(400, { error: 'bad request' });
-      if (!deps.cfg.allowlist.has(wallet)) return refuse(403, 'not_allowed');
+      if (!isAllowed(deps.cfg.allowlist, wallet)) return refuse(403, 'not_allowed');
       return json(200, await deps.chain.tokenBalance(wallet, mint));
     }
 
@@ -287,9 +288,10 @@ export async function handle(method: string, rawUrl: string, body: string | null
       const mint = b?.['mint'] === null ? null : typeof b?.['mint'] === 'string' ? b['mint'] : undefined;
       const amount = typeof b?.['amount'] === 'string' ? b['amount'] : '';
       if (!ADDRESS.test(to) || to === wallet || mint === undefined || (mint !== null && !ADDRESS.test(mint))) return json(400, { error: 'That is not an address this can send to.' });
-      if (!deps.cfg.allowlist.has(wallet)) return refuse(403, 'not_allowed');
+      if (!isAllowed(deps.cfg.allowlist, wallet)) return refuse(403, 'not_allowed');
       if (!/^\d+$/.test(amount) || BigInt(amount) === 0n) return refuse(400, 'bad_amount');
-      if (mint === null && BigInt(amount) > capLamports(deps.policy)) return refuse(403, 'over_cap');
+      const sendCap = capLamports(deps.policy);
+      if (mint === null && sendCap !== null && BigInt(amount) > sendCap) return refuse(403, 'over_cap');
       const built = await deps.transfer.build({ from: wallet, to, mint, amount: BigInt(amount) });
       const simulation = await deps.chain.simulate(built.transactionBase64);
       recordBuilt(deps, built.transactionBase64, {
@@ -305,11 +307,13 @@ export async function handle(method: string, rawUrl: string, body: string | null
       if (launch === null) return json(503, { error: 'Creating coins is not set up on this server.' });
       if (method === 'GET' && parts[1] === 'rules') {
         const rules = await launch.rules();
-        return json(200, { ...rules, maxDevBuyLamports: String(BigInt(Math.round(deps.policy.maxDevBuySol * 1e9))) });
+        /* Null: no cap on the dev buy (policy); the app then offers every preset. */
+        const devCap = devBuyCapLamports(deps.policy);
+        return json(200, { ...rules, maxDevBuyLamports: devCap === null ? null : devCap.toString() });
       }
       const b = parse(body) ?? {};
       const wallet = typeof b['wallet'] === 'string' ? b['wallet'] : '';
-      if (!deps.cfg.allowlist.has(wallet)) return refuse(403, 'not_allowed');
+      if (!isAllowed(deps.cfg.allowlist, wallet)) return refuse(403, 'not_allowed');
 
       if (method === 'POST' && parts[1] === 'confirm') {
         const signature = typeof b['signature'] === 'string' ? b['signature'] : '';
@@ -329,7 +333,8 @@ export async function handle(method: string, rawUrl: string, body: string | null
       const symbol = typeof b['symbol'] === 'string' ? b['symbol'].trim().replace(/^\$+/, '') : '';
       const dev = typeof b['devBuyLamports'] === 'string' && /^\d+$/.test(b['devBuyLamports']) ? BigInt(b['devBuyLamports']) : null;
       if (name === '' || name.length > NAME_MAX || symbol === '' || symbol.length > SYMBOL_MAX || dev === null) return json(400, { error: `A name up to ${NAME_MAX} characters and a ticker up to ${SYMBOL_MAX}.` });
-      if (dev > BigInt(Math.round(deps.policy.maxDevBuySol * 1e9))) return refuse(403, 'over_cap');
+      const devCap = devBuyCapLamports(deps.policy);
+      if (devCap !== null && dev > devCap) return refuse(403, 'over_cap');
       const rules = await launch.rules();
       if (!rules.open) return json(409, { error: 'pump.fun has new coins paused right now.', paused: true });
 
@@ -371,7 +376,7 @@ export async function handle(method: string, rawUrl: string, body: string | null
       } catch {
         return json(400, { error: 'bad request' });
       }
-      if (!deps.cfg.allowlist.has(payer)) return refuse(403, 'not_allowed');
+      if (!isAllowed(deps.cfg.allowlist, payer)) return refuse(403, 'not_allowed');
       const id = messageKey(tx);
       let signature: string;
       try {
@@ -396,4 +401,4 @@ export async function handle(method: string, rawUrl: string, body: string | null
 }
 
 /** For tests and the report: the cap in base units. */
-export { capLamports };
+export { capLamports, devBuyCapLamports };

@@ -11,14 +11,15 @@
  *
  * ★ THE QUICK BUY CHIP, after HODL's desktop one: "⚡ 0.025 SOL 3%" at the top right opens a small
  * panel with the amounts and slippages; a change updates every ⚡ on the screen at once and is saved
- * for this wallet. An amount over the trading cap at the chosen slippage is not offered at all. The
+ * for this wallet. An amount over the trading cap at the chosen slippage, when there is one, is not offered. The
  * panel lies over the list without moving it, and closes like any pop-up: its own X, a tap beside
  * it, back, or Escape (each of those closes only the panel, not the sheet under it).
  * ★ When none of the coins is proven, one line says so and points to the charts: a list is not a
  * recommendation.
  *
  * What breaks if changed carelessly: the cap comes with a coin's venue from the trade service; with
- * no cap read, no amount is offered and the ⚡ buttons are not drawn — never a guess at the cap.
+ * no limits read, no amount is offered and the ⚡ buttons are not drawn — never a guess at the cap.
+ * A cap the service says is null is not "unread": it is no cap, and every amount is offered.
  */
 
 import { useEffect, useState, type ReactNode } from 'react';

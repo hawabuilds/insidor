@@ -8,11 +8,12 @@
  * order-flow.ts) — so there is one way a buy is made, and a quick buy is only a ticket whose amount
  * was chosen in advance.
  *
- * ★ NEVER ABOVE THE CAP. The trade service caps a buy's amount PLUS its slippage
- * (`policy.trade.maxSolPerTrade`, services/trade gate.ts). An amount over the largest buy the cap
- * allows at the chosen slippage is not offered (`quickAmounts`), and a saved amount the cap no
- * longer allows falls to the largest one it does. With the cap at 0.06 SOL, 0.05 is offered at
- * every slippage up to 20%.
+ * ★ NEVER ABOVE THE CAP, WHEN THERE IS ONE. The trade service may cap a buy's amount PLUS its
+ * slippage (`policy.trade.maxSolPerTrade`, services/trade gate.ts). An amount over the largest
+ * buy the cap allows at the chosen slippage is not offered (`quickAmounts`), and a saved amount
+ * the cap no longer allows falls to the largest one it does. Since 2026-10-15 policy sets no cap
+ * (the service says `maxBuyLamports: null`) and all three amounts are offered; a buy the wallet
+ * cannot pay for fails its simulation and says so, before the wallet is asked.
  *
  * ★ CHECKED BEFORE SIGNING. A refused quote, a price impact past the ticket's block, or a failed
  * simulation stops before the wallet is asked, and says why. Nothing here holds or logs a key.
@@ -36,11 +37,11 @@ export interface QuickChoice {
 
 export const QUICK_DEFAULT: QuickChoice = { amountSol: '0.05', slippageBps: 300 };
 
-/** The amounts a ⚡ may buy at this slippage: under the cap with their slippage. None when the cap is unknown. */
+/** The amounts a ⚡ may buy at this slippage: under the cap with their slippage, or all with no cap. None when the limits are unknown. */
 export function quickAmounts(limits: TradeLimits | null, slippageBps: number): readonly string[] {
   if (limits === null) return [];
   const top = largestBuy(limits, slippageBps);
-  return QUICK_AMOUNTS_SOL.filter((a) => (toBaseUnits(a, 9) ?? 0n) <= top);
+  return QUICK_AMOUNTS_SOL.filter((a) => top === null || (toBaseUnits(a, 9) ?? 0n) <= top);
 }
 
 /** The slippages the server accepts. */

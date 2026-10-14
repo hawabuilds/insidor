@@ -93,11 +93,12 @@ export function tickerCheck(ticker: string, read: { readonly kind: 'checking' } 
 }
 
 /**
- * Dev-buy presets, in SOL. A menu of amounts, not advice. While the trade service caps a dev buy
- * at 0.05 SOL (policy `trade.maxDevBuySol`), the menu is the small amounts under it; Trador's
- * 0.5, 1 and 2 come back when the cap is raised past them. The live sheet still drops any preset
- * above the cap the service reports (`presetsWithin`), so a lowered cap never shows a preset the
- * service would refuse — and the not-live sheet, which reads no cap, shows only these.
+ * Dev-buy presets, in SOL. A menu of amounts, not advice. The menu is the small amounts the sheet
+ * had under the old 0.05 SOL cap; since 2026-10-15 policy sets no dev-buy cap (`trade.maxDevBuySol`
+ * null) and any amount may be typed in the custom field — the launch is simulated, so one the
+ * wallet cannot pay for is refused with its reason. The row is not widened here: the sheet must
+ * fit a 390×844 phone without scrolling. When a cap is set the live sheet still drops any preset
+ * above it (`presetsWithin`), so it never shows a preset the service would refuse.
  */
 export const DEV_BUY_PRESETS: readonly number[] = [0, 0.01, 0.02, 0.05];
 
@@ -110,9 +111,10 @@ export function presetsWithin(maxDevBuyLamports: bigint): readonly number[] {
 }
 
 /**
- * The presets on the live sheet: every one while the cap is still being read (or couldn't be), so
- * the row never redraws narrower and wider as the answer lands; those under the cap once it is
- * known. A dev buy over the cap is still refused by the sheet's why line and by the service.
+ * The presets on the live sheet: every one while the cap is still being read (or couldn't be), or
+ * when there is no cap, so the row never redraws narrower and wider as the answer lands; those
+ * under the cap once one is known. A dev buy over a cap is refused by the sheet's why line and by
+ * the service.
  */
 export function presetsShown(maxDevBuyLamports: bigint | null): readonly number[] {
   return maxDevBuyLamports === null ? DEV_BUY_PRESETS : presetsWithin(maxDevBuyLamports);

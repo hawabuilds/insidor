@@ -10,7 +10,9 @@
  *     built (unsigned) and simulated; only a passing simulation reaches the wallet, which signs
  *     and nothing else (Privy, embedded). A failed simulation says why and nothing is signed.
  *   - The allowlist and the per-trade cap are the server's (services/trade gate.ts). The ticket
- *     reads the cap with the venue and offers no size the gate would refuse (order-flow.ts).
+ *     reads the cap with the venue and offers no size the gate would refuse (order-flow.ts). With
+ *     no cap (null, policy since 2026-10-15) any amount may be typed; one over the wallet's SOL
+ *     is said under the field, and the simulation still refuses what cannot be paid.
  *   - Every outcome is said in words: sent (with the transaction), declined in the wallet,
  *     blocked by the simulation (its reason), or not taken by the network.
  *

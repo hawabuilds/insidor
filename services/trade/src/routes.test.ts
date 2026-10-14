@@ -1,6 +1,7 @@
 /**
  * The trade path's safety, one rule a test: trading off means no path; only allowlisted wallets
- * and only up to the cap; the quote is built as given, never priced again; a failed simulation
+ * (or everyone, said as `*`, never as an empty list) and only up to the cap when policy sets one
+ * (since 2026-10-15 it sets none: `CAPPED` keeps the cap's mechanism tested); the quote is built as given, never priced again; a failed simulation
  * returns nothing to sign. The venues and the chain are stand-ins; the router's quote and the
  * failed simulation are recorded replies.
  */
@@ -19,6 +20,13 @@ import { loadTradeConfig } from './config.ts';
 import { capLamports, handle, LaunchRefusedError, type LaunchPort, type TradeDeps } from './routes.ts';
 
 const P = DEFAULT_POLICY.trade;
+/* The caps as they were until 2026-10-15, so the mechanism stays tested while policy sets none. */
+const CAPPED = { ...P, maxSolPerTrade: 0.06, maxDevBuySol: 0.05 };
+const capOf = (p: typeof P): bigint => {
+  const c = capLamports(p);
+  assert.ok(c !== null, 'this test needs a cap');
+  return c;
+};
 const ME = 'Me11111111111111111111111111111111111111111';
 const STRANGER = 'St11111111111111111111111111111111111111111';
 const CURVE_COIN = 'szicVgykSZSQHvtuxxjQ9FsSorr2YPwcVVxYj5dMNAP';
@@ -44,13 +52,13 @@ function launchStub(over: LaunchOver, calls: string[], registered: unknown[]): L
   };
 }
 
-function deps(over: { trading?: boolean; allowlist?: string[]; simulation?: unknown; launch?: LaunchOver } = {}) {
+function deps(over: { trading?: boolean; allowlist?: string[] | 'everyone'; simulation?: unknown; launch?: LaunchOver; policy?: typeof P } = {}) {
   const registered: unknown[] = [];
   const calls: string[] = [];
   const built: unknown[] = [];
   const d: TradeDeps = {
-    cfg: { trading: over.trading ?? true, allowlist: new Set(over.allowlist ?? [ME]), rpcUrl: 'https://rpc.example' },
-    policy: P,
+    cfg: { trading: over.trading ?? true, allowlist: over.allowlist === 'everyone' ? 'everyone' : new Set(over.allowlist ?? [ME]), rpcUrl: 'https://rpc.example' },
+    policy: over.policy ?? P,
     curve: {
       state: async (mint) => (mint === CURVE_COIN ? 'open' : mint === BONDED_COIN ? 'complete' : 'none'),
       quote: async (r) => {
@@ -119,6 +127,28 @@ test('★ the switch must be exactly "on", the allowlist must name someone, and 
   assert.throws(() => loadTradeConfig({ TRADING_ALLOWLIST: 'not-a-wallet' }), /not wallet addresses/);
 });
 
+test('★ everyone is the single token "*", and only that', () => {
+  assert.equal(loadTradeConfig({ TRADING: 'on', TRADING_ALLOWLIST: '*', HELIUS_API_KEY: 'k' }).allowlist, 'everyone');
+  assert.equal(loadTradeConfig({ TRADING: 'on', TRADING_ALLOWLIST: ' * ', HELIUS_API_KEY: 'k' }).allowlist, 'everyone');
+  assert.throws(() => loadTradeConfig({ TRADING_ALLOWLIST: `*,${ME}` }), /not wallet addresses/, 'a star mixed with addresses is a mistake, not a wider list');
+  assert.throws(() => loadTradeConfig({ TRADING_ALLOWLIST: '**' }), /not wallet addresses/);
+  assert.deepEqual(loadTradeConfig({ TRADING_ALLOWLIST: '' }).allowlist, new Set(), 'empty is still nobody');
+});
+
+test('★ open to everyone: any wallet gets a quote, a build, a balance, a send, a launch — but only a wallet', async () => {
+  const { d, calls } = deps({ allowlist: 'everyone' });
+  const q = body(await handle('GET', quoteUrl(CURVE_COIN, '1000', STRANGER), null, d)).quote;
+  assert.ok(q, 'a stranger gets a quote');
+  assert.equal((await handle('POST', '/build', JSON.stringify({ quote: q, wallet: STRANGER }), d)).status, 200);
+  assert.equal(calls.includes('curve.build'), true);
+  assert.equal(body(await handle('POST', '/send', JSON.stringify({ transaction: 'SIGNED_BY_STRANGER' }), d)).signature, 'SIG');
+  assert.equal((await handle('GET', `/balance?mint=${CURVE_COIN}&wallet=${STRANGER}`, null, d)).status, 200);
+  assert.equal(body(await handle('POST', '/transfer', SEND({ wallet: STRANGER, to: ME }), d)).transaction, 'SEND_TX');
+  assert.equal((await handle('POST', '/launch/preview', LAUNCH({ wallet: STRANGER }), d)).status, 200);
+  assert.equal(body(await handle('GET', quoteUrl(CURVE_COIN, '1000', 'not-a-wallet'), null, d)).refusal, 'not_allowed', 'everyone means every wallet, not any string');
+  assert.equal(body(await handle('GET', quoteUrl(CURVE_COIN, '1000', ''), null, d)).refusal, 'not_allowed');
+});
+
 test('★ an empty allowlist is nobody, not everybody', async () => {
   const { d } = deps({ allowlist: [] });
   assert.equal(body(await handle('GET', quoteUrl(CURVE_COIN, '1000'), null, d)).refusal, 'trading_off');
@@ -135,9 +165,32 @@ test('★ only an allowlisted wallet gets a quote, a build or a send', async () 
   assert.equal(body(await handle('POST', '/send', JSON.stringify({ transaction: 'SIGNED_BY_ME' }), d)).signature, 'SIG');
 });
 
-test('★ a buy past the cap, counting its slippage, is refused — on the quote and again on the build', async () => {
-  const { d, calls } = deps();
-  const cap = capLamports(P);
+test('★ no cap is said as null, and a buy of any size is quoted and built (the simulation still decides)', async () => {
+  assert.equal(P.maxSolPerTrade, null);
+  assert.equal(P.maxDevBuySol, null);
+  assert.equal(capLamports(P), null);
+  const { d } = deps();
+  const big = (1_000n * 1_000_000_000n).toString();
+  const q = body(await handle('GET', quoteUrl(CURVE_COIN, big), null, d)).quote;
+  assert.ok(q, 'a 1,000 SOL buy is not refused for its size');
+  assert.equal((await handle('POST', '/build', JSON.stringify({ quote: q, wallet: ME }), d)).status, 200);
+  assert.equal(body(await handle('GET', `/venue/${CURVE_COIN}`, null, d)).limits.maxBuyLamports, null, 'the app is told there is no cap, not a big number');
+  assert.equal(body(await handle('POST', '/transfer', SEND({ amount: big }), d)).transaction, 'SEND_TX');
+  assert.equal(body(await handle('GET', '/launch/rules', null, d)).maxDevBuyLamports, null);
+  assert.equal((await handle('POST', '/launch/preview', LAUNCH({ devBuyLamports: big }), d)).status, 200);
+});
+
+test('★ with no cap a buy the wallet cannot pay for still fails its simulation: nothing to sign', async () => {
+  const { d } = deps({ simulation: UNFUNDED_BUY });
+  const q = body(await handle('GET', quoteUrl(CURVE_COIN, (1_000n * 1_000_000_000n).toString()), null, d)).quote;
+  const r = await handle('POST', '/build', JSON.stringify({ quote: q, wallet: ME }), d);
+  assert.equal(r.status, 422);
+  assert.equal('transaction' in body(r), false);
+});
+
+test('★ with a cap, a buy past it, counting its slippage, is refused — on the quote and again on the build', async () => {
+  const { d, calls } = deps({ policy: CAPPED });
+  const cap = capOf(CAPPED);
   assert.equal(body(await handle('GET', quoteUrl(CURVE_COIN, cap.toString()), null, d)).refusal, 'over_cap', 'the cap plus slippage is over the cap');
   const under = (cap * 10_000n) / BigInt(10_000 + P.defaultSlippageBps);
   assert.ok(body(await handle('GET', quoteUrl(CURVE_COIN, under.toString()), null, d)).quote);
@@ -145,7 +198,7 @@ test('★ a buy past the cap, counting its slippage, is refused — on the quote
   const forged: CurveQuote = { venue: 'curve', side: 'buy', mint: CURVE_COIN, inAmount: (cap * 10n).toString(), outAmount: '1', bound: '1', slippageBps: 300 };
   assert.equal(body(await handle('POST', '/build', JSON.stringify({ quote: forged, wallet: ME }), d)).refusal, 'over_cap');
   assert.equal(calls.includes('curve.build'), false);
-  assert.equal(body(await handle('GET', quoteUrl(CURVE_COIN, '1000', ME, 'buy', P.maxSlippageBps + 1), null, d)).refusal, 'bad_slippage');
+  assert.equal(body(await handle('GET', quoteUrl(CURVE_COIN, '1000', ME, 'buy', P.maxSlippageBps + 1), null, d)).refusal, 'bad_slippage', 'slippage is bounded with or without a cap');
 });
 
 test('★ the quote is built exactly as given, and never priced again', async () => {
@@ -185,7 +238,7 @@ test('★ a failed simulation blocks signing: the reply says why and carries no 
 test('a coin on its curve trades there, a bonded one through the router, and one with no route says so', async () => {
   const { d } = deps();
   assert.equal(body(await handle('GET', `/venue/${CURVE_COIN}`, null, d)).kind, 'curve');
-  assert.deepEqual(body(await handle('GET', `/venue/${CURVE_COIN}`, null, d)).limits, { maxBuyLamports: capLamports(d.policy).toString(), defaultSlippageBps: d.policy.defaultSlippageBps, maxSlippageBps: d.policy.maxSlippageBps, feeBps: d.policy.platformFeeBps }, 'the ticket sizes against the gate\'s own numbers');
+  assert.deepEqual(body(await handle('GET', `/venue/${CURVE_COIN}`, null, d)).limits, { maxBuyLamports: null, defaultSlippageBps: d.policy.defaultSlippageBps, maxSlippageBps: d.policy.maxSlippageBps, feeBps: d.policy.platformFeeBps }, 'the ticket sizes against the gate\'s own numbers');
   assert.equal(body(await handle('GET', `/venue/${BONDED_COIN}`, null, d)).kind, 'pool');
   assert.equal(body(await handle('GET', `/venue/${DEAD_COIN}`, null, d)).kind, 'none');
   const r = await handle('GET', quoteUrl(DEAD_COIN, '1000'), null, d);
@@ -194,8 +247,8 @@ test('a coin on its curve trades there, a bonded one through the router, and one
 });
 
 test('sells are not capped: they return what the wallet already holds', async () => {
-  const { d } = deps();
-  const r = await handle('GET', quoteUrl(CURVE_COIN, (capLamports(P) * 100n).toString(), ME, 'sell'), null, d);
+  const { d } = deps({ policy: CAPPED });
+  const r = await handle('GET', quoteUrl(CURVE_COIN, (capOf(CAPPED) * 100n).toString(), ME, 'sell'), null, d);
   assert.equal(r.status, 200);
 });
 
@@ -222,10 +275,10 @@ test('★ a failed simulation blocks Send: the reason, and nothing to sign', asy
   assert.equal(r.body.includes('SEND_TX'), false);
 });
 
-test('Send: only from an allowlisted wallet, a SOL send capped like a buy, a coin send bounded by what is held', async () => {
-  const { d } = deps();
+test('Send: only from an allowlisted wallet, a SOL send capped like a buy when buys are, a coin send bounded by what is held', async () => {
+  const { d } = deps({ policy: CAPPED });
   assert.equal(body(await handle('POST', '/transfer', SEND({ wallet: STRANGER, to: ME }), d)).refusal, 'not_allowed');
-  assert.equal(body(await handle('POST', '/transfer', SEND({ amount: (capLamports(P) + 1n).toString() }), d)).refusal, 'over_cap');
+  assert.equal(body(await handle('POST', '/transfer', SEND({ amount: (capOf(CAPPED) + 1n).toString() }), d)).refusal, 'over_cap');
   assert.equal((await handle('POST', '/transfer', SEND({ mint: CURVE_COIN, amount: '999999999999999' }), d)).status, 200);
   assert.equal((await handle('POST', '/transfer', SEND({ to: 'not an address' }), d)).status, 400);
   assert.equal(body(await handle('POST', '/transfer', SEND(), d)).transaction, 'SEND_TX');
@@ -249,13 +302,14 @@ test('★ paused launches are refused, before anything is built or stored', asyn
   assert.deepEqual(calls, []);
 });
 
-test('★ the dev buy cap is enforced', async () => {
-  const { d, calls } = deps();
-  const over = (BigInt(Math.round(P.maxDevBuySol * 1e9)) + 1n).toString();
+test('★ a dev buy cap, when policy sets one, is enforced', async () => {
+  const { d, calls } = deps({ policy: CAPPED });
+  assert.equal(body(await handle('GET', '/launch/rules', null, d)).maxDevBuyLamports, '50000000');
+  const over = (BigInt(Math.round(CAPPED.maxDevBuySol * 1e9)) + 1n).toString();
   assert.equal(body(await handle('POST', '/launch/preview', LAUNCH({ devBuyLamports: over }), d)).refusal, 'over_cap');
   assert.equal(body(await handle('POST', '/launch/build', LAUNCH({ devBuyLamports: over }), d)).refusal, 'over_cap');
   assert.deepEqual(calls, []);
-  assert.equal((await handle('POST', '/launch/preview', LAUNCH({ devBuyLamports: String(BigInt(Math.round(P.maxDevBuySol * 1e9))) }), d)).status, 200);
+  assert.equal((await handle('POST', '/launch/preview', LAUNCH({ devBuyLamports: String(BigInt(Math.round(CAPPED.maxDevBuySol * 1e9))) }), d)).status, 200);
 });
 
 test('★ a failed simulation blocks signing: the reason, and no transaction', async () => {
