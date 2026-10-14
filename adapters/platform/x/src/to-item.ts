@@ -196,6 +196,15 @@ export function toAuthor(raw: unknown, at: Millis): Author | null {
   const followers = num(author.followers) ?? num(author.followers_count);
   const name = (str(author.name) ?? '').trim();
   const picture = str(author.profilePicture) ?? str(author.profile_image_url_https) ?? str(author.profile_image_url);
+  /* The profile text is `profile_bio.description` (the flat `description` came back empty on every
+     post measured, responses.ts), with its links written out: the text carries them shortened, and
+     an address in a link is only in the expanded form. Null when neither field came back. */
+  const bioRec = rec(author.profile_bio);
+  const said = [bioRec.description, author.description].find((d): d is string => typeof d === 'string' && d.trim() !== '') ?? [bioRec.description, author.description].find((d): d is string => typeof d === 'string');
+  const bioText = said === undefined ? null : said.trim();
+  const ents = rec(bioRec.entities);
+  const links = [...arr(rec(ents.description).urls), ...arr(rec(ents.url).urls)].map((u) => str(rec(u).expanded_url)).filter((u): u is string => u !== null);
+  const bio = bioText === null && links.length === 0 ? null : [bioText ?? '', ...links].filter((x) => x !== '').join('\n');
   return {
     authorKey: authorKey(SOURCE, id),
     source: SOURCE,
@@ -207,5 +216,6 @@ export function toAuthor(raw: unknown, at: Millis): Author | null {
     /* The vendor hands the 48px rendition (`_normal`); the owner asked for the 400px one (2026-10-13),
        the same picture, sharp at any size the app draws it. */
     pictureUri: picture !== null && picture.startsWith('https://') ? picture.replace(/_normal(\.[a-z]+)$/i, '_400x400$1') : null,
+    bio,
   };
 }

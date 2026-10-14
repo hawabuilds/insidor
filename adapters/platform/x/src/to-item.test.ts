@@ -113,3 +113,13 @@ test('a GIF keeps its mp4 and is marked to loop', () => {
   assert.equal(item.media[0]?.playUri, 'https://video.twimg.com/tweet_video/g.mp4');
   assert.equal(item.media[0]?.loops, true);
 });
+
+test('the profile text is profile_bio.description with its links written out; none read is null', () => {
+  const raw = {
+    id: '1',
+    author: { id: '9', userName: 'a', description: '', profile_bio: { description: 'my coin https://t.co/x', entities: { description: { urls: [{ url: 'https://t.co/x', expanded_url: 'https://example.com/coin/7Zf6B51t4ixKyS5L2cRWDjTi862Z5FQoeXgGsmLCpump' }] } } } },
+  };
+  assert.equal(toAuthor(raw, AT)?.bio, 'my coin https://t.co/x\nhttps://example.com/coin/7Zf6B51t4ixKyS5L2cRWDjTi862Z5FQoeXgGsmLCpump');
+  assert.equal(toAuthor({ id: '1', author: { id: '9', userName: 'a' } }, AT)?.bio, null);
+  assert.equal(toAuthor({ id: '1', author: { id: '9', userName: 'a', description: '' } }, AT)?.bio, '');
+});
