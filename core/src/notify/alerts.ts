@@ -51,6 +51,8 @@ export const ALERT_KINDS = [
   'supplier_account',
   'comment_useful',
   'post_coin',
+  /* The namer's first-day watch switched it off (tools/name-watch.ts): pushed past the hourly limit, like the supplier warnings. */
+  'namer_off',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -84,6 +86,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   supplier_account: 'always',
   comment_useful: 'useful',
   post_coin: 'coins',
+  namer_off: 'always',
 };
 
 export interface AlertPrefs {
@@ -180,7 +183,7 @@ export function deliveryFor(r: { readonly kind: AlertKind; readonly prefs: Alert
   if (!wants(r.prefs, r.kind)) return { kind: 'skip', why: 'off' };
   if (r.kind === 'rank_up') return { kind: 'list', why: 'list-only' };
   if (isQuiet(r.localMinutes, r.prefs)) return { kind: 'list', why: 'quiet' };
-  if (r.kind !== 'supplier_warning' && r.kind !== 'supplier_account' && r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
+  if (r.kind !== 'supplier_warning' && r.kind !== 'supplier_account' && r.kind !== 'namer_off' && r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
   if (r.devices === 0) return { kind: 'list', why: 'no-device' };
   return { kind: 'push' };
 }

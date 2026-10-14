@@ -151,6 +151,17 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
         body: `${supplier} refused a call for billing: ${s(f['reason'], 'its account cannot pay')}. Top up its account; work using it is paused until then.`,
       };
     }
+    case 'namer_off': {
+      /* The watch's own counts: the owner's Wrong coin / No coin calls on coins the namer's names found, and the share before. */
+      const wrong = n(f['wrong']);
+      const labelled = n(f['labelled']);
+      const before = n(f['rateBefore']);
+      const share = (x: number) => `${Math.round(x * 100)}%`;
+      return {
+        title: 'Name guessing switched off',
+        body: `You called ${wrong === null ? 'some' : wrong} of ${labelled === null ? 'the' : labelled} coins it found wrong or no coin${before === null ? '' : `, against ${share(before)} of shown coins the day before`}. Coins and Create are back to the judge's names.`,
+      };
+    }
     case 'retune_summary': {
       const applied = f['applied'] === true;
       /* The gate (hand gold and live non-memes), then the missed posts. Auto gold is information,

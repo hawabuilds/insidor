@@ -12,7 +12,8 @@
  *
  * ★ THE PROJECTOR IS A SCHEDULE, NOT A PROCESS. `project` runs the one-shot jobs (`db.mjs
  * project` every minute; coin logos every two; `market`, `pairs` and the source indicator every five; `label` hourly; the
- * daily recall check and the twice-daily judge re-tune, both detached), one at a time,
+ * daily recall check and the twice-daily judge re-tune, both detached; the namer's watch every ten
+ * minutes), one at a time,
  * and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
  * otherwise — so Railway restarts it when the board stops moving, not just when it crashes.
  *
@@ -71,6 +72,9 @@ if (service in MAIN) {
        minutes whether the latest slot has run; the run itself is detached, like the recall check,
        because a batch of a hundred-odd posts outlasts the board's health bar. */
     { name: 'retune', everyMs: 600_000, args: ['tools/retune.ts', 'due', '--yes', '--detach'] },
+    /* The namer's first day, watched (tools/name-watch.ts): coins it adds to feed cards, the owner's
+       Wrong coin / No coin calls on them, and its veto if wrong coins go up. Free; database only. */
+    { name: 'name-watch', everyMs: 600_000, args: ['tools/name-watch.ts', 'run'] },
   ];
   const last = new Map();
   const due = (job, now) => now - (last.get(job.name)?.at ?? 0) >= job.everyMs;
