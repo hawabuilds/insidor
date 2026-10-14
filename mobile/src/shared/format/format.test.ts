@@ -50,3 +50,10 @@ test('an origin in the future is unreadable, not a negative age', () => {
     reason: 'unreadable',
   });
 });
+
+test('a ticker is written with exactly one $, whatever the raw symbol carried', async () => {
+  const { tickerText } = await import('./ticker.ts');
+  assert.equal(tickerText('GTAVI'), '$GTAVI');
+  assert.equal(tickerText('$GTAVI'), '$GTAVI', 'a symbol stored with its $ is not given a second one');
+  assert.equal(tickerText('$$X'), '$X', 'raw data carrying a double is cleaned, not passed on');
+});

@@ -69,6 +69,7 @@ import { HideBar } from '../owner/OwnerPost.tsx';
 import { useIsOwner, useOwnerState, useSavedCalls } from '../owner/hooks.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
 import styles from './feed.module.css';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 const TABS = [
   { key: 'watchlist', label: <><StarIcon size={16} /> Watchlist</> },
@@ -193,7 +194,7 @@ export function Feed({
           open: () => (window.location.hash = hrefFor({ screen: 'story', storyId: r.id })),
           viewCoins: () => (window.location.hash = hrefFor({ screen: 'story', storyId: r.id })),
           create: () => onCreate(r, notice !== null),
-          buy: (ticker) => soon(`Buying $${ticker}`),
+          buy: (ticker) => soon(`Buying ${tickerText(ticker)}`),
         }}
       />
     );

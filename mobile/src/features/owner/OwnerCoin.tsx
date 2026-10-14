@@ -42,6 +42,7 @@ import { useOwnerState } from './hooks.ts';
 import { callKey, ownerStore } from './owner-store.ts';
 import { coinAsk, coinCallLine, launchLine } from './owner-view.ts';
 import styles from './owner.module.css';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 async function call(post: RisingPost, c: CoinCall, coin: string | null): Promise<void> {
   const line = post.coins.kind === 'one' || post.coins.kind === 'matched' ? oneCoinLine(post.coins.coin) : post.coins.kind;
@@ -131,7 +132,7 @@ export function CoinPickList({ post, items, pickedCall, onDone, paste = null }: 
       {items.map((c) => (
         <div key={c.coinId} className={styles['item']}>
           <span className={styles['itemText']}>
-            <p>{c.ticker !== null ? `$${c.ticker}` : (c.name ?? c.address.slice(0, 6))}</p>
+            <p>{c.ticker !== null ? tickerText(c.ticker) : (c.name ?? c.address.slice(0, 6))}</p>
             {c.name !== null ? <span className={styles['meta']}>{c.name}</span> : null}
           </span>
           <Button
@@ -259,7 +260,7 @@ function Preview({ result, saving, onConfirm }: { result: Extract<CoinCheckResul
         <CoinLogo address={c.address} ticker={c.ticker ?? c.name} imageUrl={c.logoUrl} size={44} />
         <span className={styles['itemText']}>
           <p>{c.name ?? '— no name listed'}</p>
-          <span className={styles['meta']}>{c.ticker !== null ? `$${c.ticker}` : '— no ticker listed'}</span>
+          <span className={styles['meta']}>{c.ticker !== null ? tickerText(c.ticker) : '— no ticker listed'}</span>
         </span>
       </div>
       <dl className={styles['facts']}>

@@ -13,6 +13,8 @@
  * lands in Notifications (seen and counted) rather than nowhere.
  */
 
+import { tickerText } from '../../shared/format/ticker.ts';
+
 const FEED_KINDS: readonly string[] = ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched'];
 
 export const onFeed = (kind: string): boolean => FEED_KINDS.includes(kind);
@@ -72,7 +74,7 @@ export const bellCount = (items: readonly { readonly kind: string; readonly unre
  */
 export function withTicker(title: string, symbol: string | null): readonly [string, string, string] {
   if (symbol === null || symbol === '') return [title, '', ''];
-  const t = `$${symbol.replace(/^\$/, '')}`;
+  const t = tickerText(symbol);
   const i = title.indexOf(t);
   return i < 0 ? [title, '', ''] : [title.slice(0, i), t, title.slice(i + t.length)];
 }

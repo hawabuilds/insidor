@@ -22,6 +22,7 @@ import { useDismiss } from '../../shared/ui/dismiss.ts';
 import { availability } from '../trade/order-flow.ts';
 import { OrderSheet } from '../trade/OrderSheet.tsx';
 import styles from './post-sheet.module.css';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 /* Read once, at build time, as TradeBar.tsx reads it. */
 export const TRADING = tradingOn({ VITE_TRADING: import.meta.env?.['VITE_TRADING'] as string | undefined });
@@ -56,7 +57,7 @@ export function BuyOpen({ mint, ticker, onClose, onNote }: { mint: string; ticke
   const [limits, setLimits] = useState<TradeLimits | null | 'reading'>('reading');
   useEffect(() => {
     if (!TRADING) {
-      soon(`Buying $${ticker}`);
+      soon(`Buying ${tickerText(ticker)}`);
       onClose();
       return;
     }

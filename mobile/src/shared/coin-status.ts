@@ -38,6 +38,7 @@
 
 import type { Coin, CoinEvidence, CoinLink, PostCoinLink } from './api/index.ts';
 import { formatUsd } from './format/number.ts';
+import { tickerText } from './format/ticker.ts';
 
 export type CoinAction =
   | { readonly kind: 'create' }
@@ -144,7 +145,7 @@ export function evidenceFacts(e: CoinEvidence): readonly string[] {
  */
 export function oneCoinLine(coin: Coin): string {
   const cap = formatUsd(coin.marketCapUsd);
-  return `$${coin.ticker}${cap.kind === 'value' ? `, ${cap.text} market cap` : ''}${coin.tradable ? '' : ", can't be traded yet"}`;
+  return `${tickerText(coin.ticker)}${cap.kind === 'value' ? `, ${cap.text} market cap` : ''}${coin.tradable ? '' : ", can't be traded yet"}`;
 }
 
 /** Every coin a story has settled on, in the server's order. `unsure` has none to give. */
