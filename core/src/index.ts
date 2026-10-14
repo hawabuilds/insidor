@@ -108,6 +108,9 @@ export type { TickerEvidence, TickerUse } from './create/ticker.ts';
 /* The Create sheet's name chips, from the judge's names for a post (create/name-ideas.ts). */
 export { nameIdeas, tickerFor } from './create/name-ideas.ts';
 export type { NameIdea, NameIdeaBars } from './create/name-ideas.ts';
+/* The namer: example neighbours, clean guesses, and when a guess is a coin's name (create/name-guess.ts). */
+export { cleanGuesses, cleanTicker, exampleShown, guessHit, guessIsCoin, guessesFirst, nameKeyOf, nearestExamples, sameName } from './create/name-guess.ts';
+export type { ExampleVector } from './create/name-guess.ts';
 
 /**
  * A re-read turned into the observations it appends. Not a stage: TRACK decides a read is

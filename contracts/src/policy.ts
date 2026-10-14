@@ -2228,6 +2228,44 @@ export interface AttentionPolicy {
   readonly hexAddressChars: number;
 }
 
+/**
+ * ★ THE NAMER: the names and tickers people will actually coin a post as (the owner, 2026-10-14).
+ * For each post that passes the feed's bar, its `k` nearest known post → coin pairs (by the post
+ * vector the precedents already paid for) are shown to the judge's model with the post, and it
+ * answers its `guesses` likeliest coin names and tickers, best first. Coin matching searches with
+ * all of them; the Create sheet offers the first `createIdeas`. services/runner work/name-guesses.ts.
+ */
+export interface NamesPolicy {
+  /** The switch. Off: no example is embedded, no guess is asked, and Create shows the judge's names as before. */
+  readonly on: boolean;
+  /** Known pairs shown with each post: its closest example posts, all their coin names. */
+  readonly k: number;
+  /** Guesses asked for and kept per post. */
+  readonly guesses: number;
+  /** Of them, how many lead the Create sheet's suggestions. */
+  readonly createIdeas: number;
+  /** Posts per call, as the judge batches. */
+  readonly perCall: number;
+  /** Posts guessed per pass at most, newest first: the day's volume drains, a burst never spends the line at once. */
+  readonly perPass: number;
+  /** New example posts embedded per pass at most (the owner's confirmations come first). */
+  readonly examplesPerPass: number;
+  /** A post's words, as the namer is shown them. */
+  readonly maxChars: number;
+  /** An example post's words, as the namer is shown them. */
+  readonly exampleChars: number;
+  /** The answer's token ceiling for one call of `perCall` posts. */
+  readonly maxOutputTokens: number;
+  /** A guess counts as the coin's name when, with case, accents, '$' and spaces gone, it is the same, or this close. */
+  readonly closeSpelling: { readonly minChars: number; readonly maxEdits: number };
+  /** The ticker a guess is cut to, as the venue allows. */
+  readonly maxTickerChars: number;
+  /** How far back a judged post is still guessed for: the feed's own day is long past this. */
+  readonly windowMs: number;
+  /** Only posts on a feed now (~450 a day) instead of every post that passes the bar (~2,400): the cheaper scope. */
+  readonly feedOnly: boolean;
+}
+
 export interface Policy {
   /** Bumped by hand on every edit. The hash is computed from the object, not this. */
   readonly version: string;
@@ -2260,6 +2298,7 @@ export interface Policy {
   readonly features: FeaturesPolicy;
   readonly explore: ExplorePolicy;
   readonly budget: BudgetPolicy;
+  readonly names: NamesPolicy;
   /**
    * The other half of the loop. Every stage above decides; this block is what says
    * whether the decision was right, and under which definition of right.
@@ -3314,6 +3353,28 @@ const POLICY_V1: Policy = {
        turn off the day the constraint becomes coverage instead. */
     freeSourcesFirst: true,
     paidOnlyWhenFreeIsEmpty: true,
+  },
+
+  /* The namer (NamesPolicy). Off until the owner switches it on. Measured 2026-10-14 on 271 held-out
+     posts (tools/name-guess-eval.ts): $0.00158 a post with its picture, so ~2,400 posts a day over
+     the bar is ~$3.80 a day on the judge's line, ~$0.70 with `feedOnly` (~450 feed posts a day).
+     The real coin's name or ticker in the first five guesses: 72% against the judge's names' 40%. */
+  names: {
+    on: false,
+    k: 10,
+    guesses: 5,
+    createIdeas: 3,
+    perCall: 10,
+    perPass: 40,
+    examplesPerPass: 60,
+    maxChars: 300,
+    exampleChars: 160,
+    maxOutputTokens: 2_000,
+    /* "Pringles" for "Pringle", "GTA6" for "GTA 6": one letter apart in a word of five or more. */
+    closeSpelling: { minChars: 5, maxEdits: 1 },
+    maxTickerChars: 10,
+    windowMs: 21_600_000, // six hours
+    feedOnly: false,
   },
 
   /* The numbers whose reasons are on `LabelPolicy` above. Read them there; every one of
