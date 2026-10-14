@@ -2863,9 +2863,16 @@ const POLICY_V1: Policy = {
        re-reads. 444 views a minute is the speed bar's own pace (40k by 90 minutes). */
     /* Switched on 2026-10-14 ~01:00 UTC under the owner's overnight rule: the bands, the longer
        re-reads and both cuts together cost the same as before (text reads 43.6k -> ~43.0k a day). */
+    /* 2026-10-14: the 25-minute band is gone, its money left with the 6 and 50 bands, whose shared
+       floor falls about a fifth to spend the same 37.8 posts a pass. Measured 01:05-11:30 UTC: the
+       25 band took about 28% of the bands' posts (3.9 a minute of posting time over its floor, against
+       6.1 at 6 and 2.8 at 50) and found 416 new posts, 3 of them reaching For You (0.7%); the 6 band
+       found 3,861 (31, 0.8%) and the 50 band 476 (13, 2.7%). Its 3 would clear the 50 band's lower
+       floor at 50 minutes. 5 of the 6 band's 30 For You posts and 4 of the 50 band's 10 were found
+       within a fifth over the floor, so about as many more young posts are expected under it. */
     fresh: {
       enabled: true,
-      bandAgesMin: [6, 25, 50],
+      bandAgesMin: [6, 50],
       maxWindowMin: 15,
       targetScale: 0.85,
       rereadMaxAgeMs: 5_400_000, // 90 minutes, the speed bar's last chance
