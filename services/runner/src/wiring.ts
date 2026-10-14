@@ -60,6 +60,8 @@ import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openDurableMeter } from '@insidor/meter';
+import { anthropicNamer } from '@insidor/judge-anthropic/name-guess.ts';
+import type { NamePort } from '@insidor/contracts/ports/names.ts';
 import { httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
 import { resolvePlatforms, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
@@ -79,6 +81,8 @@ import {
   PgJudgementRepo,
   PgLabelEmbeddingRepo,
   PgPostEmbeddingRepo,
+  PgNameExampleRepo,
+  PgNameGuessRepo,
   PgLearningRepo,
   PgPostJudgementRepo,
   PgItemRepo,
@@ -100,6 +104,7 @@ import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { precedentSource } from './work/precedents.ts';
+import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
 import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
 import { refillMemory, refillPosts, type RefillResult } from './work/post-refill.ts';
 import { embedImages } from './work/embed-images.ts';
@@ -150,6 +155,8 @@ export interface Runtime {
   readonly feedFloors: PgFeedFloorRepo;
   /** Score the catch-all posts the judge has not seen, alone and once each. */
   readonly scorePosts: () => Promise<ScoringResult>;
+  /** The names people will coin each new post as, after each scoring pass. See work/name-guesses.ts. */
+  readonly guessNames: () => Promise<NameGuessResult>;
   /** Crypto talk under For You posts, read on the posts line and stored as facts. See work/crypto-attention.ts. */
   readonly cryptoAttention: () => Promise<AttentionResult>;
   /** Older feed posts' video files and authors read again, every half minute. See work/post-refill.ts. */
@@ -244,6 +251,34 @@ function buildJudge(
     precedents,
   });
 }
+/**
+ * The namer for this process (work/name-guesses.ts, Policy.names), or null when the judge is not
+ * configured to call. The judge's own model, key and retries, its own client so its answer budget
+ * is the namer's; metered on the judge's line under the `names` endpoint.
+ */
+function buildNamer(cfg: RunnerConfig, meter: Meter, policy: Policy): NamePort | null {
+  const setup = cfg.judge;
+  if (setup.state !== 'configured') return null;
+  const price = priceFor(setup.model);
+  if (price === null) return null;
+  const client = httpClient({
+    pictureSize: 'small',
+    apiKey: setup.apiKey,
+    baseUrl: setup.baseUrl,
+    model: setup.model,
+    maxOutputTokens: policy.names.maxOutputTokens,
+    effort: price.effort,
+    timeoutMs: policy.judge.timeoutMs,
+    maxAttempts: policy.judge.maxAttempts,
+    backoffMs: policy.judge.backoffMs,
+    maxWaitMs: policy.judge.maxWaitMs,
+    maxFrameBytes: policy.judge.maxFrameBytes,
+    fetch: globalThis.fetch,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  });
+  return anthropicNamer({ client, meter, now: () => Date.now() as Millis, model: setup.model, judge: policy.judge, names: policy.names, effort: price.effort });
+}
+
 /**
  * The two calls on `PgDecisionRepo` that had no caller anywhere in the repository.
  *
@@ -572,6 +607,25 @@ export async function withRuntime<T>(
               now: () => Date.now() as Millis,
             })
           : null;
+      /* The namer: example posts and their vectors kept for the process, guesses after each scoring pass. */
+      const names = nameGuesser({
+        namer: buildNamer(cfg, meter, policy),
+        embed:
+          cfg.embeddings.state === 'configured'
+            ? voyageEmbed({
+                client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
+                meter,
+                now: () => Date.now() as Millis,
+              })
+            : null,
+        examples: new PgNameExampleRepo(db),
+        guesses: new PgNameGuessRepo(db),
+        meter,
+        mode: cfg.spend.kind,
+        policy,
+        log: log.child({ step: 'name-guesses' }),
+        now: () => Date.now() as Millis,
+      });
 
       const runtimeDeps: PlatformRuntime = {
         meter,
@@ -893,6 +947,7 @@ export async function withRuntime<T>(
               log: log.child({ step: 'score-posts' }),
               now: () => Date.now() as Millis,
             }),
+          guessNames: () => names.pass(),
           cryptoAttention: () =>
             readCryptoAttention({
               platforms,

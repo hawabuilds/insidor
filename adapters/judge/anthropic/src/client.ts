@@ -133,6 +133,11 @@ export interface JudgeClient {
   sameSubject?(request: SameSubjectRequest): Promise<{ readonly answer: SameSubjectAnswer | null; readonly usage: Usage }>;
   /** Read a video frame to show the judge, or null when there is no usable image at `uri`. */
   frame(uri: string): Promise<Frame | null>;
+  /**
+   * One Messages API body as built by another question's own file (name-guess.ts), with this
+   * client's retries; the parsed reply. Optional: a client without it is never asked.
+   */
+  send?(payload: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface JudgeClientConfig {
@@ -590,6 +595,8 @@ export function httpClient(config: JudgeClientConfig): JudgeClient {
     async judge(request) {
       return decodeReply(await send(buildRequestBody(config, request)));
     },
+
+    send,
 
     judgeBatch,
 
