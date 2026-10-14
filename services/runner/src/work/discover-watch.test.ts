@@ -154,6 +154,16 @@ test('★ several watch words an ask: each ask takes the next ones, the list com
   assert.deepEqual(watchTermsFor([], 4, every, NOW), []);
 });
 
+test('★ the shipped watch words: every ask is one meme word and one pet word, whatever the slot', () => {
+  const F = DEFAULT_POLICY.feed;
+  const every = F.watchAskEveryMs ?? 900_000;
+  const pets = new Set(['cute', 'dog', 'pet', 'cat', 'puppy', 'kitten']);
+  for (let k = 0; k < F.hashtags.length; k++) {
+    const ask = watchTermsFor(F.hashtags, F.watchWordsPerAsk, every, (k * every) as Millis);
+    assert.equal(ask.filter((w) => pets.has(w)).length, 1, `ask ${ask.join(' + ')}`);
+  }
+});
+
 /* ── the pass ─────────────────────────────────────────────────────────────── */
 
 test('★ with no term configured, a source with no catch-all is asked a word from the watch list, by keyword', async () => {
