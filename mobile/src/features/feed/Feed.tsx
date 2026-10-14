@@ -21,7 +21,8 @@
  *
  * A post card looks as it did before the post sheet was built (shared/ui/PostRow.tsx). Tapping it,
  * its Buy or its View coins opens the post sheet (features/post-sheet); See N coins opens that
- * sheet straight on Choose coin, and Create coin opens the create flow from the post.
+ * sheet straight on Choose coin, and Create coin opens the create flow from the post. A tap on the
+ * card's coin itself opens that coin's token page (features/token/coin-opening.ts).
  *
  * Under a post's coin line, when the server says so, a line of its own: an older coin named for
  * the post's subject is trading more since it (OlderCoins.tsx) — never the post's coin, never a
@@ -50,6 +51,7 @@ import { usePreloadCreate } from '../create/preload.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { FILTER_PLATFORMS } from '../../shared/platform.ts';
 import { hrefFor } from '../../shared/route.ts';
+import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
 import { FilterIcon, StarIcon } from '../../shared/ui/icons.tsx';
@@ -203,6 +205,8 @@ export function Feed({
         open: () => setSheet({ id: p.id, start: 'post' }),
         create: () => onCreatePost(p),
         seeCoins: () => setSheet({ id: p.id, start: 'coins' }),
+        /* The card's own coin is the post's proven one: its page, with the narrative around it when there is one. */
+        openCoin: (coinId) => (window.location.hash = hrefFor(sheetCoinRoute({ coinId, proven: true }, p.storyId))),
       }}
     />
   );

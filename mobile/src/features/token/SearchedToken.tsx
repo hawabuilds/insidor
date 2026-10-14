@@ -9,6 +9,10 @@
  * so once trading is on it offers Buy and Sell like any coin with somewhere to trade
  * (features/trade/TradeBar.tsx) — and "Can't be traded right now" for one without.
  *
+ * ★ ALSO THE PAGE FOR A COIN A NARRATIVE DID NOT SETTLE ON (TokenPage, coin-opening.ts): a coin
+ * tapped in a post's coin list opens here by its own id, never refused. `note` is then the one
+ * grey line above it ("Not proven from this post."), a fact about the post, never a block.
+ *
  * What breaks if changed carelessly: a search result carries no price, 24-hour move or liquidity
  * of its own. They are dashes ("not reported") until the market is read, never zeros.
  */
@@ -20,7 +24,7 @@ import { BackIcon } from '../../shared/ui/icons.tsx';
 import { TokenView, type TokenFacts } from './TokenView.tsx';
 import styles from './token.module.css';
 
-export function SearchedToken({ coinId }: { coinId: string }) {
+export function SearchedToken({ coinId, note = null }: { coinId: string; note?: string | null }) {
   const [coin] = useLoad(`searched:${coinId}`, (signal) => fetchSearchedCoin(coinId, signal));
   return (
     <section className={styles['page']}>
@@ -31,7 +35,7 @@ export function SearchedToken({ coinId }: { coinId: string }) {
       ) : null}
       {coin.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {coin.state === 'failed' ? <p className={styles['note']}>This coin couldn't be opened. Search for it again.</p> : null}
-      {coin.state === 'ready' ? <Body coin={coin.value} /> : null}
+      {coin.state === 'ready' ? <Body coin={coin.value} note={note} /> : null}
     </section>
   );
 }
@@ -39,7 +43,7 @@ export function SearchedToken({ coinId }: { coinId: string }) {
 /** A search result carries no price or 24-hour move of its own; with no candles either, both are a dash. */
 const NOT_LISTED: Measured = { known: false, pending: 'not_reported' };
 
-function Body({ coin }: { coin: SearchedCoin }) {
+function Body({ coin, note }: { coin: SearchedCoin; note: string | null }) {
   const facts: TokenFacts = {
     coinId: coin.coinId,
     address: coin.address,
@@ -58,7 +62,8 @@ function Body({ coin }: { coin: SearchedCoin }) {
   return (
     <TokenView
       facts={facts}
-      offBar={<p className={styles['note']}>Opened from search. Buying and selling are coming soon.</p>}
+      notice={note !== null ? <p className={styles['aside']}>{note}</p> : null}
+      offBar={<p className={styles['note']}>{note !== null ? 'Buying and selling are coming soon.' : 'Opened from search. Buying and selling are coming soon.'}</p>}
     />
   );
 }

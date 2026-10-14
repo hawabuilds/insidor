@@ -9,9 +9,15 @@
  * ★ BUY AND SELL OPEN THE ORDER SHEET ONLY WHEN TRADING IS ON (features/trade). Off, they say
  * "Coming soon", and appear only for a coin the server says can be quoted (`tradable`).
  *
- * What breaks if changed carelessly: the coin must be one the narrative settled on
- * (`settledCoins`). A coin id from the URL that the narrative does not name is refused, so a
- * hand-edited link cannot put a narrative's name above a coin it never chose.
+ * ★ EVERY COIN TAP OPENS A TOKEN PAGE (coin-opening.ts). A coin the narrative did not settle on
+ * — one of a post's "See N coins", a link that outlived the narrative's choice — is not refused:
+ * it opens on its own facts by its id (SearchedToken), with no narrative named above it. A
+ * narrative that could not be read does the same. (A coin a post has not proven is linked by its
+ * own id with `unproven`, and that page carries the grey line; this route cannot tell.)
+ *
+ * What breaks if changed carelessly: only a coin the narrative settled on (`settledCoins`) gets
+ * the narrative's page, so a hand-edited link cannot put a narrative's name above a coin it never
+ * chose. Bringing back a refusal for the rest strands every "See N coins" tap on a dead end.
  */
 
 import type { Coin, Story } from '../../shared/api/index.ts';
@@ -30,23 +36,27 @@ import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { TradeButtons } from '../trade/TradeBar.tsx';
+import { coinOpening } from './coin-opening.ts';
+import { SearchedToken } from './SearchedToken.tsx';
 import { TokenView, type TokenFacts } from './TokenView.tsx';
 import styles from './token.module.css';
 
 export function TokenPage({ storyId, coinId }: { storyId: string; coinId: string }) {
   const [story] = useLoad(storyId, (signal) => loadStory(storyId, signal));
-  const coin = story.state === 'ready' ? settledCoins(story.value.coins).find((c) => c.coinId === coinId) : undefined;
+  const opening = coinOpening(story, coinId);
+  if (opening.kind === 'own') return <SearchedToken coinId={coinId} />;
   return (
     <section className={styles['page']}>
-      {story.state !== 'ready' || coin === undefined ? (
-        <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
-          <BackIcon size={20} />
-        </button>
-      ) : null}
-      {story.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
-      {story.state === 'failed' ? <p className={styles['note']}>This coin's narrative couldn't be read.</p> : null}
-      {story.state === 'ready' && coin === undefined ? <p className={styles['note']}>This coin is not one this narrative has settled on.</p> : null}
-      {story.state === 'ready' && coin !== undefined ? <Body story={story.value} coin={coin} /> : null}
+      {opening.kind === 'loading' ? (
+        <>
+          <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
+            <BackIcon size={20} />
+          </button>
+          <p className={styles['note']}>Loading.</p>
+        </>
+      ) : (
+        <Body story={opening.story} coin={opening.coin} />
+      )}
     </section>
   );
 }

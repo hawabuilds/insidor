@@ -23,6 +23,7 @@ const EVERY: readonly Route[] = [
   { screen: 'coin', storyId: 'jimothy', coinId: 'c1' },
   { screen: 'coin', storyId: 'a/b c', coinId: 'x%y' },
   { screen: 'token', coinId: 'solana:Abc123pump' },
+  { screen: 'token', coinId: 'solana:Abc123pump', unproven: true },
 ];
 
 test('every route survives the round trip through its own href', () => {

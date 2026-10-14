@@ -571,3 +571,11 @@
 .fromBy b {
   color: var(--text-2);
 }
+
+/* One small grey line above a coin opened from a post that has not proven it (SearchedToken). */
+.aside {
+  margin: 0 0 8px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.4;
+}

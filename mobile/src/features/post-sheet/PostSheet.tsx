@@ -44,6 +44,7 @@ import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.ts
 import { Value } from '../../shared/ui/Value.tsx';
 import { CreateCoin } from '../create/CreateCoin.tsx';
 import { usePreloadCreate } from '../create/preload.ts';
+import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { BuyOpen, SheetToast, type SheetNote } from './BuyOpen.tsx';
 import { ChooseCoin } from './ChooseCoin.tsx';
 import { CoinLine } from './CoinLine.tsx';
@@ -104,11 +105,9 @@ export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
     onClose();
     window.location.hash = href;
   };
-  /* A coin's page: with its narrative around it when the post has one, as the feed opens it. */
-  const openCoin = (c: SheetCoin) => {
-    const storyId = data?.post.storyId ?? data?.narrative?.storyId ?? null;
-    go(hrefFor(storyId !== null ? { screen: 'coin', storyId, coinId: c.coinId } : { screen: 'token', coinId: c.coinId }));
-  };
+  /* A coin's page, always (coin-opening.ts): the post's proven coin with its narrative around it,
+     any other by its own id with the grey "not proven" line. */
+  const openCoin = (c: SheetCoin) => go(hrefFor(sheetCoinRoute(c, data?.post.storyId ?? data?.narrative?.storyId ?? null)));
 
   return (
     <>
