@@ -6,7 +6,8 @@
  * how long ago, its views and views line. This is the card as it looked before the post sheet was
  * built, kept that way on purpose: the owner asked for the old look back.
  * A post with no picture or video has no thumbnail box at all, so its words use the card's full
- * width; a card with media is unchanged.
+ * width; a card with media is unchanged. The picture is asked for at the card's size
+ * (picture-size.ts), never the full posted size: a long feed decodes hundreds of them.
  *
  * ★ A TAP ON THE CARD OPENS THE POST SHEET (features/post-sheet): the card, its title, Buy and View
  * coins. Two buttons go straight to where they say: Create coin opens the create flow from the
@@ -43,6 +44,7 @@ import { Button } from './Button.tsx';
 import { CoinLogo } from './CoinLogo.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { Thumb } from './Thumb.tsx';
+import { cardPictureUrl } from './picture-size.ts';
 import { Value } from './Value.tsx';
 import styles from './row.module.css';
 
@@ -72,7 +74,7 @@ export function PostRow({ post, now, handlers, extra = null }: { post: RisingPos
         {/* A post with no picture or video has no thumbnail box: its words take the card's width. */}
         {post.thumbUrl !== null || post.thumbIsVideo ? (
           <Thumb
-            url={post.thumbUrl}
+            url={post.thumbUrl === null ? null : cardPictureUrl(post.thumbUrl)}
             video={post.thumbIsVideo}
             width={84}
             height={98}
