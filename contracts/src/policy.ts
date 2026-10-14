@@ -3227,7 +3227,9 @@ const POLICY_V1: Policy = {
     lineBuffer: 1.25,
     /* actors $2 from 2026-10-14 (was $1): the owner approved up to $1 a day more on the scraping line
        for short-video searches every 15 minutes and more re-reads of young videos. */
-    supplierLines: { posts: 10, judge: 10.5, video: 2, actors: 2, embeddings: 2 },
+    /* pictures $4.50 from 2026-10-14 (was $2), the owner's +$2.50: the live book spent $2.94 on
+       them in the 24 hours to 11:30 UTC, so the $2 line warned every day without stopping anything. */
+    supplierLines: { posts: 10, judge: 10.5, video: 2, actors: 2, embeddings: 4.5 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured
