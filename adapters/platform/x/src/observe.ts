@@ -18,7 +18,7 @@
 import type { CounterSet, Millis } from '@insidor/contracts';
 import { rec, str } from '@insidor/vendor-kit';
 
-import { billedUnits } from './capabilities.ts';
+import { lookupBilledUnits } from './capabilities.ts';
 import type { XClient } from './client.ts';
 import { toCounters } from './to-item.ts';
 
@@ -49,10 +49,10 @@ export async function observeBatch(
   }
   return {
     counters,
-    /* Measured from the response, not estimated — and never below the vendor's
-       per-request floor. A batch where every id has been deleted returns an empty
-       array and still costs a whole unit; booking it at zero is how the tracking
-       path came to understate its own spend. See `billedUnits`. */
-    units: billedUnits(raw.length),
+    /* Every id asked, whatever came back, and never below the vendor's per-request
+       floor: the vendor bills a lookup by the ids in it, so a batch where posts have
+       been deleted costs as much as one where none has. Booking what came back is how
+       the tracking path came to understate its own spend. See `lookupBilledUnits`. */
+    units: lookupBilledUnits(ids.length),
   };
 }

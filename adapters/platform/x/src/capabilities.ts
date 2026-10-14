@@ -110,3 +110,16 @@ export const MIN_BILLED_UNITS = 1;
 
 /** Units to report for a call that returned `returned` items. Never below the floor. */
 export const billedUnits = (returned: number): number => Math.max(returned, MIN_BILLED_UNITS);
+
+/**
+ * ★ A LOOKUP BY ID IS BILLED FOR EVERY ID ASKED, NOT EVERY POST RETURNED — measured, because the
+ * vendor's pages say only "per returned tweet". On 2026-10-14, against the account's balance with
+ * the live runner's own ledger as the background: 20 lookups of 5 live ids and 5 ids that were
+ * never posts returned 4.75 posts each and were billed 146 credits each (10 ids at 15, not 4.75);
+ * 20 of 10 live and 10 very old ids, 17.6 returned, 300 billed (20 ids); 100 of one live id and
+ * 100 of one missing id, 15 each; and a full search page of 20, about 280 (per post, as published).
+ * So a post deleted or gone private since it was found still costs its id on every re-read, and
+ * booking only what came back left the tracking path low by exactly those ids. Searches stay
+ * `billedUnits`: a search has no ids to ask, and is billed for what it returns.
+ */
+export const lookupBilledUnits = (asked: number): number => Math.max(asked, MIN_BILLED_UNITS);

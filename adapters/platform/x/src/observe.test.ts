@@ -76,16 +76,17 @@ test('every counter in one batch shares one observedAt, injected', async () => {
   }
 });
 
-test('★ a batch where everything has been deleted still books a whole unit', async () => {
+test('★ a batch where everything has been deleted still books every id it asked', async () => {
   // The vendor charges a floor per request. Booking this at zero is precisely how the
   // tracking path came to understate its own spend, and it understates it most on the
   // days the most posts have gone.
   const read = await observeBatch(clientReturning([]), ['1', '2'], AT);
   assert.equal(read.counters.size, 0);
-  assert.equal(read.units, 1);
+  assert.equal(read.units, 2);
+  assert.equal((await observeBatch(clientReturning([]), ['1'], AT)).units, 1, 'one id is the floor');
 });
 
-test('units are what came back, not what was asked for', async () => {
+test('★ units are every id asked, not what came back: the vendor bills a lookup by its ids (measured 2026-10-14)', async () => {
   const read = await observeBatch(clientReturning([{ id: '1' }, { id: '2' }]), ['1', '2', '3'], AT);
-  assert.equal(read.units, 2);
+  assert.equal(read.units, 3);
 });
