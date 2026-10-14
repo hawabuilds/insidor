@@ -1,8 +1,11 @@
 /**
- * The alert service, assembled. The routes always answer. With NOTIFY=on, three loops run:
- * deliver what is queued (seconds), check prices and curves (minutes), and check the pipeline
- * (a minute) — each on its policy interval, each pass independent, a failed pass logged and
- * tried again next time.
+ * The alert service, assembled. The routes always answer. With NOTIFY=on, four loops run:
+ * deliver what is queued (seconds), check the watched posts (seconds, watch.ts), check prices and
+ * curves (minutes), and check the pipeline — each on its policy interval, each pass independent, a
+ * failed pass logged and tried again next time.
+ *
+ * Every answer a push service gives is logged (host and status, never the device's address) and
+ * kept per device for the routes and the deliverer to write on its row (devices.ts).
  */
 
 import pg from 'pg';
@@ -18,8 +21,10 @@ import { loadNotifyConfig } from './config.ts';
 import { deliverQueued } from './deliver.ts';
 import { pacer, serve } from './http.ts';
 import { checkMarket, type MarketPorts } from './market.ts';
+import type { Answer } from './devices.ts';
 import { checkPipeline } from './pipeline.ts';
 import { handle } from './routes.ts';
+import { checkWatched, type WatchState } from './watch.ts';
 
 const P = DEFAULT_POLICY.notify;
 const cfg = loadNotifyConfig(process.env);
@@ -32,9 +37,37 @@ const IDLE_CLIENT_MS = 10_000;
 const pool = new pg.Pool({ connectionString: cfg.databaseUrl, max: POOL_MAX, idleTimeoutMillis: IDLE_CLIENT_MS, application_name: 'insidor-notify' });
 const db = { query: async <R>(sql: string, params?: readonly unknown[]) => (await pool.query(sql, params as unknown[])).rows as R[] };
 const log = (level: 'info' | 'error', msg: string, f: Record<string, unknown> = {}) => (level === 'error' ? console.error : console.log)(JSON.stringify({ level, msg, ...f }));
-const push = webPushSender(cfg.vapid);
+/* The push service's last answer per device, filed by endpoint for devices.ts; each one logged by host. */
+const answers = new Map<string, Answer>();
+const push = webPushSender(cfg.vapid, undefined, (r) => {
+  answers.set(r.endpoint, { status: r.status, reason: r.reason, host: r.host });
+  if (answers.size > 5_000) answers.clear();
+  log(r.ok ? 'info' : 'error', r.ok ? 'push taken' : 'push refused', { host: r.host, status: r.status, ...(r.reason === '' ? {} : { reason: r.reason }) });
+});
+/* The market source's quotes (free), for the cap a coin push says. */
+const dex = dexscreenerQuotes({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: 6_000 });
+const quotes = async (mints: readonly string[]) => new Map([...(await dex.quotes(mints))].map(([mint, q]) => [mint, { marketCapUsd: q.marketCapUsd, change: { h24: q.change.h24 } }]));
+/* A new coin's metadata document, for a watched post's link (watch.ts): a short, bounded, free read. */
+const METADATA_TIMEOUT_MS = 2_500;
+const METADATA_MAX_BYTES = 64 * 1024;
+const fetchText = async (url: string): Promise<string | null> => {
+  const r = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(METADATA_TIMEOUT_MS) });
+  if (!r.ok) return null;
+  const text = await r.text();
+  return text.slice(0, METADATA_MAX_BYTES);
+};
 
-const deps = { db, identity: privyIdentity({ appId: cfg.appId }), push, pushOn: cfg.notifyOn, policy: P, now: Date.now, pace: pacer(P.perClient, P.windowMs) };
+const deps = {
+  db,
+  identity: privyIdentity({ appId: cfg.appId }),
+  push,
+  pushOn: cfg.notifyOn,
+  policy: P,
+  now: Date.now,
+  pace: pacer(P.perClient, P.windowMs),
+  answers,
+  log: (msg: string, fields: Record<string, unknown>) => log('info', msg, fields),
+};
 
 serve(cfg.allowedOrigins, async (req) => {
   try {
@@ -65,11 +98,12 @@ function every(ms: number, name: string, work: () => Promise<unknown>): void {
 
 if (cfg.notifyOn) {
   every(P.deliverLoopMs, 'delivered', async () => (await deliverQueued(deps)).length);
-  every(P.pipelineLoopMs, 'pipeline alerts', () => checkPipeline(db));
+  every(P.pipelineLoopMs, 'pipeline alerts', () => checkPipeline(db, { quotes, ownerWallets: DEFAULT_POLICY.owner.wallets }));
+  const watchState: WatchState = { cursor: null };
+  every(P.watchLoopMs, 'watched post alerts', () => checkWatched(db, { policy: P, now: Date.now, quotes, fetchText }, watchState));
   if (cfg.rpcUrl !== null) {
     const rpcUrl = cfg.rpcUrl;
     const reader = portfolioReader({ rpcUrl, parseUrl: cfg.parseUrl, fetch: globalThis.fetch, timeoutMs: 10_000 });
-    const dex = dexscreenerQuotes({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: 6_000 });
     const bases = new Map<string, { at: number; value: ReadonlyMap<string, number> }>();
     const ports: MarketPorts = {
       async balances(wallet) {

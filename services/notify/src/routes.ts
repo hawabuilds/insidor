@@ -7,10 +7,20 @@
  *   POST   /alerts/seen             everything up to now is read
  *   GET    /prefs                   settings, the multiples offered, the hourly ceiling, push state
  *   PUT    /prefs { prefs }         saved as normalised (core): a bad value is corrected, not stored
- *   POST   /push/subscribe { endpoint, keys }     DELETE the same to stop this device
- *   POST   /push/test               "Notifications are on", to this person's devices only
+ *   POST   /push/subscribe { endpoint, keys, device? }     DELETE the same to stop this device
+ *   POST   /push/test               "Test / Notifications are working.", to this person's devices only;
+ *                                    listed like any other alert, and answers what each device's push
+ *                                    service said
+ *   POST   /push/report { step, error, permission, standalone }   the phone says where turning push
+ *                                    on stopped; logged, nothing stored (see below)
  *   PUT    /watch { stories }       the narratives this person stars, mirrored for alerts
  *   GET|PUT|DELETE /post-watch/:itemId    the post sheet's bell on one post (post-watch.ts)
+ *
+ * ★ EVERY STEP OF TURNING PUSH ON LEAVES A LOG LINE (2026-10-14). The owner's phone never saved a
+ * device and nothing said why: the phone swallowed the error and the server had no request to log.
+ * Now a saved device, a refused test and the phone's own report of where it stopped (permission,
+ * service worker, subscribe, save) are each one line in the notify log, with the person's id and
+ * never a key, a token or an endpoint path.
  *
  * ★ PUSH STATE IS TOLD AS IT IS. `push.on` is NOTIFY; `push.configured` is whether VAPID keys are
  * present. The app shows "alerts are listed but not pushed" from these, rather than a switch that
@@ -22,6 +32,7 @@ import type { IdentityCheck, Person, PushSender } from '@insidor/contracts/ports
 import { normalisePrefs, type AlertPrefs } from '@insidor/core';
 
 import { prefsOf, type Db } from './deliver.ts';
+import { devicesOf, sendToDevices, type Answers } from './devices.ts';
 import { json, type Reply, type Request } from './http.ts';
 import { coinOf, httpsOrNull, peopleOf, posterPictures } from './faces.ts';
 import { bellCount, parseList, readPage } from './list.ts';
@@ -35,7 +46,20 @@ export interface NotifyDeps {
   readonly policy: NotifyPolicy;
   readonly now: () => number;
   readonly pace: (client: string, now: number) => boolean;
+  /** The push service's last answer per device (main.ts); empty in tests. */
+  readonly answers?: Answers;
+  /** One JSON log line (main.ts); silent in tests. */
+  readonly log?: (msg: string, fields: Record<string, unknown>) => void;
 }
+
+const hostOf = (endpoint: string): string => {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return 'unknown';
+  }
+};
+const short = (v: unknown, max: number): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim().replace(/\s+/g, ' ').slice(0, max) : null);
 
 const bad = (error: string, status = 400): Reply => json(status, { error });
 const STORY = /^[A-Za-z0-9:_\-.]{1,200}$/;
@@ -43,6 +67,20 @@ const MAX_WATCHED = 500;
 
 async function ensureProfile(db: Db, p: Person): Promise<void> {
   await db.query('insert into people.profile (user_id, name, wallet) values ($1, $2, $3) on conflict (user_id) do nothing', [p.userId, p.name, p.wallets.find((w) => w.kind === 'embedded')?.address ?? null]);
+}
+
+/** What the push service said to this person's most recent push, for the settings screen; null before any (or before 0078). */
+async function lastAnswer(db: Db, userId: string): Promise<{ readonly result: 'taken' | 'refused' | 'no-answer'; readonly status: number; readonly at: number } | null> {
+  try {
+    const [r] = await db.query<{ status: number; at: string }>('select last_status as status, last_at as at from people.push_subscription where user_id = $1 and last_at is not null order by last_at desc limit 1', [userId]);
+    if (r === undefined) return null;
+    /* Said as an outcome here, so the app renders words and never judges a status code itself. */
+    const result = r.status === 0 ? 'no-answer' : r.status >= 200 && r.status < 300 ? 'taken' : 'refused';
+    return { result, status: r.status, at: new Date(r.at).getTime() };
+  } catch (e) {
+    if ((e as { code?: unknown }).code === '42703') return null;
+    throw e;
+  }
 }
 
 export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
@@ -79,7 +117,7 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
       const person = people.get(r.id) ?? null;
       const picture = httpsOrNull(facts['picture']) ?? person?.picture ?? (r.kind === 'rising_post' ? (posters.get(r.subject) ?? null) : null);
       return {
-        id: r.id, kind: r.kind, title: r.title, body: r.body, href: r.href, at, unread: at > seenAt,
+        id: r.id, kind: r.kind, title: r.title, body: r.body, href: r.href, at, unread: at > seenAt, pushed: r.pushed === true,
         symbol: typeof facts['symbol'] === 'string' ? facts['symbol'] : null, rank: typeof facts['rank'] === 'string' ? facts['rank'] : null, season: typeof facts['season'] === 'number' ? facts['season'] : null,
         picture, coin: coinOf(r),
         actor: r.kind === 'follow' && person !== null && person.userId !== me.userId ? { userId: person.userId, handle: person.handle, name: person.name, iFollow: iFollow.has(person.userId) } : null,
@@ -108,7 +146,7 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
       prefs: await prefsOf(deps.db, me.userId, P),
       multiplesOffered: P.milestones,
       maxPerHour: P.maxPerHour,
-      push: { on: deps.pushOn, configured: deps.push.configured, publicKey: deps.push.publicKey, devices: devices?.n ?? 0 },
+      push: { on: deps.pushOn, configured: deps.push.configured, publicKey: deps.push.publicKey, devices: devices?.n ?? 0, last: await lastAnswer(deps.db, me.userId) },
     });
   }
 
@@ -120,25 +158,52 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
       return json(200, { subscribed: false });
     }
     if (m !== 'POST' || typeof b.keys?.p256dh !== 'string' || typeof b.keys.auth !== 'string') return bad('bad request');
+    const device = short((req.body as { device?: unknown }).device, 60) ?? '';
+    const [was] = await deps.db.query<{ n: number }>('select count(*)::int as n from people.push_subscription where endpoint = $1 and user_id = $2', [b.endpoint, me.userId]);
     await deps.db.query(
-      `insert into people.push_subscription (endpoint, user_id, p256dh, auth, user_agent) values ($1, $2, $3, $4, '')
-       on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`,
-      [b.endpoint, me.userId, b.keys.p256dh, b.keys.auth],
+      `insert into people.push_subscription (endpoint, user_id, p256dh, auth, user_agent) values ($1, $2, $3, $4, $5)
+       on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, user_agent = excluded.user_agent`,
+      [b.endpoint, me.userId, b.keys.p256dh, b.keys.auth, device],
     );
+    /* The phone re-sends its device on every open (self-healing); only a new one is worth a line. */
+    if ((was?.n ?? 0) === 0) deps.log?.('push device saved', { user: me.userId, host: hostOf(b.endpoint), device });
     return json(200, { subscribed: true });
   }
 
+  if (m === 'POST' && path === 'push/report') {
+    const r = (req.body ?? {}) as Record<string, unknown>;
+    deps.log?.('push setup stopped', {
+      user: me.userId,
+      step: short(r['step'], 40),
+      error: short(r['error'], 200),
+      permission: short(r['permission'], 20),
+      standalone: r['standalone'] === true,
+      device: short(r['device'], 60),
+    });
+    return json(200, { noted: true });
+  }
+
   if (m === 'POST' && path === 'push/test') {
-    if (!deps.pushOn) return json(200, { sent: 0, why: 'Push is off on this server (NOTIFY).' });
-    if (!deps.push.configured) return json(200, { sent: 0, why: 'Push keys are not set on this server.' });
-    const devices = await deps.db.query<{ endpoint: string; p256dh: string; auth: string }>('select endpoint, p256dh, auth from people.push_subscription where user_id = $1', [me.userId]);
-    let sent = 0;
-    for (const d of devices) {
-      const r = await deps.push.send(d, { title: 'Notifications are on', body: 'You will hear about your coins, the narratives you watch, and replies.', url: '/#/alerts' }, P.pushTtlS);
-      if (r === 'sent') sent += 1;
-      if (r === 'gone') await deps.db.query('delete from people.push_subscription where endpoint = $1', [d.endpoint]);
-    }
-    return json(200, { sent, why: sent === 0 ? 'No device of yours took the push. Turn notifications on again on this phone.' : null });
+    if (!deps.pushOn) return json(200, { sent: 0, devices: 0, why: 'Push is off on this server (NOTIFY).' });
+    if (!deps.push.configured) return json(200, { sent: 0, devices: 0, why: 'Push keys are not set on this server.' });
+    const devices = await devicesOf(deps.db, me.userId);
+    const title = 'Test';
+    const body = 'Notifications are working.';
+    const href = '/#/feed/notifications';
+    const r = await sendToDevices(deps.db, deps.push, deps.answers ?? new Map(), devices, { title, body, url: href, tag: `push_test:${deps.now()}` }, P.pushTtlS);
+    /* Listed like every other notification, with how it went. */
+    await deps.db.query(
+      `insert into people.alert (user_id, kind, subject, rung, title, body, href, facts, delivery) values ($1, 'push_test', $2, 0, $3, $4, $5, '{}'::jsonb, $6)`,
+      [me.userId, String(deps.now()), title, body, href, r.sent > 0 ? 'push' : devices.length === 0 ? 'no-device' : 'refused'],
+    );
+    deps.log?.('push test', { user: me.userId, devices: devices.length, sent: r.sent, answers: r.answers.map((a) => `${a.host} ${a.status}${a.reason === '' ? '' : ` ${a.reason}`}`) });
+    const refused = r.answers.find((a) => a.status !== 201 && a.status !== 0);
+    const why =
+      r.sent > 0 ? null
+      : devices.length === 0 ? 'This phone is not saved for notifications yet. Turn Feed notifications on above.'
+      : refused !== undefined ? `Your phone's push service refused it (${refused.status}). Turn Feed notifications off and on again.`
+      : "Your phone's push service did not answer. Try again in a moment.";
+    return json(200, { sent: r.sent, devices: devices.length, why });
   }
 
   if (m === 'PUT' && path === 'watch') {
