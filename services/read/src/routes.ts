@@ -24,6 +24,7 @@
 
 import { coinAbout, type AboutDeps } from './coin-about.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
+import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, feedPage, parseCursor } from './feed-page.ts';
 import { errorText, type Logger } from './log.ts';
 import type { PostSheet } from './post-sheet.ts';
 import type { Search } from './search.ts';
@@ -273,6 +274,24 @@ async function risingTick(feedId: string, deps: Deps): Promise<Reply> {
   return json(200, { tick: tickNumber(view['tick']) });
 }
 
+/**
+ * GET /rising/:feedId/older?before=<cursor> — the infinite scroll under the frame (feed-page.ts).
+ * A feed with no scroll is a 404; so is a database the scroll's table has not reached yet, which
+ * tells the phone to stop asking rather than claiming there is nothing older.
+ */
+async function risingOlder(feedId: string, rawUrl: string, deps: Deps): Promise<Reply> {
+  if (!FEED_PAGE_FEEDS.includes(feedId)) return NOT_FOUND;
+  const cursor = parseCursor(new URLSearchParams(rawUrl.split('?')[1] ?? '').get('before'));
+  if (cursor === null) return BAD_REQUEST;
+  try {
+    const rows = await deps.db.query(FEED_PAGE_SQL, [feedId, new Date(cursor.atMs).toISOString(), cursor.id, FEED_PAGE_SIZE]);
+    return json(200, feedPage(rows, Date.now()));
+  } catch (e) {
+    if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return NOT_FOUND;
+    throw e;
+  }
+}
+
 async function launches(feedId: string, deps: Deps): Promise<Reply> {
   const views = await deps.db.query(LAUNCH_VIEW_SQL, [feedId]);
   const view = views[0];
@@ -466,6 +485,7 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
     }
 
     if (segments.length === 3 && head === 'rising' && param !== undefined && segments[2] === 'tick') return await risingTick(param, deps);
+    if (segments.length === 3 && head === 'rising' && param !== undefined && segments[2] === 'older') return await risingOlder(param, rawUrl, deps);
 
     if (segments.length === 2 && param !== undefined) {
       if (head === 'board') return await board(param, deps);

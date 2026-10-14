@@ -17,7 +17,8 @@
  * keyless token read, once per post per `keepMs`, the same read the Portfolio tab prices with.
  *
  * ★ ONLY A POST ON A FEED. A post no feed holds is a 404: the sheet opens from a card or from a
- * coin page's post, and both are rows on a feed.
+ * coin page's post, and both are rows on a feed — the frame, or the infinite scroll's members
+ * (SHEET_MEMBER_SQL).
  *
  * ★ A NUMBER WE COULD NOT READ IS A DASH WITH WHY, NEVER ZERO. A coin the market source does not
  * list has no market anyone reports (`no_market`); an outage is `not_read_yet`; the order puts
@@ -43,6 +44,21 @@ select r.payload, i.first_seen_at, i.media, a.display_name, a.follower_count::te
   left join public.author a on a.author_key = i.author_key
  where r.item_id = $1
  order by (r.feed_id = 'fyp') desc
+ limit 1`;
+
+/**
+ * A post that has left the frame but is still on the infinite scroll (0075 public.feed_post): its
+ * last projected card, so a tap on an old card opens its sheet. Read only when the frame does not
+ * hold the post; a database without 0075 makes this a 404, as before.
+ */
+export const SHEET_MEMBER_SQL = `
+select f.payload, i.first_seen_at, i.media, a.display_name, a.follower_count::text as follower_count,
+       to_jsonb(a) ->> 'picture_url' as picture_url
+  from public.feed_post f
+  join public.item i on i.item_id = f.item_id
+  left join public.author a on a.author_key = i.author_key
+ where f.item_id = $1 and f.withdrawn_at is null and f.payload is not null
+ order by (f.feed_id = 'fyp') desc
  limit 1`;
 
 /** The promoted narrative the post is in, if any: the Narrative tile's name and link. */
@@ -165,8 +181,17 @@ export function sharedName(coins: readonly { readonly name: string | null; reado
 export function createPostSheet(deps: PostSheetDeps) {
   const kept = new Map<string, { readonly at: number; readonly reply: SheetReply }>();
 
+  async function memberRow(itemId: string): Promise<Row | undefined> {
+    try {
+      return (await deps.db.query(SHEET_MEMBER_SQL, [itemId]))[0];
+    } catch (e) {
+      if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return undefined;
+      throw e;
+    }
+  }
+
   async function build(itemId: string): Promise<SheetReply> {
-    const row = (await deps.db.query(SHEET_POST_SQL, [itemId]))[0];
+    const row = (await deps.db.query(SHEET_POST_SQL, [itemId]))[0] ?? (await memberRow(itemId));
     if (row === undefined) return json(404, { error: 'not found' });
     const payload = rec(row['payload']);
     const storyRow = (await deps.db.query(SHEET_STORY_SQL, [itemId]))[0];
