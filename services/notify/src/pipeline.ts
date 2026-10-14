@@ -15,7 +15,9 @@
  *                  opening the post's sheet
  *   a coin found   the first coin a For You post gets — its own line's coin, or the first of its
  *                  list ("See 3 coins") — "launched 33m after" or "before" the post (`fyp_coin`)
- *   a proven coin  a coin whose own links carry the post (`fyp_proven`)
+ *   a proven coin  a coin whose own links carry the post, or whose address the poster's own profile
+ *                  names (`fyp_proven`; said as the profile, never as a link) — however long after
+ *                  the post first showed a coin, once per post and coin
  *   story coin     a For You post on a story whose coin the owner confirmed (`story_post`)
  * The coin pushes open the coin's page; a post someone watches is the watch's (watch.ts), so its
  * watchers are left out of these two rather than told twice.
@@ -142,6 +144,8 @@ export interface FypCoinEvent {
   readonly launchedAfterMs: number | null;
   readonly mcUsd: number | null;
   readonly logo: string | null;
+  /** A proven coin proven by the poster's own profile, not by its links: the push says which. */
+  readonly bio?: true;
   /** The key it is remembered under in its stream. */
   readonly key: string;
 }
@@ -157,10 +161,11 @@ export function fypCoinEvents(
   const storyKeys: string[] = [];
   for (const r of rows) {
     const line = lineCoin(r.payload);
-    if (line !== null && line.linksPost) {
+    if (line !== null && (line.linksPost || line.posterBio)) {
       /* Proven: said as proven, and the post's "coin found" is spent with it. */
       const key = `${r.itemId}|${line.address}`;
-      if (!seen.proven.has(key)) events.push({ kind: 'fyp_proven', itemId: r.itemId, address: line.address, ticker: line.ticker, launchedAfterMs: line.launchedAfterMs, mcUsd: line.mcUsd, logo: line.imageUrl, key });
+      const bio = !line.linksPost ? { bio: true as const } : {};
+      if (!seen.proven.has(key)) events.push({ kind: 'fyp_proven', itemId: r.itemId, address: line.address, ticker: line.ticker, launchedAfterMs: line.launchedAfterMs, mcUsd: line.mcUsd, logo: line.imageUrl, key, ...bio });
       provenKeys.push(key);
       coinKeys.push(r.itemId);
       continue;
@@ -315,6 +320,7 @@ export async function fypCoinProposals(db: Db, rows: readonly RisingRow[], event
       ...(pictures.has(e.itemId) ? { picture: pictures.get(e.itemId) } : {}),
     };
     if (e.kind === 'fyp_proven' && story !== '') facts['subject'] = story;
+    if (e.kind === 'fyp_proven' && e.bio === true) facts['bio'] = true;
     if (e.kind === 'story_post') {
       facts['story'] = story !== '' ? story : (coin?.name ?? '');
       facts['mine'] = true;

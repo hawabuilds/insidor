@@ -194,7 +194,8 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const mc = cap(f);
       return {
         title: 'Coin links this post',
-        body: `${ticker(f)} links ${whosePost(f)}.${after === null ? '' : ` Launched ${span(after)} ${after >= 0 ? 'after' : 'before'}.`}${mc === null ? '' : ` ${mc}.`}`,
+        /* Proven by the poster's profile: "@nikkei's bio names $AKITA." — never said as a link. */
+        body: `${f['bio'] === true ? `${possessive(s(f['author'], 'The poster'))} bio names ${ticker(f)}` : `${ticker(f)} links ${whosePost(f)}`}.${after === null ? '' : ` Launched ${span(after)} ${after >= 0 ? 'after' : 'before'}.`}${mc === null ? '' : ` ${mc}.`}`,
       };
     }
     case 'story_post': {

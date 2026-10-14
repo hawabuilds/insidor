@@ -77,3 +77,26 @@ test("★ a For You post's coins: the first coin once, a proven coin as proven, 
   const later = fypCoinEvents([post('x:3', coinLine('Listed1111111111111111111111111111111pump', { linksPost: true }))], listed, { coin: new Set(r.coinKeys), proven: new Set(r.provenKeys), story: new Set() });
   assert.deepEqual(later.events.map((e) => e.kind), ['fyp_proven'], 'a coin found earlier and proven later is news once more, as proven');
 });
+
+test("★ a coin the poster's profile proves LATER (the profile was read again after the post first showed) is pushed as proven once, then never again", () => {
+  const A = 'AMQ8BusAhpwbt3ufSCTi4k3BEQ7AecX9u12Jnk6Spump';
+  /* First frame: the post's coin is only in its list ("See 2 coins"): a coin found. */
+  const first = fypCoinEvents([post('tiktok:1', { kind: 'unsure', claimCount: 2 })], new Map([['tiktok:1', { address: A, launchedAfterMs: 46 * 3_600_000 }]]), NONE);
+  assert.deepEqual(first.events.map((e) => e.kind), ['fyp_coin']);
+  /* Later frame: the profile now names A, the projector proves it, the line says posterBioNamesCoin. */
+  const proven = post('tiktok:1', coinLine(A, { linksPost: false, samePicture: null, launchedAfterMs: 46 * 3_600_000, posterBioNamesCoin: true }));
+  const seen = { coin: new Set(first.coinKeys), proven: new Set(first.provenKeys), story: new Set(first.storyKeys) };
+  const later = fypCoinEvents([proven], new Map(), seen);
+  assert.deepEqual(later.events.map((e) => [e.kind, e.key, e.bio]), [['fyp_proven', `tiktok:1|${A}`, true]]);
+  const again = fypCoinEvents([proven], new Map(), { ...seen, proven: new Set([...seen.proven, ...later.provenKeys]) });
+  assert.deepEqual(again.events, [], 'deduplicated per post and coin');
+});
+
+test('a watched post whose coin the profile proves later: the line carries it, so the watch loop ties it ("Watchlist: coin found", once per person, post and coin)', async () => {
+  const { lineCoin } = await import('./post-watch.ts');
+  const A = 'AMQ8BusAhpwbt3ufSCTi4k3BEQ7AecX9u12Jnk6Spump';
+  const line = lineCoin({ coins: coinLine(A, { linksPost: null, launchedAfterMs: 1, posterBioNamesCoin: true }) });
+  assert.equal(line?.address, A);
+  assert.equal(line?.posterBio, true);
+  assert.equal(line?.linksPost, false);
+});
