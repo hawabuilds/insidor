@@ -144,7 +144,8 @@ test('★ the per-minute cap counts finished and failed searches across passes, 
   await db.query(`update internal.coin_lookup_attempt set attempts = 0 where subject_id = $1`, [OTHER]);
   /* Two searches stamped in this minute (one finished, one failed). The cap counts calls, and each
      stamped search may have used `namesPerSubject` of them, so two searches' worth leaves no room. */
-  const names = P.universe.lookup.namesPerSubject;
+  /* With the namer on, each search also counts its guessed names (coin-lookup.ts `guessMax`). */
+  const names = P.universe.lookup.namesPerSubject + (P.names.on ? P.universe.lookup.guessNamesPerSubject : 0);
   const capped = { ...P, universe: { ...P.universe, lookup: { ...P.universe.lookup, perMinute: 2 * names } } };
   asked.length = 0;
   assert.deepEqual(await lookUpCoins(deps(false, capped)), { searched: 0, added: 0, failed: 0 });
