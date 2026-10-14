@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { ALERT_KINDS } from '@insidor/core';
 
-import { alertText } from './text.ts';
+import { alertText, cutWords, possessive, span } from './text.ts';
 
 const POISON = { score: 0.97, confidence: 0.88, memeScore: 91, heat: 7.5, probability: 0.61, rank: 'goat', who: '@hawa', excerpt: 'nice call', symbol: 'FERRY', multiple: 5, positionUsd: 1234.5, percent: 92.4, source: 'X', author: '@nordkyst_ferge', views: 41_000, title: 'Ferry horn goes viral' };
 const FORBIDDEN = [/0\.97/, /0\.88/, /\b91\b/, /7\.5/, /0\.61/, /score/i, /confidence/i, /probab/i, /heat/i, /pump/i, /moon/i, /will\b/i];
@@ -20,7 +20,8 @@ test('★ every alert kind reads only its own facts: no score, probability or pr
 test('the facts read as facts', () => {
   assert.deepEqual(alertText('holding_multiple', POISON), { title: '$FERRY is up 5x since you bought', body: 'Your position is worth $1.2K' });
   assert.deepEqual(alertText('graduating_soon', POISON), { title: '$FERRY is close to graduating', body: '92% of the way through its curve' });
-  assert.deepEqual(alertText('rising_post', POISON), { title: 'Rising on X', body: 'A post by @nordkyst_ferge: 41K views' });
+  assert.deepEqual(alertText('rising_post', POISON), { title: 'New on FYP', body: '@nordkyst_ferge: nice call 41K views' });
+  assert.deepEqual(alertText('rising_post', { source: 'X', author: '@a', views: 41_000 }), { title: 'Rising on X', body: 'A post by @a: 41K views' }, 'facts queued before the new wording read as before');
   assert.deepEqual(alertText('rank_up', { rank: 'analyst' }), { title: 'You reached Analyst', body: 'Holders liked your calls.' });
   assert.deepEqual(alertText('comment_useful', { count: 3, excerpt: 'FERRY has a horn now' }), { title: '3 people found your comment useful', body: 'FERRY has a horn now' });
   assert.deepEqual(alertText('post_coin', { symbol: 'FERRY', author: '@ferrycat', excerpt: 'the ferry cat' }), { title: '$FERRY is proven from a post you watch', body: 'A post by @ferrycat: the ferry cat' });
@@ -82,4 +83,60 @@ test("a re-tune summary carries the order model's refit: each signal's weight, a
 
 test('a re-tune summary counts the taps it tested as well as the ones it taught', () => {
   assert.match(alertText('retune_summary', { applied: false, taps: 58, tapsTested: 121, missed: 5, names: 0, added: 1, removed: 0 }).body, /From 58 taps \(121 more taps tested\), 5 missed posts/);
+});
+
+/* The owner's own examples (2026-10-14), word for word: the first line the title, the second the body. */
+test("★ the owner's examples, exactly", () => {
+  assert.deepEqual(alertText('rising_post', { author: '@rawsalerts', excerpt: 'Goliath at Six Flags closed after a man died yesterday', views: 751_000, gain: 38_000, gainMinutes: 5 }), {
+    title: 'New on FYP',
+    body: '@rawsalerts: Goliath at Six Flags closed after a man died… 751K views, +38K in 5m',
+  });
+  assert.deepEqual(alertText('fyp_coin', { symbol: 'GOLIATH', author: '@rawsalerts', launchedAfterMs: 33 * 60_000, mcUsd: 12_000 }), {
+    title: 'Coin launched for this post',
+    body: "$GOLIATH launched 33m after @rawsalerts' post. $12K MC. Tap to buy.",
+  });
+  assert.deepEqual(alertText('fyp_proven', { symbol: 'argon', author: '@OfficialLoganK', subject: 'Gemini 4 Argon', launchedAfterMs: 2 * 60_000, mcUsd: 4_100 }), {
+    title: 'Coin links this post',
+    body: "$argon links @OfficialLoganK's Gemini 4 Argon post. Launched 2m after. $4.1K MC.",
+  });
+  assert.deepEqual(alertText('watch_coin', { found: 'found', symbol: 'VOID', author: '@blackscats', excerpt: 'the void is falling', mcUsd: 86_000, change24h: 64.2 }), {
+    title: 'Watchlist: coin found',
+    body: '"the void is falling" (@blackscats) now has a coin: $VOID, $86K MC, up 64%.',
+  });
+  assert.deepEqual(alertText('watch_coin', { found: 'launched', symbol: 'FALCON', author: null, subject: 'SpaceX Falcon 9', ageMs: 60_000, mcUsd: 3_000 }), {
+    title: 'Watchlist: coin launched',
+    body: "$FALCON just launched for the SpaceX Falcon 9 post you're watching. 1m old, $3K MC.",
+  });
+  assert.deepEqual(alertText('story_post', { story: 'GTA 6', author: '@Rockstar', symbol: 'GTA', mcUsd: 410_000, mine: true }), {
+    title: 'Coin for this story',
+    body: 'GTA 6: new post from @Rockstar is on FYP. Your coin $GTA is $410K MC.',
+  });
+  assert.deepEqual(alertText('push_test', {}), { title: 'Test', body: 'Notifications are working.' });
+});
+
+test('a fact we do not have is left out of the sentence, never a 0 or a dash; one $ only', () => {
+  assert.deepEqual(alertText('rising_post', { author: '@a', excerpt: 'short words', views: null }), { title: 'New on FYP', body: '@a: short words' });
+  assert.deepEqual(alertText('rising_post', { author: '@a', excerpt: 'short words', views: 9_000, gain: 0, gainMinutes: 5 }), { title: 'New on FYP', body: '@a: short words 9K views' });
+  assert.deepEqual(alertText('fyp_coin', { symbol: '$$GOLIATH', author: '@rawsalerts', launchedAfterMs: null }), { title: 'Coin found for this post', body: "$GOLIATH has the name of @rawsalerts' post. Tap to buy." });
+  assert.deepEqual(alertText('fyp_coin', { symbol: 'OLD', author: '@cat', launchedAfterMs: -3 * 3_600_000, mcUsd: 2_500_000 }), { title: 'Coin found for this post', body: "$OLD launched 3h before @cat's post. $2.5M MC. Tap to buy." });
+  assert.deepEqual(alertText('fyp_proven', { symbol: 'X1', author: '@dog' }), { title: 'Coin links this post', body: "$X1 links @dog's post." });
+  assert.deepEqual(alertText('watch_coin', { found: 'launched', symbol: 'NEW', author: '@dogs' }), { title: 'Watchlist: coin launched', body: "$NEW just launched for @dogs' post you're watching." });
+  assert.deepEqual(alertText('watch_coin', { found: 'found', symbol: 'V', author: '@b' }), { title: 'Watchlist: coin found', body: "@b's post now has a coin: $V." });
+  assert.deepEqual(alertText('story_post', { author: '@R', symbol: 'GTA' }), { title: 'Coin for this story', body: 'New post from @R is on FYP. Its coin $GTA.' });
+  for (const kind of ['rising_post', 'fyp_coin', 'fyp_proven', 'story_post', 'watch_coin', 'push_test'] as const) {
+    const { title, body } = alertText(kind, { symbol: 'A', author: '@b', excerpt: 'c' });
+    assert.ok(!/·|\$\$|\b0 views|–|NaN|undefined|null/.test(`${title} ${body}`), `${kind}: ${title} / ${body}`);
+  }
+});
+
+test('the small rules: possessive, cut words, spans', () => {
+  assert.equal(possessive('@rawsalerts'), "@rawsalerts'");
+  assert.equal(possessive('@Rockstar'), "@Rockstar's");
+  assert.equal(cutWords('FORTNITE IS COMING TO LINUX • Easy Anti-Cheat\'s Linux support couldn\'t protect games…', 50), 'FORTNITE IS COMING TO LINUX • Easy Anti-Cheat\'s…');
+  assert.equal(cutWords('was already cut by the feed…', 50), 'was already cut by the feed…');
+  assert.equal(cutWords('   ', 50), null);
+  assert.equal(span(20_000), '1m');
+  assert.equal(span(33 * 60_000), '33m');
+  assert.equal(span(5 * 3_600_000), '5h');
+  assert.equal(span(72 * 3_600_000), '3d');
 });

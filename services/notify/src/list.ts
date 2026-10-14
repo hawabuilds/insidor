@@ -14,6 +14,11 @@
  * offset would show a row twice when one lands above it. One more row than the page is read, so
  * the cursor is null exactly when nothing is left and "Load more" never loads nothing.
  *
+ * ★ WHAT REACHED THE PHONE IS A NOTIFICATION (the owner, 2026-10-14: "every notification also shows
+ * in the Notifications list"). A Feed kind that was pushed — a New on FYP post — is listed in
+ * Notifications as well as on the Feed, and counted on the bell; one that was only listed stays on
+ * the Feed alone.
+ *
  * ★ THE BELL COUNTS NOTIFICATIONS ONLY, ALL OF THEM. `bell` is counted over every unread
  * notification, not over the rows on this page, so paging cannot change it.
  *
@@ -80,6 +85,8 @@ export interface ListRow {
   readonly at: string | Date;
   readonly atText: string;
   readonly facts: unknown;
+  /** Sent to a phone as a push: then it is in Notifications too, whatever its kind. */
+  readonly pushed: boolean;
 }
 
 /* Nothing about a post or narrative the feeds have since hidden (0050): the alert stays in the
@@ -100,11 +107,11 @@ const WATCHED = `(a.kind = 'coin_matched' or exists (select 1 from people.watch 
 /** One page of the list, newest first, and the cursor for the next (null at the end). */
 export async function readPage(db: Db, userId: string, q: ListQuery): Promise<{ readonly rows: readonly ListRow[]; readonly cursor: string | null }> {
   const rows = await db.query<ListRow>(
-    `select a.alert_id::int as id, a.kind, a.subject, a.title, a.body, a.href, a.at, to_char(a.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "atText", a.facts
+    `select a.alert_id::int as id, a.kind, a.subject, a.title, a.body, a.href, a.at, to_char(a.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "atText", a.facts, a.delivery = 'push' as pushed
        from people.alert a
       where a.user_id = $1
         and ${VISIBLE}
-        and (case $2::text when 'feed' then a.kind = any($3::text[]) when 'notifications' then not (a.kind = any($3::text[])) else true end)
+        and (case $2::text when 'feed' then a.kind = any($3::text[]) when 'notifications' then (not (a.kind = any($3::text[])) or a.delivery = 'push') else true end)
         and ($4::text <> 'rising' or a.kind = 'rising_post')
         and ($4::text <> 'watching' or ${WATCHED})
         and ($5::bigint is null or a.at >= to_timestamp($5::bigint / 1000.0))
@@ -125,7 +132,7 @@ export async function bellCount(db: Db, userId: string): Promise<number> {
     `select count(*)::int as n from people.alert a
       where a.user_id = $1
         and a.at > coalesce((select s.seen_at from people.alert_seen s where s.user_id = $1), '-infinity'::timestamptz)
-        and not (a.kind = any($2::text[]))
+        and (not (a.kind = any($2::text[])) or a.delivery = 'push')
         and ${VISIBLE}`,
     [userId, [...FEED_KINDS]],
   );

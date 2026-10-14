@@ -43,6 +43,12 @@ export interface PushMessage {
   readonly body: string;
   /** An in-app path, always starting with "/". */
   readonly url: string;
+  /** The big picture under the text (the post's picture or video frame); https only. Shown where the platform draws one. */
+  readonly image?: string | null;
+  /** The small picture beside the text (the poster's face or the coin's logo); https only. */
+  readonly icon?: string | null;
+  /** One notification per tag on a device: a second send with the same tag replaces, never stacks. */
+  readonly tag?: string;
 }
 
 /** `gone`: the device unsubscribed; drop it. `failed`: try another time. */

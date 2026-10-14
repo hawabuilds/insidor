@@ -19,6 +19,7 @@ import type { NotifyPolicy } from '@insidor/contracts/policy.ts';
 import type { PushSender } from '@insidor/contracts/ports/people.ts';
 import { deliveryFor, normalisePrefs, spentWith, wants, type AlertKind, type AlertPrefs } from '@insidor/core';
 
+import { sendToDevices, type Answers } from './devices.ts';
 import { alertText, type Facts } from './text.ts';
 
 export interface Db {
@@ -32,6 +33,22 @@ export interface DeliverDeps {
   readonly pushOn: boolean;
   readonly policy: NotifyPolicy;
   readonly now: () => number;
+  /** The push service's last answer per device (main.ts); empty in tests. */
+  readonly answers?: Answers;
+}
+
+/** The kinds about a coin: their small picture is the coin's logo when we have one. */
+const COIN_KINDS: readonly AlertKind[] = ['fyp_coin', 'fyp_proven', 'watch_coin'];
+const httpsFact = (v: unknown): string | null => (typeof v === 'string' && /^https:\/\/\S+$/.test(v) && v.length <= 2_000 ? v : null);
+
+/**
+ * The pictures a push carries, from its facts: `image`, the post's picture or video frame (the big
+ * one, where the platform draws it); `icon`, the coin's logo for a coin, else the poster's face.
+ */
+export function picturesOf(kind: AlertKind, facts: Facts): { readonly image: string | null; readonly icon: string | null } {
+  const face = httpsFact(facts['picture']);
+  const logo = httpsFact(facts['logo']);
+  return { image: httpsFact(facts['image']), icon: COIN_KINDS.includes(kind) ? (logo ?? face) : face };
 }
 
 const MULTIPLE_KINDS: readonly AlertKind[] = ['holding_multiple', 'watchlist_multiple'];
@@ -99,13 +116,10 @@ export async function deliverQueued(deps: DeliverDeps, limit = 200): Promise<rea
     const text = alertText(q.kind, facts);
     let delivery = decision.kind === 'push' ? 'push' : decision.kind === 'list' ? decision.why : 'off';
     if (decision.kind === 'push') {
-      let sent = 0;
-      for (const d of devices) {
-        const r = await deps.push.send(d, { title: text.title, body: text.body, url: q.href }, deps.policy.pushTtlS);
-        if (r === 'sent') sent += 1;
-        if (r === 'gone') await deps.db.query('delete from people.push_subscription where endpoint = $1', [d.endpoint]);
-      }
-      if (sent === 0) delivery = 'no-device';
+      /* The tag is the claim's own key: a repeat on the device replaces, never stacks. */
+      const { sent } = await sendToDevices(deps.db, deps.push, deps.answers ?? new Map(), devices, { title: text.title, body: text.body, url: q.href, ...picturesOf(q.kind, facts), tag: `${q.kind}:${q.subject}` }, deps.policy.pushTtlS);
+      /* Every device refused it (the push service's answer is on each device row): said as that, not as "no device". */
+      if (sent === 0) delivery = 'refused';
     }
     await deps.db.query(
       'insert into people.alert (user_id, kind, subject, rung, title, body, href, facts, delivery) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',

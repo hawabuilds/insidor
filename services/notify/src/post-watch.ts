@@ -1,31 +1,27 @@
 /**
- * THE POST SHEET'S BELL: watching one post for its coin, and the alert when that coin is proven.
+ * WATCHING A POST (the owner, 2026-10-14: the star on a For You card and on the post sheet; the
+ * post sheet's bell before it). The routes, and what a watch starts from.
  *
- *   GET    /post-watch/:itemId    { watching }        whether I have the bell on for this post
- *   PUT    /post-watch/:itemId    { watching: true }  bell on
- *   DELETE /post-watch/:itemId    { watching: false } bell off
+ *   GET    /post-watch                 { posts: [{ itemId, since }] }   my watched posts, newest first
+ *   GET    /post-watch/:itemId    { watching }        whether I watch this post
+ *   PUT    /post-watch/:itemId    { watching: true }  watch it
+ *   DELETE /post-watch/:itemId    { watching: false } stop watching it
  *
- * A coin is PROVEN for a post when the post's coin line on the feed is `one` (its narrative's own
- * coin) or `matched` (settled from the post's own evidence: "Links this post"). That is the line
- * the app draws as the post's coin with a Buy; `unsure`, `several` and the rest are not proven,
- * and never alert.
+ * What a watched post alerts on, and how fast, is watch.ts: every coin that comes to it — its proven
+ * coin, its story's coin, a new coin in its list, a coin new on the mint stream with one of its
+ * guessed names or its link — once per post and coin.
  *
- * ★ ONCE PER PERSON AND POST. people.post_watch.notified_at (0068) is set when the alert is
- * queued and never cleared, and the claim on (person, post_coin, post) backs it up. A post whose
- * coin was already proven when the bell was tapped is marked at once and sends nothing: the
- * sheet already shows that coin.
+ * ★ A WATCH STARTS FROM WHAT THE POST ALREADY SHOWS. The coins on the post's line and in its list
+ * when the star is tapped are marked seen for this person at once (people.pipeline_seen, stream
+ * `watch:<person>`), so starring a post that already has three coins sends nothing: the card shows
+ * them. Only a coin that comes after is news.
  *
- * ★ ONLY WHAT THE FEED HOLDS. The check reads the posts' current lines from public.rising_row; a
- * post that has left the feed is not read, so a coin proven after that is not alerted. Said
- * here rather than guessed around.
- *
- * Apart from routes.ts and pipeline.ts because it is one feature with its own table, and the
- * rule for "proven" must be the same in the route (already proven) and in the check (newly
- * proven): both use `provenCoin`.
+ * Apart from routes.ts because it is one feature with its own table (people.post_watch, 0068).
+ * 0068's `notified_at` (one alert per post, the bell's rule) no longer decides anything: a watched
+ * post alerts once per coin, which the seen stream holds.
  */
 
-import { queue, type Db } from './deliver.ts';
-import { posterPictures } from './faces.ts';
+import type { Db } from './deliver.ts';
 import { json, type Reply } from './http.ts';
 
 const ITEM = /^[A-Za-z0-9:_\-.]{1,200}$/;
@@ -35,22 +31,55 @@ export interface ProvenCoin {
   readonly ticker: string;
 }
 
-/** The post's own coin from its feed line, or null when it has none proven. */
-export function provenCoin(payload: unknown): ProvenCoin | null {
-  const p = (typeof payload === 'string' ? JSON.parse(payload) : payload) as { coins?: { kind?: unknown; coin?: { address?: unknown; ticker?: unknown } } } | null;
-  const c = p?.coins;
-  if (c === undefined || (c.kind !== 'one' && c.kind !== 'matched')) return null;
-  const address = c.coin?.address;
-  if (typeof address !== 'string' || address === '') return null;
-  return { address, ticker: typeof c.coin?.ticker === 'string' ? c.coin.ticker : '' };
+export const watchStream = (userId: string): string => `watch:${userId}`;
+
+/** Every coin the post shows now: its line's coin and its list (the list needs 0078's grant; without it, the line alone). */
+export async function coinsShown(db: Db, itemId: string): Promise<string[]> {
+  const line = (await db.query<{ payload: unknown }>('select payload from public.rising_row where item_id = $1', [itemId])).map((r) => lineCoin(r.payload)?.address).filter((a): a is string => a !== undefined);
+  let listed: string[] = [];
+  try {
+    listed = (await db.query<{ address: string }>(`select address from public.same_name_coin where subject_kind = 'post' and subject_id = $1`, [itemId])).map((r) => r.address);
+  } catch (e) {
+    if ((e as { code?: unknown }).code !== '42501') throw e;
+  }
+  return [...new Set([...line, ...listed])];
 }
 
-const lineOf = async (db: Db, itemId: string): Promise<unknown> =>
-  (await db.query<{ payload: unknown }>('select payload from public.rising_row where item_id = $1 limit 1', [itemId]))[0]?.payload ?? null;
+/** The coin on a post's line, whatever settled it (proven, the story's coin, the narrative's own); null when the line names none. */
+export function lineCoin(payload: unknown): (ProvenCoin & { readonly linksPost: boolean; readonly storyCoin: boolean; readonly launchedAfterMs: number | null; readonly mcUsd: number | null; readonly name: string; readonly imageUrl: string | null; readonly mintedAtMs: number | null }) | null {
+  const p = (typeof payload === 'string' ? JSON.parse(payload) : payload) as { coins?: { kind?: unknown; coin?: Record<string, unknown>; evidence?: Record<string, unknown> | null } } | null;
+  const c = p?.coins;
+  if (c === undefined || (c.kind !== 'one' && c.kind !== 'matched')) return null;
+  const coin = c.coin ?? {};
+  const address = coin['address'];
+  if (typeof address !== 'string' || address === '') return null;
+  const ev = c.evidence ?? {};
+  const v = (x: unknown): number | null => {
+    const n = typeof x === 'object' && x !== null ? (x as { v?: unknown }).v : x;
+    return typeof n === 'number' && Number.isFinite(n) ? n : null;
+  };
+  const minted = coin['mintedAt'];
+  return {
+    address,
+    ticker: typeof coin['ticker'] === 'string' ? coin['ticker'] : '',
+    name: typeof coin['name'] === 'string' ? coin['name'] : '',
+    linksPost: ev['linksPost'] === true,
+    storyCoin: ev['storyCoin'] === true,
+    launchedAfterMs: v(ev['launchedAfterMs']),
+    mcUsd: v(coin['marketCapUsd']),
+    imageUrl: typeof coin['imageUrl'] === 'string' && coin['imageUrl'].startsWith('https://') ? coin['imageUrl'] : null,
+    mintedAtMs: typeof minted === 'object' && minted !== null && typeof (minted as { at?: unknown }).at === 'number' ? (minted as { at: number }).at : null,
+  };
+}
 
-/** The three routes; null when the path is not one of them. */
+/** The routes; null when the path is not one of them. */
 export async function postWatchRoute(db: Db, method: string, seg: readonly string[], userId: string): Promise<Reply | null> {
-  if (seg[0] !== 'post-watch' || seg.length !== 2) return null;
+  if (seg[0] !== 'post-watch') return null;
+  if (seg.length === 1 && method === 'GET') {
+    const rows = await db.query<{ itemId: string; since: string }>('select item_id as "itemId", created_at as since from people.post_watch where user_id = $1 order by created_at desc limit 200', [userId]);
+    return json(200, { posts: rows.map((r) => ({ itemId: r.itemId, since: new Date(r.since).getTime() })) });
+  }
+  if (seg.length !== 2) return null;
   let itemId: string;
   try {
     itemId = decodeURIComponent(seg[1] ?? '');
@@ -63,12 +92,12 @@ export async function postWatchRoute(db: Db, method: string, seg: readonly strin
     return json(200, { watching: rows.length > 0 });
   }
   if (method === 'PUT') {
-    const already = provenCoin(await lineOf(db, itemId)) !== null;
-    await db.query(
-      `insert into people.post_watch (user_id, item_id, notified_at) values ($1, $2, case when $3::boolean then now() end)
-       on conflict (user_id, item_id) do nothing`,
-      [userId, itemId, already],
-    );
+    const fresh = await db.query('insert into people.post_watch (user_id, item_id) values ($1, $2) on conflict (user_id, item_id) do nothing returning 1', [userId, itemId]);
+    /* What the post shows now is not news (see the header): seen at once, for this person. */
+    if (fresh.length > 0) {
+      const shown = await coinsShown(db, itemId);
+      if (shown.length > 0) await db.query('insert into people.pipeline_seen (stream, key) select $1, unnest($2::text[]) on conflict do nothing', [watchStream(userId), shown.map((a) => `${itemId}|${a}`)]);
+    }
     return json(200, { watching: true });
   }
   if (method === 'DELETE') {
@@ -78,27 +107,3 @@ export async function postWatchRoute(db: Db, method: string, seg: readonly strin
   return json(405, { error: 'method not allowed' });
 }
 
-const tokenHref = (mint: string) => `/#/token/${encodeURIComponent(`solana:${mint}`)}`;
-
-/** One pass: every watched post whose coin is now proven alerts its watchers, once. Returns how many were queued. */
-export async function checkPostCoins(db: Db): Promise<number> {
-  const rows = await db.query<{ userId: string; itemId: string; payload: unknown }>(
-    `select distinct on (w.user_id, w.item_id) w.user_id as "userId", w.item_id as "itemId", r.payload
-       from people.post_watch w join public.rising_row r on r.item_id = w.item_id
-      where w.notified_at is null`,
-  );
-  const due = rows.flatMap((r) => {
-    const coin = provenCoin(r.payload);
-    return coin === null ? [] : [{ ...r, coin }];
-  });
-  if (due.length === 0) return 0;
-  const pictures = await posterPictures(db, due.map((d) => d.itemId));
-  for (const d of due) {
-    const p = (typeof d.payload === 'string' ? JSON.parse(d.payload) : d.payload) as { authorLabel?: unknown; excerpt?: unknown };
-    const excerpt = typeof p.excerpt === 'string' ? p.excerpt.slice(0, 80) : null;
-    const facts = { symbol: d.coin.ticker, address: d.coin.address, author: typeof p.authorLabel === 'string' ? p.authorLabel : null, excerpt, ...(pictures.has(d.itemId) ? { picture: pictures.get(d.itemId) } : {}) };
-    await queue(db, { userId: d.userId, kind: 'post_coin', subject: d.itemId, rung: 0, facts, href: tokenHref(d.coin.address) });
-    await db.query('update people.post_watch set notified_at = now() where user_id = $1 and item_id = $2 and notified_at is null', [d.userId, d.itemId]);
-  }
-  return due.length;
-}

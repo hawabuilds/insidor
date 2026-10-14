@@ -6,6 +6,10 @@
  * the fact fields it names, so a field added to `facts` by mistake — a score, a probability — can
  * never reach a person's phone; the test feeds every kind a poisoned fact set to prove it.
  *
+ * THE OWNER'S PUSH LIST (2026-10-14) is in his own words: the first line is the title, the second
+ * the body, and a fact we do not have (no market cap yet, no reading five minutes ago) is left out
+ * of the sentence, never said as 0 or a dash. His examples are the tests (text.test.ts).
+ *
  * A supplier warning names the supplier by its role (posts, judge, short video, pictures), never
  * by the vendor behind it: the role is what the owner set a line for, and a vendor's name on a
  * lock screen says nothing the role does not.
@@ -89,7 +93,51 @@ const ofN = (passed: unknown, tested: unknown): string => {
   const t = n(tested);
   return p === null || t === null || t === 0 ? '–' : `${p}/${t}`;
 };
-const ticker = (f: Facts) => `$${s(f['symbol'], 'COIN').replace(/^\$/, '')}`;
+/* The shared ticker rule (mobile shared/format/ticker.ts): whatever `$`s the symbol starts with are dropped and one is put back, never "$$". */
+const ticker = (f: Facts) => `$${s(f['symbol'], 'COIN').replace(/^\$+/, '')}`;
+
+/* ── the owner's push list (2026-10-14): his wording, his examples in text.test.ts ── */
+
+/** "@handle's", and "@rawsalerts'" for a handle that ends in s. */
+export const possessive = (who: string): string => (/s$/i.test(who) ? `${who}'` : `${who}'s`);
+
+/** The post's words cut on a word before `max` characters, with "…" when anything was cut. */
+export function cutWords(raw: unknown, max: number): string | null {
+  if (typeof raw !== 'string') return null;
+  const flat = raw.replace(/\s+/g, ' ').trim();
+  const wasCut = /…$/.test(flat);
+  const text = flat.replace(/[….\s]+$/u, '').trim();
+  if (text === '') return null;
+  if (text.length <= max) return wasCut ? `${text}…` : flat;
+  const at = text.lastIndexOf(' ', max);
+  return `${text.slice(0, at > 0 ? at : max).replace(/[\s,;:.!?-]+$/u, '')}…`;
+}
+/** How much of a post's words a push carries: about a line on a lock screen. */
+const EXCERPT_CHARS = 50;
+
+/** A span of time as the owner says it: "33m", "5h", "3d"; never "0m". */
+export function span(ms: number): string {
+  const m = Math.max(1, Math.round(Math.abs(ms) / 60_000));
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
+}
+const cap = (f: Facts): string | null => {
+  const v = n(f['mcUsd']);
+  return v === null || v <= 0 ? null : `$${compact(v)} MC`;
+};
+const moved = (f: Facts): string | null => {
+  const c = n(f['change24h']);
+  if (c === null || Math.round(c) === 0) return null;
+  return c > 0 ? `up ${Math.round(c)}%` : `down ${Math.round(-c)}%`;
+};
+/** Whose post: "@handle's post", or "@handle's Gemini 4 Argon post" when its story has a name. */
+const whosePost = (f: Facts): string => {
+  const who = s(f['author'], '');
+  const subject = s(f['subject'], '');
+  if (who === '') return subject === '' ? 'the post' : `the ${subject} post`;
+  return `${possessive(who)}${subject === '' ? '' : ` ${subject}`} post`;
+};
 
 export function alertText(kind: AlertKind, f: Facts): { readonly title: string; readonly body: string } {
   switch (kind) {
@@ -122,8 +170,59 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
     case 'rising_post': {
       const views = n(f['views']);
       const who = s(f['author'], 'someone');
-      return { title: `Rising on ${s(f['source'], 'social')}`, body: views === null ? `A post by ${who} is rising.` : `A post by ${who}: ${compact(views)} views` };
+      /* Before the owner's wording (no excerpt in the facts): as it was. */
+      if (f['excerpt'] === undefined) return { title: `Rising on ${s(f['source'], 'social')}`, body: views === null ? `A post by ${who} is rising.` : `A post by ${who}: ${compact(views)} views` };
+      /* "New on FYP / @rawsalerts: Goliath at Six Flags closed after a man died… 751K views, +38K in 5m". */
+      const words = cutWords(f['excerpt'], EXCERPT_CHARS);
+      const gain = n(f['gain']);
+      const minutes = n(f['gainMinutes']);
+      const counted = views === null ? '' : `${compact(views)} views${gain !== null && gain > 0 && minutes !== null ? `, +${compact(gain)} in ${Math.round(minutes)}m` : ''}`;
+      const said = [words, counted].filter((x) => x !== null && x !== '').join(' ');
+      return { title: 'New on FYP', body: who === 'someone' ? said || 'A new post is on For You.' : `${who}: ${said || 'a new post'}` };
     }
+    case 'fyp_coin': {
+      /* "$GOLIATH launched 33m after @rawsalerts' post. $12K MC. Tap to buy." */
+      const after = n(f['launchedAfterMs']);
+      const post = whosePost(f);
+      const when = after === null ? `${ticker(f)} has the name of ${post}.` : `${ticker(f)} launched ${span(after)} ${after >= 0 ? 'after' : 'before'} ${post}.`;
+      const mc = cap(f);
+      return { title: after !== null && after >= 0 ? 'Coin launched for this post' : 'Coin found for this post', body: `${when}${mc === null ? '' : ` ${mc}.`} Tap to buy.` };
+    }
+    case 'fyp_proven': {
+      /* "$argon links @OfficialLoganK's Gemini 4 Argon post. Launched 2m after. $4.1K MC." */
+      const after = n(f['launchedAfterMs']);
+      const mc = cap(f);
+      return {
+        title: 'Coin links this post',
+        body: `${ticker(f)} links ${whosePost(f)}.${after === null ? '' : ` Launched ${span(after)} ${after >= 0 ? 'after' : 'before'}.`}${mc === null ? '' : ` ${mc}.`}`,
+      };
+    }
+    case 'story_post': {
+      /* "GTA 6: new post from @Rockstar is on FYP. Your coin $GTA is $410K MC." */
+      const story = s(f['story'], '');
+      const who = s(f['author'], '');
+      const lead = `${who === '' ? 'a new post' : `new post from ${who}`} is on FYP.`;
+      const mc = cap(f);
+      const coin = `${f['mine'] === true ? 'Your coin' : 'Its coin'} ${ticker(f)}${mc === null ? '' : ` is ${mc}`}.`;
+      return { title: 'Coin for this story', body: story === '' ? `${lead.charAt(0).toUpperCase()}${lead.slice(1)} ${coin}` : `${story}: ${lead} ${coin}` };
+    }
+    case 'watch_coin': {
+      const mc = cap(f);
+      if (f['found'] === 'launched') {
+        /* "$FALCON just launched for the SpaceX Falcon 9 post you're watching. 1m old, $3K MC." */
+        const age = n(f['ageMs']);
+        const tail = [age === null ? null : `${span(age)} old`, mc].filter((x): x is string => x !== null).join(', ');
+        return { title: 'Watchlist: coin launched', body: `${ticker(f)} just launched for ${whosePost(f)} you're watching.${tail === '' ? '' : ` ${tail}.`}` };
+      }
+      /* '"the void is falling" (@blackscats) now has a coin: $VOID, $86K MC, up 64%.' */
+      const words = cutWords(f['excerpt'], EXCERPT_CHARS);
+      const who = s(f['author'], '');
+      const post = words !== null ? `"${words}"${who === '' ? '' : ` (${who})`}` : who === '' ? 'A post you watch' : `${possessive(who)} post`;
+      const tail = [ticker(f), mc, moved(f)].filter((x): x is string => x !== null).join(', ');
+      return { title: 'Watchlist: coin found', body: `${post} now has a coin: ${tail}.` };
+    }
+    case 'push_test':
+      return { title: 'Test', body: 'Notifications are working.' };
     case 'narrative_promoted':
       return { title: 'New narrative', body: s(f['title'], 'A new narrative is on the board.') };
     case 'narrative_coin':

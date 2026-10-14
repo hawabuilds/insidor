@@ -35,15 +35,15 @@ async function setup() {
     return { status: r.status, body: JSON.parse(r.body) as { unread: number; bell: number; seenAt: number; cursor: string | null; alerts: { id: number; kind: string; at: number }[] } };
   };
   await db.query('insert into people.profile (user_id, name) values ($1, $2)', [ME.userId, 'Me']);
-  const add = (kind: string, minute: number, href = '/#/', subject = `s${minute}`) =>
-    db.query(`insert into people.alert (user_id, kind, subject, rung, title, body, href, facts, delivery, at) values ($1, $2, $3, 0, 't', 'b', $4, '{}', 'push', $5)`, [ME.userId, kind, subject, href, new Date(BASE - minute * 60_000).toISOString()]);
+  const add = (kind: string, minute: number, href = '/#/', subject = `s${minute}`, delivery = 'push') =>
+    db.query(`insert into people.alert (user_id, kind, subject, rung, title, body, href, facts, delivery, at) values ($1, $2, $3, 0, 't', 'b', $4, '{}', $5, $6)`, [ME.userId, kind, subject, href, delivery, new Date(BASE - minute * 60_000).toISOString()]);
   return { db, get, add };
 }
 
 test('★ Notifications page twenty at a time, with no row twice and no empty last page', async () => {
   const { get, add } = await setup();
   for (let i = 0; i < 45; i += 1) await add(i % 3 === 0 ? 'follow' : 'graduated', i);
-  for (let i = 0; i < 5; i += 1) await add('rising_post', 100 + i);
+  for (let i = 0; i < 5; i += 1) await add('rising_post', 100 + i, '/#/', `r${i}`, 'hourly-limit');
   const seen = new Set<number>();
   let cursor: string | null = null;
   const sizes: number[] = [];
@@ -52,7 +52,7 @@ test('★ Notifications page twenty at a time, with no row twice and no empty la
     assert.equal(r.status, 200);
     for (const a of r.body.alerts) {
       assert.ok(!seen.has(a.id), 'no row twice');
-      assert.notEqual(a.kind, 'rising_post', 'a Feed row is not a notification');
+      assert.notEqual(a.kind, 'rising_post', 'a Feed row that was only listed is not a notification');
       seen.add(a.id);
     }
     assert.equal(r.body.bell, 45, 'the bell counts every unread notification, not the page');
@@ -64,11 +64,12 @@ test('★ Notifications page twenty at a time, with no row twice and no empty la
 
 test('the Feed pages its own side, by tab: Rising takes rising posts inside its window, Watching the starred narratives', async () => {
   const { db, get, add } = await setup();
-  await add('rising_post', 1, '/#/story/st_a');
-  await add('rising_post', 60 * 24 * 9, '/#/');
-  await add('narrative_promoted', 2, '/#/story/st_a', 'st_a');
-  await add('narrative_promoted', 3, '/#/story/st_b', 'st_b');
-  await add('coin_matched', 4, '/#/story/st_c', 'st_c|MINT');
+  /* Listed, not pushed: a Feed row that reached the phone is a notification too (tested below). */
+  await add('rising_post', 1, '/#/story/st_a', 's1', 'no-device');
+  await add('rising_post', 60 * 24 * 9, '/#/', 's9', 'no-device');
+  await add('narrative_promoted', 2, '/#/story/st_a', 'st_a', 'no-device');
+  await add('narrative_promoted', 3, '/#/story/st_b', 'st_b', 'no-device');
+  await add('coin_matched', 4, '/#/story/st_c', 'st_c|MINT', 'no-device');
   await add('graduated', 5);
   await db.query('insert into people.watch (user_id, story_id) values ($1, $2)', [ME.userId, 'st_a']);
   const kinds = async (q: string) => (await get(q)).body.alerts.map((a) => a.kind);
@@ -129,30 +130,44 @@ test('one row per comment found useful, the newest count, in the list and on the
   assert.equal(r.body.bell, 2);
 });
 
-test("★ the post sheet's bell: a watched post alerts once when its coin is proven, and not at all if it already was", async () => {
+test('★ a New on FYP post that reached the phone is a notification too, and on the bell', async () => {
+  const { get, add } = await setup();
+  await add('rising_post', 1, '/#/post/x%3A1', 'x:1', 'push');
+  await add('rising_post', 2, '/#/post/x%3A2', 'x:2', 'hourly-limit');
+  const r = await get('?list=notifications');
+  assert.deepEqual(r.body.alerts.map((a) => (a as unknown as { kind: string; pushed: boolean }).pushed), [true]);
+  assert.equal(r.body.bell, 1);
+});
+
+test('★ a watched post: what it showed when starred is not news; each coin after that is, once; the list names it', async () => {
   const { db } = await setup();
-  const { checkPostCoins } = await import('@insidor/notify/post-watch.ts');
+  const { checkWatched } = await import('@insidor/notify/watch.ts');
   const as = async (method: string, path: string) => {
     const deps = { db, identity: { verify: async () => ME }, push: { configured: false, publicKey: null, send: async () => 'sent' as const }, pushOn: false, policy: P, now: () => BASE, pace: () => true };
     const r = await handle({ method, url: path, body: null, token: ME.userId, client: 't' }, deps as never);
-    return JSON.parse(r.body) as { watching: boolean };
+    return JSON.parse(r.body) as { watching?: boolean; posts?: { itemId: string }[] };
   };
   const mint = 'FerryHorn1111111111111111111111111111111pump';
+  const other = 'HornHorn11111111111111111111111111111111pump';
   await db.query(`insert into public.rising_view (feed_id, tick) values ('fyp', 1)`);
   const line = (id: string, coins: unknown) => db.query(`insert into public.rising_row (feed_id, item_id, position, payload) values ('fyp', $1, 0, $2) on conflict (feed_id, item_id) do update set payload = excluded.payload`, [id, JSON.stringify({ authorLabel: '@ferrycat', excerpt: 'the ferry cat', coins })]);
   await line('x:new', { kind: 'unsure', claimCount: 3 });
-  await line('x:old', { kind: 'matched', coin: { address: mint, ticker: 'OLD' }, evidence: { linksPost: true } });
+  await line('x:old', { kind: 'matched', coin: { address: other, ticker: 'OLD' }, evidence: { linksPost: true } });
   assert.deepEqual(await as('GET', '/post-watch/x%3Anew'), { watching: false });
   assert.deepEqual(await as('PUT', '/post-watch/x%3Anew'), { watching: true });
   assert.deepEqual(await as('PUT', '/post-watch/x%3Aold'), { watching: true });
   assert.deepEqual(await as('GET', '/post-watch/x%3Anew'), { watching: true });
-  assert.equal(await checkPostCoins(db), 0, 'three coins with the name, none proven: nothing');
+  assert.deepEqual((await as('GET', '/post-watch')).posts?.map((p) => p.itemId).sort(), ['x:new', 'x:old']);
+  const ports = { policy: P, now: () => BASE };
+  const state = { cursor: null };
+  assert.equal(await checkWatched(db, ports, state), 0, 'no coin yet, and the coin x:old already showed is not news');
   await line('x:new', { kind: 'matched', coin: { address: mint, ticker: 'FERRY' }, evidence: { linksPost: true } });
-  assert.equal(await checkPostCoins(db), 1, 'proven now: one alert, and none for the post that was already proven');
-  assert.equal(await checkPostCoins(db), 0, 'and only once');
-  const [q] = await db.query<{ kind: string; subject: string; href: string; facts: { symbol: string; address: string } }>('select kind, subject, href, facts from people.alert_queue');
-  assert.equal(q?.kind, 'post_coin');
-  assert.equal(q?.subject, 'x:new');
+  assert.equal(await checkWatched(db, ports, state), 1, 'a coin now: one alert');
+  assert.equal(await checkWatched(db, ports, state), 0, 'and only once');
+  const [q] = await db.query<{ kind: string; subject: string; href: string; facts: { symbol: string; address: string; found: string } }>('select kind, subject, href, facts from people.alert_queue');
+  assert.equal(q?.kind, 'watch_coin');
+  assert.equal(q?.subject, `x:new|${mint}`);
   assert.equal(q?.facts.address, mint);
+  assert.equal(q?.href, `/#/token/${encodeURIComponent(`solana:${mint}`)}`);
   assert.deepEqual(await as('DELETE', '/post-watch/x%3Anew'), { watching: false });
 });
