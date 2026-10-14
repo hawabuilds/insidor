@@ -206,7 +206,16 @@ export class PgNameExampleRepo {
    * the owner's call on it decides whether it is rejected (0077). The number written or flipped; 0
    * before 0076. Before 0077 the owner's rejections are not written and the rest are, as before.
    */
-  async put(pairs: readonly (NamePair & { readonly picture: string | null })[]): Promise<number> {
+  async put(given: readonly (NamePair & { readonly picture: string | null })[]): Promise<number> {
+    /* One row per post, name and ticker, the first wins (callers list the owner's calls first): the
+       same pair twice in one statement makes the upsert refuse the whole batch. */
+    const seenKeys = new Set<string>();
+    const pairs = given.filter((p) => {
+      const key = `${p.itemId}\u0000${p.name.slice(0, NAME_MAX).toLowerCase()}\u0000${p.ticker.slice(0, TICKER_MAX).toUpperCase()}`;
+      if (seenKeys.has(key)) return false;
+      seenKeys.add(key);
+      return true;
+    });
     if (pairs.length === 0) return 0;
     const args = (list: readonly (NamePair & { readonly picture: string | null })[]) => [
       list.map((p) => p.itemId), list.map((p) => p.address), list.map((p) => p.name.slice(0, NAME_MAX)), list.map((p) => p.ticker.slice(0, TICKER_MAX)),
