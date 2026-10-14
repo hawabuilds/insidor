@@ -4,7 +4,7 @@ Rendered by `eval/src/gold/run-matching.ts` from `match-evidence.json` (`tools/g
 
 Proven is only: the one coin whose links name the post; the one coin with the post's picture (embedding near-identical, or hashes within 10 of 64 bits) launched after it inside 48 h with every other such coin compared; or the one coin whose address the poster's own account posted under it. Likely: the top coin of the score when its share against the other candidates and "none of these" is at least 0.3. Grace before the post 10 min.
 
-Weights (Policy.postCoin.weights): base -7.232, linksPost 1.175, linksAccount -0.218, picture 0.825, hash 0.495, description 0.205, authorAddress 0, othersAddress 0, timing 2.134, nameExact 2.768, nameVariant -0.46, tradingJump 0. Mean log-likelihood of the unproven choices: tuning -0.414 (305), held out -2.978 (16).
+Weights (Policy.postCoin.weights): base -7.232, linksPost 1.175, linksAccount -0.218, picture 0.825, hash 0.495, description 0.205, authorAddress 0, othersAddress 0, timing 2.134, nameExact 2.768, nameVariant -0.46, tradingJump 0. Mean log-likelihood of the unproven choices: tuning -0.406 (304), held out -3.065 (15).
 
 Before 2026-10-13 evening (commit 731b339: name search only, proof by links or by same picture, no score): 13 of 71 origin posts right, 3 wrong, 55 missed; 4 wrong links in 354 posts (1.1%). Of the 58 origin posts it did not get right: 30 the right coin was not among the candidates, 13 it ranked first but nothing proved it, 12 it ranked lower, 0 the name did not match, 3 another coin was proven.
 
@@ -18,7 +18,7 @@ Cases with a finished search: 354 of 354. Picture comparisons: 184 embedding pai
 
 | | proven right | proven wrong | likely right | likely wrong | missed |
 |---|---|---|---|---|---|
-| origin posts | 32.7% (16) | 4.1% (2) | 2.0% (1) | 0.0% (0) | 61.2% (30) |
+| origin posts | 34.7% (17) | 4.1% (2) | 2.0% (1) | 0.0% (0) | 59.2% (29) |
 | no-coin posts | — | 2.8% (8) | — | 0.0% (0) | — |
 
 Wrong links (proven, the only answer with a Buy), all posts: **3.0% (10)**; on posts a feed can show (the shill rule holds 26 of these as ads): **2.0% (6)**. Likely shown on a wrong coin, all posts: 0.0% (0).
@@ -29,7 +29,7 @@ Wrong links (proven, the only answer with a Buy), all posts: **3.0% (10)**; on p
 
 | | proven right | proven wrong | likely right | likely wrong | missed |
 |---|---|---|---|---|---|
-| origin posts | 31.8% (7) | 0.0% (0) | 0.0% (0) | 0.0% (0) | 68.2% (15) |
+| origin posts | 36.4% (8) | 0.0% (0) | 0.0% (0) | 0.0% (0) | 63.6% (14) |
 | no-coin posts | — | 0.0% (0) | — | 0.0% (0) | — |
 
 Wrong links (proven, the only answer with a Buy), all posts: **0.0% (0)**; on posts a feed can show (the shill rule holds 3 of these as ads): **0.0% (0)**. Likely shown on a wrong coin, all posts: 0.0% (0).
@@ -40,7 +40,7 @@ Wrong links (proven, the only answer with a Buy), all posts: **0.0% (0)**; on po
 
 | | proven right | proven wrong | likely right | likely wrong | missed |
 |---|---|---|---|---|---|
-| origin posts | 32.4% (23) | 2.8% (2) | 1.4% (1) | 0.0% (0) | 63.4% (45) |
+| origin posts | 35.2% (25) | 2.8% (2) | 1.4% (1) | 0.0% (0) | 60.6% (43) |
 | no-coin posts | — | 2.8% (8) | — | 0.0% (0) | — |
 
 Wrong links (proven, the only answer with a Buy), all posts: **2.8% (10)**; on posts a feed can show (the shill rule holds 29 of these as ads): **1.8% (6)**. Likely shown on a wrong coin, all posts: 0.0% (0).
@@ -53,21 +53,21 @@ Wrong links (proven, the only answer with a Buy), all posts: **2.8% (10)**; on p
 
 | | proven right | proven wrong | likely right | likely wrong | missed |
 |---|---|---|---|---|---|
-| origin posts | 19.7% (14) | 4.2% (3) | 1.4% (1) | 0.0% (0) | 74.6% (53) |
+| origin posts | 21.1% (15) | 4.2% (3) | 1.4% (1) | 0.0% (0) | 73.2% (52) |
 | no-coin posts | — | 2.1% (6) | — | 0.0% (0) | — |
 
 Wrong links (proven, the only answer with a Buy), all posts: **2.5% (9)**; on posts a feed can show (the shill rule holds 29 of these as ads): **1.8% (6)**. Likely shown on a wrong coin, all posts: 0.0% (0).
 
-Ranked first among the candidates where nothing proved a coin but the right one was there: 31 of 44.
+Ranked first among the candidates where nothing proved a coin but the right one was there: 29 of 42.
 
-Proven answers by reason: links this post 27, same picture and timing 5, the poster posted its address 1.
+Proven answers by reason: links this post 29, same picture and timing 5, the poster posted its address 1.
 
 How the right coin became a candidate (origin posts where it was one, 67): by a market name search 39, by the replies 0, by its picture 9, by the mint stream's names 51; by its picture alone 0, by the replies alone 0, by the mint stream's names alone 25.
 
 ## Why an origin post was not proven right (after)
 
 - the right coin was not among the candidates: 4
-- it was a candidate, ranked first, but nothing proved it: 31
+- it was a candidate, ranked first, but nothing proved it: 29
 - it was a candidate but ranked lower: 13
 - it was a candidate and the subject's name did not match it: 0
 - of these, the likely coin was the right one: 1
@@ -89,7 +89,9 @@ How the right coin became a candidate (origin posts where it was one, 67): by a 
 
 - bt2:1/7658657103057308942 (origin, tune, Aura Bird / Stork): provenRight, links, 18 candidates
 - bt2:4/2074100341155434793 (origin, tune, Attack On Pumpfun / AOP): likelyRight, likely, 37 candidates
+- bt2:28/2071972414653632892 (origin, holdout, Himgajria / HIM): provenRight, links, 26 candidates
 - bt2:72/2080759984069947864 (origin, tune, Justice for Iryna Gorb / Iryna): provenRight, links, 15 candidates
+- bt2:76/2079837600689332595 (origin, tune, Half Rep / NADIA): provenRight, links, 9 candidates
 - bt2:111/2074111506992583138 (origin, tune, Help Alex's Mom / KIRB): provenRight, links, 15 candidates, held as an ad by the shill rule
 - bt2:133/2073034775569330570 (origin, holdout, Happy Independence Day / July 4th): provenRight, links, 17 candidates
 - bt2:145/2078521506007560474 (origin, tune, Future Colosseum / CAGE): provenRight, links, 22 candidates
