@@ -107,6 +107,7 @@ import { loadNameIdeas, weighPostCoins, writeNameIdeas, type PostMatch } from '.
 import { projectCoin } from './project.ts';
 import { loadCoinCalls, withOwnerCall, type OwnerPostCall } from './owner-calls.ts';
 import { loadStoryCoins } from './story-coins.ts';
+import { withPlausibleLists } from './coin-list.ts';
 import { writeSameNameCoins } from './same-name.ts';
 import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { permalinkFor } from './permalinks.ts';
@@ -832,7 +833,8 @@ async function withMatches(
     const base = l !== undefined && 'coins' in l ? l : { coins: [], more: false };
     out.set(itemId, { ...base, match: { kind: 'matched', coin, evidence, owner: true } });
   }
-  return out;
+  /* "See N coins": only the coins that could be the post's (coin-list.ts). */
+  return withPlausibleLists(db, out, weighed, policy, nowMs);
 }
 
 /** Write one feed's frame: the view row first, then its rows, in the caller's transaction. */
