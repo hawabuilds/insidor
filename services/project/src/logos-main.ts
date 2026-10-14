@@ -1,7 +1,8 @@
 /**
  * THE COIN-LOGO MIRROR, run once: find the coins whose logo is not in our storage yet (the ones on
  * screen first, then a slice of every other coin we hold), copy each one's picture there, record
- * the outcome and, for a coin left as a letter, why; exit. Scheduled every two minutes by
+ * the outcome and, for a coin left as a letter, why; then copy the profile pictures of the posters
+ * on the feeds the same way (poster-pics.ts); exit. Scheduled every two minutes by
  * tools/railway-start.mjs beside the board's projector.
  *
  * ★ WHY HERE AND NOT IN THE READ SERVICE. Copying into storage needs the storage service key,
@@ -21,10 +22,12 @@
 
 import { dexscreenerProfiles } from '@insidor/market-dexscreener';
 import { coinLogoStore } from '@insidor/storage-supabase/coin-logo.ts';
+import { posterPicStore } from '@insidor/storage-supabase/poster-pic.ts';
 import { asDb, createPool, DB_ROLE } from '@insidor/store';
 import { launchpadPicture, metadataPicture, pictureUrls } from '@insidor/venue-solana-pumpfun';
 
 import { MAX_LOGO_BYTES, mirrorPass } from './coin-logos.ts';
+import { MAX_POSTER_BYTES, posterPass } from './poster-pics.ts';
 
 /** One market call is abandoned after this long. */
 const FETCH_TIMEOUT_MS = 8_000;
@@ -63,6 +66,16 @@ async function main(): Promise<void> {
       log,
     });
     console.log(JSON.stringify({ level: 'info', msg: 'coin logos mirrored', ...result }));
+    /* Then the faces of the posters on the feeds (poster-pics.ts), on the time the logos left. */
+    const faces = posterPicStore({ url: storageUrl, serviceKey: storageKey, fetch: globalThis.fetch, timeoutMs: TRY_TIMEOUT_MS, maxBytes: MAX_POSTER_BYTES });
+    const posterStarted = Date.now();
+    const posters = await posterPass({
+      db: asDb(pool),
+      elapsedMs: () => Date.now() - posterStarted,
+      copy: async (file, link) => faces.put(file, await faces.download(link)),
+      log,
+    });
+    console.log(JSON.stringify({ level: 'info', msg: 'poster pictures copied', ...posters }));
   } finally {
     await pool.end();
   }
