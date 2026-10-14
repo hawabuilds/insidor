@@ -296,6 +296,27 @@ export function watchEveryMs(usdPerAsk: number, lineCapUsd: number, cadenceMs: n
 }
 
 /**
+ * ★ WHEN A SPACED ASK MAY GO OUT: null when it may now, else the instant it may.
+ *
+ * A spacing longer than the pass is held to the clock's own slots of `everyMs` — one ask in each
+ * slot, at the first pass inside it — not to `everyMs` after the last ask. Counted from the last
+ * ask, each wait also took the rest of the pass it fell in: on 2026-10-14 the 15-minute spacing
+ * asked every 15 to 19 minutes (median 16; 39 asks from 01:19 to 11:20 UTC), about 91 a day
+ * against 96. And the words of an ask (`watchTermsFor`) come from the same slot, so a wait that
+ * crossed two slot edges skipped a pair of words — "meme" and "cute" were asked 8 times in those
+ * ten hours against 11 for "dog". On slots there are exactly `MS_PER_DAY / everyMs` asks a day and every
+ * pair comes round in turn. Two asks can stand closer than `everyMs` only across a slot edge
+ * after a late pass; the count per day, which is what the line pays for, does not change.
+ * At or under the pass's own cadence (a free source) the plain elapsed time decides, as before.
+ */
+export function watchAskDue(lastAskedAt: Millis | null, now: Millis, everyMs: number, cadenceMs: number): Millis | null {
+  if (lastAskedAt === null) return null;
+  if (everyMs <= cadenceMs) return now - lastAskedAt < everyMs ? ((lastAskedAt + everyMs) as Millis) : null;
+  const slot = Math.floor(now / everyMs);
+  return Math.floor(lastAskedAt / everyMs) === slot ? (((slot + 1) * everyMs) as Millis) : null;
+}
+
+/**
  * Which word a source with no catch-all is asked for: the configured term if there is one,
  * else the owner's watch list, rotated by the clock in steps of the source's own spacing so
  * that consecutive asks walk the list rather than repeat one word. From the clock for the same
@@ -666,8 +687,9 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         const lineCapUsd = priced !== null && usdPerAsk > 0 ? deps.meter.line(priced.vendor).capUsd : 0;
         const everyMs = watchEveryMs(usdPerAsk, lineCapUsd, deps.plan.cadenceMs, deps.policy);
         const last = deps.watch?.lastAskedAt(source) ?? null;
-        if (last !== null && now - last < everyMs) {
-          outcomes.push({ kind: 'resting', source, everyMs, nextAtMs: last + everyMs });
+        const due = watchAskDue(last, now, everyMs, deps.plan.cadenceMs);
+        if (due !== null) {
+          outcomes.push({ kind: 'resting', source, everyMs, nextAtMs: due });
           continue;
         }
         const words = term === null ? watchTermsFor(deps.policy.feed.hashtags, perAsk, everyMs, now) : [term];

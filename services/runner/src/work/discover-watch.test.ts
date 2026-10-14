@@ -23,7 +23,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { Logger } from '../log.ts';
-import { discoverPass, memoryWatchClock, watchEveryMs, watchTermFor, watchTermsFor, type WatchClock } from './discover.ts';
+import { discoverPass, memoryWatchClock, watchAskDue, watchEveryMs, watchTermFor, watchTermsFor, type WatchClock } from './discover.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
 const CADENCE_MS = 120_000;
@@ -188,6 +188,30 @@ test('★ between asks the source is resting — said, with when it will be aske
 
   await pass(source, NOW + every, watch);
   assert.equal(seen.length, 2, 'not asked again once the spacing was up');
+});
+
+test('★ a day of passes every two minutes, 45 seconds after the minute, asks exactly once in every slot, and every pair of words in turn', async () => {
+  const seen: DiscoveryQuery[] = [];
+  const watch = memoryWatchClock();
+  const source = watchedSource(seen);
+  const every = watchEveryMs(USD_PER_RUN, LINE_USD, CADENCE_MS, DEFAULT_POLICY);
+  /* A pass takes a little time and the loop waits its cadence after it: 2 minutes and 13 seconds apart. */
+  for (let at = NOW + 45_000; at < NOW + MS_PER_DAY; at += CADENCE_MS + 13_000) await pass(source, at, watch);
+  assert.equal(seen.length, MS_PER_DAY / every, 'one ask a slot, so the day has all of them');
+  const perAsk = DEFAULT_POLICY.feed.watchWordsPerAsk;
+  const counts = new Map<string, number>();
+  for (const q of seen) for (const w of q.terms ?? [q.term]) counts.set(w, (counts.get(w) ?? 0) + 1);
+  const each = (seen.length * perAsk) / DEFAULT_POLICY.feed.hashtags.length;
+  for (const w of DEFAULT_POLICY.feed.hashtags) assert.equal(counts.get(w), each, `${w} asked as often as every other word`);
+});
+
+test('the slots: asked once inside one, again at the first pass of the next; a spacing at the cadence counts elapsed time', () => {
+  const every = 900_000;
+  assert.equal(watchAskDue(null, NOW, every, CADENCE_MS), null);
+  assert.equal(watchAskDue(NOW, (NOW + every - 1) as Millis, every, CADENCE_MS), NOW + every);
+  assert.equal(watchAskDue((NOW + every - 60_000) as Millis, (NOW + every) as Millis, every, CADENCE_MS), null, 'a new slot asks at once');
+  assert.equal(watchAskDue(NOW, (NOW + 60_000) as Millis, CADENCE_MS, CADENCE_MS), NOW + CADENCE_MS);
+  assert.equal(watchAskDue(NOW, (NOW + CADENCE_MS) as Millis, CADENCE_MS, CADENCE_MS), null);
 });
 
 test('a dry pass and a paused pass do not start the clock: nothing was asked', async () => {
