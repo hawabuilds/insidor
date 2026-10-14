@@ -347,7 +347,7 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
       return;
     }
     for (let i = 0; i < CONFIRM_TRIES; i += 1) {
-      if (await confirmLaunch({ wallet: account, signature: done.ref, mint, storyId: from.storyId ?? null })) break;
+      if (await confirmLaunch({ wallet: account, signature: done.ref, mint, storyId: from.storyId ?? null, ...pickOf(f, from.postId ?? null) })) break;
       await new Promise((resolve) => setTimeout(resolve, CONFIRM_GAP_MS));
     }
     setOutcome({ kind: 'created', mint });
@@ -398,6 +398,17 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
       <NameCalls f={f} />
     </Modal>
   );
+}
+
+/**
+ * What the sheet offered and what was kept, for the namer (0076): the idea whose name and ticker
+ * the fields still hold, or null when they were typed. Nothing for a coin not made from a post.
+ */
+function pickOf(f: Form, postId: string | null) {
+  if (postId === null) return {};
+  const name = f.name.trim();
+  const at = f.ideas.findIndex((i) => i.name.trim() === name && cleanTicker(i.ticker) === f.ticker);
+  return { postId, name, symbol: f.ticker, pick: at < 0 ? null : at, offered: f.ideas.map((i) => ({ name: i.name, ticker: i.ticker })) };
 }
 
 /** Trador's `Launched`: the coin's logo, View coin, Share on X. */

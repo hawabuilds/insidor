@@ -346,7 +346,15 @@ export async function buildLaunchTx(p: { readonly wallet: string; readonly name:
 }
 
 /** After the create landed: record it against its narrative, so it shows "Created on Insidor". */
-export async function confirmLaunch(p: { readonly wallet: string; readonly signature: string; readonly mint: string; readonly storyId: string | null }): Promise<boolean> {
+/**
+ * Records a landed launch. From a post, it also says which of the sheet's suggestions was kept
+ * (`pick`, its place in `offered`) or null when the name was typed, so the namer learns from it.
+ */
+export async function confirmLaunch(p: {
+  readonly wallet: string; readonly signature: string; readonly mint: string; readonly storyId: string | null;
+  readonly postId?: string | null; readonly name?: string; readonly symbol?: string; readonly pick?: number | null;
+  readonly offered?: readonly { readonly name: string; readonly ticker: string }[];
+}): Promise<boolean> {
   const r = await trade('/launch/confirm', { method: 'POST', body: JSON.stringify(p) });
   return r.ok && r.body['recorded'] === true;
 }

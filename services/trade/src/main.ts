@@ -63,6 +63,10 @@ const launch: LaunchPort | null = (() => {
     register: async (address, creator, storyId, signature) => {
       await pool.query('select public.register_created_coin($1, $2, $3, $4)', [address, creator, storyId, signature]);
     },
+    /* Which suggestion the owner kept (0076); before 0076 the function is missing and the route logs it. */
+    notePick: async (r) => {
+      await pool.query('select public.record_create_pick($1, $2, $3, $4, $5, $6::jsonb, $7)', [r.address, r.itemId, r.name, r.ticker, r.pick, JSON.stringify(r.offered), r.wallet]);
+    },
   };
 })();
 

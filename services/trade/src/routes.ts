@@ -15,7 +15,8 @@
  *   GET  /launch/rules                       open or paused, and the fees, read from the chain
  *   POST /launch/preview { wallet, name, symbol, devBuyLamports }  the launch's real costs, no transaction
  *   POST /launch/build   { …, description, imageDataUrl, links }   metadata stored, launch built and simulated
- *   POST /launch/confirm { wallet, signature, mint, storyId }      checked on the chain, then recorded
+ *   POST /launch/confirm { wallet, signature, mint, storyId }      checked on the chain, then recorded;
+ *                        with { postId, name, symbol, pick, offered } also which Create suggestion was kept
  *
  * ★ TRADING OFF MEANS NO TRADE PATH. When the switch, the allowlist or the RPC is missing, every
  * route above answers "trading is off" before reading anything else — not a quote, not a venue.
@@ -85,6 +86,30 @@ export interface TradeDeps {
   readonly log: { info(msg: string, f?: Record<string, unknown>): void; error(msg: string, f?: Record<string, unknown>): void };
 }
 
+/**
+ * The Create sheet's suggestions and what was kept, from a confirm's body, recorded for the namer.
+ * Read defensively: an old app sends none of these fields and nothing is recorded.
+ */
+async function notePick(deps: TradeDeps, launch: LaunchPort, mint: string, wallet: string, b: Record<string, unknown>): Promise<void> {
+  const itemId = typeof b['postId'] === 'string' ? b['postId'] : null;
+  const name = typeof b['name'] === 'string' ? b['name'].trim() : '';
+  const ticker = typeof b['symbol'] === 'string' ? b['symbol'].trim().replace(/^\$+/, '') : '';
+  if (launch.notePick === undefined || itemId === null || name === '' || ticker === '') return;
+  const pick = typeof b['pick'] === 'number' && Number.isInteger(b['pick']) && b['pick'] >= 0 ? b['pick'] : null;
+  const offered = (Array.isArray(b['offered']) ? b['offered'] : []).flatMap((o) => {
+    const r = (typeof o === 'object' && o !== null ? o : {}) as Record<string, unknown>;
+    return typeof r['name'] === 'string' && typeof r['ticker'] === 'string' ? [{ name: r['name'].slice(0, NAME_MAX), ticker: r['ticker'].slice(0, SYMBOL_MAX) }] : [];
+  }).slice(0, MAX_OFFERED);
+  try {
+    await launch.notePick({ address: mint, itemId, name: name.slice(0, NAME_MAX), ticker: ticker.slice(0, SYMBOL_MAX), pick: pick !== null && pick < offered.length ? pick : null, offered, wallet });
+  } catch (e) {
+    deps.log.error('create pick not recorded', { mint, err: e instanceof Error ? e.message.slice(0, 200) : String(e) });
+  }
+}
+
+/** The most suggestions a pick is recorded against: the sheet offers five. */
+const MAX_OFFERED = 10;
+
 export interface LaunchPort {
   rules(): Promise<{ readonly open: boolean; readonly creatorFeeBps: number; readonly protocolFeeBps: number }>;
   build(r: { creator: string; name: string; symbol: string; uri: string; devBuyLamports: bigint }): Promise<{
@@ -98,6 +123,12 @@ export interface LaunchPort {
   upload(input: { name: string; symbol: string; description: string; imageDataUrl: string; links: { twitter?: string | undefined; telegram?: string | undefined; website?: string | undefined } }): Promise<{ readonly uri: string; readonly image: string }>;
   landed(signature: string): Promise<{ readonly ok: boolean; readonly payer: string | null; readonly accounts: readonly string[] } | null>;
   register(address: string, creator: string, storyId: string | null, signature: string): Promise<void>;
+  /**
+   * Which Create suggestion was kept for a coin made from a post (`pick`, its position in
+   * `offered`), or null when the name was typed (0076 public.record_create_pick). Optional:
+   * absent records nothing. Never fails a confirm: a lost pick costs only the namer one example.
+   */
+  notePick?(r: { address: string; itemId: string; name: string; ticker: string; pick: number | null; offered: readonly { name: string; ticker: string }[]; wallet: string }): Promise<void>;
 }
 
 /** Thrown by a launch port for a refusal the person should read: paused, unaffordable, rejected. */
@@ -290,6 +321,7 @@ export async function handle(method: string, rawUrl: string, body: string | null
         if (tx === null) return json(409, { error: 'Not on the chain yet. Try again in a moment.' });
         if (!tx.ok || tx.payer !== wallet || !tx.accounts.includes(mint)) return json(422, { error: 'That transaction did not create this coin from this wallet.' });
         await launch.register(mint, wallet, storyId, signature);
+        await notePick(deps, launch, mint, wallet, b);
         return json(200, { recorded: true, coinId: `solana:${mint}` });
       }
 
