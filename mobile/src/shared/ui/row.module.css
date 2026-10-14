@@ -176,6 +176,31 @@
   flex-shrink: 0;
 }
 
+/* Buy on a card is the post sheet's Buy, the same size and the same purple (post-sheet.module.css
+   `.buy`), and says only "Buy": the ticker and the market cap are already on the line to its left.
+   The owner asked for it this way; a green, ticker-carrying Buy here read as a different button
+   from the one the sheet then shows. */
+.buy {
+  min-width: 96px;
+  height: 52px;
+  padding: 0 18px;
+  border-radius: 16px;
+  background: var(--sheet-action);
+  color: #fff;
+  font-weight: 800;
+  font-size: 16px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-brand);
+  transition: transform 0.12s ease;
+}
+
+.buy:active {
+  transform: scale(0.97);
+}
+
 /* With two buttons the sentence takes the full width and the buttons go under it, at the right,
    rather than squeezing a two-line sentence into a third of a phone. */
 .footWrap {

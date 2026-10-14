@@ -37,6 +37,7 @@ import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.t
 import { useCoinCap } from '../useCoinCap.ts';
 import { formatAge } from '../format/duration.ts';
 import { formatCount } from '../format/number.ts';
+import { tickerText } from '../format/ticker.ts';
 import { platformOf } from '../platform.ts';
 import { Button } from './Button.tsx';
 import { CoinLogo } from './CoinLogo.tsx';
@@ -152,7 +153,7 @@ function ActionButton({ action, handlers }: { action: PostAction; handlers: Post
     case 'create':
       return <Button look="primary" onClick={tap(handlers.create)}>Create coin</Button>;
     case 'buy':
-      return <Button look="buy" onClick={tap(handlers.open)}>Buy ${action.coin.ticker}</Button>;
+      return <button type="button" className={styles['buy']} aria-label={`Buy ${tickerText(action.coin.ticker)}`} onClick={tap(handlers.open)}>Buy</button>;
     case 'view':
       return <Button look="quiet" onClick={tap(handlers.open)}>View coins</Button>;
     case 'see':
