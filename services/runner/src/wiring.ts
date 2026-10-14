@@ -980,7 +980,7 @@ export async function withRuntime<T>(
               refills,
             );
             const bios = await refreshBios(
-              { db, platforms, authors: repos.authors, meter, mode: cfg.spend.kind, policy, log: log.child({ step: 'bio-refresh' }), now: () => Date.now() as Millis },
+              { db, platforms, authors: repos.authors, meter, mode: cfg.spend.kind, policy, log: log.child({ step: 'bio-refresh' }), now: () => Date.now() as Millis, onlySources: cfg.bioRefreshSources },
               bioReads,
             );
             return { ...r, due: r.due + bios.due, authors: r.authors + bios.read, wouldSpendUsd: r.wouldSpendUsd + bios.wouldSpendUsd, spentUsd: r.spentUsd + bios.spentUsd };

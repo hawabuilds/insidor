@@ -47,6 +47,8 @@ export interface BioRefreshDeps {
   readonly policy: Policy;
   readonly log: Logger;
   readonly now: () => Millis;
+  /** Sources the owner allowed this re-read for (runner env BIO_REFRESH_SOURCES); unset or empty asks nobody. */
+  readonly onlySources?: readonly string[] | undefined;
 }
 
 export interface BioRefreshResult {
@@ -121,6 +123,7 @@ export async function refreshBios(deps: BioRefreshDeps, memory: BioRefreshMemory
   const readers = new Map(
     deps.platforms.all().flatMap((p) => {
       if (p.lookup === undefined) return [];
+      if (!(deps.onlySources ?? []).includes(String(p.id))) return [];
       const n = p.capabilities.observeBatchSize ?? 1;
       const perPost = p.estimate({ kind: 'observe', sourceItemIds: Array.from({ length: n }, (_, i) => String(i)) }).usd / n;
       return perPost <= b.refreshMaxUsdPerPost ? [[String(p.id), p] as const] : [];
