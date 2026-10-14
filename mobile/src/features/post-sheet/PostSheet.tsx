@@ -9,7 +9,7 @@
  * (`RisingPost.id`, the same id `AboutPost.postId` carries) and `onClose` puts the screen back as
  * it was, tab bar included — the sheet sits over it and takes nothing away.
  *
- * ★ TWO PARTS, as the owner laid it out. The head (who posted it, the bell, the open button and
+ * ★ TWO PARTS, as the owner laid it out. The head (who posted it, the Watch star, the open button and
  * the X) and the foot (the coin line, the coin with Buy, then Create and All coins) stay put; the
  * middle (the words, the media at its own shape, whole, the views, the chart, the tiles) scrolls when it
  * is taller than the phone. Nothing shrinks to fit. It is drawn with the shared Sheet
@@ -33,12 +33,12 @@ import { ReadError, fetchPostSheet, type PostSheetData, type SheetCoin } from '.
 import { evidenceFacts } from '../../shared/coin-status.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { compact, formatCount } from '../../shared/format/number.ts';
-import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
+import { useLoad, useNow } from '../../shared/hooks.ts';
 import { platformOf } from '../../shared/platform.ts';
 import { hrefFor } from '../../shared/route.ts';
-import { watchlist } from '../../shared/watchlist.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
-import { BellIcon, ChevronIcon } from '../../shared/ui/icons.tsx';
+import { ChevronIcon } from '../../shared/ui/icons.tsx';
+import { WatchStar } from '../../shared/ui/WatchStar.tsx';
 import { PlatformBadge } from '../../shared/ui/PlatformMark.tsx';
 import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
@@ -201,8 +201,6 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   /* With no name stored, the handle is the name, said once. */
   const name = data.author.name ?? handle;
   const age = formatAge(post.postedAt, now);
-  const watched = useWatchlist();
-  const storyId = data.narrative?.storyId ?? null;
 
   const proven = data.coins.find((c) => c.proven) ?? null;
   const main = proven ?? data.coins[0] ?? null;
@@ -224,12 +222,8 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
             {age.kind === 'value' ? <span>{age.text}</span> : null}
           </span>
         </span>
-        {/* Alerts for a proven coin go to a narrative's watchers: the bell stars the narrative, and is not drawn without one. */}
-        {storyId !== null ? (
-          <button type="button" className={`${styles['round']} ${watched.includes(storyId) ? styles['roundOn'] : ''}`} aria-pressed={watched.includes(storyId)} aria-label={watched.includes(storyId) ? 'Stop alerts for this narrative' : 'Alert me when a proven coin appears'} onClick={() => watchlist.toggle(storyId)}>
-            <BellIcon size={20} />
-          </button>
-        ) : null}
+        {/* Watch this post (the owner, 2026-10-14): its coin, when one launches or is found, is pushed within seconds. */}
+        <WatchStar postId={post.id} size="sheet" />
         {post.permalink !== null ? (
           <a className={styles['open']} href={post.permalink} target="_blank" rel="noopener noreferrer" aria-label={`Open the post on ${post.sourceLabel}`}>
             <OpenIcon size={18} />
