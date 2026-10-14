@@ -7,8 +7,8 @@
  * lists the coins with the post's name (if any) and always takes a pasted contract address, so it
  * always has an answer to give. A narrative's several coins are the narrative's, and ask nothing.
  *
- * ★ THE CARD SAYS WHAT THE OWNER SAID, IN THE OWNER'S WORDS. Never a mark of ours: "You said this
- * is the coin", not a tick or a number.
+ * ★ THE CARD SAYS WHAT THE OWNER SAID, IN THE OWNER'S WORDS. Never a mark of ours: "Your coin",
+ * not a tick or a number.
  *
  * What breaks if changed carelessly: `launchLine`. A coin launched before the post cannot have come
  * from it; the owner may still save it, but the preview must say so in those words, never hide it.
@@ -53,16 +53,20 @@ export function launchLine(launchedAfterMs: number | null): { readonly line: str
   return { line: `Launched ${gap(launchedAfterMs)} before the post`, older: true };
 }
 
-/** The line under a coin call once the owner has made one; null before. */
+/**
+ * The grey tag after a coin call once the owner has made one; null before. Two words, the owner's
+ * (2026-10-14): the strip is one line, and the sentences it used to hold were cut to an ellipsis on
+ * every phone. "Wrong" with a coin picked is the owner naming the right coin, so it reads "Your coin".
+ */
 export function coinCallLine(saved: SavedCall | undefined): string | null {
   if (saved === undefined || saved.kind !== 'coin_match') return null;
   switch (saved.call) {
     case 'right':
-      return 'You said this is the coin.';
+      return 'Your coin';
     case 'wrong':
-      return saved.coin === null ? 'You said this is the wrong coin.' : 'You said it is another coin, and picked it.';
+      return saved.coin === null ? 'Wrong coin' : 'Your coin';
     case 'none':
-      return 'You said no coin is from this.';
+      return 'No coin';
     default:
       return null;
   }
