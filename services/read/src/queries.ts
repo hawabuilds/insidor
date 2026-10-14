@@ -118,7 +118,9 @@ export const LAUNCH_ROWS_SQL =
  * handle). public.author is where the picture is filled in — by every new read of the account and
  * by the runner's fill-in of older posts — so a card shows it as soon as it is stored, not at the
  * next projection. Null when the account has none; read through `to_jsonb(a)` so a database
- * without 0067 sends null rather than failing the feed.
+ * without 0067 sends null rather than failing the feed. `authorPictureFile` beside it is the name
+ * of our own copy of that picture (0079, services/project/src/poster-pics.ts): the app loads
+ * `author-pics/<name>` from our storage first, because the source's link may have expired.
  */
 export const RISING_VIEW_SQL = 'select tick from public.rising_view where feed_id = $1';
 
@@ -130,7 +132,7 @@ export const RISING_VIEW_SQL = 'select tick from public.rising_view where feed_i
 export const RISING_TICKS_SQL = 'select feed_id, tick from public.rising_view';
 
 export const RISING_ROWS_SQL =
-  `select (r.payload - 'sheet') || jsonb_build_object('authorPictureUrl', to_jsonb(a) ->> 'picture_url') as payload
+  `select (r.payload - 'sheet') || jsonb_build_object('authorPictureUrl', to_jsonb(a) ->> 'picture_url', 'authorPictureFile', to_jsonb(a) ->> 'picture_copy') as payload
      from public.rising_row r
      left join public.item i on i.item_id = r.item_id
      left join public.author a on a.author_key = i.author_key
