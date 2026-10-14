@@ -7,8 +7,9 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { clearsReachBar } from './reach-bar.ts';
 
-/* The bars as they were before the speed bar, so these tests keep pinning them whatever the live switch says. */
-const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, speedBar: { ...DEFAULT_POLICY.rising.speedBar, enabled: false } } };
+/* The bars as they were before either speed bar, so these tests keep pinning them whatever the live switches say. */
+const R = DEFAULT_POLICY.rising;
+const P = { ...DEFAULT_POLICY, rising: { ...R, speedBar: { ...R.speedBar, enabled: false }, shortVideoSpeedBar: { ...R.shortVideoSpeedBar, enabled: false } } };
 
 const POSTED = 1_800_000_000_000;
 const MIN = 60_000;
@@ -91,16 +92,19 @@ test('speed bar on: everything that passes with it off still passes', () => {
   }
 });
 
-test('★ the short-video speed bar: off, nothing changes; on, 50k inside two hours or 500 a minute inside four pass', () => {
+test('★ the short-video speed bar: off, nothing changes; on (as it ships), 20k inside two hours or 250 a minute inside four pass', () => {
   const S = P.rising.shortVideoReachScale;
-  const ON = { ...P, rising: { ...P.rising, shortVideoSpeedBar: { ...P.rising.shortVideoSpeedBar, enabled: true } } };
-  assert.equal(P.rising.shortVideoSpeedBar.enabled, false, 'ships off: the owner switches it on');
+  const ON = { ...P, rising: { ...P.rising, shortVideoSpeedBar: DEFAULT_POLICY.rising.shortVideoSpeedBar } };
+  assert.equal(ON.rising.shortVideoSpeedBar.enabled, true, 'ships on since 2026-10-14, the owner\'s call');
   /* Measured 2026-10-13: the two young videos that went on past 150k, at their first reading. */
   for (const [min, reach] of [[100, 56_235], [55, 68_362]] as const) {
-    assert.equal(clearsReachBar('fyp', [at(min, reach)], POSTED, P, S), false, `${reach} at ${min} minutes waits today`);
+    assert.equal(clearsReachBar('fyp', [at(min, reach)], POSTED, P, S), false, `${reach} at ${min} minutes waits with it off`);
     assert.equal(clearsReachBar('fyp', [at(min, reach)], POSTED, ON, S), true, `${reach} at ${min} minutes passes with it on`);
   }
-  assert.equal(clearsReachBar('fyp', [at(200, 80_000)], POSTED, ON, S), false, '400 a minute at 3.3 hours is not fast');
+  assert.equal(clearsReachBar('fyp', [at(110, 20_000)], POSTED, ON, S), true, '20k inside two hours');
+  assert.equal(clearsReachBar('fyp', [at(130, 24_000)], POSTED, ON, S), false, '24k past two hours is 185 a minute: not fast');
+  assert.equal(clearsReachBar('fyp', [at(200, 50_000)], POSTED, ON, S), true, '250 a minute at 3.3 hours');
+  assert.equal(clearsReachBar('fyp', [at(200, 48_000)], POSTED, ON, S), false, '240 a minute at 3.3 hours is not fast');
   assert.equal(clearsReachBar('fyp', [at(300, 480_000)], POSTED, ON, S), false, 'past four hours only the 500k total counts');
   /* Text posts never take it. */
   assert.equal(clearsReachBar('fyp', [at(55, 30_000)], POSTED, ON), clearsReachBar('fyp', [at(55, 30_000)], POSTED, P));
