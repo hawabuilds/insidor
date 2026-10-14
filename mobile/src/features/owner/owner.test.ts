@@ -89,10 +89,10 @@ test('★ a coin is called on every post line; a narrative\'s several coins ask 
 
 test('the card says what the owner said, in words', () => {
   assert.equal(coinCallLine(undefined), null);
-  assert.equal(coinCallLine(savedCallOf(call({ kind: 'coin_match', call: 'right', coin: MINT }))!), 'You said this is the coin.');
-  assert.equal(coinCallLine(savedCallOf(call({ kind: 'coin_match', call: 'wrong' }))!), 'You said this is the wrong coin.');
-  assert.equal(coinCallLine(savedCallOf(call({ kind: 'coin_match', call: 'wrong', coin: MINT }))!), 'You said it is another coin, and picked it.');
-  assert.equal(coinCallLine(savedCallOf(call({ kind: 'coin_match', call: 'none' }))!), 'You said no coin is from this.');
+  assert.equal(coinCallLine(savedCallOf(call({ kind: 'coin_match', call: 'right', coin: MINT }))!), 'Your coin');
+  assert.equal(coinCallLine(savedCallOf(call({ kind: 'coin_match', call: 'wrong' }))!), 'Wrong coin');
+  assert.equal(coinCallLine(savedCallOf(call({ kind: 'coin_match', call: 'wrong', coin: MINT }))!), 'Your coin', 'wrong with a coin picked names the right one');
+  assert.equal(coinCallLine(savedCallOf(call({ kind: 'coin_match', call: 'none' }))!), 'No coin');
   assert.equal(nameCallLine(savedCallOf(call({ kind: 'name', call: 'down', name: 'Hat', betterName: 'Hat Dog' }))!), 'You passed on this name. Better: Hat Dog.');
   assert.equal(hiddenAgo(0, 30_000), 'Hidden just now');
   assert.equal(hiddenAgo(0, 3 * 3_600_000), 'Hidden 3h ago');
