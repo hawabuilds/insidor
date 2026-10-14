@@ -7,15 +7,16 @@
  * From the day 0074 is applied the runner keeps each judged post's vector as it judges it
  * (services/runner work/precedents.ts). Posts judged before that have none, so the projector cannot
  * tell which story they are about and shows them no "Coin for this story" until they are judged
- * again. This embeds those posts once: every judged post inside the feed's window with no vector.
+ * again. This embeds those posts once: every post inside the feed's window the judge said yes to
+ * (only those can reach a feed) with no vector — about 2,000 a day, $0.25 at 2026-10-14's prices.
  *
  * ★ THE SAME VECTORS AS THE RUNNER'S: core `embedInput` over the post's words and core
  * `postPicture`, in the adapter's post space — or the bar (Policy.postCoin.storyCoin) means
  * something else. `--cache` reads vectors already paid for (a JSON object of item id to
  * `{ values }`, as the 2026-10-14 measurement wrote) and pays only for the rest.
  *
- * ★ PAID ON THE LEARNING BOOK (tools/lib/shared-meter.ts), capped by `--cap` (default $0.20); a few
- * hundred posts cost a few cents. Refuses without SPEND=live and --yes.
+ * ★ PAID ON THE LEARNING BOOK (tools/lib/shared-meter.ts), capped by `--cap` (default $0.30).
+ * Refuses without SPEND=live and --yes.
  *
  * What breaks if changed carelessly: the window. Posts older than the feed's window are never on a
  * feed, and embedding them is money for nothing.
@@ -39,7 +40,7 @@ if (process.env['SPEND'] !== 'live' || !process.argv.includes('--yes')) {
   console.error('post-embeddings refused: embedding costs money. Set SPEND=live and pass --yes.');
   process.exit(1);
 }
-const capUsd = Number(arg('--cap') ?? '0.2');
+const capUsd = Number(arg('--cap') ?? '0.3');
 const cacheFile = arg('--cache');
 const cache: Record<string, { values: number[] }> = cacheFile !== null && existsSync(cacheFile) ? JSON.parse(readFileSync(cacheFile, 'utf8')) : {};
 
@@ -50,13 +51,15 @@ try {
   const posts = await db.query<{ item_id: string; body: string | null; media: unknown }>(
     `select i.item_id, i.body, i.media from public.item i
       where i.origin = 'observed' and coalesce(i.posted_at, i.first_seen_at) >= $1
-        and exists (select 1 from internal.post_judgement pj where pj.item_id = i.item_id)
+        and (select pj.coinable from internal.post_judgement pj
+              where pj.item_id = i.item_id and pj.prompt_id not like 'post-kind%'
+              order by pj.judged_at desc, pj.id desc limit 1) is true
         and not exists (select 1 from internal.post_embedding e where e.item_id = i.item_id and e.space = $2)`,
     [new Date(Date.now() - P.rising.windowMs).toISOString(), POST_SPACE],
   );
   const held = posts.filter((p) => cache[p.item_id] !== undefined);
   const todo = posts.filter((p) => cache[p.item_id] === undefined);
-  console.log(`${posts.length} judged posts in the window with no vector: ${held.length} from the cache, ${todo.length} to embed.`);
+  console.log(`${posts.length} posts the judge said yes to in the window with no vector: ${held.length} from the cache, ${todo.length} to embed.`);
   if (!(await repo.putMany(held.map((p) => ({ itemId: p.item_id, values: cache[p.item_id]!.values })), POST_SPACE))) {
     console.error('internal.post_embedding is not there yet: apply 0074 first.');
     process.exit(1);
