@@ -23,6 +23,11 @@
  *      new liker is a new level and the list shows the newest). Its own switch, on to start.
  *   4d. A POST'S COIN IS PROVEN: someone tapped the bell on a post, and a coin was then proven to
  *      come from it. Once per person and post, on the coins switch (coins for what you watch).
+ *   4e. THE OWNER'S PUSH LIST (2026-10-14), each on its own switch: a coin found or launched for a
+ *      For You post (`fyp_coin`, once per post), a coin that links a For You post (`fyp_proven`),
+ *      a new For You post on a story whose coin the owner confirmed (`story_post`), and a coin for
+ *      a post someone watches (`watch_coin`, once per post and coin, past the hourly limit). The
+ *      settings screen's test (`push_test`) has no switch and is listed like any other.
  *   5. A RE-TUNE SUMMARY IS THE OWNER'S TOO: twice a day, what the judge learned from the owner's
  *      own calls and whether it was applied (tools/retune.ts). No switch, like the warning, but
  *      it waits behind the hourly limit like any other alert — it is a report, not an alarm.
@@ -53,6 +58,14 @@ export const ALERT_KINDS = [
   'post_coin',
   /* The namer's first-day watch switched it off (tools/name-watch.ts): pushed past the hourly limit, like the supplier warnings. */
   'namer_off',
+  /* The owner's push list (2026-10-14): a coin found for a For You post, a coin that links one, a new
+     For You post on a story whose coin the owner confirmed, a coin for a post someone watches, and
+     the settings screen's test. */
+  'fyp_coin',
+  'fyp_proven',
+  'story_post',
+  'watch_coin',
+  'push_test',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -66,7 +79,7 @@ export type AlertKind = (typeof ALERT_KINDS)[number];
 export const FEED_KINDS: readonly AlertKind[] = ['rising_post', 'narrative_promoted', 'narrative_coin', 'coin_matched'];
 
 /** The switches a person sees, one per row of the settings screen. */
-export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins'] as const;
+export const SWITCHES = ['follows', 'replies', 'useful', 'holdings', 'watchlist', 'graduations', 'rising', 'narratives', 'coins', 'fypCoins', 'proven', 'storyCoins', 'watchedPosts'] as const;
 export type AlertSwitch = (typeof SWITCHES)[number];
 
 const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
@@ -87,6 +100,11 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   comment_useful: 'useful',
   post_coin: 'coins',
   namer_off: 'always',
+  fyp_coin: 'fypCoins',
+  fyp_proven: 'proven',
+  story_post: 'storyCoins',
+  watch_coin: 'watchedPosts',
+  push_test: 'always',
 };
 
 export interface AlertPrefs {
@@ -106,7 +124,7 @@ export interface AlertPrefs {
 export function defaultPrefs(P: NotifyPolicy): AlertPrefs {
   return {
     muted: false,
-    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true },
+    on: { follows: true, replies: true, useful: true, holdings: true, watchlist: false, graduations: true, rising: true, narratives: true, coins: true, fypCoins: true, proven: true, storyCoins: true, watchedPosts: true },
     multiples: [...P.defaultMultiples],
     quietStart: null,
     quietEnd: null,
@@ -172,6 +190,13 @@ export function isQuiet(localMinutes: number | null, prefs: AlertPrefs): boolean
   return start < end ? localMinutes >= start && localMinutes < end : localMinutes >= start || localMinutes < end;
 }
 
+/**
+ * The kinds the hourly limit never holds back: the owner's alarms about money and the namer, a coin
+ * for a post someone is watching (the owner: "notify me within seconds" — a busy hour of For You
+ * posts must not be what keeps it off the phone), and the test someone just tapped.
+ */
+const PAST_THE_LIMIT: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'watch_coin', 'push_test'];
+
 export type Delivery =
   | { readonly kind: 'skip'; readonly why: 'muted' | 'off' }
   | { readonly kind: 'list'; readonly why: 'list-only' | 'quiet' | 'hourly-limit' | 'no-device' }
@@ -183,7 +208,7 @@ export function deliveryFor(r: { readonly kind: AlertKind; readonly prefs: Alert
   if (!wants(r.prefs, r.kind)) return { kind: 'skip', why: 'off' };
   if (r.kind === 'rank_up') return { kind: 'list', why: 'list-only' };
   if (isQuiet(r.localMinutes, r.prefs)) return { kind: 'list', why: 'quiet' };
-  if (r.kind !== 'supplier_warning' && r.kind !== 'supplier_account' && r.kind !== 'namer_off' && r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
+  if (!PAST_THE_LIMIT.includes(r.kind) && r.pushedLastHour >= r.prefs.perHour) return { kind: 'list', why: 'hourly-limit' };
   if (r.devices === 0) return { kind: 'list', why: 'no-device' };
   return { kind: 'push' };
 }
