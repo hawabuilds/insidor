@@ -25,7 +25,7 @@ import type { Instant, Measured, Delta, Millis, PendingReason } from '../format/
 import { instantFrom, measuredFrom } from '../format/measure.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
-import type { OlderCoin, RisingFeed, RisingPost } from './wire/rising.ts';
+import type { OlderCoin, RisingFeed, RisingPage, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -543,6 +543,18 @@ function decodeOlderCoin(raw: unknown, path: string): OlderCoin {
     peakHourUsd: usd(o.peakHourUsd, `${path}.peakHourUsd`),
     priceChangeSincePost: o.priceChangeSincePost === null || o.priceChangeSincePost === undefined ? null : int(o.priceChangeSincePost, `${path}.priceChangeSincePost`),
     readAt: instantAt(o.readAt, `${path}.readAt`, 'not_read_yet'),
+  };
+}
+
+/** One page of the infinite scroll: its posts as the frame's are decoded, and an opaque cursor or null. */
+export function decodeRisingPage(raw: unknown, path = '$'): RisingPage {
+  assertNoInternalVocabulary(raw, path);
+  const o = obj(raw, path);
+  const next = o['next'];
+  if (next !== null && typeof next !== 'string') throw new WireShapeError(`${path}.next`, next);
+  return {
+    posts: arr(o['posts'], `${path}.posts`).map((p, i) => decodeRisingPost(p, `${path}.posts[${i}]`)),
+    next,
   };
 }
 

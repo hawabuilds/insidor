@@ -168,3 +168,58 @@
   justify-content: flex-end;
   padding: 0 var(--gutter) 6px;
 }
+
+/* The infinite scroll's placeholder cards (Feed.tsx Placeholders): the card's own box and gutter,
+   a picture-sized block and three text lines, gently pulsing. Seen only when the next page is
+   slower than the scroll; with reduced motion they hold still. */
+.placeholder {
+  display: flex;
+  gap: 14px;
+  margin: 0 var(--gutter) 12px;
+  padding: 18px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--border-subtle);
+  background: var(--input);
+  animation: placeholder-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.placeholderPic {
+  width: 84px;
+  height: 98px;
+  flex: 0 0 84px;
+  border-radius: 14px;
+  background: var(--popup);
+}
+
+.placeholderLines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.placeholderLines > span {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--popup);
+}
+
+.placeholderLines > span:last-child {
+  width: 55%;
+}
+
+@keyframes placeholder-pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .placeholder {
+    animation: none;
+  }
+}

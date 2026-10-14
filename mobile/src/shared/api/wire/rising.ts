@@ -69,3 +69,13 @@ export interface RisingFeed {
   /** In the server's committed order. The client never sorts. */
   readonly posts: readonly RisingPost[];
 }
+
+/**
+ * One page of a feed's infinite scroll under its frame (`GET /rising/:feed/older`): posts that
+ * were on the feed and are not on its frame now, newest-joined first, and the cursor of the next
+ * page, null when this was the last.
+ */
+export interface RisingPage {
+  readonly posts: readonly RisingPost[];
+  readonly next: string | null;
+}

@@ -19,13 +19,13 @@
 import { notImplemented } from '../not-implemented.ts';
 import { decodeCoinAbout, type CoinAbout } from './about.ts';
 import { decodePostSheet, type PostSheetData } from './post-sheet.ts';
-import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
+import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeRisingPage, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, SameNameCoins, SearchedCoin, SearchResults } from './wire/search.ts';
 import type { BuildResult, Holding, TradeLimits, TradeQuote, TradeVenue } from './wire/trade.ts';
 import type { CoinMarket, MarketTimeframe } from './wire/market.ts';
 import type { BoardTick } from './wire/board.ts';
-import type { RisingFeed, RisingFeedId } from './wire/rising.ts';
+import type { RisingFeed, RisingFeedId, RisingPage } from './wire/rising.ts';
 import type { NarrativesList, Story } from './wire/story.ts';
 
 /** A failure of the transport, as opposed to a failure of the payload. */
@@ -78,6 +78,21 @@ export async function fetchBoard(viewId: string, signal?: AbortSignal): Promise<
 /** One feed of single posts: `fyp` newest first, `popular` most views first. */
 export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Promise<RisingFeed> {
   return decodeRisingFeed(await read(`/rising/${encodeURIComponent(feed)}`, signal));
+}
+
+/**
+ * One page of a feed's infinite scroll, after `before` (null: the first page). Null when the read
+ * service has no scroll for this feed (a 404: its table is not there yet), so the list simply ends
+ * at the frame instead of claiming there is nothing older.
+ */
+export async function fetchRisingOlder(feed: RisingFeedId, before: string | null, signal?: AbortSignal): Promise<RisingPage | null> {
+  const query = before === null ? '' : `?before=${encodeURIComponent(before)}`;
+  try {
+    return decodeRisingPage(await read(`/rising/${encodeURIComponent(feed)}/older${query}`, signal));
+  } catch (e) {
+    if (e instanceof ReadError && e.status === 404) return null;
+    throw e;
+  }
 }
 
 /*
