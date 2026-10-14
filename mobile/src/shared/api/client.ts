@@ -249,9 +249,11 @@ export async function fetchTradeVenue(mint: string, signal?: AbortSignal): Promi
   const venue: TradeVenue = r.ok && (kind === 'curve' || kind === 'pool' || kind === 'none') ? kind : 'unavailable';
   const l = typeof r.body['limits'] === 'object' && r.body['limits'] !== null ? (r.body['limits'] as Record<string, unknown>) : null;
   const n = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null);
-  const max = typeof l?.['maxBuyLamports'] === 'string' && /^\d+$/.test(l['maxBuyLamports']) ? l['maxBuyLamports'] : null;
+  /* An explicit null is "no cap"; a missing or garbled cap is limits not read. */
+  const rawMax = l?.['maxBuyLamports'];
+  const max = rawMax === null ? 'none' : typeof rawMax === 'string' && /^\d+$/.test(rawMax) ? rawMax : null;
   const [def, top, fee] = [n(l?.['defaultSlippageBps']), n(l?.['maxSlippageBps']), n(l?.['feeBps'])];
-  return { venue, limits: max !== null && def !== null && top !== null && fee !== null ? { maxBuyLamports: max, defaultSlippageBps: def, maxSlippageBps: top, feeBps: fee } : null };
+  return { venue, limits: max !== null && def !== null && top !== null && fee !== null ? { maxBuyLamports: max === 'none' ? null : max, defaultSlippageBps: def, maxSlippageBps: top, feeBps: fee } : null };
 }
 
 /** A quote, or the server's reason there is none. */
@@ -293,7 +295,8 @@ export interface LaunchRules {
   readonly open: boolean;
   readonly creatorFeeBps: number;
   readonly protocolFeeBps: number;
-  readonly maxDevBuyLamports: string;
+  /** Null: the trade service sets no cap on the dev buy. */
+  readonly maxDevBuyLamports: string | null;
 }
 
 export interface LaunchPreview {
@@ -308,8 +311,8 @@ export interface LaunchPreview {
 export async function fetchLaunchRules(signal?: AbortSignal): Promise<LaunchRules | null> {
   const r = await trade('/launch/rules', {}, signal);
   const b = r.body;
-  return r.ok && typeof b['open'] === 'boolean' && typeof b['creatorFeeBps'] === 'number' && typeof b['protocolFeeBps'] === 'number' && typeof b['maxDevBuyLamports'] === 'string'
-    ? { open: b['open'], creatorFeeBps: b['creatorFeeBps'], protocolFeeBps: b['protocolFeeBps'], maxDevBuyLamports: b['maxDevBuyLamports'] }
+  return r.ok && typeof b['open'] === 'boolean' && typeof b['creatorFeeBps'] === 'number' && typeof b['protocolFeeBps'] === 'number' && (b['maxDevBuyLamports'] === null || (typeof b['maxDevBuyLamports'] === 'string' && /^\d+$/.test(b['maxDevBuyLamports'])))
+    ? { open: b['open'], creatorFeeBps: b['creatorFeeBps'], protocolFeeBps: b['protocolFeeBps'], maxDevBuyLamports: b['maxDevBuyLamports'] as string | null }
     : null;
 }
 

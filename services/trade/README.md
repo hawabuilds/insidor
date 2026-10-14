@@ -10,7 +10,7 @@ signs; this service then sends what they signed. It never holds a key.
 | variable | meaning |
 |---|---|
 | `TRADING` | exactly `on`. Anything else: every trade route answers "Trading is off." |
-| `TRADING_ALLOWLIST` | comma-separated wallet addresses allowed to trade. Empty: nobody. |
+| `TRADING_ALLOWLIST` | comma-separated wallet addresses allowed to trade, or exactly `*` for every wallet. Empty: nobody. `*` mixed with addresses refuses to start. |
 | `HELIUS_API_KEY` | the RPC for curve state, simulation and sending. |
 | `JUPITER_API_KEY` | optional. Without it Jupiter is keyless and rate limited. |
 | `TRADE_ALLOWED_ORIGINS` | the phone app's origins. Default: the local dev origins. |

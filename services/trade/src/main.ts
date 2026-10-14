@@ -102,5 +102,5 @@ const server = createTradeServer({
 
 server.listen(cfg.port, () => {
   /* Never the allowlist itself or the RPC address: the count and whether it is open. */
-  log.info('listening', { port: cfg.port, trading: tradingOpen(cfg), allowlisted: cfg.allowlist.size });
+  log.info('listening', { port: cfg.port, trading: tradingOpen(cfg), allowlisted: cfg.allowlist === 'everyone' ? 'everyone' : cfg.allowlist.size });
 });

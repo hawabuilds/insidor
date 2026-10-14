@@ -110,6 +110,8 @@ export function toBase64(bytes: Uint8Array): string {
  * from a longer ladder and cut at the largest buy the gate will take at this slippage (the cap
  * is on the amount PLUS its slippage, services/trade gate.ts). When the largest is not itself on
  * the ladder it is offered as "Max", so the last button is always the most one trade may be.
+ * With no cap (policy since 2026-10-15) the ladder's top three show — Trador's own 0.05, 0.25
+ * and 1 — and any amount may be typed; the ticket says when it is more SOL than the wallet holds.
  */
 export const BUY_LADDER_SOL = ['0.01', '0.025', '0.05', '0.25', '1'] as const;
 /** Buttons shown, as in Trador's ticket. */
@@ -123,15 +125,16 @@ export const IMPACT_CAUTION_PCT = 2;
 export const IMPACT_WARN_PCT = 15;
 export const IMPACT_BLOCK_PCT = 50;
 
-/** The most a buy may be at this slippage so that it, plus its slippage, stays within the cap. */
-export function largestBuy(limits: TradeLimits, slippageBps: number): bigint {
-  return (BigInt(limits.maxBuyLamports) * 10_000n) / (10_000n + BigInt(slippageBps));
+/** The most a buy may be at this slippage so that it, plus its slippage, stays within the cap. Null: no cap. */
+export function largestBuy(limits: TradeLimits, slippageBps: number): bigint | null {
+  return limits.maxBuyLamports === null ? null : (BigInt(limits.maxBuyLamports) * 10_000n) / (10_000n + BigInt(slippageBps));
 }
 
 export function buyPresets(limits: TradeLimits | null, slippageBps: number): readonly { readonly label: string; readonly lamports: bigint }[] {
   if (limits === null) return [];
   const top = largestBuy(limits, slippageBps);
-  const fits = BUY_LADDER_SOL.map((sol) => ({ label: `${sol} SOL`, lamports: toBaseUnits(sol, 9) ?? 0n })).filter((p) => p.lamports > 0n && p.lamports <= top);
+  const fits = BUY_LADDER_SOL.map((sol) => ({ label: `${sol} SOL`, lamports: toBaseUnits(sol, 9) ?? 0n })).filter((p) => p.lamports > 0n && (top === null || p.lamports <= top));
+  if (top === null) return fits.slice(-PRESETS_SHOWN);
   if (fits.length > 0 && fits[fits.length - 1]?.lamports === top) return fits.slice(-PRESETS_SHOWN);
   return top > 0n ? [...fits.slice(-(PRESETS_SHOWN - 1)), { label: 'Max', lamports: top }] : [];
 }

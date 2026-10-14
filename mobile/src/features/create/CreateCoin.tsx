@@ -27,7 +27,7 @@
  * ★ WITH TRADING ON, EVERY NUMBER IS THE CHAIN'S, AND THE SAFETY IS THE TRADE SERVICE'S. The cost
  * is the simulation of this exact launch (`POST /launch/preview`), a dash with a reason when it
  * was not measured. Create asks the trade service to store the picture and build the launch
- * unsigned; the service refuses a wallet off its allowlist or a dev buy over its cap, simulates
+ * unsigned; the service refuses a wallet off its allowlist or a dev buy over its cap (if any), simulates
  * the transaction, and only then hands it back (features/trade's build-then-sign rule). The
  * wallet signs it; once it lands it is recorded against its story as "Created on Insidor".
  * Any failure is one short line saying why, and nothing is signed.
@@ -306,12 +306,14 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
   const [rulesLoad] = useLoad('launch-rules', () => loadRules());
   const rules = rulesLoad.state === 'loading' && heldRules !== undefined ? { state: 'ready' as const, value: heldRules } : rulesLoad;
   const r: LaunchRules | null = rules.state === 'ready' ? rules.value : null;
-  const cap = r === null ? 0n : BigInt(r.maxDevBuyLamports);
+  /* Null: no dev-buy cap (policy since 2026-10-15), or the rules not read yet. */
+  const cap = r === null || r.maxDevBuyLamports === null ? null : BigInt(r.maxDevBuyLamports);
   const dev = f.devLamports;
+  const overCap = dev !== null && cap !== null && dev > cap;
   const account = state.kind === 'connected' ? state.account : null;
 
   useEffect(() => {
-    if (account === null || r === null || !r.open || f.name.trim() === '' || f.ticker === '' || dev === null || dev > cap) {
+    if (account === null || r === null || !r.open || f.name.trim() === '' || f.ticker === '' || dev === null || overCap) {
       setPriced({ kind: 'none' });
       return;
     }
@@ -369,7 +371,7 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
         : f.name.trim() === '' ? 'Add a name.'
           : f.ticker === '' ? 'Add a ticker.'
             : dev === null ? 'The dev buy must be an amount of SOL.'
-              : dev > cap ? `The dev buy is capped at ${solText(Number(cap))}.`
+              : overCap && cap !== null ? `The dev buy is capped at ${solText(Number(cap))}.`
                 : priced.kind === 'refused' ? priced.why
                   : null;
   const failed = outcome !== null && outcome !== 'working' && stop === null ? failedLine(outcome) : null;
@@ -378,7 +380,7 @@ function LiveCreate({ from, onClose }: { from: CreateFrom; onClose: () => void }
   /* The button's slot is always the same 52px: the button, Sign in, the working line, or why not. */
   return (
     <Modal title="Create coin" onClose={outcome === 'working' ? () => undefined : onClose}>
-      <Fields f={f} presets={presetsShown(r === null ? null : cap)} live />
+      <Fields f={f} presets={presetsShown(cap)} live />
       <Lines cost={cost} creatorFee={rules.state === 'loading' ? '— being read' : r === null ? "— couldn't be read" : feeRate(r.creatorFeeBps)} failed={account === null ? stop : failed} />
       <div className={styles['action']}>
         {account === null ? (

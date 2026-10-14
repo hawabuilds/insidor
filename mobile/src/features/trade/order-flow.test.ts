@@ -69,6 +69,13 @@ test('★ no buy preset the gate would refuse: the last is the largest buy at th
   assert.deepEqual(buyPresets(null, 300), [], 'no limits read, no presets: the amount is typed');
 });
 
+test('★ with no cap (null), the ladder\'s top three show and nothing is cut', async () => {
+  const { buyPresets, largestBuy } = await import('./order-flow.ts');
+  const open = { ...LIMITS, maxBuyLamports: null };
+  assert.equal(largestBuy(open, 1000), null);
+  assert.deepEqual(buyPresets(open, 1000).map((p) => p.label), ['0.05 SOL', '0.25 SOL', '1 SOL']);
+});
+
 test('the amount field keeps digits and one point; shares round down and 100% is the whole balance', async () => {
   const { impactLevel, sanitizeAmount, shareOf } = await import('./order-flow.ts');
   assert.equal(sanitizeAmount('1.2.345678x9', 6), '1.234567');

@@ -11,10 +11,13 @@ export type TradeVenue = 'curve' | 'pool' | 'none' | 'unavailable';
  * What a ticket sizes against, from the trade service's policy: the most one buy may spend at
  * worst (its amount plus slippage), the slippage bounds, and the platform fee. Read with the
  * venue, so no preset is offered that the gate would refuse.
+ *
+ * `maxBuyLamports` null means the service sets NO cap (policy since 2026-10-15), which is not the
+ * same as limits that could not be read (the whole `TradeLimits` is then null).
  */
 export interface TradeLimits {
-  /** Lamports, as a decimal string. */
-  readonly maxBuyLamports: string;
+  /** Lamports, as a decimal string; null: no cap, a buy is bounded by the wallet's SOL. */
+  readonly maxBuyLamports: string | null;
   readonly defaultSlippageBps: number;
   readonly maxSlippageBps: number;
   readonly feeBps: number;

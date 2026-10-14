@@ -1357,8 +1357,12 @@ export interface PostCoinWeights {
  * unless the deploy turns it on, and the allowlist of wallets, which is empty unless it names one.
  */
 export interface TradePolicy {
-  /** The most one buy may spend, in SOL. Sells are bounded by what the wallet holds. */
-  readonly maxSolPerTrade: number;
+  /**
+   * The most one buy (or SOL send) may spend, in SOL, amount plus slippage. Null: no cap — a buy
+   * is bounded only by what the wallet holds, which the simulation checks before anything is
+   * offered for signing. Sells are bounded by what the wallet holds either way.
+   */
+  readonly maxSolPerTrade: number | null;
   /** Slippage offered by default, and the most a person may choose, in basis points. */
   readonly defaultSlippageBps: number;
   readonly maxSlippageBps: number;
@@ -1366,8 +1370,8 @@ export interface TradePolicy {
   readonly platformFeeBps: number;
   /** The size asked about to tell whether a coin can be traded at all, in SOL. */
   readonly probeSol: number;
-  /** The most a creator may buy of their own coin at launch, in SOL. */
-  readonly maxDevBuySol: number;
+  /** The most a creator may buy of their own coin at launch, in SOL. Null: no cap, bounded by the wallet's SOL. */
+  readonly maxDevBuySol: number | null;
 }
 
 /**
@@ -3168,17 +3172,18 @@ const POLICY_V1: Policy = {
   },
 
   trade: {
-    /* 0.06 SOL, amount plus slippage (the owner, 2026-10-13): room for a 0.05 SOL buy at up to 20%
-       slippage, so the quick buy's 0.05 preset shows. Still a test of the plumbing, not a position. */
-    maxSolPerTrade: 0.06,
+    /* No cap (the owner, 2026-10-15: "remove it for everyone"). Null, not a huge number, so "no
+       cap" is a decision the code can see. A buy is bounded by the wallet's SOL, and every
+       transaction is still simulated before it is offered for signing. It was 0.06 SOL. */
+    maxSolPerTrade: null,
     defaultSlippageBps: 300,
     /* 15%: past this a launchpad coin's quote says little about what the trade will fill at. */
     maxSlippageBps: 1_500,
     platformFeeBps: 0,
     probeSol: 0.001,
-    /* 0.05 SOL, the same as a buy: a first launch is a test of the plumbing, not a position. The
-       founders' presets go to 2 SOL; the app offers only those at or under this cap. */
-    maxDevBuySol: 0.05,
+    /* No cap, as for a buy (the owner, 2026-10-15). Any amount may be typed on Create; the launch
+       is simulated, so a dev buy the wallet cannot pay for is refused. It was 0.05 SOL. */
+    maxDevBuySol: null,
   },
 
   social: {
