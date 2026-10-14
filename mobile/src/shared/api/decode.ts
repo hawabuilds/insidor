@@ -23,6 +23,7 @@
 
 import type { Instant, Measured, Delta, Millis, PendingReason } from '../format/measure.ts';
 import { instantFrom, measuredFrom } from '../format/measure.ts';
+import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
 import type { OlderCoin, RisingFeed, RisingPage, RisingPost } from './wire/rising.ts';
@@ -511,6 +512,8 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     authorLabel: str(o.authorLabel, `${path}.authorLabel`),
     /* Added by the read service from the account; absent from an older server or the owner's copies. */
     authorPictureUrl: httpsOrNull(o.authorPictureUrl),
+    /* Our copy's file name, sent beside the link since 0079; anything but 32 hex characters is none. */
+    authorPictureFile: posterPicFile(o.authorPictureFile),
     permalink: optStr(o.permalink),
     excerpt: str(o.excerpt, `${path}.excerpt`),
     thumbUrl: optStr(o.thumbUrl),

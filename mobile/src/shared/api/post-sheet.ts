@@ -15,6 +15,7 @@
 
 import { instant, known, pending, pendingInstant, type Instant, type Measured, type PendingReason } from '../format/measure.ts';
 import { assertNoInternalVocabulary, decodeRisingPost, WireShapeError } from './decode.ts';
+import { posterPicFile } from '../poster-pic.ts';
 import type { RisingPost } from './wire/rising.ts';
 
 /** One view reading: null when the source rounded it away (censored), which breaks the chart's line. */
@@ -51,7 +52,7 @@ export interface SheetCoin {
 
 export interface PostSheetData {
   readonly post: RisingPost;
-  readonly author: { readonly name: string | null; readonly pictureUrl: string | null; readonly followers: Measured };
+  readonly author: { readonly name: string | null; readonly pictureUrl: string | null; readonly pictureFile: string | null; readonly followers: Measured };
   readonly foundAt: Instant;
   readonly media: SheetMedia | null;
   readonly narrative: { readonly storyId: string; readonly title: string | null } | null;
@@ -149,7 +150,7 @@ export function decodePostSheet(raw: unknown, path = '$'): PostSheetData {
   });
   return {
     post,
-    author: { name: text(author['name']), pictureUrl: https(author['pictureUrl']), followers: measuredOf(author['followers']) },
+    author: { name: text(author['name']), pictureUrl: https(author['pictureUrl']), pictureFile: posterPicFile(author['pictureFile']), followers: measuredOf(author['followers']) },
     foundAt: instantOf(o['foundAt']),
     media: mediaOf(o['media']),
     narrative: storyId === null ? null : { storyId, title: text(narrative?.['title']) },
