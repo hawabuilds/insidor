@@ -2,8 +2,17 @@
  * "ADD MISSED POSTS": the owner pastes up to `learning.maxMissedPerPaste` links of posts we should
  * have shown, and reads back what became of each.
  *
- *   GET  /missed                   the list, newest first, and the search change suggested
- *   POST /missed { text }          one link per line or space; queued for the runner
+ *   GET  /missed                      the list, newest first, and the search change suggested
+ *   POST /missed { text, preview }    what the paste reads as (each post and its coin address),
+ *                                     nothing written
+ *   POST /missed { text }             the posts queued for the runner, and each address saved
+ *                                     as that post's coin
+ *
+ * ★ A PASTE MAY CARRY COIN ADDRESSES. Each is paired with its post (missed-paste.ts) and saved
+ * exactly as "Which coin?" saves one — the same route, owner-coin.ts: checked against the coin
+ * sources, then the owner's `right` coin call for that post. An address no source knows saves
+ * nothing and says so; an address with no post is sent back as left over, never dropped. A link
+ * that is not a post is refused here with what to paste instead, and not queued.
  *
  * ★ THE OWNER ONLY, CHECKED HERE ON EVERY CALL, by the same rule as the owner's other calls
  * (owner.ts `ownerRefOf`): a wallet or the X handle of the SIGNED sign-in, listed in Policy.owner.
@@ -12,9 +21,10 @@
  *
  * ★ THIS SERVICE ONLY QUEUES. It holds no source keys, so it cannot read a post: it writes one
  * `queued` row per link (0055) and the runner reads, stores and diagnoses it within a minute
- * (services/runner/src/work/missed-posts.ts). Which links are posts is the runner's to say, from
- * the sources' own link rules; here a link is any https address, and a repeat of one the owner
- * already pasted is dropped by the table's unique key.
+ * (services/runner/src/work/missed-posts.ts). Only post links are queued (owner-coin.ts
+ * `postIdOf`, the link rule the runner's sources share); a repeat of one the owner already pasted
+ * is dropped by the table's unique key. The coin label goes through owner-coin.ts, which owns
+ * that write.
  *
  * ★ WORDS, NOT OUR FIELDS. Each row goes out as a headline and fact lines the runner's diagnosis
  * is turned into here (`describe`), so the phone app renders sentences and holds none of the
@@ -30,8 +40,11 @@
 import type { LearningPolicy, OwnerPolicy } from '@insidor/contracts/policy.ts';
 import type { Person } from '@insidor/contracts/ports/people.ts';
 
+import type { CoinCheck } from './coin-check.ts';
 import { json, type Reply } from './http.ts';
+import { readPaste, type PasteRead } from './missed-paste.ts';
 import { ownerRefOf } from './owner.ts';
+import { ownerCoinRoute } from './owner-coin.ts';
 
 export interface MissedDb {
   query<R = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<R[]>;
@@ -42,27 +55,11 @@ export interface MissedDeps {
   /** Who the owner is (Policy.owner); absent, nobody is. */
   readonly owner: OwnerPolicy | undefined;
   readonly learning: Pick<LearningPolicy, 'maxMissedPerPaste'>;
+  /** The coin sources, for the addresses in a paste; absent, an address is answered "not set up". */
+  readonly coinCheck?: CoinCheck;
 }
 
-const MAX_URL_CHARS = 500;
 const LIST_LIMIT = 200;
-
-/** The links in a paste: https only, trimmed, each once, in the order pasted. */
-export function linksIn(text: unknown): string[] {
-  if (typeof text !== 'string') return [];
-  const out: string[] = [];
-  for (const word of text.split(/\s+/)) {
-    const w = word.trim();
-    if (w === '' || w.length > MAX_URL_CHARS) continue;
-    try {
-      if (new URL(w).protocol !== 'https:') continue;
-    } catch {
-      continue;
-    }
-    if (!out.includes(w)) out.push(w);
-  }
-  return out;
-}
 
 interface Row {
   id: string;
@@ -169,7 +166,7 @@ export function describe(r: Pick<Row, 'status' | 'diagnosis' | 'diagnosis_detail
   }
 }
 
-async function list(deps: MissedDeps): Promise<Reply> {
+async function list(deps: MissedDeps, extra: Record<string, unknown> = {}): Promise<Reply> {
   const rows = await deps.db.query<Row>(
     `select id::text, url, added_at, status, diagnosis, diagnosis_detail, coins, usd::text, posted_at, last_error
        from internal.missed_post order by added_at desc, id desc limit $1`,
@@ -177,6 +174,7 @@ async function list(deps: MissedDeps): Promise<Reply> {
   );
   const [s] = await deps.db.query<{ text: string | null }>('select text from internal.missed_post_suggestion where id = 1');
   return json(200, {
+    ...extra,
     max: deps.learning.maxMissedPerPaste,
     suggestion: s?.text ?? null,
     posts: rows.map((r) => {
@@ -213,12 +211,40 @@ async function missedCall(method: string, body: unknown, me: Person | null, deps
   if (ownerRef === null) return json(403, { error: 'Only the owner can add missed posts.' });
   if (method === 'GET') return list(deps);
   if (method !== 'POST') return json(405, { error: 'method not allowed' });
-  const links = linksIn((body as { text?: unknown } | null)?.text);
-  if (links.length === 0) return json(400, { error: 'Paste at least one https link to a post.' });
-  if (links.length > deps.learning.maxMissedPerPaste) return json(400, { error: `Up to ${deps.learning.maxMissedPerPaste} links at once.` });
+  const b = (body ?? {}) as { text?: unknown; preview?: unknown };
+  const read = readPaste(b.text);
+  const posts = read.posts.filter((p) => p.refused === null);
+  const problem = posts.length === 0
+    ? (read.posts.find((p) => p.refused !== null)?.refused ?? 'Paste at least one https link to a post.')
+    : posts.length > deps.learning.maxMissedPerPaste ? `Up to ${deps.learning.maxMissedPerPaste} links at once.` : null;
+  if (b.preview === true) return json(200, { read: readOut(read), problem, max: deps.learning.maxMissedPerPaste });
+  if (problem !== null) return json(400, { error: problem, read: readOut(read) });
   await deps.db.query(
     `insert into internal.missed_post (url, owner_ref) select unnest($1::text[]), $2 on conflict (owner_ref, url) do nothing`,
-    [links, ownerRef],
+    [posts.map((p) => p.url), ownerRef],
   );
-  return list(deps);
+  const coins = await Promise.all(posts.flatMap((p) => (p.address === null ? [] : [labelCoin(p.url, p.address, me, ownerRef, deps)])));
+  return list(deps, { saved: coins, loose: read.loose, refused: read.posts.flatMap((p) => (p.refused === null ? [] : [{ url: p.url, said: p.refused }])) });
+}
+
+/** The paste as the owner reads it before saving. */
+const readOut = (read: PasteRead) => ({
+  posts: read.posts.map((p) => ({ url: p.url, address: p.address, refused: p.refused })),
+  loose: read.loose,
+});
+
+/**
+ * One address saved as its post's coin, through the "Which coin?" route itself, so the check and
+ * the write are that route's and cannot drift. The answer is words: what was saved, or why not.
+ */
+async function labelCoin(url: string, address: string, me: Person, ownerRef: string, deps: MissedDeps): Promise<{ url: string; address: string; ok: boolean; said: string }> {
+  const r = await ownerCoinRoute('POST', 'coin-label', { coin: address, postUrl: url }, me, ownerRef, { db: deps.db, ...(deps.coinCheck === undefined ? {} : { coinCheck: deps.coinCheck }) });
+  const out = JSON.parse(r.body) as { error?: unknown; coin?: { name?: unknown; ticker?: unknown } };
+  if (r.status === 201) {
+    const ticker = typeof out.coin?.ticker === 'string' ? `$${out.coin.ticker}` : null;
+    const name = typeof out.coin?.name === 'string' ? out.coin.name : null;
+    return { url, address, ok: true, said: `Saved ${ticker ?? name ?? 'this coin'} as its coin.` };
+  }
+  if (r.status === 404) return { url, address, ok: false, said: "Can't find this coin, so nothing was saved for it." };
+  return { url, address, ok: false, said: typeof out.error === 'string' ? out.error : 'The coin could not be saved.' };
 }
