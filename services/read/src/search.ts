@@ -103,13 +103,17 @@ export const TICKER_COUNT_SQL = `select count(*)::int as n, min(launched_at) as 
 export const ASSET_IMAGES_SQL = `
 select address, image_uri from public.asset where chain = 'solana' and address = any($1) and image_uri is not null`;
 
-/* A coin's facts by address: its full row while it lasts, the name index after. */
+/* A coin's facts by address: its full row while it lasts, the name index after. Either one is
+   enough, the same two the market route accepts (market.ts ASSET_SQL): a coin a post sheet or a
+   narrative lists is always in one of them, and its page must open from any tap on it. */
 export const ASSET_FACTS_SQL = `
-select n.address, coalesce(a.symbol, n.ticker) as symbol, coalesce(a.name, n.name) as name, a.image_uri,
+select q.address, coalesce(a.symbol, n.ticker) as symbol, coalesce(a.name, n.name) as name, a.image_uri,
        coalesce(a.minted_at, n.launched_at) as minted_at
-  from public.coin_name n
-  left join public.asset a on a.chain = 'solana' and a.address = n.address
- where n.address = $1`;
+  from (select $1::text as address) q
+  left join public.coin_name n on n.address = q.address
+  left join public.asset a on a.chain = 'solana' and a.address = q.address
+ where n.address is not null or a.address is not null
+ limit 1`;
 
 export interface NamedSearch {
   readonly name: string;
