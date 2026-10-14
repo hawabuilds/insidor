@@ -90,3 +90,18 @@ test('speed bar on: everything that passes with it off still passes', () => {
     assert.equal(clearsReachBar('fyp', readings, POSTED, SPEED), true);
   }
 });
+
+test('★ the short-video speed bar: off, nothing changes; on, 50k inside two hours or 500 a minute inside four pass', () => {
+  const S = P.rising.shortVideoReachScale;
+  const ON = { ...P, rising: { ...P.rising, shortVideoSpeedBar: { ...P.rising.shortVideoSpeedBar, enabled: true } } };
+  assert.equal(P.rising.shortVideoSpeedBar.enabled, false, 'ships off: the owner switches it on');
+  /* Measured 2026-10-13: the two young videos that went on past 150k, at their first reading. */
+  for (const [min, reach] of [[100, 56_235], [55, 68_362]] as const) {
+    assert.equal(clearsReachBar('fyp', [at(min, reach)], POSTED, P, S), false, `${reach} at ${min} minutes waits today`);
+    assert.equal(clearsReachBar('fyp', [at(min, reach)], POSTED, ON, S), true, `${reach} at ${min} minutes passes with it on`);
+  }
+  assert.equal(clearsReachBar('fyp', [at(200, 80_000)], POSTED, ON, S), false, '400 a minute at 3.3 hours is not fast');
+  assert.equal(clearsReachBar('fyp', [at(300, 480_000)], POSTED, ON, S), false, 'past four hours only the 500k total counts');
+  /* Text posts never take it. */
+  assert.equal(clearsReachBar('fyp', [at(55, 30_000)], POSTED, ON), clearsReachBar('fyp', [at(55, 30_000)], POSTED, P));
+});

@@ -1503,6 +1503,21 @@ export interface RisingPolicy {
   readonly shortVideoFastReachPerMinute: number;
   readonly shortVideoFastWindowMs: number;
   /**
+   * ★ THE SHORT-VIDEO SPEED BAR (off until the owner switches it on): with `enabled`, the
+   * short-video growth paths are `earlyReach` views inside `shortVideoEarlyWindowMs` or
+   * `fastReachPerMinute` a minute at any reading inside `shortVideoFastWindowMs`, in place of
+   * `shortVideoEarlyReach` and `shortVideoFastReachPerMinute`. The 500k total stays as it is.
+   * Set 2026-10-14 from our own readings, because the owner's coined short videos say nothing about
+   * their first hours: the 11 in the gold set were coined 19 hours to over a year after they went up,
+   * and none was ever read by us. Of 328 videos we first read under two hours old on 2026-10-13, the
+   * two that went on past 150k views were at 564 and 1,240 a minute on that first reading; neither
+   * passes today's 1,500. Replayed on that day's readings (videos found 01:00 to 01:00 UTC): 50k or
+   * 500 a minute passes 44 a day against 34, 16 of them under six hours old against 6, the median
+   * age at passing 12.5 hours against 16.3; 10 more judged a day, about $0.09. The judge still
+   * decides which of them is a meme.
+   */
+  readonly shortVideoSpeedBar: { readonly enabled: boolean; readonly earlyReach: number; readonly fastReachPerMinute: number };
+  /**
    * ★ THE SPEED BAR: one more way for a text post to clear For You's views bar — on pace to pass
    * `fypMinReach` by `horizonMs` after it was posted. At a reading between `minAgeMs` and
    * `horizonMs` old, with at least `minReach` views, its views a minute since the post AND (when an
@@ -3090,6 +3105,7 @@ const POLICY_V1: Policy = {
     shortVideoEarlyWindowMs: 7_200_000, // two hours
     shortVideoFastReachPerMinute: 1_500,
     shortVideoFastWindowMs: 14_400_000, // four hours
+    shortVideoSpeedBar: { enabled: false, earlyReach: 50_000, fastReachPerMinute: 500 },
     /* Off until the owner approves the cost; see RisingPolicy.speedBar for the replay. */
     /* On 2026-10-14: +$1.36 a day of judging, paid by fresh.cutStale's -$1.34. */
     speedBar: { enabled: true, horizonMs: 5_400_000, minAgeMs: 1_800_000, minReach: 15_000, recentMinSpanMs: 300_000 },
