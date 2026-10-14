@@ -105,6 +105,21 @@ test('★ a person declining is refused, not failed; and nothing is sent', async
   assert.equal(sends, 0);
 });
 
+test('★ closing the approve window is refused even when the vendor wraps it in a "failed" error', async () => {
+  const { wallet, bridge } = setup({
+    broadcast: async () => ({ ok: true, ref: 'x' }),
+    sign: async () => { throw new Error('Failed to connect to wallet', { cause: new Error('User exited the modal before submitting the transaction') }); },
+  });
+  bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1' });
+  assert.deepEqual(await wallet.signAndSendTransaction(new Uint8Array([1])), { kind: 'refused' });
+  const broken = setup({
+    broadcast: async () => ({ ok: true, ref: 'x' }),
+    sign: async () => { throw new Error('Failed to connect to wallet', { cause: new Error('timeout') }); },
+  });
+  broken.bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1' });
+  assert.deepEqual(await broken.wallet.signAndSendTransaction(new Uint8Array([1])), { kind: 'failed', code: 'internal' });
+});
+
 test('signed but not taken by the network says why; with no way to send, there is no signing at all', async () => {
   const declined = setup({ broadcast: async () => ({ ok: false, why: 'Blockhash expired.' }) });
   declined.bridge.snapshot({ ready: true, signedIn: true, address: 'Addr1' });

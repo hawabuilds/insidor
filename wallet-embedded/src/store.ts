@@ -162,7 +162,10 @@ export function embeddedWallet(options: { readonly broadcast?: Broadcast } = {})
         signed = await actions.signTransaction(payload);
       } catch (e) {
         /* The vendor's words are not kept: only whether the person declined. */
-        const said = e instanceof Error ? `${e.name} ${e.message}` : typeof e === 'string' ? e : '';
+        /* Closing the approve window arrives wrapped: the outer error says "failed to connect", and
+           only its cause says the person exited. Both are read, so a cancel is never a failure. */
+        const cause = e instanceof Error && e.cause instanceof Error ? ` ${e.cause.message}` : '';
+        const said = e instanceof Error ? `${e.name} ${e.message}${cause}` : typeof e === 'string' ? e : '';
         return DECLINED.test(said) ? { kind: 'refused' } : { kind: 'failed', code: 'internal' };
       }
       try {

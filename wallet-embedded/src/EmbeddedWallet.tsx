@@ -19,7 +19,7 @@
  */
 
 import { PrivyProvider, useIdentityToken, useLinkAccount, useLogin, usePrivy } from '@privy-io/react-auth';
-import { toSolanaWalletConnectors, useCreateWallet, useExportWallet, useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
+import { defaultSolanaRpcsPlugin, toSolanaWalletConnectors, useCreateWallet, useExportWallet, useSignTransaction, useWallets } from '@privy-io/react-auth/solana';
 import { useEffect, useRef, type ReactNode } from 'react';
 
 import type { Bridge } from './store.ts';
@@ -29,6 +29,20 @@ const CLOSED_BY_PERSON = 'exited_auth_flow';
 
 /* Made once: a new connectors object each render would restart the vendor's wallet discovery. */
 const CONNECTORS = toSolanaWalletConnectors();
+
+/*
+ * ★ THE APPROVE WINDOW NEEDS A NETWORK CONNECTION, OR IT CRASHES THE WHOLE APP. The vendor's
+ * approve screen asks for its chain's connection while it draws (to simulate the transaction and
+ * show the fee and balance), and with none configured it throws "No RPC configuration found for
+ * chain solana:mainnet" in the middle of rendering. Nothing catches that inside the vendor's window,
+ * so React unmounts the app: the screen goes black and no approve window is ever seen. That was
+ * Buy, Sell, quick buy and Create, all at once (2026-10-14). Trador hit the same thing and passes
+ * its own connections (`solana.rpcs`, through its own /api/rpc); we have no browser-facing RPC, and
+ * the approve window only reads, so this uses the vendor's own hosted connection for this app. The
+ * trade service still sends every transaction; this connection never broadcasts anything of ours.
+ * Made once: the vendor re-registers its plugins whenever the array changes.
+ */
+const PLUGINS = [defaultSolanaRpcsPlugin()];
 
 export function EmbeddedWalletProvider({ appId, bridge, children }: { appId: string; bridge: Bridge; children: ReactNode }) {
   return (
@@ -40,6 +54,7 @@ export function EmbeddedWalletProvider({ appId, bridge, children }: { appId: str
         embeddedWallets: { solana: { createOnLogin: 'users-without-wallets' } },
         /* Outside wallets are joined for viewing only, through the vendor's own connect window. */
         externalWallets: { solana: { connectors: CONNECTORS } },
+        plugins: PLUGINS,
         appearance: { theme: 'dark', accentColor: '#9945FF', walletChainType: 'solana-only', walletList: ['phantom', 'solflare', 'backpack', 'detected_solana_wallets'] },
       }}
     >
