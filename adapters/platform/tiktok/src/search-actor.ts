@@ -65,14 +65,25 @@ export function toSearchActorInput(words: readonly string[]): SearchActorInput {
 /** A number the vendor may send as a string or a number; null when it is neither. */
 const count = (v: unknown): number | null => (typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : num(v));
 
-/** The account's picture link: the 300px rendition, else the next one the entry carries; null for none. */
+/**
+ * The account's picture link: the 300px rendition, else the next one the entry carries; null for none.
+ *
+ * ★ A JPEG, WEBP OR PNG LINK BEFORE AN HEIC ONE. Each rendition's `url_list` is two HEIC links
+ * (`…q70.heic`, on two hosts) and then a JPEG of the same picture (measured on every entry of the
+ * 2026-10-14 runs). HEIC draws only in Safari: Chrome, Firefox and our storage's sniff all refuse
+ * it, so taking the first link left about half of the posters on For You as a letter on desktop.
+ * The links are signed, so the extension cannot be rewritten afterwards; the choice is made here.
+ * An HEIC link is still taken when a rendition carries nothing else, since Safari draws it.
+ */
 function avatarOf(author: Record<string, unknown>): string | null {
-  for (const key of ['avatar_300x300', 'avatar_medium', 'avatar_larger', 'avatar_168x168', 'avatar_thumb']) {
-    const url = arr(rec(author[key]).url_list).map(str).find((u): u is string => u !== null && u.startsWith('https://'));
-    if (url !== undefined) return url;
-  }
-  return null;
+  const links = ['avatar_300x300', 'avatar_medium', 'avatar_larger', 'avatar_168x168', 'avatar_thumb'].flatMap((key) =>
+    arr(rec(author[key]).url_list).map(str).filter((u): u is string => u !== null && u.startsWith('https://')),
+  );
+  return links.find((u) => DRAWABLE.test(u)) ?? links[0] ?? null;
 }
+
+/** A picture link every browser draws: its path ends in .jpeg, .jpg, .webp or .png. */
+const DRAWABLE = /^[^?#]*\.(jpe?g|webp|png)([?#]|$)/i;
 
 /**
  * One entry of this actor's dataset, in the first scraper's field names. An entry with no id comes
