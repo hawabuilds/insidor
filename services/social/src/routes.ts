@@ -293,7 +293,7 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
 
   const owned = await ownerRoute({ method: m, seg, query: url.searchParams, body: req.body }, me, deps);
   if (owned !== null) return owned;
-  if (head === 'missed' && seg.length === 1) return missedRoute(m, req.body, me, { db: deps.db, owner: deps.owner, learning: DEFAULT_POLICY.learning });
+  if (head === 'missed' && seg.length === 1) return missedRoute(m, req.body, me, { db: deps.db, owner: deps.owner, learning: DEFAULT_POLICY.learning, ...(deps.coinCheck === undefined ? {} : { coinCheck: deps.coinCheck }) });
 
   if (head === 'me' && seg.length === 1) {
     if (me === null) return SIGN_IN;

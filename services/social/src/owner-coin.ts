@@ -62,7 +62,7 @@ export function postIdOf(link: string): string | null {
     return id === undefined ? null : `x:${id}`;
   }
   if (host === 'tiktok.com') {
-    const id = /\/video\/(\d{5,25})(?:\/|$)/.exec(u.pathname)?.[1];
+    const id = /\/(?:video|photo)\/(\d{5,25})(?:\/|$)/.exec(u.pathname)?.[1];
     return id === undefined ? null : `tiktok:${id}`;
   }
   return null;
