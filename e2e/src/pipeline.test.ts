@@ -485,6 +485,34 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   await call('x:1900000000000000005', 'meme');
   const back = await reproject();
   assert.ok(back.fyp.includes(HIDDEN) && back.popular.includes(HIDDEN) && back.story.includes(HIDDEN), '"Is a meme" brings it back everywhere');
+  /* ★ THE INFINITE SCROLL'S MEMBERS (0075, services/project feed-members.ts): every post a frame
+     showed joined its feed once; the owner's "Not a meme" withdrew HIDDEN and "Is a meme" restored
+     it, at the place it first joined. */
+  const members = await db.query<{ feed_id: string; item_id: string; withdrawn: boolean; has_card: boolean }>(
+    `select feed_id, item_id, withdrawn_at is not null as withdrawn, payload is not null as has_card from public.feed_post order by feed_id, item_id`,
+  );
+  assert.deepEqual(new Set(members.filter((m) => m.feed_id === 'fyp').map((m) => m.item_id)), new Set(back.fyp), 'every post For You showed is a member');
+  assert.ok(members.every((m) => !m.withdrawn && m.has_card), 'none withdrawn after "Is a meme", each with its card');
+  /* Seven hours on, the posts are past For You's six hours and not growing: they stay, because they
+     were already on it. */
+  const later = (clock + 7 * 60 * MINUTE) as Millis;
+  await projectRisingFeeds(db, later, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, fypMaxAgeOn: true } });
+  const stayed = (JSON.parse((await handle('GET', '/rising/fyp', read)).body) as { posts: { id: string }[] }).posts.map((p) => p.id);
+  assert.deepEqual(new Set(stayed), new Set(back.fyp), 'the six hours never take a post off For You');
+  const strangers = await buildRising(db, later, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, fypMaxAgeOn: true } });
+  assert.equal(strangers.fyp.length, 0, 'while the same posts, not yet on it, would be turned away');
+  /* A member no longer on the frame is on the scroll under it, newest-joined first; a frame's own
+     posts are not repeated there. */
+  await db.query(
+    `insert into public.feed_post (feed_id, item_id, first_shown_at, last_shown_at, payload, payload_at)
+     values ('fyp', 'x:gone', $1, $1, '{"id":"x:gone","coins":{"kind":"pending","why":"not_read_yet"}}', $1)`,
+    [new Date(NOW - 3 * 24 * 60 * MINUTE).toISOString()],
+  );
+  const older = JSON.parse((await handle('GET', '/rising/fyp/older', read)).body) as { posts: { id: string }[]; next: string | null };
+  assert.deepEqual(older.posts.map((p) => p.id), ['x:gone']);
+  assert.equal(older.next, null, 'a short page ends the scroll');
+  await db.query(`delete from public.feed_post where item_id = 'x:gone'`);
+
   /* The weather post passes the owner's call and meets the reach bar like any other post: its
      views were never read as a rate, so with only measured readings counted it waits, for that
      reason and not the judge's. */

@@ -5,7 +5,8 @@
  * Its own module because two writers share it and must agree on one rule: the frame writes the
  * narratives' lists (the coins the board weighed and could not choose between), the feed writes
  * the posts' lists (the coins its name search kept). Each kind is deleted and rewritten whole in
- * the caller's transaction, beside the rows whose count it backs.
+ * the caller's transaction, beside the rows whose count it backs — except a feed member's list the
+ * run did not re-project, which stays beside the card it backs on the infinite scroll.
  *
  * ★ THE COUNT ON THE CARD IS THE LENGTH OF THIS LIST, NOT A SECOND NUMBER. For a narrative the
  * board's `claimCount` is the number of coins it weighed, and this writes those same coins; for
@@ -38,8 +39,11 @@ export async function writeSameNameCoins(
   kind: SameNameKind,
   lists: ReadonlyMap<string, readonly string[]>,
   evidence: ReadonlyMap<string, ReadonlyMap<string, WireCoinEvidence>> = new Map(),
+  /* Subjects whose list stands as last written: feed members this run did not project
+     (feed-members.ts), whose cards on the infinite scroll still carry the count it backs. */
+  keep: readonly string[] = [],
 ): Promise<number> {
-  await db.query(`delete from public.same_name_coin where subject_kind = $1`, [kind]);
+  await db.query(`delete from public.same_name_coin where subject_kind = $1 and subject_id <> all($2::text[])`, [kind, [...keep]]);
   const ids: string[] = [];
   const addresses: string[] = [];
   const links: (boolean | null)[] = [];

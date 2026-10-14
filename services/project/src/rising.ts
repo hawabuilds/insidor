@@ -10,9 +10,12 @@
  * never shown as if it had passed.
  * And it must clear the feed's view bar (core's `clearsReachBar`): For You at 40k views or fast
  * early growth, Popular at 250k. A post whose views we have not read is on neither.
- * With `rising.fypMaxAgeOn`, For You also drops a post over `rising.fypMaxAgeMs` old unless it is
- * still growing fast (fyp-freshness.ts); off, it keeps every post inside the window, as it has
- * since the News tab went.
+ * With `rising.fypMaxAgeOn`, For You also turns away a post over `rising.fypMaxAgeMs` old unless it
+ * is still growing fast (fyp-freshness.ts) — but only one that is not on it yet: a post already on
+ * For You (feed-members.ts, 0075) stays while it is inside the window (the owner, 2026-10-14: the
+ * six hours stop a post joining late and never take one off). Off, it keeps every post inside the
+ * window, as it has since the News tab went. Everything a frame ever showed stays on the infinite
+ * scroll (public.feed_post), whatever later frames show.
  *
  * In what order (the owner, 2026-10-13): `fyp` newest first, by when the post went up on its source
  * (`forYouOrder`); the pass routes (judge, judge with the signal, the signal) decide only whether a
@@ -92,6 +95,7 @@ import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar, heldKind, type PostCoinCalls, type StoryCoin, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
 import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
+import { loadMembership, writeMembership, type Membership } from './feed-members.ts';
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
 
@@ -206,10 +210,12 @@ const toMs = (value: Date | string | null): Millis | null => {
 
 /**
  * Every catch-all post inside the window with its newest per-post score and the promoted
- * story it belongs to, if any. The service role reads `internal`; the score never leaves
+ * story it belongs to, if any — and the feed members outside the window that this run refreshes
+ * (feed-members.ts), which are projected for their cards and never put in the frame. The service
+ * role reads `internal`; the score never leaves
  * this function except as the yes or no `postScore` makes of it.
  */
-async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingRow[]> {
+async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[] = []): Promise<readonly RisingRow[]> {
   return db.query<RisingRow>(
     `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media,
             a.handle, a.display_name, a.source_author_id,
@@ -265,9 +271,9 @@ async function loadCandidates(db: Db, sinceMs: Millis): Promise<readonly RisingR
                limit 1
             ) s on true
       where i.origin = 'observed'
-        and coalesce(i.posted_at, i.first_seen_at) >= $1
+        and (coalesce(i.posted_at, i.first_seen_at) >= $1 or i.item_id = any($2::text[]))
         and (j.coinable is not null or oc.verdict = 'meme')`,
-    [new Date(sinceMs).toISOString()],
+    [new Date(sinceMs).toISOString(), [...members]],
   );
 }
 
@@ -482,6 +488,11 @@ export interface RisingFrame {
   readonly sameName: ReadonlyMap<string, readonly string[]>;
   /** Each listed coin's facts against its post, by post id then address (0058). */
   readonly sameNameEvidence: ReadonlyMap<string, ReadonlyMap<string, WireCoinEvidence>>;
+  /**
+   * Every feed member this run projected (feed-members.ts), shown or not, with its new card; empty
+   * without 0075. A member the judge has since turned down is here too: it keeps its place.
+   */
+  readonly members: readonly WireRisingPost[];
 }
 
 /** What a post's newest split crypto read said (0064): other accounts' coin talk, and the author's own. */
@@ -597,20 +608,30 @@ export async function buildRising(
   coinsByStory: ReadonlyMap<string, WireCoinLink>,
   sparkWindowMs: number,
   policy = DEFAULT_POLICY,
+  membership: Membership | null = null,
 ): Promise<RisingFrame> {
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
   const heldBy = new Map<string, HeldKind>();
-  const candidates = await loadCandidates(db, sinceMs);
+  const candidates = await loadCandidates(db, sinceMs, membership?.refresh ?? []);
   const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
+  const atOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
+  /* Whether each loaded post passes now; a member that no longer does is still projected for its
+     card (feed-members.ts), and is never in the frame. Only posts inside the window are given a
+     reason: a member refreshed from outside it did not leave the frame for a reason. */
+  const passing = new Set<string>();
   const rows = candidates.filter((row) => {
     const { why } = postRoute(row, policy, cryptoSignalFor(row, crypto.get(row.item_id), policy));
-    if (why !== 'passes') whyNot.set(row.item_id, why);
+    const inWindow = atOf(row) >= sinceMs;
+    if (why !== 'passes' && inWindow) whyNot.set(row.item_id, why);
     const held = postHeldKind(row, policy);
-    if (why !== 'passes' && held !== null) heldBy.set(row.item_id, held);
-    return why === 'passes';
+    if (why !== 'passes' && held !== null && inWindow) heldBy.set(row.item_id, held);
+    if (why === 'passes' && inWindow) passing.add(row.item_id);
+    return passing.has(row.item_id) || membership?.all.has(row.item_id) === true;
   });
-  const reach = await loadReach(db, rows.map((row) => row.item_id), sinceMs);
+  /* A refreshed member's readings start before the window: read from its own time. */
+  const readFromMs = Math.min(sinceMs, ...rows.map(atOf)) as Millis;
+  const reach = await loadReach(db, rows.map((row) => row.item_id), readFromMs);
   /* ★ THE OWNER'S COIN LABELS, LIVE: every coin call (the owner's own coin, the coins called wrong,
      "No coin is from this") and the coin the owner confirmed for each post's story. */
   const rowIds = rows.map((row) => row.item_id);
@@ -645,6 +666,7 @@ export async function buildRising(
     }, policy), fit);
     const underBar = underScoreBar(score, policy.rising.scorePassBar, row.owner_call ?? null);
     return {
+      passes: passing.has(row.item_id),
       score,
       underBar,
       post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? [], {
@@ -661,31 +683,38 @@ export async function buildRising(
       /* Six hours, unless still climbing fast (fyp-freshness.ts), with `rising.fypMaxAgeOn`. For
          You only: Popular keeps old posts. Ageing out is not a rejection, so it records no reason. */
       fresh: !policy.rising.fypMaxAgeOn || freshForYou(views, postedAt ?? toMs(row.first_seen_at) ?? 0, nowMs, policy, scale),
+      /* ★ The six hours only stop a post JOINING For You late (the owner, 2026-10-14): a post already
+         on it (feed-members.ts) stays while it is inside the window and passes. */
+      member: membership?.fyp.has(row.item_id) === true,
       unread: barViews.every((v) => v.reach === null),
       popular: clearsReachBar('popular', barViews, postedAt, policy, scale),
     };
   });
 
-  const fyp = posts.filter((p) => p.fyp && p.fresh).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
+  const fyp = posts.filter((p) => p.passes && p.fyp && (p.fresh || p.member)).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
   const views = (p: WireRisingPost): number | null => p.reach.v;
-  const popular = posts.filter((p) => p.popular).sort((a, b) => {
+  const popular = posts.filter((p) => p.passes && p.popular).sort((a, b) => {
     const va = views(a.post);
     const vb = views(b.post);
     if (va === null || vb === null) return va === null ? (vb === null ? b.at - a.at : 1) : -1;
     return vb - va || b.at - a.at;
   });
   const cap = (list: typeof posts) => list.slice(0, policy.rising.maxRows).map((p) => p.post);
-  for (const p of posts) if (!p.fyp) whyNot.set(p.post.id, p.underBar ? 'under_score_bar' : p.unread ? 'reach_unread' : 'under_reach_bar');
+  for (const p of posts) if (p.passes && !p.fyp) whyNot.set(p.post.id, p.underBar ? 'under_score_bar' : p.unread ? 'reach_unread' : 'under_reach_bar');
   const shown = { fyp: cap(fyp), popular: cap(popular) };
   const ids = new Set([...shown.fyp, ...shown.popular].map((p) => p.id));
-  const sameName = new Map(posts.filter((p) => ids.has(p.post.id) && p.sameName.length > 0).map((p) => [p.post.id, p.sameName] as const));
+  const sameName: Map<string, readonly string[]> = new Map(posts.filter((p) => ids.has(p.post.id) && p.sameName.length > 0).map((p) => [p.post.id, p.sameName] as const));
   const sameNameEvidence = new Map<string, ReadonlyMap<string, WireCoinEvidence>>();
-  for (const id of sameName.keys()) {
+  const evidenceOf = (id: string): void => {
     const l = lookups.get(id);
     if (l !== undefined && 'coins' in l && l.match?.kind === 'unsure') sameNameEvidence.set(id, l.match.evidence);
     if (l !== undefined && 'coins' in l && l.match?.kind === 'matched') sameNameEvidence.set(id, new Map([[l.match.coin.address, l.match.evidence]]));
-  }
-  return { ...shown, whyNot, heldBy, sameName, sameNameEvidence };
+  };
+  const members = posts.filter((p) => membership?.all.has(p.post.id) === true).map((p) => p.post);
+  /* A member's list of same-named coins is kept with its card, so See N coins opens on an old card too. */
+  for (const p of posts) if (!ids.has(p.post.id) && membership?.all.has(p.post.id) === true && p.sameName.length > 0) sameName.set(p.post.id, p.sameName);
+  for (const id of sameName.keys()) evidenceOf(id);
+  return { ...shown, whyNot, heldBy, sameName, sameNameEvidence, members };
 }
 
 /**
@@ -840,7 +869,9 @@ export async function projectRisingFeeds(
   sparkWindowMs: number,
   policy = DEFAULT_POLICY,
 ): Promise<number> {
-  const frame = await buildRising(db, nowMs, coinsByStory, sparkWindowMs, policy);
+  /* The feeds' members for good (feed-members.ts, 0075); null before it is applied. */
+  const membership = await loadMembership(db, nowMs - policy.rising.windowMs);
+  const frame = await buildRising(db, nowMs, coinsByStory, sparkWindowMs, policy, membership);
   /* ★ WHAT LEFT, AND WHY. A post that was on a feed and is not now is recorded with the check it
      failed — kept as a "no" example, never deleted. A post that only aged out of the window is
      not a rejection and has no reason here, so it is not recorded. */
@@ -867,8 +898,12 @@ export async function projectRisingFeeds(
   });
   await new PgFeedRejectionRepo(db).record([...left, ...held]);
   /* The coins behind each unsure post's count, in this transaction with the rows that show it. */
-  await writeSameNameCoins(db, 'post', frame.sameName, frame.sameNameEvidence);
+  const projected = new Set(frame.members.map((p) => p.id));
+  const unrefreshed = membership === null ? [] : [...membership.all].filter((id) => !projected.has(id));
+  await writeSameNameCoins(db, 'post', frame.sameName, frame.sameNameEvidence, unrefreshed);
   /* Each shown post's name ideas for Create (0058), with the feeds they belong to. */
   await writeNameIdeas(db, await loadNameIdeas(db, [...new Set([...frame.fyp, ...frame.popular].map((p) => p.id))]));
-  return (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
+  const written = (await writeRising(db, 'fyp', frame.fyp)) + (await writeRising(db, 'popular', frame.popular));
+  if (membership !== null) await writeMembership(db, nowMs, frame, frame.members, membership.refresh);
+  return written;
 }
