@@ -29,7 +29,11 @@
 
 import type { Db } from '@insidor/store';
 
-import type { WireRisingPost } from './rising.ts';
+/** A projected card (rising.ts `WireRisingPost`), stored whole; only its id is read here, so this
+    file needs nothing from rising.ts and the two do not import each other. */
+interface FeedCard {
+  readonly id: string;
+}
 
 /**
  * Old members re-projected per run. One run a minute and about two hundred For You posts a day:
@@ -111,8 +115,8 @@ export async function loadMembership(db: Db, sinceMs: number, refreshPerRun: num
 export async function writeMembership(
   db: Db,
   nowMs: number,
-  shown: { readonly fyp: readonly WireRisingPost[]; readonly popular: readonly WireRisingPost[] },
-  projected: readonly WireRisingPost[],
+  shown: { readonly fyp: readonly FeedCard[]; readonly popular: readonly FeedCard[] },
+  projected: readonly FeedCard[],
   tried: readonly string[],
 ): Promise<void> {
   if (!(await migrated(db))) return;
