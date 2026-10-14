@@ -44,6 +44,7 @@ import { NotAMeme, HideBar } from '../owner/OwnerPost.tsx';
 import { useIsOwner, useOwnerState } from '../owner/hooks.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
 import styles from './narrative.module.css';
+import { goBack } from '../../shared/nav.ts';
 
 type Section = 'coins' | 'posts' | 'comments' | 'stats';
 
@@ -84,7 +85,7 @@ function TopBar({ storyId }: { storyId: string }) {
   };
   return (
     <div className={styles['top']}>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
+      <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'narratives' })}>
         <BackIcon size={22} />
       </button>
       <div className={styles['topRight']}>

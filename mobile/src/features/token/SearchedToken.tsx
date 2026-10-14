@@ -20,22 +20,25 @@
 import { fetchSearchedCoin, type SearchedCoin } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
 import { useLoad } from '../../shared/hooks.ts';
+import { goBack } from '../../shared/nav.ts';
+import type { Route } from '../../shared/route.ts';
 import { BackIcon } from '../../shared/ui/icons.tsx';
 import { TokenView, type TokenFacts } from './TokenView.tsx';
 import styles from './token.module.css';
 
-export function SearchedToken({ coinId, note = null }: { coinId: string; note?: string | null }) {
+/** `back`: where Back goes when nothing of ours is under this page; Search, unless the caller knows better. */
+export function SearchedToken({ coinId, note = null, back = { screen: 'search' } }: { coinId: string; note?: string | null; back?: Route }) {
   const [coin] = useLoad(`searched:${coinId}`, (signal) => fetchSearchedCoin(coinId, signal));
   return (
     <section className={styles['page']}>
       {coin.state !== 'ready' ? (
-        <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
+        <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack(back)}>
           <BackIcon size={20} />
         </button>
       ) : null}
       {coin.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
       {coin.state === 'failed' ? <p className={styles['note']}>This coin couldn't be opened. Search for it again.</p> : null}
-      {coin.state === 'ready' ? <Body coin={coin.value} note={note} /> : null}
+      {coin.state === 'ready' ? <Body coin={coin.value} note={note} back={back} /> : null}
     </section>
   );
 }
@@ -43,7 +46,7 @@ export function SearchedToken({ coinId, note = null }: { coinId: string; note?: 
 /** A search result carries no price or 24-hour move of its own; with no candles either, both are a dash. */
 const NOT_LISTED: Measured = { known: false, pending: 'not_reported' };
 
-function Body({ coin, note }: { coin: SearchedCoin; note: string | null }) {
+function Body({ coin, note, back }: { coin: SearchedCoin; note: string | null; back: Route }) {
   const facts: TokenFacts = {
     coinId: coin.coinId,
     address: coin.address,
@@ -61,6 +64,7 @@ function Body({ coin, note }: { coin: SearchedCoin; note: string | null }) {
   };
   return (
     <TokenView
+      back={back}
       facts={facts}
       notice={note !== null ? <p className={styles['aside']}>{note}</p> : null}
       offBar={<p className={styles['note']}>{note !== null ? 'Buying and selling are coming soon.' : 'Opened from search. Buying and selling are coming soon.'}</p>}

@@ -34,6 +34,17 @@
   margin-bottom: 0;
 }
 
+/* Notifications' Back, flush with the page edge like every other Back; the title takes the middle. */
+.backButton {
+  margin-left: -10px;
+  color: var(--text-1);
+}
+
+.titleGrow {
+  flex: 1;
+  min-width: 0;
+}
+
 .title {
   margin: 0;
   font-size: 28px;

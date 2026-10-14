@@ -7,9 +7,9 @@
 }
 
 .back {
-  margin-left: -6px;
-  width: 36px;
-  height: 36px;
+  margin-left: -10px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   border-radius: 50%;

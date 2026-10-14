@@ -49,6 +49,8 @@ import { ViralPost } from './ViralPost.tsx';
 export type { TokenFacts } from './token-facts.ts';
 import styles from './token.module.css';
 import { tickerText } from '../../shared/format/ticker.ts';
+import { goBack } from '../../shared/nav.ts';
+import type { Route } from '../../shared/route.ts';
 
 type Panel = 'trades' | 'comments' | 'info';
 
@@ -72,7 +74,7 @@ export function tradesNote(state: 'loading' | 'ready' | 'failed', market: CoinMa
   return 'No trades yet.';
 }
 
-export function TokenView({ facts, chips = [], notice = null, insidor = null, offBar }: {
+export function TokenView({ facts, chips = [], notice = null, insidor = null, offBar, back = { screen: 'search' } }: {
   facts: TokenFacts;
   /** Fact chips after the pair and launchpad: "Created on Insidor" and the like. */
   chips?: readonly string[];
@@ -82,6 +84,8 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   insidor?: ReactNode;
   /** What stands in for Buy and Sell while trading is off. */
   offBar: ReactNode;
+  /** Where Back goes when nothing of ours is under this page (opened from a link or a notification). */
+  back?: Route;
 }) {
   const now = useNow();
   const toast = useToast();
@@ -125,7 +129,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
   return (
     <>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
+      <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack(back)}>
         <BackIcon size={20} />
       </button>
       {notice}

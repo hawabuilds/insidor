@@ -21,6 +21,7 @@
  * thing; and the rule "For You under it" is pure and tested (`launchSteps`).
  */
 
+import { entryState, pushEntry } from '../../shared/nav.ts';
 import { parseRoute } from '../../shared/route.ts';
 
 const OPEN_CACHE = 'insidor-open';
@@ -43,15 +44,16 @@ export function settleLaunch(): void {
   if (params.get('push') !== '1') return;
   launchedFromPush = true;
   const steps = launchSteps(window.location.hash || FYP);
-  history.replaceState(null, '', `/${steps[0] ?? FYP}`);
-  for (const step of steps.slice(1)) history.pushState(null, '', `/${step}`);
+  /* Numbered (shared/nav.ts) so the screen's Back knows For You is under it. */
+  history.replaceState(entryState(0), '', `/${steps[0] ?? FYP}`);
+  steps.slice(1).forEach((step, i) => history.pushState(entryState(i + 1), '', `/${step}`));
   void dropPending();
 }
 
 /** Go to a notification's screen from wherever the open app is, with For You under anything but a post. */
 export function openFromPush(hash: string): void {
   const target = parseRoute(hash);
-  if (target.screen !== 'post' && target.screen !== 'feed' && parseRoute(window.location.hash).screen !== 'feed') history.pushState(null, '', FYP);
+  if (target.screen !== 'post' && target.screen !== 'feed' && parseRoute(window.location.hash).screen !== 'feed') pushEntry(FYP);
   if (window.location.hash === hash) window.dispatchEvent(new HashChangeEvent('hashchange'));
   else window.location.hash = hash;
 }

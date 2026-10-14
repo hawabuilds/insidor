@@ -26,6 +26,7 @@ import { settledCoins } from '../../shared/coin-status.ts';
 import { formatAge, formatDuration } from '../../shared/format/duration.ts';
 import { formatCount } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
+import { goBack } from '../../shared/nav.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { loadStory, noticeFor } from '../../shared/story-source.ts';
 import { leadPost } from '../feed/lead-post.ts';
@@ -44,12 +45,12 @@ import styles from './token.module.css';
 export function TokenPage({ storyId, coinId }: { storyId: string; coinId: string }) {
   const [story] = useLoad(storyId, (signal) => loadStory(storyId, signal));
   const opening = coinOpening(story, coinId);
-  if (opening.kind === 'own') return <SearchedToken coinId={coinId} />;
+  if (opening.kind === 'own') return <SearchedToken coinId={coinId} back={{ screen: 'story', storyId }} />;
   return (
     <section className={styles['page']}>
       {opening.kind === 'loading' ? (
         <>
-          <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
+          <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'story', storyId })}>
             <BackIcon size={20} />
           </button>
           <p className={styles['note']}>Loading.</p>
@@ -80,6 +81,7 @@ function Body({ story, coin }: { story: Story; coin: Coin }) {
   };
   return (
     <TokenView
+      back={{ screen: 'story', storyId: story.id }}
       facts={facts}
       chips={coinLabels(settledCoins(story.coins)).get(coin.coinId) ?? []}
       notice={<Notice notice={noticeFor(story)} />}

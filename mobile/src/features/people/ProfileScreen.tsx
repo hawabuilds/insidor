@@ -20,6 +20,7 @@ import { Avatar } from '../portfolio/Avatar.tsx';
 import { RankBadge, RankTag } from './RankBadge.tsx';
 import { RANK_NAME, rankCardLine } from './rank.ts';
 import styles from './people.module.css';
+import { goBack } from '../../shared/nav.ts';
 
 const short = (a: string) => `${a.slice(0, 5)}…${a.slice(-5)}`;
 
@@ -49,7 +50,7 @@ export function ProfileScreen({ profileKey }: { profileKey: string }) {
   const [loaded, reload] = useLoad(`profile:${profileKey}`, () => fetchProfile(profileKey));
   return (
     <section className={styles['screen']}>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
+      <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
         <BackIcon size={22} />
       </button>
       {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
