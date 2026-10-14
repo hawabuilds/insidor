@@ -35,6 +35,7 @@ import { Narratives } from './features/narratives/Narratives.tsx';
 import { Search } from './features/search/Search.tsx';
 import { SearchedToken } from './features/token/SearchedToken.tsx';
 import { TokenPage } from './features/token/TokenPage.tsx';
+import { NOT_PROVEN } from './features/token/coin-opening.ts';
 import { ComingSoonScreen } from './features/soon/ComingSoonScreen.tsx';
 import { PortfolioScreen } from './features/portfolio/PortfolioScreen.tsx';
 import { Holding, Landing } from './features/landing/Landing.tsx';
@@ -73,7 +74,7 @@ function Screen({ route, create, unread, onAlertsSeen, readUnread }: { route: Ro
     case 'search':
       return <Search />;
     case 'token':
-      return <SearchedToken key={route.coinId} coinId={route.coinId} />;
+      return <SearchedToken key={route.coinId} coinId={route.coinId} note={route.unproven === true ? NOT_PROVEN : null} />;
     case 'learn':
       return <Learn />;
     case 'alerts':

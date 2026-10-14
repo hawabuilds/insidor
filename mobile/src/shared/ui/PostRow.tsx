@@ -13,6 +13,8 @@
  * coins. Two buttons go straight to where they say: Create coin opens the create flow from the
  * post, and See N coins opens the sheet on Choose coin, with its quick buy. The button's WORDS come
  * from the coin line below, so the card says what the post's coin is before anyone taps.
+ * ★ A TAP ON THE CARD'S COIN (its logo and ticker, when the card names one coin) OPENS THAT COIN'S
+ * TOKEN PAGE (`openCoin`, the owner 2026-10-14): every coin tap in the app opens the coin.
  *
  * ★ EVERY CARD HAS A COIN LINE, AND IT IS THE SERVER'S ANSWER, NOT OURS (`postCoinStatus`):
  *
@@ -55,6 +57,8 @@ export interface PostHandlers {
   readonly create: () => void;
   /** Opens the post sheet on Choose coin: every coin with the post's name. */
   readonly seeCoins: () => void;
+  /** Opens the token page of the coin the card names. Absent: the coin line is part of the card's tap. */
+  readonly openCoin?: (coinId: string) => void;
 }
 
 const NO_COIN = { known: false, pending: 'not_minted' } as const;
@@ -115,7 +119,10 @@ export function PostRow({ post, now, handlers, extra = null }: { post: RisingPos
       </div>
 
       <div className={status.actions.length > 1 ? `${styles['foot']} ${styles['footWrap']}` : styles['foot']}>
-        <span className={styles['status']}>
+        <span
+          className={styles['status']}
+          onClick={own !== null && handlers.openCoin !== undefined ? (e) => { e.stopPropagation(); handlers.openCoin?.(own.coinId); } : undefined}
+        >
           {post.coins.kind === 'one' || post.coins.kind === 'matched' ? (
             <span className={styles['statusLogo']}>
               <CoinLogo address={post.coins.coin.address} ticker={post.coins.coin.ticker} imageUrl={post.coins.coin.imageUrl} size={22} />

@@ -30,8 +30,9 @@ export type Route =
   | { readonly screen: 'story'; readonly storyId: string }
   | { readonly screen: 'coin'; readonly storyId: string; readonly coinId: string }
   | { readonly screen: 'search' }
-  /* A coin opened from search: no narrative around it, so none in the route. */
-  | { readonly screen: 'token'; readonly coinId: string }
+  /* A coin by its own id, no narrative around it: from search, a list, or a post's coin that the
+     post has not proven (`unproven`, `#/token/<id>/unproven`), which the page says in one grey line. */
+  | { readonly screen: 'token'; readonly coinId: string; readonly unproven?: true }
   /* The Feed tab (see above), and the bell's list inside it. */
   | { readonly screen: 'alerts' }
   | { readonly screen: 'notifications' }
@@ -73,7 +74,11 @@ export function parseRoute(hash: string): Route {
     if (sub === 'coin' && coinId !== undefined) return { screen: 'coin', storyId: id, coinId };
     return FEED;
   }
-  if (head === 'token' && id !== undefined && sub === undefined) return { screen: 'token', coinId: id };
+  if (head === 'token' && id !== undefined && coinId === undefined) {
+    if (sub === undefined) return { screen: 'token', coinId: id };
+    if (sub === 'unproven') return { screen: 'token', coinId: id, unproven: true };
+    return FEED;
+  }
   if ((head === 'feed' || head === 'alerts') && sub === undefined) {
     if (id === undefined) return { screen: 'alerts' };
     if (id === 'settings') return { screen: 'alert-settings' };
@@ -120,7 +125,7 @@ export function hrefFor(route: Route): string {
     case 'coin':
       return `#/story/${enc(route.storyId)}/coin/${enc(route.coinId)}`;
     case 'token':
-      return `#/token/${enc(route.coinId)}`;
+      return `#/token/${enc(route.coinId)}${route.unproven === true ? '/unproven' : ''}`;
     case 'profile':
       return `#/u/${enc(route.key)}`;
     case 'follows':
