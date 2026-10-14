@@ -56,8 +56,12 @@ export function clearsReachBar(bar: ReachBar, readings: readonly ReachLevel[], p
   if (most >= r.fypMinReach * scale) return true;
   if (postedAtMs === null) return false;
   const short = scale !== 1;
-  const early = short ? { reach: r.shortVideoEarlyReach, windowMs: r.shortVideoEarlyWindowMs } : { reach: r.fypEarlyReach, windowMs: r.fypEarlyWindowMs };
-  const fast = short ? { perMinute: r.shortVideoFastReachPerMinute, windowMs: r.shortVideoFastWindowMs } : { perMinute: r.fypFastReachPerMinute, windowMs: r.fypFastWindowMs };
+  /* The short-video speed bar, when on, lowers that source's two growth paths (policy `rising.shortVideoSpeedBar`). */
+  const sb = r.shortVideoSpeedBar;
+  const shortEarly = sb.enabled ? sb.earlyReach : r.shortVideoEarlyReach;
+  const shortFast = sb.enabled ? sb.fastReachPerMinute : r.shortVideoFastReachPerMinute;
+  const early = short ? { reach: shortEarly, windowMs: r.shortVideoEarlyWindowMs } : { reach: r.fypEarlyReach, windowMs: r.fypEarlyWindowMs };
+  const fast = short ? { perMinute: shortFast, windowMs: r.shortVideoFastWindowMs } : { perMinute: r.fypFastReachPerMinute, windowMs: r.fypFastWindowMs };
   return read.some((x) => {
     const ageMs = x.atMs - postedAtMs;
     if (ageMs <= 0) return false;
