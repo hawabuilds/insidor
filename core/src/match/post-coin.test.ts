@@ -149,6 +149,26 @@ describe('matchPostCoin', () => {
     assert.equal(others.kind, 'unsure');
   });
 
+  it("★ is confident on the one coin the poster's profile names, launched in the window, on their last post before it or by its name", () => {
+    const other = { name: 'Zebra', ticker: 'ZEB' };
+    const last = matchPostCoin(post, [coin({ address: 'A', ...other, bioNamesAddress: true, lastPostBeforeLaunch: true }), coin({ address: 'B', bioNamesAddress: false })], BARS);
+    assert.equal(last.kind === 'confident' && last.because, 'posterBio');
+    assert.equal(last.kind === 'confident' && last.address, 'A');
+    const named = matchPostCoin(post, [coin({ address: 'A', bioNamesAddress: true, lastPostBeforeLaunch: false })], BARS);
+    assert.equal(named.kind === 'confident' && named.because, 'posterBio', 'not the last post, but the coin carries the subject\'s name');
+    const earlier = matchPostCoin(post, [coin({ address: 'A', ...other, bioNamesAddress: true, lastPostBeforeLaunch: false })], BARS);
+    assert.equal(earlier.kind, 'unsure', 'an earlier post of the window, unnamed: the profile proves nothing for it');
+  });
+
+  it("★ a profile-named coin outside the window, or two inside it, proves nothing — a serial creator's old coins never land on every post", () => {
+    const late = matchPostCoin(post, [coin({ address: 'A', bioNamesAddress: true, lastPostBeforeLaunch: true, launchedAt: (POSTED + 3 * 86_400_000) as Millis })], BARS);
+    assert.equal(late.kind, 'unsure');
+    const before = matchPostCoin(post, [coin({ address: 'A', bioNamesAddress: true, lastPostBeforeLaunch: true, launchedAt: (POSTED - 86_400_000) as Millis })], BARS);
+    assert.equal(before.kind, 'unsure');
+    const two = matchPostCoin(post, [coin({ address: 'A', bioNamesAddress: true, lastPostBeforeLaunch: true }), coin({ address: 'B', bioNamesAddress: true, lastPostBeforeLaunch: true })], BARS);
+    assert.equal(two.kind, 'unsure', 'a tie proves nothing');
+  });
+
   it('★ a likely coin is never confident, and an unknown adds nothing to the score', () => {
     const r = matchPostCoin(post, [coin({ address: 'A', pictureSimilarity: 0.9, launchedAt: (POSTED + 60_000) as Millis })], BARS);
     assert.equal(r.kind, 'unsure');

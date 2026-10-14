@@ -22,7 +22,13 @@
  *   (2) its picture is the post's — near-identical by the embedding, or within
  *       `sameHashDistance` bits by the hash — launched after the post inside the window, while
  *       every other candidate in the window had its picture compared;
- *   (3) the poster's own account posted its address under the post, and it launched after it.
+ *   (3) the poster's own account posted its address under the post, and it launched after it;
+ *   (4) the poster's own profile names its address (poster-bio.ts), it launched inside the timing
+ *       window after the post, and either this post is the poster's last we hold before the launch
+ *       or the coin's name matches the post's subject. A creator who launches a coin every few
+ *       days keeps the newest address in their profile: the window keeps an old post from taking a
+ *       new coin, and "the last post before the launch" keeps every post of the window's two days
+ *       from taking it at once. Two profile-named coins in the window are a tie.
  * Two candidates with the same proving fact are a tie, and a tie proves nothing.
  *
  * LIKELY: when nothing proves a coin, every candidate gets a score — the weighted sum of its
@@ -111,10 +117,14 @@ export interface CoinSide {
   readonly addressByOthers?: number | null;
   /** Buys in the hour after the post over the coin's usual hour; null when not measured. */
   readonly tradingJump?: number | null;
+  /** The poster's own profile, as any read of it showed it, names this coin's address; null when no profile was read. */
+  readonly bioNamesAddress?: boolean | null;
+  /** This post is the poster's last we hold before the coin's launch; null when not worked out. */
+  readonly lastPostBeforeLaunch?: boolean | null;
 }
 
 export type NameMatch = 'exact' | 'variant' | 'none';
-export type ProvenBy = 'links' | 'pictureAndTiming' | 'authorPostedAddress';
+export type ProvenBy = 'links' | 'pictureAndTiming' | 'authorPostedAddress' | 'posterBio';
 
 /** What we know about one coin against the post — facts, each null when not known — and its rank score. */
 export interface CoinEvidence {
@@ -138,6 +148,9 @@ export interface CoinEvidence {
   readonly before: boolean;
   readonly name: NameMatch;
   readonly tradingJump: number | null;
+  /** The poster's own profile names this coin's address; null when no profile was read. */
+  readonly bioNamesAddress: boolean | null;
+  readonly lastPostBeforeLaunch: boolean | null;
   readonly launchedAt: Millis | null;
   /** The weighted sum of the signals (internal: orders the list, never shown). */
   readonly score: number;
@@ -305,6 +318,8 @@ export function coinEvidence(post: PostSide, coin: CoinSide, bars: MatchBars): O
     before: after !== null && after < -bars.launchAllowanceMs,
     name: nameMatch(post.names, coin, bars, post.text ?? null),
     tradingJump: coin.tradingJump ?? null,
+    bioNamesAddress: coin.bioNamesAddress ?? null,
+    lastPostBeforeLaunch: coin.lastPostBeforeLaunch ?? null,
     launchedAt: coin.launchedAt,
   };
   return { ...e, score: scoreOf(signals(e, bars), bars.weights) };
@@ -365,6 +380,12 @@ export function matchPostCoin(post: PostSide, coins: readonly CoinSide[], bars: 
 
     const posted = only(possible.filter((e) => e.addressByAuthor === true && e.launchedAfterMs !== null));
     if (posted !== null) return proven(posted.address, 'authorPostedAddress');
+
+    /* (4) The profile: only a coin in the window, and only on the poster's last post before it or
+       one the coin is named for. Every profile-named coin in the window counts toward the tie. */
+    const profiled = possible.filter((e) => e.bioNamesAddress === true && e.inWindow);
+    const bio = only(profiled);
+    if (bio !== null && (bio.lastPostBeforeLaunch === true || bio.name !== 'none')) return proven(bio.address, 'posterBio');
   }
 
   const ranked = weighed.map(withShare).sort(byEvidence);

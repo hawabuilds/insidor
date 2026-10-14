@@ -128,8 +128,8 @@ function gap(ms: number): string {
 }
 
 /**
- * WHY A COIN IS THE POST'S, AS FACTS: "Links this post", "Same picture", "Launched 12m after".
- * Only facts that hold are said; an unknown is left out, never said as a "no". A coin launched
+ * WHY A COIN IS THE POST'S, AS FACTS: "Links this post", "Same picture", "The poster's bio names
+ * this coin" (the poster put its address in their own profile), "Launched 12m after". Only facts that hold are said; an unknown is left out, never said as a "no". A coin launched
  * before the post says so, since that is the one fact that rules it out. Never a measure of how sure.
  *
  * ★ "Coin for this story" (the owner, 2026-10-14): the owner confirmed this coin on another post
@@ -141,6 +141,7 @@ export function evidenceFacts(e: CoinEvidence): readonly string[] {
   if (e.linksPost === true) out.push('Links this post');
   else if (e.storyCoin === true) out.push('Coin for this story');
   if (e.samePicture === true) out.push('Same picture');
+  if (e.posterBio === true) out.push("The poster's bio names this coin");
   if (e.launchedAfterMs !== null) out.push(e.launchedAfterMs >= 0 ? `Launched ${gap(e.launchedAfterMs)} after` : `Launched ${gap(-e.launchedAfterMs)} before`);
   return out;
 }

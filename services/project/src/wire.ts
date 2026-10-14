@@ -176,7 +176,7 @@ export type WirePostCoinLink =
   | { readonly kind: 'unchecked' }
   /* The post's OWN coin, PROVEN by evidence (post-match.ts, core `matchPostCoin`): the one coin
      that links this post, or the one with its picture launched after it, or the one whose address
-     the poster's own account posted under it. A likely coin is never this: it is first in the
+     the poster's own account posted under it, or the one the poster's profile names. A likely coin is never this: it is first in the
      unsure list. The card says which facts held (`evidence`), never how sure we are. Post-only, like `unchecked`, so a narrative's
      `one` keeps meaning "the board's confident coin" and nothing else. */
   | { readonly kind: 'matched'; readonly coin: WireCoin; readonly evidence: WireCoinEvidence };
@@ -193,6 +193,9 @@ export interface WireCoinEvidence {
   /** The post's own account posted the coin's address under it (or in it); null when the replies
       were not read. Absent from rows written before 2026-10-13's coin-match signals. */
   readonly posterPostedAddress?: boolean | null;
+  /** The poster's own profile names the coin's address (0080): "The poster's bio names this coin".
+      Null when no profile of theirs was read; absent from rows written before 2026-10-14's profiles. */
+  readonly posterBioNamesCoin?: boolean | null;
   /** The owner checked this coin by hand and said it is the post's ("This is the coin", 0054):
       the card shows it as linking the post. Absent on every coin the evidence settled alone. */
   readonly ownerChecked?: true;
