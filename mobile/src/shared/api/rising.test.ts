@@ -90,3 +90,12 @@ test('the sample For You is newest first; Popular is most views first with unkno
   assert.deepEqual(known, [...known].sort((a, b) => b - a));
   assert.equal(popular.at(-1)?.reach.known, false);
 });
+
+test('★ a post written in another language carries its English and language; a broken one is dropped, never the feed', () => {
+  const t = decodeRisingPost({ ...POST, excerpt: 'o rato caiu', translation: { text: 'the rat fell', from: 'pt' } });
+  assert.deepEqual(t.translation, { text: 'the rat fell', from: 'pt' });
+  assert.equal(t.excerpt, 'o rato caiu');
+  assert.equal('translation' in decodeRisingPost(POST), false);
+  assert.equal('translation' in decodeRisingPost({ ...POST, translation: { text: '', from: 'pt' } }), false);
+  assert.equal('translation' in decodeRisingPost({ ...POST, translation: { text: 'x', from: 'Portuguese' } }), false);
+});

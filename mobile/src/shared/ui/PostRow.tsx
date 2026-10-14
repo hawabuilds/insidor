@@ -9,6 +9,10 @@
  * width; a card with media is unchanged. The picture is asked for at the card's size
  * (picture-size.ts), never the full posted size: a long feed decodes hundreds of them.
  *
+ * A post written in another language shows its English, with "Translated from <language>" and
+ * "Show original" under it (shared/ui/Translated.tsx); a tap there swaps the words and never opens
+ * the sheet.
+ *
  * ★ A TAP ON THE CARD OPENS THE POST SHEET (features/post-sheet): the card, its title, Buy and View
  * coins. Two buttons go straight to where they say: Create coin opens the create flow from the
  * post, and See N coins opens the sheet on Choose coin, with its quick buy. The button's WORDS come
@@ -47,6 +51,7 @@ import { CoinLogo } from './CoinLogo.tsx';
 import { usePosterPic } from './usePosterPic.ts';
 import { Sparkline } from './Sparkline.tsx';
 import { Thumb } from './Thumb.tsx';
+import { TranslatedLine, useShownWords } from './Translated.tsx';
 import { cardPictureUrl } from './picture-size.ts';
 import { Value } from './Value.tsx';
 import styles from './row.module.css';
@@ -75,6 +80,8 @@ export function PostRow({ post, now, handlers, extra = null, watch = null }: { p
   const cap = useCoinCap(own?.address ?? '', own?.marketCapUsd ?? NO_COIN, false, own?.priceUsd ?? null);
   const coins = own !== null && (post.coins.kind === 'one' || post.coins.kind === 'matched') ? { ...post.coins, coin: { ...own, marketCapUsd: cap } } : post.coins;
   const status = postCoinStatus(coins);
+  /* The English when the post was written in another language, with its line (Translated.tsx). */
+  const words = useShownWords(post);
 
   return (
     <article className={styles['card']} onClick={handlers.open}>
@@ -102,8 +109,9 @@ export function PostRow({ post, now, handlers, extra = null, watch = null }: { p
                 handlers.open();
               }}
             >
-              {post.excerpt}
+              {words.text}
             </a>
+            <TranslatedLine line={words.line} compact className={styles['translatedLine']} />
             <span className={styles['spark']}>
               <Sparkline points={post.spark.points} windowMs={post.spark.windowMs} width={44} label={`Views over time for this post by ${post.authorLabel}`} />
             </span>

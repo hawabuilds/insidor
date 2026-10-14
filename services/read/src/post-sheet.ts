@@ -34,6 +34,7 @@ import type { CoinQuote } from '@insidor/market-dexscreener';
 
 import type { Logger } from './log.ts';
 import type { Db, Row } from './queries.ts';
+import { withTranslations } from './translations.ts';
 
 /** The post on whichever feed holds it, For You first. */
 export const SHEET_POST_SQL = `
@@ -193,7 +194,8 @@ export function createPostSheet(deps: PostSheetDeps) {
   async function build(itemId: string): Promise<SheetReply> {
     const row = (await deps.db.query(SHEET_POST_SQL, [itemId]))[0] ?? (await memberRow(itemId));
     if (row === undefined) return json(404, { error: 'not found' });
-    const payload = rec(row['payload']);
+    /* The post's English when it was written in another language (translations.ts, 0081). */
+    const payload = rec((await withTranslations(deps.db, [row['payload']]))[0]);
     const storyRow = (await deps.db.query(SHEET_STORY_SQL, [itemId]))[0];
     const storyId = str(payload['storyId']) ?? str(storyRow?.['story_id']);
 

@@ -339,3 +339,42 @@
   box-shadow: inset 0 0 0 1px var(--border-subtle), 0 6px 18px -8px var(--brand-glow);
 }
 
+
+/* ── a translated post's line (Translated.tsx) ─────────────────────── */
+
+/* "Translated from Portuguese  Show original": small and grey under the words, like the text
+   source's own; the toggle is the one tappable part, in the link colour. */
+.translated {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-3);
+}
+
+/* On a card: one line, the whole of it the tap, cut rather than wrapped. */
+.translatedCompact {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.translatedToggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--brand-400);
+  cursor: pointer;
+}

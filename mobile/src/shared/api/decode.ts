@@ -26,7 +26,7 @@ import { instantFrom, measuredFrom } from '../format/measure.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
-import type { OlderCoin, RisingFeed, RisingPage, RisingPost } from './wire/rising.ts';
+import type { OlderCoin, PostTranslation, RisingFeed, RisingPage, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -527,7 +527,22 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     coins,
     /* Absent from a row projected before the field existed: no older coin is said to be running. */
     runningOlder: o.runningOlder === undefined || o.runningOlder === null ? [] : arr(o.runningOlder, `${path}.runningOlder`).map((c, i) => decodeOlderCoin(c, `${path}.runningOlder[${i}]`)),
+    ...decodeTranslation(o.translation, `${path}.translation`),
   };
+}
+
+/**
+ * The read service's English for a post written in another language. Absent or null: none, and the
+ * card shows its own words. One with no words or no readable language code is dropped, never shown
+ * and never a reason to refuse the whole feed: the original words are always there to fall back on.
+ */
+function decodeTranslation(raw: unknown, path: string): { translation?: PostTranslation } {
+  if (raw === undefined || raw === null) return {};
+  const o = obj(raw, path);
+  const text = o['text'];
+  const from = o['from'];
+  if (typeof text !== 'string' || text.trim() === '' || typeof from !== 'string' || !/^[a-z]{2,3}$/.test(from)) return {};
+  return { translation: { text, from } };
 }
 
 /** One older coin trading since a post: a number we were not sent is a dash, never zero. */

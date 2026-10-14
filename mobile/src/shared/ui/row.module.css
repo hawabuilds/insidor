@@ -32,6 +32,7 @@
   grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas:
     'title spark views'
+    'trans trans views'
     'byline byline views';
   column-gap: 8px;
   align-items: start;
@@ -155,6 +156,13 @@
 
 /* A single post's own words, in the title's place. Up to three lines and then cut: a post is
    read by its text, and one truncated line of somebody else's sentence says nothing. */
+/* A translated post's "Translated from …" line, under its words across the words' and the
+   sparkline's width (Translated.tsx). The row is empty, and takes no height, on every other card. */
+.translatedLine {
+  grid-area: trans;
+  min-width: 0;
+}
+
 .postText {
   grid-area: title;
   min-width: 0;

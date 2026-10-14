@@ -25,6 +25,7 @@
 import { coinAbout, type AboutDeps } from './coin-about.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
 import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, feedPage, parseCursor } from './feed-page.ts';
+import { withTranslations } from './translations.ts';
 import { errorText, type Logger } from './log.ts';
 import type { PostSheet } from './post-sheet.ts';
 import type { Search } from './search.ts';
@@ -258,7 +259,8 @@ async function rising(feedId: string, deps: Deps): Promise<Reply> {
   if (view === undefined) return NOT_FOUND;
 
   const rows = await deps.db.query(RISING_ROWS_SQL, [feedId]);
-  return json(200, { tick: tickNumber(view['tick']), posts: rows.map(payloadOf) });
+  /* The English of each post written in another language (translations.ts, 0081); none, as before. */
+  return json(200, { tick: tickNumber(view['tick']), posts: await withTranslations(deps.db, rows.map(payloadOf)) });
 }
 
 /**
@@ -285,7 +287,8 @@ async function risingOlder(feedId: string, rawUrl: string, deps: Deps): Promise<
   if (cursor === null) return BAD_REQUEST;
   try {
     const rows = await deps.db.query(FEED_PAGE_SQL, [feedId, new Date(cursor.atMs).toISOString(), cursor.id, FEED_PAGE_SIZE]);
-    return json(200, feedPage(rows, Date.now()));
+    const page = feedPage(rows, Date.now());
+    return json(200, { ...page, posts: await withTranslations(deps.db, page.posts) });
   } catch (e) {
     if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return NOT_FOUND;
     throw e;
