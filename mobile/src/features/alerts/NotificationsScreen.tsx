@@ -10,6 +10,14 @@
  * their tint while being read; opening it marks everything read. The gear opens Feed settings in a
  * sheet over the list, and `#/feed/settings` opens the list with the sheet already up.
  *
+ * ★ BOTH CAN ALWAYS BE LEFT, IN THE HOME-SCREEN APP TOO, where there is no browser back. The list
+ * has a Back at its top left (shared/nav.ts: to where you came from, or the Feed when nothing of
+ * ours is under it, as after a notification opened the app here). `#/feed/settings` is rewritten
+ * to `#/feed/notifications` the moment it opens, before the sheet adds its history entry, so
+ * closing the sheet is only closing it. It used to close by `location.replace`, which on iPhone
+ * kept the sheet's entry state on the new address; the sheet then stepped history back onto
+ * `#/feed/settings` and opened itself again, so Feed settings could not be left (2026-10-14).
+ *
  * Twenty at a time, with "Load more" under the last (Trador's Feed paging; its own Notifications
  * stop at forty). Rows on later pages are tinted by the same line: the time the list was last
  * marked read, as the first page told it, so marking it read on opening does not untint page two.
@@ -19,14 +27,15 @@
  * their profile.
  */
 
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 
 import { follow, markAlertsSeen, type Alert } from '../../shared/api/people.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { useNow } from '../../shared/hooks.ts';
-import { hrefFor } from '../../shared/route.ts';
+import { goBack, replaceTo } from '../../shared/nav.ts';
+import { parseRoute } from '../../shared/route.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { GearIcon } from '../../shared/ui/icons.tsx';
+import { BackIcon, GearIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { SettingsSheet } from './AlertSettings.tsx';
 import { linkOf } from './AlertsScreen.tsx';
@@ -43,7 +52,13 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
   const now = useNow();
   const { list, refresh, loadMore, loadingMore } = useAlertList(ASK, 'notifications');
   const [sheet, setSheet] = useState(settings);
-  useEffect(() => setSheet(settings), [settings]);
+  /* Before any effect (the sheet's history entry is added in one): the address becomes the list's. */
+  useLayoutEffect(() => {
+    if (!settings) return;
+    setSheet(true);
+    /* Once: development runs this twice, and the second must not touch the sheet's own entry. */
+    if (parseRoute(window.location.hash).screen === 'alert-settings') replaceTo({ screen: 'notifications' });
+  }, [settings]);
   const { pull, refreshing } = usePullToRefresh(refresh);
 
   /* Unread as it stood when the list first arrived: marking it read does not untint what is on
@@ -58,10 +73,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
     void markAlertsSeen().then(onSeen, () => undefined);
   }, [list.state, onSeen]);
 
-  const closeSheet = () => {
-    setSheet(false);
-    if (settings) window.location.replace(hrefFor({ screen: 'notifications' }));
-  };
+  const closeSheet = () => setSheet(false);
   const items = list.state === 'ready' ? notifications(list.value.alerts) : [];
 
   return (
@@ -70,7 +82,10 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
       <section className={styles['page']} style={pullStyle(pull)}>
         <header className={styles['sticky']}>
           <div className={`${styles['titleRow']} ${styles['titleOnly']}`}>
-            <h1 className={styles['title']}>Notifications</h1>
+            <button type="button" className={`${styles['iconButton']} ${styles['backButton']}`} aria-label="Back" onClick={() => goBack({ screen: 'alerts' })}>
+              <BackIcon size={22} />
+            </button>
+            <h1 className={`${styles['title']} ${styles['titleGrow']}`}>Notifications</h1>
             <button type="button" className={styles['iconButton']} aria-label="Feed settings" onClick={() => setSheet(true)}>
               <GearIcon size={19} />
             </button>

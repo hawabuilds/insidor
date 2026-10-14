@@ -7,12 +7,13 @@ import { BackIcon } from '../../shared/ui/icons.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
 import { RankTag } from './RankBadge.tsx';
 import styles from './people.module.css';
+import { goBack } from '../../shared/nav.ts';
 
 export function FollowList({ profileKey, which }: { profileKey: string; which: 'followers' | 'following' }) {
   const [loaded] = useLoad(`follows:${profileKey}:${which}`, () => fetchFollows(profileKey, which));
   return (
     <section className={styles['screen']}>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
+      <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'profile', key: profileKey })}>
         <BackIcon size={22} />
       </button>
       <h1 className={styles['title']}>{which === 'followers' ? 'Followers' : 'Following'}</h1>

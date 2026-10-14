@@ -58,11 +58,17 @@ function release(): void {
   });
 }
 
-/** After layers change: take off history entries no open layer owns any more. */
-function settle(): void {
+/**
+ * After layers change: take off history entries no open layer owns any more. Only where the layer
+ * left us: if closing it went to another screen and the browser carried the layer's number onto
+ * that screen's entry (iPhone Safari does, for `location.replace('#…')`), stepping back would undo
+ * the move and reopen what was just closed, so the number is wiped from the entry instead.
+ */
+function settle(at: string): void {
   setTimeout(() => {
     const extra = depthNow() - stack.length;
-    if (extra > 0) history.go(-extra);
+    if (extra > 0 && location.href === at) history.go(-extra);
+    else if (extra > 0) history.replaceState({ ...(history.state as object | null), insidorLayer: stack.length }, '');
     release();
   }, 0);
 }
@@ -105,12 +111,13 @@ export function useDismiss(onClose: () => void, opts: { readonly escape?: boolea
     if (stack.length === 0) hold();
     /* Remounted in place (development's double mount): the entry is already there. */
     if (depthNow() < depth) history.pushState({ ...(history.state as object | null), insidorLayer: depth }, '');
+    const href = location.href;
     const layer: Layer = { depth, close: () => close.current(), escape: () => escape.current };
     stack.push(layer);
     return () => {
       const at = stack.indexOf(layer);
       if (at >= 0) stack.splice(at, 1);
-      settle();
+      settle(href);
     };
   }, []);
 }

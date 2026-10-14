@@ -21,6 +21,7 @@ import { EmbeddedWalletProvider, embeddedWallet } from '@insidor/wallet-embedded
 
 import { App } from './App.tsx';
 import { listenForOpens, settleLaunch } from './features/alerts/push-open.ts';
+import { trackHistory } from './shared/nav.ts';
 import { toBase64 } from './features/trade/order-flow.ts';
 import { sendSigned } from './shared/api/index.ts';
 import { WalletProvider } from './shared/wallet.tsx';
@@ -32,6 +33,8 @@ import './shared/ui/tokens.css';
 /* A tapped notification: its screen, with For You under it (features/alerts/push-open.ts). Before the
    first frame, so the router reads the settled address. */
 settleLaunch();
+/* Every history entry numbered from here, so a Back with nothing of ours under it still leads somewhere (shared/nav.ts). */
+trackHistory();
 listenForOpens();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

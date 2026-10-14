@@ -15,6 +15,7 @@ import { BackIcon, ExternalIcon } from '../../shared/ui/icons.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
 import styles from './portfolio.module.css';
 import box from './wallet.module.css';
+import { goBack } from '../../shared/nav.ts';
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
@@ -37,7 +38,7 @@ export function WalletsScreen() {
 
   return (
     <section className={box['page']}>
-      <button type="button" className={box['back']} aria-label="Back" onClick={() => window.history.back()}>
+      <button type="button" className={box['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
         <BackIcon size={22} />
       </button>
       <h1 className={box['title']}>Your wallets</h1>

@@ -11,6 +11,7 @@ import { Avatar } from '../portfolio/Avatar.tsx';
 import { RankBadge } from './RankBadge.tsx';
 import { RANK_NAME } from './rank.ts';
 import styles from './people.module.css';
+import { goBack } from '../../shared/nav.ts';
 
 const endsOn = (ms: number) => new Date(ms - 1).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 
@@ -18,7 +19,7 @@ export function Leaderboard() {
   const [loaded] = useLoad('leaderboard', () => fetchLeaderboard());
   return (
     <section className={styles['screen']}>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
+      <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
         <BackIcon size={22} />
       </button>
       <h1 className={styles['title']}>Leaderboard</h1>

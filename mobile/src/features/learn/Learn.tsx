@@ -12,6 +12,7 @@
 
 import { BackIcon } from '../../shared/ui/icons.tsx';
 import styles from './learn.module.css';
+import { goBack } from '../../shared/nav.ts';
 
 const PARTS: readonly { readonly title: string; readonly body: readonly string[] }[] = [
   {
@@ -47,7 +48,7 @@ const PARTS: readonly { readonly title: string; readonly body: readonly string[]
 export function Learn() {
   return (
     <section className={styles['screen']}>
-      <button type="button" className={styles['back']} aria-label="Back" onClick={() => window.history.back()}>
+      <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
         <BackIcon size={22} />
       </button>
       <h1 className={styles['title']}>How Insidor works</h1>
