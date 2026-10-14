@@ -32,5 +32,9 @@ create table internal.post_embedding (
   primary key (item_id, space)
 );
 
+-- Kept for KEEP_DAYS (store repo post-embeddings.ts, 3) and pruned by the runner's own writes: about
+-- 10,000 posts are judged a day at ~4 KB each, and only the feed's one-day window is ever compared.
+create index post_embedding_embedded_at_idx on internal.post_embedding (embedded_at);
+
 comment on table internal.post_embedding is
   'Each judged post''s words-and-picture vector (the precedents'' own), kept so the projector can match a feed post to a story the owner confirmed a coin for. Never served.';
