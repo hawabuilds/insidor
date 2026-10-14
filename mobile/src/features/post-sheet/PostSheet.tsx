@@ -41,6 +41,7 @@ import { ChevronIcon } from '../../shared/ui/icons.tsx';
 import { WatchStar } from '../../shared/ui/WatchStar.tsx';
 import { PlatformBadge } from '../../shared/ui/PlatformMark.tsx';
 import { Sheet, SheetBody, SheetFoot, SheetHead } from '../../shared/ui/Sheet.tsx';
+import { TranslatedLine, useShownWords } from '../../shared/ui/Translated.tsx';
 import { usePosterPic } from '../../shared/ui/usePosterPic.ts';
 import { Value } from '../../shared/ui/Value.tsx';
 import { CreateCoin } from '../create/CreateCoin.tsx';
@@ -189,6 +190,8 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   const post = data.post;
   const platform = platformOf(post.sourceLabel);
   const [mediaGone, setMediaGone] = useState(false);
+  /* The English when the post was written in another language, with its line (shared/ui/Translated.tsx). */
+  const words = useShownWords(post);
   const readings = data.views.length > 0 ? data.views : post.spark.points.map((p) => ({ atMs: p.atMs, value: p.value }));
   const gain = recentGain(readings);
   const firstCoin = firstCoinAfter(post.postedAt, data.coins.map((c) => c.launchedAt));
@@ -237,7 +240,12 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
         <div className={styles['scroll']}>
           {post.excerpt !== '' || media !== null ? (
             <section className={styles['postCard']}>
-              {post.excerpt !== '' ? <PostText text={post.excerpt} lines={media !== null ? TEXT_LINES.withMedia : TEXT_LINES.alone} /> : null}
+              {post.excerpt !== '' ? (
+                <div>
+                  <PostText text={words.text} lines={media !== null ? TEXT_LINES.withMedia : TEXT_LINES.alone} />
+                  <TranslatedLine line={words.line} className={styles['wordsLine']} />
+                </div>
+              ) : null}
               {media !== null ? <PostMedia media={media} height={mediaHeight(media.width, media.height)} onGone={() => setMediaGone(true)} postUrl={post.permalink} sourceLabel={post.sourceLabel} tiktokId={platform === 'tiktok' ? tiktokVideoId(post.id) : null} /> : null}
             </section>
           ) : null}

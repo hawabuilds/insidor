@@ -48,6 +48,18 @@ export interface RisingPost {
   readonly coins: PostCoinLink;
   /** Older coins named for the subject, trading more since the post; busiest first. */
   readonly runningOlder: readonly OlderCoin[];
+  /**
+   * The post's words in English, when it was written in another language: shown in place of
+   * `excerpt` with "Translated from <language>" under it, the original one tap away. Absent for a
+   * post in English, one not translated yet, and from a server without translations.
+   */
+  readonly translation?: PostTranslation;
+}
+
+/** A post's words in English and the language they were written in (a two- or three-letter code). */
+export interface PostTranslation {
+  readonly text: string;
+  readonly from: string;
 }
 
 /** An older coin whose trading jumped since a post. Facts about its market, nothing about us. */

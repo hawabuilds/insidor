@@ -153,6 +153,11 @@
   overflow-wrap: anywhere;
 }
 
+/* A translated post's "Translated from …" line, lined up with the words above it. */
+.wordsLine {
+  margin: 3px 2px 0;
+}
+
 .textCut {
   cursor: pointer;
 }

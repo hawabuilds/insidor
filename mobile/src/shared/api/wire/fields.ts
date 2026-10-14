@@ -83,6 +83,7 @@ export const RISING_POST_FIELDS = [
   'runningOlder',
   'authorPictureUrl',
   'authorPictureFile',
+  'translation',
 ] as const;
 
 /** An older coin trading since a post (`RisingPost.runningOlder`): facts, and an address to open. */
