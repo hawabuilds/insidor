@@ -107,6 +107,7 @@ import { precedentSource } from './work/precedents.ts';
 import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
 import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
 import { refillMemory, refillPosts, type RefillResult } from './work/post-refill.ts';
+import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
 import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type UniverseDeps } from './work/universe.ts';
@@ -563,6 +564,8 @@ export async function withRuntime<T>(
       const judge = buildJudge(cfg, meter, policy, log);
       /* The video and author fill-in's tries and day count, kept across passes for this process (work/post-refill.ts). */
       const refills = refillMemory();
+      /* Each poster's last profile re-read and the day's count (work/bio-refresh.ts). */
+      const bioReads = bioRefreshMemory();
       /* The per-post score's judge: the same model and prompt, with a smaller answer budget
          so ten short answers are not reserved at the cost of two long ones. */
       /* ★ WITH THE OWNER'S LEARNED EXAMPLES: the latest block the re-tune APPLIED (0056), read at
@@ -960,8 +963,10 @@ export async function withRuntime<T>(
               log: log.child({ step: 'crypto-attention' }),
               now: () => Date.now() as Millis,
             }),
-          refillPosts: () =>
-            refillPosts(
+          /* The poster-profile re-read rides the same half-minute loop after it (work/bio-refresh.ts):
+             off until Policy.postCoin.bio.refreshOn, and then only every refreshEveryMs per poster. */
+          refillPosts: async () => {
+            const r = await refillPosts(
               {
                 platforms,
                 refill: new PgPostRefillRepo(db),
@@ -973,7 +978,13 @@ export async function withRuntime<T>(
                 now: () => Date.now() as Millis,
               },
               refills,
-            ),
+            );
+            const bios = await refreshBios(
+              { db, platforms, authors: repos.authors, meter, mode: cfg.spend.kind, policy, log: log.child({ step: 'bio-refresh' }), now: () => Date.now() as Millis },
+              bioReads,
+            );
+            return { ...r, due: r.due + bios.due, authors: r.authors + bios.read, wouldSpendUsd: r.wouldSpendUsd + bios.wouldSpendUsd, spentUsd: r.spentUsd + bios.spentUsd };
+          },
         }),
       };
     });

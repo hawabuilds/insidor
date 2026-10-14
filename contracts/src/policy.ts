@@ -1313,6 +1313,27 @@ export interface PostCoinPolicy {
    * much of its words with the post links it.
    */
   readonly list: { readonly graceBeforeMs: number; readonly quietAfterMs: number; readonly maxCoins: number; readonly descriptionShare: number };
+  /**
+   * ★ THE POSTER'S PROFILE, READ AGAIN (the owner, 2026-10-14: "will it update if ca is added later
+   * to bio"). Every read of a post stores its poster's profile for free; this re-reads one post per
+   * poster of a For You, Popular or watched post, for `refreshForMs` after the post, at most once
+   * every `refreshEveryMs` (services/runner/src/work/bio-refresh.ts), so an address the creator adds
+   * after the launch proves the coin (core match/post-coin.ts (4)) and the push goes. Only on a
+   * source whose re-read quotes at most `refreshMaxUsdPerPost` a post. Off until the owner turns it
+   * on (`refreshOn`): it is a paid read on the live posts line.
+   *
+   * From the owner's eight missed posts (2026-10-14): seven coins launched 0.4 to 46 hours after
+   * their post, so 48 hours (the match window) plus 12 for the creator to add the address; the one
+   * profile that carried it was read 3.6 hours after its launch, so every 2 hours.
+   */
+  readonly bio: {
+    readonly refreshOn: boolean;
+    readonly refreshForMs: number;
+    readonly refreshEveryMs: number;
+    readonly refreshMaxUsdPerPost: number;
+    readonly refreshPerPass: number;
+    readonly refreshPerDay: number;
+  };
 }
 
 export interface PostCoinWeights {
@@ -3040,6 +3061,10 @@ const POLICY_V1: Policy = {
        15.7 (4 of 16 now say No coin yet). A coin of an ongoing story launched days before (Altai,
        HomeView) stays because the venue still quotes it; 1 h or 6 h of grace changed nothing. */
     list: { graceBeforeMs: 10_800_000, quietAfterMs: 86_400_000, maxCoins: 10, descriptionShare: 0.5 },
+    /* Off (a paid read). 60 hours after the post, every 2 hours, on a source whose re-read is at most
+       a tenth of a cent a post: the text source's ($0.00015). The short-video source's is $0.003 a post
+       plus $0.001 a run: raise the bar to 0.005 to include it. */
+    bio: { refreshOn: false, refreshForMs: 216_000_000, refreshEveryMs: 7_200_000, refreshMaxUsdPerPost: 0.001, refreshPerPass: 100, refreshPerDay: 6_000 },
     weights: { base: -7.232, linksPost: 1.175, linksAccount: -0.218, picture: 0.825, hash: 0.495, description: 0.205, authorAddress: 0, othersAddress: 0, timing: 2.134, nameExact: 2.768, nameVariant: -0.46, tradingJump: 0 },
   },
 
