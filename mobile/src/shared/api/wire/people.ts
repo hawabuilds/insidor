@@ -72,9 +72,11 @@ export interface Alert {
   readonly coin?: string | null;
   /** A follow's follower, and whether you already follow them back; null or absent on other rows. */
   readonly actor?: { readonly userId: string; readonly handle: string | null; readonly name: string | null; readonly iFollow: boolean } | null;
+  /** Sent to this person's phone as a push: then it is listed in Notifications too, whatever its kind. Absent from an older service. */
+  readonly pushed?: boolean;
 }
 
-export type AlertSwitch = 'follows' | 'replies' | 'useful' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins';
+export type AlertSwitch = 'follows' | 'replies' | 'useful' | 'holdings' | 'watchlist' | 'graduations' | 'rising' | 'narratives' | 'coins' | 'fypCoins' | 'proven' | 'storyCoins' | 'watchedPosts';
 export interface AlertPrefs {
   readonly muted: boolean;
   readonly on: Readonly<Record<AlertSwitch, boolean>>;
@@ -88,6 +90,14 @@ export interface AlertSettings {
   readonly prefs: AlertPrefs;
   readonly multiplesOffered: readonly number[];
   readonly maxPerHour: number;
-  readonly push: { readonly on: boolean; readonly configured: boolean; readonly publicKey: string | null; readonly devices: number };
+  readonly push: {
+    readonly on: boolean;
+    readonly configured: boolean;
+    readonly publicKey: string | null;
+    /** Devices saved for this person on the server. */
+    readonly devices: number;
+    /** What the push service said to the last push to one of them, and its status code; null before any, or from an older service. */
+    readonly last?: { readonly result: 'taken' | 'refused' | 'no-answer'; readonly status: number; readonly at: number } | null;
+  };
 }
 

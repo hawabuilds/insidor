@@ -54,6 +54,10 @@ test("Trador's split: the Feed is what is happening, the bell's list is what hap
   assert.deepEqual(ids(feedTab(items, 'watching', { starred: ['s1'], window: 'week', now })), [3, 4], 'news about a starred narrative, and every matched coin');
   assert.deepEqual(ids(notifications(items)), [5, 6]);
   assert.equal(bellCount(items), 1, 'the bell counts unread notifications only');
+  const pushed = [...items, { id: 7, kind: 'rising_post', href: '/#/post/x%3A1', at: now, unread: true, pushed: true }];
+  assert.deepEqual(ids(notifications(pushed)), [5, 6, 7], '★ a New on FYP post that reached the phone is in Notifications too');
+  assert.equal(bellCount(pushed), 2, 'and counted on the bell');
+  assert.ok(ids(feedTab(pushed, 'rising', { starred: [], window: 'all', now })).includes(7), 'and still on the Feed');
   assert.equal(storyOf('/#/story/a%2Fb'), 'a/b');
   assert.equal(storyOf('/#/token/x'), null);
   assert.deepEqual(withTicker('$FERRY is up 5x since you bought', 'FERRY'), ['', '$FERRY', ' is up 5x since you bought']);

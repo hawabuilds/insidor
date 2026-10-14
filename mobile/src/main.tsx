@@ -20,6 +20,7 @@ import { createRoot } from 'react-dom/client';
 import { EmbeddedWalletProvider, embeddedWallet } from '@insidor/wallet-embedded';
 
 import { App } from './App.tsx';
+import { listenForOpens, settleLaunch } from './features/alerts/push-open.ts';
 import { toBase64 } from './features/trade/order-flow.ts';
 import { sendSigned } from './shared/api/index.ts';
 import { WalletProvider } from './shared/wallet.tsx';
@@ -28,6 +29,11 @@ import './shared/ui/tokens.css';
 /* The service worker is registered in production builds only. Registering is not asking —
    it shows no prompt — but in dev it would sit between Vite and the page and serve a stale
    shell after every edit. See public/sw.js for what it does and, mostly, what it refuses to. */
+/* A tapped notification: its screen, with For You under it (features/alerts/push-open.ts). Before the
+   first frame, so the router reads the settled address. */
+settleLaunch();
+listenForOpens();
+
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error: unknown) => {
