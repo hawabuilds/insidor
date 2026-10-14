@@ -207,8 +207,16 @@ export interface TrackPolicy {
    * $1.80 — an ask of 20 at $0.101 every 81 minutes. Re-reads have the other $1.20: 48 runs a day
    * (one every `paidRunEveryMinutes`) × ($0.001 + 8 × $0.003) = $1.20. So 8, and a slower post
    * waits for a later run when young fast ones fill one.
+   * ★ 10 SINCE 2026-10-14 (the owner approved up to $1 a day more on the scraping line for it, which
+   * is now $4): the two places beyond `paidReadMaxSlowPosts` go only to young videos growing fast.
+   * Worst case 48 × ($0.001 + 10 × $0.003) = $1.49 a day, inside the re-reads' $1.60.
    */
   readonly paidReadMaxPosts: number;
+  /**
+   * The most of a run's places that posts other than the young fast ones may take: the 8 a run held
+   * before 2026-10-14, so the extra places are for videos under `rising.fypMaxAgeMs` that are climbing.
+   */
+  readonly paidReadMaxSlowPosts: number;
   /**
    * ★ A YOUNG SHORT VIDEO GROWING AT LEAST THIS MANY VIEWS A MINUTE IS RE-READ ON EVERY RUN, while
    * it is inside `rising.fypMaxAgeMs` — so the growth paths get the second and third readings
@@ -222,6 +230,10 @@ export interface TrackPolicy {
    * against 8 re-read places every half hour, and the growth path they are re-read for needs
    * 1,500 a minute (`rising.shortVideoFastReachPerMinute`). At 500, 3 of 58 (1,821, 930 and 707
    * a minute; about 6 a run). Fastest first, so the ones that can clear the path are read first.
+   * ★ 250 AGAIN FROM 2026-10-14, with two more places a run for them: of 328 videos first read
+   * under two hours old on 2026-10-13, 2.7% were at 500 a minute and 5.8% at 200, and the two
+   * that went on past 150k views were at 564 and 1,240 on their first reading. Re-read from 250,
+   * a video on its way to the growth paths gets the readings it needs.
    */
   readonly paidFastMinReachPerMinute: number;
 
@@ -1027,8 +1039,17 @@ export interface FeedPolicy {
    * `budgetShare` of the $3 line ($1.80) spaces asks 44 minutes apart: 33 asks a day, each of the
    * 14 words searched every 2.6 hours, and 83 to 117 new videos an ask as measured (some words come
    * back short or empty). More words an ask is the same money in fewer, larger asks.
+   * ★ 2 FROM 2026-10-14, with `watchAskEveryMs` at 15 minutes: 96 asks a day of 2 words, each of
+   * the 8 words searched every hour. Measured at $0.0099 a word's run, $1.90 a day against $1.54.
    */
   readonly watchWordsPerAsk: number;
+  /**
+   * ★ HOW OFTEN THE WATCH WORDS ARE ASKED, when set: every this many milliseconds, in place of the
+   * spacing derived from `budgetShare` of the line (discover.ts `watchEveryMs`). The meter still
+   * checks every ask against the line. Null keeps the derived spacing. The owner asked for every 15
+   * minutes on 2026-10-14 and approved up to $1 a day more on the scraping line for it.
+   */
+  readonly watchAskEveryMs: number | null;
   /**
    * The oldest a watch-list post may be and still be judged and shown. The short-video search is
    * asked for its most-liked videos of the past day; anything older the vendor sends anyway is
@@ -2475,8 +2496,9 @@ const POLICY_V1: Policy = {
     flatReadsToDemote: 3,
     paidReadMinMinutes: 180,
     paidRunEveryMinutes: 30,
-    paidReadMaxPosts: 8,
-    paidFastMinReachPerMinute: 500,
+    paidReadMaxPosts: 10,
+    paidReadMaxSlowPosts: 8,
+    paidFastMinReachPerMinute: 250,
 
     lifecycleMargin: 0.1,
     /* 2 / 4 / 6. The ordering is the cost of being wrong on each edge, and the edges
@@ -2780,7 +2802,7 @@ const POLICY_V1: Policy = {
     /* The owner's watch words, chosen 2026-10-14 by what the newest-first search returns for each
        (every run from 17:30 UTC on 2026-10-13, videos a run, median age, under two hours a run):
        cute 25.8, 1.3 h, 23.7; meme 18.8, 1.6 h, 15.3; dog 25.6, 2.0 h, 13.6; pet 22.3, 2.0 h, 12.2;
-       memes 8.7, 2.0 h, 4.3; memecoin 22.3, 10.4 h, 3.5; solana 22.3, 8.1 h, 1.5; crypto 26.2, 10.7 h,
+       memes 8.7, 2.0 h, 4.3; memecoin 22.3, 10.4 h, 3.5; solana 22.3, 8.1 h, 1.5; crypto 26.2, 10.7 h, // vocab-allow: solana  — a watch word the owner chose, not a chain this code knows
        1.2. Dropped, because the search hands back one to nine stale videos for them: fyp 1.4 a run,
        cat 0.6, trend 6.8 (median 6 h), funny 9.5 (4.8 h), viral 6.2 (3.9 h), animals 7.0 (4.8 h).
        Tried the same night and not added, for the same reason: brainrot 2 videos (22 h old),
@@ -2791,7 +2813,8 @@ const POLICY_V1: Policy = {
        under 24 hours old, the top five at 1.5M to 3M views, for $0.101 once its charges settled
        ($0.071 was read before they had). Asks now alternate newest-first and most-liked. */
     hashtagResults: 20,
-    watchWordsPerAsk: 4,
+    watchWordsPerAsk: 2,
+    watchAskEveryMs: 900_000, // fifteen minutes
     watchMaxAgeMs: 86_400_000, // a day
     pageLimit: 20,
     maxPagesPerLane: 3,
@@ -3182,7 +3205,9 @@ const POLICY_V1: Policy = {
     softStopFraction: 0.97,
     vendorLinesStop: false,
     lineBuffer: 1.25,
-    supplierLines: { posts: 10, judge: 10.5, video: 2, actors: 1, embeddings: 2 },
+    /* actors $2 from 2026-10-14 (was $1): the owner approved up to $1 a day more on the scraping line
+       for short-video searches every 15 minutes and more re-reads of young videos. */
+    supplierLines: { posts: 10, judge: 10.5, video: 2, actors: 2, embeddings: 2 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured

@@ -88,3 +88,10 @@ test('★ the cap and the run spacing keep re-reads inside the share of the line
   const line = P.budget.supplierLines.video + P.budget.supplierLines.actors;
   assert.ok(worstUsd <= line * (1 - P.feed.budgetShare) + 1e-9, `re-reads could cost $${worstUsd} a day`);
 });
+
+test('★ the places beyond the slow cap are for young fast videos only', () => {
+  const slow = Array.from({ length: P.track.paidReadMaxPosts + 2 }, (_, i) => video(200 + i, 1_000, P.track.paidReadMinMinutes + i, 100_000));
+  assert.equal(pick(slow).length, P.track.paidReadMaxSlowPosts, 'old posts alone fill only the slow places');
+  const fast = Array.from({ length: P.track.paidReadMaxPosts + 2 }, (_, i) => video(300 + i, 50, 20, 40_000 + i));
+  assert.equal(pick([...slow, ...fast]).length, P.track.paidReadMaxPosts, 'young fast ones may take every place');
+});

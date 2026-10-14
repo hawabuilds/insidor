@@ -288,6 +288,9 @@ export function termFor(plan: DiscoveryPlan, now: Millis): string | null {
 export function watchEveryMs(usdPerAsk: number, lineCapUsd: number, cadenceMs: number, policy: Policy): number {
   const share = lineCapUsd * policy.feed.budgetShare;
   if (!(usdPerAsk > 0) || !(share > 0)) return cadenceMs;
+  /* A spacing the owner set (`feed.watchAskEveryMs`) wins over the derived one; the meter still
+     checks each ask against the line, so a line run dry still stops the asks. */
+  if (policy.feed.watchAskEveryMs !== null) return Math.max(cadenceMs, policy.feed.watchAskEveryMs);
   /* Whole milliseconds, rounded up: a fractional spacing never quite elapses on a millisecond clock. */
   return Math.max(cadenceMs, Math.ceil((usdPerAsk / share) * MS_PER_DAY));
 }

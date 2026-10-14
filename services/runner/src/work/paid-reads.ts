@@ -13,7 +13,7 @@
  *      and third reading of; before this, a short video found an hour old was next read three
  *      hours later, when nothing it did could still count.
  *   2. everything else worth a read, once its last reading is `track.paidReadMinMinutes` old,
- *      longest-unread first.
+ *      longest-unread first, in at most `track.paidReadMaxSlowPosts` of the run's places.
  *
  * "Gaining" is the measured rate between its last two readings when there is one, and its
  * average since it was posted when there is only the reading its search came with.
@@ -101,5 +101,9 @@ export function pickPaidReads(candidates: readonly PaidCandidate[], now: Millis,
   }
   fast.sort((a, b) => b.perMin - a.perMin);
   slow.sort((a, b) => a.lastAt - b.lastAt);
-  return [...fast.map((f) => f.item), ...slow.map((s) => s.item)].slice(0, t.paidReadMaxPosts);
+  /* Young fast ones first, up to the whole run; the rest only up to `paidReadMaxSlowPosts`, so the
+     places beyond it are for young videos that are climbing. */
+  const young = fast.map((f) => f.item).slice(0, t.paidReadMaxPosts);
+  const rest = slow.map((s) => s.item).slice(0, Math.max(0, Math.min(t.paidReadMaxSlowPosts, t.paidReadMaxPosts - young.length)));
+  return [...young, ...rest];
 }
