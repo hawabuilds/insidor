@@ -97,13 +97,6 @@
   flex: none;
 }
 
-.sparkEmpty {
-  display: inline-block;
-  flex: none;
-  text-align: center;
-  color: var(--text-4);
-}
-
 .pending {
   color: var(--text-3);
 }
