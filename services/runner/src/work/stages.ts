@@ -509,7 +509,10 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
       for (const source of new Set(worth.map((i) => String(i.source)).filter((s) => paidSource(s) && runDue(s)))) {
         const mine = worth.filter((i) => String(i.source) === source);
         const read = await repos.observations.seriesForItems(mine.map((i) => i.itemId), now - OBSERVATION_WINDOW_MS);
-        const picked = pickPaidReads(mine.map((item) => ({ item, observations: read.get(item.itemId) ?? [] })), now as Millis, policy);
+        /* When each was last asked about, answered or not: a deleted video never answers, and
+           clocked by its readings alone it took a place in every run (work/paid-reads.ts). */
+        const asked = await repos.decisions.lastAppliedPass('track', mine.map((i) => i.itemId), (now - MS_PER_DAY) as Millis);
+        const picked = pickPaidReads(mine.map((item) => ({ item, observations: read.get(item.itemId) ?? [], askedAt: asked.get(item.itemId) ?? null })), now as Millis, policy);
         if (picked.length === 0) continue;
         lastPaidBatch.set(source, now);
         page.unshift(...picked);
