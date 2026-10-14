@@ -18,6 +18,10 @@
  * is embedded (at most `labelsPerPass`, on the live embeddings line), a flipped tap is relabelled
  * with no new vector. A label stronger than the database's (LABEL_RANK) is left as it is.
  *
+ * ★ THE VECTORS ARE KEPT (0074, `posts`): each judged post's vector goes to internal.post_embedding
+ * as well, at no extra cost, so the projector can show the coin the owner confirmed for a post's
+ * story on new posts about the same thing (services/project story-coins.ts).
+ *
  * What breaks if changed carelessly: a new post must never be its own precedent (a post the owner
  * tapped and that is being re-scored is in the labels) — `isSelf` below. And the label vectors are
  * read once per change, not per pass: the table's `version` decides when to read them again.
@@ -28,7 +32,7 @@ import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePrecedent } from '@insidor/contracts/ports/judge.ts';
 import type { EmbedPort } from '@insidor/contracts/ports/embed.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import type { LabelledPost, PgLabelEmbeddingRepo, StoredLabel } from '@insidor/store';
+import type { LabelledPost, PgLabelEmbeddingRepo, PgPostEmbeddingRepo, StoredLabel } from '@insidor/store';
 import { LABEL_RANK } from '@insidor/store';
 import { closestNot, embedInput, nearestLabelled, postPicture, precedentsFor, type LabelledVector } from '@insidor/core';
 
@@ -38,6 +42,8 @@ export interface PrecedentDeps {
   /** Null, or without `embedPosts`: no precedents and no hold. */
   readonly embed: EmbedPort | null;
   readonly labels: Pick<PgLabelEmbeddingRepo, 'all' | 'version' | 'put' | 'relabel' | 'fromDatabase'>;
+  /** Where each judged post's vector is kept for the projector's story coins (0074); absent, kept nowhere. */
+  readonly posts?: Pick<PgPostEmbeddingRepo, 'putMany'>;
   readonly meter: Meter;
   readonly mode: 'dry' | 'live';
   readonly policy: Policy;
@@ -123,6 +129,16 @@ export function precedentSource(deps: PrecedentDeps) {
     }
   }
 
+  /** The vectors just paid for, kept for the projector's story coins (0074). Never throws: a failed write loses only the kept copy. */
+  async function keep(rows: readonly { readonly itemId: string; readonly values: ArrayLike<number> }[]): Promise<void> {
+    if (deps.posts === undefined || space === null || rows.length === 0) return;
+    try {
+      await deps.posts.putMany(rows, space);
+    } catch (e) {
+      deps.log.warn('post vectors not kept this pass; story coins will not see these posts', { posts: rows.length, err: errorText(e) });
+    }
+  }
+
   /**
    * Each post's precedents and its closeness to a "not a meme" label, by item id. Posts with no
    * vector are absent: judged with no precedents, held by nothing. Never throws.
@@ -136,6 +152,10 @@ export function precedentSource(deps: PrecedentDeps) {
       if (known.length === 0) return out;
       const inputs = items.map((item) => embedInput(item.text, postPicture(item.media), deps.policy));
       const r = await embed.embedPosts(inputs, budgetOf(deps.meter, deps.now(), deps.policy));
+      await keep(r.value.flatMap((v, i) => {
+        const item = items[i];
+        return item === undefined || v === null || v.space !== space ? [] : [{ itemId: String(item.itemId), values: v.values }];
+      }));
       for (const [i, v] of r.value.entries()) {
         const item = items[i];
         if (item === undefined || v === null || v.space !== space) continue;
