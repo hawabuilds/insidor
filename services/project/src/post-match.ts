@@ -262,11 +262,30 @@ const bitsApart = (a: string, b: string): number => {
  * loadPostLookups), empty when the search found none; the candidates are widened here. A post
  * with no candidate at all is absent from the result.
  */
-export async function weighPostCoins(db: Db, lists: ReadonlyMap<string, readonly string[]>, p: Policy = DEFAULT_POLICY, opts: { readonly ignoreFit?: boolean } = {}): Promise<ReadonlyMap<string, PostMatch>> {
+export async function weighPostCoins(
+  db: Db,
+  lists: ReadonlyMap<string, readonly string[]>,
+  p: Policy = DEFAULT_POLICY,
+  opts: { readonly ignoreFit?: boolean; readonly guesses?: ReadonlyMap<string, readonly { readonly name: string; readonly ticker: string }[]> } = {},
+): Promise<ReadonlyMap<string, PostMatch>> {
   const ids = [...lists.keys()];
   const posts = await loadPosts(db, ids);
   const pc = p.postCoin;
-  const namesOf = (post: PostRow) => [post.proposed_name, ...(post.alternate_names ?? [])].filter((n): n is string => n !== null && n.trim() !== '');
+  /* ★ THE NAMER'S GUESSES JOIN THE JUDGE'S NAMES (internal.name_guess, 0076): each of its top five
+     names and tickers is searched in the mint stream and weighed as a name, the judge's first. None
+     until the namer's switch is on (Policy.names.on); the re-tune may hand its own (`guesses`). */
+  const guesses = opts.guesses ?? (await new PgNameGuessRepo(db).top(ids));
+  const namesOf = (post: PostRow) => {
+    const all = [post.proposed_name, ...(post.alternate_names ?? []), ...(guesses.get(post.item_id) ?? []).flatMap((g) => [g.name, g.ticker])];
+    const seen = new Set<string>();
+    return all.filter((n): n is string => {
+      if (n === null || n.trim() === '') return false;
+      const k = compactName(n);
+      if (k === '' || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
   const timed = [...posts.values()].flatMap((post) => {
     const at = ms(post.posted_at) ?? ms(post.first_seen_at);
     return at === null ? [] : [{ post, at }];

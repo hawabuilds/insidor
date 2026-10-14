@@ -373,6 +373,24 @@ export class PgCoinUniverseRepo {
     });
   }
 
+  /** The namer's guesses for these terms' posts (0076), names and tickers, best first; nothing before 0076. */
+  async withGuesses(terms: readonly LookupTerm[]): Promise<readonly LookupTerm[]> {
+    const posts = terms.filter((t) => t.kind === 'post').map((t) => t.id);
+    if (posts.length === 0) return terms;
+    const [have] = await this.#db.query<{ ok: boolean }>(`select to_regclass('internal.name_guess') is not null as ok`);
+    if (have?.ok !== true) return terms;
+    const rows = await this.#db.query<{ item_id: string; name: string; ticker: string }>(
+      'select item_id, name, ticker from internal.name_guess where item_id = any($1::text[]) order by item_id, rank',
+      [posts],
+    );
+    const by = new Map<string, string[]>();
+    for (const r of rows) by.set(r.item_id, [...(by.get(r.item_id) ?? []), r.name, r.ticker]);
+    return terms.map((t) => {
+      const g = t.kind === 'post' ? by.get(t.id) : undefined;
+      return g === undefined ? t : { ...t, guesses: g };
+    });
+  }
+
   /**
    * A finished search: written over the last one, and the failed-attempt count starts again.
    * `hits` are the addresses kept, newest launch first; `more` says more came back than were
@@ -515,6 +533,12 @@ export interface LookupTerm {
    * for only 25 of 71 gold origin posts). `term` stays the row's key and label.
    */
   readonly names?: readonly string[];
+  /**
+   * The namer's top five names and tickers for a post (internal.name_guess, 0076), best first:
+   * searched after the judge's names, up to `lookup.guessNamesPerSubject`. Empty for a narrative,
+   * a post not guessed yet, and everything while the namer's switch is off.
+   */
+  readonly guesses?: readonly string[];
   /** Searches for it that failed on every source since the last one that finished. */
   readonly attempts: number;
 }

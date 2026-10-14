@@ -1217,6 +1217,8 @@ export interface UniversePolicy {
      * the per-minute rate holds in calls, not subjects.
      */
     readonly namesPerSubject: number;
+    /** The namer's guessed names and tickers searched for a post after the judge's names, while Policy.names.on. */
+    readonly guessNamesPerSubject: number;
     /**
      * Names searched per minute, across passes, so no source blocks us. The on-chain search runs
      * on the owner's paid market-data plan (500 calls a minute, shared with the read service's
@@ -3052,6 +3054,9 @@ const POLICY_V1: Policy = {
       /* 4: the proposed name and up to three alternates; the judge gave three or more in 487 of
          its 660 yes answers on 2026-10-13. */
       namesPerSubject: 4,
+      /* 6: the namer's top three names and their tickers, after the judge's 4. Free reads; ~349 posts
+         searched a day at 10 names on 2 sources is ~7,000 calls, inside `perDay`. */
+      guessNamesPerSubject: 6,
       /* 100: a fifth of the Analyst plan's 500 a minute, the rest left to market reads. */
       perMinute: 100,
       retries: 3,

@@ -80,3 +80,9 @@ test('★ a search is failed only when every name failed on every source', async
   const two = deps({ kind: 'post', id: 'x:1', term: 'Moo Deng', names: ['Moo Deng', 'Hippo'], attempts: 0 }, [half]);
   assert.equal((await lookUpCoins(two.d)).searched, 1);
 });
+
+test("★ the namer's guesses are searched after the judge's names, only names not already searched, up to their own cap", () => {
+  const term = { term: 'Attack', names: ['Attack', 'Pumpfun'], guesses: ['Attack On Pumpfun', 'AOP', 'attack', 'First Target', 'TARGET'] };
+  assert.deepEqual(searchNames(term, 4, 3), ['Attack', 'Pumpfun', 'Attack On Pumpfun', 'AOP', 'First Target']);
+  assert.deepEqual(searchNames(term, 4), ['Attack', 'Pumpfun'], 'no guesses while the switch is off');
+});
