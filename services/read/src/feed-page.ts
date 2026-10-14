@@ -38,7 +38,7 @@ export const FEED_PAGE_FEEDS: readonly string[] = ['fyp', 'popular'];
  * phone was reading is the phone's to de-duplicate, by id.
  */
 export const FEED_PAGE_SQL = `
-select (f.payload - 'sheet') || jsonb_build_object('authorPictureUrl', to_jsonb(a) ->> 'picture_url') as payload,
+select (f.payload - 'sheet') || jsonb_build_object('authorPictureUrl', to_jsonb(a) ->> 'picture_url', 'authorPictureFile', to_jsonb(a) ->> 'picture_copy') as payload,
        f.item_id, f.first_shown_at, f.payload_at
   from public.feed_post f
   left join public.item i on i.item_id = f.item_id

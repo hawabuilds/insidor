@@ -38,7 +38,7 @@ import type { Db, Row } from './queries.ts';
 /** The post on whichever feed holds it, For You first. */
 export const SHEET_POST_SQL = `
 select r.payload, i.first_seen_at, i.media, a.display_name, a.follower_count::text as follower_count,
-       to_jsonb(a) ->> 'picture_url' as picture_url
+       to_jsonb(a) ->> 'picture_url' as picture_url, to_jsonb(a) ->> 'picture_copy' as picture_copy
   from public.rising_row r
   join public.item i on i.item_id = r.item_id
   left join public.author a on a.author_key = i.author_key
@@ -53,7 +53,7 @@ select r.payload, i.first_seen_at, i.media, a.display_name, a.follower_count::te
  */
 export const SHEET_MEMBER_SQL = `
 select f.payload, i.first_seen_at, i.media, a.display_name, a.follower_count::text as follower_count,
-       to_jsonb(a) ->> 'picture_url' as picture_url
+       to_jsonb(a) ->> 'picture_url' as picture_url, to_jsonb(a) ->> 'picture_copy' as picture_copy
   from public.feed_post f
   join public.item i on i.item_id = f.item_id
   left join public.author a on a.author_key = i.author_key
@@ -259,6 +259,8 @@ export function createPostSheet(deps: PostSheetDeps) {
       author: {
         name: str(row['display_name']),
         pictureUrl: https(row['picture_url']),
+        /* Our copy's file name (0079): the app tries `author-pics/<name>` first; the link may have expired. */
+        pictureFile: typeof row['picture_copy'] === 'string' && /^[0-9a-f]{32}$/.test(row['picture_copy']) ? row['picture_copy'] : null,
         followers: measured(followers, 'not_reported'),
       },
       foundAt: instant(ms(row['first_seen_at']), 'not_reported'),

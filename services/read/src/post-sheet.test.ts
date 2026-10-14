@@ -30,7 +30,7 @@ const POST = { id: 'x:1', coins: { kind: 'matched', coin: { address: 'B', ticker
 
 test('★ coins come highest market cap first, a coin no market lists after every one that is, and the proven coin is marked', async () => {
   const sheet = createPostSheet(deps({
-    [SHEET_POST_SQL]: [{ payload: POST, first_seen_at: new Date(500), media: [], display_name: 'Raw Alerts', follower_count: '1900000', picture_url: 'https://pbs.example/p.jpg' }],
+    [SHEET_POST_SQL]: [{ payload: POST, first_seen_at: new Date(500), media: [], display_name: 'Raw Alerts', follower_count: '1900000', picture_url: 'https://pbs.example/p.jpg', picture_copy: '0123456789abcdef0123456789abcdef' }],
     [SHEET_LIST_SQL]: [{ address: 'B' }, { address: 'A' }, { address: 'C' }],
     [SHEET_COINS_SQL]: [{ address: 'A', symbol: 'AAA', name: 'Goliath', minted_at: new Date(100) }, { address: 'B', symbol: 'BEE', name: 'Goliath' }, { address: 'C', symbol: 'CEE', name: 'Gol' }],
   }, new Map([['A', quote(1_240_000, true)], ['B', quote(86_000)]])));
@@ -41,7 +41,7 @@ test('★ coins come highest market cap first, a coin no market lists after ever
   assert.deepEqual(body.coins[2].marketCapUsd, { v: null, why: 'no_market' }, 'a coin no market lists is a dash, never $0');
   assert.equal(body.coins[2].bonded, null);
   assert.equal(body.coinName, 'Goliath');
-  assert.deepEqual(body.author, { name: 'Raw Alerts', pictureUrl: 'https://pbs.example/p.jpg', followers: { v: 1_900_000 } });
+  assert.deepEqual(body.author, { name: 'Raw Alerts', pictureUrl: 'https://pbs.example/p.jpg', pictureFile: '0123456789abcdef0123456789abcdef', followers: { v: 1_900_000 } });
   assert.deepEqual(body.foundAt, { at: 500 });
 });
 
