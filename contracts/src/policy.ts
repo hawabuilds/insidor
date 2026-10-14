@@ -2420,7 +2420,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v66',
+  version: 'policy.v67',
 
   admit: {
     maxAgeMin: 240,
@@ -2726,7 +2726,11 @@ const POLICY_V1: Policy = {
   },
 
   market: {
-    readingFreshnessMs: 300_000, // five minutes
+    /* Eight minutes from 2026-10-14: the market pass is due five minutes after the last one ENDED,
+       and since each pass also asks where a coin would trade it lands every 6 to 6.5 minutes. At
+       five, the last minute or so of every gap showed every coin on For You as never read and
+       took its Buy away. Eight covers one ordinary gap; a missed pass still shows the dash. */
+    readingFreshnessMs: 480_000,
     maxAssetsPerPass: 300,
     poolRouteReuseMs: 900_000, // fifteen minutes
     maxPoolProbesPerPass: 40,
