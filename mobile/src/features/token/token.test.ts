@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { decodeCoinMarket } from '../../shared/api/decode.ts';
 import { fixtureMarket } from '../../test-fixtures/fixtures.ts';
 import type { MarketTrade } from '../../shared/api/index.ts';
-import { candleFromPoint, changePctForPoints, defaultTimeframe, gapBreakMsForWindow, chartWindowMs, hoveredCandleChangePct, isHistoryPrepend, isLiveEdgeUpdate, mergeTradesIntoChart, shouldAutoFit, toLineData, withCompressedBreaks, type ChartPoint } from './chart-data.ts';
+import { candleFromPoint, changePctForPoints, defaultTimeframe, gapBreakMsForWindow, chartWindowMs, hoveredCandleChangePct, isHistoryPrepend, isLiveEdgeUpdate, mergeTradesIntoChart, pointsOf, shouldAutoFit, toLineData, withCompressedBreaks, type ChartPoint } from './chart-data.ts';
 import { chartNote } from './chart-format.ts';
 
 const MIN = 60_000;
@@ -83,4 +83,14 @@ test('★ an outage is not an empty market, and a candle missing a number is dro
   assert.equal(m.kind === 'read' && m.candles?.length, 1);
   assert.equal(m.kind === 'read' && m.trades?.length, 0, 'a trade with an unknown side is not coloured as either');
   assert.deepEqual(m.kind === 'read' && m.curveProgress, { known: true, amount: 0.2 });
+});
+
+test('★ two candles for one minute are one candle, never a page the chart library refuses', () => {
+  const pts = pointsOf([
+    { t: 2 * MIN, o: 3, h: 3, l: 2.5, c: 2.6 },
+    { t: 0, o: 1, h: 1, l: 1, c: 1 },
+    { t: 2 * MIN, o: 2.6, h: 2.7, l: 2.4, c: 2.4 },
+  ]);
+  assert.deepEqual(pts.map((p) => p.t), [0, 2 * MIN], 'oldest first, one per time');
+  assert.deepEqual(pts[1], { t: 2 * MIN, price: 2.4, open: 3, high: 3, low: 2.4 }, 'first open, highest high, lowest low, last close');
 });
