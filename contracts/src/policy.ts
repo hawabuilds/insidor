@@ -1303,6 +1303,14 @@ export interface PostCoinPolicy {
    * strongly matched post.
    */
   readonly storyCoin: { readonly alone: number; readonly together: number; readonly togetherPosts: number; readonly near: number; readonly minNameChars: number };
+  /**
+   * "See N coins" and "Choose coin" (services/project coin-list.ts): only coins that could be the
+   * post's. `graceBeforeMs`: how long before the post a coin may launch and still count by name and
+   * time. `quietAfterMs`: older than this, not linked, not named exactly and not quotable is quiet
+   * and left out. `maxCoins`: the list's length. `descriptionShare`: a description sharing this
+   * much of its words with the post links it.
+   */
+  readonly list: { readonly graceBeforeMs: number; readonly quietAfterMs: number; readonly maxCoins: number; readonly descriptionShare: number };
 }
 
 export interface PostCoinWeights {
@@ -2968,6 +2976,12 @@ const POLICY_V1: Policy = {
        (a viral cat-lion meme to $Altai); 35 of 68 GTA 6 posts get $GTA and no GTA 5, GTA meme or
        Onitsuka Tiger post does; 25 tiger-story posts get $Altai. */
     storyCoin: { alone: 0.7, together: 0.6, togetherPosts: 2, near: 0.45, minNameChars: 4 },
+    /* Measured 2026-10-14 on the owner's coin labels (18 with a coin, 16 "No coin"): the list keeps
+       the owner's coin as often as before (10 of 18; the other 8 were never in the name search's
+       list) and shows 6.4 other coins a post instead of 12.8, 4.7 on a "No coin" post instead of
+       15.7 (4 of 16 now say No coin yet). A coin of an ongoing story launched days before (Altai,
+       HomeView) stays because the venue still quotes it; 1 h or 6 h of grace changed nothing. */
+    list: { graceBeforeMs: 10_800_000, quietAfterMs: 86_400_000, maxCoins: 10, descriptionShare: 0.5 },
     weights: { base: -7.232, linksPost: 1.175, linksAccount: -0.218, picture: 0.825, hash: 0.495, description: 0.205, authorAddress: 0, othersAddress: 0, timing: 2.134, nameExact: 2.768, nameVariant: -0.46, tradingJump: 0 },
   },
 
