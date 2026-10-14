@@ -41,8 +41,8 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy, type PostCoinWeights } from '@insidor/contracts/policy.ts';
-import { compactName, matchPostCoin, nameIdeas, nameMatch, postPictureVerdict, type CoinSide, type MatchBars, type NameIdea, type PostCoinMatch } from '@insidor/core';
-import { missingTable, PgCryptoAttentionRepo, PgImageHashRepo, type Db } from '@insidor/store';
+import { compactName, guessesFirst, matchPostCoin, nameIdeas, nameMatch, postPictureVerdict, type CoinSide, type MatchBars, type NameIdea, type PostCoinMatch } from '@insidor/core';
+import { missingTable, PgCryptoAttentionRepo, PgImageHashRepo, PgNameGuessRepo, type Db } from '@insidor/store';
 
 import { pictureOf } from './db.ts';
 import type { WireCoinEvidence } from './wire.ts';
@@ -334,11 +334,17 @@ export async function weighPostCoins(db: Db, lists: ReadonlyMap<string, readonly
   return matches;
 }
 
-/** Each post's name ideas, from the judge's newest names for it. */
-export async function loadNameIdeas(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, readonly NameIdea[]>> {
+/**
+ * Each post's name ideas: the namer's first `names.createIdeas` guesses (0076, brands dropped as
+ * for the judge's), then the judge's newest names for it. A post the namer has not guessed (off,
+ * not yet, or before 0076) gets the judge's names alone, as before.
+ */
+export async function loadNameIdeas(db: Db, itemIds: readonly string[], p: Policy = DEFAULT_POLICY): Promise<ReadonlyMap<string, readonly NameIdea[]>> {
   if (itemIds.length === 0) return new Map();
   const posts = await loadPosts(db, itemIds);
-  return new Map([...posts].map(([id, post]) => [id, postNameIdeas(post.proposed_name, post.alternate_names ?? [])]));
+  const guessed = await new PgNameGuessRepo(db).top(itemIds);
+  const bars = { minTicker: MIN_TICKER, maxTicker: MAX_TICKER, maxIdeas: MAX_NAME_IDEAS, lead: p.names.createIdeas };
+  return new Map([...posts].map(([id, post]) => [id, guessesFirst((guessed.get(id) ?? []).filter((g) => !isBrand(g.name) && !isBrand(g.ticker)), postNameIdeas(post.proposed_name, post.alternate_names ?? []), bars)]));
 }
 
 /** Every shown post's ideas, replacing the last run's, in the caller's transaction. */
