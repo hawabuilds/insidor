@@ -1,4 +1,4 @@
-/* The owner's missed-posts sheet (MissedPosts.tsx): a paste box, then the list, in the app's tokens. */
+/* The owner's missed-posts sheet (MissedPosts.tsx): a paste box, what it reads as, then the list, in the app's tokens. */
 
 .sheet {
   display: flex;
@@ -109,4 +109,48 @@
 
 .failed {
   color: var(--text-3);
+}
+
+.read {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--card);
+  color: var(--text-1);
+  font-size: 12px;
+}
+
+.readList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.readList li {
+  display: flex;
+  flex-direction: column;
+}
+
+.readUrl {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.actions > * {
+  flex: 1;
 }
