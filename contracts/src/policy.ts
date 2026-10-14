@@ -1515,6 +1515,10 @@ export interface RisingPolicy {
    * 500 a minute passes 44 a day against 34, 16 of them under six hours old against 6, the median
    * age at passing 12.5 hours against 16.3; 10 more judged a day, about $0.09. The judge still
    * decides which of them is a meme.
+   * ★ ON FROM 2026-10-14 AT 20k OR 250 A MINUTE, the owner's looser choice. Replayed on the videos
+   * found 2026-10-13 11:30 to 2026-10-14 11:30 UTC (1,596): off, 42 pass, 7 under six hours old,
+   * median age at passing 18.7 hours; 50k / 500, 63, 28 and 12.5 hours; 20k / 250, 85, 50 and 2.2
+   * hours. About 43 more judged a day, roughly $0.40 of judging.
    */
   readonly shortVideoSpeedBar: { readonly enabled: boolean; readonly earlyReach: number; readonly fastReachPerMinute: number };
   /**
@@ -3105,7 +3109,7 @@ const POLICY_V1: Policy = {
     shortVideoEarlyWindowMs: 7_200_000, // two hours
     shortVideoFastReachPerMinute: 1_500,
     shortVideoFastWindowMs: 14_400_000, // four hours
-    shortVideoSpeedBar: { enabled: false, earlyReach: 50_000, fastReachPerMinute: 500 },
+    shortVideoSpeedBar: { enabled: true, earlyReach: 20_000, fastReachPerMinute: 250 },
     /* Off until the owner approves the cost; see RisingPolicy.speedBar for the replay. */
     /* On 2026-10-14: +$1.36 a day of judging, paid by fresh.cutStale's -$1.34. */
     speedBar: { enabled: true, horizonMs: 5_400_000, minAgeMs: 1_800_000, minReach: 15_000, recentMinSpanMs: 300_000 },
