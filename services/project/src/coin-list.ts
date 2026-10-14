@@ -9,7 +9,8 @@
  *   linked   its links name the post or the poster's account, its picture is the post's, its
  *            description shares at least `descriptionShare` of its words with the post, or an
  *            address under the post named it
- *   name     its name or ticker meets one of the subject's names (core `nameMatch`: exact, a
+ *   name     its name or ticker meets one of the subject's names — the judge's, and the namer's top
+ *            five names and tickers when it has guessed (0076) — (core `nameMatch`: exact, a
  *            short form, a misspelling, a longer form) — and is not a generic word on its own
  *            (Policy.group.genericSpans: "viral", "meme", "news"…); words the post merely says do
  *            not count here
@@ -34,7 +35,7 @@
 
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { compactName, nameMatch, type MatchBars, type PostCoinEvidence } from '@insidor/core';
-import type { Db } from '@insidor/store';
+import { PgNameGuessRepo, type Db } from '@insidor/store';
 
 /** What the list needs of one coin, beyond its evidence against the post. */
 export interface ListedCoin {
@@ -143,6 +144,8 @@ export async function withPlausibleLists<L extends { readonly coins: readonly st
     [ids],
   );
   const byId = new Map(posts.map((r) => [r.item_id, r] as const));
+  /* The namer's top five names and tickers count as the subject's names too (0076); none while its switch is off. */
+  const guesses = await new PgNameGuessRepo(db).top(ids);
   const coins = await loadListedCoins(db, ids.flatMap((id) => {
     const l = lookups.get(id);
     return l !== undefined && 'coins' in l ? l.coins : [];
@@ -155,7 +158,11 @@ export async function withPlausibleLists<L extends { readonly coins: readonly st
     const post = byId.get(id);
     const ranked = weighed.get(id)?.decision.ranked ?? [];
     const kept = plausibleCoins(
-      { names: [post?.proposed_name ?? null, ...(Array.isArray(post?.alternate_names) ? post.alternate_names : [])].filter((n): n is string => typeof n === 'string' && n.trim() !== ''), postedAtMs: post?.at === null || post?.at === undefined ? null : new Date(post.at).getTime() },
+      {
+        names: [post?.proposed_name ?? null, ...(Array.isArray(post?.alternate_names) ? post.alternate_names : []), ...(guesses.get(id) ?? []).flatMap((g) => [g.name, g.ticker])].filter(
+          (n): n is string => typeof n === 'string' && n.trim() !== '',
+        ),
+        postedAtMs: post?.at === null || post?.at === undefined ? null : new Date(post.at).getTime() },
       l.coins,
       coins,
       new Map(ranked.map((e) => [e.address, e] as const)),
