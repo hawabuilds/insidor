@@ -206,10 +206,11 @@ test("the views bars: measured readings only, or every readable count with risin
     { atMs: POSTED + 8 * MIN, fidelity: 'absent' as const, rate: { kind: 'censored' as const, reason: 'no_prior' as const, lastLevel: null }, count: null },
   ];
   const on = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, feedBarCountsEveryReading: true } };
-  assert.deepEqual(barReadings(readings).map((r) => r.reach), [null, 13_116, null]);
+  const off = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, feedBarCountsEveryReading: false } };
+  assert.deepEqual(barReadings(readings, off).map((r) => r.reach), [null, 13_116, null]);
   assert.deepEqual(barReadings(readings, on).map((r) => r.reach), [12_425, 13_116, null]);
   /* 12,425 at six minutes is 2,071 a minute: the scorer's fast path, which the measured readings never show. */
-  assert.equal(clearsReachBar('fyp', barReadings(readings), POSTED, DEFAULT_POLICY), false);
+  assert.equal(clearsReachBar('fyp', barReadings(readings, off), POSTED, off), false);
   assert.equal(clearsReachBar('fyp', barReadings(readings, on), POSTED, on), true);
   /* A reading loaded without its count keeps its measured level either way. */
   const { count: _drop, ...noCount } = readings[1]!;

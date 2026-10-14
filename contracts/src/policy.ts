@@ -2420,7 +2420,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v67',
+  version: 'policy.v68',
 
   admit: {
     maxAgeMin: 240,
@@ -2800,14 +2800,16 @@ const POLICY_V1: Policy = {
        that climb later (a live check at 23:46 UTC: 5 and 6 of 20 posts over the floor at 30 and
        45 minutes were posts we did not hold). 0.85 of the main lanes' money pays for the longer
        re-reads. 444 views a minute is the speed bar's own pace (40k by 90 minutes). */
+    /* Switched on 2026-10-14 ~01:00 UTC under the owner's overnight rule: the bands, the longer
+       re-reads and both cuts together cost the same as before (text reads 43.6k -> ~43.0k a day). */
     fresh: {
-      enabled: false,
+      enabled: true,
       bandAgesMin: [6, 25, 50],
       maxWindowMin: 15,
       targetScale: 0.85,
       rereadMaxAgeMs: 5_400_000, // 90 minutes, the speed bar's last chance
       rereadMinReachPerMinute: 444,
-      cutStale: false,
+      cutStale: true,
       staleAfterMs: 21_600_000, // six hours
     },
   },
@@ -3048,8 +3050,8 @@ const POLICY_V1: Policy = {
     fypGrowthWindowMs: 3_600_000, // the last hour of readings
     fypGrowthMinSpanMs: 1_200_000, // twenty minutes between the two readings compared
     fypStillGrowingPerMinute: 1_000, // half the early-growth bar
-    fypMaxAgeOn: false,
-    feedBarCountsEveryReading: false,
+    fypMaxAgeOn: true, // on 2026-10-14, the owner's call: For You's six hours again, $0
+    feedBarCountsEveryReading: true, // on 2026-10-14, the owner's call: a first reading counts, $0
     watchMinReachPerMinute: 500,
     shortVideoReachScale: 12.5,
     shortVideoEarlyReach: 150_000,
@@ -3057,7 +3059,8 @@ const POLICY_V1: Policy = {
     shortVideoFastReachPerMinute: 1_500,
     shortVideoFastWindowMs: 14_400_000, // four hours
     /* Off until the owner approves the cost; see RisingPolicy.speedBar for the replay. */
-    speedBar: { enabled: false, horizonMs: 5_400_000, minAgeMs: 1_800_000, minReach: 15_000, recentMinSpanMs: 300_000 },
+    /* On 2026-10-14: +$1.36 a day of judging, paid by fresh.cutStale's -$1.34. */
+    speedBar: { enabled: true, horizonMs: 5_400_000, minAgeMs: 1_800_000, minReach: 15_000, recentMinSpanMs: 300_000 },
     narrativeMinPassingPosts: 2,
     /* 3 posts is where GROUP promotes a story; 8 posts, or a top post at 5M views (125 times
        the For You views bar), is a narrative most of the timeline has seen. */

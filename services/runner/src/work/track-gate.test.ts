@@ -6,10 +6,14 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import type { TrackingFacts, TrackingJudgement } from '@insidor/store';
 
 import { staleUnpassed, worthRereading } from './track-gate.ts';
+
+/* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
+   pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
+const DEFAULT_POLICY = { ...LIVE_POLICY, feed: { ...LIVE_POLICY.feed, fresh: { ...LIVE_POLICY.feed.fresh, enabled: false, cutStale: false } } };
 
 const P = DEFAULT_POLICY;
 const r = P.rising;

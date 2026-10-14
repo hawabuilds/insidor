@@ -15,12 +15,16 @@ import type { Item, Millis, Policy } from '@insidor/contracts';
 import { authorKey, itemId, sourceId } from '@insidor/contracts/ids.ts';
 import type { Budget, CostEstimate, Meter, Metered } from '@insidor/contracts/ports/meter.ts';
 import type { Capabilities, Discovered, DiscoveryQuery, FeedLane, PlatformAdapter, PlannedCall } from '@insidor/contracts/ports/platform.ts';
-import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import { bandFloor, startFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { Logger } from '../log.ts';
 import { bandKey, discoverPass, memoryFreshClock, slowSliceQueries, type FreshClock } from './discover.ts';
+
+/* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
+   pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
+const DEFAULT_POLICY = { ...LIVE_POLICY, feed: { ...LIVE_POLICY.feed, fresh: { ...LIVE_POLICY.feed.fresh, enabled: false, cutStale: false } } };
 
 const NOW = 1_800_000_000_000 as Millis;
 const MIN = 60_000;

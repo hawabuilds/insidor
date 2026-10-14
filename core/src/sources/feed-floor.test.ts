@@ -9,7 +9,8 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { bandFloor, bandWindow, effectiveFloor, laneTargets, nextFloor, sentFloors, sliceCoveredByBands, slowLaneDue, startFloors } from './feed-floor.ts';
 
-const P = DEFAULT_POLICY;
+/* The lanes as they were before the fresh bands, so these tests keep pinning them whatever the live switch says. */
+const P = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: false, cutStale: false } } };
 
 const at = (all: number, slow = all): { all: number; media: number; slow: number } => ({ all, media: all, slow });
 
@@ -76,9 +77,7 @@ test('every lane starts where policy says; the slow lane at 5x the main start', 
 const FRESH = { ...P, feed: { ...P.feed, fresh: { ...P.feed.fresh, enabled: true } } };
 const MIN = 60_000;
 
-test('fresh is off by default, and off it changes no target and covers no slow slice', () => {
-  assert.equal(P.feed.fresh.enabled, false);
-  assert.equal(P.feed.fresh.cutStale, false);
+test('fresh off changes no target and covers no slow slice', () => {
   const t = laneTargets(1, 0.00015, 720, P);
   assert.ok(t.media > 0);
   assert.equal(sliceCoveredByBands(45, P), false);

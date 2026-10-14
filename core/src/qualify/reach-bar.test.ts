@@ -3,9 +3,12 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { DEFAULT_POLICY as P } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { clearsReachBar } from './reach-bar.ts';
+
+/* The bars as they were before the speed bar, so these tests keep pinning them whatever the live switch says. */
+const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, speedBar: { ...DEFAULT_POLICY.rising.speedBar, enabled: false } } };
 
 const POSTED = 1_800_000_000_000;
 const MIN = 60_000;
@@ -56,8 +59,7 @@ test('★ a short video takes its own growth paths: 150k inside two hours, or 1,
 
 const SPEED = { ...P, rising: { ...P.rising, speedBar: { ...P.rising.speedBar, enabled: true } } };
 
-test('the speed bar is off by default: a post on pace for 40k waits for a bar it clears today', () => {
-  assert.equal(P.rising.speedBar.enabled, false);
+test('with the speed bar off, a post on pace for 40k waits for a bar it clears today', () => {
   assert.equal(clearsReachBar('fyp', [at(40, 25_000)], POSTED, P), false);
 });
 
