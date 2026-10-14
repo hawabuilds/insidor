@@ -267,6 +267,13 @@ export interface Author {
    */
   readonly displayName?: string | null;
   readonly pictureUri?: string | null;
+  /**
+   * The account's own profile text as the source showed it when we read the post, with any link
+   * it carries (the owner, 2026-10-14: "some of these accounts had the ca in their bio"). An empty
+   * string is a profile read and found blank; absent or null is not read. Kept with when it was
+   * read (internal.author_bio_reading, 0080): the coin match reads coin addresses out of it.
+   */
+  readonly bio?: string | null;
 }
 
 /* ── ITEM ─────────────────────────────────────────────────────────────── */

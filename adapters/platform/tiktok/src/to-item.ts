@@ -181,6 +181,12 @@ export function toAuthor(raw: unknown, at: Millis): Author | null {
   const followers = num(author.fans) ?? num(rec(rec(raw).authorStats).followerCount);
   const name = (str(author.nickName) ?? str(author.nickname) ?? '').trim();
   const picture = str(author.avatar) ?? str(author.avatarMedium) ?? str(author.avatarThumb) ?? str(author.originalAvatarUrl);
+  /* The profile text is `signature` under both spellings, with the scraper's `bioLink` (a string or
+     `{ link }`) after it, so an address that is only in the link is read too. The newest-first
+     search actor sends no signature: its accounts' bios stay unread (null), never blank. */
+  const signature = typeof author.signature === 'string' ? author.signature.trim() : null;
+  const bioLink = str(author.bioLink) ?? str(rec(author.bioLink).link) ?? str(rec(author.bio_url).link);
+  const bio = signature === null && bioLink === null ? null : [signature ?? '', bioLink ?? ''].filter((x) => x !== '').join('\n');
   return {
     authorKey: authorKey(SOURCE, id),
     source: SOURCE,
@@ -190,5 +196,6 @@ export function toAuthor(raw: unknown, at: Millis): Author | null {
     rosterTier: null,
     displayName: name === '' ? null : name,
     pictureUri: picture !== null && picture.startsWith('https://') ? picture : null,
+    bio,
   };
 }

@@ -96,3 +96,11 @@ test("the account's follower count, name and picture are kept from the scraper's
   assert.equal(a?.pictureUri, 'https://p16-sign.tiktokcdn.com/a.jpeg');
   assert.equal(toAuthor({ id: '1', authorMeta: { id: '6900', name: 'zoo' } }, 5 as never)?.audience, null, 'no count is no counter');
 });
+
+test('the profile text is the signature with the bio link after it; a blank one is read, a missing one is not', () => {
+  const ca = 'AMQ8BusAhpwbt3ufSCTi4k3BEQ7AecX9u12Jnk6Spump';
+  const withBio = { id: '1', authorMeta: { id: '9', name: 'a', signature: `${ca}\n\nX: someone`, bioLink: { link: 'https://example.com/x' } } };
+  assert.equal(toAuthor(withBio, AT)?.bio, `${ca}\n\nX: someone\nhttps://example.com/x`);
+  assert.equal(toAuthor({ id: '1', authorMeta: { id: '9', name: 'a', signature: '' } }, AT)?.bio, '', 'read and blank');
+  assert.equal(toAuthor({ id: '1', authorMeta: { id: '9', name: 'a' } }, AT)?.bio, null, 'not read: the search actor sends none');
+});

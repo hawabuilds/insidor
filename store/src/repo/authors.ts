@@ -20,9 +20,12 @@
  * roster starts absent and fills in as the nightly recompute reaches accounts, so on
  * day one every admission is scored with that term missing — which is correct, and
  * is visibly different in the log from every admission being scored with it at zero.
+ *
+ * The profile text rides along too (0080, internal.author_bio_reading): every text an account
+ * showed, with when, because the coin match reads the addresses a poster puts in it.
  */
 
-import type { Author, Counter } from '@insidor/contracts';
+import type { Author, Counter, Millis } from '@insidor/contracts';
 import type { AuthorKey, SourceId } from '@insidor/contracts/ids.ts';
 import type { AuthorRepo } from '@insidor/contracts/ports/store.ts';
 
@@ -106,8 +109,60 @@ export class PgAuthorRepo implements AuthorRepo {
         ],
       );
       if (author.pictureUri != null && this.#pictures) await this.#picture(author.authorKey, author.pictureUri);
+      if (author.bio != null && this.#bios) await this.#bio(author.authorKey, author.bio, author.firstSeenAt);
     }
     return authors.length;
+  }
+
+  /** Whether internal.author_bio_reading exists (0080); false after the first write finds it missing. */
+  #bios = true;
+
+  /**
+   * The account's profile text as this read showed it (0080): a text seen before moves its last
+   * read, a new one is a new row, so an address the creator later took down is still on record.
+   * `at` is the read's instant (the adapters stamp `firstSeenAt` with it). A missing table (42P01)
+   * is remembered and the text skipped until a restart, as the picture's missing column is.
+   */
+  async #bio(key: string, bio: string, at: Millis): Promise<void> {
+    try {
+      await this.#db.query(
+        `insert into internal.author_bio_reading (author_key, bio, first_read_at, last_read_at)
+         values ($1, $2, $3, $3)
+         on conflict (author_key, bio_md5) do update
+            set first_read_at = least(internal.author_bio_reading.first_read_at, excluded.first_read_at),
+                last_read_at = greatest(internal.author_bio_reading.last_read_at, excluded.last_read_at)`,
+        [key, bio, toTimestamp(at)],
+      );
+    } catch (e) {
+      if ((e as { code?: unknown } | null)?.code !== '42P01') throw e;
+      this.#bios = false;
+    }
+  }
+
+  /**
+   * Every profile text each account showed, newest read first, with when (0080). An account never
+   * read with a profile has no entry; before 0080 the answer is empty.
+   */
+  async biosOf(keys: readonly string[]): Promise<ReadonlyMap<string, readonly { readonly bio: string; readonly firstReadAt: number; readonly lastReadAt: number }[]>> {
+    const out = new Map<string, { bio: string; firstReadAt: number; lastReadAt: number }[]>();
+    if (keys.length === 0) return out;
+    let rows: { author_key: string; bio: string; first_read_at: TimestampColumn; last_read_at: TimestampColumn }[];
+    try {
+      rows = await this.#db.query(
+        `select author_key, bio, first_read_at, last_read_at from internal.author_bio_reading
+          where author_key = any($1::text[]) order by author_key, last_read_at desc`,
+        [[...keys]],
+      );
+    } catch (e) {
+      if ((e as { code?: unknown } | null)?.code === '42P01') return out;
+      throw e;
+    }
+    for (const r of rows) {
+      const list = out.get(r.author_key) ?? [];
+      list.push({ bio: r.bio, firstReadAt: toMillisRequired(r.first_read_at, 'first_read_at'), lastReadAt: toMillisRequired(r.last_read_at, 'last_read_at') });
+      out.set(r.author_key, list);
+    }
+    return out;
   }
 
   /** Whether `picture_url` exists (0067); false after the first write finds it missing. */
