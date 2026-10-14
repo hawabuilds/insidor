@@ -2264,8 +2264,15 @@ export interface NamesPolicy {
   readonly maxTickerChars: number;
   /** How far back a judged post is still guessed for: the feed's own day is long past this. */
   readonly windowMs: number;
-  /** Only posts on a feed now (~450 a day) instead of every post that passes the bar (~2,400): the cheaper scope. */
+  /** Only posts on For You or Popular (~450 a day: the live frame and the scroll's members) instead of every post that passes the bar (~2,400): the cheaper scope. */
   readonly feedOnly: boolean;
+  /**
+   * The first day on, watched (tools/name-watch.ts, 0077): every coin newly shown on a feed post
+   * that showed none is recorded; for `hours` after the baseline, once the owner has called at
+   * least `minWrong` of those the namer's names found "Wrong coin" or "No coin", and their wrong
+   * share is above his wrong share on shown coins in the `hours` before, the namer is vetoed.
+   */
+  readonly watch: { readonly hours: number; readonly minWrong: number };
 }
 
 export interface Policy {
@@ -3365,7 +3372,8 @@ const POLICY_V1: Policy = {
      the bar is ~$3.80 a day on the judge's line, ~$0.70 with `feedOnly` (~450 feed posts a day).
      The real coin's name or ticker in the first five guesses: 72% against the judge's names' 40%. */
   names: {
-    on: false,
+    /* On 2026-10-14 for For You and Popular only (the owner: "~$0.70/day"), watched for its first day. */
+    on: true,
     k: 10,
     guesses: 5,
     createIdeas: 3,
@@ -3379,7 +3387,8 @@ const POLICY_V1: Policy = {
     closeSpelling: { minChars: 5, maxEdits: 1 },
     maxTickerChars: 10,
     windowMs: 21_600_000, // six hours
-    feedOnly: false,
+    feedOnly: true,
+    watch: { hours: 24, minWrong: 1 },
   },
 
   /* The numbers whose reasons are on `LabelPolicy` above. Read them there; every one of
