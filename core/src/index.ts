@@ -139,6 +139,10 @@ export { byEvidence, coinEvidence, compactName, descriptionMatch, linksAccount, 
 export type { CoinEvidence as PostCoinEvidence, CoinSide, MatchBars, NameMatch, PostCoinMatch, PostSide, ProvenBy } from './match/post-coin.ts';
 export { postedAddresses } from './match/posted-addresses.ts';
 export type { PostedAddress } from './match/posted-addresses.ts';
+/* The owner's coin calls on a post, folded in order: the projector, the re-tune and the coin-match
+   refit read them through this one rule (match/owner-coin-calls.ts). */
+export { addressOfCoinId, coinLabelOf, foldCoinCalls } from './match/owner-coin-calls.ts';
+export type { CoinCallRow, PostCoinCalls } from './match/owner-coin-calls.ts';
 /* An older coin's trading against a post's time: the runner measures with it (match/older-coin.ts). */
 export { olderCoinRun } from './match/older-coin.ts';
 export type { OlderRun, OlderRunBars, VolumeBucket } from './match/older-coin.ts';

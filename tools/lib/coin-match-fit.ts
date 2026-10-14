@@ -9,10 +9,12 @@
  *
  * THE LABELS:
  *   gold     the gold set's tuning half (eval/src/gold, frozen evidence), the live-like candidates
- *   owner    each "This is the coin" (`right`, with its coin) and "No coin is from this" (`none`)
- *            tap (internal.owner_feedback, `coin_match`), weighed as the projector weighs the post
- *            now (services/project post-match.ts). A `wrong` tap says only that the shown coin was
- *            not it, so it is counted and not fitted.
+ *   owner    each "This is the coin" (`right`, with its coin), each pick after "Wrong coin" (`wrong`
+ *            WITH a coin — the right one, unless it takes back an earlier `right` on that coin), and
+ *            "No coin is from this" (`none`) (internal.owner_feedback, `coin_match`, folded by core
+ *            `foldCoinCalls`), weighed as the projector weighs the post now (services/project
+ *            post-match.ts). A bare `wrong` says only that the shown coin was not it, so it is
+ *            counted and not fitted.
  * THE TEST, in every report: the gold set's held-out half (never fitted on) and the owner's labels,
  * each with the weights in use before and the refit after — proven right and wrong (a proof never
  * depends on the weights, so these move only with new facts), likely right and wrong, missed.
@@ -31,8 +33,8 @@
  */
 
 import { DEFAULT_POLICY, type Policy, type PostCoinWeights } from '../../contracts/src/policy.ts';
-import { postCoinSignals, type PostCoinMatch } from '../../core/src/index.ts';
-import { asDb, createPool, DB_ROLE, missingTable, type Db } from '../../store/src/index.ts';
+import { addressOfCoinId, coinLabelOf, foldCoinCalls, postCoinSignals, type PostCoinMatch } from '../../core/src/index.ts';
+import { asDb, createPool, DB_ROLE, missingTable, PgOwnerCoinCallRepo, type Db } from '../../store/src/index.ts';
 import { evaluateCase, matchBarsOf, type CaseResult } from '../../eval/src/gold/match-eval.ts';
 import { loadMatchEvidence, matchCases } from '../../eval/src/gold/match-cases.ts';
 import { fitWeights, pickLikelyShare, refitRefusal, type Choice } from '../../eval/src/gold/match-fit.ts';
@@ -67,19 +69,22 @@ interface OwnerCase {
 }
 
 /**
- * The owner's coin labels, newest per post: `right` with its coin, `none`; `wrong` counted apart.
- * A newest `cleared` ("Remove my label", 0072) is no label: neither case nor tap.
+ * The owner's coin labels, one per post, folded in order (core `foldCoinCalls`, the projector's own
+ * rule): the coin the owner says is the post's — "This is the coin", or the pick after "Wrong coin"
+ * (`wrong` WITH a coin), unless that takes back a coin an earlier `right` named — or `none`. A post
+ * whose calls leave only coins said to be wrong is counted apart; a `cleared` one is no label.
  */
 async function ownerLabels(db: Db): Promise<{ readonly labels: readonly { itemId: string; right: string | null }[]; readonly wrongTaps: number }> {
-  const rows = await db.query<{ item_id: string; verdict: string; coin_address: string | null }>(
-    `select distinct on (item_id) item_id, verdict, coin_address
-       from internal.owner_feedback where subject_kind = 'coin_match'
-      order by item_id, created_at desc, id desc`,
-  );
-  return {
-    labels: rows.flatMap((r) => (r.verdict === 'right' && r.coin_address !== null ? [{ itemId: r.item_id, right: r.coin_address }] : r.verdict === 'none' ? [{ itemId: r.item_id, right: null }] : [])),
-    wrongTaps: rows.filter((r) => r.verdict === 'wrong').length,
-  };
+  const rows = await new PgOwnerCoinCallRepo(db).rows();
+  const folded = foldCoinCalls(rows.map((r) => ({ itemId: r.itemId, verdict: r.verdict, coinAddress: r.coinAddress, shownCoin: addressOfCoinId(r.shownCoinId), atMs: r.atMs, id: r.id })));
+  const labels: { itemId: string; right: string | null }[] = [];
+  let wrongTaps = 0;
+  for (const [itemId, calls] of folded) {
+    const label = coinLabelOf(calls);
+    if (label !== null) labels.push({ itemId, right: label.right });
+    else if (calls.wrong.size > 0) wrongTaps += 1;
+  }
+  return { labels, wrongTaps };
 }
 
 /** Each labelled post's candidates as the projector widens and weighs them, with the given weights. */
