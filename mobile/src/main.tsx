@@ -1,8 +1,12 @@
 /**
  * The phone app's entry point. Mount the shell and load the tokens, nothing else.
  *
- * No root error boundary, for the desktop app's reason: a white screen with a stack trace is
- * a bug somebody fixes, and a friendly root-level apology is a bug that ships.
+ * ★ A CRASH IS NEVER A BLACK SCREEN. Without a root boundary React unmounts everything on a
+ * render error, and the phone shows only the page's background: that is what Buy and Create did
+ * when the wallet vendor's approve window threw (2026-10-14), and nobody could tell what happened.
+ * So the root catches it and says it plainly: the error's own words (so it can be sent and fixed,
+ * not apologised away) and a Reload button. It is the last net, not a fix: the cause still gets
+ * fixed where it is.
  *
  * The wallet is composed here: sign-in with X and an embedded Solana wallet, through
  * @insidor/wallet-embedded, when the build carries `VITE_PRIVY_APP_ID`. Without it the wallet is
@@ -10,7 +14,7 @@
  * vendor.
  */
 
-import { StrictMode } from 'react';
+import { Component, StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { EmbeddedWalletProvider, embeddedWallet } from '@insidor/wallet-embedded';
@@ -44,6 +48,32 @@ const app = (
   </WalletProvider>
 );
 
+/** The last net (see the header): the error in its own words and a way back, never a black page. */
+class Crashed extends Component<{ children: ReactNode }, { error: string | null }> {
+  override state = { error: null as string | null };
+  static getDerivedStateFromError(e: unknown) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  override componentDidCatch(e: unknown) {
+    console.error('app crashed', e);
+  }
+  override render() {
+    if (this.state.error === null) return this.props.children;
+    return (
+      <div role="alert" style={{ minHeight: '100dvh', padding: '48px 16px', display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--bg, #0b0b0f)', color: 'var(--text-1, #fff)', fontFamily: 'system-ui, sans-serif' }}>
+        <h1 style={{ fontSize: 20, margin: 0 }}>Something broke on this screen</h1>
+        <p style={{ margin: 0, opacity: 0.8 }}>The error was:</p>
+        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 13, opacity: 0.9 }}>{this.state.error}</pre>
+        <button type="button" onClick={() => location.reload()} style={{ alignSelf: 'flex-start', padding: '12px 20px', borderRadius: 12, border: 0, background: 'var(--brand, #9945FF)', color: '#fff', fontSize: 16 }}>
+          Reload
+        </button>
+      </div>
+    );
+  }
+}
+
 createRoot(container).render(
-  <StrictMode>{appId === '' ? app : <EmbeddedWalletProvider appId={appId} bridge={bridge}>{app}</EmbeddedWalletProvider>}</StrictMode>,
+  <StrictMode>
+    <Crashed>{appId === '' ? app : <EmbeddedWalletProvider appId={appId} bridge={bridge}>{app}</EmbeddedWalletProvider>}</Crashed>
+  </StrictMode>,
 );
