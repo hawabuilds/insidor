@@ -2826,8 +2826,18 @@ const POLICY_V1: Policy = {
        cat 0.6, trend 6.8 (median 6 h), funny 9.5 (4.8 h), viral 6.2 (3.9 h), animals 7.0 (4.8 h).
        Tried the same night and not added, for the same reason: brainrot 2 videos (22 h old),
        relatable 0, skit 2, dankmemes 14 (12 h), comedy 29 and humor 30 (but 7.3 h and 4.7 h old).
-       Interleaved so an ask of two words is never two pet words. */
-    hashtags: ['meme', 'cute', 'crypto', 'dog', 'memes', 'pet', 'memecoin', 'solana'], // vocab-allow: solana  — a hashtag the owner chose to watch, not a chain this code knows
+       Interleaved so an ask of two words is never two pet words.
+       ★ FOUR FROM 2026-10-14, the owner's call to drop crypto, memecoin and solana: from 01:19 to // vocab-allow: solana  — a watch word the owner dropped, not a chain this code knows
+       11:20 UTC they brought 1.5, 0.4 and 0.2 videos under two hours old a run (median 12.0, 12.2
+       and 11.6 hours old) against dog 21.3 (1.1 h), meme 16.3 (1.5 h), cute 9.9 (1.1 h), pet 9.6
+       (2.7 h) and memes 9.1 (1.6 h). Six more words were tried on the learning book that morning and
+       none brings fresh videos: puppy 4 videos (median 20 h old), memesdaily 15 (18 h), kitten 30
+       (12 h), funnymemes 30 (6.8 h, 2 under two hours), lol 0 and shitpost 0. So nothing new is
+       added and the freed asks go to the fresh words, each now searched every 30 minutes instead
+       of every hour. Pet is dropped with them: four words keep each ask to one meme word and one
+       pet word (five could not, every neighbouring pair goes out together), and cute's videos are
+       younger (5.2 under an hour a run against pet's 2.8) at about half the price a run. */
+    hashtags: ['meme', 'cute', 'memes', 'dog'],
     /* 20, sorted by most liked over the past day: a live run on 2026-10-13 returned 20 videos, all
        under 24 hours old, the top five at 1.5M to 3M views, for $0.101 once its charges settled
        ($0.071 was read before they had). Asks now alternate newest-first and most-liked. */
