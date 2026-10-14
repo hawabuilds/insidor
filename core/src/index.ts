@@ -141,6 +141,7 @@ export { mergeHits } from './search/merge.ts';
 export { byEvidence, coinEvidence, compactName, descriptionMatch, linksAccount, matchPostCoin, nameMatch, pictureVerdict, postPictureVerdict, scoreOf, signals as postCoinSignals } from './match/post-coin.ts';
 export type { CoinEvidence as PostCoinEvidence, CoinSide, MatchBars, NameMatch, PostCoinMatch, PostSide, ProvenBy } from './match/post-coin.ts';
 export { postedAddresses } from './match/posted-addresses.ts';
+export { bioAddresses } from './match/poster-bio.ts';
 export type { PostedAddress } from './match/posted-addresses.ts';
 /* The owner's coin calls on a post, folded in order: the projector, the re-tune and the coin-match
    refit read them through this one rule (match/owner-coin-calls.ts). */

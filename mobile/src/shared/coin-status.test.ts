@@ -100,3 +100,10 @@ test('★ the owner\'s coin for the story says "Coin for this story", never "Lin
   assert.deepEqual(evidenceFacts({ linksPost: null, samePicture: null, launchedAfterMs: 720_000, storyCoin: true }), ['Coin for this story', 'Launched 12m after']);
   assert.deepEqual(evidenceFacts({ linksPost: true, samePicture: null, launchedAfterMs: null, storyCoin: true }), ['Links this post']);
 });
+
+test("a coin the poster's own profile names says so, as a fact beside the others", async () => {
+  const { decodeCoinEvidence } = await import('./api/decode.ts');
+  const e = decodeCoinEvidence({ linksPost: null, samePicture: null, launchedAfterMs: 3_600_000, posterBioNamesCoin: true });
+  assert.deepEqual(evidenceFacts(e), ["The poster's bio names this coin", 'Launched 1h after']);
+  assert.equal(decodeCoinEvidence({ linksPost: null, samePicture: null, launchedAfterMs: null, posterBioNamesCoin: false }).posterBio, undefined, 'only a literal true is said');
+});

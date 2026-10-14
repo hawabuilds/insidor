@@ -149,4 +149,7 @@ export interface CoinEvidence {
   /** The owner confirmed this coin for a post about the same story, and this post does not prove it
       itself: "Coin for this story". Absent everywhere else. */
   readonly storyCoin?: true;
+  /** The poster's own profile names this coin's address: "The poster's bio names this coin".
+      Only a literal true from the server; absent when not, or not read. */
+  readonly posterBio?: true;
 }

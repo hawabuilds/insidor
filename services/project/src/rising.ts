@@ -811,6 +811,7 @@ async function withMatches(
       samePicture: weighedHere?.samePicture ?? null,
       launchedAfterMs,
       ...(weighedHere?.posterPostedAddress === undefined ? {} : { posterPostedAddress: weighedHere.posterPostedAddress }),
+      ...(weighedHere?.posterBioNamesCoin === undefined ? {} : { posterBioNamesCoin: weighedHere.posterBioNamesCoin }),
       storyCoin: true,
     };
     out.set(itemId, { ...base, match: { kind: 'matched', coin, evidence, story: true } });
@@ -827,6 +828,7 @@ async function withMatches(
       samePicture: weighedHere?.samePicture ?? null,
       launchedAfterMs,
       ...(weighedHere?.posterPostedAddress === undefined ? {} : { posterPostedAddress: weighedHere.posterPostedAddress }),
+      ...(weighedHere?.posterBioNamesCoin === undefined ? {} : { posterBioNamesCoin: weighedHere.posterBioNamesCoin }),
       ownerChecked: true,
     };
     const l = out.get(itemId);

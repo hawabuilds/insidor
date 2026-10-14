@@ -19,6 +19,10 @@
  *               either is "same picture"; the judge's borderline "same subject" leaves it unknown.
  *   words       the coin's description against the post's own words
  *   address     the poster's own account, or others, posted the coin's address under the post
+ *   profile     the poster's own profile text, as any read of it showed it (0080,
+ *               internal.author_bio_reading), names the coin's address — and whether this post is
+ *               the poster's last we hold before the coin launched. Its addresses are candidates
+ *               too. Before 0080 no profile is read and this is "not known" on every coin.
  *   timing      the coin's launch (public.coin_name, else public.asset) against the post's time.
  *   name        the judge's names for the subject against the coin's name and ticker.
  *   weights     the newest re-tune refit (internal.coin_match_fit, 0070), else Policy.postCoin.
@@ -41,8 +45,8 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy, type PostCoinWeights } from '@insidor/contracts/policy.ts';
-import { compactName, guessesFirst, matchPostCoin, nameIdeas, nameMatch, postPictureVerdict, type CoinSide, type MatchBars, type NameIdea, type PostCoinMatch } from '@insidor/core';
-import { missingTable, PgCryptoAttentionRepo, PgImageHashRepo, PgNameGuessRepo, type Db } from '@insidor/store';
+import { bioAddresses, compactName, guessesFirst, matchPostCoin, nameIdeas, nameMatch, postPictureVerdict, type CoinSide, type MatchBars, type NameIdea, type PostCoinMatch } from '@insidor/core';
+import { missingTable, PgAuthorRepo, PgCryptoAttentionRepo, PgImageHashRepo, PgNameGuessRepo, type Db } from '@insidor/store';
 
 import { pictureOf } from './db.ts';
 import type { WireCoinEvidence } from './wire.ts';
@@ -137,6 +141,7 @@ interface PostRow {
   first_seen_at: Date | string;
   media: unknown;
   body: string | null;
+  author_key: string;
   handle: string | null;
   proposed_name: string | null;
   alternate_names: string[] | null;
@@ -174,7 +179,7 @@ function pictureIds(media: unknown): string[] {
 /** The judge's newest names for each post, and the post's own time and ids. */
 async function loadPosts(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, PostRow>> {
   const rows = await db.query<PostRow>(
-    `select i.item_id, i.source_item_id, i.posted_at, i.first_seen_at, i.media, i.body, au.handle, j.proposed_name, j.alternate_names
+    `select i.item_id, i.source_item_id, i.posted_at, i.first_seen_at, i.media, i.body, i.author_key, au.handle, j.proposed_name, j.alternate_names
        from public.item i
        left join public.author au on au.author_key = i.author_key
        left join lateral (
@@ -250,6 +255,25 @@ async function nameCandidates(db: Db, posts: readonly { itemId: string; postedAt
   return out;
 }
 
+/**
+ * Each poster's posts we hold, oldest first, for "the poster's last post before the launch". Only
+ * the posters whose profile names an address are asked about.
+ */
+async function postsBy(db: Db, authorKeys: readonly string[]): Promise<ReadonlyMap<string, readonly { readonly itemId: string; readonly at: number }[]>> {
+  if (authorKeys.length === 0) return new Map();
+  const rows = await db.query<{ item_id: string; author_key: string; at: Date | string }>(
+    `select item_id, author_key, coalesce(posted_at, first_seen_at) as at from public.item
+      where author_key = any($1::text[]) order by at`,
+    [[...authorKeys]],
+  );
+  const out = new Map<string, { itemId: string; at: number }[]>();
+  for (const r of rows) {
+    const at = ms(r.at);
+    if (at !== null) out.set(r.author_key, [...(out.get(r.author_key) ?? []), { itemId: r.item_id, at }]);
+  }
+  return out;
+}
+
 const bitsApart = (a: string, b: string): number => {
   let x = BigInt(`0x${a}`) ^ BigInt(`0x${b}`);
   let n = 0;
@@ -305,6 +329,12 @@ export async function weighPostCoins(
   for (const [id, list] of replies) for (const a of list) add(id, a.address);
   for (const n of neighbours) add(n.itemId, n.address);
   for (const [id, xs] of named) for (const a of xs) add(id, a);
+  /* The poster's profile: every address any read of it named is a candidate for each of their posts;
+     the rule (core post-coin.ts (4)) decides which post, if any, it proves. */
+  const bios = await new PgAuthorRepo(db).biosOf([...new Set([...posts.values()].map((x) => x.author_key))]);
+  const bioNamed = new Map([...bios].map(([key, list]) => [key, new Set(bioAddresses(list.map((b) => b.bio), p.attention))] as const));
+  for (const post of posts.values()) for (const a of bioNamed.get(post.author_key) ?? []) add(post.item_id, a);
+  const theirPosts = await postsBy(db, [...bioNamed].filter(([, xs]) => xs.size > 0).map(([k]) => k));
 
   const pairs = [...wide].flatMap(([itemId, addresses]) => [...addresses].map((address) => ({ itemId, address })));
   /* An address posted under a post that is no coin we hold has no row: it is dropped here. */
@@ -322,6 +352,13 @@ export async function weighPostCoins(
     const postPicture = pictureOf(post.media)?.uri ?? null;
     const postHash = postPicture === null ? undefined : pictureHashes.get(postPicture);
     const posted = replies.get(itemId);
+    const profileNamed = bioNamed.get(post.author_key);
+    /* The poster's last post we hold at or before the launch (with the grace): is it this one? */
+    const lastBefore = (launchedAt: Millis | null): boolean | null => {
+      if (launchedAt === null) return null;
+      const before = (theirPosts.get(post.author_key) ?? []).filter((x) => x.at <= launchedAt + p.origin.launchAllowanceMs);
+      return before.length === 0 ? null : before[before.length - 1]?.itemId === itemId;
+    };
     const sides: CoinSide[] = rows.map((r) => {
       const coinHash = r.image_uri === null ? undefined : pictureHashes.get(r.image_uri);
       const said = posted?.find((a) => a.address === r.address);
@@ -338,6 +375,8 @@ export async function weighPostCoins(
         addressByAuthor: posted === undefined ? null : (said?.byAuthor ?? false),
         addressByOthers: posted === undefined ? null : (said?.byOthers ?? 0),
         tradingJump: null,
+        bioNamesAddress: profileNamed === undefined ? null : profileNamed.has(r.address),
+        lastPostBeforeLaunch: profileNamed?.has(r.address) === true ? lastBefore(ms(r.launched_at)) : null,
       };
     });
     const decision = matchPostCoin(
@@ -347,7 +386,7 @@ export async function weighPostCoins(
     );
     const evidence = decision.kind === 'none'
       ? []
-      : decision.ranked.map((e) => ({ address: e.address, linksPost: e.linksPost, samePicture: e.samePicture, launchedAfterMs: e.launchedAfterMs, posterPostedAddress: e.addressByAuthor }));
+      : decision.ranked.map((e) => ({ address: e.address, linksPost: e.linksPost, samePicture: e.samePicture, launchedAfterMs: e.launchedAfterMs, posterPostedAddress: e.addressByAuthor, posterBioNamesCoin: e.bioNamesAddress }));
     matches.set(itemId, { decision, evidence });
   }
   return matches;

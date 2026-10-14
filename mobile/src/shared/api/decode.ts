@@ -713,6 +713,8 @@ export function decodeCoinEvidence(raw: unknown, path = '$.evidence'): CoinEvide
     launchedAfterMs: typeof after === 'number' && Number.isFinite(after) ? after : null,
     /* Only a literal true: anything else is not the owner's coin for the story. */
     ...(o['storyCoin'] === true ? { storyCoin: true as const } : {}),
+    /* The server's `posterBioNamesCoin`; only a literal true is said. */
+    ...(o['posterBioNamesCoin'] === true ? { posterBio: true as const } : {}),
   };
 }
 
