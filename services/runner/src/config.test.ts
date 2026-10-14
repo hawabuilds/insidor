@@ -281,3 +281,10 @@ test('★ RANK is off unless switched on, so an unbuilt stage does not throw eve
   assert.equal(loadRunnerConfig({ ...complete, RANK: 'on' }).rank, 'on');
   assert.equal(loadRunnerConfig({ ...complete, RANK: 'yes' }).rank, 'off');
 });
+
+test('★ OWNER_WALLET keeps only wallet addresses: a "*" copied from the trade allowlist is no owner, not everyone', () => {
+  const owner = 'A1e82D9Lw4irgKMpXRpJbvLw8c7xCCyA42NdcxzKvvdL';
+  assert.deepEqual(loadRunnerConfig({ ...complete, OWNER_WALLET: owner }).ownerWallets, [owner]);
+  assert.deepEqual(loadRunnerConfig({ ...complete, OWNER_WALLET: '*' }).ownerWallets, []);
+  assert.deepEqual(loadRunnerConfig({ ...complete, OWNER_WALLET: `*, ${owner}` }).ownerWallets, [owner]);
+});

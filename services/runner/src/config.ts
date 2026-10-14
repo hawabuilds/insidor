@@ -273,10 +273,15 @@ export interface RunnerConfig {
    */
   readonly marketData: { readonly plan: 'free' | 'demo' | 'pro'; readonly apiKey?: string; readonly baseUrl: string };
   /**
-   * The owner's wallet(s), from `OWNER_WALLET` (on Railway, a reference to the trade service's
-   * `TRADING_ALLOWLIST`; comma separated there, so read the same way). Whoever signed in with one
-   * gets the supplier warnings. Empty is a supported state, like a source with no key, and not a
-   * boot failure: the warnings are then logged only, and the boot line says so.
+   * The owner's wallet(s), from `OWNER_WALLET`, comma separated. Whoever signed in with one gets
+   * the supplier warnings. Empty is a supported state, like a source with no key, and not a boot
+   * failure: the warnings are then logged only, and the boot line says so.
+   *
+   * ★ ONLY WALLET ADDRESSES COUNT. This used to be a Railway reference to the trade service's
+   * `TRADING_ALLOWLIST`; since trading opened to everyone (2026-10-15) that may be `*`, which is
+   * nobody's wallet. An entry that is not an address is dropped, so a `*` here reads as "no owner"
+   * (logged only, and said at boot) — never as a match for every profile, nor a silent miss.
+   * Give the owner's wallet its own value here rather than a reference to the allowlist.
    */
   readonly ownerWallets: readonly string[];
   /**
@@ -488,7 +493,7 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     ownerWallets: (env['OWNER_WALLET'] ?? '')
       .split(',')
       .map((w) => w.trim())
-      .filter((w) => w !== ''),
+      .filter((w) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(w)),
     bioRefreshSources: (env['BIO_REFRESH_SOURCES'] ?? '')
       .split(',')
       .map((w) => w.trim())
