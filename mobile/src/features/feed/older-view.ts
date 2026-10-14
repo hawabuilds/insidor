@@ -17,10 +17,11 @@ import type { Millis } from '../../shared/format/measure.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { compact } from '../../shared/format/number.ts';
 import type { OlderCoin } from '../../shared/api/index.ts';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 /** How a coin is named in a sentence: its ticker, else its name. */
 export function olderCoinLabel(c: Pick<OlderCoin, 'ticker' | 'name'>): string {
-  if (c.ticker !== null) return `$${c.ticker}`;
+  if (c.ticker !== null) return tickerText(c.ticker);
   return c.name ?? 'an unnamed coin';
 }
 

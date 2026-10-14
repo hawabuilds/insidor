@@ -17,6 +17,7 @@
  */
 
 import type { NameIdea, TickerUse } from '../../shared/api/index.ts';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 /** What a ticker may hold: capitals and digits, at most ten (the launchpad's own limit). */
 export const TICKER_MAX = 10;
@@ -187,5 +188,5 @@ export function coinPageUrl(origin: string, path: string, hash: string): string 
 
 /** Trador's "Share on X": an intent link carrying the coin's page. */
 export function shareOnX(ticker: string, pageUrl: string): string {
-  return `https://x.com/intent/post?text=${encodeURIComponent(`$${ticker} is live`)}&url=${encodeURIComponent(pageUrl)}`;
+  return `https://x.com/intent/post?text=${encodeURIComponent(`${tickerText(ticker)} is live`)}&url=${encodeURIComponent(pageUrl)}`;
 }

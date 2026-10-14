@@ -20,6 +20,7 @@ import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { ageText, pctText } from './sheet-view.ts';
 import styles from './post-sheet.module.css';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 export function CoinLine({ coin, now, onOpen, action }: { coin: SheetCoin; now: number; onOpen: () => void; action: ReactNode }) {
   const age = ageText(coin.launchedAt, now);
@@ -30,7 +31,7 @@ export function CoinLine({ coin, now, onOpen, action }: { coin: SheetCoin; now: 
     }}>
       <CoinLogo address={coin.address} ticker={coin.ticker ?? coin.name} imageUrl={coin.imageUrl} size={44} />
       <span className={styles['coinText']}>
-        <b className={styles['ticker']}>${coin.ticker ?? coin.name ?? coin.address.slice(0, 4)}</b>
+        <b className={styles['ticker']}>{tickerText(coin.ticker ?? coin.name ?? coin.address.slice(0, 4))}</b>
         <span className={styles['coinSub']}>
           {age !== null ? <span>{age}</span> : null}
           {coin.bonded === true ? <span>Bonded</span> : null}

@@ -22,6 +22,7 @@ import type { SendOutcome } from '@insidor/contracts/ports/wallet.ts';
 
 import { buildTrade, fetchTradeQuote, type TradeLimits } from '../../shared/api/index.ts';
 import { confirmOrder, fromBase64, IMPACT_BLOCK_PCT, largestBuy, SLIPPAGE_CHOICES, toBaseUnits, type ConfirmOutcome } from '../trade/order-flow.ts';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 /** The design's three amounts, in SOL. */
 export const QUICK_AMOUNTS_SOL = ['0.01', '0.025', '0.05'] as const;
@@ -125,7 +126,7 @@ export async function quickBuy(
 export function outcomeLine(o: QuickOutcome, amountSol: string, ticker: string): string {
   switch (o.kind) {
     case 'sent':
-      return `Bought ${amountSol} SOL of $${ticker}`;
+      return `Bought ${amountSol} SOL of ${tickerText(ticker)}`;
     case 'blocked':
       return `Not sent: ${o.why}`;
     case 'no-price':

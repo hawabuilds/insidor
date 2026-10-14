@@ -21,6 +21,7 @@ import { addMissed, fetchMissed, type MissedList, type MissedPost } from '../../
 import { Button } from '../../shared/ui/Button.tsx';
 import { Modal } from '../../shared/ui/Modal.tsx';
 import styles from './missed.module.css';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 const POLL_MS = 10_000;
 
@@ -43,7 +44,7 @@ function Row({ post }: { post: MissedPost }) {
           {post.coins.map((c, i) => (
             <span key={c.address}>
               {i > 0 ? ', ' : ''}
-              <a href={`https://solscan.io/token/${c.address}`} target="_blank" rel="noreferrer">{c.ticker !== null ? `$${c.ticker}` : (c.name ?? `${c.address.slice(0, 6)}…`)}</a>
+              <a href={`https://solscan.io/token/${c.address}`} target="_blank" rel="noreferrer">{c.ticker !== null ? tickerText(c.ticker) : (c.name ?? `${c.address.slice(0, 6)}…`)}</a>
               {c.launchedAt !== null ? ` (launched ${when(c.launchedAt)})` : ''}
             </span>
           ))}

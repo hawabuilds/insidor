@@ -24,6 +24,7 @@ import { Sparkline } from './Sparkline.tsx';
 import { Thumb } from './Thumb.tsx';
 import { Value } from './Value.tsx';
 import styles from './row.module.css';
+import { tickerText } from '../format/ticker.ts';
 
 export interface RowHandlers {
   readonly open: () => void;
@@ -107,7 +108,7 @@ function ActionButton({ action, handlers }: { action: CoinAction | null; handler
     case 'create':
       return <Button look="primary" onClick={tap(handlers.create)}>Create coin</Button>;
     case 'buy':
-      return <Button look="buy" onClick={tap(() => handlers.buy(action.coin.ticker))}>Buy ${action.coin.ticker}</Button>;
+      return <Button look="buy" onClick={tap(() => handlers.buy(action.coin.ticker))}>Buy {tickerText(action.coin.ticker)}</Button>;
     case 'view':
       return <Button look="quiet" onClick={tap(handlers.viewCoins)}>View coins</Button>;
   }

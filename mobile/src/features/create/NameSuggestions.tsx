@@ -27,6 +27,7 @@ import { useNow } from '../../shared/hooks.ts';
 import { CoinRow } from '../search/Search.tsx';
 import type { Idea } from './create-form.ts';
 import styles from './create.module.css';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 /** Blank chips held in the row while the ideas are read: their widths, so nothing reflows. */
 const HELD_WIDTHS = [64, 78, 58];
@@ -45,8 +46,8 @@ export function NameChips({ ideas, reading, onPick }: { ideas: readonly Idea[]; 
   return (
     <div className={styles['chips']} aria-label="Other names">
       {ideas.map((idea) => (
-        <button key={idea.ticker} type="button" className={styles['chip']} title={idea.name} aria-label={`${idea.name}, $${idea.ticker}`} onClick={() => onPick(idea)}>
-          ${idea.ticker}
+        <button key={idea.ticker} type="button" className={styles['chip']} title={idea.name} aria-label={`${idea.name}, ${tickerText(idea.ticker)}`} onClick={() => onPick(idea)}>
+          {tickerText(idea.ticker)}
         </button>
       ))}
     </div>
@@ -59,7 +60,7 @@ export function TickerCoins({ ticker, list }: { ticker: string; list: SameNameCo
   return (
     <div className={styles['coins']}>
       {list.items.map((c) => <CoinRow key={c.coinId} c={c} now={now} />)}
-      {list.more ? <p className={styles['note']}>More coins use ${ticker}; these are the newest.</p> : null}
+      {list.more ? <p className={styles['note']}>More coins use {tickerText(ticker)}; these are the newest.</p> : null}
     </div>
   );
 }

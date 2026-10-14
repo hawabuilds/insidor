@@ -22,6 +22,7 @@ import { Notice } from '../../shared/ui/Notice.tsx';
 import { StoryRow } from '../../shared/ui/StoryRow.tsx';
 import { orderNarratives, postsLine, stageLabel, type NarrativeOrder } from './narrative-order.ts';
 import styles from './narratives.module.css';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const [order, setOrder] = useState<NarrativeOrder>('popular');
@@ -80,7 +81,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
                 open: () => open(s),
                 viewCoins: () => open(s),
                 create: () => onCreate(s),
-                buy: (ticker) => soon(`Buying $${ticker}`),
+                buy: (ticker) => soon(`Buying ${tickerText(ticker)}`),
               }}
             />
           ))

@@ -62,6 +62,7 @@ import {
 } from './create-form.ts';
 import { loadNames, loadRules, peekNames, peekRules } from './preload.ts';
 import styles from './create.module.css';
+import { tickerText } from '../../shared/format/ticker.ts';
 
 export interface CreateFrom {
   /** The narrative the coin is made from, recorded with it once it exists. */
@@ -257,7 +258,7 @@ function NameCalls({ f }: { f: Form }) {
         <div className={styles['more']}>
           {f.ideas.map((idea) => (
             <div key={idea.ticker} className={styles['call']}>
-              <b>{idea.name} ${idea.ticker}</b>
+              <b>{idea.name} {tickerText(idea.ticker)}</b>
               <NameCallButtons itemId={postId} suggestion={{ name: idea.name, ticker: idea.ticker }} />
             </div>
           ))}
@@ -404,7 +405,7 @@ function Launched({ mint, ticker, imageUrl, onClose }: { mint: string; ticker: s
   const hash = hrefFor({ screen: 'token', coinId: `solana:${mint}` });
   const page = coinPageUrl(window.location.origin, window.location.pathname, hash);
   return (
-    <Modal title={`$${ticker} is live`} onClose={onClose}>
+    <Modal title={`${tickerText(ticker)} is live`} onClose={onClose}>
       <div className={styles['launched']}>
         <CoinLogo address={mint} ticker={ticker} imageUrl={imageUrl} size={LOGO_PX} />
         <a className={styles['view']} href={hash} onClick={onClose}>View coin</a>
