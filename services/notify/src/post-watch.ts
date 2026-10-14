@@ -46,7 +46,7 @@ export async function coinsShown(db: Db, itemId: string): Promise<string[]> {
 }
 
 /** The coin on a post's line, whatever settled it (proven, the story's coin, the narrative's own); null when the line names none. */
-export function lineCoin(payload: unknown): (ProvenCoin & { readonly linksPost: boolean; readonly storyCoin: boolean; readonly launchedAfterMs: number | null; readonly mcUsd: number | null; readonly name: string; readonly imageUrl: string | null; readonly mintedAtMs: number | null }) | null {
+export function lineCoin(payload: unknown): (ProvenCoin & { readonly linksPost: boolean; readonly posterBio: boolean; readonly storyCoin: boolean; readonly launchedAfterMs: number | null; readonly mcUsd: number | null; readonly name: string; readonly imageUrl: string | null; readonly mintedAtMs: number | null }) | null {
   const p = (typeof payload === 'string' ? JSON.parse(payload) : payload) as { coins?: { kind?: unknown; coin?: Record<string, unknown>; evidence?: Record<string, unknown> | null } } | null;
   const c = p?.coins;
   if (c === undefined || (c.kind !== 'one' && c.kind !== 'matched')) return null;
@@ -64,6 +64,8 @@ export function lineCoin(payload: unknown): (ProvenCoin & { readonly linksPost: 
     ticker: typeof coin['ticker'] === 'string' ? coin['ticker'] : '',
     name: typeof coin['name'] === 'string' ? coin['name'] : '',
     linksPost: ev['linksPost'] === true,
+    /* The poster's own profile names the coin (services/project post-match.ts, 0080). */
+    posterBio: ev['posterBioNamesCoin'] === true,
     storyCoin: ev['storyCoin'] === true,
     launchedAfterMs: v(ev['launchedAfterMs']),
     mcUsd: v(coin['marketCapUsd']),

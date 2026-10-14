@@ -120,6 +120,7 @@ test('a fact we do not have is left out of the sentence, never a 0 or a dash; on
   assert.deepEqual(alertText('fyp_coin', { symbol: '$$GOLIATH', author: '@rawsalerts', launchedAfterMs: null }), { title: 'Coin found for this post', body: "$GOLIATH has the name of @rawsalerts' post. Tap to buy." });
   assert.deepEqual(alertText('fyp_coin', { symbol: 'OLD', author: '@cat', launchedAfterMs: -3 * 3_600_000, mcUsd: 2_500_000 }), { title: 'Coin found for this post', body: "$OLD launched 3h before @cat's post. $2.5M MC. Tap to buy." });
   assert.deepEqual(alertText('fyp_proven', { symbol: 'X1', author: '@dog' }), { title: 'Coin links this post', body: "$X1 links @dog's post." });
+  assert.deepEqual(alertText('fyp_proven', { symbol: 'AKITA', author: '@nikkei', bio: true, launchedAfterMs: 72 * 60_000 }), { title: 'Coin links this post', body: "@nikkei's bio names $AKITA. Launched 1h after." }, 'a profile proof is said as the profile, never as a link');
   assert.deepEqual(alertText('watch_coin', { found: 'launched', symbol: 'NEW', author: '@dogs' }), { title: 'Watchlist: coin launched', body: "$NEW just launched for @dogs' post you're watching." });
   assert.deepEqual(alertText('watch_coin', { found: 'found', symbol: 'V', author: '@b' }), { title: 'Watchlist: coin found', body: "@b's post now has a coin: $V." });
   assert.deepEqual(alertText('story_post', { author: '@R', symbol: 'GTA' }), { title: 'Coin for this story', body: 'New post from @R is on FYP. Its coin $GTA.' });
