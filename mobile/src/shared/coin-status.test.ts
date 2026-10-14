@@ -95,3 +95,8 @@ test("a post's own coin shows its line, Buy, and why as facts only — an unknow
   assert.deepEqual(evidenceFacts({ linksPost: false, samePicture: true, launchedAfterMs: -7_200_000 }), ['Same picture', 'Launched 2h before']);
   assert.deepEqual(postCoinStatus({ kind: 'matched', coin: coin({ tradable: false }), evidence: { linksPost: null, samePicture: null, launchedAfterMs: null } }).actions, []);
 });
+
+test('★ the owner\'s coin for the story says "Coin for this story", never "Links this post" unless the post proves it', () => {
+  assert.deepEqual(evidenceFacts({ linksPost: null, samePicture: null, launchedAfterMs: 720_000, storyCoin: true }), ['Coin for this story', 'Launched 12m after']);
+  assert.deepEqual(evidenceFacts({ linksPost: true, samePicture: null, launchedAfterMs: null, storyCoin: true }), ['Links this post']);
+});

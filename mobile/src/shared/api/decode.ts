@@ -692,7 +692,13 @@ export function decodeCoinEvidence(raw: unknown, path = '$.evidence'): CoinEvide
   const o = obj(raw, path);
   const fact = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
   const after = o['launchedAfterMs'];
-  return { linksPost: fact(o['linksPost']), samePicture: fact(o['samePicture']), launchedAfterMs: typeof after === 'number' && Number.isFinite(after) ? after : null };
+  return {
+    linksPost: fact(o['linksPost']),
+    samePicture: fact(o['samePicture']),
+    launchedAfterMs: typeof after === 'number' && Number.isFinite(after) ? after : null,
+    /* Only a literal true: anything else is not the owner's coin for the story. */
+    ...(o['storyCoin'] === true ? { storyCoin: true as const } : {}),
+  };
 }
 
 /**
