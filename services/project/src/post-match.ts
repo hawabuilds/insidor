@@ -10,7 +10,9 @@
  *               (internal.crypto_attention `_addresses`); the coins whose logo's perceptual hash is
  *               within `postCoin.widenHashDistance` of the post's picture, over every coin minted
  *               in the window (internal.image_hash, 0070); and the mint stream's own coins whose
- *               name or ticker is a short form, misspelling or longer form of the subject's names
+ *               name or ticker is a short form, misspelling or longer form of the subject's names; and
+ *               the coins whose metadata names the post (internal.coin_post_link, 0083), first
+ *               launched first, so a coin of another name that links the post is still weighed
  *   links       the coin's metadata document (internal.coin_metadata) — its social link, website,
  *               chat link and description — names the post, or the poster's account. Unread
  *               metadata is "not known", never "no".
@@ -256,6 +258,32 @@ async function nameCandidates(db: Db, posts: readonly { itemId: string; postedAt
 }
 
 /**
+ * The coins whose metadata names each post (0083), earliest launch first: the runner's coin-link
+ * step writes them within seconds of a launch. The first coin to link a post is its coin (core's
+ * rule), so the earliest are the ones kept. Before 0083 there is no table and none are added.
+ */
+async function linkedCandidates(db: Db, itemIds: readonly string[], perPost: number): Promise<ReadonlyMap<string, readonly string[]>> {
+  if (itemIds.length === 0) return new Map();
+  try {
+    const rows = await db.query<{ item_id: string; address: string }>(
+      `select item_id, address from (
+         select l.source || ':' || l.source_item_id as item_id, l.address,
+                row_number() over (partition by l.source, l.source_item_id order by l.minted_at nulls last, l.address) as n
+           from unnest($1::text[], $2::text[]) as p(source, source_item_id)
+           join internal.coin_post_link l on l.source = p.source and l.source_item_id = p.source_item_id
+       ) t where n <= $3`,
+      [itemIds.map((id) => id.slice(0, id.indexOf(':'))), itemIds.map((id) => id.slice(id.indexOf(':') + 1)), perPost],
+    );
+    const out = new Map<string, string[]>();
+    for (const r of rows) out.set(r.item_id, [...(out.get(r.item_id) ?? []), r.address]);
+    return out;
+  } catch (e) {
+    if (missingTable(e)) return new Map();
+    throw e;
+  }
+}
+
+/**
  * Each poster's posts we hold, oldest first, for "the poster's last post before the launch". Only
  * the posters whose profile names an address are asked about.
  */
@@ -334,6 +362,7 @@ export async function weighPostCoins(
   const hashFound = new Map<string, Set<string>>();
   for (const n of neighbours) hashFound.set(n.itemId, (hashFound.get(n.itemId) ?? new Set<string>()).add(n.address));
   for (const [id, xs] of named) for (const a of xs) add(id, a);
+  for (const [id, xs] of await linkedCandidates(db, ids, pc.nameCandidatesPerPost)) for (const a of xs) add(id, a);
   /* The poster's profile: every address any read of it named is a candidate for each of their posts;
      the rule (core post-coin.ts (4)) decides which post, if any, it proves. */
   const bios = await new PgAuthorRepo(db).biosOf([...new Set([...posts.values()].map((x) => x.author_key))]);
