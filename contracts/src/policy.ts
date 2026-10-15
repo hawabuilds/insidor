@@ -2443,6 +2443,11 @@ export interface FindersPolicy {
     readonly regions: readonly string[];
     /** Tags and sounds kept per region and kind, rising first. */
     readonly perKind: number;
+    /**
+     * The newest-first asks of the trend and learned tags (the paid half: a run a word, and the
+     * judge on what clears the reach bar). Its own switch so the lists can be kept and shown free.
+     */
+    readonly asksOn: boolean;
     readonly askEveryMs: number;
     readonly wordsPerAsk: number;
   };
@@ -3699,6 +3704,7 @@ const POLICY_V1: Policy = {
       everyMs: 86_400_000,
       regions: ['US', 'GB'],
       perKind: 10,
+      asksOn: false,
       askEveryMs: 900_000, // fifteen minutes
       wordsPerAsk: 2,
     },
