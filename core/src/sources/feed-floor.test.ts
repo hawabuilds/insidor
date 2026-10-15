@@ -7,7 +7,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { bandFloor, bandWindow, effectiveFloor, laneTargets, nextFloor, sentFloors, sliceCoveredByBands, slowLaneDue, startFloors } from './feed-floor.ts';
+import { bandFloor, bandWindow, effectiveFloor, laneTargets, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, slowLaneDue, startFloors } from './feed-floor.ts';
 
 /* The lanes as they were before the fresh bands, so these tests keep pinning them whatever the live switch says. */
 const P = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: false, cutStale: false } } };
@@ -113,4 +113,26 @@ test('fresh on: a slow slice whose youngest age is inside the oldest band is cov
   const oldest = Math.max(...P.feed.fresh.bandAgesMin);
   assert.equal(sliceCoveredByBands(oldest - 5, FRESH), true);
   assert.equal(sliceCoveredByBands(oldest + 55, FRESH), false);
+});
+
+/* Late bands (`feed.fresh.late`): a fixed floor at an age in hours, asked only with both switches on. */
+const LATE = { ...FRESH, feed: { ...FRESH.feed, fresh: { ...FRESH.feed.fresh, late: { on: true, bands: [{ ageMin: 300, minApproval: 6_500 }] } } } };
+
+test('late bands are asked only with the fresh bands and the late switch both on', () => {
+  assert.deepEqual(lateBands(P), [], 'fresh off');
+  assert.deepEqual(lateBands({ ...LATE, feed: { ...LATE.feed, fresh: { ...LATE.feed.fresh, late: { ...LATE.feed.fresh.late, on: false } } } }), [], 'late off');
+  assert.deepEqual(lateBands(LATE), [{ ageMin: 300, minApproval: 6_500 }]);
+});
+
+test('★ a late band sends its fixed floor, never above what the slow lane sends', () => {
+  assert.equal(lateBandFloor(6_500, at(1_120, 7_412), LATE), 6_500);
+  assert.equal(lateBandFloor(6_500, at(1_120, 4_382), LATE), 4_382, 'the slow lane adapted lower: its slice is dropped, so the band asks no more than it would have');
+  assert.equal(lateBandFloor(1, at(1_120, 7_412), LATE), LATE.feed.effectiveFloorMin);
+});
+
+test('the slow slice holding a late band\'s age is covered, its neighbours are not', () => {
+  assert.equal(sliceCoveredByLateBand(285, 15, LATE), true, 'ages 285 to 300 hold 300');
+  assert.equal(sliceCoveredByLateBand(225, 15, LATE), false);
+  assert.equal(sliceCoveredByLateBand(300, 15, LATE), false, 'ages 300 to 315: the band asked at 300, the slice\'s youngest edge');
+  assert.equal(sliceCoveredByLateBand(285, 15, FRESH), false, 'late off: nothing covered');
 });
