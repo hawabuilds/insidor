@@ -41,8 +41,9 @@ const days = Number(arg('--days') ?? '3');
 const MS_MIN = 60_000;
 /* The owner's missed videos (2026-10-15 brief), always in the set whatever their coin's date. */
 const MISSED = ['tiktok:7695970441126579470', 'tiktok:7695781291517627662', 'tiktok:7695856190563061006', 'tiktok:7696516827739966738'];
-/* Measured $/day per finder at the settings in policy (the switch-on table, 2026-10-15). */
-const COSTS: Record<string, number> = { coinLinks: 1.25, reposts: 0.85, creators: 0.6, learnedTags: 0.9, trendTags: 0.97 };
+/* $/day per finder at the settings in policy, the judge at its measured $0.002 a post (the switch-on
+   table, 2026-10-15). The trend and learned tags share one set of asks, so each carries its whole cost. */
+const COSTS: Record<string, number> = { coinLinks: 0.65, reposts: 0.15, creators: 2.5, learnedTags: 3.5, trendTags: 3.57 };
 
 const postedAtOfId = (id: string): number | null => (/^\d+$/.test(id) ? Number(BigInt(id) >> 32n) * 1000 : null);
 const TAG = /#([\p{L}\p{N}_]+)/gu;
