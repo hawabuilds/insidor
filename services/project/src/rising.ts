@@ -17,6 +17,9 @@
  * window, as it has since the News tab went. Everything a frame ever showed stays on the infinite
  * scroll (public.feed_post), whatever later frames show.
  *
+ * How much of For You one topic may take (the owner, 2026-10-15): at most a few cards in any run of
+ * twenty (variety.ts, `rising.variety*`); the rest of the topic leave the live list, never reordered.
+ *
  * In what order (the owner, 2026-10-13): `fyp` newest first, by when the post went up on its source
  * (`forYouOrder`); the pass routes (judge, judge with the signal, the signal) decide only whether a
  * post is on For You, never where. The order model (core `postRankScore`, 0065) does not order; with
@@ -111,6 +114,7 @@ import { withPlausibleLists } from './coin-list.ts';
 import { writeSameNameCoins } from './same-name.ts';
 import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { permalinkFor } from './permalinks.ts';
+import { loadTopicLinks, topicsOf, withVariety } from './variety.ts';
 import { projectReach, projectSpark } from './project.ts';
 import type { ReachReading } from './project.ts';
 import { assertNoInternalVocabulary, instant, WireLeakError } from './wire.ts';
@@ -704,7 +708,9 @@ export async function buildRising(
     }
   });
 
-  const fyp = posts.filter((p) => p.passes && p.fyp && (p.fresh || p.member)).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
+  const fypAll = posts.filter((p) => p.passes && p.fyp && (p.fresh || p.member)).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
+  /* ★ No one topic fills For You (variety.ts): only who is on it changes, never the order. */
+  const fyp = policy.rising.varietyOn ? await varied(db, fypAll, rows, policy) : fypAll;
   const views = (p: WireRisingPost): number | null => p.reach.v;
   const popular = posts.filter((p) => p.passes && p.popular).sort((a, b) => {
     const va = views(a.post);
@@ -728,6 +734,24 @@ export async function buildRising(
   for (const p of posts) if (!ids.has(p.post.id) && membership?.all.has(p.post.id) === true && p.sameName.length > 0) sameName.set(p.post.id, p.sameName);
   for (const id of sameName.keys()) evidenceOf(id);
   return { ...shown, whyNot, heldBy, sameName, sameNameEvidence, members };
+}
+
+/**
+ * For You's posts with no topic over its share (variety.ts), in the order given. The topic facts are
+ * read for these posts alone: the story and the judge's name from the loaded rows, the namer's guess
+ * and the meaning vectors from `internal`.
+ */
+async function varied<P extends { readonly at: number; readonly post: WireRisingPost }>(db: Db, list: readonly P[], rows: readonly RisingRow[], policy: typeof DEFAULT_POLICY): Promise<P[]> {
+  const ids = list.map((p) => p.post.id);
+  const { guesses, alike } = await loadTopicLinks(db, ids, policy.rising.varietySameMeaning);
+  const byId = new Map(rows.map((row) => [row.item_id, row] as const));
+  const facts = new Map(ids.map((id) => {
+    const row = byId.get(id);
+    return [id, { storyId: row?.story_id ?? null, name: row?.proposed_name ?? guesses.get(id) ?? null }] as const;
+  }));
+  const topics = topicsOf(ids, facts, alike);
+  const cards = list.map((p) => ({ id: p.post.id, views: p.post.reach.v, at: p.at, p }));
+  return withVariety(cards, topics, policy.rising.varietyPerWindow, policy.rising.varietyWindow).map((c) => c.p);
 }
 
 /**
