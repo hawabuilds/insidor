@@ -75,6 +75,21 @@ importers:
         specifier: workspace:*
         version: link:../../kit/vendor
 
+  adapters/judge/openai-compatible:
+    dependencies:
+      '@insidor/contracts':
+        specifier: workspace:*
+        version: link:../../../contracts
+      '@insidor/judge-anthropic':
+        specifier: workspace:*
+        version: link:../anthropic
+      '@insidor/meter':
+        specifier: workspace:*
+        version: link:../../meter/spend
+      '@insidor/vendor-kit':
+        specifier: workspace:*
+        version: link:../../kit/vendor
+
   adapters/kit/vendor:
     dependencies:
       '@insidor/contracts':
