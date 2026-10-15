@@ -2986,7 +2986,12 @@ const POLICY_V1: Policy = {
        Portuguese, and today's search could not have found it even with discovery up. Measured at
        11:40 UTC, Portuguese posts over the floor were 15 to the 56+ English ones at 6 minutes and 7 to
        33 at 50; the bands' floor rises to keep the same posts a pass, so the cost does not move. */
-    langs: ['en', 'zxx', 'pt'],
+    /* 'qme' added 2026-10-15, the owner's approval: the code the text source gives a post of only a
+       picture or video and emoji. The owner's missed @H2RScotland cat (179k likes) was 'qme' and no
+       floor could have found it. Measured 16:30 UTC: 'qme' and 'und' posts over the 6-minute band's
+       floor were about 1 a minute of posting time against about 7 found a minute in the three
+       languages; the floor rises to keep the same posts a pass, so the cost does not move. */
+    langs: ['en', 'zxx', 'pt', 'qme'],
     /* The owner's watch words, chosen 2026-10-14 by what the newest-first search returns for each
        (every run from 17:30 UTC on 2026-10-13, videos a run, median age, under two hours a run):
        cute 25.8, 1.3 h, 23.7; meme 18.8, 1.6 h, 15.3; dog 25.6, 2.0 h, 13.6; pet 22.3, 2.0 h, 12.2;
@@ -3062,7 +3067,10 @@ const POLICY_V1: Policy = {
          estimated at 6,700 to 7,600 likes at five hours. Measured 2026-10-15 on three 15-minute
          windows: about 21 posts over 6,500 at five hours a quarter-hour, about 2 of them not
          already held. */
-      late: { on: false, bands: [{ ageMin: 300, minApproval: 6_500 }] },
+      /* On 2026-10-15, the owner's approval: about +$0.07 a day of text search (2,000 posts a day over
+         the band, less the five-hour slow slice it replaces) and about +$1.75 a day of judging (some
+         200 more posts a day judged, an estimate from three windows). */
+      late: { on: true, bands: [{ ageMin: 300, minApproval: 6_500 }] },
     },
   },
 
