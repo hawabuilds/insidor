@@ -99,6 +99,7 @@ import { judgeStories, type JudgingDeps } from './judge.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
 import { staleUnpassed, worthRereading } from './track-gate.ts';
 import { pickPaidReads } from './paid-reads.ts';
+import { heldDecisionReads } from './decision-log-cache.ts';
 
 /** The source held to the short-video growth window (Policy.rising.shortVideoFastWindowMs), as score-posts.ts names it. */
 const SHORT_VIDEO_SOURCE = 'tiktok';
@@ -138,6 +139,15 @@ const DETECT_LOOKBACK_MS = 2 * MS_PER_DAY;
 const GROUP_LOOKBACK_MS = 2 * MS_PER_DAY;
 /** The window the observation series is fetched over, for the stages that difference it. */
 const OBSERVATION_WINDOW_MS = 7 * MS_PER_DAY;
+/**
+ * Room left below a pull's first-seen floor when a decision-log read is bounded by it.
+ *
+ * No decision about a post predates its first sighting (`first_seen_at` is never
+ * overwritten), so a read bounded by the oldest first sighting in a pull returns what an
+ * unbounded one would. The hour covers a clock that disagrees with the database's; it
+ * only widens the read.
+ */
+const DECISION_FLOOR_SLACK_MS = MS_PER_HOUR;
 /** Open stories an arriving item is scored against. Bounded by recency, per StoryRepo. */
 const GROUP_CANDIDATE_WINDOW_MS = 12 * MS_PER_HOUR;
 /**
@@ -277,12 +287,14 @@ async function undecided<T>(
   idOf: (subject: T) => string,
   limit: number,
   now: Millis,
+  /** For a once-ever stage: no decision about these subjects can be older than this. */
+  floor: Millis | null = null,
 ): Promise<readonly T[]> {
   const after = REDECIDE_AFTER_MS[stage] ?? null;
   const decided = await repos.decisions.decidedSubjects(
     stage,
     subjects.map(idOf),
-    after === null ? null : now - after,
+    after === null ? floor : now - after,
   );
   const fresh: T[] = [];
   for (const subject of subjects) {
@@ -356,6 +368,8 @@ function censoredStreak(observations: readonly Observation[]): number {
  * happened before the decision is taken. See `apply` below.
  */
 function admitWork(repos: StageRepos, policy: Policy): StageWork<AdmitInput> {
+  /* The bar and the day's admission count, held ten minutes: see decision-log-cache.ts. */
+  const held = heldDecisionReads(repos.decisions);
   return {
     async pull(limit, ctx) {
       const now = ctx.now();
@@ -363,7 +377,10 @@ function admitWork(repos: StageRepos, policy: Policy): StageWork<AdmitInput> {
         now - ADMIT_LOOKBACK_MS,
         limit * PULL_OVERSCAN,
       );
-      const items = await undecided(repos, 'admit', page, (i) => i.itemId, limit, now);
+      /* "Ever admitted" bounded by the lookback: every post on this page was first seen
+         inside it, and nothing is decided about a post before it is seen. */
+      const items = await undecided(repos, 'admit', page, (i) => i.itemId, limit, now,
+        (now - ADMIT_LOOKBACK_MS - DECISION_FLOOR_SLACK_MS) as Millis);
       if (items.length === 0) return [];
 
       const authors = await repos.authors.byKeys(items.map((i) => i.authorKey));
@@ -375,7 +392,7 @@ function admitWork(repos: StageRepos, policy: Policy): StageWork<AdmitInput> {
          today — it falls to `quantileFloor`, which is a bar somebody chose rather
          than a zero that would admit everything. Clamped both ways so one strange
          night cannot open or shut the gate. */
-      const measured = await repos.decisions.scoreQuantile(
+      const measured = await held.scoreQuantile(
         'admit',
         now - MS_PER_DAY,
         policy.admit.quantile,
@@ -389,7 +406,7 @@ function admitWork(repos: StageRepos, policy: Policy): StageWork<AdmitInput> {
          decision log and not a counter in memory, because a counter in memory resets
          on every deploy and a counter in its own table is a second thing to keep in
          step with the first. */
-      const admittedToday = await repos.decisions.countSince(
+      const admittedToday = await held.countSince(
         'admit',
         'pass',
         now - MS_PER_DAY,
@@ -532,8 +549,11 @@ function trackWork(repos: StageRepos, policy: Policy, tracking: TrackingDeps): S
          a mirror of either in `public` would be a second copy of the same fact, free
          to disagree with the first, and the log is the copy that cannot be quietly
          edited. */
-      const lastTrack = await repos.decisions.latestForSubjects('track', ids);
-      const lastAdmit = await repos.decisions.latestForSubjects('admit', ids);
+      /* Bounded by the oldest first sighting on this page: no decision about a post predates
+         it, so the answer is the same and only the partitions that can hold it are read. */
+      const floor = (Math.min(...items.map((i) => i.firstSeenAt)) - DECISION_FLOOR_SLACK_MS) as Millis;
+      const lastTrack = await repos.decisions.latestForSubjects('track', ids, floor, 'item');
+      const lastAdmit = await repos.decisions.latestForSubjects('admit', ids, floor, 'item');
 
       const probationTier = policy.track.tierMinutes.length - 1;
 
