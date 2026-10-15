@@ -207,3 +207,5 @@ export { CutoffNotHonoured, toSearchQuery } from './discover.ts';
 export { postUrl } from './permalink.ts';
 export { toItem, toCounters } from './to-item.ts';
 export { parseLink, postTimeFromId } from './post-time.ts';
+/* Shortened links in a post's text followed to their target (the reposts finder). */
+export { expandShortLink, isShortLink, SHORT_LINK_PATTERN } from './short-link.ts';

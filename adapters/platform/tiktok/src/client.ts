@@ -159,6 +159,8 @@ export interface TikTokClient {
    * Absent when `TIKTOK_SEARCH_ACTOR_ID` is not set: keyword asks then go to `runDiscovery`.
    */
   runSearch?(input: object & { readonly keywords: readonly string[] }): Promise<RunResult>;
+  /** The trend list's actor (trends.ts); absent on a client built without one. */
+  runTrends?(input: Record<string, unknown>): Promise<RunResult>;
 }
 
 export interface TikTokClientConfig {
@@ -168,6 +170,8 @@ export interface TikTokClientConfig {
   readonly observeActorId: string;
   /** The newest-first search actor; empty or absent for none. */
   readonly searchActorId?: string;
+  /** The trend list's actor; empty or absent for none. */
+  readonly trendsActorId?: string;
   readonly fetch: typeof globalThis.fetch;
   /** Seconds the vendor holds one request open. Its documented ceiling is 60. */
   readonly waitForFinishSeconds?: number;
@@ -503,6 +507,7 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
   const observeActorId = requireActorId(config.observeActorId, 'TIKTOK_OBSERVE_ACTOR_ID');
   /* Optional: unset means keyword asks stay on the discovery actor. Set, it is held to the same gate. */
   const searchActorId = (config.searchActorId ?? '').trim() === '' ? null : requireActorId(config.searchActorId ?? '', 'TIKTOK_SEARCH_ACTOR_ID');
+  const trendsActorId = (config.trendsActorId ?? '').trim() === '' ? null : requireActorId(config.trendsActorId ?? '', 'the trend list actor');
   const baseUrl = requireBaseUrl(config.baseUrl);
 
   const waitForFinish = config.waitForFinishSeconds ?? DEFAULT_WAIT_FOR_FINISH_S;
@@ -777,5 +782,6 @@ export function httpClient(config: TikTokClientConfig): TikTokClient {
             return runActor(searchActorId, input, true);
           },
         }),
+    ...(trendsActorId === null ? {} : { runTrends: async (input: Record<string, unknown>) => runActor(trendsActorId, input) }),
   };
 }

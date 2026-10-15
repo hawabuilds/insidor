@@ -64,7 +64,7 @@ import { anthropicNamer } from '@insidor/judge-anthropic/name-guess.ts';
 import { anthropicTranslator } from '@insidor/judge-anthropic/translate.ts';
 import type { NamePort } from '@insidor/contracts/ports/names.ts';
 import { httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
-import { resolvePlatforms, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
+import { followLink, resolvePlatforms, SHORT_LINKS, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
   DB_ROLE,
   PgAssetRepo,
@@ -72,6 +72,7 @@ import {
   PgDecisionRepo,
   PgBackfillRepo,
   PgCoinUniverseRepo,
+  PgFinderRepo,
   PgImageHashRepo,
   PgOlderCoinRepo,
   PgCryptoAttentionRepo,
@@ -113,7 +114,10 @@ import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
 import { translatePosts } from './work/translate-posts.ts';
 import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
-import { type UniverseDeps } from './work/universe.ts';
+import { type MetadataReader, type UniverseDeps } from './work/universe.ts';
+import { coinLinksPass, type CoinLinkResult } from './work/coin-links.ts';
+import { repostsPass, type RepostResult } from './work/reposts.ts';
+import { searchWordClock, searchWordsPass, type SearchWordResult } from './work/search-words.ts';
 import { chainClient, fetchDeclaredMetadata, fetchMetadata } from '@insidor/venue-solana-pumpfun';
 import { dexscreenerSearch, dexscreenerStandings } from '@insidor/market-dexscreener';
 import { geckoterminal } from '@insidor/market-geckoterminal';
@@ -177,6 +181,12 @@ export interface Runtime {
   readonly keepCoins: () => Promise<unknown>;
   /** The owner's pasted missed posts, read on the learning book and diagnosed. See work/missed-posts.ts. */
   readonly missedPosts: () => Promise<MissedResult>;
+  /** The ways to find a post besides the searches (Policy.finders). See loops/finders.ts. */
+  readonly finders: {
+    readonly coinLinks: () => Promise<CoinLinkResult>;
+    readonly reposts: () => Promise<RepostResult>;
+    readonly searchWords: () => Promise<SearchWordResult>;
+  };
 }
 
 
@@ -683,6 +693,27 @@ export async function withRuntime<T>(
 
       const platforms = watchedRegistry(resolvePlatforms(cfg.sourceEnv, runtimeDeps), watch);
 
+      /* Each coin's metadata document, through each gateway in turn; the last one's failure is the
+         coin's, retried later. Shared by the universe loop and the coin-link finder. */
+      const metadataReader: MetadataReader = {
+        read: async (uri) => {
+          let failure: unknown = null;
+          for (const gateway of cfg.metadataGateways) {
+            try {
+              return await fetchMetadata(uri, { gateway, fetch: globalThis.fetch, timeoutMs: policy.universe.metadataTimeoutMs, maxBytes: policy.universe.metadataMaxBytes });
+            } catch (e) {
+              failure = e;
+            }
+          }
+          throw failure ?? new Error('no metadata gateway configured');
+        },
+      };
+      /* The finders' sources: on the live meter, with the handles the links they read carry, and
+         the warmed cache behind them. Built per pass, as the missed-posts step builds its own. */
+      const finderSources = (handles: (source: string, sourceItemId: string) => string | null) =>
+        resolvePlatforms(cfg.sourceEnv, { ...runtimeDeps, handles: (source, id) => handles(String(source), id) ?? sourceHandles.get(String(source), id) }).all();
+      const finderClock = searchWordClock();
+
       /* Built after the sources, because TRACK's re-read is a call to one of them. */
       const work = storeWork(
         repos,
@@ -806,20 +837,7 @@ export async function withRuntime<T>(
             }),
           universe: {
             coins: new PgCoinUniverseRepo(db),
-            metadata: {
-              /* Each gateway in turn; the last one's failure is the coin's, retried later. */
-              read: async (uri) => {
-                let failure: unknown = null;
-                for (const gateway of cfg.metadataGateways) {
-                  try {
-                    return await fetchMetadata(uri, { gateway, fetch: globalThis.fetch, timeoutMs: policy.universe.metadataTimeoutMs, maxBytes: policy.universe.metadataMaxBytes });
-                  } catch (e) {
-                    failure = e;
-                  }
-                }
-                throw failure ?? new Error('no metadata gateway configured');
-              },
-            },
+            metadata: metadataReader,
             /* A link with no content id, from its own host behind the adapter's address fence. */
             declared: (uri) => fetchDeclaredMetadata(uri, { fetch: globalThis.fetch, timeoutMs: policy.universe.metadataTimeoutMs, maxBytes: policy.universe.metadataMaxBytes }),
             platforms,
@@ -947,6 +965,52 @@ export async function withRuntime<T>(
               log: log.child({ step: 'missed-posts' }),
               now: () => Date.now() as Millis,
             }),
+          finders: {
+            coinLinks: () =>
+              coinLinksPass({
+                finders: new PgFinderRepo(db),
+                coins: new PgCoinUniverseRepo(db),
+                metadata: metadataReader,
+                declared: (uri) => fetchDeclaredMetadata(uri, { fetch: globalThis.fetch, timeoutMs: policy.universe.metadataTimeoutMs, maxBytes: policy.universe.metadataMaxBytes }),
+                sources: finderSources,
+                follow: (url) => followLink(url, globalThis.fetch),
+                items: repos.items,
+                store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                meter,
+                mode: cfg.spend.kind,
+                policy,
+                log: log.child({ step: 'coin-links' }),
+                now: () => Date.now() as Millis,
+              }),
+            reposts: () =>
+              repostsPass({
+                finders: new PgFinderRepo(db),
+                shortLinks: SHORT_LINKS,
+                sources: finderSources,
+                follow: (url) => followLink(url, globalThis.fetch),
+                items: repos.items,
+                store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                meter,
+                mode: cfg.spend.kind,
+                policy,
+                log: log.child({ step: 'reposts' }),
+                now: () => Date.now() as Millis,
+              }),
+            searchWords: () =>
+              searchWordsPass(
+                {
+                  finders: new PgFinderRepo(db),
+                  sources: () => platforms.all(),
+                  store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                  meter,
+                  mode: cfg.spend.kind,
+                  policy,
+                  log: log.child({ step: 'search-words' }),
+                  now: () => Date.now() as Millis,
+                },
+                finderClock,
+              ),
+          },
           keepCoins: () =>
             keepCoins({
               coins: new PgCoinUniverseRepo(db),

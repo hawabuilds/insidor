@@ -70,14 +70,18 @@ import {
   SOURCE as TIKTOK_SOURCE,
   VENDOR as TIKTOK_VENDOR,
   clientConfig as tiktokClientConfig,
+  expandShortLink as tiktokExpandShortLink,
   httpClient as tiktokHttpClient,
   tiktokPlatform,
 } from '@insidor/platform-tiktok';
 import type { TikTokAdapterDeps } from '@insidor/platform-tiktok';
 import {
   CREDENTIALS as X_CREDENTIALS,
+  SOURCE as X_SOURCE,
+  SHORT_LINK_PATTERN as X_SHORT_LINK_PATTERN,
   VENDOR as X_VENDOR,
   clientConfig as xClientConfig,
+  expandShortLink as xExpandShortLink,
   httpClient as xHttpClient,
   xPlatform,
 } from '@insidor/platform-x';
@@ -90,6 +94,24 @@ import type { XAdapterDeps } from '@insidor/platform-x';
  * service, so that service's line is the `video` line while it is the only use of it.
  */
 export const SUPPLIER_VENDORS = { posts: X_VENDOR, video: TIKTOK_VENDOR } as const;
+
+/**
+ * The source whose posts carry shortened links worth following, and that short form as a regular
+ * expression (the reposts finder reads it in SQL and in JS). Here for the reason SUPPLIER_VENDORS
+ * is: the runner should not have to import an adapter to learn one fact about it.
+ */
+export const SHORT_LINKS = { source: String(X_SOURCE), pattern: X_SHORT_LINK_PATTERN } as const;
+
+/**
+ * A link followed through every source's own short form, at most twice (a text post's short link
+ * that leads to a short video's share link): the full post URL, or the link as given when it is
+ * no short link. Null when a short link led nowhere. Free; a failed request throws.
+ */
+export async function followLink(url: string, fetch: typeof globalThis.fetch): Promise<string | null> {
+  const once = await xExpandShortLink(url, fetch);
+  if (once === null) return null;
+  return tiktokExpandShortLink(once, fetch);
+}
 
 /* ── what a source is supplied with, or why it is not ─────────────────── */
 

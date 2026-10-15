@@ -45,6 +45,7 @@ import type { CredentialSpec, CredentialValues } from '@insidor/vendor-kit';
 
 import { SOURCE } from './capabilities.ts';
 import type { TikTokClientConfig } from './client.ts';
+import { DEFAULT_TRENDS_ACTOR_ID } from './trends.ts';
 
 export const TOKEN = 'APIFY_TOKEN';
 export const BASE_URL = 'TIKTOK_API_BASE';
@@ -99,6 +100,9 @@ export function clientConfig(values: CredentialValues, runtime: ClientRuntime): 
     discoveryActorId: values(DISCOVERY_ACTOR),
     observeActorId: values(OBSERVE_ACTOR),
     searchActorId: values(SEARCH_ACTOR),
+    /* Not an environment variable: the trend list's actor is a vendor choice made in trends.ts, and
+       a required variable would leave the whole source misconfigured on a deploy that lacks it. */
+    trendsActorId: DEFAULT_TRENDS_ACTOR_ID,
     fetch: runtime.fetch,
   };
 }

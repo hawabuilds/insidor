@@ -108,6 +108,40 @@ class Pending extends Error {
   }
 }
 
+/** What one coin's metadata document said, as recorded. */
+export type ReadMetadata = Extract<Awaited<ReturnType<MetadataReader['read']>>, { kind: 'read' }>['metadata'];
+
+/**
+ * One coin's metadata document read and recorded (internal.coin_metadata): by content id through
+ * the gateways, else from the creator's own host. Null when it was not read — not content-addressed
+ * or unavailable, recorded so. Shared with the coin-link step (work/coin-links.ts), which reads a
+ * coin's document seconds after its launch so this loop finds it already read.
+ */
+export async function readCoinMetadata(
+  deps: { readonly coins: Pick<PgCoinUniverseRepo, 'recordMetadata'>; readonly metadata: MetadataReader; readonly declared?: DeclaredReader | undefined; readonly log: Logger },
+  coin: { readonly assetKey: string; readonly metadataUri: string | null },
+  now: Millis,
+): Promise<ReadMetadata | null> {
+  try {
+    let read = await deps.metadata.read(coin.metadataUri);
+    if (read.kind === 'notContentAddressed' && deps.declared !== undefined) {
+      const own = await deps.declared(coin.metadataUri);
+      if (own.kind === 'read') read = { kind: 'read', cid: null, metadata: own.metadata };
+    }
+    if (read.kind === 'notContentAddressed') {
+      await deps.coins.recordMetadata(coin.assetKey, { outcome: 'not_content_addressed', contentId: null, name: null, ticker: null, description: null, imageUri: null, socialLink: null, website: null, chatLink: null }, now);
+      return null;
+    }
+    const m = read.metadata;
+    await deps.coins.recordMetadata(coin.assetKey, { outcome: 'read', contentId: read.cid, name: m.name, ticker: m.ticker, description: m.description, imageUri: m.imageUri, socialLink: m.links.social, website: m.links.website, chatLink: m.links.chat }, now);
+    return m;
+  } catch (e) {
+    deps.log.warn('coin metadata unavailable; tried again later', { coin: coin.assetKey, err: errorText(e) });
+    await deps.coins.recordMetadata(coin.assetKey, { outcome: 'unavailable', contentId: null, name: null, ticker: null, description: null, imageUri: null, socialLink: null, website: null, chatLink: null }, now);
+    return null;
+  }
+}
+
 export async function universePass(deps: UniverseDeps): Promise<UniverseResult> {
   const now = deps.now();
   const u = deps.policy.universe;
@@ -119,23 +153,7 @@ export async function universePass(deps: UniverseDeps): Promise<UniverseResult> 
   for (let i = 0; i < unread.length; i += u.metadataConcurrency) {
     await Promise.all(
       unread.slice(i, i + u.metadataConcurrency).map(async (coin) => {
-        try {
-          let read = await deps.metadata.read(coin.metadataUri);
-          if (read.kind === 'notContentAddressed' && deps.declared !== undefined) {
-            const own = await deps.declared(coin.metadataUri);
-            if (own.kind === 'read') read = { kind: 'read', cid: null, metadata: own.metadata };
-          }
-          if (read.kind === 'notContentAddressed') {
-            await deps.coins.recordMetadata(coin.assetKey, { outcome: 'not_content_addressed', contentId: null, name: null, ticker: null, description: null, imageUri: null, socialLink: null, website: null, chatLink: null }, now);
-          } else {
-            const m = read.metadata;
-            await deps.coins.recordMetadata(coin.assetKey, { outcome: 'read', contentId: read.cid, name: m.name, ticker: m.ticker, description: m.description, imageUri: m.imageUri, socialLink: m.links.social, website: m.links.website, chatLink: m.links.chat }, now);
-            metadataRead += 1;
-          }
-        } catch (e) {
-          deps.log.warn('coin metadata unavailable; tried again later', { coin: coin.assetKey, err: errorText(e) });
-          await deps.coins.recordMetadata(coin.assetKey, { outcome: 'unavailable', contentId: null, name: null, ticker: null, description: null, imageUri: null, socialLink: null, website: null, chatLink: null }, now);
-        }
+        if ((await readCoinMetadata(deps, coin, now)) !== null) metadataRead += 1;
       }),
     );
   }

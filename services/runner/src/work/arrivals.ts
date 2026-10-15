@@ -16,11 +16,14 @@ import type { PgAuthorRepo, PgItemRepo, PgObservationRepo } from '@insidor/store
 
 const MS_PER_HOUR = 3_600_000;
 
+/** Every lane a stored post can be credited to (0025, 0030, 0061, 0083). */
+export type FoundLane = FeedLane | 'watch' | 'trend' | 'creator' | 'coin_link' | 'x_repost';
+
 export function storeArrivals(
   repos: { readonly authors: PgAuthorRepo; readonly items: PgItemRepo; readonly observations: PgObservationRepo },
   policy: Policy,
   now: () => Millis,
-): (items: readonly Item[], authors: readonly Author[], lane?: FeedLane | 'watch' | null) => Promise<number> {
+): (items: readonly Item[], authors: readonly Author[], lane?: FoundLane | null) => Promise<number> {
   return async (items, authors, lane = null) => {
     await repos.authors.upsert(authors);
     const stored = await repos.items.upsert(items.map((item) => withTextHash(item, policy)));
@@ -29,8 +32,10 @@ export function storeArrivals(
        ★ THE WATCH LANE (0061) is the owner's watch list on a source with no catch-all. Only its
        posts from the last `feed.watchMaxAgeMs` are credited: older ones the vendor sends anyway
        are stored and never judged. A post with no time is not shown to be fresh, so it is not. */
+    /* The finders' word and creator asks (work/search-words.ts, 0083) are the same kind of ask as
+       the watch list's and are held to the same age. */
     const credited =
-      lane === 'watch'
+      lane === 'watch' || lane === 'trend' || lane === 'creator'
         ? items.filter((item) => item.postedAt !== null && now() - item.postedAt <= policy.feed.watchMaxAgeMs)
         : items;
     if (lane !== null) await repos.items.markFoundBy(credited.map((item) => item.itemId), lane, now());
