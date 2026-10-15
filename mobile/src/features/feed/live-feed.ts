@@ -16,6 +16,9 @@
  * ★ OFF UNLESS THE BUILD SAYS EXACTLY `VITE_LIVE_FEED=on`. Until the owner approves, a deployed
  * build reads For You exactly as before: on opening, on pull to refresh and on coming back.
  *
+ * The owner's hidden posts are left out again where the list is drawn (Feed.tsx `withoutHidden`), so
+ * a post held in the list before it was hidden goes too, and comes back on "Is a meme".
+ *
  * What breaks if changed carelessly: letting `merge` drop or reorder rows brings back cards that
  * jump under a thumb; letting it re-announce a row the list already holds replays its slide-in.
  */
@@ -41,11 +44,15 @@ export interface Merged {
   readonly arrived: readonly string[];
 }
 
-/** A newer read, merged in at the top only (see the header). */
-export function merge(shown: readonly RisingPost[], incoming: readonly RisingPost[]): Merged {
+/**
+ * A newer read, merged in at the top only (see the header). A post the owner hid (`hidden`,
+ * features/owner/owner-store.ts) never arrives: the server keeps serving it until the projector's
+ * next run, and it must not slide in, move the list, or count as new in the meantime.
+ */
+export function merge(shown: readonly RisingPost[], incoming: readonly RisingPost[], hidden: ReadonlySet<string> = new Set()): Merged {
   const held = new Set(shown.map((p) => p.id));
   const fresh = new Map(incoming.map((p) => [p.id, p] as const));
-  const arrivals = incoming.filter((p) => !held.has(p.id));
+  const arrivals = incoming.filter((p) => !held.has(p.id) && !hidden.has(p.id));
   return {
     rows: [...arrivals, ...shown.map((p) => fresh.get(p.id) ?? p)],
     arrived: arrivals.map((p) => p.id),

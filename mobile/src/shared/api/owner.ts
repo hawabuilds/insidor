@@ -7,7 +7,7 @@
  * the app sends a call.
  */
 
-import { socialCall } from './people.ts';
+import { PeopleError, socialCall } from './people.ts';
 import { decodeCalls, decodeCoinCheck, decodeHidden, decodeOwner, savedCallOf, type CallKind, type CoinCheckResult, type HiddenPost, type SavedCall } from './wire/owner.ts';
 
 export type { CallKind, CoinCall, CoinCheckResult, HiddenCard, HiddenPost, NameCall, PastedCoin, PostCall, SavedCall } from './wire/owner.ts';
@@ -27,12 +27,16 @@ export interface NewCall {
   readonly shown?: Shown | null;
 }
 
-/** Whether the signed-in person is the owner. Any failure is "no": the controls are not drawn. */
-export async function fetchIsOwner(): Promise<boolean> {
+/**
+ * Whether the signed-in person is the owner; null when the services could not be asked (a network
+ * blip, a 5xx). The controls are drawn only on true either way, but "could not tell" must not be
+ * "no": a no forgets the owner's hidden posts on this device (owner-store.ts `setOwner(false)`).
+ */
+export async function fetchIsOwner(): Promise<boolean | null> {
   try {
     return decodeOwner(await socialCall('GET', '/me/owner'));
-  } catch {
-    return false;
+  } catch (e) {
+    return e instanceof PeopleError && e.status >= 400 && e.status < 500 ? false : null;
   }
 }
 

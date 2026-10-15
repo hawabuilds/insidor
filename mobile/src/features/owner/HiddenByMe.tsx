@@ -10,7 +10,7 @@
  * list at once; it returns to the feeds on the projector's next run if it clears their views bar.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { fetchHidden, type HiddenPost } from '../../shared/api/owner.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
@@ -18,6 +18,7 @@ import { Button } from '../../shared/ui/Button.tsx';
 import { Modal } from '../../shared/ui/Modal.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { showPost } from './OwnerPost.tsx';
+import { ownerStore } from './owner-store.ts';
 import { hiddenAgo } from './owner-view.ts';
 import styles from './owner.module.css';
 
@@ -25,6 +26,10 @@ export function HiddenByMe({ onClose }: { onClose: () => void }) {
   const [loaded, reload] = useLoad('owner:hidden', () => fetchHidden());
   const [back, setBack] = useState<ReadonlySet<string>>(new Set());
   const now = useNow();
+  /* The server's list is the owner's record: fold it into the set every list filters by. */
+  useEffect(() => {
+    if (loaded.state === 'ready') ownerStore.seed(loaded.value);
+  }, [loaded]);
   const posts = loaded.state === 'ready' ? loaded.value.filter((p) => !back.has(p.itemId)) : null;
   return (
     <Modal title="Hidden by me" subtitle="Posts you marked Not a meme" onClose={onClose}>
