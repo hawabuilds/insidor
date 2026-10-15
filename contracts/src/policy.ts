@@ -3675,17 +3675,22 @@ const POLICY_V1: Policy = {
     noWordsCodes: ['zxx', 'und', 'un', 'qme', 'qam', 'qht', 'qst', 'qct'],
   },
 
-  /* Every finder off until the owner approves its cost (the per-source table, 2026-10-15). */
+  /* The owner approved switching on what fits on 2026-10-15 ("approve and switch on when ready"),
+     inside the live book's $38 with about $1.60 a day left: the coin links (about $0.65 a day at the
+     judge's measured $0.002 a post, $1.32 at a cautious $0.0088) and the learned list (free). The
+     rest stay off and are in the report with their cost. */
   finders: {
     coinLinks: {
-      on: false,
+      on: true,
       everyMs: 5_000,
       lookbackMs: 600_000, // ten minutes
       perPass: 40,
       concurrency: 8,
       readsPerPass: 10,
       creditMaxAgeMs: 259_200_000, // three days
-      textMinApprovals: 1_000,
+      /* 5,000: about 61 coined X posts a day we did not already have clear it (48 hours to 2026-10-15
+         17:00 UTC), against 119 at 1,000 — half the judging, inside the room left on the live book. */
+      textMinApprovals: 5_000,
     },
     reposts: {
       on: false,
@@ -3709,7 +3714,7 @@ const POLICY_V1: Policy = {
       wordsPerAsk: 2,
     },
     learned: {
-      on: false,
+      on: true,
       everyMs: 86_400_000, // daily
       lookbackMs: 604_800_000, // a week
       minPosts: 2,
