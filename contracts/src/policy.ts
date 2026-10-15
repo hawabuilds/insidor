@@ -3025,7 +3025,10 @@ const POLICY_V1: Policy = {
        $0.0115; animals 28 videos 7 to 20 hours old, median 359 views; raccoon 14 (4 under two hours,
        median 1.2k views); wildlife 1, breakingnews 4 and weird 7, all over 7 hours old. So only news,
        and hourly, since its answer is the past several hours' most-watched: 24 runs a day, ~$0.28. */
-    watchExtra: { on: false, words: ['news'], everyAsks: 4 },
+    /* On 2026-10-15, the owner's approval: +$0.28 a day on the short-video search, and about +$0.60 a
+       day of judging (an estimate: half of the watch's videos over 10k views are judged, and a run
+       an hour is guessed to bring 4 to 8 news videos we do not hold; at worst all 30, $3.20). */
+    watchExtra: { on: true, words: ['news'], everyAsks: 4 },
     watchMaxAgeMs: 86_400_000, // a day
     pageLimit: 20,
     maxPagesPerLane: 3,

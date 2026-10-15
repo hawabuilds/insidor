@@ -726,8 +726,9 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
           continue;
         }
         const listed = term === null ? watchTermsFor(deps.policy.feed.hashtags, perAsk, everyMs, now) : [term];
-        /* The extra words (`feed.watchExtra`) ride every few asks of the watch list, never a configured term's. */
-        const words = term === null ? [...listed, ...watchExtraFor(deps.policy, listed, everyMs, now)] : listed;
+        /* The extra words (`feed.watchExtra`) ride every few asks of the watch list: never a configured
+           term's, and never alone, so an empty watch list still leaves the source unasked, by name. */
+        const words = term === null && listed.length > 0 ? [...listed, ...watchExtraFor(deps.policy, listed, everyMs, now)] : listed;
         const word = words[0] ?? null;
         const query = word === null ? null : queryFor(adapter, word, now);
         /* The watch list is asked for `feed.hashtagResults` posts and `feed.watchWordsPerAsk` words; a configured term keeps its own size. */
