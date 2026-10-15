@@ -19,11 +19,16 @@ import type { Item, Millis } from '@insidor/contracts';
 import { authorKey, itemId, sourceId } from '@insidor/contracts/ids.ts';
 import type { CostEstimate, Meter, Metered } from '@insidor/contracts/ports/meter.ts';
 import type { Capabilities, Discovered, DiscoveryQuery, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { Logger } from '../log.ts';
-import { discoverPass, memoryWatchClock, watchAskDue, watchEveryMs, watchTermFor, watchTermsFor, type WatchClock } from './discover.ts';
+import { discoverPass, memoryWatchClock, watchAskDue, watchEveryMs, watchExtraFor, watchTermFor, watchTermsFor, type WatchClock } from './discover.ts';
+
+/* The extra watch words (`feed.watchExtra`) off, whatever the live switch says: these tests count the
+   watch list's own asks and words. A test that wants the extra words on says so (EXTRA). */
+const DEFAULT_POLICY = { ...LIVE_POLICY, feed: { ...LIVE_POLICY.feed, watchExtra: { ...LIVE_POLICY.feed.watchExtra, on: false } } };
+const EXTRA = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, watchExtra: { on: true, words: ['news'], everyAsks: 4 } } };
 
 const NOW = 1_800_000_000_000 as Millis;
 const CADENCE_MS = 120_000;
@@ -95,12 +100,12 @@ const meterWith = (mayspend: boolean): Meter =>
     line: () => ({ capUsd: LINE_USD, spentUsd: 0, stopAtUsd: LINE_USD, remainingUsd: mayspend ? LINE_USD : 0, unrecordedUsd: 0 }),
   }) as unknown as Meter;
 
-function pass(adapter: PlatformAdapter, at: number, watch: WatchClock, opts: { terms?: readonly string[]; mode?: 'live' | 'dry'; mayspend?: boolean } = {}) {
+function pass(adapter: PlatformAdapter, at: number, watch: WatchClock, opts: { terms?: readonly string[]; mode?: 'live' | 'dry'; mayspend?: boolean; policy?: typeof DEFAULT_POLICY } = {}) {
   return discoverPass({
     platforms: registry(adapter),
     store: async (items) => items.length,
     plan: { terms: opts.terms ?? [], cadenceMs: CADENCE_MS },
-    policy: DEFAULT_POLICY,
+    policy: opts.policy ?? DEFAULT_POLICY,
     meter: meterWith(opts.mayspend ?? true),
     mode: opts.mode ?? 'live',
     log: quiet,
@@ -256,4 +261,32 @@ test('a free source with no catch-all is asked every pass', async () => {
   await pass(source, NOW, watch);
   await pass(source, NOW + CADENCE_MS, watch);
   assert.equal(seen.length, 2);
+});
+
+/* ── the extra words (`feed.watchExtra`) ─────────────────────────────────── */
+
+test('★ extra words ride every fourth ask slot, never twice, never a word the ask already has; none while off', () => {
+  const every = 900_000;
+  const slots = [0, 1, 2, 3, 4, 8].map((k) => watchExtraFor(EXTRA, ['meme', 'dog'], every, (k * every) as Millis));
+  assert.deepEqual(slots, [['news'], [], [], [], ['news'], ['news']]);
+  assert.deepEqual(watchExtraFor(EXTRA, ['News'], every, 0 as Millis), [], 'already in the ask');
+  assert.deepEqual(watchExtraFor(DEFAULT_POLICY, ['meme'], every, 0 as Millis), [], 'off');
+});
+
+test('★ extra words on: a day of passes asks each extra word once every fourth slot, and the watch list as before', async () => {
+  const seen: DiscoveryQuery[] = [];
+  const watch = memoryWatchClock();
+  const source = watchedSource(seen);
+  const every = watchEveryMs(USD_PER_RUN, LINE_USD, CADENCE_MS, EXTRA);
+  for (let at = NOW + 45_000; at < NOW + MS_PER_DAY; at += CADENCE_MS + 13_000) await pass(source, at, watch, { policy: EXTRA });
+  assert.equal(seen.length, MS_PER_DAY / every, 'no extra asks: the words ride the asks that go out anyway');
+  const words = seen.flatMap((q) => q.terms ?? [q.term]);
+  assert.equal(words.filter((w) => w === 'news').length, MS_PER_DAY / every / 4, 'hourly at a 15-minute spacing');
+  for (const w of DEFAULT_POLICY.feed.hashtags) assert.equal(words.filter((x) => x === w).length, (seen.length * DEFAULT_POLICY.feed.watchWordsPerAsk) / DEFAULT_POLICY.feed.hashtags.length);
+});
+
+test('a configured term is never joined by the extra words', async () => {
+  const seen: DiscoveryQuery[] = [];
+  await pass(watchedSource(seen), 0, memoryWatchClock(), { terms: ['chillguy'], policy: EXTRA });
+  assert.deepEqual(seen[0]?.terms ?? [seen[0]?.term], ['chillguy']);
 });
