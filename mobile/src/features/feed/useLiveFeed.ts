@@ -28,6 +28,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { RisingFeed, RisingPost } from '../../shared/api/index.ts';
 import { fetchRisingTick, openRisingStream } from '../../shared/api/client.ts';
 import type { Load } from '../../shared/hooks.ts';
+import { ownerStore } from '../owner/owner-store.ts';
 import { BACKUP_CHECK_MS, merge, reconcile, staggerDelay } from './live-feed.ts';
 
 /** How a card that is new to the list comes in. */
@@ -119,7 +120,7 @@ export function useLiveFeed(on: boolean, load: Load<RisingFeed>, reload: () => v
       rebuild.current = false;
       next = { ...reconcile(value.posts), arrivals: new Map() };
     } else {
-      const m = merge(prev.rows, value.posts);
+      const m = merge(prev.rows, value.posts, ownerStore.get().hidden);
       if (m.arrived.length === 0) next = { rows: m.rows, arrivals: prev.arrivals };
       else {
         const atTop = scrollTop() <= TOP_SLACK_PX;

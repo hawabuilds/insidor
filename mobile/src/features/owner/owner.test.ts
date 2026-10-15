@@ -3,9 +3,11 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import type { Coin, PostCoinLink } from '../../shared/api/index.ts';
+import type { Coin, PostCoinLink, RisingPost } from '../../shared/api/index.ts';
 import { callsByItem, decodeCalls, decodeHidden, decodeOwner, savedCallOf } from '../../shared/api/wire/owner.ts';
-import { callKey, cardOf, createOwnerStore, withoutHidden } from './owner-store.ts';
+import { KEEP_MS, callKey, cardOf, createOwnerStore, readKept, withoutHidden, type KeptStorage } from './owner-store.ts';
+import { withOlder } from '../feed/older-feed.ts';
+import { merge, reconcile } from '../feed/live-feed.ts';
 import { coinAsk, coinCallLine, hiddenAgo, launchLine, nameCallLine } from './owner-view.ts';
 
 const MINT = 'FerryHorn1111111111111111111111111111111pump';
@@ -48,7 +50,7 @@ test('the newest call per item wins; names are kept apart by name', () => {
 });
 
 test('★ a hide takes the post out at once; a refused save puts it back and says why', () => {
-  const store = createOwnerStore();
+  const store = createOwnerStore({ storage: null });
   let heard = 0;
   store.subscribe(() => (heard += 1));
   store.setOwner(true);
@@ -101,4 +103,104 @@ test('the card says what the owner said, in words', () => {
 test('the card saved with a hide is its facts and nothing more', () => {
   const card = cardOf({ excerpt: 'a dog', authorLabel: '@d', sourceLabel: 'X', permalink: null, thumbUrl: null, thumbIsVideo: false });
   assert.deepEqual(Object.keys(card).sort(), ['authorLabel', 'excerpt', 'permalink', 'sourceLabel', 'thumbIsVideo', 'thumbUrl']);
+});
+
+/** A device's storage, kept between "reloads" (two stores made on the same one). */
+function device(): KeptStorage & { readonly kept: Map<string, string> } {
+  const kept = new Map<string, string>();
+  return { kept, getItem: (k) => kept.get(k) ?? null, setItem: (k, v) => void kept.set(k, v), removeItem: (k) => void kept.delete(k) };
+}
+
+test('★ a hide survives a reload, a reconnect and a server still serving the post', () => {
+  const phone = device();
+  let t = 1_000_000;
+  const first = createOwnerStore({ storage: phone, now: () => t });
+  first.setOwner(true);
+  first.hideNow({ itemId: 'x:1', shown: {} });
+  t += 60_000;
+  const reloaded = createOwnerStore({ storage: phone, now: () => t });
+  assert.equal(reloaded.get().owner, null, 'not known yet after a reload');
+  assert.ok(reloaded.get().hidden.has('x:1'), 'held before the services have said who this is');
+  reloaded.setOwner(null);
+  assert.ok(reloaded.get().hidden.has('x:1'), 'a wallet reconnecting passes through "not known" and must not bring it back');
+  reloaded.setOwner(true);
+  const served = [{ id: 'x:2' }, { id: 'x:1' }];
+  assert.deepEqual(withoutHidden(served, reloaded.get().hidden, (r) => r.id), [{ id: 'x:2' }]);
+});
+
+test('★ "Is a meme" takes it out of the set, on the device too', () => {
+  const phone = device();
+  let t = 1_000_000;
+  const store = createOwnerStore({ storage: phone, now: () => t });
+  store.setOwner(true);
+  store.hideNow({ itemId: 'x:1', shown: {} });
+  t += 1;
+  store.showNow('x:1');
+  assert.equal(store.get().hidden.size, 0);
+  assert.equal(createOwnerStore({ storage: phone, now: () => t }).get().hidden.size, 0, 'and still out after a reload');
+  store.hideNow({ itemId: 'x:1', shown: {} });
+  assert.ok(store.get().hidden.has('x:1'), 'hidden again after an undo, even within the same millisecond');
+});
+
+test('★ the server\'s own list seeds the set; a newer call on the device wins', () => {
+  let t = 5_000;
+  const store = createOwnerStore({ storage: device(), now: () => t });
+  store.setOwner(true);
+  store.showNow('x:2');
+  store.seed([
+    { itemId: 'x:1', at: 1_000 },
+    { itemId: 'x:2', at: 4_000 },
+  ]);
+  assert.deepEqual([...store.get().hidden], ['x:1'], 'hidden on another device; brought back here after the server list was read');
+  t = 9_000;
+  store.seed([{ itemId: 'x:2', at: 8_000 }]);
+  assert.ok(store.get().hidden.has('x:2'), 'a later Not a meme on the server is newer than the device\'s undo');
+  store.remember([savedCallOf(call({ itemId: 'x:2', call: 'meme', at: 8_500 }))!]);
+  assert.equal(store.get().hidden.has('x:2'), false, 'a saved call is a call like any other');
+});
+
+test('a held call is kept a day, a "not the owner" forgets it, and storage that throws changes nothing', () => {
+  const phone = device();
+  let t = 1_000_000;
+  const store = createOwnerStore({ storage: phone, now: () => t });
+  store.setOwner(true);
+  store.hideNow({ itemId: 'x:1', shown: {} });
+  t += KEEP_MS + 1;
+  assert.equal(createOwnerStore({ storage: phone, now: () => t }).get().hidden.size, 0, 'a day later the projection has long caught up');
+  assert.equal(readKept('[["x:1","not",5],["x:2","maybe",5],[3,"not",5],"junk"]', 5).size, 1);
+  assert.equal(readKept('{not json', 5).size, 0);
+
+  store.hideNow({ itemId: 'x:3', shown: {} });
+  store.setOwner(false);
+  assert.equal(store.get().hidden.size, 0);
+  assert.equal(phone.kept.size, 0, 'someone else signed in: nothing of the owner\'s is left on the device');
+
+  const broken: KeptStorage = {
+    getItem: () => {
+      throw new Error('blocked');
+    },
+    setItem: () => {
+      throw new Error('full');
+    },
+    removeItem: () => {
+      throw new Error('blocked');
+    },
+  };
+  const held = createOwnerStore({ storage: broken });
+  held.hideNow({ itemId: 'x:4', shown: {} });
+  assert.ok(held.get().hidden.has('x:4'), 'held for the session when storage refuses');
+});
+
+test('★ every list path leaves a hidden post out: live merge, rebuild, older pages', () => {
+  const p = (id: string) => ({ id }) as unknown as RisingPost;
+  const ids = (rows: readonly { id: string }[]) => rows.map((r) => r.id);
+  const hidden = new Set(['x:h']);
+  const m = merge([p('a')], [p('x:h'), p('b'), p('a')], hidden);
+  assert.deepEqual(m.arrived, ['b'], 'a hidden post never slides in as new');
+  assert.deepEqual(ids(withoutHidden(m.rows, hidden, (r) => r.id)), ['b', 'a']);
+  const held = merge([p('x:h'), p('a')], [p('a')], hidden);
+  assert.deepEqual(ids(withoutHidden(held.rows, hidden, (r) => r.id)), ['a'], 'a card held before the hide leaves too');
+  const rebuilt = reconcile([p('x:h'), p('a')]);
+  assert.deepEqual(ids(withoutHidden(rebuilt.rows, hidden, (r) => r.id)), ['a'], 'pull to refresh and coming back rebuild from the server');
+  assert.deepEqual(ids(withoutHidden(withOlder([p('a')], [p('x:h'), p('c')]), hidden, (r) => r.id)), ['a', 'c'], 'an older page');
 });

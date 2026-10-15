@@ -168,7 +168,8 @@ export function Feed({
 
   /* Pull to refresh: everything is read again, and the spinner stops when this tab's list is back.
      For You comes newest first from the server, so new posts arrive at the top; a post the owner
-     hid stays out (withoutHidden below runs on every read). */
+     hid stays out (withoutHidden below runs on every read, and the hidden set is kept on the
+     device and seeded from the server's list, so a reload does not bring it back either). */
   const settled = useRef<(() => void) | null>(null);
   const shownLoad = tab === 'popular' ? popular : tab === 'fyp' ? fyp : board;
   useEffect(() => {
@@ -205,7 +206,8 @@ export function Feed({
 
   const notice = boardNotice(tick?.provenance ?? null);
   const feed = tab === 'popular' ? popular : fyp;
-  /* A post the owner just hid leaves the list now; the projection drops it on its next run. */
+  /* A post the owner hid stays out of the list, live or older, until "Is a meme"; the projection
+     drops it on its next run, minutes later (features/owner/owner-store.ts). */
   const headPosts = tab === 'fyp' && live.rows !== null ? live.rows : feed.state === 'ready' ? feed.value.posts : null;
   const feedPosts = useMemo(() => (headPosts === null ? null : withOlder(headPosts, older.posts)), [headPosts, older.posts]);
   const posts = feed.state === 'ready' && feedPosts !== null ? applyPostFilters(withoutHidden(feedPosts, hiddenNow, (p) => p.id), filters, now) : null;
@@ -378,7 +380,7 @@ export function Feed({
         {!onPosts ? (
           <>
             <h2 className={styles['group']}>Posts you watch</h2>
-            {watchedRows.rows.map(post)}
+            {withoutHidden(watchedRows.rows, hiddenNow, (p) => p.id).map(post)}
             {watchedRows.reading > 0 ? <p className={styles['hidden']}>Reading {watchedRows.reading === 1 ? '1 watched post' : `${watchedRows.reading} watched posts`}.</p> : null}
             {watchedRows.failed > 0 ? <p className={styles['hidden']}>{watchedRows.failed === 1 ? "1 watched post couldn't" : `${watchedRows.failed} watched posts couldn't`} be read just now.</p> : null}
             {watchedRows.state === 'ready' && watchedRows.rows.length + watchedRows.reading + watchedRows.failed === 0 ? (
