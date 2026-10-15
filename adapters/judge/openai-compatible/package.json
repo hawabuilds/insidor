@@ -1,0 +1,20 @@
+{
+  "name": "@insidor/judge-openai-compatible",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*.ts": "./src/*.ts"
+  },
+  "dependencies": {
+    "@insidor/contracts": "workspace:*",
+    "@insidor/judge-anthropic": "workspace:*",
+    "@insidor/meter": "workspace:*",
+    "@insidor/vendor-kit": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  }
+}
