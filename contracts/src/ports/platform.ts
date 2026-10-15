@@ -116,6 +116,11 @@ export interface TrendAsk {
   readonly perRegion: number;
 }
 
+/** A recommendation feed asked for: one page in each of these regions. */
+export interface FeedAsk {
+  readonly regions: readonly string[];
+}
+
 /** One rising word as the source ranks it, with the facts it gave for it (views, posts). */
 export interface TrendWord {
   readonly kind: 'tag' | 'sound' | 'video';
@@ -253,6 +258,16 @@ export interface PlatformAdapter {
    */
   trendWords?(ask: TrendAsk, budget: Budget): Promise<Metered<readonly TrendWord[]>>;
   estimateTrendWords?(ask: TrendAsk): CostEstimate;
+
+  /**
+   * What the source's own recommendation feed shows a stranger right now, one page a region,
+   * taking no word: the one way to reach a post tagged with nothing a search could ask for
+   * (Policy.finders.trending). Optional and paid, metered inside; a region that is not two capitals
+   * is refused, never sent. The page is whatever the feed returned, old posts included: what to
+   * credit is the caller's choice, by age.
+   */
+  trendingFeed?(ask: FeedAsk, budget: Budget): Promise<Metered<Discovered>>;
+  estimateTrendingFeed?(ask: FeedAsk): CostEstimate;
 
   /**
    * A post's replies and reproductions, newest first, capped by `ask` — read for the facts in

@@ -46,12 +46,18 @@ import type { CredentialSpec, CredentialValues } from '@insidor/vendor-kit';
 import { SOURCE } from './capabilities.ts';
 import type { TikTokClientConfig } from './client.ts';
 import { DEFAULT_TRENDS_ACTOR_ID } from './trends.ts';
+import { DEFAULT_FEED_BASE_URL, trendingFeedClient, type TrendingFeedClient } from './trending-feed.ts';
 
 export const TOKEN = 'APIFY_TOKEN';
 export const BASE_URL = 'TIKTOK_API_BASE';
 export const DISCOVERY_ACTOR = 'TIKTOK_DISCOVERY_ACTOR_ID';
 export const OBSERVE_ACTOR = 'TIKTOK_OBSERVE_ACTOR_ID';
 export const SEARCH_ACTOR = 'TIKTOK_SEARCH_ACTOR_ID';
+/* The second vendor's key, for the recommendation feed only (trending-feed.ts). Deliberately NOT in
+   CREDENTIALS: it is optional, a secret may carry no fallback, and a required one would make every
+   deploy without it a misconfigured source. The registry reads it on its own (`feedClient`); unset,
+   this source runs every other ask and simply has no feed. */
+export const FEED_KEY = 'SCRAPECREATORS_API_KEY';
 
 /** The scraper platform's public host. Not a credential; see the header. */
 export const DEFAULT_BASE_URL = 'https://api.apify.com';
@@ -105,4 +111,9 @@ export function clientConfig(values: CredentialValues, runtime: ClientRuntime): 
     trendsActorId: DEFAULT_TRENDS_ACTOR_ID,
     fetch: runtime.fetch,
   };
+}
+
+/** The recommendation feed's client from the environment, or null when its key is unset (trending-feed.ts). */
+export function feedClient(env: Readonly<Record<string, string | undefined>>, runtime: ClientRuntime): TrendingFeedClient | null {
+  return trendingFeedClient({ apiKey: env[FEED_KEY] ?? '', baseUrl: DEFAULT_FEED_BASE_URL, fetch: runtime.fetch });
 }

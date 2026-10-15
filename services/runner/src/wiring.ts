@@ -118,6 +118,7 @@ import { type MetadataReader, type UniverseDeps } from './work/universe.ts';
 import { coinLinksPass, type CoinLinkResult } from './work/coin-links.ts';
 import { repostsPass, type RepostResult } from './work/reposts.ts';
 import { searchWordClock, searchWordsPass, type SearchWordResult } from './work/search-words.ts';
+import { trendingFeedClock, trendingFeedPass, type TrendingFeedResult } from './work/trending-feed.ts';
 import { chainClient, fetchDeclaredMetadata, fetchMetadata } from '@insidor/venue-solana-pumpfun';
 import { dexscreenerSearch, dexscreenerStandings } from '@insidor/market-dexscreener';
 import { geckoterminal } from '@insidor/market-geckoterminal';
@@ -186,6 +187,7 @@ export interface Runtime {
     readonly coinLinks: () => Promise<CoinLinkResult>;
     readonly reposts: () => Promise<RepostResult>;
     readonly searchWords: () => Promise<SearchWordResult>;
+    readonly trendingFeed: () => Promise<TrendingFeedResult>;
   };
 }
 
@@ -713,6 +715,7 @@ export async function withRuntime<T>(
       const finderSources = (handles: (source: string, sourceItemId: string) => string | null) =>
         resolvePlatforms(cfg.sourceEnv, { ...runtimeDeps, handles: (source, id) => handles(String(source), id) ?? sourceHandles.get(String(source), id) }).all();
       const finderClock = searchWordClock();
+      const feedClock = trendingFeedClock();
 
       /* Built after the sources, because TRACK's re-read is a call to one of them. */
       const work = storeWork(
@@ -1009,6 +1012,19 @@ export async function withRuntime<T>(
                   now: () => Date.now() as Millis,
                 },
                 finderClock,
+              ),
+            trendingFeed: () =>
+              trendingFeedPass(
+                {
+                  sources: () => platforms.all(),
+                  store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                  meter,
+                  mode: cfg.spend.kind,
+                  policy,
+                  log: log.child({ step: 'trending-feed' }),
+                  now: () => Date.now() as Millis,
+                },
+                feedClock,
               ),
           },
           keepCoins: () =>
