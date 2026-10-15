@@ -12,7 +12,7 @@
  *   learned   once a day: every coined post of the last `lookbackMs` (coined_post_lead, 0083) counted
  *             by tag, sound and creator, the top ones as origin 'coined' — free, and the list the
  *             owner is shown (tools/coined-words.ts)
- *   asks      every `trends.askEveryMs` slot of the clock: the next `wordsPerAsk` words (rising
+ *   asks      (`trends.asksOn`) every `trends.askEveryMs` slot: the next `wordsPerAsk` words (rising
  *             trend tags first, then learned tags), newest first, credited to the 'trend' lane;
  *             every `creators.askEveryMs` slot: the next `perAsk` learned creators' newest posts,
  *             the 'creator' lane. Both held to the watch list's age (arrivals.ts).
@@ -177,7 +177,7 @@ export async function searchWordsPass(deps: SearchWordDeps, clock: SearchWordClo
   const own = new Set(deps.policy.feed.hashtags.map((w) => w.toLowerCase()));
 
   /* 3. The word asks: rising trend tags first, then learned tags, never the owner's own words. */
-  const tagWords = [...new Set([...all.filter((w) => w.origin === 'trend' && f.trends.on), ...all.filter((w) => w.origin === 'coined' && f.learned.on)].filter((w) => w.kind === 'tag' && w.source === sourceId).map((w) => w.value))].filter((w) => !own.has(w));
+  const tagWords = !f.trends.asksOn ? [] : [...new Set([...all.filter((w) => w.origin === 'trend' && f.trends.on), ...all.filter((w) => w.origin === 'coined' && f.learned.on)].filter((w) => w.kind === 'tag' && w.source === sourceId).map((w) => w.value))].filter((w) => !own.has(w));
   const wordSlot = Math.floor(now / f.trends.askEveryMs);
   if (tagWords.length > 0 && clock.words !== wordSlot) {
     clock.words = wordSlot;
