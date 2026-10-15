@@ -1052,6 +1052,16 @@ export interface FeedPolicy {
    */
   readonly watchAskEveryMs: number | null;
   /**
+   * ★ EXTRA WATCH WORDS, LESS OFTEN (the owner's missed short videos, 2026-10-15). With `on`, every
+   * `everyAsks`-th watch ask (by the clock's ask slot, so it survives a restart) also searches
+   * these words, each in its own run, on top of the ask's `watchWordsPerAsk` words of `hashtags`.
+   * For words whose search returns the most-watched videos of the last several hours rather than
+   * the newest minutes: asking them every quarter-hour would buy the same videos four times. Each
+   * extra word is one more run on the short-video line every `everyAsks` × the ask spacing. Off:
+   * the asks are exactly `hashtags` as before.
+   */
+  readonly watchExtra: { readonly on: boolean; readonly words: readonly string[]; readonly everyAsks: number };
+  /**
    * The oldest a watch-list post may be and still be judged and shown. The short-video search is
    * asked for its most-liked videos of the past day; anything older the vendor sends anyway is
    * stored and never credited to the watch lane (0061), so it never reaches the feed.
@@ -3003,6 +3013,14 @@ const POLICY_V1: Policy = {
     hashtagResults: 20,
     watchWordsPerAsk: 2,
     watchAskEveryMs: 900_000, // fifteen minutes
+    /* Off until the owner switches it on. 'news', hourly: two of the owner's missed videos were news
+       accounts' animal oddities (@cp24breakingnews's batfish, #news; @nbcchicago's albino porcupine),
+       and none of the watch words reaches them. Tried on the learning book 2026-10-15 16:22 UTC, one
+       run each: news 30 videos, 29 over 10k views (median 202k), 1 to 9 hours old (median 7.6 h),
+       $0.0115; animals 28 videos 7 to 20 hours old, median 359 views; raccoon 14 (4 under two hours,
+       median 1.2k views); wildlife 1, breakingnews 4 and weird 7, all over 7 hours old. So only news,
+       and hourly, since its answer is the past several hours' most-watched: 24 runs a day, ~$0.28. */
+    watchExtra: { on: false, words: ['news'], everyAsks: 4 },
     watchMaxAgeMs: 86_400_000, // a day
     pageLimit: 20,
     maxPagesPerLane: 3,

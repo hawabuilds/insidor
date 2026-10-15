@@ -343,6 +343,23 @@ export function watchTermsFor(watch: readonly string[], perAsk: number, everyMs:
 }
 
 /**
+ * ★ THE EXTRA WATCH WORDS FOR THIS ASK (`feed.watchExtra`): its words on every `everyAsks`-th ask
+ * slot of the clock, none on the others, and never a word the ask already carries. From the clock
+ * like `watchTermsFor`, so a restart neither skips nor repeats a slot. Empty while off.
+ *
+ * What breaks if changed carelessly: counting asks in memory instead of slots would ask the extra
+ * words on the first ask after every deploy, and a deploy-heavy day would pay for them every time.
+ */
+export function watchExtraFor(policy: Policy, already: readonly string[], everyMs: number, now: Millis): readonly string[] {
+  const extra = policy.feed.watchExtra;
+  if (!extra.on) return [];
+  const every = Math.max(1, Math.trunc(extra.everyAsks));
+  if (Math.floor(now / Math.max(everyMs, 1)) % every !== 0) return [];
+  const have = new Set(already.map((w) => w.trim().toLowerCase()));
+  return [...new Set(extra.words.map((w) => w.trim()).filter((w) => w.length > 0 && !have.has(w.toLowerCase())))];
+}
+
+/**
  * When each source with no catch-all was last asked, kept by the loop between passes. In
  * memory on purpose: a restart forgets it and asks at once, which costs one extra ask per
  * deploy and never a missed one — the slow lane's trade.
@@ -708,7 +725,9 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
           outcomes.push({ kind: 'resting', source, everyMs, nextAtMs: due });
           continue;
         }
-        const words = term === null ? watchTermsFor(deps.policy.feed.hashtags, perAsk, everyMs, now) : [term];
+        const listed = term === null ? watchTermsFor(deps.policy.feed.hashtags, perAsk, everyMs, now) : [term];
+        /* The extra words (`feed.watchExtra`) ride every few asks of the watch list, never a configured term's. */
+        const words = term === null ? [...listed, ...watchExtraFor(deps.policy, listed, everyMs, now)] : listed;
         const word = words[0] ?? null;
         const query = word === null ? null : queryFor(adapter, word, now);
         /* The watch list is asked for `feed.hashtagResults` posts and `feed.watchWordsPerAsk` words; a configured term keeps its own size. */
