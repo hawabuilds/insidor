@@ -113,7 +113,7 @@ import { loadRunningOlder, type WireOlderCoin } from './older-coins.ts';
 import { permalinkFor } from './permalinks.ts';
 import { projectReach, projectSpark } from './project.ts';
 import type { ReachReading } from './project.ts';
-import { assertNoInternalVocabulary, instant } from './wire.ts';
+import { assertNoInternalVocabulary, instant, WireLeakError } from './wire.ts';
 import type { WireCoin, WireCoinEvidence, WireCoinLink, WireInstant, WireMeasured, WirePostCoinLink, WireSpark } from './wire.ts';
 
 export const RISING_FEEDS = ['fyp', 'popular'] as const;
@@ -647,7 +647,7 @@ export async function buildRising(
   const applied = await scores.latestApplied();
   const fit: ScoreFit | null = applied === null ? null : { intercept: applied.intercept, terms: applied.terms };
   const attention = fit !== null && fit.terms.some((t) => t.signal === 'attention') ? await scores.attention(rows.map((row) => row.item_id)) : new Map<string, number>();
-  const posts = rows.map((row) => {
+  const build = (row: RisingRow) => {
     const readings = reach.get(row.item_id) ?? [];
     /* Measured counts only: a censored reading's last level is an older number, and read at a
        later time it would overstate how fast the post grew. */
@@ -690,6 +690,18 @@ export async function buildRising(
       unread: barViews.every((v) => v.reach === null),
       popular: clearsReachBar('popular', barViews, postedAt, policy, scale),
     };
+  };
+  /* One post whose own words carry a word the wire refuses (a post about a vendor, say) is left out
+     of this frame on its own, printed, as a launch is in main.ts: it must never stop both feeds
+     updating, which is what one such post did for five hours on 2026-10-15. */
+  const posts = rows.flatMap((row) => {
+    try {
+      return [build(row)];
+    } catch (error: unknown) {
+      if (!(error instanceof WireLeakError)) throw error;
+      console.warn(`post ${row.item_id} was withheld from the feeds: ${error.message}`);
+      return [];
+    }
   });
 
   const fyp = posts.filter((p) => p.passes && p.fyp && (p.fresh || p.member)).sort((a, b) => forYouOrder({ at: a.at, id: a.post.id }, { at: b.at, id: b.post.id }));
