@@ -2484,6 +2484,18 @@ export interface FindersPolicy {
     readonly runEveryMinutes: number;
     readonly maxPosts: number;
   };
+  /**
+   * The short-video source's own recommendation feed, read logged out: one page a region every
+   * `everyMs`, and the videos on it under `creditMaxAgeMs` old credited to the 'trending' lane
+   * (0084). The one finder that asks no word, so it can return a video tagged only #fyp. Paid per
+   * page on its own supplier; its lane needs 0084 applied before it is switched on.
+   */
+  readonly trending: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    readonly regions: readonly string[];
+    readonly creditMaxAgeMs: number;
+  };
 }
 
 export interface Policy {
@@ -3738,6 +3750,18 @@ const POLICY_V1: Policy = {
       maxAgeMin: 120,
       runEveryMinutes: 10,
       maxPosts: 4,
+    },
+    trending: {
+      /* Off until the owner approves the cost and 0084 is applied. Measured 2026-10-15 19:21 to 23:14
+         UTC, 19 pages (US and GB, every 15 minutes): 199 different videos, 11 to 14 new on a page of
+         about 16, a median 35 days old; 12 under six hours, 7 of those already past 100,000 views
+         (a 763k-view video at 4.2 hours, BBC News at 2.7 hours), and our own searches held 1 of the
+         199. At this cadence it is 192 pages a day, $0.36 at the dearer credit pack, and about 70
+         young videos a day for the judge ($0.14 at $0.002 a post) — about $0.50 a day in all. */
+      on: false,
+      everyMs: 900_000, // fifteen minutes
+      regions: ['US', 'GB'],
+      creditMaxAgeMs: 21_600_000, // six hours
     },
   },
 

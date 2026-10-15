@@ -71,6 +71,8 @@ import {
   VENDOR as TIKTOK_VENDOR,
   clientConfig as tiktokClientConfig,
   expandShortLink as tiktokExpandShortLink,
+  FEED_KEY as TIKTOK_FEED_KEY,
+  feedClient as tiktokFeedClient,
   httpClient as tiktokHttpClient,
   tiktokPlatform,
 } from '@insidor/platform-tiktok';
@@ -112,6 +114,13 @@ export async function followLink(url: string, fetch: typeof globalThis.fetch): P
   if (once === null) return null;
   return tiktokExpandShortLink(once, fetch);
 }
+
+/**
+ * The environment variables a source uses when present and never needs: outside every credential
+ * spec, so their absence is neither dormant nor misconfigured. A caller that hands the registry a
+ * slice of its environment (the runner's config) must include these too, or the extra never arrives.
+ */
+export const OPTIONAL_SOURCE_VARIABLES: readonly string[] = [TIKTOK_FEED_KEY];
 
 /* ── what a source is supplied with, or why it is not ─────────────────── */
 
@@ -188,8 +197,12 @@ export interface PlatformRuntime {
 interface SourceBuilder {
   /** What this source needs from the environment. Declared in its own package. */
   readonly spec: CredentialSpec;
-  /** Deps from resolved values. May throw; every caller builds inside a try. */
-  readonly deps: (values: CredentialValues, runtime: PlatformRuntime) => unknown;
+  /**
+   * Deps from resolved values. May throw; every caller builds inside a try. `env` is for an OPTIONAL
+   * extra a source may use when present and must never need (the short-video source's second
+   * vendor, its recommendation feed): it is never part of the dormant/misconfigured judgement.
+   */
+  readonly deps: (values: CredentialValues, runtime: PlatformRuntime, env: CredentialEnv) => unknown;
   /**
    * The adapter from deps. Split from `deps` so a caller holding PRE-BUILT deps —
    * the conformance suite, whose every client throws — enters at the second step
@@ -210,8 +223,10 @@ const BUILDERS = {
   },
   tiktok: {
     spec: TIKTOK_CREDENTIALS,
-    deps: (values: CredentialValues, runtime: PlatformRuntime): TikTokAdapterDeps => ({
+    deps: (values: CredentialValues, runtime: PlatformRuntime, env: CredentialEnv): TikTokAdapterDeps => ({
       client: tiktokHttpClient(tiktokClientConfig(values, runtime)),
+      /* The recommendation feed's second vendor; null when its optional key is unset. */
+      feed: tiktokFeedClient(env, runtime),
       meter: runtime.meter,
       now: runtime.now,
       handleOf: (sourceItemId) => runtime.handles(TIKTOK_SOURCE, sourceItemId),
@@ -443,7 +458,7 @@ export function resolvePlatforms(env: CredentialEnv, runtime: PlatformRuntime): 
     results.set(
       source,
       attempt(source, () => {
-        const deps = builder.deps(values, runtime) as never;
+        const deps = builder.deps(values, runtime, env) as never;
         return builder.build(deps);
       }),
     );

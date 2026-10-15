@@ -191,8 +191,8 @@ async function findReusable(deps: ScoringDeps, queue: readonly Item[], judgeId: 
   }
 }
 
-/** The finders' lanes (0083), each read on its own like the watch lane. */
-const FINDER_LANES = ['coin_link', 'x_repost', 'trend', 'creator'] as const;
+/** The finders' lanes (0083, and 0084's recommendation feed), each read on its own like the watch lane. */
+const FINDER_LANES = ['coin_link', 'x_repost', 'trend', 'creator', 'trending'] as const;
 
 export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   const now = deps.now();

@@ -5,7 +5,7 @@
  * is only worth having within seconds of the launch, and no other loop runs that often. The
  * others ride the same loop on their own clocks: the reposts (work/reposts.ts) every
  * `finders.reposts.everyMs`, the search words and young re-reads (work/search-words.ts) on their
- * slots. With every switch off a pass does nothing and touches no table.
+ * slots, and the recommendation feed (work/trending-feed.ts) on its own. With every switch off a pass does nothing and touches no table.
  *
  * What breaks if changed carelessly: a failure in one finder is logged and the others still run.
  * A loop that threw on the first would let a stalled short-link host stop the coin links, which
@@ -18,6 +18,7 @@ import { errorText } from '../log.ts';
 import type { CoinLinkResult } from '../work/coin-links.ts';
 import type { RepostResult } from '../work/reposts.ts';
 import type { SearchWordResult } from '../work/search-words.ts';
+import type { TrendingFeedResult } from '../work/trending-feed.ts';
 
 /** After the other loops' offsets, so they do not all start in the same second. */
 const OFFSET_MS = 7_000;
@@ -28,6 +29,7 @@ export interface FinderWork {
   readonly coinLinks: () => Promise<CoinLinkResult>;
   readonly reposts: () => Promise<RepostResult>;
   readonly searchWords: () => Promise<SearchWordResult>;
+  readonly trendingFeed: () => Promise<TrendingFeedResult>;
   readonly log: Logger;
 }
 
@@ -58,6 +60,7 @@ export function findersLoop(work: FinderWork): Loop {
         found += (await step('reposts', work.reposts))?.credited ?? 0;
       }
       found += (await step('search words', work.searchWords))?.stored ?? 0;
+      found += (await step('recommendation feed', work.trendingFeed))?.stored ?? 0;
       return { in: links?.coins ?? 0, out: found, failed: firstError === null ? 0 : 1, firstError };
     },
   };

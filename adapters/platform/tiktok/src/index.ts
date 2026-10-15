@@ -33,6 +33,7 @@ import type { Budget, Meter, Metered, CostEstimate } from '@insidor/contracts/po
 import type {
   DiscoveryQuery,
   Discovered,
+  FeedAsk,
   PlannedCall,
   PlatformAdapter,
   TrendAsk,
@@ -44,6 +45,7 @@ import { discovered } from '@insidor/vendor-kit';
 import { parseLink as parseLinkOf, postTimeFromId as postTimeOf } from './post-time.ts';
 
 import { CAPABILITIES, DISCOVER, OBSERVE, PRICES, READ_POST_USD, runCostUsd, searchActorCostUsd, searchActorQuoteUsd, SEARCH_POST_USD, SOURCE, TRENDS, VENDOR } from './capabilities.ts';
+import { FEED_ENDPOINT, FEED_PRICES, FEED_VENDOR, feedRegions, fromTrendingFeed, type TrendingFeedClient } from './trending-feed.ts';
 import { fromTrendsRows, toTrendsInput, trendRegions, trendsRunUsd, TRENDS_MAX_PER_REGION } from './trends.ts';
 import type { TikTokClient } from './client.ts';
 import { discoverRun, SEARCH_ORDERS, wordsOf, type SearchOrder } from './discover.ts';
@@ -63,6 +65,8 @@ export interface TikTokAdapterDeps {
    */
   readonly handleOf: (sourceItemId: string) => string | null;
   readonly prices?: PriceBook;
+  /** The second vendor's recommendation feed (trending-feed.ts); absent or null for none. */
+  readonly feed?: TrendingFeedClient | null;
 }
 
 const HOUR_MS = 3_600_000;
@@ -273,6 +277,57 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
           },
         }),
 
+    /* ★ THE RECOMMENDATION FEED (trending-feed.ts): one request a region, each metered at one
+       credit on its own vendor's line and recorded at what the vendor said it charged. Present only
+       when the feed's key is set. */
+    ...(deps.feed === undefined || deps.feed === null
+      ? {}
+      : {
+          estimateTrendingFeed(ask: FeedAsk): CostEstimate {
+            return estimateFor(FEED_PRICES, FEED_VENDOR, FEED_ENDPOINT, feedRegions(ask.regions).length);
+          },
+          async trendingFeed(ask: FeedAsk, _budget: Budget): Promise<Metered<Discovered>> {
+            const feed = deps.feed!;
+            const at = deps.now();
+            const items: Item[] = [];
+            const authors: Author[] = [];
+            const seen = new Set<string>();
+            const spends = [];
+            for (const region of feedRegions(ask.regions)) {
+              const result = await metered(
+                deps.meter,
+                FEED_PRICES,
+                { vendor: FEED_VENDOR, endpoint: FEED_ENDPOINT, unit: 'per-call', estUnits: 1, at },
+                async () => {
+                  const page = await feed.feed(region);
+                  return { value: page, units: page.creditsCharged ?? 1 };
+                },
+              );
+              spends.push(result.spend);
+              for (const raw of result.value.items) {
+                const mapped = fromTrendingFeed(raw);
+                let item: Item;
+                try {
+                  item = toItem(mapped, at);
+                } catch {
+                  continue;
+                }
+                /* Two regions often return the same video; one Item each. */
+                if (seen.has(item.sourceItemId)) continue;
+                seen.add(item.sourceItemId);
+                items.push(item);
+                const author = toAuthor(mapped, at);
+                if (author !== null) authors.push(author);
+              }
+            }
+            learn(items, authors);
+            return {
+              value: discovered(items, authors, null, false),
+              spend: mergeSpend(spends, { vendor: FEED_VENDOR, endpoint: FEED_ENDPOINT, unit: 'per-call', estUnits: 1, at }, 'per-call'),
+            };
+          },
+        }),
+
     parseLink: (url: string) => parseLinkOf(url),
     postTimeFromId: (id: string) => postTimeOf(id) as Millis | null,
 
@@ -300,7 +355,9 @@ export { httpClient, isActorId, isPathSegment, postUrl } from './client.ts';
 export { TikTokNotConfigured } from './client.ts';
 /* What this source needs from the environment, declared beside the client that
    consumes it. The registry reads it; nothing central holds a copy to drift from. */
-export { CREDENTIALS, clientConfig } from './credentials.ts';
+export { CREDENTIALS, clientConfig, FEED_KEY, feedClient } from './credentials.ts';
+export { FEED_VENDOR, trendingFeedClient, fromTrendingFeed } from './trending-feed.ts';
+export type { TrendingFeedClient } from './trending-feed.ts';
 export type { TikTokClient, TikTokClientConfig } from './client.ts';
 /* The refusal, exported so it is reachable from a test that never builds an adapter.
    It is the single most important line in this package after `capabilities.absent`. */

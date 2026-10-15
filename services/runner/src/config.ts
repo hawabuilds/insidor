@@ -52,7 +52,7 @@ import { hostname } from 'node:os';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { StageName } from '@insidor/contracts';
 import { readJudgeSetup, type JudgeSetup } from '@insidor/judge-anthropic';
-import { credentialSpecs } from '@insidor/platform-registry';
+import { credentialSpecs, OPTIONAL_SOURCE_VARIABLES } from '@insidor/platform-registry';
 import type { CredentialEnv } from '@insidor/vendor-kit';
 
 /** The stages this process supervises. See loops/ for the cadence of each. */
@@ -392,6 +392,8 @@ function platformEnv(env: Env): CredentialEnv {
   for (const spec of Object.values(credentialSpecs())) {
     for (const requirement of spec.requires) slice[requirement.variable] = env[requirement.variable];
   }
+  /* A source's optional extras (the short-video source's recommendation feed key) ride the same slice. */
+  for (const variable of OPTIONAL_SOURCE_VARIABLES) slice[variable] = env[variable];
   return Object.freeze(slice);
 }
 
