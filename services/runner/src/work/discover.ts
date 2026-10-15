@@ -71,7 +71,7 @@ import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
 import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { bandFloor, bandWindow, effectiveFloor, laneTargets, laneWindowMin, nextFloor, sentFloors, sliceCoveredByBands, startFloors, type LaneFloors } from '@insidor/core';
+import { bandFloor, bandWindow, effectiveFloor, laneTargets, laneWindowMin, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -432,7 +432,11 @@ export function slowSliceQueries(floors: LaneFloors, now: Millis, policy: Policy
   return Array.from({ length: slices }, (_, i) => {
     const oldest = now - (i + 1) * step;
     return { ...base, sinceMs: Math.round(oldest) as Millis, untilMs: Math.round(oldest + width) as Millis };
-  }).filter((q) => !sliceCoveredByBands((now - (q.untilMs ?? now)) / MS_PER_MINUTE, policy));
+  }).filter((q) => {
+    const youngest = (now - (q.untilMs ?? now)) / MS_PER_MINUTE;
+    /* A late band (`feed.fresh.late`) at an age inside this slice asks the same posts at a floor no higher. */
+    return !sliceCoveredByBands(youngest, policy) && !sliceCoveredByLateBand(youngest, width / MS_PER_MINUTE, policy);
+  });
 }
 
 /**
@@ -459,6 +463,9 @@ export function memoryFreshClock(): FreshClock {
 /** The clock key of one band on one source. */
 export const bandKey = (source: string, ageMin: number): string => `${source}:${ageMin}`;
 
+/** The clock key of one late band (`feed.fresh.late`): its own, so a late band at a fresh band's age keeps its own window. */
+export const lateBandKey = (source: string, ageMin: number): string => `${source}:late:${ageMin}`;
+
 /**
  * ★ THE FRESH BANDS (`feed.fresh`), in place of the 'all' lane's ten-minute window: for each age
  * in `fresh.bandAgesMin`, the posts that turned that old since the band's last ask, at the 'all'
@@ -468,21 +475,27 @@ export const bandKey = (source: string, ageMin: number): string => `${source}:${
  * What breaks if changed carelessly: a band window computed without the clock overlaps the last
  * one and buys the same posts again, which is the waste this replaces.
  */
-export function freshBandQueries(source: string, floors: LaneFloors, now: Millis, policy: Policy, clock: FreshClock | undefined): readonly { readonly query: DiscoveryQuery; readonly age: number }[] {
+export function freshBandQueries(source: string, floors: LaneFloors, now: Millis, policy: Policy, clock: FreshClock | undefined): readonly { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean }[] {
   const base = feedQueryFor('all', floors, now, policy);
-  return policy.feed.fresh.bandAgesMin.flatMap((age) => {
-    const window = bandWindow(age, clock?.lastUntil(bandKey(source, age)) ?? null, now, policy);
+  const ask = (age: number, key: string, minApproval: number, late: boolean): { readonly query: DiscoveryQuery; readonly age: number; readonly late: boolean }[] => {
+    const window = bandWindow(age, clock?.lastUntil(key) ?? null, now, policy);
     if (window === null) return [];
     return [{
       age,
+      late,
       query: {
         ...base,
         sinceMs: Math.round(window.since) as Millis,
         untilMs: Math.round(window.until) as Millis,
-        filter: { ...base.filter!, minApproval: bandFloor(age, floors, policy) },
+        filter: { ...base.filter!, minApproval },
       },
     }];
-  });
+  };
+  return [
+    ...policy.feed.fresh.bandAgesMin.flatMap((age) => ask(age, bandKey(source, age), bandFloor(age, floors, policy), false)),
+    /* ★ LATE BANDS (`feed.fresh.late`): the same tiling at an age in hours, at a fixed floor. Empty while off. */
+    ...lateBands(policy).flatMap((b) => ask(b.ageMin, lateBandKey(source, b.ageMin), lateBandFloor(b.minApproval, floors, policy), true)),
+  ];
 }
 
 /* ── the pass ─────────────────────────────────────────────────────────────── */
@@ -598,6 +611,8 @@ interface SourcePlan {
   readonly slice: boolean;
   /** The age of the fresh band this is (`freshBandQueries`), or null. */
   readonly band: number | null;
+  /** A late band (`feed.fresh.late`): fixed floor, so what it returns never moves a lane's floor. */
+  readonly late: boolean;
 }
 
 export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResult> {
@@ -649,14 +664,15 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
 
     /* ★ THE CATCH-ALL FIRST, ON EVERY SOURCE THAT CAN BE ASKED FOR IT: two lanes, no
        keyword. Then the optional term on top. */
-    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean; readonly watch?: boolean; readonly slice?: boolean; readonly band?: number }[] = [];
+    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean; readonly watch?: boolean; readonly slice?: boolean; readonly band?: number; readonly late?: boolean }[] = [];
     if (adapter.capabilities.discovery.includes('catchall')) {
       const fresh = deps.policy.feed.fresh.enabled;
       for (const lane of deps.lanes ?? MAIN_LANES) {
         if (lane === 'slow') for (const query of slowSliceQueries(floors, now, deps.policy)) asks.push({ query, lane, slice: true });
         /* Fresh bands replace both main lanes: the media lane's posts clear the bands' floor too. */
         else if (fresh && lane === 'media') continue;
-        else if (fresh && lane === 'all') for (const { query, age } of freshBandQueries(source, floors, now, deps.policy, deps.fresh)) asks.push({ query, lane, band: age });
+        /* A late band's posts are the slow lane's kind (found hours in), so they are stored as its finds. */
+        else if (fresh && lane === 'all') for (const { query, age, late } of freshBandQueries(source, floors, now, deps.policy, deps.fresh)) asks.push({ query, lane: late ? 'slow' : lane, band: age, late });
         else asks.push({ query: feedQueryFor(lane, floors, now, deps.policy), lane });
       }
     }
@@ -717,7 +733,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       continue;
     }
 
-    for (const { query, lane, spaced, watch, slice, band } of asks) {
+    for (const { query, lane, spaced, watch, slice, band, late } of asks) {
       let estimate: CostEstimate;
       try {
         estimate = adapter.estimate({ kind: 'discover', query });
@@ -730,7 +746,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         deps.log.error('source cannot be priced; not asking it', { source, err: errorText(e) });
         continue;
       }
-      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true, watch: watch === true, slice: slice === true, band: band ?? null });
+      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true, watch: watch === true, slice: slice === true, band: band ?? null, late: late === true });
     }
   }
 
@@ -755,7 +771,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       sentFloors: sentFloors(floors, deps.policy),
       targets,
       targetUsd: ((targets.all + targets.media) * passesPerDay + targets.slow * slowPassesPerDay) * usdPerPost,
-      worstUsd: usdPerPage * (pages * (deps.policy.feed.fresh.enabled ? deps.policy.feed.fresh.bandAgesMin.length : MAIN_LANES.length) * passesPerDay + deps.policy.feed.slow.slices * slowPassesPerDay),
+      worstUsd: usdPerPage * (pages * (deps.policy.feed.fresh.enabled ? deps.policy.feed.fresh.bandAgesMin.length + lateBands(deps.policy).length : MAIN_LANES.length) * passesPerDay + deps.policy.feed.slow.slices * slowPassesPerDay),
     };
     feedDays.push(day);
     deps.log.info(deps.mode === 'dry' ? 'DRY RUN — a day of catch-all search, priced' : 'catch-all search, priced', {
@@ -807,7 +823,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
      short-video run used to hold the text search, the feed's main input, for as long. */
   const runPlan = async (plan: SourcePlan): Promise<void> => {
     if (deps.signal.aborted) return;
-    const { adapter, source, query, estimate, lane, spaced, watch, slice, band } = plan;
+    const { adapter, source, query, estimate, lane, spaced, watch, slice, band, late } = plan;
     const tag = lane === null ? {} : { lane };
     const coverKey = lane === null ? query.term : `feed:${lane}`;
 
@@ -975,9 +991,9 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       covered.set(coverKey, source);
     }
     /* A slow lane's slices add up, and so do the fresh bands: the lane's floor moves on what all of them returned. */
-    if (lane !== null) laneReturned.set(source, { ...laneReturned.get(source), [lane]: (slice || band !== null ? (laneReturned.get(source)?.[lane] ?? 0) : 0) + items.length });
+    if (lane !== null && !late) laneReturned.set(source, { ...laneReturned.get(source), [lane]: (slice || band !== null ? (laneReturned.get(source)?.[lane] ?? 0) : 0) + items.length });
     /* The band's window is answered: the next ask starts where this one ended. */
-    if (band !== null && query.untilMs !== null) deps.fresh?.ran(bandKey(source, band), query.untilMs);
+    if (band !== null && query.untilMs !== null) deps.fresh?.ran(late ? lateBandKey(source, band) : bandKey(source, band), query.untilMs);
 
     let stored: number | null = null;
     if (items.length > 0) {

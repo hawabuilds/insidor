@@ -128,7 +128,7 @@ export type { VelocityRank } from './track/velocity.ts';
  * The catch-all search's approval floor: what is sent, what each lane aims at, how a pass
  * moves it. Not a stage; a budget lever with policy thresholds, so it lives here.
  */
-export { bandFloor, bandWindow, effectiveFloor, laneTargets, laneWindowMin, nextFloor, sentFloors, sliceCoveredByBands, slowLaneDue, startFloors } from './sources/feed-floor.ts';
+export { bandFloor, bandWindow, effectiveFloor, laneTargets, laneWindowMin, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, slowLaneDue, startFloors } from './sources/feed-floor.ts';
 export type { FloorMove, LaneFloors } from './sources/feed-floor.ts';
 export { approvalsAt, crossingAgeMin, fitGrowthTau, inSearch, missReasonBefore, searchFilter, verdict } from './sources/recall.ts';
 export type { DiscoverySettings, LaneSetting, PostFacts as RecallPostFacts, Verdict } from './sources/recall.ts';

@@ -20,7 +20,7 @@ import { bandFloor, startFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { Logger } from '../log.ts';
-import { bandKey, discoverPass, memoryFreshClock, slowSliceQueries, type FreshClock } from './discover.ts';
+import { bandKey, discoverPass, lateBandKey, memoryFreshClock, slowSliceQueries, type FreshClock } from './discover.ts';
 
 /* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
    pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
@@ -29,7 +29,10 @@ const DEFAULT_POLICY = { ...LIVE_POLICY, feed: { ...LIVE_POLICY.feed, fresh: { .
 const NOW = 1_800_000_000_000 as Millis;
 const MIN = 60_000;
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
-const ON: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: true } } };
+/* The fresh bands on and the late bands (`feed.fresh.late`) off, whatever the live switch says: these tests count the fresh bands' asks. */
+const ON: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: true, late: { ...DEFAULT_POLICY.feed.fresh.late, on: false } } } };
+/* And with one late band at five hours and 6,500 likes on. */
+const LATE: Policy = { ...ON, feed: { ...ON.feed, fresh: { ...ON.feed.fresh, late: { on: true, bands: [{ ageMin: 300, minApproval: 6_500 }] } } } };
 
 function item(i: number): Item {
   return {
@@ -135,4 +138,37 @@ test('switch on: the slow lane drops the slices the bands already cover', () => 
   assert.equal(off.length, DEFAULT_POLICY.feed.slow.slices);
   assert.equal(on.length, DEFAULT_POLICY.feed.slow.slices - 1, 'the 45-60 minute slice is the 50-minute band');
   assert.deepEqual(on, off.slice(1));
+});
+
+test('★ late bands on: one more ask at five hours, at its fixed floor, tiled on its own clock', async () => {
+  const seen: DiscoveryQuery[] = [];
+  const clock = memoryFreshClock();
+  /* The slow lane adapted to 7,412: the band sends its own 6,500. */
+  await run(source(seen), LATE, clock, NOW, undefined, { all: 1_120, slow: 7_412 });
+  const late = seen.at(-1)!;
+  assert.equal(seen.length, ON.feed.fresh.bandAgesMin.length + 1);
+  assert.equal(late.untilMs, NOW - 300 * MIN);
+  assert.equal(late.filter?.minApproval, 6_500);
+  assert.equal(clock.lastUntil(lateBandKey('x', 300)), NOW - 300 * MIN);
+  seen.length = 0;
+  await run(source(seen), LATE, clock, (NOW + 2 * MIN) as Millis, undefined, { all: 1_120, slow: 7_412 });
+  assert.equal(seen.at(-1)!.sinceMs, late.untilMs, 'no gap and no overlap');
+});
+
+test('★ a late band never moves a floor: its posts are not counted toward any lane\'s target', async () => {
+  const held: Record<string, number> = { all: 1_120, slow: 7_412 };
+  const seen: DiscoveryQuery[] = [];
+  /* A target of ~2 posts a pass: the fresh bands' 6 posts raise the all floor; the late band's 3 must not add to it or touch slow. */
+  const policy: Policy = { ...LATE, feed: { ...LATE.feed, fresh: { ...LATE.feed.fresh, targetScale: 0.01 } } };
+  await run(source(seen, 3), policy, memoryFreshClock(), NOW, undefined, held);
+  assert.equal(held['all'], Math.ceil(1_120 * ON.feed.raiseFactor));
+  assert.equal(held['slow'], 7_412, 'the slow lane was not asked this pass and its floor is untouched');
+});
+
+test('late bands on: the slow lane drops the slice that holds the band\'s age, and only that one', () => {
+  const on = slowSliceQueries(startFloors(ON), NOW, ON);
+  const late = slowSliceQueries(startFloors(LATE), NOW, LATE);
+  assert.equal(late.length, on.length - 1);
+  assert.ok(!late.some((q) => q.untilMs === NOW - 285 * MIN), 'the 285-300 minute slice is the five-hour band');
+  assert.ok(late.some((q) => q.untilMs === NOW - 345 * MIN), 'the six-hour slice stays');
 });

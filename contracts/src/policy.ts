@@ -1136,6 +1136,22 @@ export interface FeedPolicy {
     readonly rereadMinReachPerMinute: number;
     readonly cutStale: boolean;
     readonly staleAfterMs: number;
+    /**
+     * ★ LATE BANDS (the owner's missed posts, 2026-10-15). With `on` and `enabled`, each band asks
+     * for the posts that turned `ageMin` minutes old since its last ask — tiled like the fresh
+     * bands, so every post is looked at once at that age — at a FIXED floor of `minApproval`,
+     * never above the slow lane's sent floor. The slow lane's floor drifts with its target
+     * (4,382 to 10,700 likes on 2026-10-14), so a post that climbs to a few thousand likes over
+     * hours is seen or not depending on the hour; this band sees it regardless. The slow lane's
+     * time slice at the same age is dropped (it asks the same posts at a floor at least as high).
+     * A late band's posts never move a lane's floor: its floor is fixed so its cost is the count
+     * of posts over it, about 1.4 a minute of posting time at 6,500 likes and five hours old.
+     * Off: nothing here is read and discovery is exactly as before.
+     */
+    readonly late: {
+      readonly on: boolean;
+      readonly bands: readonly { readonly ageMin: number; readonly minApproval: number }[];
+    };
   };
 }
 
@@ -3022,6 +3038,13 @@ const POLICY_V1: Policy = {
       rereadMinReachPerMinute: 444,
       cutStale: true,
       staleAfterMs: 21_600_000, // six hours
+      /* Off until the owner switches it on. One band at five hours and 6,500 likes: of the owner's
+         missed text posts, @mattvanswol's (10,099 likes at 12 h) was under the 6- and 50-minute
+         bands' floors when they asked and under the slow lane's floor that afternoon, and is
+         estimated at 6,700 to 7,600 likes at five hours. Measured 2026-10-15 on three 15-minute
+         windows: about 21 posts over 6,500 at five hours a quarter-hour, about 2 of them not
+         already held. */
+      late: { on: false, bands: [{ ageMin: 300, minApproval: 6_500 }] },
     },
   },
 

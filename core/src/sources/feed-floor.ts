@@ -77,6 +77,35 @@ export function sliceCoveredByBands(youngestAgeMin: number, p: Policy): boolean 
   return youngestAgeMin <= Math.max(0, ...p.feed.fresh.bandAgesMin);
 }
 
+/**
+ * ★ THE LATE BANDS (`feed.fresh.late`), when they are asked: only with the fresh bands on and the
+ * late switch on. Empty otherwise, so every caller can loop over them unconditionally.
+ */
+export function lateBands(p: Policy): readonly { readonly ageMin: number; readonly minApproval: number }[] {
+  return p.feed.fresh.enabled && p.feed.fresh.late.on ? p.feed.fresh.late.bands : [];
+}
+
+/**
+ * A late band's sent floor: its own fixed floor, but never above what the slow lane sends. The
+ * slow lane's slice at the band's age is dropped (`sliceCoveredByLateBand`), so a band asking for
+ * MORE likes than the slice would have would lose the posts in between.
+ */
+export function lateBandFloor(minApproval: number, floors: LaneFloors, p: Policy): number {
+  return Math.max(p.feed.effectiveFloorMin, Math.min(Math.round(minApproval), effectiveFloor('slow', floors, p)));
+}
+
+/**
+ * Whether a slow-lane slice — the posts aged `youngestAgeMin` to `youngestAgeMin + widthMin` — is
+ * covered by a late band: the band's age falls inside it, so the band has asked for the same posts
+ * at about the same age at a floor no higher (`lateBandFloor`).
+ *
+ * What breaks if changed carelessly: dropping a slice the band does not cover leaves an hour of age
+ * the slow lane never looks at.
+ */
+export function sliceCoveredByLateBand(youngestAgeMin: number, widthMin: number, p: Policy): boolean {
+  return lateBands(p).some((b) => b.ageMin > youngestAgeMin && b.ageMin <= youngestAgeMin + widthMin);
+}
+
 function scaledFloor(base: number, windowMin: number, p: Policy): number {
   const f = p.feed;
   const kept = Math.min(Math.max(base, f.floorMin), f.floorMax);
