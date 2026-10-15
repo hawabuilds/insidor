@@ -96,6 +96,7 @@ import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwnerAlertRepo, type GoldAddition } from '../store/src/index.ts';
 import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
+import { leadFacts, leadLines, leadRows, summarise } from './lib/lead-time.ts';
 import { buildBlock, caught, changed, currentCalls, gate, goalsText, latestSlot, ratesOf, regressions, share, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
@@ -145,6 +146,23 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const url = process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'];
 /* `--model=<id>` (measure only) grades with another judge model than JUDGE_MODEL. */
 const env = { ...process.env, ...(url === undefined ? {} : { DATABASE_URL_INTERNAL: url }), ...(command === 'measure' && arg('model') !== null ? { JUDGE_MODEL: arg('model') ?? '' } : {}) };
+
+/**
+ * Lead time on the last three days' coined posts (tools/lib/lead-time.ts): the main number from
+ * 2026-10-15, in every re-tune's summary and status. A failed read is said, never a zero.
+ */
+const LEAD_DAYS = 3;
+async function readLead(): Promise<{ facts: ReturnType<typeof leadFacts>; lines: readonly string[] } | { error: string }> {
+  const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-retune-lead' });
+  try {
+    const summary = summarise(await leadRows(asDb(pool), new Date(Date.now() - LEAD_DAYS * 86_400_000)));
+    return { facts: leadFacts(summary), lines: leadLines(summary) };
+  } catch (e) {
+    return { error: errText(e) };
+  } finally {
+    await pool.end();
+  }
+}
 
 async function withRepo<T>(f: (repo: PgLearningRepo, owner: PgOwnerAlertRepo, labels: PgLabelEmbeddingRepo) => Promise<T>): Promise<T> {
   const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-retune' });
@@ -417,8 +435,9 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       };
       const missReasons = await soft(repo.missReasons(new Date(Date.now() - MISS_REASONS_MS)), {});
       const outcome = opts.dry ? 'dry' : apply ? 'applied' : 'kept';
+      const lead = await readLead();
       const summary = {
-        slot: slot.toISOString(), version: versionId, outcome, why,
+        slot: slot.toISOString(), version: versionId, outcome, why, leadTime: 'error' in lead ? lead.error : lead.facts,
         handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, goals: verdict.goals, goal: goalsText(rates, L), withoutCryptoFacts: noFacts, precedentLabels: labelled.length,
         autoGold: rates.auto, missed: rates.missed, regressions: regressed, judgeInUse: inUse === null ? 'rules alone' : `block ${inUse.versionId}`,
         unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true, composition,
@@ -470,6 +489,9 @@ if (command === 'status') {
   await withRepo(async (repo) => {
     const applied = await repo.latestApplied();
     console.log(applied === null ? 'no block applied: the judge reads its rules alone' : `in use: version ${applied.versionId} (${applied.sha}), applied ${applied.appliedAt.toISOString()}, ${applied.text.length} characters`);
+    const lead = await readLead();
+    console.log(`lead time, last ${LEAD_DAYS} days:`);
+    for (const line of 'error' in lead ? [`could not be read: ${lead.error}`] : lead.lines) console.log(`  ${line}`);
     for (const r of await repo.recentRuns(10)) console.log(`${r.slot.toISOString()}  ${r.outcome.padEnd(8)} ${r.costUsd === null ? '      ' : `$${r.costUsd.toFixed(3)}`}  ${r.versionId ?? ''}  ${r.detail ?? ''}`);
   });
 } else if (command === 'compose') {

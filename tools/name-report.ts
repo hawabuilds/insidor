@@ -13,6 +13,7 @@
  *   3. See N coins on the owner's labelled posts: how often his coin is in the list, and how many
  *      other coins it shows (services/project coin-list.ts `withPlausibleLists`, as the feed does).
  *   4. The backfill's changed cards (`--diff`) and the first-day watch (0077).
+ *   5. Lead time on coined posts: shown before the first coin, and by how much (tools/lib/lead-time.ts).
  *
  * What breaks if changed carelessly: the owner's posts must be weighed by the projector's code,
  * never a copy (the reason tools/lib/coin-match-fit.ts gives); a number from another path is a
@@ -29,6 +30,7 @@ import { loadMatchEvidence, matchCases } from '../eval/src/gold/match-cases.ts';
 import { withPlausibleLists } from '../services/project/src/coin-list.ts';
 import { loadFit, weighPostCoins } from '../services/project/src/post-match.ts';
 import { asDb, createPool, DB_ROLE, PgOwnerCoinCallRepo } from '../store/src/index.ts';
+import { leadLines, leadRows, summarise } from './lib/lead-time.ts';
 
 const arg = (name: string): string | null => {
   const i = process.argv.indexOf(name);
@@ -150,6 +152,11 @@ try {
   const w = run[0];
   if (w === undefined) say('- Watch: not running yet (0077, or no baseline).');
   else say(`- Watch (${new Date(w.at).toISOString().slice(0, 16)}): ${w.additions} coins added to feed posts, ${w.by_guess} by the namer's names; you called ${w.wrong} of ${w.labelled} of those wrong or no coin (${w.rate_after === null ? '—' : `${Math.round(w.rate_after * 100)}%`}, against ${w.rate_before === null ? '—' : `${Math.round(w.rate_before * 100)}%`} before). ${w.switched_off ? 'It SWITCHED THE NAMER OFF.' : 'The namer is on.'} List: tools/name-watch.ts list.`);
+
+  /* 5. Lead time, the main number from 2026-10-15 (tools/lib/lead-time.ts). */
+  say();
+  say('## Lead time on coined posts (last 3 days)');
+  for (const line of leadLines(summarise(await leadRows(db, new Date(Date.now() - 3 * 86_400_000))))) say(`- ${line}`);
 
   const out = arg('--out');
   if (out !== null) writeFileSync(out, lines.join('\n') + '\n');
