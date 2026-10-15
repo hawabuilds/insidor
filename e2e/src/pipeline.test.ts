@@ -431,16 +431,18 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   assert.ok(links.includes('https://x.com/clipsdaily/status/1900000000000000004'));
   assert.ok(!page.body.includes('light rain'), 'and not the unrelated one');
 
-  /* ★ THE FOR YOU FEED: the four posts that cleared the bar, newest first, each with its
+  /* ★ THE FOR YOU FEED: the posts that cleared the bar, newest first, each with its
      views and a working link, and no coin — the narrative has none. The weather post was
-     found by the same search and scored below the bar, so it is not here. */
+     found by the same search and scored below the bar, so it is not here. All four are one
+     story, and one topic takes at most three cards in twenty (services/project variety.ts):
+     the three most viewed keep a place, the fourth is on Popular and the story page. */
   const read = { db: { query: (s: string, p: readonly unknown[]) => db.query(s, p) }, log: quiet };
   const fypReply = JSON.parse((await handle('GET', '/rising/fyp', read)).body) as {
     posts: { id: string; permalink: string | null; reach: { v: number | null }; coins: unknown; storyId: unknown }[];
   };
   assert.deepEqual(
     fypReply.posts.map((p) => p.id),
-    ['x:1900000000000000004', 'x:1900000000000000003', 'x:1900000000000000002', 'x:1900000000000000001'],
+    ['x:1900000000000000004', 'x:1900000000000000003', 'x:1900000000000000002'],
   );
   for (const p of fypReply.posts) {
     assert.ok((p.reach.v ?? 0) > 0, `views on ${p.id}`);
@@ -457,6 +459,8 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   /* ★ THE OWNER'S CALL WINS (0054, services/project/src/owner-calls.ts). "Not a meme" takes a
      post off both feeds and off its narrative's page; "Is a meme" brings it back, and lifts the
      judge's no from the weather post — the reach bar still applies. */
+  /* From here the four posts of the one story are the members and owner calls under test, so For
+     You's variety rule (one topic, three cards in twenty) is off: it would keep the fourth off. */
   const reproject = async () => {
     await projectStoryFrame(
       db,
@@ -464,7 +468,7 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
       { nowMs: clock, sparkWindowMs: 30 * MINUTE, marketFreshnessMs: DEFAULT_POLICY.market.readingFreshnessMs, feedFreshnessMs: DEFAULT_POLICY.assets.feedFreshnessMs },
       { storiesSinceMs: NOW - 48 * 60 * MINUTE, reachSinceMs: NOW - 26 * 60 * MINUTE, limit: 200 },
     );
-    await projectRisingFeeds(db, clock, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1 } });
+    await projectRisingFeeds(db, clock, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, varietyOn: false } });
     const feedIds = async (feed: string) => (JSON.parse((await handle('GET', `/rising/${feed}`, read)).body) as { posts: { id: string }[] }).posts.map((p) => p.id);
     const storyPage = JSON.parse((await handle('GET', `/story/${moment.story_id}`, read)).body) as { evidence: { evidenceId: string }[] };
     return { fyp: await feedIds('fyp'), popular: await feedIds('popular'), story: storyPage.evidence.map((e) => e.evidenceId) };
@@ -496,10 +500,10 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   /* Seven hours on, the posts are past For You's six hours and not growing: they stay, because they
      were already on it. */
   const later = (clock + 7 * 60 * MINUTE) as Millis;
-  await projectRisingFeeds(db, later, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, fypMaxAgeOn: true } });
+  await projectRisingFeeds(db, later, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, varietyOn: false, fypMaxAgeOn: true } });
   const stayed = (JSON.parse((await handle('GET', '/rising/fyp', read)).body) as { posts: { id: string }[] }).posts.map((p) => p.id);
   assert.deepEqual(new Set(stayed), new Set(back.fyp), 'the six hours never take a post off For You');
-  const strangers = await buildRising(db, later, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, fypMaxAgeOn: true } });
+  const strangers = await buildRising(db, later, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, varietyOn: false, fypMaxAgeOn: true } });
   assert.equal(strangers.fyp.length, 0, 'while the same posts, not yet on it, would be turned away');
   /* A member no longer on the frame is on the scroll under it, newest-joined first; a frame's own
      posts are not repeated there. */
@@ -516,7 +520,7 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   /* The weather post passes the owner's call and meets the reach bar like any other post: its
      views were never read as a rate, so with only measured readings counted it waits, for that
      reason and not the judge's. */
-  const weather = await buildRising(db, clock, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, feedBarCountsEveryReading: false } });
+  const weather = await buildRising(db, clock, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, varietyOn: false, feedBarCountsEveryReading: false } });
   assert.equal(weather.whyNot.get('x:1900000000000000005'), 'reach_unread', 'the owner says what a post is, not how many saw it');
 
   /* 6. A second GROUP pass has nothing to do. */
