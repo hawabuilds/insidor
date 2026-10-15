@@ -9,8 +9,9 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { bandFloor, bandWindow, effectiveFloor, laneTargets, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, slowLaneDue, startFloors } from './feed-floor.ts';
 
-/* The lanes as they were before the fresh bands, so these tests keep pinning them whatever the live switch says. */
-const P = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: false, cutStale: false } } };
+/* The lanes as they were before the fresh bands, so these tests keep pinning them whatever the live switch says.
+   The late bands are pinned off too (also in FRESH, built from this); LATE below turns them on. */
+const P = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: false, cutStale: false, late: { ...DEFAULT_POLICY.feed.fresh.late, on: false } } } };
 
 const at = (all: number, slow = all): { all: number; media: number; slow: number } => ({ all, media: all, slow });
 
