@@ -35,13 +35,16 @@ import type {
   Discovered,
   PlannedCall,
   PlatformAdapter,
+  TrendAsk,
+  TrendWord,
 } from '@insidor/contracts/ports/platform.ts';
 import { mergeSpend, metered, estimateFor } from '@insidor/meter';
 import type { PriceBook } from '@insidor/meter';
 import { discovered } from '@insidor/vendor-kit';
 import { parseLink as parseLinkOf, postTimeFromId as postTimeOf } from './post-time.ts';
 
-import { CAPABILITIES, DISCOVER, OBSERVE, PRICES, READ_POST_USD, runCostUsd, searchActorCostUsd, searchActorQuoteUsd, SEARCH_POST_USD, SOURCE, VENDOR } from './capabilities.ts';
+import { CAPABILITIES, DISCOVER, OBSERVE, PRICES, READ_POST_USD, runCostUsd, searchActorCostUsd, searchActorQuoteUsd, SEARCH_POST_USD, SOURCE, TRENDS, VENDOR } from './capabilities.ts';
+import { fromTrendsRows, toTrendsInput, trendRegions, trendsRunUsd, TRENDS_MAX_PER_REGION } from './trends.ts';
 import type { TikTokClient } from './client.ts';
 import { discoverRun, SEARCH_ORDERS, wordsOf, type SearchOrder } from './discover.ts';
 import { SEARCH_ACTOR_RESULTS_PER_WORD } from './search-actor.ts';
@@ -238,6 +241,37 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
         spend: mergeSpend(spends, { vendor: VENDOR, endpoint: OBSERVE, unit: 'per-run', estUnits: 1, at }, 'per-run'),
       };
     },
+
+    /* ★ THE TREND LIST (trends.ts): one run a region the ranking covers, each metered at its own
+       bill. Present only when the client has the trend actor; a region it does not cover is not asked. */
+    ...(deps.client.runTrends === undefined
+      ? {}
+      : {
+          estimateTrendWords(ask: TrendAsk): CostEstimate {
+            const regions = trendRegions(ask).length;
+            return { ...estimateFor(prices, VENDOR, TRENDS, regions), usd: regions * trendsRunUsd(Math.min(TRENDS_MAX_PER_REGION, ask.perRegion)) };
+          },
+          async trendWords(ask: TrendAsk, _budget: Budget): Promise<Metered<readonly TrendWord[]>> {
+            const runTrends = deps.client.runTrends;
+            const at = deps.now();
+            const words: TrendWord[] = [];
+            const spends = [];
+            for (const region of trendRegions(ask)) {
+              const result = await metered(
+                deps.meter,
+                { ...prices, [`${VENDOR}:${TRENDS}`]: { ...PRICES[`${VENDOR}:${TRENDS}`]!, usdPerUnit: trendsRunUsd(Math.min(TRENDS_MAX_PER_REGION, ask.perRegion)) } },
+                { vendor: VENDOR, endpoint: TRENDS, unit: 'per-run', estUnits: 1, at },
+                async () => {
+                  const run = await runTrends!(toTrendsInput(region, ask.perRegion));
+                  return { value: run, units: 1, ...(deps.prices === undefined ? { usdActual: trendsRunUsd(run.items.length) } : {}) };
+                },
+              );
+              words.push(...fromTrendsRows(result.value.items, region));
+              spends.push(result.spend);
+            }
+            return { value: words, spend: mergeSpend(spends, { vendor: VENDOR, endpoint: TRENDS, unit: 'per-run', estUnits: 1, at }, 'per-run') };
+          },
+        }),
 
     parseLink: (url: string) => parseLinkOf(url),
     postTimeFromId: (id: string) => postTimeOf(id) as Millis | null,

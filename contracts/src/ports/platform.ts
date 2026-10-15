@@ -110,6 +110,23 @@ export interface DiscoveryQuery {
 export const FEED_LANES = ['all', 'media', 'slow'] as const;
 export type FeedLane = (typeof FEED_LANES)[number];
 
+/** A trend list asked for: these regions, `perRegion` words each. */
+export interface TrendAsk {
+  readonly regions: readonly string[];
+  readonly perRegion: number;
+}
+
+/** One rising word as the source ranks it, with the facts it gave for it (views, posts). */
+export interface TrendWord {
+  readonly kind: 'tag' | 'sound' | 'video';
+  readonly value: string;
+  readonly region: string;
+  readonly rank: number | null;
+  /** The source said its use is going up; null when it gave no direction. */
+  readonly rising: boolean | null;
+  readonly facts: Readonly<Record<string, number | string | null>>;
+}
+
 export interface FeedFilter {
   /** Return only posts with at least this many approvals. A whole number, at least one. */
   readonly minApproval: number;
@@ -227,6 +244,15 @@ export interface PlatformAdapter {
 
   /** When a post was made, from its id alone. Null when this source's ids carry no time. */
   postTimeFromId?(sourceItemId: string): Millis | null;
+
+  /**
+   * The source's own list of rising words (tags), by region, when it publishes one: what the
+   * finders search besides the owner's list (Policy.finders.trends). Optional and paid, metered
+   * inside like every other call; `estimateTrendWords` is what `ask` costs. A region the source
+   * does not cover is refused, never answered with another region's list.
+   */
+  trendWords?(ask: TrendAsk, budget: Budget): Promise<Metered<readonly TrendWord[]>>;
+  estimateTrendWords?(ask: TrendAsk): CostEstimate;
 
   /**
    * A post's replies and reproductions, newest first, capped by `ask` — read for the facts in

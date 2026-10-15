@@ -81,6 +81,8 @@ export const CAPABILITIES: Capabilities = {
 
 export const DISCOVER = 'discover';
 export const OBSERVE = 'observe';
+/** The trend list's actor (trends.ts): its own endpoint on the ledger, so its cost is its own line in the report. */
+export const TRENDS = 'trends';
 
 /**
  * ★ THE MOST POSTS ONE DISCOVERY RUN MAY ASK FOR, AND THE REASON THE PRICE BELOW IS TRUE.
@@ -136,6 +138,8 @@ const price = (endpoint: string, usdPerUnit: number): Price => ({
 export const PRICES: PriceBook = {
   [`${VENDOR}:${DISCOVER}`]: price(DISCOVER, RUN_START_USD + DISCOVER_RESULTS_CAP * (PER_POST_USD + SEARCH_FILTERS_PER_POST_USD)),
   [`${VENDOR}:${OBSERVE}`]: price(OBSERVE, RUN_START_USD + (CAPABILITIES.observeBatchSize ?? 1) * PER_POST_USD),
+  /* One region's trend-list run at its most words (trends.ts): $0.025 to start, $0.001 a word. */
+  [`${VENDOR}:${TRENDS}`]: price(TRENDS, 0.025 + 50 * 0.001),
 };
 
 /** What a run that came back with `posts` posts was billed: the start fee and each post's fees. */

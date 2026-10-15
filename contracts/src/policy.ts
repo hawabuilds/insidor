@@ -1674,6 +1674,17 @@ export interface RisingPolicy {
    */
   readonly scorePassBar: number | null;
   /**
+   * ★ FOR YOU'S VARIETY (the owner, 2026-10-15: "the feed is majority gta 6"). Among any
+   * `varietyWindow` consecutive For You cards, at most `varietyPerWindow` are about one topic; the
+   * rest of that topic leave the live list (services/project variety.ts) and stay on Popular, the
+   * story page and the scroll's older pages. A topic is one story, one name (normalised), or posts
+   * whose meaning vectors are at least `varietySameMeaning` alike. Off: For You as before.
+   */
+  readonly varietyOn: boolean;
+  readonly varietyPerWindow: number;
+  readonly varietyWindow: number;
+  readonly varietySameMeaning: number;
+  /**
    * ★ OLDER FEED POSTS' VIDEOS, READ AGAIN (the owner, 2026-10-13: "so older posts play too"). A
    * text-source post on For You, Popular or a Feed alert whose video was stored with no playable
    * file is read again by id (services/runner/src/work/post-refill.ts) on the live posts line: at
@@ -2371,6 +2382,105 @@ export interface TranslatePolicy {
   readonly noWordsCodes: readonly string[];
 }
 
+/**
+ * ★ THE WAYS TO FIND A POST BESIDES THE SEARCHES (the owner, 2026-10-15): "find viral posts BEFORE
+ * they are coined". Each has its own switch, all off until the owner approves the day's cost, and
+ * every post any of them finds still goes through the judge and the hold before For You — a coin
+ * naming a post does not make it a meme. Their lanes are 0083's: coin_link, x_repost, trend, creator.
+ *
+ * Measured 2026-10-15 over the 48 hours before 17:00 UTC: 16,000 launches a day, 80 a day naming a
+ * short video and 5,475 a day naming a text post (most already held: the origin check reads the
+ * creator's link); of the text source's held posts with a shortened link, about 2% lead to a short video.
+ */
+export interface FindersPolicy {
+  /**
+   * A new coin's metadata read within seconds of its launch, and every post it names recorded as
+   * the coin's (internal.coin_post_link) and read if we do not hold it: free to read the document,
+   * one post read by id each. The first coin to name a post is its coin; copycats come after.
+   */
+  readonly coinLinks: {
+    readonly on: boolean;
+    /** How often the step looks for coins whose metadata has not been read. */
+    readonly everyMs: number;
+    /** Only coins first seen this recently: older ones are the universe loop's, a minute at a time. */
+    readonly lookbackMs: number;
+    readonly perPass: number;
+    readonly concurrency: number;
+    /** Posts read by id per pass at most; the rest wait for the next pass. */
+    readonly readsPerPass: number;
+    /** A named post older than this at the launch is recorded and read, but not credited to the feed. */
+    readonly creditMaxAgeMs: number;
+    /** A text-source post is credited only at this many approvals: most coins name a post nobody saw. */
+    readonly textMinApprovals: number;
+  };
+  /**
+   * The short videos text posts link to: a shortened link in a text post we hold that is climbing
+   * fast is followed once (free), and a short video it leads to is read by id and credited.
+   */
+  readonly reposts: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    /** Only text posts this young at their last reading. */
+    readonly maxAgeMs: number;
+    /** Approvals per minute of age at the last reading: what "climbing fast" means here. */
+    readonly minApprovalsPerMinute: number;
+    /** Shortened links followed per pass, and at once. */
+    readonly linksPerPass: number;
+    readonly concurrency: number;
+    /** Short videos read by id per pass at most. */
+    readonly readsPerPass: number;
+    /** A linked video older than this is not credited. */
+    readonly creditMaxAgeMs: number;
+  };
+  /**
+   * The short-video source's trend data (rising tags, by region, over its shortest period), read every
+   * `everyMs`; its top rising words are searched newest first, `wordsPerAsk` an ask, every `askEveryMs`.
+   */
+  readonly trends: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    /** Region codes asked. The trend data has no every-region list, and tags only (its sound charts are gone). */
+    readonly regions: readonly string[];
+    /** Tags and sounds kept per region and kind, rising first. */
+    readonly perKind: number;
+    readonly askEveryMs: number;
+    readonly wordsPerAsk: number;
+  };
+  /**
+   * The tags, sounds and creators of every post that was coined (a coin named it, or the owner
+   * confirmed its coin), counted over `lookbackMs` once every `everyMs`; the top ones join the trend
+   * words' searches (tags and sounds) and the creators' asks. Free to count.
+   */
+  readonly learned: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    readonly lookbackMs: number;
+    /** A tag or sound must be on this many coined posts; common words (`skip`) never count. */
+    readonly minPosts: number;
+    readonly topTags: number;
+    readonly topSounds: number;
+    readonly topCreators: number;
+    readonly skip: readonly string[];
+  };
+  /** Creators with a coined post before: their newest posts asked for, `perAsk` creators an ask. */
+  readonly creators: {
+    readonly on: boolean;
+    readonly askEveryMs: number;
+    readonly perAsk: number;
+    readonly postsPerCreator: number;
+  };
+  /**
+   * Young short videos re-read more often: under `maxAgeMin` old, at most `maxPosts` a run, a run at
+   * most every `runEveryMinutes` (track's paid re-reads are every `track.paidRunEveryMinutes`).
+   */
+  readonly young: {
+    readonly on: boolean;
+    readonly maxAgeMin: number;
+    readonly runEveryMinutes: number;
+    readonly maxPosts: number;
+  };
+}
+
 export interface Policy {
   /** Bumped by hand on every edit. The hash is computed from the object, not this. */
   readonly version: string;
@@ -2406,6 +2516,8 @@ export interface Policy {
   readonly names: NamesPolicy;
   /** The feed's translations of posts not written in English. */
   readonly translate: TranslatePolicy;
+  /** The ways to find a post besides the searches: coins' links, reposts, trends, coined creators. */
+  readonly finders: FindersPolicy;
   /**
    * The other half of the loop. Every stage above decides; this block is what says
    * whether the decision was right, and under which definition of right.
@@ -3376,6 +3488,13 @@ const POLICY_V1: Policy = {
        the measured $0.0012 a post, on the live judge line and under its cap. */
     rescorePerPass: 15,
     scorePassBar: null,
+    /* 2026-10-15, launch-trailer day: 44 of For You's 60 were one game. Measured on that frame, every
+       post about it sat at 0.60 or more to another (its music, art, cast), and every unrelated post's
+       nearest neighbour at 0.52 or less. Three in twenty keeps a big topic on screen, not the screen. */
+    varietyOn: true,
+    varietyPerWindow: 3,
+    varietyWindow: 20,
+    varietySameMeaning: 0.6,
     /* Two batched reads of 50 a pass; 1,000 posts a day is at most $0.15 at $0.00015 a post. */
     refillPerPass: 100,
     refillPerDay: 1_000,
@@ -3549,6 +3668,62 @@ const POLICY_V1: Policy = {
     englishCodes: ['en'],
     /* 'zxx' no linguistic content, 'und'/'un' undetermined, 'qme' media only, 'qam' mentions only, 'qht' hashtags only, 'qst' very short, 'qct' cashtags only. */
     noWordsCodes: ['zxx', 'und', 'un', 'qme', 'qam', 'qht', 'qst', 'qct'],
+  },
+
+  /* Every finder off until the owner approves its cost (the per-source table, 2026-10-15). */
+  finders: {
+    coinLinks: {
+      on: false,
+      everyMs: 5_000,
+      lookbackMs: 600_000, // ten minutes
+      perPass: 40,
+      concurrency: 8,
+      readsPerPass: 10,
+      creditMaxAgeMs: 259_200_000, // three days
+      textMinApprovals: 1_000,
+    },
+    reposts: {
+      on: false,
+      everyMs: 300_000, // five minutes
+      maxAgeMs: 21_600_000, // six hours
+      minApprovalsPerMinute: 3,
+      linksPerPass: 300,
+      concurrency: 10,
+      readsPerPass: 10,
+      creditMaxAgeMs: 172_800_000, // two days
+    },
+    trends: {
+      on: false,
+      /* Daily, not hourly: the trend data is daily and about two days behind (read 2026-10-15 17:00
+         UTC, its newest point was 2026-10-13), so an hourly read buys the same list 24 times. */
+      everyMs: 86_400_000,
+      regions: ['US', 'GB'],
+      perKind: 10,
+      askEveryMs: 900_000, // fifteen minutes
+      wordsPerAsk: 2,
+    },
+    learned: {
+      on: false,
+      everyMs: 86_400_000, // daily
+      lookbackMs: 604_800_000, // a week
+      minPosts: 2,
+      topTags: 10,
+      topSounds: 5,
+      topCreators: 20,
+      skip: ['fyp', 'foryou', 'foryoupage', 'fypシ', 'viral', 'trending', 'xyzbca', 'parati', 'original sound'],
+    },
+    creators: {
+      on: false,
+      askEveryMs: 1_800_000, // half an hour
+      perAsk: 5,
+      postsPerCreator: 3,
+    },
+    young: {
+      on: false,
+      maxAgeMin: 120,
+      runEveryMinutes: 10,
+      maxPosts: 4,
+    },
   },
 
   /* The numbers whose reasons are on `LabelPolicy` above. Read them there; every one of

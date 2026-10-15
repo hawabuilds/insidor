@@ -87,8 +87,10 @@ export type SupervisedStage = (typeof SUPERVISED_STAGES)[number];
  */
 /* `missed`: the owner's pasted missed posts, read and diagnosed (work/missed-posts.ts). With
    HEARTBEAT=on it needs HEARTBEAT_SLUG_MISSED like every other supervised loop. `refill`: older
-   feed posts' video files read again (work/post-refill.ts); with HEARTBEAT=on, HEARTBEAT_SLUG_REFILL. */
-export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill'] as const;
+   feed posts' video files read again (work/post-refill.ts); with HEARTBEAT=on, HEARTBEAT_SLUG_REFILL.
+   `finders`: the ways to find a post besides the searches (loops/finders.ts); with HEARTBEAT=on,
+   HEARTBEAT_SLUG_FINDERS. */
+export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders'] as const;
 
 export type SupervisedTask = (typeof SUPERVISED_TASKS)[number];
 

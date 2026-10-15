@@ -191,6 +191,9 @@ async function findReusable(deps: ScoringDeps, queue: readonly Item[], judgeId: 
   }
 }
 
+/** The finders' lanes (0083), each read on its own like the watch lane. */
+const FINDER_LANES = ['coin_link', 'x_repost', 'trend', 'creator'] as const;
+
 export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   const now = deps.now();
   const r = deps.policy.rising;
@@ -202,16 +205,27 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   /* The watch lane read on its own as well: newest-first over every lane, the text lanes' hundreds
      of unscored posts an hour push a short video stored hours earlier off the page for good. */
   const kindLabel = deps.kindJudge?.promptId.split('@')[0] ?? KIND_PROMPT_LABEL;
-  const [everyLane, watchLane, staleWide] = await Promise.all([
+  /* ★ THE FINDERS' LANES (0083) are read on their own for the same reason: a coin's link, a repost,
+     a trend word or a coined creator finds a few posts an hour, and newest-first over every lane they
+     would wait behind the text lanes' hundreds. Each lane's posts are held to the same reach bar. */
+  const [everyLane, watchLane, staleWide, ...finderLanes] = await Promise.all([
     deps.items.catchAllUnscored(since, r.postsPerPass * PREFETCH_FACTOR, floor),
     deps.items.catchAllUnscored(since, r.postsPerPass, floor, 'watch'),
     /* ★ RE-SCORE AFTER A PROMPT CHANGE: posts last answered by another version of the question.
        After the never-judged ones, and at most `rescorePerPass` a pass, so a prompt change drains
        over hours instead of landing as one burst on the live line. */
     deps.judge === null ? Promise.resolve([] as readonly Item[]) : deps.items.catchAllStale(since, r.rescorePerPass * PREFETCH_FACTOR, deps.judge.promptId, `${kindLabel}@`, floor),
+    ...FINDER_LANES.map((lane) => deps.items.catchAllUnscored(since, r.postsPerPass, floor, lane)),
   ]);
   const seen = new Set(everyLane.map((i) => String(i.itemId)));
-  const wide = [...everyLane, ...watchLane.filter((i) => !seen.has(String(i.itemId)))];
+  const wide = [...everyLane];
+  for (const lane of [watchLane, ...finderLanes]) {
+    for (const i of lane) {
+      if (seen.has(String(i.itemId))) continue;
+      seen.add(String(i.itemId));
+      wide.push(i);
+    }
+  }
   for (const i of wide) seen.add(String(i.itemId));
   /* ★ THE STALE CUT (`feed.fresh.cutStale`, off by default): a post over `fresh.staleAfterMs` old is
      not re-judged after a prompt change. Measured 2026-10-13, about 1,000 such re-judges a day, some
