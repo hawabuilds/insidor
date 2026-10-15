@@ -3493,9 +3493,10 @@ const POLICY_V1: Policy = {
        the measured $0.0012 a post, on the live judge line and under its cap. */
     rescorePerPass: 15,
     scorePassBar: null,
-    /* 2026-10-15, launch-trailer day: 44 of For You's 60 were one game. Measured on that frame, every
-       post about it sat at 0.60 or more to another (its music, art, cast), and every unrelated post's
-       nearest neighbour at 0.52 or less. Three in twenty keeps a big topic on screen, not the screen. */
+    /* 2026-10-15, launch-trailer day: 44 of For You's 60 were one game, most named for it. Measured on
+       that frame, the posts about it under other names (its music, art, city) sat 0.60 to 0.75 from a
+       game post, and every unrelated post's nearest neighbour 0.52 or less; one cast post at 0.58 stays
+       its own topic. Three in twenty keeps a big topic on screen, not the screen. */
     varietyOn: true,
     varietyPerWindow: 3,
     varietyWindow: 20,
@@ -3677,8 +3678,8 @@ const POLICY_V1: Policy = {
 
   /* The owner approved switching on what fits on 2026-10-15 ("approve and switch on when ready"),
      inside the live book's $38 with about $1.60 a day left: the coin links (about $0.65 a day at the
-     judge's measured $0.002 a post, $1.32 at a cautious $0.0088) and the learned list (free). The
-     rest stay off and are in the report with their cost. */
+     judge's measured $0.002 a post, $1.32 at a cautious $0.0088), the reposts (about $0.15, $0.40)
+     and the learned list (free). The rest stay off and are in the report with their cost. */
   finders: {
     coinLinks: {
       on: true,
@@ -3693,7 +3694,10 @@ const POLICY_V1: Policy = {
       textMinApprovals: 5_000,
     },
     reposts: {
-      on: false,
+      /* On from 2026-10-15: over 3.7 days of held X posts climbing fast, 22,774 short links led to
+         120 different TikToks, about 32 a day to read at $0.004. None was one of that week's coined
+         TikToks before its coin, so its lead is not shown yet; it is on because it is cheap. */
+      on: true,
       everyMs: 300_000, // five minutes
       maxAgeMs: 21_600_000, // six hours
       minApprovalsPerMinute: 3,
