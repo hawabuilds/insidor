@@ -17,8 +17,10 @@
  *   trading    buys in the hour after the post against the coin's usual hour, when measured
  *
  * PROVEN (the card's "Links this post", a Buy) is only one of, on exactly one candidate:
- *   (1) its links name this post — or, when several do, it is the only one of them launched inside
- *       the timing window (copycats link the viral post days later);
+ *   (1) its links name this post — or, when several do, it is the one of them launched first
+ *       (the owner, 2026-10-15: copycats link the viral post too, and only the earliest coin gets
+ *       "Links this post"; the later ones stay in the list, ranked as usual). Two launched at the
+ *       same instant, or one whose launch we do not know, are a tie;
  *   (2) its picture is the post's — near-identical by the embedding, or within
  *       `sameHashDistance` bits by the hash — launched after the post inside the window, while
  *       every other candidate in the window had its picture compared;
@@ -368,10 +370,11 @@ export function matchPostCoin(post: PostSide, coins: readonly CoinSide[], bars: 
   const linking = possible.filter((e) => e.linksPost === true);
   const link = only(linking);
   if (link !== null) return proven(link.address, 'links');
-  /* Copycats link the viral post too, often days later: among several coins that link it, the only
-     one launched inside the timing window is the post's. Two inside it are still a tie. */
-  const linkInWindow = linking.length > 1 ? only(linking.filter((e) => e.inWindow)) : null;
-  if (linkInWindow !== null) return proven(linkInWindow.address, 'links');
+  /* Copycats link the viral post too, minutes or days later: among several coins that link it, the
+     one launched first is the post's (the owner, 2026-10-15). A shared first instant, or any linking
+     coin whose launch we do not know (it may be the earlier one), is a tie. */
+  const firstLink = linking.length > 1 && linking.every((e) => e.launchedAfterMs !== null) ? only(linking.filter((e) => e.launchedAfterMs === Math.min(...linking.map((x) => x.launchedAfterMs ?? Number.POSITIVE_INFINITY)))) : null;
+  if (firstLink !== null) return proven(firstLink.address, 'links');
 
   if (linking.length === 0) {
     const pictured = only(possible.filter((e) => e.samePicture === true && e.inWindow));
