@@ -316,6 +316,7 @@ function buildOpenJudge(
     maxWaitMs: policy.judge.maxWaitMs,
     maxFrameBytes: policy.judge.maxFrameBytes,
     pictureSize: 'small',
+    providers: setup.providers,
     fetch: globalThis.fetch,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });

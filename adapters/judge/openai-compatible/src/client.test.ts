@@ -20,7 +20,7 @@ import { anthropicJudge, buildRequestBody, type JudgeClient, type JudgeRequest }
 import { inMemoryMeter } from '@insidor/meter';
 import { BudgetRefused, OutOfCredit, VendorUnavailable } from '@insidor/vendor-kit';
 
-import { buildChatBody, closestModel, keyAllowance, decodeChatReply, openChatClient, openJudge, parseModels, promptFor, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
+import { DEFAULT_OPEN_PROVIDERS, buildChatBody, closestModel, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
 
 const AT = 1_800_000_000_000;
 const P = DEFAULT_POLICY.judge;
@@ -111,6 +111,20 @@ test('★ every text part is the live body\'s, in the same order; each picture i
   assert.equal(open['temperature'], 0);
   assert.equal(open['max_tokens'], P.postBatchMaxOutputTokens);
   assert.equal((open['response_format'] as { type: string }).type, 'json_schema');
+  assert.deepEqual(open['provider'], { require_parameters: true });
+  /* Named providers: only those, in that order, and no hand-off by the router. */
+  assert.deepEqual(buildChatBody({ model: MODEL.id, maxOutputTokens: 10, vision: true, providers: ['nextbit', 'deepinfra'] }, request)['provider'], { require_parameters: true, order: ['nextbit', 'deepinfra'], allow_fallbacks: false });
+});
+
+test('OPEN_JUDGE_PROVIDERS: unset is the default order, blank lets the router choose; no key is dormant', () => {
+  assert.deepEqual(openProviders({}), DEFAULT_OPEN_PROVIDERS);
+  assert.deepEqual(openProviders({ OPEN_JUDGE_PROVIDERS: ' ' }), []);
+  assert.deepEqual(openProviders({ OPEN_JUDGE_PROVIDERS: 'a, b' }), ['a', 'b']);
+  assert.deepEqual(readOpenJudgeSetup({}), { state: 'dormant' });
+  const s = readOpenJudgeSetup({ OPENROUTER_API_KEY: 'k' });
+  assert.equal(s.state === 'configured' && s.model, 'google/gemma-3-27b-it');
+  assert.equal(isOpenJudgeId('judge:openrouter/google/gemma-3-27b-it@x'), true);
+  assert.equal(isOpenJudgeId('judge:anthropic/claude-haiku-4-5@x'), false);
 });
 
 test('a text-only model is sent no picture, and every story says it has none', () => {

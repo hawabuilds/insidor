@@ -28,6 +28,17 @@ import type { HostModel } from './models.ts';
 export const OPEN_API_KEY = 'OPENROUTER_API_KEY';
 export const OPEN_MODEL = 'OPEN_JUDGE_MODEL';
 export const OPEN_BASE_URL = 'OPENROUTER_BASE_URL';
+/** The router's providers to use, comma-separated, in order; set but empty: the router chooses. */
+export const OPEN_PROVIDERS = 'OPEN_JUDGE_PROVIDERS';
+
+/**
+ * The providers to ask, in order (client.ts says what the others did on 2026-10-16): NextBit
+ * answered the learned-block prompt cleanly every time it was not rate-limited; DeepInfra is second
+ * because NextBit's shared pool was rate-limited for minutes at a time, and DeepInfra looped once
+ * of the once it answered. The others looped every time and are not asked: a call refused by both
+ * is a failover to the main judge, not a hand-off to a provider that bills a looping answer.
+ */
+export const DEFAULT_OPEN_PROVIDERS: readonly string[] = ['nextbit', 'deepinfra'];
 
 /** The owner's pick, 2026-10-15: hand gold 70/99, missed 9/13, $0.00016 a post, against three others. */
 export const DEFAULT_OPEN_MODEL = 'google/gemma-3-27b-it';
@@ -42,7 +53,7 @@ export const KNOWN_MODELS: readonly HostModel[] = [
 
 export type OpenJudgeSetup =
   | { readonly state: 'dormant' }
-  | { readonly state: 'configured'; readonly apiKey: string; readonly baseUrl: string; readonly model: string; readonly vendor: string };
+  | { readonly state: 'configured'; readonly apiKey: string; readonly baseUrl: string; readonly model: string; readonly vendor: string; readonly providers: readonly string[] };
 
 export function readOpenJudgeSetup(env: Readonly<Record<string, string | undefined>>): OpenJudgeSetup {
   const blank = (name: string): string | null => {
@@ -51,7 +62,14 @@ export function readOpenJudgeSetup(env: Readonly<Record<string, string | undefin
   };
   const apiKey = blank(OPEN_API_KEY);
   if (apiKey === null) return { state: 'dormant' };
-  return { state: 'configured', apiKey, baseUrl: blank(OPEN_BASE_URL) ?? DEFAULT_BASE_URL, model: blank(OPEN_MODEL) ?? DEFAULT_OPEN_MODEL, vendor: DEFAULT_VENDOR };
+  return { state: 'configured', apiKey, baseUrl: blank(OPEN_BASE_URL) ?? DEFAULT_BASE_URL, model: blank(OPEN_MODEL) ?? DEFAULT_OPEN_MODEL, vendor: DEFAULT_VENDOR, providers: openProviders(env) };
+}
+
+/** OPEN_JUDGE_PROVIDERS as a list: unset is the default; set but blank is none (the router chooses). */
+export function openProviders(env: Readonly<Record<string, string | undefined>>): readonly string[] {
+  const v = env[OPEN_PROVIDERS];
+  if (v === undefined) return DEFAULT_OPEN_PROVIDERS;
+  return v.split(',').map((p) => p.trim()).filter((p) => p !== '');
 }
 
 /** Whether a stored answer's judge id is this judge's (`openJudge` writes `judge:<vendor>/…`). */
