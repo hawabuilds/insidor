@@ -33,7 +33,7 @@ function harness(opts: { wallets?: readonly string[]; profiles?: () => readonly 
 
 const refusal = { vendor: 'anthropic', endpoint: 'POST /v1/messages', reason: 'credit balance too low', status: 400 };
 
-test('★ a dead account is logged and alerted once per supplier an hour, however many calls it refuses', async () => {
+test('★ a dead account is logged once an hour and pushed once per outage, however many calls it refuses', async () => {
   const h = harness();
   for (let i = 0; i < 50; i += 1) {
     h.setNow(T0 + i * 30_000);
@@ -50,15 +50,22 @@ test('★ a dead account is logged and alerted once per supplier an hour, howeve
     ],
   );
 
-  /* The next hour: one more line, carrying the count of refusals it did not log, and one more alert. */
+  /* The next hour: one more line, carrying the count of refusals it did not log, and no second push. */
   h.setNow(T0 + 31 * MIN);
   h.b.refused(refusal);
   await h.b.flush();
   const second = h.lines.filter((l) => l.msg === 'supplier out of credit' && l.fields?.['vendor'] === 'anthropic');
   assert.equal(second.length, 2);
   assert.equal(second[1]?.fields?.['refusedSinceLastLine'], 49);
-  assert.equal(h.queued.at(-1)?.alert.subject, 'billing|anthropic|2026-10-13T16');
-  assert.equal(h.queued.length, 3);
+  assert.equal(second[1]?.fields?.['alert'], 'owner already pushed for this outage');
+  assert.equal(h.queued.length, 2);
+
+  /* Answered, then empty again: a new outage, a new push. */
+  h.b.answered('anthropic');
+  h.setNow(T0 + 40 * MIN);
+  h.b.refused(refusal);
+  await h.b.flush();
+  assert.deepEqual(h.queued.slice(2).map((q) => [q.alert.facts['state'], q.alert.subject]), [['refused', 'billing|anthropic|2026-10-13T16']]);
 });
 
 test('a recovery is alerted once, on the first answer after a refusal; answers while nothing is down do nothing', async () => {
@@ -77,7 +84,7 @@ test('a recovery is alerted once, on the first answer after a refusal; answers w
   assert.ok(h.lines.some((l) => l.msg === 'supplier answering again' && l.fields?.['downMinutes'] === 12));
 });
 
-test('no OWNER_WALLET: logged only; no profile yet: kept and tried again within the hour, dropped after it', async () => {
+test('no OWNER_WALLET: logged only; no profile yet: kept and tried again until the owner signs in', async () => {
   const none = harness({ wallets: [] });
   none.b.refused(refusal);
   await none.b.flush();
@@ -91,16 +98,39 @@ test('no OWNER_WALLET: logged only; no profile yet: kept and tried again within 
   assert.equal(later.queued.length, 0);
   profiles = ['owner-1'];
   await later.b.flush();
-  assert.equal(later.queued.length, 1, 'the owner who signs in later in the hour still gets it');
+  assert.equal(later.queued.length, 1, 'the owner who signs in later still gets it');
 
   profiles = [];
-  const stale = harness({ profiles: () => profiles });
-  stale.b.refused(refusal);
-  await stale.b.flush();
-  stale.setNow(T0 + 45 * MIN);
+  const late = harness({ profiles: () => profiles });
+  late.b.refused(refusal);
+  await late.b.flush();
+  late.setNow(T0 + 3 * 60 * MIN);
   profiles = ['owner-1'];
-  await stale.b.flush();
-  assert.equal(stale.queued.length, 0, 'an hour already gone is not alerted late');
+  await late.b.flush();
+  assert.equal(late.queued.length, 1, 'an account still empty hours later is still worth the push');
+});
+
+test('★ the minute timer flushing with nothing pending does not stop later refusals from being queued (2026-10-15)', async () => {
+  /* At boot the runner flushes each minute before anything is refused. That empty flush used to
+     leave its settled promise in place for good, so every later flush did nothing while the log
+     said "queued for the owner". */
+  const h = harness();
+  await h.b.flush();
+  await h.b.flush();
+  h.setNow(T0 + 5 * MIN);
+  h.b.refused(refusal);
+  await h.b.flush();
+  assert.equal(h.queued.length, 1);
+  assert.equal(h.queued[0]?.alert.kind, 'supplier_account');
+  h.setNow(T0 + 9 * MIN);
+  h.b.answered('anthropic');
+  await h.b.flush();
+  assert.deepEqual(h.queued.map((q) => q.alert.facts['state']), ['refused', 'recovered']);
+
+  const noWallet = harness({ wallets: [] });
+  await noWallet.b.flush();
+  noWallet.b.refused(refusal);
+  assert.equal(noWallet.lines.filter((l) => l.level === 'error').length, 1);
 });
 
 test('wired to the vendor edge: a billing error built in an adapter reaches the registry; a throwing queue never reaches the adapter', async () => {
