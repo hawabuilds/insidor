@@ -71,6 +71,11 @@ export function hashDistance(a: string, b: string): number {
 /** The hash of a picture file's bytes, in any format the image library reads; null when it reads none. */
 export async function hashBytes(bytes: Uint8Array): Promise<string | null> {
   if (bytes.length === 0 || bytes.length > MAX_BYTES) return null;
+  /* ★ ONLY A RASTER FILE REACHES THE IMAGE LIBRARY. Its SVG reader is native code that ABORTS the
+     process on a malformed file instead of throwing, so no try/catch can hold it: on 2026-10-16 one
+     broken coin logo crashed the runner a minute after every restart from 15:58 UTC. A logo that is
+     not one of the raster formats below has no hash, as an unreadable one has none. */
+  if (!isRaster(bytes)) return null;
   try {
     const grey = await sharp(bytes, { animated: false, limitInputPixels: 64_000_000 }).flatten({ background: '#ffffff' }).greyscale().resize(SIZE, SIZE, { fit: 'fill' }).raw().toBuffer();
     return hashGrey(grey);
@@ -91,4 +96,20 @@ export async function hashPicture(uri: string, fetchFn: typeof fetch, timeoutMs:
   } catch {
     return null;
   }
+}
+
+/** PNG, JPEG, GIF, WebP, AVIF/HEIF, BMP or TIFF by their opening bytes; anything else (an SVG, a page) is not hashed. */
+export function isRaster(b: Uint8Array): boolean {
+  const at = (i: number, ...v: number[]) => v.every((x, k) => b[i + k] === x);
+  const ascii = (i: number, s: string) => [...s].every((c, k) => b[i + k] === c.charCodeAt(0));
+  return (
+    at(0, 0x89, 0x50, 0x4e, 0x47) ||
+    at(0, 0xff, 0xd8, 0xff) ||
+    ascii(0, 'GIF8') ||
+    (ascii(0, 'RIFF') && ascii(8, 'WEBP')) ||
+    (ascii(4, 'ftyp') && ['avif', 'avis', 'heic', 'heix', 'mif1', 'msf1'].some((t) => ascii(8, t))) ||
+    ascii(0, 'BM') ||
+    at(0, 0x49, 0x49, 0x2a, 0x00) ||
+    at(0, 0x4d, 0x4d, 0x00, 0x2a)
+  );
 }
