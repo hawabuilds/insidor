@@ -59,6 +59,8 @@ import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
+import { openChatClient, openJudge, type HostModel, type OpenQuestion } from '@insidor/judge-openai-compatible';
+import { describeRoles, openHostModel, rolesFor, type JudgeRole } from './feed-judges.ts';
 import { openDurableMeter } from '@insidor/meter';
 import { anthropicNamer } from '@insidor/judge-anthropic/name-guess.ts';
 import { anthropicTranslator } from '@insidor/judge-anthropic/translate.ts';
@@ -273,6 +275,59 @@ function buildJudge(
     precedents,
   });
 }
+/**
+ * The open model as the feed's judge (Policy.judge.primary, feed-judges.ts), or null when it is
+ * dormant. Built like `buildJudge` builds the main one, with the same policy numbers: the same
+ * prompt files and learned block (the adapter takes them from the main judge's package), the same
+ * precedents, the same posts per call, the same smaller picture size, the same answer budget. Only
+ * the model differs. Its pictures go as data URLs in the chat format rather than the main judge's
+ * image blocks — the same bytes; and it has no prompt cache, which its estimate already counts.
+ */
+function buildOpenJudge(
+  cfg: RunnerConfig,
+  model: HostModel | null,
+  meter: Meter,
+  policy: Policy,
+  maxOutputTokens: number,
+  question: OpenQuestion,
+  examples: string | null = null,
+  precedents = false,
+  /** The ledger's endpoint; the adapter's own when absent. */
+  endpoint?: string,
+): JudgePort | null {
+  const setup = cfg.openJudge;
+  if (setup.state === 'dormant' || model === null) return null;
+  const client = openChatClient({
+    vendor: setup.vendor,
+    apiKey: setup.apiKey,
+    baseUrl: setup.baseUrl,
+    model: model.id,
+    vision: model.vision,
+    maxOutputTokens,
+    timeoutMs: policy.judge.timeoutMs,
+    maxAttempts: policy.judge.maxAttempts,
+    backoffMs: policy.judge.backoffMs,
+    maxWaitMs: policy.judge.maxWaitMs,
+    maxFrameBytes: policy.judge.maxFrameBytes,
+    pictureSize: 'small',
+    fetch: globalThis.fetch,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  });
+  return openJudge({
+    client,
+    meter,
+    now: () => Date.now() as Millis,
+    model,
+    vendor: setup.vendor,
+    policy: { ...policy.judge, maxOutputTokens },
+    maxBatch: policy.qualify.batchSize,
+    question,
+    examples,
+    precedents,
+    ...(endpoint === undefined ? {} : { endpoint }),
+  });
+}
+
 /**
  * The namer for this process (work/name-guesses.ts, Policy.names), or null when the judge is not
  * configured to call. The judge's own model, key and retries, its own client so its answer budget
@@ -635,14 +690,32 @@ export async function withRuntime<T>(
       /* ★ PRECEDENTS (work/precedents.ts): the owner's closest labelled posts ride along with each
          post, when the embeddings that find them are configured. They change the post question's id. */
       const withPrecedents = cfg.embeddings.state === 'configured' && policy.judge.precedents.k > 0;
-      const rulesOnlyPostJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', null, withPrecedents);
+      /* ★ THE FEED'S TWO JUDGES (feed-judges.ts): the main one and the open model, by the role
+         Policy.judge.primary gives each, both with the same block, precedents and questions. */
+      const openModel = await openHostModel(cfg.openJudge, policy.judge.timeoutMs, log.child({ step: 'open-judge' }));
+      const roles = rolesFor(policy.judge.primary, openModel !== null);
+      const said = describeRoles(policy.judge.primary, roles, { configured: cfg.openJudge.state === 'configured', model: openModel?.id ?? null });
+      log.info(said.message, said.fields);
+      const mainPostJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', null, withPrecedents);
+      const postJudgeAs = (role: JudgeRole, examples: string | null): JudgePort | null =>
+        role === 'open'
+          ? buildOpenJudge(cfg, openModel, meter, policy, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents)
+          : examples === null
+            ? mainPostJudge
+            : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents);
+      const kindJudgeAs = (role: JudgeRole): JudgePort | null =>
+        role === 'open'
+          ? buildOpenJudge(cfg, openModel, meter, policy, policy.judge.postBatchMaxOutputTokens, 'kind')
+          : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'kind');
+      /* The post judge for one learned block: the primary role's, the main judge's when that cannot be built. */
+      const livePostJudge = (examples: string | null): JudgePort | null => postJudgeAs(roles.primary, examples) ?? postJudgeAs('main', examples);
       const learning = new PgLearningRepo(db);
       const learned =
-        rulesOnlyPostJudge === null
+        mainPostJudge === null
           ? null
           : learnedJudge({
               latest: () => learning.latestApplied(),
-              build: (examples) => (examples === null ? rulesOnlyPostJudge : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents) ?? rulesOnlyPostJudge),
+              build: (examples) => livePostJudge(examples) ?? mainPostJudge,
               log: log.child({ step: 'learned-examples' }),
             });
       if (learned !== null) {
@@ -651,8 +724,8 @@ export async function withRuntime<T>(
       }
       const postJudge = learned?.port ?? null;
       /* The feed's second question — which kind of post — asked only of posts the first passed;
-         see `kindJudge` in work/score-posts.ts. Same model, its own prompt set and hash. */
-      const kindJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'kind');
+         see `kindJudge` in work/score-posts.ts. The primary role's model, its own prompt set and hash. */
+      const kindJudge = kindJudgeAs(roles.primary) ?? kindJudgeAs('main');
       /* The labels and vectors behind the precedents and the not-a-meme hold, kept for the process. */
       const precedents =
         cfg.embeddings.state === 'configured'

@@ -62,6 +62,7 @@ export interface SupplierName {
 /** The suppliers we pay, by the vendor id their adapter bills as. Others are named by that id. */
 export const SUPPLIER_NAMES: Readonly<Record<string, SupplierName>> = {
   anthropic: { supplier: 'Anthropic', uses: 'the judge' },
+  openrouter: { supplier: 'OpenRouter', uses: 'the open-model judge' },
   'twitterapi.io': { supplier: 'twitterapi.io', uses: 'X posts' },
   apify: { supplier: 'Apify', uses: 'TikTok videos' },
   scrapecreators: { supplier: 'ScrapeCreators', uses: 'TikTok re-reads, creators and the For You feed' },

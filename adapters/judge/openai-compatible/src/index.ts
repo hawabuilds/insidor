@@ -1,6 +1,7 @@
 /**
- * AN OPEN MODEL AS THE JUDGE, BEHIND THE SAME PORT — for measuring one against the live judge
- * (tools/judge-open-eval.ts). Nothing live is wired to it.
+ * AN OPEN MODEL AS THE JUDGE, BEHIND THE SAME PORT — measured against the live judge by
+ * tools/judge-open-eval.ts (and its cutoff tuning, `--tune`), and since 2026-10-16 wired into the runner
+ * as the feed judge's fallback and shadow (or its primary, Policy.judge.primary).
  *
  * It asks the live judge's questions exactly as the live judge's port asks them: the same prompt
  * files for the post question and the kind question, the owner's learned-examples block after the
@@ -42,6 +43,8 @@ export { CHAT_ENDPOINT, DEFAULT_BASE_URL, DEFAULT_VENDOR, OpenJudgeNotConfigured
 export type { OpenChatConfig, OpenJudgeResponse } from './client.ts';
 export { closestModel, keyAllowance, listModels, parseModels } from './models.ts';
 export type { HostModel } from './models.ts';
+export { DEFAULT_OPEN_MODEL, KNOWN_MODELS, OPEN_API_KEY, OPEN_BASE_URL, OPEN_MODEL, isOpenJudgeId, readOpenJudgeSetup } from './setup.ts';
+export type { OpenJudgeSetup } from './setup.ts';
 
 /** The ledger's endpoint for these calls; the learning book's meter adds its own prefix. */
 export const OPEN_JUDGE_ENDPOINT = 'judge-open';
@@ -83,6 +86,8 @@ export interface OpenJudgeDeps {
   readonly question: OpenQuestion;
   readonly examples?: string | null;
   readonly precedents?: boolean;
+  /** The ledger's endpoint for these calls; OPEN_JUDGE_ENDPOINT when absent (the shadow runs under its own). */
+  readonly endpoint?: string;
 }
 
 export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly: boolean } {
@@ -92,6 +97,7 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
   const precedents = deps.precedents === true && deps.question === 'post';
   const prompt = promptFor(deps.question, examples, precedents);
   const textOnly = !deps.model.vision;
+  const endpoint = deps.endpoint ?? OPEN_JUDGE_ENDPOINT;
   const pid = promptId(deps.question, examples, precedents);
   const id = `judge:${deps.vendor}/${deps.model.id}${textOnly ? '+text-only' : ''}@${pid.split('@')[1] ?? ''}`;
   const batches = (xs: readonly JudgeSubject[]): JudgeSubject[][] => Array.from({ length: Math.ceil(xs.length / deps.maxBatch) }, (_, k) => xs.slice(k * deps.maxBatch, (k + 1) * deps.maxBatch));
@@ -102,7 +108,7 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
     return (usdAtListed(deps.model, t.inputTokens + (t.cacheWriteTokens ?? 0), t.outputTokens) ?? 0) * ESTIMATE_MARGIN;
   };
   const bookFor = (usd: number): PriceBook => ({
-    [`${deps.vendor}:${OPEN_JUDGE_ENDPOINT}`]: { vendor: deps.vendor, endpoint: OPEN_JUDGE_ENDPOINT, unit: 'per-call', usdPerUnit: usd, unitName: 'batched open-model judge call', measuredAt: 'estimated per call from the host model list prices' },
+    [`${deps.vendor}:${endpoint}`]: { vendor: deps.vendor, endpoint, unit: 'per-call', usdPerUnit: usd, unitName: 'batched open-model judge call', measuredAt: 'estimated per call from the host model list prices' },
   });
 
   return {
@@ -113,7 +119,7 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
 
     estimate(subjects): CostEstimate {
       const parts = batches(subjects);
-      return { vendor: deps.vendor, endpoint: OPEN_JUDGE_ENDPOINT, unit: 'per-call', estUnits: parts.length, usd: parts.reduce((s, b) => s + estimateUsd(b), 0) };
+      return { vendor: deps.vendor, endpoint, unit: 'per-call', estUnits: parts.length, usd: parts.reduce((s, b) => s + estimateUsd(b), 0) };
     },
 
     async judge(asked0, _budget) {
@@ -145,7 +151,7 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
       const spends: Spend[] = [];
       for (const batch of batches(subjects)) {
         const usd = estimateUsd(batch);
-        const spec = { vendor: deps.vendor, endpoint: OPEN_JUDGE_ENDPOINT, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
+        const spec = { vendor: deps.vendor, endpoint, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
         let answered: readonly JudgeOutcome[];
         try {
           const call = await metered<{ response: OpenJudgeResponse | null; refusedWith: VendorUnavailable | null }>(deps.meter, bookFor(usd), spec, async () => {
@@ -172,7 +178,7 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
       }
       return {
         value: asked.map((s) => outcomes.get(String(s.storyId)) ?? { kind: 'unavailable', storyId: s.storyId, detail: 'no outcome' }),
-        spend: mergeSpend(spends, { vendor: deps.vendor, endpoint: OPEN_JUDGE_ENDPOINT, unit: 'per-call', estUnits: 1, at: judgedAt }, 'per-call'),
+        spend: mergeSpend(spends, { vendor: deps.vendor, endpoint, unit: 'per-call', estUnits: 1, at: judgedAt }, 'per-call'),
       };
     },
   };

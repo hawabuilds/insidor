@@ -15,6 +15,7 @@
     "@insidor/core": "workspace:*",
     "@insidor/embed-voyage": "workspace:*",
     "@insidor/judge-anthropic": "workspace:*",
+    "@insidor/judge-openai-compatible": "workspace:*",
     "@insidor/market-dexscreener": "workspace:*",
     "@insidor/market-geckoterminal": "workspace:*",
     "@insidor/meter": "workspace:*",
