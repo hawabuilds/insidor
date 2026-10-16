@@ -41,7 +41,7 @@ import type { HostModel } from './models.ts';
 
 export { CHAT_ENDPOINT, DEFAULT_BASE_URL, DEFAULT_VENDOR, OpenJudgeNotConfigured, billingReason, buildChatBody, decodeChatReply, openChatClient, unfenced } from './client.ts';
 export type { OpenChatConfig, OpenJudgeResponse } from './client.ts';
-export { closestModel, keyAllowance, listModels, parseModels } from './models.ts';
+export { accountCredits, closestModel, keyAllowance, listModels, parseModels } from './models.ts';
 export type { HostModel } from './models.ts';
 export { DEFAULT_OPEN_MODEL, DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, OPEN_API_KEY, OPEN_BASE_URL, OPEN_MODEL, OPEN_PROVIDERS, isOpenJudgeId, openProviders, readOpenJudgeSetup } from './setup.ts';
 export type { OpenJudgeSetup } from './setup.ts';

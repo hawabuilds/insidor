@@ -20,7 +20,7 @@ import { anthropicJudge, buildRequestBody, type JudgeClient, type JudgeRequest }
 import { inMemoryMeter } from '@insidor/meter';
 import { BudgetRefused, OutOfCredit, VendorUnavailable } from '@insidor/vendor-kit';
 
-import { DEFAULT_OPEN_PROVIDERS, buildChatBody, closestModel, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
+import { DEFAULT_OPEN_PROVIDERS, accountCredits, buildChatBody, closestModel, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
 
 const AT = 1_800_000_000_000;
 const P = DEFAULT_POLICY.judge;
@@ -225,6 +225,15 @@ test('the key allowance: what the host says is left, or null for no limit', asyn
   const at = (body: unknown) => (async () => json(200, body)) as unknown as typeof globalThis.fetch;
   assert.deepEqual(await keyAllowance(at({ data: { limit_remaining: 0 } }), 'https://router.invalid/v1', KEY, 1000), { remainingUsd: 0 });
   assert.deepEqual(await keyAllowance(at({ data: { limit_remaining: null } }), 'https://router.invalid/v1', KEY, 1000), { remainingUsd: null });
+});
+
+test("the account's credits: bought minus spent; a missing number or a refusal throws, never $0", async () => {
+  const seen: string[] = [];
+  const at = (status: number, body: unknown) => (async (url: string, init?: RequestInit) => (seen.push(`${url} ${new Headers(init?.headers).get('authorization')}`), json(status, body))) as unknown as typeof globalThis.fetch;
+  assert.deepEqual(await accountCredits(at(200, { data: { total_credits: 25, total_usage: 21.75 } }), 'https://router.invalid/v1/', KEY, 1000), { totalUsd: 25, usedUsd: 21.75, remainingUsd: 3.25 });
+  assert.deepEqual(seen, [`https://router.invalid/v1/credits Bearer ${KEY}`]);
+  await assert.rejects(accountCredits(at(200, { data: { total_credits: 25 } }), 'https://router.invalid/v1', KEY, 1000), /without both numbers/);
+  await assert.rejects(accountCredits(at(401, {}), 'https://router.invalid/v1', KEY, 1000), /answered 401/);
 });
 
 test('the model list: vision and prices read; a missing id falls back only within its maker', () => {
