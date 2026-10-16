@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import type { CoinQuote } from '@insidor/market-dexscreener';
 
-import { createPostSheet, SHEET_COINS_SQL, SHEET_LIST_SQL, SHEET_POST_SQL, SHEET_STORY_SQL, sheetMedia } from './post-sheet.ts';
+import { createPostSheet, launchClock, SHEET_COINS_SQL, SHEET_LIST_SQL, SHEET_POST_SQL, SHEET_STORY_SQL, sheetMedia } from './post-sheet.ts';
 import type { Row } from './queries.ts';
 
 const SILENT = { info: () => undefined, error: () => undefined } as never;
@@ -76,4 +76,12 @@ test('a GIF goes out as a picture with a file that loops; a real video stays a v
   assert.deepEqual([real?.kind, real?.loops], ['video', false]);
   const still = sheetMedia([{ kind: 'video', uri: 'https://p/v.jpg', durationMs: 14_000 }]);
   assert.deepEqual([still?.kind, still?.playUrl, still?.loops], ['video', null, false]);
+});
+
+test('a launch time says whose clock it is: the chain, a live notice within seconds, or not known', () => {
+  assert.deepEqual(launchClock('chain_rpc', 1), { kind: 'chain' });
+  assert.deepEqual(launchClock('issuer_api', null), { kind: 'chain' });
+  assert.deepEqual(launchClock('vendor_field', 3), { kind: 'within', withinS: 3 });
+  assert.deepEqual(launchClock('vendor_field', null), { kind: 'unknown' }, 'an aggregator pair time is not a launch time');
+  assert.deepEqual(launchClock(null, null), { kind: 'unknown' }, 'a time kept after the coin row was swept');
 });
