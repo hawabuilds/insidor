@@ -740,7 +740,10 @@ export interface JudgePolicy {
    * (`creditCoolDownMs` after a billing refusal, which a person has to fix) before it is tried
    * again; while it rests the other answers every batch. `deadlineMs` is the whole batch's wall
    * clock, retries included: the open model's slowest tenth of calls took about 7.7 s a post, 77 s
-   * for ten, on 2026-10-15. Off: the primary alone, as before.
+   * for ten, on 2026-10-15. 135 s from 2026-10-16: the open judge's worst case by `open` (a first
+   * round under 45 s, then a re-ask round of two 40 s tries) is 127 s, and at 90 s a batch whose
+   * first provider hung was cut off just as its second provider was answering. Off: the primary
+   * alone, as before.
    */
   readonly failover: {
     readonly on: boolean;
@@ -780,6 +783,29 @@ export interface JudgePolicy {
     readonly folds: number;
     readonly margin: number;
     readonly minProtected: number;
+  };
+  /**
+   * ★ HOW THE OPEN JUDGE ASKS (measured 2026-10-16 on 58 real posts from the shadow's own batches,
+   * after it left 19% of shadow posts and most of the evening's live batches unanswered). Ten posts
+   * a call made the model skip posts (the text-only posts among pictured ones) or repeat posts, and
+   * took 15–60 s, so a hung provider or a slow one ran a batch past the failover's deadline. Five
+   * posts a call skipped none on the first provider, and the calls of one batch go side by side
+   * (`parallel`), so ten posts take about one five-post call. A post a reply still skipped or cut
+   * off is asked again `reask` times, but only while the batch is under `reaskWithinMs`, so the
+   * re-ask cannot carry it past the deadline. `timeoutMs` and `maxAttempts` are per call, each
+   * retry starting at the next pinned provider (the adapter's `rotated`): two tries of 40 s, plus
+   * one re-ask round, stay inside `failover.deadlineMs`. `answerTokensPerPost` sizes the answer
+   * budget to the batch (about 80 used a post), so a looping provider is cut off at 900 tokens, not
+   * 1,200, and its posts are re-asked.
+   */
+  readonly open: {
+    readonly batchSize: number;
+    readonly parallel: number;
+    readonly reask: number;
+    readonly reaskWithinMs: number;
+    readonly timeoutMs: number;
+    readonly maxAttempts: number;
+    readonly answerTokensPerPost: number;
   };
 }
 
@@ -3449,7 +3475,7 @@ const POLICY_V1: Policy = {
        a person, so the empty account is asked twice an hour, enough to see it topped up. */
     /* Off from 2026-10-16 20:15 UTC: its other judge was the main one, now without credit. On
        again when the backup open model on a second host is wired. */
-    failover: { on: false, deadlineMs: 90_000, coolDownMs: 300_000, creditCoolDownMs: 1_800_000 },
+    failover: { on: false, deadlineMs: 135_000, coolDownMs: 300_000, creditCoolDownMs: 1_800_000 },
     /* $1.50 a day: the open model's measured $0.00016 a post for both questions (2026-10-15) over
        the 9,119 posts the live judge answered that day is about $1.46, the post question alone
        less. Four batches waiting at once is forty posts, about two minutes of the open model. */
@@ -3462,6 +3488,7 @@ const POLICY_V1: Policy = {
        or meme post, and about 4% of the day's judged posts. 0.25 dropped one later missed post on a
        time split (train before 15 Oct 13:00, test after); 0.5 dropped none on either split. */
     junkFilter: { on: false, l2: 0.3, folds: 5, margin: 0.5, minProtected: 30 },
+    open: { batchSize: 5, parallel: 4, reask: 1, reaskWithinMs: 45_000, timeoutMs: 40_000, maxAttempts: 2, answerTokensPerPost: 150 },
   },
 
   resolve: {

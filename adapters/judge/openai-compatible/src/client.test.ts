@@ -20,7 +20,7 @@ import { anthropicJudge, buildRequestBody, type JudgeClient, type JudgeRequest }
 import { inMemoryMeter } from '@insidor/meter';
 import { BudgetRefused, OutOfCredit, VendorUnavailable } from '@insidor/vendor-kit';
 
-import { DEFAULT_OPEN_PROVIDERS, accountCredits, buildChatBody, closestModel, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
+import { DEFAULT_OPEN_PROVIDERS, accountCredits, buildChatBody, closestModel, firstAnswers, rotated, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
 
 const AT = 1_800_000_000_000;
 const P = DEFAULT_POLICY.judge;
@@ -251,4 +251,88 @@ test('the model list: vision and prices read; a missing id falls back only withi
   assert.equal(closestModel('google/gemma-3-27b-it', models)?.id, 'google/gemma-3-27b-it');
   assert.equal(closestModel('google/gemma-3-27b-instruct', models)?.id, 'google/gemma-3-27b-it');
   assert.equal(closestModel('qwen/qwen2.5-vl-72b-instruct', models), null, 'never a model from another maker');
+});
+
+/* ── how the open judge asks (Policy.judge.open, 2026-10-16) ──────────── */
+
+/** The story ids a chat body asks about, from its stories JSON part. */
+const askedIn = (body: Record<string, unknown> | null): string[] => {
+  const parts = (body?.['messages'] as { content: unknown }[])[1]?.content as { type: string; text?: string }[];
+  const stories = parts.find((p) => p.type === 'text' && (p.text ?? '').startsWith('Stories to judge'))?.text ?? '';
+  return (JSON.parse(stories.slice(stories.indexOf('\n') + 1)) as { storyId: string }[]).map((s) => s.storyId);
+};
+
+/** An answer for an id as the request spelt it. */
+const ans = (id: string) => ({ ...yes('x'), storyId: id });
+
+/** A host that answers each chat call from what it was asked, and counts how many were open at once. */
+function answeringHost(answer: (ids: string[], n: number) => Response) {
+  const calls: { body: Record<string, unknown> | null }[] = [];
+  let open = 0;
+  let widest = 0;
+  const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url).startsWith('https://pics.invalid/')) return jpeg();
+    const body = init?.body === undefined ? null : (JSON.parse(String(init.body)) as Record<string, unknown>);
+    const n = calls.length;
+    calls.push({ body });
+    open += 1;
+    widest = Math.max(widest, open);
+    await new Promise((r) => setTimeout(r, 5));
+    open -= 1;
+    return answer(askedIn(body), n);
+  }) as typeof globalThis.fetch;
+  return { fetch, calls, widest: () => widest };
+}
+
+test('★ a batch of ten goes as two calls of five side by side, and the posts a reply skipped are asked again once', async () => {
+  const subjects = Array.from({ length: 10 }, (_, i) => subject(`p${i}`));
+  /* The first replies skip the second post of each call, as Gemma skipped text posts among pictured ones. */
+  const host = answeringHost((ids, n) => json(200, chat((n < 2 ? ids.filter((_, k) => k !== 1) : ids).map(ans))));
+  const meter = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT });
+  const judge = openJudge({ client: openChatClient(config(host.fetch, { answerTokensPerSubject: 150 })), meter, now: () => AT, model: MODEL, vendor: 'router', policy: P, maxBatch: 10, perCall: 5, parallel: 4, reask: 1, question: 'post' });
+  assert.equal(judge.maxBatch, 10, 'the feed still hands it ten');
+  const out = await judge.judge(subjects, BUDGET);
+  assert.equal(host.calls.length, 3, 'two calls of five, then one for the two skipped');
+  assert.equal(host.widest(), 2, 'the two calls of the first round were in flight together');
+  assert.deepEqual(askedIn(host.calls[2]!.body), [String(storyId('p1')), String(storyId('p6'))]);
+  assert.ok(out.value.every((o) => o.kind === 'judged'), 'every post answered');
+  assert.equal(host.calls[0]?.body?.['max_tokens'], 900, '150 a post, one post spare');
+  assert.equal(host.calls[2]?.body?.['max_tokens'], 450);
+});
+
+test('a re-ask round is not started once the batch is past reaskWithinMs; without reask a skipped post stays unanswered', async () => {
+  let t = AT;
+  const host = answeringHost((ids) => {
+    t += 60_000;
+    return json(200, chat(ids.slice(1).map(ans)));
+  });
+  const meter = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT });
+  const late = openJudge({ client: openChatClient(config(host.fetch)), meter, now: () => t as never, model: MODEL, vendor: 'router', policy: P, maxBatch: 10, perCall: 5, reask: 1, reaskWithinMs: 45_000, question: 'post' });
+  const out = await late.judge([subject('a'), subject('b')], BUDGET);
+  assert.equal(host.calls.length, 1);
+  assert.equal(out.value[0]?.kind === 'unavailable' && out.value[0].detail, 'no answer for this subject');
+  const none = openJudge({ client: openChatClient(config(host.fetch)), meter, now: () => AT, model: MODEL, vendor: 'router', policy: P, maxBatch: 10, question: 'post' });
+  await none.judge([subject('a'), subject('b')], BUDGET);
+  assert.equal(host.calls.length, 2, 'reask absent: one call only');
+});
+
+test('★ a repeated answer for a post does not overwrite its first one', async () => {
+  const host = answeringHost((ids) => json(200, chat([...ids.map(ans), { ...ans(ids[0]!), coinable: false, proposedName: null, confidence: 0.1 }])));
+  const meter = inMemoryMeter({ dailyCapUsd: 1, softStop: 1, now: () => AT });
+  const out = await openJudge({ client: openChatClient(config(host.fetch)), meter, now: () => AT, model: MODEL, vendor: 'router', policy: P, maxBatch: 10, question: 'post' }).judge([subject('a'), subject('b')], BUDGET);
+  assert.ok(out.value[0]?.kind === 'judged' && out.value[0].judgement.coinable === true);
+  assert.deepEqual(firstAnswers([{ storyId: 'x', n: 1 }, { storyId: 'x', n: 2 }, 'junk', { storyId: 'y' }]), [{ storyId: 'x', n: 1 }, 'junk', { storyId: 'y' }]);
+});
+
+test('★ each retry asks the next pinned provider first; the router may still move down the list', async () => {
+  assert.deepEqual(rotated(['nextbit', 'deepinfra'], 0), ['nextbit', 'deepinfra']);
+  assert.deepEqual(rotated(['nextbit', 'deepinfra'], 1), ['deepinfra', 'nextbit']);
+  assert.deepEqual(rotated(['a', 'b', 'c'], 4), ['b', 'c', 'a']);
+  assert.deepEqual(rotated([], 3), []);
+  const host = fakeHost([() => json(429, { error: { message: 'rate-limited upstream' } }), () => json(200, chat([yes('a')]))]);
+  const client = openChatClient(config(host.fetch, { providers: ['nextbit', 'deepinfra'] }));
+  await client.judge({ system: 's', instructions: 'i', subjects: [subject('a')], frames: new Map() });
+  const order = (n: number) => (host.calls[n]?.body?.['provider'] as { order: string[] }).order;
+  assert.deepEqual(order(0), ['nextbit', 'deepinfra']);
+  assert.deepEqual(order(1), ['deepinfra', 'nextbit']);
 });

@@ -24,6 +24,15 @@
  * token counts at the listed prices when it gave none. An error the host answered with a status
  * is booked at $0; a lost reply is booked at the estimate (it may have been billed).
  *
+ * ★ FEWER POSTS A CALL, CALLS SIDE BY SIDE, SKIPPED POSTS ASKED AGAIN (Policy.judge.open). The
+ * feed still hands this port `maxBatch` posts; it asks them `perCall` at a time, `parallel` calls
+ * at once, and a post a reply skipped or cut off (no answer for it, or a reply stopped at the token
+ * limit) is asked again, among the skipped only, up to `reask` rounds while the batch is younger
+ * than `reaskWithinMs`. Only those two outcomes are re-asked: an error already had its retries in
+ * the client, and the failover answers it. A repeated answer for a post keeps the first
+ * (`firstAnswers`). Measured 2026-10-16 on 58 real posts: ten a call left 4–7% skipped and some
+ * repeated; five a call with one re-ask answered 116 of 116.
+ *
  * What breaks if changed carelessly: the prompt must come from the Anthropic adapter's files and
  * ids, never from a copy here — a reworded copy would measure a judge nobody runs.
  */
@@ -39,7 +48,7 @@ import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
 import type { OpenJudgeResponse } from './client.ts';
 import type { HostModel } from './models.ts';
 
-export { CHAT_ENDPOINT, DEFAULT_BASE_URL, DEFAULT_VENDOR, OpenJudgeNotConfigured, billingReason, buildChatBody, decodeChatReply, openChatClient, unfenced } from './client.ts';
+export { CHAT_ENDPOINT, DEFAULT_BASE_URL, DEFAULT_VENDOR, OpenJudgeNotConfigured, billingReason, buildChatBody, decodeChatReply, openChatClient, rotated, unfenced } from './client.ts';
 export type { OpenChatConfig, OpenJudgeResponse } from './client.ts';
 export { accountCredits, closestModel, keyAllowance, listModels, parseModels } from './models.ts';
 export type { HostModel } from './models.ts';
@@ -110,6 +119,48 @@ export interface OpenJudgeDeps {
   readonly precedents?: boolean;
   /** The ledger's endpoint for these calls; OPEN_JUDGE_ENDPOINT when absent (the shadow runs under its own). */
   readonly endpoint?: string;
+  /** Posts in one call; `maxBatch` (the posts one judge() takes) when absent. */
+  readonly perCall?: number;
+  /** Calls of one judge() in flight at once; 1 (one after another) when absent. */
+  readonly parallel?: number;
+  /** Rounds of asking again the posts a reply skipped or cut off; 0 when absent. */
+  readonly reask?: number;
+  /** A re-ask round is started only this soon after the batch began; no limit when absent. */
+  readonly reaskWithinMs?: number;
+}
+
+/** What a post left without an answer by a reply that came back says: asked again (`reask`). */
+const SKIPPED = new Set(['no answer for this subject', 'answer did not parse']);
+
+/**
+ * One answer per post, the first. A model that runs past the last post sometimes starts the list
+ * again, and the repeat is a second, different answer to a post already answered (measured
+ * 2026-10-16: a "yes, FLAVIO" followed at the end by a "no" for the same post). The parser keeps the
+ * last of two, so without this the tail of a runaway list overwrote the real answer.
+ */
+export function firstAnswers(answers: readonly unknown[]): readonly unknown[] {
+  const seen = new Set<string>();
+  return answers.filter((a) => {
+    const r = (typeof a === 'object' && a !== null ? a : {}) as Record<string, unknown>;
+    const key = r['storyId'] ?? r['subjectId'];
+    if (typeof key !== 'string') return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Each of `items` through `run`, at most `width` at once, in order of start. */
+async function inTurns<T>(items: readonly T[], width: number, run: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const lane = async (): Promise<void> => {
+    while (next < items.length) {
+      const item = items[next] as T;
+      next += 1;
+      await run(item);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(width, items.length)) }, lane));
 }
 
 export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly: boolean } {
@@ -120,9 +171,12 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
   const prompt = promptFor(deps.question, examples, precedents);
   const textOnly = !deps.model.vision;
   const endpoint = deps.endpoint ?? OPEN_JUDGE_ENDPOINT;
+  const parallel = Math.max(1, Math.floor(deps.parallel ?? 1));
+  const reask = Math.max(0, Math.floor(deps.reask ?? 0));
   const pid = promptId(deps.question, examples, precedents);
   const id = `judge:${deps.vendor}/${deps.model.id}${textOnly ? '+text-only' : ''}@${pid.split('@')[1] ?? ''}`;
-  const batches = (xs: readonly JudgeSubject[]): JudgeSubject[][] => Array.from({ length: Math.ceil(xs.length / deps.maxBatch) }, (_, k) => xs.slice(k * deps.maxBatch, (k + 1) * deps.maxBatch));
+  const perCall = Math.max(1, Math.floor(deps.perCall ?? deps.maxBatch));
+  const batches = (xs: readonly JudgeSubject[]): JudgeSubject[][] => Array.from({ length: Math.ceil(xs.length / perCall) }, (_, k) => xs.slice(k * perCall, (k + 1) * perCall));
   /* A text-only model is asked about the words alone, and filed as such. */
   const asSent = (s: JudgeSubject): JudgeSubject => (textOnly ? { ...s, media: [] } : s);
   const inputTokens = (batch: readonly JudgeSubject[]): number => {
@@ -153,31 +207,32 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
     async judge(asked0, _budget) {
       const judgedAt = deps.now();
       const asked = asked0.map(asSent);
-      /* Pictures first, before any money moves, by the live judge's rules. */
+      /* Pictures first, before any money moves, by the live judge's rules — read side by side, not
+         one after another: a batch of ten pictures read in turn was seconds of every shadow call. */
       const frames = new Map<string, Frame>();
       const unseen = new Set<string>();
       const pictured = new Set<string>();
-      for (const s of asked) {
+      await Promise.all(asked.map(async (s) => {
         const uri = frameUriFor(s);
-        if (uri === undefined) continue;
+        if (uri === undefined) return;
         const frame = uri === null ? null : await deps.client.frame(uri);
         if (frame === null) unseen.add(String(s.storyId));
         else frames.set(String(s.storyId), frame);
-      }
+      }));
       const subjects = asked.filter((s) => !unseen.has(String(s.storyId)));
-      for (const s of subjects) {
+      await Promise.all(subjects.map(async (s) => {
         const uri = pictureUriFor(s);
-        if (uri === null) continue;
+        if (uri === null) return;
         const picture = await deps.client.frame(uri);
-        if (picture === null) continue;
+        if (picture === null) return;
         frames.set(String(s.storyId), picture);
         pictured.add(String(s.storyId));
-      }
+      }));
       const outcomes = new Map<string, JudgeOutcome>();
       for (const s of asked.filter((x) => unseen.has(String(x.storyId)))) outcomes.set(String(s.storyId), { kind: 'unavailable', storyId: s.storyId, detail: NO_FRAME });
 
       const spends: Spend[] = [];
-      for (const batch0 of batches(subjects)) {
+      const ask = async (batch0: readonly JudgeSubject[]): Promise<void> => {
         const batch = fitted(batch0);
         const usd = estimateUsd(batch);
         const spec = { vendor: deps.vendor, endpoint, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
@@ -195,7 +250,7 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
           });
           spends.push(call.spend);
           if (call.value.response === null) throw call.value.refusedWith ?? new Error('open judge: no reply and no error');
-          answered = toOutcomes(batch, call.value.response.answers, { judgeId: id, promptId: pid, judgedAt, costUsdPerSubject: batch.length === 0 ? 0 : call.spend.usd / batch.length }, pictured);
+          answered = toOutcomes(batch, firstAnswers(call.value.response.answers), { judgeId: id, promptId: pid, judgedAt, costUsdPerSubject: batch.length === 0 ? 0 : call.spend.usd / batch.length }, pictured);
         } catch (error) {
           if (error instanceof BudgetRefused) throw error;
           answered = allUnavailable(batch, error instanceof Error ? error.message : String(error));
@@ -204,6 +259,15 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
           const o = answered[i];
           if (o !== undefined) outcomes.set(String(s.storyId), o);
         });
+      };
+      /* The calls of a round side by side, at most `parallel` at once; then the posts the model
+         skipped or answered past the token limit asked again, alone among themselves (header). */
+      let pending: readonly JudgeSubject[] = subjects;
+      const began = deps.now();
+      const inTime = (): boolean => deps.reaskWithinMs === undefined || deps.now() - began < deps.reaskWithinMs;
+      for (let round = 0; round <= reask && pending.length > 0 && (round === 0 || inTime()); round += 1) {
+        await inTurns(batches(pending), parallel, ask);
+        pending = pending.filter((s) => SKIPPED.has((outcomes.get(String(s.storyId)) as { detail?: string } | undefined)?.detail ?? ''));
       }
       return {
         value: asked.map((s) => outcomes.get(String(s.storyId)) ?? { kind: 'unavailable', storyId: s.storyId, detail: 'no outcome' }),
