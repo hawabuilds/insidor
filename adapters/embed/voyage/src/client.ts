@@ -5,6 +5,12 @@
  * Separate from index.ts so the port can be tested with this replaced by a recorded reply,
  * and so the one file that knows the vendor's field names is this one.
  *
+ * ★ A PICTURE IT COULD NOT FETCH IS ITS OWN ERROR (2026-10-16). The vendor fetches each picture
+ * itself and refuses the WHOLE request with a 400 when one fails ("The image URL you have provided
+ * is invalid"). Some short-video covers are signed addresses its fetcher is refused (the same
+ * address can answer us 200), and on 2026-10-15 they piled up at the tail of every pass until a
+ * batch held nothing else. `PictureRefused` lets index.ts tell "this picture" from "this request".
+ *
  * What breaks if changed carelessly: the vendor answers with `data[i].index`. Vectors are
  * placed by that index, never by array position; a response reordered in transit would
  * otherwise pin one post's vector on another post's image.
@@ -20,6 +26,24 @@ export const ENDPOINT_LABEL = 'POST /v1/multimodalembeddings';
  * and its picture: the vendor puts the pair in one vector).
  */
 export type EmbedInput = { readonly imageUrl: string; readonly text?: undefined } | { readonly text: string; readonly imageUrl?: string };
+
+/** The vendor refused the request because it could not fetch a picture in it: that picture, not the request, is at fault. */
+export class PictureRefused extends VendorUnavailable {
+  constructor(endpoint: string) {
+    super(VENDOR, endpoint, 'could not fetch a picture in the request', 400);
+    this.name = 'PictureRefused';
+  }
+}
+
+/**
+ * True when a 400's body says a picture could not be fetched or read. Matched on the vendor's
+ * wording, never quoted: the body echoes the signed address, which is long and not ours to log.
+ */
+export function pictureRefusal(status: number, text: string): boolean {
+  if (status !== 400) return false;
+  const head = text.slice(0, 2000);
+  return /image url[^"]*invalid|(unable|could ?not|failed) to (fetch|download|load|read|open) (the )?image|image[^"]*(could not|cannot) be (fetched|downloaded|loaded|read|opened)|invalid image/i.test(head);
+}
 
 export interface EmbedReply {
   /** One vector per input, in input order; null for an input the vendor did not embed. */
@@ -110,6 +134,7 @@ export function httpClient(config: VoyageClientConfig): VoyageClient {
         const text = await response.text().catch(() => '');
         const billing = billingReason(response.status, text);
         if (billing !== null) throw outOfCredit(VENDOR, ENDPOINT_LABEL, billing, response.status);
+        if (pictureRefusal(response.status, text)) throw new PictureRefused(ENDPOINT_LABEL);
         throw new VendorUnavailable(VENDOR, ENDPOINT_LABEL, `responded ${response.status}`, response.status);
       }
       let parsed: unknown;

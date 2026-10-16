@@ -22,6 +22,14 @@
  * line, or on a failed call, posts simply have no vector and GROUP groups them on the free
  * tiers. Nothing waits on this step.
  *
+ * ★ A PICTURE THE VENDOR COULD NOT READ IS NOT ASKED AGAIN EVERY PASS (2026-10-16). Some
+ * short-video covers are signed addresses the vendor's fetcher is refused; they come back null and,
+ * with no vector stored, were back in the next pass's queue, and the next. They piled up at the
+ * old end of the 40 until a whole batch was nothing else, and the pass failed. Such a picture is
+ * remembered in this process (`unread`) and skipped while it is; the query reads five candidates
+ * per place, so the next post takes its place. Memory, not a table: a restart asks each once more,
+ * which costs nothing (a refused request is not billed) and lets a cover that came back be read.
+ *
  * What breaks if changed carelessly: an image is embedded once per space. Re-embedding on
  * every pass would spend the embeddings line on pictures we already hold.
  */
@@ -43,7 +51,15 @@ export interface EmbeddingDeps {
   readonly policy: Policy;
   readonly log: Logger;
   readonly now: () => Millis;
+  /** Pictures the vendor gave no vector for, by post and address; skipped while remembered. Defaults to this process's own. */
+  readonly unread?: Set<string>;
 }
+
+/* This process's memory of unread pictures, bounded: past the bound it starts again, which only
+   means each is asked once more. */
+const PROCESS_UNREAD = new Set<string>();
+const UNREAD_BOUND = 20_000;
+const unreadKey = (q: { readonly itemId: string; readonly uri: string }): string => `${q.itemId}|${q.uri}`;
 
 const MS_PER_HOUR = 3_600_000;
 /** How long one batch of images may take before the call is abandoned. */
@@ -63,7 +79,9 @@ export async function embedImages(deps: EmbeddingDeps): Promise<{ readonly queue
     deps.policy.group.imagesPerPass * PREFETCH_FACTOR,
     EVERY_NO_IS_FIRM,
   );
+  const unread = deps.unread ?? PROCESS_UNREAD;
   const queue = wide
+    .filter((q) => !unread.has(unreadKey(q)))
     .filter((q) => q.inNarrative || (q.judgement !== null && couldStillPass(q.judgement, deps.policy)))
     .slice(0, deps.policy.group.imagesPerPass);
   if (queue.length === 0) return { queued: 0, embedded: 0 };
@@ -78,13 +96,20 @@ export async function embedImages(deps: EmbeddingDeps): Promise<{ readonly queue
       { capUsd: deps.policy.budget.supplierLines.embeddings, spentUsd: 0, maxCalls: null, deadline: (now + EMBED_CALL_DEADLINE_MS) as Millis },
     );
     let embedded = 0;
+    let unreadNow = 0;
+    if (unread.size > UNREAD_BOUND) unread.clear();
     for (const [index, embedding] of result.value.entries()) {
       const q = queue[index];
-      if (q === undefined || embedding === null) continue;
+      if (q === undefined) continue;
+      if (embedding === null) {
+        unread.add(unreadKey(q));
+        unreadNow += 1;
+        continue;
+      }
       await deps.images.record('item', q.itemId, q.uri, embedding.space, embedding.values, now);
       embedded += 1;
     }
-    deps.log.info('images embedded', { queued: queue.length, embedded, usd: result.spend.usd });
+    deps.log.info('images embedded', { queued: queue.length, embedded, unread: unreadNow, usd: result.spend.usd });
     return { queued: queue.length, embedded };
   } catch (e) {
     if (e instanceof BudgetRefused) {

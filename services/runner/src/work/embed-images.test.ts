@@ -12,7 +12,7 @@ import type { ItemId } from '@insidor/contracts/ids.ts';
 import type { UnembeddedImage } from '@insidor/store';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import { readReply, voyageEmbed } from '@insidor/embed-voyage';
+import { PictureRefused, readReply, voyageEmbed } from '@insidor/embed-voyage';
 import { TWO_IMAGES } from '@insidor/embed-voyage/__fixtures__/replies.ts';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -91,4 +91,32 @@ test('★ a picture that can never reach a screen is not paid for: a failed name
   const result = await embedImages({ embed: s.embed, images: s.images, mode: 'live', policy: P, log: quiet, now: () => 1 as Millis });
   assert.equal(result.queued, 2, 'the yes near the bar (for the picture boost) and the narrative post');
   assert.deepEqual(s.recorded, ['x:3', 'x:4']);
+});
+
+test('★ a picture the vendor could not read is skipped on the next pass, and the pass still stores the rest (2026-10-16)', async () => {
+  const dead = 'https://example.invalid/cover.jpeg';
+  const queue: readonly UnembeddedImage[] = [...QUEUE, { itemId: 'x:3' as ItemId, uri: dead, inNarrative: true, judgement: null }];
+  const sent: string[][] = [];
+  const recorded: string[] = [];
+  const meter = { record: () => undefined, spentUsd: () => 0, mayspend: () => true, line: () => ({ capUsd: 1, spentUsd: 0, stopAtUsd: 1, remainingUsd: 1, unrecordedUsd: 0 }) } as unknown as Meter;
+  const embed = voyageEmbed({
+    client: {
+      embed: async (input) => {
+        sent.push(input.inputs.map((i) => i.imageUrl ?? ''));
+        if (input.inputs.some((i) => i.imageUrl === dead)) throw new PictureRefused('embed');
+        return readReply(TWO_IMAGES, input.inputs.length);
+      },
+    },
+    meter,
+    now: () => 0 as Millis,
+  });
+  const images = { unembedded: async () => queue.filter((q) => !recorded.includes(q.itemId)), record: async (_k: 'item' | 'asset', id: string) => void recorded.push(id) };
+  const unread = new Set<string>();
+  const first = await embedImages({ embed, images, mode: 'live', policy: DEFAULT_POLICY, log: quiet, now: () => 1 as Millis, unread });
+  assert.deepEqual(first, { queued: 3, embedded: 2 });
+  assert.equal(unread.size, 1);
+  sent.length = 0;
+  const second = await embedImages({ embed, images, mode: 'live', policy: DEFAULT_POLICY, log: quiet, now: () => 1 as Millis, unread });
+  assert.deepEqual(second, { queued: 0, embedded: 0 });
+  assert.deepEqual(sent, [], 'the unread picture is not asked again');
 });
