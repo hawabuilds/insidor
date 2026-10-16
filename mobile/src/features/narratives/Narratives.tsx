@@ -46,7 +46,8 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
 
   const row = useCallback((s: Story) => (
     <StoryRow
-      item={s}
+      /* The row's views are the narrative's total across its posts when the server sends one, as on its page; else its top post's. */
+      item={s.viewsTotal !== null && s.viewsTotal.known ? { ...s, reach: s.viewsTotal } : s}
       now={now}
       byline={
         <span>

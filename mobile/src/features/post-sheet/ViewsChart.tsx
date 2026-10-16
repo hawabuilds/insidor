@@ -135,7 +135,9 @@ export function ViewsChart({ readings, postedAt, foundAt, coinAt, now, height, b
     return best;
   };
   const long = plan.to - plan.from > 20 * HOUR;
-  const mcShown = mcOn && mc !== undefined && mc.points !== null && mc.points.length > 1 ? mc.points : null;
+  /* Only the candles inside the chart's span, so a spike from before it cannot set the axis. */
+  const mcInside = mcOn && mc !== undefined && mc.points !== null ? mc.points.filter((p) => p.at >= plan.from && p.at <= plan.to) : [];
+  const mcShown = mcInside.length > 1 ? mcInside : null;
   const mcTicks = mcShown === null ? null : cleanTicks(0, Math.max(...mcShown.map((p) => p.value)));
 
   return (
