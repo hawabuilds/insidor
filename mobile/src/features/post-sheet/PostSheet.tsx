@@ -12,7 +12,9 @@
  * ★ TWO PARTS, as the owner laid it out. The head (who posted it, the Watch star, the open button and
  * the X) and the foot (the coin line, the coin with Buy, then Create and All coins) stay put; the
  * middle (the words, the media at its own shape, whole, the views, the chart, the tiles) scrolls when it
- * is taller than the phone. Nothing shrinks to fit. It is drawn with the shared Sheet
+ * is taller than the phone. Nothing shrinks to fit but the views chart's plot, which takes the height
+ * the middle has left (CHART_SHORTEST to CHART_TALLEST), so on a 390x844 phone the whole sheet
+ * shows without scrolling, and with less room it is the middle that scrolls. It is drawn with the shared Sheet
  * (shared/ui/Sheet.tsx), which gives it every way to close. ★ FACTS ONLY: who, when, how many,
  * and which coin; never how sure. ★ THE ONLY LINK OUT is the open button, to the post where it
  * was posted, an outlined square so it is never mistaken for the round X beside it.
@@ -66,20 +68,25 @@ export interface PostSheetProps {
   readonly start?: 'post' | 'coins';
 }
 
-/** The views chart's plot, in px; the interval rail, the Found and Coin pills and the times are on top of it. */
-const CHART_HEIGHT = 140;
+/**
+ * The plot's height takes what the middle has left once everything else in it is drawn (the
+ * owner, 2026-10-16: one 390x844 screen, nothing cut off), between these two. Below the shortest
+ * the middle scrolls instead; the coin row and buttons never move.
+ */
+const CHART_SHORTEST = 96;
+const CHART_TALLEST = 200;
 /** The sheet's side padding, both sides, and the widest the app's column gets. */
 const SIDES = 32;
 /** The post card's own padding, both sides (post-sheet.module.css .postCard), inside the sheet's. */
 const CARD_SIDES = 16;
 const COLUMN = 480;
 /**
- * The tallest the media box may be, in px (the owner, 2026-10-13): 200, so on a 390x844 phone the
+ * The tallest the media box may be, in px (the owner, 2026-10-16): 160, so on a 390x844 phone the
  * whole sheet, post card, views, chart, tiles, coin row and buttons, fits without scrolling. A
  * taller or portrait frame is shown whole inside it with dark bars at the sides, never cropped or
  * squashed; a tap opens it full screen (PostMedia.tsx).
  */
-const MEDIA_TALLEST = 200;
+const MEDIA_TALLEST = 160;
 /** How many lines of the post's words show before a tap: fewer above media, more with none. */
 const TEXT_LINES = { withMedia: 2, alone: 6 } as const;
 
@@ -192,6 +199,18 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   const post = data.post;
   const platform = platformOf(post.sourceLabel);
   const [mediaGone, setMediaGone] = useState(false);
+  const middle = useRef<HTMLDivElement>(null);
+  const [chartHeight, setChartHeight] = useState(140);
+  /* After every draw: give the chart whatever the middle has spare, or take back what overflows. */
+  useLayoutEffect(() => {
+    const inner = middle.current;
+    const body = inner?.closest('[data-sheet-scroll]');
+    if (inner == null || !(body instanceof HTMLElement)) return;
+    const pad = parseFloat(getComputedStyle(body).paddingTop) + parseFloat(getComputedStyle(body).paddingBottom);
+    const spare = body.clientHeight - pad - inner.offsetHeight;
+    const next = Math.round(Math.min(CHART_TALLEST, Math.max(CHART_SHORTEST, chartHeight + spare)));
+    if (Math.abs(next - chartHeight) > 1) setChartHeight(next);
+  });
   /* The English when the post was written in another language, with its line (shared/ui/Translated.tsx). */
   const words = useShownWords(post);
   const readings = data.views.length > 0 ? data.views : post.spark.points.map((p) => ({ atMs: p.atMs, value: p.value }));
@@ -236,7 +255,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
       </SheetHead>
 
       <SheetBody>
-        <div className={styles['scroll']}>
+        <div ref={middle} className={styles['scroll']}>
           {post.excerpt !== '' || media !== null ? (
             <section className={styles['postCard']}>
               {post.excerpt !== '' ? (
@@ -270,7 +289,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
             </span>
           </section>
 
-          <ViewsChart readings={data.views} postedAt={post.postedAt.known ? post.postedAt.at : null} foundAt={data.foundAt.known ? data.foundAt.at : null} coinAt={firstCoin} now={now} height={CHART_HEIGHT} />
+          <ViewsChart readings={data.views} postedAt={post.postedAt.known ? post.postedAt.at : null} foundAt={data.foundAt.known ? data.foundAt.at : null} coinAt={firstCoin} now={now} height={chartHeight} />
 
           <Tiles data={data} onNarrative={onNarrative} />
         </div>

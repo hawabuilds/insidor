@@ -258,6 +258,7 @@
 
 .views {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: 8px;
@@ -272,11 +273,11 @@
 .viewsLine {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
 }
 
 .bigNumber {
-  font-size: 32px;
+  font-size: 26px;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -284,7 +285,7 @@
 
 .viewsLine .up,
 .viewsLine .down {
-  font-size: 15px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
