@@ -162,6 +162,29 @@ test('★ the optional verbs survive the wrapper: a lookup is recorded like any 
   assert.equal(watched(adapterOf('x'), deps(repo)).lookup, undefined, 'and a source without one still has none');
 });
 
+test('★ the finders\' verbs survive the wrapper: the feed, the trend list and a sound\'s posts (the feed was dropped here and never asked)', async () => {
+  const repo = fakeRepo();
+  const calls: string[] = [];
+  const page = async () => ({ value: { items: [], authors: [], cursor: null, hasMore: false }, spend: [] }) as never;
+  const quote = () => ({ vendor: 'v', usd: 0 }) as never;
+  const base: PlatformAdapter = {
+    ...adapterOf('tiktok'),
+    trendingFeed: async () => (calls.push('feed'), page()),
+    estimateTrendingFeed: quote,
+    trendWords: async () => (calls.push('trends'), { value: [], spend: [] }) as never,
+    estimateTrendWords: quote,
+    soundPosts: async () => (calls.push('sound'), page()),
+    estimateSoundPosts: quote,
+  };
+  const adapter = watched(base, deps(repo));
+  for (const k of ['trendingFeed', 'estimateTrendingFeed', 'trendWords', 'estimateTrendWords', 'soundPosts', 'estimateSoundPosts'] as const) assert.ok(adapter[k] !== undefined, `${k} was dropped`);
+  await adapter.trendingFeed!({ regions: ['US'] }, budget);
+  await adapter.trendWords!({ regions: ['US'], perRegion: 1 }, budget);
+  await adapter.soundPosts!('tiktok:sound:1', budget);
+  assert.deepEqual(calls, ['feed', 'trends', 'sound']);
+  assert.equal(watched(adapterOf('x'), deps(repo)).trendingFeed, undefined, 'and a source without one still has none');
+});
+
 test('a call that works records a success', async () => {
   const repo = fakeRepo();
   await watched(adapterOf('reddit'), deps(repo)).discover(query, budget);

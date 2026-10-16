@@ -13,6 +13,10 @@
  * worth the judge. The old ones are dropped here, not stored: a stored post is tracked and re-read,
  * and a month-old hit we would never show is not worth that.
  *
+ * ★ A PASS THAT ASKS NOTHING SAYS WHY, once an hour (`recommendation feed skipped: <reason>`). From the
+ * switch-on at 00:16 UTC on 2026-10-16 the source reached this finder without its feed (the runner's
+ * health wrapper dropped the method) and every pass returned without a line, for hours.
+ *
  * What breaks if changed carelessly: the lane needs migration 0084 applied (the lane check), or the
  * credit throws and the loop logs the step failed every slot; the switch is off until it is. The slot
  * is kept in memory, so a restart may ask one slot twice — one credit a region, no more.
@@ -44,9 +48,23 @@ export interface TrendingFeedDeps {
 /** The slot the feed was last asked in, kept by the loop between passes. */
 export interface TrendingFeedClock {
   slot: number | null;
+  /** The hour each skip reason was last logged in, so a silent pass is said once an hour. */
+  skipped?: Map<string, number>;
 }
 
-export const trendingFeedClock = (): TrendingFeedClock => ({ slot: null });
+export const trendingFeedClock = (): TrendingFeedClock => ({ slot: null, skipped: new Map() });
+
+const HOUR_MS = 3_600_000;
+
+function skip(deps: TrendingFeedDeps, clock: TrendingFeedClock, reason: string, now: number): TrendingFeedResult {
+  const hour = Math.floor(now / HOUR_MS);
+  const seen = (clock.skipped ??= new Map());
+  if (seen.get(reason) !== hour) {
+    seen.set(reason, hour);
+    deps.log.info(`recommendation feed skipped: ${reason}`);
+  }
+  return NONE;
+}
 
 export interface TrendingFeedResult {
   /** Videos on the pages, every region, adverts already gone. */
@@ -66,12 +84,13 @@ export function youngOnly(items: readonly Item[], now: Millis, maxAgeMs: number)
 
 export async function trendingFeedPass(deps: TrendingFeedDeps, clock: TrendingFeedClock): Promise<TrendingFeedResult> {
   const t = deps.policy.finders.trending;
-  if (!t.on) return NONE;
   const now = deps.now();
+  if (!t.on) return skip(deps, clock, 'switched off (finders.trending.on)', now);
   const slot = Math.floor(now / t.everyMs);
+  /* Already asked this slot: the normal case between asks, not a skip worth a line. */
   if (clock.slot === slot) return NONE;
   const source = deps.sources().find((a) => a.trendingFeed !== undefined && a.estimateTrendingFeed !== undefined);
-  if (source === undefined) return NONE;
+  if (source === undefined) return skip(deps, clock, 'no source offers the feed (its key unset, or the method not carried through)', now);
   clock.slot = slot;
 
   const ask = { regions: t.regions };

@@ -59,7 +59,7 @@ import { sourceId } from '@insidor/contracts';
 import type { Item, Millis } from '@insidor/contracts';
 import type { Budget, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import type { SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
-import type { PlannedCall, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
+import type { FeedAsk, PlannedCall, PlatformAdapter, TrendAsk } from '@insidor/contracts/ports/platform.ts';
 import type { ResponseAsk } from '@insidor/contracts/ports/responses.ts';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
@@ -145,6 +145,16 @@ export function watched(adapter: PlatformAdapter, deps: WatchDeps): PlatformAdap
     /* A post's replies and reproductions is a call like a lookup, recorded like one; its estimate is arithmetic. */
     ...(adapter.responses === undefined ? {} : { responses: (id: string, ask: ResponseAsk, budget: Budget) => around(() => adapter.responses!(id, ask, budget)) }),
     ...(adapter.estimateResponses === undefined ? {} : { estimateResponses: (ask: ResponseAsk) => adapter.estimateResponses!(ask) }),
+    /* ★ THE FINDERS' METHODS TOO. Until 2026-10-16 02:30 UTC they were not carried, so the short-video
+       source reached every finder without its recommendation feed: the trending finder found no source
+       with one and returned without a word, and the feed was never asked from the switch-on at
+       00:16 UTC. Each is a call recorded like a lookup; each estimate is arithmetic. */
+    ...(adapter.trendWords === undefined ? {} : { trendWords: (ask: TrendAsk, budget: Budget) => around(() => adapter.trendWords!(ask, budget)) }),
+    ...(adapter.estimateTrendWords === undefined ? {} : { estimateTrendWords: (ask: TrendAsk) => adapter.estimateTrendWords!(ask) }),
+    ...(adapter.trendingFeed === undefined ? {} : { trendingFeed: (ask: FeedAsk, budget: Budget) => around(() => adapter.trendingFeed!(ask, budget)) }),
+    ...(adapter.estimateTrendingFeed === undefined ? {} : { estimateTrendingFeed: (ask: FeedAsk) => adapter.estimateTrendingFeed!(ask) }),
+    ...(adapter.soundPosts === undefined ? {} : { soundPosts: (sound: string, budget: Budget) => around(() => adapter.soundPosts!(sound, budget)) }),
+    ...(adapter.estimateSoundPosts === undefined ? {} : { estimateSoundPosts: (sound: string) => adapter.estimateSoundPosts!(sound) }),
   };
 }
 
