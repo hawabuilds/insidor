@@ -63,7 +63,7 @@ export interface Deps {
   readonly search?: Search;
   /** The Portfolio tab (wallet.ts). Absent: /wallet/:address is a 404. */
   readonly wallet?: WalletRoute;
-  /** The phone's post sheet (post-sheet.ts). Absent: /post/:id/sheet is a 404. */
+  /** The phone's post sheet (post-sheet.ts) and narrative sheet (story-sheet.ts). Absent: /post/:id/sheet and /story/:id/sheet are 404s. */
   readonly postSheet?: PostSheet;
 }
 
@@ -474,6 +474,10 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
     /* One feed post as the phone's post sheet shows it (post-sheet.ts). */
     if (deps.postSheet !== undefined && segments.length === 3 && head === 'post' && param !== undefined && segments[2] === 'sheet') {
       return await deps.postSheet.sheet(param);
+    }
+    /* A narrative page's posts with their readings, and its coins (story-sheet.ts). */
+    if (deps.postSheet !== undefined && segments.length === 3 && head === 'story' && param !== undefined && segments[2] === 'sheet') {
+      return await deps.postSheet.story(param);
     }
 
     if (deps.search !== undefined) {
