@@ -120,7 +120,9 @@ export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
   };
 
   /* A supplier that has answered for the whole hold with no refusal is back: one recovery, keyed to
-     the outage's start so a restart or a late flush never queues it twice. */
+     the hour the outage began, like the refusal it answers. A second short outage begun in the same
+     hour has its refusal dropped by the claim, so its recovery is dropped with it: at most one
+     "out of credit" and one "answering again" per supplier an hour, however it flickers. */
   const settle = (): void => {
     const at = deps.now();
     for (const [vendor, was] of [...down]) {
@@ -130,7 +132,7 @@ export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
       deps.log.info('supplier answering again', { vendor, supplier, downSince: new Date(was.since).toISOString(), downMinutes: Math.round((was.answeredAt - was.since) / 60_000) });
       pending.set(vendor, {
         vendor,
-        subject: `billing|${vendor}|recovered|${new Date(was.since).toISOString()}`,
+        subject: `billing|${vendor}|recovered|${utcHour(was.since)}`,
         facts: { supplier, uses, state: 'recovered', vendor },
       });
     }
