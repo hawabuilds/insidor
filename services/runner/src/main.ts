@@ -38,6 +38,7 @@ import { universeLoop } from './loops/universe.ts';
 import { missedLoop } from './loops/missed.ts';
 import { refillLoop } from './loops/refill.ts';
 import { findersLoop } from './loops/finders.ts';
+import { middleLoop } from './loops/middle.ts';
 import { groupLoop } from './loops/group.ts';
 import { qualifyLoop } from './loops/qualify.ts';
 import { rankLoop } from './loops/rank.ts';
@@ -171,8 +172,6 @@ async function main(): Promise<void> {
         log,
         watch: runtime.watch,
         floors: runtime.feedFloors,
-        /* The middle lane (`feed.middle`): its own daily cap, kept in the database (0088). */
-        middle: runtime.middleLane,
         afterPass: [
           ['score-posts', runtime.scorePosts],
           ['name-guesses', runtime.guessNames],
@@ -187,6 +186,23 @@ async function main(): Promise<void> {
           runtime.loopDeps.policy.budget.dailyUsd,
           runtime.loopDeps.policy.budget.supplierLines.posts,
         ),
+      }),
+      /* The middle lane (`feed.middle`): its own loop and its own daily cap, kept in the database
+         (0088). Out of the discover pass, whose last steps judge new posts (loops/middle.ts). */
+      middleLoop({
+        platforms: runtime.platforms,
+        store: runtime.store,
+        policy: runtime.loopDeps.policy,
+        meter: runtime.meter,
+        mode: cfg.spend.kind,
+        log,
+        floors: runtime.feedFloors,
+        dailyCapUsd: Math.min(
+          cfg.spend.dailyBudgetUsd,
+          runtime.loopDeps.policy.budget.dailyUsd,
+          runtime.loopDeps.policy.budget.supplierLines.posts,
+        ),
+        middle: runtime.middleLane,
       }),
       /* Every new coin's metadata, and where it came from. Its own loop so a slow gateway
          never holds up the search. */
