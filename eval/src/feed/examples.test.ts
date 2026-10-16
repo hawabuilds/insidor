@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { atCutoff, buildBlock, caught, changed, chooseCutoff, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, ratesOf, regressions, sweepCutoff, type GradedPost, type OwnerCall } from './examples.ts';
+import { atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, ratesOf, regressions, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall } from './examples.ts';
 
 const L = DEFAULT_POLICY.learning;
 const call = (itemId: string, label: 'meme' | 'not', from: OwnerCall['from'], at: number | null = null): OwnerCall => ({ itemId, text: `post ${itemId}`, imageUri: null, label, why: 'because', at, from });
@@ -63,6 +63,45 @@ test('★ a post on the always-teach list is taught, first, whatever its hash, a
   assert.equal(b.exampleIds[0], heldOut.itemId);
   assert.ok(!b.testMissed.some((m) => m.itemId === heldOut.itemId), 'out of the held-out missed set');
   assert.ok(buildBlock(missed, [], 120).testMissed.some((m) => m.itemId === heldOut.itemId), 'without the list it is tested');
+});
+
+const MIN = 60_000;
+const coinedPost = (itemId: string, over: Partial<CoinedPost> = {}): CoinedPost => ({ itemId, text: `news ${itemId}`, imageUri: null, postedAt: 1_000 * MIN, coins: 2, firstLateAt: 1_015 * MIN, kind: null, ...over });
+
+test('★ coined posts taught as yes: late, by several coins, never the owner\'s, hand gold, crypto talk, a reply or a held kind', () => {
+  const picked = coinedYes([
+    coinedPost('x:ok'),
+    coinedPost('x:tragedy', { kind: 'TRAGEDY', text: 'a fire took a school' }),
+    coinedPost('x:one', { coins: 1 }),
+    coinedPost('x:quick', { firstLateAt: 1_005 * MIN }),
+    coinedPost('x:owner'),
+    coinedPost('x:tag', { text: 'buy $FROG now' }),
+    coinedPost('x:word', { text: 'my token is live' }),
+    coinedPost('x:reply', { text: '@someone get well soon' }),
+    coinedPost('x:sport', { kind: 'SPORT' }),
+  ], DEFAULT_POLICY, new Set(['x:owner']));
+  assert.deepEqual(picked.map((c) => c.itemId).sort(), ['x:ok', 'x:tragedy'], 'a tragedy is not held, so it is taught');
+  assert.ok(picked.every((c) => c.label === 'meme' && c.from === 'coined'));
+  assert.match(picked[0]!.why, /2 coins launched for it, the first 15 minutes after it was posted/);
+  const many = Array.from({ length: 30 }, (_, i) => coinedPost(`x:c${i}`, { postedAt: i * MIN, firstLateAt: i * MIN + 20 * MIN }));
+  const capped = coinedYes(many, DEFAULT_POLICY, new Set());
+  assert.equal(capped.length, L.coinedYes.maxPerBlock);
+  assert.equal(capped[0]!.itemId, 'x:c29', 'newest first');
+  const off = { ...DEFAULT_POLICY, learning: { ...L, coinedYes: { ...L.coinedYes, on: false } } };
+  assert.deepEqual(coinedYes(many, off, new Set()), [], 'the switch');
+});
+
+test('coined yes examples take their room in the block first, in their own section, and are never tested', () => {
+  const nots = ids(200, 'n').map((id, i) => call(id, 'not', 'tap', i));
+  const coined = coinedYes([coinedPost('x:k1'), coinedPost('x:k2', { postedAt: 999 * MIN })], DEFAULT_POLICY, new Set());
+  const b = buildBlock([call('x:m', 'meme', 'tap', 1), ...nots], [], 20, { coinedYes: coined });
+  assert.equal(b.exampleIds.length, 20);
+  assert.equal(b.used.coined, 2);
+  assert.ok(b.exampleIds.includes('x:k1') && b.exampleIds.includes('x:k2'));
+  assert.match(b.text, /YES — not the owner's calls: posts several people coined/);
+  assert.equal(b.taps.taught + b.taps.tested, 201, 'the owner\'s taps the coined posts made room for are tested, not dropped');
+  const owned = buildBlock([call('x:k1', 'not', 'tap', 1)], [], 20, { coinedYes: coined });
+  assert.ok(!owned.text.includes('"news x:k1" — 2 coins'), "the owner's call on a post wins over its coins");
 });
 
 test("the owner's names go in a names section", () => {

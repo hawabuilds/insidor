@@ -323,7 +323,10 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const live = n(f['liveGoldN']) === null ? '' : ` Live now: hand gold ${ofN(f['liveGoldPassed'], f['liveGoldN'])}, live non-memes ${ofN(f['liveNegativePassed'], f['liveNegativeN'])}, missed ${ofN(f['liveMissedPassed'], f['liveMissedN'])}.`;
       const cut = rule === '' ? '' : rule === 'refused' ? ` No cutoff from ${c('cutoffFrom')} up gave less junk, or as little with more gold, without losing gold or catching fewer missed posts.${live}` : ` Cutoff ${c('cutoff')} (rule ${rule}; live bar ${c('cutoffFrom')}).${live}`;
       const tested = n(f['tapsTested']) === null ? '' : ` (${c('tapsTested')} more taps tested)`;
-      const from = `From ${c('taps')} taps${tested}, ${c('missed')} missed posts, ${c('names')} name calls; +${c('added')} −${c('removed')} examples.`;
+      /* Coined posts taught as yes (Policy.learning.coinedYes) are not the owner's calls, so they are counted apart. */
+      const coinedN = n(f['coined']);
+      const coined = coinedN === null || coinedN === 0 ? '' : `, ${coinedN} posts people coined`;
+      const from = `From ${c('taps')} taps${tested}, ${c('missed')} missed posts, ${c('names')} name calls${coined}; +${c('added')} −${c('removed')} examples.`;
       const kept = applied ? '' : ` Kept the current examples: ${s(f['why'], 'a test fell short')}.`;
       const reasons = typeof f['missReasons'] === 'object' && f['missReasons'] !== null ? Object.entries(f['missReasons'] as Record<string, unknown>).filter(([, v]) => n(v) !== null) : [];
       const missedWhy = reasons.length === 0 ? '' : ` Missed today: ${reasons.map(([k, v]) => `${k.replaceAll('_', ' ')} ${n(v)}`).join(', ')}.`;

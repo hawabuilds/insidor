@@ -49,7 +49,7 @@ export type { CoinedVideo, CoinedVideoFetch, ShortVideoTuning } from './repo/coi
 export { PgMissedPostRepo } from './repo/missed-posts.ts';
 export type { HeldPost, MissedJudgement, MissedOutcome, MissedPostFacts, MissedRow, NamedCoin, QueuedMissedPost } from './repo/missed-posts.ts';
 export { PgLearningRepo } from './repo/learning.ts';
-export type { AppliedExamples, ExamplesVersion, GoldAddition, MissedPost, OwnerNameCall, OwnerPostCall, RecallOrigin, RetuneOutcome } from './repo/learning.ts';
+export type { AppliedExamples, CoinedPostRow, ExamplesVersion, GoldAddition, MissedPost, OwnerNameCall, OwnerPostCall, RecallOrigin, RetuneOutcome } from './repo/learning.ts';
 export type { GrowthPair, LaneMeasured, RecallDay, RecallRow, RecallRun } from './repo/recall.ts';
 export { PgImageEmbeddingRepo } from './repo/image-embeddings.ts';
 export { PgImagePairRepo } from './repo/image-pairs.ts';

@@ -43,6 +43,10 @@
  *      Policy.learning.maxExamples (eval/src/feed/examples.ts, shared with judge-examples.ts).
  *      Posts on Policy.learning.alwaysTeach (a missed post the owner wants learned back) are always
  *      taught, first, and so never in the test: the held-out missed set is one post smaller each.
+ *      And posts people coined (Policy.learning.coinedYes, on): two or more coins launched ten
+ *      minutes or more after the post, the judge's answer "no", no self-launching author, no
+ *      owner call, no hand gold, no crypto talk, no held kind — the newest twenty, as their own
+ *      YES section, taking their room in the block first. Free: our own rows, no judge call.
  *   4. the test, asked exactly as the live scorer asks (tools/lib/pass-rates.ts: ten posts a call,
  *      the same picture size and answer budget, then the kind question). HAND GOLD is the gold
  *      sheets, the owner's missed posts and the owner's own list (eval/src/gold/hand-gold.json:
@@ -132,7 +136,7 @@ import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwne
 import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
 import { leadFacts, leadLines, leadRows, summarise } from './lib/lead-time.ts';
-import { atCutoff, buildBlock, caught, changed, currentCalls, gate, goalsText, latestSlot, missedCaught, ratesOf, share, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
+import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, gate, goalsText, latestSlot, missedCaught, ratesOf, share, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
@@ -328,23 +332,13 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         return;
       }
 
-      const block = buildBlock(calls, names, L.maxExamples, { alwaysTeach: L.alwaysTeach });
-      /* `--rules-only` teaches nothing, so nothing is held out: every missed post is tested. */
-      const allMissed = currentCalls(calls).filter((c) => c.from === 'missed' && c.label === 'meme');
-      const testMissed = opts.rulesOnly === true ? allMissed : block.testMissed;
-      const taught = new Set(opts.rulesOnly === true ? [] : block.exampleIds);
-      const testMissedIds = new Set(testMissed.map((m) => m.itemId));
       const additions = await soft(repo.goldAdditions(), []);
       /* ★ HAND GOLD AND AUTO GOLD. Hand gold — the gold sheets, the owner's missed posts, and the
          owner's own list (eval/src/gold/hand-gold.json: approved recall additions, or posts we
          hold) — is the gate. Every other recall addition is auto gold: a creator linking a post
          does not prove the post is a meme origin, so it is graded and reported, never gated. */
       const listed = handGoldIds();
-      const inAdditions = new Set(additions.map((g) => g.itemId));
-      const listedHeld = await soft(repo.heldPosts([...listed].filter((id) => !inAdditions.has(id) && !taught.has(id) && !testMissedIds.has(id))), []);
-      /* Every missed post the owner gave, taught or held out: the held-out half is the `missed`
-         group; the taught half is graded only for the regression rule. */
-      const missedTaught = allMissed.filter((c) => !testMissedIds.has(c.itemId));
+      const origins = goldOriginPosts();
       /* ★ THE OWNER'S COIN LABELS. "This is the coin" on a post is a confirmed coined post: it joins
          hand gold for the run, with its coin. So is the owner's pick after "Wrong coin" (`wrong` WITH a
          coin), which `matchCalls` already reads as `right` — unless it takes back a coin an earlier
@@ -352,8 +346,34 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
          it says nothing about whether the post could be coined, so it is never a judge negative. */
       const coinCalls = await soft(repo.matchCalls(), []);
       const coinRight = coinCalls.filter((m) => m.verdict === 'right' && m.coinAddress !== null);
+      /* ★ COINED POSTS TAUGHT AS YES (Policy.learning.coinedYes; eval examples.ts `coinedYes`). Never
+         a post the owner called or one this run can test as hand gold: taught, it would leave the
+         gate's test. A post the owner confirmed a coin for is hand gold, so it stays tested — the
+         owner's coins count toward a post's coins, but such a post is never taught this way. */
+      const handGoldIdsNow = new Set([
+        ...origins.map((o) => o.id), ...listed, ...coinRight.map((m) => m.itemId),
+        ...additions.filter((g) => !(g.source === 'recall' && !listed.has(g.itemId))).map((g) => g.itemId),
+      ]);
+      const C = L.coinedYes;
+      const coinedRows = C.on ? await soft(repo.coinedPosts({ source: 'x', minCoins: C.minCoins, lateMs: C.lateMs, deployerWindowMs: C.deployerWindowMs, deployerMinPosts: C.deployerMinPosts }), []) : [];
+      const coinedTaught = coinedYes(
+        coinedRows.map((r) => ({ itemId: r.itemId, text: r.body, imageUri: pictureOf(r.media)?.uri ?? null, postedAt: r.postedAt.getTime(), coins: r.coins, firstLateAt: r.firstLateAt.getTime(), kind: r.kindLabel })),
+        P,
+        new Set([...calls.map((c) => c.itemId), ...handGoldIdsNow]),
+      );
+      const block = buildBlock(calls, names, L.maxExamples, { alwaysTeach: L.alwaysTeach, coinedYes: coinedTaught });
+      /* `--rules-only` teaches nothing, so nothing is held out: every missed post is tested. */
+      const allMissed = currentCalls(calls).filter((c) => c.from === 'missed' && c.label === 'meme');
+      const testMissed = opts.rulesOnly === true ? allMissed : block.testMissed;
+      const taught = new Set(opts.rulesOnly === true ? [] : block.exampleIds);
+      const testMissedIds = new Set(testMissed.map((m) => m.itemId));
+      const inAdditions = new Set(additions.map((g) => g.itemId));
+      const listedHeld = await soft(repo.heldPosts([...listed].filter((id) => !inAdditions.has(id) && !taught.has(id) && !testMissedIds.has(id))), []);
+      /* Every missed post the owner gave, taught or held out: the held-out half is the `missed`
+         group; the taught half is graded only for the regression rule. */
+      const missedTaught = allMissed.filter((c) => !testMissedIds.has(c.itemId));
       const posts: EvalPost<G>[] = [
-        ...goldOriginPosts(),
+        ...origins,
         ...additions
           .filter((g) => !taught.has(g.itemId) && !testMissedIds.has(g.itemId) && !(opts.noAuto === true && g.source === 'recall' && !listed.has(g.itemId)))
           .map((g) => ({ group: g.source === 'recall' && !listed.has(g.itemId) ? ('auto' as const) : ('gold' as const), id: g.itemId, kind: `added ${g.addedOn} (${g.source})`, text: g.postText, imageUri: g.imageUri, coinRef: g.coinMint })),
@@ -389,6 +409,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         coinRight: coinCalls.filter((m) => m.verdict === 'right').length, coinNone: coinCalls.filter((m) => m.verdict === 'none').length,
         liveNegatives: block.testNegatives.length, missedTested: testMissed.length, autoGold: posts.filter((p) => p.group === 'auto').length,
         tiktokCoined: posts.filter((p) => p.group === 'tt-coined').length,
+        coinedYesFound: coinedRows.length, coinedYesTaught: block.used.coined,
       };
       if (opts.composeOnly === true) {
         console.log(JSON.stringify({ msg: 'retune composition (nothing asked, nothing written)', slot: slot.toISOString(), ...composition }, null, 1));
@@ -401,7 +422,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const held = P.judge.heldKinds;
 
       judgeSetup(env);
-      log('info', 'retune testing a block', { slot: slot.toISOString(), posts: posts.length, handGold: posts.filter((p) => p.group === 'gold').length, autoGold: posts.filter((p) => p.group === 'auto').length, liveNegatives: block.testNegatives.length, missed: testMissed.length, missedTaught: missedTaught.length, heldKinds: held, maxBatch, rulesOnly: opts.rulesOnly === true, examples: block.exampleIds.length, chars: block.text.length });
+      log('info', 'retune testing a block', { slot: slot.toISOString(), posts: posts.length, handGold: posts.filter((p) => p.group === 'gold').length, autoGold: posts.filter((p) => p.group === 'auto').length, liveNegatives: block.testNegatives.length, missed: testMissed.length, missedTaught: missedTaught.length, heldKinds: held, maxBatch, rulesOnly: opts.rulesOnly === true, examples: block.exampleIds.length, coinedYes: block.used.coined, chars: block.text.length });
       /* Bounded by the learning book's lines, not a guess per post: the test either fits what is left
          of them (mustFit) or is not started. */
       /* ★ A PICTURE IS EMBEDDED ONCE PER RUN. The block's test and the baseline grade the same
@@ -589,7 +610,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
                   cutoffRule: choice.rule, cutoff: choice.cutoff, cutoffFrom: Number((liveCutoff ?? policyBar).toFixed(2)),
                   liveGoldPassed: liveRates.hand.passed, liveGoldN: liveRates.hand.tested, liveNegativePassed: liveRates.negatives.passed, liveNegativeN: liveRates.negatives.tested, liveMissedPassed: liveRates.missed.passed, liveMissedN: liveRates.missed.tested,
                 }),
-                taps: block.used.taps, tapsTested: block.taps.tested, missed: block.used.missed, names: block.used.names, added: delta.added, removed: delta.removed, missReasons,
+                taps: block.used.taps, tapsTested: block.taps.tested, missed: block.used.missed, names: block.used.names, coined: block.used.coined, added: delta.added, removed: delta.removed, missReasons,
                 ...(part === null ? {} : { tiktokSet: part.setSize, tiktokAdded: part.added, tiktokBar: part.bar.why, tiktokGap: part.gapText, ...(tt === null ? {} : { tiktokCoinedPassed: tt.coined.passed, tiktokCoinedN: tt.coined.tested, tiktokJunkPassed: tt.junk.passed, tiktokJunkN: tt.junk.tested, tiktokBeat: tt.beat }) }),
               },
               href: '/#/alerts',

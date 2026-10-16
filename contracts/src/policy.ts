@@ -2328,6 +2328,28 @@ export interface LearningPolicy {
    * judge now catches it. Keep it short; every id here is one fewer test post.
    */
   readonly alwaysTeach: readonly string[];
+  /**
+   * ★ POSTS PEOPLE COINED, TAUGHT AS "YES" (the owner, 2026-10-16: "teach the re-tune with coined
+   * news and tragedy posts as yes examples"). A post that `minCoins` or more distinct coins were
+   * launched for `lateMs` or more after it was posted, and that the judge answered "no", goes in
+   * the block as a yes example: the newest `maxPerBlock`, inside `maxExamples` (they take their
+   * room first; the owner's calls share the rest). The late bar keeps out the bots that coin
+   * anything within seconds; the count keeps out a lone copycat.
+   *
+   * An author with `deployerMinPosts` or more posts coined within `deployerWindowMs` of posting
+   * launches coins on its own posts, and none of its posts is taught. A post the owner has called,
+   * any hand-gold post, a post whose own words talk crypto (the shill rule's words) and a post of
+   * a kind `judge.heldKinds` holds are never taught, so this cannot argue with the owner, the gate's
+   * test, the shill rule or the held kinds. Taught posts are never tested.
+   */
+  readonly coinedYes: {
+    readonly on: boolean;
+    readonly minCoins: number;
+    readonly lateMs: number;
+    readonly maxPerBlock: number;
+    readonly deployerWindowMs: number;
+    readonly deployerMinPosts: number;
+  };
   /** Missed-post links the owner may paste at once. */
   readonly maxMissedPerPaste: number;
   /**
@@ -3584,6 +3606,16 @@ const POLICY_V1: Policy = {
     /* The owner, 2026-10-16: the Flávio Hipotético picture post (coin confirmed by the owner), the one
        missed post the live judge caught and version 9 lost at 07:00 UTC. Taught so it is learned back. */
     alwaysTeach: ['x:2109756994147983482'],
+    coinedYes: {
+      /* On: the owner approved it, 2026-10-16. Free: read from our own rows, no judge call. */
+      on: true,
+      minCoins: 2,
+      lateMs: 600_000, // ten minutes
+      /* Twenty: a sixth of the block, so the owner's own calls keep most of it. */
+      maxPerBlock: 20,
+      deployerWindowMs: 420_000, // seven minutes
+      deployerMinPosts: 3,
+    },
     maxMissedPerPaste: 10,
     scoreHeldOutShare: 0.3,
     scoreL2: 1,

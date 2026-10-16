@@ -44,6 +44,13 @@
  * leaves the held-out missed set for good, so the missed rate is out of one post fewer and nothing
  * measures whether the judge now catches it; it is graded only as `missed-taught`, for the record.
  *
+ * ★ POSTS PEOPLE COINED ARE TAUGHT AS YES TOO (Policy.learning.coinedYes, the owner 2026-10-16:
+ * "teach the re-tune with coined news and tragedy posts as yes examples"). `coinedYes` picks posts
+ * several coins were launched for ten minutes or more after posting that the judge answered "no";
+ * they get their own YES section, take their room in the block first, and are never tested. It
+ * leaves out anything that would argue with the owner, the gate's test, the shill rule or the
+ * held kinds (see the function). Tragedy is not a held kind, so a coined tragedy is taught.
+ *
  * What breaks if changed carelessly: `isExample` must stay a pure function of the id (and the
  * policy's always-teach list, which changes only with a policy version). Anything else (order, a
  * draw, the date) moves posts between examples and test from one run to the next, and a run would
@@ -54,18 +61,20 @@ import { createHash } from 'node:crypto';
 
 import type { Judgement } from '@insidor/contracts/judgement.ts';
 import type { LearningPolicy, Policy } from '@insidor/contracts/policy.ts';
-import { heldKind, postScore, withJudgeCutoff, type CryptoSignal } from '@insidor/core';
+import { heldKind, isShillText, postScore, withJudgeCutoff, type CryptoSignal } from '@insidor/core';
 
 /** Examples or test, by the post id alone; an id on `alwaysTeach` (Policy.learning.alwaysTeach) is always an example. */
 export const isExample = (itemId: string, alwaysTeach: readonly string[] = []): boolean =>
   alwaysTeach.includes(itemId) || (createHash('sha256').update(itemId).digest()[0] ?? 0) % 2 === 0;
 
-/** What a block is told beyond the owner's calls: the ids always taught. */
+/** What a block is told beyond the owner's calls: the ids always taught, and coined posts (`coinedYes`) taught as yes. */
 export interface Teach {
   readonly alwaysTeach?: readonly string[];
+  readonly coinedYes?: readonly OwnerCall[];
 }
 
-export type CallSource = 'tap' | 'missed' | 'labels';
+/** `coined`: not the owner's call — a post several coins were launched for (`coinedYes`). */
+export type CallSource = 'tap' | 'missed' | 'labels' | 'coined';
 
 /** One post with the owner's call on it. `at` is when the call (or, failing that, the post) was made. */
 export interface OwnerCall {
@@ -99,10 +108,10 @@ export interface Block {
   /** The owner's taps, counted: in the block, or in the test. Every tap is one or the other. */
   readonly taps: { readonly taught: number; readonly tested: number };
   /** What it learned from, counted in the block. */
-  readonly used: { readonly taps: number; readonly missed: number; readonly labels: number; readonly names: number };
+  readonly used: { readonly taps: number; readonly missed: number; readonly labels: number; readonly names: number; readonly coined: number };
 }
 
-const SOURCE_RANK: Readonly<Record<CallSource, number>> = { tap: 3, missed: 2, labels: 1 };
+const SOURCE_RANK: Readonly<Record<CallSource, number>> = { tap: 3, missed: 2, labels: 1, coined: 0 };
 const EXCERPT = 140;
 const excerpt = (t: string): string => t.replace(/https:\/\/t\.co\/\S+/g, '').replace(/\s+/g, ' ').trim().slice(0, EXCERPT);
 const newestFirst = (a: { at: number | null; itemId: string }, b: { at: number | null; itemId: string }): number =>
@@ -122,17 +131,21 @@ export function currentCalls(calls: readonly OwnerCall[]): readonly OwnerCall[] 
 export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall[], maxExamples: number, teach: Teach = {}): Block {
   const current = currentCalls(calls);
   const always = teach.alwaysTeach ?? [];
+  /* Coined posts take their room first (the caller capped them); a post the owner called is never one. */
+  const called = new Set(current.map((c) => c.itemId));
+  const coined = (teach.coinedYes ?? []).filter((c) => !called.has(c.itemId)).slice(0, maxExamples);
+  const room = maxExamples - coined.length;
   const isMissed = (c: OwnerCall) => c.from === 'missed';
   /* The owner's always-taught posts first, so the cap never pushes them out; then newest first. */
   const order = (a: OwnerCall, b: OwnerCall) => Number(always.includes(b.itemId)) - Number(always.includes(a.itemId)) || newestFirst(a, b);
   const yesPool = current.filter((c) => c.label === 'meme' && (!isMissed(c) || isExample(c.itemId, always))).sort(order);
   const noPool = current.filter((c) => c.label === 'not' && isExample(c.itemId, always)).sort(order);
-  const half = Math.floor(maxExamples / 2);
-  const yesTake = Math.min(yesPool.length, Math.max(half, maxExamples - noPool.length));
-  const noTake = Math.min(noPool.length, maxExamples - yesTake);
+  const half = Math.floor(room / 2);
+  const yesTake = Math.min(yesPool.length, Math.max(half, room - noPool.length));
+  const noTake = Math.min(noPool.length, room - yesTake);
   const yes = yesPool.slice(0, yesTake);
   const no = noPool.slice(0, noTake);
-  const nameCalls = [...names].sort(newestFirst).slice(0, half);
+  const nameCalls = [...names].sort(newestFirst).slice(0, Math.floor(maxExamples / 2));
 
   const line = (p: OwnerCall) => `  "${excerpt(p.text)}"${p.imageUri === null ? '' : ' [picture]'} — ${p.why}`;
   const nameLine = (n: NameCall) =>
@@ -146,11 +159,13 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
     'YES — people could coin this:',
     ...yes.map(line),
     '',
+    ...(coined.length === 0 ? [] : ['', 'YES — not the owner\'s calls: posts several people coined, ten minutes or more after they were posted, that the judge had answered no. News and tragedies people coin are yes:', ...coined.map(line)]),
+    '',
     'NO — nothing to coin, though it may look busy:',
     ...no.map(line),
     ...(nameCalls.length === 0 ? [] : ['', 'NAMES — the owner\'s calls on names suggested for posts; name the way the owner does:', ...nameCalls.map(nameLine)]),
   ];
-  const inBlock = [...yes, ...no];
+  const inBlock = [...yes, ...coined, ...no];
   const taught = new Set(inBlock.map((p) => p.itemId));
   return {
     text: lines.join('\n'),
@@ -166,8 +181,55 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
       missed: inBlock.filter(isMissed).length,
       labels: inBlock.filter((p) => p.from === 'labels').length,
       names: nameCalls.length,
+      coined: coined.length,
     },
   };
+}
+
+/* ── coined posts, taught as yes ──────────────────────────────────────────────────────────────── */
+
+/** A post several coins were launched for well after it, that the judge answered "no" (store `coinedPosts`). */
+export interface CoinedPost {
+  readonly itemId: string;
+  readonly text: string;
+  readonly imageUri: string | null;
+  readonly postedAt: number;
+  readonly coins: number;
+  readonly firstLateAt: number;
+  /** The newest kind answer; null when never asked. */
+  readonly kind: string | null;
+}
+
+const MS_PER_MIN = 60_000;
+const wordsOf = (t: string): readonly string[] => t.replace(/https?:\/\/\S+/g, ' ').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w !== '');
+
+/**
+ * Which coined posts the block teaches as "yes" (Policy.learning.coinedYes), newest first, at
+ * most `maxPerBlock`. Never one that would argue with a rule the feed keeps or with the gate:
+ *   · `exclude` — the owner's calls and every post the run tests as hand gold: the owner's call
+ *     wins, and a hand-gold post taught would leave the gate's test;
+ *   · a post whose own words talk crypto (the shill rule, or a coin or crypto-account word): its
+ *     coins are about the coin talk, not the world, and a shill never passes anyway;
+ *   · a reply (it opens with an @): a coin on a reply is about its thread, not its words;
+ *   · a kind `held` holds: the kind question would hold it again, and a yes example would teach
+ *     the first question the opposite of the second. A tragedy is not held (the owner, 2026-10-16),
+ *     so a coined tragedy is taught. A kind never asked (the usual case after a "no") is not held.
+ */
+export function coinedYes(posts: readonly CoinedPost[], p: Policy, exclude: ReadonlySet<string>): readonly OwnerCall[] {
+  const C = p.learning.coinedYes;
+  if (!C.on) return [];
+  const crypto = new Set([...p.attention.coinWords, ...p.attention.cryptoAccountWords].map((w) => w.toLowerCase()));
+  return posts
+    .filter((c) => c.coins >= C.minCoins && c.firstLateAt - c.postedAt >= C.lateMs)
+    .filter((c) => !exclude.has(c.itemId) && !c.text.trimStart().startsWith('@'))
+    .filter((c) => !isShillText(c.text, p.attention) && !wordsOf(c.text).some((w) => crypto.has(w)))
+    .filter((c) => heldKind(c.kind, p.judge.heldKinds) === null)
+    .sort((a, b) => b.postedAt - a.postedAt || (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0))
+    .slice(0, C.maxPerBlock)
+    .map((c) => ({
+      itemId: c.itemId, text: c.text, imageUri: c.imageUri, label: 'meme' as const, at: c.postedAt, from: 'coined' as const,
+      why: `${c.coins} coins launched for it, the first ${Math.round((c.firstLateAt - c.postedAt) / MS_PER_MIN)} minutes after it was posted`,
+    }));
 }
 
 /* ── whether a graded post reaches the feed ─────────────────────────────────────────────────────── */
