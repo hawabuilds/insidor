@@ -1213,7 +1213,7 @@ export interface FeedPolicy {
   /**
    * ★ THE MIDDLE LANE (the owner's approval, 2026-10-16). Every `everyMs`, the catch-all search for
    * every post `minAgeMin` to `maxAgeMin` minutes old with at least `minApproval` likes, paged until
-   * the window is exhausted (at most `maxPages` pages), credited to the 'middle' lane (0090).
+   * the window is exhausted (at most `maxPages` pages), credited to the 'middle' lane (0088).
    *
    * Why: the fresh bands look at a post at 6 and 50 minutes at a floor of a few hundred likes, and
    * the slow lane once an hour of age at a floor that drifts with its target (5,929 likes on
@@ -2714,7 +2714,7 @@ export interface FindersPolicy {
    * `wordsPerAsk` of the top `topTags` tags the coined-video training set teaches — as the latest
    * re-tune recorded them (internal.short_video_tuning, 0085), so the list changes after every
    * re-tune and with nothing else — searched newest first, each word its own run, and the videos
-   * credited to the 'learned_tag' lane (0090) and held to the watch list's age.
+   * credited to the 'learned_tag' lane (0088) and held to the watch list's age.
    *
    * Its own lane, not 'trend' (`trends.asksOn`, which reads the daily coined-post list with the
    * rising trend tags), so its cost and its lead can be read apart and it can be dropped alone.
@@ -2987,7 +2987,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v85',
+  version: 'policy.v86',
 
   admit: {
     maxAgeMin: 240,

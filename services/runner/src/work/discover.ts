@@ -608,7 +608,7 @@ export interface DiscoverDeps {
   /** Where each fresh band's last ask ended (`feed.fresh`). Absent: every band reaches back its cap. */
   readonly fresh?: FreshClock;
   /**
-   * ★ THE MIDDLE LANE (`feed.middle`), when the loop says it is due: its ledger (0090), read before
+   * ★ THE MIDDLE LANE (`feed.middle`), when the loop says it is due: its ledger (0088), read before
    * every page and added to after, and how many of a page's posts no lane has found yet (the
    * judging it brings in). Absent: the middle lane is not asked this pass.
    */
@@ -917,13 +917,13 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       return;
     }
 
-    /* ★ THE MIDDLE LANE'S OWN CAP, before the day's: what it spent today (0090) plus this page must
+    /* ★ THE MIDDLE LANE'S OWN CAP, before the day's: what it spent today (0088) plus this page must
        fit `feed.middle.cap`. An unreadable ledger asks nothing (work/lane-ledger.ts). */
     let laneSpent = 0;
     if (middle) {
       const spent = (await deps.middle?.ledger.spent('middle', now)) ?? null;
       if (spent === null) {
-        outcomes.push({ kind: 'unasked', source, reason: "the middle lane's ledger (0090) cannot be read, so it does not ask" });
+        outcomes.push({ kind: 'unasked', source, reason: "the middle lane's ledger (0088) cannot be read, so it does not ask" });
         return;
       }
       if (!laneMayAsk(spent, estimate.usd, cap)) {

@@ -169,7 +169,7 @@ test('young re-reads: the fastest, then every video turning 6 and 50 minutes, ea
   assert.deepEqual(reads, [['fast'], ['six', 'fifty']]);
 });
 
-/* ── the learned-tag lane (`finders.learnedTags`, 0090) ─────────────────────────────────────── */
+/* ── the learned-tag lane (`finders.learnedTags`, 0088) ─────────────────────────────────────── */
 
 const tagsOnly: Policy = {
   ...DEFAULT_POLICY,

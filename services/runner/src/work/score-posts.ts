@@ -191,7 +191,7 @@ async function findReusable(deps: ScoringDeps, queue: readonly Item[], judgeId: 
   }
 }
 
-/** The finders' lanes (0083, 0084's recommendation feed, 0090's learned tags), each read on its own like the watch lane. */
+/** The finders' lanes (0083, 0084's recommendation feed, 0088's learned tags), each read on its own like the watch lane. */
 const FINDER_LANES = ['coin_link', 'x_repost', 'trend', 'creator', 'trending', 'learned_tag'] as const;
 
 export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {

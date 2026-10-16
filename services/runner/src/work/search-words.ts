@@ -22,7 +22,7 @@
  *             on the source's sound endpoint (`soundPosts`), the 'trend' lane like the learned words
  *   learned tags  (`learnedTags`) every `learnedTags.askEveryMs` slot: the next `wordsPerAsk` of the
  *             top tags the coined-video training set teaches, as the latest re-tune recorded them,
- *             newest first, the 'learned_tag' lane (0090), inside its own daily cap
+ *             newest first, the 'learned_tag' lane (0088), inside its own daily cap
  *
  * The source's search takes words and a sound is an id, so a sound is asked on its own endpoint
  * (since 2026-10-16; before, sounds were learned and listed only). The judge and the hold decide
@@ -60,7 +60,7 @@ export interface SearchWordDeps {
   readonly now: () => Millis;
   /**
    * The learned-tag lane (`finders.learnedTags`): the tags the latest re-tune learned, most coined
-   * first; its ledger (0090); and how many of a run's videos no lane holds yet. Absent: not asked.
+   * first; its ledger (0088); and how many of a run's videos no lane holds yet. Absent: not asked.
    */
   readonly learnedTags?: {
     readonly tags: () => Promise<readonly string[]>;
