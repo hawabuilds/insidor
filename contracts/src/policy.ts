@@ -1210,6 +1210,34 @@ export interface FeedPolicy {
       readonly bands: readonly { readonly ageMin: number; readonly minApproval: number }[];
     };
   };
+  /**
+   * ★ THE MIDDLE LANE (the owner's approval, 2026-10-16). Every `everyMs`, the catch-all search for
+   * every post `minAgeMin` to `maxAgeMin` minutes old with at least `minApproval` likes, paged until
+   * the window is exhausted (at most `maxPages` pages), credited to the 'middle' lane (0090).
+   *
+   * Why: the fresh bands look at a post at 6 and 50 minutes at a floor of a few hundred likes, and
+   * the slow lane once an hour of age at a floor that drifts with its target (5,929 likes on
+   * 2026-10-16). A post that passes a couple of thousand likes between those looks is seen by
+   * nobody until hours later, if ever: 187 coined posts in three days did exactly that. This lane
+   * asks the whole window at a FIXED floor, so such a post is found within a pass of crossing it.
+   *
+   * Unlike the bands it does not tile: a post over the floor is returned on every pass while it is
+   * in the window (up to eleven times at a quarter-hour), because a like count only grows and the
+   * search cannot be asked "crossed since". That repeat is most of its bill, and why the floor is
+   * fixed and the lane has its own cap (`cap`, `LaneCapPolicy`): it never moves a lane's floor and
+   * asks nothing more once its day is spent. The slow lane's time slices that lie wholly inside
+   * this window are dropped while the lane is on and its floor is no higher than theirs.
+   * Off: nothing here is read and discovery is exactly as before.
+   */
+  readonly middle: {
+    readonly on: boolean;
+    readonly minAgeMin: number;
+    readonly maxAgeMin: number;
+    readonly minApproval: number;
+    readonly everyMs: number;
+    readonly maxPages: number;
+    readonly cap: LaneCapPolicy;
+  };
 }
 
 /**
@@ -3406,6 +3434,32 @@ const POLICY_V1: Policy = {
          the band, less the five-hour slow slice it replaces) and about +$1.75 a day of judging (some
          200 more posts a day judged, an estimate from three windows). */
       late: { on: true, bands: [{ ageMin: 300, minApproval: 6_500 }] },
+    },
+    /* On from 2026-10-16, the owner's approval ("the middle X search for posts 15 min to 3 h old with
+       1,500-2,500 likes, ~$5-6/day").
+       2,000 likes, from the funnel of coined posts (2026-10-13 to 10-16): of the 201 coined posts that
+       reached 293 likes, were coined at least 15 minutes after posting and were never found before
+       their coin, the fitted growth curve (tau 173 minutes) puts 100 over 1,500 likes inside 15 to 180
+       minutes and at least a pass before their coin, 87 over 2,000 and 79 over 2,500. 2,000 keeps 87
+       of the 100 for $1.10 to $1.25 a day less search than 1,500, which the whole day's $50 needs.
+       What it costs, measured on the 24 hours of posting to 04:30 UTC on 2026-10-16 (the posts we
+       hold in en/zxx/pt/qme, no reposts): 2,454 crossed 2,000 likes between 15 and 180 minutes old;
+       each is returned on every quarter-hour pass from its crossing to 180 minutes, 18,300 to 23,000
+       returns a day (3,195 posts and 25,600 to 31,200 returns at 1,500). At $0.00015 a post that is
+       $2.75 to $3.45 a day of search, about 10 to 12 pages of 20 a pass; the posts we do not hold
+       (the ones this is for) add to it. Judging: the posts it finds first, about 250 to 600 a day
+       (the 247 a day the slow lane now finds at about three hours, plus the misses), $0.35 to $0.80.
+       About $3.10 to $4.25 a day in all, under its own $6 cap whatever the day brings.
+       `judgedShare` 0.9: of the 1,850 posts the slow lane found in the 24 hours to 08:30 UTC, 1,645
+       were judged; `judgeUsdPerPost` is the live judge's $14.35 over 10,139 answers that day. */
+    middle: {
+      on: true,
+      minAgeMin: 15,
+      maxAgeMin: 180,
+      minApproval: 2_000,
+      everyMs: 900_000, // a quarter-hour
+      maxPages: 40,
+      cap: { dailyUsd: 6, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
     },
   },
 

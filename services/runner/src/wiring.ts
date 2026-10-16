@@ -78,6 +78,7 @@ import {
   PgCryptoAttentionRepo,
   PgPostRefillRepo,
   PgFeedFloorRepo,
+  PgLaneSpendRepo,
   PgImageEmbeddingRepo,
   PgImagePairRepo,
   PgJudgementRepo,
@@ -105,6 +106,7 @@ import {
 
 import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
+import { laneLedger, type LaneLedger } from './work/lane-ledger.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
 import { precedentSource } from './work/precedents.ts';
 import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
@@ -163,6 +165,8 @@ export interface Runtime {
   readonly meter: DurableMeter;
   /** The catch-all search's lane floors, kept between passes. */
   readonly feedFloors: PgFeedFloorRepo;
+  /** The middle lane's ledger (0090) and how many of its posts no lane holds yet (`feed.middle`). */
+  readonly middleLane: { readonly ledger: LaneLedger; readonly uncredited: (itemIds: readonly string[]) => Promise<number> };
   /** Score the catch-all posts the judge has not seen, alone and once each. */
   readonly scorePosts: () => Promise<ScoringResult>;
   /** The names people will coin each new post as, after each scoring pass. See work/name-guesses.ts. */
@@ -834,6 +838,10 @@ export async function withRuntime<T>(
           meter,
           store: storeArrivals(repos, policy, () => Date.now() as Millis),
           feedFloors: new PgFeedFloorRepo(db),
+          middleLane: {
+            ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'middle-lane' })),
+            uncredited: (ids) => repos.items.uncredited(ids),
+          },
           embedImages: () =>
             embedImages({
               embed:

@@ -154,7 +154,7 @@ export class PgItemRepo implements ItemRepo {
    * to store them would be first to find, and so the ones whose judging it brings in. Asked before
    * the store, which writes the rows. A capped lane charges itself that judging (0088).
    */
-  async uncredited(itemIds: readonly ItemId[]): Promise<number> {
+  async uncredited(itemIds: readonly string[]): Promise<number> {
     if (itemIds.length === 0) return 0;
     const rows = await this.#db.query<{ n: string }>(
       `select count(*)::text as n from unnest($1::text[]) as id

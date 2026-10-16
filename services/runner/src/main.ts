@@ -171,6 +171,8 @@ async function main(): Promise<void> {
         log,
         watch: runtime.watch,
         floors: runtime.feedFloors,
+        /* The middle lane (`feed.middle`): its own daily cap, kept in the database (0090). */
+        middle: runtime.middleLane,
         afterPass: [
           ['score-posts', runtime.scorePosts],
           ['name-guesses', runtime.guessNames],

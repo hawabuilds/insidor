@@ -71,11 +71,13 @@ import type { Author, Item, Millis, Policy } from '@insidor/contracts';
 import type { Budget, Meter, CostEstimate } from '@insidor/contracts/ports/meter.ts';
 import { FEED_LANES } from '@insidor/contracts/ports/platform.ts';
 import type { DiscoveryMode, DiscoveryQuery, FeedLane, PlatformAdapter } from '@insidor/contracts/ports/platform.ts';
-import { bandFloor, bandWindow, effectiveFloor, laneTargets, laneWindowMin, lateBandFloor, lateBands, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, startFloors, type LaneFloors } from '@insidor/core';
+import { bandFloor, bandWindow, effectiveFloor, laneJudgeUsd, laneMayAsk, laneTargets, laneWindowMin, lateBandFloor, lateBands, middleWindow, nextFloor, sentFloors, sliceCoveredByBands, sliceCoveredByLateBand, sliceCoveredByMiddle, startFloors, type LaneFloors } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
+import type { FoundLane } from './arrivals.ts';
+import type { LaneLedger } from './lane-ledger.ts';
 
 /* ── operational constants ────────────────────────────────────────────────
    Page sizes and lookbacks — how much is fetched, never what is decided. Nothing
@@ -138,9 +140,9 @@ const MS_PER_DAY = 24 * 60 * MS_PER_MINUTE;
 
 export type SourceOutcome =
   /** Asked, and it replied. `items` is a measurement; zero here is a real quiet. */
-  | { readonly kind: 'answered'; readonly source: string; readonly items: number; readonly stored: number | null; readonly hasMore: boolean; readonly lane?: FeedLane }
+  | { readonly kind: 'answered'; readonly source: string; readonly items: number; readonly stored: number | null; readonly hasMore: boolean; readonly lane?: PassLane }
   /** Asked, and the call threw. Recorded against the source's health by the wrapper. */
-  | { readonly kind: 'failed'; readonly source: string; readonly reason: string; readonly lane?: FeedLane }
+  | { readonly kind: 'failed'; readonly source: string; readonly reason: string; readonly lane?: PassLane }
   /** Live, and we have no question it can answer. Our gap, not the vendor's. */
   | { readonly kind: 'unasked'; readonly source: string; readonly reason: string }
   /** Not live. Nothing was asked, and the reason distinguishes off from broken. */
@@ -151,9 +153,9 @@ export type SourceOutcome =
    * left, so the row says whether the cap is too low or the cadence too fast without
    * anybody having to reconstruct it.
    */
-  | { readonly kind: 'paused'; readonly source: string; readonly wouldSpendUsd: number; readonly remainingUsd: number; readonly spentUsd: number; readonly capUsd: number; readonly lane?: FeedLane }
+  | { readonly kind: 'paused'; readonly source: string; readonly wouldSpendUsd: number; readonly remainingUsd: number; readonly spentUsd: number; readonly capUsd: number; readonly lane?: PassLane }
   /** ★ A DRY RUN. Resolved, priced, and not asked. No call left the process. */
-  | { readonly kind: 'planned'; readonly source: string; readonly mode: DiscoveryMode; readonly estUnits: number; readonly wouldSpendUsd: number; readonly lane?: FeedLane }
+  | { readonly kind: 'planned'; readonly source: string; readonly mode: DiscoveryMode; readonly estUnits: number; readonly wouldSpendUsd: number; readonly lane?: PassLane }
   /** ★ A FREE SOURCE COVERED THIS TERM. We chose not to pay for it, and say who. */
   | { readonly kind: 'deferred'; readonly source: string; readonly coveredBy: string; readonly wouldSpendUsd: number }
   /**
@@ -162,6 +164,9 @@ export type SourceOutcome =
    * asked, nothing is wrong, and `nextAtMs` says when it will be.
    */
   | { readonly kind: 'resting'; readonly source: string; readonly everyMs: number; readonly nextAtMs: number };
+
+/** A lane an outcome can name: the catch-all lanes, and the middle lane (`feed.middle`), which keeps no floor. */
+export type PassLane = FeedLane | 'middle';
 
 export interface DiscoverPassResult {
   /** One per KNOWN source, live or not. Never a subset — see `dark` above. */
@@ -451,9 +456,34 @@ export function slowSliceQueries(floors: LaneFloors, now: Millis, policy: Policy
     return { ...base, sinceMs: Math.round(oldest) as Millis, untilMs: Math.round(oldest + width) as Millis };
   }).filter((q) => {
     const youngest = (now - (q.untilMs ?? now)) / MS_PER_MINUTE;
-    /* A late band (`feed.fresh.late`) at an age inside this slice asks the same posts at a floor no higher. */
-    return !sliceCoveredByBands(youngest, policy) && !sliceCoveredByLateBand(youngest, width / MS_PER_MINUTE, policy);
+    /* A late band (`feed.fresh.late`) at an age inside this slice asks the same posts at a floor no higher;
+       so does the middle lane (`feed.middle`) over a slice wholly inside its window. */
+    return (
+      !sliceCoveredByBands(youngest, policy) &&
+      !sliceCoveredByLateBand(youngest, width / MS_PER_MINUTE, policy) &&
+      !sliceCoveredByMiddle(youngest, width / MS_PER_MINUTE, base.filter?.minApproval ?? 0, policy)
+    );
   });
+}
+
+/**
+ * ★ THE MIDDLE LANE'S ASK (`feed.middle`): every post `minAgeMin` to `maxAgeMin` minutes old over
+ * its fixed floor, in the main lanes' languages and with plain reposts left out, newest first. One
+ * query; the pass pages it until the window is exhausted, its page limit, or its cap.
+ *
+ * What breaks if changed carelessly: sending an adapted floor here would let a quiet hour pull the
+ * floor down and a busy one buy the same window several times over — the fixed floor is what
+ * makes its cost the count of posts over it.
+ */
+export function middleQuery(floors: LaneFloors, now: Millis, policy: Policy): DiscoveryQuery {
+  const base = feedQueryFor('all', floors, now, policy);
+  const window = middleWindow(now, policy);
+  return {
+    ...base,
+    sinceMs: Math.round(window.since) as Millis,
+    untilMs: Math.round(window.until) as Millis,
+    filter: { ...base.filter!, minApproval: Math.max(policy.feed.effectiveFloorMin, Math.round(policy.feed.middle.minApproval)), mediaOnly: false },
+  };
 }
 
 /**
@@ -535,7 +565,7 @@ export interface DiscoverDeps {
    * may not read or decide. Authors go first so a post's author row carries its handle from
    * the first read, and a story page can cite the post the moment it is grouped.
    */
-  readonly store: (items: readonly Item[], authors: readonly Author[], lane?: FeedLane | 'watch' | null) => Promise<number>;
+  readonly store: (items: readonly Item[], authors: readonly Author[], lane?: FoundLane | null) => Promise<number>;
   readonly plan: DiscoveryPlan;
   readonly policy: Policy;
   /**
@@ -577,6 +607,15 @@ export interface DiscoverDeps {
   readonly watch?: WatchClock;
   /** Where each fresh band's last ask ended (`feed.fresh`). Absent: every band reaches back its cap. */
   readonly fresh?: FreshClock;
+  /**
+   * ★ THE MIDDLE LANE (`feed.middle`), when the loop says it is due: its ledger (0090), read before
+   * every page and added to after, and how many of a page's posts no lane has found yet (the
+   * judging it brings in). Absent: the middle lane is not asked this pass.
+   */
+  readonly middle?: {
+    readonly ledger: LaneLedger;
+    readonly uncredited: (itemIds: readonly string[]) => Promise<number>;
+  };
 }
 
 /**
@@ -630,6 +669,8 @@ interface SourcePlan {
   readonly band: number | null;
   /** A late band (`feed.fresh.late`): fixed floor, so what it returns never moves a lane's floor. */
   readonly late: boolean;
+  /** The middle lane (`feed.middle`): fixed floor, its own cap, paged to the end of its window. */
+  readonly middle: boolean;
 }
 
 export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResult> {
@@ -681,7 +722,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
 
     /* ★ THE CATCH-ALL FIRST, ON EVERY SOURCE THAT CAN BE ASKED FOR IT: two lanes, no
        keyword. Then the optional term on top. */
-    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean; readonly watch?: boolean; readonly slice?: boolean; readonly band?: number; readonly late?: boolean }[] = [];
+    const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean; readonly watch?: boolean; readonly slice?: boolean; readonly band?: number; readonly late?: boolean; readonly middle?: boolean }[] = [];
     if (adapter.capabilities.discovery.includes('catchall')) {
       const fresh = deps.policy.feed.fresh.enabled;
       for (const lane of deps.lanes ?? MAIN_LANES) {
@@ -694,6 +735,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       }
     }
     const catchAll = asks.length > 0;
+    /* The middle lane rides a pass the loop says it is due on, on a source with a catch-all. */
+    if (catchAll && deps.middle !== undefined && deps.policy.feed.middle.on) asks.push({ query: middleQuery(floors, now, deps.policy), lane: null, middle: true });
     if (catchAll && term !== null) {
       const query = queryFor(adapter, term, now);
       if (query !== null) asks.push({ query, lane: null });
@@ -753,7 +796,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       continue;
     }
 
-    for (const { query, lane, spaced, watch, slice, band, late } of asks) {
+    for (const { query, lane, spaced, watch, slice, band, late, middle } of asks) {
       let estimate: CostEstimate;
       try {
         estimate = adapter.estimate({ kind: 'discover', query });
@@ -766,7 +809,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         deps.log.error('source cannot be priced; not asking it', { source, err: errorText(e) });
         continue;
       }
-      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true, watch: watch === true, slice: slice === true, band: band ?? null, late: late === true });
+      plans.push({ adapter, source, query, estimate, lane, spaced: spaced === true, watch: watch === true, slice: slice === true, band: band ?? null, late: late === true, middle: middle === true });
     }
   }
 
@@ -791,6 +834,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       sentFloors: sentFloors(floors, deps.policy),
       targets,
       targetUsd: ((targets.all + targets.media) * passesPerDay + targets.slow * slowPassesPerDay) * usdPerPost,
+      /* The middle lane is in neither figure: it stops at its own cap (`feed.middle.cap`), which is its worst day. */
       worstUsd: usdPerPage * (pages * (deps.policy.feed.fresh.enabled ? deps.policy.feed.fresh.bandAgesMin.length + lateBands(deps.policy).length : MAIN_LANES.length) * passesPerDay + deps.policy.feed.slow.slices * slowPassesPerDay),
     };
     feedDays.push(day);
@@ -843,9 +887,10 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
      short-video run used to hold the text search, the feed's main input, for as long. */
   const runPlan = async (plan: SourcePlan): Promise<void> => {
     if (deps.signal.aborted) return;
-    const { adapter, source, query, estimate, lane, spaced, watch, slice, band, late } = plan;
-    const tag = lane === null ? {} : { lane };
-    const coverKey = lane === null ? query.term : `feed:${lane}`;
+    const { adapter, source, query, estimate, lane, spaced, watch, slice, band, late, middle } = plan;
+    const tag: { lane?: PassLane } = middle ? { lane: 'middle' } : lane === null ? {} : { lane };
+    const coverKey = middle ? 'feed:middle' : lane === null ? query.term : `feed:${lane}`;
+    const cap = deps.policy.feed.middle.cap;
 
     /**
      * ★ DO NOT PAY FOR WHAT A FREE SOURCE ALREADY ANSWERED.
@@ -870,6 +915,23 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         wouldSpendUsd: estimate.usd,
       });
       return;
+    }
+
+    /* ★ THE MIDDLE LANE'S OWN CAP, before the day's: what it spent today (0090) plus this page must
+       fit `feed.middle.cap`. An unreadable ledger asks nothing (work/lane-ledger.ts). */
+    let laneSpent = 0;
+    if (middle) {
+      const spent = (await deps.middle?.ledger.spent('middle', now)) ?? null;
+      if (spent === null) {
+        outcomes.push({ kind: 'unasked', source, reason: "the middle lane's ledger (0090) cannot be read, so it does not ask" });
+        return;
+      }
+      if (!laneMayAsk(spent, estimate.usd, cap)) {
+        outcomes.push({ kind: 'paused', ...tag, source, wouldSpendUsd: estimate.usd, remainingUsd: Math.max(0, cap.dailyUsd - spent), spentUsd: spent, capUsd: cap.dailyUsd });
+        deps.log.info('the middle lane has spent its day; not asked', { source, spentUsd: spent, capUsd: cap.dailyUsd });
+        return;
+      }
+      laneSpent = spent;
     }
 
     /**
@@ -931,10 +993,13 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     let items: readonly Item[];
     let authors: readonly Author[];
     let hasMore: boolean;
+    /* What the middle lane's pages were billed, for its ledger. */
+    let laneUsd = 0;
     /* Set as the call goes out, not when it comes back: a run that fails was still billed. */
     if (spaced) deps.watch?.asked(source, now);
     try {
       const result = await adapter.discover(query, budget);
+      laneUsd += result.spend.usd;
       items = result.value.items;
       authors = result.value.authors;
       hasMore = result.value.hasMore;
@@ -944,11 +1009,16 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
          paging. A short page means the window is exhausted; a refused check means the line
          is, for now. Either way the lane stops with what it has. */
       let cursor = result.value.cursor;
-      for (let page = 2; lane !== null && !slice && page <= deps.policy.feed.maxPagesPerLane; page += 1) {
+      /* The middle lane pages to the end of its window (`feed.middle.maxPages` at most), each page
+         inside its own cap as well as the day's. */
+      const maxPages = middle ? deps.policy.feed.middle.maxPages : deps.policy.feed.maxPagesPerLane;
+      for (let page = 2; (middle || (lane !== null && !slice)) && page <= maxPages; page += 1) {
         if (cursor === null || !hasMore || items.length < (page - 1) * query.limit) break;
         if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) break;
+        if (middle && !laneMayAsk(laneSpent + laneUsd, estimate.usd, cap)) break;
         if (deps.signal.aborted) break;
         const next = await adapter.discover({ ...query, cursor }, budget);
+        laneUsd += next.spend.usd;
         estimatedUsd += estimate.usd;
         items = [...items, ...next.value.items];
         authors = [...authors, ...next.value.authors];
@@ -965,6 +1035,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
        * consecutive-failure count on a source that is working perfectly, and after
        * three passes the board would call it broken because we could not afford it.
        */
+      /* A page that threw was still billed (see below), and the middle lane's ledger says so too. */
+      if (middle) await deps.middle?.ledger.add('middle', now, laneUsd + (e instanceof BudgetRefused ? 0 : estimate.usd));
       if (e instanceof BudgetRefused) {
         const line = deps.meter.line(estimate.vendor);
         outcomes.push({
@@ -1015,10 +1087,24 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     /* The band's window is answered: the next ask starts where this one ended. */
     if (band !== null && query.untilMs !== null) deps.fresh?.ran(late ? lateBandKey(source, band) : bandKey(source, band), query.untilMs);
 
+    /* ★ THE MIDDLE LANE'S DAY: its pages' bill, and the judging of the posts it found first, counted
+       before the store writes their lane (`LaneCapPolicy`). A count that fails is charged as if
+       every post were new: the cap may close early, never late. */
+    if (middle && deps.middle !== undefined) {
+      let fresh = items.length;
+      try {
+        fresh = await deps.middle.uncredited(items.map((i) => String(i.itemId)));
+      } catch (e) {
+        deps.log.warn("could not count the middle lane's new posts; charging it for all of them", { err: errorText(e) });
+      }
+      await deps.middle.ledger.add('middle', now, laneUsd + laneJudgeUsd(fresh, cap));
+      deps.log.info('middle lane', { source, returned: items.length, new: fresh, searchUsd: round(laneUsd), judgeUsd: round(laneJudgeUsd(fresh, cap)), spentBeforeUsd: round(laneSpent), capUsd: cap.dailyUsd });
+    }
+
     let stored: number | null = null;
     if (items.length > 0) {
       try {
-        stored = await deps.store(items, authors, lane ?? (watch ? 'watch' : null));
+        stored = await deps.store(items, authors, middle ? 'middle' : (lane ?? (watch ? 'watch' : null)));
         itemsStored += stored;
       } catch (e) {
         /* ★ `stored` STAYS NULL RATHER THAN BECOMING ZERO. The write did not complete,
