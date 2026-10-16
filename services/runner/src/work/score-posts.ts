@@ -279,6 +279,11 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   let scored = copied;
   let wouldSpendUsd = 0;
   let spentUsd = 0;
+  /* Posts sent to the judge this pass, and those it gave no answer for (an unavailable outcome or
+     a failed call), with the first reason, for the loud line below. */
+  let sent = 0;
+  let unanswered = 0;
+  let firstReason: string | null = null;
   for (let i = 0; i < toJudge.length; i += judge.maxBatch) {
     const batch = toJudge.slice(i, i + judge.maxBatch);
     const subjects = batch.map((item) => subjectFor(item, deps.policy, near.get(String(item.itemId))?.precedents));
@@ -295,6 +300,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
     }
 
     const line = deps.meter.line(estimate.vendor);
+    sent += batch.length;
     try {
       const result = await judge.judge(subjects, {
         capUsd: line.capUsd,
@@ -305,7 +311,11 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
       spentUsd += result.spend.usd;
       /* Answers come back parallel to the subjects sent, as QUALIFY's judging reads them. */
       for (const [index, outcome] of result.value.entries()) {
-        if (outcome.kind !== 'judged') continue;
+        if (outcome.kind !== 'judged') {
+          unanswered += 1;
+          firstReason ??= outcome.detail;
+          continue;
+        }
         const itemId = byKey.get(String(subjects[index]?.storyId));
         if (itemId === undefined) continue;
         await deps.scores.record(itemId, outcome.judgement);
@@ -319,6 +329,8 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
         deps.log.warn('post scoring paused for budget at the vendor edge; these posts wait', { posts: batch.length });
         break;
       }
+      unanswered += batch.length;
+      firstReason ??= errorText(e);
       deps.log.error('post scoring failed; these posts wait', { posts: batch.length, err: errorText(e) });
     }
   }
@@ -376,6 +388,13 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
 
   if (deps.mode === 'dry') {
     deps.log.info('DRY RUN — posts priced for scoring, not sent', { posts: queue.length, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
+  } else if (sent > 0 && unanswered >= sent) {
+    /* ★ EVERY POST SENT CAME BACK WITHOUT AN ANSWER: the judge is down, not a quiet pass. Each
+       unavailable answer is rightly a waiting post, so on 2026-10-15 an empty judge account read
+       as two hours of "posts scored … scored=0" at info level. The same counts, at error level,
+       with the judge's own first reason (an empty account says so; the owner's push comes from
+       billing-alerts.ts). */
+    deps.log.error('posts scored: the judge answered none of the posts sent; they wait', { queued: queue.length, sent, unanswered, scored, copied, waiting: queue.length - scored, reason: firstReason, usd: Number(spentUsd.toFixed(6)) });
   } else {
     deps.log.info('posts scored', { queued: queue.length, rescoring: rescoring.length, scored, heldBack, notMatched, withPrecedents: near.size, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
   }

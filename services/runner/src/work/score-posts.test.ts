@@ -53,11 +53,15 @@ function post(n: number): Item {
  * The Messages API reply as the judge sends it, recorded shape, answering every subject in
  * the request it is handed with the given confidence. `calls` counts requests.
  */
-function recordedJudge(confidence: number | 'garbled', precedents = false) {
+function recordedJudge(confidence: number | 'garbled' | 'no credit', precedents = false) {
   const calls: unknown[] = [];
   const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as { messages: { content: { type: string; text?: string }[] }[] };
     calls.push(body);
+    /* The vendor's recorded answer for an empty account (2026-10-15). */
+    if (confidence === 'no credit') {
+      return new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the API. Please go to Plans & Billing to upgrade or purchase credits.' } }), { status: 400 });
+    }
     const asked = body.messages[0]?.content.find((c) => c.text?.startsWith('Stories to judge'))?.text ?? '';
     const ids = [...asked.matchAll(/"storyId":"([^"]+)"/g)].map((m) => m[1]);
     const answers = ids.map((id) => ({ storyId: id, coinable: true, proposedName: 'baby hippo', confidence, alternateNames: [], subjectSpans: ['baby hippo'] }));
@@ -147,6 +151,34 @@ test('★ each post is judged alone, in one batch, and each answer is filed unde
   assert.equal(result.scored, 3);
   assert.deepEqual([...recorded.keys()].sort(), [post(1), post(2), post(3)].map((p) => p.itemId).sort());
   assert.equal(recorded.get(post(2).itemId)?.confidence, 0.82);
+});
+
+test('★ a judge that answers none of the posts sent is an error line, not a quiet "scored=0" (2026-10-15)', async () => {
+  const judge = recordedJudge('no credit');
+  const lines: { level: string; msg: string; fields: Record<string, unknown> | undefined }[] = [];
+  const log: Logger = {
+    info: (msg, fields) => void lines.push({ level: 'info', msg, fields }),
+    warn: (msg, fields) => void lines.push({ level: 'warn', msg, fields }),
+    error: (msg, fields) => void lines.push({ level: 'error', msg, fields }),
+    child: () => log,
+  };
+  const { deps: d, recorded } = deps([post(1), post(2), post(3)], judge);
+  const result = await scorePosts({ ...d, log });
+  assert.equal(recorded.size, 0);
+  assert.equal(result.waiting, 3);
+  const loud = lines.find((l) => l.level === 'error' && l.msg.startsWith('posts scored: the judge answered none'));
+  assert.ok(loud, 'an error-level line');
+  assert.equal(loud.fields?.['sent'], 3);
+  assert.equal(loud.fields?.['unanswered'], 3);
+  assert.match(String(loud.fields?.['reason']), /credit balance too low/);
+  assert.ok(!lines.some((l) => l.msg === 'posts scored'), 'and not the quiet info line');
+
+  /* A pass that answered posts keeps the quiet line. */
+  const ok: typeof lines = [];
+  const okLog: Logger = { ...log, info: (msg, fields) => void ok.push({ level: 'info', msg, fields }), error: (msg, fields) => void ok.push({ level: 'error', msg, fields }), child: () => okLog };
+  const fine = deps([post(4)], recordedJudge(0.82));
+  await scorePosts({ ...fine.deps, log: okLog });
+  assert.deepEqual(ok.filter((l) => l.level === 'error'), []);
 });
 
 test('★ a dry run prices the posts and sends nothing; they wait', async () => {
