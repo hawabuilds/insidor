@@ -245,8 +245,8 @@ test('★ the shipped budget is the owner\'s cap, and the lines inside it are wh
   assert.equal(cfg.spend.dailyBudgetUsd, B.dailyUsd, 'shipped at the owner\'s cap');
   /* $43.50 from 2026-10-16 18:20 UTC: the two new search lanes and the view readings (the owner's option 1). */
   assert.equal(B.dailyUsd, 43.5);
-  /* The books' caps sum to $53: the readings' $3 sits above the measured ~$49 day as headroom. */
-  assert.equal(B.dailyUsd + B.learningLines.dailyUsd + B.jobLines.dailyUsd, 53, "the books' caps");
+  /* The books' caps sum to $54.50 on 2026-10-16: the readings' $3 as headroom over the measured ~$49 day, and the owner's +$1.50 for the evening re-tune. */
+  assert.equal(B.dailyUsd + B.learningLines.dailyUsd + B.jobLines.dailyUsd, 54.5, "the books' caps");
   /* actors $2 from 2026-10-14: the owner's +$1 a day for searches every 15 minutes and young re-reads. */
   /* pictures $4.50 from 2026-10-14: the owner's +$2.50, over the $2.94 they spent the day before. */
   /* secondVideo $2.50 from 2026-10-16: the short-video source's second vendor (re-reads, creator pages, the feed). */

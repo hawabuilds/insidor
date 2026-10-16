@@ -3167,7 +3167,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v88',
+  version: 'policy.v89',
 
   admit: {
     maxAgeMin: 240,
@@ -3436,18 +3436,24 @@ const POLICY_V1: Policy = {
          for this model, so 80,000 estimated is well inside the window with the answer's room. */
       openMaxInputTokens: 80_000,
     },
-    /* The live judge stays first until the owner's evening switch, with the open model behind it. */
-    primary: 'main',
-    openCutoff: null,
+    /* The open model is the judge from 2026-10-16 20:15 UTC: the main judge's account ran dry at 19:28
+       and the owner is not topping it up. 0.95 until the re-tune has tuned the open model's own
+       cutoff (then null, so the block's cutoff rules): its confidences come in steps, and over the
+       day's shadow it said yes to 41% of posts at 0.90 and 12% at 0.95, so 0.95 is the step closest
+       to the old judge's 20 to 25% that the owner asked for. */
+    primary: 'open',
+    openCutoff: 0.95,
     /* 90 s: above the open model's slowest tenth of ten-post calls (77 s, 2026-10-15) and far above
        the live judge's (about 8 s), so a slow but working call is not taken for a dead one. Five
        minutes' rest is a few scoring passes; half an hour after a billing refusal, which waits for
        a person, so the empty account is asked twice an hour, enough to see it topped up. */
-    failover: { on: true, deadlineMs: 90_000, coolDownMs: 300_000, creditCoolDownMs: 1_800_000 },
+    /* Off from 2026-10-16 20:15 UTC: its other judge was the main one, now without credit. On
+       again when the backup open model on a second host is wired. */
+    failover: { on: false, deadlineMs: 90_000, coolDownMs: 300_000, creditCoolDownMs: 1_800_000 },
     /* $1.50 a day: the open model's measured $0.00016 a post for both questions (2026-10-15) over
        the 9,119 posts the live judge answered that day is about $1.46, the post question alone
        less. Four batches waiting at once is forty posts, about two minutes of the open model. */
-    shadow: { on: true, dailyUsd: 1.5, maxInFlight: 4 },
+    shadow: { on: false, dailyUsd: 1.5, maxInFlight: 4 },
     /* Off until the owner has read the held-out table (tools/junk-filter.ts). Measured 2026-10-16 on
        970 labels with a vector (120 hand gold, 28 missed, 103 coined, 15 meme, 704 not), five folds
        by words: l2 0.3 dropped the most "not" posts at zero gold and missed of 0.1, 0.2, 0.3, 0.5, 1,
@@ -4252,7 +4258,8 @@ const POLICY_V1: Policy = {
        posts a side cost about $0.28 a side, $0.56 a run with the rulebook's one call ($0.0016), and a
        side must fit its pessimistic estimate (about $1.40) before it starts. $2.50 holds two runs a
        day with the second's estimate still fitting. Tests and experiments: $1 a day, every vendor. */
-    learningLines: { dailyUsd: 8.5, posts: 1.5, judge: 5.75, video: 0.5, embeddings: 0.75, retuneReserveUsd: 2.5, testsUsd: 1 },
+    /* $10 for 2026-10-16 only, the owner's +$1.50 for the evening re-tune on the open model. */
+    learningLines: { dailyUsd: 10, posts: 1.5, judge: 5.75, video: 0.5, embeddings: 0.75, retuneReserveUsd: 2.5, testsUsd: 1 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
