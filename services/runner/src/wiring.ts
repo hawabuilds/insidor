@@ -82,6 +82,7 @@ import {
   PgOlderCoinRepo,
   PgCryptoAttentionRepo,
   PgPostRefillRepo,
+  PgReadingsRepo,
   PgFeedFloorRepo,
   PgJudgeShadowRepo,
   PgLaneSpendRepo,
@@ -118,6 +119,7 @@ import { precedentSource } from './work/precedents.ts';
 import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
 import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
 import { refillMemory, refillPosts, type RefillResult } from './work/post-refill.ts';
+import { readingsMemory, readingsPass, type ReadingsResult } from './work/readings.ts';
 import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
 import { translatePosts } from './work/translate-posts.ts';
 import { embedImages } from './work/embed-images.ts';
@@ -181,6 +183,8 @@ export interface Runtime {
   readonly cryptoAttention: () => Promise<AttentionResult>;
   /** Older feed posts' video files and authors read again, every half minute. See work/post-refill.ts. */
   readonly refillPosts: () => Promise<RefillResult>;
+  /** For You's view readings and opened sheets, on their own cadence and ledger. See work/readings.ts. */
+  readonly readings: () => Promise<ReadingsResult>;
   /** Embed the first image of each new post once, for GROUP's image evidence. */
   readonly embedImages: () => Promise<unknown>;
   /** Follow promoted stories' quotes back to where they started. See work/backfill.ts. */
@@ -684,6 +688,7 @@ export async function withRuntime<T>(
       const judge = buildJudge(cfg, meter, policy, log);
       /* The video and author fill-in's tries and day count, kept across passes for this process (work/post-refill.ts). */
       const refills = refillMemory();
+      const readingNotes = readingsMemory();
       /* Each poster's last profile re-read and the day's count (work/bio-refresh.ts). */
       const bioReads = bioRefreshMemory();
       /* The feed's translator and its table (work/translate-posts.ts), built once for the process. */
@@ -952,6 +957,21 @@ export async function withRuntime<T>(
             ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'middle-lane' })),
             uncredited: (ids) => repos.items.uncredited(ids),
           },
+          readings: () =>
+            readingsPass(
+              {
+                platforms,
+                readings: new PgReadingsRepo(db),
+                observations: repos.observations,
+                ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'readings-lane' })),
+                meter,
+                mode: cfg.spend.kind,
+                policy,
+                log: log.child({ step: 'readings' }),
+                now: () => Date.now() as Millis,
+              },
+              readingNotes,
+            ),
           embedImages: () =>
             embedImages({
               embed:

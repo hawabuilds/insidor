@@ -1300,6 +1300,59 @@ export interface FeedPolicy {
     readonly passDeadlineMs: number;
     readonly cap: LaneCapPolicy;
   };
+  /**
+   * ★ VIEW READINGS OFTEN ENOUGH FOR THE SHEET'S CHART: every post on For You is read again on a
+   * cadence set by its age, and a post whose sheet was just opened is read again when its newest
+   * reading is over `openReadMinGapMs` old (services/runner/src/work/readings.ts, its own loop).
+   * Every reading is appended to public.observation with the time the source gave it, as TRACK's are.
+   *
+   * Why its own loop and ledger, not a tier in TRACK: TRACK's grid is about which posts are worth
+   * money, and a loop that grew to read sixty posts a minute inside it would slow every other track
+   * decision; the runner has been broken twice by a loop that a new job slowed. Here a pass is bounded
+   * in time (`passDeadlineMs`) and money (`dailyUsd`, kept in internal.lane_spend as lane 'readings',
+   * so a restart does not hand it a fresh day), and stops while the live book has under
+   * `bookReserveUsd` left, so it never takes the last dollars discovery and the judge need. A post
+   * read here is not due for TRACK until its own tier comes round, so TRACK's reads of For You fall
+   * as this one's rise.
+   *
+   * A source whose re-read costs more than `maxUsdPerRead` a post (a scraper billed by the run, when
+   * the short-video source falls back to it) is not read here at all: at a minute's cadence a run
+   * per pass would cost more than the rest of the lane together. TRACK still reads it as before.
+   * What breaks if changed carelessly: a step list that is not in rising `underMs` order reads the
+   * first match, so a later, finer step would never apply.
+   */
+  readonly readings: {
+    readonly on: boolean;
+    /** The loop's own cadence; a post's step is met to within this and `dueSlackMs`. */
+    readonly everyMs: number;
+    /** The text source, and any source with no cadence of its own. */
+    readonly cadence: ReadingCadence;
+    /** The short-video source: each read is a paid credit, so its cadence is its own. */
+    readonly shortVideoCadence: ReadingCadence;
+    /** A reading this much short of a step still counts as due, so a one-minute step is not read every ninety seconds. */
+    readonly dueSlackMs: number;
+    /** A sheet opened with a reading younger than this asks for nothing. */
+    readonly openReadMinGapMs: number;
+    /** An open older than this, still unanswered, is dropped: the person has closed the sheet. */
+    readonly openAskMaxAgeMs: number;
+    /** At most this many opened posts read in one pass, over the ones For You's cadence owes. */
+    readonly openMaxPerPass: number;
+    /** At most this many posts read in one pass in all; the oldest-read go first. */
+    readonly maxPostsPerPass: number;
+    readonly maxUsdPerRead: number;
+    readonly passDeadlineMs: number;
+    readonly dailyUsd: number;
+    readonly bookReserveUsd: number;
+  };
+}
+
+/**
+ * How often a post on For You is read, by its age: the first step whose `underMs` the post is
+ * younger than gives its `everyMs`, and a post older than every step is read every `thenEveryMs`.
+ */
+export interface ReadingCadence {
+  readonly steps: readonly { readonly underMs: number; readonly everyMs: number }[];
+  readonly thenEveryMs: number;
 }
 
 /**
@@ -3557,6 +3610,52 @@ const POLICY_V1: Policy = {
          only when the supplier is slow or refusing. */
       passDeadlineMs: 180_000,
       cap: { dailyUsd: 6, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
+    },
+    /* OFF until the owner approves the cost (asked 2026-10-16: "show me the extra cost per day
+       before switching on; keep the day within ~$50").
+       Measured over the 48 hours to 2026-10-16 17:37 UTC from public.feed_post and public.item: For
+       You holds about 53 text posts and 9.5 short videos at a time. Post-minutes on For You a day,
+       text / short video: under 2 hours 4,878 / 762, 2 to 6 hours 25,130 / 4,053, over 6 hours
+       (posts still growing, up to a day) 46,047 / 8,820. TRACK read those posts 1,623 / 129 times a
+       day. A text read is $0.00015 an id asked (lookups bill every id); a short-video read is one
+       credit, $0.00188, on the second vendor.
+         The owner's cadence for both (1 min under 2h, 5 to 6h, 15 after): 12,974 text reads ($1.95,
+         +$1.70 over TRACK's) and 2,161 short-video credits ($4.06, +$3.82): +$5.52 a day, and
+         ~3,150 credits a day where the account spends ~1,120 now (about 1.9 days of 6,000).
+         The day was $46.20 in the 24 hours to then, so that is ~$51.70: over.
+         These values: the owner's cadence for text, 5 / 15 / 30 minutes for short video (717 credits,
+         $1.35, +$1.10): +$2.81 a day, ~$49 in all, ~1,700 credits a day (about 3.5 days of 6,000).
+         Opened sheets: no telemetry counts opens; at 500 a day each costs at most one read, ~$0.20.
+       The lane's cap is its gross reads ($3.30) and the opens, with a little room. Switching on also
+       wants budget.dailyUsd raised by about $3, since the live book ran ~$40 of its $40.50. */
+    readings: {
+      on: false,
+      everyMs: 30_000,
+      cadence: {
+        steps: [
+          { underMs: 7_200_000, everyMs: 60_000 }, // under 2 hours: every minute
+          { underMs: 21_600_000, everyMs: 300_000 }, // under 6 hours: every 5 minutes
+        ],
+        thenEveryMs: 900_000, // then every 15 minutes while on For You
+      },
+      shortVideoCadence: {
+        steps: [
+          { underMs: 7_200_000, everyMs: 300_000 },
+          { underMs: 21_600_000, everyMs: 900_000 },
+        ],
+        thenEveryMs: 1_800_000,
+      },
+      dueSlackMs: 10_000,
+      openReadMinGapMs: 60_000,
+      openAskMaxAgeMs: 180_000,
+      openMaxPerPass: 20,
+      /* 60 For You posts are all due at once only on a boot; more than that is a bug, not a pass. */
+      maxPostsPerPass: 120,
+      /* Over the second vendor's $0.00188 a credit; under the backup scraper's $0.003 a post plus $0.001 a run. */
+      maxUsdPerRead: 0.0025,
+      passDeadlineMs: 25_000,
+      dailyUsd: 3.75,
+      bookReserveUsd: 3,
     },
   },
 

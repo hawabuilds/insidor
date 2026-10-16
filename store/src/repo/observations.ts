@@ -14,7 +14,7 @@
  * a plausible number.
  */
 
-import { toStoredRate } from '@insidor/contracts';
+import { COUNTER_KINDS, toStoredRate } from '@insidor/contracts';
 import type { CensorReason, CounterKind, Fidelity, Millis, Observation, Rate } from '@insidor/contracts';
 import type { ItemId } from '@insidor/contracts/ids.ts';
 import type { ObservationRepo } from '@insidor/contracts/ports/store.ts';
@@ -169,6 +169,38 @@ export class PgObservationRepo implements ObservationRepo {
       [[...itemIds], toTimestamp(sinceMs)],
     );
 
+    for (const row of rows) {
+      const key = reBrand<ItemId>(row.item_id);
+      const list = found.get(key);
+      if (list === undefined) found.set(key, [toObservation(row)]);
+      else list.push(toObservation(row));
+    }
+    return found;
+  }
+
+  /**
+   * The newest reading of each counter on each item: the `previous` a fresh reading's rates are
+   * differenced against, without fetching a day of readings to keep only the last.
+   *
+   * For a loop that reads the same sixty posts every minute, `seriesForItems` over the rate
+   * window would return tens of thousands of rows a pass to use sixty times four of them.
+   */
+  async latestForItems(itemIds: readonly ItemId[]): Promise<ReadonlyMap<ItemId, readonly Observation[]>> {
+    const found = new Map<ItemId, Observation[]>();
+    if (itemIds.length === 0) return found;
+    /* One index probe per item and kind (the primary key, newest first), not a scan of every
+       reading: a post read every minute has thousands. */
+    const rows = await this.#db.query<ObservationRow>(
+      `select o.*
+         from unnest($1::text[]) as t(item_id)
+        cross join unnest($2::text[]) as k(kind)
+        cross join lateral (
+          ${SELECT_OBSERVATION}
+           where item_id = t.item_id and kind = k.kind
+           order by captured_at desc
+           limit 1) o`,
+      [[...itemIds], [...COUNTER_KINDS]],
+    );
     for (const row of rows) {
       const key = reBrand<ItemId>(row.item_id);
       const list = found.get(key);

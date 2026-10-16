@@ -39,6 +39,7 @@ import { missedLoop } from './loops/missed.ts';
 import { refillLoop } from './loops/refill.ts';
 import { findersLoop } from './loops/finders.ts';
 import { middleLoop } from './loops/middle.ts';
+import { readingsLoop } from './loops/readings.ts';
 import { groupLoop } from './loops/group.ts';
 import { qualifyLoop } from './loops/qualify.ts';
 import { rankLoop } from './loops/rank.ts';
@@ -213,6 +214,10 @@ async function main(): Promise<void> {
       /* Older feed posts' video files, read again on the posts line: its own loop so a post opened
          in the sheet with no playable file gets one within a minute (loops/refill.ts). */
       refillLoop(runtime.refillPosts),
+      /* For You's view readings and opened sheets (`feed.readings`, off until the owner approves the
+         cost): its own loop, deadline and daily cap, so it can never hold up discovery, the judge or
+         TRACK (loops/readings.ts). */
+      readingsLoop(runtime.loopDeps.policy.feed.readings.everyMs, runtime.readings),
       /* The ways to find a post besides the searches: a new coin's links within seconds of its
          launch, reposts, trend and learned words (loops/finders.ts). Every switch off: a pass does nothing. */
       findersLoop({
