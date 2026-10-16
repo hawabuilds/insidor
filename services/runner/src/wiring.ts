@@ -53,7 +53,7 @@ import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/st
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { jobVendorLines, supplierRoles, vendorLines } from './vendor-lines.ts';
 import { supplierWarnings } from './supplier-warnings.ts';
-import { billingAlerts } from './billing-alerts.ts';
+import { billingAlerts, SUPPLIER_NAMES } from './billing-alerts.ts';
 import { onOutOfCredit } from '@insidor/vendor-kit';
 import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
@@ -64,7 +64,7 @@ import { anthropicNamer } from '@insidor/judge-anthropic/name-guess.ts';
 import { anthropicTranslator } from '@insidor/judge-anthropic/translate.ts';
 import type { NamePort } from '@insidor/contracts/ports/names.ts';
 import { httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
-import { followLink, resolvePlatforms, SHORT_LINKS, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
+import { followLink, resolvePlatforms, SECOND_VIDEO_VENDOR, SHORT_LINKS, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
   DB_ROLE,
   PgAssetRepo,
@@ -119,6 +119,7 @@ import { coinLinksPass, type CoinLinkResult } from './work/coin-links.ts';
 import { repostsPass, type RepostResult } from './work/reposts.ts';
 import { searchWordClock, searchWordsPass, type SearchWordResult } from './work/search-words.ts';
 import { trendingFeedClock, trendingFeedPass, type TrendingFeedResult } from './work/trending-feed.ts';
+import { secondVendorWatch } from './second-vendor.ts';
 import { chainClient, fetchDeclaredMetadata, fetchMetadata } from '@insidor/venue-solana-pumpfun';
 import { dexscreenerSearch, dexscreenerStandings } from '@insidor/market-dexscreener';
 import { geckoterminal } from '@insidor/market-geckoterminal';
@@ -574,6 +575,17 @@ export async function withRuntime<T>(
         now: () => Date.now(),
       });
       onOutOfCredit({ refused: (e) => billing.refused(e), answered: (vendor) => billing.answered(vendor) });
+      /* ★ THE SHORT-VIDEO SOURCE'S SECOND VENDOR (second-vendor.ts): its route between it and the
+         backup set from policy before any adapter is built, the owner told of a switch and of a low
+         balance through the same queue, the balance checked each `balanceEveryMs`. */
+      const secondVendor = secondVendorWatch({
+        ...SECOND_VIDEO_VENDOR,
+        alerts: billing,
+        names: SUPPLIER_NAMES,
+        policy,
+        log: log.child({ step: 'second-vendor' }),
+      });
+      setInterval(() => secondVendor.checkBalance(Date.now()), policy.feed.secondVendor.balanceEveryMs).unref();
       log.info('supplier warnings', {
         at: policy.budget.warnAt,
         alert: cfg.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : 'queued for the owner',

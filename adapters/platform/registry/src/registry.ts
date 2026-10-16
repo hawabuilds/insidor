@@ -73,6 +73,10 @@ import {
   expandShortLink as tiktokExpandShortLink,
   FEED_KEY as TIKTOK_FEED_KEY,
   feedClient as tiktokFeedClient,
+  secondVendorClient as tiktokSecondVendorClient,
+  SECOND_VENDOR_ROUTE as TIKTOK_SECOND_VENDOR_ROUTE,
+  SC_VENDOR as TIKTOK_SECOND_VENDOR,
+  lastCreditReading as tiktokSecondVendorCredits,
   httpClient as tiktokHttpClient,
   tiktokPlatform,
 } from '@insidor/platform-tiktok';
@@ -96,6 +100,19 @@ import type { XAdapterDeps } from '@insidor/platform-x';
  * service, so that service's line is the `video` line while it is the only use of it.
  */
 export const SUPPLIER_VENDORS = { posts: X_VENDOR, video: TIKTOK_VENDOR } as const;
+
+/**
+ * The short-video source's second vendor, for the runner: its vendor token (for its line and its
+ * alerts), the process's route between it and the backup (configured once at boot from
+ * Policy.feed.secondVendor; unconfigured, nothing goes to it), and its balance as its last answer
+ * stated it. Here for the reason SUPPLIER_VENDORS is.
+ */
+export const SECOND_VIDEO_VENDOR = {
+  vendor: TIKTOK_SECOND_VENDOR,
+  backup: TIKTOK_VENDOR,
+  route: TIKTOK_SECOND_VENDOR_ROUTE,
+  credits: tiktokSecondVendorCredits,
+} as const;
 
 /**
  * The source whose posts carry shortened links worth following, and that short form as a regular
@@ -227,6 +244,8 @@ const BUILDERS = {
       client: tiktokHttpClient(tiktokClientConfig(values, runtime)),
       /* The recommendation feed's second vendor; null when its optional key is unset. */
       feed: tiktokFeedClient(env, runtime),
+      /* The same vendor's re-reads and creator pages, first when the route says so (Policy.feed.secondVendor). */
+      sc: tiktokSecondVendorClient(env, runtime),
       meter: runtime.meter,
       now: runtime.now,
       handleOf: (sourceItemId) => runtime.handles(TIKTOK_SOURCE, sourceItemId),

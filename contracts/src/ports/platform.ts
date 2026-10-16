@@ -270,6 +270,15 @@ export interface PlatformAdapter {
   estimateTrendingFeed?(ask: FeedAsk): CostEstimate;
 
   /**
+   * The posts that use one sound, one page, as the source orders them (not newest first): how a
+   * sound the coined posts shared is searched, since the word search takes words and a sound is an
+   * id (Policy.finders.sounds). `sound` is the format id the source's Items carry. Optional and paid,
+   * metered inside; old posts come back too, and what to credit is the caller's choice, by age.
+   */
+  soundPosts?(sound: string, budget: Budget): Promise<Metered<Discovered>>;
+  estimateSoundPosts?(sound: string): CostEstimate;
+
+  /**
    * A post's replies and reproductions, newest first, capped by `ask` — read for the facts in
    * core/src/qualify/attention.ts. Optional: a source that cannot read a post's conversation has
    * none to read, and its posts carry no such facts rather than empty ones. Priced per response

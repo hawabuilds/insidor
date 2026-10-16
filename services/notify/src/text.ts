@@ -246,6 +246,15 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const supplier = s(f['supplier'], 'A supplier');
       const uses = typeof f['uses'] === 'string' && f['uses'].trim() !== '' ? ` (${f['uses'].trim()})` : '';
       if (f['state'] === 'recovered') return { title: `${supplier} is answering again`, body: `${supplier}${uses} accepted a call again; work using it has resumed.` };
+      /* The short-video source's work moved to its backup vendor, and back (runner billing-alerts.ts `notice`). */
+      const backup = s(f['backup'], 'the backup supplier');
+      if (f['state'] === 'backup')
+        return { title: `${supplier} failing: switched to ${backup}`, body: `${supplier}${uses} failed: ${s(f['reason'], 'no answer')}. That work now runs on ${backup}, and ${supplier} is tried again${n(f['retryMinutes']) === null ? ' later' : ` every ${n(f['retryMinutes'])} minutes`}.` };
+      if (f['state'] === 'back') return { title: `Back on ${supplier}`, body: `${supplier}${uses} is answering again; that work has moved back from ${backup}.` };
+      if (f['state'] === 'low') {
+        const credits = n(f['credits']);
+        return { title: `${supplier} credits low`, body: `${credits === null ? 'Few' : credits.toLocaleString('en-US')} credits left${uses}. Top up its account; when they run out, that work moves to ${backup}.` };
+      }
       return {
         title: `${supplier} out of credit${uses}`,
         body: `${supplier} refused a call for billing: ${s(f['reason'], 'its account cannot pay')}. Top up its account; work using it is paused until then.`,
