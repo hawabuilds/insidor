@@ -222,7 +222,7 @@ function pictureUrlProblem(uri: string): string | null {
   }
 }
 
-export function openChatClient(config: OpenChatConfig): JudgeClient & { judge(request: JudgeRequest): Promise<OpenJudgeResponse> } {
+export function openChatClient(config: OpenChatConfig): JudgeClient & { judge(request: JudgeRequest): Promise<OpenJudgeResponse>; send(payload: Record<string, unknown>): Promise<unknown> } {
   const keyProblem = headerValueProblem(config.apiKey);
   if (keyProblem !== null) throw new OpenJudgeNotConfigured('the API key', keyProblem);
   const urlProblem = httpUrlProblem(config.baseUrl);
@@ -304,6 +304,9 @@ export function openChatClient(config: OpenChatConfig): JudgeClient & { judge(re
     async judge(request) {
       return decodeChatReply(await send((attempt) => buildChatBody({ ...config, providers: rotated(config.providers ?? [], attempt) }, request)));
     },
+    /* One chat body built by another question's file (questions.ts: names, translations, the
+       same-subject pictures), with this client's retries and error rules; the parsed reply. */
+    send,
     async frame(uri) {
       const size = config.pictureSize ?? null;
       if (size !== null) {

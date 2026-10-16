@@ -52,6 +52,8 @@ export { CHAT_ENDPOINT, DEFAULT_BASE_URL, DEFAULT_VENDOR, OpenJudgeNotConfigured
 export type { OpenChatConfig, OpenJudgeResponse } from './client.ts';
 export { accountCredits, closestModel, keyAllowance, listModels, parseModels } from './models.ts';
 export type { HostModel } from './models.ts';
+export { OPEN_NAMES_ENDPOINT, OPEN_PAIR_ENDPOINT, OPEN_TRANSLATE_ENDPOINT, chatBodyFromMessages, messagesReplyOf, openNamer, openSameSubject, openTranslator } from './questions.ts';
+export type { OpenAsk, OpenQuestionDeps, OpenSameSubject } from './questions.ts';
 export { DEFAULT_OPEN_MODEL, DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, OPEN_API_KEY, OPEN_BASE_URL, OPEN_MODEL, OPEN_PROVIDERS, isOpenJudgeId, openProviders, readOpenJudgeSetup } from './setup.ts';
 export type { OpenJudgeSetup } from './setup.ts';
 
@@ -82,12 +84,17 @@ export function fitPrecedents(batch: readonly JudgeSubject[], policy: JudgePolic
   return fitted;
 }
 
-/** The two questions the feed asks of a post. The narrative question is not measured here. */
-export type OpenQuestion = 'post' | 'kind';
+/**
+ * The two questions the feed asks of a post, and QUALIFY's question about a narrative (`story`,
+ * since 2026-10-16: the owner moved every question off the main judge). Each is the live judge's
+ * prompt files, exactly as its port assembles them.
+ */
+export type OpenQuestion = 'post' | 'kind' | 'story';
 
 const QUESTION: Readonly<Record<OpenQuestion, { readonly system: string; readonly instructions: string }>> = {
   post: { system: PROMPTS['post-system'].text, instructions: PROMPTS['post-coinability'].text },
   kind: { system: PROMPTS['post-veto-system'].text, instructions: PROMPTS['post-veto'].text },
+  story: { system: PROMPTS.system.text, instructions: `${PROMPTS['coinability-core'].text}\n\n${PROMPTS['subject-vs-story'].text}` },
 };
 
 /** The system prompt, the instructions (with the learned block after the post rules) and the precedents' intro, as the live judge sends them. */

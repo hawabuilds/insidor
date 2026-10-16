@@ -46,7 +46,8 @@ export interface NameGuess {
 }
 
 export type NameOutcome =
-  | { readonly kind: 'guessed'; readonly ref: string; readonly guesses: readonly NameGuess[]; readonly seen: string | null }
+  /** `model`: the model that answered, when a pair of namers stands behind one port (one may answer for the other); absent: the port's own. */
+  | { readonly kind: 'guessed'; readonly ref: string; readonly guesses: readonly NameGuess[]; readonly seen: string | null; readonly model?: string }
   /** No usable answer for this post: the call failed, was refused, or did not parse. Not "no names". */
   | { readonly kind: 'absent'; readonly ref: string; readonly detail: string };
 
