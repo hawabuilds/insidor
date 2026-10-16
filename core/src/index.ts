@@ -66,6 +66,7 @@ export { closestNot, embedInput, heldAsNotMeme, nearestLabelled, ownSourceFirst,
 export type { HeldKind, NeverShownKind, NewsKind } from './qualify/kinds.ts';
 export type { CryptoSignal, PassRoute, PostScoreReason } from './qualify/post-score.ts';
 export { clearsReachBar } from './qualify/reach-bar.ts';
+export { coinVouches, type CoinVouchFacts } from './qualify/coin-vouch.ts';
 export { junkProbability, junkVerdict } from './qualify/junk-filter.ts';
 export type { JunkFit, JunkVerdict } from './qualify/junk-filter.ts';
 export type { ReachBar, ReachLevel } from './qualify/reach-bar.ts';
