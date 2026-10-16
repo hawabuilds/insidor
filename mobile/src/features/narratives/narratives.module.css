@@ -1,111 +1,179 @@
+/* The Narratives tab in the owner's design values of 2026-10-17: page #0B0B0E, cards #111116 with
+   a 1px #1F1E26 border, the chosen chip #241A3A with #E4D6FF text, labels #8B8794, gains #2FD47A,
+   purple #9945FF only for Buy. */
+
 .screen {
-  padding-bottom: var(--tabbar-space);
+  min-height: 100vh;
+  background: #0b0b0e;
+  color: #f4eeff;
+  padding-bottom: calc(var(--tabbar-space) + 8px);
 }
 
 .header {
-  padding: 22px var(--gutter) 4px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: calc(var(--safe-top) + 40px) var(--gutter) 0;
+}
+
+.live {
+  padding-bottom: 6px;
+  color: #8b8794;
+  font-size: 14px;
 }
 
 .header h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.03em;
 }
 
-.header p {
-  margin: 4px 0 0;
-  font-size: 14px;
-  color: var(--text-3);
-}
-
-.controls {
+.chips {
   display: flex;
-  gap: 10px;
-  padding: 16px var(--gutter) 12px;
-  border-bottom: 1px solid var(--border-subtle);
+  gap: 8px;
+  padding: 14px var(--gutter) 14px;
 }
 
-.filter {
-  flex: none;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--r-control);
-  display: grid;
-  place-items: center;
-  background: var(--card);
-  color: var(--text-2);
-}
-
-.segments {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 4px;
-  border-radius: var(--r-control);
-  background: var(--card);
-}
-
-.segment {
-  border-radius: 11px;
-  font-size: 15px;
+.chip {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: transparent;
+  color: #8b8794;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-3);
 }
 
-.segmentOn {
-  background: var(--input);
-  color: var(--text-1);
-  font-weight: 700;
-  box-shadow: inset 0 0 0 1px var(--border-subtle), 0 6px 16px -8px var(--brand-glow);
-}
-
-/* Why the list is not in last-hour order, when it cannot be. */
-.orderNote {
-  margin: 4px var(--gutter) 12px;
-  color: var(--text-3);
-  font-size: 12.5px;
-  line-height: 1.4;
-}
-
-/* "+12K last hour" after the posts line: the row's growth, in the up colour only when known. */
-.gain {
-  margin-left: 6px;
-  color: var(--up);
-  font-weight: 700;
-}
-
-.gainDown {
-  margin-left: 6px;
-  color: var(--down);
-  font-weight: 700;
+.chipOn {
+  background: #241a3a;
+  color: #e4d6ff;
 }
 
 .empty {
-  margin: 28px var(--gutter);
-  color: var(--text-3);
+  padding: 24px var(--gutter);
+  color: #8b8794;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 16px;
+}
+
+.card {
+  display: block;
+  padding: 14px;
+  border: 1px solid #1f1e26;
+  border-radius: 18px;
+  background: #111116;
+  cursor: pointer;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.sub {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  color: #8b8794;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.spark {
+  display: block;
+  flex: none;
+  align-self: flex-start;
+  overflow: visible;
+}
+
+.hour {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 14px;
+  color: #8b8794;
+  font-size: 13px;
+}
+
+.hour b {
+  font-size: 16px;
+}
+
+.up {
+  color: #2fd47a;
+}
+
+.down {
+  color: var(--down);
+}
+
+.coin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  margin-top: 12px;
+}
+
+.ticker {
+  font-size: 15px;
+}
+
+.coinSub {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8b8794;
+  font-size: 13px;
+}
+
+.coinNone {
+  flex: 1;
+  color: #8b8794;
   font-size: 14px;
 }
 
-/* The stage's word before the posts line. A label, not a status dot: words only, one colour each. */
-.stage {
-  display: inline-block;
-  margin-right: 6px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 11px;
+.buy,
+.create {
+  flex: none;
+  min-width: 62px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.02em;
-  background: var(--card);
-  color: var(--text-2);
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
 
-.stage_forming {
-  color: var(--text-1);
+.buy {
+  background: #9945ff;
+  color: #fff;
 }
 
-.stage_big {
-  color: var(--text-1);
-  box-shadow: inset 0 0 0 1px var(--brand-glow);
+.create {
+  background: #16151b;
+  color: #f4eeff;
 }
