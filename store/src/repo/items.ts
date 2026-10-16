@@ -150,6 +150,21 @@ export class PgItemRepo implements ItemRepo {
   }
 
   /**
+   * How many of these posts no lane has found yet (no `item_found_by` row): the ones a lane about
+   * to store them would be first to find, and so the ones whose judging it brings in. Asked before
+   * the store, which writes the rows. A capped lane charges itself that judging (0088).
+   */
+  async uncredited(itemIds: readonly ItemId[]): Promise<number> {
+    if (itemIds.length === 0) return 0;
+    const rows = await this.#db.query<{ n: string }>(
+      `select count(*)::text as n from unnest($1::text[]) as id
+        where not exists (select 1 from internal.item_found_by f where f.item_id = id)`,
+      [[...new Set(itemIds)]],
+    );
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  /**
    * Catch-all posts the judge has not scored yet, newest first — the queue the per-post
    * score works through. Observed posts only: a seeded post is never sent to a paid judge.
    *
