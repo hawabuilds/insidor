@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import type { PushMessage, PushSender } from '@insidor/contracts/ports/people.ts';
 
-import { alarmMemory, checkAlarms, databaseReading, DB_UNREADABLE_MS, fypReading, FYP_SILENT_MS, judgeReading, JUDGE_MIN_CALLS, stepAlarms, streamReading, STREAM_SILENT_MS, type Tracked } from './alarm.ts';
+import { alarmMemory, allJudgesReading, backupReading, BACKUP_MIN_CALLS, checkAlarms, databaseReading, DB_UNREADABLE_MS, fypReading, FYP_SILENT_MS, judgeReading, JUDGE_MIN_CALLS, stepAlarms, streamReading, STREAM_SILENT_MS, type Tracked } from './alarm.ts';
 import type { Db } from './deliver.ts';
 import { alertText } from './text.ts';
 
@@ -31,28 +31,28 @@ test('For You with no post ever shown makes no claim either way', () => {
   assert.equal(fypReading(null, T0), null);
 });
 
-test('★ judge: asked and none paid is down; a quiet judge (no calls) never is; calls stopping is not "back"', () => {
+test('★ judge: asked and nothing answered is down; a quiet judge (no calls) never is; calls stopping is not "back"', () => {
   const lastPaid = T0 - 1 * MIN;
-  assert.equal(judgeReading({ calls: 0, paid: 0, lastPaidMs: lastPaid }).down, false, 'quiet: nothing asked');
-  assert.equal(judgeReading({ calls: JUDGE_MIN_CALLS - 1, paid: 0, lastPaidMs: lastPaid }).down, false, 'too few to say');
-  assert.equal(judgeReading({ calls: 40, paid: 3, lastPaidMs: lastPaid }).down, false, 'some refused, some paid: working');
+  assert.equal(judgeReading({ calls: 0, answered: 0, lastAnsweredMs: lastPaid }).down, false, 'quiet: nothing asked');
+  assert.equal(judgeReading({ calls: JUDGE_MIN_CALLS - 1, answered: 0, lastAnsweredMs: lastPaid }).down, false, 'too few to say');
+  assert.equal(judgeReading({ calls: 40, answered: 3, lastAnsweredMs: lastPaid }).down, false, 'some refused, some answered: working');
 
   let tracked: Tracked = new Map();
-  const pass = (r: { calls: number; paid: number; lastPaidMs: number | null }, now: number) => {
+  const pass = (r: { calls: number; answered: number; lastAnsweredMs: number | null }, now: number) => {
     const s = stepAlarms(tracked, [judgeReading(r)], now);
     tracked = s.next;
     return s.events.map((e) => [e.state, e.subject, e.facts['minutes'] ?? null]);
   };
-  assert.deepEqual(pass({ calls: 81, paid: 0, lastPaidMs: lastPaid }, T0 + 15 * MIN), [['down', 'judge|2026-10-15T22:18:00.000Z', null]]);
-  assert.deepEqual(pass({ calls: 250, paid: 0, lastPaidMs: lastPaid }, T0 + 60 * MIN), []);
+  assert.deepEqual(pass({ calls: 81, answered: 0, lastAnsweredMs: lastPaid }, T0 + 15 * MIN), [['down', 'judge|2026-10-15T22:18:00.000Z', null]]);
+  assert.deepEqual(pass({ calls: 250, answered: 0, lastAnsweredMs: lastPaid }, T0 + 60 * MIN), []);
   /* The runner dies mid-outage: no calls at all. Still down, and no "back". */
-  assert.deepEqual(pass({ calls: 0, paid: 0, lastPaidMs: lastPaid }, T0 + 70 * MIN), []);
+  assert.deepEqual(pass({ calls: 0, answered: 0, lastAnsweredMs: lastPaid }, T0 + 70 * MIN), []);
   /* The look-back loses the last paid call (an outage over a day): still no "back". */
-  assert.deepEqual(pass({ calls: 0, paid: 0, lastPaidMs: null }, T0 + 25 * 60 * MIN), []);
+  assert.deepEqual(pass({ calls: 0, answered: 0, lastAnsweredMs: null }, T0 + 25 * 60 * MIN), []);
   /* A paid call: back, once, with how long since the last paid one. */
   const paidAgain = T0 + 25 * 60 * MIN + 2 * MIN;
-  assert.deepEqual(pass({ calls: 12, paid: 4, lastPaidMs: paidAgain }, paidAgain + MIN), [['back', 'judge|back|2026-10-15T22:18:00.000Z', 1504]]);
-  assert.deepEqual(pass({ calls: 12, paid: 4, lastPaidMs: paidAgain }, paidAgain + 2 * MIN), []);
+  assert.deepEqual(pass({ calls: 12, answered: 4, lastAnsweredMs: paidAgain }, paidAgain + MIN), [['back', 'judge|back|2026-10-15T22:18:00.000Z', 1504]]);
+  assert.deepEqual(pass({ calls: 12, answered: 4, lastAnsweredMs: paidAgain }, paidAgain + 2 * MIN), []);
 });
 
 test('coin stream: down after 15 minutes with no watched window, back on a newer one (Thursday: 07:13 to 01:01)', () => {
@@ -92,8 +92,8 @@ test("the pushes read in the owner's plain words", () => {
   });
   assert.deepEqual(alertText('outage', { what: 'fyp', state: 'back', minutes: 130 }), { title: 'For You has new posts again', body: 'A new post reached For You after 2h without one.' });
   assert.deepEqual(alertText('outage', { what: 'judge', state: 'down', calls: 81, windowMinutes: 15, lastAt: '2026-10-15T22:17:44.000Z' }), {
-    title: 'Judge spend is $0',
-    body: 'The judge was asked 81 times in the last 15 minutes and none was paid for: its supplier is refusing the calls. New posts are not judged until it answers. Last paid call 22:17 UTC.',
+    title: 'The judge has stopped answering',
+    body: 'The judge was asked 81 times in the last 15 minutes and no supplier answered a post. New posts are not judged until one answers. Last answer 22:17 UTC.',
   });
   assert.deepEqual(alertText('outage', { what: 'database', state: 'down', minutes: 10 }).title, 'Insidor cannot read its database');
 });
@@ -103,11 +103,11 @@ test("the pushes read in the owner's plain words", () => {
 interface Fake {
   db: Db;
   queued: { userId: string; kind: string; subject: string }[];
-  set: (s: Partial<{ lastShown: number | null; calls: number; paid: number; lastPaid: number | null; fail: boolean; before0087: boolean }>) => void;
+  set: (s: Partial<{ lastShown: number | null; calls: number; paid: number; lastPaid: number | null; backupCalls: number; backupAnswered: number; backupLast: number | null; fail: boolean; before0087: boolean; before0092: boolean }>) => void;
 }
 
 function fake(): Fake {
-  let st = { lastShown: T0 as number | null, calls: 30, paid: 30, lastPaid: T0 as number | null, fail: false, before0087: false };
+  let st = { lastShown: T0 as number | null, calls: 30, paid: 30, lastPaid: T0 as number | null, backupCalls: 0, backupAnswered: 0, backupLast: null as number | null, fail: false, before0087: false, before0092: false };
   const queued: Fake['queued'] = [];
   const db: Db = {
     async query<R>(sql: string, params?: readonly unknown[]): Promise<R[]> {
@@ -119,6 +119,14 @@ function fake(): Fake {
       if (sql.includes('coin_stream_read_at')) {
         if (st.before0087) throw Object.assign(new Error('function does not exist'), { code: '42883' });
         return [{ at: null }] as R[];
+      }
+      if (sql.includes('internal.judge_lines')) {
+        if (st.before0087 || st.before0092) throw Object.assign(new Error('function does not exist'), { code: '42883' });
+        const at = (ms: number | null) => (ms === null ? null : new Date(ms));
+        return [
+          { vendor: 'anthropic', calls: st.calls, answered: st.paid, last_answered_at: at(st.lastPaid) },
+          { vendor: 'openrouter', calls: st.backupCalls, answered: st.backupAnswered, last_answered_at: at(st.backupLast) },
+        ] as R[];
       }
       if (sql.includes('internal.judge_pay')) {
         if (st.before0087) throw Object.assign(new Error('function does not exist'), { code: '42883' });
@@ -146,7 +154,7 @@ test('★ Thursday night replayed through the pass: one push each way per condit
   const p = pushes();
   let now = T0;
   const mem = alarmMemory();
-  const deps = { db: f.db, now: () => now, ownerWallets: ['OwnerWa11et'], push: p.sender, ttlS: 60, log: () => undefined };
+  const deps = { db: f.db, now: () => now, ownerWallets: ['OwnerWa11et'], primaryJudgeVendor: 'anthropic', push: p.sender, ttlS: 60, log: () => undefined };
 
   await checkAlarms(deps, mem);
   assert.equal(f.queued.length, 0, 'healthy: nothing');
@@ -180,7 +188,7 @@ test('★ a restart mid-outage queues the same subject again, so the claim drops
   const f = fake();
   const p = pushes();
   f.set({ lastShown: T0 });
-  const deps = { db: f.db, now: () => T0 + 50 * MIN, ownerWallets: ['w'], push: p.sender, ttlS: 60, log: () => undefined };
+  const deps = { db: f.db, now: () => T0 + 50 * MIN, ownerWallets: ['w'], primaryJudgeVendor: 'anthropic', push: p.sender, ttlS: 60, log: () => undefined };
   await checkAlarms(deps, alarmMemory());
   await checkAlarms(deps, alarmMemory());
   assert.equal(f.queued.length, 2);
@@ -192,7 +200,7 @@ test('★ the database unreadable: pushed straight to the devices last read, onc
   const p = pushes();
   let now = T0;
   const mem = alarmMemory();
-  const deps = { db: f.db, now: () => now, ownerWallets: ['w'], push: p.sender, ttlS: 60, log: () => undefined };
+  const deps = { db: f.db, now: () => now, ownerWallets: ['w'], primaryJudgeVendor: 'anthropic', push: p.sender, ttlS: 60, log: () => undefined };
   await checkAlarms(deps, mem);
   f.set({ fail: true });
   for (let m = 1; m <= 30; m += 1) {
@@ -214,13 +222,73 @@ test('before migration 0087: every read is skipped, and that is not the database
   const mem = alarmMemory();
   const lines: string[] = [];
   for (let m = 0; m < 30; m += 1) {
-    await checkAlarms({ db: f.db, now: () => T0 + m * MIN, ownerWallets: ['w'], push: p.sender, ttlS: 60, log: (_l, msg) => void lines.push(msg) }, mem);
+    await checkAlarms({ db: f.db, now: () => T0 + m * MIN, ownerWallets: ['w'], primaryJudgeVendor: 'anthropic', push: p.sender, ttlS: 60, log: (_l, msg) => void lines.push(msg) }, mem);
   }
   assert.equal(f.queued.length + p.sent.length, 0);
   assert.equal(mem.failingSince, null);
-  assert.equal(lines.filter((l) => l.includes('not available yet')).length, 3, 'each said once');
+  assert.equal(lines.filter((l) => l.includes('not available yet')).length, 4, 'each said once: fyp, judge_lines, judge_pay, stream');
 });
 
 test('FYP_SILENT_MS is the owner\'s 45 minutes', () => {
   assert.equal(FYP_SILENT_MS, 45 * MIN);
+});
+
+/* ── the judge by answers, every supplier, and the backup (0092) ── */
+
+test('★ the judge by every supplier: the main judge failing while the backup answers is no alarm; neither answering is', () => {
+  const at = T0 - MIN;
+  const lines = (main: [number, number], other: [number, number]) => [
+    { vendor: 'anthropic', calls: main[0], answered: main[1], lastAnsweredMs: main[1] > 0 ? T0 : at },
+    { vendor: 'openrouter', calls: other[0], answered: other[1], lastAnsweredMs: other[1] > 0 ? T0 : null },
+  ];
+  /* Friday 19:30 UTC as it was: the main judge called and answering nothing, the open model answering. */
+  assert.equal(allJudgesReading(lines([57, 0], [12, 72])).down, false);
+  assert.equal(backupReading(lines([57, 0], [12, 72]), 'anthropic').down, false);
+  /* Both failing: the judge is down, and the backup failed too. */
+  assert.equal(allJudgesReading(lines([40, 0], [20, 0])).down, true);
+  assert.equal(backupReading(lines([40, 0], [20, 0]), 'anthropic').down, true);
+  /* The backup not asked (the main judge fine): no claim about it. */
+  assert.equal(backupReading(lines([40, 300], [0, 0]), 'anthropic').down, false);
+  assert.equal(backupReading(lines([0, 0], [BACKUP_MIN_CALLS - 1, 0]), 'anthropic').down, false, 'too few to say');
+  /* Whichever is primary: with the open model primary, the Anthropic judge is the backup. */
+  assert.equal(backupReading(lines([40, 0], [20, 90]), 'openrouter').down, true);
+});
+
+test('★ through the pass: the backup failing too pushes once, and once when it answers again', async () => {
+  const f = fake();
+  const p = pushes();
+  let now = T0;
+  const mem = alarmMemory();
+  const deps = { db: f.db, now: () => now, ownerWallets: ['w'], primaryJudgeVendor: 'anthropic', push: p.sender, ttlS: 60, log: () => undefined };
+  f.set({ lastShown: null });
+  /* The main judge refused; the backup answering, then failing too. */
+  f.set({ calls: 40, paid: 0, lastPaid: T0 - 30 * MIN, backupCalls: 20, backupAnswered: 50, backupLast: T0 });
+  await checkAlarms(deps, mem);
+  assert.deepEqual(f.queued.map((q) => q.subject), [], 'backup answering: nothing');
+  f.set({ backupAnswered: 0 });
+  for (let m = 1; m <= 10; m += 1) {
+    now = T0 + m * MIN;
+    await checkAlarms(deps, mem);
+  }
+  /* The judge's mark is the last answer from any supplier: the backup's, at 22:19. */
+  assert.deepEqual(f.queued.map((q) => q.subject), ['judge|2026-10-15T22:19:00.000Z', 'backup|2026-10-15T22:19:00.000Z']);
+  f.set({ backupAnswered: 8, backupLast: now });
+  now += MIN;
+  await checkAlarms(deps, mem);
+  assert.deepEqual(f.queued.slice(2).map((q) => q.subject), ['judge|back|2026-10-15T22:19:00.000Z', 'backup|back|2026-10-15T22:19:00.000Z']);
+  assert.deepEqual(alertText('outage', { what: 'backup', state: 'down', calls: 20, windowMinutes: 15, lastAt: '2026-10-15T22:19:00.000Z' }), {
+    title: 'The backup judge failed too',
+    body: 'The main judge is failing, and the backup was asked 20 times in the last 15 minutes and answered no post. Posts the main judge cannot answer are not judged. Last answer 22:19 UTC.',
+  });
+});
+
+test('before 0092 the judge is read from 0087 (paid calls), and there is no backup reading', async () => {
+  const f = fake();
+  const p = pushes();
+  const logs: string[] = [];
+  f.set({ before0092: true, lastShown: null, calls: 81, paid: 0, lastPaid: T0 - MIN });
+  const deps = { db: f.db, now: () => T0 + 15 * MIN, ownerWallets: ['w'], primaryJudgeVendor: 'anthropic', push: p.sender, ttlS: 60, log: (_l: string, m: string) => void logs.push(m) };
+  await checkAlarms(deps, alarmMemory());
+  assert.deepEqual(f.queued.map((q) => q.subject), ['judge|2026-10-15T22:18:00.000Z']);
+  assert.ok(logs.some((m) => m.includes('not available yet')));
 });

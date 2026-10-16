@@ -19,7 +19,7 @@
  * account to top up. The reason is the adapter's own short phrase, never the vendor's text.
  *
  * An outage alarm (alarm.ts) says what stopped as what was seen — For You took no new post for so
- * long, the judge was asked so many times and none was paid for, the live coin stream stopped, the
+ * long, the judge (or its backup) was asked so many times and answered no post, the live coin stream stopped, the
  * database could not be read — and, once, that it is back and after how long. No vendor is named: the supplier account alert
  * already names the account, and this one is about the pipeline standing still. The owner's
  * Not-a-meme alarm (junk.ts) rides the same kind and says his own taps as counts: so many of the
@@ -279,14 +279,19 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
         if (back) return { title: 'For You has new posts again', body: long === null ? 'A new post reached For You again.' : `A new post reached For You after ${long} without one.` };
         return { title: `For You has had no new post for ${long ?? 'a while'}`, body: `Nothing new has reached For You${at === null ? '' : ` since ${at}`}. Posts are not being found, judged or shown.` };
       }
-      if (f['what'] === 'judge') {
-        if (back) return { title: 'The judge is paid for again', body: long === null ? 'A judge call was paid for again.' : `A judge call was paid for again after ${long}.` };
+      if (f['what'] === 'judge' || f['what'] === 'backup') {
+        /* alarm.ts: asked and no post answered, by every judge supplier together, or by the backup. */
+        const backup = f['what'] === 'backup';
         const calls = n(f['calls']);
         const window = n(f['windowMinutes']);
-        return {
-          title: 'Judge spend is $0',
-          body: `${calls === null ? 'The judge was asked' : `The judge was asked ${calls} times`}${window === null ? ' lately' : ` in the last ${window} minutes`} and none was paid for: its supplier is refusing the calls. New posts are not judged until it answers.${at === null ? '' : ` Last paid call ${at}.`}`,
-        };
+        const asked = `${calls === null ? 'was asked' : `was asked ${calls} times`}${window === null ? ' lately' : ` in the last ${window} minutes`}`;
+        const last = at === null ? '' : ` Last answer ${at}.`;
+        if (backup) {
+          if (back) return { title: 'The backup judge answers again', body: long === null ? 'The backup judge answered a post again.' : `The backup judge answered a post again after ${long}.` };
+          return { title: 'The backup judge failed too', body: `The main judge is failing, and the backup ${asked} and answered no post. Posts the main judge cannot answer are not judged.${last}` };
+        }
+        if (back) return { title: 'The judge answers again', body: long === null ? 'A post was judged again.' : `A post was judged again after ${long}.` };
+        return { title: 'The judge has stopped answering', body: `The judge ${asked} and no supplier answered a post. New posts are not judged until one answers.${last}` };
       }
       if (f['what'] === 'stream') {
         if (back) return { title: 'The live coin stream is back', body: long === null ? 'New coins are read from the live stream again.' : `New coins are read from the live stream again after ${long}.` };
