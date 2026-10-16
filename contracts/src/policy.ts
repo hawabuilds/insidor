@@ -718,6 +718,22 @@ export interface JudgePolicy {
    * block's, it only ever raises the policy's own bars (core `withJudgeCutoff`), never lowers them.
    */
   readonly openCutoff: number | null;
+  /**
+   * ★ THE FEED NEVER WAITS ON ONE SUPPLIER (the owner, 2026-10-16: "if it errors, is slow, or runs
+   * out of credit, the other takes over straight away, and the other way round too"). A batch the
+   * primary judge fails — an error, no answer for any post, a billing refusal, or no reply within
+   * `deadlineMs` — is asked of the other judge at once, and the primary rests for `coolDownMs`
+   * (`creditCoolDownMs` after a billing refusal, which a person has to fix) before it is tried
+   * again; while it rests the other answers every batch. `deadlineMs` is the whole batch's wall
+   * clock, retries included: the open model's slowest tenth of calls took about 7.7 s a post, 77 s
+   * for ten, on 2026-10-15. Off: the primary alone, as before.
+   */
+  readonly failover: {
+    readonly on: boolean;
+    readonly deadlineMs: number;
+    readonly coolDownMs: number;
+    readonly creditCoolDownMs: number;
+  };
 }
 
 /* ── RESOLVE ──────────────────────────────────────────────────────────── */
@@ -3269,6 +3285,11 @@ const POLICY_V1: Policy = {
     /* The live judge stays first until the owner's evening switch, with the open model behind it. */
     primary: 'main',
     openCutoff: null,
+    /* 90 s: above the open model's slowest tenth of ten-post calls (77 s, 2026-10-15) and far above
+       the live judge's (about 8 s), so a slow but working call is not taken for a dead one. Five
+       minutes' rest is a few scoring passes; half an hour after a billing refusal, which waits for
+       a person, so the empty account is asked twice an hour, enough to see it topped up. */
+    failover: { on: true, deadlineMs: 90_000, coolDownMs: 300_000, creditCoolDownMs: 1_800_000 },
   },
 
   resolve: {

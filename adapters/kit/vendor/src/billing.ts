@@ -30,13 +30,19 @@
 
 import { VendorUnavailable } from './errors.ts';
 
+/**
+ * The words every billing refusal's message carries, whoever caught it: a caller that kept only the
+ * message (the judge's per-post `unavailable` detail) can still tell an empty account from an outage.
+ */
+export const BILLING_REFUSAL = 'refused for billing';
+
 /** The vendor refused the call because its account cannot pay for it. Not retried, not a shape error. */
 export class OutOfCredit extends VendorUnavailable {
   /** A short, fixed, secret-free reason the client chose: "credit balance too low", "monthly usage limit reached". */
   readonly reason: string;
 
   constructor(vendor: string, endpoint: string, reason: string, status?: number) {
-    super(vendor, endpoint, `refused for billing: ${reason}`, status);
+    super(vendor, endpoint, `${BILLING_REFUSAL}: ${reason}`, status);
     this.name = 'OutOfCredit';
     this.reason = reason;
   }

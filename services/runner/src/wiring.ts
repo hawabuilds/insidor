@@ -61,6 +61,7 @@ import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/mete
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { openChatClient, openJudge, type HostModel, type OpenQuestion } from '@insidor/judge-openai-compatible';
 import { describeRoles, openHostModel, rolesFor, type JudgeRole } from './feed-judges.ts';
+import { failoverJudge, failoverState } from './judge-failover.ts';
 import { openDurableMeter } from '@insidor/meter';
 import { anthropicNamer } from '@insidor/judge-anthropic/name-guess.ts';
 import { anthropicTranslator } from '@insidor/judge-anthropic/translate.ts';
@@ -707,8 +708,18 @@ export async function withRuntime<T>(
         role === 'open'
           ? buildOpenJudge(cfg, openModel, meter, policy, policy.judge.postBatchMaxOutputTokens, 'kind')
           : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'kind');
-      /* The post judge for one learned block: the primary role's, the main judge's when that cannot be built. */
-      const livePostJudge = (examples: string | null): JudgePort | null => postJudgeAs(roles.primary, examples) ?? postJudgeAs('main', examples);
+      /* ★ FAILOVER (judge-failover.ts, Policy.judge.failover): a batch the primary fails — an error, a
+         billing refusal, no reply in time — is answered by the other judge at once, and the primary
+         rests before it is asked again. One memory for both questions: one supplier serves both. */
+      const failover = failoverState();
+      const failoverLog = log.child({ step: 'judge-failover' });
+      const withFallback = (primary: JudgePort | null, fallback: JudgePort | null, question: string): JudgePort | null =>
+        primary === null
+          ? fallback
+          : failoverJudge({ primary, fallback, state: failover, policy: policy.judge.failover, names: { primary: roles.primary, fallback: roles.other ?? 'none' }, question, log: failoverLog, now: () => Date.now() });
+      /* The post judge for one learned block: the primary role's with the other behind it. */
+      const livePostJudge = (examples: string | null): JudgePort | null =>
+        withFallback(postJudgeAs(roles.primary, examples), roles.other === null ? null : postJudgeAs(roles.other, examples), 'post');
       const learning = new PgLearningRepo(db);
       const learned =
         mainPostJudge === null
@@ -725,7 +736,7 @@ export async function withRuntime<T>(
       const postJudge = learned?.port ?? null;
       /* The feed's second question — which kind of post — asked only of posts the first passed;
          see `kindJudge` in work/score-posts.ts. The primary role's model, its own prompt set and hash. */
-      const kindJudge = kindJudgeAs(roles.primary) ?? kindJudgeAs('main');
+      const kindJudge = withFallback(kindJudgeAs(roles.primary), roles.other === null ? null : kindJudgeAs(roles.other), 'kind');
       /* The labels and vectors behind the precedents and the not-a-meme hold, kept for the process. */
       const precedents =
         cfg.embeddings.state === 'configured'

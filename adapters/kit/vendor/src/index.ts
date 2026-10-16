@@ -29,7 +29,7 @@
 export { rec, str, num, int, bool, arr, missing, secondsToMillis, dateToMillis } from './read.ts';
 export type { Rec } from './read.ts';
 export { NotImplemented, VendorUnavailable, VendorShapeError, BudgetRefused } from './errors.ts';
-export { OutOfCredit, outOfCredit, onOutOfCredit, vendorAnswered, isOutOfCredit } from './billing.ts';
+export { BILLING_REFUSAL, OutOfCredit, outOfCredit, onOutOfCredit, vendorAnswered, isOutOfCredit } from './billing.ts';
 export type { BillingListener } from './billing.ts';
 export { discovered } from './discovered.ts';
 export { readCredentials, credentialVariables } from './credentials.ts';
