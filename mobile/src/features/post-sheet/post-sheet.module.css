@@ -290,16 +290,19 @@
 
 .tags {
   display: flex;
-  gap: 6px;
+  align-items: flex-end;
+  gap: 4px;
   padding-bottom: 4px;
 }
 
 .tag,
-.tagFound {
-  padding: 6px 11px;
+.tagFound,
+.tagUp,
+.tagDown {
+  padding: 4px 7px;
   border-radius: 999px;
   background: var(--sheet-chip);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -307,6 +310,30 @@
 .tagFound {
   background: rgb(153 69 255 / 22%);
   color: var(--sheet-text);
+}
+
+.tagUp {
+  background: var(--up-wash);
+  color: var(--up);
+}
+
+.tagDown {
+  background: var(--down-wash);
+  color: var(--down);
+}
+
+/* Per minute: the pill, and over it the span it is measured over ("last 9m"). */
+.rate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.rateOver {
+  color: var(--sheet-label);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 /* ── chart (ViewsChart.tsx) ────────────────────────────────────────── */

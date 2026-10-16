@@ -27,7 +27,7 @@
  * which renders this sheet knowing nothing else about the post.
  */
 
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ReadError, fetchPostSheet, type PostSheetData, type SheetCoin } from '../../shared/api/index.ts';
 import { evidenceFacts } from '../../shared/coin-status.ts';
@@ -55,6 +55,7 @@ import { tiktokVideoId } from './tiktok-player.ts';
 import { OpenIcon } from './sheet-icons.tsx';
 import { coinTag, firstCoinAfter, followersText, foundTag, gainText, provenWhy, recentGain } from './sheet-view.ts';
 import { ViewsChart } from './ViewsChart.tsx';
+import { perMinute } from './views-chart.ts';
 import styles from './post-sheet.module.css';
 
 export interface PostSheetProps {
@@ -196,6 +197,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   const readings = data.views.length > 0 ? data.views : post.spark.points.map((p) => ({ atMs: p.atMs, value: p.value }));
   const gain = recentGain(readings);
   const firstCoin = firstCoinAfter(post.postedAt, data.coins.map((c) => c.launchedAt));
+  const rate = useMemo(() => perMinute(readings, now), [readings, now]);
   const found = foundTag(post.postedAt, data.foundAt);
   const coinAt = coinTag(post.postedAt, firstCoin);
   const media = data.media !== null && !mediaGone ? data.media : null;
@@ -258,6 +260,13 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
             <span className={styles['tags']}>
               {found !== null ? <span className={styles['tagFound']}>{found}</span> : null}
               {coinAt !== null ? <span className={styles['tag']}>{coinAt}</span> : null}
+              {/* Per minute, with the span it is measured over above it (views-chart.ts perMinute). */}
+              {rate !== null ? (
+                <span className={styles['rate']}>
+                  <span className={styles['rateOver']}>{rate.over}</span>
+                  <span className={rate.rate >= 0 ? styles['tagUp'] : styles['tagDown']}>{rate.text}</span>
+                </span>
+              ) : null}
             </span>
           </section>
 
@@ -313,7 +322,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   );
 }
 
-/** Narrative, views a minute, $tickers in replies: each only when we have it. */
+/** Narrative and $tickers in replies, each only when we have it. Views a minute is a pill beside the views (PostView). */
 function Tiles({ data, onNarrative }: { data: PostSheetData; onNarrative: (storyId: string) => void }) {
   const n = data.narrative;
   const tiles = [
@@ -322,12 +331,6 @@ function Tiles({ data, onNarrative }: { data: PostSheetData; onNarrative: (story
         <span className={styles['label']}>Narrative</span>
         <span className={styles['tileValue']}><span className={styles['clip']}>{n.title}</span><ChevronIcon size={14} /></span>
       </button>
-    ) : null,
-    data.perMinute.known ? (
-      <div key="m" className={styles['tile']}>
-        <span className={styles['label']}>Per minute</span>
-        <span className={styles['tileValue']}>{compact(data.perMinute.amount)}</span>
-      </div>
     ) : null,
     data.tickersInReplies.known ? (
       <div key="r" className={styles['tile']}>
