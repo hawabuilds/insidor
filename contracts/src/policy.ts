@@ -1310,6 +1310,14 @@ export interface UniversePolicy {
   };
 }
 
+/** Policy.postCoin.botFilter: see the field. */
+export interface PostCoinBotFilter {
+  readonly on: boolean;
+  readonly serialDevMinCoins: number;
+  readonly serialDevWindowMs: number;
+  readonly instantMs: number;
+}
+
 /**
  * WHICH COIN IS A FEED POST'S (core/src/match/post-coin.ts): the facts that PROVE a coin came from
  * a post, and the weights that rank the rest. Fitted on the gold set's tuning half
@@ -1359,6 +1367,20 @@ export interface PostCoinPolicy {
    * lead time and the finders. Off since 2026-10-16 for the same copycats.
    */
   readonly linkedCandidates: boolean;
+  /**
+   * The bot-coin filter (the owner, 2026-10-16): before the link rule names a coin, ignore the coins
+   * that look like a bot's copy of a viral post, then let the earliest launched of the linking coins
+   * that remain be proven ("Links this post"). A coin is ignored when either holds:
+   *   serial dev  its creator's wallet (public.asset `creator`) launched at least `serialDevMinCoins`
+   *               coins whose metadata names some post (internal.coin_post_link) within
+   *               `serialDevWindowMs` either side of this coin's launch (itself among them when it links one)
+   *   instant     it launched within `instantMs` of the post, and neither its name meets the
+   *               subject's names nor is its picture the post's
+   * An unknown creator or launch ignores nothing: an unknown is not a no. An ignored coin is never
+   * named (proven or likely); it stays in "See N coins". Off: the rule is the rollback's, exactly.
+   * This is the only way the earliest-launch rule comes back; `firstLinkWins` alone stays off.
+   */
+  readonly botFilter: PostCoinBotFilter;
   /**
    * "Coin for this story" (core match/story-coin.ts): when a feed post is about the same story as a
    * post the owner confirmed a coin for, by the two posts' words-and-picture vectors. The same bars
@@ -3402,6 +3424,15 @@ const POLICY_V1: Policy = {
        wrong taps on the Flying Tesla Roadster posts among them). Both off restores Wednesday's rule. */
     firstLinkWins: false,
     linkedCandidates: false,
+    /* 2026-10-16, measured before switching on, on the rollback's inputs (frozen gold, the stored fit,
+       my 106 coin labels against today's database; right / wrong): off 10/0 held-out, 28/2 the 71
+       origin posts, 11/7 my labels. On (10 coins a day, a minute): 11/0, 30/6, 15/16 — more right and
+       more wrong, so it stays off. Every bar tried was worse: 3 or 5 coins, two minutes, the minute
+       alone (18/18), the serial dev alone (15/16). The bots' coins mostly carry the post's own name
+       (Tesla Roadster, THRUSTER), so the minute rule excuses them; many come from launchpads whose
+       creator we do not hold; and the creators of my right coins launch 10 to 17 linking coins a day
+       too. Without the earliest-launch part the filter alone is 10/0, 28/2, 10/8. */
+    botFilter: { on: false, serialDevMinCoins: 10, serialDevWindowMs: 86_400_000, instantMs: 60_000 },
     /* Measured 2026-10-14 on 3,300 post vectors (2,800 embedded for this: every post the judge said
        yes to in the last day, GTA, tiger and game posts; the rest the owner's labelled posts) against
        the 20 posts the owner confirmed one of 13 coins on. One confirmed post alone: unrelated posts

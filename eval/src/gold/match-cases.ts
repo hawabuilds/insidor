@@ -190,6 +190,12 @@ export interface MatchEvidence {
   readonly universeCoins: Record<string, FoundCoin>;
   /** Each picture's perceptual hash by its address (services/runner picture-hash.ts); null when unreadable. */
   readonly hashes: Record<string, string | null>;
+  /**
+   * The bot-coin filter's serial-dev count by address (core post-coin.ts `creatorLinkedLaunches`).
+   * The frozen file holds none — the gold's coins predate the mint stream's creator wallets — so
+   * every count is unknown unless a measurement adds what the database holds.
+   */
+  readonly creatorLinkedLaunches?: Record<string, number | null>;
 }
 
 /** What the replies under one post said about coins, read once. */

@@ -29,6 +29,9 @@
  *   timing      the coin's launch (public.coin_name, else public.asset) against the post's time.
  *   name        the judge's names for the subject against the coin's name and ticker.
  *   weights     the newest re-tune refit (internal.coin_match_fit, 0070), else Policy.postCoin.
+ *   creator     only while Policy.postCoin.botFilter is on: how many post-linking coins the coin's
+ *               creator wallet (public.asset `creator`) launched around its launch — core's
+ *               bot-coin filter ignores a serial dev's coins (`creatorLinkedLaunches` below).
  *
  * ★ ONLY THE FACTS LEAVE. The similarity, the hash distance, the score and the rule's reason stay
  * here; the wire carries "links this post", "same picture", "launched 12m after" and "the poster
@@ -78,6 +81,7 @@ export function matchBars(p: Policy = DEFAULT_POLICY, fit: { readonly weights: P
     weights: fit?.weights ?? pc.weights,
     closePicture: p.group.image.likely,
     firstLinkWins: pc.firstLinkWins,
+    ...(pc.botFilter.on ? { botFilter: { serialDevMinCoins: pc.botFilter.serialDevMinCoins, instantMs: pc.botFilter.instantMs } } : {}),
   };
 }
 
@@ -165,6 +169,7 @@ interface CoinRow {
   description: string | null;
   similarity: number | string | null;
   same_subject: 'yes' | 'no' | 'unsure' | null;
+  creator: string | null;
 }
 
 const ms = (v: Date | string | null): Millis | null => {
@@ -209,7 +214,7 @@ async function loadCoins(db: Db, pairs: readonly { itemId: string; address: stri
             coalesce(m.image_uri, a.image_uri) as image_uri,
             coalesce(a.minted_at, n.launched_at) as launched_at,
             m.outcome, m.social_link, m.website, m.chat_link, m.description,
-            pic.similarity, pic.same_subject
+            pic.similarity, pic.same_subject, a.creator
        from unnest($1::text[], $2::text[]) as p(item_id, address)
        left join public.coin_name n on n.address = p.address
        left join public.asset a on a.address = p.address
@@ -279,6 +284,35 @@ async function linkedCandidates(db: Db, itemIds: readonly string[], perPost: num
     const out = new Map<string, string[]>();
     for (const r of rows) out.set(r.item_id, [...(out.get(r.item_id) ?? []), r.address]);
     return out;
+  } catch (e) {
+    if (missingTable(e)) return new Map();
+    throw e;
+  }
+}
+
+/**
+ * The bot-coin filter's serial-dev count (Policy.postCoin.botFilter): for each coin whose creator's
+ * wallet we hold (public.asset `creator`, from the mint stream), how many coins of that wallet whose
+ * metadata names some post (0083) launched within `windowMs` either side of this coin's launch, itself
+ * among them when it links one. A coin with no creator or no launch is absent: unknown, never a count of 0. Before
+ * 0083 every count is unknown.
+ */
+export async function creatorLinkedLaunches(db: Db, coins: readonly { readonly address: string; readonly creator: string | null; readonly launchedAt: Millis | null }[], windowMs: number): Promise<ReadonlyMap<string, number>> {
+  const known = coins.filter((c) => c.creator !== null && c.launchedAt !== null);
+  if (known.length === 0) return new Map();
+  try {
+    const rows = await db.query<{ creator: string; at: Date | string }>(
+      `select distinct a.creator, a.address, a.minted_at as at
+         from public.asset a join internal.coin_post_link l on l.address = a.address
+        where a.creator = any($1::text[]) and a.minted_at is not null`,
+      [[...new Set(known.map((c) => c.creator))]],
+    );
+    const launches = new Map<string, number[]>();
+    for (const r of rows) {
+      const at = ms(r.at);
+      if (at !== null) launches.set(r.creator, [...(launches.get(r.creator) ?? []), at]);
+    }
+    return new Map(known.map((c) => [c.address, (launches.get(c.creator ?? '') ?? []).filter((at) => Math.abs(at - (c.launchedAt ?? 0)) <= windowMs).length] as const));
   } catch (e) {
     if (missingTable(e)) return new Map();
     throw e;
@@ -378,6 +412,9 @@ export async function weighPostCoins(
   /* An address posted under a post that is no coin we hold has no row: it is dropped here. */
   const coins = (await loadCoins(db, pairs, p.group.image.space)).filter((c) => c.launched_at !== null || c.name !== null || c.ticker !== null);
   const pictureHashes = await hashes.hashesOf([...new Set([...pictured.map((x) => x.uri), ...coins.flatMap((c) => (c.image_uri === null ? [] : [c.image_uri]))])], HASH_VERSION);
+  /* The bot-coin filter's count, asked only while it is on. A linking coin of its own counts itself:
+     a lone launch is 1, not 0, so the bar reads as "this many launches". */
+  const serial = pc.botFilter.on ? await creatorLinkedLaunches(db, coins.map((c) => ({ address: c.address, creator: c.creator, launchedAt: ms(c.launched_at) })), pc.botFilter.serialDevWindowMs) : new Map<string, number>();
   const byPost = new Map<string, CoinRow[]>();
   for (const c of coins) byPost.set(c.item_id, [...(byPost.get(c.item_id) ?? []), c]);
 
@@ -415,6 +452,7 @@ export async function weighPostCoins(
         tradingJump: null,
         bioNamesAddress: profileNamed === undefined ? null : profileNamed.has(r.address),
         lastPostBeforeLaunch: profileNamed?.has(r.address) === true ? lastBefore(ms(r.launched_at)) : null,
+        creatorLinkedLaunches: serial.get(r.address) ?? null,
       };
     });
     const weighedDecision = matchPostCoin(
