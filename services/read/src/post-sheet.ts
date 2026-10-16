@@ -105,10 +105,16 @@ select address from public.same_name_coin
  where (subject_kind = 'post' and subject_id = $1) or (subject_kind = 'story' and subject_id = $2)
  order by position asc`;
 
-/** What we hold of each coin: its full row while it lasts, the name index after. */
+/**
+ * What we hold of each coin: its full row while it lasts, the name index after. With where its
+ * launch time came from (0005's minted_at_source and bound), because the narrative page and the
+ * post sheet print it to the minute as the proof of who was first: see `launchClock`.
+ */
 export const SHEET_COINS_SQL = `
 select n.address, coalesce(a.symbol, n.ticker) as symbol, coalesce(a.name, n.name) as name, a.image_uri,
-       coalesce(a.minted_at, n.launched_at) as minted_at
+       coalesce(a.minted_at, n.launched_at) as minted_at,
+       case when a.minted_at is null then null else a.minted_at_source end as minted_at_source,
+       case when a.minted_at is null then null else a.minted_at_bound_s end as minted_at_bound_s
   from public.coin_name n
   left join public.asset a on a.chain = 'solana' and a.address = n.address
  where n.address = any($1)`;
@@ -143,10 +149,32 @@ export interface SheetCoinOut {
   readonly ticker: string | null;
   readonly imageUrl: string | null;
   readonly launchedAt: Instant;
+  /** Whose clock `launchedAt` is: see `launchClock`. */
+  readonly launchClock: LaunchClock;
   readonly marketCapUsd: Measured;
   readonly changePct24h: Measured;
   readonly bonded: boolean | null;
   readonly proven: boolean;
+}
+
+/**
+ * ★ WHOSE CLOCK A COIN'S LAUNCH TIME IS. The screens print it to the minute beside "Found", as the
+ * proof that we were early, so they must know when it is the chain's own time:
+ *
+ *   chain    the create transaction's block time, or the launchpad's own creation stamp
+ *            (minted_at_source chain_rpc or issuer_api)
+ *   within   the live launch notice's arrival, which bounds the create to `withinS` seconds either
+ *            side of the time (vendor_field with a bound: one relay hop, seconds)
+ *   unknown  anything else: an aggregator's pair time (minutes off, sometimes days), or a time
+ *            kept in the name index after the coin's own row was swept. Shown as not known.
+ */
+export type LaunchClock = { readonly kind: 'chain' } | { readonly kind: 'within'; readonly withinS: number } | { readonly kind: 'unknown' };
+
+export function launchClock(source: unknown, boundS: unknown): LaunchClock {
+  if (source === 'chain_rpc' || source === 'issuer_api') return { kind: 'chain' };
+  const b = typeof boundS === 'number' ? boundS : typeof boundS === 'string' ? Number(boundS) : NaN;
+  if (source === 'vendor_field' && Number.isFinite(b) && b >= 0) return { kind: 'within', withinS: b };
+  return { kind: 'unknown' };
 }
 
 const json = (status: number, value: unknown): SheetReply => ({ status, body: JSON.stringify(value) });
@@ -309,6 +337,7 @@ export function createPostSheet(deps: PostSheetDeps) {
         ticker,
         imageUrl: str(h?.['image_uri']) ?? pictures.get(address) ?? str(fromLink?.['imageUrl']),
         launchedAt: instant(launched, 'not_reported'),
+        launchClock: h === undefined ? { kind: 'unknown' } : launchClock(h['minted_at_source'], h['minted_at_bound_s']),
         marketCapUsd: measured(q?.marketCapUsd, unlisted),
         changePct24h: measured(q?.change.h24, unlisted),
         /* Bonded only on the source's word; a coin it does not list is not said to be either. */
