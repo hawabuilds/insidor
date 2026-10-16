@@ -12,6 +12,7 @@
  *
  * ★ NOT YET MIGRATED IS EMPTY, NOT AN ERROR. Before 0069 is applied every read is empty and every
  * write is skipped: the judge is asked with no precedents and nothing is held, as before.
+ * The short-video training set (0085) is read the same way: missing, it adds nothing.
  *
  * What breaks if changed carelessly: the vector is stored as written and must already be unit
  * length (the embedding adapter does it); the similarity read from it is a dot product.
@@ -170,7 +171,16 @@ export class PgLabelEmbeddingRepo {
         `select m.item_id, i.body, i.media from internal.missed_post m join public.item i on i.item_id = m.item_id where m.status = 'done'`,
       ),
     );
+    /* The short-video training set (0085): a coined video we hold the words of, as a coined post.
+       Its picture is the still the source gave when the item is held; a re-fetched one has words only. */
+    const videos = await soft(() =>
+      this.#db.query<{ item_id: string; caption: string; coin_name: string | null; media: unknown }>(
+        `select v.item_id, v.caption, v.coin_name, i.media from internal.coined_video v left join public.item i on i.item_id = v.item_id
+          where v.caption is not null and length(trim(v.caption)) > 0`,
+      ),
+    );
     return mergeLabels([
+      ...videos.map((v): LabelledPost => ({ itemId: v.item_id, label: 'meme', kind: 'coined', text: v.caption, why: v.coin_name === null ? 'people made a coin of it' : `people made a coin of it (${v.coin_name})`, picture: null, media: v.media })),
       ...missed.map((m): LabelledPost => ({ itemId: m.item_id, label: 'meme', kind: 'missed', text: m.body ?? '', why: 'a post the owner says we missed: people coined or could coin it', picture: null, media: m.media })),
       ...gold.map((g): LabelledPost => ({ itemId: g.item_id, label: 'meme', kind: 'coined', text: g.post_text, why: g.coin_name === null ? 'people made a coin of it' : `people made a coin of it (${g.coin_name})`, picture: g.image_uri })),
       ...coins.map((c): LabelledPost => ({ itemId: c.item_id, label: 'meme', kind: 'coined', text: c.body ?? '', why: 'the owner confirmed the coin made of it', picture: null, media: c.media })),
