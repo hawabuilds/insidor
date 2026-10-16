@@ -33,7 +33,7 @@
 
 import type { Author, Item, Policy } from '@insidor/contracts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import { middleLaneDue, slowLaneDue } from '@insidor/core';
+import { slowLaneDue } from '@insidor/core';
 import type { PlatformRegistry } from '@insidor/platform-registry';
 
 import type { DiscoveryConfig } from '../config.ts';
@@ -99,8 +99,8 @@ export interface DiscoverLoopDeps {
    * it did not do waits for the next.
    */
   readonly afterPass?: readonly (readonly [string, () => Promise<unknown>])[];
-  /** The middle lane's ledger and new-post count (`feed.middle`, 0088). Absent: the lane is never asked. */
-  readonly middle?: DiscoverDeps['middle'];
+  /* ★ NO MIDDLE LANE HERE. It has its own loop (loops/middle.ts): inside this pass its paging
+     held the steps after it, the live judge first, for 15 to 26 minutes a pass on 2026-10-16. */
 }
 
 export function discoverLoop(deps: DiscoverLoopDeps): Loop {
@@ -114,10 +114,6 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
   /* Where each fresh band's last ask ended (`feed.fresh`), in this process: a restart reaches back
      the band's cap once, never leaves a gap. Unused while fresh discovery is off. */
   const fresh = memoryFreshClock();
-  /* When the middle lane (`feed.middle`) last ran, in this process: the slow lane's trade. Its
-     money is not in this clock but in its ledger (0088), so a restart's extra ask is inside its cap. */
-  let middleRanAt: number | null = null;
-
   return {
     stage: 'discover',
     everyMs: EVERY_MS,
@@ -149,8 +145,6 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
       const now = ctx.now();
       const slowDue = slowLaneDue(now, slowRanAt, deps.policy);
       if (slowDue) slowRanAt = now;
-      const middleDue = deps.middle !== undefined && middleLaneDue(now, middleRanAt, deps.policy);
-      if (middleDue) middleRanAt = now;
 
       const result = await discoverPass({
         platforms: deps.platforms,
@@ -167,7 +161,6 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
         lanes: slowDue ? [...MAIN_LANES, 'slow'] : MAIN_LANES,
         watch,
         fresh,
-        ...(middleDue && deps.middle !== undefined ? { middle: deps.middle } : {}),
       });
 
       /* ★ THE COUNTS ARE PRINTED ON EVERY PASS INCLUDING THE HEALTHY ONES, and always

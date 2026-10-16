@@ -90,8 +90,9 @@ export type SupervisedStage = (typeof SUPERVISED_STAGES)[number];
    HEARTBEAT=on it needs HEARTBEAT_SLUG_MISSED like every other supervised loop. `refill`: older
    feed posts' video files read again (work/post-refill.ts); with HEARTBEAT=on, HEARTBEAT_SLUG_REFILL.
    `finders`: the ways to find a post besides the searches (loops/finders.ts); with HEARTBEAT=on,
-   HEARTBEAT_SLUG_FINDERS. */
-export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders'] as const;
+   HEARTBEAT_SLUG_FINDERS. `middle`: the middle lane's search (loops/middle.ts), out of the discover
+   pass so it never delays the judge; with HEARTBEAT=on, HEARTBEAT_SLUG_MIDDLE. */
+export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders', 'middle'] as const;
 
 export type SupervisedTask = (typeof SUPERVISED_TASKS)[number];
 

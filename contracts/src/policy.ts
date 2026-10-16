@@ -1284,6 +1284,20 @@ export interface FeedPolicy {
     readonly minApproval: number;
     readonly everyMs: number;
     readonly maxPages: number;
+    /**
+     * ★ HOW LONG ONE MIDDLE PASS MAY PAGE, from its start. Reached: no further page is asked, what
+     * the pages so far returned is stored, judged and charged as usual, and the next pass (its own
+     * loop, every `everyMs`) asks the window again from its newest end. A post the cut-off pass did
+     * not reach is still in the window then, for up to `maxAgeMin`.
+     *
+     * Why: on 2026-10-16 the lane ran inside the discover pass, whose last step is the live judge,
+     * and with the posts supplier slow and refusing calls for credit a pass went from 1.5-5 minutes
+     * to 15-26, so every new post waited that long to be judged. The lane now has its own loop, and
+     * this bounds that loop's pass too, so a slow supplier costs the lane depth, never time.
+     * What breaks if changed carelessly: near `everyMs` the loop is never idle and a stuck supplier
+     * holds the posts line's paging for the whole quarter-hour.
+     */
+    readonly passDeadlineMs: number;
     readonly cap: LaneCapPolicy;
   };
 }
@@ -3539,6 +3553,9 @@ const POLICY_V1: Policy = {
       minApproval: 2_000,
       everyMs: 900_000, // a quarter-hour
       maxPages: 40,
+      /* Three minutes: a normal pass is 10 to 12 pages of about a second or two each, so it binds
+         only when the supplier is slow or refusing. */
+      passDeadlineMs: 180_000,
       cap: { dailyUsd: 6, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
     },
   },

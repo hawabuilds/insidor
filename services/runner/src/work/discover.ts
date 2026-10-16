@@ -616,6 +616,13 @@ export interface DiscoverDeps {
     readonly ledger: LaneLedger;
     readonly uncredited: (itemIds: readonly string[]) => Promise<number>;
   };
+  /**
+   * ★ 'middle': this pass asks the middle lane and nothing else — no catch-all lane, no term, no
+   * watch list, no floor moved. The middle loop's pass (loops/middle.ts). It runs outside the
+   * discover pass so its paging can never hold up the steps after that pass, the live judge first.
+   * Absent: the discover pass, which asks the middle lane only if `middle` is given.
+   */
+  readonly only?: 'middle';
 }
 
 /**
@@ -723,7 +730,9 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
     /* ★ THE CATCH-ALL FIRST, ON EVERY SOURCE THAT CAN BE ASKED FOR IT: two lanes, no
        keyword. Then the optional term on top. */
     const asks: { readonly query: DiscoveryQuery; readonly lane: FeedLane | null; readonly spaced?: boolean; readonly watch?: boolean; readonly slice?: boolean; readonly band?: number; readonly late?: boolean; readonly middle?: boolean }[] = [];
-    if (adapter.capabilities.discovery.includes('catchall')) {
+    const middleOnly = deps.only === 'middle';
+    const hasCatchAll = adapter.capabilities.discovery.includes('catchall');
+    if (hasCatchAll && !middleOnly) {
       const fresh = deps.policy.feed.fresh.enabled;
       for (const lane of deps.lanes ?? MAIN_LANES) {
         if (lane === 'slow') for (const query of slowSliceQueries(floors, now, deps.policy)) asks.push({ query, lane, slice: true });
@@ -734,10 +743,10 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         else asks.push({ query: feedQueryFor(lane, floors, now, deps.policy), lane });
       }
     }
-    const catchAll = asks.length > 0;
-    /* The middle lane rides a pass the loop says it is due on, on a source with a catch-all. */
+    const catchAll = middleOnly ? hasCatchAll : asks.length > 0;
+    /* The middle lane is asked on a source with a catch-all, by the middle loop's own pass. */
     if (catchAll && deps.middle !== undefined && deps.policy.feed.middle.on) asks.push({ query: middleQuery(floors, now, deps.policy), lane: null, middle: true });
-    if (catchAll && term !== null) {
+    if (catchAll && term !== null && !middleOnly) {
       const query = queryFor(adapter, term, now);
       if (query !== null) asks.push({ query, lane: null });
     }
@@ -747,7 +756,7 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
        once per `watchEveryMs` so a day of it stays inside its share of the line. The ask's size
        is its price on a per-post source, so the spacing below is priced at that size: half the
        posts an ask, twice the asks a day for the same money. */
-    if (!catchAll) {
+    if (!catchAll && !middleOnly) {
       /* Priced with as many words as an ask of the watch list will carry. */
       const perAsk = term === null ? Math.min(deps.policy.feed.watchWordsPerAsk, Math.max(1, deps.policy.feed.hashtags.length)) : 1;
       const probeQuery = queryFor(adapter, term ?? deps.policy.feed.hashtags[0] ?? '', now);
@@ -779,6 +788,8 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
       }
     }
 
+    /* The middle pass has nothing to ask of a source with no catch-all; the discover pass reports it. */
+    if (asks.length === 0 && middleOnly) continue;
     if (asks.length === 0) {
       /* ★ NOT `failed`. This source has no catch-all search and either no term is set
          or it declares no mode we can render one into — a gap in what WE can ask, not
@@ -1017,6 +1028,12 @@ export async function discoverPass(deps: DiscoverDeps): Promise<DiscoverPassResu
         if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) break;
         if (middle && !laneMayAsk(laneSpent + laneUsd, estimate.usd, cap)) break;
         if (deps.signal.aborted) break;
+        /* ★ THE MIDDLE PASS'S DEADLINE (`feed.middle.passDeadlineMs`): a slow or refusing supplier
+           costs the lane its deeper pages this pass, never minutes. The next pass asks again. */
+        if (middle && deps.now() - now >= deps.policy.feed.middle.passDeadlineMs) {
+          deps.log.warn('the middle lane reached its deadline; the rest of its window waits for the next pass', { source, pages: page - 1, returned: items.length, deadlineMs: deps.policy.feed.middle.passDeadlineMs });
+          break;
+        }
         const next = await adapter.discover({ ...query, cursor }, budget);
         laneUsd += next.spend.usd;
         estimatedUsd += estimate.usd;

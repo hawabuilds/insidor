@@ -1,5 +1,5 @@
 /**
- * The middle lane (`feed.middle`): asked only on a pass the loop says it is due on, over posts 15
+ * The middle lane (`feed.middle`): asked only when its loop (loops/middle.ts) passes its deps, over posts 15
  * minutes to 3 hours old at its fixed floor, paged to the end of its window, stored as the 'middle'
  * lane, charged its search and its new posts' judging in its ledger, and never asked past its cap.
  * The slow lane drops the slices that lie inside its window when its floor is no higher.
