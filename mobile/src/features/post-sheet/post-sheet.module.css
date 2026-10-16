@@ -254,414 +254,101 @@
   padding: 0 2px;
 }
 
-/* ── views ─────────────────────────────────────────────────────────── */
+/* ── views and the fact line ───────────────────────────────────────── */
 
 .views {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0 4px;
-}
-
-.viewsLeft {
-  display: flex;
   flex-direction: column;
+  gap: 6px;
+  padding: 0 4px;
 }
 
 .viewsLine {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
 }
 
 .bigNumber {
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.1;
 }
 
-.viewsLine .up,
-.viewsLine .down {
-  font-size: 12px;
-  white-space: nowrap;
+.viewsWord {
+  color: #8b8794;
+  font-size: 16px;
 }
 
-.tags {
+.facts {
   display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  padding-bottom: 4px;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  margin: 0;
+  color: #8b8794;
+  font-size: 14px;
+  font-weight: 500;
 }
 
-.tag,
-.tagFound,
-.tagUp,
-.tagDown {
-  padding: 4px 7px;
-  border-radius: 999px;
-  background: var(--sheet-chip);
-  font-size: 11px;
+.facts b {
   font-weight: 700;
-  white-space: nowrap;
 }
 
-.tagFound {
-  background: rgb(153 69 255 / 22%);
-  color: var(--sheet-text);
+.plainText {
+  color: #f4eeff;
 }
 
-.tagUp {
-  background: var(--up-wash);
-  color: var(--up);
+.facts .upText {
+  color: #2fd47a;
 }
 
-.tagDown {
-  background: var(--down-wash);
+.downText {
   color: var(--down);
 }
 
-/* Per minute: the pill, and over it the span it is measured over ("last 9m"). */
-.rate {
+/* ── "Part of a story" ─────────────────────────────────────────────── */
+
+.storyCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #1f1e26;
+  border-radius: 18px;
+  background: #111116;
+  color: #8b8794;
+  text-align: left;
+}
+
+.storyCardText {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.rateOver {
-  color: var(--sheet-label);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-/* ── chart (ViewsChart.tsx) ────────────────────────────────────────── */
-
-.chart {
-  padding: 0 4px;
-}
-
-/* The interval rail and the Total or Gained switch, the token page's own (token.module.css
-   .tfButton and .kinds), with the picked interval in the sheet's purple: views are not a price,
-   and green and red stay the price's. */
-.rail {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
-.intervals {
-  display: flex;
-  gap: 2px;
-}
-
-.interval {
-  composes: tfButton from '../token/token.module.css';
-}
-
-/* Six of them and the switch share one 358px row: tighter sides than the token page's. */
-.intervals .interval {
-  padding: 6px 8px;
-}
-
-.intervalOn {
-  background: rgb(153 69 255 / 22%);
-  color: var(--sheet-text);
-}
-
-.modes {
-  display: flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--segment-track);
-}
-
-.modes button {
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-3);
-}
-
-.modes .modeOn {
-  background: var(--input);
-  color: var(--text-1);
-  box-shadow: var(--shadow-tab-active);
-}
-
-.chartRow {
-  display: flex;
-  gap: 8px;
-}
-
-.plotArea {
   flex: 1;
   min-width: 0;
 }
 
-.pills {
-  position: relative;
+.storyCardKicker {
+  font-size: 12px;
 }
 
-.pillFound,
-.pillCoin {
-  position: absolute;
-  top: 2px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 18px;
+.storyCardTitle {
+  display: flex;
+  gap: 6px;
+  overflow: hidden;
   white-space: nowrap;
+  font-size: 15px;
 }
 
-.pillFound {
-  background: rgb(153 69 255 / 22%);
-  color: var(--sheet-text);
-}
-
-.pillCoin {
-  background: var(--up-wash);
-  color: var(--up);
-}
-
-.plot {
-  position: relative;
-  touch-action: pan-y;
-  cursor: crosshair;
-}
-
-.plotSvg {
-  position: absolute;
-  inset: 0;
-  overflow: visible;
-}
-
-.grid {
-  stroke: rgb(255 255 255 / 9%);
-  stroke-width: 1;
-}
-
-.markFound,
-.markCoin {
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-}
-
-.markFound {
-  stroke: rgb(182 136 255 / 80%);
-}
-
-.markCoin {
-  stroke: rgb(74 222 128 / 75%);
-}
-
-.line {
-  fill: none;
-  stroke: var(--sheet-action);
-  stroke-width: 2.5;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-/* A reading with no neighbour close enough to join: a dot, never a line to somewhere invented. */
-.lone {
-  fill: var(--sheet-action);
-}
-
-/* Before our first count: the one stretch that is not a reading, so it is grey and dashed. */
-.before {
-  fill: none;
-  stroke: rgb(255 255 255 / 40%);
-  stroke-width: 1.5;
-  stroke-dasharray: 4 4;
-}
-
-.beforeLabel {
-  position: absolute;
-  top: 4px;
-  left: 0;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--sheet-label);
-  font-size: 11px;
-  pointer-events: none;
-}
-
-.bar {
-  fill: var(--sheet-action);
-}
-
-.barDown {
-  fill: var(--down);
-}
-
-.lastDot {
-  fill: var(--sheet-action);
-  stroke: rgb(153 69 255 / 30%);
-  stroke-width: 6;
-}
-
-.cross {
-  stroke: rgb(255 255 255 / 35%);
-  stroke-width: 1;
-}
-
-.tipDot {
-  fill: var(--sheet-text);
-}
-
-.tip {
-  position: absolute;
-  padding: 5px 9px;
-  border-radius: 10px;
-  background: var(--sheet-card);
-  box-shadow: inset 0 0 0 1px var(--sheet-border);
-  display: flex;
-  flex-direction: column;
-  font-size: 13px;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.tipTime {
-  color: var(--sheet-label);
-  font-size: 12px;
-}
-
-/* Gained with no bar to draw at this interval: why, in the chart's place. */
-.plotNote {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 0 12px;
-  text-align: center;
-  color: var(--sheet-label);
-  font-size: 12px;
-  pointer-events: none;
-}
-
-.axis {
-  position: relative;
-  color: var(--sheet-label);
-  font-size: 11px;
-  min-width: 34px;
-}
-
-.axis span {
-  position: absolute;
-  left: 0;
-  transform: translateY(-50%);
-}
-
-/* ── the narrative page's extras on the same chart (features/narrative/StoryChart.tsx) ── */
-
-/* The market cap switch, under the chart: off by default, the coin's green when on. */
-.mcRow {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
-
-.mcToggle {
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-3);
-  box-shadow: inset 0 0 0 1px var(--sheet-border);
-}
-
-.mcOn {
-  background: var(--up-wash);
-  color: var(--up);
-  box-shadow: none;
-}
-
-.mcLine {
-  fill: none;
-  stroke: var(--up);
-  stroke-width: 1.5;
-  stroke-linejoin: round;
-  opacity: 0.9;
-}
-
-.mcAxis {
-  color: var(--up);
-}
-
-.mcNote {
-  position: absolute;
-  top: 4px;
-  right: 0;
-  color: var(--sheet-label);
-  font-size: 11px;
-  pointer-events: none;
-}
-
-/* The views' steps inside the plot while the right axis is the coin's. */
-.insideTick {
-  position: absolute;
-  left: 2px;
-  color: var(--sheet-label);
-  font-size: 10px;
-  pointer-events: none;
-}
-
-/* A post, at the time it went up, in the lane along the bottom: a tap opens it. */
-.postDot {
-  fill: var(--sheet-text);
-  stroke: var(--sheet-action);
-  stroke-width: 2;
-}
-
-.times {
-  display: flex;
-  justify-content: space-between;
-  margin: 4px 42px 0 0;
-  color: var(--sheet-label);
-  font-size: 11px;
+.storyCardTitle b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #f4eeff;
 }
 
 /* ── tiles ─────────────────────────────────────────────────────────── */
-
-/* "Part of the GTA 6 story, 12 posts": one small line that opens the narrative, the title cut first. */
-.storyLine {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  margin: 0 0 6px;
-  padding: 0;
-  color: var(--sheet-label);
-  font-size: 13px;
-  line-height: 18px;
-  white-space: nowrap;
-  text-align: left;
-}
-
-.storyLine > span:first-child,
-.storyLineRest {
-  flex: none;
-}
-
-.storyLineName {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--sheet-text);
-  font-weight: 700;
-}
 
 .tiles {
   display: flex;

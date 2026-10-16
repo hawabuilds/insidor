@@ -1,0 +1,125 @@
+/* The views-gained chart (GainChart.tsx), in the owner's design values of 2026-10-17: the line
+   #B48CFF at 1.8px with a faint glow and a fade to nothing, purple and green dashed markers with
+   pills, three times under it and the interval rail with #241A3A behind the chosen one. */
+
+.chart {
+  margin-top: 14px;
+}
+
+.plot {
+  position: relative;
+  width: 100%;
+}
+
+.svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.line,
+.glow {
+  fill: none;
+  stroke: #b48cff;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.line {
+  stroke-width: 1.8;
+}
+
+.glow {
+  stroke-width: 4;
+  opacity: 0.55;
+}
+
+.foundLine,
+.coinLine {
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.foundLine {
+  stroke: #8e74c9;
+}
+
+.coinLine {
+  stroke: #2fd47a;
+  opacity: 0.75;
+}
+
+.pill {
+  position: absolute;
+  height: 20px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #16151b;
+  color: #f4eeff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.pillFound {
+  border: 1px solid #6e58a6;
+}
+
+.pillCoin {
+  border: 1px solid #23885a;
+}
+
+.endLabel {
+  position: absolute;
+  color: #b48cff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.few {
+  position: absolute;
+  left: 0;
+  right: 62px;
+  text-align: center;
+  color: #8b8794;
+  font-size: 12px;
+}
+
+.times {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  height: 16px;
+  color: #8b8794;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mid {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.rail {
+  display: flex;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.iv {
+  min-width: 44px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 10px;
+  color: #8b8794;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ivOn {
+  background: #241a3a;
+  color: #e4d6ff;
+}

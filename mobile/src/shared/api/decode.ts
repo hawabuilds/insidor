@@ -27,7 +27,7 @@ import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
 import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, RisingPost } from './wire/rising.ts';
-import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
+import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, OriginGap, SameNameCoins, SearchCoin, SearchCoins, TickerUse, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
@@ -466,7 +466,16 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     viewsGained1hPosts: count(o.viewsGained1hPosts),
     viewsTotal: o.viewsTotal === undefined || o.viewsTotal === null ? null : measured(o.viewsTotal, `${path}.viewsTotal`, 'not_read_yet'),
     viewsTotalPosts: count(o.viewsTotalPosts),
-    viewsSeries: decodeViewsSeries(o.viewsSeries),
+    viewsGained: decodeViewsGained(o.viewsGained),
+    postViews: decodePostViews(o.postViews),
+    /* A top coin that does not decode is dropped, never the page: the card then says no coin is settled. */
+    topCoin: (() => {
+      try {
+        return o.topCoin === undefined || o.topCoin === null ? null : decodeCoin(o.topCoin, `${path}.topCoin`);
+      } catch {
+        return null;
+      }
+    })(),
     postCount: count(o.postCount),
     foundAt: o.foundAt === undefined || o.foundAt === null ? null : instantAt(o.foundAt, `${path}.foundAt`, 'not_reported'),
   };
@@ -478,19 +487,29 @@ function count(v: unknown): number | null {
 }
 
 /**
- * The narrative's summed views every ten minutes: a point with no number is a moment some post was
- * unknown, kept as null so the chart breaks there. A point with no time is dropped. Null when the
- * server sent no series at all, which is not the same as an empty day.
+ * The views the narrative gained in each slot (`stepMs`, five minutes) from `fromMs`, each post's
+ * gain spread between its own readings and added up by the projector. A slot with no number is one
+ * no post was being read in, kept as null so the chart breaks there. Null when the server sent no
+ * series at all, which is not the same as a quiet day.
  */
-function decodeViewsSeries(raw: unknown): readonly { readonly atMs: number; readonly value: number | null }[] | null {
+function decodeViewsGained(raw: unknown): ViewsGained | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const fromMs = typeof r['fromMs'] === 'number' && Number.isFinite(r['fromMs']) ? r['fromMs'] : null;
+  const stepMs = typeof r['stepMs'] === 'number' && Number.isFinite(r['stepMs']) && r['stepMs'] > 0 ? r['stepMs'] : null;
+  if (fromMs === null || stepMs === null || !Array.isArray(r['values'])) return null;
+  return { fromMs, stepMs, values: r['values'].map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)) };
+}
+
+/** Each listed post's newest views and last-hour gain, by post id; null when the server sent none. */
+function decodePostViews(raw: unknown): ReadonlyMap<string, PostViews> | null {
   if (!Array.isArray(raw)) return null;
-  return raw.flatMap((p) => {
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return new Map(raw.flatMap((p) => {
     if (typeof p !== 'object' || p === null) return [];
     const r = p as Record<string, unknown>;
-    const atMs = typeof r['atMs'] === 'number' && Number.isFinite(r['atMs']) ? r['atMs'] : null;
-    if (atMs === null) return [];
-    return [{ atMs, value: typeof r['value'] === 'number' && Number.isFinite(r['value']) ? r['value'] : null }];
-  }).sort((a, b) => a.atMs - b.atMs);
+    return typeof r['postId'] === 'string' ? [[r['postId'], { views: n(r['views']), gainedLastHour: n(r['gainedLastHour']) }] as const] : [];
+  }));
 }
 
 /**

@@ -15,7 +15,7 @@
  */
 
 import type { Instant, Measured, Delta, Millis, PendingReason } from '../../format/measure.ts';
-import type { CoinLink } from './coin.ts';
+import type { Coin, CoinLink } from './coin.ts';
 import type { BoardProvenance, Spark, Tone } from './board.ts';
 
 /**
@@ -126,15 +126,30 @@ export interface Story {
   readonly viewsTotal: Measured | null;
   readonly viewsTotalPosts: number | null;
   /**
-   * The day's summed views every ten minutes, under the rule in mobile/src/features/narrative/
-   * story-views.ts, summed by the projector from every post's readings: a null value is a moment some
-   * post was unknown, and the chart breaks there. Null when the server sends no series.
+   * The views it gained every five minutes over the day (`values[i]` is the slot starting at
+   * `fromMs + i * stepMs`), each post's gain spread evenly between its own readings and added up by
+   * the projector; null in a slot no post was being read in. Null when the server sends no series.
    */
-  readonly viewsSeries: readonly { readonly atMs: number; readonly value: number | null }[] | null;
+  readonly viewsGained: ViewsGained | null;
+  /** Each listed post's newest views and its own last-hour gain, by post id. Null from an older server. */
+  readonly postViews: ReadonlyMap<string, PostViews> | null;
+  /** The top coin when none is settled: shown only as "Top coin, not checked", never as its coin. */
+  readonly topCoin: Coin | null;
   /** How many posts the page lists, as the server counts them. */
   readonly postCount: number | null;
-  /** When we found the narrative: the chart's Found marker. Null from a server that does not say. */
+  /** First found: the earliest moment we saved any post it lists now. Null from a server that does not say. */
   readonly foundAt: Instant | null;
+}
+
+export interface ViewsGained {
+  readonly fromMs: number;
+  readonly stepMs: number;
+  readonly values: readonly (number | null)[];
+}
+
+export interface PostViews {
+  readonly views: number | null;
+  readonly gainedLastHour: number | null;
 }
 
 /**
