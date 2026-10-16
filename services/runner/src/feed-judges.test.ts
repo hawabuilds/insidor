@@ -15,6 +15,10 @@ test('the primary answers first and the other stands behind it; without the open
   assert.deepEqual(rolesFor('open', true), { primary: 'open', other: 'main' });
   assert.deepEqual(rolesFor('open', false), { primary: 'main', other: null });
   assert.deepEqual(rolesFor('main', false), { primary: 'main', other: null });
+  /* No main key: the open model alone, whatever the policy wanted. */
+  assert.deepEqual(rolesFor('main', true, false), { primary: 'open', other: null });
+  assert.deepEqual(rolesFor('open', true, false), { primary: 'open', other: null });
+  assert.match(describeRoles('main', rolesFor('main', true, false), { configured: true, model: 'm' }).message, /open model alone/);
   assert.match(describeRoles('open', rolesFor('open', false), { configured: false, model: null }).message, /cannot run/);
   assert.equal(describeRoles('main', rolesFor('main', false), { configured: false, model: null }).fields['why'], 'OPENROUTER_API_KEY is not set');
 });

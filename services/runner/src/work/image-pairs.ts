@@ -20,7 +20,8 @@ import { BudgetRefused } from '@insidor/vendor-kit';
 import { errorText, type Logger } from '../log.ts';
 
 export interface PairCheckDeps {
-  readonly judge: JudgePort | null;
+  /** Only its same-subject question is asked: the open model's or the main judge's (Policy.judge.askWith). */
+  readonly judge: Pick<JudgePort, 'id' | 'sameSubject' | 'sameSubjectPromptId'> | null;
   readonly pairs: Pick<PgImagePairRepo, 'answer' | 'record' | 'countSince'>;
   readonly mode: 'dry' | 'live';
   readonly policy: Policy;

@@ -470,7 +470,9 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
         'judge on, or neither to leave it dormant.',
     );
   }
-  if (judge.state === 'priced' && spendMode === 'live') {
+  /* With the open model configured, a model and no key is the main judge switched off (the owner
+     stopped paying for it on 2026-10-16), not a fault: the open model answers every question. */
+  if (judge.state === 'priced' && spendMode === 'live' && readOpenJudgeSetup(env).state !== 'configured') {
     problems.push(
       'SPEND=live with JUDGE_MODEL set and no ANTHROPIC_API_KEY: the judge cannot be called. ' +
         'Set the key, or unset JUDGE_MODEL to leave the judge dormant.',

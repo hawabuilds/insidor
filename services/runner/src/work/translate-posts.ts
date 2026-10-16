@@ -97,10 +97,10 @@ export async function translatePosts(deps: TranslateDeps): Promise<TranslateResu
           absent += 1;
         } else if (o.kind === 'kept') {
           kept += 1;
-          rows.push({ itemId: o.ref, from: o.from, textEn: null, model: translator.model, promptId: translator.promptId });
+          rows.push({ itemId: o.ref, from: o.from, textEn: null, model: o.model ?? translator.model, promptId: translator.promptId });
         } else {
           translated += 1;
-          rows.push({ itemId: o.ref, from: o.from, textEn: o.text, model: translator.model, promptId: translator.promptId });
+          rows.push({ itemId: o.ref, from: o.from, textEn: o.text, model: o.model ?? translator.model, promptId: translator.promptId });
         }
       }
     } catch (e) {

@@ -36,9 +36,15 @@ export interface Roles {
   readonly other: JudgeRole | null;
 }
 
-/** The roles in use: the policy's primary when it can run, and the other when both can. */
-export function rolesFor(wanted: JudgeRole, openAvailable: boolean): Roles {
+/**
+ * The roles in use: the policy's primary when it can run, and the other when both can. With no
+ * main judge (no key: the owner stopped paying for it on 2026-10-16) and the open model there, the
+ * open model answers alone whatever the policy wanted, rather than a failover pair whose primary
+ * does not exist.
+ */
+export function rolesFor(wanted: JudgeRole, openAvailable: boolean, mainAvailable = true): Roles {
   if (!openAvailable) return { primary: 'main', other: null };
+  if (!mainAvailable) return { primary: 'open', other: null };
   return wanted === 'open' ? { primary: 'open', other: 'main' } : { primary: 'main', other: 'open' };
 }
 
@@ -69,6 +75,7 @@ export async function openHostModel(setup: OpenJudgeSetup, timeoutMs: number, lo
 /** The boot's one line about the two judges: which answers, which stands behind, and why when only one. */
 export function describeRoles(wanted: JudgeRole, roles: Roles, open: { readonly configured: boolean; readonly model: string | null }): { readonly message: string; readonly fields: Record<string, unknown> } {
   if (roles.other !== null) return { message: 'feed judges: two', fields: { primary: roles.primary, other: roles.other, openModel: open.model } };
+  if (roles.primary === 'open') return { message: 'feed judge: the open model alone — the main judge has no key', fields: { openModel: open.model } };
   const why = !open.configured ? 'OPENROUTER_API_KEY is not set' : 'the open model could not be resolved';
   return {
     message: wanted === 'open' ? 'feed judge: the open model was asked for but cannot run; the main judge answers alone' : 'feed judge: the main judge alone — no fallback and no shadow',
