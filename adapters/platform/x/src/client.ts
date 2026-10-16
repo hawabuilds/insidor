@@ -422,8 +422,10 @@ export function httpClient(config: XClientConfig): XClient {
 
     /* ★ AN EMPTY BALANCE IS ITS OWN ERROR (`OutOfCredit`, still an outage to every caller):
        402 always, and any other refusal whose text talks about credits or a balance. The text is
-       only matched against those phrases, never quoted. */
-    const billing = billingReason(response.status, response.text);
+       only matched against those phrases, never quoted. A 2xx is never matched here: its body is
+       the posts themselves, and a post that says "top up" or "recharge" is not the vendor refusing
+       us. A 200 refusal comes as the error envelope and is checked below, on its message alone. */
+    const billing = response.status >= 200 && response.status < 300 ? null : billingReason(response.status, response.text);
     if (billing !== null) throw outOfCredit(VENDOR, endpoint, billing, response.status);
 
     if (response.status === 402 || response.status === 403) {
