@@ -2298,6 +2298,16 @@ export interface LearningPolicy {
   readonly scoreHeldOutShare: number;
   readonly scoreL2: number;
   /**
+   * ★ THE NEW BLOCK'S YES/NO CUTOFF IS TUNED BEFORE IT IS REFUSED (the owner, 2026-10-16). On the
+   * answers the test already collected, the new block's confidence cutoff is raised from the live
+   * bar in steps of `cutoffStep` up to `cutoffMax`: the strictest cutoff with hand gold no worse
+   * than live, no missed post live catches lost and fewer live non-memes is applied with the block;
+   * failing that, the one with the fewest live non-memes no worse than live and more hand gold;
+   * failing that, the block is refused. A raised cutoff can only remove passes, so it costs nothing.
+   */
+  readonly cutoffStep: number;
+  readonly cutoffMax: number;
+  /**
    * ★ THE SHORT-VIDEO SOURCE, TUNED FROM ITS OWN COINED VIDEOS (the owner, 2026-10-16: "tuned from
    * coined TikToks, not copied from X"). The training set (internal.coined_video, 0085) is every
    * coined short video; the re-tune learns from it twice a day (tools/retune.ts, its short-video
@@ -3513,6 +3523,9 @@ const POLICY_V1: Policy = {
     maxMissedPerPaste: 10,
     scoreHeldOutShare: 0.3,
     scoreL2: 1,
+    /* The owner's numbers, 2026-10-16: one point at a time, no higher than 0.95. */
+    cutoffStep: 0.01,
+    cutoffMax: 0.95,
     shortVideo: {
       barAgesMin: [30, 60, 120],
       /* An hour: the re-reads are every half hour, so two readings an hour apart bracket any age. */

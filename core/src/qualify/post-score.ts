@@ -90,6 +90,20 @@ export function postScoreReason(
 export const couldPassWithBoost = (judgement: Answer, p: Policy): boolean =>
   postScoreReason(judgement, p, BEST_POSSIBLE_PICTURE_MATCH) === 'passes';
 
+/**
+ * ★ THE APPLIED BLOCK'S OWN CUTOFF (the owner, 2026-10-16: "before refusing a new version, tune
+ * its yes/no cutoff, aiming for less junk"). A re-tune may apply a learned block together with a
+ * stricter confidence cutoff; the policy it is held to is this one: each evidence's bar raised to
+ * the cutoff, never lowered below the policy's own. null (no cutoff applied) is the policy as is.
+ * The picture boost's margin then hangs off the raised bar, as it hangs off the policy bar.
+ */
+export function withJudgeCutoff<P extends Policy>(p: P, cutoff: number | null): P {
+  if (cutoff === null) return p;
+  const bars = p.qualify.minJudgeConfidence;
+  const raised = Object.fromEntries(Object.entries(bars).map(([k, v]) => [k, Math.max(v, cutoff)])) as typeof bars;
+  return { ...p, qualify: { ...p.qualify, minJudgeConfidence: raised } };
+}
+
 /** Other accounts' crypto talk under a post, as the projector reads it: null when not read. */
 export interface CryptoSignal {
   /** Another account replied or quoted with a cashtag, a contract address or "CA", early. */

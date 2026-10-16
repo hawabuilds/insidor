@@ -22,7 +22,8 @@
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { Millis } from '@insidor/contracts';
-import { asDb, createPool, DB_ROLE, PgAssetRepo, withTransaction } from '@insidor/store';
+import { withJudgeCutoff } from '@insidor/core';
+import { asDb, createPool, DB_ROLE, PgAssetRepo, PgLearningRepo, withTransaction } from '@insidor/store';
 
 import { loadLaunchFacts, nextLaunchTick, writeLaunches } from './db.ts';
 import { projectStoryFrame } from './frame.ts';
@@ -126,17 +127,27 @@ async function main(): Promise<void> {
       feedFreshnessMs: DEFAULT_POLICY.assets.feedFreshnessMs,
     };
 
+    /* ★ THE APPLIED BLOCK'S OWN CUTOFF (0086, tools/retune.ts): a learned block the re-tune applied
+       with a stricter yes/no cutoff is only the version it tested when every answer is held to that
+       cutoff, so the per-post checks below read the policy with it. Read before the transaction, so
+       a failed read cannot abort the frame: it is said, and the policy bar holds, as before 0086. */
+    const cutoff = await new PgLearningRepo(asDb(pool)).latestApplied().then((b) => b?.cutoff ?? null, (e: unknown) => {
+      console.warn(`the applied block's cutoff could not be read; the policy bar holds: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    });
+    const policy = withJudgeCutoff(DEFAULT_POLICY, cutoff);
+
     const result = await withTransaction(pool, async (db) => {
       const frame = await projectStoryFrame(db, VIEW_ID, options, {
         storiesSinceMs: nowMs - STORY_WINDOW_MS,
         reachSinceMs: nowMs - REACH_WINDOW_MS,
         limit: BOARD_LIMIT,
-      });
+      }, policy);
       const { tick } = frame;
 
       /* The For You and Popular feeds, in the same transaction as the board they read their
          coins from — see rising.ts. */
-      const risingRows = await projectRisingFeeds(db, nowMs as Millis, frame.coinsByStory, SPARK_WINDOW_MS);
+      const risingRows = await projectRisingFeeds(db, nowMs as Millis, frame.coinsByStory, SPARK_WINDOW_MS, policy);
       /* What the feeds showed this hour, kept past the next frame (0063; skipped until applied). */
       await keepFeedHistory(db, nowMs);
 

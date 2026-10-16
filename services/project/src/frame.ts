@@ -11,7 +11,7 @@
  * story pages that were never written.
  */
 
-import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 import { PgFeedRejectionRepo, type Db } from '@insidor/store';
 
 import {
@@ -39,7 +39,8 @@ export interface FrameWindows {
   readonly limit: number;
 }
 
-export async function projectStoryFrame(db: Db, viewId: string, options: ProjectOptions, windows: FrameWindows) {
+/** `policy`: the policy the posts are held to — main.ts passes it with the applied block's own cutoff (core `withJudgeCutoff`). */
+export async function projectStoryFrame(db: Db, viewId: string, options: ProjectOptions, windows: FrameWindows, policy: Policy = DEFAULT_POLICY) {
   const tick = await nextTick(db, viewId);
   const load = await loadStoryFacts(db, {
     storiesSinceMs: windows.storiesSinceMs,
@@ -50,8 +51,8 @@ export async function projectStoryFrame(db: Db, viewId: string, options: Project
   /* ★ THE OWNER'S RULES, BEFORE ANYTHING IS PROJECTED: a narrative needs enough posts that pass
      the per-post rules, and lists only those. What is left out is recorded with why
      (public.feed_rejection) and stays in the database. See narrative-rules.ts. */
-  const reasons = await loadPostReasons(db, load.stories.flatMap((s) => s.members.map((m) => m.itemId)), DEFAULT_POLICY);
-  const checked = checkNarratives(load.stories, reasons, DEFAULT_POLICY);
+  const reasons = await loadPostReasons(db, load.stories.flatMap((s) => s.members.map((m) => m.itemId)), policy);
+  const checked = checkNarratives(load.stories, reasons, policy);
   await new PgFeedRejectionRepo(db).record(checked.rejections);
   const facts = checked.kept;
 

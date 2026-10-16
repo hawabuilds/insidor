@@ -15,7 +15,7 @@
  *                        `--baseline` also grades the same test posts with no learned block, for a
  *                        before-and-after on the same posts (about doubles the run's cost).
  *   measure [--baseline] [--rules-only] [--max-batch=<n>] [--rows=<file>] [--model=<id>]
- *           [--instructions=<file>] [--kind-coinable] [--no-auto]
+ *           [--instructions=<file>] [--kind-coinable] [--no-auto] [--max-negatives=<n>]
  *                        build and test a block now and print the result, writing nothing to the
  *                        database (no slot, no gold additions, no version, no alert) and reading
  *                        any table not yet migrated as empty. Paid like a run, on the learning book.
@@ -26,7 +26,8 @@
  *                        another judge model; `--instructions=<file>` text added after the rules
  *                        (a prompt variant, never the live file); `--kind-coinable` asks the kind
  *                        question of every "yes", so a looser bar can be tried on the same answers;
- *                        `--no-auto` leaves auto gold out.
+ *                        `--no-auto` leaves auto gold out; `--max-negatives=<n>` tests only the newest n
+ *                        live non-memes, to fit a measurement in a small budget (the run tests them all).
  *   status               the last runs and the block in use. Free.
  *   compose              what the next run would teach and test, counted (examples, taps taught
  *                        and tested, hand gold, coin calls, non-memes). Free: no judge, no writes.
@@ -56,6 +57,18 @@
  *      A post passes as live decides (core passesWithSignal): the judge, or — its kind not held —
  *      other accounts' crypto talk from its crypto-attention read; a shill never. A post with no
  *      such read is decided by the judge alone, and the run says how many.
+ *      ★ THE NEW BLOCK'S CUTOFF FIRST (the owner, 2026-10-16: "before refusing a new version, tune its
+ *      yes/no cutoff, aiming for LESS junk"): on the answers already collected (no extra call), the
+ *      new block's confidence cutoff is raised from the live bar (the applied block's own cutoff, or
+ *      the policy's lowest bar) by Policy.learning.cutoffStep up to cutoffMax (eval sweepCutoff):
+ *        A  the strictest cutoff with hand gold ≥ live, fewer live non-memes, no missed post lost
+ *        B  else the fewest live non-memes ≤ live with more hand gold, no missed post lost
+ *        else refused. The cutoff is applied WITH the block (internal.judge_examples_version
+ *      .judge_cutoff, 0086) and the projector holds every answer to it; before 0086 a block that
+ *      needs a cutoff above the policy bar is refused, since it could not be stored. A missed post
+ *      the new block answered "no" is lost at every cutoff — a stricter cutoff only removes passes.
+ *      The setup live now is graded at ITS cutoff. The rule, the cutoff and new against live on hand
+ *      gold, live non-memes and missed are in the log, the run's detail, status and the alert.
  *      The live non-memes are the labels file's "not" posts and every "Not a meme" tap the owner
  *      makes, held out by the id split, so the set grows by itself day by day.
  *        no regress  every missed post the judge in use catches (its applied block, or its rules
@@ -108,11 +121,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
+import type { JudgeEvidence } from '../contracts/src/judgement.ts';
 import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwnerAlertRepo, type GoldAddition } from '../store/src/index.ts';
 import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
 import { leadFacts, leadLines, leadRows, summarise } from './lib/lead-time.ts';
-import { buildBlock, caught, changed, currentCalls, gate, goalsText, latestSlot, ratesOf, regressions, share, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
+import { atCutoff, buildBlock, caught, changed, currentCalls, gate, goalsText, latestSlot, missedCaught, ratesOf, share, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
@@ -281,7 +295,7 @@ function tiktokSide(rows: readonly GradedPost[], held: readonly string[]) {
   };
 }
 
-async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean; readonly rulesOnly?: boolean; readonly maxBatch?: number; readonly rowsFile?: string; readonly extraInstructions?: string; readonly kindCoinable?: boolean; readonly noAuto?: boolean; readonly composeOnly?: boolean }): Promise<void> {
+async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean; readonly rulesOnly?: boolean; readonly maxBatch?: number; readonly rowsFile?: string; readonly extraInstructions?: string; readonly kindCoinable?: boolean; readonly noAuto?: boolean; readonly composeOnly?: boolean; readonly maxNegatives?: number }): Promise<void> {
   await withRepo(async (repo, owner, labelRepo, db) => {
     if (opts.record && !(await repo.claimSlot(slot, new Date()))) {
       log('info', 'this slot already ran', { slot: slot.toISOString() });
@@ -338,7 +352,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
           .filter((g) => !taught.has(g.itemId) && !testMissedIds.has(g.itemId) && !(opts.noAuto === true && g.source === 'recall' && !listed.has(g.itemId)))
           .map((g) => ({ group: g.source === 'recall' && !listed.has(g.itemId) ? ('auto' as const) : ('gold' as const), id: g.itemId, kind: `added ${g.addedOn} (${g.source})`, text: g.postText, imageUri: g.imageUri, coinRef: g.coinMint })),
         ...listedHeld.map((h) => ({ group: 'gold' as const, id: h.itemId, kind: "the owner's hand-gold list", text: h.body, imageUri: pictureOf(h.media)?.uri ?? null })),
-        ...block.testNegatives.map((c) => ({ group: 'live-not' as const, id: c.itemId, kind: c.why, text: c.text, imageUri: c.imageUri })),
+        ...(opts.maxNegatives === undefined ? block.testNegatives : [...block.testNegatives].sort((a, b) => (b.at ?? -Infinity) - (a.at ?? -Infinity)).slice(0, opts.maxNegatives)).map((c) => ({ group: 'live-not' as const, id: c.itemId, kind: c.why, text: c.text, imageUri: c.imageUri })),
         ...testMissed.map((c) => ({ group: 'missed' as const, id: c.itemId, kind: 'missed', text: c.text, imageUri: c.imageUri })),
         ...missedTaught.map((c) => ({ group: 'missed-taught' as const, id: c.itemId, kind: 'missed (taught)', text: c.text, imageUri: c.imageUri })),
       ];
@@ -419,9 +433,12 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
          no read carrying the own/others split is decided by the judge alone, and counted. */
       const signals = await soft(repo.cryptoSignals(posts.map((p) => p.id)), new Map<string, { readonly others: boolean; readonly shill: boolean }>());
       const noFacts = posts.filter((p) => !signals.has(p.id) && p.group !== 'missed-taught').length;
-      const graded = (rows: readonly EvalRow<G>[]): GradedPost[] => rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, signal: signals.get(r.id) ?? null }));
+      const graded = (rows: readonly EvalRow<G>[]): GradedPost[] =>
+        rows.map((r) => ({
+          id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, signal: signals.get(r.id) ?? null, similarity: r.similarity,
+          answer: r.coinable === null || r.confidence === null || r.lookedAt === null ? null : { coinable: r.coinable, confidence: r.confidence, lookedAt: r.lookedAt as JudgeEvidence, proposedName: r.name },
+        }));
       const GROUPS = { hand: ['gold', 'missed'], auto: 'auto', negatives: 'live-not', missed: 'missed' } as const;
-      const caughtMap = (rows: readonly EvalRow<G>[]) => new Map(graded(rows).filter((r) => r.group === 'missed' || r.group === 'missed-taught').map((r) => [r.id, caught(r, held)] as const));
 
       /* ★ THE SETUP LIVE NOW, graded on the same posts in the same run (its applied block, or its
          rules alone when none is): the block must be no worse on any of the three, and every missed
@@ -444,26 +461,57 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       if (baseline !== null) log('info', 'retune baseline: the same posts, rules alone', { slot: slot.toISOString(), handGold: baseline.hand, liveNegatives: baseline.negatives, missed: baseline.missed, autoGold: baseline.auto });
 
       const nowRows = opts.rulesOnly === true ? null : inUse?.text === block.text ? rows : (nowGraded?.rows ?? null);
-      const regressed: readonly string[] = nowRows === null ? [] : regressions(caughtMap(nowRows), caughtMap(rows));
-      const liveRates = nowRows === null ? null : ratesOf(graded(nowRows.filter((r) => r.coinable !== null)), held, GROUPS);
+      /* The setup live now as live decides: its block at ITS cutoff (null: the policy bar). */
+      const liveCutoff = inUse?.cutoff ?? null;
+      const policyBar = Math.min(...Object.values(P.qualify.minJudgeConfidence));
+      const liveGraded = nowRows === null ? null : atCutoff(graded(nowRows.filter((r) => r.coinable !== null)), liveCutoff, P);
+      const liveRates = liveGraded === null ? null : ratesOf(liveGraded, held, GROUPS);
+      const liveCaught = nowRows === null ? null : missedCaught(atCutoff(graded(nowRows), liveCutoff, P), held);
       const costUsd = spentUsd + gold.xUsd;
 
       /* Unanswered posts are out of every rate, and stop the block being applied. */
       const answered = rows.filter((r) => r.coinable !== null);
       const unanswered = rows.length - answered.length;
-      const rates = ratesOf(graded(answered), held, GROUPS);
-      const xVerdict = gate({ ...rates, regressions: regressed, live: liveRates }, L);
-      /* ★ THE TIKTOK GATE (gateOn): the block against the judge in use on TikTok's own posts. */
-      const tt = L.shortVideo.gateOn && nowRows !== null ? (() => {
-        const mine = tiktokSide(graded(answered), held);
-        const live = tiktokSide(graded(nowRows.filter((r) => r.coinable !== null)), held);
-        const lost = [...live.missed].filter(([id, c]) => c === true && mine.missed.get(id) === false).map(([id]) => id);
-        const guard = mine.coined.passed >= live.coined.passed && mine.junk.passed <= live.junk.passed && lost.length === 0;
-        const beat = mine.coined.passed > live.coined.passed && mine.junk.passed < live.junk.passed && lost.length === 0;
-        const why = guard ? null : `TikTok: coined ${mine.coined.passed}/${mine.coined.tested} against ${live.coined.passed} live, junk ${mine.junk.passed}/${mine.junk.tested} against ${live.junk.passed} live, ${lost.length} missed TikTok(s) lost`;
-        return { coined: mine.coined, junk: mine.junk, liveCoined: live.coined, liveJunk: live.junk, lost, held: guard, beat, why };
-      })() : null;
-      const verdict = tt === null || tt.held ? xVerdict : { ...xVerdict, apply: false, why: [xVerdict.why, tt.why].filter((x) => x !== null).join('; ') };
+      const mineGraded = graded(answered);
+      /* ★ THE TIKTOK GATE (gateOn): the block against the judge in use on TikTok's own posts, at each cutoff tried. */
+      const liveTt = L.shortVideo.gateOn && liveGraded !== null ? tiktokSide(liveGraded, held) : null;
+      const ttAt = (at: readonly GradedPost[]) => {
+        if (liveTt === null) return null;
+        const mine = tiktokSide(at, held);
+        const lost = [...liveTt.missed].filter(([id, c]) => c === true && mine.missed.get(id) === false).map(([id]) => id);
+        const guard = mine.coined.passed >= liveTt.coined.passed && mine.junk.passed <= liveTt.junk.passed && lost.length === 0;
+        const beat = mine.coined.passed > liveTt.coined.passed && mine.junk.passed < liveTt.junk.passed && lost.length === 0;
+        const why = guard ? null : `TikTok: coined ${mine.coined.passed}/${mine.coined.tested} against ${liveTt.coined.passed} live, junk ${mine.junk.passed}/${mine.junk.tested} against ${liveTt.junk.passed} live, ${lost.length} missed TikTok(s) lost`;
+        return { coined: mine.coined, junk: mine.junk, liveCoined: liveTt.coined, liveJunk: liveTt.junk, lost, held: guard, beat, why };
+      };
+      /* ★ THE CUTOFF SWEEP, then the gate at the cutoff it chose (see the header). Without a live
+         grading (the measure-only paths) nothing is compared and the old gate refuses as before. */
+      const choice: CutoffChoice | null = liveRates === null || liveCaught === null ? null : sweepCutoff({
+        rows: mineGraded, live: liveRates, liveCaught, from: liveCutoff ?? policyBar, held, groups: GROUPS, policy: P,
+        extra: (at) => ttAt(at)?.why ?? null,
+      });
+      const chosenAt = choice === null ? mineGraded : atCutoff(mineGraded, choice.cutoff ?? choice.point.cutoff, P);
+      const rates = ratesOf(chosenAt, held, GROUPS);
+      const regressed: readonly string[] = choice === null ? [] : choice.point.lost;
+      const tt = ttAt(chosenAt);
+      const baseGate = gate({ ...rates, regressions: regressed, live: liveRates }, L);
+      /* The cutoff travels with the block (0086). A cutoff above the policy bar that cannot be stored is a refusal. */
+      const needsCutoff = choice !== null && choice.cutoff !== null && choice.cutoff > policyBar;
+      const canStore = needsCutoff ? await repo.hasJudgeCutoff().catch(() => false) : true;
+      const xVerdict = choice === null
+        ? baseGate
+        : choice.rule === 'refused'
+          ? { apply: false, why: choice.why, goals: baseGate.goals }
+          : !canStore
+            ? { apply: false, why: `rule ${choice.rule} chose cutoff ${choice.cutoff}, but migration 0086 is not applied, so the cutoff cannot be stored with the block`, goals: baseGate.goals }
+            : { apply: true, why: null, goals: baseGate.goals };
+      const verdict = xVerdict;
+      const fmtPoint = (p: CutoffPoint) => `${p.cutoff.toFixed(2)} gold ${p.hand.passed}/${p.hand.tested} junk ${p.negatives.passed}/${p.negatives.tested} missed ${p.missed.passed}/${p.missed.tested} lost ${p.lost.length}${p.extra === null ? '' : ' (TikTok gate fails)'}`;
+      const ofN0 = (r: Rate) => `${r.passed}/${r.tested}`;
+      const cutoffText = choice === null || liveRates === null
+        ? 'cutoff: no live grading to compare with'
+        : `cutoff: ${choice.rule === 'refused' ? `refused (no cutoff from ${choice.point.cutoff.toFixed(2)} to ${L.cutoffMax} passed)` : `rule ${choice.rule}, ${choice.cutoff?.toFixed(2)} (live bar ${(liveCutoff ?? policyBar).toFixed(2)})`}; new gold ${ofN0(rates.hand)} vs live ${ofN0(liveRates.hand)}, junk ${ofN0(rates.negatives)} vs live ${ofN0(liveRates.negatives)}, missed ${ofN0(rates.missed)} vs live ${ofN0(liveRates.missed)}`;
+      if (choice !== null) log('info', 'retune cutoff sweep', { slot: slot.toISOString(), rule: choice.rule, cutoff: choice.cutoff, from: liveCutoff ?? policyBar, live: liveRates === null ? null : { gold: ofN0(liveRates.hand), junk: ofN0(liveRates.negatives), missed: ofN0(liveRates.missed) }, points: choice.points.map(fmtPoint) });
       /* `--rows=<file>`: every graded post's answers, for comparing held-kind sets on one run. */
       if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, lookedAt: r.lookedAt, similarity: r.similarity, imageUri: r.imageUri, signal: signals.get(r.id) ?? null, text: r.text.slice(0, 120) })), null, 1));
       const why = unanswered > 0 ? `${unanswered} of ${rows.length} test posts went unanswered (${unansweredCause()})${verdict.why === null ? '' : `; ${verdict.why}`}` : verdict.why;
@@ -479,6 +527,8 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         inputsThrough: newest, labelsSha,
         goldPass: share(rates.hand), goldN: rates.hand.tested, liveNegativePass: share(rates.negatives), liveNegativeN: rates.negatives.tested, missedPass: share(rates.missed), missedN: rates.missed.tested,
         applied: apply, reasonNotApplied: apply ? null : opts.dry ? `dry run${why === null ? ': every gate held' : `: ${why}`}` : why, dry: opts.dry, costUsd,
+        /* The chosen cutoff, stored whenever it can be (on a kept or dry row too, for the record). */
+        judgeCutoff: needsCutoff && canStore ? choice?.cutoff ?? null : null,
       };
       const versionId = opts.record ? await repo.recordVersion(version) : null;
 
@@ -503,7 +553,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         log('warn', 'the retune tiktok part failed; the X run is unaffected', { slot: slot.toISOString(), err: errText(e) });
       }
       const summary = {
-        slot: slot.toISOString(), version: versionId, outcome, why, leadTime: 'error' in lead ? lead.error : lead.facts,
+        slot: slot.toISOString(), version: versionId, outcome, why, cutoff: cutoffText, cutoffRule: choice?.rule ?? null, cutoffChosen: choice?.cutoff ?? null, liveCutoff, leadTime: 'error' in lead ? lead.error : lead.facts,
         handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, goals: verdict.goals, goal: goalsText(rates, L), withoutCryptoFacts: noFacts, precedentLabels: labelled.length,
         autoGold: rates.auto, missed: rates.missed, regressions: regressed, judgeInUse: inUse === null ? 'rules alone' : `block ${inUse.versionId}`,
         unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true, composition,
@@ -513,7 +563,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       };
       log(apply || opts.dry ? 'info' : 'warn', `retune ${outcome}`, summary);
       const ofN = (r: Rate) => `${r.passed}/${r.tested}`;
-      const tally = `hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), regressions ${regressed.length}${liveRates === null ? '' : `; live now: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone); ${goalsText(rates, L)}`;
+      const tally = `${cutoffText}; hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), regressions ${regressed.length}${liveRates === null ? '' : `; live now: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone); ${goalsText(rates, L)}`;
       const ttTally = part === null ? '' : `; TikTok: set ${part.setSize} (+${part.added}), ${part.bar.why}, biggest gap ${part.gapText}`;
       await end(outcome, versionId, (why === null ? `applied: ${tally}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}` : `${why} (${tally})`) + ttTally, costUsd);
 
@@ -529,6 +579,10 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
                 applied: apply, why,
                 goldPassed: rates.hand.passed, goldN: rates.hand.tested, negativePassed: rates.negatives.passed, negativeN: rates.negatives.tested, missedPassed: rates.missed.passed, missedN: rates.missed.tested,
                 autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length, goal: goalsText(rates, L), ...order.facts,
+                ...(choice === null || liveRates === null ? {} : {
+                  cutoffRule: choice.rule, cutoff: choice.cutoff, cutoffFrom: Number((liveCutoff ?? policyBar).toFixed(2)),
+                  liveGoldPassed: liveRates.hand.passed, liveGoldN: liveRates.hand.tested, liveNegativePassed: liveRates.negatives.passed, liveNegativeN: liveRates.negatives.tested, liveMissedPassed: liveRates.missed.passed, liveMissedN: liveRates.missed.tested,
+                }),
                 taps: block.used.taps, tapsTested: block.taps.tested, missed: block.used.missed, names: block.used.names, added: delta.added, removed: delta.removed, missReasons,
                 ...(part === null ? {} : { tiktokSet: part.setSize, tiktokAdded: part.added, tiktokBar: part.bar.why, tiktokGap: part.gapText, ...(tt === null ? {} : { tiktokCoinedPassed: tt.coined.passed, tiktokCoinedN: tt.coined.tested, tiktokJunkPassed: tt.junk.passed, tiktokJunkN: tt.junk.tested, tiktokBeat: tt.beat }) }),
               },
@@ -557,7 +611,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
 if (command === 'status') {
   await withRepo(async (repo, _owner, _labels, db) => {
     const applied = await repo.latestApplied();
-    console.log(applied === null ? 'no block applied: the judge reads its rules alone' : `in use: version ${applied.versionId} (${applied.sha}), applied ${applied.appliedAt.toISOString()}, ${applied.text.length} characters`);
+    console.log(applied === null ? 'no block applied: the judge reads its rules alone' : `in use: version ${applied.versionId} (${applied.sha}), applied ${applied.appliedAt.toISOString()}, ${applied.text.length} characters, ${applied.cutoff === null ? 'the policy bar' : `its own cutoff ${applied.cutoff}`}`);
     const lead = await readLead();
     console.log(`lead time, last ${LEAD_DAYS} days:`);
     for (const line of 'error' in lead ? [`could not be read: ${lead.error}`] : lead.lines) console.log(`  ${line}`);
@@ -579,7 +633,8 @@ if (command === 'status') {
   }
   const mb = arg('max-batch');
   await run(new Date(), { dry: true, force: true, record: false, baseline: flag('--baseline'), rulesOnly: flag('--rules-only'), ...(mb === null ? {} : { maxBatch: Number(mb) }), ...(arg('rows') === null ? {} : { rowsFile: arg('rows') ?? '' }),
-    ...(arg('instructions') === null ? {} : { extraInstructions: readFileSync(arg('instructions') ?? '', 'utf8') }), kindCoinable: flag('--kind-coinable'), noAuto: flag('--no-auto') });
+    ...(arg('instructions') === null ? {} : { extraInstructions: readFileSync(arg('instructions') ?? '', 'utf8') }), kindCoinable: flag('--kind-coinable'), noAuto: flag('--no-auto'),
+    ...(arg('max-negatives') === null ? {} : { maxNegatives: Number(arg('max-negatives')) }) });
 } else if (command === 'due' || command === 'run') {
   if (process.env['SPEND'] !== 'live' || !flag('--yes')) {
     console.error('retune refused: this calls the paid judge. Set SPEND=live and pass --yes.');
