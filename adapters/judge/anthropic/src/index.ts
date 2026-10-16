@@ -171,6 +171,17 @@ export function estimateTokens(policy: JudgePolicy, subjects: readonly JudgeSubj
   };
 }
 
+/**
+ * ★ EACH JUDGE READS ITS OWN NUMBER OF PRECEDENTS (the owner, 2026-10-16: the open model gets the
+ * 30–50 most similar labelled posts, this judge keeps its ten). The caller finds the most either
+ * judge wants (Policy.judge.precedents `k` and `openK`), closest first, and each judge keeps the
+ * first `k` of them. Taking the first `k` of the closest 40 is the closest `k`, own source first
+ * included (core `ownSourceFirst` puts its reserved places at the front).
+ */
+export function withPrecedentsUpTo(subjects: readonly JudgeSubject[], k: number): readonly JudgeSubject[] {
+  return subjects.map((s) => (s.precedents === undefined || s.precedents.length <= k ? s : { ...s, precedents: s.precedents.slice(0, Math.max(k, 0)) }));
+}
+
 export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
   const price = priceFor(deps.model);
   if (price === null) throw new RangeError(`judge: no price for model ${deps.model} in prices.ts`);
@@ -182,6 +193,8 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
   };
   const question = deps.question ?? 'story';
   const endpoint = deps.endpoint ?? ENDPOINT;
+  /* This judge's own number of precedents (see withPrecedentsUpTo). */
+  const ownK = deps.policy.precedents?.k ?? Infinity;
   const examples = deps.examples ?? null;
   const precedents = deps.precedents === true;
   const prompt = promptFor(question, examples, precedents);
@@ -201,7 +214,7 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
     maxBatch: deps.maxBatch,
 
     estimate(subjects): CostEstimate {
-      const parts = batches(subjects);
+      const parts = batches(withPrecedentsUpTo(subjects, ownK));
       return {
         vendor: VENDOR,
         endpoint,
@@ -247,8 +260,9 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
       return call;
     },
 
-    async judge(asked: readonly JudgeSubject[], _budget: Budget): Promise<Metered<readonly JudgeOutcome[]>> {
+    async judge(asked0: readonly JudgeSubject[], _budget: Budget): Promise<Metered<readonly JudgeOutcome[]>> {
       const judgedAt = deps.now();
+      const asked = withPrecedentsUpTo(asked0, ownK);
 
       /* Frames first, and before any money moves. A subject whose video has no frame we
          can show is never sent, so it is never paid for: it comes back unavailable. */

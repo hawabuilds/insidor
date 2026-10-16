@@ -699,6 +699,17 @@ export interface JudgePolicy {
      * examples first). 0 is off: the closest `k` of any source, as before. $0 a day either way.
      */
     readonly sameSourceFirst: number;
+    /**
+     * ★ THE OPEN JUDGE'S OWN NUMBER (the owner, 2026-10-16: "Gemma gets the 30–50 most similar
+     * examples from all my history"). The open model is sent each post's `openK` closest labels,
+     * the main judge its `k`; the labels are the same set (every owner tap, missed post, gold post
+     * and coined post, internal.label_embedding), and each labelled post goes once per call however
+     * many posts it is near. `openMaxInputTokens` caps a call's pessimistic input estimate: over
+     * it, every post in the call keeps fewer, the farthest dropped first, so a call always fits the
+     * model's window.
+     */
+    readonly openK: number;
+    readonly openMaxInputTokens: number;
   };
   /**
    * ★ WHICH OF THE TWO FEED JUDGES ANSWERS FIRST (the owner, 2026-10-16: "switch the judge to the
@@ -3375,6 +3386,14 @@ const POLICY_V1: Policy = {
          "not") and the coined-video training set's captions; 5 of 10 lets them lead for a short
          video while a text post's ten stay almost all text posts, as now. */
       sameSourceFirst: 0,
+      /* 40, the middle of the owner's 30 to 50. Ten posts a call share many neighbours, so a call
+         carries a few hundred labelled posts, not 400. The cost is the open model's input price:
+         about $0.0003 a post against $0.00012 at ten (measured on the re-tune's test posts). */
+      openK: 40,
+      /* The pinned providers serve a 131,072-token window (the router's listing, 2026-10-16). The
+         estimate counts a picture at 1,600 tokens and text at three characters a token, both high
+         for this model, so 80,000 estimated is well inside the window with the answer's room. */
+      openMaxInputTokens: 80_000,
     },
     /* The live judge stays first until the owner's evening switch, with the open model behind it. */
     primary: 'main',

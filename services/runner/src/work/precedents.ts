@@ -34,7 +34,7 @@ import type { EmbedPort } from '@insidor/contracts/ports/embed.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { LabelledPost, PgLabelEmbeddingRepo, PgPostEmbeddingRepo, StoredLabel } from '@insidor/store';
 import { LABEL_RANK } from '@insidor/store';
-import { closestNot, embedInput, nearestLabelled, postPicture, precedentsFor, sourceOfItemId, type LabelledVector } from '@insidor/core';
+import { closestNot, embedInput, nearestLabelled, postPicture, precedentsFor, precedentsWanted, sourceOfItemId, type LabelledVector } from '@insidor/core';
 
 import { errorText, type Logger } from '../log.ts';
 
@@ -74,7 +74,8 @@ export function precedentSource(deps: PrecedentDeps) {
   let cached: readonly StoredLabel[] = [];
   let seen: string | null = null;
   const space = deps.embed?.postSpace ?? null;
-  const k = deps.policy.judge.precedents.k;
+  /* The most either judge reads (core precedentsWanted); each judge keeps its own first k. */
+  const k = precedentsWanted(deps.policy);
   const on = (): boolean => deps.embed !== null && deps.embed.embedPosts !== undefined && space !== null && deps.mode === 'live' && k > 0;
 
   async function stored(): Promise<readonly StoredLabel[]> {

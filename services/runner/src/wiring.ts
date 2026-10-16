@@ -115,6 +115,7 @@ import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
 import { laneLedger, type LaneLedger } from './work/lane-ledger.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
+import { precedentsWanted } from '@insidor/core';
 import { precedentSource } from './work/precedents.ts';
 import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
 import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
@@ -701,7 +702,7 @@ export async function withRuntime<T>(
          applied: no examples, the judge's rules alone. */
       /* ★ PRECEDENTS (work/precedents.ts): the owner's closest labelled posts ride along with each
          post, when the embeddings that find them are configured. They change the post question's id. */
-      const withPrecedents = cfg.embeddings.state === 'configured' && policy.judge.precedents.k > 0;
+      const withPrecedents = cfg.embeddings.state === 'configured' && precedentsWanted(policy) > 0;
       /* ★ THE FEED'S TWO JUDGES (feed-judges.ts): the main one and the open model, by the role
          Policy.judge.primary gives each, both with the same block, precedents and questions. */
       const openModel = await openHostModel(cfg.openJudge, policy.judge.timeoutMs, log.child({ step: 'open-judge' }));
