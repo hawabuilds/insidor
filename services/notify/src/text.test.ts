@@ -162,3 +162,13 @@ test('the small rules: possessive, cut words, spans', () => {
   assert.equal(span(5 * 3_600_000), '5h');
   assert.equal(span(72 * 3_600_000), '3d');
 });
+
+test("a prepaid account in dollars: what is left and how long it lasts; topped up says so", () => {
+  assert.deepEqual(alertText('supplier_account', { supplier: 'OpenRouter', uses: 'the open-model judge', state: 'low', usd: 3.25, lineUsd: 5, dailyUsd: 1.6 }), {
+    title: 'OpenRouter credit low: $3.25 left',
+    body: "OpenRouter (the open-model judge) has $3.25 left, about 2 days at the last day's spend of $1.60. Top up its account before it runs out.",
+  });
+  assert.equal(alertText('supplier_account', { supplier: 'OpenRouter', state: 'low', usd: 3.25, dailyUsd: 0 }).body, 'OpenRouter has $3.25 left. Top up its account before it runs out.');
+  assert.deepEqual(alertText('supplier_account', { supplier: 'OpenRouter', uses: 'the open-model judge', state: 'topped', usd: 50 }), { title: 'OpenRouter credit topped up', body: 'OpenRouter (the open-model judge) has $50.00 left again.' });
+  assert.equal(alertText('supplier_account', { supplier: 'X', state: 'low', credits: 40, backup: 'Y' }).title, 'X credits low', 'a credit count reads as before');
+});
