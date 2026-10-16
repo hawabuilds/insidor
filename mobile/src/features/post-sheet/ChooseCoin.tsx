@@ -37,7 +37,8 @@ import { BoltIcon } from './sheet-icons.tsx';
 import styles from './post-sheet.module.css';
 
 export function ChooseCoin({ data, onBack, onOpenCoin, onCreate, onNote }: {
-  data: PostSheetData;
+  /* The post sheet's reply, or the narrative page's coins in its shape: only these three are read. */
+  data: Pick<PostSheetData, 'coins' | 'coinName' | 'sourcesMissing'>;
   onBack: () => void;
   onOpenCoin: (c: SheetCoin) => void;
   onCreate: () => void;

@@ -35,6 +35,8 @@ export interface SheetMedia {
   readonly durationMs: number | null;
 }
 
+export type LaunchClock = { readonly kind: 'chain' } | { readonly kind: 'within'; readonly withinS: number } | { readonly kind: 'unknown' };
+
 export interface SheetCoin {
   readonly coinId: string;
   readonly address: string;
@@ -42,6 +44,12 @@ export interface SheetCoin {
   readonly ticker: string | null;
   readonly imageUrl: string | null;
   readonly launchedAt: Instant;
+  /**
+   * Whose clock `launchedAt` is (services/read post-sheet.ts `launchClock`): the chain's own time,
+   * a live notice that bounds it to `withinS` seconds either side, or not known. Screens print a
+   * launch to the minute only from the first two.
+   */
+  readonly launchClock: LaunchClock;
   readonly marketCapUsd: Measured;
   /** The price's move over the last day, in percent (12 is up 12%). */
   readonly changePct24h: Measured;
@@ -57,6 +65,8 @@ export interface PostSheetData {
   readonly media: SheetMedia | null;
   /** The narrative the post is in, with how many posts its page lists (null from an older server). */
   readonly narrative: { readonly storyId: string; readonly title: string | null; readonly posts: number | null } | null;
+  /** The "Part of a story" card: only for a narrative the board lists now, with its picture. Null otherwise. */
+  readonly storyCard: { readonly storyId: string; readonly title: string | null; readonly posts: number | null; readonly thumbUrl: string | null } | null;
   /** The name the coins share, for "Top Goliath coin by MC" and "Goliath coins". */
   readonly coinName: string | null;
   readonly sourcesMissing: number;
@@ -113,6 +123,14 @@ function mediaOf(v: unknown): SheetMedia | null {
   };
 }
 
+/** An older server sends no clock: not known, so no launch is printed as the chain's. */
+function launchClockOf(v: unknown): LaunchClock {
+  const o = typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
+  if (o['kind'] === 'chain') return { kind: 'chain' };
+  if (o['kind'] === 'within' && typeof o['withinS'] === 'number' && Number.isFinite(o['withinS']) && o['withinS'] >= 0) return { kind: 'within', withinS: o['withinS'] };
+  return { kind: 'unknown' };
+}
+
 export function coinOf(v: unknown): SheetCoin | null {
   if (typeof v !== 'object' || v === null) return null;
   const o = v as Record<string, unknown>;
@@ -126,6 +144,7 @@ export function coinOf(v: unknown): SheetCoin | null {
     ticker: text(o['ticker']),
     imageUrl: https(o['imageUrl']),
     launchedAt: instantOf(o['launchedAt']),
+    launchClock: launchClockOf(o['launchClock']),
     marketCapUsd: measuredOf(o['marketCapUsd']),
     changePct24h: measuredOf(o['changePct24h']),
     bonded: typeof o['bonded'] === 'boolean' ? o['bonded'] : null,
@@ -155,6 +174,11 @@ export function decodePostSheet(raw: unknown, path = '$'): PostSheetData {
     foundAt: instantOf(o['foundAt']),
     media: mediaOf(o['media']),
     narrative: storyId === null ? null : { storyId, title: text(narrative?.['title']), posts: num(narrative?.['posts']) },
+    storyCard: (() => {
+      const c = typeof o['storyCard'] === 'object' && o['storyCard'] !== null ? (o['storyCard'] as Record<string, unknown>) : null;
+      const id = text(c?.['storyId']);
+      return id === null ? null : { storyId: id, title: text(c?.['title']), posts: num(c?.['posts']), thumbUrl: https(c?.['thumbUrl']) };
+    })(),
     coinName: text(o['coinName']),
     sourcesMissing: num(o['sourcesMissing']) ?? 0,
     coins: (Array.isArray(o['coins']) ? o['coins'] : []).flatMap((c) => coinOf(c) ?? []),

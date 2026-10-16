@@ -19,6 +19,13 @@
  * and which coin; never how sure. ★ THE ONLY LINK OUT is the open button, to the post where it
  * was posted, an outlined square so it is never mistaken for the round X beside it.
  *
+ * ★ THE VIEWS, THE FACT LINE AND THE ONE CHART (the owner's design, 2026-10-17): the views, then one
+ * line of facts, "Last 5m +48K   MC +6%   Found 2m before $GTA", then this post's views gained
+ * every five minutes (GainChart.tsx, gain-chart.ts's rule) with Found and the coin's launch at
+ * their exact times, then "Part of a story" when the post is in a narrative the board lists. The
+ * coin in those words and that marker is the post's own proven coin only; MC is hidden until the
+ * coin has enough trades (mc-change.ts), and "Found before" only when we really were first.
+ *
  * Buy opens the existing ticket unchanged (BuyOpen.tsx); there is no quick buy here — that is on
  * Choose coin only. Tapping the coin row anywhere else opens that coin's token page.
  *
@@ -36,6 +43,8 @@ import { askForReading } from '../../shared/api/people.ts';
 import { evidenceFacts } from '../../shared/coin-status.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { compact, formatCount } from '../../shared/format/number.ts';
+import { tickerText } from '../../shared/format/ticker.ts';
+import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { platformOf } from '../../shared/platform.ts';
 import { storyWords } from '../../shared/story-words.ts';
@@ -57,9 +66,11 @@ import { CoinLine } from './CoinLine.tsx';
 import { PostMedia } from './PostMedia.tsx';
 import { tiktokVideoId } from './tiktok-player.ts';
 import { OpenIcon } from './sheet-icons.tsx';
-import { coinTag, firstCoinAfter, followersText, foundTag, gainText, provenWhy, recentGain } from './sheet-view.ts';
-import { ViewsChart } from './ViewsChart.tsx';
-import { perMinute } from './views-chart.ts';
+import { followersText, provenWhy } from './sheet-view.ts';
+import { GainChart, type ChartMarker } from './GainChart.tsx';
+import { firstWords, hm, lastGain, launchTime, plus, postSlots } from './gain-chart.ts';
+import { pctText } from './mc-change.ts';
+import { useMcChange } from './useMcChange.ts';
 import styles from './post-sheet.module.css';
 
 export interface PostSheetProps {
@@ -219,12 +230,10 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   });
   /* The English when the post was written in another language, with its line (shared/ui/Translated.tsx). */
   const words = useShownWords(post);
-  const readings = data.views.length > 0 ? data.views : post.spark.points.map((p) => ({ atMs: p.atMs, value: p.value }));
-  const gain = recentGain(readings);
-  const firstCoin = firstCoinAfter(post.postedAt, data.coins.map((c) => c.launchedAt));
-  const rate = useMemo(() => perMinute(readings, now), [readings, now]);
-  const found = foundTag(post.postedAt, data.foundAt);
-  const coinAt = coinTag(post.postedAt, firstCoin);
+  /* The post's views gained, five minutes at a time, from its own readings (gain-chart.ts): the chart and "Last 5m". */
+  const minute = Math.floor(now / 60_000) * 60_000;
+  const slots = useMemo(() => postSlots(data.views, minute), [data.views, minute]);
+  const gain = lastGain(slots, '5m');
   const media = data.media !== null && !mediaGone ? data.media : null;
   const handle = post.authorLabel;
   /* With no name stored, the handle is the name, said once. */
@@ -235,6 +244,18 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   const main = proven ?? data.coins[0] ?? null;
   const matched = post.coins.kind === 'matched';
   const why = proven !== null ? provenWhy(post.coins, evidenceFacts) : null;
+  /* Who was first, against the post's own proven coin only: an unproven coin is not "the" coin. */
+  const mc = useMcChange(proven?.address ?? null, '5m');
+  const ticker = proven !== null ? tickerText(proven.ticker ?? proven.name ?? proven.address.slice(0, 4)) : '';
+  const launch = proven === null ? null : launchTime(proven.launchedAt.known ? proven.launchedAt.at : null, proven.launchClock, now);
+  const foundAt = data.foundAt.known ? data.foundAt.at : null;
+  const first = firstWords(foundAt, launch ?? { kind: 'unknown' }, ticker);
+  const markers: ChartMarker[] = [
+    ...(foundAt !== null ? [{ key: 'found', tone: 'found' as const, text: `Found ${hm(foundAt, now)}`, at: foundAt }] : []),
+    ...(launch === null ? [] : launch.kind === 'at'
+      ? [{ key: 'coin', tone: 'coin' as const, text: `${ticker} ${launch.text}`, at: launch.at }]
+      : [{ key: 'coin', tone: 'coin' as const, text: `${ticker} launch time not known`, at: null }]),
+  ];
 
   return (
     <>
@@ -275,31 +296,36 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
           ) : null}
 
           <section className={styles['views']}>
-            <div className={styles['viewsLeft']}>
-              <span className={styles['label']}>Views</span>
-              <span className={styles['viewsLine']}>
-                <Value r={formatCount(post.reach)} className={styles['bigNumber']} />
-                {gainText(gain) !== null && gain !== null ? <span className={gain.gain >= 0 ? styles['up'] : styles['down']}>{gainText(gain)} {gain.minutes}m</span> : null}
-              </span>
-            </div>
-            <span className={styles['tags']}>
-              {found !== null ? <span className={styles['tagFound']}>{found}</span> : null}
-              {coinAt !== null ? <span className={styles['tag']}>{coinAt}</span> : null}
-              {/* Per minute, with the span it is measured over above it (views-chart.ts perMinute). */}
-              {rate !== null ? (
-                <span className={styles['rate']}>
-                  <span className={styles['rateOver']}>{rate.over}</span>
-                  <span className={rate.rate >= 0 ? styles['tagUp'] : styles['tagDown']}>{rate.text}</span>
+            <span className={styles['viewsLine']}>
+              <Value r={formatCount(post.reach)} className={styles['bigNumber']} />
+              <span className={styles['viewsWord']}>views</span>
+            </span>
+            <p className={styles['facts']}>
+              {slots !== null ? (
+                <span>
+                  Last 5m {gain !== null ? <b className={gain > 0 ? styles['upText'] : styles['plainText']}>{plus(gain)}</b> : 'not read'}
                 </span>
               ) : null}
-            </span>
+              {proven !== null && mc !== null ? (
+                <span>
+                  MC <b className={mc >= 0 ? styles['upText'] : styles['downText']}>{pctText(mc)}</b>
+                </span>
+              ) : null}
+              {first !== null ? (
+                <span>
+                  {first.lead} <b className={styles['plainText']}>{first.gap}</b> {first.tail}
+                </span>
+              ) : null}
+            </p>
           </section>
 
-          {data.narrative !== null ? <StoryLine narrative={data.narrative} onOpen={onNarrative} /> : null}
+          {slots !== null && slots.values.some((v) => v !== null) ? (
+            <GainChart slots={slots} firstAt={post.postedAt.known ? post.postedAt.at : null} firstWord="posted" now={minute} interval="5m" onInterval={() => undefined} markers={markers} height={chartHeight} rail={false} />
+          ) : null}
 
-          <ViewsChart readings={data.views} postedAt={post.postedAt.known ? post.postedAt.at : null} foundAt={data.foundAt.known ? data.foundAt.at : null} coinAt={firstCoin} now={now} height={chartHeight} />
+          {data.storyCard !== null ? <StoryCard card={data.storyCard} onOpen={onNarrative} /> : null}
 
-          <Tiles data={data} onNarrative={onNarrative} />
+          <Tiles data={data} />
         </div>
       </SheetBody>
 
@@ -350,31 +376,29 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
 }
 
 /**
- * "Part of the GTA 6 story, 12 posts" (the owner, 2026-10-16): one small line under the views that
- * opens the narrative page, as the Narrative tile does. One line; the title is cut first.
+ * "Part of a story" (the owner's design, 2026-10-17): the narrative's picture, title and post count
+ * under the chart, opening its page. Only for a narrative the board lists now (the reply's
+ * `storyCard`), so it never points at a group that is not a real narrative.
  */
-function StoryLine({ narrative, onOpen }: { narrative: NonNullable<PostSheetData['narrative']>; onOpen: (storyId: string) => void }) {
-  const w = storyWords(narrative.title, narrative.posts);
+function StoryCard({ card, onOpen }: { card: NonNullable<PostSheetData['storyCard']>; onOpen: (storyId: string) => void }) {
   return (
-    <button type="button" className={styles['storyLine']} onClick={() => onOpen(narrative.storyId)}>
-      <span>Part of {w.name === null ? 'a' : 'the'}</span>
-      {w.name !== null ? <b className={styles['storyLineName']}>{w.name}</b> : null}
-      <span className={styles['storyLineRest']}>{`story${w.count !== null ? `, ${w.count}` : ''}`}</span>
-      <ChevronIcon size={13} />
+    <button type="button" className={styles['storyCard']} onClick={() => onOpen(card.storyId)}>
+      <Thumb url={card.thumbUrl} size={44} radius={10} />
+      <span className={styles['storyCardText']}>
+        <span className={styles['storyCardKicker']}>Part of a story</span>
+        <span className={styles['storyCardTitle']}>
+          <b>{card.title ?? 'Untitled'}</b>
+          {card.posts !== null ? <span>{card.posts === 1 ? '1 post' : `${card.posts} posts`}</span> : null}
+        </span>
+      </span>
+      <ChevronIcon size={18} />
     </button>
   );
 }
 
-/** Narrative and $tickers in replies, each only when we have it. Views a minute is a pill beside the views (PostView). */
-function Tiles({ data, onNarrative }: { data: PostSheetData; onNarrative: (storyId: string) => void }) {
-  const n = data.narrative;
+/** $tickers in replies, when we have it. The narrative is the "Part of a story" card above. */
+function Tiles({ data }: { data: PostSheetData }) {
   const tiles = [
-    n !== null && n.title !== null ? (
-      <button key="n" type="button" className={`${styles['tile']} ${styles['tileLink']}`} onClick={() => onNarrative(n.storyId)}>
-        <span className={styles['label']}>Narrative</span>
-        <span className={styles['tileValue']}><span className={styles['clip']}>{n.title}</span><ChevronIcon size={14} /></span>
-      </button>
-    ) : null,
     data.tickersInReplies.known ? (
       <div key="r" className={styles['tile']}>
         <span className={styles['label']}>$ in replies</span>

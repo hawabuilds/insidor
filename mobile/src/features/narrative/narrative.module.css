@@ -1,164 +1,28 @@
+/* The narrative page and its Edit sheet, in the owner's design values of 2026-10-17: page #0B0B0E,
+   cards #111116 with a 1px #1F1E26 border, secondary buttons #16151B, purple #9945FF only for Buy
+   and main actions, text #F4EEFF, labels #8B8794, gains #2FD47A. The coin bar sits where the token
+   page's Buy and Sell panel sits (trade.module.css .bar), so the page's foot clears both. */
+
 .page {
-  padding-bottom: calc(var(--tabbar-space) + 16px);
+  min-height: 100vh;
+  background: #0b0b0e;
+  color: #f4eeff;
+  padding-bottom: calc(var(--tabbar-space) + 110px);
 }
 
-/* ── the header's facts: total views, posts, last hour ─────────────── */
-
-.facts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 14px var(--gutter) 0;
+.empty {
+  padding: 24px var(--gutter);
+  color: #8b8794;
 }
 
-.facts > div {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.factL {
-  font-size: 12px;
-  color: var(--text-3);
-}
-
-.factN {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.2;
-}
-
-/* Why the last hour is a dash, under it, small. */
-.factWhy {
-  font-size: 11px;
-  line-height: 1.3;
-  color: var(--text-3);
-}
-
-.up {
-  color: var(--up);
-}
-
-.down {
-  color: var(--down);
-}
-
-/* ── the narrative's coin, in the header ───────────────────────────── */
-
-.coinArea {
-  margin: 12px var(--gutter) 0;
-  padding: 10px 12px;
-  border-radius: 16px;
-  background: var(--sheet-card);
-  box-shadow: inset 0 0 0 1px var(--sheet-border);
-}
-
-.coinHead {
-  display: block;
-  margin: 2px 0 6px;
-  font-size: 12px;
-  color: var(--sheet-label);
-}
-
-.coinNone {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 14px;
-  color: var(--text-2);
-}
-
-.buy,
-.create {
-  height: 34px;
-  padding: 0 16px;
-  border-radius: 999px;
-  font-size: 14px;
-  font-weight: 700;
-  flex: none;
-}
-
-.buy {
-  background: var(--sheet-action);
-  color: #fff;
-}
-
-.create {
-  background: var(--sheet-button);
-  color: var(--text-1);
-}
-
-.coinList {
-  padding: 0 var(--gutter);
-}
-
-.coinList > div {
-  padding: 4px 0;
-}
-
-/* ── the chart ─────────────────────────────────────────────────────── */
-
-.chartBox {
-  margin: 14px var(--gutter) 0;
-}
-
-.chartNote {
-  margin: 14px var(--gutter) 0;
-  padding: 14px;
-  border-radius: 14px;
-  background: var(--sheet-card);
-  color: var(--text-2);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.chartFoot {
-  margin: 6px 0 0;
-  color: var(--text-3);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-/* ── posts: the For You card, spaced as on For You ─────────────────── */
-
-.card {
-  padding: 0 0 2px;
-}
-
-/* ── the owner's calls ─────────────────────────────────────────────── */
-
-.ownerBar {
-  margin: 10px var(--gutter) 0;
-}
-
-.mergeList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mergeRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.mergeTitle {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-}
+/* ── top ───────────────────────────────────────────────────────────── */
 
 .top {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 14px 16px 6px 12px;
+  justify-content: space-between;
+  padding: calc(var(--safe-top) + 10px) var(--gutter) 0 12px;
+  height: calc(var(--safe-top) + 54px);
 }
 
 .back {
@@ -166,278 +30,452 @@
   height: 44px;
   display: grid;
   place-items: center;
-  color: var(--text-1);
+  color: #f4eeff;
 }
 
 .topRight {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-.round {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+.star {
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
-  background: var(--card);
-  color: var(--text-1);
+  color: #f4eeff;
 }
 
 .starred {
-  color: var(--brand-300);
-  background: var(--brand-wash);
+  color: #b48cff;
 }
+
+.edit {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #16151b;
+  color: #f4eeff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ── head ──────────────────────────────────────────────────────────── */
 
 .head {
   display: flex;
-  gap: 14px;
   align-items: center;
-  padding: 4px var(--gutter) 0;
+  gap: 14px;
+  padding: 10px var(--gutter) 0;
 }
 
 .headText {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
 }
 
-.kicker {
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-
-/* A narrative's title is often a post's words: three lines at most, whole on its posts. */
 .headText h1 {
-  margin: 1px 0 3px;
-  font-size: 19px;
+  margin: 0;
+  font-size: 22px;
   font-weight: 800;
-  line-height: 1.2;
   letter-spacing: -0.02em;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  line-height: 1.2;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.meta,
-.coinMeta {
+.meta {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  color: var(--text-3);
-}
-
-.age {
-  color: var(--text-2);
-  font-weight: 600;
-}
-
-.views {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  padding: 14px var(--gutter) 0;
-}
-
-.views > div {
-  display: flex;
-  flex-direction: column;
-}
-
-.viewsN {
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  line-height: 1.1;
-}
-
-.viewsL {
-  font-size: 13px;
-  color: var(--text-3);
-}
-
-.summary {
-  margin: 10px var(--gutter) 6px;
+  margin-top: 3px;
+  color: #8b8794;
   font-size: 14px;
-  line-height: 1.45;
-  color: var(--text-2);
+  white-space: nowrap;
 }
 
-.section {
-  padding: 4px 0;
+.total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 16px var(--gutter) 0;
 }
 
-.section small {
-  color: var(--text-3);
+.totalN {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.totalL {
+  color: #8b8794;
+  font-size: 17px;
+}
+
+.why {
+  margin: 4px var(--gutter) 0;
+  color: #8b8794;
   font-size: 12px;
-  font-weight: 600;
 }
 
-.coin {
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  row-gap: 2px;
+  margin: 10px var(--gutter) 0;
+  color: #8b8794;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.facts b {
+  font-weight: 700;
+}
+
+.up {
+  color: #2fd47a;
+}
+
+.down {
+  color: var(--down);
+}
+
+.plain {
+  color: #f4eeff;
+}
+
+.chartBox {
+  margin: 4px var(--gutter) 0;
+}
+
+/* ── posts ─────────────────────────────────────────────────────────── */
+
+.postsHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 22px var(--gutter) 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1f1e26;
+}
+
+.postsHead h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.postsHead span {
+  color: #8b8794;
+  font-size: 13px;
+}
+
+.posts {
+  --badge-ring: #0b0b0e;
+  padding: 0 var(--gutter);
+}
+
+.row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px var(--gutter);
+  width: 100%;
+  padding: 12px 0;
+  border-bottom: 1px solid #1f1e26;
+  text-align: left;
+  color: inherit;
 }
 
-.coin:active {
-  background: var(--hover);
-}
-
-.coinText {
-  flex: 1;
-  min-width: 0;
+.rowText {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  flex: 1;
+  min-width: 0;
 }
 
-.ticker {
-  display: flex;
-  align-items: center;
-  gap: 7px;
+.rowLine {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
-.label {
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.rowBy {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8b8794;
+  font-size: 13px;
 }
 
-.label-biggest {
-  background: var(--card);
-  color: var(--text-2);
-}
-
-.label-first {
-  background: var(--brand-wash);
-  color: var(--brand-300);
-}
-
-.mcap {
+.rowNums {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-}
-
-.mcapN {
+  flex: none;
   font-size: 15px;
-  font-weight: 800;
 }
 
-.mcapL {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
+.rowNums span {
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.more {
-  margin: 6px var(--gutter) 0;
-  color: var(--brand-400);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.note,
-.empty {
-  margin: 16px var(--gutter);
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-3);
-}
-
-.post {
-  display: block;
-  padding: 10px var(--gutter);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.postHead {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-}
-
-/* The badge sits inline here, not pinned to a picture's corner. */
-.postHead > span:first-child {
-  position: static;
-  width: 22px;
-  height: 22px;
-  border-width: 0;
-}
-
-.postText {
-  display: block;
-  margin-top: 5px;
-  font-size: 14px;
-  color: var(--text-2);
-  line-height: 1.4;
-}
-
-.stats {
-  margin: 6px var(--gutter);
-}
-
-.stats > div {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 14px;
-}
-
-.stats dt {
-  color: var(--text-3);
-}
-
-.stats dd {
-  margin: 0;
-  font-weight: 700;
-}
-
-/* ── the bottom bar, above the tab bar ─────────────────────────────── */
+/* ── the coin bar ──────────────────────────────────────────────────── */
 
 .bar {
   position: fixed;
   left: 50%;
-  transform: translateX(-50%);
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 30;
   width: 100%;
   max-width: 480px;
-  bottom: calc(80px + env(safe-area-inset-bottom));
-  z-index: 35;
+  padding: 0 16px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.barPanel {
+  pointer-events: auto;
   display: flex;
+  align-items: center;
   gap: 10px;
-  padding: 10px var(--gutter);
-  background: linear-gradient(to bottom, transparent, var(--bg) 28%);
+  min-height: 64px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid #1f1e26;
+  border-radius: 22px;
+  background: rgb(17 17 22 / 94%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-panel);
 }
 
-.call {
+.barCoin {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex: 1;
+  min-width: 0;
+  cursor: pointer;
 }
 
-.primary {
-  flex: 1.6;
+.barText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
-/* Under each post: its own comments, in a sheet. */
-.postComments {
-  margin: -4px 0 8px;
-  padding: 0 0 4px;
-  color: var(--text-3);
-  font-size: 12.5px;
+.barTop {
+  display: flex;
+  gap: 6px;
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+.barTop span {
   font-weight: 700;
+}
+
+.barSub {
+  display: flex;
+  gap: 8px;
+  color: #8b8794;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.barNone {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  color: #8b8794;
+  font-size: 14px;
+}
+
+.barNone b {
+  color: #f4eeff;
+  font-size: 16px;
+}
+
+.allCoins {
+  padding: 0;
+  color: #8b8794;
+  font-size: 13px;
+  text-align: left;
+}
+
+.buy {
+  flex: none;
+  min-width: 104px;
+  height: 46px;
+  padding: 0 20px;
+  border-radius: 16px;
+  background: #9945ff;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+/* ── the Edit sheet ────────────────────────────────────────────────── */
+
+.editHead {
+  display: flex;
+  flex-direction: column;
+}
+
+.editHead b {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.editHead span {
+  margin-top: 2px;
+  color: #8b8794;
+  font-size: 15px;
+}
+
+.editRowButton {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 0;
+  color: #8b8794;
+  text-align: left;
+}
+
+.editRowButton + .editRowButton {
+  border-top: 1px solid #1f1e26;
+}
+
+.editRowWords {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.editRowWords b {
+  color: #f4eeff;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.editRowWords span {
+  font-size: 14px;
+}
+
+.editBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 8px;
+}
+
+.editLabel {
+  margin: 16px 0 0;
+  color: #8b8794;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.editNote {
+  margin: 0;
+  color: #8b8794;
+  font-size: 13px;
+}
+
+.editPair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.editButton,
+.editDanger {
+  height: 46px;
+  border-radius: 14px;
+  background: #16151b;
+  border: 1px solid #1f1e26;
+  color: #f4eeff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.editDanger {
+  margin-top: 22px;
+  width: 100%;
+  height: 50px;
+  border: 0;
+  border-radius: 16px;
+  background: #21161a;
+  color: #ff5c61;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.editSmall {
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: #16151b;
+  border: 1px solid #1f1e26;
+  color: #f4eeff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.editSaved {
+  color: #2fd47a;
+}
+
+.editBack {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.editLink {
+  color: #b48cff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.editRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #1f1e26;
+}
+
+.editRowText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.editInput {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #1f1e26;
+  background: #111116;
+  color: #f4eeff;
+  font-size: 14px;
 }

@@ -2,7 +2,7 @@
  * THE POST SHEET'S AND THE FOR YOU CARD'S DECISIONS, apart from the screens so `node --test` can
  * hold them: how much a post's views grew lately and over how long, the "Found 2m" and "Coin 33m"
  * tags, a coin's age, and which line a card's coin area says. The views chart's own rules are in
- * views-chart.ts.
+ * gain-chart.ts.
  *
  * ★ EVERY NUMBER IS BETWEEN TWO OF OUR OWN READINGS, AND SAYS ITS SPAN. Readings are taken every
  * few minutes, not every five: the gain is measured from the reading nearest five minutes before
