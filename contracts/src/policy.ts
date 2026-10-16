@@ -762,6 +762,25 @@ export interface JudgePolicy {
     readonly dailyUsd: number;
     readonly maxInFlight: number;
   };
+  /**
+   * ★ THE JUNK FILTER BEFORE THE POST JUDGE (the owner, 2026-10-16: "posts it's confident are junk
+   * skip the judge; tune it so it never drops gold or missed posts"). A logistic regression over the
+   * post's words-and-picture vector (the precedents' own) says how sure it is the post is junk; with
+   * `on`, a post at or over the applied fit's threshold is not asked the post question and is
+   * recorded as not asked (internal.junk_skip, 0091) — never as a "no". A post with no vector, or
+   * no applied fit, is judged as before. The fit and its threshold are refitted at each re-tune
+   * (tools/lib/junk-filter.ts) and stored in internal.junk_filter; these are the bars it is fitted to:
+   * `l2` its ridge, `folds` the held-out split, `margin` added above the highest held-out score of
+   * any hand gold or missed post, and `minProtected` the fewest such posts with a vector for a
+   * threshold to be trusted at all.
+   */
+  readonly junkFilter: {
+    readonly on: boolean;
+    readonly l2: number;
+    readonly folds: number;
+    readonly margin: number;
+    readonly minProtected: number;
+  };
 }
 
 /* ── RESOLVE ──────────────────────────────────────────────────────────── */
@@ -3429,6 +3448,14 @@ const POLICY_V1: Policy = {
        the 9,119 posts the live judge answered that day is about $1.46, the post question alone
        less. Four batches waiting at once is forty posts, about two minutes of the open model. */
     shadow: { on: true, dailyUsd: 1.5, maxInFlight: 4 },
+    /* Off until the owner has read the held-out table (tools/junk-filter.ts). Measured 2026-10-16 on
+       970 labels with a vector (120 hand gold, 28 missed, 103 coined, 15 meme, 704 not), five folds
+       by words: l2 0.3 dropped the most "not" posts at zero gold and missed of 0.1, 0.2, 0.3, 0.5, 1,
+       3 and 10. The highest held-out protected post scored 0.931 (a link-only coined gold post);
+       0.5 in log-odds above it is 0.957, which drops 35 of 704 "not" posts, no gold, missed, coined
+       or meme post, and about 4% of the day's judged posts. 0.25 dropped one later missed post on a
+       time split (train before 15 Oct 13:00, test after); 0.5 dropped none on either split. */
+    junkFilter: { on: false, l2: 0.3, folds: 5, margin: 0.5, minProtected: 30 },
   },
 
   resolve: {
