@@ -3757,8 +3757,10 @@ const POLICY_V1: Policy = {
          about 16, a median 35 days old; 12 under six hours, 7 of those already past 100,000 views
          (a 763k-view video at 4.2 hours, BBC News at 2.7 hours), and our own searches held 1 of the
          199. At this cadence it is 192 pages a day, $0.36 at the dearer credit pack, and about 70
-         young videos a day for the judge ($0.14 at $0.002 a post) — about $0.50 a day in all. */
-      on: false,
+         young videos a day for the judge ($0.14 at $0.002 a post) — about $0.50 a day in all.
+         On from 2026-10-16 00:16 UTC as the owner's approved 3-day trial (to 2026-10-19 00:16 UTC);
+         at the trial's end it stays only if it found coined videos earlier than the searches did. */
+      on: true,
       everyMs: 900_000, // fifteen minutes
       regions: ['US', 'GB'],
       creditMaxAgeMs: 21_600_000, // six hours

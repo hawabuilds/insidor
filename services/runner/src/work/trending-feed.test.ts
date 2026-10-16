@@ -19,6 +19,7 @@ const NOW = 1_800_000_000_000 as Millis;
 const HOUR = 3_600_000;
 const quiet: Logger = { info: () => {}, warn: () => {}, error: () => {}, child: () => quiet } as unknown as Logger;
 const on: Policy = { ...DEFAULT_POLICY, finders: { ...DEFAULT_POLICY.finders, trending: { ...DEFAULT_POLICY.finders.trending, on: true } } };
+const off: Policy = { ...DEFAULT_POLICY, finders: { ...DEFAULT_POLICY.finders, trending: { ...DEFAULT_POLICY.finders.trending, on: false } } };
 
 const item = (id: string, ageMs: number | null) => ({ itemId: `vid:${id}`, sourceItemId: id, authorKey: `vid:a${id}`, postedAt: ageMs === null ? null : NOW - ageMs }) as unknown as Item;
 
@@ -52,8 +53,7 @@ test('young only: under the age, and a video with no time is not young', () => {
 
 test('★ switched off: asks nothing', async () => {
   const calls = { n: 0 };
-  const r = await trendingFeedPass(deps(DEFAULT_POLICY, source([item('1', HOUR)], calls), []), trendingFeedClock());
-  assert.equal(DEFAULT_POLICY.finders.trending.on, false);
+  const r = await trendingFeedPass(deps(off, source([item('1', HOUR)], calls), []), trendingFeedClock());
   assert.equal(calls.n, 0);
   assert.equal(r.usd, 0);
 });
