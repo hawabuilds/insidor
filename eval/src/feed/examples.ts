@@ -186,6 +186,16 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
   };
 }
 
+/**
+ * The block with the owner's rulebook after its examples, under `heading` (tools/lib/rulebook.ts).
+ * Inside the block's text on purpose: it is versioned, applied and tested with the block, and the
+ * runner sends it to the judge with no change of its own. Nothing else moves: the same examples,
+ * the same posts held out.
+ */
+export function withRulebook(block: Block, heading: string, rules: string | null): Block {
+  return rules === null || rules.trim() === '' ? block : { ...block, text: `${block.text}\n\n${heading}\n${rules.trim()}` };
+}
+
 /* ── coined posts, taught as yes ──────────────────────────────────────────────────────────────── */
 
 /** A post several coins were launched for well after it, that the judge answered "no" (store `coinedPosts`). */

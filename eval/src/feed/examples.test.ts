@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, parseFloor, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall } from './examples.ts';
+import { atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, parseFloor, withRulebook, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall } from './examples.ts';
 
 const L = DEFAULT_POLICY.learning;
 const call = (itemId: string, label: 'meme' | 'not', from: OwnerCall['from'], at: number | null = null): OwnerCall => ({ itemId, text: `post ${itemId}`, imageUri: null, label, why: 'because', at, from });
@@ -291,4 +291,14 @@ test("★ --floor: the main judge's stored numbers, read as passed/tested and co
   const dearer = points.map((p) => ({ ...p, negatives: { passed: 130, tested: 600 } }));
   assert.equal(strictestKeeping(dearer, floor!)?.cutoff, 0.74, 'item 4 names the point whatever its junk');
   assert.equal(chooseCutoff(dearer, floor!).rule, 'refused', "and the owner's rule refuses it when its junk is over the floor's");
+});
+
+test('the rulebook goes after the examples under its heading; the posts held out do not move', () => {
+  const calls: OwnerCall[] = [{ itemId: 'x:1', text: 'a dog in a suit', imageUri: null, label: 'meme', why: 'funny', at: 1, from: 'tap' }];
+  const block = buildBlock(calls, [], 10);
+  const ruled = withRulebook(block, 'RULES:', '- Ads are no.');
+  assert.ok(ruled.text.startsWith(block.text));
+  assert.ok(ruled.text.endsWith('RULES:\n- Ads are no.'));
+  assert.deepEqual([ruled.exampleIds, ruled.testNegatives, ruled.testMissed], [block.exampleIds, block.testNegatives, block.testMissed]);
+  assert.equal(withRulebook(block, 'RULES:', null), block, 'none written: the block alone');
 });

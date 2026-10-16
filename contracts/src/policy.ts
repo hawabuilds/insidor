@@ -2566,6 +2566,25 @@ export interface LearningPolicy {
   readonly cutoffStep: number;
   readonly cutoffMax: number;
   /**
+   * ★ THE OWNER'S RULEBOOK (the owner, 2026-10-16: "a rulebook built from all my inputs, rebuilt at
+   * every re-tune"). At each re-tune a bigger open model (RULEBOOK_MODEL) writes at most `maxRules`
+   * rules of at most `maxRuleChars`, `maxChars` in all, from the block's own lines, the owner's
+   * standing decisions and counts over every input (tools/lib/rulebook.ts); they go in the block
+   * under their own heading, so the gate tests block and rulebook together. A note is counted once
+   * `minNoteUses` posts carry it, cut to `maxNoteChars`; the `maxNotes` most used are shown. Off:
+   * the block alone, as before.
+   */
+  readonly rulebook: {
+    readonly on: boolean;
+    readonly maxRules: number;
+    readonly maxRuleChars: number;
+    readonly maxChars: number;
+    readonly maxOutputTokens: number;
+    readonly maxNotes: number;
+    readonly minNoteUses: number;
+    readonly maxNoteChars: number;
+  };
+  /**
    * ★ THE SHORT-VIDEO SOURCE, TUNED FROM ITS OWN COINED VIDEOS (the owner, 2026-10-16: "tuned from
    * coined TikToks, not copied from X"). The training set (internal.coined_video, 0085) is every
    * coined short video; the re-tune learns from it twice a day (tools/retune.ts, its short-video
@@ -3930,6 +3949,10 @@ const POLICY_V1: Policy = {
     /* The owner's numbers, 2026-10-16: one point at a time, no higher than 0.95. */
     cutoffStep: 0.01,
     cutoffMax: 0.95,
+    /* On: the owner asked for it, 2026-10-16. 25 rules, 3,000 characters: about 800 tokens more in
+       every judge call, under a fifth of the block's. One call a run, about a cent at the writer's
+       prices; a two-note pattern is a pattern, a one-note one is a post. */
+    rulebook: { on: true, maxRules: 25, maxRuleChars: 220, maxChars: 3_000, maxOutputTokens: 1_500, maxNotes: 30, minNoteUses: 2, maxNoteChars: 60 },
     shortVideo: {
       barAgesMin: [30, 60, 120],
       /* An hour: the re-reads are every half hour, so two readings an hour apart bracket any age. */
