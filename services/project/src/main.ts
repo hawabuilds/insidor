@@ -22,11 +22,11 @@
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { Millis } from '@insidor/contracts';
-import { withJudgeCutoff } from '@insidor/core';
 import { asDb, createPool, DB_ROLE, PgAssetRepo, PgLearningRepo, withTransaction } from '@insidor/store';
 
 import { loadLaunchFacts, nextLaunchTick, writeLaunches } from './db.ts';
 import { projectStoryFrame } from './frame.ts';
+import { answerPolicies } from './judge-cutoff.ts';
 import { projectRisingFeeds } from './rising.ts';
 import { keepFeedHistory } from './feed-history.ts';
 import { announceBoard } from './notify.ts';
@@ -135,19 +135,21 @@ async function main(): Promise<void> {
       console.warn(`the applied block's cutoff could not be read; the policy bar holds: ${e instanceof Error ? e.message : String(e)}`);
       return null;
     });
-    const policy = withJudgeCutoff(DEFAULT_POLICY, cutoff);
+    /* ★ AND THE OPEN MODEL'S OWN (judge-cutoff.ts, Policy.judge.openCutoff): an answer is held to the
+       cutoff of the model that gave it, so failover and switch-day answers from both sit side by side. */
+    const { main: policy, open: openPolicy } = answerPolicies(DEFAULT_POLICY, cutoff);
 
     const result = await withTransaction(pool, async (db) => {
       const frame = await projectStoryFrame(db, VIEW_ID, options, {
         storiesSinceMs: nowMs - STORY_WINDOW_MS,
         reachSinceMs: nowMs - REACH_WINDOW_MS,
         limit: BOARD_LIMIT,
-      }, policy);
+      }, policy, openPolicy);
       const { tick } = frame;
 
       /* The For You and Popular feeds, in the same transaction as the board they read their
          coins from — see rising.ts. */
-      const risingRows = await projectRisingFeeds(db, nowMs as Millis, frame.coinsByStory, SPARK_WINDOW_MS, policy);
+      const risingRows = await projectRisingFeeds(db, nowMs as Millis, frame.coinsByStory, SPARK_WINDOW_MS, policy, openPolicy);
       /* What the feeds showed this hour, kept past the next frame (0063; skipped until applied). */
       await keepFeedHistory(db, nowMs);
 
