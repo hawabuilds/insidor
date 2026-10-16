@@ -1,8 +1,8 @@
 /**
- * The alert service, assembled. The routes always answer. With NOTIFY=on, four loops run:
+ * The alert service, assembled. The routes always answer. With NOTIFY=on, five loops run:
  * deliver what is queued (seconds), check the watched posts (seconds, watch.ts), check prices and
- * curves (minutes), and check the pipeline — each on its policy interval, each pass independent, a
- * failed pass logged and tried again next time.
+ * curves (minutes), check the pipeline, and the owner's outage alarm (each minute, alarm.ts) — each
+ * pass independent, a failed pass logged and tried again next time.
  *
  * Every answer a push service gives is logged (host and status, never the device's address) and
  * kept per device for the routes and the deliverer to write on its row (devices.ts).
@@ -17,6 +17,7 @@ import { dexscreenerQuotes } from '@insidor/market-dexscreener';
 import { webPushSender } from '@insidor/push-webpush';
 import { curveOf } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
 
+import { ALARM_LOOP_MS, alarmMemory, checkAlarms } from './alarm.ts';
 import { loadNotifyConfig } from './config.ts';
 import { deliverQueued } from './deliver.ts';
 import { pacer, serve } from './http.ts';
@@ -98,6 +99,10 @@ function every(ms: number, name: string, work: () => Promise<unknown>): void {
 
 if (cfg.notifyOn) {
   every(P.deliverLoopMs, 'delivered', async () => (await deliverQueued(deps)).length);
+  /* The owner's outage alarm (alarm.ts): For You stalled, the judge refused, the database unreadable —
+     watched from here because this service is neither the runner nor the projector. */
+  const alarm = alarmMemory();
+  every(ALARM_LOOP_MS, 'outage alarms', () => checkAlarms({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, push, ttlS: P.pushTtlS, log }, alarm));
   every(P.pipelineLoopMs, 'pipeline alerts', () => checkPipeline(db, { quotes, ownerWallets: DEFAULT_POLICY.owner.wallets }));
   const watchState: WatchState = { cursor: null };
   every(P.watchLoopMs, 'watched post alerts', () => checkWatched(db, { policy: P, now: Date.now, quotes, fetchText }, watchState));

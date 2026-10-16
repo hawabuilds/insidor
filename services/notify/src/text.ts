@@ -18,6 +18,11 @@
  * because its account cannot pay (or that it answers again), and the owner has to know which
  * account to top up. The reason is the adapter's own short phrase, never the vendor's text.
  *
+ * An outage alarm (alarm.ts) says what stopped as what was seen — For You took no new post for so
+ * long, the judge was asked so many times and none was paid for, the live coin stream stopped, the
+ * database could not be read — and, once, that it is back and after how long. No vendor is named: the supplier account alert
+ * already names the account, and this one is about the pipeline standing still.
+ *
  * A re-tune summary is the owner's twice-daily report on the judge's learned examples: applied or
  * kept, how each test group did as passed-of-tested, and what it learned from. A group nobody could
  * test is a dash, never 0 of 0 read as a failure; the reason a block was kept is the job's own
@@ -259,6 +264,35 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
         title: `${supplier} out of credit${uses}`,
         body: `${supplier} refused a call for billing: ${s(f['reason'], 'its account cannot pay')}. Top up its account; work using it is paused until then.`,
       };
+    }
+    case 'outage': {
+      /* The owner's outage alarm (alarm.ts): what stopped, said as what we saw, once down and once back. */
+      const minutes = n(f['minutes']);
+      const long = minutes === null ? null : minutes < 120 ? `${Math.max(1, Math.round(minutes))} minutes` : span(minutes * 60_000);
+      const at = typeof f['lastAt'] === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(f['lastAt']) ? `${f['lastAt'].slice(11, 16)} UTC` : null;
+      const back = f['state'] === 'back';
+      if (f['what'] === 'fyp') {
+        if (back) return { title: 'For You has new posts again', body: long === null ? 'A new post reached For You again.' : `A new post reached For You after ${long} without one.` };
+        return { title: `For You has had no new post for ${long ?? 'a while'}`, body: `Nothing new has reached For You${at === null ? '' : ` since ${at}`}. Posts are not being found, judged or shown.` };
+      }
+      if (f['what'] === 'judge') {
+        if (back) return { title: 'The judge is paid for again', body: long === null ? 'A judge call was paid for again.' : `A judge call was paid for again after ${long}.` };
+        const calls = n(f['calls']);
+        const window = n(f['windowMinutes']);
+        return {
+          title: 'Judge spend is $0',
+          body: `${calls === null ? 'The judge was asked' : `The judge was asked ${calls} times`}${window === null ? ' lately' : ` in the last ${window} minutes`} and none was paid for: its supplier is refusing the calls. New posts are not judged until it answers.${at === null ? '' : ` Last paid call ${at}.`}`,
+        };
+      }
+      if (f['what'] === 'stream') {
+        if (back) return { title: 'The live coin stream is back', body: long === null ? 'New coins are read from the live stream again.' : `New coins are read from the live stream again after ${long}.` };
+        return { title: `The live coin stream has stopped for ${long ?? 'a while'}`, body: `No new coin has been read from the live stream${at === null ? '' : ` since ${at}`}. Coins that point to posts are found late, from the slower list.` };
+      }
+      if (f['what'] === 'database') {
+        if (back) return { title: 'The database answers again', body: long === null ? 'The alert service read the database again.' : `The alert service read the database again after ${long}.` };
+        return { title: 'Insidor cannot read its database', body: `Every read by the alert service has failed${long === null ? '' : ` for ${long}`}. The feed, the judge and alerts all need it.` };
+      }
+      return back ? { title: 'Working again', body: 'Something that stopped is working again.' } : { title: 'Something stopped', body: 'Part of Insidor stopped working.' };
     }
     case 'namer_off': {
       /* The watch's own counts: the owner's Wrong coin / No coin calls on coins the namer's names found, and the share before. */

@@ -28,6 +28,10 @@
  *      a new For You post on a story whose coin the owner confirmed (`story_post`), and a coin for
  *      a post someone watches (`watch_coin`, once per post and coin, past the hourly limit). The
  *      settings screen's test (`push_test`) has no switch and is listed like any other.
+ *   4f. AN OUTAGE ALARM IS THE OWNER'S, LIKE THE SUPPLIER ACCOUNT ALERT (`outage`): For You has
+ *      taken no new post for a while, the judge is asked but nothing it is asked is paid for, or the
+ *      alert service cannot read the database — once when it starts, once when it is back. No
+ *      switch, past the hourly limit; mute and quiet hours still hold.
  *   5. A RE-TUNE SUMMARY IS THE OWNER'S TOO: twice a day, what the judge learned from the owner's
  *      own calls and whether it was applied (tools/retune.ts). No switch, like the warning, but
  *      it waits behind the hourly limit like any other alert — it is a report, not an alarm.
@@ -66,6 +70,8 @@ export const ALERT_KINDS = [
   'story_post',
   'watch_coin',
   'push_test',
+  /* The owner's outage alarm (services/notify alarm.ts): For You stalled, the judge refused, the database unreadable. */
+  'outage',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
@@ -105,6 +111,7 @@ const SWITCH_OF: Record<AlertKind, AlertSwitch | 'always'> = {
   story_post: 'storyCoins',
   watch_coin: 'watchedPosts',
   push_test: 'always',
+  outage: 'always',
 };
 
 export interface AlertPrefs {
@@ -191,11 +198,11 @@ export function isQuiet(localMinutes: number | null, prefs: AlertPrefs): boolean
 }
 
 /**
- * The kinds the hourly limit never holds back: the owner's alarms about money and the namer, a coin
+ * The kinds the hourly limit never holds back: the owner's alarms about money, outages and the namer, a coin
  * for a post someone is watching (the owner: "notify me within seconds" — a busy hour of For You
  * posts must not be what keeps it off the phone), and the test someone just tapped.
  */
-const PAST_THE_LIMIT: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'watch_coin', 'push_test'];
+const PAST_THE_LIMIT: readonly AlertKind[] = ['supplier_warning', 'supplier_account', 'namer_off', 'watch_coin', 'push_test', 'outage'];
 
 export type Delivery =
   | { readonly kind: 'skip'; readonly why: 'muted' | 'off' }
