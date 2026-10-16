@@ -13,6 +13,7 @@
  *     spacing being the interval or the readings' usual (median) spacing, whichever is longer. So an
  *     outage shows as a gap, and the normal few minutes between readings never does. A reading the
  *     source rounded away (null) is stepped over, as before (the owner's call): it is not a gap.
+ *     A caller's own breaks (a narrative's total where a post's views are unknown) break it too.
  *   - BEFORE THE FIRST COUNT there are no readings. That stretch is a dashed line from 0 at posting
  *     (a post starts with no views) to the first counted reading, labelled, never drawn as data.
  *   - GAINED: an interval's bar is its last counted reading minus the last counted reading before
@@ -121,8 +122,16 @@ export function viewsPlan(
   interval: Interval,
   mode: ViewsMode,
   marks: { readonly found: number | null; readonly coin: number | null },
+  /**
+   * Moments the series itself says it cannot be drawn (a narrative's total where a post's views are
+   * unknown, features/narrative/story-views.ts): the line breaks across each, and no bar spans one.
+   * And the dashed stretch's label, when the caller's words are not the post's.
+   */
+  extra: { readonly breaks?: readonly number[]; readonly beforeLabel?: string } = {},
 ): ViewsPlan | null {
   const all = counted(readings);
+  const breaks = extra.breaks ?? [];
+  const brokenBetween = (a: number, b: number) => breaks.some((t) => t > a && t < b);
   const first = all[0];
   const last = all[all.length - 1];
   if (first === undefined || last === undefined) return null;
@@ -142,7 +151,7 @@ export function viewsPlan(
   for (const p of drawn) {
     const run = runs[runs.length - 1];
     const prev = run?.[run.length - 1];
-    if (run === undefined || prev === undefined || p.at - prev.at > gapLimit) runs.push([p]);
+    if (run === undefined || prev === undefined || p.at - prev.at > gapLimit || brokenBetween(prev.at, p.at)) runs.push([p]);
     else run.push(p);
   }
 
@@ -153,7 +162,7 @@ export function viewsPlan(
   for (const [k, end] of lastIn) {
     const start = from + k * size;
     const before = k === 0 ? posted[0] : [...posted, ...all].filter((r) => r.at < start).pop();
-    if (before === undefined || before.at < start - size || before.at >= end.at) continue;
+    if (before === undefined || before.at < start - size || before.at >= end.at || brokenBetween(before.at, end.at)) continue;
     bars.push({ start, end: start + size, gain: end.value - before.value, fromAt: before.at, toAt: end.at });
   }
   bars.sort((a, b) => a.start - b.start);
@@ -169,7 +178,7 @@ export function viewsPlan(
         to: first,
         /* Found well before our first count (the first readings rounded away): the dashed part is
            before our first count, not before we found it. */
-        label: marks.found !== null && marks.found < first.at - 2 * MINUTE ? 'before our first count' : 'before we found it',
+        label: extra.beforeLabel ?? (marks.found !== null && marks.found < first.at - 2 * MINUTE ? 'before our first count' : 'before we found it'),
       }
     : null;
 
