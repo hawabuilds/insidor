@@ -45,7 +45,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { Millis } from '@insidor/contracts';
 
 import { backoffDelayMs, type BackoffOptions } from './backoff.ts';
-import { loadChainwatchConfig, type ChainwatchConfig } from './config.ts';
+import { ConfigError, loadChainwatchConfig, type ChainwatchConfig } from './config.ts';
 import { createCoverage, observedSegments, type Gap } from './coverage.ts';
 import type { MintCursor } from './cursor.ts';
 import { createHeartbeat } from './heartbeat.ts';
@@ -127,7 +127,7 @@ async function watch(cfg: ChainwatchConfig, runtime: Runtime): Promise<void> {
   // watermark, and there may well be one. Starting cold on that would erase it and
   // then write a coverage row claiming the window began at this read, which turns
   // an outage into a clean-looking run and costs exactly the evidence this process
-  // exists to produce. So it is fatal, deliberately: the container restarts, the
+  // exists to produce. So it is fatal, deliberately: the boot starts over (`boot`), the
   // watermark is still in the table, and the silence becomes a recorded gap on the
   // first read that succeeds. A process that refuses to start is recoverable; a
   // process that quietly forgets where it was is not.
@@ -369,7 +369,40 @@ process.on('unhandledRejection', (e) => {
   process.exit(1);
 });
 
-main().catch((e: unknown) => {
+/*
+ * ★ A BOOT THAT FAILS IS TRIED AGAIN IN THIS PROCESS, FOREVER, rather than left to the platform.
+ * On 2026-10-15 at 07:13 UTC the database went away for a few minutes (its compute was resized;
+ * it was back at 07:16:50). This service lost its connection, exited, was restarted by the platform
+ * up to its limit of ten failures in quick succession while the database was still down, and then
+ * stayed down — eighteen hours with no coin read from the stream. A
+ * process that refuses to start is recoverable only while something keeps starting it, so this one
+ * keeps starting itself: the same boot (connect, take the lock, load the watermark), after a backoff
+ * that grows to a couple of minutes. The watermark is still in the table, so the silence becomes a
+ * recorded gap on the first read that succeeds, exactly as a platform restart would make it. A
+ * configuration error is the exception: no amount of waiting fixes it, so it still exits.
+ */
+const BOOT_RETRY: BackoffOptions = { baseMs: 5_000, maxMs: 120_000 };
+/** A boot that ran this long before failing starts its backoff over. */
+const BOOT_HEALTHY_MS = 10 * 60_000;
+
+async function boot(): Promise<void> {
+  let attempt = 0;
+  for (;;) {
+    const startedAt = Date.now();
+    try {
+      await main();
+      return;
+    } catch (e) {
+      if (e instanceof ConfigError) throw e;
+      attempt = Date.now() - startedAt > BOOT_HEALTHY_MS ? 1 : attempt + 1;
+      const retryInMs = backoffDelayMs(attempt, BOOT_RETRY, Math.random());
+      log.error('boot failed; trying again in this process', { err: errorText(e), attempt, retryInMs });
+      await delay(retryInMs);
+    }
+  }
+}
+
+boot().catch((e: unknown) => {
   log.error('boot failed', { err: errorText(e) });
   process.exit(1);
 });
