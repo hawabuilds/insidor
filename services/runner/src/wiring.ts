@@ -166,7 +166,7 @@ export interface Runtime {
   readonly meter: DurableMeter;
   /** The catch-all search's lane floors, kept between passes. */
   readonly feedFloors: PgFeedFloorRepo;
-  /** The middle lane's ledger (0090) and how many of its posts no lane holds yet (`feed.middle`). */
+  /** The middle lane's ledger (0088) and how many of its posts no lane holds yet (`feed.middle`). */
   readonly middleLane: { readonly ledger: LaneLedger; readonly uncredited: (itemIds: readonly string[]) => Promise<number> };
   /** Score the catch-all posts the judge has not seen, alone and once each. */
   readonly scorePosts: () => Promise<ScoringResult>;
@@ -1031,7 +1031,7 @@ export async function withRuntime<T>(
                   policy,
                   log: log.child({ step: 'search-words' }),
                   now: () => Date.now() as Millis,
-                  /* The learned-tag lane (`finders.learnedTags`): the latest re-tune's tags, its own cap (0090). */
+                  /* The learned-tag lane (`finders.learnedTags`): the latest re-tune's tags, its own cap (0088). */
                   learnedTags: {
                     tags: () => new PgCoinedVideoRepo(db).latestTags(),
                     ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'learned-tags' })),

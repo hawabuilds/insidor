@@ -99,7 +99,7 @@ export interface DiscoverLoopDeps {
    * it did not do waits for the next.
    */
   readonly afterPass?: readonly (readonly [string, () => Promise<unknown>])[];
-  /** The middle lane's ledger and new-post count (`feed.middle`, 0090). Absent: the lane is never asked. */
+  /** The middle lane's ledger and new-post count (`feed.middle`, 0088). Absent: the lane is never asked. */
   readonly middle?: DiscoverDeps['middle'];
 }
 
@@ -115,7 +115,7 @@ export function discoverLoop(deps: DiscoverLoopDeps): Loop {
      the band's cap once, never leaves a gap. Unused while fresh discovery is off. */
   const fresh = memoryFreshClock();
   /* When the middle lane (`feed.middle`) last ran, in this process: the slow lane's trade. Its
-     money is not in this clock but in its ledger (0090), so a restart's extra ask is inside its cap. */
+     money is not in this clock but in its ledger (0088), so a restart's extra ask is inside its cap. */
   let middleRanAt: number | null = null;
 
   return {
