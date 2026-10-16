@@ -44,6 +44,15 @@
  * like a held kind, and is not asked the kind question. With no vectors (the vendor down, the line
  * spent, 0069 not applied) posts are judged as before and nothing is held.
  *
+ * ★ THE JUNK FILTER BEFORE THE JUDGE (Policy.judge.junkFilter, off until the owner switches it on).
+ * With the filter on and a fit applied (internal.junk_filter, 0091, refitted by the re-tune), a
+ * never-judged post whose vector the applied fit scores at or over its threshold (core
+ * `junkVerdict`) is not sent to the judge: it is recorded in internal.junk_skip as NOT ASKED, with the
+ * fit and its probability — never filed as a judge's "no" — and the queue leaves it out from then
+ * on while the filter stays on. It has no answer, so no feed reader shows it. A post with no vector
+ * (the embeddings vendor down, precedents off, a dry run), a post being re-scored after a prompt
+ * change, or a failure to read the fit or write the skip: judged exactly as before.
+ *
  * ★ NO ANSWER IS NOT A NO. A dry run prices the batch and sends nothing; a budget pause or
  * an unavailable answer records nothing. Each leaves the post waiting — off the feed, and
  * back in the queue next pass — and none is ever read as a pass.
@@ -58,8 +67,8 @@ import { storyId, type ItemId, type StoryId } from '@insidor/contracts/ids.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { JudgePort, JudgePrecedent, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
-import type { PgItemRepo, PgPostJudgementRepo, ReusableAnswer } from '@insidor/store';
-import { NOT_MEME_MATCH, clearsReachBar, couldPassWithBoost, heldAsNotMeme, heldKind } from '@insidor/core';
+import type { JunkSkip, PgItemRepo, PgJunkFilterRepo, PgPostJudgementRepo, ReusableAnswer } from '@insidor/store';
+import { NOT_MEME_MATCH, clearsReachBar, couldPassWithBoost, heldAsNotMeme, heldKind, junkVerdict, type JunkFit } from '@insidor/core';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 /** How many unscored posts are read per pass for each one that may be judged: the rest are below the bar. */
@@ -115,6 +124,11 @@ export interface ScoringDeps {
    * (judge-shadow.ts, Policy.judge.shadow). Never awaited: it cannot slow a pass. Absent: none.
    */
   readonly shadow?: Pick<Shadow, 'offer'> | null;
+  /**
+   * The junk filter's applied fit and where a skip is recorded (0091, Policy.judge.junkFilter). Read
+   * only while the filter is on. Absent: every post is judged.
+   */
+  readonly junkFilter?: Pick<PgJunkFilterRepo, 'latestApplied' | 'recordSkips'> | null;
   readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'catchAllStale' | 'reachReadings' | 'backfilled'>;
   readonly scores: Pick<PgPostJudgementRepo, 'record' | 'recordCopy' | 'reusable'>;
   readonly meter: Meter;
@@ -129,6 +143,8 @@ export interface ScoringResult {
   readonly scored: number;
   /** Given another post's answer instead of a call (included in `scored`). */
   readonly copied: number;
+  /** Not asked: the junk filter was sure enough they are junk (not in `scored`, not waiting). Absent when none. */
+  readonly notAsked?: number;
   readonly waiting: number;
   /** Priced and not sent, on a dry run. */
   readonly wouldSpendUsd: number;
@@ -200,9 +216,23 @@ async function findReusable(deps: ScoringDeps, queue: readonly Item[], judgeId: 
 /** The finders' lanes (0083, 0084's recommendation feed, 0088's learned tags), each read on its own like the watch lane. */
 const FINDER_LANES = ['coin_link', 'x_repost', 'trend', 'creator', 'trending', 'learned_tag'] as const;
 
+/** The applied junk fit, or null: the filter off, no repository, a dry run, none applied, or the read failed. */
+async function junkFitFor(deps: ScoringDeps): Promise<JunkFit | null> {
+  if (!deps.policy.judge.junkFilter.on || deps.junkFilter === undefined || deps.junkFilter === null || deps.mode !== 'live') return null;
+  try {
+    return await deps.junkFilter.latestApplied();
+  } catch (e) {
+    deps.log.warn('the junk filter could not be read; every post is judged', { err: errorText(e) });
+    return null;
+  }
+}
+
 export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   const now = deps.now();
   const r = deps.policy.rising;
+  const junkFit = await junkFitFor(deps);
+  /* With a fit read from 0091, the queue leaves out the posts it already kept from the judge. */
+  const notSkipped = junkFit !== null;
   const since = (now - r.windowMs) as Millis;
   /* The database narrows to posts some reading has put at the lowest reach any path to the feed
      starts from; core then holds each to the exact bar. Fetched wide, so posts still below it
@@ -215,13 +245,13 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
      a trend word or a coined creator finds a few posts an hour, and newest-first over every lane they
      would wait behind the text lanes' hundreds. Each lane's posts are held to the same reach bar. */
   const [everyLane, watchLane, staleWide, ...finderLanes] = await Promise.all([
-    deps.items.catchAllUnscored(since, r.postsPerPass * PREFETCH_FACTOR, floor),
-    deps.items.catchAllUnscored(since, r.postsPerPass, floor, 'watch'),
+    deps.items.catchAllUnscored(since, r.postsPerPass * PREFETCH_FACTOR, floor, null, notSkipped),
+    deps.items.catchAllUnscored(since, r.postsPerPass, floor, 'watch', notSkipped),
     /* ★ RE-SCORE AFTER A PROMPT CHANGE: posts last answered by another version of the question.
        After the never-judged ones, and at most `rescorePerPass` a pass, so a prompt change drains
        over hours instead of landing as one burst on the live line. */
     deps.judge === null ? Promise.resolve([] as readonly Item[]) : deps.items.catchAllStale(since, r.rescorePerPass * PREFETCH_FACTOR, deps.judge.promptId, `${kindLabel}@`, floor),
-    ...FINDER_LANES.map((lane) => deps.items.catchAllUnscored(since, r.postsPerPass, floor, lane)),
+    ...FINDER_LANES.map((lane) => deps.items.catchAllUnscored(since, r.postsPerPass, floor, lane, notSkipped)),
   ]);
   const seen = new Set(everyLane.map((i) => String(i.itemId)));
   const wide = [...everyLane];
@@ -253,7 +283,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
      copy that fails (a database without 0053, say) never costs a post its judgement: the post is
      simply judged, as it was before reuse existed. */
   let copied = 0;
-  const toJudge: Item[] = [];
+  let toJudge: Item[] = [];
   /* Posts the first question passed, or could pass with the boost, this pass: for the second. */
   const askKind: { itemId: ItemId; subject: JudgeSubject | undefined; lookedAt: Judgement['lookedAt'] }[] = [];
   const found = deps.mode === 'live' ? await findReusable(deps, queue, judge.id, judge.promptId, since) : null;
@@ -281,6 +311,29 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
     deps.precedents === undefined || deps.precedents === null || deps.mode !== 'live' || queue.length === 0
       ? new Map()
       : await deps.precedents.refresh().then(() => deps.precedents!.forPosts(queue));
+
+  /* ★ THE JUNK FILTER — see the header. Never-judged posts only: a re-scored post keeps the answer it
+     has, and a skip would leave a stale answer standing. A skip that cannot be written is judged. */
+  let notAsked = 0;
+  if (junkFit !== null && deps.junkFilter !== undefined && deps.junkFilter !== null) {
+    const rescored = new Set(rescoring.map((i) => String(i.itemId)));
+    const keep: Item[] = [];
+    const skips: JunkSkip[] = [];
+    for (const item of toJudge) {
+      const v = rescored.has(String(item.itemId)) ? 'rescored' : junkVerdict(near.get(String(item.itemId))?.vector ?? null, junkFit, deps.policy);
+      if (v !== 'rescored' && v.kind === 'junk') skips.push({ itemId: String(item.itemId), fitId: v.fitId, probability: v.probability, at: new Date(deps.now()) });
+      else keep.push(item);
+    }
+    if (skips.length > 0) {
+      try {
+        await deps.junkFilter.recordSkips(skips);
+        toJudge = keep;
+        notAsked = skips.length;
+      } catch (e) {
+        deps.log.warn('could not record the junk filter\'s skips; these posts are judged instead', { posts: skips.length, err: errorText(e) });
+      }
+    }
+  }
 
   let scored = copied;
   let wouldSpendUsd = 0;
@@ -412,7 +465,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
        billing-alerts.ts). */
     deps.log.error('posts scored: the judge answered none of the posts sent; they wait', { queued: queue.length, sent, unanswered, scored, copied, waiting: queue.length - scored, reason: firstReason, usd: Number(spentUsd.toFixed(6)) });
   } else {
-    deps.log.info('posts scored', { queued: queue.length, rescoring: rescoring.length, scored, heldBack, notMatched, withPrecedents: near.size, copied, waiting: queue.length - scored, usd: Number(spentUsd.toFixed(6)) });
+    deps.log.info('posts scored', { queued: queue.length, rescoring: rescoring.length, scored, heldBack, notMatched, notAsked, withPrecedents: near.size, copied, waiting: queue.length - scored - notAsked, usd: Number(spentUsd.toFixed(6)) });
   }
-  return { queued: queue.length, scored, copied, waiting: queue.length - scored, wouldSpendUsd, spentUsd };
+  return { queued: queue.length, scored, copied, ...(notAsked === 0 ? {} : { notAsked }), waiting: queue.length - scored - notAsked, wouldSpendUsd, spentUsd };
 }

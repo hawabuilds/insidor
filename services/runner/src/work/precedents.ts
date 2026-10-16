@@ -58,6 +58,8 @@ export interface PostPrecedents {
   readonly closestNot: number | null;
   /** That label's post, for the log. */
   readonly closestNotId: string | null;
+  /** The post's own vector and its space: what the junk filter scores (score-posts, core `junkVerdict`). */
+  readonly vector?: { readonly values: ArrayLike<number>; readonly space: string };
 }
 
 /* The embeddings line's own cap is enforced by the meter inside the adapter; this is the day's. */
@@ -166,6 +168,7 @@ export function precedentSource(deps: PrecedentDeps) {
           precedents: precedentsFor(nearestLabelled(v.values, known, k, self, { source: sourceOfItemId(String(item.itemId)), reserve: deps.policy.judge.precedents.sameSourceFirst }), deps.policy),
           closestNot: not?.similarity ?? null,
           closestNotId: not?.label.itemId ?? null,
+          vector: { values: v.values, space: v.space },
         });
       }
     } catch (e) {

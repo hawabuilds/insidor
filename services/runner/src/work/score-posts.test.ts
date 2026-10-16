@@ -420,3 +420,77 @@ test('with no precedents found, posts are judged as before and nothing is held',
   assert.equal(recorded.size, 1);
   assert.notEqual(recorded.get(post(1).itemId)?.proposedName, 'NOT_MEME_MATCH');
 });
+
+/* ── the junk filter before the judge (Policy.judge.junkFilter, 0091) ───────────────────────────── */
+
+const JUNK_ON = { ...P, judge: { ...P.judge, junkFilter: { ...P.judge.junkFilter, on: true } } };
+/* One dimension: a vector of [1] scores logistic(4) ≈ 0.98, [-1] logistic(-4) ≈ 0.02. */
+const JUNK_FIT = { id: 3, space: 'post', intercept: 0, weights: [4], threshold: 0.9 };
+
+function junkSetup(policy = JUNK_ON, fit: typeof JUNK_FIT | null = JUNK_FIT, failWrite = false) {
+  const judge = recordedJudge(0.82, true);
+  const queued: unknown[][] = [];
+  const base = deps([post(1), post(2), post(3)], judge);
+  const skips: { itemId: string; fitId: number; probability: number }[] = [];
+  /* post 1 junk, post 2 not junk, post 3 no vector. */
+  const near = new Map<string, { precedents: never[]; closestNot: null; closestNotId: null; vector?: { values: number[]; space: string } }>([
+    [String(post(1).itemId), { precedents: [], closestNot: null, closestNotId: null, vector: { values: [1], space: 'post' } }],
+    [String(post(2).itemId), { precedents: [], closestNot: null, closestNotId: null, vector: { values: [-1], space: 'post' } }],
+  ]);
+  const d = {
+    ...base.deps,
+    policy,
+    items: { ...base.deps.items, catchAllUnscored: async (...args: unknown[]) => (queued.push(args), [post(1), post(2), post(3)]) },
+    precedents: { refresh: async () => ({ embedded: 0, relabelled: 0 }), forPosts: async () => near },
+    junkFilter: {
+      latestApplied: async () => fit,
+      recordSkips: async (rows: readonly { itemId: string; fitId: number; probability: number }[]) => {
+        if (failWrite) throw new Error('relation "internal.junk_skip" does not exist');
+        skips.push(...rows);
+      },
+    },
+  };
+  return { d, judge, recorded: base.recorded, skips, queued };
+}
+
+test('★ junk filter on: a post the applied fit is sure is junk is recorded as not asked and never sent; the rest are judged', async () => {
+  const { d, judge, recorded, skips, queued } = junkSetup();
+  const result = await scorePosts(d);
+  assert.deepEqual(skips.map((s) => [s.itemId, s.fitId]), [[String(post(1).itemId), 3]]);
+  assert.ok(skips[0]!.probability > 0.9);
+  assert.equal(recorded.has(post(1).itemId), false, 'no judge answer is written for it — not even a "no"');
+  assert.ok(recorded.has(post(2).itemId), 'under the threshold: judged');
+  assert.ok(recorded.has(post(3).itemId), 'no vector: judged as before');
+  assert.doesNotMatch(JSON.stringify(judge.calls[0]), /take 1\b/, 'the skipped post is not in the call');
+  assert.equal(result.notAsked, 1);
+  assert.equal(result.scored, 2);
+  assert.equal(result.waiting, 0, 'a skipped post is not waiting');
+  assert.ok(queued.length > 0 && queued.every((args) => args[4] === true), 'the queue leaves out posts already skipped');
+});
+
+test('junk filter off (as shipped), or no applied fit: every post is judged and the queue reads as before', async () => {
+  for (const [policy, fit] of [[P, JUNK_FIT], [JUNK_ON, null]] as const) {
+    const { d, recorded, skips, queued } = junkSetup(policy, fit);
+    const result = await scorePosts(d);
+    assert.equal(skips.length, 0);
+    assert.equal(recorded.size, 3);
+    assert.equal(result.notAsked, undefined);
+    assert.ok(queued.every((args) => args[4] === false));
+  }
+});
+
+test('a skip that cannot be recorded is judged instead: an outage never hides a post', async () => {
+  const { d, recorded, skips } = junkSetup(JUNK_ON, JUNK_FIT, true);
+  const result = await scorePosts(d);
+  assert.equal(skips.length, 0);
+  assert.equal(recorded.size, 3);
+  assert.equal(result.notAsked, undefined);
+});
+
+test('a post re-scored after a prompt change is never skipped: its answer is replaced, not left standing', async () => {
+  const { d, recorded, skips } = junkSetup();
+  const result = await scorePosts({ ...d, items: { ...d.items, catchAllUnscored: async () => [], catchAllStale: async () => [post(1)] } });
+  assert.equal(skips.length, 0);
+  assert.ok(recorded.has(post(1).itemId));
+  assert.equal(result.notAsked, undefined);
+});

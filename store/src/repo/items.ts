@@ -173,13 +173,16 @@ export class PgItemRepo implements ItemRepo {
    * only join on a near-identical picture. Scoring one does not put it on the For You feed;
    * only a catch-all lane does that.
    */
-  async catchAllUnscored(at: Millis, limit: number, minReach: number | null = null, lane: string | null = null): Promise<readonly Item[]> {
+  async catchAllUnscored(at: Millis, limit: number, minReach: number | null = null, lane: string | null = null, notJunkSkipped = false): Promise<readonly Item[]> {
     /* With `minReach`, a catch-all post waits until some reading of its reach has reached it —
        the free check before the paid judge. A backfilled post is never held back: it is scored
        for GROUP's name join, not for the feed.
        With `lane`, only that lane's posts (and no backfill): the short-video watch lane is read
        on its own, because newest-first over every lane it never makes the page — the text lanes
-       add hundreds of unscored posts an hour (2026-10-13: 233 videos stored, none judged). */
+       add hundreds of unscored posts an hour (2026-10-13: 233 videos stored, none judged).
+       With `notJunkSkipped`, a post the junk filter kept from the judge (internal.junk_skip, 0091) is
+       left out, or it would be scored again every pass and crowd the page. Only set by the scorer
+       while the filter is on and a fit was read from 0091, so the table is known to exist. */
     const rows = await this.#db.query<ItemRow>(
       `${SELECT_ITEM}
         where origin = 'observed'
@@ -190,6 +193,7 @@ export class PgItemRepo implements ItemRepo {
                                  where o.item_id = public.item.item_id and o.kind = 'reach' and o.value >= $3)))
                or ($4::text is null and exists (select 1 from internal.item_backfill b where b.item_id = public.item.item_id)))
           and not exists (select 1 from internal.post_judgement j where j.item_id = public.item.item_id)
+          ${notJunkSkipped ? 'and not exists (select 1 from internal.junk_skip s where s.item_id = public.item.item_id)' : ''}
         order by first_seen_at desc
         limit $2`,
       [toTimestamp(at), limit, minReach, lane],
