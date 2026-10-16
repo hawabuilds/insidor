@@ -54,6 +54,8 @@ export { accountCredits, closestModel, keyAllowance, listModels, parseModels } f
 export type { HostModel } from './models.ts';
 export { OPEN_NAMES_ENDPOINT, OPEN_PAIR_ENDPOINT, OPEN_TRANSLATE_ENDPOINT, chatBodyFromMessages, messagesReplyOf, openNamer, openSameSubject, openTranslator } from './questions.ts';
 export type { OpenAsk, OpenQuestionDeps, OpenSameSubject } from './questions.ts';
+export { OPEN_TITLE_ENDPOINT, TITLE_PROMPT_SHA, cleanTitle, openTitler, titleRequestText } from './titles.ts';
+export type { OpenTitlerDeps } from './titles.ts';
 export { DEFAULT_BACKUP_BASE_URL, DEFAULT_BACKUP_MODEL, DEFAULT_OPEN_MODEL, DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, OPEN_API_KEY, OPEN_BACKUP_API_KEY, OPEN_BACKUP_BASE_URL, OPEN_BACKUP_MODEL, OPEN_BASE_URL, OPEN_MODEL, OPEN_PROVIDERS, TOGETHER_API_KEY, isOpenJudgeId, openProviders, readOpenJudgeBackupSetup, readOpenJudgeSetup, vendorOfHost } from './setup.ts';
 export type { OpenJudgeSetup } from './setup.ts';
 
