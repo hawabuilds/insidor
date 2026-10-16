@@ -2544,6 +2544,21 @@ export interface FindersPolicy {
     readonly maxAgeMin: number;
     readonly runEveryMinutes: number;
     readonly maxPosts: number;
+    /**
+     * ★ THE TEXT SOURCE'S BAND AGES, FOR SHORT VIDEOS (the owner's "re-reads at about 6 and 50 minutes
+     * old"): with `on`, each run also re-reads every found video that turned one of `ages` minutes
+     * since the last run, at most `maxPosts` an age, biggest first, unless it was read in the last
+     * `runEveryMinutes`. So each video found by then gets a reading at that age, as a text post gets
+     * one from its 6- and 50-minute bands.
+     */
+    readonly atAges: { readonly on: boolean; readonly ages: readonly number[]; readonly maxPosts: number };
+    /**
+     * ★ THE LATE CHECK, FOR SHORT VIDEOS (the text source's `feed.fresh.late`): with `on`, each run
+     * re-reads the found videos that turned `ageMin` minutes old since the last run with at least
+     * `minReach` views at their newest reading, at most `maxPosts`: the slow growers the half-hourly
+     * re-reads leave unread for hours.
+     */
+    readonly late: { readonly on: boolean; readonly ageMin: number; readonly minReach: number; readonly maxPosts: number };
   };
   /**
    * The learned sounds (`learned.topSounds`) asked for their posts, one page a sound, `perAsk` sounds
@@ -3866,6 +3881,16 @@ const POLICY_V1: Policy = {
       maxAgeMin: 120,
       runEveryMinutes: 10,
       maxPosts: 2,
+      /* On from 2026-10-16 under the same approval (young videos re-read more often). Measured over the
+         24 hours to 00:40 UTC: 131 of 719 videos found were under an hour old when found, and of the 17
+         found under 20 minutes only 8 had a reading between 20 and 60 minutes. A reading at 6 and at 50
+         minutes for each video found by then is about 140 credits, $0.26 a day. */
+      atAges: { on: true, ages: [6, 50], maxPosts: 10 },
+      /* Off until the owner approves the cost. Measured over 24 hours: of 1,415 found videos, 303 had
+         5,000 views or more before four hours and only 64 of them were read between four and six hours;
+         at 20,000 views, 90 a day. One reading at five hours for those is 90 credits, $0.17 a day, and
+         about 20 more judged ($0.04). */
+      late: { on: false, ageMin: 300, minReach: 20_000, maxPosts: 10 },
     },
     /* On from 2026-10-16, the same approval ("learned hashtags and sounds"): 2 sounds an hour, at most
        48 credits ($0.09) a day. The learned list holds no sound yet (none is on two coined videos this

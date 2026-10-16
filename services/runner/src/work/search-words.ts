@@ -44,7 +44,7 @@ const CALL_DEADLINE_MS = 120_000;
 const MS_PER_MINUTE = 60_000;
 
 export interface SearchWordDeps {
-  readonly finders: Pick<PgFinderRepo, 'searchWords' | 'replaceSearchWords' | 'searchWordsAt' | 'coinedPosts' | 'youngPosts'>;
+  readonly finders: Pick<PgFinderRepo, 'searchWords' | 'replaceSearchWords' | 'searchWordsAt' | 'coinedPosts' | 'youngPosts' | 'postsTurning'>;
   /** The live sources, on the live meter. */
   readonly sources: () => readonly PlatformAdapter[];
   readonly store: (items: readonly Item[], authors: readonly Author[], lane?: FoundLane | null) => Promise<number>;
@@ -241,6 +241,27 @@ export async function searchWordsPass(deps: SearchWordDeps, clock: SearchWordClo
         /* Stored with no lane: the reading is what is wanted, and arrivals.ts saves it as an observation. */
         await deps.store(got.value.items, got.value.authors, null);
         youngRead = got.value.items.length;
+      }
+    }
+    /* 5b. The videos turning 6 and 50 minutes old since the last run, and the late check's slow growers. */
+    const span = f.young.runEveryMinutes * MS_PER_MINUTE;
+    const turning = [
+      ...(f.young.atAges.on ? f.young.atAges.ages.map((age) => ({ age, minReach: 0, max: f.young.atAges.maxPosts })) : []),
+      ...(f.young.late.on ? [{ age: f.young.late.ageMin, minReach: f.young.late.minReach, max: f.young.late.maxPosts }] : []),
+    ];
+    const due = new Set<string>(ids);
+    for (const t of turning) {
+      const to = (now - t.age * MS_PER_MINUTE) as Millis;
+      for (const id of await deps.finders.postsTurning(sourceId, (to - span) as Millis, to, t.minReach, (now - span) as Millis, t.max)) due.add(id);
+    }
+    const more = [...due].filter((id) => !ids.includes(id));
+    if (more.length > 0) {
+      const quote = source.estimate({ kind: 'observe', sourceItemIds: more });
+      const got = await paid(deps, quote.vendor, quote.usd, 'videos read at their band ages', () => source.lookup!(more, budgetOf(deps, quote.vendor)));
+      if (got !== null) {
+        usd += got.spend.usd;
+        await deps.store(got.value.items, got.value.authors, null);
+        youngRead += got.value.items.length;
       }
     }
   }

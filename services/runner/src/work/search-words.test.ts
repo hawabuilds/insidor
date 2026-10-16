@@ -55,7 +55,7 @@ test('★ every part switched off: a pass asks nothing and spends nothing', asyn
   const source = { id: 'vid', capabilities: { discovery: ['keyword', 'account'] }, discover: async () => { calls += 1; throw new Error('asked'); }, lookup: async () => { calls += 1; throw new Error('read'); } } as unknown as PlatformAdapter;
   const r = await searchWordsPass(
     {
-      finders: { searchWords: async () => { calls += 1; return []; }, replaceSearchWords: async () => {}, searchWordsAt: async () => null, coinedPosts: async () => [], youngPosts: async () => ['1'] },
+      finders: { searchWords: async () => { calls += 1; return []; }, replaceSearchWords: async () => {}, searchWordsAt: async () => null, coinedPosts: async () => [], youngPosts: async () => ['1'], postsTurning: async () => ['2'] },
       sources: () => [source],
       store: async () => 0,
       meter: inMemoryMeter({ dailyCapUsd: 10, perVendorCapUsd: {}, softStop: 1, now: () => NOW }),
@@ -103,6 +103,7 @@ test('the learned sounds: asked on the sound endpoint, once a slot, their posts 
       searchWordsAt: async () => null,
       coinedPosts: async () => [],
       youngPosts: async () => [],
+      postsTurning: async () => [],
     },
     sources: () => [source],
     store: async (_i: unknown, _a: unknown, lane: unknown) => (lanes.push(lane), 0),
@@ -117,4 +118,51 @@ test('the learned sounds: asked on the sound endpoint, once a slot, their posts 
   await searchWordsPass(deps, clock);
   assert.deepEqual(asked, ['vid:sound:9']);
   assert.deepEqual(lanes, ['trend']);
+});
+
+test('young re-reads: the fastest, then every video turning 6 and 50 minutes, each once, in one read', async () => {
+  const young: Policy = {
+    ...DEFAULT_POLICY,
+    finders: {
+      ...DEFAULT_POLICY.finders,
+      trends: { ...DEFAULT_POLICY.finders.trends, on: false },
+      learned: { ...DEFAULT_POLICY.finders.learned, on: false },
+      creators: { ...DEFAULT_POLICY.finders.creators, on: false },
+      sounds: { ...DEFAULT_POLICY.finders.sounds, on: false },
+      young: { ...DEFAULT_POLICY.finders.young, on: true, runEveryMinutes: 10, atAges: { on: true, ages: [6, 50], maxPosts: 10 }, late: { on: false, ageMin: 300, minReach: 20_000, maxPosts: 10 } },
+    },
+  };
+  const windows: [number, number][] = [];
+  const reads: string[][] = [];
+  const source = {
+    id: 'vid',
+    capabilities: { discovery: ['keyword', 'account'] },
+    estimate: () => ({ vendor: 'v', usd: 0.002 }),
+    lookup: async (ids: readonly string[]) => {
+      reads.push([...ids]);
+      return { value: { items: [], authors: [] }, spend: { usd: 0.002 } };
+    },
+  } as unknown as PlatformAdapter;
+  await searchWordsPass(
+    {
+      finders: {
+        searchWords: async () => [],
+        replaceSearchWords: async () => {},
+        searchWordsAt: async () => null,
+        coinedPosts: async () => [],
+        youngPosts: async () => ['fast'],
+        postsTurning: async (_s: string, from: Millis, to: Millis) => (windows.push([NOW - to, to - from]), to === NOW - 6 * 60_000 ? ['six', 'fast'] : ['fifty']),
+      },
+      sources: () => [source],
+      store: async () => 0,
+      meter: inMemoryMeter({ dailyCapUsd: 10, perVendorCapUsd: {}, softStop: 1, now: () => NOW }),
+      mode: 'live',
+      policy: young,
+      log: quiet,
+      now: () => NOW,
+    },
+    searchWordClock(),
+  );
+  assert.deepEqual(windows, [[360_000, 600_000], [3_000_000, 600_000]]);
+  assert.deepEqual(reads, [['fast'], ['six', 'fifty']]);
 });
