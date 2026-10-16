@@ -28,9 +28,10 @@ export interface TranslateSubject {
 
 export type TranslateOutcome =
   /** `from`: the language's two- or three-letter code, lower case. */
-  | { readonly kind: 'translated'; readonly ref: string; readonly from: string; readonly text: string }
+  /** `model` on either answer: the model that gave it, when a pair stands behind one port; absent: the port's own. */
+  | { readonly kind: 'translated'; readonly ref: string; readonly from: string; readonly text: string; readonly model?: string }
   /** Already English (`from` 'en') or no words to translate (`from` 'zxx'): shown as written. */
-  | { readonly kind: 'kept'; readonly ref: string; readonly from: string }
+  | { readonly kind: 'kept'; readonly ref: string; readonly from: string; readonly model?: string }
   /** No usable answer: the call failed, was refused, or did not parse. Not "nothing to translate". */
   | { readonly kind: 'absent'; readonly ref: string; readonly detail: string };
 

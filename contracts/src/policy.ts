@@ -628,6 +628,9 @@ export interface QualifyPolicy {
  * `budget.perSourceUsdPerDay`, enforced by the meter before every call; these numbers
  * only shape the call and the estimate it is checked against.
  */
+/** Which model asks one of the judge's other questions (JudgePolicy.askWith); `off` asks none. */
+export type AskWith = 'open' | 'main' | 'off';
+
 export interface JudgePolicy {
   /** Tries per batch, the first included. A small bound: each retry is a wait and, on some errors, a charge. */
   readonly maxAttempts: number;
@@ -717,8 +720,9 @@ export interface JudgePolicy {
    * the open model behind a chat-completions host (OPEN_JUDGE_MODEL). Named by role because
    * contracts may not name a vendor; the runner maps each to its adapter. Both are asked the same
    * question with the same learned block, precedents, close-match hold and kind question. Applies to
-   * the feed's two post questions; the narrative question, the namer and the translator stay on
-   * `main`. With no key for the open model, `open` here still runs `main`, and the boot says so.
+   * the feed's post question; the kind question, the narrative question, the namer, the translator
+   * and the same-subject question follow `askWith` below. With no key for the open model, `open`
+   * here still runs `main`, and the boot says so.
    */
   readonly primary: 'main' | 'open';
   /**
@@ -806,6 +810,28 @@ export interface JudgePolicy {
     readonly timeoutMs: number;
     readonly maxAttempts: number;
     readonly answerTokensPerPost: number;
+  };
+  /**
+   * ★ WHO ASKS EACH OF THE OTHER QUESTIONS (the owner, 2026-10-16: "move everything that can run on
+   * the open model to it", then "no main-judge API at all from now on, not even as a fallback"):
+   *   names        the coin names a post will be launched as (Policy.names)
+   *   translate    a feed post's words in English (Policy.translate)
+   *   sameSubject  whether two borderline pictures show the same subject (GROUP, coin matching)
+   *   kind         the feed's second question, which kind of post
+   *   stories      QUALIFY's question about a narrative
+   * `open`: the open model (OPEN_JUDGE_MODEL), with the backup open model behind it through the
+   * same failover (`failover` above), and the main judge nowhere in the chain. `main`: the main
+   * judge as before (kind: by `primary`'s roles). `off`: not asked — a name or translation is
+   * absent, a post's kind is not asked (its first answer stands), a narrative abstains
+   * (Q1_unjudged), a pair carries no picture evidence. With no key for the model named, the
+   * question is not asked either, and the boot says which model each question went to.
+   */
+  readonly askWith: {
+    readonly names: AskWith;
+    readonly translate: AskWith;
+    readonly sameSubject: AskWith;
+    readonly kind: AskWith;
+    readonly stories: AskWith;
   };
 }
 
@@ -2720,6 +2746,15 @@ export interface NamesPolicy {
   readonly createIdeas: number;
   /** Posts per call, as the judge batches. */
   readonly perCall: number;
+  /**
+   * Posts per call when the open model guesses (Policy.judge.askWith.names). Measured 2026-10-16 on
+   * 30 live feed posts: asked ten at a time with their pictures it answered only the first post or
+   * two and stopped (18 of 30 unanswered); three at a time, two of three; one at a time, every one,
+   * in 5 to 10 s for about $0.00013.
+   */
+  readonly openPerCall: number;
+  /** The open model's names calls in flight at once, so one post a call does not make a pass take minutes. */
+  readonly openParallel: number;
   /** Posts guessed per pass at most, newest first: the day's volume drains, a burst never spends the line at once. */
   readonly perPass: number;
   /** New example posts embedded per pass at most (the owner's confirmations come first). */
@@ -3489,6 +3524,25 @@ const POLICY_V1: Policy = {
        time split (train before 15 Oct 13:00, test after); 0.5 dropped none on either split. */
     junkFilter: { on: false, l2: 0.3, folds: 5, margin: 0.5, minProtected: 30 },
     open: { batchSize: 5, parallel: 4, reask: 1, reaskWithinMs: 45_000, timeoutMs: 40_000, maxAttempts: 2, answerTokensPerPost: 150 },
+    /* The owner, 2026-10-16: no main-judge API from now on (its credit ran out at 19:26 UTC that
+       evening). Each question copy-tested that night on 30 recent real inputs against the main
+       judge's stored answers (the open model's cost for all of it: $0.02):
+         names        open: every post answered one a call (see names.openPerCall); the main
+                      judge's first ticker in the open model's five for 19 of 29 live posts; on 30
+                      posts with real coins and no examples shown, the real coin in its five for
+                      15 (the main judge, with examples, 18). About $0.00013 a post.
+         translate    open: 30 of 30 answered, the same language for 27, the same meaning for
+                      every post both translated.
+         kind         open: of 30 posts the main judge held, it held 24; of 30 For You posts the
+                      main judge let through, it held 2 (3 unanswered: their first answer stands).
+         stories      off: the same verdict for 18 of 29; it said yes to 8 of 14 the main judge
+                      said no to, 7 of them at or above the bars. Held to 0.85 it would agree on 24
+                      of 29, but QUALIFY has no per-model bar yet. Off: a narrative abstains
+                      (Q1_unjudged), as it has since the credit ran out.
+         sameSubject  off: it said yes to all 20 pairs the main judge said yes to, and to 10 of
+                      the 20 it said no or unsure to (19 of 30 in a sample of nos). Only a yes
+                      counts as evidence, so a pair now carries none rather than a loose yes. */
+    askWith: { names: 'open', translate: 'open', kind: 'open', stories: 'off', sameSubject: 'off' },
   },
 
   resolve: {
@@ -4311,6 +4365,8 @@ const POLICY_V1: Policy = {
     guesses: 5,
     createIdeas: 3,
     perCall: 10,
+    openPerCall: 1,
+    openParallel: 4,
     perPass: 40,
     examplesPerPass: 60,
     maxChars: 300,
