@@ -18,9 +18,12 @@
  *             the 'creator' lane. Both held to the watch list's age (arrivals.ts).
  *   young     every `young.runEveryMinutes`: the fastest-rising found videos under `maxAgeMin` old,
  *             read again by id, so their speed is measured in minutes, not half hours
+ *   sounds    every `sounds.askEveryMs` slot: the next `perAsk` learned sounds' posts, one page each
+ *             on the source's sound endpoint (`soundPosts`), the 'trend' lane like the learned words
  *
- * A sound is learned and listed, never searched: the source's search takes words, and a sound is
- * an id. The judge and the hold decide every post these asks find, as for any lane.
+ * The source's search takes words and a sound is an id, so a sound is asked on its own endpoint
+ * (since 2026-10-16; before, sounds were learned and listed only). The judge and the hold decide
+ * every post these asks find, as for any lane.
  *
  * What breaks if changed carelessly: the asks keep their slot in memory, so a restart may ask one
  * slot twice; the daily lists are dated in the database, so a restart never re-buys the trend list.
@@ -57,9 +60,10 @@ export interface SearchWordClock {
   words: number | null;
   creators: number | null;
   young: number | null;
+  sounds: number | null;
 }
 
-export const searchWordClock = (): SearchWordClock => ({ words: null, creators: null, young: null });
+export const searchWordClock = (): SearchWordClock => ({ words: null, creators: null, young: null, sounds: null });
 
 export interface SearchWordResult {
   readonly trendWords: number;
@@ -173,7 +177,7 @@ export async function searchWordsPass(deps: SearchWordDeps, clock: SearchWordClo
     }
   }
 
-  const all = f.trends.on || f.learned.on || f.creators.on ? await deps.finders.searchWords(['trend', 'coined']) : [];
+  const all = f.trends.on || f.learned.on || f.creators.on || f.sounds.on ? await deps.finders.searchWords(['trend', 'coined']) : [];
   const own = new Set(deps.policy.feed.hashtags.map((w) => w.toLowerCase()));
 
   /* 3. The word asks: rising trend tags first, then learned tags, never the owner's own words. */
@@ -205,6 +209,22 @@ export async function searchWordsPass(deps: SearchWordDeps, clock: SearchWordClo
       usd += got.spend.usd;
       stored += await deps.store(got.value.items, got.value.authors, 'creator');
       asked.push(`@${handle}`);
+    }
+  }
+
+  /* 4b. The learned sounds: their posts, one page a sound. */
+  const sounds = f.sounds.on && source.soundPosts !== undefined ? all.filter((w) => w.origin === 'coined' && w.kind === 'sound' && w.source === sourceId).map((w) => w.value) : [];
+  const soundSlot = Math.floor(now / f.sounds.askEveryMs);
+  if (sounds.length > 0 && clock.sounds !== soundSlot) {
+    clock.sounds = soundSlot;
+    for (const sound of wordsForSlot(sounds, f.sounds.perAsk, soundSlot)) {
+      const quote = source.estimateSoundPosts?.(sound);
+      if (quote === undefined) break;
+      const got = await paid(deps, quote.vendor, quote.usd, 'a learned sound\'s posts', () => source.soundPosts!(sound, budgetOf(deps, quote.vendor)));
+      if (got === null) continue;
+      usd += got.spend.usd;
+      stored += await deps.store(got.value.items, got.value.authors, 'trend');
+      asked.push(sound);
     }
   }
 
