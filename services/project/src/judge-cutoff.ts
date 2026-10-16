@@ -27,6 +27,7 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { withJudgeCutoff } from '@insidor/core';
 import { isOpenJudgeId } from '@insidor/judge-openai-compatible/setup.ts';
+import { PgLearningRepo, type Db } from '@insidor/store';
 
 export interface AnswerPolicies {
   /** For the main judge's answers (and copies, rules and owner calls): the block's cutoff. */
@@ -37,6 +38,19 @@ export interface AnswerPolicies {
 
 export function answerPolicies(base: Policy, blockCutoff: number | null): AnswerPolicies {
   return { main: withJudgeCutoff(base, blockCutoff), open: withJudgeCutoff(base, base.judge.openCutoff ?? blockCutoff) };
+}
+
+/**
+ * Both, with the applied block's cutoff read from the store (0086): what a frame — full or quick —
+ * holds its answers to. Read outside the frame's transaction, so a failed read cannot abort it: it
+ * is said, and the policy bar holds, as before 0086.
+ */
+export async function loadAnswerPolicies(db: Db, base: Policy): Promise<AnswerPolicies> {
+  const cutoff = await new PgLearningRepo(db).latestApplied().then((b) => b?.cutoff ?? null, (e: unknown) => {
+    console.warn(`the applied block's cutoff could not be read; the policy bar holds: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  });
+  return answerPolicies(base, cutoff);
 }
 
 /** The policy one answer is held to, by the judge id it was filed under. */

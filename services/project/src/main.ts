@@ -22,11 +22,11 @@
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { Millis } from '@insidor/contracts';
-import { asDb, createPool, DB_ROLE, PgAssetRepo, PgLearningRepo, withTransaction } from '@insidor/store';
+import { asDb, createPool, DB_ROLE, PgAssetRepo, withTransaction } from '@insidor/store';
 
 import { loadLaunchFacts, nextLaunchTick, writeLaunches } from './db.ts';
 import { projectStoryFrame } from './frame.ts';
-import { answerPolicies } from './judge-cutoff.ts';
+import { loadAnswerPolicies } from './judge-cutoff.ts';
 import { projectRisingFeeds } from './rising.ts';
 import { keepFeedHistory } from './feed-history.ts';
 import { announceBoard } from './notify.ts';
@@ -131,13 +131,9 @@ async function main(): Promise<void> {
        with a stricter yes/no cutoff is only the version it tested when every answer is held to that
        cutoff, so the per-post checks below read the policy with it. Read before the transaction, so
        a failed read cannot abort the frame: it is said, and the policy bar holds, as before 0086. */
-    const cutoff = await new PgLearningRepo(asDb(pool)).latestApplied().then((b) => b?.cutoff ?? null, (e: unknown) => {
-      console.warn(`the applied block's cutoff could not be read; the policy bar holds: ${e instanceof Error ? e.message : String(e)}`);
-      return null;
-    });
     /* ★ AND THE OPEN MODEL'S OWN (judge-cutoff.ts, Policy.judge.openCutoff): an answer is held to the
        cutoff of the model that gave it, so failover and switch-day answers from both sit side by side. */
-    const { main: policy, open: openPolicy } = answerPolicies(DEFAULT_POLICY, cutoff);
+    const { main: policy, open: openPolicy } = await loadAnswerPolicies(asDb(pool), DEFAULT_POLICY);
 
     const result = await withTransaction(pool, async (db) => {
       const frame = await projectStoryFrame(db, VIEW_ID, options, {

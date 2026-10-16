@@ -44,6 +44,32 @@ export async function writeSameNameCoins(
   keep: readonly string[] = [],
 ): Promise<number> {
   await db.query(`delete from public.same_name_coin where subject_kind = $1 and subject_id <> all($2::text[])`, [kind, [...keep]]);
+  return insertSameNameCoins(db, kind, lists, evidence);
+}
+
+/**
+ * The lists of these subjects alone, replaced; every other subject's list stands. The quick frame's
+ * write (quick-frame.ts): it weighed only its changed posts, so it may rewrite only theirs.
+ */
+export async function replaceSameNameCoins(
+  db: Db,
+  kind: SameNameKind,
+  subjects: readonly string[],
+  lists: ReadonlyMap<string, readonly string[]>,
+  evidence: ReadonlyMap<string, ReadonlyMap<string, WireCoinEvidence>> = new Map(),
+): Promise<number> {
+  if (subjects.length === 0) return 0;
+  await db.query(`delete from public.same_name_coin where subject_kind = $1 and subject_id = any($2::text[])`, [kind, [...subjects]]);
+  const wanted = new Set(subjects);
+  return insertSameNameCoins(db, kind, new Map([...lists].filter(([id]) => wanted.has(id))), evidence);
+}
+
+async function insertSameNameCoins(
+  db: Db,
+  kind: SameNameKind,
+  lists: ReadonlyMap<string, readonly string[]>,
+  evidence: ReadonlyMap<string, ReadonlyMap<string, WireCoinEvidence>>,
+): Promise<number> {
   const ids: string[] = [];
   const addresses: string[] = [];
   const links: (boolean | null)[] = [];

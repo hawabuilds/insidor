@@ -226,7 +226,7 @@ const toMs = (value: Date | string | null): Millis | null => {
  * role reads `internal`; the score never leaves
  * this function except as the yes or no `postScore` makes of it.
  */
-async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[] = []): Promise<readonly RisingRow[]> {
+export async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[] = [], only: readonly string[] | null = null): Promise<readonly RisingRow[]> {
   return db.query<RisingRow>(
     `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media,
             a.handle, a.display_name, a.source_author_id,
@@ -283,8 +283,9 @@ async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[
             ) s on true
       where i.origin = 'observed'
         and (coalesce(i.posted_at, i.first_seen_at) >= $1 or i.item_id = any($2::text[]))
-        and (j.coinable is not null or oc.verdict = 'meme')`,
-    [new Date(sinceMs).toISOString(), [...members]],
+        and (j.coinable is not null or oc.verdict = 'meme')
+        and ($3::text[] is null or f.item_id = any($3::text[]))`,
+    [new Date(sinceMs).toISOString(), [...members], only === null ? null : [...only]],
   );
 }
 
@@ -625,11 +626,13 @@ export async function buildRising(
   membership: Membership | null = null,
   /** The policy the open model's answers are held to (judge-cutoff.ts); `policy` for every other. */
   openPolicy = policy,
+  /** Only these posts (the quick frame's changed ones, quick-frame.ts); null: every post in the window. */
+  only: readonly string[] | null = null,
 ): Promise<RisingFrame> {
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
   const heldBy = new Map<string, HeldKind>();
-  const candidates = await loadCandidates(db, sinceMs, membership?.refresh ?? []);
+  const candidates = await loadCandidates(db, sinceMs, membership?.refresh ?? [], only);
   const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
   const atOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
   /* Whether each loaded post passes now; a member that no longer does is still projected for its
@@ -755,7 +758,7 @@ export async function buildRising(
  * read for these posts alone: the story and the judge's name from the loaded rows, the namer's guess
  * and the meaning vectors from `internal`.
  */
-async function varied<P extends { readonly at: number; readonly post: WireRisingPost }>(db: Db, list: readonly P[], rows: readonly RisingRow[], policy: typeof DEFAULT_POLICY): Promise<P[]> {
+export async function varied<P extends { readonly at: number; readonly post: WireRisingPost }>(db: Db, list: readonly P[], rows: readonly RisingRow[], policy: typeof DEFAULT_POLICY): Promise<P[]> {
   const ids = list.map((p) => p.post.id);
   const { guesses, alike } = await loadTopicLinks(db, ids, policy.rising.varietySameMeaning);
   const byId = new Map(rows.map((row) => [row.item_id, row] as const));

@@ -498,8 +498,10 @@ export async function loadNameIdeas(db: Db, itemIds: readonly string[], p: Polic
 }
 
 /** Every shown post's ideas, replacing the last run's, in the caller's transaction. */
-export async function writeNameIdeas(db: Db, ideas: ReadonlyMap<string, readonly NameIdea[]>): Promise<number> {
-  await db.query(`delete from public.post_name_idea`);
+export async function writeNameIdeas(db: Db, ideas: ReadonlyMap<string, readonly NameIdea[]>, only: readonly string[] | null = null): Promise<number> {
+  /* `only`: the quick frame's changed posts (quick-frame.ts) — theirs are replaced, every other stands. */
+  if (only === null) await db.query(`delete from public.post_name_idea`);
+  else await db.query(`delete from public.post_name_idea where item_id = any($1::text[])`, [[...only]]);
   const ids: string[] = [];
   const positions: number[] = [];
   const names: string[] = [];
