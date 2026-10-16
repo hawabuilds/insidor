@@ -61,14 +61,39 @@ function dot(a: ArrayLike<number>, b: ArrayLike<number>): number {
   return sum;
 }
 
-/** The `k` labelled posts closest to `v`, closest first; never the post itself. */
-export function nearestLabelled(v: ArrayLike<number>, labels: readonly LabelledVector[], k: number, isSelf: (l: LabelledVector) => boolean): readonly Neighbour[] {
+/** A post's source, as its id spells it: the part before the first ':' ('' when there is none). */
+export const sourceOfItemId = (itemId: string): string => {
+  const i = itemId.indexOf(':');
+  return i < 0 ? '' : itemId.slice(0, i);
+};
+
+/**
+ * ★ THE POST'S OWN SOURCE FIRST (the owner, 2026-10-16: "the short-video judge uses short-video
+ * examples first"). From `sorted` (closest first), up to `reserve` places of the `k` go to the
+ * closest from the post's own source, listed first; the rest are the closest of any source. With
+ * `reserve` 0 it is the plain closest `k`. Shared by the judge's precedents and the namer's
+ * examples, so both read the same rule. A source with fewer labels than `reserve` keeps the places
+ * it cannot fill for the others.
+ */
+export function ownSourceFirst<T>(sorted: readonly T[], k: number, reserve: number, own: (t: T) => boolean): readonly T[] {
   if (k <= 0) return [];
-  return labels
+  if (reserve <= 0) return sorted.slice(0, k);
+  const first = sorted.filter(own).slice(0, Math.min(reserve, k));
+  const taken = new Set(first);
+  return [...first, ...sorted.filter((t) => !taken.has(t)).slice(0, k - first.length)];
+}
+
+/**
+ * The `k` labelled posts closest to `v`, closest first; never the post itself. With `own`, up to
+ * `own.reserve` of them are the closest from the source `own.source`, first (`ownSourceFirst`).
+ */
+export function nearestLabelled(v: ArrayLike<number>, labels: readonly LabelledVector[], k: number, isSelf: (l: LabelledVector) => boolean, own?: { readonly source: string; readonly reserve: number }): readonly Neighbour[] {
+  if (k <= 0) return [];
+  const sorted = labels
     .filter((l) => !isSelf(l))
     .map((label) => ({ label, similarity: dot(v, label.values) }))
-    .sort((a, b) => b.similarity - a.similarity || (a.label.itemId < b.label.itemId ? -1 : 1))
-    .slice(0, k);
+    .sort((a, b) => b.similarity - a.similarity || (a.label.itemId < b.label.itemId ? -1 : 1));
+  return own === undefined ? sorted.slice(0, k) : ownSourceFirst(sorted, k, own.reserve, (n) => sourceOfItemId(n.label.itemId) === own.source);
 }
 
 /** The closest post the owner called "not a meme", and how close; null when there is none. */

@@ -32,6 +32,7 @@ import type { NamesPolicy } from '@insidor/contracts/policy.ts';
 import type { NameExample, NameGuess } from '@insidor/contracts/ports/names.ts';
 
 import { tickerFor, type NameIdea, type NameIdeaBars } from './name-ideas.ts';
+import { ownSourceFirst, sourceOfItemId } from '../qualify/precedents.ts';
 
 /** One known example post with its vector. */
 export interface ExampleVector {
@@ -54,14 +55,15 @@ function dot(a: ArrayLike<number>, b: ArrayLike<number>): number {
 }
 
 /** The `k` example posts closest to `v`, closest first; never one `isSelf` names. Vectors are unit length. */
-export function nearestExamples(v: ArrayLike<number>, examples: readonly ExampleVector[], k: number, isSelf: (e: ExampleVector) => boolean): readonly ExampleVector[] {
+export function nearestExamples(v: ArrayLike<number>, examples: readonly ExampleVector[], k: number, isSelf: (e: ExampleVector) => boolean, own?: { readonly source: string; readonly reserve: number }): readonly ExampleVector[] {
   if (k <= 0) return [];
-  return examples
+  const sorted = examples
     .filter((e) => !isSelf(e) && (e.coins.length > 0 || (e.notCoins?.length ?? 0) > 0))
     .map((e) => ({ e, s: dot(v, e.values) }))
     .sort((a, b) => b.s - a.s || (a.e.itemId < b.e.itemId ? -1 : 1))
-    .slice(0, k)
     .map((x) => x.e);
+  /* `own`: up to `reserve` of the k from the post's own source, first (qualify/precedents.ts `ownSourceFirst`). */
+  return own === undefined ? sorted.slice(0, k) : ownSourceFirst(sorted, k, own.reserve, (e) => sourceOfItemId(e.itemId) === own.source);
 }
 
 /** An example as the namer is shown it: words trimmed, each distinct coin name once, and the owner's rejected ones apart. */

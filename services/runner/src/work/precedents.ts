@@ -34,7 +34,7 @@ import type { EmbedPort } from '@insidor/contracts/ports/embed.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { LabelledPost, PgLabelEmbeddingRepo, PgPostEmbeddingRepo, StoredLabel } from '@insidor/store';
 import { LABEL_RANK } from '@insidor/store';
-import { closestNot, embedInput, nearestLabelled, postPicture, precedentsFor, type LabelledVector } from '@insidor/core';
+import { closestNot, embedInput, nearestLabelled, postPicture, precedentsFor, sourceOfItemId, type LabelledVector } from '@insidor/core';
 
 import { errorText, type Logger } from '../log.ts';
 
@@ -162,7 +162,7 @@ export function precedentSource(deps: PrecedentDeps) {
         const self = (l: LabelledVector): boolean => l.itemId === String(item.itemId);
         const not = closestNot(v.values, known, self);
         out.set(String(item.itemId), {
-          precedents: precedentsFor(nearestLabelled(v.values, known, k, self), deps.policy),
+          precedents: precedentsFor(nearestLabelled(v.values, known, k, self, { source: sourceOfItemId(String(item.itemId)), reserve: deps.policy.judge.precedents.sameSourceFirst }), deps.policy),
           closestNot: not?.similarity ?? null,
           closestNotId: not?.label.itemId ?? null,
         });
