@@ -1,4 +1,4 @@
-/** The owner's alarm for an empty supplier account: once per supplier an hour, a recovery once, logged only with no owner. */
+/** The owner's alarm for an empty supplier account: once per outage, a recovery once after the hold, logged only with no owner. */
 
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import type { OwnerAlert } from '@insidor/store';
 import { onOutOfCredit, outOfCredit, vendorAnswered } from '@insidor/vendor-kit';
 
-import { billingAlerts } from './billing-alerts.ts';
+import { billingAlerts, RECOVERY_HOLD_MS } from './billing-alerts.ts';
 import type { Logger, LogFields } from './log.ts';
 import type { OwnerQueue } from './supplier-warnings.ts';
 
@@ -60,15 +60,20 @@ test('★ a dead account is logged once an hour and pushed once per outage, howe
   assert.equal(second[1]?.fields?.['alert'], 'owner already pushed for this outage');
   assert.equal(h.queued.length, 2);
 
-  /* Answered, then empty again: a new outage, a new push. */
+  /* Answered for the whole hold, then empty again: a recovery, then a new outage and a new push. */
   h.b.answered('anthropic');
-  h.setNow(T0 + 40 * MIN);
+  h.setNow(T0 + 31 * MIN + RECOVERY_HOLD_MS);
+  await h.b.flush();
+  h.setNow(T0 + 45 * MIN);
   h.b.refused(refusal);
   await h.b.flush();
-  assert.deepEqual(h.queued.slice(2).map((q) => [q.alert.facts['state'], q.alert.subject]), [['refused', 'billing|anthropic|2026-10-13T16']]);
+  assert.deepEqual(h.queued.slice(2).map((q) => [q.alert.facts['state'], q.alert.subject]), [
+    ['recovered', 'billing|anthropic|recovered|2026-10-13T15:30:00.000Z'],
+    ['refused', 'billing|anthropic|2026-10-13T16'],
+  ]);
 });
 
-test('a recovery is alerted once, on the first answer after a refusal; answers while nothing is down do nothing', async () => {
+test('a recovery is alerted once, after answering for the whole hold; answers while nothing is down do nothing', async () => {
   const h = harness();
   h.b.answered('anthropic');
   h.b.refused(refusal);
@@ -77,11 +82,34 @@ test('a recovery is alerted once, on the first answer after a refusal; answers w
   h.b.answered('anthropic');
   h.b.answered('anthropic');
   await h.b.flush();
+  assert.equal(h.queued.length, 1, 'not yet: the hold has not passed');
+  assert.deepEqual(h.b.down(), [], 'answering, so not listed as down');
+  h.setNow(T0 + 12 * MIN + RECOVERY_HOLD_MS);
+  await h.b.flush();
+  await h.b.flush();
   assert.equal(h.queued.length, 2);
   assert.equal(h.queued[1]?.alert.facts['state'], 'recovered');
   assert.match(h.queued[1]?.alert.subject ?? '', /^billing\|anthropic\|recovered\|/);
   assert.deepEqual(h.b.down(), []);
   assert.ok(h.lines.some((l) => l.msg === 'supplier answering again' && l.fields?.['downMinutes'] === 12));
+});
+
+test('★ a supplier refusing some calls and answering others is one outage: one push down, one back (2026-10-16)', async () => {
+  /* From 02:20 UTC the X supplier refused some calls for credit and answered others; the owner got
+     one "out of credit" and five "answering again" in 25 minutes. */
+  const h = harness();
+  const x = { vendor: 'twitterapi.io', endpoint: 'GET /twitter/tweets', reason: 'credits used up', status: 402 };
+  for (let m = 0; m < 60; m += 1) {
+    h.setNow(T0 + m * MIN);
+    if (m % 4 === 0) h.b.refused(x);
+    else h.b.answered('twitterapi.io');
+    await h.b.flush();
+  }
+  assert.deepEqual(h.queued.map((q) => q.alert.facts['state']), ['refused']);
+  assert.deepEqual(h.b.down(), [], 'answering at the last call');
+  h.setNow(T0 + 59 * MIN + RECOVERY_HOLD_MS);
+  await h.b.flush();
+  assert.deepEqual(h.queued.map((q) => q.alert.facts['state']), ['refused', 'recovered']);
 });
 
 test('no OWNER_WALLET: logged only; no profile yet: kept and tried again until the owner signs in', async () => {
@@ -124,6 +152,7 @@ test('★ the minute timer flushing with nothing pending does not stop later ref
   assert.equal(h.queued[0]?.alert.kind, 'supplier_account');
   h.setNow(T0 + 9 * MIN);
   h.b.answered('anthropic');
+  h.setNow(T0 + 9 * MIN + RECOVERY_HOLD_MS);
   await h.b.flush();
   assert.deepEqual(h.queued.map((q) => q.alert.facts['state']), ['refused', 'recovered']);
 
@@ -141,6 +170,7 @@ test('wired to the vendor edge: a billing error built in an adapter reaches the 
     assert.equal(e.reason, 'no payment method on file');
     await h.b.flush();
     vendorAnswered('voyage');
+    h.setNow(T0 + RECOVERY_HOLD_MS);
     await h.b.flush();
     assert.deepEqual(h.queued.map((q) => q.alert.facts['state']), ['refused', 'recovered']);
   } finally {

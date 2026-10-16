@@ -22,8 +22,16 @@
  * outage is still going; the refusals in between are counted and the count rides on the next
  * hour's line. The owner is pushed once, on the first refusal of an outage (the subject carries
  * the hour the outage began, so the deliverer's claim drops a second queue after a restart within
- * that hour), and once more on the first successful answer after it. Hourly pushes for an account
- * the owner already knows is empty were noise; the owner's rule is once per supplier per outage.
+ * that hour), and once more when it has answered for RECOVERY_HOLD_MS with no refusal in between.
+ * Hourly pushes for an account the owner already knows is empty were noise; the owner's rule is
+ * once per supplier per outage.
+ *
+ * ★ A SUPPLIER THAT ANSWERS SOME CALLS AND REFUSES OTHERS IS STILL DOWN. On 2026-10-16 from 02:20
+ * UTC the X supplier refused some calls for credit while answering others, and the owner got one
+ * "out of credit" and then five "answering again" in 25 minutes: each answer ended the outage, the
+ * next refusal began one in the same hour (its push dropped by the claim), and each recovery had a
+ * subject of its own. Now an answer only starts the hold; a refusal inside it carries on the same
+ * outage, and the recovery is queued by `flush` once the hold has passed.
  *
  * ★ THE OWNER, AS FOR THE SPEND WARNING. Queued for the profile signed in with OWNER_WALLET
  * through the same OwnerQueue. No wallet: logged only. No profile yet: the alert stays pending and
@@ -62,6 +70,9 @@ export const SUPPLIER_NAMES: Readonly<Record<string, SupplierName>> = {
   gemini: { supplier: 'Gemini', uses: 'embeddings' },
 };
 
+/** How long a supplier must answer with no refusal before it is said to be back. */
+export const RECOVERY_HOLD_MS = 10 * 60_000;
+
 export interface BillingAlertDeps {
   /** OWNER_WALLET; empty: logged only. */
   readonly ownerWallets: readonly string[];
@@ -76,7 +87,7 @@ export interface BillingAlerts {
   refused(error: Pick<OutOfCredit, 'vendor' | 'endpoint' | 'reason' | 'status'>): void;
   /** A supplier answered a call. Synchronous, never throws; cheap when nothing is down. */
   answered(vendor: string): void;
-  /** Queue whatever is pending for the owner. Safe to call at any time; catches its own errors. */
+  /** Settle recoveries whose hold has passed, then queue whatever is pending for the owner. Safe to call at any time; catches its own errors. */
   flush(): Promise<void>;
   /** The suppliers refused since their last answer, for a health line. */
   down(): readonly string[];
@@ -98,13 +109,31 @@ const utcHour = (ms: number): string => new Date(ms).toISOString().slice(0, 13);
 export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
   const names = deps.names ?? SUPPLIER_NAMES;
   const nameOf = (vendor: string): SupplierName => names[vendor] ?? { supplier: vendor, uses: '' };
-  /* vendor → the hour of its last log line, when the outage began, and the refusals since that line. */
-  const down = new Map<string, { hour: string; since: number; reason: string; refusedSinceLine: number }>();
+  /* vendor → the hour of its last log line, when the outage began, the refusals since that line, and
+     when it first answered again with no refusal since (null: still refusing). */
+  const down = new Map<string, { hour: string; since: number; reason: string; refusedSinceLine: number; answeredAt: number | null }>();
   const pending = new Map<string, Pending>();
   let flushing: Promise<void> | null = null;
 
   const kick = (): void => {
     void api.flush();
+  };
+
+  /* A supplier that has answered for the whole hold with no refusal is back: one recovery, keyed to
+     the outage's start so a restart or a late flush never queues it twice. */
+  const settle = (): void => {
+    const at = deps.now();
+    for (const [vendor, was] of [...down]) {
+      if (was.answeredAt === null || at - was.answeredAt < RECOVERY_HOLD_MS) continue;
+      down.delete(vendor);
+      const { supplier, uses } = nameOf(vendor);
+      deps.log.info('supplier answering again', { vendor, supplier, downSince: new Date(was.since).toISOString(), downMinutes: Math.round((was.answeredAt - was.since) / 60_000) });
+      pending.set(vendor, {
+        vendor,
+        subject: `billing|${vendor}|recovered|${new Date(was.since).toISOString()}`,
+        facts: { supplier, uses, state: 'recovered', vendor },
+      });
+    }
   };
 
   const api: BillingAlerts = {
@@ -113,6 +142,8 @@ export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
         const at = deps.now();
         const hour = utcHour(at);
         const was = down.get(error.vendor);
+        /* Refused again inside the hold: the same outage, not over yet. */
+        if (was !== undefined) was.answeredAt = null;
         if (was !== undefined && was.hour === hour) {
           was.refusedSinceLine += 1;
           return;
@@ -129,7 +160,7 @@ export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
           downSince: new Date(was?.since ?? at).toISOString(),
           alert: deps.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : was === undefined ? 'pushing the owner' : 'owner already pushed for this outage',
         });
-        down.set(error.vendor, { hour, since: was?.since ?? at, reason: error.reason, refusedSinceLine: 0 });
+        down.set(error.vendor, { hour, since: was?.since ?? at, reason: error.reason, refusedSinceLine: 0, answeredAt: null });
         /* Only the first refusal of an outage is pushed; the hours after it are log lines. */
         if (was !== undefined) return;
         /* A recovery not yet delivered is superseded: the account is empty again. */
@@ -148,23 +179,19 @@ export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
       if (down.size === 0) return;
       try {
         const was = down.get(vendor);
-        if (was === undefined) return;
-        down.delete(vendor);
-        const at = deps.now();
-        const { supplier, uses } = nameOf(vendor);
-        deps.log.info('supplier answering again', { vendor, supplier, downSince: new Date(was.since).toISOString(), downMinutes: Math.round((at - was.since) / 60_000) });
-        pending.set(vendor, {
-          vendor,
-          subject: `billing|${vendor}|recovered|${new Date(was.since).toISOString()}`,
-          facts: { supplier, uses, state: 'recovered', vendor },
-        });
-        kick();
+        if (was === undefined || was.answeredAt !== null) return;
+        was.answeredAt = deps.now();
       } catch {
         /* As above. */
       }
     },
 
     async flush() {
+      try {
+        settle();
+      } catch {
+        /* A log line that throws must not stop the queue below. */
+      }
       if (flushing !== null) return flushing;
       /* ★ RESET AFTER THE ASSIGNMENT, NEVER INSIDE THE BODY. With nothing pending the body returns
          before its first await, so a `finally` inside it ran BEFORE `flushing` was assigned and the
@@ -194,7 +221,7 @@ export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
       return current;
     },
 
-    down: () => [...down.keys()],
+    down: () => [...down].filter(([, d]) => d.answeredAt === null).map(([vendor]) => vendor),
 
     notice(vendor, subject, state, facts) {
       try {
