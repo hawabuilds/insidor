@@ -168,7 +168,7 @@ export function nameGuesser(deps: NameGuessDeps) {
           absent += 1;
           continue;
         }
-        if (await deps.guesses.put(o.ref, clean, o.seen, namer.model, namer.promptId)) guessed += 1;
+        if (await deps.guesses.put(o.ref, clean, o.seen, o.model ?? namer.model, namer.promptId)) guessed += 1;
       }
     } catch (e) {
       if (!(e instanceof BudgetRefused)) throw e;

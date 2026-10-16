@@ -281,6 +281,12 @@ test('★ a dry run can price the judge with only a model, and a live run cannot
   assert.throws(() => loadRunnerConfig({ ...complete, SPEND: 'live', JUDGE_MODEL: 'claude-haiku-4-5' }), /ANTHROPIC_API_KEY/);
 });
 
+test('★ with the open model configured, a model and no main key boots live: the main judge is simply off', () => {
+  const c = loadRunnerConfig({ ...complete, SPEND: 'live', JUDGE_MODEL: 'claude-haiku-4-5', OPENROUTER_API_KEY: 'sk-or-test' });
+  assert.equal(c.judge.state, 'priced');
+  assert.equal(c.openJudge.state, 'configured');
+});
+
 test('★ RANK is off unless switched on, so an unbuilt stage does not throw every pass', () => {
   assert.equal(loadRunnerConfig(complete).rank, 'off');
   assert.equal(loadRunnerConfig({ ...complete, RANK: 'on' }).rank, 'on');

@@ -306,7 +306,7 @@ export function openChatClient(config: OpenChatConfig): JudgeClient & { judge(re
     },
     /* One chat body built by another question's file (questions.ts: names, translations, the
        same-subject pictures), with this client's retries and error rules; the parsed reply. */
-    send,
+    send: (payload) => send(() => payload),
     async frame(uri) {
       const size = config.pictureSize ?? null;
       if (size !== null) {

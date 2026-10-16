@@ -50,7 +50,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { Author, Item, Millis } from '@insidor/contracts';
 import type { DurableMeter } from '@insidor/meter';
 import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
-import type { Policy } from '@insidor/contracts/policy.ts';
+import type { AskWith, Policy } from '@insidor/contracts/policy.ts';
 import { jobVendorLines, learningDailyCapUsd, supplierRoles, vendorLines } from './vendor-lines.ts';
 import { supplierWarnings } from './supplier-warnings.ts';
 import { billingAlerts, SUPPLIER_NAMES } from './billing-alerts.ts';
@@ -59,14 +59,16 @@ import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
-import { accountCredits, isOpenJudgeId, openChatClient, openJudge, type HostModel, type OpenQuestion } from '@insidor/judge-openai-compatible';
+import { accountCredits, isOpenJudgeId, openChatClient, openJudge, openNamer, openSameSubject, openTranslator, type HostModel, type OpenJudgeSetup, type OpenQuestion } from '@insidor/judge-openai-compatible';
 import { describeRoles, openHostModel, rolesFor, type JudgeRole } from './feed-judges.ts';
 import { failoverJudge, failoverState } from './judge-failover.ts';
+import { failoverNamer, failoverSameSubject, failoverTranslator, type SameSubjectPart } from './open-questions.ts';
 import { SHADOW_ENDPOINT, judgeShadow } from './judge-shadow.ts';
 import { openDurableMeter } from '@insidor/meter';
 import { anthropicNamer } from '@insidor/judge-anthropic/name-guess.ts';
 import { anthropicTranslator } from '@insidor/judge-anthropic/translate.ts';
 import type { NamePort } from '@insidor/contracts/ports/names.ts';
+import type { TranslatePort } from '@insidor/contracts/ports/translate.ts';
 import { httpClient as voyageClient, voyageEmbed } from '@insidor/embed-voyage';
 import { followLink, resolvePlatforms, SECOND_VIDEO_VENDOR, SHORT_LINKS, SUPPLIER_VENDORS, type PlatformRegistry, type PlatformRuntime } from '@insidor/platform-registry';
 import {
@@ -240,6 +242,9 @@ function buildJudge(
     });
     return null;
   }
+  /* A model with no key in a live run: the main judge is off (config.ts lets this boot only when
+     the open model is configured — the owner stopped paying for the main one on 2026-10-16). */
+  if (setup.state === 'priced' && cfg.spend.kind === 'live') return null;
   const price = priceFor(setup.model);
   if (price === null) {
     throw new JudgeNotConfigured('JUDGE_MODEL', `is ${JSON.stringify(setup.model)}, which has no price in prices.ts`);
@@ -348,6 +353,64 @@ function buildOpenJudge(
     precedents,
     ...(endpoint === undefined ? {} : { endpoint }),
   });
+}
+
+/** One open model to ask: its host setup and the model as the host lists it. */
+interface OpenSide {
+  readonly setup: Extract<OpenJudgeSetup, { state: 'configured' }>;
+  readonly model: HostModel;
+}
+
+/**
+ * The questions Policy.judge.askWith puts on the open model, built for one open model (`side`):
+ * the narrative question and the kind question as judging ports (the main judge's prompt files,
+ * as `buildOpenJudge` builds the post question), and the namer, the translator and the
+ * same-subject question (adapters openai-compatible questions.ts). Each with its own client so
+ * its answer budget is its own, the judge policy's retries and timeouts, the smaller picture size.
+ */
+function buildOpenQuestions(side: OpenSide, meter: Meter, policy: Policy) {
+  const client = (maxOutputTokens: number) =>
+    openChatClient({
+      vendor: side.setup.vendor,
+      apiKey: side.setup.apiKey,
+      baseUrl: side.setup.baseUrl,
+      model: side.model.id,
+      vision: side.model.vision,
+      maxOutputTokens,
+      timeoutMs: policy.judge.timeoutMs,
+      maxAttempts: policy.judge.maxAttempts,
+      backoffMs: policy.judge.backoffMs,
+      maxWaitMs: policy.judge.maxWaitMs,
+      maxFrameBytes: policy.judge.maxFrameBytes,
+      pictureSize: 'small',
+      providers: side.setup.providers,
+      fetch: globalThis.fetch,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
+  const now = () => Date.now() as Millis;
+  const judgeFor = (question: OpenQuestion, maxOutputTokens: number): JudgePort =>
+    openJudge({ client: client(maxOutputTokens), meter, now, model: side.model, vendor: side.setup.vendor, policy: { ...policy.judge, maxOutputTokens }, maxBatch: policy.qualify.batchSize, question });
+  const common = { meter, now, model: side.model, vendor: side.setup.vendor, providers: side.setup.providers, judge: policy.judge };
+  return {
+    story: () => judgeFor('story', policy.judge.maxOutputTokens),
+    kind: () => judgeFor('kind', policy.judge.postBatchMaxOutputTokens),
+    namer: (): NamePort => openNamer({ ...common, client: client(policy.names.maxOutputTokens), names: policy.names }),
+    translator: (): TranslatePort => openTranslator({ ...common, client: client(policy.translate.maxOutputTokens), translate: policy.translate }),
+    sameSubject: (): SameSubjectPart => {
+      const pair = openSameSubject({ ...common, client: client(policy.judge.pairMaxOutputTokens) });
+      return { id: pair.id, sameSubjectPromptId: pair.sameSubjectPromptId, estimateSameSubject: pair.estimateSameSubject, sameSubject: pair.sameSubject };
+    },
+  };
+}
+
+/**
+ * The backup open model, behind the open model for every question it answers first, or null when
+ * none is configured. The backup's own setup (a second open model on another host) is read by its
+ * own config; until then there is none, and an open-model outage leaves those questions unanswered
+ * for the rest, each in its typed absence — never handed to the main judge.
+ */
+function openBackupSide(_cfg: RunnerConfig): OpenSide | null {
+  return null;
 }
 
 /**
@@ -712,14 +775,13 @@ export async function withRuntime<T>(
            priced       SPEND=dry with a model and no key: estimates only. The client it
                         holds refuses to run, and the dry run never asks it to.
            configured   the real client. In SPEND=dry it is still never called. */
-      const judge = buildJudge(cfg, meter, policy, log);
+      const mainStoryJudge = buildJudge(cfg, meter, policy, log);
       /* The video and author fill-in's tries and day count, kept across passes for this process (work/post-refill.ts). */
       const refills = refillMemory();
       const readingNotes = readingsMemory();
       /* Each poster's last profile re-read and the day's count (work/bio-refresh.ts). */
       const bioReads = bioRefreshMemory();
-      /* The feed's translator and its table (work/translate-posts.ts), built once for the process. */
-      const translator = buildTranslator(cfg, meter, policy);
+      /* The feed's translations table (work/translate-posts.ts); its translator is built below, with the open model. */
       const translations = new PgTranslationRepo(db);
       /* The per-post score's judge: the same model and prompt, with a smaller answer budget
          so ten short answers are not reserved at the cost of two long ones. */
@@ -732,7 +794,7 @@ export async function withRuntime<T>(
       /* ★ THE FEED'S TWO JUDGES (feed-judges.ts): the main one and the open model, by the role
          Policy.judge.primary gives each, both with the same block, precedents and questions. */
       const openModel = await openHostModel(cfg.openJudge, policy.judge.timeoutMs, log.child({ step: 'open-judge' }));
-      const roles = rolesFor(policy.judge.primary, openModel !== null);
+      const roles = rolesFor(policy.judge.primary, openModel !== null, mainStoryJudge !== null);
       const said = describeRoles(policy.judge.primary, roles, { configured: cfg.openJudge.state === 'configured', model: openModel?.id ?? null });
       log.info(said.message, said.fields);
       const mainPostJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', null, withPrecedents);
@@ -764,12 +826,14 @@ export async function withRuntime<T>(
         return withFallback(postJudgeAs(roles.primary, examples), roles.other === null ? null : postJudgeAs(roles.other, examples), 'post');
       };
       const learning = new PgLearningRepo(db);
+      /* With no main key the open model is the post judge (rolesFor): the feed must not stop for it. */
+      const anyPostJudge = mainPostJudge ?? livePostJudge(null);
       const learned =
-        mainPostJudge === null
+        anyPostJudge === null
           ? null
           : learnedJudge({
               latest: () => learning.latestApplied(),
-              build: (examples) => livePostJudge(examples) ?? mainPostJudge,
+              build: (examples) => livePostJudge(examples) ?? anyPostJudge,
               log: log.child({ step: 'learned-examples' }),
             });
       if (learned !== null) {
@@ -793,7 +857,50 @@ export async function withRuntime<T>(
       if (shadow !== null) log.info('judge shadow on: the other judge answers every live batch beside it, never shown', { shadow: roles.other, capUsd: policy.judge.shadow.dailyUsd });
       /* The feed's second question — which kind of post — asked only of posts the first passed;
          see `kindJudge` in work/score-posts.ts. The primary role's model, its own prompt set and hash. */
-      const kindJudge = withFallback(kindJudgeAs(roles.primary), roles.other === null ? null : kindJudgeAs(roles.other), 'kind');
+      const mainKindJudge = (): JudgePort | null => withFallback(kindJudgeAs(roles.primary), roles.other === null ? null : kindJudgeAs(roles.other), 'kind');
+
+      /* ★ WHO ASKS THE OTHER QUESTIONS (Policy.judge.askWith, open-questions.ts): `open` puts a
+         question on the open model with the backup open model behind it, through the same failover
+         rules, and the main judge nowhere in its chain (the owner, 2026-10-16: no main-judge API from
+         now on); `main` leaves it on the main judge; `off` asks no one. One rest for every question
+         the open model answers first: its supplier being down is one fact. A question whose model
+         has no key is not asked, in its typed absence. */
+      const askWith = policy.judge.askWith;
+      const openSide: OpenSide | null = openModel === null || cfg.openJudge.state !== 'configured' ? null : { setup: cfg.openJudge, model: openModel };
+      const backupSide = openBackupSide(cfg);
+      const openAsk = openSide === null ? null : buildOpenQuestions(openSide, meter, policy);
+      const backupAsk = backupSide === null ? null : buildOpenQuestions(backupSide, meter, policy);
+      const openRest = failoverState();
+      const openPair = <P,>(build: (q: ReturnType<typeof buildOpenQuestions>) => P, question: string) =>
+        openAsk === null
+          ? null
+          : { primary: build(openAsk), fallback: backupAsk === null ? null : build(backupAsk), state: openRest, policy: policy.judge.failover, names: { primary: 'open', fallback: 'backup' }, question, log: failoverLog, now: () => Date.now() };
+      const openJudgePair = (question: 'story' | 'kind'): JudgePort | null => {
+        const pair = openPair((q) => q[question](), question);
+        return pair === null ? null : failoverJudge(pair);
+      };
+      const pick = <T,>(who: AskWith, open: () => T | null, main: () => T | null): T | null => (who === 'open' ? open() : who === 'main' ? main() : null);
+      const kindJudge = pick(askWith.kind, () => openJudgePair('kind'), mainKindJudge);
+      /* QUALIFY's narrative question. */
+      const judge = pick(askWith.stories, () => openJudgePair('story'), () => mainStoryJudge);
+      /* The same-subject question for borderline pictures (work/image-pairs.ts), GROUP's and the coin match's. */
+      const pairsJudge = pick<SameSubjectPart>(
+        askWith.sameSubject,
+        () => ((p) => (p === null ? null : failoverSameSubject(p)))(openPair((q) => q.sameSubject(), 'same-subject')),
+        () => (mainStoryJudge?.sameSubject === undefined ? null : (mainStoryJudge as SameSubjectPart)),
+      );
+      const translator = pick<TranslatePort>(askWith.translate, () => ((p) => (p === null ? null : failoverTranslator(p)))(openPair((q) => q.translator(), 'translate')), () => buildTranslator(cfg, meter, policy));
+      const namer = pick<NamePort>(askWith.names, () => ((p) => (p === null ? null : failoverNamer(p)))(openPair((q) => q.namer(), 'names')), () => buildNamer(cfg, meter, policy));
+      log.info('the judge\'s other questions: who asks each', {
+        askWith,
+        open: openSide?.model.id ?? null,
+        backup: backupSide?.model.id ?? null,
+        names: namer?.model ?? null,
+        translate: translator?.model ?? null,
+        kind: kindJudge?.id ?? null,
+        stories: judge?.id ?? null,
+        sameSubject: pairsJudge?.id ?? null,
+      });
       /* The labels and vectors behind the precedents and the not-a-meme hold, kept for the process. */
       const precedents =
         cfg.embeddings.state === 'configured'
@@ -814,7 +921,7 @@ export async function withRuntime<T>(
           : null;
       /* The namer: example posts and their vectors kept for the process, guesses after each scoring pass. */
       const names = nameGuesser({
-        namer: buildNamer(cfg, meter, policy),
+        namer,
         embed:
           cfg.embeddings.state === 'configured'
             ? voyageEmbed({
@@ -895,10 +1002,10 @@ export async function withRuntime<T>(
           postScores: new PgPostJudgementRepo(db),
           storyJudgements: new PgJudgementRepo(db),
           pairs:
-            judge === null
+            pairsJudge === null
               ? null
               : {
-                  judge,
+                  judge: pairsJudge,
                   pairs: new PgImagePairRepo(db),
                   mode: cfg.spend.kind,
                   policy,
@@ -1037,9 +1144,9 @@ export async function withRuntime<T>(
                   })
                 : null,
             pairs:
-              judge === null
+              pairsJudge === null
                 ? null
-                : { judge, pairs: new PgImagePairRepo(db), mode: cfg.spend.kind, policy, log: log.child({ step: 'image-pairs' }), now: () => Date.now() as Millis },
+                : { judge: pairsJudge, pairs: new PgImagePairRepo(db), mode: cfg.spend.kind, policy, log: log.child({ step: 'image-pairs' }), now: () => Date.now() as Millis },
             meter,
             mode: cfg.spend.kind,
             policy,
@@ -1085,9 +1192,9 @@ export async function withRuntime<T>(
                       })
                     : null,
                 pairs:
-                  judge === null
+                  pairsJudge === null
                     ? null
-                    : { judge, pairs: new PgImagePairRepo(db), mode: cfg.spend.kind, policy, log: log.child({ step: 'image-pairs' }), now: () => Date.now() as Millis },
+                    : { judge: pairsJudge, pairs: new PgImagePairRepo(db), mode: cfg.spend.kind, policy, log: log.child({ step: 'image-pairs' }), now: () => Date.now() as Millis },
                 meter,
                 mode: cfg.spend.kind,
                 policy,
