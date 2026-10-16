@@ -18,7 +18,7 @@ import { dexscreenerQuotes } from '@insidor/market-dexscreener';
 import { webPushSender } from '@insidor/push-webpush';
 import { curveOf } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
 
-import { ALARM_LOOP_MS, alarmMemory, checkAlarms } from './alarm.ts';
+import { ALARM_LOOP_MS, alarmMemory, checkAlarms, JUDGE_VENDOR_OF_ROLE } from './alarm.ts';
 import { checkJunk, JUNK_LOOP_MS, junkMemory } from './junk.ts';
 import { loadNotifyConfig } from './config.ts';
 import { deliverQueued } from './deliver.ts';
@@ -101,10 +101,10 @@ function every(ms: number, name: string, work: () => Promise<unknown>): void {
 
 if (cfg.notifyOn) {
   every(P.deliverLoopMs, 'delivered', async () => (await deliverQueued(deps)).length);
-  /* The owner's outage alarm (alarm.ts): For You stalled, the judge refused, the database unreadable —
+  /* The owner's outage alarm (alarm.ts): For You stalled, no judge answering, the backup failing too, the database unreadable —
      watched from here because this service is neither the runner nor the projector. */
   const alarm = alarmMemory();
-  every(ALARM_LOOP_MS, 'outage alarms', () => checkAlarms({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, push, ttlS: P.pushTtlS, log }, alarm));
+  every(ALARM_LOOP_MS, 'outage alarms', () => checkAlarms({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, primaryJudgeVendor: JUDGE_VENDOR_OF_ROLE[DEFAULT_POLICY.judge.primary], push, ttlS: P.pushTtlS, log }, alarm));
   /* The owner's Not-a-meme alarm (junk.ts): his taps per 100 For You posts shown, clearly above the 3 days before. */
   const junk = junkMemory();
   every(JUNK_LOOP_MS, 'not a meme alarms', () => checkJunk({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, log }, junk));

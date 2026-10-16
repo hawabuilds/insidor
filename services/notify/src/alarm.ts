@@ -1,7 +1,8 @@
 /**
  * THE OWNER'S OUTAGE ALARM: a push to his phone when For You stops taking new posts, when the
- * judge is asked but nothing it is asked is paid for, when the live coin stream stops, or when the
- * database cannot be read — once when it starts and once when it is back, never once a pass.
+ * judge is asked and no supplier answers, when the backup judge is asked and fails too, when the
+ * live coin stream stops, or when the database cannot be read — once when it starts and once when
+ * it is back, never once a pass.
  *
  * ★ WHY HERE, IN THE ALERT SERVICE. On Thursday 2026-10-15 the board stood still five times
  * (the projector's frame timing out on a starved database, then throwing on one post's text) and
@@ -20,14 +21,25 @@
  *             ago or more. Backtested on 2026-10-13..16: the longest healthy gap was 33 minutes;
  *             it would have fired for each of Thursday's five stalls and nothing else. Back when a
  *             newer post is shown. No post ever shown (a new database): no claim either way.
- *   judge     in the last JUDGE_WINDOW_MS (15 min) the live judge was called at least
- *             JUDGE_MIN_CALLS (10) times and none of those calls was paid for. A refused call is
- *             recorded at $0, an answered one at its token cost, so this is "asked and refused";
- *             a quiet system makes no calls and never matches. Backtested over every judge call
- *             on record: it matches 22:33–00:21 UTC on Thursday, the 2026-10-13 credit outage and
- *             the first refused minutes of 2026-10-12, and no healthy minute. Back only when a
- *             PAID call is newer than the last one before the outage — if the calls simply stop
- *             (the runner died mid-outage), it stays down silently; the fyp alarm says the rest.
+ *   judge     in the last JUDGE_WINDOW_MS (15 min) the live judge — every supplier together —
+ *             was called at least JUDGE_MIN_CALLS (10) times and not one post was answered. Since
+ *             0092 (the owner, 2026-10-16: "push me if the judge or backup stops answering") this
+ *             counts answers, not paid calls, from any judge supplier (internal.judge_lines): the
+ *             meter charges a call that throws at its estimate, so "paid" missed a judge timing
+ *             out, and endpoint 'judge' alone missed the open-model judge. A quiet system makes no
+ *             calls and never matches; a primary failing while the backup answers is not this
+ *             alarm (the feed is still judged). Backtested every five minutes over 2026-10-12 to
+ *             16: it matches the refusals of 2026-10-12 22:30, 00:10–00:35 on 2026-10-13 (157 calls
+ *             charged, no post answered), that afternoon's credit outage and Thursday 22:35–00:20
+ *             UTC — and no other minute.
+ *             Back only when an ANSWER is newer than the last one before the outage — if the calls
+ *             simply stop (the runner died mid-outage), it stays down silently; the fyp alarm says
+ *             the rest. Before 0092 it reads 0087's judge_pay (paid calls on 'judge') instead.
+ *   backup    the backup judge — any judge supplier but the primary's (Policy.judge.primary, by
+ *             PRIMARY_JUDGE_VENDOR) — was asked at least BACKUP_MIN_CALLS (5) times in the same
+ *             15 minutes and answered nothing. The backup is only asked when the primary has
+ *             failed a batch (runner judge-failover.ts), so this is "the backup failed too". Not
+ *             asked: no claim. Back on a newer backup answer, the same rule as the judge.
  *   stream    the live coin stream (chainwatch) has no watched window ending in the last
  *             STREAM_SILENT_MS (15 min). Not one of the owner's three, added for Thursday's
  *             longest outage: the stream lost the database while it was resized at 07:13 UTC,
@@ -68,8 +80,16 @@ export const ALARM_LOOP_MS = 60_000;
 export const FYP_SILENT_MS = 45 * 60_000;
 /** The judge's calls are counted over this window... */
 export const JUDGE_WINDOW_MS = 15 * 60_000;
-/** ...and at least this many with none paid is down; fewer is too little to say. */
+/** ...and at least this many with none answered is down; fewer is too little to say. */
 export const JUDGE_MIN_CALLS = 10;
+/** The backup asked at least this many times in the same window with none answered is down. */
+export const BACKUP_MIN_CALLS = 5;
+/**
+ * The supplier each judge role bills as (the vendor in its spend rows and its judge ids): the main
+ * judge is the Anthropic adapter, the open judge the OpenAI-compatible host. The primary's is
+ * Policy.judge.primary's; every other judge supplier is the backup. A new judge host is added here.
+ */
+export const JUDGE_VENDOR_OF_ROLE: Readonly<Record<'main' | 'open', string>> = { main: 'anthropic', open: 'openrouter' };
 /** The live coin stream with no watched window ending in this long is down. */
 export const STREAM_SILENT_MS = 15 * 60_000;
 /** Every read failing this long is the database down. */
@@ -78,7 +98,7 @@ export const DB_UNREADABLE_MS = 10 * 60_000;
    waiting for a connection forever, and a pass that never ends would never say so. */
 const READ_TIMEOUT_MS = 30_000;
 
-export type AlarmId = 'fyp' | 'judge' | 'stream' | 'database';
+export type AlarmId = 'fyp' | 'judge' | 'backup' | 'stream' | 'database';
 
 /** One condition as read this pass: down or not, and the evidence it was decided on. */
 export interface Reading {
@@ -99,7 +119,7 @@ export interface AlarmEvent {
 /** The conditions that are down now, by the mark they went down on. */
 export type Tracked = ReadonlyMap<AlarmId, { readonly mark: string; readonly sinceMs: number }>;
 
-/* No evidence (no paid call within the day the read looks back): never a reason to say "back". */
+/* No evidence (no answer within the day the read looks back): never a reason to say "back". */
 const NO_MARK = 'none';
 const iso = (ms: number): string => new Date(ms).toISOString();
 const minutesSince = (fromMs: number, nowMs: number): number => Math.max(0, Math.round((nowMs - fromMs) / 60_000));
@@ -114,12 +134,40 @@ export function fypReading(lastShownMs: number | null, nowMs: number): Reading |
   };
 }
 
-export function judgeReading(r: { readonly calls: number; readonly paid: number; readonly lastPaidMs: number | null }): Reading {
+/** One judge supplier over the window: its calls, the posts it answered, its last answer within a day. */
+export interface JudgeLine {
+  readonly vendor: string;
+  readonly calls: number;
+  readonly answered: number;
+  readonly lastAnsweredMs: number | null;
+}
+
+const together = (lines: readonly JudgeLine[]): Omit<JudgeLine, 'vendor'> => ({
+  calls: lines.reduce((n, l) => n + l.calls, 0),
+  answered: lines.reduce((n, l) => n + l.answered, 0),
+  lastAnsweredMs: lines.reduce<number | null>((m, l) => (l.lastAnsweredMs !== null && (m === null || l.lastAnsweredMs > m) ? l.lastAnsweredMs : m), null),
+});
+
+export function judgeReading(r: Omit<JudgeLine, 'vendor'>): Reading {
   return {
     id: 'judge',
-    down: r.calls >= JUDGE_MIN_CALLS && r.paid === 0,
-    mark: r.lastPaidMs === null ? NO_MARK : iso(r.lastPaidMs),
-    facts: { what: 'judge', calls: r.calls, windowMinutes: Math.round(JUDGE_WINDOW_MS / 60_000), lastAt: r.lastPaidMs === null ? null : iso(r.lastPaidMs) },
+    down: r.calls >= JUDGE_MIN_CALLS && r.answered === 0,
+    mark: r.lastAnsweredMs === null ? NO_MARK : iso(r.lastAnsweredMs),
+    facts: { what: 'judge', calls: r.calls, windowMinutes: Math.round(JUDGE_WINDOW_MS / 60_000), lastAt: r.lastAnsweredMs === null ? null : iso(r.lastAnsweredMs) },
+  };
+}
+
+/** Every judge supplier together: the judge reading. */
+export const allJudgesReading = (lines: readonly JudgeLine[]): Reading => judgeReading(together(lines));
+
+/** Every supplier but the primary's: the backup, down when asked and answering nothing. */
+export function backupReading(lines: readonly JudgeLine[], primaryVendor: string): Reading {
+  const b = together(lines.filter((l) => l.vendor !== primaryVendor));
+  return {
+    id: 'backup',
+    down: b.calls >= BACKUP_MIN_CALLS && b.answered === 0,
+    mark: b.lastAnsweredMs === null ? NO_MARK : iso(b.lastAnsweredMs),
+    facts: { what: 'backup', calls: b.calls, windowMinutes: Math.round(JUDGE_WINDOW_MS / 60_000), lastAt: b.lastAnsweredMs === null ? null : iso(b.lastAnsweredMs) },
   };
 }
 
@@ -174,7 +222,7 @@ export interface AlarmMemory {
   failingSince: number | null;
   /** The owner's devices as last read, for the one push that cannot go through the queue. */
   devices: readonly Device[];
-  /** Reads refused before 0087, each logged once. */
+  /** Reads refused before their migration (0087, 0092), each logged once. */
   readonly notYet: Set<string>;
 }
 
@@ -185,6 +233,8 @@ export interface AlarmDeps {
   readonly now: () => number;
   /** Policy.owner.wallets: whose phone this is. */
   readonly ownerWallets: readonly string[];
+  /** The primary judge's supplier (JUDGE_VENDOR_OF_ROLE of Policy.judge.primary); every other is the backup. */
+  readonly primaryJudgeVendor: string;
   readonly push: PushSender;
   readonly ttlS: number;
   readonly log: (level: 'info' | 'error', msg: string, fields?: Record<string, unknown>) => void;
@@ -201,7 +251,7 @@ async function optional<T>(name: string, mem: AlarmMemory, deps: AlarmDeps, read
     if (typeof code !== 'string' || !NOT_YET.has(code)) throw e;
     if (!mem.notYet.has(name)) {
       mem.notYet.add(name);
-      deps.log('info', 'outage alarm: a reading is not available yet (migration 0087)', { reading: name, code });
+      deps.log('info', 'outage alarm: a reading is not available yet (its migration is not applied)', { reading: name, code });
     }
     return null;
   }
@@ -226,9 +276,16 @@ export async function checkAlarms(deps: AlarmDeps, mem: AlarmMemory): Promise<nu
     const fyp = await optional('fyp', mem, deps, () => deps.db.query<{ at: unknown }>(`select max(first_shown_at) as at from public.feed_post where feed_id = 'fyp'`));
     const f = fyp === null ? null : fypReading(toMs(fyp[0]?.at), now);
     if (f !== null) readings.push(f);
-    const judge = await optional('judge', mem, deps, () => deps.db.query<{ calls: number; paid: number; last_paid_at: unknown }>('select calls, paid, last_paid_at from internal.judge_pay($1)', [new Date(now - JUDGE_WINDOW_MS)]));
-    const j = judge?.[0];
-    if (j !== undefined) readings.push(judgeReading({ calls: Number(j.calls), paid: Number(j.paid), lastPaidMs: toMs(j.last_paid_at) }));
+    /* Per supplier, by answers (0092); before it, 0087's paid calls on 'judge' alone, and no backup reading. */
+    const lines = await optional('judge_lines', mem, deps, () => deps.db.query<{ vendor: string; calls: number; answered: number; last_answered_at: unknown }>('select vendor, calls, answered, last_answered_at from internal.judge_lines($1)', [new Date(now - JUDGE_WINDOW_MS)]));
+    if (lines !== null) {
+      const ls = lines.map((l) => ({ vendor: l.vendor, calls: Number(l.calls), answered: Number(l.answered), lastAnsweredMs: toMs(l.last_answered_at) }));
+      readings.push(allJudgesReading(ls), backupReading(ls, deps.primaryJudgeVendor));
+    } else {
+      const judge = await optional('judge', mem, deps, () => deps.db.query<{ calls: number; paid: number; last_paid_at: unknown }>('select calls, paid, last_paid_at from internal.judge_pay($1)', [new Date(now - JUDGE_WINDOW_MS)]));
+      const j = judge?.[0];
+      if (j !== undefined) readings.push(judgeReading({ calls: Number(j.calls), answered: Number(j.paid), lastAnsweredMs: toMs(j.last_paid_at) }));
+    }
     const stream = await optional('stream', mem, deps, () => deps.db.query<{ at: unknown }>('select internal.coin_stream_read_at() as at'));
     const c = stream === null ? null : streamReading(toMs(stream[0]?.at), now);
     if (c !== null) readings.push(c);
