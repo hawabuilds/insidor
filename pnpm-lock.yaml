@@ -514,6 +514,9 @@ importers:
       '@insidor/core':
         specifier: workspace:*
         version: link:../../core
+      '@insidor/judge-openai-compatible':
+        specifier: workspace:*
+        version: link:../../adapters/judge/openai-compatible
       '@insidor/market-dexscreener':
         specifier: workspace:*
         version: link:../../adapters/market/dexscreener
@@ -581,6 +584,9 @@ importers:
       '@insidor/judge-anthropic':
         specifier: workspace:*
         version: link:../../adapters/judge/anthropic
+      '@insidor/judge-openai-compatible':
+        specifier: workspace:*
+        version: link:../../adapters/judge/openai-compatible
       '@insidor/market-dexscreener':
         specifier: workspace:*
         version: link:../../adapters/market/dexscreener

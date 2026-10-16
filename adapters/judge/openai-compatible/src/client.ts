@@ -1,7 +1,8 @@
 /**
  * THE HTTP SURFACE OF AN OPEN-MODEL JUDGE: one chat-completions call on any host that speaks the
  * OpenAI-compatible API (by default the model router at openrouter.ai), and the read of a post's
- * picture to show it. For tests of other models as the judge, never the live feed.
+ * picture to show it. Used by the tests of other models as the judge and, since 2026-10-16, by the
+ * runner's feed judge as its fallback, its shadow, or its primary (Policy.judge.primary).
  *
  * ★ THE SAME QUESTION AS THE LIVE JUDGE, BYTE FOR BYTE. The request is built from the very
  * `JudgeRequest` the Anthropic adapter builds its body from — the same prompt files, the same

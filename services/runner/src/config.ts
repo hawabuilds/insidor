@@ -52,6 +52,7 @@ import { hostname } from 'node:os';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { StageName } from '@insidor/contracts';
 import { readJudgeSetup, type JudgeSetup } from '@insidor/judge-anthropic';
+import { readOpenJudgeSetup, type OpenJudgeSetup } from '@insidor/judge-openai-compatible';
 import { credentialSpecs, OPTIONAL_SOURCE_VARIABLES } from '@insidor/platform-registry';
 import type { CredentialEnv } from '@insidor/vendor-kit';
 
@@ -253,6 +254,12 @@ export interface RunnerConfig {
    * SPEND=live with a model but no key — a live process told to judge that cannot.
    */
   readonly judge: JudgeSetup;
+  /**
+   * The open-model judge (OPENROUTER_API_KEY, OPEN_JUDGE_MODEL): the feed judge's fallback and
+   * shadow, or its primary (Policy.judge.primary). Dormant without the key, which is never a fault:
+   * the main judge then runs alone, with no fallback and no shadow, and the boot says so once.
+   */
+  readonly openJudge: OpenJudgeSetup;
   /**
    * The image embedding vendor, or dormant. Dormant is a supported state: posts go without
    * vectors and GROUP groups them on the free tiers. The key is the only thing to set.
@@ -483,6 +490,7 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     spend,
     sourceEnv: platformEnv(env),
     judge,
+    openJudge: readOpenJudgeSetup(env),
     embeddings:
       (env['VOYAGE_API_KEY'] ?? '').trim() === ''
         ? { state: 'dormant' }

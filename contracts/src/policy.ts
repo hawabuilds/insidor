@@ -700,6 +700,24 @@ export interface JudgePolicy {
      */
     readonly sameSourceFirst: number;
   };
+  /**
+   * ★ WHICH OF THE TWO FEED JUDGES ANSWERS FIRST (the owner, 2026-10-16: "switch the judge to the
+   * open model this evening"). `main` is the judge the system was built on (JUDGE_MODEL); `open` is
+   * the open model behind a chat-completions host (OPEN_JUDGE_MODEL). Named by role because
+   * contracts may not name a vendor; the runner maps each to its adapter. Both are asked the same
+   * question with the same learned block, precedents, close-match hold and kind question. Applies to
+   * the feed's two post questions; the narrative question, the namer and the translator stay on
+   * `main`. With no key for the open model, `open` here still runs `main`, and the boot says so.
+   */
+  readonly primary: 'main' | 'open';
+  /**
+   * ★ THE OPEN JUDGE'S OWN YES/NO CUTOFF. The applied learned block carries the cutoff the re-tune
+   * tested it at, with `main` answering (0086); an answer from the open model is a different model's
+   * confidence and is held to this instead, chosen by `tools/judge-open-eval.ts --tune`. null until tuned:
+   * the open model's answers are then held to the block's cutoff, the only one measured. Like the
+   * block's, it only ever raises the policy's own bars (core `withJudgeCutoff`), never lowers them.
+   */
+  readonly openCutoff: number | null;
 }
 
 /* ── RESOLVE ──────────────────────────────────────────────────────────── */
@@ -3248,6 +3266,9 @@ const POLICY_V1: Policy = {
          video while a text post's ten stay almost all text posts, as now. */
       sameSourceFirst: 0,
     },
+    /* The live judge stays first until the owner's evening switch, with the open model behind it. */
+    primary: 'main',
+    openCutoff: null,
   },
 
   resolve: {

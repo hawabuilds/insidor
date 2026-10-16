@@ -18,6 +18,7 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { VENDOR as EMBED_VENDOR } from '@insidor/embed-voyage';
 import { VENDOR as JUDGE_VENDOR } from '@insidor/judge-anthropic';
+import { DEFAULT_VENDOR as OPEN_JUDGE_VENDOR } from '@insidor/judge-openai-compatible';
 import { SECOND_VIDEO_VENDOR, SUPPLIER_VENDORS } from '@insidor/platform-registry';
 
 /** The one-off jobs' lines (Policy.budget.jobLines), or the learning work's, keyed the same way. */
@@ -41,6 +42,9 @@ export function vendorLines(policy: Policy): Readonly<Record<string, number>> {
     /* Its second vendor (feed, re-reads, creator pages) bills on its own account and line. */
     [SECOND_VIDEO_VENDOR.vendor]: lines.secondVideo,
     [JUDGE_VENDOR]: lines.judge,
+    /* The open-model judge (Policy.judge.primary): the judge's line again, its own account. A
+       warning line like the rest; as fallback and shadow it spends about $1.50 a day. */
+    [OPEN_JUDGE_VENDOR]: lines.judge,
     [EMBED_VENDOR]: lines.embeddings,
   };
 }
