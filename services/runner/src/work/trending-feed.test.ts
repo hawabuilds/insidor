@@ -75,3 +75,18 @@ test('a dry run prices the ask and sends nothing', async () => {
   await trendingFeedPass(deps(on, source([item('1', HOUR)], calls), [], 'dry'), trendingFeedClock());
   assert.equal(calls.n, 0);
 });
+
+test('a pass that asks nothing says why, once an hour per reason', async () => {
+  const lines: string[] = [];
+  const log = { info: (m: string) => lines.push(m), warn: () => {}, error: () => {}, child: () => log } as never;
+  const clock = trendingFeedClock();
+  const d = { ...deps(on, source([item('1', HOUR)], { n: 0 }), []), sources: () => [], log };
+  await trendingFeedPass(d, clock);
+  clock.slot = null;
+  await trendingFeedPass(d, clock);
+  assert.deepEqual(lines, ['recommendation feed skipped: no source offers the feed (its key unset, or the method not carried through)']);
+  const offLines: string[] = [];
+  const offLog = { info: (m: string) => offLines.push(m), warn: () => {}, error: () => {}, child: () => offLog } as never;
+  await trendingFeedPass({ ...deps(off, source([], { n: 0 }), []), log: offLog }, trendingFeedClock());
+  assert.deepEqual(offLines, ['recommendation feed skipped: switched off (finders.trending.on)']);
+});
