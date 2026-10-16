@@ -26,7 +26,7 @@ import { instantFrom, measuredFrom } from '../format/measure.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
-import type { OlderCoin, PostTranslation, RisingFeed, RisingPage, RisingPost } from './wire/rising.ts';
+import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, RisingPost } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, Story, StoryProvenance } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -530,6 +530,7 @@ export function decodeRisingPost(raw: unknown, path = '$.post'): RisingPost {
     /* Absent from a row projected before the field existed: no older coin is said to be running. */
     runningOlder: o.runningOlder === undefined || o.runningOlder === null ? [] : arr(o.runningOlder, `${path}.runningOlder`).map((c, i) => decodeOlderCoin(c, `${path}.runningOlder[${i}]`)),
     ...decodeTranslation(o.translation, `${path}.translation`),
+    ...decodeInStory(o.inStory),
   };
 }
 
@@ -545,6 +546,20 @@ function decodeTranslation(raw: unknown, path: string): { translation?: PostTran
   const from = o['from'];
   if (typeof text !== 'string' || text.trim() === '' || typeof from !== 'string' || !/^[a-z]{2,3}$/.test(from)) return {};
   return { translation: { text, from } };
+}
+
+/**
+ * The real narrative a post is part of, when the read service says (story-tags.ts). Absent, or
+ * without an id: no tag. A missing title or count is left out of the tag, never guessed.
+ */
+function decodeInStory(raw: unknown): { inStory?: PostInStory } {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+  const o = raw as Record<string, unknown>;
+  const storyId = typeof o['storyId'] === 'string' && o['storyId'] !== '' ? o['storyId'] : null;
+  if (storyId === null) return {};
+  const title = typeof o['title'] === 'string' && o['title'].trim() !== '' ? o['title'] : null;
+  const posts = typeof o['posts'] === 'number' && Number.isInteger(o['posts']) && o['posts'] > 0 ? o['posts'] : null;
+  return { inStory: { storyId, title, posts } };
 }
 
 /** One older coin trading since a post: a number we were not sent is a dash, never zero. */

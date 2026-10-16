@@ -86,6 +86,8 @@ export const RISING_POST_FIELDS = [
   'authorPictureUrl',
   'authorPictureFile',
   'translation',
+  /* The real narrative the post is part of (services/read story-tags.ts): For You's narrative tag. */
+  'inStory',
 ] as const;
 
 /** An older coin trading since a post (`RisingPost.runningOlder`): facts, and an address to open. */

@@ -232,6 +232,8 @@ export function Feed({
         seeCoins: () => setSheet({ id: p.id, start: 'coins' }),
         /* The card's own coin is the post's proven one: its page, with the narrative around it when there is one. */
         openCoin: (coinId) => (window.location.hash = hrefFor(sheetCoinRoute({ coinId, proven: true }, p.storyId))),
+        /* The narrative the post is part of: its small tag opens the narrative page. */
+        openStory: (storyId) => (window.location.hash = hrefFor({ screen: 'story', storyId })),
       }}
     />
   );

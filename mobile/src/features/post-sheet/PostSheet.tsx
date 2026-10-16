@@ -38,6 +38,7 @@ import { formatAge } from '../../shared/format/duration.ts';
 import { compact, formatCount } from '../../shared/format/number.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { platformOf } from '../../shared/platform.ts';
+import { storyWords } from '../../shared/story-words.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { ChevronIcon } from '../../shared/ui/icons.tsx';
@@ -294,6 +295,8 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
             </span>
           </section>
 
+          {data.narrative !== null ? <StoryLine narrative={data.narrative} onOpen={onNarrative} /> : null}
+
           <ViewsChart readings={data.views} postedAt={post.postedAt.known ? post.postedAt.at : null} foundAt={data.foundAt.known ? data.foundAt.at : null} coinAt={firstCoin} now={now} height={chartHeight} />
 
           <Tiles data={data} onNarrative={onNarrative} />
@@ -343,6 +346,22 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
         </section>
       </SheetFoot>
     </>
+  );
+}
+
+/**
+ * "Part of the GTA 6 story, 12 posts" (the owner, 2026-10-16): one small line under the views that
+ * opens the narrative page, as the Narrative tile does. One line; the title is cut first.
+ */
+function StoryLine({ narrative, onOpen }: { narrative: NonNullable<PostSheetData['narrative']>; onOpen: (storyId: string) => void }) {
+  const w = storyWords(narrative.title, narrative.posts);
+  return (
+    <button type="button" className={styles['storyLine']} onClick={() => onOpen(narrative.storyId)}>
+      <span>Part of {w.name === null ? 'a' : 'the'}</span>
+      {w.name !== null ? <b className={styles['storyLineName']}>{w.name}</b> : null}
+      <span className={styles['storyLineRest']}>{`story${w.count !== null ? `, ${w.count}` : ''}`}</span>
+      <ChevronIcon size={13} />
+    </button>
   );
 }
 
