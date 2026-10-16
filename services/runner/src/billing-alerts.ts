@@ -63,6 +63,8 @@ export interface SupplierName {
 export const SUPPLIER_NAMES: Readonly<Record<string, SupplierName>> = {
   anthropic: { supplier: 'Anthropic', uses: 'the judge' },
   openrouter: { supplier: 'OpenRouter', uses: 'the open-model judge' },
+  /* The backup open model's host (OPEN_JUDGE_BACKUP_BASE_URL), billed as its address's name. */
+  together: { supplier: 'Together AI', uses: 'the backup judge' },
   'twitterapi.io': { supplier: 'twitterapi.io', uses: 'X posts' },
   apify: { supplier: 'Apify', uses: 'TikTok videos' },
   scrapecreators: { supplier: 'ScrapeCreators', uses: 'TikTok re-reads, creators and the For You feed' },

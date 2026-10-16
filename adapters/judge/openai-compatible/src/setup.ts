@@ -49,11 +49,23 @@ export const DEFAULT_OPEN_MODEL = 'google/gemma-3-27b-it';
  */
 export const KNOWN_MODELS: readonly HostModel[] = [
   { id: 'google/gemma-3-27b-it', vision: true, usdPerInputToken: 0.08e-6, usdPerOutputToken: 0.45e-6, contextLength: null },
+  /* The backup's default on Together (its public model list, read 2026-10-16: serverless, vision;
+     Together serves no Gemma 3). Its list needs a key, so the backup is priced from here. */
+  { id: 'google/gemma-4-31B-it', vision: true, usdPerInputToken: 0.39e-6, usdPerOutputToken: 0.97e-6, contextLength: null },
 ];
 
 export type OpenJudgeSetup =
   | { readonly state: 'dormant' }
-  | { readonly state: 'configured'; readonly apiKey: string; readonly baseUrl: string; readonly model: string; readonly vendor: string; readonly providers: readonly string[] };
+  | {
+      readonly state: 'configured';
+      readonly apiKey: string;
+      readonly baseUrl: string;
+      readonly model: string;
+      readonly vendor: string;
+      readonly providers: readonly string[];
+      /** False: a host of its own, not the router, sent no router-only request fields. Absent: the router. */
+      readonly router?: boolean;
+    };
 
 export function readOpenJudgeSetup(env: Readonly<Record<string, string | undefined>>): OpenJudgeSetup {
   const blank = (name: string): string | null => {
@@ -70,6 +82,54 @@ export function openProviders(env: Readonly<Record<string, string | undefined>>)
   const v = env[OPEN_PROVIDERS];
   if (v === undefined) return DEFAULT_OPEN_PROVIDERS;
   return v.split(',').map((p) => p.trim()).filter((p) => p !== '');
+}
+
+/* ── the backup judge ─────────────────────────────────────────────────── */
+
+export const OPEN_BACKUP_API_KEY = 'OPEN_JUDGE_BACKUP_API_KEY';
+/** The owner's name for the backup host's key (2026-10-16), read when OPEN_JUDGE_BACKUP_API_KEY is not set. */
+export const TOGETHER_API_KEY = 'TOGETHER_API_KEY';
+export const OPEN_BACKUP_BASE_URL = 'OPEN_JUDGE_BACKUP_BASE_URL';
+export const OPEN_BACKUP_MODEL = 'OPEN_JUDGE_BACKUP_MODEL';
+/** Together's OpenAI-compatible address (answers 401 without a key, checked 2026-10-16). */
+export const DEFAULT_BACKUP_BASE_URL = 'https://api.together.xyz/v1';
+/**
+ * The backup's model on Together. NOT Gemma 3: Together's public serverless and dedicated lists
+ * (read 2026-10-16) have no Gemma 3; its one Gemma is Gemma 4 31B, serverless, with pictures, at
+ * $0.39 in and $0.97 out a million tokens. Set OPEN_JUDGE_BACKUP_MODEL for another; a model not in
+ * KNOWN_MODELS has no price here and the backup is off (the runner says so at boot).
+ */
+export const DEFAULT_BACKUP_MODEL = 'google/gemma-4-31B-it';
+
+/** The vendor a host bills as, from its address: api.together.xyz → together. */
+export function vendorOfHost(baseUrl: string): string {
+  try {
+    const parts = new URL(baseUrl).hostname.toLowerCase().split('.');
+    return parts[Math.max(0, parts.length - 2)] ?? 'backup';
+  } catch {
+    return 'backup';
+  }
+}
+
+/**
+ * ★ THE SECOND OPEN MODEL ON A SECOND HOST (the owner, 2026-10-16: "a second open model on a
+ * different host … switching automatically if Gemma or OpenRouter fails, errors or runs out of
+ * credit"; "I'm adding TOGETHER_API_KEY as the second host"). Its key is OPEN_JUDGE_BACKUP_API_KEY,
+ * else TOGETHER_API_KEY; its address OPEN_JUDGE_BACKUP_BASE_URL, else Together's; its model
+ * OPEN_JUDGE_BACKUP_MODEL, else DEFAULT_BACKUP_MODEL. It never uses the router or the router's key:
+ * with no backup key there is NO backup (the owner kept the saving rather than pay a second router
+ * model eight times Gemma's price), never a second router model that an outage of the router or an
+ * empty router account would take down with the first.
+ */
+export function readOpenJudgeBackupSetup(env: Readonly<Record<string, string | undefined>>): OpenJudgeSetup {
+  const blank = (name: string): string | null => {
+    const v = env[name];
+    return v === undefined || v.trim() === '' ? null : v.trim();
+  };
+  const apiKey = blank(OPEN_BACKUP_API_KEY) ?? blank(TOGETHER_API_KEY);
+  if (apiKey === null) return { state: 'dormant' };
+  const baseUrl = blank(OPEN_BACKUP_BASE_URL) ?? DEFAULT_BACKUP_BASE_URL;
+  return { state: 'configured', apiKey, baseUrl, model: blank(OPEN_BACKUP_MODEL) ?? DEFAULT_BACKUP_MODEL, vendor: vendorOfHost(baseUrl), providers: [], router: false };
 }
 
 /** Whether a stored answer's judge id is this judge's (`openJudge` writes `judge:<vendor>/…`). */

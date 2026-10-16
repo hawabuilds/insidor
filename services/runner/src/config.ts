@@ -52,7 +52,7 @@ import { hostname } from 'node:os';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { StageName } from '@insidor/contracts';
 import { readJudgeSetup, type JudgeSetup } from '@insidor/judge-anthropic';
-import { readOpenJudgeSetup, type OpenJudgeSetup } from '@insidor/judge-openai-compatible';
+import { readOpenJudgeBackupSetup, readOpenJudgeSetup, type OpenJudgeSetup } from '@insidor/judge-openai-compatible';
 import { credentialSpecs, OPTIONAL_SOURCE_VARIABLES } from '@insidor/platform-registry';
 import type { CredentialEnv } from '@insidor/vendor-kit';
 
@@ -262,6 +262,12 @@ export interface RunnerConfig {
    * the main judge then runs alone, with no fallback and no shadow, and the boot says so once.
    */
   readonly openJudge: OpenJudgeSetup;
+  /**
+   * The backup open model on a second host (OPEN_JUDGE_BACKUP_API_KEY or TOGETHER_API_KEY, and
+   * OPEN_JUDGE_BACKUP_BASE_URL / _MODEL): behind the open model for every question it answers
+   * first. Dormant without a key: no backup, and the failover stays as the policy has it.
+   */
+  readonly openJudgeBackup: OpenJudgeSetup;
   /**
    * The image embedding vendor, or dormant. Dormant is a supported state: posts go without
    * vectors and GROUP groups them on the free tiers. The key is the only thing to set.
@@ -495,6 +501,7 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     sourceEnv: platformEnv(env),
     judge,
     openJudge: readOpenJudgeSetup(env),
+    openJudgeBackup: readOpenJudgeBackupSetup(env),
     embeddings:
       (env['VOYAGE_API_KEY'] ?? '').trim() === ''
         ? { state: 'dormant' }

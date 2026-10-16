@@ -88,6 +88,8 @@ export interface OpenChatConfig {
    * posts again).
    */
   readonly answerTokensPerSubject?: number | null;
+  /** False: a host of its own, sent no router-only fields (`provider`, `usage`). Absent: the router. */
+  readonly router?: boolean;
   readonly fetch: typeof globalThis.fetch;
   readonly sleep: (ms: number) => Promise<void>;
 }
@@ -112,7 +114,7 @@ export class OpenJudgeNotConfigured extends Error {
  * The chat body for one judge request: the live body's parts in the live body's order. With
  * `vision` false the pictures are left out and every story says `frame: none`.
  */
-export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputTokens' | 'vision' | 'providers' | 'answerTokensPerSubject'>, request: JudgeRequest): Record<string, unknown> {
+export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputTokens' | 'vision' | 'providers' | 'answerTokensPerSubject' | 'router'>, request: JudgeRequest): Record<string, unknown> {
   const providers = config.providers ?? [];
   const frames: ReadonlyMap<string, Frame> = config.vision ? request.frames : new Map();
   const shown = precedentsOf(request);
@@ -147,8 +149,7 @@ export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputT
     /* Only hosts that honour the schema and the temperature (and, when named, only those, in that
        order: a provider that is down is an error, which the runner's failover answers, rather than
        a hand-off to one that loops); and the cost of the call in the reply. */
-    provider: providers.length === 0 ? { require_parameters: true } : { require_parameters: true, order: [...providers], allow_fallbacks: false },
-    usage: { include: true },
+    ...routerFields(config.router, providers),
   };
 }
 
@@ -163,6 +164,20 @@ export function rotated(providers: readonly string[], n: number): readonly strin
   if (providers.length < 2) return providers;
   const k = n % providers.length;
   return [...providers.slice(k), ...providers.slice(0, k)];
+}
+
+/**
+ * The router-only request fields: only hosts that honour the schema and the temperature, the pinned
+ * providers in order and no others, and the call's cost in the reply. None for a host of its own
+ * (`router: false`), which is sent the plain chat-completions body — a host that does not know a
+ * field may refuse the whole request for it.
+ */
+export function routerFields(router: boolean | undefined, providers: readonly string[]): Record<string, unknown> {
+  if (router === false) return {};
+  return {
+    provider: providers.length === 0 ? { require_parameters: true } : { require_parameters: true, order: [...providers], allow_fallbacks: false },
+    usage: { include: true },
+  };
 }
 
 /* ── the reply, as a pure function ────────────────────────────────────── */
