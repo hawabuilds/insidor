@@ -46,7 +46,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BOARD_VIEW, fetchBoard, fetchRising, type BoardRow, type RisingPost } from '../../shared/api/index.ts';
+import { BOARD_VIEW, fetchBoard, fetchRising, type BoardRow, type RisingFeed, type RisingPost } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { usePreloadCreate } from '../create/preload.ts';
 import { boardNotice } from '../../shared/notice.ts';
@@ -93,6 +93,8 @@ const DRAWN_BEYOND_PX = 1200;
 const PLACEHOLDERS = 3;
 
 const idOf = (p: RisingPost): string => p.id;
+/** The rows a feed read holds, for the live list (useLiveFeed.ts). */
+const postsOf = (f: RisingFeed): readonly RisingPost[] => f.posts;
 
 const TABS = [
   { key: 'watchlist', label: <><StarIcon size={16} /> Watchlist</> },
@@ -137,7 +139,7 @@ export function Feed({
   const [popular, reloadPopular] = useLoad('rising:popular', (signal) => fetchRising('popular', signal));
   usePreloadCreate(); /* Create coin then opens with the launchpad's rules already read. */
   /* FYP kept current while it is looked at, when the build switches it on; otherwise null and unused. */
-  const live = useLiveFeed(LIVE_FEED && tab === 'fyp', fyp, reloadFyp);
+  const live = useLiveFeed(LIVE_FEED && tab === 'fyp', fyp, reloadFyp, postsOf);
   /* Each feed's older pages, kept while the other tab is open. */
   const fypOlder = useOlderPosts('fyp');
   const popularOlder = useOlderPosts('popular');

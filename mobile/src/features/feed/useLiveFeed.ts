@@ -18,6 +18,11 @@
  * scrolling themselves leave that distance at zero, so the correction is never applied twice. At
  * the top (within a few pixels), new posts slide in where they are seen (LiveCard.tsx).
  *
+ * The Narratives tab runs the same hook over its stories (`rowsOf` picks the rows of a read). The
+ * projector writes the board and the feeds in one transaction, so For You's "changed" is its signal
+ * too; but the board's number is not the feed's, so it passes `sameTicks = false` and reads on every
+ * signal rather than comparing numbers that count different things.
+ *
  * Separate from Feed.tsx because none of it runs while the switch is off: Feed then renders the
  * read exactly as before. What breaks if changed carelessly: measuring the anchor after the
  * re-render (instead of before) measures the moved card against itself and corrects nothing; an
@@ -39,16 +44,16 @@ export interface Arrival {
   readonly slide: boolean;
 }
 
-export interface LiveFeed {
+export interface LiveFeed<T extends { readonly id: string } = RisingPost> {
   /** The list to show, or null before the first read. */
-  readonly rows: readonly RisingPost[] | null;
+  readonly rows: readonly T[] | null;
   readonly arrivals: ReadonlyMap<string, Arrival>;
   /** The next read rebuilds the list in the server's order (pull to refresh). */
   readonly rebuildNext: () => void;
 }
 
-interface LiveList {
-  readonly rows: readonly RisingPost[];
+interface LiveList<T> {
+  readonly rows: readonly T[];
   readonly arrivals: ReadonlyMap<string, Arrival>;
 }
 
@@ -81,11 +86,11 @@ function useVisible(): boolean {
   return visible;
 }
 
-export function useLiveFeed(on: boolean, load: Load<RisingFeed>, reload: () => void): LiveFeed {
-  const [list, setList] = useState<LiveList | null>(null);
-  const listRef = useRef<LiveList | null>(null);
+export function useLiveFeed<V extends { readonly tick: number }, T extends { readonly id: string }>(on: boolean, load: Load<V>, reload: () => void, rowsOf: (value: V) => readonly T[], sameTicks = true): LiveFeed<T> {
+  const [list, setList] = useState<LiveList<T> | null>(null);
+  const listRef = useRef<LiveList<T> | null>(null);
   const rebuild = useRef(true);
-  const merged = useRef<RisingFeed | null>(null);
+  const merged = useRef<V | null>(null);
   const held = useRef<number | null>(null);
   const anchor = useRef<{ readonly id: string; readonly top: number } | null>(null);
   const visible = useVisible();
@@ -115,12 +120,12 @@ export function useLiveFeed(on: boolean, load: Load<RisingFeed>, reload: () => v
     held.current = value.tick;
     /* Worked out here, not in a state updater: an updater may run twice and this has effects. */
     const prev = listRef.current;
-    let next: LiveList;
+    let next: LiveList<T>;
     if (prev === null || rebuild.current) {
       rebuild.current = false;
-      next = { ...reconcile(value.posts), arrivals: new Map() };
+      next = { ...reconcile(rowsOf(value)), arrivals: new Map() };
     } else {
-      const m = merge(prev.rows, value.posts, ownerStore.get().hidden);
+      const m = merge(prev.rows, rowsOf(value), ownerStore.get().hidden);
       if (m.arrived.length === 0) next = { rows: m.rows, arrivals: prev.arrivals };
       else {
         const atTop = scrollTop() <= TOP_SLACK_PX;
@@ -150,8 +155,8 @@ export function useLiveFeed(on: boolean, load: Load<RisingFeed>, reload: () => v
   const latestReload = useRef(reload);
   latestReload.current = reload;
   const onChanged = useCallback((tick: number | null) => {
-    if (tick === null || held.current === null || tick > held.current) latestReload.current();
-  }, []);
+    if (!sameTicks || tick === null || held.current === null || tick > held.current) latestReload.current();
+  }, [sameTicks]);
 
   /* The stream, and the 30-second backup, only while For You is open and on screen. */
   useEffect(() => {

@@ -38,8 +38,8 @@ export const BACKUP_CHECK_MS = 30_000;
 export const STAGGER_MS = 120;
 export const STAGGER_MAX = 6;
 
-export interface Merged {
-  readonly rows: readonly RisingPost[];
+export interface Merged<T extends { readonly id: string } = RisingPost> {
+  readonly rows: readonly T[];
   /** The ids that are new to the list, top first. Empty when the read added nothing. */
   readonly arrived: readonly string[];
 }
@@ -49,7 +49,7 @@ export interface Merged {
  * features/owner/owner-store.ts) never arrives: the server keeps serving it until the projector's
  * next run, and it must not slide in, move the list, or count as new in the meantime.
  */
-export function merge(shown: readonly RisingPost[], incoming: readonly RisingPost[], hidden: ReadonlySet<string> = new Set()): Merged {
+export function merge<T extends { readonly id: string }>(shown: readonly T[], incoming: readonly T[], hidden: ReadonlySet<string> = new Set()): Merged<T> {
   const held = new Set(shown.map((p) => p.id));
   const fresh = new Map(incoming.map((p) => [p.id, p] as const));
   const arrivals = incoming.filter((p) => !held.has(p.id) && !hidden.has(p.id));
@@ -60,7 +60,7 @@ export function merge(shown: readonly RisingPost[], incoming: readonly RisingPos
 }
 
 /** The list rebuilt from the server's read: its order, its removals. No slide-ins. */
-export function reconcile(incoming: readonly RisingPost[]): Merged {
+export function reconcile<T extends { readonly id: string }>(incoming: readonly T[]): Merged<T> {
   return { rows: incoming, arrived: [] };
 }
 

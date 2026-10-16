@@ -1,91 +1,91 @@
 /**
- * NARRATIVES — viral posts grouped by the story they are about.
+ * NARRATIVES — viral posts grouped by the story they are about, fastest-growing first.
  *
- * The board's stories as whole pages (`GET /narratives/default`), in the board's order, under
- * the same notice the feed shows: nothing for observed stories, a label for any story the server
- * says was written by hand. Each row opens the story's real page.
+ * The board's stories as whole pages (`GET /narratives/default`), only the real ones, ordered by the
+ * views each gained in the last hour (narrative-order.ts, the owner's order of 2026-10-16), under the
+ * same notice the feed shows. Each row opens the narrative's page.
  *
- * Rows are the feed's row with the posts count in place of a handle, and no platform badge on
- * the picture — a narrative spans several sites, and one badge would name one of them. Each
- * byline starts with the narrative's stage (Early, Forming, Big), the server's name for how many
- * posts it lists and how far its top post has been seen.
+ * ★ LIVE, LIKE FOR YOU (features/feed useLiveFeed.ts, on when the build sets VITE_LIVE_FEED=on): while
+ * the tab is open and on screen, a newer read slides new narratives in at the top and moves nothing
+ * else; the list is put back in order only when nobody is looking at a row (opening the tab, coming
+ * back after a while). The projector writes the board and the feeds together, so For You's "changed"
+ * is this list's signal too. With the switch off the list is read on opening, as before.
+ *
+ * ★ THE ORDER SAYS WHAT IT IS. While the server sends no last-hour gain (it does not yet), the rows
+ * are in the board's order, and a line says so rather than calling that order "fastest-growing".
+ *
+ * Rows are the feed's row with the posts count in place of a handle, and no platform badge on the
+ * picture — a narrative spans several sites, and one badge would name one of them.
  */
 
-import { useState } from 'react';
-import { BOARD_VIEW, fetchNarratives, type Story } from '../../shared/api/index.ts';
+import { useCallback } from 'react';
+import { BOARD_VIEW, fetchNarratives, type NarrativesList, type Story } from '../../shared/api/index.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
-import { FilterIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { StoryRow } from '../../shared/ui/StoryRow.tsx';
-import { orderNarratives, postsLine, stageLabel, type NarrativeOrder } from './narrative-order.ts';
+import { LIVE_FEED } from '../feed/live-feed.ts';
+import { LiveCard } from '../feed/LiveCard.tsx';
+import { useLiveFeed } from '../feed/useLiveFeed.ts';
+import { anyLastHour, byLastHour, lastHourLine, postsLine, realNarratives, stageLabel } from './narrative-order.ts';
 import styles from './narratives.module.css';
 import { tickerText } from '../../shared/format/ticker.ts';
 
+/** The rows a read holds, in the tab's order: real ones only, fastest-growing first. */
+const rowsOf = (list: NarrativesList): readonly Story[] => byLastHour(realNarratives(list.stories));
+
 export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
-  const [order, setOrder] = useState<NarrativeOrder>('popular');
-  const [list] = useLoad('narratives', (signal) => fetchNarratives(BOARD_VIEW, signal));
+  const [list, reload] = useLoad('narratives', (signal) => fetchNarratives(BOARD_VIEW, signal));
+  const live = useLiveFeed(LIVE_FEED, list, reload, rowsOf, false);
   const now = useNow();
   const soon = useComingSoon();
   const open = (s: Story) => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id }));
+  const rows = live.rows ?? (list.state === 'ready' ? rowsOf(list.value) : null);
+
+  const row = useCallback((s: Story) => (
+    <StoryRow
+      item={s}
+      now={now}
+      byline={
+        <span>
+          {stageLabel(s) === null ? null : <span className={`${styles['stage']} ${styles[`stage_${s.stage ?? ''}`] ?? ''}`}>{stageLabel(s)}</span>}
+          {postsLine(s)}
+          {lastHourLine(s) !== null ? <span className={lastHourLine(s)?.startsWith('-') === true ? styles['gainDown'] : styles['gain']}>{lastHourLine(s)}</span> : null}
+        </span>
+      }
+      platform={null}
+      platformLabel=""
+      handlers={{
+        open: () => open(s),
+        viewCoins: () => open(s),
+        create: () => onCreate(s),
+        buy: (ticker) => soon(`Buying ${tickerText(ticker)}`),
+      }}
+    />
+  ), [now, onCreate, soon]);
 
   return (
     <section className={styles['screen']}>
       <header className={styles['header']}>
         <h1>Narratives</h1>
-        <p>Viral posts grouped by the story they're about</p>
+        <p>{rows !== null && !anyLastHour(rows) ? 'Viral posts grouped by the story they\'re about' : 'Fastest-growing first: views gained in the last hour'}</p>
       </header>
-
-      <div className={styles['controls']}>
-        <button type="button" className={styles['filter']} aria-label="Filters" onClick={() => soon('Filtering narratives')}>
-          <FilterIcon size={18} />
-        </button>
-        <div className={styles['segments']} role="tablist" aria-label="Order">
-          {(['new', 'popular'] as const).map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="tab"
-              aria-selected={order === k}
-              className={`${styles['segment']} ${order === k ? styles['segmentOn'] : ''}`}
-              onClick={() => setOrder(k)}
-            >
-              {k === 'new' ? 'New' : 'Popular'}
-            </button>
-          ))}
-        </div>
-      </div>
 
       <Notice notice={list.state === 'ready' ? boardNotice(list.value.provenance) : null} />
 
-      {list.state === 'loading' ? <p className={styles['empty']}>Loading.</p> : null}
-      {list.state === 'failed' ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
-      {list.state === 'ready' && list.value.stories.length === 0 ? <p className={styles['empty']}>No narratives yet.</p> : null}
-      {list.state === 'ready'
-        ? orderNarratives(list.value.stories, order).map((s) => (
-            <StoryRow
-              key={s.id}
-              item={s}
-              now={now}
-              byline={
-                <span>
-                  {stageLabel(s) === null ? null : <span className={`${styles['stage']} ${styles[`stage_${s.stage ?? ''}`] ?? ''}`}>{stageLabel(s)}</span>}
-                  {postsLine(s)}
-                </span>
-              }
-              platform={null}
-              platformLabel=""
-              handlers={{
-                open: () => open(s),
-                viewCoins: () => open(s),
-                create: () => onCreate(s),
-                buy: (ticker) => soon(`Buying ${tickerText(ticker)}`),
-              }}
-            />
-          ))
-        : null}
+      {list.state === 'loading' && rows === null ? <p className={styles['empty']}>Loading.</p> : null}
+      {list.state === 'failed' && rows === null ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
+      {rows !== null && rows.length === 0 ? <p className={styles['empty']}>No narratives yet.</p> : null}
+      {rows !== null && rows.length > 0 && !anyLastHour(rows) ? (
+        <p className={styles['orderNote']}>Views gained in the last hour aren't read for these yet, so this list isn't ranked by growth yet.</p>
+      ) : null}
+      {rows?.map((s) => (
+        <LiveCard key={s.id} id={s.id} arrival={live.arrivals.get(s.id)}>
+          {row(s)}
+        </LiveCard>
+      ))}
     </section>
   );
 }
