@@ -198,7 +198,7 @@ export function reusableFor(
 }
 
 /** The answers this pass may reuse, or null when they cannot be read: then every post is judged. */
-async function findReusable(deps: ScoringDeps, queue: readonly Item[], judgeId: string, promptId: string, since: Millis) {
+async function findReusable(deps: Pick<ScoringDeps, 'scores' | 'log'>, queue: readonly Item[], judgeId: string, promptId: string, since: Millis) {
   try {
     return await deps.scores.reusable({
       itemIds: queue.flatMap((item) => [item.rebroadcastOf, item.reproductionOf].filter((id): id is ItemId => id !== null)),
@@ -213,11 +213,14 @@ async function findReusable(deps: ScoringDeps, queue: readonly Item[], judgeId: 
   }
 }
 
+/** The kind question's prompt label, as the re-score and the not-a-meme hold file it. */
+export const kindLabelOf = (kindJudge: JudgePort | null | undefined): string => kindJudge?.promptId.split('@')[0] ?? KIND_PROMPT_LABEL;
+
 /** The finders' lanes (0083, 0084's recommendation feed, 0088's learned tags), each read on its own like the watch lane. */
 const FINDER_LANES = ['coin_link', 'x_repost', 'trend', 'creator', 'trending', 'learned_tag'] as const;
 
 /** The applied junk fit, or null: the filter off, no repository, a dry run, none applied, or the read failed. */
-async function junkFitFor(deps: ScoringDeps): Promise<JunkFit | null> {
+export async function junkFitFor(deps: Pick<ScoringDeps, 'policy' | 'junkFilter' | 'mode' | 'log'>): Promise<JunkFit | null> {
   if (!deps.policy.judge.junkFilter.on || deps.junkFilter === undefined || deps.junkFilter === null || deps.mode !== 'live') return null;
   try {
     return await deps.junkFilter.latestApplied();
@@ -240,7 +243,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
   const floor = Math.min(r.fypFastReachPerMinute, r.fypEarlyReach, r.fypMinReach);
   /* The watch lane read on its own as well: newest-first over every lane, the text lanes' hundreds
      of unscored posts an hour push a short video stored hours earlier off the page for good. */
-  const kindLabel = deps.kindJudge?.promptId.split('@')[0] ?? KIND_PROMPT_LABEL;
+  const kindLabel = kindLabelOf(deps.kindJudge);
   /* ★ THE FINDERS' LANES (0083) are read on their own for the same reason: a coin's link, a repost,
      a trend word or a coined creator finds a few posts an hour, and newest-first over every lane they
      would wait behind the text lanes' hundreds. Each lane's posts are held to the same reach bar. */
@@ -275,9 +278,25 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
     clearsReachBar('fyp', readings.get(String(item.itemId)) ?? [], item.postedAt, deps.policy, String(item.source) === SHORT_VIDEO_SOURCE ? deps.policy.rising.shortVideoReachScale : 1);
   const rescoring = stale.filter(reaches).slice(0, r.rescorePerPass);
   const queue = [...wide.filter((item) => backfilled.has(String(item.itemId)) || reaches(item)).slice(0, r.postsPerPass), ...rescoring];
+  return judgeQueue(deps, queue, { rescoring, junkFit, kindLabel, now });
+}
+
+/**
+ * Judges a queue already chosen: reuse, the owner's labels, the junk filter, the post question and
+ * the kind question, each answer filed as it arrives — everything in the header after the queue.
+ * Shared with early judging (work/early-judge.ts), which chooses its queue by another rule, so
+ * the two can never judge a post two different ways.
+ */
+export async function judgeQueue(
+  deps: Omit<ScoringDeps, 'items'>,
+  queue: readonly Item[],
+  opts: { readonly rescoring: readonly Item[]; readonly junkFit: JunkFit | null; readonly kindLabel: string; readonly now: Millis },
+): Promise<ScoringResult> {
+  const { rescoring, junkFit, kindLabel, now } = opts;
   const empty = { queued: queue.length, scored: 0, copied: 0, waiting: queue.length, wouldSpendUsd: 0, spentUsd: 0 };
   if (queue.length === 0 || deps.judge === null) return empty;
   const judge = deps.judge;
+  const since = (now - deps.policy.rising.windowMs) as Millis;
 
   /* ★ REUSE BEFORE PAYING — see the header. Live only: a dry run writes nothing. A lookup or a
      copy that fails (a database without 0053, say) never costs a post its judgement: the post is

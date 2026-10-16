@@ -851,6 +851,37 @@ export interface JudgePolicy {
     readonly kind: AskWith;
     readonly stories: AskWith;
   };
+  /**
+   * ★ EARLY JUDGING (the owner, 2026-10-16: "build early judging with Gemma"). A catch-all post is
+   * judged only once its views clear For You's bar (rising, core `clearsReachBar`), so a post that
+   * clears it waits a judging pass before it can show, and a post coined in the minutes before it
+   * clears is never shown first. This judges the likeliest of them before the bar: a never-judged
+   * post a lane in `lanes` found, posted at most `maxAgeMs` ago, not yet over the bar, whose views
+   * have averaged at least `minReachPerMinute` a minute since it was posted (times
+   * `rising.shortVideoReachScale` for the short-video source) at a reading of at least `minReach`, and
+   * which has at least `minApprovals`. Fastest first, at most `maxPerPass` a pass, every `everyMs`, in
+   * its own loop (never in the discovery pass), and at most `dailyUsd` a UTC day of judge and
+   * embedding spend, kept in internal.lane_spend (lane `judge_early`) and failing closed. The answer
+   * is filed as any other; the reach bar still decides whether the post is shown.
+   *
+   * Measured 2026-10-16 over the three days before (scratch early/sim2.mjs): lanes all, slow and
+   * media were where every coined post found before its coin and not judged before it was found
+   * (27 of 27); the short-video lanes had none. At 400 a minute within two hours about 3,700 posts a
+   * day are asked early, about 2,000 of which the reach bar would never have sent to the judge; 11
+   * of those 27 coined posts would have been judged before their coin (6 at 1,000 a minute, 14 at
+   * 250 for 3,200 extra posts a day).
+   */
+  readonly early: {
+    readonly on: boolean;
+    readonly lanes: readonly string[];
+    readonly maxAgeMs: number;
+    readonly minReach: number;
+    readonly minReachPerMinute: number;
+    readonly minApprovals: number;
+    readonly maxPerPass: number;
+    readonly everyMs: number;
+    readonly dailyUsd: number;
+  };
 }
 
 /* ── RESOLVE ──────────────────────────────────────────────────────────── */
@@ -3563,6 +3594,18 @@ const POLICY_V1: Policy = {
                       the 20 it said no or unsure to (19 of 30 in a sample of nos). Only a yes
                       counts as evidence, so a pair now carries none rather than a loose yes. */
     askWith: { names: 'open', translate: 'open', kind: 'open', stories: 'off', sameSubject: 'off' },
+    /* See JudgePolicy.early. Off until its copy test passes. */
+    early: {
+      on: false,
+      lanes: ['all', 'slow', 'media'],
+      maxAgeMs: 7_200_000, // two hours
+      minReach: 2_000,
+      minReachPerMinute: 400,
+      minApprovals: 50,
+      maxPerPass: 10,
+      everyMs: 60_000,
+      dailyUsd: 1.5,
+    },
   },
 
   resolve: {
