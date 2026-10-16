@@ -20,6 +20,9 @@ import type { Millis } from '@insidor/contracts';
 import type { Db } from '../client.ts';
 
 /** A picture to hash: a feed post's (already embedded, so it passed the judge) or a recent coin's logo. */
+/** Posts per picture-neighbour statement: see `neighbours`. */
+const NEIGHBOUR_POSTS_PER_STATEMENT = 10;
+
 export interface DuePicture {
   readonly uri: string;
   readonly kind: 'post' | 'coin';
@@ -129,6 +132,18 @@ export class PgImageHashRepo {
    * within `maxDistance` bits of it: the picture search over the whole universe.
    */
   async neighbours(posts: readonly { readonly itemId: string; readonly uri: string; readonly postedAt: Millis }[], allowanceMs: number, windowMs: number, maxDistance: number, perPost: number, version: string): Promise<readonly PictureNeighbour[]> {
+    /* ★ A FEW POSTS A STATEMENT. Each post's search compares its hash with every logo minted in its
+       window, so one statement over the whole feed grew with the feed: on 2026-10-16 it took 33 s
+       over the evening's posts and the service role's 30 s timeout failed every frame, freezing For
+       You from 20:13 UTC. Split, each statement is a slice of that and none nears the timeout. */
+    const out: PictureNeighbour[] = [];
+    for (let i = 0; i < posts.length; i += NEIGHBOUR_POSTS_PER_STATEMENT) {
+      out.push(...(await this.#neighbours(posts.slice(i, i + NEIGHBOUR_POSTS_PER_STATEMENT), allowanceMs, windowMs, maxDistance, perPost, version)));
+    }
+    return out;
+  }
+
+  async #neighbours(posts: readonly { readonly itemId: string; readonly uri: string; readonly postedAt: Millis }[], allowanceMs: number, windowMs: number, maxDistance: number, perPost: number, version: string): Promise<readonly PictureNeighbour[]> {
     if (posts.length === 0) return [];
     try {
       const rows = await this.#db.query<{ item_id: string; address: string; distance: number }>(
