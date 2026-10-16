@@ -2890,6 +2890,110 @@ export interface TranslatePolicy {
 }
 
 /**
+ * ★ NARRATIVES: POSTS THAT PASSED THE JUDGE, GROUPED BY WHAT THEY ARE ABOUT (the owner, 2026-10-16).
+ * The grouping the Narratives tab, the post sheet's "Part of the … story" line and the story coins
+ * all read (core group/narrative.ts; services/runner work/narratives.ts writes it, 0093).
+ *
+ *   who counts   a post the judge passed at its own model's cutoff, not one the owner called "Not a
+ *                meme", not a held kind (an ad, the close-match hold…), not a shill; and not a thin
+ *                post — under `postCoin.storyCoin.minWords` words once hashtags, mentions and links
+ *                are gone — unless it has a picture
+ *   two posts    link when their words-and-picture vectors are at least `sameMeaning` alike, they
+ *                share one detail (the story coins' rule: a name, the same picture at
+ *                `group.image.likely`, or a topic word that is not a hashtag), and they went up at
+ *                most `maxGapMs` apart
+ *   a narrative  posts joined by average linkage: two groups join only when at least
+ *                `minLinkShare` of the post pairs across them link, so a chain of posts each a
+ *                little further from the first never becomes one narrative; its posts span at most
+ *                `maxSpanMs`; then groups that are one story told in parts — one's posts on average
+ *                `mergeMeaning` from the other's average vector, and a link or a name between them —
+ *                join, and a post under `mergeMeaning` from its narrative's average leaves it
+ *   on screen    `minPosts` good posts, or one post that is clearly huge and climbing fast: at least
+ *                `single.minReach` views and `single.minPerMinute` a minute over the last
+ *                `single.growthWindowMs` (short videos at `rising.shortVideoReachScale` times both)
+ *   the owner    "Not a narrative" hides it at once and keeps its posts from being grouped together
+ *                again; "Remove this post" keeps that post out of any narrative holding the posts it
+ *                was with; "Merge with…" joins the two narratives' posts. No number here can
+ *                outvote one of his calls.
+ *
+ * Measured 2026-10-16 (tools/narratives.ts dry run over the day's posts): `sameMeaning` 0.6 is the
+ * For You topic bar (rising.varietySameMeaning), measured on the launch-trailer frame — posts about
+ * one story sat 0.60 to 0.75 apart, unrelated posts' nearest neighbour 0.52 or less. The single
+ * bar: of the posts the judge passed in the 48 hours before, the text source's 95th percentile of
+ * views was 506k (90th 268k, 99th 2.27M); those over 500k grew at a median 2,686 a minute over
+ * their last hour, the rest at 69 (90th 866). So 500k and 2,000 a minute — the For You fast-growth
+ * bar — is "clearly huge and climbing", a few posts a day.
+ */
+export interface NarrativePolicy {
+  /** The switch. Off: the runner groups nothing and the board keeps the narratives last written. */
+  readonly on: boolean;
+  /** How often the runner regroups. */
+  readonly everyMs: number;
+  /** How far back a post is considered, by when it went up. */
+  readonly windowMs: number;
+  /** At most this many good posts are grouped a pass, newest first (a bound on the pass's time). */
+  readonly maxPosts: number;
+  /**
+   * A good post with no words-and-picture vector yet (judged while the embeddings were down, or
+   * before they were kept) is embedded here, at most this many a pass, newest first, on the live
+   * embeddings line — so a missing vector is a delay, never a post left out for good. 0: never.
+   */
+  readonly embedPerPass: number;
+  /**
+   * Whether posts a story's name search brought in — judged, never on the feed — may be a
+   * narrative's posts too. Off: the feed's posts only, the posts For You is made from.
+   */
+  readonly searchedPosts: boolean;
+  readonly sameMeaning: number;
+  readonly maxGapMs: number;
+  readonly maxSpanMs: number;
+  readonly minLinkShare: number;
+  /**
+   * A group (or a post) whose posts are on average at least this alike to another group's average
+   * vector, and that shares a detail with it — a link between their posts, or a name — is one story
+   * told in parts, and joins it; a post under this from its own narrative's average leaves it.
+   */
+  readonly mergeMeaning: number;
+  readonly minPosts: number;
+  readonly single: {
+    readonly minReach: number;
+    readonly minPerMinute: number;
+    readonly growthWindowMs: number;
+    readonly growthMinSpanMs: number;
+  };
+  /**
+   * The narrative's title: one call to the cheap open model per new narrative, and again once its
+   * posts have grown by `retitleGrowth` since; at most `perPass` a pass, `postsSent` posts of
+   * `maxChars` characters each, an answer of `maxOutputTokens`. Off, or the call fails: the name
+   * the judge gave most of its posts.
+   */
+  /**
+   * The narrative's views over time (its page's chart and the tab's "gained in the last hour"):
+   * every `stepMs` over the last `spanMs`, the sum of each post's views then — a post not yet up is
+   * a known 0; a post's newest reading at or before then counts only within `carrySpacings` of its
+   * own usual gap between readings (at least `carryMinMs`); past that the post is unknown then.
+   * The sum is shown only where every post is known, and the last hour's gain only from posts known
+   * at both ends, with how many of the narrative's posts that was.
+   */
+  readonly reach: {
+    readonly stepMs: number;
+    readonly spanMs: number;
+    readonly carrySpacings: number;
+    readonly carryMinMs: number;
+    readonly gainWindowMs: number;
+  };
+  readonly title: {
+    readonly on: boolean;
+    readonly perPass: number;
+    readonly retitleGrowth: number;
+    readonly postsSent: number;
+    readonly maxChars: number;
+    readonly maxOutputTokens: number;
+    readonly maxTitleChars: number;
+  };
+}
+
+/**
  * ★ THE WAYS TO FIND A POST BESIDES THE SEARCHES (the owner, 2026-10-15): "find viral posts BEFORE
  * they are coined". Each has its own switch, all off until the owner approves the day's cost, and
  * every post any of them finds still goes through the judge and the hold before For You — a coin
@@ -3098,6 +3202,8 @@ export interface Policy {
   readonly names: NamesPolicy;
   /** The feed's translations of posts not written in English. */
   readonly translate: TranslatePolicy;
+  /** Posts that passed the judge, grouped by what they are about: the Narratives tab and the story coins. */
+  readonly narrative: NarrativePolicy;
   /** The ways to find a post besides the searches: coins' links, reposts, trends, coined creators. */
   readonly finders: FindersPolicy;
   /**
@@ -4514,6 +4620,38 @@ const POLICY_V1: Policy = {
     englishCodes: ['en'],
     /* 'zxx' no linguistic content, 'und'/'un' undetermined, 'qme' media only, 'qam' mentions only, 'qht' hashtags only, 'qst' very short, 'qct' cashtags only. */
     noWordsCodes: ['zxx', 'und', 'un', 'qme', 'qam', 'qht', 'qst', 'qct'],
+  },
+
+  narrative: {
+    on: true,
+    everyMs: 120_000,
+    windowMs: 172_800_000, // two days, the board's own window
+    /* The day of 2026-10-16 held 1,900 judged-yes posts with a vector in two days; the pass compares
+       every pair in memory (about 2 s at 1,500). */
+    maxPosts: 1_500,
+    /* 30 of the 594 good posts had no vector on 2026-10-16; a post with its picture is about 1,500
+       tokens at $0.12 a million, so a full pass of 25 is under half a cent. */
+    embedPerPass: 25,
+    /* Off, the owner's to turn on: on 2026-10-16 38 of the board's 48 narratives were built from such
+       posts, and 1,148 of the two days' judged-yes ones had no vector — about $0.10 a day to embed. */
+    searchedPosts: false,
+    sameMeaning: 0.6,
+    maxGapMs: 86_400_000, // a day: an old story and a new one with the same word stay apart
+    maxSpanMs: 172_800_000, // two days
+    minLinkShare: 0.5,
+    /* Measured 2026-10-16 on the first dry run's 51 groups, each part's posts against the other part's
+       average: the parts of one story 0.55 to 0.79 (the Roadster's dozen parts 0.65–0.73 from its
+       biggest, GTA 6's 0.55–0.75, the Bend shooting hero's two 0.60); different stories at most 0.49
+       (GTA 6's posts from the Roadster's average). Averages against averages do not separate them: a
+       big group's average drifts toward the feed's, and GTA 6 and the Roadster read 0.56 that way. */
+    mergeMeaning: 0.55,
+    minPosts: 2,
+    single: { minReach: 500_000, minPerMinute: 2_000, growthWindowMs: 3_600_000, growthMinSpanMs: 1_200_000 },
+    /* Ten minutes over the day: 145 points a page. 1.5 spacings is the phone's own rule for the post
+       sheet's chart; fifteen minutes is For You's slowest reading step. */
+    reach: { stepMs: 600_000, spanMs: 86_400_000, carrySpacings: 1.5, carryMinMs: 900_000, gainWindowMs: 3_600_000 },
+    /* About 600 input and 20 output tokens a call on the open model: $0.00006, under a cent a day. */
+    title: { on: true, perPass: 10, retitleGrowth: 0.5, postsSent: 6, maxChars: 240, maxOutputTokens: 40, maxTitleChars: 60 },
   },
 
   /* The owner approved switching on what fits on 2026-10-15 ("approve and switch on when ready"),

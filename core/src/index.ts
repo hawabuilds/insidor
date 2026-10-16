@@ -58,6 +58,9 @@ export { withTextHash } from './group/text-carrier.ts';
 export { NO_PICTURE_INPUTS, nameKey } from './group/picture.ts';
 export { NAME_SPAN_PREFIX, nameCarriers, nameSpanKey, withNameCarriers } from './group/name-span.ts';
 export type { PictureInputs } from './group/picture.ts';
+/* Narratives: the posts the judge passed, grouped by meaning and one shared detail (group/narrative.ts). */
+export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, groupable, groupNarratives, hugeAndClimbing, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, pairKey, sharedDetail } from './group/narrative.ts';
+export type { FormedNarrative, GroupedNarratives, MemberReach, NarrativeReach, GroupNarrativesInput, NarrativeCallRow, NarrativeCallVerdict, NarrativeCalls, NarrativeCoin, NarrativeCoinCall, NarrativeMemberCoin, NarrativePair, NarrativePost, NarrativeShown, NarrativeStanding, PostDetail, ReachPoint, SharedDetailKind, StandingInput } from './group/narrative.ts';
 export { qualify, worthJudging } from './qualify/stage.ts';
 export { presentationFor } from './qualify/presentation.ts';
 export { couldPassWithBoost, passesWithSignal, postScore, postScoreReason, withJudgeCutoff } from './qualify/post-score.ts';
@@ -156,7 +159,7 @@ export type { PostedAddress } from './match/posted-addresses.ts';
 export { addressOfCoinId, coinLabelOf, foldCoinCalls } from './match/owner-coin-calls.ts';
 export type { CoinCallRow, PostCoinCalls } from './match/owner-coin-calls.ts';
 /* "Coin for this story": the owner's confirmed coin on new posts about the same story (match/story-coin.ts). */
-export { postWords, storyCoins } from './match/story-coin.ts';
+export { isCommonWord, postWords, storyCoins, topicWords } from './match/story-coin.ts';
 export type { SharedDetail, StoryAnchor, StoryCoin, StoryCoinBars, StoryPost } from './match/story-coin.ts';
 /* An older coin's trading against a post's time: the runner measures with it (match/older-coin.ts). */
 export { olderCoinRun } from './match/older-coin.ts';
