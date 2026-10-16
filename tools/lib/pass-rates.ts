@@ -1,6 +1,6 @@
 /**
  * JUDGE A SET OF POSTS EXACTLY AS THE LIVE FEED DOES, AND SAY WHICH PASS — the measuring half of
- * tools/feed-pass-rates.ts (by hand) and tools/retune.ts (twice a day), in one place so the gate a
+ * tools/retune.ts measure (by hand) and tools/retune.ts (twice a day), in one place so the gate a
  * re-tune is held to is the same gate the owner measures by hand.
  *
  * ★ ASKED EXACTLY AS LIVE ASKS (the owner's rule, 2026-10-13): the same number of posts per call
@@ -15,12 +15,13 @@
  * core's `postScore`. The picture boost is applied as the projector applies it: the post's picture
  * against the coined pictures, a post never against its OWN coin's picture.
  *
- * ★ EVERY REPLY'S TOKENS ARE COUNTED, fresh input, cache writes and cache reads apart, so the
- * cost of a block of examples is measured, not guessed; prompt caching makes a long block mostly
- * cache reads after the first call.
+ * ★ THE OPEN JUDGE ANSWERS, NOTHING ELSE (the owner, 2026-10-16: no Anthropic API at all from now
+ * on). The model the runner runs as the open judge (OPEN_JUDGE_MODEL, Gemma 3 by default), through
+ * the same adapter, pinned providers and prompt files, with its own number of precedents
+ * (Policy.judge.precedents.openK). There are no Message Batches on its host, so `batch` is ignored;
+ * calls go OPEN_CONCURRENCY at a time instead, because the model takes seconds a post.
  *
- * ★ `batch` SENDS EVERY CALL AS ONE MESSAGE BATCH, at half price: the same requests as without it, so
- * the same answers, but minutes of waiting. Right for a run nobody watches.
+ * ★ EVERY REPLY'S TOKENS ARE COUNTED, so the cost of a block of examples is measured, not guessed.
  *
  * ★ THE OWNER'S LABELS AS PRECEDENT, AS LIVE (`precedents`): each test post sent with its closest
  * labelled posts and held when very close to a "not a meme" one, chosen by the same core functions
@@ -40,9 +41,10 @@ import type { Meter } from '../../contracts/src/ports/meter.ts';
 import { createHash } from 'node:crypto';
 
 import { NOT_MEME_MATCH, heldKind } from '../../core/src/qualify/kinds.ts';
-import { closestNot, embedInput, heldAsNotMeme, nearestLabelled, precedentsFor, sourceOfItemId, type LabelledVector } from '../../core/src/qualify/precedents.ts';
+import { closestNot, embedInput, heldAsNotMeme, nearestLabelled, precedentsFor, precedentsWanted, sourceOfItemId, type LabelledVector } from '../../core/src/qualify/precedents.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
-import { BATCH_PRICE_FRACTION, anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
+import { priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
+import { KNOWN_MODELS, OPEN_API_KEY, closestModel, listModels, openChatClient, openJudge, readOpenJudgeSetup, type HostModel, type OpenJudgeSetup } from '../../adapters/judge/openai-compatible/src/index.ts';
 import { POST_SPACE, SPACE as EMBED_SPACE, voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
 import { tuning } from '../../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../../eval/src/gold/coin-evidence.ts';
@@ -92,7 +94,8 @@ export interface GradeOptions {
   readonly env: Record<string, string | undefined>;
   readonly meter: Meter;
   readonly examples: string | null;
-  readonly batch: boolean;
+  /** Ignored: the open judge's host has no Message Batches. Kept so older callers still compile. */
+  readonly batch?: boolean;
   /** Withhold the pictures (what the judge did before it was shown them). */
   readonly textOnly?: boolean;
   readonly pictureSize?: 'small' | '360x360' | null;
@@ -147,7 +150,7 @@ export class LineTooShort extends Error {
   }
 }
 
-/** The judge as configured in this environment; throws when it is not. */
+/** The main judge as configured, for the tools that still name posts or translate with it (never the judging here); throws when it is not. */
 export function judgeSetup(env: Record<string, string | undefined>) {
   const setup = readJudgeSetup(env);
   if (setup.state !== 'configured') throw new Error(`the judge is ${setup.state}`);
@@ -156,14 +159,45 @@ export function judgeSetup(env: Record<string, string | undefined>) {
   return { setup, price };
 }
 
-export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[], o: GradeOptions): Promise<{ readonly rows: readonly EvalRow<G>[]; readonly used: Usage; readonly batched: boolean }> {
-  const { setup, price } = judgeSetup(o.env);
-  const http = judgeClient({
-    apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: setup.model, maxOutputTokens: P.judge.postBatchMaxOutputTokens, effort: price.effort,
+/**
+ * ★ THE OPEN JUDGE, AND ONLY IT (the owner, 2026-10-16: "no Anthropic API at all from now on, not
+ * even as a fallback"). The model OPEN_JUDGE_MODEL names (google/gemma-3-27b-it unless set), as the
+ * runner resolves it: the host's listing, else the recorded one. Throws when there is no key.
+ */
+export async function openGradeSetup(env: Record<string, string | undefined>): Promise<{ readonly setup: Extract<OpenJudgeSetup, { state: 'configured' }>; readonly model: HostModel }> {
+  const setup = readOpenJudgeSetup(env);
+  if (setup.state !== 'configured') throw new Error(`the open judge is not configured (${OPEN_API_KEY} is not set)`);
+  const listed = await listModels(globalThis.fetch, setup.baseUrl, P.judge.timeoutMs).catch(() => KNOWN_MODELS);
+  const model = listed.find((m) => m.id === setup.model) ?? KNOWN_MODELS.find((m) => m.id === setup.model) ?? closestModel(setup.model, listed);
+  if (model === null || model.usdPerInputToken === null || model.usdPerOutputToken === null) throw new Error(`the open judge's host lists no priced model like ${setup.model}`);
+  return { setup, model };
+}
+
+/** Calls to the open host at once: its answers take seconds a post, and one at a time a test of 700 posts takes an hour. */
+const OPEN_CONCURRENCY = 4;
+
+/** Each item through `f`, at most `n` at a time, answers in the items' order. A rejection stops the rest. */
+async function inParallel<T, R>(items: readonly T[], n: number, f: (t: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const lane = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await f(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, lane));
+  return out;
+}
+
+export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[], o: GradeOptions): Promise<{ readonly rows: readonly EvalRow<G>[]; readonly used: Usage; readonly batched: boolean; readonly model: string }> {
+  const { setup, model } = await openGradeSetup(o.env);
+  const http = openChatClient({
+    vendor: setup.vendor, apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: model.id, vision: model.vision, maxOutputTokens: P.judge.postBatchMaxOutputTokens,
     timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
-    maxFrameBytes: P.judge.maxFrameBytes, pictureSize: o.pictureSize === undefined ? LIVE_PICTURE_SIZE : o.pictureSize, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    maxFrameBytes: P.judge.maxFrameBytes, pictureSize: o.pictureSize === undefined ? LIVE_PICTURE_SIZE : o.pictureSize, providers: setup.providers, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   });
-  /* Every reply's usage, summed, for the report. Read through, never changed. */
+  /* Every reply's usage, summed, for the report. Read through, never changed. The open host does no caching. */
   const used: Usage = { calls: 0, pictures: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0, inputWithPicture: 0, inputWithout: 0 };
   const count = (request: JudgeRequest, reply: JudgeResponse): void => {
     const pictured = request.subjects.filter((x) => request.frames.has(String(x.storyId))).length;
@@ -184,21 +218,13 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
       count(request, reply);
       return reply;
     },
-    async judgeBatch(requests) {
-      const answers = await http.judgeBatch!(requests);
-      answers.forEach((a, i) => {
-        const request = requests[i];
-        if (a.kind === 'answered' && request !== undefined) count(request, a.response);
-      });
-      return answers;
-    },
   };
-  /* The live scorer's judge (services/runner/src/wiring.ts buildJudge): its batch size, and the
+  /* The live scorer's judge (services/runner/src/wiring.ts buildOpenJudge): its batch size, and the
      per-post answer budget as the whole call's budget. */
   const maxBatch = o.maxBatch ?? P.qualify.batchSize;
   const policy = { ...P.judge, maxOutputTokens: P.judge.postBatchMaxOutputTokens };
-  const withPrecedents = o.precedents !== undefined && o.precedents !== null && P.judge.precedents.k > 0;
-  const judge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy, maxBatch, question: 'post', examples: o.examples, batch: o.batch, precedents: withPrecedents });
+  const withPrecedents = o.precedents !== undefined && o.precedents !== null && precedentsWanted(P) > 0;
+  const judge = openJudge({ client, meter: o.meter, now: Date.now, model, vendor: setup.vendor, policy, maxBatch, question: 'post', examples: o.examples, precedents: withPrecedents });
   /* Graded in a fixed mixed order (a hash of the id), answered back in the caller's order. */
   const order = posts.map((p, i) => ({ i, h: createHash('sha256').update(p.id).digest('hex') })).sort((a, b) => (a.h < b.h ? -1 : a.h > b.h ? 1 : a.i - b.i)).map((x) => x.i);
   const chunks = <T,>(xs: readonly T[]): T[][] => Array.from({ length: Math.ceil(xs.length / maxBatch) }, (_, k) => xs.slice(k * maxBatch, (k + 1) * maxBatch));
@@ -216,25 +242,9 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
       ...(precedents.length === 0 ? {} : { precedents }),
     };
   };
-  /* `maxBatch` posts a call either way, as the live scorer asks; batched, all of them go in one
-     judge() so they leave as one Message Batch of such calls. */
+  /* `maxBatch` posts a call, as the live scorer asks. */
   const budget = () => ({ capUsd: o.meter.line().capUsd, spentUsd: o.meter.line().spentUsd, maxCalls: null, deadline: Date.now() + 120_000 });
   const outcomes: JudgeOutcome[] = [];
-  /* Batched only when the whole batch's pessimistic estimate fits what is left of the line: a
-     batch refused by the meter comes back unanswered whole, where single calls would get most of
-     the way. */
-  const whole = judge.estimate(posts.map(subjectOf));
-  const remaining = Math.min(o.meter.line().remainingUsd, o.meter.line(whole.vendor).remainingUsd);
-  const batched = o.batch && whole.usd * BATCH_PRICE_FRACTION <= remaining;
-  /* A test the line cannot cover is not started: a run that dribbles one call at a time as the
-     ledger frees a cent grades a handful of posts in an hour and says nothing. */
-  /* The second question is asked only of the posts the first passes (half again over the first
-     question's estimate covers it with room) — or of every post `kindAlso` names (twice). */
-  const kindShare = o.kind === false ? 1 : o.kindAlso === undefined ? 1.5 : 2;
-  if (o.mustFit === true && (batched ? whole.usd * BATCH_PRICE_FRACTION : whole.usd) * kindShare > remaining) {
-    throw new LineTooShort(remaining, whole.usd * (o.batch ? BATCH_PRICE_FRACTION : 1) * kindShare);
-  }
-
   /* Each post's own picture embedded, for the boost. */
   const postVectors = new Map<string, number[] | null>();
   if (o.coined !== null && o.textOnly !== true) {
@@ -292,13 +302,26 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
       const v = vectors.get(p.id);
       if (v === undefined) continue;
       const self = selfOf(p);
-      near.set(p.id, { precedents: precedentsFor(nearestLabelled(v, labels, P.judge.precedents.k, self, { source: sourceOfItemId(p.id), reserve: P.judge.precedents.sameSourceFirst }), P), closestNot: closestNot(v, labels, self)?.similarity ?? null });
+      near.set(p.id, { precedents: precedentsFor(nearestLabelled(v, labels, precedentsWanted(P), self, { source: sourceOfItemId(p.id), reserve: P.judge.precedents.sameSourceFirst }), P), closestNot: closestNot(v, labels, self)?.similarity ?? null });
     }
   }
 
+  /* ★ A TEST THE LINE CANNOT COVER IS NOT STARTED: a run that dribbles one call at a time as the
+     ledger frees a cent grades a handful of posts in an hour and says nothing. The estimate is the
+     open judge's own pessimistic one (its precedents fitted to the window, times its margin), taken
+     once the precedents are found, so they are in it; the vectors before it cost cents. The
+     second question is asked only of the posts the first passes (half again over the first
+     question's estimate covers it with room) — or of every post `kindAlso` names (twice). */
+  const whole = judge.estimate(posts.map(subjectOf));
+  const remaining = Math.min(o.meter.line().remainingUsd, o.meter.line(whole.vendor).remainingUsd);
+  const batched = false;
+  const kindShare = o.kind === false ? 1 : o.kindAlso === undefined ? 1.5 : 2;
+  if (o.mustFit === true && whole.usd * kindShare > remaining) throw new LineTooShort(remaining, whole.usd * kindShare);
+
   const mixed = order.map((i) => posts[i]!);
-  if (batched) outcomes.push(...(await judge.judge(mixed.map(subjectOf), budget())).value);
-  else for (const part of chunks(mixed)) outcomes.push(...(await judge.judge(part.map(subjectOf), budget())).value);
+  const ask = async (port: typeof judge, subjects: readonly ReturnType<typeof subjectOf>[]): Promise<JudgeOutcome[]> =>
+    (await inParallel(chunks(subjects), OPEN_CONCURRENCY, async (part) => (await port.judge(part, budget())).value)).flat();
+  outcomes.push(...(await ask(judge, mixed.map(subjectOf))));
   const outcomeOf = new Map(order.map((i, k) => [i, outcomes[k]]));
   /* ★ ASKED AGAIN ONCE, AS LIVE ASKS AGAIN NEXT PASS. A call whose answer is cut off at the output
      budget comes back unanswered whole; the live scorer leaves those posts unjudged and asks them
@@ -307,9 +330,7 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
      would never apply (an unanswered post blocks it). */
   const again = order.filter((i) => outcomeOf.get(i)?.kind !== 'judged');
   if (again.length > 0) {
-    const retried: JudgeOutcome[] = [];
-    if (batched) retried.push(...(await judge.judge(again.map((i) => subjectOf(posts[i]!)), budget())).value);
-    else for (const part of chunks(again)) retried.push(...(await judge.judge(part.map((i) => subjectOf(posts[i]!)), budget())).value);
+    const retried = await ask(judge, again.map((i) => subjectOf(posts[i]!)));
     again.forEach((i, k) => {
       if (retried[k]?.kind === 'judged') outcomeOf.set(i, retried[k]);
     });
@@ -323,14 +344,12 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
     return { ...p, coinable: j?.coinable ?? null, name: j?.proposedName ?? null, confidence: j?.confidence ?? null, lookedAt: j?.lookedAt ?? null, similarity: similarityOf(p), firstPass, postKind: notMatch ? NOT_MEME_MATCH : (o.knownKinds?.get(p.id) ?? null), passes: firstPass && !notMatch };
   });
   if (o.kind !== false) {
-    const kindJudge = anthropicJudge({ client, meter: o.meter, now: Date.now, model: setup.model, policy, maxBatch, question: 'kind', batch: batched });
+    const kindJudge = openJudge({ client, meter: o.meter, now: Date.now, model, vendor: setup.vendor, policy, maxBatch, question: 'kind' });
     const asked = order.filter((i) => {
       const r = rows[i]!;
       return r.postKind === null && r.coinable !== null && (r.firstPass || o.kindAlso?.(r) === true);
     });
-    const kinds: JudgeOutcome[] = [];
-    if (batched) kinds.push(...(await kindJudge.judge(asked.map((i) => subjectOf(rows[i]!)), budget())).value);
-    else for (const part of chunks(asked)) kinds.push(...(await kindJudge.judge(part.map((i) => subjectOf(rows[i]!)), budget())).value);
+    const kinds = await ask(kindJudge, asked.map((i) => subjectOf(rows[i]!)));
     asked.forEach((i, k) => {
       const out = kinds[k];
       const kind = out?.kind === 'judged' ? (out.judgement.proposedName ?? '').trim().toUpperCase() : '';
@@ -341,7 +360,7 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
       if (heldKind(r.postKind, o.heldKinds ?? P.judge.heldKinds) !== null) rows[i] = { ...r, passes: false };
     });
   }
-  return { rows, used, batched };
+  return { rows, used, batched, model: model.id };
 }
 
 /** Passed of tested, for one group. A post the judge could not answer is tested and did not pass. */

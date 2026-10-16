@@ -14,6 +14,12 @@
  * measured — which is what a failover answer got before this file existed. Either cutoff only
  * raises the policy's own bars (core `withJudgeCutoff`), never lowers them.
  *
+ * ★ FROM 2026-10-16 THE BLOCK'S CUTOFF IS THE OPEN JUDGE'S. The re-tune now grades with the open judge
+ * alone (the owner: no Anthropic API at all), so every block applied from then on carries a cutoff
+ * chosen on the open model's answers, and settings judge.openCutoff stays null so that cutoff is the
+ * one its answers are held to. The main judge's answers still on the feed for a few hours after the
+ * switch are held to it too: a stricter bar for them than their own, never a looser one than policy.
+ *
  * What breaks if changed carelessly: choosing by anything but the answer's own judge id (the
  * policy's primary, say) would hold every failover answer to the wrong model's cutoff.
  */
