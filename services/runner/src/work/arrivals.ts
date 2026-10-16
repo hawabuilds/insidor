@@ -32,10 +32,10 @@ export function storeArrivals(
        ★ THE WATCH LANE (0061) is the owner's watch list on a source with no catch-all. Only its
        posts from the last `feed.watchMaxAgeMs` are credited: older ones the vendor sends anyway
        are stored and never judged. A post with no time is not shown to be fresh, so it is not. */
-    /* The finders' word and creator asks (work/search-words.ts, 0083) are the same kind of ask as
-       the watch list's and are held to the same age. */
+    /* The finders' word and creator asks (work/search-words.ts, 0083) and the learned-tag lane (0090)
+       are the same kind of ask as the watch list's and are held to the same age. */
     const credited =
-      lane === 'watch' || lane === 'trend' || lane === 'creator'
+      lane === 'watch' || lane === 'trend' || lane === 'creator' || lane === 'learned_tag'
         ? items.filter((item) => item.postedAt !== null && now() - item.postedAt <= policy.feed.watchMaxAgeMs)
         : items;
     if (lane !== null) await repos.items.markFoundBy(credited.map((item) => item.itemId), lane, now());

@@ -20,6 +20,9 @@
  *             read again by id, so their speed is measured in minutes, not half hours
  *   sounds    every `sounds.askEveryMs` slot: the next `perAsk` learned sounds' posts, one page each
  *             on the source's sound endpoint (`soundPosts`), the 'trend' lane like the learned words
+ *   learned tags  (`learnedTags`) every `learnedTags.askEveryMs` slot: the next `wordsPerAsk` of the
+ *             top tags the coined-video training set teaches, as the latest re-tune recorded them,
+ *             newest first, the 'learned_tag' lane (0090), inside its own daily cap
  *
  * The source's search takes words and a sound is an id, so a sound is asked on its own endpoint
  * (since 2026-10-16; before, sounds were learned and listed only). The judge and the hold decide
@@ -34,10 +37,12 @@ import type { DiscoveryQuery, PlatformAdapter } from '@insidor/contracts/ports/p
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { PgFinderRepo, SearchWord } from '@insidor/store';
+import { laneJudgeUsd, laneMayAsk } from '@insidor/core';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
 import type { FoundLane } from './arrivals.ts';
+import type { LaneLedger } from './lane-ledger.ts';
 
 const TAG = /#([\p{L}\p{N}_]+)/gu;
 const CALL_DEADLINE_MS = 120_000;
@@ -53,6 +58,15 @@ export interface SearchWordDeps {
   readonly policy: Policy;
   readonly log: Logger;
   readonly now: () => Millis;
+  /**
+   * The learned-tag lane (`finders.learnedTags`): the tags the latest re-tune learned, most coined
+   * first; its ledger (0090); and how many of a run's videos no lane holds yet. Absent: not asked.
+   */
+  readonly learnedTags?: {
+    readonly tags: () => Promise<readonly string[]>;
+    readonly ledger: LaneLedger;
+    readonly uncredited: (itemIds: readonly string[]) => Promise<number>;
+  };
 }
 
 /** The slots each ask last went out in, kept by the loop between passes. */
@@ -61,9 +75,21 @@ export interface SearchWordClock {
   creators: number | null;
   young: number | null;
   sounds: number | null;
+  learnedTags: number | null;
 }
 
-export const searchWordClock = (): SearchWordClock => ({ words: null, creators: null, young: null, sounds: null });
+export const searchWordClock = (): SearchWordClock => ({ words: null, creators: null, young: null, sounds: null, learnedTags: null });
+
+/**
+ * The words the learned-tag lane walks: the re-tune's tags in its order, lower-cased, without the
+ * owner's own words (the watch list asks those) or the skip list, at most `learnedTags.topTags`.
+ * Pure; exported for its test.
+ */
+export function learnedTagWords(tags: readonly string[], policy: Policy): readonly string[] {
+  const not = new Set([...policy.feed.hashtags, ...policy.finders.learned.skip].map((w) => w.trim().toLowerCase()));
+  const kept = [...new Set(tags.map((t) => t.trim().replace(/^#/, '').toLowerCase()))].filter((t) => t !== '' && !not.has(t));
+  return kept.slice(0, Math.max(0, Math.trunc(policy.finders.learnedTags.topTags)));
+}
 
 export interface SearchWordResult {
   readonly trendWords: number;
@@ -193,6 +219,46 @@ export async function searchWordsPass(deps: SearchWordDeps, clock: SearchWordClo
       usd += got.spend.usd;
       stored += await deps.store(got.value.items, got.value.authors, 'trend');
       asked.push(...words);
+    }
+  }
+
+  /* 3b. The learned-tag lane: the training set's tags, newest first, inside its own cap. */
+  const lt = f.learnedTags;
+  const ltSlot = Math.floor(now / lt.askEveryMs);
+  if (lt.on && deps.learnedTags !== undefined && clock.learnedTags !== ltSlot) {
+    let tags: readonly string[] = [];
+    try {
+      tags = learnedTagWords(await deps.learnedTags.tags(), deps.policy);
+    } catch (e) {
+      deps.log.warn('the learned tags could not be read; the lane waits for the next slot', { err: errorText(e) });
+    }
+    if (tags.length > 0) {
+      clock.learnedTags = ltSlot;
+      const words = wordsForSlot(tags, lt.wordsPerAsk, ltSlot);
+      const query: DiscoveryQuery = { mode: 'keyword', term: words[0] ?? '', terms: words, sinceMs: null, untilMs: null, limit: deps.policy.feed.hashtagResults, cursor: null };
+      const quote = source.estimate({ kind: 'discover', query });
+      /* An unreadable ledger (null, logged by the ledger) asks nothing it cannot count. */
+      const spent = await deps.learnedTags.ledger.spent('learned_tag', now);
+      if (spent !== null && !laneMayAsk(spent, quote.usd, lt.cap)) {
+        deps.log.info('the learned-tag lane has spent its day; not asked', { spentUsd: spent, capUsd: lt.cap.dailyUsd });
+      } else if (spent !== null) {
+        const got = await paid(deps, quote.vendor, quote.usd, 'the learned tags', () => source.discover(query, budgetOf(deps, quote.vendor)));
+        if (got !== null) {
+          usd += got.spend.usd;
+          /* Only videos young enough to be credited bring judging in (arrivals.ts holds the lane to the watch list's age). */
+          const young = got.value.items.filter((i) => i.postedAt !== null && now - i.postedAt <= deps.policy.feed.watchMaxAgeMs);
+          let fresh = young.length;
+          try {
+            fresh = await deps.learnedTags.uncredited(young.map((i) => String(i.itemId)));
+          } catch (e) {
+            deps.log.warn('could not count the learned-tag lane\'s new videos; charging it for all of them', { err: errorText(e) });
+          }
+          await deps.learnedTags.ledger.add('learned_tag', now, got.spend.usd + laneJudgeUsd(fresh, lt.cap));
+          stored += await deps.store(got.value.items, got.value.authors, 'learned_tag');
+          asked.push(...words.map((w) => `#${w}`));
+          deps.log.info('learned-tag lane', { words, returned: got.value.items.length, new: fresh, searchUsd: got.spend.usd, spentBeforeUsd: spent, capUsd: lt.cap.dailyUsd });
+        }
+      }
     }
   }
 

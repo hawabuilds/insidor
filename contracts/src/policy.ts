@@ -2709,6 +2709,26 @@ export interface FindersPolicy {
     readonly regions: readonly string[];
     readonly creditMaxAgeMs: number;
   };
+  /**
+   * ★ THE LEARNED-TAG LANE (the owner's approval, 2026-10-16). Every `askEveryMs` slot, the next
+   * `wordsPerAsk` of the top `topTags` tags the coined-video training set teaches — as the latest
+   * re-tune recorded them (internal.short_video_tuning, 0085), so the list changes after every
+   * re-tune and with nothing else — searched newest first, each word its own run, and the videos
+   * credited to the 'learned_tag' lane (0090) and held to the watch list's age.
+   *
+   * Its own lane, not 'trend' (`trends.asksOn`, which reads the daily coined-post list with the
+   * rising trend tags), so its cost and its lead can be read apart and it can be dropped alone.
+   * The owner's own words (`feed.hashtags`) and `learned.skip` are never asked here: the watch
+   * lane already asks the first, and the second bring back nothing young. It stops at its own cap
+   * (`cap`, `LaneCapPolicy`). Off: nothing here is read.
+   */
+  readonly learnedTags: {
+    readonly on: boolean;
+    readonly askEveryMs: number;
+    readonly topTags: number;
+    readonly wordsPerAsk: number;
+    readonly cap: LaneCapPolicy;
+  };
 }
 
 export interface Policy {
@@ -4098,6 +4118,26 @@ const POLICY_V1: Policy = {
       everyMs: 900_000, // fifteen minutes
       regions: ['US', 'GB'],
       creditMaxAgeMs: 21_600_000, // six hours
+    },
+    /* On from 2026-10-16, the owner's approval ("newest-first search on learned hashtags, ~$2/day").
+       On the first scraper's newest-first search actor, the one the watch list uses, not the second
+       vendor's keyword search: measured 2026-10-16 the second vendor's "date-posted" search gave
+       "meme" videos 3 to 95 hours old (none under an hour) where the actor brings 15 to 24 under two
+       hours a word, so a young video costs the actor about $0.0005 and the second vendor several
+       credits ($0.00188 each) or nothing at all. So the second vendor's credits are not spent here.
+       3 words a half-hour: 144 runs a day, quoted at $0.0137 a run ($1.97) and billed about $0.0076
+       (the watch list's 143 runs in the 24 hours to 08:30 UTC cost $2.40 for about 315 words), about
+       $1.10. Judging: the watch list's new videos were judged 179 of 1,079 that day (0.17, 0.2 kept)
+       at $0.0017 a video; 700 to 2,200 new videos a day is $0.25 to $0.75. About $1.35 to $1.85 a
+       day, stopped at $2. The 08:03 UTC re-tune of 2026-10-16 learned meme, animals, cat, memecut,
+       blowthisup, dachshundpuppy and dancing; meme is the owner's own word and is left to the watch
+       list, so today 6 tags, each searched every hour. Up to 10 as the set grows, every 100 minutes. */
+    learnedTags: {
+      on: true,
+      askEveryMs: 1_800_000, // half an hour
+      topTags: 10,
+      wordsPerAsk: 3,
+      cap: { dailyUsd: 2, judgeUsdPerPost: 0.0017, judgedShare: 0.2 },
     },
   },
 

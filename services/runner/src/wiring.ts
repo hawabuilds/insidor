@@ -73,6 +73,7 @@ import {
   PgBackfillRepo,
   PgCoinUniverseRepo,
   PgFinderRepo,
+  PgCoinedVideoRepo,
   PgImageHashRepo,
   PgOlderCoinRepo,
   PgCryptoAttentionRepo,
@@ -1030,6 +1031,12 @@ export async function withRuntime<T>(
                   policy,
                   log: log.child({ step: 'search-words' }),
                   now: () => Date.now() as Millis,
+                  /* The learned-tag lane (`finders.learnedTags`): the latest re-tune's tags, its own cap (0090). */
+                  learnedTags: {
+                    tags: () => new PgCoinedVideoRepo(db).latestTags(),
+                    ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'learned-tags' })),
+                    uncredited: (ids) => repos.items.uncredited(ids),
+                  },
                 },
                 finderClock,
               ),

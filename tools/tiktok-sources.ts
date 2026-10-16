@@ -9,7 +9,7 @@
  *   found       videos it found, and how many went on to For You
  *   cost        its judging (internal.post_judgement on its videos) plus its share of the fetching
  *               (internal.spend): an endpoint only one lane uses is that lane's; the keyword search
- *               is shared by the owner's words, the learned words and the sounds, and split by the
+ *               is shared by the owner's words, the learned words, the learned-tag lane and the sounds, and split by the
  *               videos each found — an estimate, and said to be one. Re-reads serve every lane and
  *               are listed apart, never charged to one.
  *   lead        coined TikToks it found before their first coin, and For You showed before the coin,
@@ -44,12 +44,13 @@ const SWITCH: Record<string, string> = {
   trend: 'finders.trends.asksOn (learned and trend words) / finders.sounds.on',
   creator: 'finders.creators.on',
   trending: 'finders.trending.on',
+  learned_tag: 'finders.learnedTags.on',
   watch: "feed.hashtags (the owner's words: his call)",
 };
 /* Fetch endpoints that belong to one lane; the rest of the short-video vendors' endpoints are the shared keyword search or re-reads. */
 const ONE_LANE: readonly [RegExp, string][] = [[/trending-feed/, 'trending'], [/profile/, 'creator']];
 const REREADS = /observe|video|lookup|reread/;
-const SEARCH_LANES = new Set(['watch', 'trend']);
+const SEARCH_LANES = new Set(['watch', 'trend', 'learned_tag']);
 
 const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'] }, applicationName: 'insidor-tiktok-sources' });
 const db = asDb(pool);

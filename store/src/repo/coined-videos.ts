@@ -160,6 +160,23 @@ export class PgCoinedVideoRepo {
     });
   }
 
+  /**
+   * The tags the latest re-tune learned from the set (its `learned.tags`, most coined first): what
+   * the runner's learned-tag lane searches. Empty before 0085 or before the first re-tune. Read
+   * fresh on every ask, so a re-tune's new list is used from its next slot.
+   */
+  async latestTags(): Promise<readonly string[]> {
+    return this.#soft([] as readonly string[], async () => {
+      const rows = await this.#db.query<{ tags: unknown }>(`select learned -> 'tags' as tags from internal.short_video_tuning order by ran_at desc limit 1`);
+      const tags = rows[0]?.tags;
+      if (!Array.isArray(tags)) return [];
+      return tags.flatMap((t: unknown) => {
+        const value = typeof t === 'object' && t !== null ? (t as { value?: unknown }).value : t;
+        return typeof value === 'string' && value !== '' ? [value] : [];
+      });
+    });
+  }
+
   async recentTunings(n: number): Promise<readonly ShortVideoTuning[]> {
     return this.#soft([] as readonly ShortVideoTuning[], async () => {
       const rows = await this.#db.query<{ slot: Date; ran_at: Date; set_size: number; learned: Record<string, unknown>; gate: Record<string, unknown> | null; held: boolean | null; why: string | null; gap: string | null }>(
