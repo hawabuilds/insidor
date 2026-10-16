@@ -2968,18 +2968,16 @@ export interface NarrativePolicy {
    * the judge gave most of its posts.
    */
   /**
-   * The narrative's views over time (its page's chart and the tab's "gained in the last hour"):
-   * every `stepMs` over the last `spanMs`, the sum of each post's views then — a post not yet up is
-   * a known 0; a post's newest reading at or before then counts only within `carrySpacings` of its
-   * own usual gap between readings (at least `carryMinMs`); past that the post is unknown then.
-   * The sum is shown only where every post is known, and the last hour's gain only from posts known
-   * at both ends, with how many of the narrative's posts that was.
+   * The narrative's views over time (its page's chart, the tab's "gained in the last hour" and its
+   * order). The owner's rule (2026-10-17): each post's gain is worked out from its own readings and
+   * the posts are added up. Between two readings of a post its gain is spread evenly over the time
+   * between them; before its first reading and after its last it adds nothing (never guessed
+   * forward), so a post found late adds no spike. The page's line is the gain in each `stepMs` over
+   * the last `spanMs`; the last hour's gain is the same sum over the last `gainWindowMs`.
    */
   readonly reach: {
     readonly stepMs: number;
     readonly spanMs: number;
-    readonly carrySpacings: number;
-    readonly carryMinMs: number;
     readonly gainWindowMs: number;
   };
   readonly title: {
@@ -4646,9 +4644,9 @@ const POLICY_V1: Policy = {
     mergeMeaning: 0.55,
     minPosts: 2,
     single: { minReach: 500_000, minPerMinute: 2_000, growthWindowMs: 3_600_000, growthMinSpanMs: 1_200_000 },
-    /* Ten minutes over the day: 145 points a page. 1.5 spacings is the phone's own rule for the post
-       sheet's chart; fifteen minutes is For You's slowest reading step. */
-    reach: { stepMs: 600_000, spanMs: 86_400_000, carrySpacings: 1.5, carryMinMs: 900_000, gainWindowMs: 3_600_000 },
+    /* Five minutes over the day, 288 numbers a page: the phone's finest chart interval is 5m, and it
+       adds these up into 15m, 1h, 4h and 1D. */
+    reach: { stepMs: 300_000, spanMs: 86_400_000, gainWindowMs: 3_600_000 },
     /* About 600 input and 20 output tokens a call on the open model: $0.00006, under a cent a day. */
     title: { on: true, perPass: 10, retitleGrowth: 0.5, postsSent: 6, maxChars: 240, maxOutputTokens: 40, maxTitleChars: 60 },
   },

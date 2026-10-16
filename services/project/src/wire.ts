@@ -744,12 +744,18 @@ export interface WireStory {
   /** Each post's newest view count, summed; `viewsTotalPosts` of the `postCount` posts had one. */
   readonly viewsTotal?: WireMeasured;
   readonly viewsTotalPosts?: number;
-  /** Views gained in the last hour by the `viewsGained1hPosts` posts known at both ends of it. The tab's order. */
+  /** Views gained in the last hour, each post's own gain added up; `viewsGained1hPosts` posts had a reading. The tab's order. */
   readonly viewsGained1h?: WireMeasured;
   readonly viewsGained1hPosts?: number;
-  /** Every ten minutes over the day, the posts' summed views; null where a post was unknown then (the line breaks). */
-  readonly viewsSeries?: readonly { readonly atMs: number; readonly value: number | null }[];
-  /** When the narrative was first on the board. */
+  /**
+   * Views gained in each `stepMs` slot from `fromMs` to the frame's now, each post's gain spread
+   * evenly between its own readings and added up (core `narrativeReach`); null where no post was
+   * being read. The phone adds slots up into its chart's intervals.
+   */
+  readonly viewsGained?: { readonly fromMs: number; readonly stepMs: number; readonly values: readonly (number | null)[] };
+  /** Each listed post's newest views and its own last-hour gain; null where it has no reading. */
+  readonly postViews?: readonly { readonly postId: string; readonly views: number | null; readonly gainedLastHour: number | null }[];
+  /** First found: the earliest moment we saved any post it lists now (item.first_seen_at). */
   readonly foundAt?: WireInstant;
 }
 
