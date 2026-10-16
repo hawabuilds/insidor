@@ -181,10 +181,22 @@ export interface SpendTotals {
   readonly jobs?: { readonly totalUsd: number; readonly byVendor: Readonly<Record<string, number>> };
   /** The part spent by the learning work (re-tunes, missed-post fetches, gold additions): `LEARN_ENDPOINT_PREFIX`. */
   readonly learning?: { readonly totalUsd: number; readonly byVendor: Readonly<Record<string, number>> };
+  /**
+   * The part of `learning` spent by tests and experiments (`LEARN_TEST_ENDPOINT_PREFIX`): every paid
+   * tool on the learning book but the scheduled re-tune. Held to its own small daily line
+   * (Policy.budget.learningLines.testsUsd) so a test can never eat what the re-tune needs.
+   */
+  readonly learningTests?: { readonly totalUsd: number; readonly byVendor: Readonly<Record<string, number>> };
 }
 
 /** How the learning work's ledger rows are told apart: `learn:<endpoint>`. Its own book, like a job's. */
 export const LEARN_ENDPOINT_PREFIX = 'learn:';
+
+/**
+ * A test's or an experiment's rows on the learning book: `learn:test:<endpoint>`. Starts with
+ * LEARN_ENDPOINT_PREFIX on purpose, so the learning book's total still counts them.
+ */
+export const LEARN_TEST_ENDPOINT_PREFIX = 'learn:test:';
 
 /** How a one-off paid job's ledger rows are told apart from the runner's: `job:<endpoint>`. */
 export const JOB_ENDPOINT_PREFIX = 'job:';

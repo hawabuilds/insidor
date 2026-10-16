@@ -2188,7 +2188,20 @@ export interface BudgetPolicy {
    * and adding gold from live. Its own book on the ledger (rows labelled `learn:`), apart from the
    * live feed and from one-off jobs. Prompt caching makes a re-tune mostly cache reads.
    */
-  readonly learningLines: { readonly dailyUsd: number; readonly posts: number; readonly judge: number; readonly video: number; readonly embeddings: number };
+  /**
+   * ★ THE RE-TUNE'S MONEY IS TAKEN FIRST (the owner, 2026-10-16: "reserve re-tune money first from
+   * now on"; "cap tests and experiments at $1/day total, and never let them block re-tunes").
+   * The learning book is split three ways on the one ledger:
+   *   retuneReserveUsd  the last dollars of `dailyUsd`, which only the scheduled re-tune (tools/retune.ts
+   *                     run and due, with its gold growth, fits and short-video part) may spend. Every
+   *                     other learning spender is capped at `dailyUsd - retuneReserveUsd`.
+   *   testsUsd          tests and experiments — every other paid tool on the learning book, `retune.ts
+   *                     measure` included — across all vendors together, a day; rows `learn:test:`. A
+   *                     call that would cross it is refused before it is made. Inside the capped part
+   *                     above, so a test never reaches the reserve.
+   * The runner's own learning work (fetching the owner's missed posts) is held to the capped part.
+   */
+  readonly learningLines: { readonly dailyUsd: number; readonly posts: number; readonly judge: number; readonly video: number; readonly embeddings: number; readonly retuneReserveUsd: number; readonly testsUsd: number };
   /*
    * ★ NO PACING, BY THE OWNER'S CHOICE (2026-10-13). Lines were once paced over the UTC day, so a
    * busy morning could not spend the day by breakfast. In practice the pace paused discovery and
@@ -4161,7 +4174,12 @@ const POLICY_V1: Policy = {
     /* $8.50 from 2026-10-16 (was $10.75), toward the live book's $40.50 for the two new lanes: its full
        days were $6.75 (10-14) and $5.06 (10-15); two re-tunes a day at a $1.45 baseline and a ~$3 worst
        case each still fit ($8.90 only if both hit their worst case, and then the second test waits). */
-    learningLines: { dailyUsd: 8.5, posts: 1.5, judge: 5.75, video: 0.5, embeddings: 0.75 },
+    /* The reserve and the tests' line from 2026-10-16 (the owner). Sized at the open model's prices,
+       since the re-tune runs on it alone: a run grades about 700 posts twice (new block and live) at
+       40 precedents, about $0.25 a side as billed and up to $0.90 a side by the pessimistic estimate a
+       test must fit before it starts, plus the rulebook's one call (cents). $2 holds two runs a day
+       with the second's estimate still fitting. Tests and experiments: $1 a day, every vendor. */
+    learningLines: { dailyUsd: 8.5, posts: 1.5, judge: 5.75, video: 0.5, embeddings: 0.75, retuneReserveUsd: 2, testsUsd: 1 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`

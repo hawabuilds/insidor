@@ -88,7 +88,8 @@ export async function shortVideoPart(db: Db, opts: { readonly env: Record<string
   let { rows, added, stored } = await refreshSet(db, new Date(), p);
   let refetched: ShortVideoPart['refetched'] = null;
   if (sv.refetchOn && opts.paid && (opts.env['SCRAPECREATORS_API_KEY'] ?? '') !== '') {
-    const shared = await openSharedMeter(sv.refetchPerRun * SC_USD_PER_VIDEO + 0.001, opts.env, 'learning');
+    /* Part of the scheduled re-tune, so it may spend the re-tune's reserve (Policy.budget.learningLines). */
+    const shared = await openSharedMeter(sv.refetchPerRun * SC_USD_PER_VIDEO + 0.001, opts.env, 'learning', 'retune');
     try {
       const got = await refetch(rows, sv.refetchPerRun, shared.meter, opts.env['SCRAPECREATORS_API_KEY'] ?? '');
       refetched = { asked: got.asked, gone: got.gone, usd: got.usd };

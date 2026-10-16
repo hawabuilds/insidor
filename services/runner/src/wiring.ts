@@ -51,7 +51,7 @@ import type { Author, Item, Millis } from '@insidor/contracts';
 import type { DurableMeter } from '@insidor/meter';
 import type { DecisionRepo, SourceHealthRepo } from '@insidor/contracts/ports/store.ts';
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { jobVendorLines, supplierRoles, vendorLines } from './vendor-lines.ts';
+import { jobVendorLines, learningDailyCapUsd, supplierRoles, vendorLines } from './vendor-lines.ts';
 import { supplierWarnings } from './supplier-warnings.ts';
 import { billingAlerts, SUPPLIER_NAMES } from './billing-alerts.ts';
 import { onOutOfCredit } from '@insidor/vendor-kit';
@@ -1095,7 +1095,8 @@ export async function withRuntime<T>(
                 const book = await openDurableMeter({
                   ledger: new PgSpendRepo(db),
                   book: 'learning',
-                  dailyCapUsd: policy.budget.learningLines.dailyUsd,
+                  /* The re-tune's reserve is not this work's (Policy.budget.learningLines.retuneReserveUsd). */
+                  dailyCapUsd: learningDailyCapUsd(policy, 'work'),
                   perVendorCapUsd: jobVendorLines(policy, 'learning'),
                   defaultVendorCapUsd: policy.budget.perSourceUsdPerDay,
                   vendorLinesWarnOnly: !policy.budget.vendorLinesStop,

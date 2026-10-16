@@ -336,3 +336,26 @@ test("★ two books: the live meter never counts a job's spending, and a job's m
   await job.refresh();
   assert.ok(Math.abs(job.spentUsd('acme') - 0.9) < 1e-9, "and the live feed's spending never reaches the jobs' book");
 });
+
+test("★ tests' own line: a learning-tests meter counts only the tests' rows, every vendor together", async () => {
+  const rows: Spend[] = [];
+  const ledger: SpendLedger = {
+    append: async (sp: Spend) => void rows.push(sp),
+    totalsSince: async (sinceMs: Millis): Promise<SpendTotals> => {
+      const sum = (pick: (sp: Spend) => boolean) => {
+        const byVendor: Record<string, number> = {};
+        let totalUsd = 0;
+        for (const r of rows) if (r.at >= sinceMs && pick(r)) { byVendor[r.vendor] = (byVendor[r.vendor] ?? 0) + r.usd; totalUsd += r.usd; }
+        return { totalUsd, byVendor };
+      };
+      return { ...sum(() => true), learning: sum((r) => r.endpoint.startsWith('learn:')), learningTests: sum((r) => r.endpoint.startsWith('learn:test:')) };
+    },
+  };
+  rows.push({ ...spend(3), endpoint: 'learn:judge' }, { ...spend(0.6, 'acme'), endpoint: 'learn:test:search' }, { ...spend(0.3, 'other'), endpoint: 'learn:test:judge' });
+  const tests = await openDurableMeter({ ledger, book: 'learningTests', dailyCapUsd: 1, softStop: 1, now: () => AT });
+  assert.ok(Math.abs(tests.spentUsd() - 0.9) < 1e-9, "the re-tune's $3 is not the tests'; both vendors' test rows are");
+  assert.equal(tests.mayspend('third', 0.05), true);
+  assert.equal(tests.mayspend('third', 0.2), false, '$0.90 + $0.20 crosses the $1 day whichever vendor asks');
+  const learning = await openDurableMeter({ ledger, book: 'learning', dailyCapUsd: 10, softStop: 1, now: () => AT });
+  assert.ok(Math.abs(learning.spentUsd() - 3.9) < 1e-9, "and the learning book still counts the tests' rows");
+});

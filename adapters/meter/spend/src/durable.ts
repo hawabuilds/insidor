@@ -59,7 +59,7 @@ export interface DurableMeterOptions
   /** Where spend is read from at boot and written to afterwards. */
   readonly ledger: SpendLedger;
   /** Which spending this meter's lines hold: the live feed's (default) or one-off jobs'. */
-  readonly book?: 'live' | 'jobs' | 'learning';
+  readonly book?: 'live' | 'jobs' | 'learning' | 'learningTests';
   /**
    * Called when a spend could not be persisted. Reporting only — the meter has
    * already counted the dollars and does not act on the failure. Kept as a callback
@@ -143,6 +143,11 @@ export async function openDurableMeter(opts: DurableMeterOptions): Promise<Durab
     const learning = t.learning ?? none;
     if (book === 'jobs') return { totalUsd: jobs.totalUsd, byVendor: { ...jobs.byVendor } };
     if (book === 'learning') return { totalUsd: learning.totalUsd, byVendor: { ...learning.byVendor } };
+    /* Tests and experiments: a part of the learning book with its own small line (learningTests). */
+    if (book === 'learningTests') {
+      const tests = t.learningTests ?? none;
+      return { totalUsd: tests.totalUsd, byVendor: { ...tests.byVendor } };
+    }
     return {
       totalUsd: Math.max(t.totalUsd - jobs.totalUsd - learning.totalUsd, 0),
       byVendor: Object.fromEntries(Object.entries(t.byVendor).map(([v, usd]) => [v, Math.max(usd - (jobs.byVendor[v] ?? 0) - (learning.byVendor[v] ?? 0), 0)])),
