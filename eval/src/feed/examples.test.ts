@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, ratesOf, regressions, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall } from './examples.ts';
+import { atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, parseFloor, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall } from './examples.ts';
 
 const L = DEFAULT_POLICY.learning;
 const call = (itemId: string, label: 'meme' | 'not', from: OwnerCall['from'], at: number | null = null): OwnerCall => ({ itemId, text: `post ${itemId}`, imageUri: null, label, why: 'because', at, from });
@@ -273,4 +273,22 @@ test('refused when every cutoff with less junk loses gold', () => {
   const live = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.9), yes('n1', 'live-not', 0.8)];
   const mine = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.75), yes('n1', 'live-not', 0.95), yes('n2', 'live-not', 0.8)];
   assert.equal(sweep(mine, live).rule, 'refused');
+});
+
+test("★ --floor: the main judge's stored numbers, read as passed/tested and compared as shares", () => {
+  const floor = parseFloor('70/117,98/513,10/16');
+  assert.deepEqual(floor, { hand: { passed: 70, tested: 117 }, negatives: { passed: 98, tested: 513 }, missed: { passed: 10, tested: 16 } });
+  assert.equal(parseFloor(null), null);
+  assert.throws(() => parseFloor('70/117,98/513'), /gold,junk,missed/);
+  assert.throws(() => parseFloor('70/0,98/513,10/16'), /gold,junk,missed/);
+  /* A set grown since (140 gold, 600 junk, 20 missed) is held to the same shares. */
+  const grown = (cutoff: number, gold: number, junk: number, missed: number) => ({ cutoff, hand: { passed: gold, tested: 140 }, negatives: { passed: junk, tested: 600 }, missed: { passed: missed, tested: 20 }, lost: [], extra: null });
+  const points = [grown(0.7, 90, 130, 14), grown(0.74, 84, 110, 13), grown(0.78, 83, 100, 12), grown(0.82, 70, 80, 10)];
+  /* 84/140 = 0.600 >= 70/117 = 0.598, 13/20 >= 10/16; at 0.78, 83/140 = 0.593 is under the floor. */
+  assert.equal(strictestKeeping(points, floor!)?.cutoff, 0.74);
+  const c = chooseCutoff(points, floor!);
+  assert.deepEqual([c.rule, c.cutoff], ['A', 0.74], 'and its junk, 110/600 = 0.183, is under 98/513 = 0.191: rule A takes the same point');
+  const dearer = points.map((p) => ({ ...p, negatives: { passed: 130, tested: 600 } }));
+  assert.equal(strictestKeeping(dearer, floor!)?.cutoff, 0.74, 'item 4 names the point whatever its junk');
+  assert.equal(chooseCutoff(dearer, floor!).rule, 'refused', "and the owner's rule refuses it when its junk is over the floor's");
 });

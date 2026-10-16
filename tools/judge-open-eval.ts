@@ -363,6 +363,10 @@ const keptLive = keptFor(kept?.live);
 if (keptLive !== null) {
   haiku = { name: `${setup.state === 'dormant' || setup.state === 'misconfigured' ? 'live judge' : setup.model} (live, kept answers)`, rows: keptLive, gateUsd: 0, fypUsd: 0, timings: [], cutShort: null, gateDone: true };
   say(`live judge: ${keptLive.length} answers reused from ${reuseFile}`);
+} else if (!flag('--main')) {
+  /* ★ The owner, 2026-10-16: "no Anthropic API at all from now on". The main judge is re-asked only
+     with `--main`; without it (or its kept answers, --reuse) no verdict against it is given. */
+  say('the main judge is not asked (the owner stopped it on 2026-10-16; --main asks it anyway, --reuse reads kept answers): no verdict will be given');
 } else if (setup.state !== 'configured' || priceFor(setup.model) === null) {
   say(`the live judge is ${setup.state} here, so it cannot be re-asked: no verdict will be given`);
 } else {

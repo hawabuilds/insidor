@@ -9,7 +9,7 @@
  *   due [--detach]       what the `project` schedule runs every ten minutes: if the latest 08:00 or
  *                        20:00 London slot (Policy.learning.retuneAt/timeZone) has no run yet, runs
  *                        it. `--detach` starts that run and returns at once (see below).
- *   run [--dry] [--force] [--baseline] [--slot=<iso>]
+ *   run [--dry] [--force] [--baseline] [--slot=<iso>] [--floor=<gold>,<junk>,<missed>]
  *                        one run now (by hand: the slot is this minute). `--dry` tests and records
  *                        the block but never applies it; `--force` builds even with nothing new;
  *                        `--baseline` also grades the same test posts with no learned block, for a
@@ -103,13 +103,21 @@
  *   · X and TikTok side by side (tools/lib/side-by-side.ts), the biggest gap and what is changing
  *     for it — in the log, the run's detail and the owner's alert; recorded (internal.short_video_tuning)
  *
+ * ★ THE OPEN JUDGE GRADES BOTH SIDES (the owner, 2026-10-16: "no Anthropic API at all from now on").
+ * The new block and the block in use are both asked of the open judge (OPEN_JUDGE_MODEL, Gemma 3 by
+ * default; tools/lib/pass-rates.ts), with its own 40 precedents a post, and the block in use is
+ * held at the cutoff the projector holds the open judge's answers to (settings judge.openCutoff,
+ * else the block's own). The new block's cutoff is swept from the policy bar, not from the cutoff
+ * in use: a confidence is a model's own scale. The cutoff chosen is stored with the block (0086)
+ * and is, from now on, the open judge's. `--floor=<gold>,<junk>,<missed>` holds the new block to
+ * given numbers instead of the live grading's (the switch of judge: the main judge's stored 07:00
+ * UTC sweep, as shares); the open judge's grading of the block in use is still made and reported.
+ *
  * ★ MONEY: the learning book (Policy.budget.learningLines, `learn:` rows on the ledger), never the
- * live feed's. The test is sent as one Message Batch at half price when the batch's pessimistic
- * estimate fits what is left of the line, one call a post otherwise; prompt caching makes the long
- * block mostly cache reads either way. A paid step refuses unless SPEND=live and --yes. A test the
- * line cannot cover is not started (kept, with the numbers): one call at a time as the ledger frees
- * a cent took over an hour for a handful of posts. Measured 2026-10-13: 122 test posts, one batch,
- * 86% of the input read from cache, $0.15 a run; a skipped run costs nothing.
+ * live feed's, and its reserve is the re-tune's alone (`retuneReserveUsd`); `measure` is a test,
+ * held to the tests' $1 a day. The open host has no Message Batches: calls go four at a time. A
+ * paid step refuses unless SPEND=live and --yes. A test whose pessimistic estimate the line cannot
+ * cover is not started (kept, with the numbers). A skipped run costs nothing.
  *
  * ★ AN UNANSWERED POST IS NOT A FAILED ONE. A post the judge did not answer (an outage, the line
  * spent) is left out of its rate and the block is not applied — the gate cannot hold on a test
@@ -136,12 +144,12 @@ import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwne
 import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
 import { leadFacts, leadLines, leadRows, summarise } from './lib/lead-time.ts';
-import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, gate, goalsText, latestSlot, missedCaught, ratesOf, share, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
+import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, gate, goalsText, latestSlot, missedCaught, parseFloor, ratesOf, share, strictestKeeping, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
-import { LineTooShort, goldOriginPosts, handGoldIds, gradePosts, judgeSetup, type EvalPost, type EvalRow } from './lib/pass-rates.ts';
+import { LineTooShort, goldOriginPosts, handGoldIds, gradePosts, openGradeSetup, type EvalPost, type EvalRow } from './lib/pass-rates.ts';
 import { refitForRetune } from './lib/score-model.ts';
 import { refitCoinMatchForRetune, withCoinMatch } from './lib/coin-match-fit.ts';
 import { PgCoinedVideoRepo, type Db } from '../store/src/index.ts';
@@ -190,8 +198,11 @@ const soft = <T,>(read: Promise<T>, empty: T): Promise<T> => read.catch((e: unkn
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const url = process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'];
-/* `--model=<id>` (measure only) grades with another judge model than JUDGE_MODEL. */
-const env = { ...process.env, ...(url === undefined ? {} : { DATABASE_URL_INTERNAL: url }), ...(command === 'measure' && arg('model') !== null ? { JUDGE_MODEL: arg('model') ?? '' } : {}) };
+/* `--model=<id>` (measure only) grades with another open model than OPEN_JUDGE_MODEL. */
+const env = { ...process.env, ...(url === undefined ? {} : { DATABASE_URL_INTERNAL: url }), ...(command === 'measure' && arg('model') !== null ? { OPEN_JUDGE_MODEL: arg('model') ?? '' } : {}) };
+
+/* `--floor=<gold>,<junk>,<missed>`: the bar to keep for a switch of judge (eval examples.ts parseFloor). */
+const FLOOR = parseFloor(arg('floor'));
 
 /**
  * Lead time on the last three days' coined posts (tools/lib/lead-time.ts): the main number from
@@ -424,7 +435,8 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const maxBatch = opts.maxBatch ?? P.qualify.batchSize;
       const held = P.judge.heldKinds;
 
-      judgeSetup(env);
+      /* The open judge must be there before anything is read for it: no key, no run. */
+      const judgeModel = (await openGradeSetup(env)).model.id;
       log('info', 'retune testing a block', { slot: slot.toISOString(), posts: posts.length, handGold: posts.filter((p) => p.group === 'gold').length, autoGold: posts.filter((p) => p.group === 'auto').length, liveNegatives: block.testNegatives.length, missed: testMissed.length, missedTaught: missedTaught.length, heldKinds: held, maxBatch, rulesOnly: opts.rulesOnly === true, examples: block.exampleIds.length, coinedYes: block.used.coined, chars: block.text.length });
       /* Bounded by the learning book's lines, not a guess per post: the test either fits what is left
          of them (mustFit) or is not started. */
@@ -492,10 +504,15 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
 
       const nowRows = opts.rulesOnly === true ? null : inUse?.text === block.text ? rows : (nowGraded?.rows ?? null);
       /* The setup live now as live decides: its block at ITS cutoff (null: the policy bar). */
-      const liveCutoff = inUse?.cutoff ?? null;
+      /* ★ HELD AS THE PROJECTOR HOLDS THE OPEN JUDGE'S ANSWERS (services/project/src/judge-cutoff.ts):
+         settings judge.openCutoff when set, else the applied block's own cutoff. */
+      const liveCutoff = P.judge.openCutoff ?? inUse?.cutoff ?? null;
       const policyBar = Math.min(...Object.values(P.qualify.minJudgeConfidence));
       const liveGraded = nowRows === null ? null : atCutoff(graded(nowRows.filter((r) => r.coinable !== null)), liveCutoff, P);
-      const liveRates = liveGraded === null ? null : ratesOf(liveGraded, held, GROUPS);
+      /* The open judge with the block in use, graded now: reported always, and the bar to keep
+         unless `--floor` gives one (the switch of judge, see parseFloor). */
+      const liveGrading = liveGraded === null ? null : ratesOf(liveGraded, held, GROUPS);
+      const liveRates = liveGrading === null ? null : FLOOR === null ? liveGrading : { ...liveGrading, ...FLOOR };
       const liveCaught = nowRows === null ? null : missedCaught(atCutoff(graded(nowRows), liveCutoff, P), held);
       const costUsd = spentUsd + gold.xUsd;
 
@@ -517,7 +534,9 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       /* ★ THE CUTOFF SWEEP, then the gate at the cutoff it chose (see the header). Without a live
          grading (the measure-only paths) nothing is compared and the old gate refuses as before. */
       const choice: CutoffChoice | null = liveRates === null || liveCaught === null ? null : sweepCutoff({
-        rows: mineGraded, live: liveRates, liveCaught, from: liveCutoff ?? policyBar, held, groups: GROUPS, policy: P,
+        /* ★ FROM THE POLICY BAR: a cutoff is a model's own scale, and the block in use may carry a
+           cutoff tuned on another model's answers (version 9's 0.71 was the main judge's). */
+        rows: mineGraded, live: liveRates, liveCaught, from: policyBar, held, groups: GROUPS, policy: P,
         extra: (at) => ttAt(at)?.why ?? null,
       });
       const chosenAt = choice === null ? mineGraded : atCutoff(mineGraded, choice.cutoff ?? choice.point.cutoff, P);
@@ -540,8 +559,8 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const ofN0 = (r: Rate) => `${r.passed}/${r.tested}`;
       const cutoffText = choice === null || liveRates === null
         ? 'cutoff: no live grading to compare with'
-        : `cutoff: ${choice.rule === 'refused' ? `refused (no cutoff from ${choice.point.cutoff.toFixed(2)} to ${L.cutoffMax} passed)` : `rule ${choice.rule}, ${choice.cutoff?.toFixed(2)} (live bar ${(liveCutoff ?? policyBar).toFixed(2)})`}; new gold ${ofN0(rates.hand)} vs live ${ofN0(liveRates.hand)}, junk ${ofN0(rates.negatives)} vs live ${ofN0(liveRates.negatives)}, missed ${ofN0(rates.missed)} vs live ${ofN0(liveRates.missed)}`;
-      if (choice !== null) log('info', 'retune cutoff sweep', { slot: slot.toISOString(), rule: choice.rule, cutoff: choice.cutoff, from: liveCutoff ?? policyBar, live: liveRates === null ? null : { gold: ofN0(liveRates.hand), junk: ofN0(liveRates.negatives), missed: ofN0(liveRates.missed) }, lostMissed: choice.point.lost, points: choice.points.map(fmtPoint) });
+        : `cutoff: ${choice.rule === 'refused' ? `refused (no cutoff from ${choice.point.cutoff.toFixed(2)} to ${L.cutoffMax} passed)` : `rule ${choice.rule}, ${choice.cutoff?.toFixed(2)} (live cutoff ${(liveCutoff ?? policyBar).toFixed(2)}${FLOOR === null ? '' : ', floor given'})`}; new gold ${ofN0(rates.hand)} vs live ${ofN0(liveRates.hand)}, junk ${ofN0(rates.negatives)} vs live ${ofN0(liveRates.negatives)}, missed ${ofN0(rates.missed)} vs live ${ofN0(liveRates.missed)}`;
+      if (choice !== null) log('info', 'retune cutoff sweep', { slot: slot.toISOString(), judge: judgeModel, rule: choice.rule, cutoff: choice.cutoff, strictestKeepingGoldAndMissed: liveRates === null ? null : (strictestKeeping(choice.points, liveRates)?.cutoff ?? null), from: policyBar, floor: FLOOR === null ? null : 'given', openLiveNow: liveGrading === null ? null : { gold: ofN0(liveGrading.hand), junk: ofN0(liveGrading.negatives), missed: ofN0(liveGrading.missed) }, live: liveRates === null ? null : { gold: ofN0(liveRates.hand), junk: ofN0(liveRates.negatives), missed: ofN0(liveRates.missed) }, lostMissed: choice.point.lost, points: choice.points.map(fmtPoint) });
       /* `--rows=<file>`: every graded post's answers, for comparing held-kind sets on one run. */
       if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, lookedAt: r.lookedAt, similarity: r.similarity, imageUri: r.imageUri, signal: signals.get(r.id) ?? null, text: r.text.slice(0, 120) })), null, 1));
       const why = unanswered > 0 ? `${unanswered} of ${rows.length} test posts went unanswered (${unansweredCause()})${verdict.why === null ? '' : `; ${verdict.why}`}` : verdict.why;
@@ -583,7 +602,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         log('warn', 'the retune tiktok part failed; the X run is unaffected', { slot: slot.toISOString(), err: errText(e) });
       }
       const summary = {
-        slot: slot.toISOString(), version: versionId, outcome, why, cutoff: cutoffText, cutoffRule: choice?.rule ?? null, cutoffChosen: choice?.cutoff ?? null, liveCutoff, leadTime: 'error' in lead ? lead.error : lead.facts,
+        slot: slot.toISOString(), version: versionId, outcome, why, cutoff: cutoffText, cutoffRule: choice?.rule ?? null, cutoffChosen: choice?.cutoff ?? null, liveCutoff, judge: judgeModel, floor: FLOOR, openLiveNow: liveGrading, leadTime: 'error' in lead ? lead.error : lead.facts,
         handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, goals: verdict.goals, goal: goalsText(rates, L), withoutCryptoFacts: noFacts, precedentLabels: labelled.length,
         autoGold: rates.auto, missed: rates.missed, regressions: regressed, judgeInUse: inUse === null ? 'rules alone' : `block ${inUse.versionId}`,
         unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true, composition,
@@ -593,7 +612,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       };
       log(apply || opts.dry ? 'info' : 'warn', `retune ${outcome}`, summary);
       const ofN = (r: Rate) => `${r.passed}/${r.tested}`;
-      const tally = `${cutoffText}; hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), missed posts live catches and this does not ${regressed.length === 0 ? '0' : `${regressed.length} (${regressed.join(', ')})`} (named, not gated)${liveRates === null ? '' : `; live now: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone); ${goalsText(rates, L)}`;
+      const tally = `${cutoffText}; hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), missed posts live catches and this does not ${regressed.length === 0 ? '0' : `${regressed.length} (${regressed.join(', ')})`} (named, not gated)${liveRates === null ? '' : `; ${FLOOR === null ? 'live now' : 'the floor kept to'}: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone); ${goalsText(rates, L)}`;
       const ttTally = part === null ? '' : `; TikTok: set ${part.setSize} (+${part.added}), ${part.bar.why}, biggest gap ${part.gapText}`;
       await end(outcome, versionId, (why === null ? `applied: ${tally}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}` : `${why} (${tally})`) + ttTally, costUsd);
 
@@ -610,7 +629,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
                 goldPassed: rates.hand.passed, goldN: rates.hand.tested, negativePassed: rates.negatives.passed, negativeN: rates.negatives.tested, missedPassed: rates.missed.passed, missedN: rates.missed.tested,
                 autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length, lostMissed: regressed, goal: goalsText(rates, L), ...order.facts,
                 ...(choice === null || liveRates === null ? {} : {
-                  cutoffRule: choice.rule, cutoff: choice.cutoff, cutoffFrom: Number((liveCutoff ?? policyBar).toFixed(2)),
+                  cutoffRule: choice.rule, cutoff: choice.cutoff, cutoffFrom: Number(policyBar.toFixed(2)),
                   liveGoldPassed: liveRates.hand.passed, liveGoldN: liveRates.hand.tested, liveNegativePassed: liveRates.negatives.passed, liveNegativeN: liveRates.negatives.tested, liveMissedPassed: liveRates.missed.passed, liveMissedN: liveRates.missed.tested,
                 }),
                 taps: block.used.taps, tapsTested: block.taps.tested, missed: block.used.missed, names: block.used.names, coined: block.used.coined, added: delta.added, removed: delta.removed, missReasons,
@@ -687,7 +706,7 @@ if (command === 'status') {
     if (await withRepo((repo) => repo.hasRun(slot))) process.exit(0);
   }
   if (flag('--detach')) {
-    const args = ['run', '--yes', `--slot=${slot.toISOString()}`, ...(flag('--dry') ? ['--dry'] : []), ...(flag('--force') ? ['--force'] : [])];
+    const args = ['run', '--yes', `--slot=${slot.toISOString()}`, ...(flag('--dry') ? ['--dry'] : []), ...(flag('--force') ? ['--force'] : []), ...(arg('floor') === null ? [] : [`--floor=${arg('floor') ?? ''}`])];
     const child = spawn(process.execPath, [...process.execArgv, process.argv[1] ?? '', ...args], { detached: true, stdio: 'inherit' });
     child.unref();
     log('info', 'retune started, detached', { slot: slot.toISOString() });

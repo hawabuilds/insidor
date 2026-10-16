@@ -479,6 +479,33 @@ export function chooseCutoff(points: readonly CutoffPoint[], live: SweepInput['l
   return { rule: 'refused', cutoff: null, point: base, points, why: fails.join('; ') };
 }
 
+/**
+ * `--floor=<gold>,<junk>,<missed>` (each `passed/tested`): the numbers the new block must keep, in
+ * place of the live grading's, for a switch of judge (the owner, 2026-10-16: tonight's cutoff is
+ * the strictest that keeps gold and missed at least at the main judge's level; that judge can no
+ * longer be asked, so its stored 07:00 UTC sweep is the floor). Compared as shares, as every rate
+ * here is, so a set that has grown since is held to the same share. null: the live grading.
+ */
+export function parseFloor(text: string | null): { readonly hand: Rate; readonly negatives: Rate; readonly missed: Rate } | null {
+  if (text === null) return null;
+  const parts = text.split(',').map((x) => /^(\d+)\/(\d+)$/.exec(x.trim()));
+  if (parts.length !== 3 || parts.some((m) => m === null || Number(m[2]) === 0)) throw new Error(`--floor=${text}: give gold,junk,missed as passed/tested, e.g. 70/117,98/513,10/16`);
+  const r = (m: RegExpExecArray | null): Rate => ({ passed: Number(m?.[1]), tested: Number(m?.[2]) });
+  return { hand: r(parts[0] ?? null), negatives: r(parts[1] ?? null), missed: r(parts[2] ?? null) };
+}
+
+/**
+ * The owner's cutoff for a switch of judge (2026-10-16, item 4): the STRICTEST point whose hand gold
+ * and missed caught are at least `floor`'s, as shares; junk is not asked here (rule A in
+ * `chooseCutoff` asks it, and refuses when that point lets more through). null when none keeps both.
+ */
+export function strictestKeeping(points: readonly CutoffPoint[], floor: Pick<SweepInput['live'], 'hand' | 'missed'>): CutoffPoint | null {
+  const fh = share(floor.hand);
+  const fm = share(floor.missed);
+  const ok = (p: CutoffPoint) => share(p.hand) !== null && fh !== null && share(p.hand)! >= fh && (share(p.missed) === null || fm === null || share(p.missed)! >= fm);
+  return [...points].reverse().find(ok) ?? null;
+}
+
 /** Examples added to and removed from the block in use. */
 export function changed(before: readonly string[], after: readonly string[]): { readonly added: number; readonly removed: number } {
   const b = new Set(before);

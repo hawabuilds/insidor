@@ -727,6 +727,9 @@ export interface JudgePolicy {
    * confidence and is held to this instead, chosen by `tools/judge-open-eval.ts --tune`. null until tuned:
    * the open model's answers are then held to the block's cutoff, the only one measured. Like the
    * block's, it only ever raises the policy's own bars (core `withJudgeCutoff`), never lowers them.
+   * ★ LEAVE IT NULL FROM 2026-10-16: the re-tune grades with the open judge alone and stores the
+   * cutoff it chose on the open model's answers with each block it applies; a number here would
+   * override that cutoff with an older one.
    */
   readonly openCutoff: number | null;
   /**

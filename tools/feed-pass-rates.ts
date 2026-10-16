@@ -53,6 +53,11 @@ import { pictureOf } from '../services/project/src/db.ts';
 
 const P = DEFAULT_POLICY;
 const USD_PER_POST = 0.01;
+/* ★ STOPPED (the owner, 2026-10-16: "no Anthropic API at all from now on"). This tool asks the main
+   judge only; the open judge's measurement of the same sets is `tools/retune.ts measure`. Kept, not
+   deleted, so the main judge's numbers it recorded stay readable beside it. */
+console.error('feed-pass-rates refused: it asks the main judge, which the owner stopped on 2026-10-16. Measure with the open judge: SPEND=live node --env-file=.env.local --experimental-strip-types tools/retune.ts measure --yes');
+process.exit(1);
 const TEXT_ONLY = process.argv.includes('--text-only');
 /* `--book=learning` spends on the learning work's own line (re-tuning) instead of the jobs'. */
 const BOOK: 'jobs' | 'learning' = process.argv.includes('--book=learning') ? 'learning' : 'jobs';
