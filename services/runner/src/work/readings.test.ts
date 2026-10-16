@@ -140,9 +140,10 @@ function setup(opts: { policy?: Policy; candidates?: ReadingCandidate[]; ledger?
   return { deps, calls, appended, answered, ledger };
 }
 
-test('★ off (the shipped value): nothing is listed, nothing asked', async () => {
-  const { deps, calls } = setup({ policy: DEFAULT_POLICY });
-  assert.equal(DEFAULT_POLICY.feed.readings.on, false, 'the owner switches it on after seeing the cost');
+test('★ off: nothing is listed, nothing asked', async () => {
+  const off = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, readings: { ...DEFAULT_POLICY.feed.readings, on: false } } };
+  const { deps, calls } = setup({ policy: off });
+  assert.equal(DEFAULT_POLICY.feed.readings.on, true, 'on since 2026-10-16, the owner\'s option 1');
   const out = await readingsPass(deps);
   assert.equal(calls.length, 0);
   assert.deepEqual(out.held, ['off']);
