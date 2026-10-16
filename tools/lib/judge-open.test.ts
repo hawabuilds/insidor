@@ -15,7 +15,7 @@ import type { JudgeOutcome, JudgePort, JudgeSubject } from '../../contracts/src/
 import { inMemoryMeter } from '../../adapters/meter/spend/src/index.ts';
 import { openChatClient, openJudge, type HostModel } from '../../adapters/judge/openai-compatible/src/index.ts';
 import { PROMPTS } from '../../adapters/judge/anthropic/src/index.ts';
-import { agreement, blend, chooseBand, grade, recommend, setRates, speed, timedClient, type Near, type OpenEvalPost, type Row, type Timing } from './judge-open.ts';
+import { agreement, blend, chooseBand, grade, recommend, setRates, speed, timedClient, tuneOpenCutoff, type Near, type OpenEvalPost, type Row, type Timing } from './judge-open.ts';
 
 const P = DEFAULT_POLICY;
 const AT = 1_800_000_000_000;
@@ -124,4 +124,20 @@ test('a port can be any judge: the live one is graded by the same function', asy
   assert.equal(rows[0]?.firstPass, true);
   assert.equal(rows[0]?.kind, 'GERALD', 'the kind port answered; not a held kind, so it shows');
   assert.equal(rows[0]?.onFeed, true);
+});
+
+test('--tune: the strictest open cutoff with hand gold and missed no worse than the live judge at its own cutoff, junk reported', () => {
+  const row = (id: string, group: Row['group'], confidence: number, coinable = true): Row => ({ id, group, coinable, confidence, lookedAt: 'text', name: 'CAT', firstPass: coinable && confidence >= 0.7, kind: 'OTHER', onFeed: coinable && confidence >= 0.7 });
+  const ctx = { policy: P, near: new Map<string, Near>(), signals: new Map() };
+  /* Live at its block cutoff 0.75: gold g1 g2 caught (0.8, 0.9), g3 not (0.72); junk n1 through (0.8); missed m1 caught (0.9). */
+  const live = [row('g1', 'gold', 0.8), row('g2', 'gold', 0.9), row('g3', 'gold', 0.72), row('n1', 'live-not', 0.8), row('n2', 'live-not', 0.6), row('m1', 'missed', 0.9)];
+  /* Open: gold at 0.85, 0.95, 0.7; junk at 0.82 and 0.75; missed at 0.88. */
+  const open = [row('g1', 'gold', 0.85), row('g2', 'gold', 0.95), row('g3', 'gold', 0.7), row('n1', 'live-not', 0.82), row('n2', 'live-not', 0.75), row('m1', 'missed', 0.88)];
+  const t = tuneOpenCutoff(open, live, ctx, 0.75, 0.5);
+  assert.deepEqual([t.live.hand.passed, t.live.hand.tested, t.live.negatives.passed, t.live.missed.passed], [3, 4, 1, 1]);
+  /* Gold (hand counts the missed too) stays 3/4 up to 0.85; at 0.86 g1 drops. Missed m1 holds to 0.88. */
+  assert.equal(t.pick?.cutoff, 0.85);
+  assert.equal(t.pick?.negatives.passed, 0);
+  assert.equal(t.junkNoWorse, true);
+  assert.equal(t.points[0]?.cutoff, 0.5);
 });

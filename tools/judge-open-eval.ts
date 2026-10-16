@@ -1,6 +1,6 @@
 /**
  * `SPEND=live node --env-file=.env.local --experimental-strip-types tools/judge-open-eval.ts --yes
- *    [--models=a,b,c] [--cap=3] [--limit=<n>] [--rows=<file>]`
+ *    [--models=a,b,c] [--cap=3] [--limit=<n>] [--rows=<file>] [--tune [--from=0.5] [--reuse=<rows file>]] [--plan]`
  *
  * OPEN MODELS AS THE JUDGE, TESTED AGAINST THE LIVE ONE — the owner's test of 2026-10-15. Nothing
  * live changes: no setting, no table but the spend ledger, no deploy. It asks each open model the
@@ -14,6 +14,17 @@
  *   live judge — the same numbers and the blended cost
  *   and the verdict by the owner's rule: switch only if a model matches or beats the live judge on
  *   all three sets AND costs less.
+ *
+ * ★ `--tune`: THE OPEN MODEL'S OWN YES/NO CUTOFF (the owner, 2026-10-16, for Policy.judge.openCutoff).
+ * The open model (by default only google/gemma-3-27b-it) and the live judge are asked the three
+ * sets with the full live setup — the applied learned block, precedents, the close-match hold and
+ * the kind question; For You is skipped. The live judge is graded at its block's own cutoff, the
+ * open model's cutoff swept from `--from` (0.50) to 0.95 by 0.01 (eval's `sweepCutoff`), and the
+ * strictest cutoff with hand gold and missed caught at least the live judge's is printed with junk
+ * against the live judge's (tools/lib/judge-open.ts `tuneOpenCutoff`). `--reuse=<rows file>` takes
+ * the answers a run with `--rows` kept, when they were asked under the same block (its sha is in the
+ * file); otherwise both are asked again. `--plan` composes the sets, prints their sizes and the
+ * expected cost, and stops: free, no key or SPEND needed.
  *
  * THE SETS. Hand gold, live non-memes and missed posts are composed exactly as tools/retune.ts
  * composes its gate (the same loaders: goldOriginPosts and handGoldIds from tools/lib/pass-rates.ts,
@@ -42,7 +53,8 @@
  * disagree and blame it on the model.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
@@ -51,37 +63,44 @@ import { closestNot, embedInput, nearestLabelled, postPicture, precedentsFor, so
 import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo } from '../store/src/index.ts';
 import { buildBlock, type OwnerCall } from '../eval/src/feed/examples.ts';
 import { anthropicJudge, httpClient as anthropicClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
-import { DEFAULT_BASE_URL, DEFAULT_VENDOR, ESTIMATE_MARGIN, closestModel, keyAllowance, listModels, openChatClient, openJudge, type HostModel } from '../adapters/judge/openai-compatible/src/index.ts';
+import { DEFAULT_BASE_URL, DEFAULT_OPEN_MODEL, DEFAULT_VENDOR, ESTIMATE_MARGIN, closestModel, keyAllowance, listModels, openChatClient, openJudge, openProviders, type HostModel } from '../adapters/judge/openai-compatible/src/index.ts';
 import { POST_SPACE, SPACE as PICTURE_SPACE, voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
 import { postTimeFromId } from '../adapters/platform/x/src/index.ts';
 import { BudgetRefused } from '../adapters/kit/vendor/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 import { goldOriginPosts, handGoldIds } from './lib/pass-rates.ts';
-import { agreement, blend, chooseBand, fileRow, grade, ofN, pct, recommend, setRates, speed, subjectOf, timedClient, type Band, type Near, type OpenEvalPost, type Row, type SetRates, type Signal, type Timing } from './lib/judge-open.ts';
+import { agreement, blend, chooseBand, fileRow, grade, ofN, pct, recommend, setRates, speed, subjectOf, timedClient, tuneOpenCutoff, type Band, type Near, type OpenEvalPost, type Row, type SetRates, type Signal, type Timing } from './lib/judge-open.ts';
 
 const P = DEFAULT_POLICY;
 const KEY_VAR = 'OPENROUTER_API_KEY';
 /** The owner's picks (2026-10-15), each checked against the host's model list at the start of a run. */
 const DEFAULT_MODELS = ['meta-llama/llama-4-maverick', 'qwen/qwen2.5-vl-72b-instruct', 'google/gemma-3-27b-it'];
 const DEFAULT_CAP_USD = 3;
-/** What the open models' share of the test needs on the host's key, about (three models, all four sets). */
+/** What the open models' share of the test needs on the host's key, about (three models, all four sets; one model on three sets for --tune). */
 const MIN_KEY_USD = 2;
+const MIN_KEY_USD_TUNE = 0.5;
+/** The tune's lowest cutoff, the owner's 0.50. */
+const DEFAULT_TUNE_FROM = 0.5;
+/** What each judge cost a post on the three sets on 2026-10-15 (both questions), for `--plan`'s estimate. */
+const PLAN_USD_PER_POST = { live: 0.002, open: 0.00016 } as const;
 /** The owner's band for the first pass when the data picks none better. */
 const OWNER_BAND: Band = [0.45, 0.85];
 
 const arg = (k: string) => process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? null;
 const flag = (f: string) => process.argv.includes(f);
 const say = (line = '') => console.log(line);
+const tune = flag('--tune');
+const plan = flag('--plan');
 
 /* ── 0. the key, then the money switch — before anything is read ─────────────────────────────── */
 
 const apiKey = (process.env[KEY_VAR] ?? '').trim();
-if (apiKey === '') {
+if (apiKey === '' && !plan) {
   say(`judge-open-eval: ${KEY_VAR} is not set, so nothing was run and nothing was spent. Add it to .env.local and run again.`);
   process.exit(0);
 }
-if (process.env['SPEND'] !== 'live' || !flag('--yes')) {
+if (!plan && (process.env['SPEND'] !== 'live' || !flag('--yes'))) {
   console.error(`judge-open-eval refused: this calls paid judges (up to $${DEFAULT_CAP_USD} by default). Set SPEND=live and pass --yes.`);
   process.exit(1);
 }
@@ -96,7 +115,7 @@ const baseUrl = process.env['OPENROUTER_BASE_URL'] ?? DEFAULT_BASE_URL;
 /* ── 1. the models, as the host lists them ───────────────────────────────────────────────────── */
 
 const listed = await listModels(globalThis.fetch, baseUrl, P.judge.timeoutMs);
-const asked = (arg('models') ?? DEFAULT_MODELS.join(',')).split(',').map((m) => m.trim()).filter((m) => m !== '');
+const asked = (arg('models') ?? (tune ? DEFAULT_OPEN_MODEL : DEFAULT_MODELS.join(','))).split(',').map((m) => m.trim()).filter((m) => m !== '');
 const models: HostModel[] = [];
 for (const a of asked) {
   const m = closestModel(a, listed);
@@ -116,9 +135,10 @@ for (const a of asked) {
 models.sort((a, b) => (a.usdPerInputToken ?? 0) - (b.usdPerInputToken ?? 0));
 
 /* The key's own spending limit, before anything is paid: a key capped at $0 stops here, not after the live judge's re-ask. */
-const allowance = await keyAllowance(globalThis.fetch, baseUrl, apiKey, P.judge.timeoutMs);
-if (allowance.remainingUsd !== null && allowance.remainingUsd < MIN_KEY_USD) {
-  say(`judge-open-eval: the ${KEY_VAR} key may spend only $${allowance.remainingUsd.toFixed(2)} more (its limit on the host), so nothing was run and nothing was spent. Raise the key's limit (or add credit) and run again; the test needs about $${MIN_KEY_USD} on that key.`);
+const minKeyUsd = tune ? MIN_KEY_USD_TUNE : MIN_KEY_USD;
+const allowance = plan ? { remainingUsd: null } : await keyAllowance(globalThis.fetch, baseUrl, apiKey, P.judge.timeoutMs);
+if (allowance.remainingUsd !== null && allowance.remainingUsd < minKeyUsd) {
+  say(`judge-open-eval: the ${KEY_VAR} key may spend only $${allowance.remainingUsd.toFixed(2)} more (its limit on the host), so nothing was run and nothing was spent. Raise the key's limit (or add credit) and run again; the test needs about $${minKeyUsd} on that key.`);
   process.exit(0);
 }
 
@@ -139,7 +159,7 @@ const postedAtOf = (itemId: string): number | null => {
 };
 
 /** tools/retune.ts `ownerCalls` and the gate half of its `run`, as of 2026-10-15 — see the header. */
-async function composeGate(): Promise<{ posts: (OpenEvalPost & { coinRef: string; picture: string | null })[]; examples: string | null }> {
+async function composeGate(): Promise<{ posts: (OpenEvalPost & { coinRef: string; picture: string | null })[]; examples: string | null; cutoff: number | null; version: number | null }> {
   const labels = (JSON.parse(readFileSync(new URL('../eval/src/feed/live-labels.json', import.meta.url), 'utf8')) as { posts: Labelled[] }).posts;
   const calls: OwnerCall[] = [];
   for (const p of labels) {
@@ -180,7 +200,7 @@ async function composeGate(): Promise<{ posts: (OpenEvalPost & { coinRef: string
   const fresh = (id: string) => !inTest.has(id) && !taught.has(id);
   for (const c of block.testMemes.filter((c) => fresh(c.itemId) && !/^teaching example/i.test(c.why ?? ''))) { posts.push(make('gold', c.itemId, c.text, c.imageUri)); inTest.add(c.itemId); }
   for (const h of await repo.heldPosts(coinRight.map((m) => m.itemId).filter(fresh))) posts.push(make('gold', h.itemId, h.body, pictureOf(h.media)?.uri ?? null, coinRight.find((m) => m.itemId === h.itemId)?.coinAddress ?? h.itemId));
-  return { posts, examples: inUse?.text ?? null };
+  return { posts, examples: inUse?.text ?? null, cutoff: inUse?.cutoff ?? null, version: inUse?.versionId ?? null };
 }
 
 /** A media array as the store holds it, as the judge's MediaRefs. */
@@ -222,7 +242,8 @@ const fyp = await composeFyp();
 const cut = <T,>(xs: T[]): T[] => (limit === null ? xs : xs.slice(0, limit));
 const byGroup = (g: string) => cut(gate.posts.filter((p) => p.group === g));
 const gatePosts = [...byGroup('gold'), ...byGroup('missed'), ...byGroup('live-not')];
-const fypPosts = cut(fyp.posts);
+/* --tune measures the three sets only: For You's agreement is the shadow's job (tools/judge-shadow-report.ts). */
+const fypPosts = tune ? [] : cut(fyp.posts);
 const allPosts = [...gatePosts, ...fypPosts];
 say(`sets: hand gold ${gatePosts.filter((p) => p.group === 'gold' || p.group === 'missed').length} (of which missed ${gatePosts.filter((p) => p.group === 'missed').length}), live non-memes ${gatePosts.filter((p) => p.group === 'live-not').length}, For You last 24 h ${fypPosts.length} (${fyp.stored.size} with stored live answers); live prompt: ${gate.examples === null ? 'rules alone' : 'rules and the applied block'}, precedents on`);
 
@@ -238,6 +259,37 @@ const volumeDay = Number(arg('volume') ?? vol?.posts ?? 0);
 const fypDay = fyp.posts.length;
 const liveRealUsdPerPost = Number(vol?.posts ?? 0) > 0 ? (Number(vol?.usd ?? 0) + Number(vol?.kind_usd ?? 0)) / Number(vol?.posts) : null;
 say(`volume: ${volumeDay} posts judged by the live judge in the last 24 h${liveRealUsdPerPost === null ? '' : ` at $${liveRealUsdPerPost.toFixed(5)} a post as billed`}; For You alone ${fypDay}`);
+
+/* The applied block's fingerprint: a kept rows file is reused only when it was asked under the same one. */
+const examplesSha = createHash('sha256').update(gate.examples ?? '').digest('hex').slice(0, 16);
+say(`applied block: ${gate.version === null ? 'none (rules alone)' : `v${gate.version}`}, sha ${examplesSha}, its cutoff ${gate.cutoff ?? 'none (the policy bar)'}`);
+if (plan) {
+  const n = allPosts.length;
+  say(`plan: ${n} posts; the live judge's re-ask about $${(n * PLAN_USD_PER_POST.live).toFixed(2)}, each open model about $${(n * PLAN_USD_PER_POST.open).toFixed(2)} (2026-10-15's dollars a post; the applied block adds some), plus any post or picture vector not stored. Nothing was asked.`);
+  await pool.end();
+  process.exit(0);
+}
+interface KeptRows { readonly meta?: { readonly examplesSha?: string }; readonly live?: Row[]; readonly runs?: { readonly name: string; readonly rows: Row[] }[] }
+const reuseFile = arg('reuse');
+const kept: KeptRows | null = (() => {
+  if (reuseFile === null) return null;
+  if (!existsSync(reuseFile)) {
+    say(`--reuse: ${reuseFile} does not exist; every judge is asked`);
+    return null;
+  }
+  const k = JSON.parse(readFileSync(reuseFile, 'utf8')) as KeptRows;
+  if (k.meta?.examplesSha !== examplesSha) {
+    say(`--reuse: ${reuseFile} was asked under ${k.meta?.examplesSha === undefined ? 'an unrecorded block (before --tune kept the sha)' : `block sha ${k.meta.examplesSha}`}, not this one; every judge is asked again`);
+    return null;
+  }
+  return k;
+})();
+const gateIds = new Set(gatePosts.map((p) => p.id));
+/** Kept rows for exactly these posts, or null when any is missing. */
+const keptFor = (rows: readonly Row[] | undefined): Row[] | null => {
+  const of = (rows ?? []).filter((r) => gateIds.has(r.id));
+  return of.length === gateIds.size ? of : null;
+};
 
 /* ── 4. the meter, and what every judge is given beside each post ────────────────────────────── */
 
@@ -307,7 +359,11 @@ interface Run { readonly name: string; readonly rows: Row[]; readonly gateUsd: n
 const runs: Run[] = [];
 let haiku: Run | null = null;
 const setup = readJudgeSetup(env);
-if (setup.state !== 'configured' || priceFor(setup.model) === null) {
+const keptLive = keptFor(kept?.live);
+if (keptLive !== null) {
+  haiku = { name: `${setup.state === 'dormant' || setup.state === 'misconfigured' ? 'live judge' : setup.model} (live, kept answers)`, rows: keptLive, gateUsd: 0, fypUsd: 0, timings: [], cutShort: null, gateDone: true };
+  say(`live judge: ${keptLive.length} answers reused from ${reuseFile}`);
+} else if (setup.state !== 'configured' || priceFor(setup.model) === null) {
   say(`the live judge is ${setup.state} here, so it cannot be re-asked: no verdict will be given`);
 } else {
   const timings: Timing[] = [];
@@ -336,8 +392,15 @@ const storedLive = new Map(fypPosts.map((p) => {
 /* ── 6. each open model, on all four sets ────────────────────────────────────────────────────── */
 
 for (const m of models) {
+  const keptOpen = keptFor(kept?.runs?.find((r) => r.name.startsWith(m.id))?.rows);
+  if (keptOpen !== null) {
+    runs.push({ name: `${m.id} (kept answers)`, rows: keptOpen, gateUsd: 0, fypUsd: 0, timings: [], cutShort: null, gateDone: true });
+    say(`${m.id}: ${keptOpen.length} answers reused from ${reuseFile}`);
+    continue;
+  }
   const timings: Timing[] = [];
-  const client = openChatClient({ vendor: DEFAULT_VENDOR, apiKey, baseUrl, model: m.id, vision: m.vision, maxOutputTokens: P.judge.postBatchMaxOutputTokens, timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs, maxFrameBytes: P.judge.maxFrameBytes, pictureSize: 'small', fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
+  /* The router's providers as the runner pins them (OPEN_JUDGE_PROVIDERS; adapters/judge/openai-compatible client.ts says why). */
+  const client = openChatClient({ vendor: DEFAULT_VENDOR, apiKey, baseUrl, model: m.id, vision: m.vision, maxOutputTokens: P.judge.postBatchMaxOutputTokens, timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs, maxFrameBytes: P.judge.maxFrameBytes, pictureSize: 'small', providers: openProviders(process.env), fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
   const deps = { meter, now: Date.now, model: m, vendor: DEFAULT_VENDOR, policy: { ...P.judge, maxOutputTokens: P.judge.postBatchMaxOutputTokens }, maxBatch: ctx.maxBatch };
   const post = openJudge({ ...deps, client: timedClient(client, timings), question: 'post', examples: gate.examples, precedents: P.judge.precedents.k > 0 });
   const kind = openJudge({ ...deps, client, question: 'kind' });
@@ -393,7 +456,7 @@ for (const r of runs) {
     verdicts.push(`${r.name}: ${v.switch ? 'SWITCH — matches or beats the live judge on all three sets and costs less' : `do not switch (${v.why.join('; ')})`}`);
   }
   /* The cheap first pass: open model first, the live judge only for the borderline. */
-  if (haiku !== null && haikuRates !== null && r.gateDone && haikuPost !== null) {
+  if (!tune && haiku !== null && haikuRates !== null && r.gateDone && haikuPost !== null) {
     const gateOpen = r.rows.filter((x) => x.group !== 'fyp');
     const chosen = chooseBand(gateOpen, haikuMap, haikuRates);
     for (const [label, band] of [[`first pass, band ${chosen.band[0]}–${chosen.band[1]} (${chosen.matches ? 'narrowest that matches the live judge' : 'none matches; best gold less non-memes'})`, chosen.band], [`first pass, band ${OWNER_BAND[0]}–${OWNER_BAND[1]}`, OWNER_BAND]] as const) {
@@ -420,9 +483,36 @@ for (const r of runs) {
   const un = rates.hand.unanswered + rates.negatives.unanswered;
   if (un > 0.05 * gateN) say(`  note: ${r.name} left ${un} of ${gateN} posts unanswered — its rates are on the rest`);
 }
+/* ── 8. --tune: the open model's own cutoff ──────────────────────────────────────────────────── */
+
+if (tune) {
+  const from = Number(arg('from') ?? DEFAULT_TUNE_FROM);
+  const bar = Math.min(...Object.values(P.qualify.minJudgeConfidence));
+  say('');
+  say(`the open model's own cutoff (the owner's rule: the strictest cutoff with hand gold and missed caught at least the live judge's at its block cutoff ${gate.cutoff ?? 'none'}); swept ${from} to ${P.learning.cutoffMax} by ${P.learning.cutoffStep}. Below the policy bar (${bar} on text, ${P.qualify.minJudgeConfidence.videoFrame} on a frame) a cutoff changes nothing: the feed never lowers that bar.`);
+  if (haiku === null || !haiku.gateDone) say('  no tune: the live judge was not graded on the three sets');
+  for (const r of runs) {
+    if (haiku === null || !haiku.gateDone) break;
+    if (!r.gateDone) {
+      say(`  ${r.name}: not tuned, it was cut short (${r.cutShort ?? '-'})`);
+      continue;
+    }
+    const t = tuneOpenCutoff(r.rows, haiku.rows, ctx, gate.cutoff, from);
+    const o = (x: { passed: number; tested: number }) => `${x.passed}/${x.tested} (${pct(x.tested === 0 ? null : x.passed / x.tested)})`;
+    say(`  live judge at ${gate.cutoff ?? 'the bar'}: hand gold ${o(t.live.hand)}, junk ${o(t.live.negatives)}, missed ${o(t.live.missed)}`);
+    say(`  ${r.name}:`);
+    for (const p of t.points.filter((p) => p.cutoff >= bar - 1e-9 || p === t.points[0])) {
+      say(`    ${p.cutoff.toFixed(2)}  hand gold ${o(p.hand).padEnd(16)} junk ${o(p.negatives).padEnd(16)} missed ${o(p.missed).padEnd(14)}${p === t.pick ? '  ← pick' : ''}`);
+    }
+    if (t.pick === null) say(`    no cutoff keeps hand gold and missed at the live judge's: do not switch on these numbers`);
+    else say(`    PICK judge.openCutoff = ${t.pick.cutoff.toFixed(2)}: hand gold ${o(t.pick.hand)} (live ${o(t.live.hand)}), missed ${o(t.pick.missed)} (live ${o(t.live.missed)}), junk ${o(t.pick.negatives)} against live's ${o(t.live.negatives)} — ${t.junkNoWorse === true ? 'no more junk than the live judge' : t.junkNoWorse === false ? 'MORE junk than the live judge: show the owner and wait' : 'junk not measured'}`);
+    say(`    the re-tune's own rule on the same points: ${t.retuneRule.rule === 'refused' ? `refused (${t.retuneRule.why ?? '-'})` : `rule ${t.retuneRule.rule}, ${t.retuneRule.cutoff}`}`);
+  }
+}
+
 say(`spent: $${meter.spentUsd().toFixed(3)} of the $${capUsd} cap`);
 const rowsFile = arg('rows');
 if (rowsFile !== null) {
-  writeFileSync(rowsFile, JSON.stringify({ live: haiku?.rows ?? [], liveStoredForYou: [...storedLive.values()], runs: runs.map((r) => ({ name: r.name, rows: r.rows })) }, null, 1));
+  writeFileSync(rowsFile, JSON.stringify({ meta: { examplesSha, blockVersion: gate.version, blockCutoff: gate.cutoff, at: new Date().toISOString() }, live: haiku?.rows ?? [], liveStoredForYou: [...storedLive.values()], runs: runs.map((r) => ({ name: r.name, rows: r.rows })) }, null, 1));
   say(`rows written to ${rowsFile}`);
 }
