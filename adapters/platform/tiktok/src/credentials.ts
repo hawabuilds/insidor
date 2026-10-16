@@ -47,6 +47,7 @@ import { SOURCE } from './capabilities.ts';
 import type { TikTokClientConfig } from './client.ts';
 import { DEFAULT_TRENDS_ACTOR_ID } from './trends.ts';
 import { DEFAULT_FEED_BASE_URL, trendingFeedClient, type TrendingFeedClient } from './trending-feed.ts';
+import { scClient, type ScClient } from './scrapecreators.ts';
 
 export const TOKEN = 'APIFY_TOKEN';
 export const BASE_URL = 'TIKTOK_API_BASE';
@@ -116,4 +117,9 @@ export function clientConfig(values: CredentialValues, runtime: ClientRuntime): 
 /** The recommendation feed's client from the environment, or null when its key is unset (trending-feed.ts). */
 export function feedClient(env: Readonly<Record<string, string | undefined>>, runtime: ClientRuntime): TrendingFeedClient | null {
   return trendingFeedClient({ apiKey: env[FEED_KEY] ?? '', baseUrl: DEFAULT_FEED_BASE_URL, fetch: runtime.fetch });
+}
+
+/** The same vendor's re-read, creator and sound client (scrapecreators.ts), or null when its key is unset. */
+export function secondVendorClient(env: Readonly<Record<string, string | undefined>>, runtime: ClientRuntime): ScClient | null {
+  return scClient({ apiKey: env[FEED_KEY] ?? '', baseUrl: DEFAULT_FEED_BASE_URL, fetch: runtime.fetch });
 }

@@ -31,6 +31,7 @@
 import { arr, outOfCredit, rec, str, vendorAnswered } from '@insidor/vendor-kit';
 import type { Price, PriceBook } from '@insidor/meter';
 
+import { creditsSeen } from './route.ts';
 import { fromSearchActor } from './search-actor.ts';
 
 export const FEED_VENDOR = 'scrapecreators';
@@ -105,6 +106,7 @@ export function trendingFeedClient(config: TrendingFeedConfig): TrendingFeedClie
       const body = rec(await res.json());
       if (body.success === false) throw new Error('trending feed: the vendor reported failure');
       vendorAnswered(FEED_VENDOR);
+      creditsSeen(body, Date.now());
       const charged = body.credits_charged;
       return {
         items: arr(body.aweme_list).filter((v) => rec(v).is_ad !== true),

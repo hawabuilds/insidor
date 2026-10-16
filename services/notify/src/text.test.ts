@@ -41,6 +41,15 @@ test("a supplier warning names the role and the money, and says so plainly when 
     body: 'Apify (short videos) accepted a call again; work using it has resumed.',
   });
   assert.deepEqual(alertText('supplier_account', {}).title, 'A supplier out of credit');
+  assert.deepEqual(alertText('supplier_account', { supplier: 'ScrapeCreators', uses: 'TikTok re-reads', state: 'backup', backup: 'Apify', reason: 'HTTP 500', retryMinutes: 30 }), {
+    title: 'ScrapeCreators failing: switched to Apify',
+    body: 'ScrapeCreators (TikTok re-reads) failed: HTTP 500. That work now runs on Apify, and ScrapeCreators is tried again every 30 minutes.',
+  });
+  assert.equal(alertText('supplier_account', { supplier: 'ScrapeCreators', state: 'back', backup: 'Apify' }).title, 'Back on ScrapeCreators');
+  assert.deepEqual(alertText('supplier_account', { supplier: 'ScrapeCreators', state: 'low', credits: 412, backup: 'Apify' }), {
+    title: 'ScrapeCreators credits low',
+    body: '412 credits left. Top up its account; when they run out, that work moves to Apify.',
+  });
   assert.deepEqual(alertText('supplier_warning', {}), { title: 'A supplier at a warning share of its daily line', body: 'Its spend today reached that share of the line.' });
 });
 

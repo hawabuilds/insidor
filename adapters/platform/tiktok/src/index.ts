@@ -26,6 +26,15 @@
  * itself read (`learned`), so a post it found can be re-read by URL even when the caller's handle
  * lookup has nothing — before 2026-10-13 15:00 UTC the runner's had nothing for every post, and
  * no short video was ever re-read. A restart forgets both; the caller's lookup still answers.
+ *
+ * ★ RE-READS AND CREATOR CHECKS GO TO THE SECOND VENDOR FIRST, when its client is given (`sc`) and
+ * the process's route says so (route.ts, Policy.feed.secondVendor): one credit a video re-read and
+ * one a creator's latest page, against the first scraper's start fee plus $0.003 a post. Whatever the
+ * second vendor did not answer — it failed, its credits are spent, or the route has moved the work to
+ * the backup — is done on the first scraper in the same call, so a failure never costs a reading.
+ * Keyword search stays on the first scraper's newest-first actor: measured 2026-10-16, the second
+ * vendor's "date-posted" search returned videos 3 to 95 hours old for "meme" (none under an hour)
+ * and 1 to 3 under an hour of 30 for "dog", where the actor brings 15 to 24 under two hours a word.
  */
 
 import type { Author, CounterSet, Item, Millis } from '@insidor/contracts';
@@ -50,8 +59,12 @@ import { fromTrendsRows, toTrendsInput, trendRegions, trendsRunUsd, TRENDS_MAX_P
 import type { TikTokClient } from './client.ts';
 import { discoverRun, SEARCH_ORDERS, wordsOf, type SearchOrder } from './discover.ts';
 import { SEARCH_ACTOR_RESULTS_PER_WORD } from './search-actor.ts';
-import { addressable, chunk, observeBatch } from './observe.ts';
-import { toAuthor, toItem } from './to-item.ts';
+import { addressable, chunk, observeBatch, type Addressed } from './observe.ts';
+import { SECOND_VENDOR_ROUTE, type Route } from './route.ts';
+import { SC_PRICES, SC_PROFILE, SC_SOUND, SC_VENDOR, SC_VIDEO, type ScClient } from './scrapecreators.ts';
+import { fromSearchActor } from './search-actor.ts';
+import { toAuthor, toCounters, toItem } from './to-item.ts';
+import { isOutOfCredit } from '@insidor/vendor-kit';
 
 export interface TikTokAdapterDeps {
   readonly client: TikTokClient;
@@ -67,6 +80,19 @@ export interface TikTokAdapterDeps {
   readonly prices?: PriceBook;
   /** The second vendor's recommendation feed (trending-feed.ts); absent or null for none. */
   readonly feed?: TrendingFeedClient | null;
+  /** The second vendor's re-read, creator and sound endpoints (scrapecreators.ts); absent or null for none. */
+  readonly sc?: ScClient | null;
+  /** Which vendor the re-reads go to; the process's own route when absent (route.ts). */
+  readonly route?: Route;
+}
+
+/** What the second vendor read of a batch: the readings, the Items, and the entries left for the backup. */
+interface SecondRead {
+  readonly items: readonly Item[];
+  readonly authors: readonly Author[];
+  readonly counters: ReadonlyMap<string, CounterSet>;
+  readonly left: readonly Addressed[];
+  readonly spends: readonly Metered<unknown>['spend'][];
 }
 
 const HOUR_MS = 3_600_000;
@@ -99,6 +125,62 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
   };
   const handleOf = (sourceItemId: string): string | null => deps.handleOf(sourceItemId) ?? learned.get(sourceItemId) ?? null;
 
+  const sc = deps.sc ?? null;
+  const rt = deps.route ?? SECOND_VENDOR_ROUTE;
+
+  /* One second-vendor request, metered at a credit on its own line and recorded at what it said it charged. */
+  const scMetered = <T>(endpoint: string, at: Millis, call: () => Promise<{ value: T; credits: number | null }>) =>
+    metered(deps.meter, SC_PRICES, { vendor: SC_VENDOR, endpoint, unit: 'per-call', estUnits: 1, at }, async () => {
+      const r = await call();
+      return { value: r.value, units: r.credits ?? 1 };
+    });
+
+  /* A failure of the second vendor, told to the route: a refusal to pay switches at once. */
+  const scFailed = (e: unknown): void => rt.failed(deps.now(), e instanceof Error ? e.message : String(e), isOutOfCredit(e));
+
+  /**
+   * ★ A BATCH READ ON THE SECOND VENDOR, one video a request, stopping at the first failure: whatever
+   * is left goes to the backup in the same call. A video the vendor answered without (deleted,
+   * private) is a fact about the video, not a fault of the vendor, so it neither counts against the
+   * route nor goes to the backup to be paid for twice.
+   */
+  async function readOnSecond(batch: readonly Addressed[], at: Millis): Promise<SecondRead> {
+    const items: Item[] = [];
+    const authors: Author[] = [];
+    const counters = new Map<string, CounterSet>();
+    const spends: Metered<unknown>['spend'][] = [];
+    if (sc === null || batch.length === 0 || !rt.use(deps.now())) return { items, authors, counters, left: batch, spends };
+    let answered = 0;
+    for (let i = 0; i < batch.length; i++) {
+      const entry = batch[i]!;
+      try {
+        const got = await scMetered(SC_VIDEO, at, async () => {
+          const v = await sc.video(entry.url);
+          return { value: v.item, credits: v.creditsCharged };
+        });
+        spends.push(got.spend);
+        answered += 1;
+        if (got.value === null) continue;
+        const raw = fromSearchActor(got.value);
+        let item: Item;
+        try {
+          item = toItem(raw, at);
+        } catch {
+          continue;
+        }
+        items.push(item);
+        counters.set(item.sourceItemId, toCounters(raw, at));
+        const author = toAuthor(raw, at);
+        if (author !== null) authors.push(author);
+      } catch (e) {
+        scFailed(e);
+        return { items, authors, counters, left: batch.slice(i), spends };
+      }
+    }
+    if (answered > 0) rt.ok(deps.now());
+    return { items, authors, counters, left: [], spends };
+  }
+
   /* What the vendor billed for a run that returned `posts`; a custom book (tests) prices units. */
   const billed = (posts: number, perPostUsd: number): { usdActual?: number } =>
     deps.prices === undefined ? { usdActual: runCostUsd(posts, perPostUsd) } : {};
@@ -123,6 +205,38 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
 
     async discover(query: DiscoveryQuery, _budget: Budget): Promise<Metered<Discovered>> {
       const at = deps.now();
+
+      /* ★ A CREATOR'S LATEST ON THE SECOND VENDOR, one credit, newest first. An empty page counts
+         against the route as a failure (a creator we learned from a coined post has videos) and the
+         ask goes to the backup in the same call. */
+      if (query.mode === 'account' && query.untilMs === null && sc !== null && rt.use(at)) {
+        try {
+          const got = await scMetered(SC_PROFILE, at, async () => {
+            const page = await sc.profile(query.term.trim().replace(/^@/, ''));
+            return { value: page, credits: page.creditsCharged };
+          });
+          const raws = got.value.items.map(fromSearchActor).slice(0, Math.max(1, Math.trunc(query.limit)));
+          const items: Item[] = [];
+          const authors: Author[] = [];
+          for (const raw of raws) {
+            try {
+              items.push(toItem(raw, at));
+            } catch {
+              continue;
+            }
+            const author = toAuthor(raw, at);
+            if (author !== null) authors.push(author);
+          }
+          if (items.length > 0) {
+            rt.ok(deps.now());
+            learn(items, authors);
+            return { value: discovered(items, authors, null, false), spend: got.spend };
+          }
+          rt.failed(deps.now(), 'a creator page came back empty');
+        } catch (e) {
+          scFailed(e);
+        }
+      }
 
       const result = await metered(
         deps.meter,
@@ -166,7 +280,14 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
      * charge that overstatement is the whole number.
      */
     estimate(call: PlannedCall): CostEstimate {
-      if (call.kind === 'discover') return estimateFor(discoverBook(call.query), VENDOR, DISCOVER, 1);
+      /* On the second vendor: a credit a creator page, a credit a video. Its failures fall to the
+         backup at the backup's price, which this quote does not include: one is rare and short. */
+      const second = sc !== null && rt.peek(deps.now());
+      if (call.kind === 'discover') {
+        if (second && call.query.mode === 'account') return estimateFor(SC_PRICES, SC_VENDOR, SC_PROFILE, 1);
+        return estimateFor(discoverBook(call.query), VENDOR, DISCOVER, 1);
+      }
+      if (second) return estimateFor(SC_PRICES, SC_VENDOR, SC_VIDEO, addressable(call.sourceItemIds, handleOf).length);
       const batches = chunk(addressable(call.sourceItemIds, handleOf), batchSize);
       if (deps.prices !== undefined) return estimateFor(prices, VENDOR, OBSERVE, batches.length);
       const usd = batches.reduce((sum, batch) => sum + runCostUsd(batch.length, READ_POST_USD), 0);
@@ -181,7 +302,12 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
       const out = new Map<string, CounterSet>();
       const spends = [];
 
-      for (const batch of chunk(addressable(sourceItemIds, handleOf), batchSize)) {
+      const second = await readOnSecond(addressable(sourceItemIds, handleOf), at);
+      for (const [id, counters] of second.counters) out.set(id, counters);
+      spends.push(...second.spends);
+      learn(second.items, second.authors);
+
+      for (const batch of chunk(second.left, batchSize)) {
         const result = await metered(
           deps.meter,
           observeBook(batch.length),
@@ -201,7 +327,7 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
            ZEROS RATHER THAN AS NOTHING. Every id being unaddressable is a legitimate
            outcome — see `addressable` — and it means no run happened, so nothing was
            billed. `mergeSpend` over an empty list produces exactly that. */
-        spend: mergeSpend(spends, { vendor: VENDOR, endpoint: OBSERVE, unit: 'per-run', estUnits: 1, at }, 'per-run'),
+        spend: mergeSpend(spends, { vendor: second.left.length === 0 && second.spends.length > 0 ? SC_VENDOR : VENDOR, endpoint: OBSERVE, unit: 'per-run', estUnits: 1, at }, 'per-run'),
       };
     },
 
@@ -213,10 +339,11 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
      */
     async lookup(sourceItemIds: readonly string[], _budget: Budget): Promise<Metered<Discovered>> {
       const at = deps.now();
-      const items: Item[] = [];
-      const authors: Author[] = [];
-      const spends = [];
-      for (const batch of chunk(addressable(sourceItemIds, handleOf), batchSize)) {
+      const second = await readOnSecond(addressable(sourceItemIds, handleOf), at);
+      const items: Item[] = [...second.items];
+      const authors: Author[] = [...second.authors];
+      const spends = [...second.spends];
+      for (const batch of chunk(second.left, batchSize)) {
         const result = await metered(
           deps.meter,
           observeBook(batch.length),
@@ -328,6 +455,38 @@ export function tiktokPlatform(deps: TikTokAdapterDeps): PlatformAdapter {
           },
         }),
 
+    /* ★ A SOUND'S POSTS (Policy.finders.sounds), one credit a page on the second vendor. No backup:
+       the first scraper has no sound search, so a failure here is an outage of this ask alone. */
+    ...(sc === null
+      ? {}
+      : {
+          estimateSoundPosts(_sound: string): CostEstimate {
+            return estimateFor(SC_PRICES, SC_VENDOR, SC_SOUND, 1);
+          },
+          async soundPosts(sound: string, _budget: Budget): Promise<Metered<Discovered>> {
+            const at = deps.now();
+            const clipId = sound.slice(sound.lastIndexOf(':') + 1);
+            if (!/^\d{1,25}$/.test(clipId)) throw new RangeError(`sound: not a sound id: ${JSON.stringify(sound)}`);
+            const got = await scMetered(SC_SOUND, at, async () => {
+              const page = await sc.sound(clipId);
+              return { value: page, credits: page.creditsCharged };
+            });
+            const items: Item[] = [];
+            const authors: Author[] = [];
+            for (const raw of got.value.items.map(fromSearchActor)) {
+              try {
+                items.push(toItem(raw, at));
+              } catch {
+                continue;
+              }
+              const author = toAuthor(raw, at);
+              if (author !== null) authors.push(author);
+            }
+            learn(items, authors);
+            return { value: discovered(items, authors, null, false), spend: got.spend };
+          },
+        }),
+
     parseLink: (url: string) => parseLinkOf(url),
     postTimeFromId: (id: string) => postTimeOf(id) as Millis | null,
 
@@ -355,8 +514,12 @@ export { httpClient, isActorId, isPathSegment, postUrl } from './client.ts';
 export { TikTokNotConfigured } from './client.ts';
 /* What this source needs from the environment, declared beside the client that
    consumes it. The registry reads it; nothing central holds a copy to drift from. */
-export { CREDENTIALS, clientConfig, FEED_KEY, feedClient } from './credentials.ts';
+export { CREDENTIALS, clientConfig, FEED_KEY, feedClient, secondVendorClient } from './credentials.ts';
 export { FEED_VENDOR, trendingFeedClient, fromTrendingFeed } from './trending-feed.ts';
+export { scClient, SC_VENDOR } from './scrapecreators.ts';
+export type { ScClient } from './scrapecreators.ts';
+export { lastCreditReading, route, SECOND_VENDOR_ROUTE } from './route.ts';
+export type { CreditReading, Route, RouteEvent, RouteSettings } from './route.ts';
 export type { TrendingFeedClient } from './trending-feed.ts';
 export type { TikTokClient, TikTokClientConfig } from './client.ts';
 /* The refusal, exported so it is reachable from a test that never builds an adapter.

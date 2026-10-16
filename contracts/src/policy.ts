@@ -1068,6 +1068,25 @@ export interface FeedPolicy {
    */
   readonly watchMaxAgeMs: number;
   /**
+   * ★ THE SHORT-VIDEO SOURCE'S SECOND VENDOR FOR RE-READS AND CREATOR PAGES (the owner's approval,
+   * 2026-10-15). With `on`, a video re-read and a creator's latest page go to the second vendor first
+   * (one credit each) and the first scraper is the automatic backup: `failAfter` failures in a row
+   * (an error or an empty answer), or a refusal to pay, move the work to it and the owner is told
+   * once; the second vendor is tried again every `retryAfterMs`. From `backupUntil` (an ISO instant,
+   * a week after the switch) there is no backup. The owner is also told when the vendor's balance,
+   * read off its answers each `balanceEveryMs`, is under `lowCredits`. Keyword search is not moved:
+   * the second vendor's newest-first search returns far older videos (adapter header). Off: every
+   * call goes to the first scraper, exactly as before.
+   */
+  readonly secondVendor: {
+    readonly on: boolean;
+    readonly failAfter: number;
+    readonly retryAfterMs: number;
+    readonly backupUntil: string;
+    readonly lowCredits: number;
+    readonly balanceEveryMs: number;
+  };
+  /**
    * Posts asked for per lane per pass: one page. Also the reservation the budget is
    * checked against before the call, since a source picks its own page size.
    */
@@ -1948,7 +1967,8 @@ export interface BudgetPolicy {
    *   actors      a scraping service, for any use beyond the short-video source
    *   embeddings  the image embedding service (Part 1)
    */
-  readonly supplierLines: { readonly posts: number; readonly judge: number; readonly video: number; readonly actors: number; readonly embeddings: number };
+  /** `secondVideo`: the short-video source's second vendor (its feed, re-reads and creator pages, `feed.secondVendor`). */
+  readonly supplierLines: { readonly posts: number; readonly judge: number; readonly video: number; readonly actors: number; readonly embeddings: number; readonly secondVideo: number };
   /** Shares of a supplier's line at which the owner is warned (a push and a log line), once each a day. */
   readonly warnAt: readonly number[];
   /**
@@ -3159,6 +3179,20 @@ const POLICY_V1: Policy = {
        an hour is guessed to bring 4 to 8 news videos we do not hold; at worst all 30, $3.20). */
     watchExtra: { on: true, words: ['news'], everyAsks: 4 },
     watchMaxAgeMs: 86_400_000, // a day
+    /* On from 2026-10-16, the owner's approval (move the short-video search and re-reads to the second
+       vendor, the first scraper as an automatic backup for a week). Re-reads and creator pages only: measured that night
+       on 12 credits, the second vendor's newest-first search gave "meme" 8 to 30 videos 3 to 95 hours
+       old (none under an hour, all held already) and "dog" 1 to 3 under an hour of 27 to 30, where the
+       first scraper's actor gives 15 to 24 under two hours a word — so search stays where it is. A
+       video re-read answered live in 3.5 to 4.4 s. Backup until 2026-10-23 00:30 UTC, a week. */
+    secondVendor: {
+      on: true,
+      failAfter: 2,
+      retryAfterMs: 1_800_000, // half an hour
+      backupUntil: '2026-10-23T00:30:00Z',
+      lowCredits: 500,
+      balanceEveryMs: 3_600_000, // hourly
+    },
     pageLimit: 20,
     maxPagesPerLane: 3,
     slow: {
@@ -3617,7 +3651,11 @@ const POLICY_V1: Policy = {
        for short-video searches every 15 minutes and more re-reads of young videos. */
     /* pictures $4.50 from 2026-10-14 (was $2), the owner's +$2.50: the live book spent $2.94 on
        them in the 24 hours to 11:30 UTC, so the $2 line warned every day without stopping anything. */
-    supplierLines: { posts: 10, judge: 10.5, video: 2, actors: 2, embeddings: 4.5 },
+    /* secondVideo $2.50 from 2026-10-16: the short-video source's second vendor, measured at a credit
+       ($0.00188) a request — the feed's trial $0.36 a day, re-reads ~$0.69, creator pages $0.45 and
+       young re-reads $0.54, about $2.04 — and a quarter over it. The scraping lines stay as they were,
+       since they carry the work whenever the second vendor fails. A warning line, as the others. */
+    supplierLines: { posts: 10, judge: 10.5, video: 2, actors: 2, embeddings: 4.5, secondVideo: 2.5 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured

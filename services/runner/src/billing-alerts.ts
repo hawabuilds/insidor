@@ -30,6 +30,11 @@
  * is tried again on `flush` (each minute, beside the spend warnings) until it is delivered or the
  * supplier answers again, which replaces it with the recovery.
  *
+ * ★ TWO MORE THINGS THE OWNER IS TOLD ABOUT A SUPPLIER, through the same queue (`notice`): the
+ * short-video source's work moving to its backup vendor and back (the owner, 2026-10-15: "switch back
+ * to Apify and tell me"), and a prepaid balance running low. Each is one alert, its subject chosen by
+ * the caller so a restart or a retry never pushes it twice.
+ *
  * What breaks if changed carelessly: `refused` and `answered` are called inside the adapters'
  * request paths, synchronously. They must never throw and never await; everything slow happens in
  * `flush`, which is started without being awaited and catches its own errors.
@@ -51,7 +56,7 @@ export const SUPPLIER_NAMES: Readonly<Record<string, SupplierName>> = {
   anthropic: { supplier: 'Anthropic', uses: 'the judge' },
   'twitterapi.io': { supplier: 'twitterapi.io', uses: 'X posts' },
   apify: { supplier: 'Apify', uses: 'TikTok videos' },
-  scrapecreators: { supplier: 'ScrapeCreators', uses: 'the TikTok For You feed' },
+  scrapecreators: { supplier: 'ScrapeCreators', uses: 'TikTok re-reads, creators and the For You feed' },
   voyage: { supplier: 'Voyage', uses: 'picture matching' },
   geckoterminal: { supplier: 'CoinGecko', uses: 'coin prices' },
   gemini: { supplier: 'Gemini', uses: 'embeddings' },
@@ -75,6 +80,11 @@ export interface BillingAlerts {
   flush(): Promise<void>;
   /** The suppliers refused since their last answer, for a health line. */
   down(): readonly string[];
+  /**
+   * Any other fact about a supplier the owner must hear once: `state` says which (notify text.ts),
+   * `subject` is the alert's claim, so the same subject is never pushed twice. Synchronous, never throws.
+   */
+  notice(vendor: string, subject: string, state: string, facts: Readonly<Record<string, unknown>>): void;
 }
 
 interface Pending {
@@ -185,6 +195,18 @@ export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
     },
 
     down: () => [...down.keys()],
+
+    notice(vendor, subject, state, facts) {
+      try {
+        const { supplier, uses } = nameOf(vendor);
+        deps.log.warn('supplier notice', { vendor, supplier, state, ...facts, alert: deps.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : 'queued for the owner' });
+        /* Keyed apart from the billing alert of the same vendor, which it must not replace. */
+        pending.set(`${vendor}|${state}`, { vendor, subject, facts: { supplier, uses, ...facts, state, vendor } });
+        kick();
+      } catch {
+        /* Never into the caller's path. */
+      }
+    },
   };
   return api;
 }

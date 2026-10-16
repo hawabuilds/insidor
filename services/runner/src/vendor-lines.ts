@@ -18,7 +18,7 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { VENDOR as EMBED_VENDOR } from '@insidor/embed-voyage';
 import { VENDOR as JUDGE_VENDOR } from '@insidor/judge-anthropic';
-import { SUPPLIER_VENDORS } from '@insidor/platform-registry';
+import { SECOND_VIDEO_VENDOR, SUPPLIER_VENDORS } from '@insidor/platform-registry';
 
 /** The one-off jobs' lines (Policy.budget.jobLines), or the learning work's, keyed the same way. */
 export function jobVendorLines(policy: Policy, book: 'jobs' | 'learning' = 'jobs'): Readonly<Record<string, number>> {
@@ -38,6 +38,8 @@ export function vendorLines(policy: Policy): Readonly<Record<string, number>> {
     /* The short-video source is fetched through the scraping service, so both bill as one
        vendor: its line is the video line and the scraping line together. */
     [SUPPLIER_VENDORS.video]: lines.video + lines.actors,
+    /* Its second vendor (feed, re-reads, creator pages) bills on its own account and line. */
+    [SECOND_VIDEO_VENDOR.vendor]: lines.secondVideo,
     [JUDGE_VENDOR]: lines.judge,
     [EMBED_VENDOR]: lines.embeddings,
   };
