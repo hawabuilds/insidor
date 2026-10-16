@@ -71,14 +71,18 @@ select f.payload, i.first_seen_at, i.media, a.display_name, a.follower_count::te
  * page lists. From public.story_post (0093), the projector's own answer written with the board, so
  * the tile, the card's tag and the page name the same narrative and the same count.
  */
-export const SHEET_STORY_SQL = `select story_id, title, posts from public.story_post where item_id = $1`;
+export const SHEET_STORY_SQL = `
+select p.story_id, p.title, p.posts, v.payload ->> 'thumbUrl' as thumb_url, true as listed
+  from public.story_post p
+  left join public.story_view v on v.story_id = p.story_id
+ where p.item_id = $1`;
 
 /**
  * Before 0093 there is no public.story_post: the promoted, observed story the post joined first,
  * as before. Read only when the table is missing.
  */
 export const SHEET_STORY_LEGACY_SQL = `
-select m.story_id, v.payload ->> 'title' as title, jsonb_array_length(coalesce(v.payload -> 'evidence', '[]'::jsonb)) as posts
+select m.story_id, v.payload ->> 'title' as title, jsonb_array_length(coalesce(v.payload -> 'evidence', '[]'::jsonb)) as posts, false as listed
   from public.story_member m
   join public.story s on s.story_id = m.story_id and s.state = 'promoted' and s.merged_into is null and s.origin = 'observed'
   join public.story_view v on v.story_id = m.story_id
@@ -286,6 +290,10 @@ export function createPostSheet(deps: PostSheetDeps) {
       media: sheetMedia(row['media']),
       /* `story` on the wire, as coin-about.ts sends it: the app's censor refuses the other word as a key. */
       story: storyId === null ? null : { storyId, title: str(titled?.['title']), posts: num(Number(titled?.['posts'] ?? NaN)) },
+      /* The "Part of a story" card: only a narrative the board lists now (public.story_post), with its picture. */
+      storyCard: storyRow?.['listed'] === true && str(storyRow['story_id']) !== null
+        ? { storyId: str(storyRow['story_id']), title: str(storyRow['title']), posts: num(Number(storyRow['posts'] ?? NaN)), thumbUrl: https(storyRow['thumb_url']) }
+        : null,
       coinName: sharedName(coins),
       sourcesMissing: marketDown ? 1 : 0,
       coins,
