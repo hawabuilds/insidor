@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import type { CoinQuote } from '@insidor/market-dexscreener';
 
 import { createPostSheet, SHEET_COINS_SQL } from './post-sheet.ts';
-import { MEMBERS_MAX, STORY_COINS_SQL, STORY_EXISTS_SQL, STORY_MEMBERS_FRAME_SQL, STORY_MEMBERS_SQL } from './story-sheet.ts';
+import { MEMBERS_MAX, STORY_COINS_SQL, STORY_EXISTS_SQL, STORY_FOUND_SQL, STORY_MEMBERS_FRAME_SQL, STORY_MEMBERS_SQL } from './story-sheet.ts';
 import type { Row } from './queries.ts';
 
 const SILENT = { info: () => undefined, error: () => undefined } as never;
@@ -35,12 +35,14 @@ test('★ a listed post with no projected readings stays, with no readings and n
       { item_id: 'x:1', posted_at: 100, post: { id: 'x:1', sheet: { views: [{ atMs: 200, value: 50 }, { atMs: 300, value: null }] } }, listed: 2, coins: ONE },
       { item_id: 'x:2', posted_at: null, post: null, listed: 2, coins: ONE },
     ],
+    [STORY_FOUND_SQL]: [{ created_at: new Date(150) }],
   }, new Map(), seen);
   const body = JSON.parse((await s.story('st_1')).body);
   assert.deepEqual(body.members.map((m: { itemId: string }) => m.itemId), ['x:1', 'x:2']);
   assert.deepEqual(body.members[0].views, [{ atMs: 200, value: 50 }, { atMs: 300, value: null }]);
   assert.deepEqual(body.members[1], { itemId: 'x:2', postedAt: { at: null, why: 'not_reported' }, post: null, views: [] });
   assert.equal(body.more, false);
+  assert.deepEqual(body.foundAt, { at: 150 }, 'found is when the narrative was first grouped');
   assert.equal(seen.find((q) => q[0] === STORY_MEMBERS_SQL)?.[1]?.toString(), `st_1,${MEMBERS_MAX}`, 'the bound travels as a parameter');
 });
 
