@@ -27,6 +27,15 @@
  * ★ A LIVE ANSWER FROM THE SHADOW'S OWN MODEL IS NOT SHADOWED. During a failover the live answer
  * came from the other model already; asking it again would compare a model with itself.
  *
+ * ★ EVERY LIVE POST-QUESTION CALL IS OFFERED, not only the scorer's. The coin universe (work/
+ * universe.ts) asks the same post judge about coin creators' posts and files live answers the feed
+ * reads; on 2026-10-16 it was the only caller for the first hour after the shadow went out, while
+ * the scorer waited on discovery, and the shadow wrote nothing.
+ *
+ * ★ EVERY REASON IT ASKS NOTHING IS SAID, ONCE, AT WARN: no table, an unreadable ledger, the cap,
+ * the meter refusing, a failed call, nothing to store. The first batch it does store is said once at
+ * info. A shadow that is silent and empty cannot be told from one never called.
+ *
  * What breaks if changed carelessly: awaiting `offer` in the scorer. The live judge would then wait
  * on the slower model, which is exactly what the shadow was built not to do.
  */
@@ -84,6 +93,13 @@ export function judgeShadow(deps: ShadowDeps): Shadow {
   const running = new Set<Promise<void>>();
   let capSaidFor: string | null = null;
   let busySaid = false;
+  /* Each reason it asks nothing (or stores nothing) is said once at warn; the first stored batch once at info. */
+  const said = new Set<string>();
+  const once = (key: string, msg: string, fields: Record<string, unknown> = {}): void => {
+    if (said.has(key)) return;
+    said.add(key);
+    deps.log.warn(msg, fields);
+  };
 
   /* Whether 0089 is applied: checked until it is, so no call is paid for with nowhere to keep its answers. */
   let tableReady = false;
@@ -103,6 +119,7 @@ export function judgeShadow(deps: ShadowDeps): Shadow {
     const spent = await deps.ledger.spent(SHADOW_LANE, now);
     if (spent === null) {
       stats.skippedCap += batch.length;
+      once('ledger', 'judge shadow: what it spent today cannot be read; it asks nothing until it can', { lane: SHADOW_LANE });
       return;
     }
     const estimate = port.estimate(subjects);
@@ -116,6 +133,7 @@ export function judgeShadow(deps: ShadowDeps): Shadow {
     }
     if (!deps.meter.mayspend(estimate.vendor, estimate.usd)) {
       stats.skippedCap += batch.length;
+      once('meter', 'judge shadow: the live book refused its call; it asks nothing while that holds', { vendor: estimate.vendor, usd: estimate.usd });
       return;
     }
     const line = deps.meter.line(estimate.vendor);
@@ -130,9 +148,11 @@ export function judgeShadow(deps: ShadowDeps): Shadow {
     } catch (e) {
       if (e instanceof BudgetRefused) {
         stats.skippedCap += batch.length;
+        once('budget', 'judge shadow: the live book refused its call at the vendor edge', { err: errorText(e) });
         return;
       }
       failure = errorText(e);
+      once('call', 'judge shadow: a call failed (later failures are counted, not logged)', { err: failure });
     }
     const seconds = (clock() - t) / 1000 / Math.max(1, batch.length);
     await deps.ledger.add(SHADOW_LANE, now, usd);
@@ -154,10 +174,15 @@ export function judgeShadow(deps: ShadowDeps): Shadow {
         shadowDetail: s !== null ? null : o?.kind === 'unavailable' ? o.detail : (failure ?? 'no outcome'),
       }];
     });
+    if (outcomes !== null && outcomes.every((o) => o.kind !== 'judged')) once('unanswered', 'judge shadow: the other judge answered none of a batch (later ones are counted, not logged)', { reason: outcomes.find((o) => o.kind === 'unavailable')?.detail ?? null });
     try {
       await deps.pairs.record(pairs);
+      if (pairs.length > 0 && !said.has('stored')) {
+        said.add('stored');
+        deps.log.info('judge shadow: first batch stored', { posts: pairs.length, usd });
+      }
     } catch (e) {
-      deps.log.warn('judge shadow: its answers could not be stored', { posts: pairs.length, err: errorText(e) });
+      once('store', 'judge shadow: its answers could not be stored (later failures are not logged)', { posts: pairs.length, err: errorText(e) });
     }
   }
 
@@ -179,7 +204,7 @@ export function judgeShadow(deps: ShadowDeps): Shadow {
       }
       busySaid = false;
       const p = run(port, asked, liveSecondsPerPost)
-        .catch((e: unknown) => deps.log.warn('judge shadow: a call failed', { err: errorText(e) }))
+        .catch((e: unknown) => once('threw', 'judge shadow: a shadow pass threw (later ones are not logged)', { err: errorText(e) }))
         .finally(() => running.delete(p));
       running.add(p);
     },

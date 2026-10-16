@@ -91,3 +91,21 @@ test('without its table (0089) nothing is asked', async () => {
   await s.idle();
   assert.deepEqual(calls, []);
 });
+
+test('each reason it asks nothing is said once at warn, and the first stored batch once at info', async () => {
+  const warns: string[] = [];
+  const infos: string[] = [];
+  const said: Logger = { info: (m) => void infos.push(m), warn: (m) => void warns.push(m), error: () => undefined, child: () => said };
+  const blind = judgeShadow({ port: () => shadowPort([]), ownAnswer: () => false, ledger: { spent: async () => null, add: async () => undefined }, pairs: { record: async () => undefined, ready: async () => true }, meter, policy: policyWith({}), log: said, now: () => 0 as never });
+  blind.offer([offered(1)], null);
+  await blind.idle();
+  blind.offer([offered(2)], null);
+  await blind.idle();
+  assert.equal(warns.filter((w) => w.includes('cannot be read')).length, 1);
+  const ok = judgeShadow({ port: () => shadowPort([]), ownAnswer: () => false, ledger: memoryLaneLedger(), pairs: { record: async () => undefined, ready: async () => true }, meter, policy: policyWith({}), log: said, now: () => 0 as never });
+  ok.offer([offered(3)], null);
+  await ok.idle();
+  ok.offer([offered(4)], null);
+  await ok.idle();
+  assert.equal(infos.filter((m) => m.includes('first batch stored')).length, 1);
+});

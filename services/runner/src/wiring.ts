@@ -980,6 +980,7 @@ export async function withRuntime<T>(
             images: new PgImageEmbeddingRepo(db),
             store: storeArrivals(repos, policy, () => Date.now() as Millis),
             postJudge,
+            shadow,
             embed:
               cfg.embeddings.state === 'configured'
                 ? voyageEmbed({
