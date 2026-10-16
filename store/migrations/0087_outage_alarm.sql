@@ -28,8 +28,8 @@
 --    The last paid call is looked for within a day; older than that is null, said as "none".
 --
 -- 3. internal.coin_stream_read_at() — the end of the coin stream's last watched window (mint
---    coverage that is not a gap). On Thursday the stream service failed to reach the starved
---    database at 07:13 UTC, stopped restarting, and nothing read a coin from the stream until
+--    coverage that is not a gap). On Thursday the stream service lost the database while its
+--    compute was resized at 07:13 UTC, stopped restarting, and nothing read a coin from the stream until
 --    01:01 the next day; nobody knew for eighteen hours. A partial index on the watched windows'
 --    ends keeps this one read off the table, which grows by every few seconds of watching.
 --

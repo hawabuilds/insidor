@@ -30,8 +30,8 @@
  *             (the runner died mid-outage), it stays down silently; the fyp alarm says the rest.
  *   stream    the live coin stream (chainwatch) has no watched window ending in the last
  *             STREAM_SILENT_MS (15 min). Not one of the owner's three, added for Thursday's
- *             longest outage: the stream failed to reach the starved database at 07:13 UTC and was
- *             down eighteen hours with nobody told. It reads every few seconds when alive; its one
+ *             longest outage: the stream lost the database while it was resized at 07:13 UTC,
+ *             gave up restarting, and was down eighteen hours with nobody told. It reads every few seconds when alive; its one
  *             longer gap on record is that outage. Back when a newer window is recorded.
  *   database  every read this alarm made failed for DB_UNREADABLE_MS (10 min). With no database
  *             there is no queue and no device list to read, so this one is pushed straight to the
