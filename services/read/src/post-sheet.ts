@@ -67,10 +67,17 @@ select f.payload, i.first_seen_at, i.media, a.display_name, a.follower_count::te
  limit 1`;
 
 /**
- * The promoted narrative the post is in, if any: the Narrative tile's name and link, and how many
- * posts its page lists (the page's own count, so the line and the page never disagree).
+ * The narrative the post is in, if any: the Narrative tile's name and link, and how many posts its
+ * page lists. From public.story_post (0093), the projector's own answer written with the board, so
+ * the tile, the card's tag and the page name the same narrative and the same count.
  */
-export const SHEET_STORY_SQL = `
+export const SHEET_STORY_SQL = `select story_id, title, posts from public.story_post where item_id = $1`;
+
+/**
+ * Before 0093 there is no public.story_post: the promoted, observed story the post joined first,
+ * as before. Read only when the table is missing.
+ */
+export const SHEET_STORY_LEGACY_SQL = `
 select m.story_id, v.payload ->> 'title' as title, jsonb_array_length(coalesce(v.payload -> 'evidence', '[]'::jsonb)) as posts
   from public.story_member m
   join public.story s on s.story_id = m.story_id and s.state = 'promoted' and s.merged_into is null and s.origin = 'observed'
@@ -79,8 +86,18 @@ select m.story_id, v.payload ->> 'title' as title, jsonb_array_length(coalesce(v
  order by m.joined_at asc
  limit 1`;
 
-/** A narrative's title by id, when the post's coin link names a narrative it is not first a member of. */
-export const SHEET_TITLE_SQL = `select payload ->> 'title' as title, jsonb_array_length(coalesce(payload -> 'evidence', '[]'::jsonb)) as posts from public.story_view where story_id = $1`;
+/** A narrative's title and post count by id, when the post's coin link names a narrative it is not listed in. */
+export const SHEET_TITLE_SQL = `select payload ->> 'title' as title, coalesce((payload ->> 'postCount')::int, jsonb_array_length(coalesce(payload -> 'evidence', '[]'::jsonb))) as posts from public.story_view where story_id = $1`;
+
+/** The first statement, or the second when the first's table does not exist yet (42P01). */
+export async function readOr(db: Db, sql: string, legacy: string, params: readonly unknown[]): Promise<readonly Row[]> {
+  try {
+    return await db.query(sql, params);
+  } catch (e) {
+    if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return db.query(legacy, params);
+    throw e;
+  }
+}
 
 /** The coins written beside the post (or its narrative), in the projector's order. */
 export const SHEET_LIST_SQL = `
@@ -217,7 +234,7 @@ export function createPostSheet(deps: PostSheetDeps) {
     if (row === undefined) return json(404, { error: 'not found' });
     /* The post's English when it was written in another language (translations.ts, 0081). */
     const payload = rec((await withTranslations(deps.db, [row['payload']]))[0]);
-    const storyRow = (await deps.db.query(SHEET_STORY_SQL, [itemId]))[0];
+    const storyRow = (await readOr(deps.db, SHEET_STORY_SQL, SHEET_STORY_LEGACY_SQL, [itemId]))[0];
     const storyId = str(payload['storyId']) ?? str(storyRow?.['story_id']);
 
     const link = linkedAddresses(payload['coins']);

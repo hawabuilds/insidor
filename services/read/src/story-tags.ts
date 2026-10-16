@@ -4,22 +4,26 @@
  * adds a post's English, because a card's projected `storyId` is set only when the narrative names
  * the post's coin, and a post can be part of a narrative that names none.
  *
- * ★ ONLY A REAL NARRATIVE: promoted, not merged away, observed (never a seeded or hand-written
- * one), and with a projected page to open. The same test the post sheet's Narrative tile uses
- * (post-sheet.ts SHEET_STORY_SQL), so the tag and the tile name the same narrative. A post in
- * several takes the one it joined first.
+ * ★ ONLY A NARRATIVE ON THE BOARD. From 0093 the projector writes public.story_post with the board
+ * (each listed post's narrative, title and post count), and that is read here, as the post sheet's
+ * Narrative tile reads it (post-sheet.ts SHEET_STORY_SQL), so the tag, the tile and the page name
+ * the same narrative and the same count. Before 0093 the legacy test stands in: promoted, not merged
+ * away, observed (never seeded or hand-written), with a page, the one the post joined first.
  *
  * `inStory` on the wire: the screen's word is not a key the app's censor lets through.
  *
- * What breaks if changed carelessly: dropping the `origin = 'observed'` test would tag real posts
- * with an invented narrative. And a database without the narrative tables must still serve the feed:
- * a missing table leaves every card as it was.
+ * What breaks if changed carelessly: the legacy statement without the `origin = 'observed'` test
+ * would tag real posts with an invented narrative. And a database with neither table must still
+ * serve the feed: a missing table leaves every card as it was.
  */
 
 import type { Db } from './queries.ts';
 
-/** One statement for the whole frame: each post's first-joined real narrative, its title and post count. */
-export const STORY_TAGS_SQL = `
+/** One statement for the whole frame: each post's narrative on the board, its title and post count. */
+export const STORY_TAGS_SQL = `select item_id, story_id, title, posts from public.story_post where item_id = any($1)`;
+
+/** Before 0093: each post's first-joined real story, read only when public.story_post is missing. */
+export const STORY_TAGS_LEGACY_SQL = `
 select distinct on (m.item_id) m.item_id, m.story_id, v.payload ->> 'title' as title,
        jsonb_array_length(coalesce(v.payload -> 'evidence', '[]'::jsonb)) as posts
   from public.story_member m
@@ -36,11 +40,17 @@ export async function withStoryTags<T>(db: Db, payloads: readonly T[]): Promise<
   const ids = payloads.flatMap((p) => (isObj(p) && typeof p['id'] === 'string' ? [p['id']] : []));
   if (ids.length === 0) return payloads;
   let rows: readonly Json[];
+  const missing = (e: unknown) => typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01';
   try {
     rows = await db.query(STORY_TAGS_SQL, [ids]);
   } catch (e) {
-    if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return payloads;
-    throw e;
+    if (!missing(e)) throw e;
+    try {
+      rows = await db.query(STORY_TAGS_LEGACY_SQL, [ids]);
+    } catch (e2) {
+      if (missing(e2)) return payloads;
+      throw e2;
+    }
   }
   const byId = new Map<string, { storyId: string; title: string | null; posts: number | null }>();
   for (const r of rows) {
