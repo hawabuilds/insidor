@@ -34,12 +34,18 @@
  *              the search found more than it kept) and Create coin — never Buy on an unsure match
  *   several  → how many, and View coins
  *
+ * ★ A POST IN A REAL NARRATIVE CARRIES A SMALL TAG ("GTA 6 story, 12 posts", the read service's
+ * `inStory`) that opens the narrative, when the screen passes `openStory`; the narrative's own page
+ * does not, since the post is already in front of its narrative there.
+ *
  * What breaks if changed carelessly: a button that skips `stopPropagation` fires the card's tap
  * as well, and a card that opens anything but the post sheet sends the person out of the flow.
  */
 
 import type { ReactNode } from 'react';
 import type { RisingPost } from '../api/index.ts';
+import type { PostInStory } from '../api/wire/rising.ts';
+import { storyWords } from '../story-words.ts';
 import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
 import { useCoinCap } from '../useCoinCap.ts';
 import { formatAge } from '../format/duration.ts';
@@ -65,6 +71,8 @@ export interface PostHandlers {
   readonly seeCoins: () => void;
   /** Opens the token page of the coin the card names. Absent: the coin line is part of the card's tap. */
   readonly openCoin?: (coinId: string) => void;
+  /** Opens the narrative the post is part of. Absent (as on that narrative's own page): no tag. */
+  readonly openStory?: (storyId: string) => void;
 }
 
 const NO_COIN = { known: false, pending: 'not_minted' } as const;
@@ -130,6 +138,8 @@ export function PostRow({ post, now, handlers, extra = null, watch = null }: { p
         </div>
       </div>
 
+      {post.inStory !== undefined && handlers.openStory !== undefined ? <StoryTag tag={post.inStory} open={handlers.openStory} /> : null}
+
       <div className={status.actions.length > 1 ? `${styles['foot']} ${styles['footWrap']}` : styles['foot']}>
         <span
           className={styles['status']}
@@ -164,6 +174,27 @@ function PosterPic({ file, url, label }: { file: string | null; url: string | nu
   const { src, onError } = usePosterPic(file, url);
   if (src !== null) return <img className={styles['posterPic']} src={src} alt="" loading="lazy" onError={onError} />;
   return <span className={styles['posterLetter']} aria-hidden="true">{(label.replace(/^@/, '').trim()[0] ?? '?').toUpperCase()}</span>;
+}
+
+/**
+ * The small narrative tag (the owner, 2026-10-16): "GTA 6 story, 12 posts", one line, the title
+ * cut first. A tap opens the narrative, never the post sheet under it.
+ */
+function StoryTag({ tag, open }: { tag: PostInStory; open: (storyId: string) => void }) {
+  const w = storyWords(tag.title, tag.posts);
+  return (
+    <button
+      type="button"
+      className={styles['storyTag']}
+      onClick={(e) => {
+        e.stopPropagation();
+        open(tag.storyId);
+      }}
+    >
+      <span className={styles['storyTagName']}>{w.name ?? 'Part of a'}</span>
+      <span className={styles['storyTagRest']}>{` story${w.count !== null ? `, ${w.count}` : ''}`}</span>
+    </button>
+  );
 }
 
 /** One button the coin status asked for, and never one it did not. */

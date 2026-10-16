@@ -235,3 +235,30 @@
   color: var(--text-3);
   margin-top: 2px;
 }
+
+/* The narrative a post is part of (PostRow StoryTag): a small pill under the card's words, one line,
+   the title cut before the count. */
+.storyTag {
+  display: flex;
+  max-width: 100%;
+  margin: 10px 0 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--brand-wash);
+  color: var(--brand-300);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.storyTagName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.storyTagRest {
+  flex: none;
+  white-space: pre;
+}

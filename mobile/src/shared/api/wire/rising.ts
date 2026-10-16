@@ -54,6 +54,18 @@ export interface RisingPost {
    * post in English, one not translated yet, and from a server without translations.
    */
   readonly translation?: PostTranslation;
+  /**
+   * The real narrative the post is part of (services/read story-tags.ts), for the card's small
+   * narrative tag that opens it. Absent when it is in none, or from a server that does not say.
+   */
+  readonly inStory?: PostInStory;
+}
+
+/** A narrative a post is part of: its id, and its title and post count when the server has them. */
+export interface PostInStory {
+  readonly storyId: string;
+  readonly title: string | null;
+  readonly posts: number | null;
 }
 
 /** A post's words in English and the language they were written in (a two- or three-letter code). */
