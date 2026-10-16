@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { buildBlock, caught, changed, currentCalls, gate, goalsText, isExample, latestSlot, ratesOf, regressions, type GradedPost, type OwnerCall } from './examples.ts';
+import { atCutoff, buildBlock, caught, changed, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, ratesOf, regressions, sweepCutoff, type GradedPost, type OwnerCall } from './examples.ts';
 
 const L = DEFAULT_POLICY.learning;
 const call = (itemId: string, label: 'meme' | 'not', from: OwnerCall['from'], at: number | null = null): OwnerCall => ({ itemId, text: `post ${itemId}`, imageUri: null, label, why: 'because', at, from });
@@ -136,3 +136,58 @@ test("★ the crypto signal lifts a post the judge failed, never a held kind, an
   assert.equal(inFeedOf(g('a', 'gold', true, null), null), true, 'no facts: the judge alone');
 });
 const inFeedOf = (r: GradedPost, signal: { others: boolean; shill: boolean } | null) => ratesOf([{ ...r, signal }], ['AD', 'SPORT'], { hand: ['gold'], auto: 'auto', negatives: 'live-not', missed: 'missed' }).hand.passed === 1;
+
+/* ── the new block's own cutoff ── */
+
+const GROUPS = { hand: ['gold', 'missed'], auto: 'auto', negatives: 'live-not', missed: 'missed' } as const;
+/** A "yes" at this confidence, on text, that passes the first question at the policy bar when confident enough. */
+const yes = (id: string, group: string, confidence: number): GradedPost => ({
+  id, group, coinable: true, firstPass: confidence >= DEFAULT_POLICY.qualify.minJudgeConfidence.text, kind: null, signal: null, similarity: null,
+  answer: { coinable: true, confidence, lookedAt: 'text', proposedName: 'Cat' },
+});
+const no = (id: string, group: string): GradedPost => ({ id, group, coinable: false, firstPass: false, kind: null, signal: null, similarity: null, answer: { coinable: false, confidence: 0.9, lookedAt: 'text', proposedName: null } });
+const bar = DEFAULT_POLICY.qualify.minJudgeConfidence.text;
+const sweep = (rows: readonly GradedPost[], live: readonly GradedPost[]) =>
+  sweepCutoff({ rows, live: ratesOf(live, [], GROUPS), liveCaught: missedCaught(live, []), from: bar, held: [], groups: GROUPS, policy: DEFAULT_POLICY });
+
+test('a raised cutoff only removes passes, and keeps a post the judge did not answer as graded', () => {
+  const rows = [yes('a', 'gold', 0.72), yes('b', 'gold', 0.9), { ...no('c', 'gold'), coinable: null, answer: null }];
+  const at = atCutoff(rows, 0.8, DEFAULT_POLICY);
+  assert.deepEqual(at.map((r) => r.firstPass), [false, true, false]);
+  assert.equal(atCutoff(rows, null, DEFAULT_POLICY), rows);
+});
+
+test('★ rule A: the strictest cutoff with gold at least live, fewer non-memes and no missed post lost', () => {
+  /* Live: gold 2/3, junk 2/3, missed m1 caught. New: more gold, more junk, but its junk is less sure. */
+  const live = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.8), no('g3', 'gold'), yes('n1', 'live-not', 0.9), yes('n2', 'live-not', 0.75), no('n3', 'live-not'), yes('m1', 'missed', 0.85)];
+  const mine = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.88), yes('g3', 'gold', 0.8), yes('n1', 'live-not', 0.74), yes('n2', 'live-not', 0.72), yes('n3', 'live-not', 0.73), yes('m1', 'missed', 0.86)];
+  const c = sweep(mine, live);
+  assert.equal(c.rule, 'A');
+  /* At 0.80 gold is 3/3 and junk 0/3; the strictest with gold ≥ 2/3 and m1 kept is 0.86. */
+  assert.equal(c.cutoff, 0.86);
+  assert.deepEqual([c.point.hand.passed, c.point.negatives.passed, c.point.missed.passed, c.point.lost.length], [3, 0, 1, 0]);
+});
+
+test('rule B: junk no worse than live with more gold, when no cutoff gives less junk', () => {
+  const live = [yes('g1', 'gold', 0.9), no('g2', 'gold'), yes('n1', 'live-not', 0.95)];
+  const mine = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.8), yes('n1', 'live-not', 0.95)];
+  const c = sweep(mine, live);
+  assert.equal(c.rule, 'B');
+  assert.deepEqual([c.point.hand.passed, c.point.negatives.passed], [2, 1]);
+});
+
+test("★ refused when a missed post live catches is answered \"no\": no cutoff can bring it back", () => {
+  const live = [yes('g1', 'gold', 0.9), yes('n1', 'live-not', 0.8), yes('m1', 'missed', 0.9)];
+  const mine = [yes('g1', 'gold', 0.95), no('n1', 'live-not'), no('m1', 'missed')];
+  const c = sweep(mine, live);
+  assert.equal(c.rule, 'refused');
+  assert.equal(c.cutoff, null);
+  assert.deepEqual(c.point.lost, ['m1']);
+  assert.match(c.why ?? '', /cannot bring back/);
+});
+
+test('refused when every cutoff with less junk loses gold', () => {
+  const live = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.9), yes('n1', 'live-not', 0.8)];
+  const mine = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.75), yes('n1', 'live-not', 0.95), yes('n2', 'live-not', 0.8)];
+  assert.equal(sweep(mine, live).rule, 'refused');
+});

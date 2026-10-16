@@ -24,6 +24,12 @@
  * live now on hand gold and on live non-memes, graded together in one run, and loses no missed
  * post live catches. The 65% / 15% / 50% bars are the goal, reported, not a block.
  *
+ * ★ AND BEFORE REFUSING, THE NEW BLOCK'S CUTOFF (the owner, 2026-10-16). `sweepCutoff` raises the
+ * new block's yes/no cutoff on the answers already collected: rule A, the strictest cutoff with
+ * hand gold no worse than live, fewer live non-memes and no missed post lost; rule B, the fewest
+ * live non-memes no worse than live with more hand gold; else refused. Raising only removes
+ * passes, so a missed post the new block answered "no" (or held) is lost at every cutoff.
+ *
  * `latestSlot` is here too: which 08:00 or 20:00 London (Policy.learning) a run belongs to, pure so
  * the clock change is tested rather than found out in October.
  *
@@ -34,8 +40,9 @@
 
 import { createHash } from 'node:crypto';
 
-import type { LearningPolicy } from '@insidor/contracts/policy.ts';
-import { heldKind, type CryptoSignal } from '@insidor/core';
+import type { Judgement } from '@insidor/contracts/judgement.ts';
+import type { LearningPolicy, Policy } from '@insidor/contracts/policy.ts';
+import { heldKind, postScore, withJudgeCutoff, type CryptoSignal } from '@insidor/core';
 
 /** Examples or test, by the post id alone. */
 export const isExample = (itemId: string): boolean => (createHash('sha256').update(itemId).digest()[0] ?? 0) % 2 === 0;
@@ -156,6 +163,10 @@ export interface GradedPost {
   readonly kind: string | null;
   /** Other accounts' crypto talk under it and whether it is a shill; null or absent: no facts (the judge alone decides). */
   readonly signal?: CryptoSignal | null;
+  /** The first question's answer, so `atCutoff` can decide it again under a raised bar; absent: kept as graded. */
+  readonly answer?: Pick<Judgement, 'coinable' | 'confidence' | 'lookedAt' | 'proposedName'> | null;
+  /** The picture's closeness to a coined post's, for the boost under a raised bar. */
+  readonly similarity?: number | null;
 }
 
 /**
@@ -268,6 +279,97 @@ export function goalsText(r: Pick<GateInput, 'hand' | 'negatives' | 'missed'>, L
  */
 export function regressions(current: ReadonlyMap<string, boolean | null>, next: ReadonlyMap<string, boolean | null>): readonly string[] {
   return [...current].filter(([id, ok]) => ok === true && next.get(id) === false).map(([id]) => id).sort();
+}
+
+/* ── the new block's own cutoff ───────────────────────────────────────────────────────────────── */
+
+/**
+ * A grading as it would be with the judge's bar raised to `cutoff` (core `withJudgeCutoff`): the
+ * first question decided again from the answer it got. It only ever removes a pass — the kind
+ * labels and the close-match hold stay as graded, because live asks and holds them at the policy
+ * bar whatever cutoff a block carries. null: as graded.
+ */
+export function atCutoff(rows: readonly GradedPost[], cutoff: number | null, p: Policy): readonly GradedPost[] {
+  if (cutoff === null) return rows;
+  const q = withJudgeCutoff(p, cutoff);
+  return rows.map((r) => (r.answer === undefined || r.answer === null || !r.firstPass ? r : { ...r, firstPass: postScore(r.answer, q, r.similarity ?? null) === 'passes' }));
+}
+
+/** Missed posts (held out and taught) caught or not, in one grading. */
+export const missedCaught = (rows: readonly GradedPost[], held: readonly string[]): ReadonlyMap<string, boolean | null> =>
+  new Map(rows.filter((r) => r.group === 'missed' || r.group === 'missed-taught').map((r) => [r.id, caught(r, held)] as const));
+
+export interface CutoffPoint {
+  readonly cutoff: number;
+  readonly hand: Rate;
+  readonly negatives: Rate;
+  readonly missed: Rate;
+  /** Missed posts live catches that the new block does not at this cutoff. */
+  readonly lost: readonly string[];
+  /** Any further guard the caller holds the block to (the short-video gate); its reason when it fails. */
+  readonly extra: string | null;
+}
+
+export interface CutoffChoice {
+  /** A: less junk, no good post lost. B: junk no worse, more gold. refused: neither. */
+  readonly rule: 'A' | 'B' | 'refused';
+  /** The cutoff applied with the block; null when refused. */
+  readonly cutoff: number | null;
+  /** The point applied (or, refused, the one at the live bar) and every point tried. */
+  readonly point: CutoffPoint;
+  readonly points: readonly CutoffPoint[];
+  readonly why: string | null;
+}
+
+export interface SweepInput {
+  /** The new block's grading, answered posts only. */
+  readonly rows: readonly GradedPost[];
+  /** The setup live now, graded on the same posts at its own cutoff. */
+  readonly live: { readonly hand: Rate; readonly negatives: Rate; readonly missed: Rate };
+  /** Which missed posts live catches, at its own cutoff. */
+  readonly liveCaught: ReadonlyMap<string, boolean | null>;
+  /** The bar the sweep starts at: live's cutoff, or the policy's lowest bar. */
+  readonly from: number;
+  readonly held: readonly string[];
+  readonly groups: Parameters<typeof ratesOf>[2];
+  readonly policy: Policy;
+  /** A further guard at each cutoff: null when it holds, else why not. */
+  readonly extra?: (rows: readonly GradedPost[]) => string | null;
+}
+
+/**
+ * The owner's rule, 2026-10-16. From the live bar up to `cutoffMax` in steps of `cutoffStep`:
+ *   A  the STRICTEST cutoff with hand gold ≥ live, live non-memes < live, no missed post lost;
+ *   B  else the one with the fewest live non-memes ≤ live, hand gold > live, no missed post lost
+ *      (ties: more gold, then the stricter);
+ *   else refused. Compared as shares, as `gate` compares.
+ */
+export function sweepCutoff(s: SweepInput): CutoffChoice {
+  const L = s.policy.learning;
+  const steps = Math.max(0, Math.floor((L.cutoffMax - s.from) / L.cutoffStep + 1e-9));
+  const points: CutoffPoint[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const cutoff = Number((s.from + i * L.cutoffStep).toFixed(6));
+    const at = atCutoff(s.rows, cutoff, s.policy);
+    const r = ratesOf(at, s.held, s.groups);
+    points.push({ cutoff, hand: r.hand, negatives: r.negatives, missed: r.missed, lost: regressions(s.liveCaught, missedCaught(at, s.held)), extra: s.extra?.(at) ?? null });
+  }
+  const liveHand = share(s.live.hand);
+  const liveNeg = share(s.live.negatives);
+  const base = points[0]!;
+  const ok = (p: CutoffPoint) => p.lost.length === 0 && p.extra === null && share(p.hand) !== null && share(p.negatives) !== null && liveHand !== null && liveNeg !== null;
+  const a = points.filter((p) => ok(p) && share(p.hand)! >= liveHand! && share(p.negatives)! < liveNeg!);
+  const pickA = a[a.length - 1];
+  if (pickA !== undefined) return { rule: 'A', cutoff: pickA.cutoff, point: pickA, points, why: null };
+  const b = points.filter((p) => ok(p) && share(p.negatives)! <= liveNeg! && share(p.hand)! > liveHand!);
+  const pickB = [...b].sort((x, y) => x.negatives.passed - y.negatives.passed || y.hand.passed - x.hand.passed || y.cutoff - x.cutoff)[0];
+  if (pickB !== undefined) return { rule: 'B', cutoff: pickB.cutoff, point: pickB, points, why: null };
+  const last = points[points.length - 1]!;
+  const fails: string[] = [];
+  if (base.lost.length > 0) fails.push(`${base.lost.length} missed post${base.lost.length === 1 ? '' : 's'} live catches the new block does not catch even at the live bar (${base.lost.join(', ')}); a stricter cutoff cannot bring back a post the new block answered "no" or held`);
+  else fails.push(`no cutoff from ${base.cutoff} to ${last.cutoff} keeps hand gold at live's ${s.live.hand.passed}/${s.live.hand.tested} with live non-memes at or under live's ${s.live.negatives.passed}/${s.live.negatives.tested}`);
+  if (base.extra !== null) fails.push(base.extra);
+  return { rule: 'refused', cutoff: null, point: base, points, why: fails.join('; ') };
 }
 
 /** Examples added to and removed from the block in use. */

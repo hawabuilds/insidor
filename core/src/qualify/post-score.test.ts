@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import type { Judgement } from '@insidor/contracts/judgement.ts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { couldPassWithBoost, passesWithSignal, postScore, postScoreReason } from './post-score.ts';
+import { couldPassWithBoost, passesWithSignal, postScore, postScoreReason, withJudgeCutoff } from './post-score.ts';
 
 const judged = (over: Partial<Judgement>): Judgement => ({
   judgeId: 'judge:test@1',
@@ -112,4 +112,18 @@ test('★ the crypto signal: the judge, the judge with the signal, or the signal
   assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, 'AD', others), null);
   assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, null, { others: true, shill: true }), null, 'a shill is held as an ad, whatever the judge says');
   assert.equal(passesWithSignal(yes, DEFAULT_POLICY, null, null, { others: false, shill: true }), null);
+});
+
+test("★ an applied block's cutoff raises each bar to it and never lowers one; null is the policy as is", () => {
+  const P = DEFAULT_POLICY;
+  assert.equal(withJudgeCutoff(P, null), P);
+  const bars = P.qualify.minJudgeConfidence;
+  const above = bars.text + P.learning.cutoffStep * 5;
+  const raised = withJudgeCutoff(P, above).qualify.minJudgeConfidence;
+  assert.equal(raised.text, above);
+  assert.equal(raised.videoFrame, Math.max(bars.videoFrame, above));
+  assert.deepEqual(withJudgeCutoff(P, bars.text - P.learning.cutoffStep).qualify.minJudgeConfidence, bars);
+  const between = { coinable: true, confidence: above - P.learning.cutoffStep, lookedAt: 'text' as const, proposedName: 'Cat' };
+  assert.equal(postScore(between, P), 'passes');
+  assert.equal(postScore(between, withJudgeCutoff(P, above)), 'below');
 });
