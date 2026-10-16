@@ -57,7 +57,8 @@ export function StoryChart({ members, total, foundAt, coin, coinAt, now, onPost 
     return times.length === 0 ? null : Math.min(...times);
   }, [members]);
   const dots = useMemo(() => members.flatMap((m) => (m.postedAt.known ? [{ id: m.id, at: m.postedAt.at }] : [])), [members]);
-  const readings = useMemo(() => total.points.map((p) => ({ atMs: p.atMs, value: p.value })), [total]);
+  /* The narrative's span starts at its first post: the known zeros before it are not part of it. */
+  const readings = useMemo(() => total.points.filter((p) => first === null || p.atMs >= first).map((p) => ({ atMs: p.atMs, value: p.value })), [total, first]);
 
   /* The market, only while the switch is on, at the chart's interval. */
   useEffect(() => {
@@ -81,7 +82,7 @@ export function StoryChart({ members, total, foundAt, coin, coinAt, now, onPost 
     return () => ac.abort();
   }, [mcOn, coin, interval]);
 
-  if (total.points.length === 0) {
+  if (readings.length === 0) {
     return (
       <p className={styles['chartNote']}>
         {total.neverRead > 0
