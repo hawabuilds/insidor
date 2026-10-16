@@ -71,6 +71,7 @@ test("a re-tune summary says applied or kept, each test as passed-of-tested, and
     /2 missed posts caught now are not caught by the new examples \(x:1, x:2\); counted, not a block\./,
     'an applied block still names the missed posts it lost',
   );
+  assert.match(alertText('retune_summary', { applied: true, taps: 5, missed: 2, names: 1, coined: 20, added: 6, removed: 2 }).body, /From 5 taps, 2 missed posts, 1 name calls, 20 posts people coined; \+6 −2 examples\./);
   assert.equal(
     alertText('retune_summary', { applied: true, goldPassed: 58, goldN: 98, negativePassed: 70, negativeN: 422, missedPassed: 7, missedN: 13, cutoffRule: 'A', cutoff: 0.78, cutoffFrom: 0.7, liveGoldPassed: 58, liveGoldN: 98, liveNegativePassed: 77, liveNegativeN: 422, liveMissedPassed: 7, liveMissedN: 13, taps: 1, missed: 0, names: 0, added: 1, removed: 0 }).body,
     'Hand gold 58/98, live non-memes 70/422, missed 7/13 passed. Cutoff 0.78 (rule A; live bar 0.7). Live now: hand gold 58/98, live non-memes 77/422, missed 7/13. From 1 taps, 0 missed posts, 0 name calls; +1 −0 examples.',

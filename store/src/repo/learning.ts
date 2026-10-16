@@ -356,6 +356,87 @@ export class PgLearningRepo {
     );
     return Object.fromEntries(rows.map((r) => [r.diagnosis, Number(r.n)]));
   }
+
+  /**
+   * Posts of one source that at least `minCoins` distinct coins were launched for `lateMs` or more
+   * after the post, whose newest first-question answer from the judge is "no", with the post held.
+   * A coin is one whose metadata names the post (internal.coin_post_link, 0083) or the owner's
+   * current `right` call. Read for the re-tune's coined "yes" examples (eval examples.ts `coinedYes`).
+   *
+   * ★ AN ACCOUNT THAT COINS ITS OWN POSTS IS LEFT OUT. An author with `deployerMinPosts` or more
+   * posts that a coin was launched for within `deployerWindowMs` of posting is a launcher, not a
+   * post people coined; all its posts are dropped. The author is the held post's author, and the
+   * handle in the coin's link for posts we never held, each counted on its own.
+   *
+   * The post time is the held post's, else the id's own time (an X-style id carries it); a coin
+   * with no launch time is not counted. Newest post first.
+   */
+  async coinedPosts(q: { readonly source: string; readonly minCoins: number; readonly lateMs: number; readonly deployerWindowMs: number; readonly deployerMinPosts: number }): Promise<readonly CoinedPostRow[]> {
+    const rows = await orNoTable(() => this.#db.query<{ item_id: string; body: string; media: unknown; posted_at: Date; coins: number; first_late_at: Date; coinable: boolean | null; kind_label: string | null }>(
+      `with linked as (
+         select l.source || ':' || l.source_item_id as item_id, l.address, l.minted_at,
+                lower(substring(l.link from '/([A-Za-z0-9_]+)/status')) as handle
+           from internal.coin_post_link l where l.source = $1 and l.minted_at is not null
+         union
+         select cur.item_id, cur.coin_address, coalesce(a.minted_at, n.launched_at), null
+           from (${CURRENT_COIN_CALLS}) cur
+           left join public.asset a on a.address = cur.coin_address
+           left join public.coin_name n on n.address = cur.coin_address
+          where cur.verdict = 'right' and cur.coin_address is not null and split_part(cur.item_id, ':', 1) = $1
+       ),
+       timed as (
+         select k.item_id, k.address, k.minted_at, k.handle, i.author_key,
+                coalesce(i.posted_at, to_timestamp(((split_part(k.item_id, ':', 2)::bigint >> 22) + 1288834974657) / 1000.0)) as posted_at
+           from linked k left join public.item i on i.item_id = k.item_id
+          where k.minted_at is not null and split_part(k.item_id, ':', 2) ~ '^[0-9]{8,19}$'
+       ),
+       quick as (
+         select item_id, author_key, handle from timed
+          where minted_at >= posted_at and minted_at < posted_at + make_interval(secs => $4::double precision / 1000)
+       ),
+       launchers as (
+         select 'a' as by, author_key as who from quick where author_key is not null group by author_key having count(distinct item_id) >= $5
+         union all
+         select 'h', handle from quick where handle is not null and handle <> 'i' group by handle having count(distinct item_id) >= $5
+       ),
+       coined as (
+         select item_id, min(posted_at) as posted_at,
+                count(distinct address) filter (where minted_at >= posted_at + make_interval(secs => $3::double precision / 1000))::int as coins,
+                min(minted_at) filter (where minted_at >= posted_at + make_interval(secs => $3::double precision / 1000)) as first_late_at,
+                array_remove(array_agg(distinct author_key), null) as authors, array_remove(array_agg(distinct handle), null) as handles
+           from timed group by item_id
+       )
+       select c.item_id, i.body, i.media, c.posted_at, c.coins, c.first_late_at, j.coinable, k.kind_label
+         from coined c
+         join public.item i on i.item_id = c.item_id and coalesce(i.body, '') <> ''
+         left join lateral (select pj.coinable from internal.post_judgement pj
+                             where pj.item_id = c.item_id and pj.prompt_id not like 'post-kind%'
+                             order by pj.judged_at desc, pj.id desc limit 1) j on true
+         left join lateral (select pj.proposed_name as kind_label from internal.post_judgement pj
+                             where pj.item_id = c.item_id and pj.prompt_id like 'post-kind%'
+                             order by pj.judged_at desc, pj.id desc limit 1) k on true
+        where c.coins >= $2 and j.coinable = false
+          and not exists (select 1 from launchers d where (d.by = 'a' and d.who = any(c.authors)) or (d.by = 'h' and d.who = any(c.handles)))
+        order by c.posted_at desc, c.item_id`,
+      [q.source, q.minCoins, q.lateMs, q.deployerWindowMs, q.deployerMinPosts],
+    ));
+    return rows.map((r) => ({ itemId: r.item_id, body: r.body, media: r.media, postedAt: r.posted_at, coins: Number(r.coins), firstLateAt: r.first_late_at, coinable: r.coinable, kindLabel: r.kind_label }));
+  }
+}
+
+/** A post several coins were launched for well after it, that the judge answered "no" (`coinedPosts`). */
+export interface CoinedPostRow {
+  readonly itemId: string;
+  readonly body: string;
+  readonly media: unknown;
+  readonly postedAt: Date;
+  readonly coins: number;
+  /** The first of those late coins' launch. */
+  readonly firstLateAt: Date;
+  /** The judge's newest first-question answer: always false here, kept so the caller can say so. */
+  readonly coinable: boolean | null;
+  /** The newest kind answer, upper case as filed; null when the kind was never asked. */
+  readonly kindLabel: string | null;
 }
 
 export interface OwnerPostCall {
