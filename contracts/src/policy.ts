@@ -734,6 +734,20 @@ export interface JudgePolicy {
     readonly coolDownMs: number;
     readonly creditCoolDownMs: number;
   };
+  /**
+   * ★ THE OTHER JUDGE, ASKED BESIDE THE LIVE ONE AND NEVER SHOWN (the owner, 2026-10-16: "the open
+   * model judges every live post alongside the live judge until the switch"). Every batch of posts
+   * the live judge answers is sent, unchanged, to the judge that did not answer it; its answers go
+   * to their own table (0089), which nothing on the feed reads. Spent on the live book and stopped
+   * for the UTC day at `dailyUsd` (kept in the capped lanes' ledger, so a restart does not refill
+   * it). At most `maxInFlight` batches wait on it at once; a batch past that is skipped and counted,
+   * so a slow shadow can never hold up the live judge.
+   */
+  readonly shadow: {
+    readonly on: boolean;
+    readonly dailyUsd: number;
+    readonly maxInFlight: number;
+  };
 }
 
 /* ── RESOLVE ──────────────────────────────────────────────────────────── */
@@ -3290,6 +3304,10 @@ const POLICY_V1: Policy = {
        minutes' rest is a few scoring passes; half an hour after a billing refusal, which waits for
        a person, so the empty account is asked twice an hour, enough to see it topped up. */
     failover: { on: true, deadlineMs: 90_000, coolDownMs: 300_000, creditCoolDownMs: 1_800_000 },
+    /* $1.50 a day: the open model's measured $0.00016 a post for both questions (2026-10-15) over
+       the 9,119 posts the live judge answered that day is about $1.46, the post question alone
+       less. Four batches waiting at once is forty posts, about two minutes of the open model. */
+    shadow: { on: true, dailyUsd: 1.5, maxInFlight: 4 },
   },
 
   resolve: {
