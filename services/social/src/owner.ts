@@ -7,6 +7,7 @@
  *   GET  /owner/feedback?kind=&items=a,b    the current call on each item (and name)
  *   GET  /owner/hidden                      posts whose current call is "Not a meme", newest first
  *   POST /owner/coin-check, /owner/coin-label   a pasted coin address checked, then saved (owner-coin.ts)
+ *   POST /owner/narrative                   a call on a narrative: not one, merge, remove a post, its coin (owner-narrative.ts)
  *
  * A coin call `cleared` (0072) is "Remove my label": a new row that says no call from here on.
  *
@@ -34,6 +35,7 @@ import type { Person } from '@insidor/contracts/ports/people.ts';
 
 import { json, type Reply } from './http.ts';
 import { ownerCoinRoute, type CoinCheck } from './owner-coin.ts';
+import { ownerNarrativeRoute } from './owner-narrative.ts';
 
 interface Db {
   query<R = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<R[]>;
@@ -245,6 +247,8 @@ export async function ownerRoute(
   }
 
   if (sub === 'coin-check' || sub === 'coin-label') return ownerCoinRoute(r.method, sub, r.body, me, ref, deps);
+  /* The owner's calls on a narrative (owner-narrative.ts, 0093). */
+  if (sub === 'narrative') return ownerNarrativeRoute(r.method, r.body, me.userId, ref, deps.db);
 
   return bad('method not allowed', 405);
 }
