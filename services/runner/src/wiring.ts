@@ -59,7 +59,7 @@ import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
-import { KNOWN_MODELS, accountCredits, isOpenJudgeId, openChatClient, openJudge, openNamer, openSameSubject, openTranslator, type HostModel, type OpenJudgeSetup, type OpenQuestion } from '@insidor/judge-openai-compatible';
+import { KNOWN_MODELS, accountCredits, isOpenJudgeId, openChatClient, openJudge, openNamer, openSameSubject, openTitler, openTranslator, type HostModel, type OpenJudgeSetup, type OpenQuestion } from '@insidor/judge-openai-compatible';
 import { describeRoles, openHostModel, rolesFor, type JudgeRole } from './feed-judges.ts';
 import { failoverJudge, failoverState } from './judge-failover.ts';
 import { failoverNamer, failoverSameSubject, failoverTranslator, type SameSubjectPart } from './open-questions.ts';
@@ -108,9 +108,11 @@ import {
   PgRecallRepo,
   PgStageRunRepo,
   PgStoryRepo,
+  PgNarrativeRepo,
   asDb,
   createPool,
   withAdvisoryLock,
+  withTransaction,
   type Db,
 } from '@insidor/store';
 
@@ -124,6 +126,7 @@ import { precedentSource } from './work/precedents.ts';
 import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
 import { readCryptoAttention, type AttentionResult } from './work/crypto-attention.ts';
 import { refillMemory, refillPosts, type RefillResult } from './work/post-refill.ts';
+import { narrativeGrouper, type NarrativeResult } from './work/narratives.ts';
 import { readingsMemory, readingsPass, type ReadingsResult } from './work/readings.ts';
 import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
 import { translatePosts } from './work/translate-posts.ts';
@@ -206,6 +209,8 @@ export interface Runtime {
   readonly keepCoins: () => Promise<unknown>;
   /** The owner's pasted missed posts, read on the learning book and diagnosed. See work/missed-posts.ts. */
   readonly missedPosts: () => Promise<MissedResult>;
+  /** The posts the judge passed, regrouped into narratives every couple of minutes. See work/narratives.ts. */
+  readonly narratives: () => Promise<NarrativeResult>;
   /** The ways to find a post besides the searches (Policy.finders). See loops/finders.ts. */
   readonly finders: {
     readonly coinLinks: () => Promise<CoinLinkResult>;
@@ -947,6 +952,15 @@ export async function withRuntime<T>(
         stories: judge?.id ?? null,
         sameSubject: pairsJudge?.id ?? null,
       });
+      /* The embed port the narratives pass uses for a good post with no vector (work/narratives.ts). */
+      const precedentsEmbed =
+        cfg.embeddings.state === 'configured'
+          ? voyageEmbed({
+              client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
+              meter,
+              now: () => Date.now() as Millis,
+            })
+          : null;
       /* The labels and vectors behind the precedents and the not-a-meme hold, kept for the process. */
       const precedents =
         cfg.embeddings.state === 'configured'
@@ -1491,6 +1505,57 @@ export async function withRuntime<T>(
              off until Policy.postCoin.bio.refreshOn, and then only every refreshEveryMs per poster.
              Then the feed's translations (work/translate-posts.ts): off until Policy.translate.on;
              a failure there is logged and never fails the refill. */
+          /* ★ NARRATIVES (the owner, 2026-10-16): the judge's passed posts regrouped every couple of
+             minutes and written in one short transaction; titled by the open model on its own ledger
+             endpoint; a good post with no vector embedded on the live embeddings line. */
+          narratives: (() => {
+            const space = precedentsEmbed?.postSpace ?? null;
+            const grouper = narrativeGrouper({
+              repo: new PgNarrativeRepo(db),
+              save: (pass) => withTransaction(pool, (tx) => new PgNarrativeRepo(tx).save(pass)),
+              blockCutoff: async () => (await new PgLearningRepo(db).latestApplied())?.cutoff ?? null,
+              titler:
+                openSide === null
+                  ? null
+                  : openTitler({
+                      client: openChatClient({
+                        vendor: openSide.setup.vendor,
+                        apiKey: openSide.setup.apiKey,
+                        baseUrl: openSide.setup.baseUrl,
+                        model: openSide.model.id,
+                        vision: false,
+                        maxOutputTokens: policy.narrative.title.maxOutputTokens,
+                        timeoutMs: policy.judge.timeoutMs,
+                        maxAttempts: policy.judge.maxAttempts,
+                        backoffMs: policy.judge.backoffMs,
+                        maxWaitMs: policy.judge.maxWaitMs,
+                        maxFrameBytes: policy.judge.maxFrameBytes,
+                        providers: openSide.setup.providers,
+                        router: openSide.setup.router !== false,
+                        fetch: globalThis.fetch,
+                        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+                      }),
+                      meter,
+                      now: () => Date.now() as Millis,
+                      model: openSide.model,
+                      vendor: openSide.setup.vendor,
+                      providers: openSide.setup.providers,
+                      router: openSide.setup.router !== false,
+                      charsPerToken: policy.judge.charsPerToken,
+                      maxOutputTokens: policy.narrative.title.maxOutputTokens,
+                      maxTitleChars: policy.narrative.title.maxTitleChars,
+                    }),
+              embed: precedentsEmbed,
+              keepVectors: (rows, postSpace) => new PgPostEmbeddingRepo(db).putMany(rows, postSpace),
+              meter,
+              mode: cfg.spend.kind,
+              policy,
+              postSpace: space,
+              log: log.child({ step: 'narratives' }),
+              now: () => Date.now() as Millis,
+            });
+            return () => grouper.pass();
+          })(),
           refillPosts: async () => {
             const r = await refillPosts(
               {
