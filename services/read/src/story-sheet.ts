@@ -63,6 +63,12 @@ export const STORY_COINS_SQL = `select address from public.same_name_coin where 
 /** The most coins the page lists, as for the post sheet. */
 export const STORY_COINS_MAX = 30;
 
+/**
+ * When we found the narrative: the moment it was first grouped (public.story.created_at), the
+ * chart's Found marker. Not the earliest post's time, which the page already has as `firstSeenAt`.
+ */
+export const STORY_FOUND_SQL = `select created_at from public.story where story_id = $1`;
+
 type Reply = { readonly status: number; readonly body: string };
 type CoinsFor = (addresses: readonly string[], proven: string | null, linkCoin: Row) => Promise<{ readonly coins: readonly { readonly proven: boolean }[]; readonly marketDown: boolean }>;
 
@@ -133,5 +139,14 @@ export async function buildStorySheet(storyId: string, deps: { readonly db: Db; 
   const ordered = [...coins.filter((c) => c.proven), ...coins.filter((c) => !c.proven)];
 
   const listedCount = num(head['listed']) ?? out.length;
-  return json(200, { storyId, members: out, more: listedCount > out.length, coins: ordered, sourcesMissing: marketDown ? 1 : 0 });
+  const found = (await deps.db.query(STORY_FOUND_SQL, [storyId]))[0]?.['created_at'];
+  const foundMs = found instanceof Date ? found.getTime() : typeof found === 'string' ? Date.parse(found) : NaN;
+  return json(200, {
+    storyId,
+    foundAt: Number.isFinite(foundMs) ? { at: foundMs } : { at: null, why: 'not_reported' },
+    members: out,
+    more: listedCount > out.length,
+    coins: ordered,
+    sourcesMissing: marketDown ? 1 : 0,
+  });
 }
