@@ -40,6 +40,8 @@ export type { RefillDue } from './repo/post-refill.ts';
 export type { BackfilledPost, BackfillRun, BackfillVia } from './repo/backfill.ts';
 export { PgFeedFloorRepo } from './repo/feed-floor.ts';
 export { PgLaneSpendRepo } from './repo/lane-spend.ts';
+export { PgJudgeShadowRepo } from './repo/judge-shadow.ts';
+export type { ShadowPair } from './repo/judge-shadow.ts';
 export { PgOwnerAlertRepo } from './repo/owner-alerts.ts';
 export type { OwnerAlert } from './repo/owner-alerts.ts';
 export { PgRecallRepo } from './repo/recall.ts';

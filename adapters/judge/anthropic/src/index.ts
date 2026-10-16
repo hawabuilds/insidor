@@ -124,6 +124,12 @@ export interface AnthropicJudgeDeps {
   readonly examples?: string | null;
   /** Send each subject's precedents (JudgeSubject.precedents); post question only. See PRECEDENTS above. */
   readonly precedents?: boolean;
+  /**
+   * The ledger's endpoint for the judging calls; 'judge' when absent. The runner's shadow (asked
+   * beside the live judge, never shown) runs under its own, so the outage alarm's count of the
+   * live judge's paid calls (0087, endpoint 'judge') never counts a shadow call.
+   */
+  readonly endpoint?: string;
 }
 
 /** A batch's result inside the meter: the reply, or the vendor error that came with a status. */
@@ -139,7 +145,7 @@ const bookFor = (usd: number, endpoint: string = ENDPOINT): PriceBook => ({
     endpoint,
     unit: 'per-call',
     usdPerUnit: usd,
-    unitName: endpoint === ENDPOINT ? 'batched judge call' : 'same-subject question',
+    unitName: endpoint === PAIR_ENDPOINT ? 'same-subject question' : 'batched judge call',
     measuredAt: 'estimated per call from token rates in prices.ts',
   },
 });
@@ -175,6 +181,7 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
     return out;
   };
   const question = deps.question ?? 'story';
+  const endpoint = deps.endpoint ?? ENDPOINT;
   const examples = deps.examples ?? null;
   const precedents = deps.precedents === true;
   const prompt = promptFor(question, examples, precedents);
@@ -197,7 +204,7 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
       const parts = batches(subjects);
       return {
         vendor: VENDOR,
-        endpoint: ENDPOINT,
+        endpoint,
         unit: 'per-call',
         estUnits: parts.length,
         usd: parts.reduce((sum, b) => sum + estimateUsd(b), 0),
@@ -285,11 +292,11 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
           ...intro,
         }));
         const usd = parts.reduce((sum, b) => sum + estimateUsd(b), 0) * BATCH_PRICE_FRACTION;
-        const spec = { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
+        const spec = { vendor: VENDOR, endpoint, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
         let replies: readonly BatchAnswer[] | null = null;
         let failure = 'no reply';
         try {
-          const call = await metered<readonly BatchAnswer[] | null>(deps.meter, bookFor(usd), spec, async () => {
+          const call = await metered<readonly BatchAnswer[] | null>(deps.meter, bookFor(usd, endpoint), spec, async () => {
             try {
               const answers = await judgeBatch.call(deps.client, requests);
               const billed = answers.reduce((sum, a) => sum + (a.kind === 'answered' ? usdOf(price, a.response.usage) : 0), 0);
@@ -330,10 +337,10 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
       }
       for (const batch of deps.batch === true && judgeBatch !== undefined ? [] : batches(subjects)) {
         const usd = estimateUsd(batch);
-        const spec = { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
+        const spec = { vendor: VENDOR, endpoint, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
         let answered: readonly JudgeOutcome[];
         try {
-          const call = await metered<Attempted>(deps.meter, bookFor(usd), spec, async () => {
+          const call = await metered<Attempted>(deps.meter, bookFor(usd, endpoint), spec, async () => {
             try {
               const response = await deps.client.judge({
                 system: prompt.system,
@@ -386,7 +393,7 @@ export function anthropicJudge(deps: AnthropicJudgeDeps): JudgePort {
         value: asked.map(
           (s) => outcomes.get(String(s.storyId)) ?? { kind: 'unavailable', storyId: s.storyId, detail: 'no outcome' },
         ),
-        spend: mergeSpend(spends, { vendor: VENDOR, endpoint: ENDPOINT, unit: 'per-call', estUnits: 1, at: judgedAt }, 'per-call'),
+        spend: mergeSpend(spends, { vendor: VENDOR, endpoint, unit: 'per-call', estUnits: 1, at: judgedAt }, 'per-call'),
       };
     },
   };

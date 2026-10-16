@@ -59,9 +59,10 @@ import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
-import { openChatClient, openJudge, type HostModel, type OpenQuestion } from '@insidor/judge-openai-compatible';
+import { isOpenJudgeId, openChatClient, openJudge, type HostModel, type OpenQuestion } from '@insidor/judge-openai-compatible';
 import { describeRoles, openHostModel, rolesFor, type JudgeRole } from './feed-judges.ts';
 import { failoverJudge, failoverState } from './judge-failover.ts';
+import { SHADOW_ENDPOINT, judgeShadow } from './judge-shadow.ts';
 import { openDurableMeter } from '@insidor/meter';
 import { anthropicNamer } from '@insidor/judge-anthropic/name-guess.ts';
 import { anthropicTranslator } from '@insidor/judge-anthropic/translate.ts';
@@ -82,6 +83,7 @@ import {
   PgCryptoAttentionRepo,
   PgPostRefillRepo,
   PgFeedFloorRepo,
+  PgJudgeShadowRepo,
   PgLaneSpendRepo,
   PgImageEmbeddingRepo,
   PgImagePairRepo,
@@ -221,6 +223,8 @@ function buildJudge(
   examples: string | null = null,
   /** Send each post's closest labelled posts as precedent (work/precedents.ts); post question only. */
   precedents = false,
+  /** The ledger's endpoint for its calls; the adapter's own ('judge') when absent — the shadow passes its own. */
+  endpoint?: string,
 ): JudgePort | null {
   const setup = cfg.judge;
   if (setup.state === 'dormant' || setup.state === 'misconfigured') {
@@ -274,6 +278,7 @@ function buildJudge(
     question,
     examples,
     precedents,
+    ...(endpoint === undefined ? {} : { endpoint }),
   });
 }
 /**
@@ -698,12 +703,12 @@ export async function withRuntime<T>(
       const said = describeRoles(policy.judge.primary, roles, { configured: cfg.openJudge.state === 'configured', model: openModel?.id ?? null });
       log.info(said.message, said.fields);
       const mainPostJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', null, withPrecedents);
-      const postJudgeAs = (role: JudgeRole, examples: string | null): JudgePort | null =>
+      const postJudgeAs = (role: JudgeRole, examples: string | null, endpoint?: string): JudgePort | null =>
         role === 'open'
-          ? buildOpenJudge(cfg, openModel, meter, policy, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents)
-          : examples === null
+          ? buildOpenJudge(cfg, openModel, meter, policy, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents, endpoint)
+          : examples === null && endpoint === undefined
             ? mainPostJudge
-            : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents);
+            : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents, endpoint);
       const kindJudgeAs = (role: JudgeRole): JudgePort | null =>
         role === 'open'
           ? buildOpenJudge(cfg, openModel, meter, policy, policy.judge.postBatchMaxOutputTokens, 'kind')
@@ -717,9 +722,14 @@ export async function withRuntime<T>(
         primary === null
           ? fallback
           : failoverJudge({ primary, fallback, state: failover, policy: policy.judge.failover, names: { primary: roles.primary, fallback: roles.other ?? 'none' }, question, log: failoverLog, now: () => Date.now() });
+      /* ★ THE SHADOW (judge-shadow.ts, Policy.judge.shadow): the role that did not answer, built with
+         the same block on every swap, under its own ledger endpoint, its answers in their own table. */
+      let shadowPort: JudgePort | null = null;
       /* The post judge for one learned block: the primary role's with the other behind it. */
-      const livePostJudge = (examples: string | null): JudgePort | null =>
-        withFallback(postJudgeAs(roles.primary, examples), roles.other === null ? null : postJudgeAs(roles.other, examples), 'post');
+      const livePostJudge = (examples: string | null): JudgePort | null => {
+        shadowPort = roles.other === null || !policy.judge.shadow.on ? null : postJudgeAs(roles.other, examples, SHADOW_ENDPOINT);
+        return withFallback(postJudgeAs(roles.primary, examples), roles.other === null ? null : postJudgeAs(roles.other, examples), 'post');
+      };
       const learning = new PgLearningRepo(db);
       const learned =
         mainPostJudge === null
@@ -734,6 +744,20 @@ export async function withRuntime<T>(
         setInterval(() => void learned.refresh(), EXAMPLES_RECHECK_MS).unref();
       }
       const postJudge = learned?.port ?? null;
+      const shadow =
+        roles.other === null || !policy.judge.shadow.on
+          ? null
+          : judgeShadow({
+              port: () => shadowPort,
+              ownAnswer: (judgeId) => isOpenJudgeId(judgeId) === (roles.other === 'open'),
+              ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'judge-shadow' })),
+              pairs: new PgJudgeShadowRepo(db),
+              meter,
+              policy,
+              log: log.child({ step: 'judge-shadow' }),
+              now: () => Date.now() as Millis,
+            });
+      if (shadow !== null) log.info('judge shadow on: the other judge answers every live batch beside it, never shown', { shadow: roles.other, capUsd: policy.judge.shadow.dailyUsd });
       /* The feed's second question — which kind of post — asked only of posts the first passed;
          see `kindJudge` in work/score-posts.ts. The primary role's model, its own prompt set and hash. */
       const kindJudge = withFallback(kindJudgeAs(roles.primary), roles.other === null ? null : kindJudgeAs(roles.other), 'kind');
@@ -1165,6 +1189,7 @@ export async function withRuntime<T>(
               judge: postJudge,
               kindJudge,
               precedents,
+              shadow,
               items: repos.items,
               scores: new PgPostJudgementRepo(db),
               meter,

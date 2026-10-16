@@ -70,6 +70,7 @@ const KIND_PROMPT_LABEL = 'post-kind';
 
 import { errorText, type Logger } from '../log.ts';
 import type { PostPrecedents, PrecedentSource } from './precedents.ts';
+import type { Offered, Shadow } from '../judge-shadow.ts';
 
 /**
  * The not-a-meme hold's answer, filed as a kind answer (as the shill rule files its AD): the label
@@ -109,6 +110,11 @@ export interface ScoringDeps {
    * precedents, and nothing is held by it.
    */
   readonly precedents?: PrecedentSource | null;
+  /**
+   * The other judge, offered every answered batch to answer beside the live one and never shown
+   * (judge-shadow.ts, Policy.judge.shadow). Never awaited: it cannot slow a pass. Absent: none.
+   */
+  readonly shadow?: Pick<Shadow, 'offer'> | null;
   readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'catchAllStale' | 'reachReadings' | 'backfilled'>;
   readonly scores: Pick<PgPostJudgementRepo, 'record' | 'recordCopy' | 'reusable'>;
   readonly meter: Meter;
@@ -302,6 +308,7 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
     const line = deps.meter.line(estimate.vendor);
     sent += batch.length;
     try {
+      const started = performance.now();
       const result = await judge.judge(subjects, {
         capUsd: line.capUsd,
         spentUsd: line.spentUsd,
@@ -309,6 +316,15 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
         deadline: (now + deps.policy.judge.timeoutMs * deps.policy.judge.maxAttempts) as Millis,
       });
       spentUsd += result.spend.usd;
+      /* The shadow is offered the batch as sent, with the live answers; it never waits on it. */
+      if (deps.shadow !== undefined && deps.shadow !== null) {
+        const offered: Offered[] = result.value.flatMap((outcome, index) => {
+          const subject = subjects[index];
+          const itemId = subject === undefined ? undefined : byKey.get(String(subject.storyId));
+          return subject === undefined || itemId === undefined ? [] : [{ itemId, subject, live: outcome }];
+        });
+        deps.shadow.offer(offered, (performance.now() - started) / 1000 / Math.max(1, batch.length));
+      }
       /* Answers come back parallel to the subjects sent, as QUALIFY's judging reads them. */
       for (const [index, outcome] of result.value.entries()) {
         if (outcome.kind !== 'judged') {
