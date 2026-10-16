@@ -27,7 +27,7 @@
  * which renders this sheet knowing nothing else about the post.
  */
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 import { ReadError, fetchPostSheet, type PostSheetData, type SheetCoin } from '../../shared/api/index.ts';
 import { evidenceFacts } from '../../shared/coin-status.ts';
@@ -52,9 +52,9 @@ import { ChooseCoin } from './ChooseCoin.tsx';
 import { CoinLine } from './CoinLine.tsx';
 import { PostMedia } from './PostMedia.tsx';
 import { tiktokVideoId } from './tiktok-player.ts';
-import { ReachChart } from './ReachChart.tsx';
 import { OpenIcon } from './sheet-icons.tsx';
-import { chartPlan, coinTag, firstCoinAfter, followersText, foundTag, gainText, provenWhy, recentGain } from './sheet-view.ts';
+import { coinTag, firstCoinAfter, followersText, foundTag, gainText, provenWhy, recentGain } from './sheet-view.ts';
+import { ViewsChart } from './ViewsChart.tsx';
 import styles from './post-sheet.module.css';
 
 export interface PostSheetProps {
@@ -65,7 +65,8 @@ export interface PostSheetProps {
   readonly start?: 'post' | 'coins';
 }
 
-const CHART_HEIGHT = 96;
+/** The views chart's plot, in px; the interval rail, the Found and Coin pills and the times are on top of it. */
+const CHART_HEIGHT = 140;
 /** The sheet's side padding, both sides, and the widest the app's column gets. */
 const SIDES = 32;
 /** The post card's own padding, both sides (post-sheet.module.css .postCard), inside the sheet's. */
@@ -195,10 +196,6 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
   const readings = data.views.length > 0 ? data.views : post.spark.points.map((p) => ({ atMs: p.atMs, value: p.value }));
   const gain = recentGain(readings);
   const firstCoin = firstCoinAfter(post.postedAt, data.coins.map((c) => c.launchedAt));
-  const plan = useMemo(
-    () => chartPlan(data.views, post.postedAt.known ? post.postedAt.at : null, { found: data.foundAt.known ? data.foundAt.at : null, coin: firstCoin }),
-    [data, firstCoin, post.postedAt],
-  );
   const found = foundTag(post.postedAt, data.foundAt);
   const coinAt = coinTag(post.postedAt, firstCoin);
   const media = data.media !== null && !mediaGone ? data.media : null;
@@ -264,7 +261,7 @@ function PostView({ data, onBuy, onOpenCoin, onCreate, onAll, onNarrative }: {
             </span>
           </section>
 
-          {plan !== null ? <ReachChart plan={plan} now={now} height={CHART_HEIGHT} /> : null}
+          <ViewsChart readings={data.views} postedAt={post.postedAt.known ? post.postedAt.at : null} foundAt={data.foundAt.known ? data.foundAt.at : null} coinAt={firstCoin} now={now} height={CHART_HEIGHT} />
 
           <Tiles data={data} onNarrative={onNarrative} />
         </div>
