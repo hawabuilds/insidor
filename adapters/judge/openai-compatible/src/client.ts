@@ -41,7 +41,10 @@
  * two asks were rate-limited), and 3 of 3 answered cleanly on NextBit (until its shared pool was
  * rate-limited). `providers` pins the order and turns the router's own fallback off. Capping the
  * names list in the schema did not help (the model then loops on whitespace), nor did a frequency
- * penalty; without the schema the model ignores the answer's shape.
+ * penalty; without the schema the model ignores the answer's shape. Later that evening, with the
+ * open judge answering the live feed, the first provider's failures were hangs past the timeout and
+ * minutes of 429s: a retry now starts at the NEXT pinned provider (`rotated`), and the answer budget
+ * can be sized to the batch (`answerTokensPerSubject`) so a loop ends sooner.
  *
  * What breaks if changed carelessly: anything added to or reworded in the content parts changes
  * the question, and the comparison with the live judge stops being one.
@@ -78,6 +81,13 @@ export interface OpenChatConfig {
    * chooses. See the header: some providers loop on this schema until the token limit.
    */
   readonly providers?: readonly string[] | null;
+  /**
+   * The answer budget per post asked, one post's worth spare; capped at `maxOutputTokens`. Absent
+   * or null: `maxOutputTokens` whatever the batch. A model that loops runs to this limit, so a
+   * budget sized to the batch ends a runaway answer in a third of the time (index.ts asks those
+   * posts again).
+   */
+  readonly answerTokensPerSubject?: number | null;
   readonly fetch: typeof globalThis.fetch;
   readonly sleep: (ms: number) => Promise<void>;
 }
@@ -102,7 +112,7 @@ export class OpenJudgeNotConfigured extends Error {
  * The chat body for one judge request: the live body's parts in the live body's order. With
  * `vision` false the pictures are left out and every story says `frame: none`.
  */
-export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputTokens' | 'vision' | 'providers'>, request: JudgeRequest): Record<string, unknown> {
+export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputTokens' | 'vision' | 'providers' | 'answerTokensPerSubject'>, request: JudgeRequest): Record<string, unknown> {
   const providers = config.providers ?? [];
   const frames: ReadonlyMap<string, Frame> = config.vision ? request.frames : new Map();
   const shown = precedentsOf(request);
@@ -123,9 +133,10 @@ export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputT
     content.push({ type: 'text', text: `Picture for storyId ${String(s.storyId)} (a still picture, or a frame from its video):` });
     content.push({ type: 'image_url', image_url: { url: `data:${frame.mediaType};base64,${frame.base64}` } });
   }
+  const per = config.answerTokensPerSubject ?? null;
   return {
     model: config.model,
-    max_tokens: config.maxOutputTokens,
+    max_tokens: per === null ? config.maxOutputTokens : Math.min(config.maxOutputTokens, per * (request.subjects.length + 1)),
     /* The live judge's setting (the Anthropic adapter's temperatureFor): the same post, the same answer. */
     temperature: 0,
     messages: [
@@ -139,6 +150,19 @@ export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputT
     provider: providers.length === 0 ? { require_parameters: true } : { require_parameters: true, order: [...providers], allow_fallbacks: false },
     usage: { include: true },
   };
+}
+
+/**
+ * The pinned providers for attempt `n` (0 first): the list started from its n-th entry, the ones
+ * before it moved to the end. A retry is asked of the NEXT provider first: on 2026-10-16 the first
+ * provider's failures were hangs and rate limits that lasted minutes, so asking it again was the
+ * same wait, while the router's own fallback (still on, in this order) only moves on after an error
+ * it is shown, never after our timeout.
+ */
+export function rotated(providers: readonly string[], n: number): readonly string[] {
+  if (providers.length < 2) return providers;
+  const k = n % providers.length;
+  return [...providers.slice(k), ...providers.slice(0, k)];
 }
 
 /* ── the reply, as a pure function ────────────────────────────────────── */
@@ -208,8 +232,8 @@ export function openChatClient(config: OpenChatConfig): JudgeClient & { judge(re
   const root = trimTrailingSlash(config.baseUrl);
   const V = config.vendor;
 
-  const send = async (payload: Record<string, unknown>): Promise<unknown> => {
-    const body = JSON.stringify(payload);
+  /* Attempt n asks the pinned providers starting from the n-th (see `rotated`). */
+  const send = async (payloadFor: (attempt: number) => Record<string, unknown>): Promise<unknown> => {
     let lastNote = 'no attempt was made';
     let lastStatus: number | undefined;
     let wait = 0;
@@ -221,7 +245,7 @@ export function openChatClient(config: OpenChatConfig): JudgeClient & { judge(re
         const response = await config.fetch(`${root}${CHAT_PATH}`, {
           method: 'POST',
           headers: { authorization: `Bearer ${config.apiKey}`, 'content-type': 'application/json' },
-          body,
+          body: JSON.stringify(payloadFor(n)),
           signal: AbortSignal.timeout(config.timeoutMs),
         });
         res = { status: response.status, text: await response.text() };
@@ -278,7 +302,7 @@ export function openChatClient(config: OpenChatConfig): JudgeClient & { judge(re
 
   return {
     async judge(request) {
-      return decodeChatReply(await send(buildChatBody(config, request)));
+      return decodeChatReply(await send((attempt) => buildChatBody({ ...config, providers: rotated(config.providers ?? [], attempt) }, request)));
     },
     async frame(uri) {
       const size = config.pictureSize ?? null;

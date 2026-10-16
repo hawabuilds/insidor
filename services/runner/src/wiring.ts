@@ -292,8 +292,9 @@ function buildJudge(
  * The open model as the feed's judge (Policy.judge.primary, feed-judges.ts), or null when it is
  * dormant. Built like `buildJudge` builds the main one, with the same policy numbers: the same
  * prompt files and learned block (the adapter takes them from the main judge's package), the same
- * precedents, the same posts per call, the same smaller picture size, the same answer budget. Only
- * the model differs. Its pictures go as data URLs in the chat format rather than the main judge's
+ * precedents, the same posts per batch, the same smaller picture size. Only the model and how it is
+ * asked differ: fewer posts a call, side by side, skipped posts asked again, a timeout and retries
+ * of its own, and an answer budget sized to the call (Policy.judge.open). Its pictures go as data URLs in the chat format rather than the main judge's
  * image blocks — the same bytes; and it has no prompt cache, which its estimate already counts.
  */
 function buildOpenJudge(
@@ -317,13 +318,15 @@ function buildOpenJudge(
     model: model.id,
     vision: model.vision,
     maxOutputTokens,
-    timeoutMs: policy.judge.timeoutMs,
-    maxAttempts: policy.judge.maxAttempts,
+    /* Per call, and each retry at the next pinned provider (Policy.judge.open). */
+    timeoutMs: policy.judge.open.timeoutMs,
+    maxAttempts: policy.judge.open.maxAttempts,
     backoffMs: policy.judge.backoffMs,
     maxWaitMs: policy.judge.maxWaitMs,
     maxFrameBytes: policy.judge.maxFrameBytes,
     pictureSize: 'small',
     providers: setup.providers,
+    answerTokensPerSubject: policy.judge.open.answerTokensPerPost,
     fetch: globalThis.fetch,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });
@@ -334,7 +337,12 @@ function buildOpenJudge(
     model,
     vendor: setup.vendor,
     policy: { ...policy.judge, maxOutputTokens },
+    /* The feed hands it the same posts per batch as the main judge; it asks them in smaller calls side by side. */
     maxBatch: policy.qualify.batchSize,
+    perCall: policy.judge.open.batchSize,
+    parallel: policy.judge.open.parallel,
+    reask: policy.judge.open.reask,
+    reaskWithinMs: policy.judge.open.reaskWithinMs,
     question,
     examples,
     precedents,
