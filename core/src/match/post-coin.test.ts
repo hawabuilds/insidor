@@ -5,7 +5,7 @@ import type { Millis } from '@insidor/contracts';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { descriptionMatch, linksAccount, linksPost, matchPostCoin, nameMatch, pictureVerdict, postPictureVerdict, skeleton, type CoinSide, type MatchBars } from './post-coin.ts';
+import { botSign, descriptionMatch, linksAccount, linksPost, matchPostCoin, nameMatch, pictureVerdict, postPictureVerdict, skeleton, type CoinSide, type MatchBars } from './post-coin.ts';
 
 const PC = DEFAULT_POLICY.postCoin;
 const BARS: MatchBars = {
@@ -218,5 +218,54 @@ describe('2026-10-14: copycat links and close pictures (held-out gold: 7 to 10 r
   it('not under the bar (an unrelated TRUMP COIN at 0.788), and not without the rule', () => {
     assert.equal((r => (r.kind === 'unsure' ? r.likely : 'x'))(matchPostCoin(post, [coin({ address: 'A', pictureSimilarity: 0.788, samePicture: false })], close)), null);
     assert.equal((r => (r.kind === 'unsure' ? r.likely : 'x'))(matchPostCoin(post, [coin({ address: 'A', pictureSimilarity: 0.93, samePicture: false })], BARS)), null);
+  });
+});
+
+describe('2026-10-16: the bot-coin filter (Policy.postCoin.botFilter)', () => {
+  const link = ['https://social.example/someone/status/2080077693593223329'];
+  const BF = DEFAULT_POLICY.postCoin.botFilter;
+  const ON: MatchBars = { ...BARS, botFilter: { serialDevMinCoins: BF.serialDevMinCoins, instantMs: BF.instantMs } };
+  const SECONDS_5 = (POSTED + 5_000) as Millis;
+  const MINUTES_30 = (POSTED + 1_800_000) as Millis;
+  const named = (r: ReturnType<typeof matchPostCoin>) => (r.kind === 'confident' ? r.address : r.kind === 'unsure' ? r.likely : null);
+  /* The Flying Tesla Roadster shape: a serial dev's copy seconds after the post, an unnamed copy
+     inside the minute, and the real coin later. */
+  const wave = [
+    coin({ address: 'SERIAL', links: link, launchedAt: SECONDS_5, creatorLinkedLaunches: BF.serialDevMinCoins }),
+    coin({ address: 'INSTANT', name: 'Thruster', ticker: 'THRUSTER', links: link, launchedAt: SECONDS_5 }),
+    coin({ address: 'REAL', links: link, launchedAt: MINUTES_30, creatorLinkedLaunches: 1 }),
+  ];
+  it('★ off, as shipped: nothing is ignored and the rule is the rollback (three linking coins in the window are a tie)', () => {
+    assert.equal(BF.on, false);
+    const r = matchPostCoin(post, wave, BARS);
+    assert.equal(r.kind, 'unsure');
+  });
+  it('★ on: the serial dev and the unnamed instant coin are ignored; the earliest remaining linking coin is proven', () => {
+    const r = matchPostCoin(post, wave, ON);
+    assert.equal(r.kind, 'confident');
+    assert.equal(named(r), 'REAL');
+    assert.equal(r.kind === 'confident' ? r.because : null, 'links');
+    assert.deepEqual(r.kind === 'confident' ? r.ranked.slice(1).map((e) => e.address).sort() : [], ['INSTANT', 'SERIAL'], 'the ignored coins stay listed, after it');
+  });
+  it('on: of two remaining linking coins, the first launched is proven', () => {
+    const r = matchPostCoin(post, [...wave, coin({ address: 'LATER', links: link, launchedAt: (MINUTES_30 + 60_000) as Millis })], ON);
+    assert.equal(named(r), 'REAL');
+  });
+  it('on: a coin inside the minute keeps its place when its name or its picture is the post\'s', () => {
+    assert.equal(botSign({ launchedAfterMs: 5_000, name: 'exact', samePicture: null }, null, ON.botFilter!), null);
+    assert.equal(botSign({ launchedAfterMs: 5_000, name: 'none', samePicture: true }, null, ON.botFilter!), null);
+    assert.equal(botSign({ launchedAfterMs: 5_000, name: 'none', samePicture: null }, null, ON.botFilter!), 'instant');
+    assert.equal(botSign({ launchedAfterMs: BF.instantMs + 1, name: 'none', samePicture: null }, null, ON.botFilter!), null);
+  });
+  it('★ an unknown is not a sign: no creator count, no launch', () => {
+    assert.equal(botSign({ launchedAfterMs: null, name: 'none', samePicture: null }, null, ON.botFilter!), null);
+    assert.equal(botSign({ launchedAfterMs: MINUTES_30 - POSTED, name: 'exact', samePicture: null }, BF.serialDevMinCoins - 1, ON.botFilter!), null);
+    assert.equal(botSign({ launchedAfterMs: MINUTES_30 - POSTED, name: 'exact', samePicture: null }, BF.serialDevMinCoins, ON.botFilter!), 'serialDev');
+  });
+  it('on: an ignored coin is never likely either, and a lone linking bot coin proves nothing', () => {
+    const r = matchPostCoin(post, [coin({ address: 'SERIAL', links: link, launchedAt: SECONDS_5, creatorLinkedLaunches: BF.serialDevMinCoins })], ON);
+    assert.equal(r.kind, 'unsure');
+    assert.equal(named(r), null);
+    assert.equal(named(matchPostCoin(post, [coin({ address: 'SERIAL', links: link, launchedAt: SECONDS_5, creatorLinkedLaunches: BF.serialDevMinCoins })], BARS)), 'SERIAL', 'off: proven, as before');
   });
 });

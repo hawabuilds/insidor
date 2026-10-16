@@ -47,6 +47,7 @@ export function matchBarsOf(p: Policy = DEFAULT_POLICY, weights: PostCoinWeights
     weights,
     closePicture: p.group.image.likely,
     firstLinkWins: pc.firstLinkWins,
+    ...(pc.botFilter.on ? { botFilter: { serialDevMinCoins: pc.botFilter.serialDevMinCoins, instantMs: pc.botFilter.instantMs } } : {}),
   };
 }
 
@@ -177,6 +178,7 @@ export function coinsFor(c: MatchCase, ev: MatchEvidence, p: Policy = DEFAULT_PO
       addressByAuthor: replies === undefined && c.text === null ? null : (posted?.byAuthor ?? false) || ownText,
       addressByOthers: replies === undefined ? null : (posted?.byOthers ?? 0),
       tradingJump: null,
+      creatorLinkedLaunches: ev.creatorLinkedLaunches?.[f.address] ?? null,
     }];
   });
 }

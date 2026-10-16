@@ -34,6 +34,15 @@
  *       from taking it at once. Two profile-named coins in the window are a tie.
  * Two candidates with the same proving fact are a tie, and a tie proves nothing.
  *
+ * THE BOT-COIN FILTER (`botFilter`, Policy.postCoin.botFilter; the owner, 2026-10-16). Bots launch
+ * coins that link a viral post within seconds of it, from wallets that do it all day. With the
+ * filter, such a coin is IGNORED before any of the above — never proven, never likely, listed
+ * last — when its creator's wallet launched `serialDevMinCoins` post-linking coins around its
+ * launch (the caller counts them), or when it launched within `instantMs` of the post with neither
+ * a name that meets the subject's nor the post's picture (`botSign`). Of the linking coins that
+ * remain, the one launched first is proven, as `firstLinkWins` would: the filter is the only way
+ * that rule is on. Without the filter nothing is ignored and the rule is exactly the one above.
+ *
  * LIKELY: when nothing proves a coin, every candidate gets a score — the weighted sum of its
  * signals (Policy.postCoin.weights, fitted on the gold set and refitted by the re-tune) — and
  * the top coin is likely when its share of the ranking (a softmax over the candidates and "none
@@ -88,6 +97,11 @@ export interface MatchBars {
    * `firstLinkWins`). Absent or false: only the lone one launched inside the window is, else a tie.
    */
   readonly firstLinkWins?: boolean;
+  /**
+   * The bot-coin filter's bars (Policy.postCoin.botFilter), present only while it is on. With it,
+   * the coins `botSign` marks are ignored and the earliest remaining linking coin is proven.
+   */
+  readonly botFilter?: { readonly serialDevMinCoins: number; readonly instantMs: number };
 }
 
 /** The post, as the rule needs it. */
@@ -129,6 +143,11 @@ export interface CoinSide {
   readonly bioNamesAddress?: boolean | null;
   /** This post is the poster's last we hold before the coin's launch; null when not worked out. */
   readonly lastPostBeforeLaunch?: boolean | null;
+  /**
+   * How many coins whose metadata names some post this coin's creator's wallet launched around this
+   * coin's launch, itself included (the caller's window); null when the creator or the links are unknown.
+   */
+  readonly creatorLinkedLaunches?: number | null;
 }
 
 export type NameMatch = 'exact' | 'variant' | 'none';
@@ -358,18 +377,43 @@ function closePictured(possible: readonly Omit<CoinEvidence, 'share'>[], bars: M
   return close.length === 1 ? (close[0]?.address ?? null) : null;
 }
 
+export type BotSign = 'serialDev' | 'instant';
+
+/**
+ * Why the bot-coin filter ignores a coin, or null when it does not. Serial dev: its creator launched
+ * at least `serialDevMinCoins` post-linking coins around its launch. Instant: launched no later than
+ * `instantMs` after the post (a launch the clock puts just before it counts too), its name not the
+ * subject's and its picture not the post's. An unknown count or launch is never a sign.
+ */
+export function botSign(
+  e: Pick<CoinEvidence, 'launchedAfterMs' | 'name' | 'samePicture'>,
+  creatorLinkedLaunches: number | null,
+  bars: NonNullable<MatchBars['botFilter']>,
+): BotSign | null {
+  if (creatorLinkedLaunches !== null && creatorLinkedLaunches >= bars.serialDevMinCoins) return 'serialDev';
+  const after = e.launchedAfterMs;
+  if (after !== null && after <= bars.instantMs && e.name === 'none' && e.samePicture !== true) return 'instant';
+  return null;
+}
+
 /** The rule in the header, over every candidate. */
 export function matchPostCoin(post: PostSide, coins: readonly CoinSide[], bars: MatchBars): PostCoinMatch {
   if (coins.length === 0) return { kind: 'none' };
   const weighed = coins.map((c) => coinEvidence(post, c, bars));
-  const possible = weighed.filter((e) => !e.before);
+  /* The bot-coin filter: ignored coins are out of every proof, the share and "likely", and listed last. */
+  const filter = bars.botFilter;
+  const counts = new Map(coins.map((c) => [c.address, c.creatorLinkedLaunches ?? null] as const));
+  const ignored = new Set(filter === undefined ? [] : weighed.filter((e) => !e.before && botSign(e, counts.get(e.address) ?? null, filter) !== null).map((e) => e.address));
+  const out = (e: { readonly address: string; readonly before: boolean }) => e.before || ignored.has(e.address);
+  const possible = weighed.filter((e) => !out(e));
   /* "None of these" is one more option, scoring 0: a share is against it too, so a lone weak coin is not likely. */
   const top = possible.reduce((m, e) => Math.max(m, e.score), 0);
   const total = possible.reduce((sum, e) => sum + Math.exp(e.score - top), Math.exp(-top));
-  const withShare = (e: Omit<CoinEvidence, 'share'>): CoinEvidence => ({ ...e, share: e.before ? 0 : Math.exp(e.score - top) / total });
+  const withShare = (e: Omit<CoinEvidence, 'share'>): CoinEvidence => ({ ...e, share: out(e) ? 0 : Math.exp(e.score - top) / total });
+  const order = (a: CoinEvidence, b: CoinEvidence) => Number(ignored.has(a.address)) - Number(ignored.has(b.address)) || byEvidence(a, b);
   const only = <T>(xs: readonly T[]): T | null => (xs.length === 1 ? (xs[0] ?? null) : null);
   const proven = (address: string, because: ProvenBy): PostCoinMatch => {
-    const ranked = weighed.map(withShare).sort((a, b) => (a.address === address ? -1 : b.address === address ? 1 : byEvidence(a, b)));
+    const ranked = weighed.map(withShare).sort((a, b) => (a.address === address ? -1 : b.address === address ? 1 : order(a, b)));
     return { kind: 'confident', address, because, ranked };
   };
 
@@ -380,8 +424,9 @@ export function matchPostCoin(post: PostSide, coins: readonly CoinSide[], bars: 
      2026-10-15) the one launched first is the post's; a shared first instant, or any linking coin
      whose launch we do not know (it may be the earlier one), is a tie. Without it (since
      2026-10-16: bots launch linking coins within seconds of a viral post, so the first is usually a
-     copycat) only the lone one launched inside the window is proven; two inside it are a tie. */
-  const firstLink = bars.firstLinkWins === true
+     copycat) only the lone one launched inside the window is proven; two inside it are a tie —
+     unless the bot-coin filter is on: with the bots' coins gone, the first launch is trusted again. */
+  const firstLink = bars.firstLinkWins === true || filter !== undefined
     ? linking.length > 1 && linking.every((e) => e.launchedAfterMs !== null) ? only(linking.filter((e) => e.launchedAfterMs === Math.min(...linking.map((x) => x.launchedAfterMs ?? Number.POSITIVE_INFINITY)))) : null
     : linking.length > 1 ? only(linking.filter((e) => e.inWindow)) : null;
   if (firstLink !== null) return proven(firstLink.address, 'links');
@@ -401,9 +446,9 @@ export function matchPostCoin(post: PostSide, coins: readonly CoinSide[], bars: 
     if (bio !== null && (bio.lastPostBeforeLaunch === true || bio.name !== 'none')) return proven(bio.address, 'posterBio');
   }
 
-  const ranked = weighed.map(withShare).sort(byEvidence);
+  const ranked = weighed.map(withShare).sort(order);
   const first = ranked[0];
-  const byShare = first !== undefined && !first.before && first.share >= bars.likelyMinShare ? first.address : null;
+  const byShare = first !== undefined && !out(first) && first.share >= bars.likelyMinShare ? first.address : null;
   return { kind: 'unsure', likely: byShare ?? closePictured(possible, bars), ranked };
 }
 
