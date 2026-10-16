@@ -9,7 +9,10 @@
  * replies naming a coin — never passes. A post with no score yet is not here: it waits, and is
  * never shown as if it had passed.
  * And it must clear the feed's view bar (core's `clearsReachBar`): For You at 40k views or fast
- * early growth, Popular at 250k. A post whose views we have not read is on neither.
+ * early growth, Popular at 250k. A post whose views we have not read is on neither — except that
+ * For You also takes a post a coin vouches for (`rising.coinLinked`, core `coinVouches`): the first
+ * observed coin naming it launched within six hours of the post, which had 5,000 approvals. The
+ * coin stands in for the views only; the judge, the kind and the six hours still decide.
  * With `rising.fypMaxAgeOn`, For You also turns away a post over `rising.fypMaxAgeMs` old unless it
  * is still growing fast (fyp-freshness.ts) — but only one that is not on it yet: a post already on
  * For You (feed-members.ts, 0075) stays while it is inside the window (the owner, 2026-10-14: the
@@ -96,11 +99,11 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
-import { clearsReachBar, heldKind, type PostCoinCalls, type StoryCoin, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
+import { clearsReachBar, coinVouches, heldKind, type PostCoinCalls, type StoryCoin, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
 import { policyForAnswer } from './judge-cutoff.ts';
 import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
 import { loadMembership, writeMembership, type Membership } from './feed-members.ts';
-import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
+import { PgFeedRejectionRepo, PgFinderRepo, type CoinVouchRow, type Db, type FeedRejectionReason } from '@insidor/store';
 import { PgScoreModelRepo } from '@insidor/store/repo/score-model.ts';
 
 import { loadCoinFactsByAddress, loadReach, pictureOf, sourceLabel } from './db.ts';
@@ -609,6 +612,9 @@ export function underScoreBar(score: number | null, bar: number | null, ownerCal
   return bar !== null && score !== null && score < bar && ownerCall !== 'meme';
 }
 
+/** Whether the first coin naming a post puts it past For You's view bar (core `coinVouches`); no coin, no. */
+export const coinVouchesFor = (facts: CoinVouchRow | undefined, policy = DEFAULT_POLICY): boolean => facts !== undefined && coinVouches(facts, policy);
+
 /** Load, filter by the per-post score and each feed's view bar, project, and order both feeds. Writes nothing. */
 export async function buildRising(
   db: Db,
@@ -642,6 +648,9 @@ export async function buildRising(
   /* A refreshed member's readings start before the window: read from its own time. */
   const readFromMs = Math.min(sinceMs, ...rows.map(atOf)) as Millis;
   const reach = await loadReach(db, rows.map((row) => row.item_id), readFromMs);
+  /* ★ A COIN NAMING A POST STANDS IN FOR ITS VIEWS (`rising.coinLinked`, core `coinVouches`): read
+     for the passing posts only, and only while the switch is on. */
+  const vouch: ReadonlyMap<string, CoinVouchRow> = policy.rising.coinLinked.on ? await new PgFinderRepo(db).coinVouchFacts([...passing]) : new Map();
   /* ★ THE OWNER'S COIN LABELS, LIVE: every coin call (the owner's own coin, the coins called wrong,
      "No coin is from this") and the coin the owner confirmed for each post's story. */
   const rowIds = rows.map((row) => row.item_id);
@@ -689,7 +698,7 @@ export async function buildRising(
       }, checks.get(row.item_id) ?? null),
       sameName: postCoins(row.story_id === null ? undefined : coinsByStory.get(row.story_id), lookup, checks.get(row.item_id) ?? null).sameName,
       at: postedAt ?? toMs(row.first_seen_at) ?? 0,
-      fyp: !underBar && clearsReachBar('fyp', barViews, postedAt, policy, scale),
+      fyp: !underBar && (clearsReachBar('fyp', barViews, postedAt, policy, scale) || coinVouchesFor(vouch.get(row.item_id), policy)),
       /* Six hours, unless still climbing fast (fyp-freshness.ts), with `rising.fypMaxAgeOn`. For
          You only: Popular keeps old posts. Ageing out is not a rejection, so it records no reason. */
       fresh: !policy.rising.fypMaxAgeOn || freshForYou(views, postedAt ?? toMs(row.first_seen_at) ?? 0, nowMs, policy, scale),

@@ -2,7 +2,8 @@
  * THE FINDERS LOOP — the ways to find a post besides the searches, every five seconds.
  *
  * Its own supervised loop because the first of them, a new coin's links (work/coin-links.ts),
- * is only worth having within seconds of the launch, and no other loop runs that often. The
+ * is only worth having within seconds of the launch, and no other loop runs that often. The posts
+ * those links name that the coin rule picks are judged in the same pass (work/coin-instant.ts). The
  * others ride the same loop on their own clocks: the reposts (work/reposts.ts) every
  * `finders.reposts.everyMs`, the search words and young re-reads (work/search-words.ts) on their
  * slots, and the recommendation feed (work/trending-feed.ts) on its own. With every switch off a pass does nothing and touches no table.
@@ -16,6 +17,7 @@ import type { Loop, LoopContext, LoopCounts } from '../loop.ts';
 import type { Logger } from '../log.ts';
 import { errorText } from '../log.ts';
 import type { CoinLinkResult } from '../work/coin-links.ts';
+import type { InstantResult } from '../work/coin-instant.ts';
 import type { RepostResult } from '../work/reposts.ts';
 import type { SearchWordResult } from '../work/search-words.ts';
 import type { TrendingFeedResult } from '../work/trending-feed.ts';
@@ -29,6 +31,8 @@ export interface FinderWork {
   readonly everyMs: number;
   readonly repostsEveryMs: number;
   readonly coinLinks: () => Promise<CoinLinkResult>;
+  /** Absent: no instant judge, as before 2026-10-16. */
+  readonly instant?: () => Promise<InstantResult>;
   readonly reposts: () => Promise<RepostResult>;
   readonly searchWords: () => Promise<SearchWordResult>;
   readonly trendingFeed: () => Promise<TrendingFeedResult>;
@@ -57,6 +61,9 @@ export function findersLoop(work: FinderWork): Loop {
       };
       const links = await step('coin links', work.coinLinks);
       found += links?.credited ?? 0;
+      /* ★ Straight after the links, before anything slower: a post a coin just named is judged
+         now, not after the next discovery pass (work/coin-instant.ts). */
+      if (work.instant !== undefined) await step('instant judge', work.instant);
       const now = ctx.now();
       /* A pass with coins logs its own line (work/coin-links.ts); one with none says so now and then. */
       if (links !== null && links.coins === 0 && now - quietSaidAt >= QUIET_LOG_EVERY_MS) {

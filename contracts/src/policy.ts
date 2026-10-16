@@ -2061,6 +2061,20 @@ export interface RisingPolicy {
    * by the run, whose quote is a full batch, is never re-read only for a picture.
    */
   readonly refillAuthorMaxUsdPerPost: number;
+  /**
+   * ★ A COIN NAMING A POST STANDS IN FOR ITS VIEWS (the owner, 2026-10-16: "the instant coin path").
+   * A post whose metadata a coin names (internal.coin_post_link) clears For You's view bar without a
+   * view reading when the first observed coin naming it launched at most `maxPostAgeAtLaunchMs`
+   * after the post went up, and the post had at least `minApprovals` approvals at its newest read
+   * (core `coinVouches`). It still needs the judge's yes, the kind question, the not-a-meme hold and
+   * For You's six hours like any post: a coin is evidence that people are looking, never that it is
+   * a meme. Off: every post is held to the view bars alone.
+   */
+  readonly coinLinked: {
+    readonly on: boolean;
+    readonly maxPostAgeAtLaunchMs: number;
+    readonly minApprovals: number;
+  };
 }
 
 export interface IngestPolicy {
@@ -2889,6 +2903,18 @@ export interface FindersPolicy {
     readonly creditMaxAgeMs: number;
     /** A text-source post is credited only at this many approvals: most coins name a post nobody saw. */
     readonly textMinApprovals: number;
+    /**
+     * ★ THE INSTANT JUDGE (the owner, 2026-10-16: "to For You in 60 s"). Right after each pass, a
+     * post a coin named in the last `lookbackMs` that `rising.coinLinked` would put on For You, held
+     * by a lane and never answered, is judged at once — the post judge, its kind question and the
+     * not-a-meme hold, as the scoring pass would — instead of waiting for the next discovery pass.
+     * At most `perMinute` posts a minute. Off: such a post waits for the scoring pass.
+     */
+    readonly instant: {
+      readonly on: boolean;
+      readonly perMinute: number;
+      readonly lookbackMs: number;
+    };
   };
   /**
    * The short videos text posts link to: a shortened link in a text post we hold that is climbing
@@ -4262,6 +4288,11 @@ const POLICY_V1: Policy = {
     /* The text source's read by id quotes $0.00015 a post; the short-video source's quotes a full
        run (over $0.15), so only the first is asked for authors. */
     refillAuthorMaxUsdPerPost: 0.0005,
+    /* 2026-10-16, three days of coin links: of 15,851 posts a coin named, 313 pass (309 text, 4 short
+       video; about 100 a day), 98 of them judged yes and 84 not held by kind. 51 reached For You —
+       25 before any coin named them, 26 after, the median 38 minutes after the link. Six hours is For
+       You's own (`fypMaxAgeMs`), 5,000 the credit's (`finders.coinLinks.textMinApprovals`). */
+    coinLinked: { on: true, maxPostAgeAtLaunchMs: 21_600_000, minApprovals: 5_000 },
   },
 
   rank: {
@@ -4479,6 +4510,10 @@ const POLICY_V1: Policy = {
       /* 5,000: about 61 coined X posts a day we did not already have clear it (48 hours to 2026-10-15
          17:00 UTC), against 119 at 1,000 — half the judging, inside the room left on the live book. */
       textMinApprovals: 5_000,
+      /* 2026-10-16, three days: 144 posts `rising.coinLinked` passes had no answer yet when the link
+         was recorded, about 50 a day, a few in the busiest minute; at the open judge's $0.00017 a
+         post, under a cent a day with the kind question. */
+      instant: { on: true, perMinute: 6, lookbackMs: 600_000 },
     },
     reposts: {
       /* On from 2026-10-15: over 3.7 days of held X posts climbing fast, 22,774 short links led to

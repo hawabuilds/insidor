@@ -47,7 +47,7 @@ export { PgOwnerAlertRepo } from './repo/owner-alerts.ts';
 export type { OwnerAlert } from './repo/owner-alerts.ts';
 export { PgRecallRepo } from './repo/recall.ts';
 export { PgFinderRepo } from './repo/finders.ts';
-export type { CoinedPost, CoinPostLink, FreshCoin, SearchWord, ShortLinkCandidate } from './repo/finders.ts';
+export type { CoinedPost, CoinPostLink, CoinVouchRow, FreshCoin, SearchWord, ShortLinkCandidate } from './repo/finders.ts';
 export { PgCoinedVideoRepo } from './repo/coined-videos.ts';
 export type { CoinedVideo, CoinedVideoFetch, ShortVideoTuning } from './repo/coined-videos.ts';
 export { PgMissedPostRepo } from './repo/missed-posts.ts';

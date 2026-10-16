@@ -16,10 +16,43 @@
  * report reads both, and a rewrite on a re-read would move them.
  */
 
-import type { Millis } from '@insidor/contracts';
+import { OBSERVED_ASSET_ORIGINS, type Millis } from '@insidor/contracts';
 
 import type { Db } from '../client.ts';
 import { toMillis, toTimestamp } from '../rows.ts';
+
+/** The facts core's `coinVouches` reads about one post (see `coinVouchFacts`). */
+export interface CoinVouchRow {
+  readonly itemId: string;
+  readonly postedAtMs: Millis | null;
+  readonly firstCoinAtMs: Millis | null;
+  readonly approvals: number | null;
+}
+
+interface VouchRow {
+  item_id: string;
+  posted_at: Date | string | null;
+  approvals: number | string | null;
+  first_coin_at: Date | string | null;
+}
+
+const VOUCH_SELECT = `select i.item_id, i.posted_at, (i.counters -> 'approval' ->> 'value')::double precision as approvals, c.first_coin_at`;
+
+/** The first launch among the observed coins naming post `i`; a post none names is dropped. */
+const vouchFirstCoin = (originsParam: string): string => `join lateral (
+             select min(l.minted_at) as first_coin_at
+               from internal.coin_post_link l
+               join public.asset a on a.asset_key = l.asset_key
+              where l.source = i.source and l.source_item_id = i.source_item_id
+                and l.minted_at is not null and a.origin = any(${originsParam}::text[])
+           ) c on c.first_coin_at is not null`;
+
+const toVouch = (r: VouchRow): CoinVouchRow => ({
+  itemId: r.item_id,
+  postedAtMs: toMillis(r.posted_at),
+  firstCoinAtMs: toMillis(r.first_coin_at),
+  approvals: r.approvals === null ? null : Number(r.approvals),
+});
 
 const MISSING_TABLE = '42P01';
 const isMissing = (e: unknown): boolean => typeof e === 'object' && e !== null && (e as { code?: unknown }).code === MISSING_TABLE;
@@ -153,6 +186,52 @@ export class PgFinderRepo {
         const at = toMillis(r.at);
         return at === null ? [] : [[r.item_id, at] as const];
       }));
+    });
+  }
+
+  /**
+   * What core's `coinVouches` reads for each post asked about: when the first OBSERVED coin naming it
+   * launched (a fixture's link never vouches), and the post's own time and approvals at its newest
+   * read. A post no observed coin names is absent. The projector asks this of its passing posts.
+   */
+  async coinVouchFacts(itemIds: readonly string[]): Promise<ReadonlyMap<string, CoinVouchRow>> {
+    if (itemIds.length === 0) return new Map();
+    return this.#guard(new Map<string, CoinVouchRow>(), async () => {
+      const rows = await this.#db.query<VouchRow>(
+        `${VOUCH_SELECT}
+           from unnest($1::text[], $2::text[]) as p(source, source_item_id)
+           join public.item i on i.item_id = p.source || ':' || p.source_item_id
+           ${vouchFirstCoin('$3')}`,
+        [itemIds.map((id) => id.slice(0, id.indexOf(':'))), itemIds.map((id) => id.slice(id.indexOf(':') + 1)), [...OBSERVED_ASSET_ORIGINS]],
+      );
+      return new Map(rows.map((r) => [r.item_id, toVouch(r)] as const));
+    });
+  }
+
+  /**
+   * The instant judge's queue (Policy.finders.coinLinks.instant): posts an observed coin's link named
+   * since `sinceMs`, held by some lane (so the feed reads them), observed, and never given the post
+   * question's answer — with the facts `coinVouches` reads, newest link first. The caller applies
+   * the rule; this only narrows to the posts it could apply to.
+   */
+  async coinNamedUnjudged(sinceMs: Millis, limit: number): Promise<readonly CoinVouchRow[]> {
+    return this.#guard([] as readonly CoinVouchRow[], async () => {
+      const rows = await this.#db.query<VouchRow>(
+        `${VOUCH_SELECT}
+           from (select l.source, l.source_item_id, max(l.found_at) as found_at
+                   from internal.coin_post_link l
+                  where l.found_at >= $1
+                  group by 1, 2) p
+           join public.item i on i.item_id = p.source || ':' || p.source_item_id
+           ${vouchFirstCoin('$2')}
+          where i.origin = 'observed'
+            and exists (select 1 from internal.item_found_by f where f.item_id = i.item_id)
+            and not exists (select 1 from internal.post_judgement j where j.item_id = i.item_id and j.prompt_id not like 'post-kind%')
+          order by p.found_at desc
+          limit $3`,
+        [toTimestamp(sinceMs), [...OBSERVED_ASSET_ORIGINS], limit],
+      );
+      return rows.map(toVouch);
     });
   }
 

@@ -131,6 +131,7 @@ import { embedImages } from './work/embed-images.ts';
 import { backfillStories, type BackfillResult } from './work/backfill.ts';
 import { type MetadataReader, type UniverseDeps } from './work/universe.ts';
 import { coinLinksPass, type CoinLinkResult } from './work/coin-links.ts';
+import { instantItems, instantJudge, type InstantResult } from './work/coin-instant.ts';
 import { repostsPass, type RepostResult } from './work/reposts.ts';
 import { searchWordClock, searchWordsPass, type SearchWordResult } from './work/search-words.ts';
 import { trendingFeedClock, trendingFeedPass, type TrendingFeedResult } from './work/trending-feed.ts';
@@ -208,6 +209,8 @@ export interface Runtime {
   /** The ways to find a post besides the searches (Policy.finders). See loops/finders.ts. */
   readonly finders: {
     readonly coinLinks: () => Promise<CoinLinkResult>;
+    /** The posts a coin just named that the coin rule picks, judged at once (work/coin-instant.ts). */
+    readonly instant: () => Promise<InstantResult>;
     readonly reposts: () => Promise<RepostResult>;
     readonly searchWords: () => Promise<SearchWordResult>;
     readonly trendingFeed: () => Promise<TrendingFeedResult>;
@@ -1362,6 +1365,28 @@ export async function withRuntime<T>(
                 log: log.child({ step: 'coin-links' }),
                 now: () => Date.now() as Millis,
               }),
+            /* Built once: it keeps its own count of the last minute's posts. The same judges, precedents
+               and line as the scoring pass below, over a queue of only the posts the coin rule picked. */
+            instant: instantJudge({
+              finders: new PgFinderRepo(db),
+              items: repos.items,
+              score: (queue) =>
+                scorePosts({
+                  judge: postJudge,
+                  kindJudge,
+                  precedents,
+                  items: instantItems(queue, repos.items),
+                  scores: new PgPostJudgementRepo(db),
+                  meter,
+                  mode: cfg.spend.kind,
+                  policy,
+                  log: log.child({ step: 'coin-instant' }),
+                  now: () => Date.now() as Millis,
+                }),
+              policy,
+              log: log.child({ step: 'coin-instant' }),
+              now: () => Date.now() as Millis,
+            }),
             reposts: () =>
               repostsPass({
                 finders: new PgFinderRepo(db),
