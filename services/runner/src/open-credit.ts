@@ -2,7 +2,9 @@
  * THE OWNER'S LOW-CREDIT ALARM FOR THE OPEN-MODEL JUDGE'S ACCOUNT: every CREDIT_CHECK_MS (15 min)
  * the runner reads what is left on the account (the adapter's `accountCredits`, GET /credits) and
  * pushes once when it falls under the line, and once when it is topped up past it. The owner,
- * 2026-10-16: "push me ... if OpenRouter credit is low."
+ * 2026-10-16: "push me ... if OpenRouter credit is low." What is "left" is the lower of the
+ * account's credit and the judge key's own spending cap (`spendableUsd`, GET /key): that evening
+ * the key had $1.97 of a $5 cap left while the account held $6.97, and the key stops the judge.
  *
  * ★ WHY IN THE RUNNER, NOT THE ALERT SERVICE. The runner already holds the account's key (it is
  * the one calling the judge) and already has the owner's supplier queue (billing-alerts.ts

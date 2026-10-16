@@ -115,8 +115,24 @@ export async function keyAllowance(fetch: typeof globalThis.fetch, baseUrl: stri
  * whole account every key draws on — the number that runs out. Throws when the host does not
  * answer it or answers without both numbers: an unread balance is never said as $0. The key goes
  * in the header only; nothing but the two numbers is kept.
+ *
+ * ★ AND THE KEY'S OWN CAP, because it can bind first. On 2026-10-16 the account held $6.97 while
+ * the judge's key was capped at $5 with $1.97 left: the judge would have been refused (403 "Key
+ * limit exceeded") with the account far from empty. `keyAllowance` (GET /key) is read beside it, and
+ * `spendableUsd` is the lower of the two — the number the alarm watches. A key read that fails
+ * leaves `keyRemainingUsd` null and `spendableUsd` the account's: the account is the one that
+ * must be read; a key with no cap answers null.
  */
-export async function accountCredits(fetch: typeof globalThis.fetch, baseUrl: string, apiKey: string, timeoutMs: number): Promise<{ readonly totalUsd: number; readonly usedUsd: number; readonly remainingUsd: number }> {
+export async function accountCredits(
+  fetch: typeof globalThis.fetch,
+  baseUrl: string,
+  apiKey: string,
+  timeoutMs: number,
+): Promise<{ readonly totalUsd: number; readonly usedUsd: number; readonly remainingUsd: number; readonly keyRemainingUsd: number | null; readonly spendableUsd: number }> {
+  const key = keyAllowance(fetch, baseUrl, apiKey, timeoutMs).then(
+    (k) => k.remainingUsd,
+    () => null,
+  );
   let res: Response;
   try {
     res = await fetch(`${baseUrl.replace(/\/+$/, '')}/credits`, { headers: { authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(timeoutMs) });
@@ -128,5 +144,7 @@ export async function accountCredits(fetch: typeof globalThis.fetch, baseUrl: st
   const total = data.total_credits;
   const used = data.total_usage;
   if (typeof total !== 'number' || !Number.isFinite(total) || typeof used !== 'number' || !Number.isFinite(used)) throw new Error("the account's credits came back without both numbers");
-  return { totalUsd: total, usedUsd: used, remainingUsd: total - used };
+  const remainingUsd = total - used;
+  const keyRemainingUsd = await key;
+  return { totalUsd: total, usedUsd: used, remainingUsd, keyRemainingUsd, spendableUsd: keyRemainingUsd === null ? remainingUsd : Math.min(remainingUsd, keyRemainingUsd) };
 }
