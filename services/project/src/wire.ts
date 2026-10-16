@@ -733,6 +733,24 @@ export interface WireStory {
    * has the least context.
    */
   readonly provenance: WireStoryProvenance;
+  /*
+   * ★ A NARRATIVE'S OWN FACTS (narrative-frame.ts), on every page the board lists. Absent on a page
+   * projected before narratives. Every count is of the posts in `evidence` — the same posts, the
+   * same number everywhere — and every views figure says how many of them it counted.
+   */
+  /** The narrative's posts, every source, oldest first: the ids `evidence` cites. */
+  readonly postIds?: readonly string[];
+  readonly postCount?: number;
+  /** Each post's newest view count, summed; `viewsTotalPosts` of the `postCount` posts had one. */
+  readonly viewsTotal?: WireMeasured;
+  readonly viewsTotalPosts?: number;
+  /** Views gained in the last hour by the `viewsGained1hPosts` posts known at both ends of it. The tab's order. */
+  readonly viewsGained1h?: WireMeasured;
+  readonly viewsGained1hPosts?: number;
+  /** Every ten minutes over the day, the posts' summed views; null where a post was unknown then (the line breaks). */
+  readonly viewsSeries?: readonly { readonly atMs: number; readonly value: number | null }[];
+  /** When the narrative was first on the board. */
+  readonly foundAt?: WireInstant;
 }
 
 /* ── the censor ───────────────────────────────────────────────────────── */

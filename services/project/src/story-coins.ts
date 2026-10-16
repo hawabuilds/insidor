@@ -14,7 +14,10 @@
  *                runner embeds every coin-confirmed post), else its kept one
  *   names        the judge's subject name for each post (the newest answer to the first question),
  *                and each confirmed coin's own ticker and name
- *   stories      the grouping's stories each post is a member of (public.story_member, unmerged)
+ *   stories      the narrative each post is in (internal.narrative_member, 0093) — the grouping the
+ *                board shows, so a story coin and a narrative agree on "the same story"; before
+ *                0093, GROUP's stories (public.story_member, unmerged)
+ *   narratives   the owner's "Right coin" / "Wrong coin" on a narrative, as anchors on its posts
  *
  * ★ BEFORE 0074 there are no feed-post vectors except for posts the owner labelled: the query
  * reads the label vectors alone, and almost no post gets a story coin. Nothing fails — the tables
@@ -32,8 +35,8 @@
  */
 
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { storyCoins, type PostCoinCalls, type StoryAnchor, type StoryCoin } from '@insidor/core';
-import type { Db } from '@insidor/store';
+import { foldNarrativeCalls, storyCoins, type PostCoinCalls, type StoryAnchor, type StoryCoin } from '@insidor/core';
+import { PgNarrativeRepo, type Db, type NarrativeCallRecord } from '@insidor/store';
 
 /** Every anchor the owner's calls give: each post's own coin (right), and each coin called wrong on it. */
 export function anchorsOf(calls: ReadonlyMap<string, PostCoinCalls>): readonly Omit<StoryAnchor, 'names' | 'stories'>[] {
@@ -41,6 +44,19 @@ export function anchorsOf(calls: ReadonlyMap<string, PostCoinCalls>): readonly O
   for (const [itemId, c] of calls) {
     if (c.own !== null) out.push({ itemId, coin: c.own.address, atMs: c.own.atMs, kind: 'right' });
     for (const [coin, atMs] of c.wrong) out.push({ itemId, coin, atMs, kind: 'wrong' });
+  }
+  return out;
+}
+
+/** Each narrative coin call, standing now, as an anchor on each post the narrative held when it was made. */
+export function narrativeAnchors(rows: readonly NarrativeCallRecord[]): readonly Omit<StoryAnchor, 'names' | 'stories'>[] {
+  const calls = foldNarrativeCalls(rows);
+  const out: Omit<StoryAnchor, 'names' | 'stories'>[] = [];
+  for (const c of calls.coins.values()) {
+    for (const itemId of c.members) {
+      if (c.right !== null) out.push({ itemId, coin: c.right.address, atMs: c.right.atMs, kind: 'right' });
+      for (const [coin, atMs] of c.wrong) out.push({ itemId, coin, atMs, kind: 'wrong' });
+    }
   }
   return out;
 }
@@ -69,13 +85,19 @@ async function similarities(db: Db, postIds: readonly string[], anchorIds: reado
 }
 
 async function namesAndStories(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, { readonly name: string | null; readonly stories: readonly string[]; readonly text: string | null }>> {
+  /* ★ ONE SYSTEM: "the same story" is the narrative the post is in (0093), the grouping the board
+     shows; before 0093, GROUP's stories. Asked first, never caught (the projector's transaction). */
+  const narratives = await new PgNarrativeRepo(db).migrated();
+  const stories = narratives
+    ? `(select array_agg(m.narrative_id) from internal.narrative_member m where m.item_id = i.item_id) as stories`
+    : `(select array_agg(m.story_id) from public.story_member m join public.story s on s.story_id = m.story_id
+              where m.item_id = i.item_id and s.merged_into is null) as stories`;
   const rows = await db.query<{ item_id: string; name: string | null; stories: string[] | null; body: string | null }>(
     `select i.item_id, (select it.body from public.item it where it.item_id = i.item_id) as body,
             (select pj.proposed_name from internal.post_judgement pj
               where pj.item_id = i.item_id and pj.prompt_id not like 'post-kind%'
               order by pj.judged_at desc, pj.id desc limit 1) as name,
-            (select array_agg(m.story_id) from public.story_member m join public.story s on s.story_id = m.story_id
-              where m.item_id = i.item_id and s.merged_into is null) as stories
+            ${stories}
        from unnest($1::text[]) as i(item_id)`,
     [[...itemIds]],
   );
@@ -94,7 +116,10 @@ async function namesOfCoins(db: Db, addresses: readonly string[]): Promise<Reado
 
 /** Each feed post's story coin and the coins called wrong on its story; a post with neither is absent. */
 export async function loadStoryCoins(db: Db, postIds: readonly string[], calls: ReadonlyMap<string, PostCoinCalls>, policy: Policy): Promise<ReadonlyMap<string, StoryCoin>> {
-  const bare = anchorsOf(calls);
+  /* ★ The owner's coin calls on a narrative are anchors too, one per post it held when he made it:
+     "Right coin" on the GTA 6 narrative is "This is the coin" on each of its posts, for every new
+     post about the story (and so for the narrative itself, which reads its posts' cards). */
+  const bare = [...anchorsOf(calls), ...narrativeAnchors(await new PgNarrativeRepo(db).calls())];
   if (postIds.length === 0 || bare.length === 0) return new Map();
   const anchorIds = [...new Set(bare.map((a) => a.itemId))];
   const sims = await similarities(db, postIds, anchorIds);
