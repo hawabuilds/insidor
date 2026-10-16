@@ -10,10 +10,13 @@
  * `SPACE` names the representation, not the vendor, because policy keys its similarity bars
  * by it and policy may not name a vendor. Two spaces never compare.
  *
- * One picture the vendor cannot fetch (a deleted post image, a dead host) makes it refuse the
- * whole request with a 400. The batch is halved until that picture stands alone, and it comes
- * back null like any other unread picture, so one dead link no longer stops a run of thousands.
- * A batch refused in full still throws: that is a broken request, not a dead picture.
+ * One picture the vendor cannot fetch (a deleted post image, a dead host, a signed cover its
+ * fetcher is refused) makes it refuse the whole request with a 400. The batch is halved until that
+ * picture stands alone, and it comes back null like any other unread picture, so one dead link no
+ * longer stops a run of thousands. A batch refused in full still throws — a broken request, not a
+ * dead picture — UNLESS the vendor said of every input that it could not fetch the picture
+ * (`PictureRefused`): then they are all nulls. Until 2026-10-16 that case threw too, and a pass
+ * whose last small batch was all unfetchable covers lost every vector of the pass with it.
  *
  * A post's words and picture can also be read as ONE vector (`embedPosts`, space POST_SPACE): the
  * feed's judge is shown the owner's labelled posts closest to each post it is asked about, and
@@ -33,10 +36,10 @@ import type { Price, PriceBook } from '@insidor/meter';
 
 import { OutOfCredit, VendorUnavailable } from '@insidor/vendor-kit';
 
-import { VENDOR, type EmbedInput, type EmbedReply, type VoyageClient } from './client.ts';
+import { PictureRefused, VENDOR, type EmbedInput, type EmbedReply, type VoyageClient } from './client.ts';
 
 export { VENDOR };
-export { httpClient, readReply } from './client.ts';
+export { httpClient, pictureRefusal, PictureRefused, readReply } from './client.ts';
 export type { VoyageClient, VoyageClientConfig } from './client.ts';
 
 export const MODEL = 'voyage-multimodal-3';
@@ -91,17 +94,20 @@ export interface VoyageEmbedDeps {
    turn an empty account into a column of nulls. */
 const refusedInput = (error: unknown): boolean => error instanceof VendorUnavailable && !(error instanceof OutOfCredit) && error.status === 400;
 
+/** A batch's reply, and how many of its nulls the vendor said were pictures it could not fetch. */
+type AroundReply = EmbedReply & { readonly unfetched: number };
+
 /** Ask for a batch; on a 400, halve it until each refused input stands alone and is null. */
-async function embedAround(client: VoyageClient, inputs: readonly EmbedInput[]): Promise<EmbedReply> {
+async function embedAround(client: VoyageClient, inputs: readonly EmbedInput[]): Promise<AroundReply> {
   try {
-    return await client.embed({ model: MODEL, inputs });
+    return { ...(await client.embed({ model: MODEL, inputs })), unfetched: 0 };
   } catch (error) {
     if (!refusedInput(error)) throw error;
-    if (inputs.length === 1) return { vectors: [null], totalTokens: 0 };
+    if (inputs.length === 1) return { vectors: [null], totalTokens: 0, unfetched: error instanceof PictureRefused ? 1 : 0 };
     const mid = Math.ceil(inputs.length / 2);
     const left = await embedAround(client, inputs.slice(0, mid));
     const right = await embedAround(client, inputs.slice(mid));
-    return { vectors: [...left.vectors, ...right.vectors], totalTokens: left.totalTokens + right.totalTokens };
+    return { vectors: [...left.vectors, ...right.vectors], totalTokens: left.totalTokens + right.totalTokens, unfetched: left.unfetched + right.unfetched };
   }
 }
 
@@ -127,8 +133,9 @@ export function voyageEmbed(deps: VoyageEmbedDeps): EmbedPort {
         async () => {
           const inputs = batch.map((b) => b.input);
           const reply = await embedAround(deps.client, inputs);
-          /* Every input refused is the request itself at fault: say so rather than return nulls. */
-          if (inputs.length > 1 && reply.vectors.every((v) => v === null)) {
+          /* Every input refused is the request itself at fault: say so rather than return nulls —
+             unless the vendor said of each one that it could not fetch its picture. */
+          if (inputs.length > 1 && reply.vectors.every((v) => v === null) && reply.unfetched < inputs.length) {
             throw new VendorUnavailable(VENDOR, 'POST /v1/multimodalembeddings', 'refused every input in the batch', 400);
           }
           const embeddings = reply.vectors.map((values): Embedding | null =>

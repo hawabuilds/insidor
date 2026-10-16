@@ -13,7 +13,7 @@ import { OutOfCredit, VendorShapeError, VendorUnavailable, onOutOfCredit } from 
 
 import { BAD_INDEX, TWO_IMAGES } from './__fixtures__/replies.ts';
 import { DIMENSIONS, SPACE, readReply, voyageEmbed } from './index.ts';
-import { billingReason, httpClient } from './client.ts';
+import { billingReason, httpClient, pictureRefusal, PictureRefused } from './client.ts';
 
 const image = (uri: string): MediaRef => ({ kind: 'image', uri, width: null, height: null, durationMs: null });
 
@@ -97,6 +97,31 @@ test('a batch refused in full is still an outage, never a column of nulls', asyn
     port.embedMedia!([image('https://example.invalid/a.jpg'), image('https://example.invalid/b.jpg')], { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: 1 }),
     VendorUnavailable,
   );
+});
+
+test('★ a batch whose every picture could not be fetched is a column of nulls, not an outage (2026-10-16)', async () => {
+  let calls = 0;
+  const port = voyageEmbed({
+    client: { embed: async () => { calls += 1; throw new PictureRefused('embed'); } },
+    meter: meter(),
+    now: () => 0,
+  });
+  const urls = Array.from({ length: 8 }, (_, i) => image(`https://example.invalid/cover-${i}.jpeg`));
+  const result = await port.embedMedia!(urls, { capUsd: 1, spentUsd: 0, maxCalls: null, deadline: 1 });
+  assert.deepEqual(result.value, Array.from({ length: 8 }, () => null));
+  assert.equal(calls, 15, 'halved down to each picture alone');
+});
+
+test('the vendor\'s "could not fetch this picture" 400 is told from any other 400, and from billing', async () => {
+  /* The body as the vendor sent it on 2026-10-16, the signed address shortened. */
+  const recorded = JSON.stringify({ detail: "Request to model 'voyage-multimodal-3' failed. The image URL you have provided is invalid. Please verify the URL and try again.: https://cdn.example/cover.jpeg?x-signature=abc - For more information on input limitations, please see the documentation." });
+  assert.equal(pictureRefusal(400, recorded), true);
+  assert.equal(pictureRefusal(400, JSON.stringify({ detail: 'Unable to fetch image from URL' })), true);
+  assert.equal(pictureRefusal(400, JSON.stringify({ detail: 'Invalid model name' })), false);
+  assert.equal(pictureRefusal(500, recorded), false);
+  assert.equal(billingReason(400, recorded), null);
+  const client = httpClient({ apiKey: 'k', baseUrl: 'https://embed.invalid', fetch: (async () => new Response(recorded, { status: 400 })) as typeof fetch });
+  await assert.rejects(client.embed({ model: 'm', inputs: [{ imageUrl: 'https://cdn.example/cover.jpeg' }] }), (e: unknown) => e instanceof PictureRefused && !String((e as Error).message).includes('signature'));
 });
 
 test('★ a billing refusal is its own error, heard by the listener, and never halved into a column of nulls', async () => {
