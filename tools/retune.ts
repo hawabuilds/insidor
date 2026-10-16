@@ -65,6 +65,21 @@
  *      owner's right/wrong coin calls, counted and listed for the matching rules' owner) and the
  *      day's miss reasons in the log.
  *
+ * THE TIKTOK PART (the owner, 2026-10-16: "re-tune the TikTok settings twice a day with the X
+ * re-tune, same gate"), tools/lib/short-video-tune.ts, after the X block's test in every run:
+ *   · the TikTok training set refreshed (internal.coined_video, 0085) — and at every `due` check,
+ *     every ten minutes, so a new coined TikTok is in the set within minutes; free
+ *   · what it teaches (the speed bar at 30/60/120 minutes, tags, sounds, creators, kinds, naming),
+ *     and the learned bar's gate on our readings: no fewer coined TikToks caught, no more junk,
+ *     better on one, no missed TikTok lost — PROPOSED to the owner when it holds, since the bar is code
+ *   · with Policy.learning.shortVideo.gateOn, the TikTok coined videos graded beside the test (the
+ *     same gradings, ~60 more posts): the block is applied only if it also catches no fewer coined
+ *     TikToks, lets no more TikTok junk through and loses no missed TikTok the judge in use catches;
+ *     "beat" (strictly better on both, X's rule) is reported. No-worse, not strict, for applying:
+ *     strict on sets this small would keep every X block out too
+ *   · X and TikTok side by side (tools/lib/side-by-side.ts), the biggest gap and what is changing
+ *     for it — in the log, the run's detail and the owner's alert; recorded (internal.short_video_tuning)
+ *
  * ★ MONEY: the learning book (Policy.budget.learningLines, `learn:` rows on the ledger), never the
  * live feed's. The test is sent as one Message Batch at half price when the batch's pessimistic
  * estimate fits what is left of the line, one call a post otherwise; prompt caching makes the long
@@ -105,6 +120,10 @@ import { openSharedMeter } from './lib/shared-meter.ts';
 import { LineTooShort, goldOriginPosts, handGoldIds, gradePosts, judgeSetup, type EvalPost, type EvalRow } from './lib/pass-rates.ts';
 import { refitForRetune } from './lib/score-model.ts';
 import { refitCoinMatchForRetune, withCoinMatch } from './lib/coin-match-fit.ts';
+import { PgCoinedVideoRepo, type Db } from '../store/src/index.ts';
+import { refreshSet } from './lib/coined-videos.ts';
+import { recordShortVideoPart, shortVideoPart, type ShortVideoPart } from './lib/short-video-tune.ts';
+import { sideBySide, sideBySideLines } from './lib/side-by-side.ts';
 
 const P = DEFAULT_POLICY;
 const L = P.learning;
@@ -164,10 +183,10 @@ async function readLead(): Promise<{ facts: ReturnType<typeof leadFacts>; lines:
   }
 }
 
-async function withRepo<T>(f: (repo: PgLearningRepo, owner: PgOwnerAlertRepo, labels: PgLabelEmbeddingRepo) => Promise<T>): Promise<T> {
+async function withRepo<T>(f: (repo: PgLearningRepo, owner: PgOwnerAlertRepo, labels: PgLabelEmbeddingRepo, db: Db) => Promise<T>): Promise<T> {
   const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-retune' });
   try {
-    return await f(new PgLearningRepo(asDb(pool)), new PgOwnerAlertRepo(asDb(pool)), new PgLabelEmbeddingRepo(asDb(pool)));
+    return await f(new PgLearningRepo(asDb(pool)), new PgOwnerAlertRepo(asDb(pool)), new PgLabelEmbeddingRepo(asDb(pool)), asDb(pool));
   } finally {
     await pool.end();
   }
@@ -245,10 +264,25 @@ async function ownerCalls(repo: PgLearningRepo) {
 
 /* ── a run ───────────────────────────────────────────────────────────────────────────────────── */
 
-type G = 'gold' | 'auto' | 'live-not' | 'missed' | 'missed-taught';
+type G = 'gold' | 'auto' | 'live-not' | 'missed' | 'missed-taught' | 'tt-coined';
+
+/* ── the TikTok side of the judge's test ─────────────────────────────────────────────────────── */
+
+const TT = 'tiktok:';
+/** Coined TikToks caught, TikTok junk let through, and which missed TikToks were caught, in one grading. */
+function tiktokSide(rows: readonly GradedPost[], held: readonly string[]) {
+  const answered = rows.filter((r) => r.coinable !== null && r.id.startsWith(TT));
+  const coined = answered.filter((r) => r.group === 'tt-coined' || r.group === 'gold' || r.group === 'missed');
+  const junk = answered.filter((r) => r.group === 'live-not');
+  return {
+    coined: { passed: coined.filter((r) => caught(r, held) === true).length, tested: coined.length },
+    junk: { passed: junk.filter((r) => caught(r, held) === true).length, tested: junk.length },
+    missed: new Map(answered.filter((r) => r.group === 'missed' || r.group === 'missed-taught').map((r) => [r.id, caught(r, held)] as const)),
+  };
+}
 
 async function run(slot: Date, opts: { readonly dry: boolean; readonly force: boolean; readonly record: boolean; readonly baseline?: boolean; readonly rulesOnly?: boolean; readonly maxBatch?: number; readonly rowsFile?: string; readonly extraInstructions?: string; readonly kindCoinable?: boolean; readonly noAuto?: boolean; readonly composeOnly?: boolean }): Promise<void> {
-  await withRepo(async (repo, owner, labelRepo) => {
+  await withRepo(async (repo, owner, labelRepo, db) => {
     if (opts.record && !(await repo.claimSlot(slot, new Date()))) {
       log('info', 'this slot already ran', { slot: slot.toISOString() });
       return;
@@ -318,11 +352,23 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       for (const c of tappedMemes) { posts.push({ group: 'gold', id: c.itemId, kind: "the owner's meme call", text: c.text, imageUri: c.imageUri }); inTest.add(c.itemId); }
       const coinGold = await soft(repo.heldPosts(coinRight.map((m) => m.itemId).filter(fresh)), []);
       for (const h of coinGold) posts.push({ group: 'gold', id: h.itemId, kind: "the owner's coin call: this is the coin", text: h.body, imageUri: pictureOf(h.media)?.uri ?? null, coinRef: coinRight.find((m) => m.itemId === h.itemId)?.coinAddress ?? h.itemId });
+      for (const h of coinGold) inTest.add(h.itemId);
+      /* The TikTok training set's coined videos with words (Policy.learning.shortVideo.gateOn): graded
+         beside the test for the TikTok gate, never in X's rates. Words only: a re-fetched video's
+         still is not kept. */
+      if (L.shortVideo.gateOn) {
+        for (const v of await new PgCoinedVideoRepo(db).all()) {
+          if (v.caption === null || v.caption.trim() === '' || !fresh(v.itemId)) continue;
+          posts.push({ group: 'tt-coined', id: v.itemId, kind: `coined TikTok (${v.coinName ?? v.firstCoin})`, text: v.caption, imageUri: null, coinRef: v.firstCoin });
+          inTest.add(v.itemId);
+        }
+      }
       const composition = {
         examples: block.exampleIds.length, tapsTaught: block.taps.taught, tapsTested: block.taps.tested,
         handGold: posts.filter((p) => p.group === 'gold' || p.group === 'missed').length, ownerMemeCallsTested: tappedMemes.length, coinRightAddedToGold: coinGold.length,
         coinRight: coinCalls.filter((m) => m.verdict === 'right').length, coinNone: coinCalls.filter((m) => m.verdict === 'none').length,
         liveNegatives: block.testNegatives.length, missedTested: testMissed.length, autoGold: posts.filter((p) => p.group === 'auto').length,
+        tiktokCoined: posts.filter((p) => p.group === 'tt-coined').length,
       };
       if (opts.composeOnly === true) {
         console.log(JSON.stringify({ msg: 'retune composition (nothing asked, nothing written)', slot: slot.toISOString(), ...composition }, null, 1));
@@ -406,7 +452,18 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const answered = rows.filter((r) => r.coinable !== null);
       const unanswered = rows.length - answered.length;
       const rates = ratesOf(graded(answered), held, GROUPS);
-      const verdict = gate({ ...rates, regressions: regressed, live: liveRates }, L);
+      const xVerdict = gate({ ...rates, regressions: regressed, live: liveRates }, L);
+      /* ★ THE TIKTOK GATE (gateOn): the block against the judge in use on TikTok's own posts. */
+      const tt = L.shortVideo.gateOn && nowRows !== null ? (() => {
+        const mine = tiktokSide(graded(answered), held);
+        const live = tiktokSide(graded(nowRows.filter((r) => r.coinable !== null)), held);
+        const lost = [...live.missed].filter(([id, c]) => c === true && mine.missed.get(id) === false).map(([id]) => id);
+        const guard = mine.coined.passed >= live.coined.passed && mine.junk.passed <= live.junk.passed && lost.length === 0;
+        const beat = mine.coined.passed > live.coined.passed && mine.junk.passed < live.junk.passed && lost.length === 0;
+        const why = guard ? null : `TikTok: coined ${mine.coined.passed}/${mine.coined.tested} against ${live.coined.passed} live, junk ${mine.junk.passed}/${mine.junk.tested} against ${live.junk.passed} live, ${lost.length} missed TikTok(s) lost`;
+        return { coined: mine.coined, junk: mine.junk, liveCoined: live.coined, liveJunk: live.junk, lost, held: guard, beat, why };
+      })() : null;
+      const verdict = tt === null || tt.held ? xVerdict : { ...xVerdict, apply: false, why: [xVerdict.why, tt.why].filter((x) => x !== null).join('; ') };
       /* `--rows=<file>`: every graded post's answers, for comparing held-kind sets on one run. */
       if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, lookedAt: r.lookedAt, similarity: r.similarity, imageUri: r.imageUri, signal: signals.get(r.id) ?? null, text: r.text.slice(0, 120) })), null, 1));
       const why = unanswered > 0 ? `${unanswered} of ${rows.length} test posts went unanswered (${unansweredCause()})${verdict.why === null ? '' : `; ${verdict.why}`}` : verdict.why;
@@ -436,6 +493,15 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const missReasons = await soft(repo.missReasons(new Date(Date.now() - MISS_REASONS_MS)), {});
       const outcome = opts.dry ? 'dry' : apply ? 'applied' : 'kept';
       const lead = await readLead();
+      /* The TikTok part: free (but the re-fetch, when on); a failure is said and never fails the X run. */
+      let part: ShortVideoPart | null = null;
+      try {
+        part = await shortVideoPart(db, { env, paid: true, days: LEAD_DAYS, changing: tt === null ? [] : [`judge block ${apply ? 'applied' : 'kept'} with the TikTok gate ${tt.held ? 'holding' : 'not holding'}`] }, P);
+        if (opts.record && !opts.dry) await recordShortVideoPart(db, slot, part, tt);
+        log('info', 'retune tiktok part', { slot: slot.toISOString(), setSize: part.setSize, added: part.added, stored: part.stored, refetched: part.refetched, bar: part.bar, tags: part.learned.tags, sounds: part.learned.sounds, creators: part.learned.creators.length, judgeGate: tt, biggestGap: part.gapText, table: part.lines });
+      } catch (e) {
+        log('warn', 'the retune tiktok part failed; the X run is unaffected', { slot: slot.toISOString(), err: errText(e) });
+      }
       const summary = {
         slot: slot.toISOString(), version: versionId, outcome, why, leadTime: 'error' in lead ? lead.error : lead.facts,
         handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, goals: verdict.goals, goal: goalsText(rates, L), withoutCryptoFacts: noFacts, precedentLabels: labelled.length,
@@ -443,11 +509,13 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true, composition,
         learnedFrom: block.used, examples: block.exampleIds.length, added: delta.added, removed: delta.removed, chars: block.text.length,
         costUsd: Number(costUsd.toFixed(4)), batched: tested.batched, usage: tested.used, goldAdded: gold.added, missReasons, matchingLessons: lessons,
+        tiktok: part === null ? 'the TikTok part could not run' : { setSize: part.setSize, added: part.added, bar: part.bar.why, judgeGate: tt, biggestGap: part.gapText },
       };
       log(apply || opts.dry ? 'info' : 'warn', `retune ${outcome}`, summary);
       const ofN = (r: Rate) => `${r.passed}/${r.tested}`;
       const tally = `hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), regressions ${regressed.length}${liveRates === null ? '' : `; live now: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone); ${goalsText(rates, L)}`;
-      await end(outcome, versionId, why === null ? `applied: ${tally}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}` : `${why} (${tally})`, costUsd);
+      const ttTally = part === null ? '' : `; TikTok: set ${part.setSize} (+${part.added}), ${part.bar.why}, biggest gap ${part.gapText}`;
+      await end(outcome, versionId, (why === null ? `applied: ${tally}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}` : `${why} (${tally})`) + ttTally, costUsd);
 
       /* The owner's alert, once per slot (the claim is on the subject). A dry run tells nobody. */
       if (!opts.dry && opts.record) {
@@ -462,6 +530,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
                 goldPassed: rates.hand.passed, goldN: rates.hand.tested, negativePassed: rates.negatives.passed, negativeN: rates.negatives.tested, missedPassed: rates.missed.passed, missedN: rates.missed.tested,
                 autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length, goal: goalsText(rates, L), ...order.facts,
                 taps: block.used.taps, tapsTested: block.taps.tested, missed: block.used.missed, names: block.used.names, added: delta.added, removed: delta.removed, missReasons,
+                ...(part === null ? {} : { tiktokSet: part.setSize, tiktokAdded: part.added, tiktokBar: part.bar.why, tiktokGap: part.gapText, ...(tt === null ? {} : { tiktokCoinedPassed: tt.coined.passed, tiktokCoinedN: tt.coined.tested, tiktokJunkPassed: tt.junk.passed, tiktokJunkN: tt.junk.tested, tiktokBeat: tt.beat }) }),
               },
               href: '/#/alerts',
             });
@@ -486,12 +555,18 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
 /* ── the commands ────────────────────────────────────────────────────────────────────────────── */
 
 if (command === 'status') {
-  await withRepo(async (repo) => {
+  await withRepo(async (repo, _owner, _labels, db) => {
     const applied = await repo.latestApplied();
     console.log(applied === null ? 'no block applied: the judge reads its rules alone' : `in use: version ${applied.versionId} (${applied.sha}), applied ${applied.appliedAt.toISOString()}, ${applied.text.length} characters`);
     const lead = await readLead();
     console.log(`lead time, last ${LEAD_DAYS} days:`);
     for (const line of 'error' in lead ? [`could not be read: ${lead.error}`] : lead.lines) console.log(`  ${line}`);
+    try {
+      for (const line of sideBySideLines(await sideBySide(db, LEAD_DAYS, P))) console.log(line);
+      for (const t of await new PgCoinedVideoRepo(db).recentTunings(4)) console.log(`tiktok ${t.ranAt.toISOString()}  set ${t.setSize}  ${t.held === null ? '—' : t.held ? 'held' : 'not held'}  ${t.why ?? ''}  gap: ${t.gap ?? '—'}`);
+    } catch (e) {
+      console.log(`X and TikTok side by side could not be read: ${errText(e)}`);
+    }
     for (const r of await repo.recentRuns(10)) console.log(`${r.slot.toISOString()}  ${r.outcome.padEnd(8)} ${r.costUsd === null ? '      ' : `$${r.costUsd.toFixed(3)}`}  ${r.versionId ?? ''}  ${r.detail ?? ''}`);
   });
 } else if (command === 'compose') {
@@ -514,6 +589,16 @@ if (command === 'status') {
   /* `due` claims a slot `startAheadMs` before it, so the run is finished by 08:00 and 20:00, not started then. */
   const slot = command === 'due' ? new Date(latestSlot(Date.now() + L.startAheadMs, L.retuneAt, L.timeZone)) : new Date(slotArg ?? new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString());
   if (command === 'due') {
+    /* ★ EVERY TEN MINUTES, FREE: new coined TikToks into the training set, so the learned list, the
+       judge's precedents and the namer's examples see them within minutes, not at the next slot. */
+    await withRepo(async (_r, _o, _l, db) => {
+      try {
+        const got = await refreshSet(db, new Date(), P);
+        if (got.added > 0) log('info', 'tiktok training set: new coined videos added', { added: got.added, size: got.rows.length });
+      } catch (e) {
+        log('warn', 'tiktok training set refresh failed; tried again in ten minutes', { err: errText(e) });
+      }
+    });
     if (await withRepo((repo) => repo.hasRun(slot))) process.exit(0);
   }
   if (flag('--detach')) {
