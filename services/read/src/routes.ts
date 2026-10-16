@@ -25,6 +25,7 @@
 import { coinAbout, type AboutDeps } from './coin-about.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
 import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, feedPage, parseCursor } from './feed-page.ts';
+import { withStoryTags } from './story-tags.ts';
 import { withTranslations } from './translations.ts';
 import { errorText, type Logger } from './log.ts';
 import type { PostSheet } from './post-sheet.ts';
@@ -259,8 +260,8 @@ async function rising(feedId: string, deps: Deps): Promise<Reply> {
   if (view === undefined) return NOT_FOUND;
 
   const rows = await deps.db.query(RISING_ROWS_SQL, [feedId]);
-  /* The English of each post written in another language (translations.ts, 0081); none, as before. */
-  return json(200, { tick: tickNumber(view['tick']), posts: await withTranslations(deps.db, rows.map(payloadOf)) });
+  /* The English of each post written in another language (translations.ts, 0081), and the real narrative it is part of (story-tags.ts). */
+  return json(200, { tick: tickNumber(view['tick']), posts: await withStoryTags(deps.db, await withTranslations(deps.db, rows.map(payloadOf))) });
 }
 
 /**
@@ -288,7 +289,7 @@ async function risingOlder(feedId: string, rawUrl: string, deps: Deps): Promise<
   try {
     const rows = await deps.db.query(FEED_PAGE_SQL, [feedId, new Date(cursor.atMs).toISOString(), cursor.id, FEED_PAGE_SIZE]);
     const page = feedPage(rows, Date.now());
-    return json(200, { ...page, posts: await withTranslations(deps.db, page.posts) });
+    return json(200, { ...page, posts: await withStoryTags(deps.db, await withTranslations(deps.db, page.posts)) });
   } catch (e) {
     if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return NOT_FOUND;
     throw e;
