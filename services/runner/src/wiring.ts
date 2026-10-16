@@ -91,6 +91,7 @@ import {
   PgJudgementRepo,
   PgLabelEmbeddingRepo,
   PgPostEmbeddingRepo,
+  PgJunkFilterRepo,
   PgNameExampleRepo,
   PgNameGuessRepo,
   PgTranslationRepo,
@@ -1214,6 +1215,8 @@ export async function withRuntime<T>(
               kindJudge,
               precedents,
               shadow,
+              /* Read only while Policy.judge.junkFilter.on; before 0091 it reads no fit and every post is judged. */
+              junkFilter: new PgJunkFilterRepo(db),
               items: repos.items,
               scores: new PgPostJudgementRepo(db),
               meter,
