@@ -32,6 +32,7 @@ import {
 import { ASSET_SQL } from './market.ts';
 import { handle, type Deps } from './routes.ts';
 import { TRANSLATIONS_SQL } from './translations.ts';
+import { STORY_TAGS_SQL } from './story-tags.ts';
 
 /**
  * What a board frame says about where its stories came from, in the shape the projector
@@ -586,7 +587,7 @@ test('★ a feed of single posts is the tick and the payloads, verbatim and in t
   const reply = await handle('GET', '/rising/fyp', deps);
   assert.equal(reply.status, 200);
   assert.deepEqual(JSON.parse(reply.body), { tick: 4, posts: [later, POST] });
-  assert.deepEqual(calls.map((c) => c.sql), [RISING_VIEW_SQL, RISING_ROWS_SQL, TRANSLATIONS_SQL]);
+  assert.deepEqual(calls.map((c) => c.sql), [RISING_VIEW_SQL, RISING_ROWS_SQL, TRANSLATIONS_SQL, STORY_TAGS_SQL]);
   assert.deepEqual(calls[1]?.params, ['fyp']);
 });
 
