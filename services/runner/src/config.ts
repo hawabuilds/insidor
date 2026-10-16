@@ -93,8 +93,9 @@ export type SupervisedStage = (typeof SUPERVISED_STAGES)[number];
    HEARTBEAT_SLUG_FINDERS. `middle`: the middle lane's search (loops/middle.ts), out of the discover
    pass so it never delays the judge; with HEARTBEAT=on, HEARTBEAT_SLUG_MIDDLE. `readings`: For You's
    view readings and opened sheets (loops/readings.ts); with HEARTBEAT=on, HEARTBEAT_SLUG_READINGS.
-   `early`: early judging (loops/early.ts), out of the discover pass; with HEARTBEAT=on, HEARTBEAT_SLUG_EARLY. */
-export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders', 'middle', 'readings', 'early'] as const;
+   `early`: early judging (loops/early.ts), out of the discover pass; with HEARTBEAT=on, HEARTBEAT_SLUG_EARLY.
+   `narratives`: the judge's passed posts regrouped into narratives (loops/narratives.ts). */
+export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders', 'middle', 'readings', 'early', 'narratives'] as const;
 
 export type SupervisedTask = (typeof SUPERVISED_TASKS)[number];
 

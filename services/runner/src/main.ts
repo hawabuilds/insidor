@@ -36,6 +36,7 @@ import { detectLoop } from './loops/detect.ts';
 import { discoverLoop } from './loops/discover.ts';
 import { universeLoop } from './loops/universe.ts';
 import { missedLoop } from './loops/missed.ts';
+import { narrativesLoop } from './loops/narratives.ts';
 import { refillLoop } from './loops/refill.ts';
 import { findersLoop } from './loops/finders.ts';
 import { middleLoop } from './loops/middle.ts';
@@ -212,6 +213,9 @@ async function main(): Promise<void> {
       /* The owner's pasted missed posts, on the learning book: its own loop so a paste is worked
          within a minute whether discovery is on or not (loops/missed.ts). */
       missedLoop(runtime.missedPosts),
+      /* The posts the judge passed, regrouped into narratives: its own loop so the owner's calls on a
+         narrative take effect within a pass whatever discovery is doing (loops/narratives.ts). */
+      narrativesLoop(runtime.loopDeps.policy.narrative.everyMs, runtime.narratives),
       /* Older feed posts' video files, read again on the posts line: its own loop so a post opened
          in the sheet with no playable file gets one within a minute (loops/refill.ts). */
       refillLoop(runtime.refillPosts),
