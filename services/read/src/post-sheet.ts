@@ -24,6 +24,9 @@
  * list has no market anyone reports (`no_market`); an outage is `not_read_yet`; the order puts
  * every coin with an unknown cap after every coin with a known one, never at the bottom as $0.
  *
+ * The same object answers GET /story/:id/sheet (story-sheet.ts), the narrative page's posts and
+ * coins, because its coins must be priced by the same read and kept the same minute as here.
+ *
  * What breaks if changed carelessly: `picture_url` arrives through `to_jsonb(a)`, so this reads the
  * same before and after migration 0067 adds the column; naming the column directly would make every
  * sheet a 500 until the migration ran. And a video's file is passed on only when it is an https mp4
@@ -34,6 +37,7 @@ import type { CoinQuote } from '@insidor/market-dexscreener';
 
 import type { Logger } from './log.ts';
 import type { Db, Row } from './queries.ts';
+import { buildStorySheet } from './story-sheet.ts';
 import { withTranslations } from './translations.ts';
 
 /** The post on whichever feed holds it, For You first. */
@@ -62,9 +66,12 @@ select f.payload, i.first_seen_at, i.media, a.display_name, a.follower_count::te
  order by (f.feed_id = 'fyp') desc
  limit 1`;
 
-/** The promoted narrative the post is in, if any: the Narrative tile's name and link. */
+/**
+ * The promoted narrative the post is in, if any: the Narrative tile's name and link, and how many
+ * posts its page lists (the page's own count, so the line and the page never disagree).
+ */
 export const SHEET_STORY_SQL = `
-select m.story_id, v.payload ->> 'title' as title
+select m.story_id, v.payload ->> 'title' as title, jsonb_array_length(coalesce(v.payload -> 'evidence', '[]'::jsonb)) as posts
   from public.story_member m
   join public.story s on s.story_id = m.story_id and s.state = 'promoted' and s.merged_into is null and s.origin = 'observed'
   join public.story_view v on v.story_id = m.story_id
@@ -73,7 +80,7 @@ select m.story_id, v.payload ->> 'title' as title
  limit 1`;
 
 /** A narrative's title by id, when the post's coin link names a narrative it is not first a member of. */
-export const SHEET_TITLE_SQL = `select payload ->> 'title' as title from public.story_view where story_id = $1`;
+export const SHEET_TITLE_SQL = `select payload ->> 'title' as title, jsonb_array_length(coalesce(payload -> 'evidence', '[]'::jsonb)) as posts from public.story_view where story_id = $1`;
 
 /** The coins written beside the post (or its narrative), in the projector's order. */
 export const SHEET_LIST_SQL = `
@@ -110,6 +117,20 @@ export interface SheetReply {
 
 type Measured = { readonly v: number } | { readonly v: null; readonly why: string };
 type Instant = { readonly at: number } | { readonly at: null; readonly why: string };
+
+/** One coin as a sheet sends it. */
+export interface SheetCoinOut {
+  readonly coinId: string;
+  readonly address: string;
+  readonly name: string | null;
+  readonly ticker: string | null;
+  readonly imageUrl: string | null;
+  readonly launchedAt: Instant;
+  readonly marketCapUsd: Measured;
+  readonly changePct24h: Measured;
+  readonly bonded: boolean | null;
+  readonly proven: boolean;
+}
 
 const json = (status: number, value: unknown): SheetReply => ({ status, body: JSON.stringify(value) });
 const rec = (v: unknown): Row => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : {});
@@ -202,6 +223,37 @@ export function createPostSheet(deps: PostSheetDeps) {
     const link = linkedAddresses(payload['coins']);
     const listed = (await deps.db.query(SHEET_LIST_SQL, [itemId, storyId ?? ''])).flatMap((r) => str(r['address']) ?? []);
     const addresses = [...new Set([...link.addresses, ...listed])].slice(0, SHEET_COINS_MAX);
+    const { coins, marketDown } = await coinsFor(addresses, link.proven, rec(rec(payload['coins'])['coin']));
+
+    const followers = row['follower_count'] === null || row['follower_count'] === undefined ? null : Number(row['follower_count']);
+    /* The narrative's name and how many posts it lists, for "Part of the … narrative, 12 posts". */
+    const titled = storyId === null ? null : str(storyRow?.['story_id']) === storyId ? storyRow : (await deps.db.query(SHEET_TITLE_SQL, [storyId]))[0];
+    return json(200, {
+      post: payload,
+      author: {
+        name: str(row['display_name']),
+        pictureUrl: https(row['picture_url']),
+        /* Our copy's file name (0079): the app tries `author-pics/<name>` first; the link may have expired. */
+        pictureFile: typeof row['picture_copy'] === 'string' && /^[0-9a-f]{32}$/.test(row['picture_copy']) ? row['picture_copy'] : null,
+        followers: measured(followers, 'not_reported'),
+      },
+      foundAt: instant(ms(row['first_seen_at']), 'not_reported'),
+      media: sheetMedia(row['media']),
+      /* `story` on the wire, as coin-about.ts sends it: the app's censor refuses the other word as a key. */
+      story: storyId === null ? null : { storyId, title: str(titled?.['title']), posts: num(Number(titled?.['posts'] ?? NaN)) },
+      coinName: sharedName(coins),
+      sourcesMissing: marketDown ? 1 : 0,
+      coins,
+    });
+  }
+
+  /**
+   * Every coin in `addresses` as a sheet shows it, highest market cap first, a coin with no cap
+   * after every coin with one. `linkCoin` is what the post's or narrative's own link said of its
+   * coin, kept for a coin the name index does not hold. The post sheet and the narrative page's
+   * sheet (story-sheet.ts) both price their coins here, so one coin reads the same on both.
+   */
+  async function coinsFor(addresses: readonly string[], proven: string | null, linkCoin: Row): Promise<{ readonly coins: SheetCoinOut[]; readonly marketDown: boolean }> {
     const held = new Map((addresses.length === 0 ? [] : await deps.db.query(SHEET_COINS_SQL, [addresses])).map((r) => [str(r['address']) ?? '', r] as const));
 
     let quotes: ReadonlyMap<string, CoinQuote> = new Map();
@@ -225,8 +277,7 @@ export function createPostSheet(deps: PostSheetDeps) {
     }
 
     /* A coin the link names but the index does not hold keeps what the link itself said. */
-    const linkCoin = rec(rec(payload['coins'])['coin']);
-    const coins = addresses.map((address) => {
+    const coins = addresses.map((address): SheetCoinOut => {
       const h = held.get(address);
       const q = quotes.get(address) ?? null;
       const fromLink = str(linkCoin['address']) === address ? linkCoin : null;
@@ -245,47 +296,38 @@ export function createPostSheet(deps: PostSheetDeps) {
         changePct24h: measured(q?.change.h24, unlisted),
         /* Bonded only on the source's word; a coin it does not list is not said to be either. */
         bonded: q === null ? null : q.bonded,
-        proven: address === link.proven,
+        proven: address === proven,
       };
     });
-    const cap = (c: (typeof coins)[number]) => c.marketCapUsd.v;
     coins.sort((a, b) => {
-      const [x, y] = [cap(a), cap(b)];
+      const [x, y] = [a.marketCapUsd.v, b.marketCapUsd.v];
       if (x === null || y === null) return x === null ? (y === null ? 0 : 1) : -1;
       return y - x;
     });
+    return { coins, marketDown };
+  }
 
-    const followers = row['follower_count'] === null || row['follower_count'] === undefined ? null : Number(row['follower_count']);
-    return json(200, {
-      post: payload,
-      author: {
-        name: str(row['display_name']),
-        pictureUrl: https(row['picture_url']),
-        /* Our copy's file name (0079): the app tries `author-pics/<name>` first; the link may have expired. */
-        pictureFile: typeof row['picture_copy'] === 'string' && /^[0-9a-f]{32}$/.test(row['picture_copy']) ? row['picture_copy'] : null,
-        followers: measured(followers, 'not_reported'),
-      },
-      foundAt: instant(ms(row['first_seen_at']), 'not_reported'),
-      media: sheetMedia(row['media']),
-      /* `story` on the wire, as coin-about.ts sends it: the app's censor refuses the other word as a key. */
-      story: storyId === null ? null : { storyId, title: str(storyRow?.['story_id']) === storyId ? str(storyRow?.['title']) : str((await deps.db.query(SHEET_TITLE_SQL, [storyId]))[0]?.['title']) },
-      coinName: sharedName(coins),
-      sourcesMissing: marketDown ? 1 : 0,
-      coins,
-    });
+  /** One reply kept `keepMs` per key, so a sheet opened twice costs one market read. */
+  async function keep(key: string, make: () => Promise<SheetReply>): Promise<SheetReply> {
+    const now = deps.now();
+    for (const [k, v] of kept) if (now - v.at >= deps.keepMs) kept.delete(k);
+    const held = kept.get(key);
+    if (held !== undefined) return held.reply;
+    const reply = await make();
+    if (reply.status === 200) kept.set(key, { at: now, reply });
+    return reply;
   }
 
   return {
-    /** GET /post/:id/sheet. Kept `keepMs` per post, so a sheet opened twice costs one market read. */
+    /** GET /post/:id/sheet. */
     async sheet(itemId: string): Promise<SheetReply> {
       if (itemId === '' || itemId.length > 200) return json(400, { error: 'bad request' });
-      const now = deps.now();
-      for (const [k, v] of kept) if (now - v.at >= deps.keepMs) kept.delete(k);
-      const held = kept.get(itemId);
-      if (held !== undefined) return held.reply;
-      const reply = await build(itemId);
-      if (reply.status === 200) kept.set(itemId, { at: now, reply });
-      return reply;
+      return keep(`post:${itemId}`, () => build(itemId));
+    },
+    /** GET /story/:id/sheet: the narrative page's posts, their readings and its coins (story-sheet.ts). */
+    async story(storyId: string): Promise<SheetReply> {
+      if (storyId === '' || storyId.length > 200) return json(400, { error: 'bad request' });
+      return keep(`story:${storyId}`, () => buildStorySheet(storyId, { db: deps.db, coinsFor }));
     },
   };
 }
