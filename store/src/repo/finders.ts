@@ -266,7 +266,36 @@ export class PgFinderRepo {
           where c.first_coin_at >= $1`,
         [toTimestamp(sinceMs)],
       );
-      return rows.map((r) => ({ itemId: r.item_id, source: r.source, handle: r.handle, body: r.body ?? '', formatIds: r.format_ids ?? [], firstCoinAt: toMillis(r.first_coin_at) }));
+      const held = rows.map((r) => ({ itemId: r.item_id, source: r.source, handle: r.handle, body: r.body ?? '', formatIds: r.format_ids ?? [], firstCoinAt: toMillis(r.first_coin_at) }));
+      return [...held, ...(await this.#trainingSet(sinceMs, new Set(held.map((h) => h.itemId))))];
     });
+  }
+
+  /**
+   * ★ THE SHORT-VIDEO TRAINING SET (0085) JOINS THE LEARNED WORDS: the coined videos we never held
+   * (found again by id, or from the founders' sheets), with their caption, tags and sound as the
+   * items' own spelling. A post already read above is not counted twice. Read on its own so a
+   * database without 0085 still learns from the held posts (an error here is empty, never the
+   * whole list).
+   */
+  async #trainingSet(sinceMs: Millis, seen: ReadonlySet<string>): Promise<readonly CoinedPost[]> {
+    try {
+      const rows = await this.#db.query<{ item_id: string; source: string; handle: string | null; caption: string | null; tags: string[] | null; sound: string | null; first_coin_at: Date | string | null }>(
+        `select item_id, source, handle, caption, tags, sound, first_coin_at from internal.coined_video
+          where first_coin_at >= $1 and (caption is not null or cardinality(tags) > 0 or sound is not null or handle is not null)`,
+        [toTimestamp(sinceMs)],
+      );
+      return rows
+        .filter((r) => !seen.has(r.item_id))
+        .map((r) => {
+          const caption = r.caption ?? '';
+          /* Tags read from the caption and tags the source listed alone: both, as '#tag' words, so `learnWords` reads them as for a held post. */
+          const listed = (r.tags ?? []).filter((t) => !caption.toLowerCase().includes(`#${t.toLowerCase()}`)).map((t) => `#${t}`);
+          return { itemId: r.item_id, source: r.source, handle: r.handle, body: [caption, ...listed].join(' ').trim(), formatIds: r.sound === null ? [] : [r.sound], firstCoinAt: toMillis(r.first_coin_at) };
+        });
+    } catch (e) {
+      if (isMissing(e)) return [];
+      throw e;
+    }
   }
 }

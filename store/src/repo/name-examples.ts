@@ -198,7 +198,21 @@ export class PgNameExampleRepo {
         [opts.linkedDays],
       ),
     );
-    return [...pairs(owner, 'owner'), ...pairs(rejected, 'owner', true), ...pairs(created, 'created'), ...pairs(gold, 'gold'), ...pairs(linked, 'linked')];
+    /* ★ THE SHORT-VIDEO TRAINING SET (0085): every coined short video with its words and its first
+       coin's name, as a linked pair — a coin's links named it, the owner confirmed it, or the
+       founders' sheets did. The X-only `linked` read above cannot see them (a status link), and
+       most were never held, so their words come from the set. Missing table: none. */
+    const videos = !opts.linked ? [] : await this.#soft(() =>
+      this.#db.query<Row>(
+        `select v.item_id, v.first_coin as address, v.coin_name as name, v.coin_ticker as ticker, v.caption as text, null::text as picture, i.media,
+                v.posted_at, v.first_coin_at as available_at
+           from internal.coined_video v left join public.item i on i.item_id = v.item_id
+          where v.caption is not null and length(trim(v.caption)) > 0
+            and ($1::int is null or v.first_coin_at > now() - make_interval(days => $1::int))`,
+        [opts.linkedDays],
+      ),
+    );
+    return [...pairs(owner, 'owner'), ...pairs(rejected, 'owner', true), ...pairs(created, 'created'), ...pairs(gold, 'gold'), ...pairs(linked, 'linked'), ...pairs(videos, 'linked')];
   }
 
   /**
