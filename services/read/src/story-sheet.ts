@@ -41,7 +41,8 @@ select e.value ->> 'evidenceId' as item_id,
          (select f.payload from public.feed_post f where f.item_id = e.value ->> 'evidenceId' and f.payload is not null order by (f.feed_id = 'fyp') desc limit 1)
        ) as post,
        jsonb_array_length(coalesce(v.payload -> 'evidence', '[]'::jsonb)) as listed,
-       v.payload -> 'coins' as coins
+       v.payload -> 'coins' as coins,
+       v.payload -> 'foundAt' as found_at
   from public.story_view v
   cross join lateral jsonb_array_elements(coalesce(v.payload -> 'evidence', '[]'::jsonb)) with ordinality as e(value, ord)
  where v.story_id = $1
@@ -55,7 +56,7 @@ export const STORY_MEMBERS_FRAME_SQL = STORY_MEMBERS_SQL.replace(
 );
 
 /** Whether the story has a page at all: a story with no listed posts is still a story. */
-export const STORY_EXISTS_SQL = `select payload -> 'coins' as coins from public.story_view where story_id = $1`;
+export const STORY_EXISTS_SQL = `select payload -> 'coins' as coins, payload -> 'foundAt' as found_at from public.story_view where story_id = $1`;
 
 /** The other coins written beside the narrative, in the projector's order. */
 export const STORY_COINS_SQL = `select address from public.same_name_coin where subject_kind = 'story' and subject_id = $1 order by position asc`;
@@ -64,8 +65,9 @@ export const STORY_COINS_SQL = `select address from public.same_name_coin where 
 export const STORY_COINS_MAX = 30;
 
 /**
- * When we found the narrative: the moment it was first grouped (public.story.created_at), the
- * chart's Found marker. Not the earliest post's time, which the page already has as `firstSeenAt`.
+ * When we found the narrative, the chart's Found marker: the page's own `foundAt` (the projector's,
+ * from 0093). A page from before it has none, and then the moment its story was first grouped
+ * (public.story.created_at) stands in. Not the earliest post's time, which is `firstSeenAt`.
  */
 export const STORY_FOUND_SQL = `select created_at from public.story where story_id = $1`;
 
@@ -145,8 +147,9 @@ export async function buildStorySheet(storyId: string, deps: { readonly db: Db; 
   const ordered = [...coins.filter((c) => c.proven), ...coins.filter((c) => !c.proven)];
 
   const listedCount = num(head['listed']) ?? out.length;
-  const found = (await deps.db.query(STORY_FOUND_SQL, [storyId]))[0]?.['created_at'];
-  const foundMs = found instanceof Date ? found.getTime() : typeof found === 'string' ? Date.parse(found) : NaN;
+  const own = num(rec(head['found_at'])['at']);
+  const found = own !== null ? own : (await deps.db.query(STORY_FOUND_SQL, [storyId]))[0]?.['created_at'];
+  const foundMs = typeof found === 'number' ? found : found instanceof Date ? found.getTime() : typeof found === 'string' ? Date.parse(found) : NaN;
   return json(200, {
     storyId,
     foundAt: Number.isFinite(foundMs) ? { at: foundMs } : { at: null, why: 'not_reported' },

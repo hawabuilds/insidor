@@ -67,6 +67,14 @@ test('a coin proven from one of its posts is listed, but never as the narrative\
   assert.deepEqual(body.coins.map((c: { ticker: string; proven: boolean }) => [c.ticker, c.proven]), [['MMM', false]]);
 });
 
+test('the page\'s own foundAt is the Found marker when it has one', async () => {
+  const s = sheet({
+    [STORY_MEMBERS_SQL]: [{ item_id: 'x:1', posted_at: 100, post: null, listed: 1, coins: { kind: 'none' }, found_at: { at: 777 } }],
+    [STORY_FOUND_SQL]: [{ created_at: new Date(150) }],
+  });
+  assert.deepEqual(JSON.parse((await s.story('n-x:1')).body).foundAt, { at: 777 });
+});
+
 test('a story with no page is a 404; a page with no posts is an empty list', async () => {
   assert.equal((await sheet({}).story('st_gone')).status, 404);
   const body = JSON.parse((await sheet({ [STORY_EXISTS_SQL]: [{ coins: { kind: 'none' } }] }).story('st_1')).body);
