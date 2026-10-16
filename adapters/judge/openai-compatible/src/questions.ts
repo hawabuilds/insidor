@@ -50,7 +50,7 @@ import { TRANSLATE_PROMPT_SHA, decodeTranslations, outcomeOf, translateRequestBo
 import { mergeSpend, metered, type PriceBook } from '@insidor/meter';
 import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
 
-import { unfenced } from './client.ts';
+import { routerFields, unfenced } from './client.ts';
 import type { HostModel } from './models.ts';
 
 /** The ledger's endpoints, the main adapter's names for the same questions. */
@@ -75,6 +75,8 @@ export interface OpenQuestionDeps {
   readonly vendor: string;
   /** The router's providers, in order, and no others; empty: the router chooses (client.ts). */
   readonly providers: readonly string[];
+  /** False: a host of its own, sent no router-only fields (client.ts `routerFields`). Absent: the router. */
+  readonly router?: boolean;
   readonly judge: Pick<JudgePolicy, 'charsPerToken' | 'tokensPerFrame' | 'pairMaxOutputTokens'>;
 }
 
@@ -87,7 +89,7 @@ type Part = Record<string, unknown>;
  * one system message, text parts kept, pictures as data URLs (left out for a text-only model), the
  * output schema as `response_format`, temperature 0, the providers pinned as client.ts pins them.
  */
-export function chatBodyFromMessages(body: Record<string, unknown>, to: { readonly model: string; readonly vision: boolean; readonly providers: readonly string[]; readonly schemaName: string }): Record<string, unknown> {
+export function chatBodyFromMessages(body: Record<string, unknown>, to: { readonly model: string; readonly vision: boolean; readonly providers: readonly string[]; readonly router?: boolean | undefined; readonly schemaName: string }): Record<string, unknown> {
   const system = (Array.isArray(body['system']) ? (body['system'] as Part[]) : [])
     .map((b) => (typeof b['text'] === 'string' ? b['text'] : ''))
     .join('\n\n');
@@ -107,8 +109,7 @@ export function chatBodyFromMessages(body: Record<string, unknown>, to: { readon
     temperature: 0,
     messages: [...(system === '' ? [] : [{ role: 'system', content: system }]), ...messages],
     ...(schema?.['schema'] === undefined ? {} : { response_format: { type: 'json_schema', json_schema: { name: to.schemaName, strict: true, schema: schema['schema'] } } }),
-    provider: to.providers.length === 0 ? { require_parameters: true } : { require_parameters: true, order: [...to.providers], allow_fallbacks: false },
-    usage: { include: true },
+    ...routerFields(to.router, to.providers),
   };
 }
 
@@ -209,7 +210,7 @@ export function openNamer(deps: OpenQuestionDeps & { readonly names: Pick<NamesP
           }));
         }
         const chars = NAME_SYSTEM.length + NAME_INSTRUCTIONS.length + JSON.stringify(namePosts(batch, new Set())).length;
-        const body = chatBodyFromMessages(nameRequestBody(deps.model.id, deps.names.maxOutputTokens, null, batch, frames), { model: deps.model.id, vision: deps.model.vision, providers: deps.providers, schemaName: 'name_guesses' });
+        const body = chatBodyFromMessages(nameRequestBody(deps.model.id, deps.names.maxOutputTokens, null, batch, frames), { model: deps.model.id, vision: deps.model.vision, providers: deps.providers, router: deps.router, schemaName: 'name_guesses' });
         try {
           const call = await ask(deps, OPEN_NAMES_ENDPOINT, 'batched names call', p.estimate(chars, frames.size, deps.names.maxOutputTokens), at, body);
           spends.push(call.spend);
@@ -277,7 +278,7 @@ export function openTranslator(deps: OpenQuestionDeps & { readonly translate: Pi
       for (let i = 0; i < subjects.length; i += deps.translate.perCall) {
         const batch = subjects.slice(i, i + deps.translate.perCall);
         const messages = translateRequestBody(deps.translate.maxOutputTokens, batch);
-        const body = chatBodyFromMessages(messages, { model: deps.model.id, vision: false, providers: deps.providers, schemaName: 'translations' });
+        const body = chatBodyFromMessages(messages, { model: deps.model.id, vision: false, providers: deps.providers, router: deps.router, schemaName: 'translations' });
         try {
           const call = await ask(deps, OPEN_TRANSLATE_ENDPOINT, 'batched translate call', p.estimate(JSON.stringify(messages).length, 0, deps.translate.maxOutputTokens), at, body);
           spends.push(call.spend);
@@ -334,7 +335,7 @@ export function openSameSubject(deps: OpenQuestionDeps): OpenSameSubject {
         ] }],
         output_config: { format: { type: 'json_schema', schema: SAME_SUBJECT_SCHEMA } },
       };
-      const body = chatBodyFromMessages(messages, { model: deps.model.id, vision: true, providers: deps.providers, schemaName: 'same_subject' });
+      const body = chatBodyFromMessages(messages, { model: deps.model.id, vision: true, providers: deps.providers, router: deps.router, schemaName: 'same_subject' });
       const call = await ask(deps, OPEN_PAIR_ENDPOINT, 'same-subject question', estimateUsd(), at, body);
       if (call.value.reply === null) throw call.value.refused ?? new Error('same-subject: no reply and no error');
       return { value: decodeSameSubject(call.value.reply.reply).answer, spend: call.spend };

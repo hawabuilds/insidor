@@ -20,7 +20,7 @@ import { anthropicJudge, buildRequestBody, type JudgeClient, type JudgeRequest }
 import { inMemoryMeter } from '@insidor/meter';
 import { BudgetRefused, OutOfCredit, VendorUnavailable } from '@insidor/vendor-kit';
 
-import { DEFAULT_OPEN_PROVIDERS, accountCredits, buildChatBody, closestModel, firstAnswers, rotated, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
+import { DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, accountCredits, readOpenJudgeBackupSetup, routerFields, vendorOfHost, buildChatBody, closestModel, firstAnswers, rotated, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
 
 const AT = 1_800_000_000_000;
 const P = DEFAULT_POLICY.judge;
@@ -349,4 +349,32 @@ test('★ each retry asks the next pinned provider first; the router may still m
   const order = (n: number) => (host.calls[n]?.body?.['provider'] as { order: string[] }).order;
   assert.deepEqual(order(0), ['nextbit', 'deepinfra']);
   assert.deepEqual(order(1), ['deepinfra', 'nextbit']);
+});
+
+/* ── the backup judge (2026-10-16) ────────────────────────────────────── */
+
+test('★ the backup: its own key (or TOGETHER_API_KEY) on its own host, never the router; no key, no backup', () => {
+  assert.deepEqual(readOpenJudgeBackupSetup({ OPENROUTER_API_KEY: 'or-key' }), { state: 'dormant' }, 'the router key alone is no backup');
+  const together = readOpenJudgeBackupSetup({ OPENROUTER_API_KEY: 'or-key', TOGETHER_API_KEY: 'tg-key' });
+  assert.ok(together.state === 'configured');
+  assert.equal(together.apiKey, 'tg-key');
+  assert.equal(together.baseUrl, 'https://api.together.xyz/v1');
+  assert.equal(together.vendor, 'together');
+  assert.equal(together.model, 'google/gemma-4-31B-it');
+  assert.equal(together.router, false);
+  assert.deepEqual(together.providers, []);
+  assert.ok(KNOWN_MODELS.some((m) => m.id === together.model && m.vision), 'the default backup is priced and reads pictures');
+  const own = readOpenJudgeBackupSetup({ TOGETHER_API_KEY: 'tg-key', OPEN_JUDGE_BACKUP_API_KEY: 'own', OPEN_JUDGE_BACKUP_BASE_URL: 'https://api.deepinfra.com/v1/openai', OPEN_JUDGE_BACKUP_MODEL: 'google/gemma-3-27b-it' });
+  assert.ok(own.state === 'configured' && own.apiKey === 'own' && own.vendor === 'deepinfra' && own.model === 'google/gemma-3-27b-it');
+  assert.equal(vendorOfHost('not a url'), 'backup');
+});
+
+test('a host of its own is sent the plain chat body: no provider pin, no usage request, the same answer shape', () => {
+  const req: JudgeRequest = { system: 's', instructions: 'i', subjects: [subject('a')], frames: new Map() };
+  const routed = buildChatBody({ model: 'm', maxOutputTokens: 100, vision: true, providers: ['p'] }, req);
+  assert.ok('provider' in routed && 'usage' in routed);
+  const own = buildChatBody({ model: 'm', maxOutputTokens: 100, vision: true, providers: [], router: false }, req);
+  assert.ok(!('provider' in own) && !('usage' in own));
+  assert.deepEqual(own['response_format'], routed['response_format']);
+  assert.deepEqual(routerFields(false, ['p']), {});
 });
