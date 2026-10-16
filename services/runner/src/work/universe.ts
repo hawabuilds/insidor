@@ -42,6 +42,7 @@ import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
+import type { Shadow } from '../judge-shadow.ts';
 
 export interface MetadataReader {
   read(uri: string | null): Promise<
@@ -67,6 +68,11 @@ export interface UniverseDeps {
   readonly store: (items: readonly Item[], authors: readonly Author[]) => Promise<number>;
   /** The judge shown one post alone; null when none is configured. */
   readonly postJudge: JudgePort | null;
+  /**
+   * The other judge, offered every batch the post judge answers here, as the scorer offers its own
+   * (judge-shadow.ts): these are live answers the feed reads too. Never awaited. Absent: none.
+   */
+  readonly shadow?: Pick<Shadow, 'offer'> | null;
   readonly embed: EmbedPort | null;
   /** The same-subject question for a borderline picture (work/image-pairs.ts). */
   readonly pairs: PairCheckDeps | null;
@@ -338,8 +344,18 @@ async function judgeBatches(deps: UniverseDeps, items: readonly Item[]): Promise
     }
     const line = deps.meter.line(estimate.vendor);
     try {
+      const started = performance.now();
       const result = await judge.judge(subjects, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: estimate.estUnits, deadline: deps.now() + CALL_DEADLINE_MS * estimate.estUnits });
       usd += result.spend.usd;
+      /* The shadow sees this batch as sent, with the live answers; it never waits on it. */
+      deps.shadow?.offer(
+        result.value.flatMap((live, index) => {
+          const item = batch[index];
+          const subject = subjects[index];
+          return item === undefined || subject === undefined ? [] : [{ itemId: item.itemId, subject, live }];
+        }),
+        (performance.now() - started) / 1000 / Math.max(1, batch.length),
+      );
       /* Answers come back parallel to the subjects sent. */
       for (const [index, outcome] of result.value.entries()) {
         const item = batch[index];
