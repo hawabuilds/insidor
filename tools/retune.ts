@@ -166,6 +166,9 @@ const LABELS = new URL('../eval/src/feed/live-labels.json', import.meta.url);
 const command = process.argv[2] ?? '';
 const flag = (f: string) => process.argv.includes(f);
 const arg = (k: string) => process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? null;
+/* ★ THE RE-TUNE'S RESERVE (Policy.budget.learningLines.retuneReserveUsd) is for the scheduled run:
+   `run` and `due`. `measure` is a test like any other tool, held to the tests' own day. */
+const LEARNING_USE = command === 'measure' ? 'test' : 'retune';
 const log = (level: 'info' | 'warn' | 'error', msg: string, fields: Record<string, unknown> = {}) => console.log(JSON.stringify({ level, msg, job: 'retune', ...fields }));
 /* ★ A SUPPLIER THAT REFUSES FOR BILLING is logged at error level once per vendor per run, and named
    in the run's reason (and so in the owner's summary alert) instead of "outage or the learning
@@ -226,7 +229,7 @@ async function growGold(repo: PgLearningRepo): Promise<{ readonly added: number;
   const read = new Map<string, { text: string; imageUri: string | null }>();
   let xUsd = 0;
   if (unheld.length > 0 && (process.env['X_API_KEY'] ?? '') !== '') {
-    const shared = await openSharedMeter(unheld.length * X_USD_PER_POST * 2, env, 'learning');
+    const shared = await openSharedMeter(unheld.length * X_USD_PER_POST * 2, env, 'learning', LEARNING_USE);
     try {
       const x = xPlatform({ client: xClient({ apiKey: process.env['X_API_KEY'] ?? '', baseUrl: process.env['X_API_BASE'] ?? 'https://api.twitterapi.io', fetch: globalThis.fetch }), meter: shared.meter, now: () => Date.now() });
       const line = shared.meter.line();
@@ -445,7 +448,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
          this run splits gold exactly as this one did and does not pay to ask again. */
       const grade = async (of: readonly EvalPost<G>[], block: string | null) => {
         const examples = [block, opts.extraInstructions ?? null].filter((x): x is string => x !== null && x.trim() !== '').join('\n\n') || null;
-        const shared = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning');
+        const shared = await openSharedMeter(P.budget.learningLines.dailyUsd, env, 'learning', LEARNING_USE);
         try {
           const out = await gradePosts(of, { env, meter: shared.meter, examples, batch: true, mustFit: true, coined, vectors, knownKinds: kinds, maxBatch, precedents, ...(opts.kindCoinable === true ? { kindAlso: (p: EvalPost<string>) => (p as EvalRow<string>).coinable === true } : {}) });
           for (const r of out.rows) if (r.postKind !== null) kinds.set(r.id, r.postKind);

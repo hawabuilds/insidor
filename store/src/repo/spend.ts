@@ -24,7 +24,7 @@
  */
 
 import type { Millis, Spend, SpendLedger, SpendTotals } from '@insidor/contracts';
-import { BILLING_UNITS, JOB_ENDPOINT_PREFIX, LEARN_ENDPOINT_PREFIX } from '@insidor/contracts';
+import { BILLING_UNITS, JOB_ENDPOINT_PREFIX, LEARN_ENDPOINT_PREFIX, LEARN_TEST_ENDPOINT_PREFIX } from '@insidor/contracts';
 import type { BillingUnit } from '@insidor/contracts';
 
 import type { Db } from '../client.ts';
@@ -35,6 +35,8 @@ interface TotalRow {
   usd: string | number;
   job_usd: string | number;
   learn_usd: string | number;
+  /* Absent from a fake ledger written before tests had their own line: read as zero. */
+  test_usd?: string | number;
 }
 
 /**
@@ -111,11 +113,12 @@ export class PgSpendRepo implements SpendLedger {
     const rows = await this.#db.query<TotalRow>(
       `select coalesce(vendor, '') as vendor, coalesce(sum(usd), 0) as usd,
               coalesce(sum(usd) filter (where endpoint like $2), 0) as job_usd,
-              coalesce(sum(usd) filter (where endpoint like $3), 0) as learn_usd
+              coalesce(sum(usd) filter (where endpoint like $3), 0) as learn_usd,
+              coalesce(sum(usd) filter (where endpoint like $4), 0) as test_usd
          from internal.spend
         where at >= $1
         group by grouping sets ((vendor), ())`,
-      [toTimestamp(sinceMs), `${JOB_ENDPOINT_PREFIX}%`, `${LEARN_ENDPOINT_PREFIX}%`],
+      [toTimestamp(sinceMs), `${JOB_ENDPOINT_PREFIX}%`, `${LEARN_ENDPOINT_PREFIX}%`, `${LEARN_TEST_ENDPOINT_PREFIX}%`],
     );
 
     const byVendor: Record<string, number> = {};
@@ -124,13 +127,17 @@ export class PgSpendRepo implements SpendLedger {
     let jobTotalUsd = 0;
     const learnByVendor: Record<string, number> = {};
     let learnTotalUsd = 0;
+    const testByVendor: Record<string, number> = {};
+    let testTotalUsd = 0;
     for (const row of rows) {
       if (row.vendor === '') {
         jobTotalUsd = toUsd(row.job_usd, '(all jobs)');
         learnTotalUsd = toUsd(row.learn_usd, '(all learning)');
+        testTotalUsd = toUsd(row.test_usd ?? 0, '(all tests)');
       } else {
         if (toUsd(row.job_usd, row.vendor) > 0) jobByVendor[row.vendor] = toUsd(row.job_usd, row.vendor);
         if (toUsd(row.learn_usd, row.vendor) > 0) learnByVendor[row.vendor] = toUsd(row.learn_usd, row.vendor);
+        if (toUsd(row.test_usd ?? 0, row.vendor) > 0) testByVendor[row.vendor] = toUsd(row.test_usd ?? 0, row.vendor);
       }
       /* The overall row is the one with no vendor. `coalesce` to the empty string
          rather than reading a null makes the two cases one type, and the empty string
@@ -140,6 +147,6 @@ export class PgSpendRepo implements SpendLedger {
       else byVendor[row.vendor] = toUsd(row.usd, row.vendor);
     }
 
-    return { totalUsd, byVendor, jobs: { totalUsd: jobTotalUsd, byVendor: jobByVendor }, learning: { totalUsd: learnTotalUsd, byVendor: learnByVendor } };
+    return { totalUsd, byVendor, jobs: { totalUsd: jobTotalUsd, byVendor: jobByVendor }, learning: { totalUsd: learnTotalUsd, byVendor: learnByVendor }, learningTests: { totalUsd: testTotalUsd, byVendor: testByVendor } };
   }
 }

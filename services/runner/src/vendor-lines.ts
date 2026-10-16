@@ -32,6 +32,26 @@ export function jobVendorLines(policy: Policy, book: 'jobs' | 'learning' = 'jobs
   };
 }
 
+/**
+ * Who is spending on the learning book (Policy.budget.learningLines): the scheduled re-tune, the
+ * runner's own learning work (the owner's missed posts), or a test or experiment (any other tool).
+ */
+export type LearningUse = 'retune' | 'work' | 'test';
+
+/**
+ * ★ THE RE-TUNE'S RESERVE, TAKEN FIRST. The learning book's day as each spender may spend it: the
+ * re-tune all of it; everyone else all but `retuneReserveUsd`, so the reserve is there for the
+ * re-tune however much was spent before it. A test is also held to `testsUsd` on its own
+ * (`testsLineUsd`), all vendors together. Never below zero.
+ */
+export function learningDailyCapUsd(policy: Policy, use: LearningUse): number {
+  const l = policy.budget.learningLines;
+  return use === 'retune' ? l.dailyUsd : Math.max(l.dailyUsd - l.retuneReserveUsd, 0);
+}
+
+/** Tests' and experiments' own day, all vendors together; never more than the capped part of the book. */
+export const testsLineUsd = (policy: Policy): number => Math.min(policy.budget.learningLines.testsUsd, learningDailyCapUsd(policy, 'test'));
+
 export function vendorLines(policy: Policy): Readonly<Record<string, number>> {
   const lines = policy.budget.supplierLines;
   return {
