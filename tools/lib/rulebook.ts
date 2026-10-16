@@ -78,7 +78,7 @@ export function standingDecisions(p: Policy): readonly string[] {
     'A post very close to one the owner called "not a meme" is held back.',
     'A post that is itself coin promotion (a shill) never passes.',
     'Tragedies and company or media news are not held back: people coin them.',
-    `Posts several people coined ${Math.round(p.learning.coinedYes.lateMs / 60_000)} minutes or more after they were posted count as yes.`,
+    `A post several people launched coins for, the first of them at least ${Math.round(p.learning.coinedYes.lateMs / 60_000)} minutes AFTER the post went up, is yes: the crowd found it on its own.`,
   ];
 }
 

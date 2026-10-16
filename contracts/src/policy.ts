@@ -4221,10 +4221,11 @@ const POLICY_V1: Policy = {
        case each still fit ($8.90 only if both hit their worst case, and then the second test waits). */
     /* The reserve and the tests' line from 2026-10-16 (the owner). Sized at the open model's prices,
        since the re-tune runs on it alone: a run grades about 700 posts twice (new block and live) at
-       40 precedents, about $0.25 a side as billed and up to $0.90 a side by the pessimistic estimate a
-       test must fit before it starts, plus the rulebook's one call (cents). $2 holds two runs a day
-       with the second's estimate still fitting. Tests and experiments: $1 a day, every vendor. */
-    learningLines: { dailyUsd: 8.5, posts: 1.5, judge: 5.75, video: 0.5, embeddings: 0.75, retuneReserveUsd: 2, testsUsd: 1 },
+       40 precedents: measured $0.00032 a post for both questions (2026-10-16, 20 posts), so about 860
+       posts a side cost about $0.28 a side, $0.56 a run with the rulebook's one call ($0.0016), and a
+       side must fit its pessimistic estimate (about $1.40) before it starts. $2.50 holds two runs a
+       day with the second's estimate still fitting. Tests and experiments: $1 a day, every vendor. */
+    learningLines: { dailyUsd: 8.5, posts: 1.5, judge: 5.75, video: 0.5, embeddings: 0.75, retuneReserveUsd: 2.5, testsUsd: 1 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
