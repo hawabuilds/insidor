@@ -7,7 +7,9 @@
  * Its own file because it owns the two things the post sheet's chart does not: the total, which is
  * story-views.ts's rule and nothing else (a moment where any post's views are unknown is a break,
  * never a sum with a hole in it), and the market read for the MC line, which happens only while the
- * switch is on, at the chart's interval, once per interval.
+ * switch is on, at the chart's interval, once per interval. The total arrives from the page: the
+ * projector's `viewsSeries` (summed under that rule from every post's readings, every ten minutes)
+ * when it sends one, else the phone's sum of the readings its feed cards carry.
  *
  * ★ WHEN THE TOTAL CANNOT BE DRAWN AT ALL it says why in words, with how many posts we have no
  * readings for, rather than drawing a partial sum. The dots and markers need no total and are
@@ -111,9 +113,9 @@ export function StoryChart({ members, total, foundAt, coin, coinAt, now, onPost 
         onInterval={setIntervalPick}
         startInterval={FIRST_INTERVAL}
       />
-      {total.unknownNow > 0 ? (
+      {total.unknownNow > 0 || total.breaks.length > 0 ? (
         <p className={styles['chartFoot']}>
-          The line stops where we stopped reading {total.unknownNow === 1 ? '1 post' : `${total.unknownNow} posts`}: a total that leaves a post out isn't drawn.
+          The line breaks where some post's views are unknown: a total that leaves a post out isn't drawn.
         </p>
       ) : null}
     </div>

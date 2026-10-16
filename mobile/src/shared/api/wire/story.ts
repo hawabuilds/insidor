@@ -120,6 +120,21 @@ export interface Story {
    * ★ PHONE ONLY FOR NOW: the desktop copy gains it when the desktop shows it.
    */
   readonly viewsGained1h: Measured | null;
+  /** How many of the posts `viewsGained1h` counted (those known at both ends of the hour). */
+  readonly viewsGained1hPosts: number | null;
+  /** Each post's newest views, summed by the projector; `viewsTotalPosts` of `postCount` had one. */
+  readonly viewsTotal: Measured | null;
+  readonly viewsTotalPosts: number | null;
+  /**
+   * The day's summed views every ten minutes, under the rule in mobile/src/features/narrative/
+   * story-views.ts, summed by the projector from every post's readings: a null value is a moment some
+   * post was unknown, and the chart breaks there. Null when the server sends no series.
+   */
+  readonly viewsSeries: readonly { readonly atMs: number; readonly value: number | null }[] | null;
+  /** How many posts the page lists, as the server counts them. */
+  readonly postCount: number | null;
+  /** When we found the narrative: the chart's Found marker. Null from a server that does not say. */
+  readonly foundAt: Instant | null;
 }
 
 /**

@@ -129,6 +129,18 @@ export function storyTotal(members: readonly MemberViews[], now: number): StoryT
   };
 }
 
+/**
+ * The projector's own series (story payload `viewsSeries`, summed under this same rule from every
+ * post's readings, which the phone cannot see): its numbers are the totals, its nulls the breaks.
+ * Preferred to `storyTotal` whenever the server sends it.
+ */
+export function seriesTotal(series: readonly { readonly atMs: number; readonly value: number | null }[]): StoryTotal {
+  const points = series.flatMap((p) => (p.value === null ? [] : [{ atMs: p.atMs, value: p.value }]));
+  const breaks = series.flatMap((p) => (p.value === null ? [p.atMs] : []));
+  const last = series[series.length - 1];
+  return { points, breaks, unknownNow: last !== undefined && last.value === null ? 1 : 0, neverRead: 0 };
+}
+
 export type LatestTotal =
   | { readonly kind: 'value'; readonly total: number; readonly oldestAt: number }
   | { readonly kind: 'unknown'; readonly why: string };

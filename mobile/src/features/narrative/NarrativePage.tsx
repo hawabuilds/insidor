@@ -10,11 +10,12 @@
  *            the narrative's own listing for one no feed holds (a tap opens the post where it is).
  *   Coins    the narrative's own coin first, then the other coins with its name.
  *
- * ★ FACTS ONLY. The post count is the narrative's own. Total views is every post's views as last
- * read, added up, and a dash with how many posts have none when any has none (the story's `reach` is
- * its top post's views, not a total, so it is not used here). The last hour's gain is the
- * projector's when it sends one, else the phone's from the posts' own readings under
- * story-views.ts's rule, else a dash with the reason. Nothing is ever a zero for want of a reading.
+ * ★ FACTS ONLY. The post count is the narrative's own (`postCount`). Total views and the last hour
+ * are the projector's (`viewsTotal`, `viewsGained1h`), with "12 of 14 posts counted" when they
+ * counted fewer posts than the page lists; from a server without them, the phone adds up the
+ * readings its feed cards carry under story-views.ts's rule, and says how many posts have none.
+ * (`reach` is the top post's views, not a total, so it is not used here.) Nothing is ever a zero
+ * for want of a reading.
  *
  * ★ BUY ONLY ON THE NARRATIVE'S OWN COIN. The header offers Buy only for the coin the narrative
  * names (`proven` on the sheet, or the story's `one`); with several coins or an unsure match it says
@@ -59,7 +60,7 @@ import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { goBack } from '../../shared/nav.ts';
 import { NarrativeOwnerBar, RemovePost, CoinCall } from './NarrativeOwner.tsx';
 import { StoryChart, useStoryTotal } from './StoryChart.tsx';
-import { gainedLastHour, latestTotal } from './story-views.ts';
+import { gainedLastHour, latestTotal, seriesTotal } from './story-views.ts';
 import styles from './narrative.module.css';
 
 type Section = 'posts' | 'coins' | 'comments' | 'stats';
@@ -159,24 +160,33 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | 'f
   const [note, setNote] = useState<SheetNote | null>(null);
   const read = sheet === 'failed' || sheet === null ? null : sheet;
   const members = useMemo(() => read?.members ?? [], [read]);
-  const total = useStoryTotal(members, now);
+  /* The projector's own series when it sends one (it reads every post's readings); else ours. */
+  const phoneTotal = useStoryTotal(members, now);
+  const total = useMemo(() => (story.viewsSeries !== null ? seriesTotal(story.viewsSeries) : phoneTotal), [story.viewsSeries, phoneTotal]);
   const coin = ownCoin(story, read);
   const status = coinStatus(story.coins);
-  const posts = story.evidence.length;
+  const posts = story.postCount ?? story.evidence.length;
+  /* "12 of 14 posts counted" under a sum that counted fewer posts than the page lists. */
+  const counted = (n: number | null) => (n !== null && n !== posts ? `${n} of ${posts} posts counted` : null);
 
   /* The projector's gain when it sends one; else ours from the posts' readings; else why not. */
   const gain = story.viewsGained1h !== null
     ? (story.viewsGained1h.known ? { kind: 'value' as const, gain: story.viewsGained1h.amount, minutes: 60 } : { kind: 'unknown' as const, why: 'Not read yet' })
     : read === null ? { kind: 'unknown' as const, why: sheet === 'failed' ? "Couldn't read the posts' views" : 'Reading' } : gainedLastHour(total, now);
-  /* Every post's views as last read, added up (story-views.ts latestTotal): the card's figure when a
-     feed holds the post, else its own newest reading. */
-  const sum = read === null
+  /* The projector's total when it sends one; else every post's views as last read, added up here
+     (story-views.ts latestTotal): the card's figure when a feed holds the post, else its own newest reading. */
+  const sum = story.viewsTotal !== null
+    ? (story.viewsTotal.known ? { kind: 'value' as const, total: story.viewsTotal.amount, oldestAt: now } : { kind: 'unknown' as const, why: 'Not read yet' })
+    : read === null
     ? { kind: 'unknown' as const, why: sheet === 'failed' ? "Couldn't read the posts' views" : 'Reading' }
     : latestTotal(members.map((m) => {
         const last = [...m.views].reverse().find((v) => v.value !== null);
         if (m.post !== null && m.post.reach.known) return { latest: m.post.reach.amount, latestAt: m.post.readAt.known ? m.post.readAt.at : (last?.atMs ?? null) };
         return { latest: last?.value ?? null, latestAt: last?.atMs ?? null };
       }));
+  const totalNote = story.viewsTotal !== null && sum.kind === 'value' ? counted(story.viewsTotalPosts) : null;
+  const gainNote = story.viewsGained1h !== null && gain.kind === 'value' ? counted(story.viewsGained1hPosts) : null;
+  const foundAt = story.foundAt?.known === true ? story.foundAt.at : read !== null && read.foundAt.known ? read.foundAt.at : null;
   /* The chart's coin (its MC line and launch marker): its own coin, else the one coin its posts are proven to. */
   const chartCoin = coin ?? (read !== null && read.coins.length === 1 ? (read.coins[0] ?? null) : null);
   const coinAt = chartCoin !== null && chartCoin.launchedAt.known ? chartCoin.launchedAt.at : null;
@@ -202,6 +212,7 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | 'f
           {sum.kind === 'value' ? <span className={styles['factN']}>{compact(sum.total)}</span> : <span className={styles['factN']}>—</span>}
           {sum.kind === 'unknown'
             ? <span className={styles['factWhy']}>{sum.why}</span>
+            : totalNote !== null ? <span className={styles['factWhy']}>{totalNote}</span>
             : now - sum.oldestAt > STALE_MS ? <span className={styles['factWhy']}>Some last read {formatDuration(now - sum.oldestAt)} ago</span> : null}
         </div>
         <div>
@@ -213,7 +224,7 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | 'f
           {gain.kind === 'value'
             ? <span className={`${styles['factN']} ${gain.gain >= 0 ? styles['up'] : styles['down']}`}>{gain.gain >= 0 ? '+' : ''}{compact(gain.gain)}</span>
             : <span className={styles['factN']} title={gain.why}>—</span>}
-          {gain.kind === 'unknown' ? <span className={styles['factWhy']}>{gain.why}</span> : null}
+          {gain.kind === 'unknown' ? <span className={styles['factWhy']}>{gain.why}</span> : gainNote !== null ? <span className={styles['factWhy']}>{gainNote}</span> : null}
         </div>
       </div>
 
@@ -248,7 +259,7 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | 'f
         <StoryChart
           members={members}
           total={total}
-          foundAt={read.foundAt.known ? read.foundAt.at : null}
+          foundAt={foundAt}
           coin={chartCoin}
           coinAt={coinAt}
           now={now}
