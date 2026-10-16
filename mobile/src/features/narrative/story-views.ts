@@ -27,7 +27,7 @@
  * we stopped reading hours ago look flat, and the narrative's line look like it stopped growing.
  */
 
-import type { Reading } from '../post-sheet/sheet-view.ts';
+import type { Reading } from '../post-sheet/index.ts';
 
 const MINUTE = 60_000;
 
@@ -126,6 +126,27 @@ export function storyTotal(members: readonly MemberViews[], now: number): StoryT
     breaks,
     unknownNow: prepared.filter((m) => viewsAt(m, now) === null).length,
     neverRead: counted.filter((c) => c.length === 0).length,
+  };
+}
+
+export type LatestTotal =
+  | { readonly kind: 'value'; readonly total: number; readonly oldestAt: number }
+  | { readonly kind: 'unknown'; readonly why: string };
+
+/**
+ * The header's "Total views": every post's views as we last read them, added up. Not a moment's
+ * total (the chart's line is that), so it carries the oldest of those readings for the screen to say
+ * how fresh it is. A post with no reading at all makes it unknown, with how many: a sum that leaves a
+ * post out would be a smaller number dressed as the total.
+ */
+export function latestTotal(members: readonly { readonly latest: number | null; readonly latestAt: number | null }[]): LatestTotal {
+  if (members.length === 0) return { kind: 'unknown', why: 'No posts listed' };
+  const missing = members.filter((m) => m.latest === null).length;
+  if (missing > 0) return { kind: 'unknown', why: missing === 1 ? '1 post has no view reading' : `${missing} posts have no view reading` };
+  return {
+    kind: 'value',
+    total: members.reduce((s, m) => s + (m.latest ?? 0), 0),
+    oldestAt: Math.min(...members.map((m) => m.latestAt ?? Infinity)),
   };
 }
 

@@ -460,6 +460,8 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
       decodeDiscussionPost(d, `${path}.discussion[${i}]`),
     ),
     provenance: decodeStoryProvenance(o.provenance, `${path}.provenance`),
+    /* Absent from a server that does not send it yet: null, which orders after every known gain, never as 0. */
+    viewsGained1h: o.viewsGained1h === undefined || o.viewsGained1h === null ? null : measured(o.viewsGained1h, `${path}.viewsGained1h`, 'not_read_yet'),
   };
 }
 

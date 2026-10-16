@@ -63,6 +63,8 @@ export const STORY_FIELDS = [
   'stage',
   'discussion',
   'provenance',
+  /* Views the narrative gained over about the last hour, when the projector sends it (the Narratives tab's order). */
+  'viewsGained1h',
 ] as const;
 
 /** A single post on the For You or Popular feed. See wire/rising.ts. */

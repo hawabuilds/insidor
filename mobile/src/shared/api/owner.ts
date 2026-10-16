@@ -54,6 +54,35 @@ export async function fetchHidden(): Promise<readonly HiddenPost[]> {
   return decodeHidden(await socialCall('GET', '/owner/hidden'));
 }
 
+/**
+ * The owner's calls on a whole narrative (POST /owner/narrative): it is not one (hide it, and learn
+ * from it), it is the same as another (merge), a post does not belong in it, its coin is right or
+ * wrong. The server checks the owner from the token like every call here; a server that does not
+ * take these calls yet answers 404, which the page says in words rather than pretending it saved.
+ */
+export type NarrativeAction = 'not_narrative' | 'merge' | 'remove_post' | 'coin_right' | 'coin_wrong';
+
+export interface NarrativeCall {
+  readonly action: NarrativeAction;
+  readonly storyId: string;
+  /** Merge: the narrative this one is the same as. */
+  readonly intoStoryId?: string;
+  /** Remove this post: the post. */
+  readonly itemId?: string;
+  /** Right coin or Wrong coin: the coin's address. */
+  readonly coin?: string;
+}
+
+/** Saves the call; throws a PeopleError, worded for the owner when the server has no such route yet (404). */
+export async function saveNarrativeCall(c: NarrativeCall): Promise<void> {
+  try {
+    await socialCall('POST', '/owner/narrative', c);
+  } catch (e) {
+    if (e instanceof PeopleError && e.status === 404) throw new PeopleError(404, "Not saved: the server doesn't take narrative calls yet");
+    throw e;
+  }
+}
+
 /** Which post a pasted coin is for: the card's own id, or the link the owner pasted. */
 export type PostRef = { readonly itemId: string } | { readonly postUrl: string };
 

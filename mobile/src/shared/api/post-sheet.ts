@@ -55,7 +55,8 @@ export interface PostSheetData {
   readonly author: { readonly name: string | null; readonly pictureUrl: string | null; readonly pictureFile: string | null; readonly followers: Measured };
   readonly foundAt: Instant;
   readonly media: SheetMedia | null;
-  readonly narrative: { readonly storyId: string; readonly title: string | null } | null;
+  /** The narrative the post is in, with how many posts its page lists (null from an older server). */
+  readonly narrative: { readonly storyId: string; readonly title: string | null; readonly posts: number | null } | null;
   /** The name the coins share, for "Top Goliath coin by MC" and "Goliath coins". */
   readonly coinName: string | null;
   readonly sourcesMissing: number;
@@ -112,7 +113,7 @@ function mediaOf(v: unknown): SheetMedia | null {
   };
 }
 
-function coinOf(v: unknown): SheetCoin | null {
+export function coinOf(v: unknown): SheetCoin | null {
   if (typeof v !== 'object' || v === null) return null;
   const o = v as Record<string, unknown>;
   const address = text(o['address']);
@@ -153,7 +154,7 @@ export function decodePostSheet(raw: unknown, path = '$'): PostSheetData {
     author: { name: text(author['name']), pictureUrl: https(author['pictureUrl']), pictureFile: posterPicFile(author['pictureFile']), followers: measuredOf(author['followers']) },
     foundAt: instantOf(o['foundAt']),
     media: mediaOf(o['media']),
-    narrative: storyId === null ? null : { storyId, title: text(narrative?.['title']) },
+    narrative: storyId === null ? null : { storyId, title: text(narrative?.['title']), posts: num(narrative?.['posts']) },
     coinName: text(o['coinName']),
     sourcesMissing: num(o['sourcesMissing']) ?? 0,
     coins: (Array.isArray(o['coins']) ? o['coins'] : []).flatMap((c) => coinOf(c) ?? []),

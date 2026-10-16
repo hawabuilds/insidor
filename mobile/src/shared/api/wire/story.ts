@@ -113,6 +113,13 @@ export interface Story {
    * the row.
    */
   readonly provenance: StoryProvenance;
+  /**
+   * Views the narrative gained over about the last hour, summed by the projector under the rule in
+   * mobile/src/features/narrative/story-views.ts. Null when the server sends none (it does not yet);
+   * a Measured with its reason when it sends one it could not say. The Narratives tab's order.
+   * ★ PHONE ONLY FOR NOW: the desktop copy gains it when the desktop shows it.
+   */
+  readonly viewsGained1h: Measured | null;
 }
 
 /**
