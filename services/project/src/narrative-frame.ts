@@ -18,9 +18,12 @@
  *              (public.rising_row, the scroll's public.feed_post) and their "See N coins" lists
  *              (public.same_name_coin), so the page and its posts' cards never disagree by more
  *              than one frame
- *   the views  core `narrativeReach` over the posts' readings: the total, the last hour's gain
- *              (the board's order, fastest first) and the day's line, each saying how many of the
- *              posts it counted
+ *   the views  core `narrativeReach` over the posts' readings, per post and then added up: the
+ *              total, the last hour's gain (the board's order, fastest first), the views gained
+ *              every five minutes over the day (the page's line) and each post's own views and
+ *              last hour, each saying how many of the posts it counted
+ *   found      the earliest moment we saved any post it lists now (public.item.first_seen_at),
+ *              not when the narrative was first shown and not when a post went up
  *
  * ★ ONE POST COUNT EVERYWHERE. `memberCount`, the summary's "N posts from M accounts", `postIds`,
  * `postCount`, the evidence list and public.story_post's `posts` are all the posts listed here.
@@ -52,6 +55,7 @@ interface MemberRow {
   source: string;
   source_item_id: string;
   posted_at: Date | string | null;
+  first_seen_at: Date | string;
   body: string;
   media: unknown;
   handle: string | null;
@@ -190,7 +194,7 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   const ids = [...new Set(shown.flatMap((n) => n.members))];
 
   const rows = ids.length === 0 ? [] : await db.query<MemberRow>(
-    `select i.item_id, i.source, i.source_item_id, i.posted_at, i.body, i.media,
+    `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media,
             a.handle, a.display_name, a.source_author_id, a.author_key
        from public.item i join public.author a on a.author_key = i.author_key
       where i.item_id = any($1::text[])`,
@@ -255,16 +259,19 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       wasOnPreviousBoard: previous.has(n.id),
     });
     const views = narrativeReach(members.map((m) => ({ postedAtMs: m.postedAt, points: m.reach.map((x) => ({ atMs: x.atMs, reach: x.count ?? null })) })), options.nowMs, policy);
-    gainOf.set(n.id, views.gained.value);
+    gainOf.set(n.id, views.lastHour.value);
+    /* ★ FIRST FOUND: the earliest moment we saved any post it lists NOW, so removing a post moves it. */
+    const found = used.map((r) => toMs(r.first_seen_at)).filter((t): t is number => t !== null && Number.isFinite(t));
     extras.set(n.id, {
       postIds: members.map((m) => m.itemId),
       postCount: members.length,
       viewsTotal: measured(views.total.value, 'not_read_yet'),
       viewsTotalPosts: views.total.counted,
-      viewsGained1h: measured(views.gained.value, 'not_read_yet'),
-      viewsGained1hPosts: views.gained.counted,
-      viewsSeries: views.series,
-      foundAt: instant(n.firstShownAtMs, 'not_reported'),
+      viewsGained1h: measured(views.lastHour.value, 'not_read_yet'),
+      viewsGained1hPosts: views.lastHour.counted,
+      viewsGained: views.gained,
+      postViews: members.map((m, i) => ({ postId: m.itemId, views: views.posts[i]?.total ?? null, gainedLastHour: views.posts[i]?.lastHour ?? null })),
+      foundAt: instant(found.length === 0 ? null : Math.min(...found), 'not_reported'),
     });
   }
 

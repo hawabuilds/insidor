@@ -721,68 +721,86 @@ export interface MemberReach {
   readonly points: readonly ReachPoint[];
 }
 
+/** Views gained in each `stepMs` slot from `fromMs` to now; null where no post was being read. */
+export interface GainedSeries {
+  readonly fromMs: number;
+  readonly stepMs: number;
+  readonly values: readonly (number | null)[];
+}
+
 export interface NarrativeReach {
-  /** Every `reach.stepMs` over the last `reach.spanMs`: the posts' summed views, null where any post is unknown. */
-  readonly series: readonly { readonly atMs: number; readonly value: number | null }[];
+  /** The posts' gains added up, slot by slot, over the last `reach.spanMs`. Leading empty slots dropped. */
+  readonly gained: GainedSeries;
   /** Each post's newest count, summed; null when no post has one. `counted` of `of` posts had one. */
   readonly total: { readonly value: number | null; readonly counted: number; readonly of: number };
-  /** Views gained over the last `reach.gainWindowMs`, from the posts known at both ends. */
-  readonly gained: { readonly value: number | null; readonly counted: number; readonly of: number };
+  /** Views gained over the last `reach.gainWindowMs`, the same per-post sum; `counted` posts had a reading. */
+  readonly lastHour: { readonly value: number | null; readonly counted: number; readonly of: number };
+  /** Per post, in the members' order: its newest count and its own last-hour gain (null: never read). */
+  readonly posts: readonly { readonly total: number | null; readonly lastHour: number | null }[];
+}
+
+/** One post's gains as runs between consecutive counted readings: [fromMs, toMs, views gained]. */
+function gainRuns(points: readonly ReachPoint[]): { readonly runs: readonly (readonly [number, number, number])[]; readonly first: number | null; readonly last: number | null; readonly newest: number | null } {
+  const pts = points.filter((x): x is { atMs: number; reach: number } => x.reach !== null).sort((a, b) => a.atMs - b.atMs);
+  const runs: [number, number, number][] = [];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    if (a === undefined || b === undefined || b.atMs <= a.atMs) continue;
+    /* A lower count than the one before is the source re-counting, not views lost: it adds nothing. */
+    runs.push([a.atMs, b.atMs, Math.max(0, b.reach - a.reach)]);
+  }
+  return { runs, first: pts[0]?.atMs ?? null, last: pts[pts.length - 1]?.atMs ?? null, newest: pts[pts.length - 1]?.reach ?? null };
+}
+
+/** The part of a run's gain that falls in [from, to): spread evenly over the run's own time. */
+function gainIn(run: readonly [number, number, number], from: number, to: number): number {
+  const overlap = Math.min(run[1], to) - Math.max(run[0], from);
+  return overlap <= 0 ? 0 : (run[2] * overlap) / (run[1] - run[0]);
 }
 
 /**
- * ★ A SUM ONLY OF WHAT WE READ. A post's view count at an instant is known when it was not up yet
- * (a true 0) or when its newest reading at or before then is within `carrySpacings` of the post's
- * own usual gap between readings (at least `carryMinMs`); otherwise it is unknown then, and a sum
- * with an unknown post in it is not a number we have — the series breaks there rather than dipping.
- * The total and the gain say how many posts they counted, so a screen can say "from 6 of 22".
+ * ★ PER POST, THEN ADDED UP (the owner, 2026-10-17). A post's gain between two of its readings is
+ * spread evenly over the time between them (some sources are read less often, so one late jump
+ * becomes the slope it was); before its first reading and after its last it adds nothing, never a
+ * guess forward. So a post found late with a million views adds no spike: its gain counts from its
+ * first reading. A slot no post was being read in (no reading in it and no run across it) is null,
+ * an outage or the time before anything was read, never a zero. The total is every post's newest
+ * count; how many posts had any reading is said beside the total and the last hour.
  */
 export function narrativeReach(members: readonly MemberReach[], nowMs: number, p: Policy): NarrativeReach {
   const r = p.narrative.reach;
-  const series = members.map((m) => {
-    const pts = m.points.filter((x): x is { atMs: number; reach: number } => x.reach !== null).sort((a, b) => a.atMs - b.atMs);
-    const gaps = pts.slice(1).map((x, i) => x.atMs - (pts[i]?.atMs ?? x.atMs)).sort((a, b) => a - b);
-    const usual = gaps.length === 0 ? 0 : (gaps[Math.floor(gaps.length / 2)] ?? 0);
-    const carry = Math.max(r.carryMinMs, usual * r.carrySpacings);
-    return { postedAtMs: m.postedAtMs, pts, carry };
-  });
-  const at = (s: (typeof series)[number], t: number): number | null => {
-    if (s.postedAtMs !== null && t < s.postedAtMs) return 0;
-    let last: { atMs: number; reach: number } | null = null;
-    for (const x of s.pts) {
-      if (x.atMs > t) break;
-      last = x;
-    }
-    return last !== null && t - last.atMs <= s.carry ? last.reach : null;
-  };
-  const points: { atMs: number; value: number | null }[] = [];
-  for (let t = nowMs - r.spanMs; t <= nowMs; t += r.stepMs) {
+  const posts = members.map((m) => gainRuns(m.points));
+  const slots = Math.floor(r.spanMs / r.stepMs);
+  const start = nowMs - slots * r.stepMs;
+  const values: (number | null)[] = [];
+  for (let i = 0; i < slots; i++) {
+    const from = start + i * r.stepMs;
+    const to = from + r.stepMs;
     let sum = 0;
-    let known = true;
-    for (const s of series) {
-      const v = at(s, t);
-      if (v === null) {
-        known = false;
-        break;
-      }
-      sum += v;
+    let read = false;
+    for (const g of posts) {
+      if (g.first === null || g.last === null || g.last < from || g.first >= to) continue;
+      read = true;
+      for (const run of g.runs) sum += gainIn(run, from, to);
     }
-    points.push({ atMs: t, value: known ? sum : null });
+    values.push(read ? Math.round(sum) : null);
   }
-  const newest = series.map((s) => s.pts[s.pts.length - 1]?.reach ?? null);
-  const counted = newest.filter((v): v is number => v !== null);
-  let gain = 0;
-  let gainCounted = 0;
-  for (const s of series) {
-    const end = at(s, nowMs);
-    const start = at(s, nowMs - r.gainWindowMs);
-    if (end === null || start === null) continue;
-    gain += Math.max(0, end - start);
-    gainCounted += 1;
-  }
+  const lead = values.findIndex((v) => v !== null);
+  const gained = lead < 0 ? { fromMs: nowMs, stepMs: r.stepMs, values: [] } : { fromMs: start + lead * r.stepMs, stepMs: r.stepMs, values: values.slice(lead) };
+
+  const hourFrom = nowMs - r.gainWindowMs;
+  const perPost = posts.map((g) => ({
+    total: g.newest,
+    lastHour: g.first === null ? null : Math.round(g.runs.reduce((s, run) => s + gainIn(run, hourFrom, nowMs), 0)),
+  }));
+  const counted = perPost.filter((x) => x.total !== null);
+  /* The hour is a number only when some post was being read in it: otherwise nobody read anything then. */
+  const readInHour = posts.some((g) => g.first !== null && g.last !== null && g.last >= hourFrom);
   return {
-    series: points,
-    total: { value: counted.length === 0 ? null : counted.reduce((a, b) => a + b, 0), counted: counted.length, of: members.length },
-    gained: { value: gainCounted === 0 ? null : gain, counted: gainCounted, of: members.length },
+    gained,
+    total: { value: counted.length === 0 ? null : counted.reduce((a, b) => a + (b.total ?? 0), 0), counted: counted.length, of: members.length },
+    lastHour: { value: readInHour ? perPost.reduce((a, b) => a + (b.lastHour ?? 0), 0) : null, counted: counted.length, of: members.length },
+    posts: perPost,
   };
 }
