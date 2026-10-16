@@ -22,7 +22,9 @@
  * What breaks if changed carelessly: reading a post is the only paid step here, priced first and
  * checked against its supplier line on the live meter; a dry run records links and reads nothing.
  * Reading every named text post (5,000 a day) would be cheap to read and dear to judge, which is
- * why the credit, not the read, carries the approvals bar.
+ * why the credit, not the read, carries the approvals bar. Every pass that had a coin to read logs
+ * one line (coins, read, links, posts read): a pass that found nothing once said nothing, and 18
+ * hours of no links (the stream down, every coin polled) looked the same as a quiet market.
  */
 
 import type { Author, Item, ItemId, Millis } from '@insidor/contracts';
@@ -192,7 +194,11 @@ export async function coinLinksPass(deps: CoinLinkDeps): Promise<CoinLinkResult>
       }),
     );
   }
-  if (named.length === 0) return { ...EMPTY, coins: fresh.length, read };
+  if (named.length === 0) {
+    const none = { ...EMPTY, coins: fresh.length, read };
+    deps.log.info('coins pointing to posts', { ...none, secondsAfterLaunch: undefined, medianSecondsAfterLaunch: null });
+    return none;
+  }
 
   /* 2. The links, recorded for every post named, whatever its age. */
   const at = deps.now();

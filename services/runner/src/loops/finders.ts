@@ -22,6 +22,8 @@ import type { TrendingFeedResult } from '../work/trending-feed.ts';
 
 /** After the other loops' offsets, so they do not all start in the same second. */
 const OFFSET_MS = 7_000;
+/** How often a run of passes with no new coin says so: silence once hid an 18-hour stop. */
+const QUIET_LOG_EVERY_MS = 300_000;
 
 export interface FinderWork {
   readonly everyMs: number;
@@ -36,6 +38,7 @@ export interface FinderWork {
 export function findersLoop(work: FinderWork): Loop {
   const log = work.log.child({ stage: 'finders' });
   let repostsAt = 0;
+  let quietSaidAt = 0;
   return {
     stage: 'finders',
     everyMs: work.everyMs,
@@ -55,6 +58,11 @@ export function findersLoop(work: FinderWork): Loop {
       const links = await step('coin links', work.coinLinks);
       found += links?.credited ?? 0;
       const now = ctx.now();
+      /* A pass with coins logs its own line (work/coin-links.ts); one with none says so now and then. */
+      if (links !== null && links.coins === 0 && now - quietSaidAt >= QUIET_LOG_EVERY_MS) {
+        quietSaidAt = now;
+        log.info('coins pointing to posts: no new coin with unread metadata', { coins: 0 });
+      }
       if (now - repostsAt >= work.repostsEveryMs) {
         repostsAt = now;
         found += (await step('reposts', work.reposts))?.credited ?? 0;

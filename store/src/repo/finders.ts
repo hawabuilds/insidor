@@ -91,12 +91,18 @@ export class PgFinderRepo {
   /**
    * Coins first seen since `sinceMs` whose metadata has never been read, newest first: the ones a
    * launch just made. A coin with any metadata row is the universe loop's (its retries included).
+   *
+   * ★ BOTH OBSERVED WAYS A COIN ARRIVES, NOT ONLY THE STREAM. This read once took 'live_stream'
+   * alone; the stream service went down at 2026-10-15 07:14 UTC, every new coin since came in by
+   * the issuer's list poll as 'backfill', and no link was recorded for 18 hours while the loop ran
+   * clean. A polled coin is as real a launch (the same allowlist the universe loop reads), and its
+   * metadata is still unread for the 30 to 70 seconds before the universe loop gets to it.
    */
   async freshUnread(sinceMs: Millis, limit: number): Promise<readonly FreshCoin[]> {
     const rows = await this.#db.query<{ asset_key: string; address: string; metadata_uri: string | null; minted_at: Date | string | null }>(
       `select a.asset_key, a.address, a.declared_social ->> 'metadata' as metadata_uri, a.minted_at
          from public.asset a
-        where a.origin = 'live_stream'
+        where a.origin in ('live_stream', 'backfill')
           and a.first_seen_at >= $1
           and not exists (select 1 from internal.coin_metadata m where m.asset_key = a.asset_key)
         order by a.first_seen_at desc
