@@ -65,6 +65,14 @@ export const STORY_FIELDS = [
   'provenance',
   /* Views the narrative gained over about the last hour, when the projector sends it (the Narratives tab's order). */
   'viewsGained1h',
+  /* The page's own sums (services/project): views across its posts, the day's total every ten minutes, its posts and when we found it. */
+  'viewsGained1hPosts',
+  'viewsTotal',
+  'viewsTotalPosts',
+  'viewsSeries',
+  'postIds',
+  'postCount',
+  'foundAt',
 ] as const;
 
 /** A single post on the For You or Popular feed. See wire/rising.ts. */

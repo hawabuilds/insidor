@@ -462,7 +462,35 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     provenance: decodeStoryProvenance(o.provenance, `${path}.provenance`),
     /* Absent from a server that does not send it yet: null, which orders after every known gain, never as 0. */
     viewsGained1h: o.viewsGained1h === undefined || o.viewsGained1h === null ? null : measured(o.viewsGained1h, `${path}.viewsGained1h`, 'not_read_yet'),
+    /* The page's own sums, from a projector that sends them (services/project, 0093); null from one that does not. */
+    viewsGained1hPosts: count(o.viewsGained1hPosts),
+    viewsTotal: o.viewsTotal === undefined || o.viewsTotal === null ? null : measured(o.viewsTotal, `${path}.viewsTotal`, 'not_read_yet'),
+    viewsTotalPosts: count(o.viewsTotalPosts),
+    viewsSeries: decodeViewsSeries(o.viewsSeries),
+    postCount: count(o.postCount),
+    foundAt: o.foundAt === undefined || o.foundAt === null ? null : instantAt(o.foundAt, `${path}.foundAt`, 'not_reported'),
   };
+}
+
+/** A whole count of posts the server sent, or null when it sent none or something that is not one. */
+function count(v: unknown): number | null {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null;
+}
+
+/**
+ * The narrative's summed views every ten minutes: a point with no number is a moment some post was
+ * unknown, kept as null so the chart breaks there. A point with no time is dropped. Null when the
+ * server sent no series at all, which is not the same as an empty day.
+ */
+function decodeViewsSeries(raw: unknown): readonly { readonly atMs: number; readonly value: number | null }[] | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.flatMap((p) => {
+    if (typeof p !== 'object' || p === null) return [];
+    const r = p as Record<string, unknown>;
+    const atMs = typeof r['atMs'] === 'number' && Number.isFinite(r['atMs']) ? r['atMs'] : null;
+    if (atMs === null) return [];
+    return [{ atMs, value: typeof r['value'] === 'number' && Number.isFinite(r['value']) ? r['value'] : null }];
+  }).sort((a, b) => a.atMs - b.atMs);
 }
 
 /**
