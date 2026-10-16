@@ -3923,7 +3923,15 @@ const POLICY_V1: Policy = {
     /* $38 from 2026-10-13 21:40 UTC, the owner's call: the live feed's own ceiling is the whole $38 a
        day, so discovery, scoring and re-scoring never pause before it. The supplier lines below still
        warn at 80% and 95%. */
-    dailyUsd: 38,
+    /* $40.50 from 2026-10-16, with the owner's "whole day up to ~$50" for the two new lanes: the middle
+       lane (feed.middle, its own $6) and the learned-tag lane (finders.learnedTags, its own $2) both
+       spend inside this book and stop at their own caps first. Measured live days: $32.72 (10-14) and
+       $31.88 (10-15) UTC; 10-16 was $14.70 by 08:30 UTC, heavier after midnight. With the lanes'
+       expected $4.45 to $6.10 that is $36.30 to $38.80, and $40 at both lanes' caps. Paid by taking
+       the learning book from $10.75 to $8.50 (its full days were $6.75 and $5.06; $10.38 on the
+       re-tune-heavy 10-13) and the jobs book from $1.75 to $1 (nothing spent since 10-13), so live +
+       learning + jobs is $50.00. Discovery is never cut to pay for learning (the owner, 2026-10-13). */
+    dailyUsd: 40.5,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
@@ -3945,7 +3953,11 @@ const POLICY_V1: Policy = {
        ($0.00188) a request — the feed's trial $0.36 a day, re-reads ~$0.69, creator pages $0.45 and
        young re-reads $0.54, about $2.04 — and a quarter over it. The scraping lines stay as they were,
        since they carry the work whenever the second vendor fails. A warning line, as the others. */
-    supplierLines: { posts: 10, judge: 10.5, video: 2, actors: 2, embeddings: 4.5, secondVideo: 2.5 },
+    /* posts $14 and video $4.50 from 2026-10-16, for the two new lanes (warning lines, as the others):
+       the text source's live search, re-reads and replies were $9.24 in the 24 hours to 08:30 UTC and
+       the middle lane adds $2.75 to $3.45; the scraper's live runs were $3.22 and the learned-tag lane
+       adds about $1.10. Each line is that and about a tenth, so the warnings mean something again. */
+    supplierLines: { posts: 14, judge: 10.5, video: 4.5, actors: 2, embeddings: 4.5, secondVideo: 2.5 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured
@@ -3953,7 +3965,9 @@ const POLICY_V1: Policy = {
        judge can be re-tuned on the live negative set today. The day stays $29.75. */
     /* $4.75 from 2026-10-13 07:00 UTC, with the learning work moved to its own $4 line below. Live
        $21 + jobs $4.75 + learning $4 = $29.75 a day, under the owner's $30. */
-    jobLines: { dailyUsd: 1.75, posts: 0.25, judge: 1.25, video: 0.125, embeddings: 0.125 },
+    /* $1 from 2026-10-16 (was $1.75), toward the live book's $40.50: the jobs book has spent nothing
+       since 2026-10-13. Live $40.50 + learning $8.50 + jobs $1 = $50, the owner's day. */
+    jobLines: { dailyUsd: 1, posts: 0.25, judge: 0.5, video: 0.125, embeddings: 0.125 },
     /* $5: $1 moved from jobs on 2026-10-13 so today's re-tune could finish and re-check the feed. */
     /* $7.25 from 2026-10-13 12:50 UTC: the 07:00 run was not tested ($1.15 left of the judge, the
        test's worst case $2.97), and two runs today need room for that worst case each. Paid by
@@ -3965,7 +3979,10 @@ const POLICY_V1: Policy = {
     /* $12.75 from 2026-10-13 14:00 UTC: today's after-audit measurements (the clean baseline, coin
        matching on gold, the slow-lane and short-video tests) are paid here, because the jobs book spent
        its line this morning. The day is $38.00, the owner's approved ceiling. */
-    learningLines: { dailyUsd: 10.75, posts: 1.5, judge: 8, video: 0.5, embeddings: 0.75 },
+    /* $8.50 from 2026-10-16 (was $10.75), toward the live book's $40.50 for the two new lanes: its full
+       days were $6.75 (10-14) and $5.06 (10-15); two re-tunes a day at a $1.45 baseline and a ~$3 worst
+       case each still fit ($8.90 only if both hit their worst case, and then the second test waits). */
+    learningLines: { dailyUsd: 8.5, posts: 1.5, judge: 5.75, video: 0.5, embeddings: 0.75 },
     ledgerRefreshMs: 60_000,
 
     /* Both on, because the owner's binding constraint is money. `paidOnlyWhenFreeIsEmpty`
