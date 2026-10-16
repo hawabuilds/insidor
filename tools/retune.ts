@@ -144,6 +144,7 @@ import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import type { JudgeEvidence } from '../contracts/src/judgement.ts';
+import { lessonsLine, narrativeLessons } from './lib/narrative-lessons.ts';
 import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwnerAlertRepo, type GoldAddition } from '../store/src/index.ts';
 import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
@@ -175,6 +176,8 @@ const X_USD_PER_POST = 0.000_15;
 const GOLD_RECALL_DAYS = 3;
 /* The window "the day's miss reasons" covers. */
 const MISS_REASONS_MS = 86_400_000;
+/* Twelve hours: the narrative calls since the slot before (08:00 and 20:00 are twelve hours apart). */
+const NARRATIVE_LESSONS_MS = 43_200_000;
 
 const LABELS = new URL('../eval/src/feed/live-labels.json', import.meta.url);
 const command = process.argv[2] ?? '';
@@ -624,6 +627,13 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         list: matches.filter((m) => m.verdict !== 'right').map((m) => `${m.itemId} ${m.verdict}${m.coinAddress === null ? '' : ` → ${m.coinAddress}`}${m.note === null ? '' : ` (${m.note})`}`),
       };
       const missReasons = await soft(repo.missReasons(new Date(Date.now() - MISS_REASONS_MS)), {});
+      /* ★ The narrative lessons (tools/lib/narrative-lessons.ts): the owner's narrative calls since the
+         last slot, counted, and his pairs held against the grouping's meaning bar. A failure is said. */
+      const narratives = await narrativeLessons(db, Date.now() - NARRATIVE_LESSONS_MS, P).catch((e: unknown) => {
+        log('warn', 'the narrative lessons could not be read; the run goes on', { err: errText(e) });
+        return null;
+      });
+      const narrativesText = narratives === null ? '' : `; ${lessonsLine(narratives)}`;
       const outcome = opts.dry ? 'dry' : apply ? 'applied' : 'kept';
       const lead = await readLead();
       /* The TikTok part: free (but the re-fetch, when on); a failure is said and never fails the X run. */
@@ -641,14 +651,14 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         autoGold: rates.auto, missed: rates.missed, regressions: regressed, judgeInUse: inUse === null ? 'rules alone' : `block ${inUse.versionId}`,
         unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true, composition,
         learnedFrom: block.used, rulebook, examples: block.exampleIds.length, added: delta.added, removed: delta.removed, chars: block.text.length,
-        costUsd: Number(costUsd.toFixed(4)), batched: tested.batched, usage: tested.used, goldAdded: gold.added, missReasons, matchingLessons: lessons,
+        costUsd: Number(costUsd.toFixed(4)), batched: tested.batched, usage: tested.used, goldAdded: gold.added, missReasons, matchingLessons: lessons, narratives,
         tiktok: part === null ? 'the TikTok part could not run' : { setSize: part.setSize, added: part.added, bar: part.bar.why, judgeGate: tt, biggestGap: part.gapText },
       };
       log(apply || opts.dry ? 'info' : 'warn', `retune ${outcome}`, summary);
       const ofN = (r: Rate) => `${r.passed}/${r.tested}`;
       const tally = `${cutoffText}; hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), missed posts live catches and this does not ${regressed.length === 0 ? '0' : `${regressed.length} (${regressed.join(', ')})`} (named, not gated)${liveRates === null ? '' : `; ${FLOOR === null ? 'live now' : 'the floor kept to'}: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone); ${goalsText(rates, L)}`;
       const ttTally = part === null ? '' : `; TikTok: set ${part.setSize} (+${part.added}), ${part.bar.why}, biggest gap ${part.gapText}`;
-      await end(outcome, versionId, (why === null ? `applied: ${tally}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}` : `${why} (${tally})`) + ttTally, costUsd);
+      await end(outcome, versionId, (why === null ? `applied: ${tally}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}` : `${why} (${tally})`) + ttTally + narrativesText, costUsd);
 
       /* The owner's alert, once per slot (the claim is on the subject). A dry run tells nobody. */
       if (!opts.dry && opts.record) {
@@ -667,6 +677,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
                   liveGoldPassed: liveRates.hand.passed, liveGoldN: liveRates.hand.tested, liveNegativePassed: liveRates.negatives.passed, liveNegativeN: liveRates.negatives.tested, liveMissedPassed: liveRates.missed.passed, liveMissedN: liveRates.missed.tested,
                 }),
                 taps: block.used.taps, tapsTested: block.taps.tested, missed: block.used.missed, names: block.used.names, coined: block.used.coined, added: delta.added, removed: delta.removed, missReasons,
+                ...(narratives === null ? {} : { narrativesShown: narratives.shown, notNarrative: narratives.notNarrative, wrongMerges: narratives.wrongMerges, mergesAsked: narratives.missedMerges, storyCoinsRight: narratives.coinRight, storyCoinsWrong: narratives.coinWrong }),
                 ...(part === null ? {} : { tiktokSet: part.setSize, tiktokAdded: part.added, tiktokBar: part.bar.why, tiktokGap: part.gapText, ...(tt === null ? {} : { tiktokCoinedPassed: tt.coined.passed, tiktokCoinedN: tt.coined.tested, tiktokJunkPassed: tt.junk.passed, tiktokJunkN: tt.junk.tested, tiktokBeat: tt.beat }) }),
               },
               href: '/#/alerts',
