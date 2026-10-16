@@ -1,69 +1,88 @@
 /**
- * THE NARRATIVE PAGE — one story, on one phone screen.
+ * THE NARRATIVE PAGE — one narrative, on one phone screen, as the owner laid it out (2026-10-16):
  *
- * Header facts (picture, name, posts and sites, age, total views with the purple views line, the
- * plain-English summary), then Coins / Posts / Calls / Stats, then a bottom bar. Everything on
- * it is a published field of `Story`; nothing is computed here except the BIGGEST and FIRST
- * labels, which `coin-facts.ts` claims only when they are provably true.
+ *   Header   its picture and title; total views across its posts; how many posts; the views it
+ *            gained in the last hour; its coin with market cap and Buy.
+ *   Chart    the post sheet's views chart over the narrative's total (StoryChart.tsx): each post a
+ *            dot at the time it went up (a tap opens it), Found and Coin markers, and the coin's
+ *            market cap behind the MC switch.
+ *   Posts    newest first, the For You card for each post a feed holds (a tap opens its post sheet),
+ *            the narrative's own listing for one no feed holds (a tap opens the post where it is).
+ *   Coins    the narrative's own coin first, then the other coins with its name.
  *
- * ★ THE BOTTOM BAR NEVER CHOOSES A COIN. "Buy" appears only when the story has settled on
- * exactly one coin the server can quote. With several coins it does not offer to buy one of
- * them — picking which is the real one is precisely the judgement the wire's `several` and
- * `unsure` branches say has not been made — so the way to a coin is through the Coins tab,
- * one coin at a time. With an unsure match there is no button at all.
+ * ★ FACTS ONLY. The post count is the narrative's own. Total views is every post's views as last
+ * read, added up, and a dash with how many posts have none when any has none (the story's `reach` is
+ * its top post's views, not a total, so it is not used here). The last hour's gain is the
+ * projector's when it sends one, else the phone's from the posts' own readings under
+ * story-views.ts's rule, else a dash with the reason. Nothing is ever a zero for want of a reading.
  *
- * Calls has no data behind it yet and says so, with no count beside it: a count of calls that
- * do not exist would be a number about nothing.
+ * ★ BUY ONLY ON THE NARRATIVE'S OWN COIN. The header offers Buy only for the coin the narrative
+ * names (`proven` on the sheet, or the story's `one`); with several coins or an unsure match it says
+ * so in words and the coins are one tap away under Coins, one at a time, never chosen for anyone.
+ *
+ * ★ THE OWNER'S CALLS (features/owner, the owner's wallet only, as on posts): Not a narrative, Merge
+ * with…, Remove this post (on each post), Right coin and Wrong coin (on the narrative's coin).
+ * NarrativeOwner.tsx holds them; this file only places them.
+ *
+ * What breaks if changed carelessly: the page reads two replies, the story and its sheet. The story
+ * alone draws the header; the sheet failing must cost only the chart, the cards and the coin list,
+ * each saying it could not be read, never the whole page.
  */
 
-import { useState } from 'react';
-import type { Coin, Story } from '../../shared/api/index.ts';
-import { coinLabels } from '../../shared/coin-facts.ts';
-import { coinStatus, settledCoins } from '../../shared/coin-status.ts';
-import { formatAge } from '../../shared/format/duration.ts';
+import { useMemo, useState } from 'react';
+import type { SheetCoin, Story, StoryMember, StorySheet } from '../../shared/api/index.ts';
+import { fetchStorySheet } from '../../shared/api/index.ts';
+import { coinStatus } from '../../shared/coin-status.ts';
+import { formatAge, formatDuration } from '../../shared/format/duration.ts';
 import { instant, pendingInstant } from '../../shared/format/measure.ts';
-import { formatCount, formatUsd } from '../../shared/format/number.ts';
+import { compact, formatCount } from '../../shared/format/number.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { platformOf, siteList } from '../../shared/platform.ts';
 import { hrefFor } from '../../shared/route.ts';
-import { loadStory, momentumWords, noticeFor } from '../../shared/story-source.ts';
+import { loadStory, noticeFor } from '../../shared/story-source.ts';
 import { watchlist } from '../../shared/watchlist.ts';
-import { Button } from '../../shared/ui/Button.tsx';
-import { useComingSoon, useToast } from '../../shared/ui/ComingSoon.tsx';
+import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon, ShareIcon, StarIcon } from '../../shared/ui/icons.tsx';
 import { Modal } from '../../shared/ui/Modal.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformBadge } from '../../shared/ui/PlatformMark.tsx';
-import { Sparkline } from '../../shared/ui/Sparkline.tsx';
-import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
+import { PostRow } from '../../shared/ui/PostRow.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { Comments } from '../comments/Comments.tsx';
-import { NotAMeme, HideBar } from '../owner/OwnerPost.tsx';
+import { HideBar } from '../owner/OwnerPost.tsx';
 import { useIsOwner, useOwnerState } from '../owner/hooks.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
-import styles from './narrative.module.css';
+import { BuyOpen, CoinLine, PostSheet, SheetToast, type SheetNote } from '../post-sheet/index.ts';
+import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { goBack } from '../../shared/nav.ts';
+import { NarrativeOwnerBar, RemovePost, CoinCall } from './NarrativeOwner.tsx';
+import { StoryChart, useStoryTotal } from './StoryChart.tsx';
+import { gainedLastHour, latestTotal } from './story-views.ts';
+import styles from './narrative.module.css';
 
-type Section = 'coins' | 'posts' | 'comments' | 'stats';
+type Section = 'posts' | 'coins' | 'comments' | 'stats';
 
-/** How many coins show before "See all". */
-const FIRST_COINS = 3;
+/** Older than this, the header's total says how long ago some post was last read. */
+const STALE_MS = 15 * 60_000;
 
 export function NarrativePage({ storyId, onCreate }: {
   storyId: string;
   onCreate: (story: Story) => void;
 }) {
   const [story] = useLoad(storyId, (signal) => loadStory(storyId, signal));
+  const [sheet] = useLoad(`story-sheet:${storyId}`, (signal) => fetchStorySheet(storyId, signal));
   return (
     <section className={styles['page']}>
       <TopBar storyId={storyId} />
       {story.state === 'loading' ? <p className={styles['empty']}>Loading.</p> : null}
       {story.state === 'failed' ? (
-        <p className={styles['empty']}>This story couldn't be read. It may not be on the read service.</p>
+        <p className={styles['empty']}>This narrative couldn't be read. It may not be on the read service.</p>
       ) : null}
-      {story.state === 'ready' ? <Body story={story.value} onCreate={onCreate} /> : null}
+      {story.state === 'ready' ? (
+        <Body story={story.value} sheet={sheet.state === 'ready' ? sheet.value : sheet.state === 'failed' ? 'failed' : null} onCreate={onCreate} />
+      ) : null}
     </section>
   );
 }
@@ -106,14 +125,62 @@ function TopBar({ storyId }: { storyId: string }) {
   );
 }
 
-function Body({ story, onCreate }: { story: Story; onCreate: (s: Story) => void }) {
+/**
+ * The narrative's own coin: the sheet's proven one, else the story's `one`, else the coin the feed's
+ * own cards name as this narrative's (`one` with this narrative's id: the projector's newer word when
+ * the page was projected before the coin was found). In the sheet's shape. Never picked from several.
+ */
+function ownCoin(story: Story, sheet: StorySheet | null): SheetCoin | null {
+  const proven = sheet?.coins.find((c) => c.proven) ?? null;
+  if (proven !== null) return proven;
+  const fromCards = sheet?.members.flatMap((m) => (m.post !== null && m.post.storyId === story.id && m.post.coins.kind === 'one' ? [m.post.coins.coin] : [])) ?? [];
+  const c = story.coins.kind === 'one' ? story.coins.coin : new Set(fromCards.map((x) => x.address)).size === 1 ? (fromCards[0] ?? null) : null;
+  if (c === null) return null;
+  return {
+    coinId: c.coinId,
+    address: c.address,
+    name: c.name,
+    ticker: c.ticker,
+    imageUrl: c.imageUrl,
+    launchedAt: c.mintedAt,
+    marketCapUsd: c.marketCapUsd,
+    changePct24h: c.priceChange24h.known ? { known: true, amount: c.priceChange24h.amount } : { known: false, pending: c.priceChange24h.pending },
+    bonded: null,
+    proven: true,
+  };
+}
+
+function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | 'failed' | null; onCreate: (s: Story) => void }) {
   const now = useNow();
-  const soon = useComingSoon();
-  const [section, setSection] = useState<Section>('coins');
-  const coins = settledCoins(story.coins);
+  const owner = useIsOwner();
+  const [section, setSection] = useState<Section>('posts');
+  const [open, setOpen] = useState<string | null>(null);
+  const [buying, setBuying] = useState<SheetCoin | null>(null);
+  const [note, setNote] = useState<SheetNote | null>(null);
+  const read = sheet === 'failed' || sheet === null ? null : sheet;
+  const members = useMemo(() => read?.members ?? [], [read]);
+  const total = useStoryTotal(members, now);
+  const coin = ownCoin(story, read);
   const status = coinStatus(story.coins);
-  const action = status.action;
   const posts = story.evidence.length;
+
+  /* The projector's gain when it sends one; else ours from the posts' readings; else why not. */
+  const gain = story.viewsGained1h !== null
+    ? (story.viewsGained1h.known ? { kind: 'value' as const, gain: story.viewsGained1h.amount, minutes: 60 } : { kind: 'unknown' as const, why: 'Not read yet' })
+    : read === null ? { kind: 'unknown' as const, why: sheet === 'failed' ? "Couldn't read the posts' views" : 'Reading' } : gainedLastHour(total, now);
+  /* Every post's views as last read, added up (story-views.ts latestTotal): the card's figure when a
+     feed holds the post, else its own newest reading. */
+  const sum = read === null
+    ? { kind: 'unknown' as const, why: sheet === 'failed' ? "Couldn't read the posts' views" : 'Reading' }
+    : latestTotal(members.map((m) => {
+        const last = [...m.views].reverse().find((v) => v.value !== null);
+        if (m.post !== null && m.post.reach.known) return { latest: m.post.reach.amount, latestAt: m.post.readAt.known ? m.post.readAt.at : (last?.atMs ?? null) };
+        return { latest: last?.value ?? null, latestAt: last?.atMs ?? null };
+      }));
+  /* The chart's coin (its MC line and launch marker): its own coin, else the one coin its posts are proven to. */
+  const chartCoin = coin ?? (read !== null && read.coins.length === 1 ? (read.coins[0] ?? null) : null);
+  const coinAt = chartCoin !== null && chartCoin.launchedAt.known ? chartCoin.launchedAt.at : null;
+  const openCoin = (c: SheetCoin) => (window.location.hash = hrefFor(sheetCoinRoute(c, story.id)));
 
   return (
     <>
@@ -129,142 +196,200 @@ function Body({ story, onCreate }: { story: Story; onCreate: (s: Story) => void 
         </div>
       </header>
 
-      <div className={styles['views']}>
+      <div className={styles['facts']}>
         <div>
-          <Value r={formatCount(story.reach)} className={styles['viewsN']} />
-          <span className={styles['viewsL']}>{momentumWords(story)}</span>
+          <span className={styles['factL']}>Total views</span>
+          {sum.kind === 'value' ? <span className={styles['factN']}>{compact(sum.total)}</span> : <span className={styles['factN']}>—</span>}
+          {sum.kind === 'unknown'
+            ? <span className={styles['factWhy']}>{sum.why}</span>
+            : now - sum.oldestAt > STALE_MS ? <span className={styles['factWhy']}>Some last read {formatDuration(now - sum.oldestAt)} ago</span> : null}
         </div>
-        <Sparkline points={story.spark.points} windowMs={story.spark.windowMs} width={170} height={44} label="Views over time" />
+        <div>
+          <span className={styles['factL']}>Posts</span>
+          <span className={styles['factN']}>{posts}</span>
+        </div>
+        <div>
+          <span className={styles['factL']}>Last hour</span>
+          {gain.kind === 'value'
+            ? <span className={`${styles['factN']} ${gain.gain >= 0 ? styles['up'] : styles['down']}`}>{gain.gain >= 0 ? '+' : ''}{compact(gain.gain)}</span>
+            : <span className={styles['factN']} title={gain.why}>—</span>}
+          {gain.kind === 'unknown' ? <span className={styles['factWhy']}>{gain.why}</span> : null}
+        </div>
       </div>
 
-      <p className={styles['summary']}>{story.summary.join(' ')}</p>
+      <div className={styles['coinArea']}>
+        {coin !== null ? (
+          <>
+            <span className={styles['coinHead']}>This narrative's coin</span>
+            <CoinLine coin={coin} now={now} onOpen={() => openCoin(coin)} action={
+              <button type="button" className={styles['buy']} onClick={(e) => {
+                e.stopPropagation();
+                setBuying(coin);
+              }}>Buy</button>
+            } />
+            {owner ? <CoinCall storyId={story.id} coin={coin.address} /> : null}
+          </>
+        ) : (
+          <div className={styles['coinNone']}>
+            {/* No coin of its own, but coins proven from its posts: said as that, one tap from the list. */}
+            <span>{read !== null && read.coins.length > 0 ? `${read.coins.length === 1 ? '1 coin' : `${read.coins.length} coins`} from its posts, none named for it` : status.line}</span>
+            {read !== null && read.coins.length > 0 ? (
+              <button type="button" className={styles['create']} onClick={() => setSection('coins')}>View coins</button>
+            ) : status.action?.kind === 'create' ? (
+              <button type="button" className={styles['create']} onClick={() => onCreate(story)}>Create coin</button>
+            ) : status.action?.kind === 'view' ? (
+              <button type="button" className={styles['create']} onClick={() => setSection('coins')}>View coins</button>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      {read !== null ? (
+        <StoryChart
+          members={members}
+          total={total}
+          foundAt={read.foundAt.known ? read.foundAt.at : null}
+          coin={chartCoin}
+          coinAt={coinAt}
+          now={now}
+          onPost={(m) => openMember(m, story, setOpen)}
+        />
+      ) : sheet === 'failed' ? <p className={styles['chartNote']}>Couldn't read this narrative's posts just now, so there is no chart.</p> : null}
 
       <Notice notice={noticeFor(story)} />
+      {owner ? <NarrativeOwnerBar story={story} /> : null}
 
       <UnderlineTabs
         label="Narrative"
         current={section}
         onChange={setSection}
         tabs={[
-          { key: 'coins', label: <>Coins <small>{coins.length > 0 ? coins.length : ''}</small></> },
           { key: 'posts', label: <>Posts <small>{posts}</small></> },
+          { key: 'coins', label: <>Coins <small>{read !== null && read.coins.length > 0 ? read.coins.length : ''}</small></> },
           { key: 'comments', label: 'Comments' },
           { key: 'stats', label: 'Stats' },
         ]}
       />
 
       <div className={styles['section']}>
-        {section === 'coins' ? <Coins story={story} coins={coins} line={status.line} now={now} /> : null}
-        {section === 'posts' ? <Posts story={story} now={now} /> : null}
+        {section === 'posts' ? <Posts story={story} sheet={sheet} now={now} onOpen={setOpen} onCreate={onCreate} /> : null}
+        {section === 'coins' ? <Coins sheet={sheet} now={now} onOpen={openCoin} onBuy={setBuying} line={status.line} /> : null}
         {section === 'comments' ? <Comments subject={`story:${story.id}`} holdersOf="this narrative" /> : null}
         {section === 'stats' ? <Stats story={story} now={now} /> : null}
       </div>
 
-      <div className={styles['bar']}>
-        <Button look="quiet" size="large" className={styles['call']} onClick={() => soon('Making a call')}>
-          Make a call
-        </Button>
-        {action?.kind === 'buy' ? (
-          <Button look="buy" size="large" className={styles['primary']} onClick={() => soon(`Buying ${action.coin.ticker}`)}>
-            Buy {action.coin.ticker}
-          </Button>
-        ) : action?.kind === 'create' ? (
-          <Button look="primary" size="large" className={styles['primary']} onClick={() => onCreate(story)}>
-            Create coin
-          </Button>
-        ) : null}
-      </div>
-    </>
-  );
-}
-
-function Coins({ story, coins, line, now }: {
-  story: Story;
-  coins: readonly Coin[];
-  line: string;
-  now: number;
-}) {
-  const [all, setAll] = useState(false);
-  if (coins.length === 0) return <p className={styles['note']}>{line}</p>;
-  const labels = coinLabels(coins);
-  const shown = all ? coins : coins.slice(0, FIRST_COINS);
-  return (
-    <>
-      {shown.map((c) => (
-        <a
-          key={c.coinId}
-          className={styles['coin']}
-          href={hrefFor({ screen: 'coin', storyId: story.id, coinId: c.coinId })}
-        >
-          <CoinLogo address={c.address} ticker={c.ticker} imageUrl={c.imageUrl} size={42} />
-          <div className={styles['coinText']}>
-            <span className={styles['ticker']}>
-              {c.ticker}
-              {(labels.get(c.coinId) ?? []).map((l) => (
-                <span key={l} className={`${styles['label']} ${styles[`label-${l}`]}`}>{l}</span>
-              ))}
-            </span>
-            <span className={styles['coinMeta']}>
-              <Value r={formatUsd(c.liquidityUsd)} /> Liq
-              <Value r={formatAge(c.mintedAt, now)} className={styles['age']} />
-            </span>
-          </div>
-          <div className={styles['mcap']}>
-            <Value r={formatUsd(c.marketCapUsd)} className={styles['mcapN']} />
-            <span className={styles['mcapL']}>mcap</span>
-          </div>
-        </a>
-      ))}
-      {coins.length > FIRST_COINS && !all ? (
-        <button type="button" className={styles['more']} onClick={() => setAll(true)}>
-          See all {coins.length} coins
-        </button>
+      {open !== null ? <PostSheet postId={open} onClose={() => setOpen(null)} /> : null}
+      {buying !== null ? (
+        <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} />
       ) : null}
+      <SheetToast note={note} onDone={() => setNote(null)} />
     </>
   );
 }
 
-function Posts({ story, now }: { story: Story; now: number }) {
-  const [open, setOpen] = useState<{ id: string; author: string } | null>(null);
-  /* The owner's "Not a meme" on each post, and a hidden one leaving the list at once (features/owner). */
+/** A post a feed holds opens its post sheet; one no feed holds opens where it was posted. */
+function openMember(m: StoryMember, story: Story, setOpen: (id: string) => void): void {
+  if (m.post !== null) {
+    setOpen(m.id);
+    return;
+  }
+  const link = story.evidence.find((e) => e.evidenceId === m.id)?.permalink;
+  if (link !== undefined) window.open(link, '_blank', 'noopener');
+}
+
+/** Newest first, by when each post went up; a post with no time after every one with one. */
+function newestFirst<T>(items: readonly T[], at: (t: T) => number | null): T[] {
+  const known = items.filter((i) => at(i) !== null).sort((a, b) => (at(b) ?? 0) - (at(a) ?? 0));
+  return [...known, ...items.filter((i) => at(i) === null)];
+}
+
+function Posts({ story, sheet, now, onOpen, onCreate }: {
+  story: Story;
+  sheet: StorySheet | 'failed' | null;
+  now: number;
+  onOpen: (id: string) => void;
+  onCreate: (s: Story) => void;
+}) {
+  const [talk, setTalk] = useState<{ id: string; author: string } | null>(null);
   const owner = useIsOwner();
   const { hidden } = useOwnerState();
+  const cards = new Map((sheet === 'failed' || sheet === null ? [] : sheet.members).flatMap((m) => (m.post === null ? [] : [[m.id, m.post] as const])));
+  const listed = newestFirst(withoutHidden(story.evidence, hidden, (e) => e.evidenceId), (e) => (e.postedAt.known ? e.postedAt.at : null));
   return (
     <>
       {owner ? <HideBar /> : null}
-      {open !== null ? (
-        <Modal title="Comments" subtitle={`On ${open.author}'s post`} onClose={() => setOpen(null)}>
-          <Comments subject={`post:${open.id}`} holdersOf="this narrative" />
+      {talk !== null ? (
+        <Modal title="Comments" subtitle={`On ${talk.author}'s post`} onClose={() => setTalk(null)}>
+          <Comments subject={`post:${talk.id}`} holdersOf="this narrative" />
         </Modal>
       ) : null}
-      {withoutHidden(story.evidence, hidden, (e) => e.evidenceId).map((e) => {
+      {listed.map((e) => {
+        const card = cards.get(e.evidenceId);
+        const remove = owner ? <RemovePost storyId={story.id} item={e} /> : null;
+        if (card !== undefined) {
+          return (
+            <div key={e.evidenceId} className={styles['card']}>
+              <PostRow
+                post={card}
+                now={now}
+                extra={remove}
+                handlers={{
+                  open: () => onOpen(card.id),
+                  create: () => onCreate(story),
+                  seeCoins: () => onOpen(card.id),
+                  openCoin: (coinId) => (window.location.hash = hrefFor(sheetCoinRoute({ coinId, proven: true }, story.id))),
+                }}
+              />
+            </div>
+          );
+        }
         const platform = platformOf(e.sourceLabel);
-        const body = (
-          <>
-            <span className={styles['postHead']}>
-              {platform !== null ? <PlatformBadge platform={platform} label={e.sourceLabel} /> : <span>{e.sourceLabel}</span>}
-              <b>{e.authorLabel}</b>
-              <Value r={formatAge(e.postedAt, now)} className={styles['age']} />
-            </span>
-            <span className={styles['postText']}>{e.excerpt}</span>
-          </>
-        );
-        const talk = (
-          <button type="button" className={styles['postComments']} onClick={() => setOpen({ id: e.evidenceId, author: e.authorLabel })}>
-            Comments
-          </button>
-        );
         return (
           <div key={e.evidenceId}>
             <a className={styles['post']} href={e.permalink} target="_blank" rel="noopener noreferrer">
-              {body}
+              <span className={styles['postHead']}>
+                {platform !== null ? <PlatformBadge platform={platform} label={e.sourceLabel} /> : <span>{e.sourceLabel}</span>}
+                <b>{e.authorLabel}</b>
+                <Value r={formatAge(e.postedAt, now)} className={styles['age']} />
+              </span>
+              <span className={styles['postText']}>{e.excerpt}</span>
             </a>
-            {talk}
-            {owner ? <NotAMeme item={{ itemId: e.evidenceId, shown: { excerpt: e.excerpt, authorLabel: e.authorLabel, sourceLabel: e.sourceLabel, permalink: e.permalink } }} /> : null}
+            <button type="button" className={styles['postComments']} onClick={() => setTalk({ id: e.evidenceId, author: e.authorLabel })}>
+              Comments
+            </button>
+            {remove}
           </div>
         );
       })}
     </>
+  );
+}
+
+function Coins({ sheet, now, onOpen, onBuy, line }: {
+  sheet: StorySheet | 'failed' | null;
+  now: number;
+  onOpen: (c: SheetCoin) => void;
+  onBuy: (c: SheetCoin) => void;
+  line: string;
+}) {
+  if (sheet === null) return <p className={styles['note']}>Reading the coins.</p>;
+  if (sheet === 'failed') return <p className={styles['note']}>Couldn't read this narrative's coins just now.</p>;
+  if (sheet.coins.length === 0) return <p className={styles['note']}>{line}</p>;
+  return (
+    <div className={styles['coinList']}>
+      {sheet.coins.map((c, i) => (
+        <div key={c.address}>
+          {i === 0 && c.proven ? <span className={styles['coinHead']}>This narrative's coin</span> : null}
+          {(i === 0 && !c.proven) || (i === 1 && sheet.coins[0]?.proven === true) ? <span className={styles['coinHead']}>Other fitting coins</span> : null}
+          <CoinLine coin={c} now={now} onOpen={() => onOpen(c)} action={
+            <button type="button" className={styles['buy']} onClick={(e) => {
+              e.stopPropagation();
+              onBuy(c);
+            }}>Buy</button>
+          } />
+        </div>
+      ))}
+    </div>
   );
 }
 

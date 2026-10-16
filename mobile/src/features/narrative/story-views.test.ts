@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { viewsPlan } from '../post-sheet/views-chart.ts';
-import { gainedLastHour, storyTotal } from './story-views.ts';
+import { gainedLastHour, latestTotal, storyTotal } from './story-views.ts';
 
 const M = 60_000;
 const every5 = (from: number, to: number, start: number, perMin: number) => {
@@ -51,6 +51,11 @@ test('a post with no readings at all, posted at an unknown time, makes every tot
 test('a rounded-away reading is not a value', () => {
   const t = storyTotal([{ id: 'a', postedAt: 0, readings: [{ atMs: 5 * M, value: null }] }], 10 * M);
   assert.deepEqual(t.points, []);
+});
+
+test('★ the header total adds every post\'s latest reading, and a post never read makes it unknown, not smaller', () => {
+  assert.deepEqual(latestTotal([{ latest: 1_400_000, latestAt: 5 }, { latest: 1_100_000, latestAt: 3 }]), { kind: 'value', total: 2_500_000, oldestAt: 3 });
+  assert.deepEqual(latestTotal([{ latest: 10, latestAt: 5 }, { latest: null, latestAt: null }]), { kind: 'unknown', why: '1 post has no view reading' });
 });
 
 test('gained in the last hour: the newest total against the one nearest an hour before, with its real span', () => {
