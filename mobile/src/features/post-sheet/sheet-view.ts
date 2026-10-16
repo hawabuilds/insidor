@@ -1,20 +1,13 @@
 /**
  * THE POST SHEET'S AND THE FOR YOU CARD'S DECISIONS, apart from the screens so `node --test` can
- * hold them: how much a post's views grew lately and over how long, the reach chart's points and
- * markers, the "Found 2m" and "Coin 33m" tags, a coin's age, and which line a card's coin area
- * says.
+ * hold them: how much a post's views grew lately and over how long, the "Found 2m" and "Coin 33m"
+ * tags, a coin's age, and which line a card's coin area says. The views chart's own rules are in
+ * views-chart.ts.
  *
  * ★ EVERY NUMBER IS BETWEEN TWO OF OUR OWN READINGS, AND SAYS ITS SPAN. Readings are taken every
  * few minutes, not every five: the gain is measured from the reading nearest five minutes before
  * the newest, and labelled with the minutes that really separate them ("+38K 7m"). It is never
  * interpolated, and a reading the source rounded away (null) is never used.
- *
- * ★ NO CHART WITHOUT HISTORY. Fewer than two counted readings draws nothing, rather than a line we
- * would have to invent. ★ NO BREAKS IN THE LINE (the owner's call): a reading the source rounded
- * away is left out and the line runs straight from the reading before it to the one after, never
- * down to the floor. ★ THE FOUND AND COIN MARKERS SIT AT THEIR REAL TIMES: the chart's span
- * stretches to take them in, so a coin launched after our last reading is still drawn where it
- * launched, past the end of the line.
  *
  * What breaks if changed carelessly: the card's coin line follows `postCoinStatus` (shared/coin-
  * status.ts) for which states exist; this file only words them the way the design does. A Buy is
@@ -105,83 +98,6 @@ export function pctText(pct: number): string {
 /** "1.9M followers", "1 follower". */
 export function followersText(n: number): string {
   return `${compact(n)} ${n === 1 ? 'follower' : 'followers'}`;
-}
-
-/* ── the reach chart ─────────────────────────────────────────────────── */
-
-export interface ChartPlan {
-  /** Points in 0..1 on both axes (x time, y views from 0 to `max`); a null would break the line, and chartPlan makes none. */
-  readonly points: readonly ({ readonly x: number; readonly y: number } | null)[];
-  readonly max: number;
-  /** The latest counted reading. */
-  readonly last: { readonly x: number; readonly y: number };
-  /** Dotted markers along x: where we found the post and where the first coin launched; a dot on the line only where the line is drawn. */
-  readonly markers: readonly { readonly x: number; readonly kind: 'found' | 'coin'; readonly onLine: boolean }[];
-  /** Three times under the chart: start, middle, end ("Now" when the end is recent). */
-  readonly times: readonly { readonly x: number; readonly at: number }[];
-}
-
-/** A round top for the axis: 750K over 751K is the design's own example. */
-export function niceMax(v: number): number {
-  if (v <= 0) return 1;
-  const p = 10 ** Math.floor(Math.log10(v));
-  for (const m of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10]) if (m * p >= v) return m * p;
-  return 10 * p;
-}
-
-export function chartPlan(readings: readonly Reading[], start: number | null, marks: { readonly found: number | null; readonly coin: number | null }): ChartPlan | null {
-  const counted = [...readings].sort((a, b) => a.atMs - b.atMs).filter((r): r is { atMs: number; value: number } => r.value !== null);
-  const firstCounted = counted[0];
-  const lastCounted = counted[counted.length - 1];
-  if (counted.length < 2 || firstCounted === undefined || lastCounted === undefined) return null;
-  /* From the post time when we know it (so "Found" sits where it happened) to our last counted
-     reading, stretched to take in either marker that falls outside. */
-  const marked = [marks.found, marks.coin].filter((t): t is number => t !== null);
-  const from = Math.min(start !== null && start < firstCounted.atMs ? start : firstCounted.atMs, ...marked);
-  const to = Math.max(lastCounted.atMs, ...marked);
-  if (to <= from) return null;
-  const max = niceMax(Math.max(...counted.map((r) => r.value)));
-  const x = (t: number) => (t - from) / (to - from);
-  const points = counted.map((r) => ({ x: x(r.atMs), y: r.value / max }));
-  const markers = (['found', 'coin'] as const).flatMap((kind) => {
-    const at = marks[kind];
-    return at !== null ? [{ x: x(at), kind, onLine: at >= firstCounted.atMs && at <= lastCounted.atMs }] : [];
-  });
-  return {
-    points,
-    max,
-    last: { x: x(lastCounted.atMs), y: lastCounted.value / max },
-    markers,
-    times: [0, 0.5, 1].map((f) => ({ x: f, at: from + (to - from) * f })),
-  };
-}
-
-/** The chart's line as an SVG path in a `w` by `h` box; a null in the points (chartPlan makes none) would lift the pen. */
-export function linePath(points: ChartPlan['points'], w: number, h: number): string {
-  let d = '';
-  let pen = false;
-  for (const p of points) {
-    if (p === null) {
-      pen = false;
-      continue;
-    }
-    d += `${pen ? 'L' : 'M'}${(p.x * w).toFixed(1)} ${(h - p.y * h).toFixed(1)} `;
-    pen = true;
-  }
-  return d.trim();
-}
-
-/** The filled area under the line: one closed shape per unbroken run. */
-export function areaPath(points: ChartPlan['points'], w: number, h: number): string {
-  const runs: { x: number; y: number }[][] = [[]];
-  for (const p of points) {
-    if (p === null) runs.push([]);
-    else runs[runs.length - 1]?.push(p);
-  }
-  return runs
-    .filter((r) => r.length > 1)
-    .map((r) => `M${((r[0]?.x ?? 0) * w).toFixed(1)} ${h} ${r.map((p) => `L${(p.x * w).toFixed(1)} ${(h - p.y * h).toFixed(1)}`).join(' ')} L${((r[r.length - 1]?.x ?? 0) * w).toFixed(1)} ${h} Z`)
-    .join(' ');
 }
 
 /* ── the For You card's coin area ────────────────────────────────────── */

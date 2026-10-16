@@ -309,10 +309,63 @@
   color: var(--sheet-text);
 }
 
-/* ── chart ─────────────────────────────────────────────────────────── */
+/* ── chart (ViewsChart.tsx) ────────────────────────────────────────── */
 
 .chart {
   padding: 0 4px;
+}
+
+/* The interval rail and the Total or Gained switch, the token page's own (token.module.css
+   .tfButton and .kinds), with the picked interval in the sheet's purple: views are not a price,
+   and green and red stay the price's. */
+.rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.intervals {
+  display: flex;
+  gap: 2px;
+}
+
+.interval {
+  composes: tfButton from '../token/token.module.css';
+}
+
+/* Six of them and the switch share one 358px row: tighter sides than the token page's. */
+.intervals .interval {
+  padding: 6px 8px;
+}
+
+.intervalOn {
+  background: rgb(153 69 255 / 22%);
+  color: var(--sheet-text);
+}
+
+.modes {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--segment-track);
+}
+
+.modes button {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.modes .modeOn {
+  background: var(--input);
+  color: var(--text-1);
+  box-shadow: var(--shadow-tab-active);
 }
 
 .chartRow {
@@ -320,16 +373,46 @@
   gap: 8px;
 }
 
+.plotArea {
+  flex: 1;
+  min-width: 0;
+}
+
+.pills {
+  position: relative;
+}
+
+.pillFound,
+.pillCoin {
+  position: absolute;
+  top: 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.pillFound {
+  background: rgb(153 69 255 / 22%);
+  color: var(--sheet-text);
+}
+
+.pillCoin {
+  background: var(--up-wash);
+  color: var(--up);
+}
+
 .plot {
   position: relative;
-  flex: 1;
+  touch-action: pan-y;
+  cursor: crosshair;
 }
 
 .plotSvg {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
   overflow: visible;
 }
 
@@ -338,57 +421,105 @@
   stroke-width: 1;
 }
 
-.marker {
-  stroke: rgb(244 238 255 / 55%);
+.markFound,
+.markCoin {
   stroke-width: 1;
   stroke-dasharray: 3 3;
+}
+
+.markFound {
+  stroke: rgb(182 136 255 / 80%);
+}
+
+.markCoin {
+  stroke: rgb(74 222 128 / 75%);
 }
 
 .line {
   fill: none;
   stroke: var(--sheet-action);
-  stroke-width: 3;
+  stroke-width: 2.5;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
 
-.markDot,
-.lastDot {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  margin: 0 0 -5px -5px;
-  border-radius: 50%;
-  background: var(--sheet-text);
+/* A reading with no neighbour close enough to join: a dot, never a line to somewhere invented. */
+.lone {
+  fill: var(--sheet-action);
 }
 
-.lastDot {
-  width: 14px;
-  height: 14px;
-  margin: 0 0 -7px -7px;
-  background: var(--sheet-action);
-  box-shadow: 0 0 0 3px rgb(153 69 255 / 30%);
+/* Before our first count: the one stretch that is not a reading, so it is grey and dashed. */
+.before {
+  fill: none;
+  stroke: rgb(255 255 255 / 40%);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
 }
 
-/* "Found" and "Coin" at the top of their dotted lines, on a patch of the sheet so the line under
-   them never makes them hard to read. */
-.markLabel {
+.beforeLabel {
   position: absolute;
-  margin-left: 4px;
-  padding: 0 4px;
-  border-radius: 6px;
-  background: var(--sheet-bg);
+  top: 4px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   color: var(--sheet-label);
   font-size: 11px;
-  font-weight: 700;
-  line-height: 15px;
+  pointer-events: none;
+}
+
+.bar {
+  fill: var(--sheet-action);
+}
+
+.barDown {
+  fill: var(--down);
+}
+
+.lastDot {
+  fill: var(--sheet-action);
+  stroke: rgb(153 69 255 / 30%);
+  stroke-width: 6;
+}
+
+.cross {
+  stroke: rgb(255 255 255 / 35%);
+  stroke-width: 1;
+}
+
+.tipDot {
+  fill: var(--sheet-text);
+}
+
+.tip {
+  position: absolute;
+  padding: 5px 9px;
+  border-radius: 10px;
+  background: var(--sheet-card);
+  box-shadow: inset 0 0 0 1px var(--sheet-border);
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
   white-space: nowrap;
   pointer-events: none;
 }
 
-.markLabelLeft {
-  margin-left: -4px;
-  transform: translateX(-100%);
+.tipTime {
+  color: var(--sheet-label);
+  font-size: 12px;
+}
+
+/* Gained with no bar to draw at this interval: why, in the chart's place. */
+.plotNote {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  text-align: center;
+  color: var(--sheet-label);
+  font-size: 12px;
+  pointer-events: none;
 }
 
 .axis {
@@ -404,22 +535,10 @@
   transform: translateY(-50%);
 }
 
-.axis span:nth-child(1) {
-  top: 0;
-}
-
-.axis span:nth-child(2) {
-  top: 50%;
-}
-
-.axis span:nth-child(3) {
-  top: 100%;
-}
-
 .times {
   display: flex;
   justify-content: space-between;
-  margin: 6px 42px 0 0;
+  margin: 4px 42px 0 0;
   color: var(--sheet-label);
   font-size: 11px;
 }
