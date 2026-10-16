@@ -63,8 +63,13 @@ test("a re-tune summary says applied or kept, each test as passed-of-tested, and
     body: 'Hand gold 20/41, live non-memes 0/90, missed – passed. From 1 taps, 0 missed posts, 0 name calls; +1 −0 examples. Kept the current examples: gold 20/41 is under 65%.',
   });
   assert.deepEqual(
-    alertText('retune_summary', { applied: false, goldPassed: 30, goldN: 41, negativePassed: 1, negativeN: 90, missedPassed: 3, missedN: 4, autoPassed: 40, autoN: 77, regressions: 1, taps: 1, missed: 0, names: 0, added: 1, removed: 0, why: '1 missed post caught now would fail: x:1' }).body,
-    'Hand gold 30/41, live non-memes 1/90, missed 3/4 passed. Auto gold 40/77 (not a gate). 1 missed post caught now would fail. From 1 taps, 0 missed posts, 0 name calls; +1 −0 examples. Kept the current examples: 1 missed post caught now would fail: x:1.',
+    alertText('retune_summary', { applied: false, goldPassed: 30, goldN: 41, negativePassed: 1, negativeN: 90, missedPassed: 3, missedN: 4, autoPassed: 40, autoN: 77, regressions: 1, lostMissed: ['x:1'], taps: 1, missed: 0, names: 0, added: 1, removed: 0, why: "missed posts caught 3/4 are fewer than live's 4/4" }).body,
+    "Hand gold 30/41, live non-memes 1/90, missed 3/4 passed. Auto gold 40/77 (not a gate). 1 missed post caught now is not caught by the new examples (x:1); counted, not a block. From 1 taps, 0 missed posts, 0 name calls; +1 −0 examples. Kept the current examples: missed posts caught 3/4 are fewer than live's 4/4.",
+  );
+  assert.match(
+    alertText('retune_summary', { applied: true, regressions: 2, lostMissed: ['x:1', 'x:2'] }).body,
+    /2 missed posts caught now are not caught by the new examples \(x:1, x:2\); counted, not a block\./,
+    'an applied block still names the missed posts it lost',
   );
   assert.equal(
     alertText('retune_summary', { applied: true, goldPassed: 58, goldN: 98, negativePassed: 70, negativeN: 422, missedPassed: 7, missedN: 13, cutoffRule: 'A', cutoff: 0.78, cutoffFrom: 0.7, liveGoldPassed: 58, liveGoldN: 98, liveNegativePassed: 77, liveNegativeN: 422, liveMissedPassed: 7, liveMissedN: 13, taps: 1, missed: 0, names: 0, added: 1, removed: 0 }).body,

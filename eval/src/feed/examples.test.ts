@@ -1,11 +1,11 @@
-/** The learned-examples block: a fixed split by id, the owner's newest call wins, balanced and capped, and a block applied only when the gate holds and no caught missed post regresses. */
+/** The learned-examples block: a fixed split by id, the owner's newest call wins, balanced and capped, and a block applied only when the gate holds and it catches no fewer missed posts than live. */
 
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { atCutoff, buildBlock, caught, changed, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, ratesOf, regressions, sweepCutoff, type GradedPost, type OwnerCall } from './examples.ts';
+import { atCutoff, buildBlock, caught, changed, chooseCutoff, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, ratesOf, regressions, sweepCutoff, type GradedPost, type OwnerCall } from './examples.ts';
 
 const L = DEFAULT_POLICY.learning;
 const call = (itemId: string, label: 'meme' | 'not', from: OwnerCall['from'], at: number | null = null): OwnerCall => ({ itemId, text: `post ${itemId}`, imageUri: null, label, why: 'because', at, from });
@@ -82,12 +82,14 @@ test('★ the 65% / 15% / 50% bars are the goal: reported met or not met, never 
   assert.deepEqual(gate(ok, L).goals, { hand: true, negatives: true, missed: null });
 });
 
-test('★ no block is applied that makes a missed post the judge in use catches fail', () => {
+test('★ missed posts are counted overall: a lost one is named, fewer caught than live is refused', () => {
   const r = regressions(new Map([['x:1', true], ['x:2', true], ['x:3', false], ['x:4', true]]), new Map([['x:1', false], ['x:2', true], ['x:3', false], ['x:4', null]]));
   assert.deepEqual(r, ['x:1'], 'a caught post now failing; not one never caught, not one left unanswered');
-  const v = gate({ ...ok, regressions: r }, L);
-  assert.equal(v.apply, false);
-  assert.match(v.why ?? '', /1 missed post caught now would fail: x:1/);
+  assert.equal(gate({ ...ok, missed: { passed: 2, tested: 2 }, regressions: r }, L).apply, true, 'one lost, more caught overall: applied');
+  assert.equal(gate({ ...ok, missed: { passed: 1, tested: 2 }, regressions: r }, L).apply, true, 'as many as live');
+  const fewer = gate({ ...ok, missed: { passed: 0, tested: 2 }, regressions: r }, L);
+  assert.equal(fewer.apply, false);
+  assert.match(fewer.why ?? '', /missed posts caught 0\/2 are fewer than live's 1\/2/);
 });
 
 const g = (id: string, group: string, firstPass: boolean, kind: string | null, coinable: boolean | null = firstPass): GradedPost => ({ id, group, coinable, firstPass, kind });
@@ -157,7 +159,7 @@ test('a raised cutoff only removes passes, and keeps a post the judge did not an
   assert.equal(atCutoff(rows, null, DEFAULT_POLICY), rows);
 });
 
-test('★ rule A: the strictest cutoff with gold at least live, fewer non-memes and no missed post lost', () => {
+test('★ rule A: the strictest cutoff with gold and missed caught at least live and fewer non-memes', () => {
   /* Live: gold 2/3, junk 2/3, missed m1 caught. New: more gold, more junk, but its junk is less sure. */
   const live = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.8), no('g3', 'gold'), yes('n1', 'live-not', 0.9), yes('n2', 'live-not', 0.75), no('n3', 'live-not'), yes('m1', 'missed', 0.85)];
   const mine = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.88), yes('g3', 'gold', 0.8), yes('n1', 'live-not', 0.74), yes('n2', 'live-not', 0.72), yes('n3', 'live-not', 0.73), yes('m1', 'missed', 0.86)];
@@ -168,7 +170,7 @@ test('★ rule A: the strictest cutoff with gold at least live, fewer non-memes 
   assert.deepEqual([c.point.hand.passed, c.point.negatives.passed, c.point.missed.passed, c.point.lost.length], [3, 0, 1, 0]);
 });
 
-test('rule B: junk no worse than live with more gold, when no cutoff gives less junk', () => {
+test('rule B: junk no worse than live with more gold and missed caught no fewer, when no cutoff gives less junk', () => {
   const live = [yes('g1', 'gold', 0.9), no('g2', 'gold'), yes('n1', 'live-not', 0.95)];
   const mine = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.8), yes('n1', 'live-not', 0.95)];
   const c = sweep(mine, live);
@@ -176,14 +178,45 @@ test('rule B: junk no worse than live with more gold, when no cutoff gives less 
   assert.deepEqual([c.point.hand.passed, c.point.negatives.passed], [2, 1]);
 });
 
-test("★ refused when a missed post live catches is answered \"no\": no cutoff can bring it back", () => {
+test("★ refused when fewer missed posts are caught than live: no cutoff can bring them back", () => {
   const live = [yes('g1', 'gold', 0.9), yes('n1', 'live-not', 0.8), yes('m1', 'missed', 0.9)];
   const mine = [yes('g1', 'gold', 0.95), no('n1', 'live-not'), no('m1', 'missed')];
   const c = sweep(mine, live);
   assert.equal(c.rule, 'refused');
   assert.equal(c.cutoff, null);
   assert.deepEqual(c.point.lost, ['m1']);
-  assert.match(c.why ?? '', /cannot bring back/);
+  assert.match(c.why ?? '', /missed posts caught 0\/1 are fewer than live's 1\/1.*cannot bring back/);
+});
+
+test('★ a missed post lost is named, not a refusal, when as many or more are caught overall', () => {
+  /* Live catches m1, not m2; the new block catches m2, not m1: 1 of 2 each side. */
+  const live = [yes('g1', 'gold', 0.9), no('g2', 'gold'), yes('n1', 'live-not', 0.8), yes('m1', 'missed', 0.9), no('m2', 'missed')];
+  const mine = [yes('g1', 'gold', 0.9), yes('g2', 'gold', 0.9), no('n1', 'live-not'), no('m1', 'missed'), yes('m2', 'missed', 0.9)];
+  const c = sweep(mine, live);
+  assert.equal(c.rule, 'A');
+  assert.deepEqual(c.point.lost, ['m1'], 'still named for the log and the alert');
+});
+
+/* Version 9, the re-tune of 2026-10-16 07:00 UTC, as its log line "retune cutoff sweep" gave it, 0.70 to 0.80. */
+const v9Live = { hand: { passed: 65, tested: 117 }, negatives: { passed: 104, tested: 513 }, missed: { passed: 7, tested: 16 } };
+const v9 = ([cutoff, gold, junk, missed, lost]: readonly [number, number, number, number, number]) => ({
+  cutoff, hand: { passed: gold, tested: 117 }, negatives: { passed: junk, tested: 513 }, missed: { passed: missed, tested: 16 }, lost: Array.from({ length: lost }, (_, i) => `x:${i}`), extra: null,
+});
+const v9Points = ([
+  [0.7, 71, 102, 10, 1], [0.71, 70, 98, 10, 1], [0.72, 70, 98, 10, 1], [0.73, 67, 88, 9, 2], [0.74, 67, 88, 9, 2], [0.75, 67, 88, 9, 2],
+  [0.76, 60, 73, 6, 4], [0.77, 60, 72, 6, 4], [0.78, 60, 72, 6, 4], [0.79, 56, 67, 6, 4], [0.8, 56, 63, 6, 5],
+] as const).map(v9);
+
+test("★ version 9's numbers pass under the counted rule: rule A takes the strictest, 0.75; 0.71, applied by hand, passes too", () => {
+  const c = chooseCutoff(v9Points, v9Live);
+  assert.equal(c.rule, 'A');
+  assert.equal(c.cutoff, 0.75, 'gold 67 ≥ 65, junk 88 < 104, missed 9 ≥ 7; at 0.76 gold falls to 60');
+  assert.equal(c.point.lost.length, 2, 'the two lost missed posts are still named');
+  const to071 = chooseCutoff(v9Points.filter((p) => p.cutoff <= 0.71), v9Live);
+  assert.deepEqual([to071.rule, to071.cutoff], ['A', 0.71], 'gold 70, junk 98, missed 10 against live 65 / 104 / 7');
+  /* Rule B's floor, the owner's "(gold better, junk no worse)": 0.71 holds it with junk equal to live's. */
+  const onlyB = chooseCutoff([v9Points[1]!], { ...v9Live, negatives: { passed: 98, tested: 513 } });
+  assert.deepEqual([onlyB.rule, onlyB.cutoff], ['B', 0.71]);
 });
 
 test('refused when every cutoff with less junk loses gold', () => {

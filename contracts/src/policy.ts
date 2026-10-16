@@ -2335,10 +2335,12 @@ export interface LearningPolicy {
   /**
    * ★ THE NEW BLOCK'S YES/NO CUTOFF IS TUNED BEFORE IT IS REFUSED (the owner, 2026-10-16). On the
    * answers the test already collected, the new block's confidence cutoff is raised from the live
-   * bar in steps of `cutoffStep` up to `cutoffMax`: the strictest cutoff with hand gold no worse
-   * than live, no missed post live catches lost and fewer live non-memes is applied with the block;
-   * failing that, the one with the fewest live non-memes no worse than live and more hand gold;
-   * failing that, the block is refused. A raised cutoff can only remove passes, so it costs nothing.
+   * bar in steps of `cutoffStep` up to `cutoffMax`: the strictest cutoff with hand gold and missed
+   * posts caught no worse than live and fewer live non-memes is applied with the block; failing
+   * that, the one with the fewest live non-memes no worse than live, more hand gold and missed
+   * posts caught no worse; failing that, the block is refused. Missed posts are counted overall
+   * (the owner, the same day): one post live catches and the block does not is named, not a
+   * refusal. A raised cutoff can only remove passes, so it costs nothing.
    */
   readonly cutoffStep: number;
   readonly cutoffMax: number;

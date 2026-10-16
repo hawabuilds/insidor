@@ -50,8 +50,8 @@
  *        applied     when it BEATS the setup live now (its applied block, or its rules alone),
  *                    graded on the same posts beside the block's test: strictly more hand gold
  *                    (memes, news, tragedies alike) AND strictly fewer held-out live non-memes,
- *                    AND no missed post live catches is lost. Strict is the noise rule: both
- *                    sides run together at temperature 0, so a tie is not an improvement.
+ *                    AND no fewer held-out missed posts caught than live. Strict is the noise
+ *                    rule: both sides run together at temperature 0, so a tie is not an improvement.
  *        goal        hand gold ≥ minGoldPass, live non-memes ≤ maxLiveNegativePass, missed ≥
  *                    minMissedPass: reported met or not met, never a block
  *      A post passes as live decides (core passesWithSignal): the judge, or — its kind not held —
@@ -61,18 +61,22 @@
  *      yes/no cutoff, aiming for LESS junk"): on the answers already collected (no extra call), the
  *      new block's confidence cutoff is raised from the live bar (the applied block's own cutoff, or
  *      the policy's lowest bar) by Policy.learning.cutoffStep up to cutoffMax (eval sweepCutoff):
- *        A  the strictest cutoff with hand gold ≥ live, fewer live non-memes, no missed post lost
- *        B  else the fewest live non-memes ≤ live with more hand gold, no missed post lost
+ *        A  the strictest cutoff with hand gold ≥ live, fewer live non-memes, missed caught ≥ live
+ *        B  else the fewest live non-memes ≤ live with more hand gold, missed caught ≥ live
  *        else refused. The cutoff is applied WITH the block (internal.judge_examples_version
  *      .judge_cutoff, 0086) and the projector holds every answer to it; before 0086 a block that
  *      needs a cutoff above the policy bar is refused, since it could not be stored. A missed post
  *      the new block answered "no" is lost at every cutoff — a stricter cutoff only removes passes.
+ *      ★ MISSED POSTS COUNTED, NOT NAMED (the owner, 2026-10-16): one missed post live catches and
+ *      the new block does not no longer refuses a block that catches as many or more overall (it
+ *      kept version 9 out at 10/16 against live's 7/16). Each such post is still named — the log's
+ *      sweep line, the run's detail and the owner's alert — so the owner can teach it back.
  *      The setup live now is graded at ITS cutoff. The rule, the cutoff and new against live on hand
  *      gold, live non-memes and missed are in the log, the run's detail, status and the alert.
  *      The live non-memes are the labels file's "not" posts and every "Not a meme" tap the owner
  *      makes, held out by the id split, so the set grows by itself day by day.
- *        no regress  every missed post the judge in use catches (its applied block, or its rules
- *                    alone) is still caught by the new block — one regression and it is not applied.
+ *        lost        every missed post the judge in use catches (its applied block, or its rules
+ *                    alone) that the new block does not, at the chosen cutoff: named, not a gate.
  *   5. recorded (internal.judge_examples_version, 0056) applied or not, with why; then the owner's
  *      summary: a log line and an owner alert (`retune_summary`), with the matching lessons (the
  *      owner's right/wrong coin calls, counted and listed for the matching rules' owner) and the
@@ -441,8 +445,8 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const GROUPS = { hand: ['gold', 'missed'], auto: 'auto', negatives: 'live-not', missed: 'missed' } as const;
 
       /* ★ THE SETUP LIVE NOW, graded on the same posts in the same run (its applied block, or its
-         rules alone when none is): the block must be no worse on any of the three, and every missed
-         post it catches must still be caught. Graded beside the block's test, not after it, so a
+         rules alone when none is): the block must be no worse on any of the three; a missed post it
+         catches that the block does not is named. Graded beside the block's test, not after it, so a
          run still finishes inside `startAheadMs`. Not needed when the block IS the live one, and
          `--rules-only` has nothing to compare. */
       const inUse = await soft(repo.latestApplied(), null);
@@ -511,7 +515,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const cutoffText = choice === null || liveRates === null
         ? 'cutoff: no live grading to compare with'
         : `cutoff: ${choice.rule === 'refused' ? `refused (no cutoff from ${choice.point.cutoff.toFixed(2)} to ${L.cutoffMax} passed)` : `rule ${choice.rule}, ${choice.cutoff?.toFixed(2)} (live bar ${(liveCutoff ?? policyBar).toFixed(2)})`}; new gold ${ofN0(rates.hand)} vs live ${ofN0(liveRates.hand)}, junk ${ofN0(rates.negatives)} vs live ${ofN0(liveRates.negatives)}, missed ${ofN0(rates.missed)} vs live ${ofN0(liveRates.missed)}`;
-      if (choice !== null) log('info', 'retune cutoff sweep', { slot: slot.toISOString(), rule: choice.rule, cutoff: choice.cutoff, from: liveCutoff ?? policyBar, live: liveRates === null ? null : { gold: ofN0(liveRates.hand), junk: ofN0(liveRates.negatives), missed: ofN0(liveRates.missed) }, points: choice.points.map(fmtPoint) });
+      if (choice !== null) log('info', 'retune cutoff sweep', { slot: slot.toISOString(), rule: choice.rule, cutoff: choice.cutoff, from: liveCutoff ?? policyBar, live: liveRates === null ? null : { gold: ofN0(liveRates.hand), junk: ofN0(liveRates.negatives), missed: ofN0(liveRates.missed) }, lostMissed: choice.point.lost, points: choice.points.map(fmtPoint) });
       /* `--rows=<file>`: every graded post's answers, for comparing held-kind sets on one run. */
       if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, lookedAt: r.lookedAt, similarity: r.similarity, imageUri: r.imageUri, signal: signals.get(r.id) ?? null, text: r.text.slice(0, 120) })), null, 1));
       const why = unanswered > 0 ? `${unanswered} of ${rows.length} test posts went unanswered (${unansweredCause()})${verdict.why === null ? '' : `; ${verdict.why}`}` : verdict.why;
@@ -563,7 +567,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       };
       log(apply || opts.dry ? 'info' : 'warn', `retune ${outcome}`, summary);
       const ofN = (r: Rate) => `${r.passed}/${r.tested}`;
-      const tally = `${cutoffText}; hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), regressions ${regressed.length}${liveRates === null ? '' : `; live now: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone); ${goalsText(rates, L)}`;
+      const tally = `${cutoffText}; hand gold ${ofN(rates.hand)}, live non-memes ${ofN(rates.negatives)}, missed ${ofN(rates.missed)}, auto gold ${ofN(rates.auto)} (not gated), missed posts live catches and this does not ${regressed.length === 0 ? '0' : `${regressed.length} (${regressed.join(', ')})`} (named, not gated)${liveRates === null ? '' : `; live now: hand gold ${ofN(liveRates.hand)}, live non-memes ${ofN(liveRates.negatives)}, missed ${ofN(liveRates.missed)}`}; ${noFacts} test posts had no crypto facts (judge alone); ${goalsText(rates, L)}`;
       const ttTally = part === null ? '' : `; TikTok: set ${part.setSize} (+${part.added}), ${part.bar.why}, biggest gap ${part.gapText}`;
       await end(outcome, versionId, (why === null ? `applied: ${tally}; matching lessons right ${lessons.right}, wrong ${lessons.wrong}, none ${lessons.none}` : `${why} (${tally})`) + ttTally, costUsd);
 
@@ -578,7 +582,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
               facts: {
                 applied: apply, why,
                 goldPassed: rates.hand.passed, goldN: rates.hand.tested, negativePassed: rates.negatives.passed, negativeN: rates.negatives.tested, missedPassed: rates.missed.passed, missedN: rates.missed.tested,
-                autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length, goal: goalsText(rates, L), ...order.facts,
+                autoPassed: rates.auto.passed, autoN: rates.auto.tested, regressions: regressed.length, lostMissed: regressed, goal: goalsText(rates, L), ...order.facts,
                 ...(choice === null || liveRates === null ? {} : {
                   cutoffRule: choice.rule, cutoff: choice.cutoff, cutoffFrom: Number((liveCutoff ?? policyBar).toFixed(2)),
                   liveGoldPassed: liveRates.hand.passed, liveGoldN: liveRates.hand.tested, liveNegativePassed: liveRates.negatives.passed, liveNegativeN: liveRates.negatives.tested, liveMissedPassed: liveRates.missed.passed, liveMissedN: liveRates.missed.tested,
