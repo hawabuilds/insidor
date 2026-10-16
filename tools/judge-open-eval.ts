@@ -155,7 +155,7 @@ async function composeGate(): Promise<{ posts: (OpenEvalPost & { coinRef: string
     calls.push({ itemId: m.itemId, text: m.body, imageUri: pictureOf(m.media)?.uri ?? null, label: 'meme', why: 'a post the owner says we missed: people coined or could coin it', at: m.at.getTime(), from: 'missed' });
   }
   const names = (await repo.nameCalls()).flatMap((n) => (n.body === null ? [] : [{ itemId: n.itemId, text: n.body, name: n.name, verdict: n.verdict, betterName: n.betterName, at: n.at.getTime() }]));
-  const block = buildBlock(calls, names, P.learning.maxExamples);
+  const block = buildBlock(calls, names, P.learning.maxExamples, { alwaysTeach: P.learning.alwaysTeach });
   /* The live judge's prompt: its applied block, or its rules alone. A post that block teaches cannot test it. */
   const inUse = await repo.latestApplied();
   const appliedIds = new Set(inUse === null ? [] : await repo.appliedExampleIds());
