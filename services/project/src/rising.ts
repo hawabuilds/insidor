@@ -97,6 +97,7 @@
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar, heldKind, type PostCoinCalls, type StoryCoin, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
+import { policyForAnswer } from './judge-cutoff.ts';
 import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
 import { loadMembership, writeMembership, type Membership } from './feed-members.ts';
 import { PgFeedRejectionRepo, type Db, type FeedRejectionReason } from '@insidor/store';
@@ -190,6 +191,8 @@ export interface RisingRow {
   confidence: number | null;
   looked_at: 'text' | 'picture' | 'videoFrame' | null;
   proposed_name: string | null;
+  /** The judge that gave the first question's answer: it decides which cutoff holds (judge-cutoff.ts). */
+  judge_id?: string | null;
   picture_similarity: number | null;
   story_id: string | null;
   /** The owner's newest call on this post (0054), or null when there is none. */
@@ -224,7 +227,7 @@ async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[
   return db.query<RisingRow>(
     `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media,
             a.handle, a.display_name, a.source_author_id,
-            j.coinable, j.confidence, j.looked_at, j.proposed_name,
+            j.coinable, j.confidence, j.looked_at, j.proposed_name, j.judge_id,
             k.kind_label,
             pic.similarity as picture_similarity,
             s.story_id,
@@ -236,7 +239,7 @@ async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[
           its yes/no is not the judge's verdict on the post (two OTHER answers filed as "no" hid two
           posts on 2026-10-13). The kind is read beside it, below. */
        left join lateral (
-              select pj.coinable, pj.confidence, pj.looked_at, pj.proposed_name
+              select pj.coinable, pj.confidence, pj.looked_at, pj.proposed_name, pj.judge_id
                 from internal.post_judgement pj
                where pj.item_id = i.item_id and pj.prompt_id not like 'post-kind%'
                order by pj.judged_at desc, pj.id desc
@@ -614,6 +617,8 @@ export async function buildRising(
   sparkWindowMs: number,
   policy = DEFAULT_POLICY,
   membership: Membership | null = null,
+  /** The policy the open model's answers are held to (judge-cutoff.ts); `policy` for every other. */
+  openPolicy = policy,
 ): Promise<RisingFrame> {
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
@@ -626,7 +631,7 @@ export async function buildRising(
      reason: a member refreshed from outside it did not leave the frame for a reason. */
   const passing = new Set<string>();
   const rows = candidates.filter((row) => {
-    const { why } = postRoute(row, policy, cryptoSignalFor(row, crypto.get(row.item_id), policy));
+    const { why } = postRoute(row, policyForAnswer(row.judge_id, policy, openPolicy), cryptoSignalFor(row, crypto.get(row.item_id), policy));
     const inWindow = atOf(row) >= sinceMs;
     if (why !== 'passes' && inWindow) whyNot.set(row.item_id, why);
     const held = postHeldKind(row, policy);
@@ -908,10 +913,11 @@ export async function projectRisingFeeds(
   coinsByStory: ReadonlyMap<string, WireCoinLink>,
   sparkWindowMs: number,
   policy = DEFAULT_POLICY,
+  openPolicy = policy,
 ): Promise<number> {
   /* The feeds' members for good (feed-members.ts, 0075); null before it is applied. */
   const membership = await loadMembership(db, nowMs - policy.rising.windowMs);
-  const frame = await buildRising(db, nowMs, coinsByStory, sparkWindowMs, policy, membership);
+  const frame = await buildRising(db, nowMs, coinsByStory, sparkWindowMs, policy, membership, openPolicy);
   /* ★ WHAT LEFT, AND WHY. A post that was on a feed and is not now is recorded with the check it
      failed — kept as a "no" example, never deleted. A post that only aged out of the window is
      not a rejection and has no reason here, so it is not recorded. */
