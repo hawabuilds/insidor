@@ -3,7 +3,8 @@
  * too), each source's own parser names the post, a post we hold is not read, one we do not is read
  * once and stored, the link is recorded whatever the post's age, and only a qualifying post is
  * credited to the coin_link lane — a short video young enough, a text post with enough approvals.
- * Off, a pass does nothing and reads no table. A dry run records links and reads no post.
+ * Off, a pass does nothing and reads no table. A dry run records links and reads no post. A pass
+ * with a coin logs one line even when the coin names no post.
  */
 
 import assert from 'node:assert/strict';
@@ -133,4 +134,13 @@ test('a dry run records the links and reads and credits nothing', async () => {
   assert.equal(h.recorded.length, 2);
   assert.deepEqual(h.looked, []);
   assert.deepEqual(h.credited, []);
+});
+
+test('a pass with a coin that names no post still logs its line', async () => {
+  const h = harness();
+  const lines: [string, Record<string, unknown>][] = [];
+  const log = { ...quiet, info: (msg: string, f: Record<string, unknown>) => void lines.push([msg, f]) } as unknown as Logger;
+  const r = await coinLinksPass({ ...h.deps, log, metadata: { read: async () => ({ kind: 'read', cid: 'c', metadata: { name: 'Cat', ticker: 'CAT', description: 'no links here', imageUri: null, links: { social: null, website: null, chat: null } } }) } });
+  assert.equal(r.links, 0);
+  assert.deepEqual(lines.map(([m, f]) => [m, f.coins, f.read, f.links, f.postsRead]), [['coins pointing to posts', 1, 1, 0, 0]]);
 });
