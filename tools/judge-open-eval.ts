@@ -47,7 +47,7 @@ import process from 'node:process';
 
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import type { MediaRef } from '../contracts/src/vocabulary.ts';
-import { closestNot, embedInput, nearestLabelled, postPicture, precedentsFor, type LabelledVector } from '../core/src/qualify/precedents.ts';
+import { closestNot, embedInput, nearestLabelled, postPicture, precedentsFor, sourceOfItemId, type LabelledVector } from '../core/src/qualify/precedents.ts';
 import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo } from '../store/src/index.ts';
 import { buildBlock, type OwnerCall } from '../eval/src/feed/examples.ts';
 import { anthropicJudge, httpClient as anthropicClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
@@ -289,7 +289,7 @@ try {
     const others = coined.filter((c) => c.coinRef !== p.coinRef && c.uri !== p.picture);
     const similarity = pv === undefined || others.length === 0 ? null : Math.max(...others.map((c) => c.v.reduce((s, x, i) => s + x * (pv[i] ?? 0), 0)));
     near.set(p.id, {
-      precedents: v === undefined || P.judge.precedents.k <= 0 ? [] : precedentsFor(nearestLabelled(v, labels, P.judge.precedents.k, self), P),
+      precedents: v === undefined || P.judge.precedents.k <= 0 ? [] : precedentsFor(nearestLabelled(v, labels, P.judge.precedents.k, self, { source: sourceOfItemId(p.id), reserve: P.judge.precedents.sameSourceFirst }), P),
       closestNot: v === undefined ? null : (closestNot(v, labels, self)?.similarity ?? null),
       similarity,
     });

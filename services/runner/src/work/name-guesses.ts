@@ -43,7 +43,7 @@ import type { EmbedPort } from '@insidor/contracts/ports/embed.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { NamePort, NameSubject } from '@insidor/contracts/ports/names.ts';
 import type { PgNameExampleRepo, PgNameGuessRepo, StoredExample } from '@insidor/store';
-import { cleanGuesses, embedInput, exampleShown, nearestExamples, postPicture, postScoreReason } from '@insidor/core';
+import { cleanGuesses, embedInput, exampleShown, nearestExamples, postPicture, postScoreReason, sourceOfItemId } from '@insidor/core';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
@@ -148,7 +148,7 @@ export function nameGuesser(deps: NameGuessDeps) {
     const vectors = await deps.examples.postVectors(candidates.map((c) => c.itemId), space);
     const subjects: NameSubject[] = candidates.map((c) => {
       const v = vectors.get(c.itemId);
-      const near = v === undefined ? [] : nearestExamples(v, examples, p.k, (e) => e.itemId === c.itemId);
+      const near = v === undefined ? [] : nearestExamples(v, examples, p.k, (e) => e.itemId === c.itemId, { source: sourceOfItemId(c.itemId), reserve: p.sameSourceFirst });
       return { ref: c.itemId, text: c.text.trim().slice(0, p.maxChars), picture: postPicture(c.media), examples: near.map((e) => exampleShown(e, p)) };
     });
 

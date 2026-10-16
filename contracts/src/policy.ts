@@ -693,6 +693,12 @@ export interface JudgePolicy {
     readonly maxChars: number;
     readonly holdNotSimilarity: number;
     readonly labelsPerPass: number;
+    /**
+     * Of the `k`, up to this many go to the closest labels from the post's own source, shown first
+     * (core `ownSourceFirst`; the owner, 2026-10-16: the short-video judge uses short-video
+     * examples first). 0 is off: the closest `k` of any source, as before. $0 a day either way.
+     */
+    readonly sameSourceFirst: number;
   };
 }
 
@@ -2371,6 +2377,11 @@ export interface NamesPolicy {
   readonly cardsFromGuesses: boolean;
   /** Known pairs shown with each post: its closest example posts, all their coin names. */
   readonly k: number;
+  /**
+   * Of the `k`, up to this many are the closest examples from the post's own source, first (core
+   * `ownSourceFirst`): how people name coins from short videos, for a short video. 0 is off. $0.
+   */
+  readonly sameSourceFirst: number;
   /** Guesses asked for and kept per post. */
   readonly guesses: number;
   /** Of them, how many lead the Create sheet's suggestions. */
@@ -3071,6 +3082,10 @@ const POLICY_V1: Policy = {
          post is not one of them, so expect some meme posts near a "not" — measure the holds. */
       holdNotSimilarity: 0.67,
       labelsPerPass: 40,
+      /* Off until the owner switches it on. On 2026-10-16 the labels held 34 short-video taps (33
+         "not") and the coined-video training set's captions; 5 of 10 lets them lead for a short
+         video while a text post's ten stay almost all text posts, as now. */
+      sameSourceFirst: 0,
     },
   },
 
@@ -3751,6 +3766,7 @@ const POLICY_V1: Policy = {
        "See N coins" and is never a card's coin until the gate passes. */
     cardsFromGuesses: false,
     k: 10,
+    sameSourceFirst: 0, // off until the owner switches it on; 5 is the proposal (see NamesPolicy)
     guesses: 5,
     createIdeas: 3,
     perCall: 10,

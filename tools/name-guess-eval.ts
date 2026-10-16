@@ -29,6 +29,7 @@ import process from 'node:process';
 import { DEFAULT_POLICY as P } from '../contracts/src/policy.ts';
 import type { NameGuess, NameSubject } from '../contracts/src/ports/names.ts';
 import { cleanGuesses, exampleShown, guessHit, nearestExamples, type ExampleVector } from '../core/src/create/name-guess.ts';
+import { sourceOfItemId } from '../core/src/qualify/precedents.ts';
 import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { httpClient as judgeClient } from '../adapters/judge/anthropic/src/index.ts';
 import { anthropicNamer } from '../adapters/judge/anthropic/src/name-guess.ts';
@@ -113,7 +114,7 @@ try {
   const shownCount = new Map<string, number>();
   for (const h of held) {
     const v = vectors.get(h.itemId);
-    const near = v === undefined ? [] : nearestExamples(v, examplesFor(h), P.names.k, (e) => e.itemId === h.itemId);
+    const near = v === undefined ? [] : nearestExamples(v, examplesFor(h), P.names.k, (e) => e.itemId === h.itemId, { source: sourceOfItemId(h.itemId), reserve: P.names.sameSourceFirst });
     shownCount.set(h.itemId, near.length);
     subjects.push({ ref: h.itemId, text: h.text.trim().slice(0, P.names.maxChars), picture: h.picture, examples: near.map((e) => exampleShown(e, P.names)) });
   }

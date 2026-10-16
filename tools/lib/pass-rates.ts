@@ -40,7 +40,7 @@ import type { Meter } from '../../contracts/src/ports/meter.ts';
 import { createHash } from 'node:crypto';
 
 import { NOT_MEME_MATCH, heldKind } from '../../core/src/qualify/kinds.ts';
-import { closestNot, embedInput, heldAsNotMeme, nearestLabelled, precedentsFor, type LabelledVector } from '../../core/src/qualify/precedents.ts';
+import { closestNot, embedInput, heldAsNotMeme, nearestLabelled, precedentsFor, sourceOfItemId, type LabelledVector } from '../../core/src/qualify/precedents.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
 import { BATCH_PRICE_FRACTION, anthropicJudge, httpClient as judgeClient, priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
 import { POST_SPACE, SPACE as EMBED_SPACE, voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
@@ -292,7 +292,7 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
       const v = vectors.get(p.id);
       if (v === undefined) continue;
       const self = selfOf(p);
-      near.set(p.id, { precedents: precedentsFor(nearestLabelled(v, labels, P.judge.precedents.k, self), P), closestNot: closestNot(v, labels, self)?.similarity ?? null });
+      near.set(p.id, { precedents: precedentsFor(nearestLabelled(v, labels, P.judge.precedents.k, self, { source: sourceOfItemId(p.id), reserve: P.judge.precedents.sameSourceFirst }), P), closestNot: closestNot(v, labels, self)?.similarity ?? null });
     }
   }
 
