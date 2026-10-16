@@ -37,7 +37,7 @@ function shadowPort(calls: number[], usd = 0.01, hold?: Promise<void>): JudgePor
   };
 }
 
-const policyWith = (shadow: Partial<typeof DEFAULT_POLICY.judge.shadow>) => ({ ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, shadow: { ...DEFAULT_POLICY.judge.shadow, ...shadow } } });
+const policyWith = (shadow: Partial<typeof DEFAULT_POLICY.judge.shadow>) => ({ ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, shadow: { ...DEFAULT_POLICY.judge.shadow, on: true, ...shadow } } });
 
 test('each answered live batch is asked of the shadow and both answers are stored; its spend goes in the ledger', async () => {
   const stored: ShadowPair[] = [];
