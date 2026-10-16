@@ -3594,9 +3594,15 @@ const POLICY_V1: Policy = {
                       the 20 it said no or unsure to (19 of 30 in a sample of nos). Only a yes
                       counts as evidence, so a pair now carries none rather than a loose yes. */
     askWith: { names: 'open', translate: 'open', kind: 'open', stories: 'off', sameSubject: 'off' },
-    /* See JudgePolicy.early. Off until its copy test passes. */
+    /* See JudgePolicy.early. On from its copy test of 2026-10-16 (no paid call, nothing written): five
+       live passes over the read-only database took 0.2–0.4 s each and asked ten posts each from 34–74
+       eligible; a pass a minute replayed over the three days before asked about 3,000 posts a day
+       (the cap held on full days), 2,200 of which the reach bar would never have sent to the judge —
+       about $0.37 a day of the open judge and $0.35–0.73 of embeddings — and judged 12 of the 27
+       coined posts found before their coin and not judged before it, before their coin. The early
+       "no" answers also end about 4,800 re-reads a day of those posts (up to about $0.69). */
     early: {
-      on: false,
+      on: true,
       lanes: ['all', 'slow', 'media'],
       maxAgeMs: 7_200_000, // two hours
       minReach: 2_000,
