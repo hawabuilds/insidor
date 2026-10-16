@@ -20,6 +20,12 @@
  * share caught, at most the same share let through, at least the same share of missed caught — AND
  * it costs less a day. Nothing else is weighed in the verdict; speed and agreement are reported.
  *
+ * ★ THE OPEN MODEL'S OWN CUTOFF (`tuneOpenCutoff`, the owner 2026-10-16: "tune its yes/no cutoff the
+ * same way as the re-tune, aiming for less junk: the strictest cutoff where gold and missed posts are
+ * at least as good as the live judge"). The live judge is graded at its applied block's cutoff, the
+ * open model swept by eval's `sweepCutoff`, and the pick is the strictest point with hand gold and
+ * missed caught no worse than live's; junk there is reported against live's, not required.
+ *
  * What breaks if changed carelessly: `grade` must keep asking exactly as live asks. Grading one
  * judge with precedents and another without, or at another batch size, measures the difference in
  * setup, not in model.
@@ -35,7 +41,7 @@ import type { MediaRef } from '../../contracts/src/vocabulary.ts';
 import { NOT_MEME_MATCH } from '../../core/src/qualify/kinds.ts';
 import { heldAsNotMeme } from '../../core/src/qualify/precedents.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
-import { inFeed } from '../../eval/src/feed/examples.ts';
+import { atCutoff, inFeed, missedCaught, ratesOf, share as evalShare, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type Rate as EvalRate } from '../../eval/src/feed/examples.ts';
 import type { JudgeClient } from '../../adapters/judge/anthropic/src/index.ts';
 
 export type Group = 'gold' | 'missed' | 'live-not' | 'fyp';
@@ -291,4 +297,61 @@ export function agreement(rows: readonly Row[], live: ReadonlyMap<string, Row>):
     if (l.onFeed === true && r.onFeed !== null) { shown += 1; if (r.onFeed) also += 1; }
   }
   return { coinable: { same: cs, of: co }, onFeed: { same: fs, of: fo }, liveShown: shown, alsoShown: also };
+}
+
+/* ── the open model's own cutoff (`--tune`) ───────────────────────────────────────────────────── */
+
+/** The eval's grading of one row, with the answer kept so a stricter cutoff can decide it again. */
+export const gradedOf = (r: Row, ctx: Pick<GradeContext, 'near' | 'signals'>): GradedPost => ({
+  id: r.id,
+  group: r.group,
+  coinable: r.coinable,
+  firstPass: r.firstPass,
+  kind: r.kind,
+  signal: ctx.signals.get(r.id) ?? null,
+  answer: r.coinable === null || r.confidence === null || r.lookedAt === null ? null : { coinable: r.coinable, confidence: r.confidence, lookedAt: r.lookedAt as 'text' | 'picture' | 'videoFrame', proposedName: r.name },
+  similarity: ctx.near.get(r.id)?.similarity ?? null,
+});
+
+export const TUNE_GROUPS = { hand: ['gold', 'missed'], auto: 'auto', negatives: 'live-not', missed: 'missed' } as const;
+
+export interface OpenCutoffChoice {
+  /** The live judge graded at its own applied cutoff. */
+  readonly live: { readonly hand: EvalRate; readonly negatives: EvalRate; readonly missed: EvalRate };
+  readonly points: readonly CutoffPoint[];
+  /** ★ The owner's rule (2026-10-16): the STRICTEST cutoff with hand gold and missed caught at least the live judge's; null when none. */
+  readonly pick: CutoffPoint | null;
+  /** Whether junk (live non-memes let through) at the pick is at most the live judge's. */
+  readonly junkNoWorse: boolean | null;
+  /** The re-tune's own rule on the same points (A: less junk, B: more gold), for comparison. */
+  readonly retuneRule: CutoffChoice;
+}
+
+/**
+ * The open model's cutoff, swept from `from` to the policy's `cutoffMax` by `cutoffStep` (eval's
+ * `sweepCutoff`), against the live judge graded on the same posts at its own applied cutoff. A
+ * cutoff below the policy's own bar changes nothing: the feed never lowers that bar, and the kind
+ * question is asked only above it, so those points equal the bar's.
+ */
+export function tuneOpenCutoff(open: readonly Row[], live: readonly Row[], ctx: Pick<GradeContext, 'near' | 'signals' | 'policy'>, liveCutoff: number | null, from: number): OpenCutoffChoice {
+  const P = ctx.policy;
+  const held = P.judge.heldKinds;
+  const liveAt = atCutoff(live.filter((r) => r.group !== 'fyp').map((r) => gradedOf(r, ctx)), liveCutoff, P);
+  const liveRates = ratesOf(liveAt, held, TUNE_GROUPS);
+  const liveSide = { hand: liveRates.hand, negatives: liveRates.negatives, missed: liveRates.missed };
+  const retuneRule = sweepCutoff({
+    rows: open.filter((r) => r.group !== 'fyp' && r.coinable !== null).map((r) => gradedOf(r, ctx)),
+    live: liveSide,
+    liveCaught: missedCaught(liveAt, held),
+    from,
+    held,
+    groups: TUNE_GROUPS,
+    policy: P,
+  });
+  const lh = evalShare(liveSide.hand);
+  const lm = evalShare(liveSide.missed);
+  const ok = (p: CutoffPoint) => evalShare(p.hand) !== null && lh !== null && evalShare(p.hand)! >= lh && (evalShare(p.missed) === null || lm === null || evalShare(p.missed)! >= lm);
+  const pick = [...retuneRule.points].reverse().find(ok) ?? null;
+  const ln = evalShare(liveSide.negatives);
+  return { live: liveSide, points: retuneRule.points, pick, junkNoWorse: pick === null || ln === null || evalShare(pick.negatives) === null ? null : evalShare(pick.negatives)! <= ln, retuneRule };
 }
