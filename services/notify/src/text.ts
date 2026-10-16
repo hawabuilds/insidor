@@ -21,7 +21,9 @@
  * An outage alarm (alarm.ts) says what stopped as what was seen — For You took no new post for so
  * long, the judge was asked so many times and none was paid for, the live coin stream stopped, the
  * database could not be read — and, once, that it is back and after how long. No vendor is named: the supplier account alert
- * already names the account, and this one is about the pipeline standing still.
+ * already names the account, and this one is about the pipeline standing still. The owner's
+ * Not-a-meme alarm (junk.ts) rides the same kind and says his own taps as counts: so many of the
+ * posts shown, per 100, against the days before.
  *
  * A re-tune summary is the owner's twice-daily report on the judge's learned examples: applied or
  * kept, how each test group did as passed-of-tested, and what it learned from. A group nobody could
@@ -293,6 +295,22 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       if (f['what'] === 'database') {
         if (back) return { title: 'The database answers again', body: long === null ? 'The alert service read the database again.' : `The alert service read the database again after ${long}.` };
         return { title: 'Insidor cannot read its database', body: `Every read by the alert service has failed${long === null ? '' : ` for ${long}`}. The feed, the judge and alerts all need it.` };
+      }
+      if (f['what'] === 'junk') {
+        /* The owner's Not-a-meme alarm (junk.ts): his own taps per 100 For You posts shown, against the days before. */
+        const taps = n(f['taps']);
+        const shown = n(f['shown']);
+        const rate = n(f['per100']);
+        const base = n(f['baselinePer100']);
+        const hours = n(f['windowHours']);
+        const days = n(f['baselineDays']);
+        const counted = taps === null || shown === null ? null : `${taps} of the ${shown} For You posts shown in the last ${hours === null ? 'few' : hours} hours`;
+        const against = base === null ? '' : `, against ${base} per 100 over the ${days === null ? 'days' : `${days} days`} before`;
+        if (back) return { title: 'Not a meme taps are back near your usual level', body: `${counted === null ? 'Your recent taps' : `You called ${counted} not a meme`}${rate === null ? '' : ` (${rate} per 100)`}${against}.` };
+        return {
+          title: rate === null ? 'Not a meme taps are up' : `Not a meme taps are up: ${rate} per 100 shown`,
+          body: `${counted === null ? 'You are tapping Not a meme more than usual' : `You called ${counted} not a meme`}${against}. More of what reaches For You is not a meme.`,
+        };
       }
       return back ? { title: 'Working again', body: 'Something that stopped is working again.' } : { title: 'Something stopped', body: 'Part of Insidor stopped working.' };
     }

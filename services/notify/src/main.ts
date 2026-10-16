@@ -1,8 +1,9 @@
 /**
- * The alert service, assembled. The routes always answer. With NOTIFY=on, five loops run:
+ * The alert service, assembled. The routes always answer. With NOTIFY=on, six loops run:
  * deliver what is queued (seconds), check the watched posts (seconds, watch.ts), check prices and
- * curves (minutes), check the pipeline, and the owner's outage alarm (each minute, alarm.ts) — each
- * pass independent, a failed pass logged and tried again next time.
+ * curves (minutes), check the pipeline, the owner's outage alarm (each minute, alarm.ts) and his
+ * Not-a-meme alarm (every five minutes, junk.ts) — each pass independent, a failed pass logged
+ * and tried again next time.
  *
  * Every answer a push service gives is logged (host and status, never the device's address) and
  * kept per device for the routes and the deliverer to write on its row (devices.ts).
@@ -18,6 +19,7 @@ import { webPushSender } from '@insidor/push-webpush';
 import { curveOf } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
 
 import { ALARM_LOOP_MS, alarmMemory, checkAlarms } from './alarm.ts';
+import { checkJunk, JUNK_LOOP_MS, junkMemory } from './junk.ts';
 import { loadNotifyConfig } from './config.ts';
 import { deliverQueued } from './deliver.ts';
 import { pacer, serve } from './http.ts';
@@ -103,6 +105,9 @@ if (cfg.notifyOn) {
      watched from here because this service is neither the runner nor the projector. */
   const alarm = alarmMemory();
   every(ALARM_LOOP_MS, 'outage alarms', () => checkAlarms({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, push, ttlS: P.pushTtlS, log }, alarm));
+  /* The owner's Not-a-meme alarm (junk.ts): his taps per 100 For You posts shown, clearly above the 3 days before. */
+  const junk = junkMemory();
+  every(JUNK_LOOP_MS, 'not a meme alarms', () => checkJunk({ db, now: Date.now, ownerWallets: DEFAULT_POLICY.owner.wallets, log }, junk));
   every(P.pipelineLoopMs, 'pipeline alerts', () => checkPipeline(db, { quotes, ownerWallets: DEFAULT_POLICY.owner.wallets }));
   const watchState: WatchState = { cursor: null };
   every(P.watchLoopMs, 'watched post alerts', () => checkWatched(db, { policy: P, now: Date.now, quotes, fetchText }, watchState));
