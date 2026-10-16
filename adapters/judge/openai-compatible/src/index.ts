@@ -43,7 +43,7 @@ export { CHAT_ENDPOINT, DEFAULT_BASE_URL, DEFAULT_VENDOR, OpenJudgeNotConfigured
 export type { OpenChatConfig, OpenJudgeResponse } from './client.ts';
 export { closestModel, keyAllowance, listModels, parseModels } from './models.ts';
 export type { HostModel } from './models.ts';
-export { DEFAULT_OPEN_MODEL, KNOWN_MODELS, OPEN_API_KEY, OPEN_BASE_URL, OPEN_MODEL, isOpenJudgeId, readOpenJudgeSetup } from './setup.ts';
+export { DEFAULT_OPEN_MODEL, DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, OPEN_API_KEY, OPEN_BASE_URL, OPEN_MODEL, OPEN_PROVIDERS, isOpenJudgeId, openProviders, readOpenJudgeSetup } from './setup.ts';
 export type { OpenJudgeSetup } from './setup.ts';
 
 /** The ledger's endpoint for these calls; the learning book's meter adds its own prefix. */

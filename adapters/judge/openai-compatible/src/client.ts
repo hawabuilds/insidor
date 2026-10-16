@@ -33,6 +33,16 @@
  * `fetch` is injected, never read off `globalThis`, so a test cannot reach the network. The key
  * goes in the Authorization header and nowhere else, and is never in an error message.
  *
+ * ★ WHICH OF THE ROUTER'S PROVIDERS ANSWERS IS NOT A DETAIL (measured 2026-10-16). The same model,
+ * the same request at temperature 0: on some providers it closes the answer in ~120 tokens; on
+ * others it repeats alternate names or pads whitespace inside the forced JSON until the token
+ * limit, so the call is billed and every post comes back unanswered. With the learned block in the
+ * prompt, 3 of 3 calls looped on Parasail, 2 of 2 on Nebius and 1 of 1 on DeepInfra (whose other
+ * two asks were rate-limited), and 3 of 3 answered cleanly on NextBit (until its shared pool was
+ * rate-limited). `providers` pins the order and turns the router's own fallback off. Capping the
+ * names list in the schema did not help (the model then loops on whitespace), nor did a frequency
+ * penalty; without the schema the model ignores the answer's shape.
+ *
  * What breaks if changed carelessly: anything added to or reworded in the content parts changes
  * the question, and the comparison with the live judge stops being one.
  */
@@ -63,6 +73,11 @@ export interface OpenChatConfig {
   readonly maxFrameBytes: number;
   /** As the live judge: ask the picture host for this size first (the Anthropic adapter's pictures.ts). */
   readonly pictureSize?: PictureSize | null;
+  /**
+   * The router's providers for the model, in order, and no others; absent or empty: the router
+   * chooses. See the header: some providers loop on this schema until the token limit.
+   */
+  readonly providers?: readonly string[] | null;
   readonly fetch: typeof globalThis.fetch;
   readonly sleep: (ms: number) => Promise<void>;
 }
@@ -87,7 +102,8 @@ export class OpenJudgeNotConfigured extends Error {
  * The chat body for one judge request: the live body's parts in the live body's order. With
  * `vision` false the pictures are left out and every story says `frame: none`.
  */
-export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputTokens' | 'vision'>, request: JudgeRequest): Record<string, unknown> {
+export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputTokens' | 'vision' | 'providers'>, request: JudgeRequest): Record<string, unknown> {
+  const providers = config.providers ?? [];
   const frames: ReadonlyMap<string, Frame> = config.vision ? request.frames : new Map();
   const shown = precedentsOf(request);
   const stories = request.subjects.map((s) => ({
@@ -117,8 +133,10 @@ export function buildChatBody(config: Pick<OpenChatConfig, 'model' | 'maxOutputT
       { role: 'user', content },
     ],
     response_format: { type: 'json_schema', json_schema: { name: 'judge_answers', strict: true, schema: ANSWER_SCHEMA } },
-    /* Only hosts that honour the schema and the temperature; and the cost of the call in the reply. */
-    provider: { require_parameters: true },
+    /* Only hosts that honour the schema and the temperature (and, when named, only those, in that
+       order: a provider that is down is an error, which the runner's failover answers, rather than
+       a hand-off to one that loops); and the cost of the call in the reply. */
+    provider: providers.length === 0 ? { require_parameters: true } : { require_parameters: true, order: [...providers], allow_fallbacks: false },
     usage: { include: true },
   };
 }

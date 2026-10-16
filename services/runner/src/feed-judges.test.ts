@@ -8,7 +8,7 @@ import type { Logger } from './log.ts';
 
 const lines: string[] = [];
 const log: Logger = { info: (m) => void lines.push(m), warn: (m) => void lines.push(m), error: (m) => void lines.push(m), child: () => log };
-const configured = { state: 'configured', apiKey: 'k', baseUrl: 'https://host.test/api/v1', model: 'google/gemma-3-27b-it', vendor: 'openrouter' } as const;
+const configured = { state: 'configured', apiKey: 'k', baseUrl: 'https://host.test/api/v1', model: 'google/gemma-3-27b-it', vendor: 'openrouter', providers: ['nextbit'] } as const;
 
 test('the primary answers first and the other stands behind it; without the open model the main judge is alone', () => {
   assert.deepEqual(rolesFor('main', true), { primary: 'main', other: 'open' });
