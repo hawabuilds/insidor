@@ -2291,6 +2291,36 @@ export interface LearningPolicy {
    */
   readonly scoreHeldOutShare: number;
   readonly scoreL2: number;
+  /**
+   * ★ THE SHORT-VIDEO SOURCE, TUNED FROM ITS OWN COINED VIDEOS (the owner, 2026-10-16: "tuned from
+   * coined TikToks, not copied from X"). The training set (internal.coined_video, 0085) is every
+   * coined short video; the re-tune learns from it twice a day (tools/retune.ts, its short-video
+   * part) and records what it learned (internal.short_video_tuning).
+   */
+  readonly shortVideo: {
+    /** The ages (minutes after posting) the learned speed bar reads views at. */
+    readonly barAgesMin: readonly number[];
+    /** Two of our readings further apart than this are not interpolated between: no view count at that age. */
+    readonly readingGapMs: number;
+    /**
+     * Coined videos with a view count at an age in `barAgesMin` needed before a speed bar is
+     * proposed from them. Below it the re-tune says how many it had and keeps the bar in use.
+     */
+    readonly minEarlyCoined: number;
+    /** The proposed bar lets in this share of those coined videos (the bar is their low quantile). */
+    readonly barCatchShare: number;
+    /**
+     * Grade the source's coined videos, its "Not a meme" taps and its missed posts beside the
+     * re-tune's test, on the learning book, and hold the block to them too: no fewer coined
+     * videos caught, no more junk, no missed post lost. About 60 more test posts a run.
+     */
+    readonly gateOn: boolean;
+    /** Read again by id, at each re-tune, the newest coined videos we never held (their words, tags, sound). */
+    readonly refetchOn: boolean;
+    readonly refetchPerRun: number;
+    /** The short-video sources review (the review tool under tools/): each lane's cost against its lead, after this long. */
+    readonly reviewAfterMs: number;
+  };
 }
 
 /**
@@ -3453,6 +3483,20 @@ const POLICY_V1: Policy = {
     maxMissedPerPaste: 10,
     scoreHeldOutShare: 0.3,
     scoreL2: 1,
+    shortVideo: {
+      barAgesMin: [30, 60, 120],
+      /* An hour: the re-reads are every half hour, so two readings an hour apart bracket any age. */
+      readingGapMs: 3_600_000,
+      /* 10: on 2026-10-16 we held 15 coined short videos and 3 had a reading under two hours old. */
+      minEarlyCoined: 10,
+      barCatchShare: 0.8,
+      /* Off until the owner approves: about 60 more posts graded twice a run, ~$0.15 a run, $0.30 a day on the learning book. */
+      gateOn: false,
+      /* Off until the owner approves: about 28 new coined videos a day (193 in the week to 2026-10-16), one credit each, ~$0.05 a day on the learning book. */
+      refetchOn: false,
+      refetchPerRun: 20,
+      reviewAfterMs: 259_200_000, // three days, the owner's
+    },
   },
 
   notify: {
