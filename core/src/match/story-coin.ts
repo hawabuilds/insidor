@@ -110,6 +110,22 @@ const COMMON = new Set([
   'wanna', 'well', 'were', 'what', 'when', 'where', 'which', 'while', 'will', 'with', 'would', 'year', 'years', 'your', 'yours', 'video', 'watch', 'world', 'thank',
 ]);
 
+/**
+ * The words a post's topic can be matched on: its own words (no hashtags, mentions or links) of at
+ * least `minChars` letters that are not too common to name a story nor one of `generic`. The one
+ * definition the story coins and the narratives (group/narrative.ts) both read.
+ */
+export function topicWords(text: string | null | undefined, minChars: number, generic: readonly string[] = []): ReadonlySet<string> {
+  const common = new Set([...COMMON, ...generic.map((g) => g.toLowerCase())]);
+  return new Set(postWords(text).filter((w) => w.length >= minChars && !common.has(w)));
+}
+
+/** Whether a word is too common, or too generic, to be a story's topic. */
+export function isCommonWord(word: string, generic: readonly string[] = []): boolean {
+  const w = word.toLowerCase();
+  return COMMON.has(w) || generic.some((g) => g.toLowerCase() === w);
+}
+
 export interface StoryCoin {
   /** The story's coin for this post, from the newest confirmation it matched; null when none stands. */
   readonly coin: { readonly address: string; readonly fromItemId: string; readonly atMs: number } | null;
