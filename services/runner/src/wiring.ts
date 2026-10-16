@@ -738,7 +738,8 @@ export async function withRuntime<T>(
         const spendLedger = new PgSpendRepo(db);
         const credit = creditWatch({
           vendor: openSetup.vendor,
-          remaining: async () => (await accountCredits(globalThis.fetch, openSetup.baseUrl, openSetup.apiKey, policy.judge.timeoutMs)).remainingUsd,
+          /* The lower of the account's credit and the key's own cap: either one stops the judge. */
+          remaining: async () => (await accountCredits(globalThis.fetch, openSetup.baseUrl, openSetup.apiKey, policy.judge.timeoutMs)).spendableUsd,
           dailyUsd: async () => (await spendLedger.totalsSince((Date.now() - CREDIT_RATE_WINDOW_MS) as Millis)).byVendor[openSetup.vendor] ?? 0,
           alerts: billing,
           log: log.child({ step: 'open-credit' }),

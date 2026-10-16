@@ -230,10 +230,24 @@ test('the key allowance: what the host says is left, or null for no limit', asyn
 test("the account's credits: bought minus spent; a missing number or a refusal throws, never $0", async () => {
   const seen: string[] = [];
   const at = (status: number, body: unknown) => (async (url: string, init?: RequestInit) => (seen.push(`${url} ${new Headers(init?.headers).get('authorization')}`), json(status, body))) as unknown as typeof globalThis.fetch;
-  assert.deepEqual(await accountCredits(at(200, { data: { total_credits: 25, total_usage: 21.75 } }), 'https://router.invalid/v1/', KEY, 1000), { totalUsd: 25, usedUsd: 21.75, remainingUsd: 3.25 });
-  assert.deepEqual(seen, [`https://router.invalid/v1/credits Bearer ${KEY}`]);
+  /* The same body answers both reads here: no key cap in it, so what can be spent is the account's. */
+  assert.deepEqual(await accountCredits(at(200, { data: { total_credits: 25, total_usage: 21.75 } }), 'https://router.invalid/v1/', KEY, 1000), { totalUsd: 25, usedUsd: 21.75, remainingUsd: 3.25, keyRemainingUsd: null, spendableUsd: 3.25 });
+  assert.deepEqual(seen.sort(), [`https://router.invalid/v1/credits Bearer ${KEY}`, `https://router.invalid/v1/key Bearer ${KEY}`]);
   await assert.rejects(accountCredits(at(200, { data: { total_credits: 25 } }), 'https://router.invalid/v1', KEY, 1000), /without both numbers/);
   await assert.rejects(accountCredits(at(401, {}), 'https://router.invalid/v1', KEY, 1000), /answered 401/);
+});
+
+test("★ the key's own cap binds before the account: what can be spent is the lower of the two", async () => {
+  const host = (async (url: string) =>
+    String(url).endsWith('/credits') ? json(200, { data: { total_credits: 10, total_usage: 3.03 } }) : json(200, { data: { limit: 5, limit_remaining: 1.97 } })) as unknown as typeof globalThis.fetch;
+  const c = await accountCredits(host, 'https://router.invalid/api/v1', KEY, 1000);
+  assert.ok(Math.abs(c.remainingUsd - 6.97) < 1e-9);
+  assert.equal(c.keyRemainingUsd, 1.97);
+  assert.equal(c.spendableUsd, 1.97);
+  const keyDown = (async (url: string) => (String(url).endsWith('/credits') ? json(200, { data: { total_credits: 10, total_usage: 3 } }) : json(500, {}))) as unknown as typeof globalThis.fetch;
+  const d = await accountCredits(keyDown, 'https://router.invalid/api/v1', KEY, 1000);
+  assert.equal(d.keyRemainingUsd, null);
+  assert.equal(d.spendableUsd, 7, 'an unread key cap leaves the account');
 });
 
 test('the model list: vision and prices read; a missing id falls back only within its maker', () => {
