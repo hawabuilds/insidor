@@ -370,8 +370,11 @@ export class PgLearningRepo {
    *
    * The post time is the held post's, else the id's own time (an X-style id carries it); a coin
    * with no launch time is not counted. Newest post first.
+   *
+   * `anyAnswer` drops the "judge said no" condition: every coined post, whatever the judge answered
+   * or if it never did — the junk filter's keep labels (tools/lib/junk-filter.ts).
    */
-  async coinedPosts(q: { readonly source: string; readonly minCoins: number; readonly lateMs: number; readonly deployerWindowMs: number; readonly deployerMinPosts: number }): Promise<readonly CoinedPostRow[]> {
+  async coinedPosts(q: { readonly source: string; readonly minCoins: number; readonly lateMs: number; readonly deployerWindowMs: number; readonly deployerMinPosts: number; readonly anyAnswer?: boolean }): Promise<readonly CoinedPostRow[]> {
     const rows = await orNoTable(() => this.#db.query<{ item_id: string; body: string; media: unknown; posted_at: Date; coins: number; first_late_at: Date; coinable: boolean | null; kind_label: string | null }>(
       `with linked as (
          select l.source || ':' || l.source_item_id as item_id, l.address, l.minted_at,
@@ -415,10 +418,10 @@ export class PgLearningRepo {
          left join lateral (select pj.proposed_name as kind_label from internal.post_judgement pj
                              where pj.item_id = c.item_id and pj.prompt_id like 'post-kind%'
                              order by pj.judged_at desc, pj.id desc limit 1) k on true
-        where c.coins >= $2 and j.coinable = false
+        where c.coins >= $2 and ($6::boolean or j.coinable = false)
           and not exists (select 1 from launchers d where (d.by = 'a' and d.who = any(c.authors)) or (d.by = 'h' and d.who = any(c.handles)))
         order by c.posted_at desc, c.item_id`,
-      [q.source, q.minCoins, q.lateMs, q.deployerWindowMs, q.deployerMinPosts],
+      [q.source, q.minCoins, q.lateMs, q.deployerWindowMs, q.deployerMinPosts, q.anyAnswer === true],
     ));
     return rows.map((r) => ({ itemId: r.item_id, body: r.body, media: r.media, postedAt: r.posted_at, coins: Number(r.coins), firstLateAt: r.first_late_at, coinable: r.coinable, kindLabel: r.kind_label }));
   }
@@ -433,7 +436,7 @@ export interface CoinedPostRow {
   readonly coins: number;
   /** The first of those late coins' launch. */
   readonly firstLateAt: Date;
-  /** The judge's newest first-question answer: always false here, kept so the caller can say so. */
+  /** The judge's newest first-question answer: always false here unless `anyAnswer`, kept so the caller can say so. */
   readonly coinable: boolean | null;
   /** The newest kind answer, upper case as filed; null when the kind was never asked. */
   readonly kindLabel: string | null;

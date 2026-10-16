@@ -156,6 +156,7 @@ import { openSharedMeter } from './lib/shared-meter.ts';
 import { LineTooShort, goldOriginPosts, handGoldIds, gradePosts, openGradeSetup, type EvalPost, type EvalRow } from './lib/pass-rates.ts';
 import { refitForRetune } from './lib/score-model.ts';
 import { refitCoinMatchForRetune, withCoinMatch } from './lib/coin-match-fit.ts';
+import { refitJunkForRetune } from './lib/junk-filter.ts';
 import { PgCoinedVideoRepo, type Db } from '../store/src/index.ts';
 import { refreshSet } from './lib/coined-videos.ts';
 import { recordShortVideoPart, shortVideoPart, type ShortVideoPart } from './lib/short-video-tune.ts';
@@ -347,6 +348,9 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
          their score rides in the same order log and alert facts (tools/lib/coin-match-fit.ts). */
       const order = withCoinMatch(await refitForRetune(url, { record: opts.record && !opts.dry }), await refitCoinMatchForRetune(url, { record: opts.record && !opts.dry }));
       log('info', 'order model refitted', { slot: slot.toISOString(), ...order.log });
+      /* The junk filter before the post judge (tools/lib/junk-filter.ts): free, refitted at every slot, never fails the run. */
+      const junk = await refitJunkForRetune(url, { record: opts.record && !opts.dry });
+      log('info', 'junk filter refitted', { slot: slot.toISOString(), ...junk.log });
 
       const { calls, names, labelsSha, notes, missedDiagnoses } = await ownerCalls(repo);
       const last = await soft(repo.lastBuilt(), null);
