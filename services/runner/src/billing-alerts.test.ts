@@ -68,7 +68,7 @@ test('★ a dead account is logged once an hour and pushed once per outage, howe
   h.b.refused(refusal);
   await h.b.flush();
   assert.deepEqual(h.queued.slice(2).map((q) => [q.alert.facts['state'], q.alert.subject]), [
-    ['recovered', 'billing|anthropic|recovered|2026-10-13T15:30:00.000Z'],
+    ['recovered', 'billing|anthropic|recovered|2026-10-13T15'],
     ['refused', 'billing|anthropic|2026-10-13T16'],
   ]);
 });
@@ -110,6 +110,25 @@ test('★ a supplier refusing some calls and answering others is one outage: one
   h.setNow(T0 + 59 * MIN + RECOVERY_HOLD_MS);
   await h.b.flush();
   assert.deepEqual(h.queued.map((q) => q.alert.facts['state']), ['refused', 'recovered']);
+
+  /* A second blip in the same hour as the first: its refusal and its recovery carry the same
+     subjects as the pair already sent, so the deliverer's claim drops both. */
+  const blip = harness();
+  blip.b.refused(x);
+  await blip.b.flush();
+  blip.setNow(T0 + MIN);
+  blip.b.answered('twitterapi.io');
+  blip.setNow(T0 + MIN + RECOVERY_HOLD_MS);
+  await blip.b.flush();
+  blip.setNow(T0 + 20 * MIN);
+  blip.b.refused(x);
+  await blip.b.flush();
+  blip.setNow(T0 + 21 * MIN);
+  blip.b.answered('twitterapi.io');
+  blip.setNow(T0 + 21 * MIN + RECOVERY_HOLD_MS);
+  await blip.b.flush();
+  const subjects = blip.queued.map((q) => q.alert.subject);
+  assert.deepEqual([...new Set(subjects)], ['billing|twitterapi.io|2026-10-13T15', 'billing|twitterapi.io|recovered|2026-10-13T15'], subjects.join(', '));
 });
 
 test('no OWNER_WALLET: logged only; no profile yet: kept and tried again until the owner signs in', async () => {
