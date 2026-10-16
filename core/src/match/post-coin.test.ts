@@ -190,14 +190,19 @@ describe('2026-10-14: copycat links and close pictures (held-out gold: 7 to 10 r
     assert.equal(r.kind, 'confident');
     assert.equal(r.kind === 'confident' ? r.address : null, 'ORIGIN');
   });
-  it('★ 2026-10-15: of two linking coins inside the window, the earlier launch is proven; the copycat is listed after it', () => {
+  it('★ 2026-10-16: two linking coins inside the window are a tie while firstLinkWins is off, as it is', () => {
+    assert.equal(DEFAULT_POLICY.postCoin.firstLinkWins, false);
     const r = matchPostCoin(post, [coin({ address: 'COPY', links: link, launchedAt: (POSTED + 3_600_000) as Millis }), coin({ address: 'FIRST', links: link })], BARS);
+    assert.equal(r.kind, 'unsure');
+  });
+  it('2026-10-15, behind firstLinkWins: of two linking coins inside the window, the earlier launch is proven; the copycat is listed after it', () => {
+    const r = matchPostCoin(post, [coin({ address: 'COPY', links: link, launchedAt: (POSTED + 3_600_000) as Millis }), coin({ address: 'FIRST', links: link })], { ...BARS, firstLinkWins: true });
     assert.equal(r.kind, 'confident');
     assert.equal(r.kind === 'confident' ? r.address : null, 'FIRST');
     assert.deepEqual(r.kind === 'confident' ? r.ranked.map((e) => e.address) : [], ['FIRST', 'COPY']);
   });
   it('a linking coin with no launch time leaves it a tie: it may be the earlier one', () => {
-    const r = matchPostCoin(post, [coin({ address: 'A', links: link }), coin({ address: 'B', links: link, launchedAt: null })], BARS);
+    const r = matchPostCoin(post, [coin({ address: 'A', links: link }), coin({ address: 'B', links: link, launchedAt: null })], { ...BARS, firstLinkWins: true });
     assert.equal(r.kind, 'unsure');
   });
   const close = { ...BARS, closePicture: DEFAULT_POLICY.group.image.likely };

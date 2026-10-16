@@ -1347,6 +1347,19 @@ export interface PostCoinPolicy {
   /** Coins the mint stream's own copy may add by name per post, newest first. */
   readonly nameCandidatesPerPost: number;
   /**
+   * When several coins' links name the post, the one launched first is proven (the owner's rule of
+   * 2026-10-15). Off: only a lone linking coin inside the timing window is proven, and several are a
+   * tie. Off since 2026-10-16: bots launch coins that link a viral post within seconds of it, so the
+   * first launch is usually a copycat, not the coin the owner calls the post's.
+   */
+  readonly firstLinkWins: boolean;
+  /**
+   * Weigh every coin whose metadata names the post (internal.coin_post_link, 0083) as a candidate,
+   * whatever its name. Off: only the searches' candidates are weighed; the links table still feeds
+   * lead time and the finders. Off since 2026-10-16 for the same copycats.
+   */
+  readonly linkedCandidates: boolean;
+  /**
    * "Coin for this story" (core match/story-coin.ts): when a feed post is about the same story as a
    * post the owner confirmed a coin for, by the two posts' words-and-picture vectors. The same bars
    * for every story. `alone`: close enough to one confirmed post. `together`: close enough to at
@@ -3381,6 +3394,14 @@ const POLICY_V1: Policy = {
     hashTimeoutMs: 10_000,
     pictureCandidatesPerPost: 5,
     nameCandidatesPerPost: 10,
+    /* 2026-10-16, the owner: coin matching got more wrong, "roll back that part". Bisected on the
+       same inputs (frozen gold, the owner's labels against today's database): the first-launch rule
+       (2026-10-15 18:20) took the founders' 71 posts from 28 right / 2 wrong to 30 / 6 and the owner's
+       labels from 12 / 7 to 19 / 17; weighing every linking coin (18:21) took them on to 18 / 30. Every
+       new wrong was "Links this post" on a copycat launched seconds after the post (today's four
+       wrong taps on the Flying Tesla Roadster posts among them). Both off restores Wednesday's rule. */
+    firstLinkWins: false,
+    linkedCandidates: false,
     /* Measured 2026-10-14 on 3,300 post vectors (2,800 embedded for this: every post the judge said
        yes to in the last day, GTA, tiger and game posts; the rest the owner's labelled posts) against
        the 20 posts the owner confirmed one of 13 coins on. One confirmed post alone: unrelated posts

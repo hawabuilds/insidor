@@ -12,7 +12,8 @@
  *               in the window (internal.image_hash, 0070); and the mint stream's own coins whose
  *               name or ticker is a short form, misspelling or longer form of the subject's names; and
  *               the coins whose metadata names the post (internal.coin_post_link, 0083), first
- *               launched first, so a coin of another name that links the post is still weighed
+ *               launched first, so a coin of another name that links the post is still weighed —
+ *               only while Policy.postCoin.linkedCandidates is on (off since 2026-10-16)
  *   links       the coin's metadata document (internal.coin_metadata) — its social link, website,
  *               chat link and description — names the post, or the poster's account. Unread
  *               metadata is "not known", never "no".
@@ -76,6 +77,7 @@ export function matchBars(p: Policy = DEFAULT_POLICY, fit: { readonly weights: P
     likelyMinShare: fit?.likelyMinShare ?? pc.likelyMinShare,
     weights: fit?.weights ?? pc.weights,
     closePicture: p.group.image.likely,
+    firstLinkWins: pc.firstLinkWins,
   };
 }
 
@@ -362,7 +364,9 @@ export async function weighPostCoins(
   const hashFound = new Map<string, Set<string>>();
   for (const n of neighbours) hashFound.set(n.itemId, (hashFound.get(n.itemId) ?? new Set<string>()).add(n.address));
   for (const [id, xs] of named) for (const a of xs) add(id, a);
-  for (const [id, xs] of await linkedCandidates(db, ids, pc.nameCandidatesPerPost)) for (const a of xs) add(id, a);
+  /* Off since 2026-10-16 (Policy.postCoin.linkedCandidates): most coins only the links table adds
+     are bots' copycats launched seconds after the post, and a lone one of them is proven. */
+  if (pc.linkedCandidates) for (const [id, xs] of await linkedCandidates(db, ids, pc.nameCandidatesPerPost)) for (const a of xs) add(id, a);
   /* The poster's profile: every address any read of it named is a candidate for each of their posts;
      the rule (core post-coin.ts (4)) decides which post, if any, it proves. */
   const bios = await new PgAuthorRepo(db).biosOf([...new Set([...posts.values()].map((x) => x.author_key))]);
