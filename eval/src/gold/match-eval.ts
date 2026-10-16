@@ -46,6 +46,7 @@ export function matchBarsOf(p: Policy = DEFAULT_POLICY, weights: PostCoinWeights
     likelyMinShare: pc.likelyMinShare,
     weights,
     closePicture: p.group.image.likely,
+    firstLinkWins: pc.firstLinkWins,
   };
 }
 

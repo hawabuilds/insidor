@@ -17,10 +17,11 @@
  *   trading    buys in the hour after the post against the coin's usual hour, when measured
  *
  * PROVEN (the card's "Links this post", a Buy) is only one of, on exactly one candidate:
- *   (1) its links name this post — or, when several do, it is the one of them launched first
- *       (the owner, 2026-10-15: copycats link the viral post too, and only the earliest coin gets
- *       "Links this post"; the later ones stay in the list, ranked as usual). Two launched at the
- *       same instant, or one whose launch we do not know, are a tie;
+ *   (1) its links name this post — or, when several do, it is the only one of them launched
+ *       inside the timing window (copycats link the viral post too); with `firstLinkWins`, the one
+ *       launched first instead (the owner, 2026-10-15; off since 2026-10-16, when bots' coins
+ *       launched seconds after a post took the proof). Two launched at the same instant, or one
+ *       whose launch we do not know, are a tie;
  *   (2) its picture is the post's — near-identical by the embedding, or within
  *       `sameHashDistance` bits by the hash — launched after the post inside the window, while
  *       every other candidate in the window had its picture compared;
@@ -82,6 +83,11 @@ export interface MatchBars {
    * `likely`). Absent: no such rule.
    */
   readonly closePicture?: number;
+  /**
+   * Of several coins whose links name the post, the one launched first is proven (Policy.postCoin
+   * `firstLinkWins`). Absent or false: only the lone one launched inside the window is, else a tie.
+   */
+  readonly firstLinkWins?: boolean;
 }
 
 /** The post, as the rule needs it. */
@@ -370,10 +376,14 @@ export function matchPostCoin(post: PostSide, coins: readonly CoinSide[], bars: 
   const linking = possible.filter((e) => e.linksPost === true);
   const link = only(linking);
   if (link !== null) return proven(link.address, 'links');
-  /* Copycats link the viral post too, minutes or days later: among several coins that link it, the
-     one launched first is the post's (the owner, 2026-10-15). A shared first instant, or any linking
-     coin whose launch we do not know (it may be the earlier one), is a tie. */
-  const firstLink = linking.length > 1 && linking.every((e) => e.launchedAfterMs !== null) ? only(linking.filter((e) => e.launchedAfterMs === Math.min(...linking.map((x) => x.launchedAfterMs ?? Number.POSITIVE_INFINITY)))) : null;
+  /* Copycats link the viral post too, seconds or days later. With `firstLinkWins` (the owner,
+     2026-10-15) the one launched first is the post's; a shared first instant, or any linking coin
+     whose launch we do not know (it may be the earlier one), is a tie. Without it (since
+     2026-10-16: bots launch linking coins within seconds of a viral post, so the first is usually a
+     copycat) only the lone one launched inside the window is proven; two inside it are a tie. */
+  const firstLink = bars.firstLinkWins === true
+    ? linking.length > 1 && linking.every((e) => e.launchedAfterMs !== null) ? only(linking.filter((e) => e.launchedAfterMs === Math.min(...linking.map((x) => x.launchedAfterMs ?? Number.POSITIVE_INFINITY)))) : null
+    : linking.length > 1 ? only(linking.filter((e) => e.inWindow)) : null;
   if (firstLink !== null) return proven(firstLink.address, 'links');
 
   if (linking.length === 0) {
