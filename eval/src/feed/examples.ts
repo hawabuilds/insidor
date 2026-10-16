@@ -19,16 +19,20 @@
  * ★ BALANCED, NEWEST FIRST, CAPPED. Each side gets half the room; room a short side leaves goes to
  * the other, so twelve memes do not throw away a hundred careful "no"s. Within a side, newest first.
  *
- * ★ BEAT LIVE, AND KEEP EVERY MISSED POST (the owner's rule, 2026-10-13). For You is one feed for
- * anything people could coin, so hand gold is one set. A block is applied when it beats the setup
- * live now on hand gold and on live non-memes, graded together in one run, and loses no missed
- * post live catches. The 65% / 15% / 50% bars are the goal, reported, not a block.
+ * ★ BEAT LIVE, AND CATCH NO FEWER MISSED POSTS (the owner's rule, 2026-10-13; the missed part
+ * changed 2026-10-16). For You is one feed for anything people could coin, so hand gold is one set.
+ * A block is applied when it beats the setup live now on hand gold and on live non-memes, graded
+ * together in one run, and catches no fewer held-out missed posts overall. One missed post live
+ * catches and the new block does not used to refuse it alone; it kept version 9 out while that
+ * block caught 10 of 16 missed posts to live's 7. Such a post is now named, not a refusal. The
+ * 65% / 15% / 50% bars are the goal, reported, not a block.
  *
  * ★ AND BEFORE REFUSING, THE NEW BLOCK'S CUTOFF (the owner, 2026-10-16). `sweepCutoff` raises the
  * new block's yes/no cutoff on the answers already collected: rule A, the strictest cutoff with
- * hand gold no worse than live, fewer live non-memes and no missed post lost; rule B, the fewest
- * live non-memes no worse than live with more hand gold; else refused. Raising only removes
- * passes, so a missed post the new block answered "no" (or held) is lost at every cutoff.
+ * hand gold and missed caught no worse than live and fewer live non-memes; rule B, the fewest
+ * live non-memes no worse than live with more hand gold and missed caught no worse; else refused.
+ * Raising only removes passes, so the strictest rule-A cutoff is the one that keeps the least
+ * junk: on version 9's numbers it is 0.75 (gold 67, junk 88, missed 9), not 0.71.
  *
  * `latestSlot` is here too: which 08:00 or 20:00 London (Policy.learning) a run belongs to, pure so
  * the clock change is tested rather than found out in October.
@@ -213,7 +217,7 @@ export interface GateInput {
   readonly hand: Rate;
   readonly negatives: Rate;
   readonly missed: Rate;
-  /** Missed posts the judge in use catches that this block does not: any one blocks it. */
+  /** Missed posts the judge in use catches that this block does not: named, never a block by itself (the count is). */
   readonly regressions: readonly string[];
   /** The setup live now, graded on the same posts in the same run; null when it was not. */
   readonly live?: { readonly hand: Rate; readonly negatives: Rate; readonly missed: Rate } | null;
@@ -229,8 +233,9 @@ export interface Goals {
 /**
  * May this block replace the one in use? The owner's rule (2026-10-13): apply a version that BEATS
  * the setup live now — more hand gold AND fewer live non-memes, on the same test posts graded in the
- * same run — and keeps every missed post live already catches. The 65% / 15% / 50% bars stay as the
- * goal and are reported met or not met, but they no longer block an improvement.
+ * same run — and catches no fewer of the held-out missed posts than live (the owner, 2026-10-16:
+ * counted overall, no longer one lost post blocking it). The 65% / 15% / 50% bars stay as the goal
+ * and are reported met or not met, but they no longer block an improvement.
  *
  * ★ "BEATS" IS STRICT, AND THAT IS THE WHOLE NOISE RULE. Both sides are graded in the same run at
  * temperature 0, on the same posts in the same calls, so a tie is no evidence of a change and is
@@ -260,7 +265,10 @@ export function gate(r: GateInput, L: LearningPolicy): { readonly apply: boolean
     if (liveHand !== null && !(hand > liveHand)) fails.push(`hand gold ${r.hand.passed}/${r.hand.tested} does not beat live's ${live.hand.passed}/${live.hand.tested}`);
     if (liveNeg !== null && !(neg < liveNeg)) fails.push(`live non-memes ${r.negatives.passed}/${r.negatives.tested} are not fewer than live's ${live.negatives.passed}/${live.negatives.tested}`);
   }
-  if (r.regressions.length > 0) fails.push(`${r.regressions.length} missed post${r.regressions.length === 1 ? '' : 's'} caught now would fail: ${r.regressions.join(', ')}`);
+  if (live !== null && missed !== null) {
+    const liveMissed = share(live.missed);
+    if (liveMissed !== null && missed < liveMissed) fails.push(`missed posts caught ${r.missed.passed}/${r.missed.tested} are fewer than live's ${live.missed.passed}/${live.missed.tested}`);
+  }
   return { apply: fails.length === 0, why: fails.length === 0 ? null : fails.join('; '), goals };
 }
 
@@ -311,7 +319,7 @@ export interface CutoffPoint {
 }
 
 export interface CutoffChoice {
-  /** A: less junk, no good post lost. B: junk no worse, more gold. refused: neither. */
+  /** A: less junk, no less gold or missed. B: junk no worse, more gold, no less missed. refused: neither. */
   readonly rule: 'A' | 'B' | 'refused';
   /** The cutoff applied with the block; null when refused. */
   readonly cutoff: number | null;
@@ -338,11 +346,9 @@ export interface SweepInput {
 }
 
 /**
- * The owner's rule, 2026-10-16. From the live bar up to `cutoffMax` in steps of `cutoffStep`:
- *   A  the STRICTEST cutoff with hand gold ≥ live, live non-memes < live, no missed post lost;
- *   B  else the one with the fewest live non-memes ≤ live, hand gold > live, no missed post lost
- *      (ties: more gold, then the stricter);
- *   else refused. Compared as shares, as `gate` compares.
+ * The owner's rule, 2026-10-16, as changed the same day ("missed posts caught must not go down
+ * overall (gold better, junk no worse)"). From the live bar up to `cutoffMax` in steps of
+ * `cutoffStep`, each point graded on the answers already collected, then `chooseCutoff`.
  */
 export function sweepCutoff(s: SweepInput): CutoffChoice {
   const L = s.policy.learning;
@@ -354,10 +360,32 @@ export function sweepCutoff(s: SweepInput): CutoffChoice {
     const r = ratesOf(at, s.held, s.groups);
     points.push({ cutoff, hand: r.hand, negatives: r.negatives, missed: r.missed, lost: regressions(s.liveCaught, missedCaught(at, s.held)), extra: s.extra?.(at) ?? null });
   }
-  const liveHand = share(s.live.hand);
-  const liveNeg = share(s.live.negatives);
+  return chooseCutoff(points, s.live);
+}
+
+const ofN = (r: Rate): string => `${r.passed}/${r.tested}`;
+
+/**
+ * Which point, if any. Compared as shares, as `gate` compares; a group nobody could test (0 tested
+ * on either side) does not decide:
+ *   A  the STRICTEST cutoff with hand gold ≥ live, live non-memes < live, missed caught ≥ live;
+ *   B  else the one with the fewest live non-memes ≤ live, hand gold > live, missed caught ≥ live
+ *      (ties: more gold, then the stricter);
+ *   else refused.
+ *
+ * ★ MISSED POSTS ARE COUNTED, NOT NAMED (the owner, 2026-10-16). The held-out missed posts the new
+ * block catches must not be fewer than live catches; one post live catches and the new block does
+ * not is no longer a refusal by itself when the new block catches more of them overall. Each such
+ * post is still in `lost` and named in the log and the owner's alert. Before this change version
+ * 9 (07:00 UTC that day: 10/16 missed against live's 7/16) was refused for one lost post.
+ */
+export function chooseCutoff(points: readonly CutoffPoint[], live: SweepInput['live']): CutoffChoice {
+  const liveHand = share(live.hand);
+  const liveNeg = share(live.negatives);
+  const liveMissed = share(live.missed);
   const base = points[0]!;
-  const ok = (p: CutoffPoint) => p.lost.length === 0 && p.extra === null && share(p.hand) !== null && share(p.negatives) !== null && liveHand !== null && liveNeg !== null;
+  const missedOk = (p: CutoffPoint) => share(p.missed) === null || liveMissed === null || share(p.missed)! >= liveMissed;
+  const ok = (p: CutoffPoint) => p.extra === null && share(p.hand) !== null && share(p.negatives) !== null && liveHand !== null && liveNeg !== null && missedOk(p);
   const a = points.filter((p) => ok(p) && share(p.hand)! >= liveHand! && share(p.negatives)! < liveNeg!);
   const pickA = a[a.length - 1];
   if (pickA !== undefined) return { rule: 'A', cutoff: pickA.cutoff, point: pickA, points, why: null };
@@ -366,8 +394,8 @@ export function sweepCutoff(s: SweepInput): CutoffChoice {
   if (pickB !== undefined) return { rule: 'B', cutoff: pickB.cutoff, point: pickB, points, why: null };
   const last = points[points.length - 1]!;
   const fails: string[] = [];
-  if (base.lost.length > 0) fails.push(`${base.lost.length} missed post${base.lost.length === 1 ? '' : 's'} live catches the new block does not catch even at the live bar (${base.lost.join(', ')}); a stricter cutoff cannot bring back a post the new block answered "no" or held`);
-  else fails.push(`no cutoff from ${base.cutoff} to ${last.cutoff} keeps hand gold at live's ${s.live.hand.passed}/${s.live.hand.tested} with live non-memes at or under live's ${s.live.negatives.passed}/${s.live.negatives.tested}`);
+  if (!missedOk(base)) fails.push(`missed posts caught ${ofN(base.missed)} are fewer than live's ${ofN(live.missed)} even at the live bar; a stricter cutoff cannot bring back a post the new block answered "no" or held`);
+  else fails.push(`no cutoff from ${base.cutoff} to ${last.cutoff} keeps hand gold at live's ${ofN(live.hand)} and missed posts caught at live's ${ofN(live.missed)} with live non-memes at or under live's ${ofN(live.negatives)}`);
   if (base.extra !== null) fails.push(base.extra);
   return { rule: 'refused', cutoff: null, point: base, points, why: fails.join('; ') };
 }

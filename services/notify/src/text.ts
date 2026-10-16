@@ -308,17 +308,20 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
     case 'retune_summary': {
       const applied = f['applied'] === true;
       /* The gate (hand gold and live non-memes), then the missed posts. Auto gold is information,
-         never a gate, and says so; a regression is named because it alone keeps a block out. */
+         never a gate, and says so. A missed post live catches and the new block does not is named
+         by id, though since 2026-10-16 it no longer keeps a block out by itself (missed posts are
+         counted overall): the owner reads the ids to teach those posts back. */
       const tests = `Hand gold ${ofN(f['goldPassed'], f['goldN'])}, live non-memes ${ofN(f['negativePassed'], f['negativeN'])}, missed ${ofN(f['missedPassed'], f['missedN'])} passed.`;
       const auto = n(f['autoN']) === null ? '' : ` Auto gold ${ofN(f['autoPassed'], f['autoN'])} (not a gate).`;
       const c = (k: string): string => String(n(f[k]) ?? '–');
       const regressed = n(f['regressions']);
-      const regress = regressed === null || regressed === 0 ? '' : ` ${regressed} missed post${regressed === 1 ? '' : 's'} caught now would fail.`;
+      const lostIds = Array.isArray(f['lostMissed']) ? (f['lostMissed'] as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+      const regress = regressed === null || regressed === 0 ? '' : ` ${regressed} missed post${regressed === 1 ? '' : 's'} caught now ${regressed === 1 ? 'is' : 'are'} not caught by the new examples${lostIds.length === 0 ? '' : ` (${lostIds.join(', ')})`}; counted, not a block.`;
       /* The new block's own yes/no cutoff (tools/retune.ts, the owner's rule of 2026-10-16), beside
          the setup live now on the same posts: the owner asked to see the cutoff and both sides. */
       const rule = s(f['cutoffRule'], '');
       const live = n(f['liveGoldN']) === null ? '' : ` Live now: hand gold ${ofN(f['liveGoldPassed'], f['liveGoldN'])}, live non-memes ${ofN(f['liveNegativePassed'], f['liveNegativeN'])}, missed ${ofN(f['liveMissedPassed'], f['liveMissedN'])}.`;
-      const cut = rule === '' ? '' : rule === 'refused' ? ` No cutoff from ${c('cutoffFrom')} up gave less junk, or as little with more gold, without losing gold or a missed post.${live}` : ` Cutoff ${c('cutoff')} (rule ${rule}; live bar ${c('cutoffFrom')}).${live}`;
+      const cut = rule === '' ? '' : rule === 'refused' ? ` No cutoff from ${c('cutoffFrom')} up gave less junk, or as little with more gold, without losing gold or catching fewer missed posts.${live}` : ` Cutoff ${c('cutoff')} (rule ${rule}; live bar ${c('cutoffFrom')}).${live}`;
       const tested = n(f['tapsTested']) === null ? '' : ` (${c('tapsTested')} more taps tested)`;
       const from = `From ${c('taps')} taps${tested}, ${c('missed')} missed posts, ${c('names')} name calls; +${c('added')} −${c('removed')} examples.`;
       const kept = applied ? '' : ` Kept the current examples: ${s(f['why'], 'a test fell short')}.`;
