@@ -41,6 +41,8 @@
  *   3. the block: the labels file, the owner's meme/not taps (a note is the reason), missed posts
  *      as "yes", the owner's name calls as a names section — balanced, newest first, at most
  *      Policy.learning.maxExamples (eval/src/feed/examples.ts, shared with judge-examples.ts).
+ *      Posts on Policy.learning.alwaysTeach (a missed post the owner wants learned back) are always
+ *      taught, first, and so never in the test: the held-out missed set is one post smaller each.
  *   4. the test, asked exactly as the live scorer asks (tools/lib/pass-rates.ts: ten posts a call,
  *      the same picture size and answer budget, then the kind question). HAND GOLD is the gold
  *      sheets, the owner's missed posts and the owner's own list (eval/src/gold/hand-gold.json:
@@ -326,7 +328,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         return;
       }
 
-      const block = buildBlock(calls, names, L.maxExamples);
+      const block = buildBlock(calls, names, L.maxExamples, { alwaysTeach: L.alwaysTeach });
       /* `--rules-only` teaches nothing, so nothing is held out: every missed post is tested. */
       const allMissed = currentCalls(calls).filter((c) => c.from === 'missed' && c.label === 'meme');
       const testMissed = opts.rulesOnly === true ? allMissed : block.testMissed;

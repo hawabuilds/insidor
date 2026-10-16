@@ -37,9 +37,17 @@
  * `latestSlot` is here too: which 08:00 or 20:00 London (Policy.learning) a run belongs to, pure so
  * the clock change is tested rather than found out in October.
  *
- * What breaks if changed carelessly: `isExample` must stay a pure function of the id. Anything else
- * (order, a draw, the date) moves posts between examples and test from one run to the next, and a
- * run would then be graded on posts an earlier block taught.
+ * ★ A POST THE OWNER NAMES IS ALWAYS TAUGHT (Policy.learning.alwaysTeach, the owner 2026-10-16:
+ * "add x:2109756994147983482 as a yes example so it learns it back"). An id on that list is on the
+ * taught side whatever its hash says, and goes in the block ahead of the newest-first order, so it
+ * is in every block the cap allows. The price: it is never tested again. A missed post on the list
+ * leaves the held-out missed set for good, so the missed rate is out of one post fewer and nothing
+ * measures whether the judge now catches it; it is graded only as `missed-taught`, for the record.
+ *
+ * What breaks if changed carelessly: `isExample` must stay a pure function of the id (and the
+ * policy's always-teach list, which changes only with a policy version). Anything else (order, a
+ * draw, the date) moves posts between examples and test from one run to the next, and a run would
+ * then be graded on posts an earlier block taught.
  */
 
 import { createHash } from 'node:crypto';
@@ -48,8 +56,14 @@ import type { Judgement } from '@insidor/contracts/judgement.ts';
 import type { LearningPolicy, Policy } from '@insidor/contracts/policy.ts';
 import { heldKind, postScore, withJudgeCutoff, type CryptoSignal } from '@insidor/core';
 
-/** Examples or test, by the post id alone. */
-export const isExample = (itemId: string): boolean => (createHash('sha256').update(itemId).digest()[0] ?? 0) % 2 === 0;
+/** Examples or test, by the post id alone; an id on `alwaysTeach` (Policy.learning.alwaysTeach) is always an example. */
+export const isExample = (itemId: string, alwaysTeach: readonly string[] = []): boolean =>
+  alwaysTeach.includes(itemId) || (createHash('sha256').update(itemId).digest()[0] ?? 0) % 2 === 0;
+
+/** What a block is told beyond the owner's calls: the ids always taught. */
+export interface Teach {
+  readonly alwaysTeach?: readonly string[];
+}
 
 export type CallSource = 'tap' | 'missed' | 'labels';
 
@@ -105,11 +119,14 @@ export function currentCalls(calls: readonly OwnerCall[]): readonly OwnerCall[] 
   return [...best.values()];
 }
 
-export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall[], maxExamples: number): Block {
+export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall[], maxExamples: number, teach: Teach = {}): Block {
   const current = currentCalls(calls);
+  const always = teach.alwaysTeach ?? [];
   const isMissed = (c: OwnerCall) => c.from === 'missed';
-  const yesPool = current.filter((c) => c.label === 'meme' && (!isMissed(c) || isExample(c.itemId))).sort(newestFirst);
-  const noPool = current.filter((c) => c.label === 'not' && isExample(c.itemId)).sort(newestFirst);
+  /* The owner's always-taught posts first, so the cap never pushes them out; then newest first. */
+  const order = (a: OwnerCall, b: OwnerCall) => Number(always.includes(b.itemId)) - Number(always.includes(a.itemId)) || newestFirst(a, b);
+  const yesPool = current.filter((c) => c.label === 'meme' && (!isMissed(c) || isExample(c.itemId, always))).sort(order);
+  const noPool = current.filter((c) => c.label === 'not' && isExample(c.itemId, always)).sort(order);
   const half = Math.floor(maxExamples / 2);
   const yesTake = Math.min(yesPool.length, Math.max(half, maxExamples - noPool.length));
   const noTake = Math.min(noPool.length, maxExamples - yesTake);

@@ -54,6 +54,17 @@ test("missed posts are split like non-memes: half taught, half held back to test
   assert.ok(b.testMissed.every((m) => !b.exampleIds.includes(m.itemId)));
 });
 
+test('★ a post on the always-teach list is taught, first, whatever its hash, and so never tested', () => {
+  const missed = ids(30, 'k').map((id, i) => call(id, 'meme', 'missed', i));
+  const heldOut = missed.find((m) => !isExample(m.itemId))!;
+  assert.equal(isExample(heldOut.itemId, [heldOut.itemId]), true);
+  /* The oldest of 30 and two yes places (a cap of 4): it still goes in, ahead of the newest. */
+  const b = buildBlock([...missed, call('x:n', 'not', 'tap', 99)], [], 4, { alwaysTeach: [heldOut.itemId] });
+  assert.equal(b.exampleIds[0], heldOut.itemId);
+  assert.ok(!b.testMissed.some((m) => m.itemId === heldOut.itemId), 'out of the held-out missed set');
+  assert.ok(buildBlock(missed, [], 120).testMissed.some((m) => m.itemId === heldOut.itemId), 'without the list it is tested');
+});
+
 test("the owner's names go in a names section", () => {
   const b = buildBlock([call('x:1', 'meme', 'tap')], [{ itemId: 'x:1', text: 'a frog in a hat', name: 'FROG', verdict: 'down', betterName: 'HATFROG', at: 1 }], 120);
   assert.match(b.text, /NAMES/);

@@ -2321,6 +2321,13 @@ export interface LearningPolicy {
   readonly minMissedPass: number;
   /** Labelled posts in the examples block, at most: newest first, yes and no balanced. */
   readonly maxExamples: number;
+  /**
+   * Post ids always on the taught side of the examples/test split, whatever their hash says, and
+   * first into the block: a missed post the owner wants learned back. The price is that such a post
+   * is never tested again — it leaves the held-out missed set, so nothing measures whether the
+   * judge now catches it. Keep it short; every id here is one fewer test post.
+   */
+  readonly alwaysTeach: readonly string[];
   /** Missed-post links the owner may paste at once. */
   readonly maxMissedPerPaste: number;
   /**
@@ -3574,6 +3581,9 @@ const POLICY_V1: Policy = {
     maxLiveNegativePass: 0.15,
     minMissedPass: 0.5,
     maxExamples: 120,
+    /* The owner, 2026-10-16: the Flávio Hipotético picture post (coin confirmed by the owner), the one
+       missed post the live judge caught and version 9 lost at 07:00 UTC. Taught so it is learned back. */
+    alwaysTeach: ['x:2109756994147983482'],
     maxMissedPerPaste: 10,
     scoreHeldOutShare: 0.3,
     scoreL2: 1,
