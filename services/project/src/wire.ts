@@ -757,6 +757,12 @@ export interface WireStory {
   readonly postViews?: readonly { readonly postId: string; readonly views: number | null; readonly gainedLastHour: number | null }[];
   /** First found: the earliest moment we saved any post it lists now (item.first_seen_at). */
   readonly foundAt?: WireInstant;
+  /**
+   * The top coin when the narrative has no settled one (its posts list fitting coins, or prove
+   * several equally): the coin most of its posts list. Shown only as "Top coin, not checked" —
+   * `coins` stays the narrative's own answer. Absent when a coin is settled or none is listed.
+   */
+  readonly topCoin?: WireCoin;
 }
 
 /* ── the censor ───────────────────────────────────────────────────────── */

@@ -43,7 +43,7 @@ import { PgNarrativeRepo, type Db, type NarrativePostRow } from '@insidor/store'
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
 import { policyForAnswer } from './judge-cutoff.ts';
 import { permalinkFor } from './permalinks.ts';
-import { projectBoard, projectStory, type CoinCandidate, type MemberFacts, type ProjectOptions, type ReachReading, type StoryFacts } from './project.ts';
+import { projectBoard, projectCoin, projectStory, type CoinCandidate, type MemberFacts, type ProjectOptions, type ReachReading, type StoryFacts } from './project.ts';
 import { storySameNameLists, writeSameNameCoins } from './same-name.ts';
 import { instant, measured, WireLeakError, assertNoInternalVocabulary, type WireStory } from './wire.ts';
 
@@ -173,6 +173,12 @@ function candidatesOf(coin: NarrativeCoin, facts: ReadonlyMap<string, CoinCandid
   return [];
 }
 
+/** The first of the coins that has facts, projected as a coin: the payload's `topCoin`. */
+function topCoinOf(addresses: readonly string[], facts: ReadonlyMap<string, CoinCandidate['coin']>, options: ProjectOptions): Partial<WireStory> {
+  const first = addresses.map((a) => facts.get(a)).find((f) => f !== undefined);
+  return first === undefined ? {} : { topCoin: projectCoin(first, options) };
+}
+
 export interface NarrativeFrame {
   /** False before 0093: nothing was read or written, and the caller projects the old board. */
   readonly migrated: boolean;
@@ -272,6 +278,9 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       viewsGained: views.gained,
       postViews: members.map((m, i) => ({ postId: m.itemId, views: views.posts[i]?.total ?? null, gainedLastHour: views.posts[i]?.lastHour ?? null })),
       foundAt: instant(found.length === 0 ? null : Math.min(...found), 'not_reported'),
+      /* ★ The top coin when none is settled (fitting, or several proven equally): shown as "Top coin,
+         not checked", never as the narrative's coin. The coins most posts list come first. */
+      ...(coin.kind === 'fitting' || (coin.kind === 'proven' && coin.addresses.length > 1) ? topCoinOf(coin.addresses, coinFacts, options) : {}),
     });
   }
 
