@@ -17,16 +17,18 @@
  * "source failed", a market read served from what was kept — still reaches the owner, and no
  * caller has to remember to rethrow.
  *
- * ★ AT MOST ONCE PER SUPPLIER AN HOUR. A dead account is refused on every call, hundreds an hour.
- * The log line and the alert fire for the first refusal in each UTC hour (the subject carries the
- * hour, so the deliverer's claim drops a second queue of the same hour after a restart too); the
- * refusals in between are counted and the count rides on the next hour's line. A recovery is
- * alerted once per outage, the first successful answer after a refusal.
+ * ★ ONE PUSH PER OUTAGE, ONE LOG LINE AN HOUR. A dead account is refused on every call, hundreds an
+ * hour. The error line fires for the first refusal in each UTC hour, so a log reader sees the
+ * outage is still going; the refusals in between are counted and the count rides on the next
+ * hour's line. The owner is pushed once, on the first refusal of an outage (the subject carries
+ * the hour the outage began, so the deliverer's claim drops a second queue after a restart within
+ * that hour), and once more on the first successful answer after it. Hourly pushes for an account
+ * the owner already knows is empty were noise; the owner's rule is once per supplier per outage.
  *
  * ★ THE OWNER, AS FOR THE SPEND WARNING. Queued for the profile signed in with OWNER_WALLET
- * through the same OwnerQueue. No wallet, or no profile yet: logged only, and the alert stays
- * pending and is tried again on `flush` (each minute, beside the spend warnings) for as long as it
- * is still the same hour — an alert about an hour already gone is replaced by the next refusal's.
+ * through the same OwnerQueue. No wallet: logged only. No profile yet: the alert stays pending and
+ * is tried again on `flush` (each minute, beside the spend warnings) until it is delivered or the
+ * supplier answers again, which replaces it with the recovery.
  *
  * What breaks if changed carelessly: `refused` and `answered` are called inside the adapters'
  * request paths, synchronously. They must never throw and never await; everything slow happens in
@@ -79,8 +81,6 @@ interface Pending {
   readonly vendor: string;
   readonly subject: string;
   readonly facts: Readonly<Record<string, unknown>>;
-  /** The hour it belongs to; a pending refusal from a past hour is dropped. */
-  readonly hour: string;
 }
 
 const utcHour = (ms: number): string => new Date(ms).toISOString().slice(0, 13);
@@ -88,7 +88,7 @@ const utcHour = (ms: number): string => new Date(ms).toISOString().slice(0, 13);
 export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
   const names = deps.names ?? SUPPLIER_NAMES;
   const nameOf = (vendor: string): SupplierName => names[vendor] ?? { supplier: vendor, uses: '' };
-  /* vendor → the hour of its last log line and alert, and the refusals since that line. */
+  /* vendor → the hour of its last log line, when the outage began, and the refusals since that line. */
   const down = new Map<string, { hour: string; since: number; reason: string; refusedSinceLine: number }>();
   const pending = new Map<string, Pending>();
   let flushing: Promise<void> | null = null;
@@ -117,15 +117,16 @@ export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
           /* The refusals in the last hour that did not get their own line. */
           refusedSinceLastLine: was?.refusedSinceLine ?? 0,
           downSince: new Date(was?.since ?? at).toISOString(),
-          alert: deps.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : 'queued for the owner',
+          alert: deps.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : was === undefined ? 'pushing the owner' : 'owner already pushed for this outage',
         });
         down.set(error.vendor, { hour, since: was?.since ?? at, reason: error.reason, refusedSinceLine: 0 });
+        /* Only the first refusal of an outage is pushed; the hours after it are log lines. */
+        if (was !== undefined) return;
         /* A recovery not yet delivered is superseded: the account is empty again. */
         pending.set(error.vendor, {
           vendor: error.vendor,
           subject: `billing|${error.vendor}|${hour}`,
           facts: { supplier, uses, reason: error.reason, state: 'refused', vendor: error.vendor },
-          hour,
         });
         kick();
       } catch {
@@ -146,8 +147,6 @@ export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
           vendor,
           subject: `billing|${vendor}|recovered|${new Date(was.since).toISOString()}`,
           facts: { supplier, uses, state: 'recovered', vendor },
-          /* A recovery stays true however late it is delivered. */
-          hour: '',
         });
         kick();
       } catch {
@@ -157,28 +156,32 @@ export function billingAlerts(deps: BillingAlertDeps): BillingAlerts {
 
     async flush() {
       if (flushing !== null) return flushing;
-      flushing = (async () => {
+      /* ★ RESET AFTER THE ASSIGNMENT, NEVER INSIDE THE BODY. With nothing pending the body returns
+         before its first await, so a `finally` inside it ran BEFORE `flushing` was assigned and the
+         settled promise stayed in `flushing` for good: the minute timer's first empty flush at boot
+         turned every later flush into a no-op, and from 2026-10-13 to 2026-10-16 the log said
+         "queued for the owner" for every empty account while nothing was ever queued. */
+      const run = async (): Promise<void> => {
         try {
           if (pending.size === 0 || deps.ownerWallets.length === 0) return;
-          const hour = utcHour(deps.now());
           const ids = await deps.owner.ownerIds(deps.ownerWallets);
           /* No profile yet: kept, tried again next flush. */
           if (ids.length === 0) return;
+          /* A pending refusal stays true for as long as the account is down, and a recovery however
+             late it is delivered, so neither expires; a recovery replaces an undelivered refusal. */
           for (const [vendor, p] of [...pending]) {
-            if (p.hour !== '' && p.hour !== hour) {
-              pending.delete(vendor);
-              continue;
-            }
             for (const userId of ids) await deps.owner.queue(userId, { kind: 'supplier_account', subject: p.subject, rung: 0, facts: p.facts, href: '/#/alerts' });
             if (pending.get(vendor) === p) pending.delete(vendor);
           }
         } catch (e) {
           deps.log.error('a supplier billing alert could not be queued; trying again next minute', { err: e instanceof Error ? e.message : String(e) });
-        } finally {
-          flushing = null;
         }
-      })();
-      return flushing;
+      };
+      const current = run().finally(() => {
+        if (flushing === current) flushing = null;
+      });
+      flushing = current;
+      return current;
     },
 
     down: () => [...down.keys()],
