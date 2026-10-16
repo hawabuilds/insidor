@@ -253,6 +253,31 @@ export class PgFinderRepo {
   }
 
   /**
+   * A source's posts made in [`fromMs`, `toMs`) that a lane found — the ones turning an age now, so a
+   * caller asking each slot sees every post once at that age — whose newest view count is at least
+   * `minReach` (0: any, read or not) and whose newest reading is older than `readBeforeMs`, so a post
+   * just read by another path is not paid for again. Biggest first, at most `limit`.
+   */
+  async postsTurning(source: string, fromMs: Millis, toMs: Millis, minReach: number, readBeforeMs: Millis, limit: number): Promise<readonly string[]> {
+    const rows = await this.#db.query<{ source_item_id: string }>(
+      `select i.source_item_id
+         from public.item i
+         left join lateral (
+                select o.value, o.captured_at from public.observation o
+                 where o.item_id = i.item_id and o.kind = 'reach'
+                 order by o.captured_at desc limit 1) r on true
+        where i.source = $1 and i.posted_at >= $2 and i.posted_at < $3
+          and exists (select 1 from internal.item_found_by f where f.item_id = i.item_id)
+          and ($4::float8 <= 0 or r.value >= $4::float8)
+          and (r.captured_at is null or r.captured_at < $5)
+        order by r.value desc nulls last, i.posted_at desc
+        limit $6`,
+      [source, toTimestamp(fromMs), toTimestamp(toMs), minReach, toTimestamp(readBeforeMs), limit],
+    );
+    return rows.map((r) => r.source_item_id);
+  }
+
+  /**
    * Every coined post we hold whose first coin launched since `sinceMs`: a coin's metadata named
    * it, or the owner confirmed its coin. With its creator, words and sounds, for the learned words.
    */
