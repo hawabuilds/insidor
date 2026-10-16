@@ -55,7 +55,13 @@ export interface TrackingJudgement {
 
 /** See `PgItemRepo.trackingFacts`. Keyed by item id and story id as strings. */
 export interface TrackingFacts {
+  /** In the live frame of either feed (public.rising_row). */
   readonly onFeed: ReadonlySet<string>;
+  /**
+   * On For You: in its live frame, or a member of its scroll not withdrawn (public.feed_post, 0075).
+   * TRACK's off-feed cut keeps these whatever their age (Policy.track.offFeedMaxAgeMs).
+   */
+  readonly onForYou: ReadonlySet<string>;
   readonly catchAll: ReadonlySet<string>;
   /** The promoted, unmerged stories each post is in. A post in none is absent. */
   readonly storiesOf: ReadonlyMap<string, readonly string[]>;
@@ -394,22 +400,26 @@ export class PgItemRepo implements ItemRepo {
    */
   async trackingFacts(itemIds: readonly ItemId[]): Promise<TrackingFacts> {
     const onFeed = new Set<string>();
+    const onForYou = new Set<string>();
     const catchAll = new Set<string>();
     const storiesOf = new Map<string, string[]>();
     const membersOf = new Map<string, string[]>();
     const judged = new Map<string, TrackingJudgement>();
-    if (itemIds.length === 0) return { onFeed, catchAll, storiesOf, membersOf, judged };
+    if (itemIds.length === 0) return { onFeed, onForYou, catchAll, storiesOf, membersOf, judged };
     const ids = [...itemIds];
 
-    const where = await this.#db.query<{ item_id: string; on_feed: boolean; catch_all: boolean }>(
+    const where = await this.#db.query<{ item_id: string; on_feed: boolean; on_for_you: boolean; catch_all: boolean }>(
       `select i.id as item_id,
               exists (select 1 from public.rising_row r where r.item_id = i.id) as on_feed,
+              (exists (select 1 from public.rising_row r where r.item_id = i.id and r.feed_id = 'fyp')
+               or exists (select 1 from public.feed_post p where p.item_id = i.id and p.feed_id = 'fyp' and p.withdrawn_at is null)) as on_for_you,
               exists (select 1 from internal.item_found_by f where f.item_id = i.id) as catch_all
          from unnest($1::text[]) as i(id)`,
       [ids],
     );
     for (const row of where) {
       if (row.on_feed) onFeed.add(row.item_id);
+      if (row.on_for_you) onForYou.add(row.item_id);
       if (row.catch_all) catchAll.add(row.item_id);
     }
 
@@ -439,7 +449,7 @@ export class PgItemRepo implements ItemRepo {
     for (const a of answers) {
       judged.set(a.item_id, { coinable: a.coinable, confidence: Number(a.confidence), lookedAt: a.looked_at, proposedName: a.proposed_name });
     }
-    return { onFeed, catchAll, storiesOf, membersOf, judged };
+    return { onFeed, onForYou, catchAll, storiesOf, membersOf, judged };
   }
 
   /**

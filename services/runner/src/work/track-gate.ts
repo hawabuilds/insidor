@@ -14,6 +14,8 @@
  *   - a post not judged yet, when a catch-all lane found it (its reach decides whether it is
  *     judged at all) or it sits in a narrative the board shows.
  * Skipped:
+ *   - a post past `track.offFeedMaxAgeMs` from a paid-read source that is on neither For You nor
+ *     Popular's live frame (`offFeedTooOld`, below) — whatever else would keep it;
  *   - a post whose newest judgement fails core's per-post rule even with the best picture match
  *     there could be — any "no", a broken name test, a "yes" too far under the bar. A
  *     post is judged once, so that answer is final until someone re-scores it, and then this
@@ -70,4 +72,23 @@ export function staleUnpassed(itemId: string, postedAt: number | null, now: numb
   if (!f.cutStale || postedAt === null) return false;
   if (now - postedAt <= f.staleAfterMs) return false;
   return !facts.judged.has(itemId) && !facts.onFeed.has(itemId);
+}
+
+/** The sources the off-feed cut applies to: the two whose re-reads are paid per post or per run. */
+const OFF_FEED_CUT_SOURCES: ReadonlySet<string> = new Set(['x', 'tiktok']);
+
+/**
+ * ★ THE OFF-FEED CUT (`track.offFeedMaxAgeMs`, the owner's rule of 2026-10-16): a post from one of
+ * the paid-read sources, older than the limit by its post time, that is not on For You (its live
+ * frame or its scroll), is not re-read. It overrides every reason above to keep a post, because
+ * past that age the six-hour rule keeps a new post off For You and a passing post's reads buy
+ * a number no one is shown. A post with no time is not shown to be old, so it is kept.
+ *
+ * A post in Popular's live frame is kept too: its views are on screen now, and a frozen count
+ * there would be shown as current. Measured 2026-10-16 that is about 9 reads a day.
+ */
+export function offFeedTooOld(itemId: string, source: string, postedAt: number | null, now: number, facts: TrackingFacts, policy: Policy): boolean {
+  if (!OFF_FEED_CUT_SOURCES.has(source) || postedAt === null) return false;
+  if (now - postedAt <= policy.track.offFeedMaxAgeMs) return false;
+  return !facts.onForYou.has(itemId) && !facts.onFeed.has(itemId);
 }

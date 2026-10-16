@@ -236,6 +236,20 @@ export interface TrackPolicy {
    * a video on its way to the growth paths gets the readings it needs.
    */
   readonly paidFastMinReachPerMinute: number;
+  /**
+   * ★ THE OFF-FEED CUT (the owner, 2026-10-16: "cut re-reads of posts over 12h old that aren't on
+   * FYP"). A post from the two paid-read sources older than this, by its own post time, that is not
+   * on For You — neither in the live frame nor a member of the scroll — gets no more re-reads,
+   * whatever else would keep it (a passing answer, an unjudged catch-all post, a shown narrative).
+   * Its last reading stands. Measured 2026-10-16: about 2,400 such reads a day on each source, some
+   * $0.36 a day of the text source's reads and about $0.30 of the short-video source's. A post with
+   * no post time is not shown to be old and keeps its reads. At or over `maxTrackedHours` the cut
+   * changes nothing.
+   *
+   * What it gives up: a post over this age that would still climb onto For You late (fyp-freshness's
+   * still-growing exception) is no longer re-read to show the climb, so it does not join.
+   */
+  readonly offFeedMaxAgeMs: number;
 
   /*
    * ── the lifecycle bars ──────────────────────────────────────────────
@@ -3290,6 +3304,8 @@ const POLICY_V1: Policy = {
     paidReadMaxPosts: 10,
     paidReadMaxSlowPosts: 8,
     paidFastMinReachPerMinute: 250,
+    /* Twelve hours: off For You and past this, a post's re-reads stop (see TrackPolicy). */
+    offFeedMaxAgeMs: 43_200_000,
 
     lifecycleMargin: 0.1,
     /* 2 / 4 / 6. The ordering is the cost of being wrong on each edge, and the edges
