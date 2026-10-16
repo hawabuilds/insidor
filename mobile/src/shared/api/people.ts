@@ -74,6 +74,11 @@ export const notifyCall = notify;
 
 /* ── social ───────────────────────────────────────────────────────── */
 
+/**
+ * The post sheet was opened: ask for a fresh view reading of the post (services/social reading-ask.ts).
+ * Open to signed-out viewers. Whether a reading is taken is the server's call; nothing waits on it.
+ */
+export const askForReading = async (postId: string): Promise<void> => void (await social('POST', `/post/${encodeURIComponent(postId)}/reading`));
 export const syncMe = async (): Promise<ProfileCard> => (await social('POST', '/me')) as ProfileCard;
 export const fetchMe = async (): Promise<ProfileCard> => (await social('GET', '/me')) as ProfileCard;
 export const saveBio = async (bio: string): Promise<ProfileCard> => (await social('PUT', '/me', { bio })) as ProfileCard;

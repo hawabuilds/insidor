@@ -16,6 +16,7 @@
  *   GET    /leaderboard                this season's standings
  *   GET    /me/owner, /owner/…         the owner's calls on posts, coin matches and names (owner.ts)
  *   GET    /missed, POST /missed       the owner's missed posts (missed.ts; the owner only)
+ *   POST   /post/:id/reading          a post sheet was opened: ask for a fresh view reading (reading-ask.ts)
  *
  * ★ ONLY A HOLDER CAN LIKE, CHECKED ON THE CHAIN AT THE TIME OF THE LIKE (Trador's rule). The
  * voter's wallets come from their signed sign-in token, never from the request; a chain that
@@ -39,6 +40,7 @@ import { boughtEarly, earnsRep, nextRank, rankFor, rankedUp, seasonOf, standings
 
 import { json, type Reply, type Request } from './http.ts';
 import { missedRoute } from './missed.ts';
+import { askForReading } from './reading-ask.ts';
 import type { CoinCheck } from './coin-check.ts';
 import { ownerRoute } from './owner.ts';
 import { blockedWord, cleanBody, parseSubject, proofLinkOf, type Subject } from './rules.ts';
@@ -288,6 +290,9 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
 
   if (m === 'GET' && seg.length === 0) return json(200, { service: 'social' });
   if (m === 'GET' && head === 'health') return json(200, { ok: true });
+
+  /* Open to anyone, like the sheet itself: no sign-in is read for it (reading-ask.ts). */
+  if (m === 'POST' && head === 'post' && id !== undefined && sub === 'reading' && seg.length === 3) return askForReading(deps.db, id, deps.now());
 
   const me = await signedIn(req, deps);
 

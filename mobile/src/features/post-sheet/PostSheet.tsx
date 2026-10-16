@@ -29,9 +29,10 @@
  * which renders this sheet knowing nothing else about the post.
  */
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { ReadError, fetchPostSheet, type PostSheetData, type SheetCoin } from '../../shared/api/index.ts';
+import { askForReading } from '../../shared/api/people.ts';
 import { evidenceFacts } from '../../shared/coin-status.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { compact, formatCount } from '../../shared/format/number.ts';
@@ -104,6 +105,10 @@ function mediaHeight(width: number | null, height: number | null): number {
 export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
   const [loaded, reload] = useLoad(`post-sheet:${postId}`, (signal) => fetchPostSheet(postId, signal));
   usePreloadCreate(postId); /* Create coin then opens on this post's own names, with nothing filling in. */
+  /* Opening the sheet asks for a fresh view reading for its chart; a refusal or an outage changes nothing here. */
+  useEffect(() => {
+    askForReading(postId).catch(() => undefined);
+  }, [postId]);
   const [view, setView] = useState<'post' | 'coins'>(start);
   const [buying, setBuying] = useState<SheetCoin | null>(null);
   const [creating, setCreating] = useState(false);
