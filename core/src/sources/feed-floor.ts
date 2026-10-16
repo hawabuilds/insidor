@@ -106,6 +106,35 @@ export function sliceCoveredByLateBand(youngestAgeMin: number, widthMin: number,
   return lateBands(p).some((b) => b.ageMin > youngestAgeMin && b.ageMin <= youngestAgeMin + widthMin);
 }
 
+/**
+ * ★ THE MIDDLE LANE (`feed.middle`): the posting-time window it asks this pass, `maxAgeMin` to
+ * `minAgeMin` minutes before now, whole. Not tiled like the bands: see the field's note.
+ */
+export function middleWindow(now: number, p: Policy): { readonly since: number; readonly until: number } {
+  const m = p.feed.middle;
+  return { since: now - m.maxAgeMin * MS_PER_MINUTE, until: now - m.minAgeMin * MS_PER_MINUTE };
+}
+
+/** Whether the middle lane is due: never asked in this process, or `middle.everyMs` since it was. False while off. */
+export function middleLaneDue(now: number, lastRanAt: number | null, p: Policy): boolean {
+  if (!p.feed.middle.on) return false;
+  return lastRanAt === null || now - lastRanAt >= p.feed.middle.everyMs;
+}
+
+/**
+ * Whether a slow-lane slice — the posts aged `youngestAgeMin` to `youngestAgeMin + widthMin` — lies
+ * wholly inside the middle lane's window, which asks those posts at a floor no higher than the slow
+ * lane sends (`slowSentFloor`). Then the slice buys nothing the middle lane has not.
+ *
+ * What breaks if changed carelessly: dropping a slice when the middle floor is the higher one loses
+ * the posts between the two floors at that age.
+ */
+export function sliceCoveredByMiddle(youngestAgeMin: number, widthMin: number, slowSentFloor: number, p: Policy): boolean {
+  const m = p.feed.middle;
+  if (!m.on || m.minApproval > slowSentFloor) return false;
+  return youngestAgeMin >= m.minAgeMin && youngestAgeMin + widthMin <= m.maxAgeMin;
+}
+
 function scaledFloor(base: number, windowMin: number, p: Policy): number {
   const f = p.feed;
   const kept = Math.min(Math.max(base, f.floorMin), f.floorMax);
