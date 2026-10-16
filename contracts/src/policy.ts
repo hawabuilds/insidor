@@ -2505,6 +2505,17 @@ export interface FindersPolicy {
     readonly maxPosts: number;
   };
   /**
+   * The learned sounds (`learned.topSounds`) asked for their posts, one page a sound, `perAsk` sounds
+   * every `askEveryMs`, credited to the 'trend' lane and held to the watch list's age like the learned
+   * words. The search takes words, so a sound is asked on its own endpoint (`soundPosts`), which
+   * returns a sound's posts in its own order, old ones too.
+   */
+  readonly sounds: {
+    readonly on: boolean;
+    readonly askEveryMs: number;
+    readonly perAsk: number;
+  };
+  /**
    * The short-video source's own recommendation feed, read logged out: one page a region every
    * `everyMs`, and the videos on it under `creditMaxAgeMs` old credited to the 'trending' lane
    * (0084). The one finder that asks no word, so it can return a video tagged only #fyp. Paid per
@@ -3777,17 +3788,32 @@ const POLICY_V1: Policy = {
       topCreators: 20,
       skip: ['fyp', 'foryou', 'foryoupage', 'fypシ', 'viral', 'trending', 'xyzbca', 'parati', 'original sound'],
     },
+    /* On from 2026-10-16 with the money the re-reads' move saved (the owner: "spend the savings on
+       creators with coined posts checked more often"): a creator's latest page is one credit on the
+       second vendor, so 5 every half hour is 240 credits, $0.45 a day, and each of the 11 learned
+       creators is checked about every 66 minutes; about 40 new videos a day to judge, ~$0.08. */
     creators: {
-      on: false,
+      on: true,
       askEveryMs: 1_800_000, // half an hour
       perAsk: 5,
       postsPerCreator: 3,
     },
+    /* On from 2026-10-16, the same approval ("videos under 2 hours re-checked more often"): the 2
+       fastest videos under two hours re-read every 10 minutes on top of the half-hourly re-reads, 288
+       credits, $0.54 a day. 2, not 4: 4 would be $1.08 and the live book has about $1.60 left. */
     young: {
-      on: false,
+      on: true,
       maxAgeMin: 120,
       runEveryMinutes: 10,
-      maxPosts: 4,
+      maxPosts: 2,
+    },
+    /* On from 2026-10-16, the same approval ("learned hashtags and sounds"): 2 sounds an hour, at most
+       48 credits ($0.09) a day. The learned list holds no sound yet (none is on two coined videos this
+       week), so today it asks nothing. */
+    sounds: {
+      on: true,
+      askEveryMs: 3_600_000, // hourly
+      perAsk: 2,
     },
     trending: {
       /* Off until the owner approves the cost and 0084 is applied. Measured 2026-10-15 19:21 to 23:14

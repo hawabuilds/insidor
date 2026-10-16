@@ -1,8 +1,9 @@
 /**
  * The short-video search's extra words: the learned list counts only the searched source's coined
  * posts (a text post's tags are its promoters'), drops the skip list and bare numbers, and keeps a
- * tag only at `minPosts` coined posts; the asks walk the list a slot at a time; and with every
- * switch off a pass asks nothing and spends nothing.
+ * tag only at `minPosts` coined posts; the asks walk the list a slot at a time; a learned sound is
+ * asked on the sound endpoint once a slot, credited to the trend lane; and with every switch off a
+ * pass asks nothing and spends nothing.
  */
 
 import assert from 'node:assert/strict';
@@ -47,6 +48,7 @@ test('★ every part switched off: a pass asks nothing and spends nothing', asyn
       learned: { ...DEFAULT_POLICY.finders.learned, on: false },
       creators: { ...DEFAULT_POLICY.finders.creators, on: false },
       young: { ...DEFAULT_POLICY.finders.young, on: false },
+      sounds: { ...DEFAULT_POLICY.finders.sounds, on: false },
     },
   };
   let calls = 0;
@@ -66,4 +68,53 @@ test('★ every part switched off: a pass asks nothing and spends nothing', asyn
   );
   assert.equal(calls, 0);
   assert.equal(r.usd, 0);
+});
+
+test('the learned sounds: asked on the sound endpoint, once a slot, their posts on the trend lane', async () => {
+  const only: Policy = {
+    ...DEFAULT_POLICY,
+    finders: {
+      ...DEFAULT_POLICY.finders,
+      trends: { ...DEFAULT_POLICY.finders.trends, on: false },
+      learned: { ...DEFAULT_POLICY.finders.learned, on: false },
+      creators: { ...DEFAULT_POLICY.finders.creators, on: false },
+      young: { ...DEFAULT_POLICY.finders.young, on: false },
+      sounds: { on: true, askEveryMs: 3_600_000, perAsk: 2 },
+    },
+  };
+  const asked: string[] = [];
+  const lanes: unknown[] = [];
+  const source = {
+    id: 'vid',
+    capabilities: { discovery: ['keyword', 'account'] },
+    estimateSoundPosts: () => ({ vendor: 'v', usd: 0.002 }),
+    soundPosts: async (sound: string) => {
+      asked.push(sound);
+      return { value: { items: [], authors: [] }, spend: { usd: 0.002 } };
+    },
+  } as unknown as PlatformAdapter;
+  const deps = {
+    finders: {
+      searchWords: async () => [
+        { origin: 'coined' as const, kind: 'sound' as const, source: 'vid', value: 'vid:sound:9', rank: 1, facts: {} },
+        { origin: 'coined' as const, kind: 'tag' as const, source: 'vid', value: 'raccoon', rank: 1, facts: {} },
+      ],
+      replaceSearchWords: async () => {},
+      searchWordsAt: async () => null,
+      coinedPosts: async () => [],
+      youngPosts: async () => [],
+    },
+    sources: () => [source],
+    store: async (_i: unknown, _a: unknown, lane: unknown) => (lanes.push(lane), 0),
+    meter: inMemoryMeter({ dailyCapUsd: 10, perVendorCapUsd: {}, softStop: 1, now: () => NOW }),
+    mode: 'live' as const,
+    policy: only,
+    log: quiet,
+    now: () => NOW,
+  };
+  const clock = searchWordClock();
+  await searchWordsPass(deps, clock);
+  await searchWordsPass(deps, clock);
+  assert.deepEqual(asked, ['vid:sound:9']);
+  assert.deepEqual(lanes, ['trend']);
 });
