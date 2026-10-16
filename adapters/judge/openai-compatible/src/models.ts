@@ -106,3 +106,27 @@ export async function keyAllowance(fetch: typeof globalThis.fetch, baseUrl: stri
   const left = data.limit_remaining;
   return { remainingUsd: typeof left === 'number' && Number.isFinite(left) ? left : null };
 }
+
+/**
+ * The account's prepaid balance, by the host's own count (`GET /credits`: `total_credits` bought,
+ * `total_usage` spent, both dollars): what is left is their difference. Read by the runner every
+ * quarter-hour for the owner's low-credit alarm (services/runner open-credit.ts), so the alert
+ * service never holds this key. Unlike `keyAllowance`, which is one key's own cap, this is the
+ * whole account every key draws on — the number that runs out. Throws when the host does not
+ * answer it or answers without both numbers: an unread balance is never said as $0. The key goes
+ * in the header only; nothing but the two numbers is kept.
+ */
+export async function accountCredits(fetch: typeof globalThis.fetch, baseUrl: string, apiKey: string, timeoutMs: number): Promise<{ readonly totalUsd: number; readonly usedUsd: number; readonly remainingUsd: number }> {
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl.replace(/\/+$/, '')}/credits`, { headers: { authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (error) {
+    throw new Error(`the account's credits could not be read: ${messageOf(error)}`);
+  }
+  if (!res.ok) throw new Error(`the account's credits answered ${res.status}`);
+  const data = ((await res.json()) as { data?: { total_credits?: unknown; total_usage?: unknown } } | null)?.data ?? {};
+  const total = data.total_credits;
+  const used = data.total_usage;
+  if (typeof total !== 'number' || !Number.isFinite(total) || typeof used !== 'number' || !Number.isFinite(used)) throw new Error("the account's credits came back without both numbers");
+  return { totalUsd: total, usedUsd: used, remainingUsd: total - used };
+}
