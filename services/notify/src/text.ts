@@ -260,6 +260,14 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       if (f['state'] === 'backup')
         return { title: `${supplier} failing: switched to ${backup}`, body: `${supplier}${uses} failed: ${s(f['reason'], 'no answer')}. That work now runs on ${backup}, and ${supplier} is tried again${n(f['retryMinutes']) === null ? ' later' : ` every ${n(f['retryMinutes'])} minutes`}.` };
       if (f['state'] === 'back') return { title: `Back on ${supplier}`, body: `${supplier}${uses} is answering again; that work has moved back from ${backup}.` };
+      /* A prepaid account in dollars running low, and topped up (runner open-credit.ts): what is left, and how long it lasts at the last day's spend. */
+      const left = n(f['usd']);
+      if (f['state'] === 'topped') return { title: `${supplier} credit topped up`, body: left === null ? `${supplier}${uses} has credit again.` : `${supplier}${uses} has ${usd(left)} left again.` };
+      if (f['state'] === 'low' && left !== null) {
+        const daily = n(f['dailyUsd']);
+        const lasts = daily === null || daily <= 0 ? '' : `, about ${(left / daily).toFixed(1).replace(/\.0$/, '')} days at the last day's spend of ${usd(daily)}`;
+        return { title: `${supplier} credit low: ${usd(left)} left`, body: `${supplier}${uses} has ${usd(left)} left${lasts}. Top up its account before it runs out.` };
+      }
       if (f['state'] === 'low') {
         const credits = n(f['credits']);
         return { title: `${supplier} credits low`, body: `${credits === null ? 'Few' : credits.toLocaleString('en-US')} credits left${uses}. Top up its account; when they run out, that work moves to ${backup}.` };

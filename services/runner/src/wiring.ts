@@ -59,7 +59,7 @@ import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
-import { isOpenJudgeId, openChatClient, openJudge, type HostModel, type OpenQuestion } from '@insidor/judge-openai-compatible';
+import { accountCredits, isOpenJudgeId, openChatClient, openJudge, type HostModel, type OpenQuestion } from '@insidor/judge-openai-compatible';
 import { describeRoles, openHostModel, rolesFor, type JudgeRole } from './feed-judges.ts';
 import { failoverJudge, failoverState } from './judge-failover.ts';
 import { SHADOW_ENDPOINT, judgeShadow } from './judge-shadow.ts';
@@ -131,6 +131,7 @@ import { coinLinksPass, type CoinLinkResult } from './work/coin-links.ts';
 import { repostsPass, type RepostResult } from './work/reposts.ts';
 import { searchWordClock, searchWordsPass, type SearchWordResult } from './work/search-words.ts';
 import { trendingFeedClock, trendingFeedPass, type TrendingFeedResult } from './work/trending-feed.ts';
+import { CREDIT_CHECK_MS, CREDIT_RATE_WINDOW_MS, creditWatch } from './open-credit.ts';
 import { secondVendorWatch } from './second-vendor.ts';
 import { chainClient, fetchDeclaredMetadata, fetchMetadata } from '@insidor/venue-solana-pumpfun';
 import { dexscreenerSearch, dexscreenerStandings } from '@insidor/market-dexscreener';
@@ -659,6 +660,22 @@ export async function withRuntime<T>(
         log: log.child({ step: 'second-vendor' }),
       });
       setInterval(() => secondVendor.checkBalance(Date.now()), policy.feed.secondVendor.balanceEveryMs).unref();
+      /* ★ THE OPEN JUDGE ACCOUNT'S CREDIT (open-credit.ts): read here, where its key already is, every
+         quarter-hour; pushed once under two days of its spend (or $5) and once when topped up. */
+      const openSetup = cfg.openJudge;
+      if (openSetup.state === 'configured') {
+        const spendLedger = new PgSpendRepo(db);
+        const credit = creditWatch({
+          vendor: openSetup.vendor,
+          remaining: async () => (await accountCredits(globalThis.fetch, openSetup.baseUrl, openSetup.apiKey, policy.judge.timeoutMs)).remainingUsd,
+          dailyUsd: async () => (await spendLedger.totalsSince((Date.now() - CREDIT_RATE_WINDOW_MS) as Millis)).byVendor[openSetup.vendor] ?? 0,
+          alerts: billing,
+          log: log.child({ step: 'open-credit' }),
+          now: () => Date.now(),
+        });
+        void credit.check();
+        setInterval(() => void credit.check(), CREDIT_CHECK_MS).unref();
+      }
       log.info('supplier warnings', {
         at: policy.budget.warnAt,
         alert: cfg.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : 'queued for the owner',
