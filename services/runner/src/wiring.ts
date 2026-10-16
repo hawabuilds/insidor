@@ -118,6 +118,7 @@ import type { RunnerConfig } from './config.ts';
 import { storeArrivals } from './work/arrivals.ts';
 import { laneLedger, type LaneLedger } from './work/lane-ledger.ts';
 import { scorePosts, type ScoringResult } from './work/score-posts.ts';
+import { earlyJudge, type EarlyResult } from './work/early-judge.ts';
 import { precedentsWanted } from '@insidor/core';
 import { precedentSource } from './work/precedents.ts';
 import { nameGuesser, type NameGuessResult } from './work/name-guesses.ts';
@@ -182,6 +183,8 @@ export interface Runtime {
   readonly middleLane: { readonly ledger: LaneLedger; readonly uncredited: (itemIds: readonly string[]) => Promise<number> };
   /** Score the catch-all posts the judge has not seen, alone and once each. */
   readonly scorePosts: () => Promise<ScoringResult>;
+  /** The likeliest catch-all posts judged before their views clear the bar, in their own loop. See work/early-judge.ts. */
+  readonly earlyJudge: () => Promise<EarlyResult>;
   /** The names people will coin each new post as, after each scoring pass. See work/name-guesses.ts. */
   readonly guessNames: () => Promise<NameGuessResult>;
   /** Crypto talk under For You posts, read on the posts line and stored as facts. See work/crypto-attention.ts. */
@@ -959,6 +962,54 @@ export async function withRuntime<T>(
               now: () => Date.now() as Millis,
             })
           : null;
+      /* Early judging's own precedents (work/early-judge.ts): the same labels and vectors, read by a
+         second source whose embeddings are tallied, so the pass can charge its lane what they cost. */
+      const earlyEmbedUsd = { total: 0 };
+      const earlyPrecedents =
+        cfg.embeddings.state === 'configured' && policy.judge.early.on
+          ? precedentSource({
+              embed: ((port) => ({
+                ...port,
+                ...(port.embedPosts === undefined
+                  ? {}
+                  : {
+                      embedPosts: async (posts: Parameters<NonNullable<typeof port.embedPosts>>[0], budget: Parameters<NonNullable<typeof port.embedPosts>>[1]) => {
+                        const r = await port.embedPosts!(posts, budget);
+                        earlyEmbedUsd.total += r.spend.usd;
+                        return r;
+                      },
+                    }),
+              }))(
+                voyageEmbed({
+                  client: voyageClient({ apiKey: cfg.embeddings.apiKey, baseUrl: cfg.embeddings.baseUrl, fetch: globalThis.fetch }),
+                  meter,
+                  now: () => Date.now() as Millis,
+                }),
+              ),
+              labels: new PgLabelEmbeddingRepo(db),
+              posts: new PgPostEmbeddingRepo(db),
+              meter,
+              mode: cfg.spend.kind,
+              policy,
+              log: log.child({ step: 'early-precedents' }),
+              now: () => Date.now() as Millis,
+            })
+          : null;
+      const early = earlyJudge({
+        judge: postJudge,
+        kindJudge,
+        precedents: earlyPrecedents,
+        junkFilter: new PgJunkFilterRepo(db),
+        items: repos.items,
+        scores: new PgPostJudgementRepo(db),
+        ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'early-lane' })),
+        embedSpentUsd: () => earlyEmbedUsd.total,
+        meter,
+        mode: cfg.spend.kind,
+        policy,
+        log: log.child({ step: 'early-judge' }),
+        now: () => Date.now() as Millis,
+      });
       /* The namer: example posts and their vectors kept for the process, guesses after each scoring pass. */
       const names = nameGuesser({
         namer,
@@ -1397,6 +1448,7 @@ export async function withRuntime<T>(
               log: log.child({ step: 'score-posts' }),
               now: () => Date.now() as Millis,
             }),
+          earlyJudge: early,
           guessNames: () => names.pass(),
           cryptoAttention: () =>
             readCryptoAttention({

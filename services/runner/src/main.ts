@@ -40,6 +40,7 @@ import { refillLoop } from './loops/refill.ts';
 import { findersLoop } from './loops/finders.ts';
 import { middleLoop } from './loops/middle.ts';
 import { readingsLoop } from './loops/readings.ts';
+import { earlyLoop } from './loops/early.ts';
 import { groupLoop } from './loops/group.ts';
 import { qualifyLoop } from './loops/qualify.ts';
 import { rankLoop } from './loops/rank.ts';
@@ -218,6 +219,10 @@ async function main(): Promise<void> {
          cost): its own loop, deadline and daily cap, so it can never hold up discovery, the judge or
          TRACK (loops/readings.ts). */
       readingsLoop(runtime.loopDeps.policy.feed.readings.everyMs, runtime.readings),
+      /* Early judging (`judge.early`, work/early-judge.ts): the likeliest catch-all posts judged before
+         their views clear For You's bar. Its own loop, cadence and daily cap, never in the discovery
+         pass, so a slow judge here cannot hold up the normal judging or the feed. */
+      earlyLoop(runtime.loopDeps.policy.judge.early.everyMs, runtime.earlyJudge),
       /* The ways to find a post besides the searches: a new coin's links within seconds of its
          launch, reposts, trend and learned words (loops/finders.ts). Every switch off: a pass does nothing. */
       findersLoop({

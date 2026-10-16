@@ -28,7 +28,7 @@ import { errorText, type Logger } from '../log.ts';
  * same reason: a restart must not hand it a fresh day's money. So do For You's view readings
  * (work/readings.ts, Policy.feed.readings). The table holds any lane name.
  */
-export type CappedLane = 'middle' | 'learned_tag' | 'judge_shadow' | 'readings';
+export type CappedLane = 'middle' | 'learned_tag' | 'judge_shadow' | 'readings' | 'judge_early';
 
 export interface LaneLedger {
   /** Dollars the lane has recorded today, or null when that cannot be read (do not ask). */
