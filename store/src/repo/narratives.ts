@@ -335,8 +335,8 @@ export class PgNarrativeRepo {
       if (pass.retired.length > 0) {
         await this.#db.query(
           `update internal.narrative n
-              set state = case when r.into is null then 'gone' else 'merged' end, merged_into = r.into, shown = false, updated_at = now()
-             from unnest($1::text[], $2::text[]) as r(id, into)
+              set state = case when r.target is null then 'gone' else 'merged' end, merged_into = r.target, shown = false, updated_at = now()
+             from unnest($1::text[], $2::text[]) as r(id, target)
             where n.narrative_id = r.id and n.state = 'open'`,
           [pass.retired.map((r) => r.id), pass.retired.map((r) => r.into)],
         );
