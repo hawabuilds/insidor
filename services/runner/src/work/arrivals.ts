@@ -16,8 +16,8 @@ import type { PgAuthorRepo, PgItemRepo, PgObservationRepo } from '@insidor/store
 
 const MS_PER_HOUR = 3_600_000;
 
-/** Every lane a stored post can be credited to (0025, 0030, 0061, 0083, 0084). */
-export type FoundLane = FeedLane | 'watch' | 'trend' | 'creator' | 'coin_link' | 'x_repost' | 'trending';
+/** Every lane a stored post can be credited to (0025, 0030, 0061, 0083, 0084, 0088). */
+export type FoundLane = FeedLane | 'watch' | 'trend' | 'creator' | 'coin_link' | 'x_repost' | 'trending' | 'middle' | 'learned_tag';
 
 export function storeArrivals(
   repos: { readonly authors: PgAuthorRepo; readonly items: PgItemRepo; readonly observations: PgObservationRepo },

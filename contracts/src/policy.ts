@@ -985,6 +985,28 @@ export interface AssetPolicy {
  * the call and disagree with us about it.
  */
 /**
+ * ★ A SEARCH LANE'S OWN DAILY CAP (0088's ledger). The live book's `budget.dailyUsd` stops every
+ * call when the day is spent, and the supplier lines only warn (`budget.vendorLinesStop`), so
+ * without this a new lane can spend as much of the day as its posts cost. With it, a lane asks
+ * nothing more once its search bill plus the judging it brings in reaches `dailyUsd`, and the rest
+ * of the live book is untouched.
+ *
+ * The judging is charged to the lane at the moment it finds the posts, as an estimate: each post
+ * no lane had found before, times `judgeUsdPerPost`, times `judgedShare` (the share of such posts
+ * the judge is asked about at all; the rest stay under For You's reach bar). The judge's own bill
+ * is metered where it happens and is not split by lane, so this is the only place a lane's
+ * judging can be stopped before it is incurred.
+ *
+ * What breaks if changed carelessly: a `judgedShare` well under the real share lets the lane's
+ * true day run past its cap by the difference, on the judge's line. It is measured per lane.
+ */
+export interface LaneCapPolicy {
+  readonly dailyUsd: number;
+  readonly judgeUsdPerPost: number;
+  readonly judgedShare: number;
+}
+
+/**
  * The catch-all search: no keywords, two lanes (everything, and posts with an image or a
  * video), each narrowed by an approval floor that moves to keep the day inside budget.
  *
