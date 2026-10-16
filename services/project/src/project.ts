@@ -1533,10 +1533,13 @@ export interface ProjectedBoard {
 export function projectBoard(
   stories: readonly StoryFacts[],
   options: ProjectOptions,
+  /* The board's order, when its caller has one (the narratives' gain in the last hour,
+     narrative-frame.ts); by default the newest activity first. */
+  order: (stories: readonly StoryFacts[]) => readonly StoryFacts[] = orderByRecency,
 ): ProjectedBoard {
   const rows: WireBoardRow[] = [];
   const withheld: string[] = [];
-  for (const story of orderByRecency(stories)) {
+  for (const story of order(stories)) {
     let row: WireBoardRow | null;
     try {
       row = projectBoardRow(story, options);

@@ -26,6 +26,7 @@ import { asDb, createPool, DB_ROLE, PgAssetRepo, withTransaction } from '@insido
 
 import { loadLaunchFacts, nextLaunchTick, writeLaunches } from './db.ts';
 import { projectStoryFrame } from './frame.ts';
+import { projectNarrativeFrame } from './narrative-frame.ts';
 import { loadAnswerPolicies } from './judge-cutoff.ts';
 import { projectRisingFeeds } from './rising.ts';
 import { keepFeedHistory } from './feed-history.ts';
@@ -33,7 +34,7 @@ import { announceBoard } from './notify.ts';
 import { projectFeedSource, projectLaunch } from './project.ts';
 import type { ProjectOptions } from './project.ts';
 import { WireLeakError } from './wire.ts';
-import type { WireLaunch } from './wire.ts';
+import type { WireCoinLink, WireLaunch } from './wire.ts';
 
 /** The board the app asks for. `VIEW_ID` in app/src/App.tsx is this string. */
 const VIEW_ID = 'default';
@@ -136,11 +137,18 @@ async function main(): Promise<void> {
     const { main: policy, open: openPolicy } = await loadAnswerPolicies(asDb(pool), DEFAULT_POLICY);
 
     const result = await withTransaction(pool, async (db) => {
-      const frame = await projectStoryFrame(db, VIEW_ID, options, {
-        storiesSinceMs: nowMs - STORY_WINDOW_MS,
-        reachSinceMs: nowMs - REACH_WINDOW_MS,
-        limit: BOARD_LIMIT,
-      }, policy, openPolicy);
+      /* ★ THE BOARD IS THE NARRATIVES (narrative-frame.ts, 0093): the runner's grouping of the posts
+         the judge passed, held to the owner's rule again now. Before 0093 is applied, GROUP's promoted
+         stories as before (frame.ts). Posts take no coin from a narrative any more: the narrative
+         reads its coin from its posts' own cards, so the two cannot disagree. */
+      const narratives = await projectNarrativeFrame(db, VIEW_ID, options, nowMs - REACH_WINDOW_MS, policy, openPolicy);
+      const frame = narratives.migrated
+        ? { ...narratives, anchors: { earliest_post: 0, first_sight: 0 }, coinsByStory: new Map<string, WireCoinLink>() }
+        : await projectStoryFrame(db, VIEW_ID, options, {
+            storiesSinceMs: nowMs - STORY_WINDOW_MS,
+            reachSinceMs: nowMs - REACH_WINDOW_MS,
+            limit: BOARD_LIMIT,
+          }, policy, openPolicy);
       const { tick } = frame;
 
       /* The For You and Popular feeds, in the same transaction as the board they read their
