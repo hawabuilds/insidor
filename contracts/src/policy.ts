@@ -3102,7 +3102,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v87',
+  version: 'policy.v88',
 
   admit: {
     maxAgeMin: 240,
@@ -3629,7 +3629,8 @@ const POLICY_V1: Policy = {
        The lane's cap is its gross reads ($3.30) and the opens, with a little room. Switching on also
        wants budget.dailyUsd raised by about $3, since the live book ran ~$40 of its $40.50. */
     readings: {
-      on: false,
+      /* On from 2026-10-16 18:20 UTC, the owner's option 1: this cadence, its own loop and cap. */
+      on: true,
       everyMs: 30_000,
       cadence: {
         steps: [
@@ -4106,8 +4107,10 @@ const POLICY_V1: Policy = {
        expected $4.45 to $6.10 that is $36.30 to $38.80, and $40 at both lanes' caps. Paid by taking
        the learning book from $10.75 to $8.50 (its full days were $6.75 and $5.06; $10.38 on the
        re-tune-heavy 10-13) and the jobs book from $1.75 to $1 (nothing spent since 10-13), so live +
-       learning + jobs is $50.00. Discovery is never cut to pay for learning (the owner, 2026-10-13). */
-    dailyUsd: 40.5,
+       learning + jobs is $50.00. Discovery is never cut to pay for learning (the owner, 2026-10-13).
+       $43.50 from 2026-10-16 18:20 UTC for the view readings (feed.readings, its own $3.75 cap), the
+       owner's option 1: about $49 measured for the whole day; the books' caps sum to $53 as headroom. */
+    dailyUsd: 43.5,
     discoveryUsdPerDay: 5,
     observeUsdPerDay: 4,
     judgeUsdPerDay: 2,
