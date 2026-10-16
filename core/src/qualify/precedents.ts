@@ -96,6 +96,13 @@ export function nearestLabelled(v: ArrayLike<number>, labels: readonly LabelledV
   return own === undefined ? sorted.slice(0, k) : ownSourceFirst(sorted, k, own.reserve, (n) => sourceOfItemId(n.label.itemId) === own.source);
 }
 
+/**
+ * How many closest labels to find for a post: the most either feed judge reads (Policy.judge.
+ * precedents `k` for the main judge, `openK` for the open one). Each judge keeps the first of them
+ * it wants, so one search serves both, the shadow and a failover included.
+ */
+export const precedentsWanted = (p: Policy): number => Math.max(p.judge.precedents.k, p.judge.precedents.openK);
+
 /** The closest post the owner called "not a meme", and how close; null when there is none. */
 export function closestNot(v: ArrayLike<number>, labels: readonly LabelledVector[], isSelf: (l: LabelledVector) => boolean): Neighbour | null {
   let best: Neighbour | null = null;

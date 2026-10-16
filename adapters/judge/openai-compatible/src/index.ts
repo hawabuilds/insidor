@@ -32,7 +32,7 @@ import type { Millis } from '@insidor/contracts';
 import type { JudgePolicy } from '@insidor/contracts/policy.ts';
 import type { CostEstimate, Meter, Spend } from '@insidor/contracts/ports/meter.ts';
 import type { JudgeOutcome, JudgePort, JudgeSubject } from '@insidor/contracts/ports/judge.ts';
-import { PRECEDENTS_PROMPT, PROMPTS, allUnavailable, estimateTokens, frameUriFor, pictureUriFor, promptId, toOutcomes, NO_FRAME, type Frame, type JudgeClient } from '@insidor/judge-anthropic';
+import { PRECEDENTS_PROMPT, PROMPTS, allUnavailable, estimateTokens, frameUriFor, pictureUriFor, promptId, toOutcomes, withPrecedentsUpTo, NO_FRAME, type Frame, type JudgeClient } from '@insidor/judge-anthropic';
 import { mergeSpend, metered, type PriceBook } from '@insidor/meter';
 import { BudgetRefused, VendorUnavailable } from '@insidor/vendor-kit';
 
@@ -50,6 +50,28 @@ export type { OpenJudgeSetup } from './setup.ts';
 export const OPEN_JUDGE_ENDPOINT = 'judge-open';
 /** How far over the token estimate a call may come: an open model may count a picture as more tokens than the policy's figure. */
 export const ESTIMATE_MARGIN = 2;
+/** Precedents dropped per post at a time while a call does not fit the model's window. */
+const PRECEDENT_STEP = 5;
+
+/**
+ * ★ THE OPEN MODEL'S PRECEDENTS, FITTED TO ITS WINDOW (the owner, 2026-10-16: "Gemma gets the 30–50
+ * most similar examples"). Each post keeps its closest Policy.judge.precedents.openK labelled posts;
+ * while the call's pessimistic input estimate (every character at charsPerToken, every picture at
+ * tokensPerFrame) is over `openMaxInputTokens`, every post keeps PRECEDENT_STEP fewer, the farthest
+ * first. Measured 2026-10-16 on the router's listing: both pinned providers serve the model with a
+ * 131,072-token window, so the policy's figure leaves room for the answer and the estimate's slack.
+ */
+export function fitPrecedents(batch: readonly JudgeSubject[], policy: JudgePolicy, tokensOf: (b: readonly JudgeSubject[]) => number): readonly JudgeSubject[] {
+  const want = policy.precedents?.openK ?? policy.precedents?.k ?? 0;
+  const max = policy.precedents?.openMaxInputTokens ?? Infinity;
+  let k = want;
+  let fitted = withPrecedentsUpTo(batch, k);
+  while (k > 0 && tokensOf(fitted) > max) {
+    k = Math.max(0, k - PRECEDENT_STEP);
+    fitted = withPrecedentsUpTo(batch, k);
+  }
+  return fitted;
+}
 
 /** The two questions the feed asks of a post. The narrative question is not measured here. */
 export type OpenQuestion = 'post' | 'kind';
@@ -103,6 +125,12 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
   const batches = (xs: readonly JudgeSubject[]): JudgeSubject[][] => Array.from({ length: Math.ceil(xs.length / deps.maxBatch) }, (_, k) => xs.slice(k * deps.maxBatch, (k + 1) * deps.maxBatch));
   /* A text-only model is asked about the words alone, and filed as such. */
   const asSent = (s: JudgeSubject): JudgeSubject => (textOnly ? { ...s, media: [] } : s);
+  const inputTokens = (batch: readonly JudgeSubject[]): number => {
+    const t = estimateTokens(deps.policy, batch.map(asSent), deps.question, examples, precedents);
+    return t.inputTokens + (t.cacheWriteTokens ?? 0);
+  };
+  /* Each call's posts with their precedents cut to this judge's number and its window. */
+  const fitted = (batch: readonly JudgeSubject[]): readonly JudgeSubject[] => (precedents ? fitPrecedents(batch, deps.policy, inputTokens) : batch);
   const estimateUsd = (batch: readonly JudgeSubject[]): number => {
     const t = estimateTokens(deps.policy, batch.map(asSent), deps.question, examples, precedents);
     return (usdAtListed(deps.model, t.inputTokens + (t.cacheWriteTokens ?? 0), t.outputTokens) ?? 0) * ESTIMATE_MARGIN;
@@ -119,7 +147,7 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
 
     estimate(subjects): CostEstimate {
       const parts = batches(subjects);
-      return { vendor: deps.vendor, endpoint, unit: 'per-call', estUnits: parts.length, usd: parts.reduce((s, b) => s + estimateUsd(b), 0) };
+      return { vendor: deps.vendor, endpoint, unit: 'per-call', estUnits: parts.length, usd: parts.reduce((s, b) => s + estimateUsd(fitted(b)), 0) };
     },
 
     async judge(asked0, _budget) {
@@ -149,7 +177,8 @@ export function openJudge(deps: OpenJudgeDeps): JudgePort & { readonly textOnly:
       for (const s of asked.filter((x) => unseen.has(String(x.storyId)))) outcomes.set(String(s.storyId), { kind: 'unavailable', storyId: s.storyId, detail: NO_FRAME });
 
       const spends: Spend[] = [];
-      for (const batch of batches(subjects)) {
+      for (const batch0 of batches(subjects)) {
+        const batch = fitted(batch0);
         const usd = estimateUsd(batch);
         const spec = { vendor: deps.vendor, endpoint, unit: 'per-call' as const, estUnits: 1, at: judgedAt };
         let answered: readonly JudgeOutcome[];
