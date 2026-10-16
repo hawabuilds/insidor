@@ -43,6 +43,10 @@
  *      Policy.learning.maxExamples (eval/src/feed/examples.ts, shared with judge-examples.ts).
  *      Posts on Policy.learning.alwaysTeach (a missed post the owner wants learned back) are always
  *      taught, first, and so never in the test: the held-out missed set is one post smaller each.
+ *      Then THE OWNER'S RULEBOOK (Policy.learning.rulebook, tools/lib/rulebook.ts): one call to a bigger
+ *      open model (RULEBOOK_MODEL, Llama 4 Maverick by default) writes at most 25 rules from the
+ *      block's own lines, the owner's standing decisions and counts over every input, and they go
+ *      in the block under their own heading — so the test grades block and rulebook together.
  *      And posts people coined (Policy.learning.coinedYes, on): two or more coins launched ten
  *      minutes or more after the post, the judge's answer "no", no self-launching author, no
  *      owner call, no hand gold, no crypto talk, no held kind — the newest twenty, as their own
@@ -144,7 +148,7 @@ import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwne
 import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
 import { leadFacts, leadLines, leadRows, summarise } from './lib/lead-time.ts';
-import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, gate, goalsText, latestSlot, missedCaught, parseFloor, ratesOf, share, strictestKeeping, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
+import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, gate, goalsText, latestSlot, missedCaught, parseFloor, ratesOf, withRulebook, share, strictestKeeping, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
@@ -156,6 +160,7 @@ import { PgCoinedVideoRepo, type Db } from '../store/src/index.ts';
 import { refreshSet } from './lib/coined-videos.ts';
 import { recordShortVideoPart, shortVideoPart, type ShortVideoPart } from './lib/short-video-tune.ts';
 import { sideBySide, sideBySideLines } from './lib/side-by-side.ts';
+import { RULEBOOK_HEADING, countCalls, writeRulebook } from './lib/rulebook.ts';
 
 const P = DEFAULT_POLICY;
 const L = P.learning;
@@ -283,21 +288,28 @@ async function ownerCalls(repo: PgLearningRepo) {
   const labelsSha = createHash('sha256').update(raw).digest('hex').slice(0, 16);
   const labels = (JSON.parse(raw) as { posts: Labelled[] }).posts;
   const calls: OwnerCall[] = [];
+  /* For the rulebook's counts (tools/lib/rulebook.ts): every call's label, source and own note. */
+  const notes: { label: 'meme' | 'not'; from: string; note: string | null }[] = [];
   for (const p of labels) {
     const label = p.ownerLabel ?? p.label;
     if (label !== 'meme' && label !== 'not') continue;
     calls.push({ itemId: p.itemId, text: p.text, imageUri: p.imageUri, label, why: p.why, at: postedAtOf(p.itemId), from: 'labels' });
+    notes.push({ label, from: 'labels', note: p.why });
   }
   for (const t of await soft(repo.postCalls(), [])) {
     if (t.body === null || t.body.trim() === '') continue;
     const why = t.note ?? (t.verdict === 'meme' ? "the owner's call: people could coin this" : "the owner's call: nothing to coin");
     calls.push({ itemId: t.itemId, text: t.body, imageUri: pictureOf(t.media)?.uri ?? t.shownPicture, label: t.verdict, why, at: t.at.getTime(), from: 'tap' });
+    notes.push({ label: t.verdict, from: 'tap', note: t.note });
   }
+  const missedDiagnoses: Record<string, number> = {};
   for (const m of await soft(repo.missedPosts(), [])) {
     calls.push({ itemId: m.itemId, text: m.body, imageUri: pictureOf(m.media)?.uri ?? null, label: 'meme', why: 'a post the owner says we missed: people coined or could coin it', at: m.at.getTime(), from: 'missed' });
+    notes.push({ label: 'meme', from: 'missed', note: null });
+    missedDiagnoses[m.diagnosis] = (missedDiagnoses[m.diagnosis] ?? 0) + 1;
   }
   const names: NameCall[] = (await soft(repo.nameCalls(), [])).flatMap((n) => (n.body === null ? [] : [{ itemId: n.itemId, text: n.body, name: n.name, verdict: n.verdict, betterName: n.betterName, at: n.at.getTime() }]));
-  return { calls, names, labelsSha };
+  return { calls, names, labelsSha, notes, missedDiagnoses };
 }
 
 /* ── a run ───────────────────────────────────────────────────────────────────────────────────── */
@@ -336,7 +348,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const order = withCoinMatch(await refitForRetune(url, { record: opts.record && !opts.dry }), await refitCoinMatchForRetune(url, { record: opts.record && !opts.dry }));
       log('info', 'order model refitted', { slot: slot.toISOString(), ...order.log });
 
-      const { calls, names, labelsSha } = await ownerCalls(repo);
+      const { calls, names, labelsSha, notes, missedDiagnoses } = await ownerCalls(repo);
       const last = await soft(repo.lastBuilt(), null);
       const newest = await soft(repo.newestInput(), null);
       const nothingNew = last !== null && last.labelsSha === labelsSha && (newest === null || (last.inputsThrough !== null && newest <= last.inputsThrough));
@@ -375,7 +387,25 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         P,
         new Set([...calls.map((c) => c.itemId), ...handGoldIdsNow]),
       );
-      const block = buildBlock(calls, names, L.maxExamples, { alwaysTeach: L.alwaysTeach, coinedYes: coinedTaught });
+      const examplesOnly = buildBlock(calls, names, L.maxExamples, { alwaysTeach: L.alwaysTeach, coinedYes: coinedTaught });
+      /* ★ THE OWNER'S RULEBOOK (tools/lib/rulebook.ts): written from the block's own lines, the
+         standing decisions and counts over every input, then put in the block, so the test below
+         tests both. Not written for `compose` (free) or `--rules-only` (no block); a rulebook that
+         cannot be written is left out and said. */
+      let rulebook: { readonly model: string; readonly rules: number; readonly usd: number } | { readonly why: string; readonly usd: number } | null = null;
+      let rules: string | null = null;
+      if (L.rulebook.on && opts.composeOnly !== true && opts.rulesOnly !== true) {
+        const shared = await openSharedMeter(L.rulebook.maxOutputTokens * 0.000_01 + 0.05, env, 'learning', LEARNING_USE);
+        try {
+          const w = await writeRulebook({ blockText: examplesOnly.text, missedCounts: missedDiagnoses, ...countCalls(notes, P) }, { env, meter: shared.meter, policy: P });
+          rules = w.rules;
+          rulebook = w.rules === null ? { why: w.why, usd: w.usd } : { model: w.model, rules: w.rules.split('\n').length, usd: w.usd };
+        } finally {
+          await shared.close();
+        }
+        log(rules === null ? 'warn' : 'info', rules === null ? 'retune rulebook not written; the block is tested without one' : 'retune rulebook written', { slot: slot.toISOString(), ...rulebook });
+      }
+      const block = withRulebook(examplesOnly, RULEBOOK_HEADING, rules);
       /* `--rules-only` teaches nothing, so nothing is held out: every missed post is tested. */
       const allMissed = currentCalls(calls).filter((c) => c.from === 'missed' && c.label === 'meme');
       const testMissed = opts.rulesOnly === true ? allMissed : block.testMissed;
@@ -514,7 +544,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const liveGrading = liveGraded === null ? null : ratesOf(liveGraded, held, GROUPS);
       const liveRates = liveGrading === null ? null : FLOOR === null ? liveGrading : { ...liveGrading, ...FLOOR };
       const liveCaught = nowRows === null ? null : missedCaught(atCutoff(graded(nowRows), liveCutoff, P), held);
-      const costUsd = spentUsd + gold.xUsd;
+      const costUsd = spentUsd + gold.xUsd + (rulebook?.usd ?? 0);
 
       /* Unanswered posts are out of every rate, and stop the block being applied. */
       const answered = rows.filter((r) => r.coinable !== null);
@@ -606,7 +636,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         handGold: rates.hand, liveNegatives: rates.negatives, heldKinds: held, liveSetup: liveRates, goals: verdict.goals, goal: goalsText(rates, L), withoutCryptoFacts: noFacts, precedentLabels: labelled.length,
         autoGold: rates.auto, missed: rates.missed, regressions: regressed, judgeInUse: inUse === null ? 'rules alone' : `block ${inUse.versionId}`,
         unanswered, baseline, maxBatch, rulesOnly: opts.rulesOnly === true, composition,
-        learnedFrom: block.used, examples: block.exampleIds.length, added: delta.added, removed: delta.removed, chars: block.text.length,
+        learnedFrom: block.used, rulebook, examples: block.exampleIds.length, added: delta.added, removed: delta.removed, chars: block.text.length,
         costUsd: Number(costUsd.toFixed(4)), batched: tested.batched, usage: tested.used, goldAdded: gold.added, missReasons, matchingLessons: lessons,
         tiktok: part === null ? 'the TikTok part could not run' : { setSize: part.setSize, added: part.added, bar: part.bar.why, judgeGate: tt, biggestGap: part.gapText },
       };
