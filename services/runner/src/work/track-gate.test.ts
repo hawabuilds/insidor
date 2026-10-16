@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY as LIVE_POLICY } from '@insidor/contracts/policy.ts';
 import type { TrackingFacts, TrackingJudgement } from '@insidor/store';
 
-import { staleUnpassed, worthRereading } from './track-gate.ts';
+import { offFeedTooOld, staleUnpassed, worthRereading } from './track-gate.ts';
 
 /* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
    pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
@@ -26,7 +26,7 @@ const nearYes: TrackingJudgement = { ...yes, confidence: P.qualify.minJudgeConfi
 const unsureYes: TrackingJudgement = { ...yes, confidence: P.qualify.minJudgeConfidence.text - r.boostBarMargin - 0.1 };
 
 function facts(over: Partial<{ [K in keyof TrackingFacts]: TrackingFacts[K] }> = {}): TrackingFacts {
-  return { onFeed: new Set(), catchAll: new Set(), storiesOf: new Map(), membersOf: new Map(), judged: new Map(), ...over };
+  return { onFeed: new Set(), onForYou: new Set(), catchAll: new Set(), storiesOf: new Map(), membersOf: new Map(), judged: new Map(), ...over };
 }
 
 test('a post on a feed is always re-read', () => {
@@ -73,4 +73,26 @@ test('the stale cut, on: an unjudged post off every feed past six hours is dropp
   assert.equal(staleUnpassed('a', old, now, facts({ onFeed: new Set(['a']) }), on), false);
   assert.equal(staleUnpassed('a', now - P.feed.fresh.staleAfterMs, now, facts(), on), false);
   assert.equal(staleUnpassed('a', null, now, facts(), on), false);
+});
+
+test('★ the off-feed cut: a paid-read post past twelve hours, off For You, loses its re-reads whatever its answer', () => {
+  assert.equal(P.track.offFeedMaxAgeMs, 12 * 3_600_000);
+  const now = 100 * 3_600_000;
+  const old = now - P.track.offFeedMaxAgeMs - 1;
+  for (const source of ['x', 'tiktok']) {
+    /* a pass, an unjudged catch-all post and a hidden-narrative post alike */
+    assert.equal(offFeedTooOld('a', source, old, now, facts({ judged: new Map([['a', yes]]) }), P), true);
+    assert.equal(offFeedTooOld('a', source, old, now, facts({ catchAll: new Set(['a']) }), P), true);
+    assert.equal(offFeedTooOld('a', source, old, now, facts(), P), true);
+  }
+});
+
+test('the off-feed cut keeps For You (frame or scroll), Popular\'s frame, younger posts, undated posts and other sources', () => {
+  const now = 100 * 3_600_000;
+  const old = now - P.track.offFeedMaxAgeMs - 1;
+  assert.equal(offFeedTooOld('a', 'x', old, now, facts({ onForYou: new Set(['a']) }), P), false);
+  assert.equal(offFeedTooOld('a', 'x', old, now, facts({ onFeed: new Set(['a']) }), P), false);
+  assert.equal(offFeedTooOld('a', 'x', now - P.track.offFeedMaxAgeMs, now, facts(), P), false);
+  assert.equal(offFeedTooOld('a', 'tiktok', null, now, facts(), P), false);
+  assert.equal(offFeedTooOld('a', 'reddit', old, now, facts(), P), false);
 });
