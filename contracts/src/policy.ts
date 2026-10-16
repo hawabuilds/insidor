@@ -3425,7 +3425,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v93',
+  version: 'policy.v94',
 
   admit: {
     maxAgeMin: 240,
@@ -3696,13 +3696,12 @@ const POLICY_V1: Policy = {
          for this model, so 80,000 estimated is well inside the window with the answer's room. */
       openMaxInputTokens: 80_000,
     },
-    /* The open model is the judge from 2026-10-16 20:15 UTC: the main judge's account ran dry at 19:28
-       and the owner is not topping it up. 0.95 until the re-tune has tuned the open model's own
-       cutoff (then null, so the block's cutoff rules): its confidences come in steps, and over the
-       day's shadow it said yes to 41% of posts at 0.90 and 12% at 0.95, so 0.95 is the step closest
-       to the old judge's 20 to 25% that the owner asked for. */
+    /* The open model is the judge from 2026-10-16 20:15 UTC (the main judge's account ran dry at
+       19:28 and the owner is not topping it up). Null from 2026-10-16 23:00 UTC: the owner chose
+       the evening re-tune's block 10 at its 0.90 cutoff (hand gold 65% against the old judge's 60%,
+       missed 64% against 62%, live non-memes 27% against 19%), so the block's own cutoff rules. */
     primary: 'open',
-    openCutoff: 0.95,
+    openCutoff: null,
     /* 90 s: above the open model's slowest tenth of ten-post calls (77 s, 2026-10-15) and far above
        the live judge's (about 8 s), so a slow but working call is not taken for a dead one. Five
        minutes' rest is a few scoring passes; half an hour after a billing refusal, which waits for
@@ -4634,7 +4633,7 @@ const POLICY_V1: Policy = {
     embedPerPass: 25,
     /* Off, the owner's to turn on: on 2026-10-16 38 of the board's 48 narratives were built from such
        posts, and 1,148 of the two days' judged-yes ones had no vector — about $0.10 a day to embed. */
-    searchedPosts: false,
+    searchedPosts: true, // the owner, 2026-10-16: in, if they pass the judge like every other post
     sameMeaning: 0.6,
     maxGapMs: 86_400_000, // a day: an old story and a new one with the same word stay apart
     maxSpanMs: 172_800_000, // two days

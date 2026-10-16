@@ -65,7 +65,7 @@ function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float3
   };
   const grouper = narrativeGrouper({
     repo, save: async (p) => (saved.push(p), true), blockCutoff: async () => null, titler, embed: null, keepVectors: async () => false,
-    meter, mode, policy: DEFAULT_POLICY, postSpace: 'post-space', log, now: () => NOW as Millis,
+    meter, mode, policy: { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, openCutoff: 0.95 } }, postSpace: 'post-space', log, now: () => NOW as Millis,
   });
   return { grouper, saved, reads, titles };
 }
