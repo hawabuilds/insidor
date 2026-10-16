@@ -465,3 +465,17 @@ test('a field we have never seen does not change anything', () => {
   assert.equal(decoded.items.length, 1);
   assert.equal(decoded.hasMore, false);
 });
+
+test('★ a post that talks about topping up is a post, not the vendor refusing us', async () => {
+  const heard: string[] = [];
+  const off = onOutOfCredit({ refused: (e) => heard.push(e.reason) });
+  try {
+    const said = { id: '7', text: 'Top up your phone credit now, low balance? Recharge here', likeCount: 3 };
+    const h = harness(() => json({ tweets: [said], status: 'success' }));
+    const raw = await httpClient(h.config).lookup(['7']);
+    assert.equal(raw.length, 1);
+    assert.deepEqual(heard, []);
+  } finally {
+    off();
+  }
+});
