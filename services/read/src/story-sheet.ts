@@ -2,8 +2,8 @@
  * GET /story/:id/sheet — what the phone's narrative page needs beyond the story's own projected
  * page (`GET /story/:id`): each post the page lists, as the feed projected it (so the page draws the
  * same card as For You), with that post's own view readings and when it went up, and the
- * narrative's coins, its own coin first, then the other coins written beside it, each priced as the
- * post sheet prices them.
+ * narrative's coins, its own coin first, then the other coins written beside it and the coins
+ * proven from its posts, each priced as the post sheet prices them.
  *
  * Its own file beside post-sheet.ts because it answers about a set of posts, not one, and the bound
  * on that set lives here. It shares the post sheet's coin pricing (`coinsFor`, passed in), so one
@@ -133,7 +133,13 @@ export async function buildStorySheet(storyId: string, deps: { readonly db: Db; 
 
   const link = storyLink(head['coins']);
   const listed = (await deps.db.query(STORY_COINS_SQL, [storyId])).flatMap((r) => str(r['address']) ?? []);
-  const addresses = [...new Set([...link.addresses, ...listed])].slice(0, STORY_COINS_MAX);
+  /* A coin proven from one of its posts (the card's `matched` or `one` link) fits the narrative too:
+     listed after its own coin, never made its own coin here. */
+  const fromPosts = out.flatMap((m) => {
+    const c = rec(rec(m.post)['coins']);
+    return c['kind'] === 'matched' || c['kind'] === 'one' ? (str(rec(c['coin'])['address']) ?? []) : [];
+  });
+  const addresses = [...new Set([...link.addresses, ...listed, ...fromPosts])].slice(0, STORY_COINS_MAX);
   const { coins, marketDown } = await deps.coinsFor(addresses, link.proven, link.coin);
   /* The narrative's own coin first, then the rest by market cap as the post sheet orders them. */
   const ordered = [...coins.filter((c) => c.proven), ...coins.filter((c) => !c.proven)];
