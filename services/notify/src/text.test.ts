@@ -132,6 +132,7 @@ test("★ the owner's examples, exactly", () => {
     body: 'GTA 6: new post from @Rockstar is on FYP. Your coin $GTA is $410K MC.',
   });
   assert.deepEqual(alertText('push_test', {}), { title: 'Test', body: 'Notifications are working.' });
+  assert.deepEqual(alertText('push_test', { test: 'alarm' }).title, 'Test alert from Insidor — alarms are working', 'the alarm test says it is a test');
 });
 
 test('a fact we do not have is left out of the sentence, never a 0 or a dash; one $ only', () => {

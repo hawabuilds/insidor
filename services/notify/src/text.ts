@@ -228,6 +228,8 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       return { title: 'Watchlist: coin found', body: `${post} now has a coin: ${tail}.` };
     }
     case 'push_test':
+      /* The owner's one-off alarm test (tools/send-test-alert.ts): labelled a test so it is never read as an alarm. */
+      if (f['test'] === 'alarm') return { title: 'Test alert from Insidor — alarms are working', body: 'This is a test. Nothing has stopped and nothing needs doing.' };
       return { title: 'Test', body: 'Notifications are working.' };
     case 'narrative_promoted':
       return { title: 'New narrative', body: s(f['title'], 'A new narrative is on the board.') };
