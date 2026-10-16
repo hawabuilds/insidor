@@ -745,7 +745,7 @@ export interface JudgePolicy {
    * again; while it rests the other answers every batch. `deadlineMs` is the whole batch's wall
    * clock, retries included: the open model's slowest tenth of calls took about 7.7 s a post, 77 s
    * for ten, on 2026-10-15. 135 s from 2026-10-16: the open judge's worst case by `open` (a first
-   * round under 45 s, then a re-ask round of two 40 s tries) is 127 s, and at 90 s a batch whose
+   * round under 60 s, then a re-ask round of two 35 s tries) is 132 s, and at 90 s a batch whose
    * first provider hung was cut off just as its second provider was answering. Off: the primary
    * alone, as before.
    */
@@ -797,8 +797,12 @@ export interface JudgePolicy {
    * (`parallel`), so ten posts take about one five-post call. A post a reply still skipped or cut
    * off is asked again `reask` times, but only while the batch is under `reaskWithinMs`, so the
    * re-ask cannot carry it past the deadline. `timeoutMs` and `maxAttempts` are per call, each
-   * retry starting at the next pinned provider (the adapter's `rotated`): two tries of 40 s, plus
-   * one re-ask round, stay inside `failover.deadlineMs`. `answerTokensPerPost` sizes the answer
+   * retry starting at the next pinned provider (the adapter's `rotated`): two tries of 35 s, plus
+   * one re-ask round, stay inside `failover.deadlineMs`. 35 s and 60 s rather than 40 s and 45 s
+   * from the second copy test: a first provider that hung for 40 s and then a second that looped
+   * ended the first round at 72 s, past a 45 s re-ask limit, and five posts went unanswered; at
+   * 35 s and 60 s, 116 of 116 were answered, 1.1 s a post median (most five-post calls take
+   * 6–30 s). `answerTokensPerPost` sizes the answer
    * budget to the batch (about 80 used a post), so a looping provider is cut off at 900 tokens, not
    * 1,200, and its posts are re-asked.
    */
@@ -3523,7 +3527,7 @@ const POLICY_V1: Policy = {
        or meme post, and about 4% of the day's judged posts. 0.25 dropped one later missed post on a
        time split (train before 15 Oct 13:00, test after); 0.5 dropped none on either split. */
     junkFilter: { on: false, l2: 0.3, folds: 5, margin: 0.5, minProtected: 30 },
-    open: { batchSize: 5, parallel: 4, reask: 1, reaskWithinMs: 45_000, timeoutMs: 40_000, maxAttempts: 2, answerTokensPerPost: 150 },
+    open: { batchSize: 5, parallel: 4, reask: 1, reaskWithinMs: 60_000, timeoutMs: 35_000, maxAttempts: 2, answerTokensPerPost: 150 },
     /* The owner, 2026-10-16: no main-judge API from now on (its credit ran out at 19:26 UTC that
        evening). Each question copy-tested that night on 30 recent real inputs against the main
        judge's stored answers (the open model's cost for all of it: $0.02):
