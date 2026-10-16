@@ -2075,6 +2075,22 @@ export interface RisingPolicy {
     readonly maxPostAgeAtLaunchMs: number;
     readonly minApprovals: number;
   };
+  /**
+   * ★ THE QUICK FRAME (the owner, 2026-10-16: "event-driven FYP"). Between the full frames, the
+   * project service checks every `checkEveryMs` whether a judge's answer, a coin's link to a post the
+   * judge passed or the owner's call on a post has landed since the last frame began. When one has, and the answers have
+   * been quiet for `settleMs` (a pass files its kind answers after its yeses), it runs a quick frame
+   * (services/project quick-frame.ts): only the changed posts are weighed, and For You is the last
+   * frame with them added, re-placed or taken off. Never while another frame runs (the jobs run one
+   * at a time), never within `minGapMs` of the last quick one; the full frame keeps its own minute.
+   * Off: For You moves only with the full frame.
+   */
+  readonly quickFrame: {
+    readonly on: boolean;
+    readonly checkEveryMs: number;
+    readonly minGapMs: number;
+    readonly settleMs: number;
+  };
 }
 
 export interface IngestPolicy {
@@ -4293,6 +4309,12 @@ const POLICY_V1: Policy = {
        25 before any coin named them, 26 after, the median 38 minutes after the link. Six hours is For
        You's own (`fypMaxAgeMs`), 5,000 the credit's (`finders.coinLinks.textMinApprovals`). */
     coinLinked: { on: true, maxPostAgeAtLaunchMs: 21_600_000, minApprovals: 5_000 },
+    /* 2026-10-16, read-only from here against the live database: the full frame's For You and Popular
+       took 67 s (61 s of it weighing coins for every passing post), and the service's frames began
+       five minutes apart that evening; a quick frame over 2, 5 and 30 minutes of changes (50, 84 and
+       311 posts) took 1.1, 2.1 and 2.5 s, and its probe 20 ms. The answers came in 121 bursts in six
+       hours and were quiet 92% of the time, so a ten-second settle seldom waits. */
+    quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000 },
   },
 
   rank: {

@@ -13,7 +13,7 @@
  * ★ THE PROJECTOR IS A SCHEDULE, NOT A PROCESS. `project` runs the one-shot jobs (`db.mjs
  * project` every minute; coin logos every two; `market`, `pairs` and the source indicator every five; `label` hourly; the
  * daily recall check and the twice-daily judge re-tune, both detached; the namer's watch every ten
- * minutes), one at a time,
+ * minutes; and between them, when a judge's answer has landed, the quick For You frame), one at a time,
  * and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
  * otherwise — so Railway restarts it when the board stops moving, not just when it crashes.
  *
@@ -83,17 +83,39 @@ if (service in MAIN) {
       const child = run(job.args);
       child.on('exit', (code) => resolve(code === 0));
     });
+  /* ★ THE QUICK FRAME (services/project/src/quick-wake.ts, Policy.rising.quickFrame): asked between
+     jobs and on every tick, so a judge's answer reaches For You without waiting for the minute. It is
+     one more job in this one-at-a-time loop, so it never runs beside a frame; the cursor is read just
+     before each full frame. Without it (the module fails to load) the full frame runs as before. */
+  const quick = await import('../services/project/src/quick-wake.ts')
+    .then((m) =>
+      m.openQuickWake(
+        process.env,
+        async (from) => {
+          const ok = await once({ args: ['services/project/src/quick-main.ts', String(from.answerId), String(from.atMs)] });
+          last.set('project-quick', { at: Date.now(), ok });
+          return ok;
+        },
+        (fields) => console.log(JSON.stringify(fields)),
+      ),
+    )
+    .catch((e) => {
+      console.log(JSON.stringify({ level: 'error', msg: 'quick frame off: its wake could not start', err: e instanceof Error ? e.message : String(e) }));
+      return null;
+    });
   let stopping = false;
   for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => (stopping = true, process.exit(0)));
   (async () => {
     while (!stopping) {
       for (const job of JOBS) {
+        await quick?.maybe();
         if (!due(job, Date.now())) continue;
+        if (job.name === 'project') await quick?.mark();
         const ok = await once(job);
         last.set(job.name, { at: Date.now(), ok });
         console.log(JSON.stringify({ level: ok ? 'info' : 'error', msg: 'job ran', job: job.name, ok }));
       }
-      await new Promise((r) => setTimeout(r, 5_000));
+      await new Promise((r) => setTimeout(r, 1_000));
     }
   })();
   createServer((req, res) => {
