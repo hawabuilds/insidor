@@ -3512,7 +3512,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v104',
+  version: 'policy.v105',
 
   admit: {
     maxAgeMin: 240,
@@ -3969,7 +3969,10 @@ const POLICY_V1: Policy = {
        floor could have found it. Measured 16:30 UTC: 'qme' and 'und' posts over the 6-minute band's
        floor were about 1 a minute of posting time against about 7 found a minute in the three
        languages; the floor rises to keep the same posts a pass, so the cost does not move. */
-    langs: ['en', 'zxx', 'pt', 'qme'],
+    /* 'ja' from 2026-10-17, the owner's choice: 16 viral Japanese posts were coined in 7 days, judged
+       yes, and none held before its coin, because Japanese was never searched. Estimated +$1.75 to
+       $3.50 a day; the posts line below was raised so English search is not squeezed. */
+    langs: ['en', 'zxx', 'pt', 'qme', 'ja'],
     /* The owner's watch words, chosen 2026-10-14 by what the newest-first search returns for each
        (every run from 17:30 UTC on 2026-10-13, videos a run, median age, under two hours a run):
        cute 25.8, 1.3 h, 23.7; meme 18.8, 1.6 h, 15.3; dog 25.6, 2.0 h, 13.6; pet 22.3, 2.0 h, 12.2;
@@ -4645,7 +4648,7 @@ const POLICY_V1: Policy = {
        the text source's live search, re-reads and replies were $9.24 in the 24 hours to 08:30 UTC and
        the middle lane adds $2.75 to $3.45; the scraper's live runs were $3.22 and the learned-tag lane
        adds about $1.10. Each line is that and about a tenth, so the warnings mean something again. */
-    supplierLines: { posts: 14, judge: 10.5, video: 4.5, actors: 2, embeddings: 4.5, secondVideo: 2.5 },
+    supplierLines: { posts: 17, judge: 10.5, video: 4.5, actors: 2, embeddings: 4.5, secondVideo: 2.5 },
     warnAt: [0.8, 0.95],
     /* $6: tonight's measuring and re-scoring had already spent $4.44 of the judge by 02:00 UTC. With the live $21 the day's total is $28, under the owner's $30; $7 lets the smaller-picture test run tonight. */
     /* $8.75 from 2026-10-13 05:30 UTC: $1.25 moved from the live posts line ($11.25 → $10; measured
