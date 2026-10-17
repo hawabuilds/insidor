@@ -20,6 +20,61 @@
   letter-spacing: 0.2em;
 }
 
+/* ── For You's sort chips and their window ─────────────────────────── */
+
+/* The Narratives tab's chips (narratives.module.css): the chosen one #241A3A with #E4D6FF text. */
+.sortRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 12px var(--gutter) 0;
+}
+
+.sorts {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sortChip {
+  flex: none;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: #8b8794;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.sortOn {
+  background: #241a3a;
+  color: #e4d6ff;
+}
+
+.windows {
+  flex: none;
+  display: flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: #16151c;
+}
+
+.windows button {
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 7px;
+  color: #8b8794;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.windows .windowOn {
+  background: #2a2733;
+  color: #fff;
+}
+
 /* ── the filter button and site pills ──────────────────────────────── */
 
 .filterRow {

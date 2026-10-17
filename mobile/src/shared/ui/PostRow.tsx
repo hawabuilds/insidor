@@ -34,6 +34,10 @@
  *              the search found more than it kept) and Create coin — never Buy on an unsure match
  *   several  → how many, and View coins
  *
+ * ★ ON TRENDING AND MOST VIEWED THE CARD SAYS WHAT IT GAINED (`gained`): "+48K 1h" in green under
+ * its views, the views gained in the chosen window as the read service counted them. It is the fact
+ * the list is about, never the list's own key, which is not sent.
+ *
  * ★ A POST IN A REAL NARRATIVE CARRIES A SMALL TAG ("GTA 6 story, 12 posts", the read service's
  * `inStory`) that opens the narrative, when the screen passes `openStory`; the narrative's own page
  * does not, since the post is already in front of its narrative there.
@@ -49,7 +53,7 @@ import { storyWords } from '../story-words.ts';
 import { postCoinStatus, seeCoinsLabel, type PostAction } from '../coin-status.ts';
 import { useCoinCap } from '../useCoinCap.ts';
 import { formatAge } from '../format/duration.ts';
-import { formatCount } from '../format/number.ts';
+import { compact, formatCount } from '../format/number.ts';
 import { tickerText } from '../format/ticker.ts';
 import { platformOf } from '../platform.ts';
 import { Button } from './Button.tsx';
@@ -81,7 +85,7 @@ const NO_COIN = { known: false, pending: 'not_minted' } as const;
  * `extra`: a strip under the coin line that the card does not decide (the owner's controls).
  * `watch`: the Watch star, last on the coin line's row, drawn by the caller (shared/ui/WatchStar.tsx).
  */
-export function PostRow({ post, now, handlers, extra = null, watch = null }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode; watch?: ReactNode }) {
+export function PostRow({ post, now, handlers, extra = null, watch = null, gained = null }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode; watch?: ReactNode; gained?: { readonly views: number; readonly window: string } | null }) {
   /* The coin line's cap is the shared one (shared/coin-cap.ts): live while a fresh price is held,
      so the card says what the sheet and token page say. The card itself never polls. */
   const own = post.coins.kind === 'one' || post.coins.kind === 'matched' ? post.coins.coin : null;
@@ -126,6 +130,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null }: { p
             <div className={styles['views']}>
               <Value r={formatCount(post.reach)} className={styles['viewsN']} />
               <span className={styles['viewsL']}>views</span>
+              {gained !== null ? <span className={styles['gained']}>+{compact(gained.views)} {gained.window}</span> : null}
             </div>
             <div className={styles['byline']}>
               <span>

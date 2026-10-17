@@ -8,6 +8,12 @@
  * you watch (the star on a card or the post sheet, read from the alert service: useWatchedPosts.ts).
  * The site pills and the filter panel narrow whichever list is showing (`feed-filters.ts`). The board
  * (`GET /board/default`) is still read, for its provenance alone: the Sample data bar.
+ * ★ FOR YOU'S SORT CHIPS (feed-sort.ts): New, the default, is the feed as it always was; Trending
+ * and Most viewed, over 1h, 6h or 24h, are the read service's lists of For You's own posts in its
+ * order (`GET /rising/fyp/sorted`, services/read/src/post-sorts.ts), each card saying what it gained
+ * in the window. The choice is remembered on this phone. The live slide-ins and the endless scroll are
+ * New's: a ranked list is the top fifty, read again every two minutes and on pull to refresh.
+ *
  * Pulling the list down from the top reads it again (alerts/pull.ts); For You comes newest first, so
  * new posts land at the top.
  *
@@ -49,7 +55,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BOARD_VIEW, fetchBoard, fetchRising, type RisingFeed, type RisingPost } from '../../shared/api/index.ts';
+import { BOARD_VIEW, fetchBoard, fetchRising, fetchRisingSorted, type RisingFeed, type RisingPost, type RisingSorted } from '../../shared/api/index.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
 import { usePreloadCreate } from '../create/preload.ts';
 import { boardNotice } from '../../shared/notice.ts';
@@ -64,6 +70,7 @@ import { PostRow } from '../../shared/ui/PostRow.tsx';
 import { OlderCoinsLine } from './OlderCoins.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { FilterPanel } from './FilterPanel.tsx';
+import { SORTS, WINDOWS, loadChoice, saveChoice, windowOf, type SortChoice } from './feed-sort.ts';
 import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyPostFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
 import { LIVE_FEED } from './live-feed.ts';
 import { LiveCard } from './LiveCard.tsx';
@@ -88,6 +95,8 @@ import styles from './feed.module.css';
 /** A card's height before any is measured, and how far beyond the screen cards are kept drawn. */
 const CARD_GUESS_PX = 196;
 const DRAWN_BEYOND_PX = 1200;
+/** How often a ranked list (Trending, Most viewed) is read again while it is on screen. */
+const SORTED_EVERY_MS = 120_000;
 /** Placeholder cards under the list while the next page is on its way. */
 const PLACEHOLDERS = 3;
 
@@ -133,9 +142,27 @@ export function Feed({
   }, []);
   const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
   const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
+  /* The sort chip and each sort's window, as this phone last left them (feed-sort.ts). */
+  const [choice, setChoice] = useState<SortChoice>(loadChoice);
+  const choose = (c: SortChoice) => {
+    setChoice(c);
+    saveChoice(c);
+  };
+  const win = windowOf(choice);
+  const sortedOn = tab === 'fyp' && choice.sort !== 'new';
+  const [sorted, reloadSorted] = useLoad<RisingSorted | null>(sortedOn ? `rising:fyp:${choice.sort}:${win ?? ''}` : 'rising:fyp:new', (signal) =>
+    sortedOn && win !== null ? fetchRisingSorted(choice.sort, win, signal) : Promise.resolve(null),
+  );
+  useEffect(() => {
+    if (!sortedOn) return;
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible') reloadSorted();
+    }, SORTED_EVERY_MS);
+    return () => clearInterval(t);
+  }, [sortedOn, reloadSorted]);
   usePreloadCreate(); /* Create coin then opens with the launchpad's rules already read. */
   /* FYP kept current while it is looked at, when the build switches it on; otherwise null and unused. */
-  const live = useLiveFeed(LIVE_FEED && tab === 'fyp', fyp, reloadFyp, postsOf, true, newestPosted);
+  const live = useLiveFeed(LIVE_FEED && tab === 'fyp' && !sortedOn, fyp, reloadFyp, postsOf, true, newestPosted);
   /* For You's older pages, kept while Watchlist is open. They start under the card the list shows
      last and join it newest posted first (feed-order.ts). */
   const lastFyp = useRef<string | null>(null);
@@ -144,7 +171,8 @@ export function Feed({
   const reload = useCallback(() => {
     reloadBoard();
     reloadFyp();
-  }, [reloadBoard, reloadFyp]);
+    reloadSorted();
+  }, [reloadBoard, reloadFyp, reloadSorted]);
   const watchedRows = useWatchedPosts(tab === 'watchlist');
   const now = useNow();
   /* The owner's controls (features/owner): drawn only when the services say this is the owner. */
@@ -167,7 +195,7 @@ export function Feed({
      hid stays out (withoutHidden below runs on every read, and the hidden set is kept on the
      device and seeded from the server's list, so a reload does not bring it back either). */
   const settled = useRef<(() => void) | null>(null);
-  const shownLoad = tab === 'fyp' ? fyp : board;
+  const shownLoad = sortedOn ? sorted : tab === 'fyp' ? fyp : board;
   useEffect(() => {
     if (shownLoad.state !== 'loading') {
       settled.current?.();
@@ -197,9 +225,14 @@ export function Feed({
   const headPosts = live.rows ?? (fyp.state === 'ready' ? fyp.value.posts : null);
   lastFyp.current = headPosts?.[headPosts.length - 1]?.id ?? null;
   const feedPosts = useMemo(() => (headPosts === null ? null : withOlder(headPosts, older.posts, newestPosted)), [headPosts, older.posts]);
-  const posts = feed.state === 'ready' && feedPosts !== null ? applyPostFilters(withoutHidden(feedPosts, hiddenNow, (p) => p.id), filters, now) : null;
+  /* The ranked list in place of the feed while Trending or Most viewed is chosen; New is the feed. */
+  const ranked = sortedOn && sorted.state === 'ready' ? sorted.value : null;
+  const listLoad = sortedOn ? sorted : feed;
+  const listPosts = sortedOn ? (ranked?.posts ?? null) : feedPosts;
+  const paging = sortedOn ? null : older;
+  const posts = listLoad.state === 'ready' && listPosts !== null ? applyPostFilters(withoutHidden(listPosts, hiddenNow, (p) => p.id), filters, now) : null;
   useSavedCalls('coin_match', posts === null ? [] : posts.rows.map((p) => p.id), owner);
-  const liveOn = live.rows !== null;
+  const liveOn = live.rows !== null && !sortedOn;
   const post = (p: RisingPost) => (
     <PostRow
       key={p.id}
@@ -213,6 +246,7 @@ export function Feed({
         </>
       }
       watch={<WatchStar postId={p.id} />}
+      gained={ranked !== null && ranked.gained.has(p.id) ? { views: ranked.gained.get(p.id) ?? 0, window: ranked.window } : null}
       handlers={{
         open: () => setSheet({ id: p.id, start: 'post' }),
         create: () => onCreatePost(p),
@@ -235,6 +269,27 @@ export function Feed({
         </header>
 
         <UnderlineTabs tabs={TABS} current={tab} onChange={setTab} label="Feed" />
+
+        {tab === 'fyp' ? (
+          <div className={styles['sortRow']}>
+            <div className={styles['sorts']} role="group" aria-label="Sort">
+              {SORTS.map((o) => (
+                <button key={o.key} type="button" className={`${styles['sortChip']} ${o.key === choice.sort ? styles['sortOn'] : ''}`} aria-pressed={o.key === choice.sort} onClick={() => choose({ ...choice, sort: o.key })}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            {choice.sort !== 'new' && win !== null ? (
+              <div className={styles['windows']} role="group" aria-label="Time window">
+                {WINDOWS.map((w) => (
+                  <button key={w} type="button" className={w === win ? styles['windowOn'] : ''} aria-pressed={w === win} onClick={() => choose({ ...choice, windows: { ...choice.windows, [choice.sort]: w } })}>
+                    {w}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className={styles['filterRow']}>
           <button
@@ -290,17 +345,17 @@ export function Feed({
 
         {onPosts ? (
           <>
-            {feed.state === 'loading' ? <p className={styles['empty']}>Reading the feed.</p> : null}
-            {feed.state === 'failed' ? (
+            {listLoad.state === 'loading' ? <p className={styles['empty']}>Reading the feed.</p> : null}
+            {listLoad.state === 'failed' ? (
               <div className={styles['empty']}>
                 <p>Couldn't reach the read service, so there is nothing to show. This is not an empty feed.</p>
                 <Button look="quiet" onClick={reload}>Try again</Button>
               </div>
             ) : null}
-            {feed.state === 'ready' && posts !== null ? (
+            {listLoad.state === 'ready' && posts !== null ? (
               <>
                 <WindowList
-                  key={tab}
+                  key={sortedOn ? `${choice.sort}:${win ?? ''}` : tab}
                   items={posts.rows}
                   keyOf={idOf}
                   render={(p) =>
@@ -315,17 +370,20 @@ export function Feed({
                   guess={CARD_GUESS_PX}
                   overscan={DRAWN_BEYOND_PX}
                   nearEnd={PREFETCH_ROWS}
-                  onNearEnd={older.more}
+                  {...(paging !== null ? { onNearEnd: paging.more } : {})}
                 />
-                {older.phase === 'loading' ? <Placeholders /> : null}
-                {older.phase === 'failed' ? (
+                {paging?.phase === 'loading' ? <Placeholders /> : null}
+                {paging?.phase === 'failed' ? (
                   <div className={styles['empty']}>
                     <p>Couldn't read older posts. The ones above are everything read so far.</p>
-                    <Button look="quiet" onClick={older.retry}>Try again</Button>
+                    <Button look="quiet" onClick={paging.retry}>Try again</Button>
                   </div>
                 ) : null}
-                {(feedPosts?.length ?? 0) === 0 && older.phase === 'done' ? <p className={styles['empty']}>No posts yet.</p> : null}
-                {(feedPosts?.length ?? 0) > 0 && posts.rows.length === 0 && posts.unknown === 0 && older.phase === 'done' ? (
+                {ranked !== null && ranked.posts.length === 0 ? (
+                  <p className={styles['empty']}>No For You post was read in the last {ranked.window}, so there is nothing to rank yet.</p>
+                ) : null}
+                {paging !== null && (feedPosts?.length ?? 0) === 0 && paging.phase === 'done' ? <p className={styles['empty']}>No posts yet.</p> : null}
+                {(listPosts?.length ?? 0) > 0 && posts.rows.length === 0 && posts.unknown === 0 && (paging === null || paging.phase === 'done') ? (
                   <p className={styles['empty']}>No posts match these filters.</p>
                 ) : null}
                 {posts.unknown > 0 ? (
