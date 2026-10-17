@@ -959,7 +959,11 @@ export async function withRuntime<T>(
         return pair === null ? null : failoverJudge(pair);
       };
       const pick = <T,>(who: AskWith, open: () => T | null, main: () => T | null): T | null => (who === 'open' ? open() : who === 'main' ? main() : null);
-      const kindJudge = pick(askWith.kind, () => openJudgePair('kind'), mainKindJudge);
+      /* ★ The kind question must never be left without a judge: a post the first question passed
+         waits for it, so a missing one empties For You (2026-10-17 11:06–15:30 UTC: with Nemotron
+         first and no separate backup host, the pair below had no first side and answered nothing).
+         With no pair, the post question's own judges ask it, in the same order. */
+      const kindJudge = pick(askWith.kind, () => openJudgePair('kind') ?? mainKindJudge(), mainKindJudge);
       /* QUALIFY's narrative question. */
       const judge = pick(askWith.stories, () => openJudgePair('story'), () => mainStoryJudge);
       /* The same-subject question for borderline pictures (work/image-pairs.ts), GROUP's and the coin match's. */
