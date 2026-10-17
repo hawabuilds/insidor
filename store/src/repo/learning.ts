@@ -285,6 +285,26 @@ export class PgLearningRepo {
     return new Map(rows.map((r) => [r.item_id, { others: talks(r.split['_others']), shill: r.split['_postShill'] === true || talks(r.split['_own']) }] as const));
   }
 
+  /**
+   * The posts first shown on one feed (public.feed_post) since `since`, with the newest kind label
+   * the live judge gave each (null: never asked). The owner's gate (Policy.learning.ownerGate) reads
+   * its recent junk from these: which of them the owner tapped "Not a meme", and which are news or
+   * text-only. Read-only; about a thousand rows for three days of For You (2026-10-17).
+   */
+  async shownSince(feedId: string, since: Date): Promise<readonly { readonly itemId: string; readonly firstShownAt: Date; readonly kind: string | null }[]> {
+    const rows = await this.#db.query<{ item_id: string; first_shown_at: Date; kind_label: string | null }>(
+      `select fp.item_id, fp.first_shown_at, k.kind_label
+         from public.feed_post fp
+         left join lateral (select pj.proposed_name as kind_label from internal.post_judgement pj
+                             where pj.item_id = fp.item_id and pj.prompt_id like 'post-kind%'
+                             order by pj.judged_at desc, pj.id desc limit 1) k on true
+        where fp.feed_id = $1 and fp.first_shown_at >= $2
+        order by fp.first_shown_at desc, fp.item_id`,
+      [feedId, since],
+    );
+    return rows.map((r) => ({ itemId: r.item_id, firstShownAt: r.first_shown_at, kind: r.kind_label }));
+  }
+
   /** Posts as we hold them, for the owner's hand-gold list: text and media, by feed id. */
   async heldPosts(itemIds: readonly string[]): Promise<readonly { readonly itemId: string; readonly body: string; readonly media: unknown }[]> {
     if (itemIds.length === 0) return [];

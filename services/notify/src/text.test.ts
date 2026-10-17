@@ -78,6 +78,11 @@ test("a re-tune summary says applied or kept, each test as passed-of-tested, and
   );
   assert.match(alertText('retune_summary', { applied: false, cutoffRule: 'refused', cutoffFrom: 0.7 }).body, /No cutoff from 0\.7 up gave less junk/);
   assert.match(alertText('retune_summary', { applied: true, missReasons: { never_found: 2, rejected: 1 } }).body, /Missed today: never found 2, rejected 1\.$/);
+  assert.match(
+    alertText('retune_summary', { applied: false, ownerLine: "owner's gate refused: untaught misses caught 1/6 (live 0/6), fixed test set 10/16 (live 10/16)", goldPassed: 1, goldN: 2 }).body,
+    /^Owner's gate refused: untaught misses caught 1\/6 \(live 0\/6\), fixed test set 10\/16 \(live 10\/16\)\. Hand gold 1\/2/,
+    "the owner's table comes first",
+  );
 });
 
 test("a re-tune summary carries the order model's refit: each signal's weight, and each held-out group before and after", () => {
