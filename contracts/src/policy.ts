@@ -3490,7 +3490,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v98',
+  version: 'policy.v99',
 
   admit: {
     maxAgeMin: 240,
@@ -3754,8 +3754,17 @@ const POLICY_V1: Policy = {
       sameSourceFirst: 0,
       /* 40, the middle of the owner's 30 to 50. Ten posts a call share many neighbours, so a call
          carries a few hundred labelled posts, not 400. The cost is the open model's input price:
-         about $0.0003 a post against $0.00012 at ten (measured on the re-tune's test posts). */
-      openK: 40,
+         about $0.0003 a post against $0.00012 at ten (measured on the re-tune's test posts).
+         20 from 2026-10-17 (v99), to cut cost without changing the answers: the live judge
+         (Nemotron, ten posts a call, block v10, held to its 0.70 cutoff) was asked the same posts
+         with 20 and with 40, same seed and leakage rules. On the 135 posts the 20 run answered
+         (its cap stopped it there; the hash order mixes every set): gold 27 against 25 of 41, missed
+         5 and 5 of 7, live non-memes kept 5 against 4 of 37, untapped kept 12 and 12 of 20, fresh
+         "not a meme" kept 2 against 3 of 30; 8 of 135 posts changed. Asking 40 twice on the same
+         seed changed 17 of 120 gold posts (74 and 75 passed), so every difference is inside the
+         judge's own noise. Input fell from about 29,700 to 21,900 tokens a call: $0.00041 a post
+         against $0.00054, about $0.95 a day at 7,200 posts. */
+      openK: 20,
       /* The pinned providers serve a 131,072-token window (the router's listing, 2026-10-16). The
          estimate counts a picture at 1,600 tokens and text at three characters a token, both high
          for this model, so 80,000 estimated is well inside the window with the answer's room. */
