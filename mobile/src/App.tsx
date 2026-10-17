@@ -58,7 +58,6 @@ function Screen({ route, create, unread, onAlertsSeen, readUnread }: { route: Ro
       /* The same Feed for both: `#/post/<id>` is For You with that post's sheet open (Feed.tsx takes it). */
       return (
         <Feed
-          onCreate={(row, labelled) => create({ title: row.title, reach: row.reach, thumbUrl: row.thumbUrl, labelled, storyId: row.id })}
           onCreatePost={(p) => create({ title: p.excerpt, reach: p.reach, thumbUrl: p.thumbUrl, labelled: false, storyId: p.storyId, link: p.permalink, postId: p.id })}
         />
       );
