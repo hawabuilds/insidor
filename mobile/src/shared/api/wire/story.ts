@@ -131,8 +131,16 @@ export interface Story {
    * the projector; null in a slot no post was being read in. Null when the server sends no series.
    */
   readonly viewsGained: ViewsGained | null;
-  /** Each listed post's newest views and its own last-hour gain, by post id. Null from an older server. */
+  /** The same gains from its first reading to now in half-hours: the page's "All" line. Null from an older server. */
+  readonly viewsGainedAll: ViewsGained | null;
+  /** Each listed post's newest views, its own last-hour gain and when we found it, by post id. Null from an older server. */
   readonly postViews: ReadonlyMap<string, PostViews> | null;
+  /**
+   * The Narratives tab's orders by window, keyed by hours (1, 6, 24): views gained in it, posts
+   * found in it, and its place in Trending for it (1 first). The place is a position, nothing more.
+   * Null from an older server.
+   */
+  readonly inWindow: ReadonlyMap<number, InWindow> | null;
   /** The top coin when none is settled: shown only as "Top coin, not checked", never as its coin. */
   readonly topCoin: Coin | null;
   /** How many posts the page lists, as the server counts them. */
@@ -150,6 +158,14 @@ export interface ViewsGained {
 export interface PostViews {
   readonly views: number | null;
   readonly gainedLastHour: number | null;
+  /** When we first saved the post; null when the server did not say. */
+  readonly foundAt: number | null;
+}
+
+export interface InWindow {
+  readonly viewsGained: Measured;
+  readonly newPosts: number;
+  readonly trendingPlace: number;
 }
 
 /**
