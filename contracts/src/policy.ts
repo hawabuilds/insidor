@@ -3490,7 +3490,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v97',
+  version: 'policy.v98',
 
   admit: {
     maxAgeMin: 240,
@@ -4086,19 +4086,22 @@ const POLICY_V1: Policy = {
       /* On from 2026-10-16 18:20 UTC, the owner's option 1: this cadence, its own loop and cap. */
       on: true,
       everyMs: 30_000,
+      /* Halved on 2026-10-17 to cut cost without touching finding or judging (the owner: "do 2 and 3"):
+         the text source's young posts every 2 minutes (was 1), short video every 10, 30 and 60
+         minutes (was 5, 15 and 30), which also halves the second vendor's credits a day. */
       cadence: {
         steps: [
-          { underMs: 7_200_000, everyMs: 60_000 }, // under 2 hours: every minute
+          { underMs: 7_200_000, everyMs: 120_000 }, // under 2 hours: every 2 minutes
           { underMs: 21_600_000, everyMs: 300_000 }, // under 6 hours: every 5 minutes
         ],
         thenEveryMs: 900_000, // then every 15 minutes while on For You
       },
       shortVideoCadence: {
         steps: [
-          { underMs: 7_200_000, everyMs: 300_000 },
-          { underMs: 21_600_000, everyMs: 900_000 },
+          { underMs: 7_200_000, everyMs: 600_000 },
+          { underMs: 21_600_000, everyMs: 1_800_000 },
         ],
-        thenEveryMs: 1_800_000,
+        thenEveryMs: 3_600_000,
       },
       dueSlackMs: 10_000,
       openReadMinGapMs: 60_000,
