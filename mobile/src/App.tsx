@@ -59,6 +59,7 @@ function Screen({ route, create, unread, onAlertsSeen, readUnread }: { route: Ro
       return (
         <Feed
           onCreatePost={(p) => create({ title: p.excerpt, reach: p.reach, thumbUrl: p.thumbUrl, labelled: false, storyId: p.storyId, link: p.permalink, postId: p.id })}
+          onCreateStory={(s) => create({ title: s.title, reach: s.reach, thumbUrl: s.thumbUrl, labelled: noticeFor(s) !== null, storyId: s.id })}
         />
       );
     case 'narratives':

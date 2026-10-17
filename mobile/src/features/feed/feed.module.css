@@ -278,3 +278,11 @@
     animation: none;
   }
 }
+
+/* Starred narratives on Watchlist: the Narratives tab's cards, spaced as they are there. */
+.narratives {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 16px 16px;
+}
