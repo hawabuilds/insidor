@@ -12,7 +12,8 @@
  * produces a rate that is silently wrong rather than absent.
  */
 
-import type { Item, CounterSet, Fingerprint, MediaRef, Millis } from '@insidor/contracts';
+import type { Item, CounterSet, Fingerprint, Judgement, MediaRef, Millis } from '@insidor/contracts';
+import { JUDGE_EVIDENCE } from '@insidor/contracts';
 import type { ItemId, SourceId } from '@insidor/contracts/ids.ts';
 import type { ItemRepo } from '@insidor/contracts/ports/store.ts';
 
@@ -234,6 +235,51 @@ export class PgItemRepo implements ItemRepo {
     );
     const fingerprints = await this.#fingerprintsFor(rows.map((row) => row.item_id));
     return rows.map((row) => this.#toItem(row, fingerprints));
+  }
+
+  /**
+   * Catch-all posts whose newest answer to the post question, given since `at`, is a "yes" at
+   * `minConfidence` or more and has met no kind question since: no kind answer (prompt id
+   * starting `kindPrefix`) at or after it, and no ask recorded for it in internal.kind_asked
+   * (0095 — an OTHER answer files nothing in post_judgement). Newest answer first, at most
+   * `limit`, each with that answer, for the scorer's kind catch-up. `minConfidence` is only a
+   * floor for the database; core `couldPassWithBoost` makes the exact call. Observed posts only,
+   * any path that answered them (a lane, a coin's instant pass, a backfill): each path asked the kind
+   * of what it passed, so each is screened here. Driven from post_judgement's judged_at index, so
+   * it reads one window of answers, not every post.
+   */
+  async catchAllKindUnasked(at: Millis, limit: number, kindPrefix: string, minConfidence: number): Promise<readonly { readonly item: Item; readonly answer: Pick<Judgement, 'coinable' | 'confidence' | 'lookedAt' | 'proposedName' | 'judgedAt'> }[]> {
+    if (limit <= 0) return [];
+    const rows = await this.#db.query<{ item_id: string; judged_at: TimestampColumn; looked_at: string | null; coinable: boolean; confidence: number; proposed_name: string | null }>(
+      `with latest as (
+         select distinct on (j.item_id) j.item_id, j.judged_at, j.looked_at, j.coinable, j.confidence, j.proposed_name
+           from internal.post_judgement j
+          where j.judged_at >= $1 and j.prompt_id not like $3
+          order by j.item_id, j.judged_at desc, j.id desc
+       )
+       select l.item_id, l.judged_at, l.looked_at, l.coinable, l.confidence, l.proposed_name
+         from latest l
+         join public.item i on i.item_id = l.item_id
+        where l.coinable and l.confidence >= $4
+          and i.origin = 'observed'
+          and not exists (select 1 from internal.post_judgement k
+                           where k.item_id = l.item_id and k.prompt_id like $3 and k.judged_at >= l.judged_at)
+          and not exists (select 1 from internal.kind_asked a
+                           where a.item_id = l.item_id and a.answer_judged_at >= l.judged_at)
+        order by l.judged_at desc
+        limit $2`,
+      [toTimestamp(at), limit, `${kindPrefix}%`, minConfidence],
+    );
+    if (rows.length === 0) return [];
+    const items = await this.byIds(rows.map((r) => r.item_id as ItemId));
+    return rows.flatMap((r) => {
+      const item = items.get(r.item_id as ItemId);
+      if (item === undefined) return [];
+      /* An answer whose evidence is not one the policy has a bar for is not guessed at: skipped. */
+      const lookedAt = JUDGE_EVIDENCE.find((e) => e === r.looked_at);
+      if (lookedAt === undefined) return [];
+      return [{ item, answer: { coinable: r.coinable, confidence: Number(r.confidence), lookedAt, proposedName: r.proposed_name, judgedAt: toMillisRequired(r.judged_at, 'post_judgement.judged_at') } }];
+    });
   }
 
   /** Every reach reading of these posts since `at`, oldest first: the counter as read, null when unreadable. */

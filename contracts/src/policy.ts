@@ -2057,6 +2057,14 @@ export interface RisingPolicy {
    */
   readonly rescorePerPass: number;
   /**
+   * ★ THE KIND CATCH-UP. A post whose newest answer could pass (core `couldPassWithBoost`) and
+   * that has met no kind question since — the kind judge was down when it was first answered
+   * (2026-10-17, 11:06 to about 15:20 UTC, every pass in between) — is asked the kind, at most
+   * this many a pass, newest answer first. Small: the kind question is cheap, but a backlog of a
+   * few thousand should drain over hours, not as one burst on the kind judge's line.
+   */
+  readonly kindCatchUpPerPass: number;
+  /**
    * ★ THE ORDER MODEL'S PASS BAR. For You is ordered by the re-tune's applied fit (core
    * `postRankScore`, internal.score_model) whatever this is; a number here also holds back a post
    * the rules passed but the fit puts under it. Null: no extra gate, today's rules decide. The
@@ -3504,7 +3512,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v101',
+  version: 'policy.v102',
 
   admit: {
     maxAgeMin: 240,
@@ -4489,6 +4497,9 @@ const POLICY_V1: Policy = {
        day (2026-10-13) re-score in about 3.5 hours after a prompt change, near $0.70 an hour at
        the measured $0.0012 a post, on the live judge line and under its cap. */
     rescorePerPass: 15,
+    /* 20 a pass, a pass every minute or two: the 2026-10-17 outage's ~460 passed posts in under an
+       hour, at about $0.0004 a post on the kind line (Nemotron). */
+    kindCatchUpPerPass: 20,
     scorePassBar: null,
     /* 2026-10-15, launch-trailer day: 44 of For You's 60 were one game, most named for it. Measured on
        that frame, the posts about it under other names (its music, art, city) sat 0.60 to 0.75 from a
