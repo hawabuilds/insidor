@@ -1,12 +1,13 @@
 /**
- * FOR YOU — the feed.
+ * HOME — posts only, under two tabs: Watchlist and For You (the owner, 2026-10-17: "posts and
+ * narratives on separate tabs"). Narratives have their own tab in the bottom bar and are not on Home
+ * at all; a post card's narrative tag opens its narrative, and a narrative page lists its posts.
  *
- * FYP and Popular are feeds of SINGLE POSTS from `GET /rising/fyp` and `GET /rising/popular`:
- * posts the catch-all search found whose meme score clears the bar, newest first and most
- * views first, in the order the server committed. Watchlist is the posts you watch (the star on a
- * card or the post sheet, read from the alert service: useWatchedPosts.ts), then the narratives you
- * starred, read from `GET /board/default` (`feed-tabs.ts`). The site pills and the filter panel narrow
- * whichever list is showing (`feed-filters.ts`).
+ * For You is a feed of SINGLE POSTS from `GET /rising/fyp`: posts the catch-all search found whose
+ * meme score clears the bar, newest first, in the order the server committed. Watchlist is the posts
+ * you watch (the star on a card or the post sheet, read from the alert service: useWatchedPosts.ts).
+ * The site pills and the filter panel narrow whichever list is showing (`feed-filters.ts`). The board
+ * (`GET /board/default`) is still read, for its provenance alone: the Sample data bar.
  * Pulling the list down from the top reads it again (alerts/pull.ts); For You comes newest first, so
  * new posts land at the top.
  *
@@ -15,10 +16,10 @@
  * itself when the read service commits an observed board (`shared/notice.ts`). The app has no
  * sample data of its own.
  *
- * ★ EVERY EMPTY LIST SAYS WHICH KIND OF EMPTY IT IS. Could not read the board, the board is
- * empty, nothing is starred, the filters matched nothing, or rows were left out because a
- * value the filter needs is unknown — five different sentences, because they call for five
- * different responses and a blank list answers none of them.
+ * ★ EVERY EMPTY LIST SAYS WHICH KIND OF EMPTY IT IS. Could not read the feed, the feed is empty,
+ * nothing is watched, the filters matched nothing, or posts were left out because a value the
+ * filter needs is unknown — different sentences, because they call for different responses and a
+ * blank list answers none of them.
  *
  * A post card looks as it did before the post sheet was built (shared/ui/PostRow.tsx). Tapping it,
  * its Buy or its View coins opens the post sheet (features/post-sheet); See N coins opens that
@@ -29,7 +30,7 @@
  * the post's subject is trading more since it (OlderCoins.tsx) — never the post's coin, never a
  * Buy on the card; tapping opens that coin's page, or the list when there are several.
  *
- * ★ WITHOUT END (the owner, 2026-10-14). FYP and Popular show every post that was ever on them:
+ * ★ WITHOUT END (the owner, 2026-10-14). For You shows every post that was ever on it:
  * the frame at the top, then older posts read twenty at a time about ten cards before the end
  * (useOlderPosts.ts, older-feed.ts) — no Load more button, no pause. Only the cards near the screen
  * are in the page (shared/ui/WindowList.tsx), so the list stays smooth however long it gets, and
@@ -48,26 +49,22 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BOARD_VIEW, fetchBoard, fetchRising, type BoardRow, type RisingFeed, type RisingPost } from '../../shared/api/index.ts';
-import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
+import { BOARD_VIEW, fetchBoard, fetchRising, type RisingFeed, type RisingPost } from '../../shared/api/index.ts';
+import { useLoad, useNow } from '../../shared/hooks.ts';
 import { usePreloadCreate } from '../create/preload.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { FILTER_PLATFORMS } from '../../shared/platform.ts';
 import { hrefFor, parseRoute } from '../../shared/route.ts';
 import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { Button } from '../../shared/ui/Button.tsx';
-import { useComingSoon } from '../../shared/ui/ComingSoon.tsx';
 import { FilterIcon, StarIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { PostRow } from '../../shared/ui/PostRow.tsx';
 import { OlderCoinsLine } from './OlderCoins.tsx';
-import { StoryRow } from '../../shared/ui/StoryRow.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { FilterPanel } from './FilterPanel.tsx';
-import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyFilters, applyPostFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
-import { rowsInOrder, tabView, type FeedTab } from './feed-tabs.ts';
-import { useLeadPosts } from './useLeadPosts.ts';
+import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyPostFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
 import { LIVE_FEED } from './live-feed.ts';
 import { LiveCard } from './LiveCard.tsx';
 import { useLiveFeed } from './useLiveFeed.ts';
@@ -87,7 +84,6 @@ import { HideBar } from '../owner/OwnerPost.tsx';
 import { useIsOwner, useOwnerState, useSavedCalls } from '../owner/hooks.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
 import styles from './feed.module.css';
-import { tickerText } from '../../shared/format/ticker.ts';
 
 /** A card's height before any is measured, and how far beyond the screen cards are kept drawn. */
 const CARD_GUESS_PX = 196;
@@ -99,17 +95,16 @@ const idOf = (p: RisingPost): string => p.id;
 /** The rows a feed read holds, for the live list (useLiveFeed.ts). */
 const postsOf = (f: RisingFeed): readonly RisingPost[] => f.posts;
 
+type FeedTab = 'watchlist' | 'fyp';
+
 const TABS = [
   { key: 'watchlist', label: <><StarIcon size={16} /> Watchlist</> },
-  { key: 'fyp', label: 'FYP' },
-  { key: 'popular', label: 'Popular' },
+  { key: 'fyp', label: 'For You' },
 ] as const;
 
 export function Feed({
-  onCreate,
   onCreatePost,
 }: {
-  onCreate: (row: BoardRow, labelled: boolean) => void;
   /** Create from a single post: its picture and link, never a name we made up. */
   onCreatePost: (post: RisingPost) => void;
 }) {
@@ -137,28 +132,21 @@ export function Feed({
     return () => window.removeEventListener('hashchange', take);
   }, []);
   const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
-  /* One loader per feed, so switching tabs never shows one feed's order under the other's name. */
   const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
-  const [popular, reloadPopular] = useLoad('rising:popular', (signal) => fetchRising('popular', signal));
   usePreloadCreate(); /* Create coin then opens with the launchpad's rules already read. */
   /* FYP kept current while it is looked at, when the build switches it on; otherwise null and unused. */
   const live = useLiveFeed(LIVE_FEED && tab === 'fyp', fyp, reloadFyp, postsOf, true, newestPosted);
-  /* Each feed's older pages, kept while the other tab is open. For You's start under the card its
-     list shows last and join it newest posted first (feed-order.ts). */
+  /* For You's older pages, kept while Watchlist is open. They start under the card the list shows
+     last and join it newest posted first (feed-order.ts). */
   const lastFyp = useRef<string | null>(null);
   const lastFypShown = useCallback(() => lastFyp.current, []);
-  const fypOlder = useOlderPosts('fyp', lastFypShown, newestPosted);
-  const popularOlder = useOlderPosts('popular');
-  const older = tab === 'popular' ? popularOlder : fypOlder;
+  const older = useOlderPosts('fyp', lastFypShown, newestPosted);
   const reload = useCallback(() => {
     reloadBoard();
     reloadFyp();
-    reloadPopular();
-  }, [reloadBoard, reloadFyp, reloadPopular]);
-  const starred = useWatchlist();
+  }, [reloadBoard, reloadFyp]);
   const watchedRows = useWatchedPosts(tab === 'watchlist');
   const now = useNow();
-  const soon = useComingSoon();
   /* The owner's controls (features/owner): drawn only when the services say this is the owner. */
   const owner = useIsOwner();
   const { hidden: hiddenNow } = useOwnerState();
@@ -179,7 +167,7 @@ export function Feed({
      hid stays out (withoutHidden below runs on every read, and the hidden set is kept on the
      device and seeded from the server's list, so a reload does not bring it back either). */
   const settled = useRef<(() => void) | null>(null);
-  const shownLoad = tab === 'popular' ? popular : tab === 'fyp' ? fyp : board;
+  const shownLoad = tab === 'fyp' ? fyp : board;
   useEffect(() => {
     if (shownLoad.state !== 'loading') {
       settled.current?.();
@@ -194,35 +182,24 @@ export function Feed({
           /* A pull is the one moment the live list takes the server's order and removals, and the
              older pages start again under the new frame. */
           live.rebuildNext();
-          fypOlder.reset();
-          popularOlder.reset();
+          older.reset();
           reload();
         }),
-      [reload, live.rebuildNext, fypOlder.reset, popularOlder.reset],
+      [reload, live.rebuildNext, older.reset],
     ),
   );
 
-  const tick = board.state === 'ready' ? board.value : null;
-  const ordered = useMemo(() => (tick ? rowsInOrder(tick.order, tick.rows) : []), [tick]);
-  const onPosts = tab !== 'watchlist';
-  const view = tabView(tab, ordered, starred);
-  /* Lead posts are only read for the narrative list; the post feeds carry their own. */
-  const leads = useLeadPosts(onPosts ? [] : [...view.rows, ...view.uncounted].map((r) => r.id));
-  const shown = applyFilters(view.rows, leads, filters, now);
-  const shownUncounted = applyFilters(view.uncounted, leads, filters, now);
-  const hidden = shown.unknown + shownUncounted.unknown;
-
-  const notice = boardNotice(tick?.provenance ?? null);
-  const feed = tab === 'popular' ? popular : fyp;
+  const onPosts = tab === 'fyp';
+  const notice = boardNotice(board.state === 'ready' ? board.value.provenance : null);
+  const feed = fyp;
   /* A post the owner hid stays out of the list, live or older, until "Is a meme"; the projection
      drops it on its next run, minutes later (features/owner/owner-store.ts). */
-  const headPosts = tab === 'fyp' && live.rows !== null ? live.rows : feed.state === 'ready' ? feed.value.posts : null;
-  const fypHead = live.rows ?? (fyp.state === 'ready' ? fyp.value.posts : null);
-  lastFyp.current = fypHead?.[fypHead.length - 1]?.id ?? null;
-  const feedPosts = useMemo(() => (headPosts === null ? null : withOlder(headPosts, older.posts, tab === 'fyp' ? newestPosted : null)), [headPosts, older.posts, tab]);
+  const headPosts = live.rows ?? (fyp.state === 'ready' ? fyp.value.posts : null);
+  lastFyp.current = headPosts?.[headPosts.length - 1]?.id ?? null;
+  const feedPosts = useMemo(() => (headPosts === null ? null : withOlder(headPosts, older.posts, newestPosted)), [headPosts, older.posts]);
   const posts = feed.state === 'ready' && feedPosts !== null ? applyPostFilters(withoutHidden(feedPosts, hiddenNow, (p) => p.id), filters, now) : null;
   useSavedCalls('coin_match', posts === null ? [] : posts.rows.map((p) => p.id), owner);
-  const liveOn = tab === 'fyp' && live.rows !== null;
+  const liveOn = live.rows !== null;
   const post = (p: RisingPost) => (
     <PostRow
       key={p.id}
@@ -248,25 +225,6 @@ export function Feed({
     />
   );
   const quickSite = filters.sites.length === 1 ? filters.sites[0] : null;
-  const row = (r: BoardRow) => {
-    const lead = leads.get(r.id) ?? null;
-    return (
-      <StoryRow
-        key={r.id}
-        item={r}
-        now={now}
-        byline={lead !== null ? <span>{lead.author}</span> : null}
-        platform={lead?.platform ?? null}
-        platformLabel={lead?.sourceLabel ?? ''}
-        handlers={{
-          open: () => (window.location.hash = hrefFor({ screen: 'story', storyId: r.id })),
-          viewCoins: () => (window.location.hash = hrefFor({ screen: 'story', storyId: r.id })),
-          create: () => onCreate(r, notice !== null),
-          buy: (ticker) => soon(`Buying ${tickerText(ticker)}`),
-        }}
-      />
-    );
-  };
 
   return (
     <>
@@ -326,7 +284,7 @@ export function Feed({
         {owner && onPosts ? (
           <div className={styles['ownerRow']}>
             <Button look="quiet" onClick={() => setHiddenList(true)}>Hidden by me</Button>
-            {tab === 'fyp' ? <Button look="quiet" onClick={() => setAddMissed(true)}>Add a missed post</Button> : null}
+            <Button look="quiet" onClick={() => setAddMissed(true)}>Add a missed post</Button>
           </div>
         ) : null}
 
@@ -381,14 +339,6 @@ export function Feed({
           </>
         ) : null}
 
-        {!onPosts && board.state === 'loading' ? <p className={styles['empty']}>Reading the board.</p> : null}
-        {!onPosts && board.state === 'failed' ? (
-          <div className={styles['empty']}>
-            <p>Couldn't reach the read service, so there is nothing to show. This is not an empty board.</p>
-            <Button look="quiet" onClick={reload}>Try again</Button>
-          </div>
-        ) : null}
-
         {!onPosts ? (
           <>
             <h2 className={styles['group']}>Posts you watch</h2>
@@ -400,34 +350,9 @@ export function Feed({
             ) : null}
             {watchedRows.state === 'loading' ? <p className={styles['hidden']}>Reading your watched posts.</p> : null}
             {watchedRows.state === 'failed' ? <p className={styles['hidden']}>Your watched posts couldn't be read just now.</p> : null}
-            <h2 className={styles['group']}>Narratives you starred</h2>
           </>
         ) : null}
 
-        {!onPosts && tick !== null ? (
-          <>
-            {shown.rows.map(row)}
-            {shownUncounted.rows.length > 0 ? (
-              <>
-                <h2 className={styles['group']}>Views not reported</h2>
-                {shownUncounted.rows.map(row)}
-              </>
-            ) : null}
-            <EmptyLine
-              boardEmpty={ordered.length === 0}
-              tab={tab}
-              nothingShown={shown.rows.length + shownUncounted.rows.length === 0}
-              filtered={isFiltered(filters)}
-              starredOffBoard={view.starredOffBoard}
-            />
-            {hidden > 0 ? (
-              <p className={styles['hidden']}>
-                {hidden === 1 ? '1 more post is' : `${hidden} more posts are`} left out because we can't tell yet whether{' '}
-                {hidden === 1 ? 'it matches' : 'they match'} these filters.
-              </p>
-            ) : null}
-          </>
-        ) : null}
         {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}
         {owner && addMissed ? <AddMissedPostSheet onClose={() => setAddMissed(false)} /> : null}
         {owner ? <HideBar /> : null}
@@ -453,22 +378,4 @@ function Placeholders() {
       ))}
     </div>
   );
-}
-
-function EmptyLine(p: {
-  boardEmpty: boolean;
-  tab: FeedTab;
-  nothingShown: boolean;
-  filtered: boolean;
-  starredOffBoard: number;
-}) {
-  if (p.boardEmpty) return <p className={styles['empty']}>No narratives yet.</p>;
-  const off = p.starredOffBoard;
-  const offLine = off > 0 ? ` ${off === 1 ? '1 starred story is' : `${off} starred stories are`} not on the board right now.` : '';
-  if (p.tab === 'watchlist' && p.nothingShown && !p.filtered) {
-    return <p className={styles['empty']}>Nothing starred here yet. Tap the star on a narrative to keep it in this list.{offLine}</p>;
-  }
-  if (p.nothingShown) return <p className={styles['empty']}>No posts match these filters.</p>;
-  if (offLine !== '') return <p className={styles['hidden']}>{offLine.trim()}</p>;
-  return null;
 }
