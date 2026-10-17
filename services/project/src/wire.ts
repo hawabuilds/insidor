@@ -753,8 +753,23 @@ export interface WireStory {
    * being read. The phone adds slots up into its chart's intervals.
    */
   readonly viewsGained?: { readonly fromMs: number; readonly stepMs: number; readonly values: readonly (number | null)[] };
-  /** Each listed post's newest views and its own last-hour gain; null where it has no reading. */
-  readonly postViews?: readonly { readonly postId: string; readonly views: number | null; readonly gainedLastHour: number | null }[];
+  /**
+   * The same gains from the narrative's first reading to now in coarser slots (Policy
+   * narrative.reach.allStepMs): the page's "All" line for a story older than `viewsGained` spans.
+   */
+  readonly viewsGainedAll?: { readonly fromMs: number; readonly stepMs: number; readonly values: readonly (number | null)[] };
+  /**
+   * Each listed post's newest views, its own last-hour gain (null where it has no reading) and when
+   * we first saved it (the page's "First post we caught": the earliest of these among its posts now).
+   */
+  readonly postViews?: readonly { readonly postId: string; readonly views: number | null; readonly gainedLastHour: number | null; readonly foundAt: number | null }[];
+  /**
+   * The Narratives tab's orders (narrative-trend.ts), one entry per window (`hours` 1, 6, 24): the
+   * views gained in it (Most viewed's order and the card's number), the posts we found in it, and
+   * its place in the trending order for that window. The place is a position, 1 first; the number
+   * that decides it is never sent.
+   */
+  readonly inWindow?: readonly { readonly hours: number; readonly viewsGained: WireMeasured; readonly newPosts: number; readonly trendingPlace: number }[];
   /** First found: the earliest moment we saved any post it lists now (item.first_seen_at). */
   readonly foundAt?: WireInstant;
   /**

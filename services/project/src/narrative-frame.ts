@@ -20,9 +20,12 @@
  *              (public.same_name_coin), so the page and its posts' cards never disagree by more
  *              than one frame
  *   the views  core `narrativeReach` over the posts' readings, per post and then added up: the
- *              total, the last hour's gain (the board's order, fastest first), the views gained
- *              every five minutes over the day (the page's line) and each post's own views and
- *              last hour, each saying how many of the posts it counted
+ *              total, the last hour's gain, the views gained every five minutes over the day (the
+ *              page's line), the same in half-hours from its first reading (the page's "All") and
+ *              each post's own views, last hour and when we found it, each saying how many of the
+ *              posts it counted
+ *   the orders each window's views gained, new posts and trending place (narrative-trend.ts);
+ *              the board is in Trending 1h's order, the tab's default
  *   found      the earliest moment we saved any post it lists now (public.item.first_seen_at),
  *              not when the narrative was first shown and not when a post went up
  *
@@ -42,11 +45,12 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { coinCallFor, foldNarrativeCalls, hiddenByOwner, isShillText, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
+import { coinCallFor, foldNarrativeCalls, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
 import { PgNarrativeRepo, type Db, type NarrativePostRow } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
 import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
+import { checkedCoinOf, loadTrendCoins, trendWindows, type TrendSubject } from './narrative-trend.ts';
 import { permalinkFor } from './permalinks.ts';
 import { projectBoard, projectCoin, projectStory, type CoinCandidate, type MemberFacts, type ProjectOptions, type ReachReading, type StoryFacts } from './project.ts';
 import { storySameNameLists, writeSameNameCoins } from './same-name.ts';
@@ -228,7 +232,7 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   const readingsOf = (id: string): readonly ReachReading[] => reach.get(id) ?? [];
   const facts: StoryFacts[] = [];
   const extras = new Map<string, Partial<WireStory>>();
-  const gainOf = new Map<string, number | null>();
+  const subjects: TrendSubject[] = [];
   for (const n of shown) {
     /* ★ Only posts the page can cite (a link we can build): the list, the count and the summary are one set. */
     const members: MemberFacts[] = n.members.flatMap((m) => {
@@ -269,10 +273,26 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       coinsLookedUp: coin.kind !== 'pending',
       wasOnPreviousBoard: previous.has(n.id),
     });
-    const views = narrativeReach(members.map((m) => ({ postedAtMs: m.postedAt, points: m.reach.map((x) => ({ atMs: x.atMs, reach: x.count ?? null })) })), options.nowMs, policy);
-    gainOf.set(n.id, views.lastHour.value);
+    const memberReach = members.map((m) => ({ postedAtMs: m.postedAt, points: m.reach.map((x) => ({ atMs: x.atMs, reach: x.count ?? null })) }));
+    const views = narrativeReach(memberReach, options.nowMs, policy);
     /* ★ FIRST FOUND: the earliest moment we saved any post it lists NOW, so removing a post moves it. */
     const found = used.map((r) => toMs(r.first_seen_at)).filter((t): t is number => t !== null && Number.isFinite(t));
+    const foundAtMs = found.length === 0 ? null : Math.min(...found);
+    const foundOf = (m: MemberFacts): number | null => {
+      const t = toMs(rowOf.get(m.itemId)?.first_seen_at ?? null);
+      return t !== null && Number.isFinite(t) ? t : null;
+    };
+    subjects.push({
+      id: n.id,
+      input: {
+        foundAtMs,
+        posts: members.map((m, i) => ({ authorKey: rowOf.get(m.itemId)?.author_key ?? m.itemId, sourceKey: rowOf.get(m.itemId)?.source ?? '', foundAtMs: foundOf(m), reach: memberReach[i] ?? { postedAtMs: null, points: [] } })),
+      },
+      coin: checkedCoinOf(coin),
+    });
+    /* "All": from its first reading (no post is older than the window) to now, in coarser slots. */
+    const r = policy.narrative.reach;
+    const all = gainedSeries(memberReach, Math.max(options.nowMs - policy.narrative.windowMs, foundAtMs ?? options.nowMs), options.nowMs, r.allStepMs, Math.ceil(policy.narrative.windowMs / r.allStepMs));
     extras.set(n.id, {
       postIds: members.map((m) => m.itemId),
       postCount: members.length,
@@ -281,22 +301,24 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       viewsGained1h: measured(views.lastHour.value, 'not_read_yet'),
       viewsGained1hPosts: views.lastHour.counted,
       viewsGained: views.gained,
-      postViews: members.map((m, i) => ({ postId: m.itemId, views: views.posts[i]?.total ?? null, gainedLastHour: views.posts[i]?.lastHour ?? null })),
-      foundAt: instant(found.length === 0 ? null : Math.min(...found), 'not_reported'),
+      viewsGainedAll: all,
+      postViews: members.map((m, i) => ({ postId: m.itemId, views: views.posts[i]?.total ?? null, gainedLastHour: views.posts[i]?.lastHour ?? null, foundAt: foundOf(m) })),
+      foundAt: instant(foundAtMs, 'not_reported'),
       /* ★ The top coin when none is settled (fitting, or several proven equally): shown as "Top coin,
          not checked", never as the narrative's coin. The coins most posts list come first. */
       ...(coin.kind === 'fitting' || (coin.kind === 'proven' && coin.addresses.length > 1) ? topCoinOf(coin.addresses, coinFacts, options) : {}),
     });
   }
 
-  /* ★ FASTEST FIRST: the views gained in the last hour; an unknown gain after every known one, never as zero. */
-  const byGain = (list: readonly StoryFacts[]) => [...list].sort((a, b) => {
-    const ga = gainOf.get(a.storyId) ?? null;
-    const gb = gainOf.get(b.storyId) ?? null;
-    if (ga === null || gb === null) return ga === null ? (gb === null ? b.lastMemberAt - a.lastMemberAt : 1) : -1;
-    return gb - ga || b.lastMemberAt - a.lastMemberAt;
-  });
-  const board = projectBoard(facts, options, byGain);
+  /* ★ TRENDING FIRST (narrative-trend.ts): each window's facts and place on every page, and the board
+     in the first window's order, the tab's default. A story with no reading in it goes after every
+     one that has one, never as a slow story. */
+  const coinsRead = await loadTrendCoins(db, [...new Set(subjects.flatMap((s) => (s.coin === null ? [] : [s.coin])))], options.nowMs, policy.narrative.trend.windows.map((w) => w.ms));
+  const trend = trendWindows(subjects, coinsRead, options.nowMs, policy);
+  for (const [id, inWindow] of trend.pages) extras.set(id, { ...extras.get(id), inWindow });
+  const place = new Map(trend.order.map((id, i) => [id, i] as const));
+  const byTrend = (list: readonly StoryFacts[]) => [...list].sort((a, b) => (place.get(a.storyId) ?? Number.MAX_SAFE_INTEGER) - (place.get(b.storyId) ?? Number.MAX_SAFE_INTEGER) || b.lastMemberAt - a.lastMemberAt);
+  const board = projectBoard(facts, options, byTrend);
   for (const id of board.withheld) console.warn(`narrative ${id} was withheld from the board: its payload would have leaked`);
   const onBoard = new Set(board.order);
 
