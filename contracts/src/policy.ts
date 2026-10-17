@@ -3504,7 +3504,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v100',
+  version: 'policy.v101',
 
   admit: {
     maxAgeMin: 240,
@@ -3681,7 +3681,7 @@ const POLICY_V1: Policy = {
     promoteMinDistinctSources: 1,
     mergeCarrierOverlap: 0.6,
     imagesPerPass: 40,
-    image: { space: 'multimodal-3.1024', nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200, reuseContentAddressed: false },
+    image: { space: 'multimodal-3.1024', nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200, reuseContentAddressed: true },
     name: { minChars: 4, maxPostAgeMs: 86_400_000 },
     genericSpans: ['breaking', 'breakingnews', 'justin', 'news', 'update', 'viral', 'trending', 'trend', 'fyp', 'foryou', 'foryoupage', 'meme', 'memes', 'memecoin', 'memecoins', 'crypto', 'cryptocurrency', 'funny', 'video', 'thread', 'usa'],
     maxMembersPerInterval: 200,
