@@ -2996,7 +2996,14 @@ export interface NarrativePolicy {
     readonly stepMs: number;
     readonly spanMs: number;
     readonly gainWindowMs: number;
+    /**
+     * The page's "All" line: the same gains from the narrative's first reading to now in coarser
+     * slots of `allStepMs`, at most `narrative.windowMs` long (no post is older), so a story older
+     * than `spanMs` still has its whole line in a bounded number of slots.
+     */
+    readonly allStepMs: number;
   };
+  readonly trend: NarrativeTrendPolicy;
   readonly title: {
     readonly on: boolean;
     readonly perPass: number;
@@ -3006,6 +3013,49 @@ export interface NarrativePolicy {
     readonly maxOutputTokens: number;
     readonly maxTitleChars: number;
   };
+}
+
+/**
+ * ★ TRENDING NARRATIVES (the owner, 2026-10-17): how fast a story is picking up right now, not how
+ * big it is — a huge old story that is slowing down falls below a smaller one taking off. ORDER
+ * ONLY: the number is never shown or sent; the cards show the facts it is made of (views gained,
+ * new posts, age). Core group/narrative-trend.ts, inside each window W of `windows`:
+ *
+ *   views      `reachWeight` per tenfold of the views gained in W (per post from its own readings,
+ *              the chart's rule)
+ *   speed-up   `speedUpWeight` per doubling of the gain in W over the gain in the W before it, at
+ *              most `speedUpMaxDoublings` either way; `speedUpEven` views are added to both sides so
+ *              a few hundred views are not a tenfold. No reading before W: no term, never a zero
+ *   new posts  `postWeight` per doubling of the accounts that posted in W, EACH ACCOUNT ONCE, so one
+ *              account posting the same thing ten times is one new post
+ *   breadth    `breadthWeight` times the share of W's new posts that came from different accounts
+ *   both sites `bothSourcesBoost` when the story is on two sources or more
+ *   coin       only a checked or proven coin: `coinCapWeight` per doubling of its market cap over
+ *              W (at most `coinCapMaxGrowth` times up), `coinBuyWeight` per doubling of the buys
+ *              made through us in W. An unchecked coin never moves the order
+ *   freshness  `ageWeight` off for every `ageMs` of the story's age (since we found its first
+ *              post), at most `ageMaxUnits` of them, aging at `keepAgeing` the rate while it gains
+ *              faster than the W before. Taken off the sum, never multiplied into it: a story still
+ *              gaining a million an hour two days in is trending, and a factor would bury it
+ *
+ * A story no post of which was read in W is ordered after every one that was, newest found first:
+ * an outage is not a slow story.
+ */
+export interface NarrativeTrendPolicy {
+  readonly windows: readonly { readonly ms: number; readonly ageMs: number }[];
+  readonly reachWeight: number;
+  readonly speedUpWeight: number;
+  readonly speedUpMaxDoublings: number;
+  readonly speedUpEven: number;
+  readonly postWeight: number;
+  readonly breadthWeight: number;
+  readonly bothSourcesBoost: number;
+  readonly coinCapWeight: number;
+  readonly coinCapMaxGrowth: number;
+  readonly coinBuyWeight: number;
+  readonly ageWeight: number;
+  readonly ageMaxUnits: number;
+  readonly keepAgeing: number;
 }
 
 /**
@@ -4668,7 +4718,28 @@ const POLICY_V1: Policy = {
     single: { minReach: 500_000, minPerMinute: 2_000, growthWindowMs: 3_600_000, growthMinSpanMs: 1_200_000 },
     /* Five minutes over the day, 288 numbers a page: the phone's finest chart interval is 5m, and it
        adds these up into 15m, 1h, 4h and 1D. */
-    reach: { stepMs: 300_000, spanMs: 86_400_000, gainWindowMs: 3_600_000 },
+    /* "All" in half-hours: two days at most is 96 numbers a page. */
+    reach: { stepMs: 300_000, spanMs: 86_400_000, gainWindowMs: 3_600_000, allStepMs: 1_800_000 },
+    trend: {
+      windows: [
+        { ms: 3_600_000, ageMs: 86_400_000 }, // 1h: one off a day old
+        { ms: 21_600_000, ageMs: 172_800_000 }, // 6h: one off two days old
+        { ms: 86_400_000, ageMs: 345_600_000 }, // 24h: one off four days old
+      ],
+      reachWeight: 1,
+      speedUpWeight: 0.5,
+      speedUpMaxDoublings: 3,
+      speedUpEven: 5_000,
+      postWeight: 0.6,
+      breadthWeight: 0.5,
+      bothSourcesBoost: 0.3,
+      coinCapWeight: 0.3,
+      coinCapMaxGrowth: 4,
+      coinBuyWeight: 0.2,
+      ageWeight: 1,
+      ageMaxUnits: 3,
+      keepAgeing: 0.5,
+    },
     /* About 600 input and 20 output tokens a call on the open model: $0.00006, under a cent a day. */
     title: { on: true, perPass: 10, retitleGrowth: 0.5, postsSent: 6, maxChars: 240, maxOutputTokens: 40, maxTitleChars: 60 },
   },

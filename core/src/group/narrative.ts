@@ -825,3 +825,47 @@ export function narrativeReach(members: readonly MemberReach[], nowMs: number, p
     posts: perPost,
   };
 }
+
+/**
+ * Views gained in [fromMs, toMs) by the same per-post rule as `narrativeReach` (each post's gain
+ * spread evenly between its own readings, nothing outside them), added up. Null when no post was
+ * being read in the span at all — an outage, or before anything was read — never a zero. `counted`
+ * posts were being read in it. The trending order's windows and the "All" line use this.
+ */
+export function reachGained(members: readonly MemberReach[], fromMs: number, toMs: number): { readonly value: number | null; readonly counted: number } {
+  let sum = 0;
+  let counted = 0;
+  for (const m of members) {
+    const g = gainRuns(m.points);
+    if (g.first === null || g.last === null || g.last < fromMs || g.first >= toMs) continue;
+    counted += 1;
+    for (const run of g.runs) sum += gainIn(run, fromMs, toMs);
+  }
+  return { value: counted === 0 ? null : Math.round(sum), counted };
+}
+
+/**
+ * The same gains in `stepMs` slots from `fromMs` to `nowMs` (the page's "All" line): the first slot
+ * starts at or before `fromMs` on the step's grid ending at now. A slot no post was being read in is
+ * null. The caller bounds the span; this never makes more than `maxSlots`.
+ */
+export function gainedSeries(members: readonly MemberReach[], fromMs: number, nowMs: number, stepMs: number, maxSlots: number): GainedSeries {
+  const slots = Math.min(maxSlots, Math.max(1, Math.ceil((nowMs - fromMs) / stepMs)));
+  const start = nowMs - slots * stepMs;
+  const posts = members.map((m) => gainRuns(m.points));
+  const values: (number | null)[] = [];
+  for (let i = 0; i < slots; i++) {
+    const from = start + i * stepMs;
+    const to = from + stepMs;
+    let sum = 0;
+    let read = false;
+    for (const g of posts) {
+      if (g.first === null || g.last === null || g.last < from || g.first >= to) continue;
+      read = true;
+      for (const run of g.runs) sum += gainIn(run, from, to);
+    }
+    values.push(read ? Math.round(sum) : null);
+  }
+  const lead = values.findIndex((v) => v !== null);
+  return lead < 0 ? { fromMs: nowMs, stepMs, values: [] } : { fromMs: start + lead * stepMs, stepMs, values: values.slice(lead) };
+}
