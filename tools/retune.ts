@@ -91,6 +91,11 @@
  *      not teach; of those, the news-kind and picture-less ones (quotes, celebrity and company
  *      news) are held out of the block while in the window, so all of them are tested. At the
  *      sweep's cutoff when the gate holds there, else at the strictest that holds, else refused.
+ *      Junk (b) beside it (the owner, 2026-10-18; tools/lib/junk-sample.ts): a seeded sample of 300
+ *      untapped For You posts from the same window, labelled from the old judges' answers, its
+ *      old-label "not" posts graded on both sides. Reported and flagged when it rises more than the
+ *      same two points; junk (a) decides. `compose --unclear=<file>` writes its unclear posts for
+ *      the owner to label (free).
  *      The owner's table (untaught misses caught x/6, the fixed set x/16, gold, junk, live beside
  *      each, the cost) is the `retune owner gate` log line, the run's detail and the alert's first line.
  *      The owner's split's `teach` half is taught with Policy.learning.alwaysTeach, and the owner's
@@ -163,8 +168,9 @@ import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwne
 import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
 import { leadFacts, leadLines, leadRows, summarise } from './lib/lead-time.ts';
-import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, gate, goalsText, latestSlot, missedCaught, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, ratesOf, regressions, withRulebook, share, strictestKeeping, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type OwnerPick, type OwnerSets, type OwnerSide, type Rate } from '../eval/src/feed/examples.ts';
+import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, gate, goalsText, latestSlot, junkBRose, missedCaught, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, ratesOf, regressions, withRulebook, share, strictestKeeping, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type OwnerPick, type OwnerSets, type OwnerSide, type Rate } from '../eval/src/feed/examples.ts';
 import { OWNER_SPLIT, alwaysTeachIds } from '../eval/src/feed/owner-split.ts';
+import { drawSample, readUntapped, unclearMarkdown } from './lib/junk-sample.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
@@ -337,7 +343,7 @@ async function ownerCalls(repo: PgLearningRepo) {
 
 /* ── a run ───────────────────────────────────────────────────────────────────────────────────── */
 
-type G = 'gold' | 'auto' | 'live-not' | 'missed' | 'missed-taught' | 'tt-coined';
+type G = 'gold' | 'auto' | 'live-not' | 'missed' | 'missed-taught' | 'tt-coined' | 'untapped';
 
 /* ── the TikTok side of the judge's test ─────────────────────────────────────────────────────── */
 
@@ -485,6 +491,17 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
           inTest.add(v.itemId);
         }
       }
+      /* ★ JUNK (B), THE OWNER'S SECOND MEASURE (tools/lib/junk-sample.ts, Policy.learning.ownerGate.untapped):
+         a seeded sample of untapped For You posts from the window, labelled from the old judges'
+         answers; only its old-label "not" posts are graded, in their own group, never in a rate. */
+      const sample = OG.on ? drawSample(await soft(readUntapped(repo, P, new Date(Date.now() - OG.junkDays * DAY_MS), pictureOf), []), P, new Set([...inTest, ...taught])) : [];
+      for (const u of sample) {
+        if (u.old.label !== 'not') continue;
+        posts.push({ group: 'untapped', id: u.itemId, kind: 'untapped For You post, old label not', text: u.text, imageUri: u.imageUri });
+        inTest.add(u.itemId);
+      }
+      const unclearPosts = sample.filter((u) => u.old.label === 'unclear');
+      if (arg('unclear') !== null) writeFileSync(arg('unclear') ?? '', unclearMarkdown(sample, new Date()));
       const composition = {
         examples: block.exampleIds.length, tapsTaught: block.taps.taught, tapsTested: block.taps.tested,
         handGold: posts.filter((p) => p.group === 'gold' || p.group === 'missed').length, ownerMemeCallsTested: tappedMemes.length, coinRightAddedToGold: coinGold.length,
@@ -495,6 +512,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         alwaysTaughtInBlock: `${alwaysTeachIds(P).filter((id) => block.exampleIds.includes(id)).length}/${alwaysTeachIds(P).length}`,
         ownerTest: OWNER_SPLIT.test.length, ownerTaught: alwaysTeachIds(P).filter((id) => block.exampleIds.includes(id)).length,
         recentNots: recentNots.length, recentNotsHeldOut: block.testNegatives.filter((c) => shownKind.has(c.itemId)).length, recentNewsOrText: newsOrText.size,
+        untappedSample: sample.length, untappedNot: sample.filter((u) => u.old.label === 'not').length, untappedMeme: sample.filter((u) => u.old.label === 'meme').length, untappedUnclear: unclearPosts.length,
       };
       if (opts.composeOnly === true) {
         console.log(JSON.stringify({ msg: 'retune composition (nothing asked, nothing written)', slot: slot.toISOString(), ...composition }, null, 1));
@@ -618,7 +636,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
          runs and proposes a cutoff, but these three conditions decide — more of the fixed test set
          caught than live, hand gold not lower, junk at most two points up on the recent For You
          "Not a meme" taps the block did not teach. Both sides at their own cutoffs, as live holds them. */
-      const ownerSets: OwnerSets = { test: new Set(OWNER_SPLIT.test), untaught: new Set(OWNER_SPLIT.untaughtMisses), junk: new Set(recentNots.map((c) => c.itemId)), hand: GROUPS.hand, negatives: GROUPS.negatives };
+      const ownerSets: OwnerSets = { test: new Set(OWNER_SPLIT.test), untaught: new Set(OWNER_SPLIT.untaughtMisses), junk: new Set(recentNots.map((c) => c.itemId)), untapped: 'untapped', hand: GROUPS.hand, negatives: GROUPS.negatives };
       const liveOwner: OwnerSide | null = liveGraded === null ? null : ownerSide(liveGraded, held, ownerSets);
       const ownerPick: OwnerPick | null = !OG.on || choice === null || liveOwner === null ? null : pickOwnerCutoff(
         choice.points.map((p) => ({ cutoff: p.cutoff, side: ownerSide(atCutoff(mineGraded, p.cutoff, P), held, ownerSets), extra: p.extra })),
@@ -652,10 +670,11 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       /* ★ THE OWNER'S TABLE, for the owner to relay: caught of the untaught misses and of the fixed test
          set, gold, junk (live beside each) and the run's cost, and how the junk set was made. */
       const junkNews = rows.filter((r) => r.group === GROUPS.negatives && r.coinable !== null && newsOrText.has(r.id)).length;
+      const bRose = ownerPick === null || liveOwner === null ? null : junkBRose(ownerPick.side, liveOwner, OG.maxJunkRise);
       const ownerText = ownerPick === null || liveOwner === null
         ? null
-        : `owner's gate ${appliedCutoff === null ? 'refused' : `held at cutoff ${appliedCutoff.toFixed(2)}`}: ${ownerLine(ownerPick.side, liveOwner, costUsd)}; junk set: ${ownerPick.side.junk.tested} "Not a meme" taps on For You posts first shown in the last ${OG.junkDays} days that the block did not teach (${junkNews} of them news or text-only, never taught; ${recentNots.length} such taps in all)`;
-      if (ownerText !== null) log(appliedCutoff === null ? 'warn' : 'info', 'retune owner gate', { slot: slot.toISOString(), line: ownerText, applies: appliedCutoff !== null, why: ownerPick?.why ?? null, cutoff: appliedCutoff, sweepRule: choice?.rule ?? null, sweepCutoff: choice?.cutoff ?? null, mine: ownerPick?.side ?? null, live: liveOwner, maxJunkRise: OG.maxJunkRise, junkSet: ownerPick?.side.junk.tested ?? null, junkNewsOrText: junkNews, recentNots: recentNots.length });
+        : `owner's gate ${appliedCutoff === null ? 'refused' : `held at cutoff ${appliedCutoff.toFixed(2)}`}: ${ownerLine(ownerPick.side, liveOwner, costUsd)}; junk set: ${ownerPick.side.junk.tested} "Not a meme" taps on For You posts first shown in the last ${OG.junkDays} days that the block did not teach (${junkNews} of them news or text-only, never taught; ${recentNots.length} such taps in all); junk (b) sample: ${sample.length} untapped posts drawn, ${composition.untappedNot} old-label not graded, ${composition.untappedMeme} old-label meme and ${unclearPosts.length} unclear left out${bRose === true ? `; FLAG: junk (b) rose more than ${Math.round(OG.maxJunkRise * 100)} points (junk (a) decides)` : ''}`;
+      if (ownerText !== null) log(appliedCutoff === null ? 'warn' : 'info', 'retune owner gate', { slot: slot.toISOString(), line: ownerText, applies: appliedCutoff !== null, why: ownerPick?.why ?? null, cutoff: appliedCutoff, sweepRule: choice?.rule ?? null, sweepCutoff: choice?.cutoff ?? null, mine: ownerPick?.side ?? null, live: liveOwner, maxJunkRise: OG.maxJunkRise, junkSet: ownerPick?.side.junk.tested ?? null, junkBRose: bRose, unclear: unclearPosts.map((u) => u.itemId), junkNewsOrText: junkNews, recentNots: recentNots.length });
       if (choice !== null) log('info', 'retune cutoff sweep', { slot: slot.toISOString(), judge: judgeModel, rule: choice.rule, cutoff: choice.cutoff, strictestKeepingGoldAndMissed: liveRates === null ? null : (strictestKeeping(choice.points, liveRates)?.cutoff ?? null), from: policyBar, floor: FLOOR === null ? null : 'given', openLiveNow: liveGrading === null ? null : { gold: ofN0(liveGrading.hand), junk: ofN0(liveGrading.negatives), missed: ofN0(liveGrading.missed) }, live: liveRates === null ? null : { gold: ofN0(liveRates.hand), junk: ofN0(liveRates.negatives), missed: ofN0(liveRates.missed) }, lostMissed: choice.point.lost, points: choice.points.map(fmtPoint) });
       /* `--rows=<file>`: every graded post's answers, for comparing held-kind sets on one run. */
       if (opts.rowsFile !== undefined) writeFileSync(opts.rowsFile, JSON.stringify(rows.map((r) => ({ id: r.id, group: r.group, coinable: r.coinable, firstPass: r.firstPass, kind: r.postKind, name: r.name, confidence: r.confidence, lookedAt: r.lookedAt, similarity: r.similarity, imageUri: r.imageUri, signal: signals.get(r.id) ?? null, text: r.text.slice(0, 120) })), null, 1));
@@ -740,6 +759,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
                   untaughtPassed: ownerPick.side.untaught.passed, untaughtN: ownerPick.side.untaught.tested, liveUntaughtPassed: liveOwner.untaught.passed,
                   ownerTestPassed: ownerPick.side.test.passed, ownerTestN: ownerPick.side.test.tested, liveOwnerTestPassed: liveOwner.test.passed,
                   junkPassed: ownerPick.side.junk.passed, junkN: ownerPick.side.junk.tested, liveJunkPassed: liveOwner.junk.passed, liveJunkN: liveOwner.junk.tested,
+                  junkBPassed: ownerPick.side.junkB.passed, junkBN: ownerPick.side.junkB.tested, liveJunkBPassed: liveOwner.junkB.passed, liveJunkBN: liveOwner.junkB.tested, junkBRose: bRose, unclearN: unclearPosts.length,
                   costUsd: Number(costUsd.toFixed(4)),
                 }),
                 ...(choice === null || liveRates === null ? {} : {

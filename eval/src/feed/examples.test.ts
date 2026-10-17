@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { animalOrObject, atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, ownerGate, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, withRulebook, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall, type OwnerSide } from './examples.ts';
+import { animalOrObject, atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, junkBRose, missedCaught, ownerGate, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, withRulebook, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall, type OwnerSide } from './examples.ts';
 import { OWNER_SPLIT, alwaysTeachIds, checkSplit } from './owner-split.ts';
 
 const L = DEFAULT_POLICY.learning;
@@ -360,7 +360,7 @@ test("the owner's split file: no id both taught and tested, every untaught miss 
 });
 
 const r = (passed: number, tested: number) => ({ passed, tested });
-const side = (untaught: number, test: number, hand: number, junk: number): OwnerSide => ({ untaught: r(untaught, 6), test: r(test, 16), hand: r(hand, 100), junk: r(junk, 200) });
+const side = (untaught: number, test: number, hand: number, junk: number, junkB = 5): OwnerSide => ({ untaught: r(untaught, 6), test: r(test, 16), hand: r(hand, 100), junk: r(junk, 200), junkB: r(junkB, 150) });
 const liveSide = side(0, 10, 60, 20);
 
 test("★ the owner's gate: more of the test set caught, gold not lower, junk at most two points up", () => {
@@ -369,6 +369,10 @@ test("★ the owner's gate: more of the test set caught, gold not lower, junk at
   assert.match(ownerGate(side(2, 12, 59, 20), liveSide, 0.02).why ?? '', /hand gold 59\/100 is lower/);
   assert.match(ownerGate(side(2, 12, 60, 25), liveSide, 0.02).why ?? '', /junk 12\.5%.*more than 2 points over live's 10\.0%/);
   assert.match(ownerGate(side(2, 12, 60, 20), { ...liveSide, junk: r(0, 0) }, 0.02).why ?? '', /no recent For You junk post/);
+  assert.equal(ownerGate(side(2, 12, 60, 20, 50), liveSide, 0.02).apply, true, 'junk (b) never decides');
+  assert.equal(junkBRose(side(2, 12, 60, 20, 9), liveSide, 0.02), true, 'junk (b) 6.0% against 3.3%: flagged');
+  assert.equal(junkBRose(side(2, 12, 60, 20, 8), liveSide, 0.02), false);
+  assert.equal(junkBRose(side(2, 12, 60, 20, 8), { ...liveSide, junkB: r(0, 0) }, 0.02), null);
 });
 
 test("the owner's gate picks the sweep's cutoff when it holds there, else the strictest that holds, else refuses at the first", () => {
@@ -392,11 +396,13 @@ test("the owner's numbers come from one grading as live decides; the line says a
     g('x:t1', 'missed', true, null), g('x:t2', 'missed', false, null), g('x:t3', 'missed', true, 'SPORT'),
     g('x:j1', 'live-not', true, null), g('x:j2', 'live-not', false, null), g('x:old', 'live-not', true, null),
     g('x:gold', 'gold', true, null), g('x:t4', 'missed', null as unknown as boolean, null, null),
+    g('x:u1', 'untapped', true, null), g('x:u2', 'untapped', false, null), g('x:u3', 'untapped', false, null),
   ];
-  const s = ownerSide(rows, ['SPORT'], { test: new Set(['x:t1', 'x:t2', 'x:t3', 'x:t4']), untaught: new Set(['x:t2', 'x:t3']), junk: new Set(['x:j1', 'x:j2']), hand: ['gold', 'missed'], negatives: 'live-not' });
+  const s = ownerSide(rows, ['SPORT'], { test: new Set(['x:t1', 'x:t2', 'x:t3', 'x:t4']), untaught: new Set(['x:t2', 'x:t3']), junk: new Set(['x:j1', 'x:j2']), hand: ['gold', 'missed'], negatives: 'live-not', untapped: 'untapped' });
   assert.deepEqual(s.test, { passed: 1, tested: 3 }, 'held by its kind, and unanswered left out');
   assert.deepEqual(s.untaught, { passed: 0, tested: 2 });
   assert.deepEqual(s.junk, { passed: 1, tested: 2 }, 'only the recent taps');
   assert.deepEqual(s.hand, { passed: 2, tested: 4 });
-  assert.match(ownerLine(s, s, 0.4567), /untaught misses caught 0\/2 \(live 0\/2\), fixed test set 1\/3 .*junk 50\.0% 1\/2 .*cost \$0\.457/);
+  assert.deepEqual(s.junkB, { passed: 1, tested: 3 });
+  assert.match(ownerLine(s, s, 0.4567), /untaught misses caught 0\/2 \(live 0\/2\), fixed test set 1\/3 .*junk \(a\) Not a meme taps 50\.0% 1\/2 .*junk \(b\) untapped sample 33\.3% 1\/3 .*cost \$0\.457/);
 });

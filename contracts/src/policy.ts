@@ -2728,6 +2728,21 @@ export interface LearningPolicy {
     readonly junkDays: number;
     readonly junkFeed: string;
     readonly newsKinds: readonly string[];
+    /**
+     * The second junk measure (the owner, 2026-10-18), reported beside the first and flagged when it
+     * rises more than `maxJunkRise` too; the first decides. `sample` posts first shown on `junkFeed`
+     * in the window that the owner never tapped, drawn by a hash seeded with `seed` so both sides of
+     * a run are graded on the same posts, each labelled from the older judges' answers: the first
+     * old judge's where it has one, else the second's, a "yes" only at `fallbackCutoff` or above.
+     * An answer inside `unclearBand`, or two old answers that disagree, is unclear: out of the
+     * number, listed for the owner to label. Only the old-label "not" posts are graded.
+     */
+    readonly untapped: {
+      readonly sample: number;
+      readonly seed: string;
+      readonly fallbackCutoff: number;
+      readonly unclearBand: readonly [number, number];
+    };
   };
   /**
    * ★ POSTS PEOPLE COINED, TAUGHT AS "YES" (the owner, 2026-10-16: "teach the re-tune with coined
@@ -4403,7 +4418,12 @@ const POLICY_V1: Policy = {
     alwaysTeach: ['x:2109756994147983482'],
     /* The owner's three conditions, 2026-10-17: more of the fixed test caught, gold not lower, junk at
        most two points up, junk on the last three days of For You. */
-    ownerGate: { on: true, maxJunkRise: 0.02, junkDays: 3, junkFeed: 'fyp', newsKinds: ['SHOWBIZ', 'CORP_NEWS', 'TRAGEDY'] },
+    ownerGate: {
+      on: true, maxJunkRise: 0.02, junkDays: 3, junkFeed: 'fyp', newsKinds: ['SHOWBIZ', 'CORP_NEWS', 'TRAGEDY'],
+      /* The owner's numbers, 2026-10-18: 300 untapped posts, the old answers at 0.90, 0.6–0.8 unclear.
+         About 150 of the 300 are old-label "not" and graded on both sides: ~$0.12 a run more. */
+      untapped: { sample: 300, seed: 'junk-b-2026-10-18', fallbackCutoff: 0.9, unclearBand: [0.6, 0.8] },
+    },
     coinedYes: {
       /* On: the owner approved it, 2026-10-16. Free: read from our own rows, no judge call. */
       on: true,
