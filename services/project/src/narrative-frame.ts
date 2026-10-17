@@ -26,6 +26,10 @@
  *   found      the earliest moment we saved any post it lists now (public.item.first_seen_at),
  *              not when the narrative was first shown and not when a post went up
  *
+ * ★ ONLY THE BOARD'S PAGES. public.story_view and public.story_post hold exactly the narratives
+ * this frame put on the board: a page for anything else (hidden by the owner, merged, gone, the
+ * old board's stories) is deleted here, because every read route reads story_view by id.
+ *
  * ★ ONE POST COUNT EVERYWHERE. `memberCount`, the summary's "N posts from M accounts", `postIds`,
  * `postCount`, the evidence list and public.story_post's `posts` are all the posts listed here.
  *
@@ -320,6 +324,10 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   const rowsWithPages = board.rows.filter((r) => paged.has(r.id));
   const boardRows = await writeBoard(db, viewId, tick, rowsWithPages, { kind: 'observed' });
   const storyViews = await writeStories(db, pages);
+  /* ★ A PAGE IS THERE ONLY WHILE ITS NARRATIVE IS ON THE BOARD. One the owner hid, one merged or
+     gone, and the old board's stories leave public.story_view at this frame, so no read route
+     (a story page, search, the post sheet, alerts) can serve a narrative the board no longer shows. */
+  await db.query(`delete from public.story_view where not (story_id = any($1::text[]))`, [[...paged]]);
   const coinsByStory = new Map(rowsWithPages.map((row) => [row.id, row.coins]));
   await writeSameNameCoins(db, 'story', storySameNameLists(facts.filter((f) => paged.has(f.storyId)), coinsByStory));
 
