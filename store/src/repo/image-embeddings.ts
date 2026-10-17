@@ -129,6 +129,28 @@ export class PgImageEmbeddingRepo {
     );
   }
 
+  /**
+   * The vector some other subject already holds for this exact picture address in this space,
+   * written for this subject too; false when no subject holds one (nothing is written). Free: no
+   * vendor call. The caller decides which addresses are safe to share — only one whose address
+   * names its content (the runner's picture-reuse.ts): a mutable address can serve another picture
+   * under the same name, and its stored vector would then be another picture's.
+   */
+  async copyFromSameAddress(subjectKind: 'item' | 'asset', subjectId: string, uri: string, space: string, at: Millis): Promise<boolean> {
+    const rows = await this.#db.query<{ found: number }>(
+      `with src as (
+         select embedding from internal.image_embedding where uri = $3 and space = $4 limit 1
+       ), ins as (
+         insert into internal.image_embedding (subject_kind, subject_id, uri, space, embedding, embedded_at)
+         select $1, $2, $3, $4, embedding, $5 from src
+         on conflict (subject_kind, subject_id, uri, space) do nothing
+       )
+       select count(*)::int as found from src`,
+      [subjectKind, subjectId, uri, space, toTimestamp(at)],
+    );
+    return Number(rows[0]?.found ?? 0) > 0;
+  }
+
   /** Whether this subject already has a vector for this picture in this space. */
   async has(subjectKind: 'item' | 'asset', subjectId: string, uri: string, space: string): Promise<boolean> {
     const rows = await this.#db.query<{ n: number }>(

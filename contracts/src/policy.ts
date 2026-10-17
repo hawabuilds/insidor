@@ -567,6 +567,20 @@ export interface GroupPolicy {
     readonly likely: number;
     readonly borderline: number;
     readonly pairChecksPerDay: number;
+    /**
+     * ★ A COIN PICTURE ALREADY EMBEDDED IS COPIED, NOT PAID FOR AGAIN (services/runner
+     * work/picture-reuse.ts): the coin universe and the coin-match step, before embedding a coin's
+     * picture, copy the vector already stored for the same address — only an address that names
+     * its content, so the same address is the same bytes. Measured on 2026-10-17, last 24 hours:
+     * 12,670 coin pictures embedded, 5,967 at an address already embedded for another coin (copycat
+     * coins launch with the picture they copy), 1,889 of them content-named; the 45,054 stored
+     * pairs at those addresses agree to 0.999 cosine (the lowest 0.99899), while one mutable
+     * host's pairs fell to 0.88. At 900 to 1,400 tokens a picture the 1,889 are $0.20 to $0.30 a
+     * day. Nothing read changes: every
+     * coin that was embedded still has its vector, bit for bit the stored one. Off until the owner
+     * switches it on.
+     */
+    readonly reuseContentAddressed: boolean;
   };
   /**
    * The judge's name for a post, as a carrier (core/src/group/name-span.ts). A post's
@@ -3490,7 +3504,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v99',
+  version: 'policy.v100',
 
   admit: {
     maxAgeMin: 240,
@@ -3667,7 +3681,7 @@ const POLICY_V1: Policy = {
     promoteMinDistinctSources: 1,
     mergeCarrierOverlap: 0.6,
     imagesPerPass: 40,
-    image: { space: 'multimodal-3.1024', nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200 },
+    image: { space: 'multimodal-3.1024', nearIdentical: 0.95, likely: 0.82, borderline: 0.72, pairChecksPerDay: 200, reuseContentAddressed: false },
     name: { minChars: 4, maxPostAgeMs: 86_400_000 },
     genericSpans: ['breaking', 'breakingnews', 'justin', 'news', 'update', 'viral', 'trending', 'trend', 'fyp', 'foryou', 'foryoupage', 'meme', 'memes', 'memecoin', 'memecoins', 'crypto', 'cryptocurrency', 'funny', 'video', 'thread', 'usa'],
     maxMembersPerInterval: 200,
