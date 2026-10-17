@@ -494,3 +494,65 @@ test('a post re-scored after a prompt change is never skipped: its answer is rep
   assert.ok(recorded.has(post(1).itemId));
   assert.equal(result.notAsked, undefined);
 });
+
+/**
+ * The kind catch-up's store, as 0095 and `catchAllKindUnasked` read it: each post's newest answer,
+ * the kind answers filed after it, and the asks noted for it. A post is due while its answer is a
+ * "yes" with neither a kind answer nor a noted ask at or after it.
+ */
+function catchUpStore(answers: readonly { item: Item; confidence: number; judgedAt: Millis; kindAt?: Millis }[]) {
+  const kindAt = new Map(answers.flatMap((a) => (a.kindAt === undefined ? [] : [[String(a.item.itemId), a.kindAt] as const])));
+  const notedAt = new Map<string, Millis>();
+  const items = {
+    catchAllKindUnasked: async (_at: Millis, limit: number, _prefix: string, floor: number) =>
+      answers
+        .filter((a) => a.confidence >= floor)
+        .filter((a) => !((kindAt.get(String(a.item.itemId)) ?? -1) >= a.judgedAt) && !((notedAt.get(String(a.item.itemId)) ?? -1) >= a.judgedAt))
+        .sort((x, y) => y.judgedAt - x.judgedAt)
+        .slice(0, limit)
+        .map((a) => ({ item: a.item, answer: { coinable: true, confidence: a.confidence, lookedAt: 'text' as const, proposedName: 'baby hippo', judgedAt: a.judgedAt } })),
+  };
+  const recordKindAsked = async (rows: readonly { itemId: ItemId; answerJudgedAt: Millis }[]) => {
+    for (const r of rows) notedAt.set(String(r.itemId), r.answerJudgedAt);
+  };
+  return { items, recordKindAsked, notedAt };
+}
+
+test('★ kind catch-up: a passed post the kind question never met is asked; one already given a kind answer is not; an OTHER is not asked twice', async () => {
+  const judge = recordedJudge(0.9);
+  const { deps: d } = deps([], judge);
+  const store = catchUpStore([
+    { item: post(1), confidence: 0.9, judgedAt: (NOW - 3_600_000) as Millis },
+    { item: post(2), confidence: 0.9, judgedAt: (NOW - 3_600_000) as Millis, kindAt: (NOW - 3_500_000) as Millis },
+  ]);
+  const k = kindJudgeAnswering(judge, () => 'OTHER');
+  const run = () => scorePosts({ ...d, items: { ...d.items, ...store.items }, scores: { ...d.scores, recordKindAsked: store.recordKindAsked }, kindJudge: k.kindJudge });
+  await run();
+  assert.equal(k.asked.length, 1, 'only the post with no kind answer was asked');
+  assert.match(k.asked[0] ?? '', /post-x-1$/);
+  assert.equal(store.notedAt.get(String(post(1).itemId)), NOW - 3_600_000, 'the OTHER ask is noted against the answer it was about');
+  await run();
+  assert.equal(k.asked.length, 1, 'and the next pass does not ask it again');
+});
+
+test('kind catch-up: a held kind is filed to hold the post; at most kindCatchUpPerPass a pass, newest answer first', async () => {
+  const judge = recordedJudge(0.9);
+  const { deps: d, recorded } = deps([], judge);
+  const store = catchUpStore([post(1), post(2), post(3)].map((item, i) => ({ item, confidence: 0.9, judgedAt: (NOW - 1_000 * (i + 1)) as Millis })));
+  const k = kindJudgeAnswering(judge, () => 'AD');
+  const policy = { ...P, rising: { ...P.rising, kindCatchUpPerPass: 2 } };
+  await scorePosts({ ...d, policy, items: { ...d.items, ...store.items }, scores: { ...d.scores, recordKindAsked: store.recordKindAsked }, kindJudge: k.kindJudge });
+  assert.deepEqual(k.asked.map((s) => s.slice(-1)), ['1', '2']);
+  assert.deepEqual([...recorded.values()].map((j) => j.proposedName), ['AD', 'AD']);
+});
+
+test('kind catch-up: a dry run, or no kind judge, asks nothing', async () => {
+  const judge = recordedJudge(0.9);
+  const store = catchUpStore([{ item: post(1), confidence: 0.9, judgedAt: NOW }]);
+  const k = kindJudgeAnswering(judge, () => 'AD');
+  const { deps: dry } = deps([], judge, 'dry');
+  await scorePosts({ ...dry, items: { ...dry.items, ...store.items }, kindJudge: k.kindJudge });
+  const { deps: none } = deps([], judge);
+  await scorePosts({ ...none, items: { ...none.items, ...store.items } });
+  assert.equal(k.asked.length, 0);
+});

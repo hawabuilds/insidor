@@ -23,6 +23,14 @@
  * answer that could; until 2026-10-13 a boosted post skipped it, and a zoo-mauling news post
  * reached For You that way.
  *
+ * ★ AND IT CATCHES UP (2026-10-17). It used to be asked only in the pass that gave the first
+ * answer, so from 11:06 to about 15:20 UTC, with no kind judge wired, every post passed went
+ * unscreened for good (423 of them). Each pass now also asks it, at most
+ * `rising.kindCatchUpPerPass`, of posts whose newest answer could pass and has met no kind question
+ * since (`PgItemRepo.catchAllKindUnasked`). Every answered ask is noted in internal.kind_asked
+ * (0095), OTHER included — OTHER files nothing as a judgement — or the newest OTHER posts would be
+ * asked every pass and the rest never reached.
+ *
  * ★ FREE CHECKS FIRST. A catch-all post goes to the paid judge only once its reach clears For
  * You's bar (core's `clearsReachBar`) — a post that cannot show is not worth a judgement yet. One
  * that has not cleared it waits, unscored and off the feed, and is checked again after its next
@@ -129,8 +137,10 @@ export interface ScoringDeps {
    * only while the filter is on. Absent: every post is judged.
    */
   readonly junkFilter?: Pick<PgJunkFilterRepo, 'latestApplied' | 'recordSkips'> | null;
-  readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'catchAllStale' | 'reachReadings' | 'backfilled'>;
-  readonly scores: Pick<PgPostJudgementRepo, 'record' | 'recordCopy' | 'reusable'>;
+  /** `catchAllKindUnasked` absent: no kind catch-up (see the header). */
+  readonly items: Pick<PgItemRepo, 'catchAllUnscored' | 'catchAllStale' | 'reachReadings' | 'backfilled'> & Partial<Pick<PgItemRepo, 'catchAllKindUnasked'>>;
+  /** `recordKindAsked` absent: asks are not noted, and the catch-up cannot tell an OTHER from an unasked post. */
+  readonly scores: Pick<PgPostJudgementRepo, 'record' | 'recordCopy' | 'reusable'> & Partial<Pick<PgPostJudgementRepo, 'recordKindAsked'>>;
   readonly meter: Meter;
   readonly mode: 'dry' | 'live';
   readonly policy: Policy;
@@ -278,7 +288,46 @@ export async function scorePosts(deps: ScoringDeps): Promise<ScoringResult> {
     clearsReachBar('fyp', readings.get(String(item.itemId)) ?? [], item.postedAt, deps.policy, String(item.source) === SHORT_VIDEO_SOURCE ? deps.policy.rising.shortVideoReachScale : 1);
   const rescoring = stale.filter(reaches).slice(0, r.rescorePerPass);
   const queue = [...wide.filter((item) => backfilled.has(String(item.itemId)) || reaches(item)).slice(0, r.postsPerPass), ...rescoring];
-  return judgeQueue(deps, queue, { rescoring, junkFit, kindLabel, now });
+  const result = await judgeQueue(deps, queue, { rescoring, junkFit, kindLabel, now });
+  const caughtUpUsd = await kindCatchUp(deps, { kindLabel, now, since, justJudged: new Set(queue.map((i) => String(i.itemId))) });
+  return caughtUpUsd === 0 ? result : { ...result, spentUsd: result.spentUsd + caughtUpUsd };
+}
+
+/**
+ * ★ THE KIND CATCH-UP — see the header. Posts whose newest answer could pass and that met no kind
+ * question since (`PgItemRepo.catchAllKindUnasked`), at most `rising.kindCatchUpPerPass` a pass,
+ * newest answer first, through the same hold and kind question as a pass's own answers. Live only,
+ * and only with a kind judge; a read that fails skips the catch-up for this pass. Returns the spend.
+ */
+export async function kindCatchUp(
+  deps: ScoringDeps,
+  opts: { readonly kindLabel: string; readonly now: Millis; readonly since: Millis; readonly justJudged: ReadonlySet<string> },
+): Promise<number> {
+  const cap = deps.policy.rising.kindCatchUpPerPass;
+  const find = deps.items.catchAllKindUnasked?.bind(deps.items);
+  if (deps.kindJudge === undefined || deps.kindJudge === null || deps.mode !== 'live' || find === undefined || cap <= 0) return 0;
+  /* The lowest "yes" the boost could still lift, for the database; core makes the exact call. */
+  const floor = Math.min(...Object.values(deps.policy.qualify.minJudgeConfidence)) - deps.policy.rising.boostBarMargin;
+  let found: Awaited<ReturnType<NonNullable<ScoringDeps['items']['catchAllKindUnasked']>>>;
+  try {
+    found = await find(opts.since, cap * PREFETCH_FACTOR, opts.kindLabel, floor);
+  } catch (e) {
+    deps.log.warn('posts the kind question missed could not be read; caught up next pass', { err: errorText(e) });
+    return 0;
+  }
+  const due = found.filter((f) => !opts.justJudged.has(String(f.item.itemId)) && couldPassWithBoost(f.answer, deps.policy)).slice(0, cap);
+  if (due.length === 0) return 0;
+  const near: ReadonlyMap<string, PostPrecedents> =
+    deps.precedents === undefined || deps.precedents === null ? new Map() : await deps.precedents.refresh().then(() => deps.precedents!.forPosts(due.map((f) => f.item)));
+  const asks: KindAsk[] = due.map((f) => ({
+    itemId: f.item.itemId,
+    subject: subjectFor(f.item, deps.policy, near.get(String(f.item.itemId))?.precedents),
+    lookedAt: f.answer.lookedAt,
+    answerJudgedAt: f.answer.judgedAt,
+  }));
+  const k = await askKinds(deps, asks, near, opts.kindLabel, opts.now);
+  deps.log.info('kind question caught up', { asked: asks.length, heldBack: k.heldBack, notMatched: k.notMatched, usd: Number(k.spentUsd.toFixed(6)) });
+  return k.spentUsd;
 }
 
 /**
@@ -304,7 +353,7 @@ export async function judgeQueue(
   let copied = 0;
   let toJudge: Item[] = [];
   /* Posts the first question passed, or could pass with the boost, this pass: for the second. */
-  const askKind: { itemId: ItemId; subject: JudgeSubject | undefined; lookedAt: Judgement['lookedAt'] }[] = [];
+  const askKind: KindAsk[] = [];
   const found = deps.mode === 'live' ? await findReusable(deps, queue, judge.id, judge.promptId, since) : null;
   for (const item of queue) {
     const answer = found === null ? null : reusableFor(item, found);
@@ -316,7 +365,7 @@ export async function judgeQueue(
       await deps.scores.recordCopy(item.itemId, { ...answer.judgement, judgedAt: now, costUsd: 0, rationaleRef: null }, answer.sourceId);
       copied += 1;
       /* A copied answer is still asked the kind: the source's kind answer is not copied with it. */
-      if (couldPassWithBoost(answer.judgement, deps.policy)) askKind.push({ itemId: item.itemId, subject: subjectFor(item, deps.policy), lookedAt: answer.judgement.lookedAt });
+      if (couldPassWithBoost(answer.judgement, deps.policy)) askKind.push({ itemId: item.itemId, subject: subjectFor(item, deps.policy), lookedAt: answer.judgement.lookedAt, answerJudgedAt: now });
     } catch (e) {
       deps.log.warn('could not file a reused answer; the post is judged instead', { post: String(item.itemId), err: errorText(e) });
       toJudge.push(item);
@@ -410,7 +459,7 @@ export async function judgeQueue(
         scored += 1;
         /* ★ The boost's posts too: a post the picture may lift must meet the kind question like a
            pass, or a boosted ad or news post reaches For You (the zoo-mauling post, 2026-10-13). */
-        if (couldPassWithBoost(outcome.judgement, deps.policy)) askKind.push({ itemId, subject: subjects[index], lookedAt: outcome.judgement.lookedAt });
+        if (couldPassWithBoost(outcome.judgement, deps.policy)) askKind.push({ itemId, subject: subjects[index], lookedAt: outcome.judgement.lookedAt, answerJudgedAt: outcome.judgement.judgedAt });
       }
     } catch (e) {
       if (e instanceof BudgetRefused) {
@@ -423,14 +472,53 @@ export async function judgeQueue(
     }
   }
 
+  const kinds = await askKinds(deps, askKind, near, kindLabel, now);
+  spentUsd += kinds.spentUsd;
+  const { heldBack, notMatched } = kinds;
+
+  if (deps.mode === 'dry') {
+    deps.log.info('DRY RUN — posts priced for scoring, not sent', { posts: queue.length, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
+  } else if (sent > 0 && unanswered >= sent) {
+    /* ★ EVERY POST SENT CAME BACK WITHOUT AN ANSWER: the judge is down, not a quiet pass. Each
+       unavailable answer is rightly a waiting post, so on 2026-10-15 an empty judge account read
+       as two hours of "posts scored … scored=0" at info level. The same counts, at error level,
+       with the judge's own first reason (an empty account says so; the owner's push comes from
+       billing-alerts.ts). */
+    deps.log.error('posts scored: the judge answered none of the posts sent; they wait', { queued: queue.length, sent, unanswered, scored, copied, waiting: queue.length - scored, reason: firstReason, usd: Number(spentUsd.toFixed(6)) });
+  } else {
+    deps.log.info('posts scored', { queued: queue.length, rescoring: rescoring.length, scored, heldBack, notMatched, notAsked, withPrecedents: near.size, copied, waiting: queue.length - scored - notAsked, usd: Number(spentUsd.toFixed(6)) });
+  }
+  return { queued: queue.length, scored, copied, ...(notAsked === 0 ? {} : { notAsked }), waiting: queue.length - scored - notAsked, wouldSpendUsd, spentUsd };
+}
+
+/** A post to ask the kind question about: its subject, and the post-question answer it is asked about. */
+interface KindAsk {
+  readonly itemId: ItemId;
+  readonly subject: JudgeSubject | undefined;
+  readonly lookedAt: Judgement['lookedAt'];
+  readonly answerJudgedAt: Millis;
+}
+
+/**
+ * The not-a-meme hold, then the kind question, for posts whose answer could pass: shared by a
+ * pass's own answers and the kind catch-up, so the two can never screen a post two ways.
+ */
+async function askKinds(
+  deps: Omit<ScoringDeps, 'items'>,
+  askKind: readonly KindAsk[],
+  near: ReadonlyMap<string, PostPrecedents>,
+  kindLabel: string,
+  now: Millis,
+): Promise<{ heldBack: number; notMatched: number; spentUsd: number }> {
   /* The second question, for the posts the first passed or the boost could: a held kind holds the
      post back by filing the kind answer as its latest judgement. A budget pause or an outage here
      leaves the first answer standing — the post is not hidden for want of a second answer. */
   let heldBack = 0;
+  let spentUsd = 0;
   /* ★ THE NOT-A-MEME HOLD before the kind question: a post this close to one the owner called "not
      a meme" is held as NOT_MEME_MATCH, and not asked its kind (the answer could not free it). */
   let notMatched = 0;
-  const stillAsk: typeof askKind = [];
+  const stillAsk: KindAsk[] = [];
   for (const a of askKind) {
     const n = near.get(String(a.itemId));
     if (deps.mode !== 'live' || n === undefined || n.closestNot === null || !heldAsNotMeme(n.closestNot, deps.policy)) {
@@ -448,7 +536,7 @@ export async function judgeQueue(
   }
   const kindJudge = deps.kindJudge ?? null;
   if (kindJudge !== null && deps.mode === 'live' && stillAsk.length > 0) {
-    const asked = stillAsk.flatMap((p) => (p.subject === undefined ? [] : [{ itemId: p.itemId, subject: p.subject }]));
+    const asked = stillAsk.flatMap((p) => (p.subject === undefined ? [] : [{ itemId: p.itemId, subject: p.subject, answerJudgedAt: p.answerJudgedAt }]));
     const estimate = kindJudge.estimate(asked.map((a) => a.subject));
     if (deps.meter.mayspend(estimate.vendor, estimate.usd)) {
       try {
@@ -460,13 +548,25 @@ export async function judgeQueue(
           deadline: (now + deps.policy.judge.timeoutMs * deps.policy.judge.maxAttempts) as Millis,
         });
         spentUsd += result.spend.usd;
+        const answered: { itemId: ItemId; answerJudgedAt: Millis; askedAt: Millis; kind: string | null }[] = [];
         for (const [index, outcome] of result.value.entries()) {
           const a = asked[index];
+          if (a === undefined || outcome.kind !== 'judged') continue;
+          answered.push({ itemId: a.itemId, answerJudgedAt: a.answerJudgedAt, askedAt: deps.now(), kind: outcome.judgement.proposedName });
           /* Decided by the kind named, not the yes/no beside it: a reply that says OTHER and "not
              coinable" in one breath is OTHER. */
-          if (a === undefined || outcome.kind !== 'judged' || heldKind(outcome.judgement.proposedName, deps.policy.judge.heldKinds) === null) continue;
+          if (heldKind(outcome.judgement.proposedName, deps.policy.judge.heldKinds) === null) continue;
           await deps.scores.record(a.itemId, outcome.judgement);
           heldBack += 1;
+        }
+        /* ★ Every answered ask is noted (0095), OTHER too, so the catch-up never asks it again. A
+           note that cannot be written (0095 not applied) costs one more ask later, nothing else. */
+        if (deps.scores.recordKindAsked !== undefined) {
+          try {
+            await deps.scores.recordKindAsked(answered);
+          } catch (e) {
+            deps.log.warn('could not note the kind question\'s asks; the catch-up may ask them again', { posts: answered.length, err: errorText(e) });
+          }
         }
       } catch (e) {
         deps.log.warn('the kind question failed; first answers stand', { posts: asked.length, err: errorText(e) });
@@ -474,17 +574,5 @@ export async function judgeQueue(
     }
   }
 
-  if (deps.mode === 'dry') {
-    deps.log.info('DRY RUN — posts priced for scoring, not sent', { posts: queue.length, wouldSpendUsd: Number(wouldSpendUsd.toFixed(6)) });
-  } else if (sent > 0 && unanswered >= sent) {
-    /* ★ EVERY POST SENT CAME BACK WITHOUT AN ANSWER: the judge is down, not a quiet pass. Each
-       unavailable answer is rightly a waiting post, so on 2026-10-15 an empty judge account read
-       as two hours of "posts scored … scored=0" at info level. The same counts, at error level,
-       with the judge's own first reason (an empty account says so; the owner's push comes from
-       billing-alerts.ts). */
-    deps.log.error('posts scored: the judge answered none of the posts sent; they wait', { queued: queue.length, sent, unanswered, scored, copied, waiting: queue.length - scored, reason: firstReason, usd: Number(spentUsd.toFixed(6)) });
-  } else {
-    deps.log.info('posts scored', { queued: queue.length, rescoring: rescoring.length, scored, heldBack, notMatched, notAsked, withPrecedents: near.size, copied, waiting: queue.length - scored - notAsked, usd: Number(spentUsd.toFixed(6)) });
-  }
-  return { queued: queue.length, scored, copied, ...(notAsked === 0 ? {} : { notAsked }), waiting: queue.length - scored - notAsked, wouldSpendUsd, spentUsd };
+  return { heldBack, notMatched, spentUsd };
 }

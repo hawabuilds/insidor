@@ -174,6 +174,21 @@ export class PgPostJudgementRepo {
     );
   }
 
+  /**
+   * That the kind question was answered about each post's answer given at `answerJudgedAt`
+   * (0095), whatever it said — an OTHER answer files nothing in post_judgement, so without this
+   * the scorer's kind catch-up would ask the same post again every pass. Only answered asks.
+   */
+  async recordKindAsked(rows: readonly { readonly itemId: ItemId; readonly answerJudgedAt: Millis; readonly askedAt: Millis; readonly kind: string | null }[]): Promise<void> {
+    if (rows.length === 0) return;
+    await this.#db.query(
+      `insert into internal.kind_asked (item_id, answer_judged_at, asked_at, kind)
+       select * from unnest($1::text[], $2::timestamptz[], $3::timestamptz[], $4::text[])
+       on conflict (item_id, answer_judged_at) do update set asked_at = excluded.asked_at, kind = excluded.kind`,
+      [rows.map((r) => String(r.itemId)), rows.map((r) => toTimestamp(r.answerJudgedAt)), rows.map((r) => toTimestamp(r.askedAt)), rows.map((r) => r.kind)],
+    );
+  }
+
   async latest(itemIds: readonly ItemId[]): Promise<ReadonlyMap<ItemId, Judgement>> {
     const found = await this.#inner.latest(itemIds as unknown as readonly StoryId[]);
     return new Map([...found].map(([key, recorded]) => [key as unknown as ItemId, recorded.judgement]));
