@@ -49,8 +49,8 @@ export const DEFAULT_OPEN_MODEL = 'google/gemma-3-27b-it';
  */
 export const KNOWN_MODELS: readonly HostModel[] = [
   { id: 'google/gemma-3-27b-it', vision: true, usdPerInputToken: 0.08e-6, usdPerOutputToken: 0.45e-6, contextLength: null },
-  /* The backup's default on Together (its public model list, read 2026-10-16: serverless, vision;
-     Together serves no Gemma 3). Its list needs a key, so the backup is priced from here. */
+  /* The second host's default until 2026-10-17 (its public model list, read 2026-10-16: serverless, vision;
+     Together serves no Gemma 3); refused on this account as not serverless. Kept priced for OPEN_JUDGE_BACKUP_MODEL. */
   { id: 'google/gemma-4-31B-it', vision: true, usdPerInputToken: 0.39e-6, usdPerOutputToken: 0.97e-6, contextLength: null },
   /* Together, serverless, with pictures: $0.15 in and $0.50 out a million tokens, 262,144-token
      window (its model list read with the key, 2026-10-17). Its confidences sit lower than
@@ -103,12 +103,27 @@ export const BACKUP_VENDOR = 'together';
 /** Nemotron 3.5 Super VL, the owner's live post judge from 2026-10-17 (KNOWN_MODELS has its listing). */
 export const PRIMARY_POST_MODEL = 'nvidia/NVIDIA-Nemotron-3.5-Super-VL';
 /**
- * The backup's model on Together. NOT Gemma 3: Together's public serverless and dedicated lists
- * (read 2026-10-16) have no Gemma 3; its one Gemma is Gemma 4 31B, serverless, with pictures, at
- * $0.39 in and $0.97 out a million tokens. Set OPEN_JUDGE_BACKUP_MODEL for another; a model not in
- * KNOWN_MODELS has no price here and the backup is off (the runner says so at boot).
+ * The second host's model: Nemotron 3.5 Super VL from 2026-10-17 (the owner's switch). NOT Gemma 4
+ * 31B, the default before it: Together refuses it on this account as not serverless, so with
+ * TOGETHER_API_KEY set the failover was on to a model that fails every call. Set
+ * OPEN_JUDGE_BACKUP_MODEL for another; a model not in KNOWN_MODELS has no price here and the second
+ * host is off (the runner says so at boot).
  */
-export const DEFAULT_BACKUP_MODEL = 'google/gemma-4-31B-it';
+export const DEFAULT_BACKUP_MODEL = PRIMARY_POST_MODEL;
+
+/**
+ * ★ WHICH OPEN HOST ANSWERS THE FEED'S POST QUESTION FIRST (the owner, 2026-10-17: "switch the live
+ * post judge to Nemotron on Together, Gemma 3 as its automatic fallback"). `second`, the default:
+ * the second host's model first and the router's behind it, whenever both are configured; with one
+ * of them, that one alone. `router` (OPEN_JUDGE_POST_FIRST=router) turns it back round without a
+ * code change. The kind question goes with it (the measured For You numbers had the first model
+ * name the kind); names, translations and titles stay on the router's model first, the cheaper.
+ */
+export const OPEN_POST_FIRST = 'OPEN_JUDGE_POST_FIRST';
+export type PostFirst = 'second' | 'router';
+export function readPostFirst(env: Readonly<Record<string, string | undefined>>): PostFirst {
+  return env[OPEN_POST_FIRST]?.trim().toLowerCase() === 'router' ? 'router' : 'second';
+}
 
 /** The vendor a host bills as, from its address: api.together.xyz → together. */
 export function vendorOfHost(baseUrl: string): string {

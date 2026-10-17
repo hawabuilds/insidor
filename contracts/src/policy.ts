@@ -838,6 +838,13 @@ export interface JudgePolicy {
     readonly timeoutMs: number;
     readonly maxAttempts: number;
     readonly answerTokensPerPost: number;
+    /**
+     * Posts a call for the primary open model (Policy.judge.cutoffs `primary`), in place of
+     * `batchSize`: measured 2026-10-17 on 120 hand-gold posts at ten a call, Nemotron answered all
+     * 120 in 14 calls, re-asks included, in 26 s (0.22 s a post), so ten a call costs one call where
+     * five would cost two and send the same 40 precedents twice.
+     */
+    readonly primaryBatchSize: number;
   };
   /**
    * ★ WHO ASKS EACH OF THE OTHER QUESTIONS (the owner, 2026-10-16: "move everything that can run on
@@ -3734,7 +3741,7 @@ const POLICY_V1: Policy = {
        or meme post, and about 4% of the day's judged posts. 0.25 dropped one later missed post on a
        time split (train before 15 Oct 13:00, test after); 0.5 dropped none on either split. */
     junkFilter: { on: false, l2: 0.3, folds: 5, margin: 0.5, minProtected: 30 },
-    open: { batchSize: 5, parallel: 4, reask: 1, reaskWithinMs: 60_000, timeoutMs: 35_000, maxAttempts: 2, answerTokensPerPost: 150 },
+    open: { batchSize: 5, parallel: 4, reask: 1, reaskWithinMs: 60_000, timeoutMs: 35_000, maxAttempts: 2, answerTokensPerPost: 150, primaryBatchSize: 10 },
     /* The owner, 2026-10-16: no main-judge API from now on (its credit ran out at 19:26 UTC that
        evening). Each question copy-tested that night on 30 recent real inputs against the main
        judge's stored answers (the open model's cost for all of it: $0.02):

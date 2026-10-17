@@ -56,8 +56,8 @@ export { OPEN_NAMES_ENDPOINT, OPEN_PAIR_ENDPOINT, OPEN_TRANSLATE_ENDPOINT, chatB
 export type { OpenAsk, OpenQuestionDeps, OpenSameSubject } from './questions.ts';
 export { OPEN_TITLE_ENDPOINT, TITLE_PROMPT_SHA, cleanTitle, openTitler, titleRequestText } from './titles.ts';
 export type { OpenTitlerDeps } from './titles.ts';
-export { BACKUP_VENDOR, DEFAULT_BACKUP_BASE_URL, DEFAULT_BACKUP_MODEL, DEFAULT_OPEN_MODEL, DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, OPEN_API_KEY, OPEN_BACKUP_API_KEY, OPEN_BACKUP_BASE_URL, OPEN_BACKUP_MODEL, OPEN_BASE_URL, OPEN_MODEL, OPEN_PROVIDERS, PRIMARY_POST_MODEL, TOGETHER_API_KEY, answerSide, isOpenJudgeId, judgeModelKey, openProviders, readOpenJudgeBackupSetup, readOpenJudgeSetup, vendorOfHost } from './setup.ts';
-export type { OpenJudgeSetup } from './setup.ts';
+export { BACKUP_VENDOR, DEFAULT_BACKUP_BASE_URL, DEFAULT_BACKUP_MODEL, DEFAULT_OPEN_MODEL, DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, OPEN_API_KEY, OPEN_BACKUP_API_KEY, OPEN_BACKUP_BASE_URL, OPEN_BACKUP_MODEL, OPEN_BASE_URL, OPEN_MODEL, OPEN_POST_FIRST, OPEN_PROVIDERS, PRIMARY_POST_MODEL, TOGETHER_API_KEY, answerSide, isOpenJudgeId, judgeModelKey, openProviders, readOpenJudgeBackupSetup, readOpenJudgeSetup, readPostFirst, vendorOfHost } from './setup.ts';
+export type { OpenJudgeSetup, PostFirst } from './setup.ts';
 
 /** The ledger's endpoint for these calls; the learning book's meter adds its own prefix. */
 export const OPEN_JUDGE_ENDPOINT = 'judge-open';

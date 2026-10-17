@@ -17,12 +17,16 @@
  * no fallback and no shadow, and `primary: 'open'` runs the main judge (the boot logs why). The
  * feed never stops for want of the second supplier.
  *
+ * ★ AND WHICH OPEN MODEL FIRST (`postJudgeOrder`, from 2026-10-17): two open models on two hosts,
+ * Nemotron on Together asked the post and kind questions first and Gemma 3 on the router behind it,
+ * unless OPEN_JUDGE_POST_FIRST=router. Decided here for the same reason as the roles.
+ *
  * What breaks if changed carelessly: `openHostModel` must not fail the boot. A host whose model
  * list is slow or down gets the listing we recorded (KNOWN_MODELS); without one, no open judge.
  */
 
 import type { Policy } from '@insidor/contracts/policy.ts';
-import { KNOWN_MODELS, closestModel, listModels, type HostModel, type OpenJudgeSetup } from '@insidor/judge-openai-compatible';
+import { KNOWN_MODELS, answerSide, closestModel, listModels, type HostModel, type OpenJudgeSetup, type PostFirst } from '@insidor/judge-openai-compatible';
 
 import { errorText, type Logger } from './log.ts';
 
@@ -82,3 +86,28 @@ export function describeRoles(wanted: JudgeRole, roles: Roles, open: { readonly 
     fields: { why },
   };
 }
+
+/** One open model to ask: its host setup and the model as the host lists it. */
+export interface OpenSide {
+  readonly setup: Extract<OpenJudgeSetup, { state: 'configured' }>;
+  readonly model: HostModel;
+}
+
+/**
+ * ★ WHICH OPEN MODEL ASKS THE POST AND KIND QUESTIONS FIRST, and which stands behind it (adapter
+ * setup.ts `readPostFirst`; the owner, 2026-10-17: "Nemotron on Together at 0.70, Gemma 3 as its
+ * automatic fallback"): `second` puts the second host's model first and the router's behind it;
+ * `router` turns it round; with one host, that one alone and nothing behind. Exported for its test
+ * and for a copy test that runs the live scorer in this order.
+ */
+export function postJudgeOrder(postFirst: PostFirst, router: OpenSide | null, second: OpenSide | null): { readonly first: OpenSide | null; readonly behind: OpenSide | null } {
+  const first = postFirst === 'second' ? (second ?? router) : (router ?? second);
+  return { first, behind: first === second ? router : second };
+}
+
+/** A model as its log lines name it: host and model. */
+export const sideName = (side: OpenSide): string => `${side.setup.vendor}/${side.model.id}`;
+
+/** Posts a call: the primary's own number (Policy.judge.open.primaryBatchSize) by the model's cutoff place, else batchSize. */
+export const postsPerCall = (side: OpenSide, policy: Policy): number =>
+  answerSide(`judge:${side.setup.vendor}/${side.model.id}`).place === 'primary' ? policy.judge.open.primaryBatchSize : policy.judge.open.batchSize;
