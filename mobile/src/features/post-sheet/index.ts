@@ -6,7 +6,7 @@
 export { PostSheet, type PostSheetProps } from './PostSheet.tsx';
 /* The narrative page draws the same chart, coin row, Choose coin and Buy ticket (features/narrative). */
 export { GainChart, type ChartMarker } from './GainChart.tsx';
-export { GAIN_INTERVALS, LAST_WORDS, buckets, firstWords, hm, lastGain, launchTime, plus, sparkInterval, smoothPath, type GainInterval, type GainSlots } from './gain-chart.ts';
+export { CHART_INTERVALS, GAIN_INTERVALS, LAST_WORDS, buckets, firstWords, hm, lastGain, launchTime, plus, sparkInterval, smoothPath, type ChartInterval, type GainInterval, type GainSlots } from './gain-chart.ts';
 export { pctText } from './mc-change.ts';
 export { useMcChange } from './useMcChange.ts';
 export { ChooseCoin } from './ChooseCoin.tsx';

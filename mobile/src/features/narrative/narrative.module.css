@@ -479,3 +479,44 @@
   color: #f4eeff;
   font-size: 14px;
 }
+
+/* "First post we caught": its own card above the list, a purple label, then Posted and Found. */
+.firstCard {
+  margin: 18px 16px 0;
+  padding: 12px 14px 0;
+  border: 1px solid #2b2440;
+  border-radius: 18px;
+  background: #151320;
+}
+
+.firstCard .posts {
+  padding: 0;
+}
+
+.firstCard .row {
+  border-bottom: 0;
+}
+
+.firstLabel {
+  display: block;
+  color: #b48cff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.firstTimes {
+  display: flex;
+  gap: 14px;
+  margin-top: 4px;
+  color: #8b8794;
+  font-size: 13px;
+}
+
+.more {
+  padding: 16px 0;
+  color: #8b8794;
+  font-size: 13px;
+  text-align: center;
+}

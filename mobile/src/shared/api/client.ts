@@ -19,7 +19,7 @@
 import { notImplemented } from '../not-implemented.ts';
 import { decodeCoinAbout, type CoinAbout } from './about.ts';
 import { decodePostSheet, type PostSheetData } from './post-sheet.ts';
-import { decodeStorySheet, type StorySheet } from './story-sheet.ts';
+import { decodeStorySheet, type StoryMember, type StorySheet } from './story-sheet.ts';
 import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeRisingPage, decodeRisingSorted, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, SameNameCoins, SearchedCoin, SearchResults } from './wire/search.ts';
@@ -227,6 +227,11 @@ export async function fetchStory(storyId: string, signal?: AbortSignal): Promise
 /** A narrative page's posts (their feed cards and view readings) and its coins, its own coin first. */
 export async function fetchStorySheet(storyId: string, signal?: AbortSignal): Promise<StorySheet> {
   return decodeStorySheet(await read(`/story/${encodeURIComponent(storyId)}/sheet`, signal));
+}
+
+/** The cards of chosen posts of a narrative (its next screenful): `?posts=`, at most 60 ids a call. */
+export async function fetchStoryPosts(storyId: string, postIds: readonly string[], signal?: AbortSignal): Promise<readonly StoryMember[]> {
+  return decodeStorySheet(await read(`/story/${encodeURIComponent(storyId)}/sheet?posts=${postIds.map(encodeURIComponent).join(',')}`, signal)).members;
 }
 
 /* ── trading (services/trade) ──────────────────────────────────────────

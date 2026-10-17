@@ -45,6 +45,21 @@ export const SLOT_MS = 5 * MINUTE;
 export const GAIN_INTERVALS = ['5m', '15m', '1h', '4h', '1D'] as const;
 export type GainInterval = (typeof GAIN_INTERVALS)[number];
 export const GAIN_INTERVAL_MS: Readonly<Record<GainInterval, number>> = { '5m': 5 * MINUTE, '15m': 15 * MINUTE, '1h': HOUR, '4h': 4 * HOUR, '1D': DAY };
+/**
+ * The narrative page's intervals: the five above and "All", the whole story from its first post to
+ * now (the owner, 2026-10-17). "All" draws the projector's coarser series (half-hours from its first
+ * reading) when it has one, so a story older than a day is drawn whole.
+ */
+export const CHART_INTERVALS = [...GAIN_INTERVALS, 'All'] as const;
+export type ChartInterval = (typeof CHART_INTERVALS)[number];
+
+/** All's bucket: the finest of half an hour, 1h, 2h or 4h that keeps the line to `ALL_MAX_BUCKETS` points. */
+const ALL_MAX_BUCKETS = 48;
+export function allBucketMs(spanMs: number, stepMs: number): number {
+  const fit = [30 * MINUTE, HOUR, 2 * HOUR, 4 * HOUR].filter((b) => b >= stepMs).find((b) => spanMs / b <= ALL_MAX_BUCKETS);
+  return fit ?? 4 * HOUR;
+}
+
 /** "Last 15m", "Last hour", "Last day". */
 export const LAST_WORDS: Readonly<Record<GainInterval, string>> = { '5m': 'Last 5m', '15m': 'Last 15m', '1h': 'Last hour', '4h': 'Last 4h', '1D': 'Last day' };
 

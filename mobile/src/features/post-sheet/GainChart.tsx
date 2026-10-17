@@ -3,7 +3,8 @@
  * design, 2026-10-17): views gained per interval as one smooth purple line with a faint glow and a
  * fade under it to nothing, the newest value at the line's end, the Found and coin markers as dashed
  * lines with pills at their exact times, three times along the bottom (the first one saying when the
- * first post went up), and the 5m 15m 1h 4h 1D rail under it.
+ * first post went up), and the 5m 15m 1h 4h 1D rail under it (the narrative page adds All: the whole
+ * story from its first post, drawn from the projector's coarser series).
  *
  * ★ NOTHING ELSE ON IT: no market cap line, no bars, no dots, no gridlines, no y numbers. Market cap
  * is a fact in the line above the chart and the full price chart is the token page's. The numbers
@@ -19,13 +20,16 @@
 
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { GAIN_INTERVALS, GAIN_INTERVAL_MS, buckets, hm, placePills, plus, smoothPath, type GainInterval, type GainSlots } from './gain-chart.ts';
+import { GAIN_INTERVALS, GAIN_INTERVAL_MS, allBucketMs, buckets, hm, placePills, plus, smoothPath, type ChartInterval, type GainSlots } from './gain-chart.ts';
 import styles from './gain-chart.module.css';
 
 const DAY = 86_400_000;
 /** Room on the right for the end label. */
 const END_ROOM = 62;
 const PILL_ROW = 26;
+/** A time label's character width at its 12px, and the least room between two labels. */
+const LABEL_CHAR = 6.6;
+const LABEL_GAP = 12;
 /** Space above the highest point, so the glow is never cut. */
 const TOP_ROOM = 8;
 
@@ -37,15 +41,19 @@ export interface ChartMarker {
   readonly at: number | null;
 }
 
-export function GainChart({ slots, firstAt, firstWord, now, interval, onInterval, markers, height, rail = true }: {
+export function GainChart({ slots, allSlots = null, intervals = GAIN_INTERVALS, firstAt, firstWord, now, interval, onInterval, markers, height, rail = true }: {
   slots: GainSlots;
+  /** The whole story's coarser slots, drawn on "All"; null: "All" draws `slots` from the first post. */
+  allSlots?: GainSlots | null;
+  /** The rail's intervals: the narrative page adds "All". */
+  intervals?: readonly ChartInterval[];
   /** When the first post went up (the post, on the sheet); null when not known. */
   firstAt: number | null;
   /** "first post" or "posted". */
   firstWord: string;
   now: number;
-  interval: GainInterval;
-  onInterval: (i: GainInterval) => void;
+  interval: ChartInterval;
+  onInterval: (i: ChartInterval) => void;
   markers: readonly ChartMarker[];
   height: number;
   /** False on the post sheet, which has one interval and no room for the times and the rail. */
@@ -63,11 +71,15 @@ export function GainChart({ slots, firstAt, firstWord, now, interval, onInterval
     return () => ro.disconnect();
   }, []);
 
-  const end = slots.fromMs + slots.values.length * slots.stepMs;
-  /* The span: from the first post (the slots carry at most a day), to the newest slot. */
-  const from = Math.min(end - slots.stepMs, Math.max(firstAt ?? slots.fromMs, end - DAY));
+  /* "All": the whole story, from its first post (or its first reading) to now, no day cap. */
+  const all = interval === 'All';
+  const series = all && allSlots !== null && allSlots.values.length > 0 ? allSlots : slots;
+  const end = series.fromMs + series.values.length * series.stepMs;
+  /* The span: from the first post (the five-minute slots carry at most a day), to the newest slot. */
+  const from = Math.min(end - series.stepMs, all ? (firstAt ?? series.fromMs) : Math.max(firstAt ?? series.fromMs, end - DAY));
   const fromIsPost = firstAt !== null && from === firstAt;
-  const shown = useMemo(() => buckets(slots, GAIN_INTERVAL_MS[interval], from), [slots, interval, from]);
+  const bucketMs = all ? allBucketMs(end - from, series.stepMs) : GAIN_INTERVAL_MS[interval];
+  const shown = useMemo(() => buckets(series, bucketMs, from), [series, bucketMs, from]);
   const plotW = Math.max(0, width - END_ROOM);
   const x = (t: number) => (end <= from ? 0 : ((Math.min(Math.max(t, from), end) - from) / (end - from)) * plotW);
 
@@ -99,6 +111,10 @@ export function GainChart({ slots, firstAt, firstWord, now, interval, onInterval
   const lastRun = runs[runs.length - 1] ?? [];
   const lastPt = lastRun[lastRun.length - 1];
   const mid = from + (end - from) / 2;
+  /* The middle time only where it clears the first one ("Thu 14:01 first post" is long on All). */
+  const startText = `${hm(from, now)}${fromIsPost ? ` ${firstWord}` : ''}`;
+  const midText = hm(mid, now);
+  const midFits = x(mid) - (midText.length * LABEL_CHAR) / 2 > startText.length * LABEL_CHAR + LABEL_GAP;
 
   return (
     <div className={styles['chart']}>
@@ -148,7 +164,7 @@ export function GainChart({ slots, firstAt, firstWord, now, interval, onInterval
             ) : null}
             {counted < 2 ? (
               <span className={styles['few']} style={{ top: top + plotH / 2 - 9 }}>
-                {counted === 0 ? 'No views read in this span yet' : `Less than two ${interval} intervals so far`}
+                {counted === 0 ? 'No views read in this span yet' : all ? 'Less than two readings so far' : `Less than two ${interval} intervals so far`}
               </span>
             ) : null}
           </>
@@ -156,14 +172,14 @@ export function GainChart({ slots, firstAt, firstWord, now, interval, onInterval
       </div>
       {rail ? (
       <div className={styles['times']} style={{ width: plotW }}>
-        <span>{hm(from, now)}{fromIsPost ? ` ${firstWord}` : ''}</span>
-        <span className={styles['mid']} style={{ left: x(mid) }}>{hm(mid, now)}</span>
+        <span>{startText}</span>
+        {midFits ? <span className={styles['mid']} style={{ left: x(mid) }}>{midText}</span> : null}
         <span>{hm(end, now)}</span>
       </div>
       ) : null}
       {rail ? (
       <div className={styles['rail']} role="group" aria-label="Chart interval">
-        {GAIN_INTERVALS.map((i) => (
+        {intervals.map((i) => (
           <button key={i} type="button" className={`${styles['iv']} ${i === interval ? styles['ivOn'] : ''}`} aria-pressed={i === interval} onClick={() => onInterval(i)}>
             {i}
           </button>
