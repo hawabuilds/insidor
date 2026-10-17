@@ -170,10 +170,18 @@ export function rotated(providers: readonly string[], n: number): readonly strin
  * The router-only request fields: only hosts that honour the schema and the temperature, the pinned
  * providers in order and no others, and the call's cost in the reply. None for a host of its own
  * (`router: false`), which is sent the plain chat-completions body — a host that does not know a
- * field may refuse the whole request for it.
+ * field may refuse the whole request for it — with one field of its own:
+ *
+ * ★ REASONING OFF ON A HOST OF ITS OWN (Together, measured 2026-10-16). Its serverless vision
+ * models think before they answer unless told not to: with the forced answer shape and 300 tokens,
+ * Nemotron 3.5 Super VL spent all 300 on `reasoning_content` and returned no answer (cut off), and
+ * Qwen3.5-9B the same; with `reasoning: { enabled: false }` each answered the JSON in about 30
+ * tokens and half a second. A thinking judge is a judge whose answer budget is spent before it
+ * answers. Together accepts the field for a model that does not think (MiniMax M3 answered the same
+ * with it).
  */
 export function routerFields(router: boolean | undefined, providers: readonly string[]): Record<string, unknown> {
-  if (router === false) return {};
+  if (router === false) return { reasoning: { enabled: false } };
   return {
     provider: providers.length === 0 ? { require_parameters: true } : { require_parameters: true, order: [...providers], allow_fallbacks: false },
     usage: { include: true },

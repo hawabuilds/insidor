@@ -52,6 +52,11 @@ export const KNOWN_MODELS: readonly HostModel[] = [
   /* The backup's default on Together (its public model list, read 2026-10-16: serverless, vision;
      Together serves no Gemma 3). Its list needs a key, so the backup is priced from here. */
   { id: 'google/gemma-4-31B-it', vision: true, usdPerInputToken: 0.39e-6, usdPerOutputToken: 0.97e-6, contextLength: null },
+  /* Together, serverless, with pictures: $0.15 in and $0.50 out a million tokens, 262,144-token
+     window (its model list read with the key, 2026-10-17). Its confidences sit lower than
+     Gemma 3's (gold yeses: median 0.88): held to a block cutoff of 0.90 chosen on Gemma's answers
+     it passes about half the hand gold it passes at its own bar. */
+  { id: 'nvidia/NVIDIA-Nemotron-3.5-Super-VL', vision: true, usdPerInputToken: 0.15e-6, usdPerOutputToken: 0.5e-6, contextLength: 262_144 },
 ];
 
 export type OpenJudgeSetup =

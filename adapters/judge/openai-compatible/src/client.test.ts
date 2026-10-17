@@ -376,5 +376,7 @@ test('a host of its own is sent the plain chat body: no provider pin, no usage r
   const own = buildChatBody({ model: 'm', maxOutputTokens: 100, vision: true, providers: [], router: false }, req);
   assert.ok(!('provider' in own) && !('usage' in own));
   assert.deepEqual(own['response_format'], routed['response_format']);
-  assert.deepEqual(routerFields(false, ['p']), {});
+  /* Its one field: thinking off, or a thinking model spends the answer budget before it answers. */
+  assert.deepEqual(routerFields(false, ['p']), { reasoning: { enabled: false } });
+  assert.ok(!('reasoning' in routed));
 });
