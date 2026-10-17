@@ -46,9 +46,10 @@ function deps(policy: Policy, mode: 'dry' | 'live', found: boolean | 'throws') {
   };
 }
 
-test('★ off by default: nothing is copied and every picture goes to the vendor as before', async () => {
-  const { asked, d } = deps(DEFAULT_POLICY, 'live', true);
-  assert.equal(DEFAULT_POLICY.group.image.reuseContentAddressed, false);
+test('★ off: nothing is copied and every picture goes to the vendor as before', async () => {
+  const off = { ...DEFAULT_POLICY, group: { ...DEFAULT_POLICY.group, image: { ...DEFAULT_POLICY.group.image, reuseContentAddressed: false } } };
+  const { asked, d } = deps(off, 'live', true);
+  assert.equal(DEFAULT_POLICY.group.image.reuseContentAddressed, true, 'on since 2026-10-17, the owner');
   assert.equal(await reuseCoinPicture(d, 'a1', `https://g.example/ipfs/${V1}`, 'space'), false);
   assert.deepEqual(asked, []);
 });
