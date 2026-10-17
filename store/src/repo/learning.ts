@@ -305,6 +305,32 @@ export class PgLearningRepo {
     return rows.map((r) => ({ itemId: r.item_id, firstShownAt: r.first_shown_at, kind: r.kind_label }));
   }
 
+  /**
+   * The posts first shown on one feed since `since` that the owner never tapped (no post call at
+   * all), with words, and the newest post-question answer of each of two older judges, named by
+   * their judge-id patterns (`like`). The owner's second junk measure (tools/lib/junk-sample.ts)
+   * labels them from these. Read-only.
+   */
+  async untappedShown(feedId: string, since: Date, firstJudge: string, secondJudge: string): Promise<readonly { readonly itemId: string; readonly body: string; readonly media: unknown; readonly haiku: { readonly coinable: boolean; readonly confidence: number } | null; readonly gemma: { readonly coinable: boolean; readonly confidence: number } | null }[]> {
+    const rows = await this.#db.query<{ item_id: string; body: string; media: unknown; a_coinable: boolean | null; a_conf: number | null; b_coinable: boolean | null; b_conf: number | null }>(
+      `select fp.item_id, i.body, i.media, a.coinable as a_coinable, a.confidence as a_conf, b.coinable as b_coinable, b.confidence as b_conf
+         from public.feed_post fp
+         join public.item i on i.item_id = fp.item_id and coalesce(i.body, '') <> ''
+         left join lateral (select pj.coinable, pj.confidence from internal.post_judgement pj
+                             where pj.item_id = fp.item_id and pj.judge_id like $3 and pj.prompt_id not like 'post-kind%' and pj.coinable is not null
+                             order by pj.judged_at desc, pj.id desc limit 1) a on true
+         left join lateral (select pj.coinable, pj.confidence from internal.post_judgement pj
+                             where pj.item_id = fp.item_id and pj.judge_id like $4 and pj.prompt_id not like 'post-kind%' and pj.coinable is not null
+                             order by pj.judged_at desc, pj.id desc limit 1) b on true
+        where fp.feed_id = $1 and fp.first_shown_at >= $2
+          and not exists (select 1 from internal.owner_feedback f where f.item_id = fp.item_id and f.subject_kind = 'post')
+        order by fp.item_id`,
+      [feedId, since, firstJudge, secondJudge],
+    );
+    const answer = (c: boolean | null, conf: number | null) => (c === null || conf === null ? null : { coinable: c, confidence: Number(conf) });
+    return rows.map((r) => ({ itemId: r.item_id, body: r.body, media: r.media, haiku: answer(r.a_coinable, r.a_conf), gemma: answer(r.b_coinable, r.b_conf) }));
+  }
+
   /** Posts as we hold them, for the owner's hand-gold list: text and media, by feed id. */
   async heldPosts(itemIds: readonly string[]): Promise<readonly { readonly itemId: string; readonly body: string; readonly media: unknown }[]> {
     if (itemIds.length === 0) return [];

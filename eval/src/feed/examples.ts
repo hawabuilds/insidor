@@ -576,8 +576,10 @@ export interface OwnerSide {
   readonly test: Rate;
   /** Hand gold, as the old gate counts it: condition 2. */
   readonly hand: Rate;
-  /** The recent For You "Not a meme" taps the block did not teach: condition 3. */
+  /** The recent For You "Not a meme" taps the block did not teach: condition 3 (junk a). */
   readonly junk: Rate;
+  /** The untapped sample's old-label "not" posts (tools/lib/junk-sample.ts): reported and flagged, never deciding (junk b). */
+  readonly junkB: Rate;
 }
 
 /** Which posts each of the owner's numbers counts. */
@@ -585,6 +587,8 @@ export interface OwnerSets {
   readonly test: ReadonlySet<string>;
   readonly untaught: ReadonlySet<string>;
   readonly junk: ReadonlySet<string>;
+  /** The group the untapped sample's old-label "not" posts are graded in (junk b). */
+  readonly untapped: string;
   /** The groups that make hand gold. */
   readonly hand: readonly string[];
   /** The group the junk posts are graded in (the held-out live non-memes). */
@@ -603,6 +607,7 @@ export function ownerSide(rows: readonly GradedPost[], held: readonly string[], 
     test: rate((r) => sets.test.has(r.id)),
     hand: rate((r) => sets.hand.includes(r.group)),
     junk: rate((r) => r.group === sets.negatives && sets.junk.has(r.id)),
+    junkB: rate((r) => r.group === sets.untapped),
   };
 }
 
@@ -657,9 +662,15 @@ export function pickOwnerCutoff(points: readonly { readonly cutoff: number; read
   return { cutoff: null, side: base.side, why: `the owner's gate holds at no cutoff from ${base.cutoff.toFixed(2)} to ${points[points.length - 1]!.cutoff.toFixed(2)}; at ${base.cutoff.toFixed(2)}: ${g.why ?? base.extra ?? 'a further guard fails'}` };
 }
 
+/** Junk (b) rose more than `maxJunkRise` over live's: flagged in the alert, never a refusal (junk a decides). */
+export const junkBRose = (mine: OwnerSide, live: OwnerSide, maxJunkRise: number): boolean | null => {
+  const j = share(mine.junkB), lj = share(live.junkB);
+  return j === null || lj === null ? null : j > lj + maxJunkRise + 1e-9;
+};
+
 /** The owner's table as one line: caught x/6 untaught, x/16 test, gold, junk, live beside, and the cost. */
 export function ownerLine(mine: OwnerSide, live: OwnerSide, costUsd: number): string {
-  return `untaught misses caught ${ofN(mine.untaught)} (live ${ofN(live.untaught)}), fixed test set ${ofN(mine.test)} (live ${ofN(live.test)}), gold ${pct(share(mine.hand))} ${ofN(mine.hand)} (live ${pct(share(live.hand))} ${ofN(live.hand)}), junk ${pct(share(mine.junk))} ${ofN(mine.junk)} (live ${pct(share(live.junk))} ${ofN(live.junk)}), cost $${costUsd.toFixed(3)}`;
+  return `untaught misses caught ${ofN(mine.untaught)} (live ${ofN(live.untaught)}), fixed test set ${ofN(mine.test)} (live ${ofN(live.test)}), gold ${pct(share(mine.hand))} ${ofN(mine.hand)} (live ${pct(share(live.hand))} ${ofN(live.hand)}), junk (a) Not a meme taps ${pct(share(mine.junk))} ${ofN(mine.junk)} (live ${pct(share(live.junk))} ${ofN(live.junk)}), junk (b) untapped sample ${pct(share(mine.junkB))} ${ofN(mine.junkB)} (live ${pct(share(live.junkB))} ${ofN(live.junkB)}), cost $${costUsd.toFixed(3)}`;
 }
 
 /** Examples added to and removed from the block in use. */
