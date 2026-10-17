@@ -50,7 +50,7 @@
  *      And posts people coined (Policy.learning.coinedYes, on): two or more coins launched ten
  *      minutes or more after the post, the judge's answer "no", no self-launching author, no
  *      owner call, no hand gold, no crypto talk, no held kind — the newest twenty, as their own
- *      YES section, taking their room in the block first. Free: our own rows, no judge call.
+ *      YES section, in only the room the owner's own calls leave (the owner, 2026-10-18), and never an animal or object by the word test. Free: our own rows, no judge call.
  *   4. the test, asked exactly as the live scorer asks (tools/lib/pass-rates.ts: ten posts a call,
  *      the same picture size and answer budget, then the kind question). HAND GOLD is the gold
  *      sheets, the owner's missed posts and the owner's own list (eval/src/gold/hand-gold.json:
@@ -409,7 +409,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const C = L.coinedYes;
       const coinedRows = C.on ? await soft(repo.coinedPosts({ source: 'x', minCoins: C.minCoins, lateMs: C.lateMs, deployerWindowMs: C.deployerWindowMs, deployerMinPosts: C.deployerMinPosts }), []) : [];
       const coinedTaught = coinedYes(
-        coinedRows.map((r) => ({ itemId: r.itemId, text: r.body, imageUri: pictureOf(r.media)?.uri ?? null, postedAt: r.postedAt.getTime(), coins: r.coins, firstLateAt: r.firstLateAt.getTime(), kind: r.kindLabel })),
+        coinedRows.map((r) => ({ itemId: r.itemId, text: r.body, imageUri: pictureOf(r.media)?.uri ?? null, postedAt: r.postedAt.getTime(), coins: r.coins, firstLateAt: r.firstLateAt.getTime(), kind: r.kindLabel, names: r.names })),
         P,
         new Set([...calls.map((c) => c.itemId), ...handGoldIdsNow]),
       );
@@ -491,7 +491,8 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         coinRight: coinCalls.filter((m) => m.verdict === 'right').length, coinNone: coinCalls.filter((m) => m.verdict === 'none').length,
         liveNegatives: block.testNegatives.length, missedTested: testMissed.length, autoGold: posts.filter((p) => p.group === 'auto').length,
         tiktokCoined: posts.filter((p) => p.group === 'tt-coined').length,
-        coinedYesFound: coinedRows.length, coinedYesTaught: block.used.coined,
+        coinedYesFound: coinedRows.length, coinedYesAfterTest: coinedTaught.length, coinedYesTaught: block.used.coined, ownerYes: `${block.owner.yesTaught}/${block.owner.yesPool}`, ownerNo: `${block.owner.noTaught}/${block.owner.noPool}`,
+        alwaysTaughtInBlock: `${alwaysTeachIds(P).filter((id) => block.exampleIds.includes(id)).length}/${alwaysTeachIds(P).length}`,
         ownerTest: OWNER_SPLIT.test.length, ownerTaught: alwaysTeachIds(P).filter((id) => block.exampleIds.includes(id)).length,
         recentNots: recentNots.length, recentNotsHeldOut: block.testNegatives.filter((c) => shownKind.has(c.itemId)).length, recentNewsOrText: newsOrText.size,
       };

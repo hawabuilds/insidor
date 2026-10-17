@@ -2733,8 +2733,8 @@ export interface LearningPolicy {
    * ★ POSTS PEOPLE COINED, TAUGHT AS "YES" (the owner, 2026-10-16: "teach the re-tune with coined
    * news and tragedy posts as yes examples"). A post that `minCoins` or more distinct coins were
    * launched for `lateMs` or more after it was posted, and that the judge answered "no", goes in
-   * the block as a yes example: the newest `maxPerBlock`, inside `maxExamples` (they take their
-   * room first; the owner's calls share the rest). The late bar keeps out the bots that coin
+   * the block as a yes example: the newest `maxPerBlock`, inside `maxExamples` (since 2026-10-18 only the
+   * room the owner's own calls leave, and never an animal or object: `animalObjectWords`). The late bar keeps out the bots that coin
    * anything within seconds; the count keeps out a lone copycat.
    *
    * An author with `deployerMinPosts` or more posts coined within `deployerWindowMs` of posting
@@ -2750,6 +2750,12 @@ export interface LearningPolicy {
     readonly maxPerBlock: number;
     readonly deployerWindowMs: number;
     readonly deployerMinPosts: number;
+    /**
+     * A coined post is not taught when its words, a name any judge proposed for it, or its kind
+     * label name an animal or an object (the owner, 2026-10-18: the judge already gets those right,
+     * so they would only take room). A word test, stated: no picture classification is kept.
+     */
+    readonly animalObjectWords: readonly string[];
   };
   /** Missed-post links the owner may paste at once. */
   readonly maxMissedPerPaste: number;
@@ -4410,6 +4416,14 @@ const POLICY_V1: Policy = {
       maxPerBlock: 50,
       deployerWindowMs: 420_000, // seven minutes
       deployerMinPosts: 3,
+      /* The owner's test, 2026-10-18: animals and objects the judge already passes are not taught. */
+      animalObjectWords: [
+        'animal', 'cat', 'kitten', 'kitty', 'dog', 'puppy', 'doggo', 'bird', 'fish', 'frog', 'monkey', 'ape', 'bear', 'panda', 'capybara',
+        'raccoon', 'otter', 'seal', 'hippo', 'sloth', 'penguin', 'duck', 'goose', 'horse', 'cow', 'pig', 'goat', 'sheep', 'rabbit', 'bunny',
+        'hamster', 'mouse', 'rat', 'fox', 'wolf', 'lion', 'tiger', 'deer', 'owl', 'parrot', 'turtle', 'snake', 'lizard', 'shark', 'whale',
+        'dolphin', 'octopus', 'crab', 'bee', 'porcupine', 'squirrel', 'koala', 'giraffe', 'elephant', 'zebra', 'hedgehog', 'bat',
+        'robot', 'toy', 'plush', 'plushie', 'doll', 'statue', 'figurine', 'car', 'truck', 'shoe', 'hat', 'rock', 'banana', 'potato',
+      ],
     },
     maxMissedPerPaste: 10,
     scoreHeldOutShare: 0.3,
