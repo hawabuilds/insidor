@@ -3512,7 +3512,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v103',
+  version: 'policy.v104',
 
   admit: {
     maxAgeMin: 240,
@@ -4372,8 +4372,11 @@ const POLICY_V1: Policy = {
       on: true,
       minCoins: 2,
       lateMs: 600_000, // ten minutes
-      /* Twenty: a sixth of the block, so the owner's own calls keep most of it. */
-      maxPerBlock: 20,
+      /* Fifty from 2026-10-17 (was twenty): Nemotron, the live judge since 11:06 UTC, said no to 15 big
+         lane posts that were coined later and yes to only 9; the owner chose to tune it rather than add a
+         second opinion. Coined posts the judge said no to are the most direct lesson; 50 of 120 still
+         leaves most of the block to the owner's own calls. */
+      maxPerBlock: 50,
       deployerWindowMs: 420_000, // seven minutes
       deployerMinPosts: 3,
     },
