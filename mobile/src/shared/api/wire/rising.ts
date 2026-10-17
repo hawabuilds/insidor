@@ -102,6 +102,22 @@ export interface RisingFeed {
  * newest-joined first and not on its frame — and the cursor of the next page, null when this was
  * the last.
  */
+/**
+ * For You by Trending or Most viewed over a window (`GET /rising/fyp/sorted`,
+ * services/read/src/post-sorts.ts): the posts in the server's order, and each one's views gained
+ * in the window, the one number the sort is about that a card shows. The order's key is never sent.
+ */
+export type PostSortBy = 'trending' | 'most_viewed';
+export type PostSortWindow = '1h' | '6h' | '24h';
+
+export interface RisingSorted {
+  readonly by: PostSortBy;
+  readonly window: PostSortWindow;
+  readonly posts: readonly RisingPost[];
+  /** Per post id: views gained in the window. Every listed post has one. */
+  readonly gained: ReadonlyMap<string, number>;
+}
+
 export interface RisingPage {
   readonly posts: readonly RisingPost[];
   readonly next: string | null;

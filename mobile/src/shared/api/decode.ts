@@ -26,7 +26,7 @@ import { instantFrom, measuredFrom } from '../format/measure.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
-import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, RisingPost } from './wire/rising.ts';
+import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, RisingPost, RisingSorted } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -638,6 +638,24 @@ export function decodeRisingPage(raw: unknown, path = '$'): RisingPage {
     posts: arr(o['posts'], `${path}.posts`).map((p, i) => decodeRisingPost(p, `${path}.posts[${i}]`)),
     next,
   };
+}
+
+const SORT_BYS = ['trending', 'most_viewed'] as const;
+const SORT_WINDOWS = ['1h', '6h', '24h'] as const;
+
+/** For You's Trending or Most viewed: a post with no views gained on the reply is dropped, never shown at zero. */
+export function decodeRisingSorted(raw: unknown, path = '$'): RisingSorted {
+  assertNoInternalVocabulary(raw, path);
+  const o = obj(raw, path);
+  const by = SORT_BYS.find((b) => b === o['by']);
+  const window = SORT_WINDOWS.find((w) => w === o['window']);
+  if (by === undefined) throw new WireShapeError(`${path}.by`, o['by']);
+  if (window === undefined) throw new WireShapeError(`${path}.window`, o['window']);
+  const g = obj(o['gained'], `${path}.gained`);
+  const gained = new Map<string, number>();
+  for (const [id, v] of Object.entries(g)) if (typeof v === 'number' && Number.isFinite(v) && v >= 0) gained.set(id, v);
+  const posts = arr(o['posts'], `${path}.posts`).map((p, i) => decodeRisingPost(p, `${path}.posts[${i}]`)).filter((p) => gained.has(p.id));
+  return { by, window, posts, gained };
 }
 
 export function decodeRisingFeed(raw: unknown, path = '$'): RisingFeed {

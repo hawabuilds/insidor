@@ -20,13 +20,13 @@ import { notImplemented } from '../not-implemented.ts';
 import { decodeCoinAbout, type CoinAbout } from './about.ts';
 import { decodePostSheet, type PostSheetData } from './post-sheet.ts';
 import { decodeStorySheet, type StorySheet } from './story-sheet.ts';
-import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeRisingPage, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
+import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeRisingPage, decodeRisingSorted, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, SameNameCoins, SearchedCoin, SearchResults } from './wire/search.ts';
 import type { BuildResult, Holding, TradeLimits, TradeQuote, TradeVenue } from './wire/trade.ts';
 import type { CoinMarket, MarketTimeframe } from './wire/market.ts';
 import type { BoardTick } from './wire/board.ts';
-import type { RisingFeed, RisingFeedId, RisingPage } from './wire/rising.ts';
+import type { PostSortBy, PostSortWindow, RisingFeed, RisingFeedId, RisingPage, RisingSorted } from './wire/rising.ts';
 import type { NarrativesList, Story } from './wire/story.ts';
 
 /** A failure of the transport, as opposed to a failure of the payload. */
@@ -79,6 +79,11 @@ export async function fetchBoard(viewId: string, signal?: AbortSignal): Promise<
 /** One feed of single posts: `fyp` newest first, `popular` most views first. */
 export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Promise<RisingFeed> {
   return decodeRisingFeed(await read(`/rising/${encodeURIComponent(feed)}`, signal));
+}
+
+/** For You by Trending or Most viewed over a window, in the server's order (services/read post-sorts.ts). */
+export async function fetchRisingSorted(by: PostSortBy, window: PostSortWindow, signal?: AbortSignal): Promise<RisingSorted> {
+  return decodeRisingSorted(await read(`/rising/fyp/sorted?by=${by}&window=${window}`, signal));
 }
 
 /**
