@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { learningDailyCapUsd, testsLineUsd } from './vendor-lines.ts';
+import { learningDailyCapUsd, supplierRoles, testsLineUsd, vendorLines } from './vendor-lines.ts';
 
 const withLines = (l: Partial<Policy['budget']['learningLines']>): Policy => ({
   ...DEFAULT_POLICY,
@@ -31,4 +31,14 @@ test('the policy as shipped keeps a reserve and a tests line inside the learning
   const l = DEFAULT_POLICY.budget.learningLines;
   assert.ok(l.retuneReserveUsd > 0 && l.testsUsd > 0);
   assert.ok(l.retuneReserveUsd + l.testsUsd <= l.dailyUsd);
+});
+
+test('★ the judge line is warned on the supplier that judges first, and the one behind it as the fallback', () => {
+  const roles = supplierRoles(['together', 'openrouter']);
+  assert.deepEqual(roles.filter((r) => r.role.endsWith('judge')), [{ role: 'judge', vendor: 'together' }, { role: 'fallback judge', vendor: 'openrouter' }]);
+  assert.deepEqual(supplierRoles().filter((r) => r.role === 'judge').map((r) => r.vendor), ['anthropic']);
+  /* Both open hosts are capped at the judge's line, each on its own account. */
+  const lines = vendorLines(DEFAULT_POLICY);
+  assert.equal(lines['together'], DEFAULT_POLICY.budget.supplierLines.judge);
+  assert.equal(lines['openrouter'], DEFAULT_POLICY.budget.supplierLines.judge);
 });

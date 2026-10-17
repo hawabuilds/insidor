@@ -52,7 +52,7 @@ import { hostname } from 'node:os';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 import type { StageName } from '@insidor/contracts';
 import { readJudgeSetup, type JudgeSetup } from '@insidor/judge-anthropic';
-import { readOpenJudgeBackupSetup, readOpenJudgeSetup, type OpenJudgeSetup } from '@insidor/judge-openai-compatible';
+import { readOpenJudgeBackupSetup, readOpenJudgeSetup, readPostFirst, type OpenJudgeSetup, type PostFirst } from '@insidor/judge-openai-compatible';
 import { credentialSpecs, OPTIONAL_SOURCE_VARIABLES } from '@insidor/platform-registry';
 import type { CredentialEnv } from '@insidor/vendor-kit';
 
@@ -265,11 +265,15 @@ export interface RunnerConfig {
    */
   readonly openJudge: OpenJudgeSetup;
   /**
-   * The backup open model on a second host (OPEN_JUDGE_BACKUP_API_KEY or TOGETHER_API_KEY, and
-   * OPEN_JUDGE_BACKUP_BASE_URL / _MODEL): behind the open model for every question it answers
-   * first. Dormant without a key: no backup, and the failover stays as the policy has it.
+   * The open model on a second host (OPEN_JUDGE_BACKUP_API_KEY or TOGETHER_API_KEY, and
+   * OPEN_JUDGE_BACKUP_BASE_URL / _MODEL; Nemotron on Together by default): the post and kind
+   * questions' first model with the router's behind it (`postJudgeFirst`), and behind the router's
+   * model for names and translations. Dormant without a key: the router's model alone, and the
+   * failover stays as the policy has it.
    */
   readonly openJudgeBackup: OpenJudgeSetup;
+  /** OPEN_JUDGE_POST_FIRST: `second` (unset) asks the second host's model the post question first; `router` the router's. */
+  readonly postJudgeFirst: PostFirst;
   /**
    * The image embedding vendor, or dormant. Dormant is a supported state: posts go without
    * vectors and GROUP groups them on the free tiers. The key is the only thing to set.
@@ -504,6 +508,7 @@ export function loadRunnerConfig(env: Env): RunnerConfig {
     judge,
     openJudge: readOpenJudgeSetup(env),
     openJudgeBackup: readOpenJudgeBackupSetup(env),
+    postJudgeFirst: readPostFirst(env),
     embeddings:
       (env['VOYAGE_API_KEY'] ?? '').trim() === ''
         ? { state: 'dormant' }

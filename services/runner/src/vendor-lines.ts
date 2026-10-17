@@ -18,7 +18,7 @@
 import type { Policy } from '@insidor/contracts/policy.ts';
 import { VENDOR as EMBED_VENDOR } from '@insidor/embed-voyage';
 import { VENDOR as JUDGE_VENDOR } from '@insidor/judge-anthropic';
-import { DEFAULT_VENDOR as OPEN_JUDGE_VENDOR } from '@insidor/judge-openai-compatible';
+import { BACKUP_VENDOR as SECOND_OPEN_JUDGE_VENDOR, DEFAULT_VENDOR as OPEN_JUDGE_VENDOR } from '@insidor/judge-openai-compatible';
 import { SECOND_VIDEO_VENDOR, SUPPLIER_VENDORS } from '@insidor/platform-registry';
 
 /** The one-off jobs' lines (Policy.budget.jobLines), or the learning work's, keyed the same way. */
@@ -65,20 +65,30 @@ export function vendorLines(policy: Policy): Readonly<Record<string, number>> {
     /* The open-model judge (Policy.judge.primary): the judge's line again, its own account. A
        warning line like the rest; as fallback and shadow it spends about $1.50 a day. */
     [OPEN_JUDGE_VENDOR]: lines.judge,
+    /* The second open host (Together, Nemotron: the post judge from 2026-10-17): the judge's line
+       again, its own account. About $3.60 a day as the first judge ($0.0005 a post in its copy test on 40 live posts, 2026-10-17, at about 7,200 posts a day). */
+    [SECOND_OPEN_JUDGE_VENDOR]: lines.judge,
     [EMBED_VENDOR]: lines.embeddings,
   };
 }
 
 /** The role a supplier's line is warned under, and the vendor token its spend is metered as. */
 export interface SupplierRole {
-  readonly role: 'posts' | 'judge' | 'short video' | 'pictures';
+  readonly role: 'posts' | 'judge' | 'fallback judge' | 'short video' | 'pictures';
   readonly vendor: string;
 }
 
-export function supplierRoles(): readonly SupplierRole[] {
+/**
+ * The lines warned on. `judges`: the vendors the feed's post question is asked of, first first
+ * (wiring's `firstSide`, then the one behind it): the first is warned as "judge", the next as
+ * "fallback judge". Absent: the main judge's vendor, as before the open models. From 2026-10-17
+ * the first is Together (Nemotron) and the fallback the router (Gemma 3), so the owner's "judge at
+ * 80% of its line" is about the supplier actually judging.
+ */
+export function supplierRoles(judges: readonly string[] = [JUDGE_VENDOR]): readonly SupplierRole[] {
   return [
     { role: 'posts', vendor: SUPPLIER_VENDORS.posts },
-    { role: 'judge', vendor: JUDGE_VENDOR },
+    ...judges.slice(0, 2).map((vendor, i): SupplierRole => ({ role: i === 0 ? 'judge' : 'fallback judge', vendor })),
     { role: 'short video', vendor: SUPPLIER_VENDORS.video },
     { role: 'pictures', vendor: EMBED_VENDOR },
   ];

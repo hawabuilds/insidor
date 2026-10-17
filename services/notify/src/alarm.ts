@@ -86,10 +86,20 @@ export const JUDGE_MIN_CALLS = 10;
 export const BACKUP_MIN_CALLS = 5;
 /**
  * The supplier each judge role bills as (the vendor in its spend rows and its judge ids): the main
- * judge is the Anthropic adapter, the open judge the OpenAI-compatible host. The primary's is
- * Policy.judge.primary's; every other judge supplier is the backup. A new judge host is added here.
+ * judge is the Anthropic adapter, the open judge the OpenAI-compatible host that answers the post
+ * question first. The primary's is Policy.judge.primary's; every other judge supplier is the backup.
+ * A new judge host is added here.
+ *
+ * ★ `open` IS TOGETHER FROM 2026-10-17 (the owner: "switch the live post judge to Nemotron on
+ * Together, Gemma 3 on OpenRouter as its automatic fallback"). The runner asks the post and kind
+ * questions of Together first (adapter setup.ts `readPostFirst`); OpenRouter is asked them only
+ * when Together has failed a batch, so "OpenRouter asked and answering nothing" is the backup
+ * failing too. Names, translations and titles stay on OpenRouter first but are metered under their
+ * own endpoints, which judge_lines (0092) does not count. If the runner is turned round
+ * (OPEN_JUDGE_POST_FIRST=router), this must say 'openrouter' again, or the backup alarm watches the
+ * primary.
  */
-export const JUDGE_VENDOR_OF_ROLE: Readonly<Record<'main' | 'open', string>> = { main: 'anthropic', open: 'openrouter' };
+export const JUDGE_VENDOR_OF_ROLE: Readonly<Record<'main' | 'open', string>> = { main: 'anthropic', open: 'together' };
 /** The live coin stream with no watched window ending in this long is down. */
 export const STREAM_SILENT_MS = 15 * 60_000;
 /** Every read failing this long is the database down. */

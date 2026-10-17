@@ -60,7 +60,7 @@ import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
 import { LEARN_ENDPOINT_PREFIX, type Meter } from '@insidor/contracts/ports/meter.ts';
 import { JudgeNotConfigured, anthropicJudge, type JudgeQuestion, httpClient, priceFor, type JudgeClient } from '@insidor/judge-anthropic';
 import { KNOWN_MODELS, accountCredits, isOpenJudgeId, openChatClient, openJudge, openNamer, openSameSubject, openTitler, openTranslator, type HostModel, type OpenJudgeSetup, type OpenQuestion } from '@insidor/judge-openai-compatible';
-import { describeRoles, openHostModel, rolesFor, type JudgeRole } from './feed-judges.ts';
+import { describeRoles, openHostModel, postJudgeOrder, postsPerCall, rolesFor, sideName, type JudgeRole, type OpenSide } from './feed-judges.ts';
 import { failoverJudge, failoverState } from './judge-failover.ts';
 import { failoverNamer, failoverSameSubject, failoverTranslator, type SameSubjectPart } from './open-questions.ts';
 import { SHADOW_ENDPOINT, judgeShadow } from './judge-shadow.ts';
@@ -313,7 +313,7 @@ function buildJudge(
  * of its own, and an answer budget sized to the call (Policy.judge.open). Its pictures go as data URLs in the chat format rather than the main judge's
  * image blocks — the same bytes; and it has no prompt cache, which its estimate already counts.
  */
-function buildOpenJudge(
+export function buildOpenJudge(
   /* The open model's setup, or the backup's (`openBackupSide`). */
   setup: OpenJudgeSetup,
   model: HostModel | null,
@@ -325,6 +325,8 @@ function buildOpenJudge(
   precedents = false,
   /** The ledger's endpoint; the adapter's own when absent. */
   endpoint?: string,
+  /** Posts a call (Policy.judge.open.batchSize, or primaryBatchSize for the primary model). */
+  perCall: number = policy.judge.open.batchSize,
 ): JudgePort | null {
   if (setup.state === 'dormant' || model === null) return null;
   const client = openChatClient({
@@ -356,7 +358,7 @@ function buildOpenJudge(
     policy: { ...policy.judge, maxOutputTokens },
     /* The feed hands it the same posts per batch as the main judge; it asks them in smaller calls side by side. */
     maxBatch: policy.qualify.batchSize,
-    perCall: policy.judge.open.batchSize,
+    perCall,
     parallel: policy.judge.open.parallel,
     reask: policy.judge.open.reask,
     reaskWithinMs: policy.judge.open.reaskWithinMs,
@@ -367,11 +369,6 @@ function buildOpenJudge(
   });
 }
 
-/** One open model to ask: its host setup and the model as the host lists it. */
-interface OpenSide {
-  readonly setup: Extract<OpenJudgeSetup, { state: 'configured' }>;
-  readonly model: HostModel;
-}
 
 /**
  * The questions Policy.judge.askWith puts on the open model, built for one open model (`side`):
@@ -428,7 +425,7 @@ function buildOpenQuestions(side: OpenSide, meter: Meter, policy: Policy) {
  * backup model not recorded there has no price, and an unpriced call is refused, so there is no
  * backup and `backupUnpriced` says why at boot.
  */
-function openBackupSide(cfg: RunnerConfig): OpenSide | null {
+export function openBackupSide(cfg: Pick<RunnerConfig, 'openJudgeBackup'>): OpenSide | null {
   const setup = cfg.openJudgeBackup;
   if (setup.state !== 'configured') return null;
   const model = KNOWN_MODELS.find((m) => m.id === setup.model) ?? null;
@@ -731,8 +728,16 @@ export async function withRuntime<T>(
           now: () => Date.now(),
         }),
       );
+      /* The post judge's suppliers, first first, in the order the judge below asks them (`firstSide`):
+         the owner's "judge" line warning is about the supplier actually judging. */
+      const postJudgeVendors = ((): readonly string[] | undefined => {
+        const second = cfg.openJudgeBackup.state === 'configured' ? [cfg.openJudgeBackup.vendor] : [];
+        const router = cfg.openJudge.state === 'configured' ? [cfg.openJudge.vendor] : [];
+        const open = cfg.postJudgeFirst === 'second' ? [...second, ...router] : [...router, ...second];
+        return policy.judge.primary === 'open' && open.length > 0 ? open : undefined;
+      })();
       const warnings = supplierWarnings({
-        roles: supplierRoles(),
+        roles: supplierRoles(postJudgeVendors),
         line: (vendor) => meter.line(vendor),
         warnAt: policy.budget.warnAt,
         buffer: policy.budget.lineBuffer,
@@ -828,29 +833,41 @@ export async function withRuntime<T>(
       /* ★ THE FEED'S TWO JUDGES (feed-judges.ts): the main one and the open model, by the role
          Policy.judge.primary gives each, both with the same block, precedents and questions. */
       const openModel = await openHostModel(cfg.openJudge, policy.judge.timeoutMs, log.child({ step: 'open-judge' }));
-      const roles = rolesFor(policy.judge.primary, openModel !== null, mainStoryJudge !== null);
-      const said = describeRoles(policy.judge.primary, roles, { configured: cfg.openJudge.state === 'configured', model: openModel?.id ?? null });
-      log.info(said.message, said.fields);
-      /* ★ THE BACKUP OPEN MODEL (openBackupSide), behind the open model wherever it answers first. */
+      /* ★ THE SECOND OPEN HOST (openBackupSide): Nemotron 3.5 Super VL on Together by default. */
       const backupSide = openBackupSide(cfg);
-      if (backupSide !== null)
-        log.info('open judge backup: a second open model on a second host stands behind the open model', { host: backupSide.setup.vendor, model: backupSide.model.id });
-      else if (cfg.openJudgeBackup.state === 'configured') log.error('open judge backup: a key is set but there is no backup', { why: backupUnpriced(cfg) });
-      else log.info('open judge backup: none (no OPEN_JUDGE_BACKUP_API_KEY or TOGETHER_API_KEY); the failover is as the policy has it', { failover: policy.judge.failover.on });
-      /* ★ THE FAILOVER IS ON WHEN A BACKUP IS (the owner, 2026-10-16): with a backup key at boot the
-         open model's failures go to the backup whatever Policy.judge.failover.on says; without one,
-         the policy's switch stands (off from v90: nothing to fail over to, and no second paid model). */
-      const failoverPolicy = backupSide !== null ? { ...policy.judge.failover, on: true } : policy.judge.failover;
+      if (backupSide !== null) log.info('open judge second host: configured', { host: backupSide.setup.vendor, model: backupSide.model.id });
+      else if (cfg.openJudgeBackup.state === 'configured') log.error('open judge second host: a key is set but there is no second model', { why: backupUnpriced(cfg) });
+      else log.info('open judge second host: none (no OPEN_JUDGE_BACKUP_API_KEY or TOGETHER_API_KEY); the router\'s model alone', { failover: policy.judge.failover.on });
+      const routerSide: OpenSide | null = openModel === null || cfg.openJudge.state !== 'configured' ? null : { setup: cfg.openJudge, model: openModel };
+      /* ★ WHICH OPEN MODEL ASKS THE POST AND KIND QUESTIONS FIRST (adapter setup.ts `readPostFirst`;
+         the owner, 2026-10-17: "Nemotron on Together at 0.70, Gemma 3 as its automatic fallback"):
+         the second host's model first and the router's behind it; OPEN_JUDGE_POST_FIRST=router turns
+         it round; with one host configured, that one alone. Each model's answers are held to its own
+         cutoff whichever answers (Policy.judge.cutoffs, by the judge id). */
+      const { first: firstSide, behind: behindSide } = postJudgeOrder(cfg.postJudgeFirst, routerSide, backupSide);
+      const perCallOf = (side: OpenSide): number => postsPerCall(side, policy);
+      const roles = rolesFor(policy.judge.primary, firstSide !== null, mainStoryJudge !== null);
+      const said = describeRoles(policy.judge.primary, roles, { configured: firstSide !== null, model: firstSide === null ? null : sideName(firstSide) });
+      log.info(said.message, said.fields);
+      log.info('open judge order for the post and kind questions', { first: firstSide === null ? null : sideName(firstSide), behind: behindSide === null ? null : sideName(behindSide), postFirst: cfg.postJudgeFirst });
+      /* ★ THE FAILOVER IS ON WHEN THERE IS A SECOND OPEN MODEL (the owner, 2026-10-16): with both hosts
+         at boot the first model's failures go to the other whatever Policy.judge.failover.on says;
+         with one, the policy's switch stands (off from v90: nothing to fail over to). */
+      const failoverPolicy = firstSide !== null && behindSide !== null ? { ...policy.judge.failover, on: true } : policy.judge.failover;
       const mainPostJudge = buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', null, withPrecedents);
       const postJudgeAs = (role: JudgeRole, examples: string | null, endpoint?: string): JudgePort | null =>
         role === 'open'
-          ? buildOpenJudge(cfg.openJudge, openModel, meter, policy, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents, endpoint)
+          ? firstSide === null
+            ? null
+            : buildOpenJudge(firstSide.setup, firstSide.model, meter, policy, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents, endpoint, perCallOf(firstSide))
           : examples === null && endpoint === undefined
             ? mainPostJudge
             : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents, endpoint);
       const kindJudgeAs = (role: JudgeRole): JudgePort | null =>
         role === 'open'
-          ? buildOpenJudge(cfg.openJudge, openModel, meter, policy, policy.judge.postBatchMaxOutputTokens, 'kind')
+          ? firstSide === null
+            ? null
+            : buildOpenJudge(firstSide.setup, firstSide.model, meter, policy, policy.judge.postBatchMaxOutputTokens, 'kind')
           : buildJudge(cfg, meter, policy, log, policy.judge.postBatchMaxOutputTokens, 'kind');
       /* ★ FAILOVER (judge-failover.ts, Policy.judge.failover): a batch the primary fails — an error, a
          billing refusal, no reply in time — is answered by the other judge at once, and the primary
@@ -860,17 +877,17 @@ export async function withRuntime<T>(
       const withFallback = (primary: JudgePort | null, fallback: JudgePort | null, question: string): JudgePort | null =>
         primary === null
           ? fallback
-          : failoverJudge({ primary, fallback, state: failover, policy: failoverPolicy, names: { primary: roles.primary, fallback: roles.other ?? (backupSide === null ? 'none' : 'backup') }, question, log: failoverLog, now: () => Date.now() });
+          : failoverJudge({ primary, fallback, state: failover, policy: failoverPolicy, names: { primary: roles.primary === 'open' && firstSide !== null ? sideName(firstSide) : roles.primary, fallback: roles.other ?? (behindSide === null ? 'none' : sideName(behindSide)) }, question, log: failoverLog, now: () => Date.now() });
       /* ★ THE SHADOW (judge-shadow.ts, Policy.judge.shadow): the role that did not answer, built with
          the same block on every swap, under its own ledger endpoint, its answers in their own table. */
       let shadowPort: JudgePort | null = null;
-      /* The backup open model asked the post question with the same block and precedents; only behind the open model. */
-      const backupPostJudge = (examples: string | null): JudgePort | null =>
-        roles.primary !== 'open' || backupSide === null ? null : buildOpenJudge(backupSide.setup, backupSide.model, meter, policy, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents);
-      /* The post judge for one learned block: the primary role's with the other behind it (the backup when there is no other). */
+      /* The other open model asked the post question with the same block and precedents; only behind the first. */
+      const behindPostJudge = (examples: string | null): JudgePort | null =>
+        roles.primary !== 'open' || behindSide === null ? null : buildOpenJudge(behindSide.setup, behindSide.model, meter, policy, policy.judge.postBatchMaxOutputTokens, 'post', examples, withPrecedents, undefined, perCallOf(behindSide));
+      /* The post judge for one learned block: the primary role's with the other behind it (the other open model when there is no other role). */
       const livePostJudge = (examples: string | null): JudgePort | null => {
         shadowPort = roles.other === null || !policy.judge.shadow.on ? null : postJudgeAs(roles.other, examples, SHADOW_ENDPOINT);
-        return withFallback(postJudgeAs(roles.primary, examples), roles.other === null ? backupPostJudge(examples) : postJudgeAs(roles.other, examples), 'post');
+        return withFallback(postJudgeAs(roles.primary, examples), roles.other === null ? behindPostJudge(examples) : postJudgeAs(roles.other, examples), 'post');
       };
       const learning = new PgLearningRepo(db);
       /* With no main key the open model is the post judge (rolesFor): the feed must not stop for it. */
@@ -907,18 +924,23 @@ export async function withRuntime<T>(
       const mainKindJudge = (): JudgePort | null =>
         withFallback(
           kindJudgeAs(roles.primary),
-          roles.other !== null ? kindJudgeAs(roles.other) : roles.primary === 'open' && backupSide !== null ? buildOpenJudge(backupSide.setup, backupSide.model, meter, policy, policy.judge.postBatchMaxOutputTokens, 'kind') : null,
+          roles.other !== null ? kindJudgeAs(roles.other) : roles.primary === 'open' && behindSide !== null ? buildOpenJudge(behindSide.setup, behindSide.model, meter, policy, policy.judge.postBatchMaxOutputTokens, 'kind') : null,
           'kind',
         );
 
       /* ★ WHO ASKS THE OTHER QUESTIONS (Policy.judge.askWith, open-questions.ts): `open` puts a
-         question on the open model with the backup open model behind it, through the same failover
+         question on the open model with the other open model behind it, through the same failover
          rules, and the main judge nowhere in its chain (the owner, 2026-10-16: no main-judge API from
-         now on); `main` leaves it on the main judge; `off` asks no one. One rest for every question
-         the open model answers first: its supplier being down is one fact. A question whose model
-         has no key is not asked, in its typed absence. */
+         now on); `main` leaves it on the main judge; `off` asks no one. Names, translations and the
+         narrative and same-subject questions go to the router's model first (Gemma 3, the cheaper:
+         $0.08 in a million tokens against Nemotron's $0.15) with the second host's behind it, one rest
+         for all of them: its supplier being down is one fact. The kind question goes in the post
+         question's order (`firstSide`) and shares its rest: the For You numbers the owner chose
+         Nemotron on were measured with Nemotron naming the kind, and a kind call on the router while
+         Nemotron answers the post would read, to the alarm, as a backup asked and answering nothing.
+         A question whose model has no key is not asked, in its typed absence. */
       const askWith = policy.judge.askWith;
-      const openSide: OpenSide | null = openModel === null || cfg.openJudge.state !== 'configured' ? null : { setup: cfg.openJudge, model: openModel };
+      const openSide: OpenSide | null = routerSide;
       const openAsk = openSide === null ? null : buildOpenQuestions(openSide, meter, policy);
       const backupAsk = backupSide === null ? null : buildOpenQuestions(backupSide, meter, policy);
       const openRest = failoverState();
@@ -926,7 +948,13 @@ export async function withRuntime<T>(
         openAsk === null
           ? null
           : { primary: build(openAsk), fallback: backupAsk === null ? null : build(backupAsk), state: openRest, policy: failoverPolicy, names: { primary: 'open', fallback: 'backup' }, question, log: failoverLog, now: () => Date.now() };
+      const firstAsk = firstSide === null ? null : firstSide === openSide ? openAsk : backupAsk;
+      const behindAsk = behindSide === null ? null : behindSide === openSide ? openAsk : backupAsk;
       const openJudgePair = (question: 'story' | 'kind'): JudgePort | null => {
+        if (question === 'kind')
+          return firstAsk === null || firstSide === null
+            ? null
+            : failoverJudge({ primary: firstAsk.kind(), fallback: behindAsk === null ? null : behindAsk.kind(), state: failover, policy: failoverPolicy, names: { primary: sideName(firstSide), fallback: behindSide === null ? 'none' : sideName(behindSide) }, question, log: failoverLog, now: () => Date.now() });
         const pair = openPair((q) => q[question](), question);
         return pair === null ? null : failoverJudge(pair);
       };

@@ -20,7 +20,7 @@ import { anthropicJudge, buildRequestBody, type JudgeClient, type JudgeRequest }
 import { inMemoryMeter } from '@insidor/meter';
 import { BudgetRefused, OutOfCredit, VendorUnavailable } from '@insidor/vendor-kit';
 
-import { DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, accountCredits, readOpenJudgeBackupSetup, routerFields, vendorOfHost, buildChatBody, closestModel, firstAnswers, rotated, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
+import { DEFAULT_OPEN_PROVIDERS, KNOWN_MODELS, accountCredits, answerSide, readPostFirst, readOpenJudgeBackupSetup, routerFields, vendorOfHost, buildChatBody, closestModel, firstAnswers, rotated, isOpenJudgeId, keyAllowance, decodeChatReply, openChatClient, openJudge, openProviders, parseModels, promptFor, readOpenJudgeSetup, unfenced, type HostModel, type OpenChatConfig } from './index.ts';
 
 const AT = 1_800_000_000_000;
 const P = DEFAULT_POLICY.judge;
@@ -360,13 +360,24 @@ test('★ the backup: its own key (or TOGETHER_API_KEY) on its own host, never t
   assert.equal(together.apiKey, 'tg-key');
   assert.equal(together.baseUrl, 'https://api.together.xyz/v1');
   assert.equal(together.vendor, 'together');
-  assert.equal(together.model, 'google/gemma-4-31B-it');
+  assert.equal(together.model, 'nvidia/NVIDIA-Nemotron-3.5-Super-VL');
   assert.equal(together.router, false);
   assert.deepEqual(together.providers, []);
   assert.ok(KNOWN_MODELS.some((m) => m.id === together.model && m.vision), 'the default backup is priced and reads pictures');
   const own = readOpenJudgeBackupSetup({ TOGETHER_API_KEY: 'tg-key', OPEN_JUDGE_BACKUP_API_KEY: 'own', OPEN_JUDGE_BACKUP_BASE_URL: 'https://api.deepinfra.com/v1/openai', OPEN_JUDGE_BACKUP_MODEL: 'google/gemma-3-27b-it' });
   assert.ok(own.state === 'configured' && own.apiKey === 'own' && own.vendor === 'deepinfra' && own.model === 'google/gemma-3-27b-it');
   assert.equal(vendorOfHost('not a url'), 'backup');
+});
+
+test('★ the second host answers the post question first unless told the router; each model keeps its cutoff place either way', () => {
+  assert.equal(readPostFirst({}), 'second');
+  assert.equal(readPostFirst({ OPEN_JUDGE_POST_FIRST: ' Router ' }), 'router');
+  assert.equal(readPostFirst({ OPEN_JUDGE_POST_FIRST: 'anything else' }), 'second');
+  assert.deepEqual(answerSide('judge:together/nvidia/NVIDIA-Nemotron-3.5-Super-VL+text-only@p1'), { model: 'judge:together/nvidia/NVIDIA-Nemotron-3.5-Super-VL', place: 'primary' });
+  assert.deepEqual(answerSide('judge:openrouter/google/gemma-3-27b-it@p1'), { model: 'judge:openrouter/google/gemma-3-27b-it', place: 'fallback' });
+  assert.deepEqual(answerSide('judge:together/google/gemma-4-31B-it@p1'), { model: 'judge:together/google/gemma-4-31B-it', place: null });
+  assert.deepEqual(answerSide('rule:not-meme-match@0.67'), { model: null, place: null });
+  assert.equal(isOpenJudgeId('judge:together/nvidia/NVIDIA-Nemotron-3.5-Super-VL@p1'), true);
 });
 
 test('a host of its own is sent the plain chat body: no provider pin, no usage request, the same answer shape', () => {

@@ -3,7 +3,10 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { describeRoles, openHostModel, rolesFor } from './feed-judges.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { KNOWN_MODELS } from '@insidor/judge-openai-compatible';
+
+import { describeRoles, openHostModel, postJudgeOrder, postsPerCall, rolesFor, sideName, type OpenSide } from './feed-judges.ts';
 import type { Logger } from './log.ts';
 
 const lines: string[] = [];
@@ -35,4 +38,19 @@ test('the open model is read from the host list, falls back to the recorded list
   assert.equal(recorded?.id, 'google/gemma-3-27b-it');
   assert.equal(recorded?.vision, true);
   assert.equal(await openHostModel({ ...configured, model: 'nobody/unknown-model' }, 1000, log, down), null);
+});
+
+test('★ Nemotron on the second host asks the post question first with Gemma 3 behind it; turned round, or with one host, as said', () => {
+  const model = (id: string) => KNOWN_MODELS.find((m) => m.id === id)!;
+  const router: OpenSide = { setup: configured, model: model('google/gemma-3-27b-it') };
+  const second: OpenSide = { setup: { state: 'configured', apiKey: 't', baseUrl: 'https://api.together.xyz/v1', model: 'nvidia/NVIDIA-Nemotron-3.5-Super-VL', vendor: 'together', providers: [], router: false }, model: model('nvidia/NVIDIA-Nemotron-3.5-Super-VL') };
+  assert.deepEqual(postJudgeOrder('second', router, second), { first: second, behind: router });
+  assert.deepEqual(postJudgeOrder('router', router, second), { first: router, behind: second });
+  assert.deepEqual(postJudgeOrder('second', router, null), { first: router, behind: null });
+  assert.deepEqual(postJudgeOrder('router', null, second), { first: second, behind: null });
+  assert.deepEqual(postJudgeOrder('second', null, null), { first: null, behind: null });
+  assert.equal(sideName(second), 'together/nvidia/NVIDIA-Nemotron-3.5-Super-VL');
+  /* Ten posts a call for the primary model, five for Gemma, whichever order they are asked in. */
+  assert.equal(postsPerCall(second, DEFAULT_POLICY), DEFAULT_POLICY.judge.open.primaryBatchSize);
+  assert.equal(postsPerCall(router, DEFAULT_POLICY), DEFAULT_POLICY.judge.open.batchSize);
 });

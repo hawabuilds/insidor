@@ -62,9 +62,11 @@ export interface SupplierName {
 /** The suppliers we pay, by the vendor id their adapter bills as. Others are named by that id. */
 export const SUPPLIER_NAMES: Readonly<Record<string, SupplierName>> = {
   anthropic: { supplier: 'Anthropic', uses: 'the judge' },
-  openrouter: { supplier: 'OpenRouter', uses: 'the open-model judge' },
-  /* The backup open model's host (OPEN_JUDGE_BACKUP_BASE_URL), billed as its address's name. */
-  together: { supplier: 'Together AI', uses: 'the backup judge' },
+  openrouter: { supplier: 'OpenRouter', uses: 'the fallback judge, names and translations' },
+  /* The second open host (OPEN_JUDGE_BACKUP_BASE_URL), billed as its address's name: the post judge
+     from 2026-10-17. It has no credit endpoint (none answered, 2026-10-17), so an empty account is
+     heard only as a refusal (402 or a credit message, adapter client.ts billingReason). */
+  together: { supplier: 'Together AI', uses: 'the judge' },
   'twitterapi.io': { supplier: 'twitterapi.io', uses: 'X posts' },
   apify: { supplier: 'Apify', uses: 'TikTok videos' },
   scrapecreators: { supplier: 'ScrapeCreators', uses: 'TikTok re-reads, creators and the For You feed' },
