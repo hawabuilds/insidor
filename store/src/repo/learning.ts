@@ -423,7 +423,7 @@ export class PgLearningRepo {
    * or if it never did — the junk filter's keep labels (tools/lib/junk-filter.ts).
    */
   async coinedPosts(q: { readonly source: string; readonly minCoins: number; readonly lateMs: number; readonly deployerWindowMs: number; readonly deployerMinPosts: number; readonly anyAnswer?: boolean }): Promise<readonly CoinedPostRow[]> {
-    const rows = await orNoTable(() => this.#db.query<{ item_id: string; body: string; media: unknown; posted_at: Date; coins: number; first_late_at: Date; coinable: boolean | null; kind_label: string | null }>(
+    const rows = await orNoTable(() => this.#db.query<{ item_id: string; body: string; media: unknown; posted_at: Date; coins: number; first_late_at: Date; coinable: boolean | null; kind_label: string | null; names: string[] | null }>(
       `with linked as (
          select l.source || ':' || l.source_item_id as item_id, l.address, l.minted_at,
                 lower(substring(l.link from '/([A-Za-z0-9_]+)/status')) as handle
@@ -457,7 +457,7 @@ export class PgLearningRepo {
                 array_remove(array_agg(distinct author_key), null) as authors, array_remove(array_agg(distinct handle), null) as handles
            from timed group by item_id
        )
-       select c.item_id, i.body, i.media, c.posted_at, c.coins, c.first_late_at, j.coinable, k.kind_label
+       select c.item_id, i.body, i.media, c.posted_at, c.coins, c.first_late_at, j.coinable, k.kind_label, n.names
          from coined c
          join public.item i on i.item_id = c.item_id and coalesce(i.body, '') <> ''
          left join lateral (select pj.coinable from internal.post_judgement pj
@@ -466,12 +466,14 @@ export class PgLearningRepo {
          left join lateral (select pj.proposed_name as kind_label from internal.post_judgement pj
                              where pj.item_id = c.item_id and pj.prompt_id like 'post-kind%'
                              order by pj.judged_at desc, pj.id desc limit 1) k on true
+         left join lateral (select array_agg(distinct pj.proposed_name) as names from internal.post_judgement pj
+                             where pj.item_id = c.item_id and pj.prompt_id not like 'post-kind%' and pj.proposed_name is not null) n on true
         where c.coins >= $2 and ($6::boolean or j.coinable = false)
           and not exists (select 1 from launchers d where (d.by = 'a' and d.who = any(c.authors)) or (d.by = 'h' and d.who = any(c.handles)))
         order by c.posted_at desc, c.item_id`,
       [q.source, q.minCoins, q.lateMs, q.deployerWindowMs, q.deployerMinPosts, q.anyAnswer === true],
     ));
-    return rows.map((r) => ({ itemId: r.item_id, body: r.body, media: r.media, postedAt: r.posted_at, coins: Number(r.coins), firstLateAt: r.first_late_at, coinable: r.coinable, kindLabel: r.kind_label }));
+    return rows.map((r) => ({ itemId: r.item_id, body: r.body, media: r.media, postedAt: r.posted_at, coins: Number(r.coins), firstLateAt: r.first_late_at, coinable: r.coinable, kindLabel: r.kind_label, names: r.names ?? [] }));
   }
 }
 
@@ -488,6 +490,8 @@ export interface CoinedPostRow {
   readonly coinable: boolean | null;
   /** The newest kind answer, upper case as filed; null when the kind was never asked. */
   readonly kindLabel: string | null;
+  /** Every name any judge proposed for the post (the coined-yes animal-or-object test). */
+  readonly names: readonly string[];
 }
 
 export interface OwnerPostCall {

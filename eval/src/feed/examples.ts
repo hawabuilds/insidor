@@ -47,7 +47,9 @@
  * ★ POSTS PEOPLE COINED ARE TAUGHT AS YES TOO (Policy.learning.coinedYes, the owner 2026-10-16:
  * "teach the re-tune with coined news and tragedy posts as yes examples"). `coinedYes` picks posts
  * several coins were launched for ten minutes or more after posting that the judge answered "no";
- * they get their own YES section, take their room in the block first, and are never tested. It
+ * they get their own YES section and are never tested. Since 2026-10-18 (the owner: "coined examples
+ * only fill what's left, never pushing an owner label out") they take only the room the owner's own
+ * calls leave, and only posts that are not an animal or object (`coinedYes`, its word test). It
  * leaves out anything that would argue with the owner, the gate's test, the shill rule or the
  * held kinds (see the function). Tragedy is not a held kind, so a coined tragedy is taught.
  *
@@ -126,6 +128,8 @@ export interface Block {
   readonly taps: { readonly taught: number; readonly tested: number };
   /** What it learned from, counted in the block. */
   readonly used: { readonly taps: number; readonly missed: number; readonly labels: number; readonly names: number; readonly coined: number };
+  /** The owner's own calls that could be taught, and how many are: coined posts never take their room. */
+  readonly owner: { readonly yesPool: number; readonly yesTaught: number; readonly noPool: number; readonly noTaught: number };
 }
 
 const SOURCE_RANK: Readonly<Record<CallSource, number>> = { tap: 3, missed: 2, labels: 1, coined: 0 };
@@ -151,10 +155,10 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
   const tested = teach.alwaysTest ?? [];
   const kept = new Set([...tested, ...(teach.neverTeach ?? [])]);
   const teachable = (c: OwnerCall) => !kept.has(c.itemId);
-  /* Coined posts take their room first (the caller capped them); a post the owner called is never one. */
+  /* ★ THE OWNER'S CALLS TAKE THEIR PLACES FIRST (the owner, 2026-10-18): the whole room is shared
+     between the owner's own yes and no calls; coined posts only fill what the owner's calls leave. */
   const called = new Set(current.map((c) => c.itemId));
-  const coined = (teach.coinedYes ?? []).filter((c) => !called.has(c.itemId) && teachable(c)).slice(0, maxExamples);
-  const room = maxExamples - coined.length;
+  const room = maxExamples;
   const isMissed = (c: OwnerCall) => c.from === 'missed';
   /* The owner's always-taught posts first, so the cap never pushes them out; then newest first. */
   const order = (a: OwnerCall, b: OwnerCall) => Number(always.includes(b.itemId)) - Number(always.includes(a.itemId)) || newestFirst(a, b);
@@ -165,6 +169,8 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
   const noTake = Math.min(noPool.length, room - yesTake);
   const yes = yesPool.slice(0, yesTake);
   const no = noPool.slice(0, noTake);
+  /* Coined posts (the caller capped and filtered them) in whatever room is left; never one the owner called. */
+  const coined = (teach.coinedYes ?? []).filter((c) => !called.has(c.itemId) && teachable(c)).slice(0, Math.max(0, maxExamples - yes.length - no.length));
   const nameCalls = [...names].sort(newestFirst).slice(0, Math.floor(maxExamples / 2));
 
   const line = (p: OwnerCall) => `  "${excerpt(p.text)}"${p.imageUri === null ? '' : ' [picture]'} — ${p.why}`;
@@ -203,6 +209,7 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
       names: nameCalls.length,
       coined: coined.length,
     },
+    owner: { yesPool: yesPool.length, yesTaught: yes.length, noPool: noPool.length, noTaught: no.length },
   };
 }
 
@@ -228,6 +235,25 @@ export interface CoinedPost {
   readonly firstLateAt: number;
   /** The newest kind answer; null when never asked. */
   readonly kind: string | null;
+  /** Every name any judge ever proposed for it (older judges may have said yes before the live one said no). */
+  readonly names?: readonly string[];
+}
+
+/**
+ * ★ AN ANIMAL OR AN OBJECT, BY A STATED WORD TEST (the owner, 2026-10-18: "only coined posts that are
+ * NOT animals or objects the judge already gets right count"). True when the post's own words hold
+ * one of `words` as a whole word (or its plural), or any name a judge ever proposed for it, or its
+ * kind label, contains one (see the rule for names below). Words, not the picture: no picture classification is kept, so a cat
+ * photo with no animal word in its text or names passes this test — said, not hidden.
+ */
+export function animalOrObject(c: Pick<CoinedPost, 'text' | 'kind' | 'names'>, words: readonly string[]): boolean {
+  const list = words.map((w) => w.toLowerCase());
+  const own = new Set(wordsOf(c.text));
+  if (list.some((w) => own.has(w) || own.has(`${w}s`) || own.has(`${w}es`))) return true;
+  const labels = [...(c.names ?? []), ...(c.kind === null ? [] : [c.kind])].map((n) => n.toLowerCase());
+  /* A name is one run of letters ("WEDDINGCAT"): a word of four letters or more anywhere in it, a
+     shorter one only at its start or end, so "what" is not a hat and "beard" not a bear. */
+  return labels.some((n) => list.some((w) => (w.length >= 4 ? n.includes(w) : n.startsWith(w) || n.endsWith(w))));
 }
 
 const MS_PER_MIN = 60_000;
@@ -241,6 +267,9 @@ const wordsOf = (t: string): readonly string[] => t.replace(/https?:\/\/\S+/g, '
  *   · a post whose own words talk crypto (the shill rule, or a coin or crypto-account word): its
  *     coins are about the coin talk, not the world, and a shill never passes anyway;
  *   · a reply (it opens with an @): a coin on a reply is about its thread, not its words;
+ *   · an animal or an object (`animalOrObject`): the judge already gets those right, so a coined
+ *     one teaches nothing (the owner, 2026-10-18). The live judge's newest answer is "no" for every
+ *     post here already (store `coinedPosts`);
  *   · a kind `held` holds: the kind question would hold it again, and a yes example would teach
  *     the first question the opposite of the second. A tragedy is not held (the owner, 2026-10-16),
  *     so a coined tragedy is taught. A kind never asked (the usual case after a "no") is not held.
@@ -254,6 +283,7 @@ export function coinedYes(posts: readonly CoinedPost[], p: Policy, exclude: Read
     .filter((c) => !exclude.has(c.itemId) && !c.text.trimStart().startsWith('@'))
     .filter((c) => !isShillText(c.text, p.attention) && !wordsOf(c.text).some((w) => crypto.has(w)))
     .filter((c) => heldKind(c.kind, p.judge.heldKinds) === null)
+    .filter((c) => !animalOrObject(c, C.animalObjectWords))
     .sort((a, b) => b.postedAt - a.postedAt || (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0))
     .slice(0, C.maxPerBlock)
     .map((c) => ({

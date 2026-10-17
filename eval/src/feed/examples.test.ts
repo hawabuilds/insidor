@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, ownerGate, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, withRulebook, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall, type OwnerSide } from './examples.ts';
+import { animalOrObject, atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, ownerGate, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, withRulebook, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall, type OwnerSide } from './examples.ts';
 import { OWNER_SPLIT, alwaysTeachIds, checkSplit } from './owner-split.ts';
 
 const L = DEFAULT_POLICY.learning;
@@ -92,17 +92,32 @@ test('★ coined posts taught as yes: late, by several coins, never the owner\'s
   assert.deepEqual(coinedYes(many, off, new Set()), [], 'the switch');
 });
 
-test('coined yes examples take their room in the block first, in their own section, and are never tested', () => {
-  const nots = ids(200, 'n').map((id, i) => call(id, 'not', 'tap', i));
+test("★ the owner's calls take their places first; coined posts only fill what is left, in their own section, never tested", () => {
   const coined = coinedYes([coinedPost('x:k1'), coinedPost('x:k2', { postedAt: 999 * MIN })], DEFAULT_POLICY, new Set());
-  const b = buildBlock([call('x:m', 'meme', 'tap', 1), ...nots], [], 20, { coinedYes: coined });
-  assert.equal(b.exampleIds.length, 20);
-  assert.equal(b.used.coined, 2);
-  assert.ok(b.exampleIds.includes('x:k1') && b.exampleIds.includes('x:k2'));
-  assert.match(b.text, /YES — not the owner's calls: posts several people coined/);
-  assert.equal(b.taps.taught + b.taps.tested, 201, 'the owner\'s taps the coined posts made room for are tested, not dropped');
+  const nots = ids(200, 'n').map((id, i) => call(id, 'not', 'tap', i));
+  const full = buildBlock([call('x:m', 'meme', 'tap', 1), ...nots], [], 20, { coinedYes: coined });
+  assert.equal(full.exampleIds.length, 20);
+  assert.equal(full.used.coined, 0, 'enough owner calls to fill the block: no coined post pushes one out');
+  assert.ok(full.exampleIds.includes('x:m'));
+  assert.equal(full.owner.yesTaught + full.owner.noTaught, 20);
+  assert.equal(full.taps.taught + full.taps.tested, 201, 'every tap is taught or tested');
+  const few = buildBlock([call('x:m', 'meme', 'tap', 1), ...nots.filter((n) => isExample(n.itemId)).slice(0, 5)], [], 20, { coinedYes: coined });
+  assert.equal(few.used.coined, 2, 'room the owner leaves goes to coined posts');
+  assert.equal(few.owner.yesTaught + few.owner.noTaught, 6, 'every owner call that could be taught is');
+  assert.match(few.text, /YES — not the owner's calls: posts several people coined/);
   const owned = buildBlock([call('x:k1', 'not', 'tap', 1)], [], 20, { coinedYes: coined });
   assert.ok(!owned.text.includes('"news x:k1" — 2 coins'), "the owner's call on a post wins over its coins");
+});
+
+test('a coined animal or object is not taught: its words, a proposed name, or its kind say so', () => {
+  const W = DEFAULT_POLICY.learning.coinedYes.animalObjectWords;
+  assert.equal(animalOrObject({ text: 'my cats did this', kind: null }, W), true);
+  assert.equal(animalOrObject({ text: 'look at this', kind: null, names: ['WEDDINGCAT'] }, W), true);
+  assert.equal(animalOrObject({ text: 'look at this', kind: null, names: ['ROBODOG'] }, W), true);
+  assert.equal(animalOrObject({ text: 'what a beard', kind: null, names: ['WHATNOW'] }, W), false, "a short word only at a name's start or end; whole words in text");
+  assert.equal(animalOrObject({ text: 'Netflix is turning the scam into a show', kind: 'CORP_NEWS', names: ['DAEJON'] }, W), false);
+  const kept = coinedYes([coinedPost('x:a', { text: 'a dog on a skateboard' }), coinedPost('x:c', { text: 'he said it again', names: ['AGAIN'] })], DEFAULT_POLICY, new Set());
+  assert.deepEqual(kept.map((c) => c.itemId), ['x:c']);
 });
 
 test("the owner's names go in a names section", () => {
