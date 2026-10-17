@@ -1,0 +1,30 @@
+{
+  "about": "The owner's split of the missed posts the live judge (Nemotron 3.5 Super VL, block v10, cutoff 0.70) still missed on 2026-10-17: 12 misses out of 33 missed posts. `teach` is always taught (with Policy.learning.alwaysTeach), whatever its hash. `test` is never taught as anything (a missed post, a tap, a label, a coined post) and is always in the re-tune's test: the six misses kept back plus the ten held-out missed posts the live judge already caught. `untaughtMisses` is the six misses in `test`, whose catch rate is reported on its own. The halves were picked so each has people, catchphrases or news, and videos on both sources; the two Portuguese video clips are one in each. The owner's gate (Policy.learning.ownerGate) reads `test`. Ids live here, not in the policy, because a post id names its source. An id must never be in both `teach` and `test`.",
+  "teach": [
+    { "id": "x:2109756994147983482", "post": "@abrahubstudio, Flávio Hipotético, Portuguese X video (already on Policy.learning.alwaysTeach)" },
+    { "id": "tiktok:7690714003953175841", "post": "@givefromtheheart2, single mum of four, MIRACLE (TikTok video, a person)" },
+    { "id": "tiktok:7696634551283584289", "post": "@jeancultouw, Toc-Toc dance, Cul (TikTok video, a person)" },
+    { "id": "x:2109995948407476369", "post": "@johnternus, Welcome HomeView (X video, a catchphrase)" },
+    { "id": "x:2110443836673823030", "post": "@Complex, Netflix turning the Daejon Love scam into a show, DAEJON (named person and show in the news)" },
+    { "id": "x:2109777563425869858", "post": "@suguboobies_, pfps to match with your bae (a catchphrase)" }
+  ],
+  "test": [
+    { "id": "x:2109001190100849122", "post": "@acervoarii, TOPO, Portuguese X video (missed)" },
+    { "id": "tiktok:7695781291517627662", "post": "@dikshithardik, brothers cooking, DIKSHIT (TikTok video, people; missed)" },
+    { "id": "tiktok:7697232335028178208", "post": "@islam.eldeh.babies, Baby king, Chillbaby (TikTok video, a person; missed)" },
+    { "id": "x:2110053432371376380", "post": "@obie, programmers line, SAINDRA (X video, a line; missed)" },
+    { "id": "x:2111327635095834954", "post": "@elonmusk, Optimus will build Optimus Prime, PRIME (a named person, a line; missed)" },
+    { "id": "x:2109813738559693002", "post": "@rrealist, UK crypto line, no coin (a news line; missed)" },
+    { "id": "tiktok:7695856190563061006", "post": "@nbcchicago, albino porcupine (caught)" },
+    { "id": "x:2109826862906233339", "post": "@hardcatmemes, cat picture (caught)" },
+    { "id": "x:2110004261857706393", "post": "@tsitsiii_t, monkey video, H2O (caught)" },
+    { "id": "x:2110225239515041849", "post": "@niccruzpatane, Tesla 7:55 Easter egg (caught)" },
+    { "id": "x:2110378618345967808", "post": "@mattvanswol, robot dog in Atlanta, Oppy (caught)" },
+    { "id": "x:2110402156104700129", "post": "@ShadowPatriotUS, dog and a Tesla (caught)" },
+    { "id": "x:2110577169047203945", "post": "@lolitascak3, calico cat, 鬧鬧 (caught)" },
+    { "id": "x:2110916017006489931", "post": "@higashiyamapark, pygmy hippo calf, Konasu (caught)" },
+    { "id": "x:2111049521165943148", "post": "@neopark754, sloth, Mozuku (caught)" },
+    { "id": "x:2111141052463882552", "post": "@hardcatmemes, fire-breathing kitten (caught)" }
+  ],
+  "untaughtMisses": ["x:2109001190100849122", "tiktok:7695781291517627662", "tiktok:7697232335028178208", "x:2110053432371376380", "x:2111327635095834954", "x:2109813738559693002"]
+}

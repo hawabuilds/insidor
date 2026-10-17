@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
 import { atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, parseFloor, withRulebook, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall } from './examples.ts';
+import { OWNER_SPLIT, alwaysTeachIds, checkSplit } from './owner-split.ts';
 
 const L = DEFAULT_POLICY.learning;
 const call = (itemId: string, label: 'meme' | 'not', from: OwnerCall['from'], at: number | null = null): OwnerCall => ({ itemId, text: `post ${itemId}`, imageUri: null, label, why: 'because', at, from });
@@ -301,4 +302,44 @@ test('the rulebook goes after the examples under its heading; the posts held out
   assert.ok(ruled.text.endsWith('RULES:\n- Ads are no.'));
   assert.deepEqual([ruled.exampleIds, ruled.testNegatives, ruled.testMissed], [block.exampleIds, block.testNegatives, block.testMissed]);
   assert.equal(withRulebook(block, 'RULES:', null), block, 'none written: the block alone');
+});
+
+/* ── the owner's split (2026-10-17) ─────────────────────────────────────────────────── */
+
+test("★ a post on the owner's test list is never taught, from any source, whatever its hash or the teach list says", () => {
+  const missed = ids(30, 'k').map((id, i) => call(id, 'meme', 'missed', i));
+  const taughtByHash = missed.find((m) => isExample(m.itemId))!;
+  assert.equal(isExample(taughtByHash.itemId, [], [taughtByHash.itemId]), false);
+  assert.equal(isExample(taughtByHash.itemId, [taughtByHash.itemId], [taughtByHash.itemId]), false, 'the test wins over the teach list');
+  const tap = call('x:tapmeme', 'meme', 'tap', 50);
+  const not = call(ids(40, 'n').find((id) => isExample(id))!, 'not', 'tap', 60);
+  const coined = [{ ...call('x:coined1', 'meme', 'coined', 70) }];
+  const keep = [taughtByHash.itemId, tap.itemId, not.itemId, 'x:coined1'];
+  const b = buildBlock([...missed, tap, not], [], 120, { alwaysTest: keep, coinedYes: coined });
+  for (const id of keep) assert.ok(!b.exampleIds.includes(id), `${id} is not taught`);
+  assert.ok(b.testMissed.some((m) => m.itemId === taughtByHash.itemId), 'the missed post is tested');
+  assert.ok(b.testMemes.some((m) => m.itemId === tap.itemId), 'the tapped meme is tested as gold');
+  assert.ok(b.testNegatives.some((m) => m.itemId === not.itemId), 'the non-meme is tested');
+});
+
+test("this run's hold-outs (neverTeach) are tested, not taught, and nothing else moves", () => {
+  const nots = ids(40, 'n').map((id, i) => call(id, 'not', 'tap', i));
+  const taught = nots.filter((n) => isExample(n.itemId)).map((n) => n.itemId);
+  const held = taught.slice(0, 3);
+  const b = buildBlock(nots, [], 120, { neverTeach: held });
+  assert.deepEqual(b.exampleIds.filter((id) => held.includes(id)), []);
+  assert.deepEqual(new Set(b.exampleIds), new Set(taught.filter((id) => !held.includes(id))));
+  for (const id of held) assert.ok(b.testNegatives.some((c) => c.itemId === id));
+});
+
+test("the owner's split file: no id both taught and tested, every untaught miss tested, six and six of the misses", () => {
+  assert.equal(OWNER_SPLIT.untaughtMisses.length, 6);
+  assert.equal(OWNER_SPLIT.teach.length, 6);
+  assert.ok(OWNER_SPLIT.teach.every((id) => !OWNER_SPLIT.test.includes(id)));
+  assert.ok(OWNER_SPLIT.untaughtMisses.every((id) => OWNER_SPLIT.test.includes(id)));
+  const teach = alwaysTeachIds(DEFAULT_POLICY);
+  assert.ok(DEFAULT_POLICY.learning.alwaysTeach.every((id) => teach.includes(id)), "the policy's list is kept");
+  assert.ok(teach.every((id) => !OWNER_SPLIT.test.includes(id)));
+  assert.throws(() => checkSplit({ teach: [{ id: 'x:1', post: '' }], test: [{ id: 'x:1', post: '' }], untaughtMisses: [] }), /both taught and tested/);
+  assert.throws(() => checkSplit({ teach: [], test: [{ id: 'x:1', post: '' }], untaughtMisses: ['x:2'] }), /not in test/);
 });

@@ -152,6 +152,7 @@ import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
 import { leadFacts, leadLines, leadRows, summarise } from './lib/lead-time.ts';
 import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, gate, goalsText, latestSlot, missedCaught, parseFloor, ratesOf, withRulebook, share, strictestKeeping, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type Rate } from '../eval/src/feed/examples.ts';
+import { OWNER_SPLIT, alwaysTeachIds } from '../eval/src/feed/owner-split.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
 import { pictureOf } from '../services/project/src/db.ts';
 import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
@@ -398,7 +399,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         P,
         new Set([...calls.map((c) => c.itemId), ...handGoldIdsNow]),
       );
-      const examplesOnly = buildBlock(calls, names, L.maxExamples, { alwaysTeach: L.alwaysTeach, coinedYes: coinedTaught });
+      const examplesOnly = buildBlock(calls, names, L.maxExamples, { alwaysTeach: alwaysTeachIds(P), alwaysTest: OWNER_SPLIT.test, coinedYes: coinedTaught });
       /* ★ THE OWNER'S RULEBOOK (tools/lib/rulebook.ts): written from the block's own lines, the
          standing decisions and counts over every input, then put in the block, so the test below
          tests both. Not written for `compose` (free) or `--rules-only` (no block); a rulebook that
@@ -465,6 +466,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         liveNegatives: block.testNegatives.length, missedTested: testMissed.length, autoGold: posts.filter((p) => p.group === 'auto').length,
         tiktokCoined: posts.filter((p) => p.group === 'tt-coined').length,
         coinedYesFound: coinedRows.length, coinedYesTaught: block.used.coined,
+        ownerTest: OWNER_SPLIT.test.length, ownerTaught: alwaysTeachIds(P).filter((id) => block.exampleIds.includes(id)).length,
       };
       if (opts.composeOnly === true) {
         console.log(JSON.stringify({ msg: 'retune composition (nothing asked, nothing written)', slot: slot.toISOString(), ...composition }, null, 1));
