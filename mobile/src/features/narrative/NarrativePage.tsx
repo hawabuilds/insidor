@@ -2,13 +2,18 @@
  * THE NARRATIVE PAGE — one narrative on one phone screen, as the owner drew it (2026-10-17):
  *
  *   Top      back, the watch star, and Edit for the owner's wallet only (NarrativeEdit.tsx)
- *   Head     picture and title; "12 posts   9 on X   3 on TikTok"; the big total views
- *   Facts    ONE line under the views, following the chart's interval: "Last 15m +420K   MC +12%
- *            Found 58m before $GTA". Real numbers only, no scores, no opinions
- *   Chart    views gained per interval across all its posts (GainChart.tsx), with First found and
- *            the coin's launch at their exact times; hidden, not the page, when there is no history
- *   Posts    newest first: thumbnail with its site's badge, one line of text, handle and age, views
- *            and the last hour's gain; a tap opens the post sheet (or the post where it lives)
+ *   Head     picture and title; "61 posts since Thu   4.2M views"
+ *   Facts    ONE line under the head, following the chart's interval (15m on All): "Last 15m +420K
+ *            MC +12%   Found 58m before $GTA". Real numbers only, no scores, no opinions
+ *   Chart    views gained per interval across all its posts (GainChart.tsx), 5m 15m 1h 4h 1D and
+ *            All — the whole story from its first post, the page's first view — with First found
+ *            and the coin's launch at their exact times wherever they fall inside the span; hidden,
+ *            not the page, when there is no history
+ *   Posts    THE WHOLE STORY (posts-order.ts): "First post we caught" pinned at the top with when it
+ *            was posted and when we found it, then every other post since the first, newest first,
+ *            twenty at a time as the list's end comes into view. Each row: thumbnail with its site's
+ *            badge, one line of text, handle and age, views and the last hour's gain; a tap opens
+ *            the post sheet (or the post where it lives)
  *   Coin bar above the tab bar where the token page's Buy and Sell sit: the coin line's three
  *            states (story-coin.ts); Buy opens the existing Buy pop-up, a tap on the bar opens the
  *            token page, "All N coins" opens Choose coin
@@ -20,15 +25,16 @@
  * now; the launch is printed to the minute only from a clock that is the chain's; "Found Xm before"
  * only when we really were first, "Coin was Xm before we found it" when we were not.
  *
- * What breaks if changed carelessly: the page reads two replies, the story and its sheet. The story
- * alone draws the page; the sheet failing costs the coin's market details and the post sheets for
- * posts no feed holds, never the page.
+ * What breaks if changed carelessly: the page reads two replies, the story and its sheet, and the
+ * cards of each further screenful of a long story by id (`fetchStoryPosts`). The story alone draws
+ * the page and lists every post; a sheet failing costs the coin's market details and the post sheets
+ * for the posts it would have carried, never the page or a row.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import type { SheetCoin, Story, StorySheet } from '../../shared/api/index.ts';
-import { fetchStorySheet } from '../../shared/api/index.ts';
+import type { Evidence, RisingPost, SheetCoin, Story, StorySheet } from '../../shared/api/index.ts';
+import { fetchStoryPosts, fetchStorySheet } from '../../shared/api/index.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { compact, formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
@@ -46,14 +52,17 @@ import { Sheet } from '../../shared/ui/Sheet.tsx';
 import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
-import { BuyOpen, ChooseCoin, GainChart, PostSheet, SheetToast, firstWords, hm, launchTime, lastGain, plus, useMcChange, LAST_WORDS, pctText, type ChartMarker, type GainInterval, type SheetNote } from '../post-sheet/index.ts';
+import { BuyOpen, CHART_INTERVALS, ChooseCoin, GainChart, PostSheet, SheetToast, firstWords, hm, launchTime, lastGain, plus, useMcChange, LAST_WORDS, pctText, type ChartInterval, type ChartMarker, type GainInterval, type SheetNote } from '../post-sheet/index.ts';
 import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { NarrativeEdit } from './NarrativeEdit.tsx';
+import { PAGE, firstCaught, newestFirst } from './posts-order.ts';
 import { storyCoinState, type CoinFace, type StoryCoinState } from './story-coin.ts';
 import styles from './narrative.module.css';
 
-/** The chart opens on this interval: a narrative spans hours, not minutes. */
-const FIRST_INTERVAL: GainInterval = '15m';
+/** The chart opens on the whole story (the owner's design, 2026-10-17). */
+const FIRST_INTERVAL: ChartInterval = 'All';
+/** The fact line's interval on All: the chart's whole span has no "last" to speak of. */
+const ALL_FACTS: GainInterval = '15m';
 /** The plot's own height, in px: what is left of a 390x844 screen with the head, posts' top and the coin bar. */
 const PLOT_HEIGHT = 150;
 
@@ -101,17 +110,16 @@ function TopBar({ storyId, onEdit }: { storyId: string; onEdit: (() => void) | n
   );
 }
 
-/** "9 on X", "3 on TikTok": each site's own count, biggest first. */
-function sitesOf(story: Story): readonly string[] {
-  const by = new Map<string, number>();
-  for (const e of story.evidence) by.set(e.sourceLabel, (by.get(e.sourceLabel) ?? 0) + 1);
-  if (by.size < 2) return [];
-  return [...by].sort((a, b) => b[1] - a[1]).map(([s, n]) => `${n} on ${s}`);
+/** "since 13:20" today, "since Thu" on another day: when its first post went up. */
+function sinceText(at: number, now: number): string {
+  const d = new Date(at);
+  return new Date(now).toDateString() === d.toDateString() ? `since ${hm(at, now)}` : `since ${d.toLocaleDateString('en-GB', { weekday: 'short' })}`;
 }
 
 function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | null; onCreate: (s: Story) => void }) {
   const now = useNow();
-  const [interval, setIntervalPick] = useState<GainInterval>(FIRST_INTERVAL);
+  const [interval, setIntervalPick] = useState<ChartInterval>(FIRST_INTERVAL);
+  const factsAt: GainInterval = interval === 'All' ? ALL_FACTS : interval;
   const [open, setOpen] = useState<string | null>(null);
   const [buying, setBuying] = useState<CoinFace | null>(null);
   const [choosing, setChoosing] = useState(false);
@@ -120,10 +128,10 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
   const posts = story.postCount ?? story.evidence.length;
   const slots = story.viewsGained;
   const hasHistory = slots !== null && slots.values.some((v) => v !== null);
-  const gain = lastGain(slots, interval);
+  const gain = lastGain(slots, factsAt);
   const coin = storyCoinState(story, sheet);
   const checked = coin.kind === 'checked' ? coin.coin : null;
-  const mc = useMcChange(checked?.address ?? null, interval);
+  const mc = useMcChange(checked?.address ?? null, factsAt);
   const ticker = checked !== null ? tickerText(checked.ticker ?? checked.name ?? checked.address.slice(0, 4)) : '';
   const launch = checked === null ? null : launchTime(checked.sheet?.launchedAt.known === true ? checked.sheet.launchedAt.at : null, checked.sheet?.launchClock ?? { kind: 'unknown' }, now);
   const foundAt = story.foundAt?.known === true ? story.foundAt.at : null;
@@ -143,8 +151,15 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
   ];
 
   const openCoin = (c: CoinFace) => (window.location.hash = hrefFor(sheetCoinRoute(c.sheet ?? { coinId: `solana:${c.address}`, proven: coin.kind === 'checked' }, story.id)));
-  const cards = new Map((sheet?.members ?? []).flatMap((m) => (m.post === null ? [] : [[m.id, m.post] as const])));
-  const listed = [...story.evidence].sort((a, b) => (b.postedAt.known ? b.postedAt.at : -Infinity) - (a.postedAt.known ? a.postedAt.at : -Infinity));
+  const pinned = useMemo(() => firstCaught(story), [story]);
+  const rest = useMemo(() => newestFirst(story, pinned?.post.evidenceId ?? null), [story, pinned]);
+  const [shownCount, setShownCount] = useState(PAGE);
+  const visible = rest.slice(0, shownCount);
+  const cards = useCards(story.id, sheet, [...(pinned === null ? [] : [pinned.post]), ...visible]);
+  const end = useEndInView(() => setShownCount((n) => (n < rest.length ? n + PAGE : n)));
+  const row = (e: Evidence) => (
+    <PostRow key={e.evidenceId} e={e} story={story} card={cards.get(e.evidenceId)} now={now} onOpen={setOpen} />
+  );
 
   return (
     <>
@@ -153,22 +168,17 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
         <div className={styles['headText']}>
           <h1>{story.title}</h1>
           <span className={styles['meta']}>
-            <span>{posts === 1 ? '1 post' : `${posts} posts`}</span>
-            {sitesOf(story).map((s) => <span key={s}>{s}</span>)}
+            <span>{posts === 1 ? '1 post' : `${posts} posts`}{firstPost !== null ? ` ${sinceText(firstPost, now)}` : ''}</span>
+            <span>{total !== null && total.known ? `${compact(total.amount)} views` : '— views'}</span>
           </span>
         </div>
       </header>
-
-      <div className={styles['total']}>
-        <span className={styles['totalN']}>{total !== null && total.known ? compact(total.amount) : '—'}</span>
-        <span className={styles['totalL']}>views</span>
-      </div>
       {total === null || !total.known ? <p className={styles['why']}>{total === null ? 'Total views are not read for this narrative yet' : 'No post has a view reading yet'}</p> : counted !== null ? <p className={styles['why']}>{counted}</p> : null}
 
       <p className={styles['facts']}>
         {hasHistory ? (
           <span>
-            {LAST_WORDS[interval]} {gain !== null ? <b className={gain > 0 ? styles['up'] : styles['plain']}>{plus(gain)}</b> : 'not read'}
+            {LAST_WORDS[factsAt]} {gain !== null ? <b className={gain > 0 ? styles['up'] : styles['plain']}>{plus(gain)}</b> : 'not read'}
           </span>
         ) : null}
         {checked !== null && mc !== null ? (
@@ -185,44 +195,30 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
 
       {hasHistory && slots !== null ? (
         <div className={styles['chartBox']}>
-          <GainChart slots={slots} firstAt={firstPost} firstWord="first post" now={now} interval={interval} onInterval={setIntervalPick} markers={markers} height={PLOT_HEIGHT} />
+          <GainChart slots={slots} allSlots={story.viewsGainedAll} intervals={CHART_INTERVALS} firstAt={firstPost} firstWord="first post" now={now} interval={interval} onInterval={setIntervalPick} markers={markers} height={PLOT_HEIGHT} />
         </div>
       ) : null}
 
       <Notice notice={noticeFor(story)} />
 
+      {pinned !== null ? (
+        <div className={styles['firstCard']}>
+          <span className={styles['firstLabel']}>First post we caught</span>
+          <span className={styles['firstTimes']}>
+            {pinned.post.postedAt.known ? <span>Posted {hm(pinned.post.postedAt.at, now)}</span> : <span>Posted —</span>}
+            <span>Found {hm(pinned.foundAt, now)}</span>
+          </span>
+          <div className={styles['posts']}>{row(pinned.post)}</div>
+        </div>
+      ) : null}
+
       <div className={styles['postsHead']}>
-        <h2>Posts</h2>
+        <h2>{pinned !== null ? 'All posts' : 'Posts'}</h2>
         <span>Newest first</span>
       </div>
       <div className={styles['posts']}>
-        {listed.map((e) => {
-          const platform = platformOf(e.sourceLabel);
-          const card = cards.get(e.evidenceId);
-          const pv = story.postViews?.get(e.evidenceId) ?? null;
-          const views = pv?.views ?? (card !== undefined && card.reach.known ? card.reach.amount : null);
-          const age = formatAge(e.postedAt, now);
-          const tap = () => {
-            if (card !== undefined) setOpen(card.id);
-            else window.open(e.permalink, '_blank', 'noopener');
-          };
-          return (
-            <button key={e.evidenceId} type="button" className={styles['row']} onClick={tap}>
-              <Thumb url={e.thumbUrl ?? card?.thumbUrl ?? null} size={46} radius={12} platform={platform} platformLabel={e.sourceLabel} />
-              <span className={styles['rowText']}>
-                <span className={styles['rowLine']}>{e.excerpt}</span>
-                <span className={styles['rowBy']}>
-                  {e.authorLabel}
-                  {age.kind === 'value' ? ` ${age.text}` : ''}
-                </span>
-              </span>
-              <span className={styles['rowNums']}>
-                <b>{views !== null ? compact(views) : '—'}</b>
-                {pv !== null && pv.gainedLastHour !== null && pv.gainedLastHour > 0 ? <span className={styles['up']}>{plus(pv.gainedLastHour)}</span> : null}
-              </span>
-            </button>
-          );
-        })}
+        {visible.map(row)}
+        {visible.length < rest.length ? <div ref={end} className={styles['more']}>Loading more posts</div> : null}
       </div>
 
       <CoinBar state={coin} coins={sheet?.coins.length ?? 0} onBuy={setBuying} onOpen={openCoin} onAll={() => setChoosing(true)} onCreate={() => onCreate(story)} />
@@ -237,6 +233,75 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
       <SheetToast note={note} onDone={() => setNote(null)} />
     </>
   );
+}
+
+/** One post row: thumbnail with its site's badge, a line of text, handle and age, views and the last hour. */
+function PostRow({ e, story, card, now, onOpen }: { e: Evidence; story: Story; card: RisingPost | undefined; now: number; onOpen: (id: string) => void }) {
+  const platform = platformOf(e.sourceLabel);
+  const pv = story.postViews?.get(e.evidenceId) ?? null;
+  const views = pv?.views ?? (card !== undefined && card.reach.known ? card.reach.amount : null);
+  const age = formatAge(e.postedAt, now);
+  const tap = () => {
+    if (card !== undefined) onOpen(card.id);
+    else window.open(e.permalink, '_blank', 'noopener');
+  };
+  return (
+    <button type="button" className={styles['row']} onClick={tap}>
+      <Thumb url={e.thumbUrl ?? card?.thumbUrl ?? null} size={46} radius={12} platform={platform} platformLabel={e.sourceLabel} />
+      <span className={styles['rowText']}>
+        <span className={styles['rowLine']}>{e.excerpt}</span>
+        <span className={styles['rowBy']}>
+          {e.authorLabel}
+          {age.kind === 'value' ? ` ${age.text}` : ''}
+        </span>
+      </span>
+      <span className={styles['rowNums']}>
+        <b>{views !== null ? compact(views) : '—'}</b>
+        {pv !== null && pv.gainedLastHour !== null && pv.gainedLastHour > 0 ? <span className={styles['up']}>{plus(pv.gainedLastHour)}</span> : null}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The feed cards of the rows on screen: the sheet's, and for the rows past it, asked for by id a
+ * screenful at a time (`fetchStoryPosts`). A row whose card never comes opens its post where it lives.
+ */
+function useCards(storyId: string, sheet: StorySheet | null, rows: readonly Evidence[]): ReadonlyMap<string, RisingPost> {
+  const [more, setMore] = useState<ReadonlyMap<string, RisingPost>>(new Map());
+  const asked = useRef(new Set<string>());
+  const fromSheet = useMemo(() => new Map((sheet?.members ?? []).flatMap((m) => (m.post === null ? [] : [[m.id, m.post] as const]))), [sheet]);
+  const carried = useMemo(() => new Set((sheet?.members ?? []).map((m) => m.id)), [sheet]);
+  const want = sheet === null ? [] : rows.map((e) => e.evidenceId).filter((id) => !carried.has(id) && !asked.current.has(id));
+  const key = want.join(',');
+  useEffect(() => {
+    if (want.length === 0) return;
+    const ask = want.slice(0, 60);
+    for (const id of ask) asked.current.add(id);
+    /* Not aborted when the ids change: marking them asked changes them, and the answer is still wanted. */
+    fetchStoryPosts(storyId, ask)
+      .then((ms) => setMore((m) => new Map([...m, ...ms.flatMap((x) => (x.post === null ? [] : [[x.id, x.post] as const]))])))
+      .catch(() => undefined);
+    /* Keyed on the ids asked for, not the array: a new array of the same ids asks nothing new. */
+  }, [storyId, key]);
+  return useMemo(() => new Map([...fromSheet, ...more]), [fromSheet, more]);
+}
+
+/** A ref for the list's end: `onEnd` each time it comes into view (the next screenful). */
+function useEndInView(onEnd: () => void): (el: HTMLDivElement | null) => void {
+  const latest = useRef(onEnd);
+  latest.current = onEnd;
+  const seen = useRef<IntersectionObserver | null>(null);
+  return (el) => {
+    seen.current?.disconnect();
+    seen.current = null;
+    if (el === null || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((x) => x.isIntersecting)) latest.current();
+    }, { rootMargin: '400px 0px' });
+    io.observe(el);
+    seen.current = io;
+  };
 }
 
 /**
