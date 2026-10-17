@@ -260,7 +260,7 @@ try {
     const frameStarted = Date.now();
     const frame = await projectNarrativeFrame(overlay, 'default', { nowMs: Date.now() as Millis, sparkWindowMs: 30 * 60_000, marketFreshnessMs: P.market.readingFreshnessMs, feedFreshnessMs: P.assets.feedFreshnessMs }, Date.now() - 26 * 3_600_000, main, open);
     const frameMs = Date.now() - frameStarted;
-    const pagesWritten = writes.filter((w) => w.sql.includes('public.story_view')).map((w) => JSON.parse(String(w.params[1])) as Record<string, unknown>);
+    const pagesWritten = writes.filter((w) => w.sql.startsWith('insert into public.story_view')).map((w) => JSON.parse(String(w.params[1])) as Record<string, unknown>);
     const boardOrder = writes.filter((w) => w.sql.includes('public.board_row') && w.sql.startsWith('insert')).map((w) => String(w.params[1]));
     const pageOf = new Map(pagesWritten.map((pg) => [String(pg['id']), pg] as const));
     const fl: string[] = ['', `## The board frame over it (projector, read-only, ${frameMs} ms)`, '', `${frame.boardRows} rows, ${frame.storyViews} pages, ${frame.posts} posts tagged; skipped ${frame.skipped}, withheld ${frame.withheld}.`, '', '| # | title | posts | evidence | summary | coin | views total (posts) | gained 1h (posts) |', '|---|---|---|---|---|---|---|---|'];
