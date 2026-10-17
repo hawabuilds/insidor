@@ -29,15 +29,50 @@
   letter-spacing: -0.03em;
 }
 
-.chips {
+/* The chips on the left, the window on the right, one row. */
+.bar {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 14px var(--gutter) 14px;
 }
 
+.chips {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-left: -6px;
+}
+
+.windows {
+  display: flex;
+  flex: none;
+  padding: 2px;
+  border: 1px solid #1f1e26;
+  border-radius: 10px;
+  background: #111116;
+}
+
+.win {
+  height: 28px;
+  padding: 0 7px;
+  border-radius: 8px;
+  background: transparent;
+  color: #8b8794;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.winOn {
+  background: #241a3a;
+  color: #e4d6ff;
+}
+
 .chip {
   height: 34px;
-  padding: 0 14px;
+  padding: 0 10px;
+  white-space: nowrap;
   border-radius: 999px;
   background: transparent;
   color: #8b8794;
@@ -101,24 +136,33 @@
   white-space: nowrap;
 }
 
-.spark {
-  display: block;
+/* The card's place in the list, grey, at the far left. */
+.place {
   flex: none;
-  align-self: flex-start;
-  overflow: visible;
-}
-
-.hour {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-top: 14px;
+  width: 18px;
+  margin-right: -4px;
   color: #8b8794;
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
 }
 
-.hour b {
+/* The window's gain on the right: green, "views 1h" under it in grey. */
+.gain {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  color: #8b8794;
+  font-size: 12px;
+}
+
+.gain b {
   font-size: 16px;
+}
+
+.dash {
+  color: #8b8794;
 }
 
 .up {
@@ -135,6 +179,8 @@
   gap: 8px;
   min-height: 36px;
   margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #1f1e26;
 }
 
 .ticker {

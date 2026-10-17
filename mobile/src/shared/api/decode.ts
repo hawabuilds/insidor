@@ -27,7 +27,7 @@ import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
 import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, RisingPost, RisingSorted } from './wire/rising.ts';
-import type { DiscussionPost, EarliestPost, Evidence, NarrativesList, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
+import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, OriginGap, SameNameCoins, SearchCoin, SearchCoins, TickerUse, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
@@ -467,7 +467,9 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     viewsTotal: o.viewsTotal === undefined || o.viewsTotal === null ? null : measured(o.viewsTotal, `${path}.viewsTotal`, 'not_read_yet'),
     viewsTotalPosts: count(o.viewsTotalPosts),
     viewsGained: decodeViewsGained(o.viewsGained),
+    viewsGainedAll: decodeViewsGained(o.viewsGainedAll),
     postViews: decodePostViews(o.postViews),
+    inWindow: decodeInWindow(o.inWindow, `${path}.inWindow`),
     /* A top coin that does not decode is dropped, never the page: the card then says no coin is settled. */
     topCoin: (() => {
       try {
@@ -508,7 +510,31 @@ function decodePostViews(raw: unknown): ReadonlyMap<string, PostViews> | null {
   return new Map(raw.flatMap((p) => {
     if (typeof p !== 'object' || p === null) return [];
     const r = p as Record<string, unknown>;
-    return typeof r['postId'] === 'string' ? [[r['postId'], { views: n(r['views']), gainedLastHour: n(r['gainedLastHour']) }] as const] : [];
+    return typeof r['postId'] === 'string' ? [[r['postId'], { views: n(r['views']), gainedLastHour: n(r['gainedLastHour']), foundAt: n(r['foundAt']) }] as const] : [];
+  }));
+}
+
+/**
+ * The tab's orders, one per window the server sends (1h, 6h, 24h): views gained in it (a dash with
+ * its reason when no post was read in it, never 0), the posts found in it, and the place in the
+ * trending order. An entry that does not decode is left out; the tab then orders that story after
+ * every one that has the window.
+ */
+function decodeInWindow(raw: unknown, path: string): ReadonlyMap<number, InWindow> | null {
+  if (!Array.isArray(raw)) return null;
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return new Map(raw.flatMap((w, i): (readonly [number, InWindow])[] => {
+    if (typeof w !== 'object' || w === null) return [];
+    const r = w as Record<string, unknown>;
+    const hours = n(r['hours']);
+    const place = n(r['trendingPlace']);
+    const posts = n(r['newPosts']);
+    if (hours === null || place === null || posts === null) return [];
+    try {
+      return [[hours, { viewsGained: measured(r['viewsGained'], `${path}[${i}].viewsGained`, 'not_read_yet'), newPosts: posts, trendingPlace: place }] as const];
+    } catch {
+      return [];
+    }
   }));
 }
 

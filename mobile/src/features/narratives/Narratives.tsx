@@ -1,22 +1,26 @@
 /**
  * NARRATIVES — viral posts grouped by the story they are about, as the owner drew the tab
- * (2026-10-17): the header, the chips Fastest (the default: views gained in the last hour), Most
- * views and Newest, and one card per real narrative (narrative-order.ts says which and in what
- * order). A card opens the narrative's page.
+ * (2026-10-17): the header; the chips Trending (the default), Most viewed and New, and beside them
+ * the window, 1h 6h 24h, on Trending and Most viewed (narrative-order.ts says what each means and in
+ * what order; the choice is remembered on the phone); one card per real narrative. A card opens the
+ * narrative's page.
  *
- * Each card: picture, title, "N posts   X views"; a small line of the views it gained (thin purple,
- * a soft fade under it, no dots: the projector's five-minute gains added up, gain-chart.ts); "Last
- * hour" with its gain in green; and the coin line in the owner's three states (narrative/
- * story-coin.ts): the checked coin with its market cap and a purple Buy, a top coin said as "Top
- * coin, not checked" with Buy, or "No coin yet" with Create. Buy opens the existing Buy pop-up.
+ * Each card: its place in the list, picture, title; "3 new posts   28m old" (posts found in the
+ * window, the story's age since we found it; on New, its post count); on the right the views it
+ * gained in the window in green with "views 1h" under it; and the coin line in the owner's three
+ * states (narrative/story-coin.ts): the checked coin with its market cap and Buy, a top coin said as
+ * "Top coin, not checked" with Buy, or "No coin yet" with Create. Buy opens the existing Buy pop-up.
+ *
+ * ★ FACTS ONLY. Trending's order is the server's place for the window; the number behind it is never
+ * sent, and the card shows only what it is made of a reader can check: views gained, new posts, age.
  *
  * ★ LIVE, LIKE FOR YOU (features/feed useLiveFeed.ts, on when the build sets VITE_LIVE_FEED=on):
  * while the tab is open and on screen a newer read slides new narratives in, and a narrative whose
  * place in the chosen order changed glides to it (each card's move is measured before and after the
  * list changes and animated across the gap), so a new ranking is seen arriving, not jumping.
  *
- * What breaks if changed carelessly: a card's sparkline must stay the views GAINED (the owner's
- * line), not the total; a total always climbs and would make every narrative look like it is rising.
+ * What breaks if changed carelessly: the window's gain must be the server's views GAINED in it, never
+ * a total; a total always climbs and would make every narrative look like it is rising.
  */
 
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -24,7 +28,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { BOARD_VIEW, fetchNarratives, type NarrativesList, type Story } from '../../shared/api/index.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
-import { useLoad } from '../../shared/hooks.ts';
+import { useLoad, useNow } from '../../shared/hooks.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -36,8 +40,8 @@ import { LIVE_FEED } from '../feed/live-feed.ts';
 import { LiveCard } from '../feed/LiveCard.tsx';
 import { useLiveFeed } from '../feed/useLiveFeed.ts';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
-import { BuyOpen, SheetToast, buckets, smoothPath, sparkInterval, type GainSlots, type SheetNote } from '../post-sheet/index.ts';
-import { ORDERS, ORDER_LABEL, lastHourGain, ordered, postsLine, realNarratives, type Order } from './narrative-order.ts';
+import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
+import { ORDERS, ORDER_LABEL, WINDOWS, WINDOW_LABEL, cardLine, gainText, loadChoice, ordered, realNarratives, saveChoice, windowOf, type Choice, type WindowHours } from './narrative-order.ts';
 import styles from './narratives.module.css';
 
 /** The rows a read holds: real ones only, in the server's order (the chip sorts them). */
@@ -46,14 +50,29 @@ const rowsOf = (list: NarrativesList): readonly Story[] => realNarratives(list.s
 /** How long a card takes to glide to its new place. */
 const MOVE_MS = 320;
 
+/** The phone's own store, or none where the browser refuses it. */
+const store = (): Storage | null => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+
 export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const [list, reload] = useLoad('narratives', (signal) => fetchNarratives(BOARD_VIEW, signal));
   const live = useLiveFeed(LIVE_FEED, list, reload, rowsOf, false);
-  const [order, setOrder] = useState<Order>('fastest');
+  const [choice, setChoiceState] = useState<Choice>(() => loadChoice(store()));
+  const setChoice = (c: Choice) => {
+    setChoiceState(c);
+    saveChoice(store(), c);
+  };
   const [buying, setBuying] = useState<CoinFace | null>(null);
   const [note, setNote] = useState<SheetNote | null>(null);
+  const now = useNow();
   const base = live.rows ?? (list.state === 'ready' ? rowsOf(list.value) : null);
-  const rows = base === null ? null : ordered(base, order);
+  const rows = base === null ? null : ordered(base, choice);
+  const hours = windowOf(choice);
   const glide = useGlide(rows?.map((s) => s.id).join(' ') ?? '');
   const open = (s: Story) => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id }));
 
@@ -64,12 +83,23 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
         {/* Said only when the list really is kept current (VITE_LIVE_FEED). */}
         {LIVE_FEED ? <span className={styles['live']}>Live</span> : null}
       </header>
-      <div className={styles['chips']} role="group" aria-label="Order">
-        {ORDERS.map((o) => (
-          <button key={o} type="button" className={`${styles['chip']} ${o === order ? styles['chipOn'] : ''}`} aria-pressed={o === order} onClick={() => setOrder(o)}>
-            {ORDER_LABEL[o]}
-          </button>
-        ))}
+      <div className={styles['bar']}>
+        <div className={styles['chips']} role="group" aria-label="Order">
+          {ORDERS.map((o) => (
+            <button key={o} type="button" className={`${styles['chip']} ${o === choice.order ? styles['chipOn'] : ''}`} aria-pressed={o === choice.order} onClick={() => setChoice({ ...choice, order: o })}>
+              {ORDER_LABEL[o]}
+            </button>
+          ))}
+        </div>
+        {hours !== null && choice.order !== 'new' ? (
+          <div className={styles['windows']} role="group" aria-label="Window">
+            {WINDOWS.map((w) => (
+              <button key={w} type="button" className={`${styles['win']} ${w === hours ? styles['winOn'] : ''}`} aria-pressed={w === hours} onClick={() => setChoice({ ...choice, windows: { ...choice.windows, [choice.order]: w } })}>
+                {WINDOW_LABEL[w]}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <Notice notice={list.state === 'ready' ? boardNotice(list.value.provenance) : null} />
@@ -78,10 +108,10 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
       {list.state === 'failed' && rows === null ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
       {rows !== null && rows.length === 0 ? <p className={styles['empty']}>No narratives yet.</p> : null}
       <div className={styles['cards']}>
-        {rows?.map((s) => (
+        {rows?.map((s, i) => (
           <div key={s.id} ref={glide(s.id)}>
             <LiveCard id={s.id} arrival={live.arrivals.get(s.id)}>
-              <Card story={s} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} />
+              <Card story={s} place={i + 1} hours={hours} now={now} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} />
             </LiveCard>
           </div>
         ))}
@@ -116,26 +146,28 @@ function useGlide(key: string): (id: string) => (el: HTMLDivElement | null) => v
   };
 }
 
-function Card({ story, onOpen, onBuy, onCreate }: { story: Story; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void }) {
+function Card({ story, place, hours, now, onOpen, onBuy, onCreate }: { story: Story; place: number; hours: WindowHours | null; now: number; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void }) {
   const coin = storyCoinState(story);
-  const gain = lastHourGain(story);
+  /* On New, the last hour's gain: the tab's default window. */
+  const h: WindowHours = hours ?? 1;
+  const gain = gainText(story, h);
   return (
     <article className={styles['card']} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => {
       if (e.key === 'Enter') onOpen();
     }}>
       <div className={styles['top']}>
-        <Thumb url={story.thumbUrl} size={52} radius={14} />
+        <span className={styles['place']}>{place}</span>
+        <Thumb url={story.thumbUrl} size={64} radius={16} />
         <div className={styles['text']}>
           <b className={styles['title']}>{story.title}</b>
           <span className={styles['sub']}>
-            {postsLine(story).map((w) => <span key={w}>{w}</span>)}
+            {cardLine(story, hours, now).map((w) => <span key={w}>{w}</span>)}
           </span>
         </div>
-        {story.viewsGained !== null ? <Spark slots={story.viewsGained} /> : null}
-      </div>
-      <div className={styles['hour']}>
-        <span>Last hour</span>
-        {gain !== null ? <b className={gain.startsWith('-') ? styles['down'] : styles['up']}>{gain}</b> : <span>—</span>}
+        <div className={styles['gain']}>
+          {gain !== null ? <b className={gain.startsWith('-') ? styles['down'] : gain === '+0' ? styles['dash'] : styles['up']}>{gain}</b> : <b className={styles['dash']}>—</b>}
+          <span>views {WINDOW_LABEL[h]}</span>
+        </div>
       </div>
       <div className={styles['coin']}>
         {coin.kind === 'checked' || coin.kind === 'top' ? (
@@ -170,48 +202,4 @@ function Card({ story, onOpen, onBuy, onCreate }: { story: Story; onOpen: () => 
 function CardCap({ coin }: { coin: CoinFace }) {
   const cap = useCoinCap(coin.address, coin.marketCapUsd, true);
   return cap.known ? <Value r={formatUsd(cap)} /> : null;
-}
-
-const SPARK_W = 92;
-const SPARK_H = 30;
-
-/** The views gained, as a thin purple line with a soft fade under it; nothing drawn from fewer than two points. */
-function Spark({ slots }: { slots: GainSlots }) {
-  const bs = buckets(slots, sparkInterval(slots));
-  const max = Math.max(1, ...bs.map((b) => b.value ?? 0));
-  const n = bs.length;
-  if (bs.filter((b) => b.value !== null).length < 2) return null;
-  const runs: { x: number; y: number }[][] = [];
-  let open = false;
-  bs.forEach((b, i) => {
-    if (b.value === null) {
-      open = false;
-      return;
-    }
-    if (!open) runs.push([]);
-    open = true;
-    runs[runs.length - 1]?.push({ x: (i / Math.max(1, n - 1)) * SPARK_W, y: 2 + (SPARK_H - 4) * (1 - b.value / max) });
-  });
-  return (
-    <svg className={styles['spark']} width={SPARK_W} height={SPARK_H} aria-hidden="true">
-      <defs>
-        <linearGradient id="nspark" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#B48CFF" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="#B48CFF" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {runs.map((r, i) => {
-        const d = smoothPath(r);
-        const a = r[0];
-        const z = r[r.length - 1];
-        if (a === undefined || z === undefined) return null;
-        return (
-          <g key={i}>
-            {r.length > 1 ? <path d={`${d}L${z.x},${SPARK_H}L${a.x},${SPARK_H}Z`} fill="url(#nspark)" /> : null}
-            <path d={d} fill="none" stroke="#B48CFF" strokeWidth={1.5} strokeLinecap="round" />
-          </g>
-        );
-      })}
-    </svg>
-  );
 }
