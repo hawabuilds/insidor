@@ -185,9 +185,16 @@ export interface NarrativeCalls {
   readonly removed: ReadonlyMap<string, ReadonlySet<string>>;
   /** Merges still standing: each side's posts. */
   readonly together: readonly { readonly posts: readonly string[]; readonly with: readonly string[] }[];
-  /** Narrative id → when the owner last said "Not a narrative" on it. */
-  readonly hiddenAt: ReadonlyMap<string, number>;
+  /** Every "Not a narrative", with the posts it was said over: the hide rides on the posts, not the id. */
+  readonly hidden: readonly NarrativeHide[];
   readonly coins: ReadonlyMap<string, NarrativeCoinCall>;
+}
+
+/** One "Not a narrative": the narrative it was said on and the posts it held then. */
+export interface NarrativeHide {
+  readonly narrativeId: string;
+  readonly atMs: number;
+  readonly members: ReadonlySet<string>;
 }
 
 export const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
@@ -197,11 +204,11 @@ export function foldNarrativeCalls(rows: readonly NarrativeCallRow[]): Narrative
   const apart = new Set<string>();
   const removed = new Map<string, Set<string>>();
   const together: { posts: readonly string[]; with: readonly string[] }[] = [];
-  const hiddenAt = new Map<string, number>();
+  const hidden: NarrativeHide[] = [];
   const coins = new Map<string, { right: { address: string; atMs: number } | null; wrong: Map<string, number>; members: readonly string[] }>();
   for (const r of [...rows].sort((x, y) => x.atMs - y.atMs || x.id - y.id)) {
     if (r.verdict === 'not_narrative') {
-      hiddenAt.set(r.narrativeId, r.atMs);
+      hidden.push({ narrativeId: r.narrativeId, atMs: r.atMs, members: new Set(r.members) });
       for (let i = 0; i < r.members.length; i += 1) for (let j = i + 1; j < r.members.length; j += 1) apart.add(pairKey(r.members[i] ?? '', r.members[j] ?? ''));
     } else if (r.verdict === 'remove_post' && r.otherId !== null) {
       const post = r.otherId;
@@ -236,7 +243,7 @@ export function foldNarrativeCalls(rows: readonly NarrativeCallRow[]): Narrative
   }
   /* A merge whose posts were later kept apart stands only for the pairs still allowed: the union
      below skips a group the owner has since separated (see `groupNarratives`). */
-  return { apart, removed, together, hiddenAt, coins };
+  return { apart, removed, together, hidden, coins };
 }
 
 /** The coin calls that apply to a narrative: on its id, else on the posts it holds most of. */
@@ -631,20 +638,34 @@ export function hugeAndClimbing(reach: number | null, perMinute: number | null, 
 export type NarrativeShown = 'shown' | 'too_few_posts' | 'hidden_by_owner';
 
 /**
+ * ★ "NOT A NARRATIVE" STAYS SAID. A hide applies to the narrative it was said on and to any
+ * narrative holding one of the posts it was said over, and it lifts only when the narrative now
+ * has `minPosts` good posts that were NOT among them: a genuinely different, bigger story.
+ *
+ * Why posts and not the id or a timestamp: the call itself keeps its posts apart, so the very
+ * next regroup shrinks the narrative ("its posts changed"), and a regroup can give the same posts
+ * a new id (an id is its earliest post). Both used to undo the hide within a pass — the owner
+ * tapped, and the narrative came back as its one huge post. `members` are the posts that count
+ * NOW (the runner's good posts, the projector's listed ones).
+ */
+export function hiddenByOwner(narrativeId: string, members: readonly string[], calls: NarrativeCalls, p: Policy): boolean {
+  return calls.hidden.some((h) => {
+    const applies = h.narrativeId === narrativeId || members.some((m) => h.members.has(m));
+    if (!applies) return false;
+    /* A call recorded without its posts can only be held on its id, and then it holds. */
+    if (h.members.size === 0) return true;
+    return members.filter((m) => !h.members.has(m)).length < p.narrative.minPosts;
+  });
+}
+
+/**
  * ★ A NARRATIVE NEEDS `minPosts` GOOD POSTS, OR ONE POST THAT IS HUGE AND CLIMBING. Otherwise it
  * is just a post, and For You already shows posts. `goodPosts` are the posts still good NOW (the
  * projector re-reads their standing: an owner's "Not a meme" since the pass takes a post out at
- * once); `hiddenAt` is the owner's newest "Not a narrative" on it, which hides it until the posts
- * change after the call (`changedAtMs`).
+ * once); `hidden` is the owner's "Not a narrative" as `hiddenByOwner` holds it.
  */
-export function narrativeShown(
-  goodPosts: number,
-  single: boolean,
-  hiddenAt: number | null,
-  changedAtMs: number,
-  p: Policy,
-): NarrativeShown {
-  if (hiddenAt !== null && hiddenAt >= changedAtMs) return 'hidden_by_owner';
+export function narrativeShown(goodPosts: number, single: boolean, hidden: boolean, p: Policy): NarrativeShown {
+  if (hidden) return 'hidden_by_owner';
   if (goodPosts >= p.narrative.minPosts) return 'shown';
   return goodPosts === 1 && single ? 'shown' : 'too_few_posts';
 }

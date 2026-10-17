@@ -254,7 +254,6 @@ try {
         if (q.includes('from internal.narrative n')) {
           return grouped.pass.narratives.map((n) => ({ narrative_id: n.id, anchor_item: n.anchor, shown: n.shown, first_shown_at: new Date(), posts_changed_at: new Date(), title: titles.get(n.id) ?? null, title_posts: null, members: [...n.members].sort() })) as unknown as R[];
         }
-        if (q.includes("from internal.owner_feedback where subject_kind = 'narrative'")) return [] as R[];
         return db.query<R>(sql, params);
       },
     };
