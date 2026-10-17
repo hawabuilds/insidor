@@ -570,9 +570,14 @@ export function postStanding(row: RisingRow, policy = DEFAULT_POLICY, signal: Cr
  * its source (`at`: the post's own time, or when we first saw it when the source gave none), then by
  * id so a frame is stable. Pull to refresh then brings new posts in at the top. The route a post
  * passed by, its growth and the order model's number are not in it; they decide only admission.
+ * The scroll under the frame continues this exact order (services/read feed-page.ts, by the same
+ * time and `collate "C"`), and the phone merges by it too, so the id tie-break is byte order, not
+ * the locale's: a locale order differs from the database's and would repeat or skip a post at a
+ * page boundary. The card's age is `postedAt`, the same posted time; with none it shows a dash
+ * and takes its place by when we first saw it.
  */
 export function forYouOrder(a: { readonly at: number; readonly id: string }, b: { readonly at: number; readonly id: string }): number {
-  return b.at - a.at || a.id.localeCompare(b.id);
+  return b.at - a.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
 /**
