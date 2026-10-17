@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ABOUT_SQL, coinAbout, linkKind, linkLabel, mergeLinks, POSTS_SQL } from './coin-about.ts';
+import { ABOUT_SQL, COIN_STORY_SQL, coinAbout, linkKind, linkLabel, mergeLinks, POSTS_SQL } from './coin-about.ts';
 import type { Logger } from './log.ts';
 import { ASSET_SQL } from './market.ts';
 import type { Row } from './queries.ts';
@@ -58,4 +58,12 @@ test('each post carries its views as its card read them; a count that is missing
   const r = await coinAbout(`solana:${MINT}`, deps(held, async () => null, null));
   assert.ok(r);
   assert.deepEqual(JSON.parse(r.body).posts.map((p: { views: unknown }) => p.views), [{ v: 751_000 }, { v: null, why: 'not_reported' }, { v: null, why: 'not_reported' }]);
+});
+
+test('the narrative whose coin this is rides along by id, and none is null, never a guess', async () => {
+  const held = { [ASSET_SQL]: [{ chain: 'solana', address: MINT }] };
+  const named = await coinAbout(`solana:${MINT}`, deps({ ...held, [COIN_STORY_SQL]: [{ story_id: 'n-x:1' }] }, async () => null, null));
+  assert.equal(JSON.parse(named?.body ?? '{}').storyId, 'n-x:1');
+  const none = await coinAbout(`solana:${MINT}`, deps(held, async () => null, null));
+  assert.equal(JSON.parse(none?.body ?? '{}').storyId, null);
 });

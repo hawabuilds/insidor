@@ -17,6 +17,10 @@
  *                  on one, and its views as its card last read them (the token page's viral
  *                  post is the most-viewed). Facts only: links this post, same picture,
  *                  launched this long after.
+ *   storyId        the narrative on the board whose coin this is (its settled coin first, else its
+ *                  top coin, which the page then calls not checked), for the token page's narrative
+ *                  card; null when no narrative on the board names it. Read from public.story_view,
+ *                  the pages the board serves, so the card never opens a narrative that is gone.
  *
  * ★ ONLY FOR A COIN WE HOLD OR A SEARCH JUST RETURNED, as GET /coin/:id/market (market.ts), so
  * this route cannot be used to make us fetch an arbitrary address.
@@ -69,6 +73,18 @@ select distinct on (n.item_id) n.item_id, n.payload, n.own, n.links_post, n.same
   left join public.story_view s on s.story_id = n.payload ->> 'storyId'
  order by n.item_id, n.own desc
  limit ${POSTS_SHOWN}`;
+
+/**
+ * The board narrative this coin belongs to: one whose settled coin it is, else one whose top coin it
+ * is. Eighty-odd pages, read whole; `$1` the address.
+ */
+export const COIN_STORY_SQL = `
+select story_id
+  from public.story_view
+ where (payload #>> '{coins,kind}' = 'one' and payload #>> '{coins,coin,address}' = $1)
+    or payload #>> '{topCoin,address}' = $1
+ order by (payload #>> '{coins,kind}' = 'one' and payload #>> '{coins,coin,address}' = $1) desc, story_id
+ limit 1`;
 
 /** The kinds of link the page has a button for, in the page's order. */
 export const LINK_KINDS = ['x', 'telegram', 'website', 'tiktok'] as const;
@@ -202,9 +218,10 @@ export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ re
   if ((held === undefined || held['chain'] !== 'solana' || typeof held['address'] !== 'string') && !searched) return null;
   const address = typeof held?.['address'] === 'string' ? held['address'] : assetKey.slice('solana:'.length);
 
-  const [rows, posts, profile, holders] = await Promise.all([
+  const [rows, posts, story, profile, holders] = await Promise.all([
     deps.db.query(ABOUT_SQL, [assetKey]),
     deps.db.query(POSTS_SQL, [address]),
+    deps.db.query(COIN_STORY_SQL, [address]),
     deps.profile(address).then(
       (p) => ({ ok: true as const, p }),
       (e: unknown) => {
@@ -236,6 +253,7 @@ export async function coinAbout(assetKey: string, deps: AboutDeps): Promise<{ re
         const p = postOf(r);
         return p === null ? [] : [p];
       }),
+      storyId: text(story[0]?.['story_id']),
     }),
   };
 }
