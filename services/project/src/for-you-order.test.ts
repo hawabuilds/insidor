@@ -8,6 +8,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { cryptoSignalFor, forYouOrder, postRoute, underScoreBar, type RisingRow } from './rising.ts';
+import { withVariety } from './variety.ts';
 
 type P = { at: number; id: string };
 const sorted = (posts: P[]) => [...posts].sort(forYouOrder).map((p) => p.id);
@@ -22,6 +23,16 @@ test('★ newest first by when the post went up, then by id', () => {
     ['newest', 'middle', 'older'],
   );
   assert.deepEqual(sorted([{ at: 1, id: 'b' }, { at: 1, id: 'a' }]), ['a', 'b']);
+  assert.deepEqual(sorted([{ at: 1, id: 'a:1' }, { at: 1, id: 'X:1' }]), ['X:1', 'a:1'], 'byte order, as the scroll\'s collate "C" sorts');
+});
+
+test('★ the frame never runs older-then-newer: the variety rule leaves a card out, it never moves one down', () => {
+  /* Ten posts of one topic, newest first, and three others among them: the topic keeps a few places. */
+  const cards = Array.from({ length: 13 }, (_, i) => ({ id: `x:${i}`, at: 1000 - i * 10, views: i % 4 === 0 ? 5 : 100 - i }));
+  const topic = new Map(cards.map((c) => [c.id, c.views === 5 ? c.id : 'gta'] as const));
+  const kept = withVariety([...cards].sort(forYouOrder), topic, 3, 20);
+  assert.ok(kept.length < cards.length, 'some of the crowded topic are left out');
+  for (let i = 1; i < kept.length; i += 1) assert.ok(forYouOrder(kept[i - 1] as P, kept[i] as P) < 0, `card ${i} is not newer than the one above it`);
 });
 
 const ROW: RisingRow = {
