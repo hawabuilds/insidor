@@ -83,10 +83,10 @@ test('★ coined posts taught as yes: late, by several coins, never the owner\'s
   assert.deepEqual(picked.map((c) => c.itemId).sort(), ['x:ok', 'x:tragedy'], 'a tragedy is not held, so it is taught');
   assert.ok(picked.every((c) => c.label === 'meme' && c.from === 'coined'));
   assert.match(picked[0]!.why, /2 coins launched for it, the first 15 minutes after it was posted/);
-  const many = Array.from({ length: 30 }, (_, i) => coinedPost(`x:c${i}`, { postedAt: i * MIN, firstLateAt: i * MIN + 20 * MIN }));
+  const many = Array.from({ length: 80 }, (_, i) => coinedPost(`x:c${i}`, { postedAt: i * MIN, firstLateAt: i * MIN + 20 * MIN }));
   const capped = coinedYes(many, DEFAULT_POLICY, new Set());
   assert.equal(capped.length, L.coinedYes.maxPerBlock);
-  assert.equal(capped[0]!.itemId, 'x:c29', 'newest first');
+  assert.equal(capped[0]!.itemId, 'x:c79', 'newest first');
   const off = { ...DEFAULT_POLICY, learning: { ...L, coinedYes: { ...L.coinedYes, on: false } } };
   assert.deepEqual(coinedYes(many, off, new Set()), [], 'the switch');
 });
