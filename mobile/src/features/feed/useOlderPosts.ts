@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fetchRisingOlder, type RisingFeedId, type RisingPost } from '../../shared/api/index.ts';
+import type { Order } from './feed-order.ts';
 import { appendPage } from './older-feed.ts';
 
 export type OlderPhase = 'idle' | 'loading' | 'failed' | 'done';
@@ -42,7 +43,14 @@ interface State {
 
 const START: State = { posts: [], next: null, phase: 'idle' };
 
-export function useOlderPosts(feed: RisingFeedId): OlderPosts {
+/**
+ * `lastShown` names the card the list shows last when the first page is asked for: the page then
+ * starts under it, so it continues the list's order (For You). `order` joins each page to the ones
+ * held by that order (feed-order.ts) rather than appending it.
+ */
+const NO_CARD = (): string | null => null;
+
+export function useOlderPosts(feed: RisingFeedId, lastShown: () => string | null = NO_CARD, order: Order<RisingPost> | null = null): OlderPosts {
   const [state, setState] = useState<State>(START);
   const ref = useRef(state);
   ref.current = state;
@@ -57,14 +65,14 @@ export function useOlderPosts(feed: RisingFeedId): OlderPosts {
     const ac = new AbortController();
     inFlight.current = ac;
     setState({ ...s, phase: 'loading' });
-    fetchRisingOlder(feed, s.next, ac.signal).then(
+    fetchRisingOlder(feed, s.next, ac.signal, s.next === null ? lastShown() : null).then(
       (page) => {
         if (gen !== generation.current) return;
         inFlight.current = null;
         setState((cur) =>
           page === null
             ? { ...cur, phase: 'done' }
-            : { posts: appendPage(cur.posts, page.posts), next: page.next, phase: page.next === null ? 'done' : 'idle' },
+            : { posts: appendPage(cur.posts, page.posts, order), next: page.next, phase: page.next === null ? 'done' : 'idle' },
         );
       },
       () => {
@@ -74,7 +82,7 @@ export function useOlderPosts(feed: RisingFeedId): OlderPosts {
       },
     );
     /* `state` is a dependency on purpose: see the header. */
-  }, [feed, state]);
+  }, [feed, state, lastShown, order]);
 
   const retry = useCallback(() => {
     if (ref.current.phase === 'failed') setState((cur) => ({ ...cur, phase: 'idle' }));

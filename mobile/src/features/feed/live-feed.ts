@@ -10,8 +10,11 @@
  * no longer lists stays where it is. The server's own order and its removals are taken whole only
  * when the list is rebuilt (`reconcile`), and useLiveFeed.ts rebuilds it only when nobody can be
  * looking at a card: pull to refresh, coming back to the app, opening the FYP tab, first load.
- * A post that passed the bar late can be older than the one above it; it still goes in at the top,
- * where it is seen, and takes its place by age at the next rebuild.
+ * ★ FOR YOU GOES IN BY TIME (the owner, 2026-10-17: "new at the top old at the bottom"). Given its
+ * order (feed-order.ts, newest posted first), a new post goes in where its time puts it — at the
+ * top when it is the newest, lower when it passed the bar late — and the shown cards keep their
+ * order among themselves; useLiveFeed.ts holds the card being looked at still either way. Without
+ * an order (the Narratives tab) new rows go in at the top, as before.
  *
  * ★ OFF UNLESS THE BUILD SAYS EXACTLY `VITE_LIVE_FEED=on`. Until the owner approves, a deployed
  * build reads For You exactly as before: on opening, on pull to refresh and on coming back.
@@ -24,6 +27,7 @@
  */
 
 import type { RisingPost } from '../../shared/api/index.ts';
+import { mergeInOrder, type Order } from './feed-order.ts';
 
 export function liveFeedOn(env: { readonly VITE_LIVE_FEED?: string | undefined }): boolean {
   return env.VITE_LIVE_FEED === 'on';
@@ -49,10 +53,15 @@ export interface Merged<T extends { readonly id: string } = RisingPost> {
  * features/owner/owner-store.ts) never arrives: the server keeps serving it until the projector's
  * next run, and it must not slide in, move the list, or count as new in the meantime.
  */
-export function merge<T extends { readonly id: string }>(shown: readonly T[], incoming: readonly T[], hidden: ReadonlySet<string> = new Set()): Merged<T> {
+export function merge<T extends { readonly id: string }>(shown: readonly T[], incoming: readonly T[], hidden: ReadonlySet<string> = new Set(), order: Order<T> | null = null): Merged<T> {
   const held = new Set(shown.map((p) => p.id));
   const fresh = new Map(incoming.map((p) => [p.id, p] as const));
   const arrivals = incoming.filter((p) => !held.has(p.id) && !hidden.has(p.id));
+  if (order !== null) {
+    /* In order: each new post at its time, the shown ones in theirs (feed-order.ts). */
+    const rows = mergeInOrder(shown, arrivals, order, { fresh: true, unplaced: 'top' }).map((p) => fresh.get(p.id) ?? p);
+    return { rows, arrived: rows.filter((p) => !held.has(p.id)).map((p) => p.id) };
+  }
   return {
     rows: [...arrivals, ...shown.map((p) => fresh.get(p.id) ?? p)],
     arrived: arrivals.map((p) => p.id),

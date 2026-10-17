@@ -37,8 +37,10 @@
  * and the owner's hides apply to the whole list. Pull to refresh starts the pages again.
  *
  * LIVE (off unless the build sets VITE_LIVE_FEED=on; features/feed/live-feed.ts): while FYP is open
- * and on screen, a new post slides in at the top as soon as the projector commits it, and nothing
- * already on the list moves or disappears until pull to refresh (useLiveFeed.ts, LiveCard.tsx).
+ * and on screen, a new post slides in at its posted time (the top, unless it passed late) as soon as
+ * the projector commits it, and nothing already on the list moves or disappears until pull to
+ * refresh (useLiveFeed.ts, LiveCard.tsx). For You is newest posted first all the way down, frame,
+ * pages and slide-ins alike (feed-order.ts).
  *
  * The owner, and only the owner, also gets a strip under each card (features/owner): "Not a meme",
  * which takes the post out of this list at once, and the coin call; "Hidden by me" to bring
@@ -69,6 +71,7 @@ import { useLeadPosts } from './useLeadPosts.ts';
 import { LIVE_FEED } from './live-feed.ts';
 import { LiveCard } from './LiveCard.tsx';
 import { useLiveFeed } from './useLiveFeed.ts';
+import { newestPosted } from './feed-order.ts';
 import { PREFETCH_ROWS, withOlder } from './older-feed.ts';
 import { useOlderPosts } from './useOlderPosts.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
@@ -139,9 +142,12 @@ export function Feed({
   const [popular, reloadPopular] = useLoad('rising:popular', (signal) => fetchRising('popular', signal));
   usePreloadCreate(); /* Create coin then opens with the launchpad's rules already read. */
   /* FYP kept current while it is looked at, when the build switches it on; otherwise null and unused. */
-  const live = useLiveFeed(LIVE_FEED && tab === 'fyp', fyp, reloadFyp, postsOf);
-  /* Each feed's older pages, kept while the other tab is open. */
-  const fypOlder = useOlderPosts('fyp');
+  const live = useLiveFeed(LIVE_FEED && tab === 'fyp', fyp, reloadFyp, postsOf, true, newestPosted);
+  /* Each feed's older pages, kept while the other tab is open. For You's start under the card its
+     list shows last and join it newest posted first (feed-order.ts). */
+  const lastFyp = useRef<string | null>(null);
+  const lastFypShown = useCallback(() => lastFyp.current, []);
+  const fypOlder = useOlderPosts('fyp', lastFypShown, newestPosted);
   const popularOlder = useOlderPosts('popular');
   const older = tab === 'popular' ? popularOlder : fypOlder;
   const reload = useCallback(() => {
@@ -211,7 +217,9 @@ export function Feed({
   /* A post the owner hid stays out of the list, live or older, until "Is a meme"; the projection
      drops it on its next run, minutes later (features/owner/owner-store.ts). */
   const headPosts = tab === 'fyp' && live.rows !== null ? live.rows : feed.state === 'ready' ? feed.value.posts : null;
-  const feedPosts = useMemo(() => (headPosts === null ? null : withOlder(headPosts, older.posts)), [headPosts, older.posts]);
+  const fypHead = live.rows ?? (fyp.state === 'ready' ? fyp.value.posts : null);
+  lastFyp.current = fypHead?.[fypHead.length - 1]?.id ?? null;
+  const feedPosts = useMemo(() => (headPosts === null ? null : withOlder(headPosts, older.posts, tab === 'fyp' ? newestPosted : null)), [headPosts, older.posts, tab]);
   const posts = feed.state === 'ready' && feedPosts !== null ? applyPostFilters(withoutHidden(feedPosts, hiddenNow, (p) => p.id), filters, now) : null;
   useSavedCalls('coin_match', posts === null ? [] : posts.rows.map((p) => p.id), owner);
   const liveOn = tab === 'fyp' && live.rows !== null;

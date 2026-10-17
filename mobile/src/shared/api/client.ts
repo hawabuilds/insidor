@@ -82,12 +82,13 @@ export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Pro
 }
 
 /**
- * One page of a feed's infinite scroll, after `before` (null: the first page). Null when the read
- * service has no scroll for this feed (a 404: its table is not there yet), so the list simply ends
- * at the frame instead of claiming there is nothing older.
+ * One page of a feed's infinite scroll, after `before` (null: the first page, which starts under
+ * the post `after` when given — the card the list shows last). Null when the read service has no
+ * scroll for this feed (a 404: its table is not there yet), so the list simply ends at the frame
+ * instead of claiming there is nothing older.
  */
-export async function fetchRisingOlder(feed: RisingFeedId, before: string | null, signal?: AbortSignal): Promise<RisingPage | null> {
-  const query = before === null ? '' : `?before=${encodeURIComponent(before)}`;
+export async function fetchRisingOlder(feed: RisingFeedId, before: string | null, signal?: AbortSignal, after: string | null = null): Promise<RisingPage | null> {
+  const query = before !== null ? `?before=${encodeURIComponent(before)}` : after !== null ? `?after=${encodeURIComponent(after)}` : '';
   try {
     return decodeRisingPage(await read(`/rising/${encodeURIComponent(feed)}/older${query}`, signal));
   } catch (e) {

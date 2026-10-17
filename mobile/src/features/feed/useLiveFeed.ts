@@ -7,7 +7,8 @@
  * for a stream that is down or that this build cannot open); and, as before, opening the app, pull
  * to refresh and coming back to it. A hidden tab, another screen or another feed tab asks nothing.
  *
- * Each read is merged by live-feed.ts: new posts at the top, nothing reordered or removed.
+ * Each read is merged by live-feed.ts: new posts at the top (For You: at their posted time, given
+ * `order`), nothing reordered or removed.
  * ★ THE LIST IS REBUILT IN THE SERVER'S ORDER, removals included, only when nobody is looking at a
  * card: the first read, opening the FYP tab, pull to refresh, and coming back to the app after more
  * than five minutes away. Any other read only adds at the top.
@@ -35,6 +36,7 @@ import { fetchRisingTick, openRisingStream } from '../../shared/api/client.ts';
 import type { Load } from '../../shared/hooks.ts';
 import { ownerStore } from '../owner/owner-store.ts';
 import { BACKUP_CHECK_MS, merge, reconcile, staggerDelay } from './live-feed.ts';
+import type { Order } from './feed-order.ts';
 
 /** How a card that is new to the list comes in. */
 export interface Arrival {
@@ -86,7 +88,7 @@ function useVisible(): boolean {
   return visible;
 }
 
-export function useLiveFeed<V extends { readonly tick: number }, T extends { readonly id: string }>(on: boolean, load: Load<V>, reload: () => void, rowsOf: (value: V) => readonly T[], sameTicks = true): LiveFeed<T> {
+export function useLiveFeed<V extends { readonly tick: number }, T extends { readonly id: string }>(on: boolean, load: Load<V>, reload: () => void, rowsOf: (value: V) => readonly T[], sameTicks = true, order: Order<T> | null = null): LiveFeed<T> {
   const [list, setList] = useState<LiveList<T> | null>(null);
   const listRef = useRef<LiveList<T> | null>(null);
   const rebuild = useRef(true);
@@ -125,7 +127,7 @@ export function useLiveFeed<V extends { readonly tick: number }, T extends { rea
       rebuild.current = false;
       next = { ...reconcile(rowsOf(value)), arrivals: new Map() };
     } else {
-      const m = merge(prev.rows, rowsOf(value), ownerStore.get().hidden);
+      const m = merge(prev.rows, rowsOf(value), ownerStore.get().hidden, order);
       if (m.arrived.length === 0) next = { rows: m.rows, arrivals: prev.arrivals };
       else {
         const atTop = scrollTop() <= TOP_SLACK_PX;

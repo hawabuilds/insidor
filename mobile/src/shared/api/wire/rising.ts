@@ -98,8 +98,9 @@ export interface RisingFeed {
 
 /**
  * One page of a feed's infinite scroll under its frame (`GET /rising/:feed/older`): posts that
- * were on the feed and are not on its frame now, newest-joined first, and the cursor of the next
- * page, null when this was the last.
+ * were on the feed — For You's newest posted first and under the frame's last card, Popular's
+ * newest-joined first and not on its frame — and the cursor of the next page, null when this was
+ * the last.
  */
 export interface RisingPage {
   readonly posts: readonly RisingPost[];
