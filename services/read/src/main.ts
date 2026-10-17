@@ -31,6 +31,7 @@ import { loadReadConfig } from './config.ts';
 import { BOARD_CHANNEL, createNotifier, type ListenSocket } from './listen.ts';
 import { createLogger, errorText } from './log.ts';
 import { createPostSheet } from './post-sheet.ts';
+import { createSorts } from './post-sorts.ts';
 import { createSearch } from './search.ts';
 import { createWallet } from './wallet.ts';
 import { createReadServer } from './server.ts';
@@ -257,7 +258,7 @@ async function main(): Promise<void> {
     now: Date.now,
   });
 
-  const server = createReadServer({ ...deps, market, search, wallet, about, postSheet, allowedOrigins: cfg.allowedOrigins, stream });
+  const server = createReadServer({ ...deps, market, search, wallet, about, postSheet, sorts: createSorts(), allowedOrigins: cfg.allowedOrigins, stream });
 
   server.listen(cfg.port, () => log.info('listening', { port: cfg.port, origins: cfg.allowedOrigins }));
   notifier.start();

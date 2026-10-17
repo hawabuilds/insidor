@@ -25,6 +25,7 @@
 import { coinAbout, type AboutDeps } from './coin-about.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
 import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, feedPage, parseCursor, startCursor } from './feed-page.ts';
+import { createSorts, parseSort } from './post-sorts.ts';
 import { withStoryTags } from './story-tags.ts';
 import { withTranslations } from './translations.ts';
 import { errorText, type Logger } from './log.ts';
@@ -66,6 +67,8 @@ export interface Deps {
   readonly wallet?: WalletRoute;
   /** The phone's post sheet (post-sheet.ts) and narrative sheet (story-sheet.ts). Absent: /post/:id/sheet and /story/:id/sheet are 404s. */
   readonly postSheet?: PostSheet;
+  /** For You's Trending and Most viewed (post-sorts.ts), kept per projector run. Absent: worked out on every request. */
+  readonly sorts?: ReturnType<typeof createSorts>;
 }
 
 /*
@@ -501,6 +504,13 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
     }
 
     if (segments.length === 3 && head === 'rising' && param !== undefined && segments[2] === 'tick') return await risingTick(param, deps);
+    /* For You by Trending or Most viewed over a window (post-sorts.ts). Only For You has them. */
+    if (segments.length === 3 && head === 'rising' && param === 'fyp' && segments[2] === 'sorted') {
+      const sort = parseSort(rawUrl);
+      if (sort === null) return BAD_REQUEST;
+      const reply = await (deps.sorts ?? createSorts())(deps.db, sort.by, sort.window);
+      return reply === null ? NOT_FOUND : json(200, reply);
+    }
     if (segments.length === 3 && head === 'rising' && param !== undefined && segments[2] === 'older') return await risingOlder(param, rawUrl, deps);
 
     if (segments.length === 2 && param !== undefined) {
