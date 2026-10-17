@@ -100,15 +100,21 @@ export class PgLearningRepo {
 
   /** The block the live judge reads, or null: no block (the judge's rules alone). */
   async latestApplied(): Promise<AppliedExamples | null> {
-    type Row = { version_id: string; text: string; sha: string; applied_at: Date; judge_cutoff?: string | number | null; judge_cutoff_model?: string | null };
-    const latest = (cols: string) => orNoTable(() => this.#db.query<Row>(`select ${cols} from internal.judge_examples_version where applied order by applied_at desc limit 1`));
-    /* Newest columns first, each missing one dropped in turn: before 0094, before 0086. */
-    const rows = await latest('version_id, text, sha, applied_at, judge_cutoff, judge_cutoff_model')
-      .catch((e: unknown) => (isMissingColumn(e) ? latest('version_id, text, sha, applied_at, judge_cutoff') : Promise.reject(e)))
-      .catch((e: unknown) => (isMissingColumn(e) ? latest('version_id, text, sha, applied_at') : Promise.reject(e)));
+    type Row = { version_id: string; text: string; sha: string; applied_at: Date; extra: { judge_cutoff?: string | number | null; judge_cutoff_model?: string | null } | null };
+    /* ★ THE NEWER COLUMNS AS JSON (0086's cutoff, 0094's model): absent before their migration, and
+       never an error — a missing column named in the select would abort a caller's transaction (a
+       read-only tool reading inside one did, 2026-10-17), and a retry inside it cannot run. */
+    const rows = await orNoTable(() =>
+      this.#db.query<Row>(
+        `select v.version_id, v.text, v.sha, v.applied_at, to_jsonb(v) - 'text' - 'example_ids' as extra
+           from internal.judge_examples_version v where v.applied order by v.applied_at desc limit 1`,
+      ),
+    );
     const r = rows[0];
-    const cutoff = r?.judge_cutoff === undefined || r.judge_cutoff === null ? null : Number(r.judge_cutoff);
-    const cutoffModel = cutoff === null || r?.judge_cutoff_model === undefined ? null : r.judge_cutoff_model;
+    const raw = r?.extra?.judge_cutoff;
+    const cutoff = raw === undefined || raw === null ? null : Number(raw);
+    const model = r?.extra?.judge_cutoff_model;
+    const cutoffModel = cutoff === null || model === undefined || model === null ? null : model;
     return r === undefined ? null : { versionId: Number(r.version_id), text: r.text, sha: r.sha, appliedAt: r.applied_at, cutoff, cutoffModel };
   }
 
