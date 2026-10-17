@@ -52,6 +52,8 @@ export interface CoinAbout {
   readonly creator: string | null;
   readonly launchedAt: Instant;
   readonly posts: readonly AboutPost[];
+  /** The board narrative whose coin this is (settled, else its top coin); null when none names it. */
+  readonly storyId: string | null;
 }
 
 const KINDS: readonly AboutLinkKind[] = ['x', 'telegram', 'website', 'tiktok'];
@@ -128,5 +130,6 @@ export function decodeCoinAbout(raw: unknown, path = '$.about'): CoinAbout {
     creator: text(o['creator']),
     launchedAt: instantOf(o['launchedAt']),
     posts,
+    storyId: text(o['storyId']),
   };
 }
