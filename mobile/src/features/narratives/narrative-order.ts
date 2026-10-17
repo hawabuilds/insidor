@@ -92,6 +92,30 @@ export function cardLine(s: Story, h: WindowHours | null, now: number): readonly
   return [posts, ...(found !== null && now >= found ? [`${formatDuration(now - found)} old`] : [])];
 }
 
+/**
+ * The Watchlist card's line (Home, features/feed): "12 posts   3.4M views" — the post count and the
+ * narrative's views (its posts' newest views summed, as the narrative page counts them; the story's
+ * reach from a server that sends no sum), both facts. Views nobody could report say so; never 0.
+ */
+export function watchLine(s: Story): readonly string[] {
+  const n = s.postCount ?? s.evidence.length;
+  const views = s.viewsTotal !== null && s.viewsTotal.known ? s.viewsTotal.amount : s.reach.known ? s.reach.amount : null;
+  return [n === 1 ? '1 post' : `${n} posts`, views !== null ? `${compact(views)} views` : 'views not reported'];
+}
+
+/**
+ * The narratives starred on this phone, in the order they were starred, from the real ones the list
+ * holds. An id the list does not hold is left out, never drawn as an empty card: a story id starred
+ * before the narrative rebuild (the old ids, not `n-…`) or a narrative no longer listed.
+ */
+export function starredNarratives(list: readonly Story[], starred: readonly string[]): readonly Story[] {
+  const byId = new Map(realNarratives(list).map((s) => [s.id, s]));
+  return starred.flatMap((id) => {
+    const s = byId.get(id);
+    return s === undefined ? [] : [s];
+  });
+}
+
 const KEY = 'insidor.narratives.order';
 const isWindow = (v: unknown): v is WindowHours => v === 1 || v === 6 || v === 24;
 

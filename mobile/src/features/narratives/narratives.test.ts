@@ -5,7 +5,7 @@ import { decodeStory } from '../../shared/api/decode.ts';
 import type { Story } from '../../shared/api/index.ts';
 import { fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
 import { storyCoinState } from '../narrative/story-coin.ts';
-import { DEFAULT_CHOICE, cardLine, gainText, loadChoice, ordered, realNarratives, saveChoice, type Choice } from './narrative-order.ts';
+import { DEFAULT_CHOICE, cardLine, gainText, loadChoice, ordered, realNarratives, saveChoice, starredNarratives, watchLine, type Choice } from './narrative-order.ts';
 
 const list = sampleNarrativeIds().map((id) => decodeStory(fixtureStory(id)));
 const base = list[0] as Story;
@@ -79,4 +79,20 @@ test('★ the coin line: a settled coin is checked, a top coin is never shown as
   assert.equal(storyCoinState({ ...one, coins: { kind: 'unsure', claimCount: 3 }, topCoin: coin }).kind, 'top');
   assert.equal(storyCoinState({ ...one, coins: { kind: 'none' }, topCoin: null }).kind, 'none');
   assert.equal(storyCoinState({ ...one, coins: { kind: 'pending' }, topCoin: null }).kind, 'line');
+});
+
+test('★ Watchlist keeps starred narratives in starred order and leaves out ids the list does not hold', () => {
+  const a = story('n-a', { 1: [10, 1, 1] });
+  const b = story('n-b', { 1: [20, 1, 2] });
+  const seeded = story('n-seeded', { 1: [30, 1, 3] }, { provenance: { kind: 'seeded' } as unknown as Story['provenance'] });
+  /* An old story id from before the rebuild resolves to nothing, as does a seeded narrative. */
+  assert.deepEqual(ids(starredNarratives([a, b, seeded], ['old-story-17', 'n-b', 'n-seeded', 'n-a'])), ['n-b', 'n-a']);
+  assert.deepEqual(starredNarratives([a, b], []), []);
+});
+
+test('the Watchlist card line is posts and views, and unknown views are said, never 0', () => {
+  const unknown = { known: false as const, pending: 'not_read_yet' as const };
+  assert.deepEqual(watchLine({ ...base, postCount: 12, viewsTotal: { known: true, amount: 3_400_000 } }), ['12 posts', '3.4M views']);
+  assert.deepEqual(watchLine({ ...base, postCount: 1, viewsTotal: null, reach: { known: true, amount: 900 } }), ['1 post', '900 views']);
+  assert.deepEqual(watchLine({ ...base, postCount: 2, viewsTotal: unknown, reach: unknown }), ['2 posts', 'views not reported']);
 });

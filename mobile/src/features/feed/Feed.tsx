@@ -1,11 +1,15 @@
 /**
- * HOME — posts only, under two tabs: Watchlist and For You (the owner, 2026-10-17: "posts and
- * narratives on separate tabs"). Narratives have their own tab in the bottom bar and are not on Home
- * at all; a post card's narrative tag opens its narrative, and a narrative page lists its posts.
+ * HOME — posts first, under two tabs: Watchlist and For You (the owner, 2026-10-17: "posts and
+ * narratives on separate tabs"). Narratives have their own tab in the bottom bar and are on Home only
+ * as the ones you starred, under your watched posts; a post card's narrative tag opens its narrative, and a narrative page lists its posts.
  *
  * For You is a feed of SINGLE POSTS from `GET /rising/fyp`: posts the catch-all search found whose
  * meme score clears the bar, newest first, in the order the server committed. Watchlist is the posts
- * you watch (the star on a card or the post sheet, read from the alert service: useWatchedPosts.ts).
+ * you watch (the star on a card or the post sheet, read from the alert service: useWatchedPosts.ts),
+ * then, compact under them, the narratives starred on this phone (the narrative page's star,
+ * shared/watchlist.ts) as the Narratives tab draws them (the owner, 2026-10-17: "Starred narratives:
+ * watchlist"). Home stays posts first; a starred id the narratives list does not hold — an old story
+ * id from before the rebuild — is left out, never drawn as a broken card.
  * The site pills and the filter panel narrow whichever list is showing (`feed-filters.ts`). The board
  * (`GET /board/default`) is still read, for its provenance alone: the Sample data bar.
  * ★ FOR YOU'S SORT CHIPS (feed-sort.ts): New, the default, is the feed as it always was; Trending
@@ -55,8 +59,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BOARD_VIEW, fetchBoard, fetchRising, fetchRisingSorted, type RisingFeed, type RisingPost, type RisingSorted } from '../../shared/api/index.ts';
-import { useLoad, useNow } from '../../shared/hooks.ts';
+import { BOARD_VIEW, fetchBoard, fetchNarratives, fetchRising, fetchRisingSorted, type RisingFeed, type RisingPost, type RisingSorted, type Story } from '../../shared/api/index.ts';
+import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
+import { Card as NarrativeCard } from '../narratives/Narratives.tsx';
+import { starredNarratives, watchLine } from '../narratives/narrative-order.ts';
+import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
+import type { CoinFace } from '../narrative/story-coin.ts';
 import { usePreloadCreate } from '../create/preload.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { FILTER_PLATFORMS } from '../../shared/platform.ts';
@@ -113,9 +121,12 @@ const TABS = [
 
 export function Feed({
   onCreatePost,
+  onCreateStory,
 }: {
   /** Create from a single post: its picture and link, never a name we made up. */
   onCreatePost: (post: RisingPost) => void;
+  /** Create from a starred narrative's card (Watchlist), as the Narratives tab's Create does. */
+  onCreateStory: (story: Story) => void;
 }) {
   const [tab, setTab] = useState<FeedTab>('fyp');
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
@@ -168,11 +179,21 @@ export function Feed({
   const lastFyp = useRef<string | null>(null);
   const lastFypShown = useCallback(() => lastFyp.current, []);
   const older = useOlderPosts('fyp', lastFypShown, newestPosted);
+  /* The narratives starred on this phone (the narrative page's star, shared/watchlist.ts), read from
+     the Narratives tab's list only while Watchlist is open and something is starred. */
+  const starred = useWatchlist();
+  const narrativesOn = tab === 'watchlist' && starred.length > 0;
+  const [narratives, reloadNarratives] = useLoad(narrativesOn ? 'narratives' : 'narratives:off', (signal) =>
+    narrativesOn ? fetchNarratives(BOARD_VIEW, signal) : Promise.resolve(null),
+  );
+  const [buying, setBuying] = useState<CoinFace | null>(null);
+  const [note, setNote] = useState<SheetNote | null>(null);
   const reload = useCallback(() => {
     reloadBoard();
     reloadFyp();
     reloadSorted();
-  }, [reloadBoard, reloadFyp, reloadSorted]);
+    reloadNarratives();
+  }, [reloadBoard, reloadFyp, reloadSorted, reloadNarratives]);
   const watchedRows = useWatchedPosts(tab === 'watchlist');
   const now = useNow();
   /* The owner's controls (features/owner): drawn only when the services say this is the owner. */
@@ -408,8 +429,11 @@ export function Feed({
             ) : null}
             {watchedRows.state === 'loading' ? <p className={styles['hidden']}>Reading your watched posts.</p> : null}
             {watchedRows.state === 'failed' ? <p className={styles['hidden']}>Your watched posts couldn't be read just now.</p> : null}
+            <StarredNarratives starred={starred} list={narratives.state === 'ready' ? (narratives.value?.stories ?? null) : null} failed={narratives.state === 'failed'} now={now} onBuy={setBuying} onCreate={onCreateStory} />
           </>
         ) : null}
+        {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
+        <SheetToast note={note} onDone={() => setNote(null)} />
 
         {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}
         {owner && addMissed ? <AddMissedPostSheet onClose={() => setAddMissed(false)} /> : null}
@@ -421,6 +445,46 @@ export function Feed({
 }
 
 /** Card-shaped placeholders under the list while the next page is on its way: only ever seen when the page is slower than the scroll. */
+/**
+ * The narratives starred on this phone, under the watched posts: the Narratives tab's card with no
+ * place, "N posts  X views" and the last hour's gain. Nothing is drawn — no heading either — when
+ * none of the starred ids is a narrative the list holds (an old story id starred before the rebuild,
+ * or one no longer listed): a starred id never becomes an empty or broken card.
+ */
+function StarredNarratives({ starred, list, failed, now, onBuy, onCreate }: {
+  starred: readonly string[];
+  list: readonly Story[] | null;
+  failed: boolean;
+  now: number;
+  onBuy: (c: CoinFace) => void;
+  onCreate: (s: Story) => void;
+}) {
+  if (starred.length === 0) return null;
+  if (failed) return <p className={styles['hidden']}>Your starred narratives couldn't be read just now.</p>;
+  const shown = list === null ? [] : starredNarratives(list, starred);
+  if (shown.length === 0) return null;
+  return (
+    <>
+      <h2 className={styles['group']}>Narratives you starred</h2>
+      <div className={styles['narratives']}>
+        {shown.map((s) => (
+          <NarrativeCard
+            key={s.id}
+            story={s}
+            place={null}
+            hours={1}
+            now={now}
+            line={watchLine(s)}
+            onOpen={() => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id }))}
+            onBuy={onBuy}
+            onCreate={() => onCreate(s)}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
 function Placeholders() {
   return (
     <div aria-label="Reading older posts" role="status">

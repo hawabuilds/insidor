@@ -146,7 +146,11 @@ function useGlide(key: string): (id: string) => (el: HTMLDivElement | null) => v
   };
 }
 
-function Card({ story, place, hours, now, onOpen, onBuy, onCreate }: { story: Story; place: number; hours: WindowHours | null; now: number; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void }) {
+/**
+ * One narrative card. Home's Watchlist draws the same card (features/feed/Feed.tsx) with no place
+ * and its own line under the title (`line`: posts and views, narrative-order.ts watchLine).
+ */
+export function Card({ story, place, hours, now, line, onOpen, onBuy, onCreate }: { story: Story; place: number | null; hours: WindowHours | null; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void }) {
   const coin = storyCoinState(story);
   /* On New, the last hour's gain: the tab's default window. */
   const h: WindowHours = hours ?? 1;
@@ -156,12 +160,12 @@ function Card({ story, place, hours, now, onOpen, onBuy, onCreate }: { story: St
       if (e.key === 'Enter') onOpen();
     }}>
       <div className={styles['top']}>
-        <span className={styles['place']}>{place}</span>
+        {place !== null ? <span className={styles['place']}>{place}</span> : null}
         <Thumb url={story.thumbUrl} size={64} radius={16} />
         <div className={styles['text']}>
           <b className={styles['title']}>{story.title}</b>
           <span className={styles['sub']}>
-            {cardLine(story, hours, now).map((w) => <span key={w}>{w}</span>)}
+            {(line ?? cardLine(story, hours, now)).map((w) => <span key={w}>{w}</span>)}
           </span>
         </div>
         <div className={styles['gain']}>
