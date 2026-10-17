@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { SILENT } from './log.ts';
-import { FEED_PAGE_SIZE, FEED_PAGE_SQL, FIRST_PAGE, cursorText, feedPage, parseCursor, withCurrentMarket } from './feed-page.ts';
+import { FEED_PAGE_SIZE, FEED_PAGE_SQL, FIRST_PAGE, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, cursorText, feedPage, parseCursor, startCursor, withCurrentMarket } from './feed-page.ts';
 import type { Row } from './queries.ts';
 import { handle, type Deps } from './routes.ts';
 
@@ -34,7 +34,7 @@ test('a card projected longer ago than the bar has its coin market dashed, nothi
 
 test('a full page carries the next cursor, a short one ends the scroll', () => {
   const at = new Date(1_760_000_000_000);
-  const rows: Row[] = Array.from({ length: FEED_PAGE_SIZE }, (_, i) => ({ payload: card(`x:${i}`), item_id: `x:${i}`, first_shown_at: at, payload_at: at }));
+  const rows: Row[] = Array.from({ length: FEED_PAGE_SIZE }, (_, i) => ({ payload: card(`x:${i}`), item_id: `x:${i}`, cursor_at: at, payload_at: at }));
   assert.equal(feedPage(rows, at.getTime()).next, `1760000000000~x:${FEED_PAGE_SIZE - 1}`);
   assert.equal(feedPage(rows.slice(0, 3), at.getTime()).next, null);
 });
@@ -43,16 +43,40 @@ function deps(query: (sql: string, params: readonly unknown[]) => Promise<readon
   return { log: SILENT, db: { query } };
 }
 
-test('the route reads one page with the cursor as parameters', async () => {
+test('the route reads one page with the cursor as parameters: For You by its time key, Popular by when each joined', async () => {
   const calls: { sql: string; params: readonly unknown[] }[] = [];
-  const reply = await handle('GET', `/rising/fyp/older?before=${encodeURIComponent('1760000000000~x:1')}`, deps(async (sql, params) => {
+  const db = deps(async (sql, params) => {
     calls.push({ sql, params });
     return [];
-  }));
+  });
+  const reply = await handle('GET', `/rising/fyp/older?before=${encodeURIComponent('1760000000000~x:1')}`, db);
   assert.equal(reply.status, 200);
   assert.deepEqual(JSON.parse(reply.body), { posts: [], next: null });
-  assert.equal(calls[0]?.sql, FEED_PAGE_SQL);
-  assert.deepEqual(calls[0]?.params, ['fyp', new Date(1_760_000_000_000).toISOString(), 'x:1', FEED_PAGE_SIZE]);
+  assert.equal(calls[0]?.sql, FOR_YOU_PAGE_SQL);
+  assert.deepEqual(calls[0]?.params, [new Date(1_760_000_000_000).toISOString(), 'x:1', FEED_PAGE_SIZE]);
+  await handle('GET', `/rising/popular/older?before=${encodeURIComponent('1760000000000~x:1')}`, db);
+  assert.equal(calls[1]?.sql, FEED_PAGE_SQL);
+  assert.deepEqual(calls[1]?.params, ['popular', new Date(1_760_000_000_000).toISOString(), 'x:1', FEED_PAGE_SIZE]);
+});
+
+test("★ For You's first page starts under the phone's last card, else the frame's oldest, else the top", async () => {
+  const calls: { sql: string; params: readonly unknown[] }[] = [];
+  const at = new Date(1_760_000_000_000);
+  const db = deps(async (sql, params) => {
+    calls.push({ sql, params });
+    return sql === FOR_YOU_START_SQL ? [{ cursor_at: at, item_id: 'x:last' }] : [];
+  });
+  await handle('GET', '/rising/fyp/older?after=x%3Alast', db);
+  assert.deepEqual(calls.map((c) => c.sql), [FOR_YOU_START_SQL, FOR_YOU_PAGE_SQL]);
+  assert.deepEqual(calls[0]?.params, ['x:last']);
+  assert.deepEqual(calls[1]?.params, [at.toISOString(), 'x:last', FEED_PAGE_SIZE], 'strictly under the card already shown');
+  assert.deepEqual(startCursor([]), FIRST_PAGE, 'no frame and no card: the top of the list');
+});
+
+test('★ For You\'s page orders and cuts by the frame\'s key: posted (else first seen) to the millisecond, then the id in byte order', () => {
+  assert.match(FOR_YOU_PAGE_SQL, /date_trunc\('milliseconds', coalesce\(i\.posted_at, i\.first_seen_at\)\)/);
+  assert.match(FOR_YOU_PAGE_SQL, /order by cursor_at desc, f\.item_id collate "C" asc/);
+  assert.doesNotMatch(FOR_YOU_PAGE_SQL, /first_shown_at/, 'when a post joined is not its place');
 });
 
 test('a bad cursor is a 400, an unknown feed and a database without the table are 404s', async () => {

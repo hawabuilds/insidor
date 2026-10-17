@@ -505,17 +505,36 @@ test('★ posts in, a promoted story on the board out — with its real posts, a
   assert.deepEqual(new Set(stayed), new Set(back.fyp), 'the six hours never take a post off For You');
   const strangers = await buildRising(db, later, frame.coinsByStory, 30 * MINUTE, { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, fypMinReach: 1, popularMinReach: 1, varietyOn: false, fypMaxAgeOn: true } });
   assert.equal(strangers.fyp.length, 0, 'while the same posts, not yet on it, would be turned away');
-  /* A member no longer on the frame is on the scroll under it, newest-joined first; a frame's own
-     posts are not repeated there. */
-  await db.query(
-    `insert into public.feed_post (feed_id, item_id, first_shown_at, last_shown_at, payload, payload_at)
-     values ('fyp', 'x:gone', $1, $1, '{"id":"x:gone","coins":{"kind":"pending","why":"not_read_yet"}}', $1)`,
-    [new Date(NOW - 3 * 24 * 60 * MINUTE).toISOString()],
+  /* ★ A member no longer on the frame is on the scroll under it when it was posted before the
+     frame's oldest card — For You is newest posted first all the way down (services/read
+     feed-page.ts) — and one posted after it waits off the scroll rather than land under older
+     cards; a frame's own posts are not repeated there. The time is the post's, not when it joined. */
+  const edge = await db.query<{ author_key: string; newest: Date }>(
+    `select min(i.author_key) as author_key, max(coalesce(i.posted_at, i.first_seen_at)) as newest
+       from public.rising_row r join public.item i on i.item_id = r.item_id where r.feed_id = 'fyp'`,
   );
+  const member = async (id: string, postedAt: Date, joinedAt: Date) => {
+    await db.query(
+      `insert into public.item (item_id, source, source_item_id, author_key, posted_at, first_seen_at, raw_ref, origin) values ($1, 'x', $2, $3, $4, $4, 'r', 'observed')`,
+      [id, id.slice(2), edge[0]?.author_key, postedAt.toISOString()],
+    );
+    await db.query(
+      `insert into public.feed_post (feed_id, item_id, first_shown_at, last_shown_at, payload, payload_at)
+       values ('fyp', $1, $2, $2, jsonb_build_object('id', $1::text, 'coins', '{"kind":"pending","why":"not_read_yet"}'::jsonb), $2)`,
+      [id, joinedAt.toISOString()],
+    );
+  };
+  const newest = new Date(edge[0]?.newest ?? NOW);
+  await member('x:gone', new Date(NOW - 3 * 24 * 60 * MINUTE), new Date(NOW));
+  await member('x:newer', new Date(newest.getTime() + MINUTE), new Date(NOW - 3 * 24 * 60 * MINUTE));
   const older = JSON.parse((await handle('GET', '/rising/fyp/older', read)).body) as { posts: { id: string }[]; next: string | null };
-  assert.deepEqual(older.posts.map((p) => p.id), ['x:gone']);
+  assert.deepEqual(older.posts.map((p) => p.id), ['x:gone'], 'joined last but posted three days ago: under the frame; posted after the frame: not under it');
   assert.equal(older.next, null, 'a short page ends the scroll');
-  await db.query(`delete from public.feed_post where item_id = 'x:gone'`);
+  const fromTop = JSON.parse((await handle('GET', '/rising/fyp/older?before=253402300799999~z', read)).body) as { posts: { id: string }[] };
+  assert.equal(fromTop.posts[0]?.id, 'x:newer', 'from the top, the newest posted member is first');
+  assert.equal(fromTop.posts[fromTop.posts.length - 1]?.id, 'x:gone', 'and the oldest posted last');
+  await db.query(`delete from public.feed_post where item_id in ('x:gone', 'x:newer')`);
+  await db.query(`delete from public.item where item_id in ('x:gone', 'x:newer')`);
 
   /* The weather post passes the owner's call and meets the reach bar like any other post: its
      views were never read as a rate, so with only measured readings counted it waits, for that

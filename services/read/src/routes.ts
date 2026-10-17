@@ -24,7 +24,7 @@
 
 import { coinAbout, type AboutDeps } from './coin-about.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
-import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, feedPage, parseCursor } from './feed-page.ts';
+import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, feedPage, parseCursor, startCursor } from './feed-page.ts';
 import { withStoryTags } from './story-tags.ts';
 import { withTranslations } from './translations.ts';
 import { errorText, type Logger } from './log.ts';
@@ -278,16 +278,24 @@ async function risingTick(feedId: string, deps: Deps): Promise<Reply> {
 }
 
 /**
- * GET /rising/:feedId/older?before=<cursor> — the infinite scroll under the frame (feed-page.ts).
+ * GET /rising/:feedId/older?before=<cursor> — the infinite scroll under the frame (feed-page.ts);
+ * For You's first page takes `?after=<post id>`, the card the phone shows last, instead.
  * A feed with no scroll is a 404; so is a database the scroll's table has not reached yet, which
  * tells the phone to stop asking rather than claiming there is nothing older.
  */
 async function risingOlder(feedId: string, rawUrl: string, deps: Deps): Promise<Reply> {
   if (!FEED_PAGE_FEEDS.includes(feedId)) return NOT_FOUND;
-  const cursor = parseCursor(new URLSearchParams(rawUrl.split('?')[1] ?? '').get('before'));
+  const query = new URLSearchParams(rawUrl.split('?')[1] ?? '');
+  const before = query.get('before');
+  const cursor = parseCursor(before);
   if (cursor === null) return BAD_REQUEST;
   try {
-    const rows = await deps.db.query(FEED_PAGE_SQL, [feedId, new Date(cursor.atMs).toISOString(), cursor.id, FEED_PAGE_SIZE]);
+    let rows: readonly Row[];
+    if (feedId === 'fyp') {
+      /* No cursor: the first page, under the phone's last card or else the frame's oldest. */
+      const from = before === null || before === '' ? startCursor(await deps.db.query(FOR_YOU_START_SQL, [query.get('after') ?? ''])) : cursor;
+      rows = await deps.db.query(FOR_YOU_PAGE_SQL, [new Date(from.atMs).toISOString(), from.id, FEED_PAGE_SIZE]);
+    } else rows = await deps.db.query(FEED_PAGE_SQL, [feedId, new Date(cursor.atMs).toISOString(), cursor.id, FEED_PAGE_SIZE]);
     const page = feedPage(rows, Date.now());
     return json(200, { ...page, posts: await withStoryTags(deps.db, await withTranslations(deps.db, page.posts)) });
   } catch (e) {
