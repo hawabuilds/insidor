@@ -24,8 +24,12 @@
  * per token, the whole answer budget, doubled) and refused by the meter when the line cannot cover
  * it; the host's own dollar figure is what is recorded.
  *
+ * ★ THE OWNER'S OWN RULES GO FIRST (`withOwnerRules`, Policy.learning.rulebook.ownerRules): word
+ * for word, above whatever the writer wrote, and the writer is shown them as standing decisions.
+ *
  * ★ A RULEBOOK THAT CANNOT BE WRITTEN IS LEFT OUT, NEVER INVENTED. No key, no money, an error, or an
- * answer with no rule in it: the block goes to its test without one, and the run says why.
+ * answer with no rule in it: the block goes to its test without one (the owner's own rules still
+ * in it), and the run says why.
  *
  * What breaks if changed carelessly: anything a held-out post says reaching `rulebookInput`. The gate
  * would then measure a rulebook that had seen the test.
@@ -79,7 +83,20 @@ export function standingDecisions(p: Policy): readonly string[] {
     'A post that is itself coin promotion (a shill) never passes.',
     'Tragedies and company or media news are not held back: people coin them.',
     `A post several people launched coins for, the first of them at least ${Math.round(p.learning.coinedYes.lateMs / 60_000)} minutes AFTER the post went up, is yes: the crowd found it on its own.`,
+    ...p.learning.rulebook.ownerRules,
   ];
+}
+
+/**
+ * ★ THE OWNER'S OWN RULES FIRST (Policy.learning.rulebook.ownerRules, the owner 2026-10-17): word for
+ * word, at the top of the rulebook, and the written rules after them. Present when no rule could be
+ * written too — the owner's rule is not the writer's to lose — so the block always carries it. Not
+ * held to the written rules' caps: those bound what a model may add, not what the owner said.
+ */
+export function withOwnerRules(written: string | null, p: Policy): string | null {
+  const own = p.learning.rulebook.ownerRules.map((r) => r.replace(/\s+/g, ' ').trim()).filter((r) => r !== '').map((r) => `- ${r}`);
+  const lines = [...own, ...(written === null || written.trim() === '' ? [] : [written.trim()])];
+  return lines.length === 0 ? null : lines.join('\n');
 }
 
 /** The writer's request: the system words, the user words, and the answer budget. */
