@@ -7,7 +7,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '../../contracts/src/policy.ts';
 import { inMemoryMeter } from '../../adapters/meter/spend/src/index.ts';
-import { RULEBOOK_HEADING, cleanRulebook, countCalls, rulebookRequest, writeRulebook, type RulebookInput } from './rulebook.ts';
+import { RULEBOOK_HEADING, cleanRulebook, countCalls, rulebookRequest, standingDecisions, withOwnerRules, writeRulebook, type RulebookInput } from './rulebook.ts';
 
 const P = DEFAULT_POLICY;
 
@@ -84,4 +84,14 @@ test('a rulebook that cannot be written is left out with its reason, never inven
 
 test('the heading names what the rules are', () => {
   assert.match(RULEBOOK_HEADING, /RULES/);
+});
+
+test("★ the owner's own rules go first, word for word, the written rules after, and stay when none was written", () => {
+  const own = P.learning.rulebook.ownerRules;
+  assert.ok(own.length > 0);
+  const both = withOwnerRules('- a written rule', P)!;
+  assert.deepEqual(both.split('\n'), [...own.map((r) => `- ${r}`), '- a written rule']);
+  assert.equal(withOwnerRules(null, P), own.map((r) => `- ${r}`).join('\n'));
+  assert.equal(withOwnerRules(null, { ...P, learning: { ...P.learning, rulebook: { ...P.learning.rulebook, ownerRules: [] } } }), null);
+  for (const r of own) assert.ok(standingDecisions(P).includes(r), 'the writer is shown them as standing decisions');
 });

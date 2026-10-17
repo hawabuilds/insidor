@@ -2763,9 +2763,14 @@ export interface LearningPolicy {
    * under their own heading, so the gate tests block and rulebook together. A note is counted once
    * `minNoteUses` posts carry it, cut to `maxNoteChars`; the `maxNotes` most used are shown. Off:
    * the block alone, as before.
+   *
+   * `ownerRules` are the owner's own rules, word for word: always at the top of the rulebook the
+   * re-tune writes (the written rules follow), also when no rule could be written, and given to the
+   * writer as standing decisions so it never argues with them.
    */
   readonly rulebook: {
     readonly on: boolean;
+    readonly ownerRules: readonly string[];
     readonly maxRules: number;
     readonly maxRuleChars: number;
     readonly maxChars: number;
@@ -4393,7 +4398,15 @@ const POLICY_V1: Policy = {
     /* On: the owner asked for it, 2026-10-16. 25 rules, 3,000 characters: about 800 tokens more in
        every judge call, under a fifth of the block's. One call a run, about a cent at the writer's
        prices; a two-note pattern is a pattern, a one-note one is a post. */
-    rulebook: { on: true, maxRules: 25, maxRuleChars: 220, maxChars: 3_000, maxOutputTokens: 1_500, maxNotes: 30, minNoteUses: 2, maxNoteChars: 60 },
+    rulebook: {
+      on: true,
+      /* The owner's rule, 2026-10-17, word for word. The video sentence stays: the live judge is sent
+         the cover of every video, on both sources, as a picture, and Nemotron describes it correctly
+         (checked with three calls on Together, 2026-10-17). */
+      ownerRules: [
+        "A person's catchphrase, a memorable line, or a named person or show in the news is coinable, the same as an animal or object. If the post is a video, judge the picture, not only the caption.",
+      ],
+      maxRules: 25, maxRuleChars: 220, maxChars: 3_000, maxOutputTokens: 1_500, maxNotes: 30, minNoteUses: 2, maxNoteChars: 60 },
     shortVideo: {
       barAgesMin: [30, 60, 120],
       /* An hour: the re-reads are every half hour, so two readings an hour apart bracket any age. */

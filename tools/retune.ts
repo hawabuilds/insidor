@@ -167,7 +167,7 @@ import { PgCoinedVideoRepo, type Db } from '../store/src/index.ts';
 import { refreshSet } from './lib/coined-videos.ts';
 import { recordShortVideoPart, shortVideoPart, type ShortVideoPart } from './lib/short-video-tune.ts';
 import { sideBySide, sideBySideLines } from './lib/side-by-side.ts';
-import { RULEBOOK_HEADING, countCalls, writeRulebook } from './lib/rulebook.ts';
+import { RULEBOOK_HEADING, countCalls, withOwnerRules, writeRulebook } from './lib/rulebook.ts';
 
 const P = DEFAULT_POLICY;
 const L = P.learning;
@@ -404,18 +404,19 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
          standing decisions and counts over every input, then put in the block, so the test below
          tests both. Not written for `compose` (free) or `--rules-only` (no block); a rulebook that
          cannot be written is left out and said. */
-      let rulebook: { readonly model: string; readonly rules: number; readonly usd: number } | { readonly why: string; readonly usd: number } | null = null;
+      let rulebook: { readonly model: string; readonly rules: number; readonly ownerRules: number; readonly usd: number } | { readonly why: string; readonly ownerRules: number; readonly usd: number } | null = null;
       let rules: string | null = null;
       if (L.rulebook.on && opts.composeOnly !== true && opts.rulesOnly !== true) {
         const shared = await openSharedMeter(L.rulebook.maxOutputTokens * 0.000_01 + 0.05, env, 'learning', LEARNING_USE);
         try {
           const w = await writeRulebook({ blockText: examplesOnly.text, missedCounts: missedDiagnoses, ...countCalls(notes, P) }, { env, meter: shared.meter, policy: P });
-          rules = w.rules;
-          rulebook = w.rules === null ? { why: w.why, usd: w.usd } : { model: w.model, rules: w.rules.split('\n').length, usd: w.usd };
+          /* The owner's own rules on top, the written ones after (tools/lib/rulebook.ts withOwnerRules). */
+          rules = withOwnerRules(w.rules, P);
+          rulebook = w.rules === null ? { why: w.why, usd: w.usd, ownerRules: L.rulebook.ownerRules.length } : { model: w.model, rules: w.rules.split('\n').length, ownerRules: L.rulebook.ownerRules.length, usd: w.usd };
         } finally {
           await shared.close();
         }
-        log(rules === null ? 'warn' : 'info', rules === null ? 'retune rulebook not written; the block is tested without one' : 'retune rulebook written', { slot: slot.toISOString(), ...rulebook });
+        log(rulebook !== null && 'why' in rulebook ? 'warn' : 'info', rulebook !== null && 'why' in rulebook ? "retune rulebook not written; the block is tested with the owner's own rules only" : 'retune rulebook written', { slot: slot.toISOString(), ...rulebook });
       }
       const block = withRulebook(examplesOnly, RULEBOOK_HEADING, rules);
       /* `--rules-only` teaches nothing, so nothing is held out: every missed post is tested. */
