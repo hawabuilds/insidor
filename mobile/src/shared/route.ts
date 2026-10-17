@@ -147,11 +147,15 @@ export function hrefFor(route: Route): string {
   }
 }
 
-/** Which tab is lit. A story or a coin belongs to whichever list it was reached from. */
+/**
+ * Which tab is lit. A narrative's page and its coin's page light Narratives: Home holds posts only
+ * (the owner, 2026-10-17), so the Narratives tab is the one list a narrative belongs to. A post is Home's.
+ */
 export function tabOf(route: Route): Tab {
   switch (route.screen) {
     case 'story':
     case 'coin':
+      return 'narratives';
     case 'post':
       return 'feed';
     case 'token':

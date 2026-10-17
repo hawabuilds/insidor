@@ -42,9 +42,10 @@ test('anything unreadable lands on the feed rather than an error screen', () => 
   }
 });
 
-test('a story lights the tab of the list it came from', () => {
-  assert.equal(tabOf({ screen: 'story', storyId: 'x' }), 'feed');
-  assert.equal(tabOf({ screen: 'coin', storyId: 'x', coinId: 'y' }), 'feed');
+test('a narrative and its coin light Narratives, the one list narratives are on; a post lights Home', () => {
+  assert.equal(tabOf({ screen: 'story', storyId: 'x' }), 'narratives');
+  assert.equal(tabOf({ screen: 'coin', storyId: 'x', coinId: 'y' }), 'narratives');
+  assert.equal(tabOf({ screen: 'post', postId: 'x:1' }), 'feed');
 });
 
 test('a coin opened from search lights Search, where back leads', () => {
