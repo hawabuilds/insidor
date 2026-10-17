@@ -1513,7 +1513,7 @@ export async function withRuntime<T>(
             const grouper = narrativeGrouper({
               repo: new PgNarrativeRepo(db),
               save: (pass) => withTransaction(pool, (tx) => new PgNarrativeRepo(tx).save(pass)),
-              blockCutoff: async () => (await new PgLearningRepo(db).latestApplied())?.cutoff ?? null,
+              block: async () => ((b) => ({ cutoff: b?.cutoff ?? null, chosenOn: b?.cutoffModel ?? null }))(await new PgLearningRepo(db).latestApplied()),
               titler:
                 openSide === null
                   ? null

@@ -4,8 +4,8 @@
  * apart so it is tested (tools/lib/judge-shadow.test.ts) on fixed rows.
  *
  * ★ EACH ANSWER IS HELD TO ITS OWN MODEL'S CUTOFF, as the projector holds it (services/project
- * judge-cutoff.ts): the main judge's to the applied block's cutoff, the open model's to
- * Policy.judge.openCutoff (the block's until tuned). "Yes" is core's `postScoreReason` passing on
+ * judge-cutoff.ts): the main judge's to the applied block's cutoff, each open model's to its own
+ * (Policy.judge.cutoffs, the block's once tuned on it). "Yes" is core's `postScoreReason` passing on
  * the first question: confident enough, a short name. The picture boost, the kind question and the
  * close-match hold are left out — the same rules for both models, applied after.
  *
@@ -75,7 +75,7 @@ export interface ShadowSummary {
 }
 
 const yes = (s: Side, policies: AnswerPolicies): boolean =>
-  postScoreReason({ coinable: s.coinable, confidence: s.confidence, lookedAt: s.lookedAt, proposedName: s.name }, policyForAnswer(s.judgeId, policies.main, policies.open)) === 'passes';
+  postScoreReason({ coinable: s.coinable, confidence: s.confidence, lookedAt: s.lookedAt, proposedName: s.name }, policyForAnswer(s.judgeId, policies)) === 'passes';
 
 const quantile = (xs: readonly number[], q: number): number | null => {
   const s = [...xs].sort((a, b) => a - b);

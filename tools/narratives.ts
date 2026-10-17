@@ -28,8 +28,8 @@ import process from 'node:process';
 import type { Millis } from '../contracts/src/vocabulary.ts';
 import { DEFAULT_POLICY as P } from '../contracts/src/policy.ts';
 import type { TitlePort } from '../contracts/src/ports/titles.ts';
-import { detailOf, isShillText, narrativeStanding, postPicture, sharedDetail, withJudgeCutoff } from '../core/src/index.ts';
-import { DEFAULT_OPEN_MODEL, KNOWN_MODELS, isOpenJudgeId, openChatClient, openTitler, readOpenJudgeSetup } from '../adapters/judge/openai-compatible/src/index.ts';
+import { answerPolicies, detailOf, isShillText, narrativeStanding, postPicture, sharedDetail } from '../core/src/index.ts';
+import { DEFAULT_OPEN_MODEL, KNOWN_MODELS, answerSide, openChatClient, openTitler, readOpenJudgeSetup } from '../adapters/judge/openai-compatible/src/index.ts';
 import { inMemoryMeter } from '../adapters/meter/spend/src/index.ts';
 import { asDb, createPool, DB_ROLE, PgLearningRepo, PgNarrativeRepo, withTransaction, type Db } from '../store/src/index.ts';
 import { narrativeGrouper } from '../services/runner/src/work/narratives.ts';
@@ -85,7 +85,7 @@ try {
     const grouper = narrativeGrouper({
       repo,
       save: async () => false,
-      blockCutoff: async () => (await learning.latestApplied())?.cutoff ?? null,
+      block: async () => ((b) => ({ cutoff: b?.cutoff ?? null, chosenOn: b?.cutoffModel ?? null }))(await learning.latestApplied()),
       titler: null,
       embed: null,
       keepVectors: async () => false,
@@ -105,12 +105,11 @@ try {
     const now = await board(db);
     const ids = [...new Set(now.flatMap((s) => s.posts))];
     const standing = await repo.standingRows(ids);
-    const cutoff = (await learning.latestApplied())?.cutoff ?? null;
-    const main = withJudgeCutoff(P, cutoff);
-    const open = withJudgeCutoff(P, P.judge.openCutoff ?? cutoff);
+    const applied = await learning.latestApplied();
+    const held = answerPolicies(P, { cutoff: applied?.cutoff ?? null, chosenOn: applied?.cutoffModel ?? null });
     const why = new Map(standing.map((r) => {
       const answer = r.coinable === null || r.confidence === null || r.lookedAt === null ? null : { coinable: r.coinable, confidence: r.confidence, lookedAt: r.lookedAt, proposedName: r.proposedName };
-      return [r.itemId, narrativeStanding({ answer, kindLabel: r.kindLabel, ownerCall: r.ownerCall, shill: isShillText(r.body, P.attention) || r.ownTalk }, isOpenJudgeId(r.judgeId) ? open : main)] as const;
+      return [r.itemId, narrativeStanding({ answer, kindLabel: r.kindLabel, ownerCall: r.ownerCall, shill: isShillText(r.body, P.attention) || r.ownTalk }, held.of(answerSide(r.judgeId)))] as const;
     }));
     const vectors = await repo.vectors(ids, POST_SPACE, 'post');
     const pictures = await repo.vectors(ids, P.group.image.space, 'picture');
@@ -258,7 +257,7 @@ try {
       },
     };
     const frameStarted = Date.now();
-    const frame = await projectNarrativeFrame(overlay, 'default', { nowMs: Date.now() as Millis, sparkWindowMs: 30 * 60_000, marketFreshnessMs: P.market.readingFreshnessMs, feedFreshnessMs: P.assets.feedFreshnessMs }, Date.now() - 26 * 3_600_000, main, open);
+    const frame = await projectNarrativeFrame(overlay, 'default', { nowMs: Date.now() as Millis, sparkWindowMs: 30 * 60_000, marketFreshnessMs: P.market.readingFreshnessMs, feedFreshnessMs: P.assets.feedFreshnessMs }, Date.now() - 26 * 3_600_000, held.main, { main: held.main, of: (id) => held.of(answerSide(id)) });
     const frameMs = Date.now() - frameStarted;
     const pagesWritten = writes.filter((w) => w.sql.startsWith('insert into public.story_view')).map((w) => JSON.parse(String(w.params[1])) as Record<string, unknown>);
     const boardOrder = writes.filter((w) => w.sql.includes('public.board_row') && w.sql.startsWith('insert')).map((w) => String(w.params[1]));

@@ -31,6 +31,8 @@ export interface AppliedExamples {
   readonly appliedAt: Date;
   /** The yes/no cutoff applied with this block (0086); null: the policy bar. */
   readonly cutoff: number | null;
+  /** The judge (`judge:<vendor>/<model>`) the cutoff was chosen on (0094); null: not recorded. */
+  readonly cutoffModel: string | null;
 }
 
 const UNDEFINED_COLUMN = '42703';
@@ -59,6 +61,8 @@ export interface ExamplesVersion {
   readonly costUsd: number;
   /** The yes/no cutoff applied with the block (0086); null or absent: the policy bar. Needs `hasJudgeCutoff`. */
   readonly judgeCutoff?: number | null;
+  /** The judge the cutoff was chosen on (0094); written only with a cutoff and only once 0094 is applied (`hasCutoffModel`). */
+  readonly judgeCutoffModel?: string | null;
 }
 
 export type RetuneOutcome = 'skipped' | 'kept' | 'applied' | 'dry' | 'failed';
@@ -96,18 +100,33 @@ export class PgLearningRepo {
 
   /** The block the live judge reads, or null: no block (the judge's rules alone). */
   async latestApplied(): Promise<AppliedExamples | null> {
-    type Row = { version_id: string; text: string; sha: string; applied_at: Date; judge_cutoff?: string | number | null };
+    type Row = { version_id: string; text: string; sha: string; applied_at: Date; judge_cutoff?: string | number | null; judge_cutoff_model?: string | null };
     const latest = (cols: string) => orNoTable(() => this.#db.query<Row>(`select ${cols} from internal.judge_examples_version where applied order by applied_at desc limit 1`));
-    const rows = await latest('version_id, text, sha, applied_at, judge_cutoff').catch((e: unknown) => (isMissingColumn(e) ? latest('version_id, text, sha, applied_at') : Promise.reject(e)));
+    /* Newest columns first, each missing one dropped in turn: before 0094, before 0086. */
+    const rows = await latest('version_id, text, sha, applied_at, judge_cutoff, judge_cutoff_model')
+      .catch((e: unknown) => (isMissingColumn(e) ? latest('version_id, text, sha, applied_at, judge_cutoff') : Promise.reject(e)))
+      .catch((e: unknown) => (isMissingColumn(e) ? latest('version_id, text, sha, applied_at') : Promise.reject(e)));
     const r = rows[0];
     const cutoff = r?.judge_cutoff === undefined || r.judge_cutoff === null ? null : Number(r.judge_cutoff);
-    return r === undefined ? null : { versionId: Number(r.version_id), text: r.text, sha: r.sha, appliedAt: r.applied_at, cutoff };
+    const cutoffModel = cutoff === null || r?.judge_cutoff_model === undefined ? null : r.judge_cutoff_model;
+    return r === undefined ? null : { versionId: Number(r.version_id), text: r.text, sha: r.sha, appliedAt: r.applied_at, cutoff, cutoffModel };
   }
 
   /** Whether a block's own cutoff can be stored (0086 applied). */
   async hasJudgeCutoff(): Promise<boolean> {
     try {
       await this.#db.query('select judge_cutoff from internal.judge_examples_version limit 0');
+      return true;
+    } catch (e) {
+      if (isMissingColumn(e)) return false;
+      throw e;
+    }
+  }
+
+  /** Whether the model a cutoff was chosen on can be stored with it (0094 applied). */
+  async hasCutoffModel(): Promise<boolean> {
+    try {
+      await this.#db.query('select judge_cutoff_model from internal.judge_examples_version limit 0');
       return true;
     } catch (e) {
       if (isMissingColumn(e)) return false;
@@ -137,16 +156,19 @@ export class PgLearningRepo {
   async recordVersion(v: ExamplesVersion): Promise<number> {
     /* The cutoff column only when there is a cutoff, so a run before 0086 still records its block. */
     const withCutoff = v.judgeCutoff !== undefined && v.judgeCutoff !== null;
+    /* Its model only with it, and only when given: a caller that has not seen 0094 applied passes none. */
+    const withModel = withCutoff && v.judgeCutoffModel !== undefined && v.judgeCutoffModel !== null;
     const rows = await this.#db.query<{ version_id: string }>(
       `insert into internal.judge_examples_version
          (built_at, text, sha, example_ids, taps_used, missed_used, labels_used, names_used, inputs_through, labels_sha,
-          gold_pass, gold_n, live_negative_pass, live_negative_n, missed_pass, missed_n, applied, applied_at, reason_not_applied, dry, cost_usd${withCutoff ? ', judge_cutoff' : ''})
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21${withCutoff ? ', $22' : ''})
+          gold_pass, gold_n, live_negative_pass, live_negative_n, missed_pass, missed_n, applied, applied_at, reason_not_applied, dry, cost_usd${withCutoff ? ', judge_cutoff' : ''}${withModel ? ', judge_cutoff_model' : ''})
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21${withCutoff ? ', $22' : ''}${withModel ? ', $23' : ''})
        returning version_id`,
       [
         v.builtAt, v.text, v.sha, [...v.exampleIds], v.tapsUsed, v.missedUsed, v.labelsUsed, v.namesUsed, v.inputsThrough, v.labelsSha,
         v.goldPass, v.goldN, v.liveNegativePass, v.liveNegativeN, v.missedPass, v.missedN, v.applied, v.applied ? v.builtAt : null, v.reasonNotApplied, v.dry, v.costUsd,
         ...(withCutoff ? [v.judgeCutoff] : []),
+        ...(withModel ? [v.judgeCutoffModel] : []),
       ],
     );
     return Number(rows[0]?.version_id);

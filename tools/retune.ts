@@ -110,10 +110,10 @@
  * ★ THE OPEN JUDGE GRADES BOTH SIDES (the owner, 2026-10-16: "no Anthropic API at all from now on").
  * The new block and the block in use are both asked of the open judge (OPEN_JUDGE_MODEL, Gemma 3 by
  * default; tools/lib/pass-rates.ts), with its own 40 precedents a post, and the block in use is
- * held at the cutoff the projector holds the open judge's answers to (settings judge.openCutoff,
- * else the block's own). The new block's cutoff is swept from the policy bar, not from the cutoff
+ * held at the cutoff the projector holds that model's answers to (core `answerCutoff`: the block's
+ * own when it was chosen on that model, else its settings judge.cutoffs number, else the block's). The new block's cutoff is swept from the policy bar, not from the cutoff
  * in use: a confidence is a model's own scale. The cutoff chosen is stored with the block (0086)
- * and is, from now on, the open judge's. `--floor=<gold>,<junk>,<missed>` holds the new block to
+ * with the model it was chosen on (0094), and holds that model's answers only. `--floor=<gold>,<junk>,<missed>` holds the new block to
  * given numbers instead of the live grading's (the switch of judge: the main judge's stored 07:00
  * UTC sweep, as shares); the open judge's grading of the block in use is still made and reported.
  *
@@ -156,6 +156,8 @@ import { onOutOfCredit } from '../adapters/kit/vendor/src/billing.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 import { LineTooShort, goldOriginPosts, handGoldIds, gradePosts, openGradeSetup, type EvalPost, type EvalRow } from './lib/pass-rates.ts';
 import { refitForRetune } from './lib/score-model.ts';
+import { answerCutoff } from '../core/src/qualify/post-score.ts';
+import { answerSide } from '../adapters/judge/openai-compatible/src/setup.ts';
 import { refitCoinMatchForRetune, withCoinMatch } from './lib/coin-match-fit.ts';
 import { refitJunkForRetune } from './lib/junk-filter.ts';
 import { PgCoinedVideoRepo, type Db } from '../store/src/index.ts';
@@ -473,7 +475,10 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const held = P.judge.heldKinds;
 
       /* The open judge must be there before anything is read for it: no key, no run. */
-      const judgeModel = (await openGradeSetup(env)).model.id;
+      const grader = await openGradeSetup(env);
+      const judgeModel = grader.model.id;
+      /* The grading model as its answers are filed (adapter `judgeModelKey`): whose cutoff this run measures. */
+      const judgeKey = `judge:${grader.setup.vendor}/${grader.model.id}`;
       log('info', 'retune testing a block', { slot: slot.toISOString(), posts: posts.length, handGold: posts.filter((p) => p.group === 'gold').length, autoGold: posts.filter((p) => p.group === 'auto').length, liveNegatives: block.testNegatives.length, missed: testMissed.length, missedTaught: missedTaught.length, heldKinds: held, maxBatch, rulesOnly: opts.rulesOnly === true, examples: block.exampleIds.length, coinedYes: block.used.coined, chars: block.text.length });
       /* Bounded by the learning book's lines, not a guess per post: the test either fits what is left
          of them (mustFit) or is not started. */
@@ -541,9 +546,10 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
 
       const nowRows = opts.rulesOnly === true ? null : inUse?.text === block.text ? rows : (nowGraded?.rows ?? null);
       /* The setup live now as live decides: its block at ITS cutoff (null: the policy bar). */
-      /* ★ HELD AS THE PROJECTOR HOLDS THE OPEN JUDGE'S ANSWERS (services/project/src/judge-cutoff.ts):
-         settings judge.openCutoff when set, else the applied block's own cutoff. */
-      const liveCutoff = P.judge.openCutoff ?? inUse?.cutoff ?? null;
+      /* ★ HELD AS THE PROJECTOR HOLDS THIS MODEL'S ANSWERS (services/project/src/judge-cutoff.ts, core
+         `answerCutoff`): the block's own cutoff when it was chosen on this model, else this model's
+         settings judge.cutoffs number, else the block's. */
+      const liveCutoff = answerCutoff(P, { cutoff: inUse?.cutoff ?? null, chosenOn: inUse?.cutoffModel ?? null }, answerSide(judgeKey));
       const policyBar = Math.min(...Object.values(P.qualify.minJudgeConfidence));
       const liveGraded = nowRows === null ? null : atCutoff(graded(nowRows.filter((r) => r.coinable !== null)), liveCutoff, P);
       /* The open judge with the block in use, graded now: reported always, and the bar to keep
@@ -615,6 +621,9 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         applied: apply, reasonNotApplied: apply ? null : opts.dry ? `dry run${why === null ? ': every gate held' : `: ${why}`}` : why, dry: opts.dry, costUsd,
         /* The chosen cutoff, stored whenever it can be (on a kept or dry row too, for the record). */
         judgeCutoff: needsCutoff && canStore ? choice?.cutoff ?? null : null,
+        /* ★ AND WHOSE IT IS (0094): the projector holds only this model's answers to it; the other
+           model keeps its own number. Before 0094 none is stored, and each model's number holds. */
+        judgeCutoffModel: needsCutoff && canStore && (await repo.hasCutoffModel().catch(() => false)) ? judgeKey : null,
       };
       const versionId = opts.record ? await repo.recordVersion(version) : null;
 

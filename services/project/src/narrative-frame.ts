@@ -46,7 +46,7 @@ import { coinCallFor, foldNarrativeCalls, hiddenByOwner, isShillText, narrativeC
 import { PgNarrativeRepo, type Db, type NarrativePostRow } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
-import { policyForAnswer } from './judge-cutoff.ts';
+import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
 import { permalinkFor } from './permalinks.ts';
 import { projectBoard, projectCoin, projectStory, type CoinCandidate, type MemberFacts, type ProjectOptions, type ReachReading, type StoryFacts } from './project.ts';
 import { storySameNameLists, writeSameNameCoins } from './same-name.ts';
@@ -83,7 +83,7 @@ export interface ShownNarrative {
  * The runner's open narratives held to the rule NOW: each post's standing re-read, the owner's
  * calls re-folded. Pure but for the reads; the board's input.
  */
-export async function shownNarratives(db: Db, policy: Policy, openPolicy: Policy = policy): Promise<{ readonly shown: readonly ShownNarrative[]; readonly standing: ReadonlyMap<string, NarrativePostRow>; readonly single: ReadonlySet<string> }> {
+export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPolicies = onePolicy(policy)): Promise<{ readonly shown: readonly ShownNarrative[]; readonly standing: ReadonlyMap<string, NarrativePostRow>; readonly single: ReadonlySet<string> }> {
   const repo = new PgNarrativeRepo(db);
   if (!(await repo.migrated())) return { shown: [], standing: new Map(), single: new Set() };
   const open = (await repo.open()).filter((n) => n.shown);
@@ -93,7 +93,7 @@ export async function shownNarratives(db: Db, policy: Policy, openPolicy: Policy
   const good = (r: NarrativePostRow | undefined): boolean => {
     if (r === undefined) return false;
     const answer = r.coinable === null || r.confidence === null || r.lookedAt === null ? null : { coinable: r.coinable, confidence: r.confidence, lookedAt: r.lookedAt, proposedName: r.proposedName };
-    return narrativeStanding({ answer, kindLabel: r.kindLabel, ownerCall: r.ownerCall, shill: isShillText(r.body, policy.attention) || r.ownTalk }, policyForAnswer(r.judgeId, policy, openPolicy)) === 'good';
+    return narrativeStanding({ answer, kindLabel: r.kindLabel, ownerCall: r.ownerCall, shill: isShillText(r.body, policy.attention) || r.ownTalk }, policyForAnswer(r.judgeId, answers)) === 'good';
   };
   const shown: ShownNarrative[] = [];
   const singles = new Set<string>();
@@ -196,12 +196,12 @@ export interface NarrativeFrame {
   readonly posts: number;
 }
 
-export async function projectNarrativeFrame(db: Db, viewId: string, options: ProjectOptions, reachSinceMs: number, policy: Policy = DEFAULT_POLICY, openPolicy: Policy = policy): Promise<NarrativeFrame> {
+export async function projectNarrativeFrame(db: Db, viewId: string, options: ProjectOptions, reachSinceMs: number, policy: Policy = DEFAULT_POLICY, answers: AnswerPolicies = onePolicy(policy)): Promise<NarrativeFrame> {
   const empty = { migrated: false, tick: 0, boardRows: 0, storyViews: 0, considered: 0, skipped: 0, withheld: 0, posts: 0 };
   if (!(await new PgNarrativeRepo(db).migrated())) return empty;
   const tick = await nextTick(db, viewId);
   const previous = await previousBoardStoryIds(db, viewId);
-  const { shown, standing, single } = await shownNarratives(db, policy, openPolicy);
+  const { shown, standing, single } = await shownNarratives(db, policy, answers);
   const ids = [...new Set(shown.flatMap((n) => n.members))];
 
   const rows = ids.length === 0 ? [] : await db.query<MemberRow>(

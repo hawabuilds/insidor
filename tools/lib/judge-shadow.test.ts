@@ -13,7 +13,7 @@ const side = (judgeId: string, coinable: boolean, confidence: number): Side => (
 const row = (n: number, live: Side, shadow: Side | null): ShadowRow => ({ itemId: `x:${n}`, askedAt: new Date(n * 1000), text: `post ${n}`, link: `https://x.com/i/status/${n}`, live, shadow, shadowCostUsd: shadow?.costUsd ?? 0, detail: shadow === null ? 'answered 500' : null });
 
 test('agreement, the table, cost and speed, and the examples each way', () => {
-  const policies = answerPolicies({ ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, openCutoff: 0.85 } }, 0.71);
+  const policies = answerPolicies({ ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, cutoffs: { primary: 0.7, fallback: 0.85 } } }, { cutoff: 0.71, chosenOn: null });
   const rows = [
     row(1, side(MAIN, true, 0.9), side(OPEN, true, 0.9)),
     /* The open model says yes at 0.8, under its own 0.85: a no. */

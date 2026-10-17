@@ -24,6 +24,7 @@ import {
 } from './db.ts';
 import { projectBoard, projectBoardProvenance, projectStory, projectStoryProvenance } from './project.ts';
 import type { ProjectOptions } from './project.ts';
+import { onePolicy, type AnswerPolicies } from './judge-cutoff.ts';
 import { checkNarratives, loadPostReasons } from './narrative-rules.ts';
 import { storySameNameLists, writeSameNameCoins } from './same-name.ts';
 import { countAnchors, windowIsOrdered } from './window.ts';
@@ -39,8 +40,8 @@ export interface FrameWindows {
   readonly limit: number;
 }
 
-/** `policy`: the policy the posts are held to — main.ts passes it with the applied block's own cutoff (core `withJudgeCutoff`); `openPolicy` the one the open model's answers are held to (judge-cutoff.ts). */
-export async function projectStoryFrame(db: Db, viewId: string, options: ProjectOptions, windows: FrameWindows, policy: Policy = DEFAULT_POLICY, openPolicy: Policy = policy) {
+/** `policy`: the policy the posts are held to — main.ts passes it with the applied block's own cutoff (core `withJudgeCutoff`); `answers` the one each answer is held to, by the model that gave it (judge-cutoff.ts). */
+export async function projectStoryFrame(db: Db, viewId: string, options: ProjectOptions, windows: FrameWindows, policy: Policy = DEFAULT_POLICY, answers: AnswerPolicies = onePolicy(policy)) {
   const tick = await nextTick(db, viewId);
   const load = await loadStoryFacts(db, {
     storiesSinceMs: windows.storiesSinceMs,
@@ -51,7 +52,7 @@ export async function projectStoryFrame(db: Db, viewId: string, options: Project
   /* ★ THE OWNER'S RULES, BEFORE ANYTHING IS PROJECTED: a narrative needs enough posts that pass
      the per-post rules, and lists only those. What is left out is recorded with why
      (public.feed_rejection) and stays in the database. See narrative-rules.ts. */
-  const reasons = await loadPostReasons(db, load.stories.flatMap((s) => s.members.map((m) => m.itemId)), policy, openPolicy);
+  const reasons = await loadPostReasons(db, load.stories.flatMap((s) => s.members.map((m) => m.itemId)), policy, answers);
   const checked = checkNarratives(load.stories, reasons, policy);
   await new PgFeedRejectionRepo(db).record(checked.rejections);
   const facts = checked.kept;
