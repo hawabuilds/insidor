@@ -2706,7 +2706,8 @@ export interface LearningPolicy {
    * Post ids always on the taught side of the examples/test split, whatever their hash says, and
    * first into the block: a missed post the owner wants learned back. The price is that such a post
    * is never tested again — it leaves the held-out missed set, so nothing measures whether the
-   * judge now catches it. Keep it short; every id here is one fewer test post.
+   * judge now catches it. Keep it short; every id here is one fewer test post. The owner's split of
+   * 2026-10-17 adds its taught half from eval/src/feed/owner-split.json (`teach`).
    */
   readonly alwaysTeach: readonly string[];
   /**

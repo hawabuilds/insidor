@@ -62,6 +62,7 @@ import type { MediaRef } from '../contracts/src/vocabulary.ts';
 import { closestNot, embedInput, nearestLabelled, postPicture, precedentsFor, precedentsWanted, sourceOfItemId, type LabelledVector } from '../core/src/qualify/precedents.ts';
 import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo } from '../store/src/index.ts';
 import { buildBlock, type OwnerCall } from '../eval/src/feed/examples.ts';
+import { OWNER_SPLIT, alwaysTeachIds } from '../eval/src/feed/owner-split.ts';
 import { anthropicJudge, httpClient as anthropicClient, priceFor, readJudgeSetup } from '../adapters/judge/anthropic/src/index.ts';
 import { DEFAULT_BASE_URL, DEFAULT_OPEN_MODEL, DEFAULT_VENDOR, ESTIMATE_MARGIN, closestModel, keyAllowance, listModels, openChatClient, openJudge, openProviders, type HostModel } from '../adapters/judge/openai-compatible/src/index.ts';
 import { POST_SPACE, SPACE as PICTURE_SPACE, voyageEmbed, httpClient as voyageClient } from '../adapters/embed/voyage/src/index.ts';
@@ -175,7 +176,7 @@ async function composeGate(): Promise<{ posts: (OpenEvalPost & { coinRef: string
     calls.push({ itemId: m.itemId, text: m.body, imageUri: pictureOf(m.media)?.uri ?? null, label: 'meme', why: 'a post the owner says we missed: people coined or could coin it', at: m.at.getTime(), from: 'missed' });
   }
   const names = (await repo.nameCalls()).flatMap((n) => (n.body === null ? [] : [{ itemId: n.itemId, text: n.body, name: n.name, verdict: n.verdict, betterName: n.betterName, at: n.at.getTime() }]));
-  const block = buildBlock(calls, names, P.learning.maxExamples, { alwaysTeach: P.learning.alwaysTeach });
+  const block = buildBlock(calls, names, P.learning.maxExamples, { alwaysTeach: alwaysTeachIds(P), alwaysTest: OWNER_SPLIT.test });
   /* The live judge's prompt: its applied block, or its rules alone. A post that block teaches cannot test it. */
   const inUse = await repo.latestApplied();
   const appliedIds = new Set(inUse === null ? [] : await repo.appliedExampleIds());

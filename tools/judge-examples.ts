@@ -27,6 +27,7 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import { postTimeFromId } from '../adapters/platform/x/src/index.ts';
 import { buildBlock, type OwnerCall } from '../eval/src/feed/examples.ts';
+import { OWNER_SPLIT, alwaysTeachIds } from '../eval/src/feed/owner-split.ts';
 
 interface Labelled { readonly itemId: string; readonly text: string; readonly imageUri: string | null; readonly label: string; readonly ownerLabel?: string; readonly why: string }
 
@@ -38,6 +39,6 @@ const calls: OwnerCall[] = labels.flatMap((p) => {
   const id = /^x:(\d+)$/.exec(p.itemId)?.[1];
   return label === 'meme' || label === 'not' ? [{ itemId: p.itemId, text: p.text, imageUri: p.imageUri, label, why: p.why, at: id === undefined ? null : postTimeFromId(id), from: 'labels' as const }] : [];
 });
-const block = buildBlock(calls, [], DEFAULT_POLICY.learning.maxExamples, { alwaysTeach: DEFAULT_POLICY.learning.alwaysTeach });
+const block = buildBlock(calls, [], DEFAULT_POLICY.learning.maxExamples, { alwaysTeach: alwaysTeachIds(DEFAULT_POLICY), alwaysTest: OWNER_SPLIT.test });
 writeFileSync(OUT, `${JSON.stringify({ about: 'The judge\'s learned examples, built by tools/judge-examples.ts from the owner\'s labels. `exampleIds` are held out of every test.', builtAt: new Date().toISOString(), exampleIds: block.exampleIds, text: block.text }, null, 1)}\n`);
 console.log(`${block.used.labels} examples (${calls.filter((c) => c.label === 'meme').length} labelled memes); ${block.testNegatives.length} non-memes held back for the test; ${block.text.length} characters.`);

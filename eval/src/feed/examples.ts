@@ -51,8 +51,12 @@
  * leaves out anything that would argue with the owner, the gate's test, the shill rule or the
  * held kinds (see the function). Tragedy is not a held kind, so a coined tragedy is taught.
  *
+ * ★ THE OWNER'S FIXED TEST SET IS NEVER TAUGHT (the owner, 2026-10-17). An id on `alwaysTest`
+ * (owner-split.json `test`) is on the test side whatever its hash or the teach list says, and is
+ * never in the block from any source; `neverTeach` does the same for one run's own hold-outs.
+ *
  * What breaks if changed carelessly: `isExample` must stay a pure function of the id (and the
- * policy's always-teach list, which changes only with a policy version). Anything else (order, a
+ * always-teach and always-test lists, which change only with a commit). Anything else (order, a
  * draw, the date) moves posts between examples and test from one run to the next, and a run would
  * then be graded on posts an earlier block taught.
  */
@@ -63,13 +67,24 @@ import type { Judgement } from '@insidor/contracts/judgement.ts';
 import type { LearningPolicy, Policy } from '@insidor/contracts/policy.ts';
 import { heldKind, isShillText, postScore, withJudgeCutoff, type CryptoSignal } from '@insidor/core';
 
-/** Examples or test, by the post id alone; an id on `alwaysTeach` (Policy.learning.alwaysTeach) is always an example. */
-export const isExample = (itemId: string, alwaysTeach: readonly string[] = []): boolean =>
-  alwaysTeach.includes(itemId) || (createHash('sha256').update(itemId).digest()[0] ?? 0) % 2 === 0;
+/**
+ * Examples or test, by the post id alone; an id on `alwaysTeach` (Policy.learning.alwaysTeach and the
+ * owner's split, owner-split.ts) is always an example, and an id on `alwaysTest` (the owner's fixed
+ * test set) never is — the test wins, so a post put on both is tested rather than graded on its lesson.
+ */
+export const isExample = (itemId: string, alwaysTeach: readonly string[] = [], alwaysTest: readonly string[] = []): boolean =>
+  !alwaysTest.includes(itemId) && (alwaysTeach.includes(itemId) || (createHash('sha256').update(itemId).digest()[0] ?? 0) % 2 === 0);
 
-/** What a block is told beyond the owner's calls: the ids always taught, and coined posts (`coinedYes`) taught as yes. */
+/**
+ * What a block is told beyond the owner's calls: the ids always taught, the ids never taught, and
+ * coined posts (`coinedYes`) taught as yes. `alwaysTest` is the owner's fixed test set (a pure list);
+ * `neverTeach` is this run's own hold-outs (the owner's gate's recent news and text-only "Not a meme"
+ * taps). Neither is ever in the block, from any source: a tap, a label, a missed post or a coined post.
+ */
 export interface Teach {
   readonly alwaysTeach?: readonly string[];
+  readonly alwaysTest?: readonly string[];
+  readonly neverTeach?: readonly string[];
   readonly coinedYes?: readonly OwnerCall[];
 }
 
@@ -131,15 +146,18 @@ export function currentCalls(calls: readonly OwnerCall[]): readonly OwnerCall[] 
 export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall[], maxExamples: number, teach: Teach = {}): Block {
   const current = currentCalls(calls);
   const always = teach.alwaysTeach ?? [];
+  const tested = teach.alwaysTest ?? [];
+  const kept = new Set([...tested, ...(teach.neverTeach ?? [])]);
+  const teachable = (c: OwnerCall) => !kept.has(c.itemId);
   /* Coined posts take their room first (the caller capped them); a post the owner called is never one. */
   const called = new Set(current.map((c) => c.itemId));
-  const coined = (teach.coinedYes ?? []).filter((c) => !called.has(c.itemId)).slice(0, maxExamples);
+  const coined = (teach.coinedYes ?? []).filter((c) => !called.has(c.itemId) && teachable(c)).slice(0, maxExamples);
   const room = maxExamples - coined.length;
   const isMissed = (c: OwnerCall) => c.from === 'missed';
   /* The owner's always-taught posts first, so the cap never pushes them out; then newest first. */
   const order = (a: OwnerCall, b: OwnerCall) => Number(always.includes(b.itemId)) - Number(always.includes(a.itemId)) || newestFirst(a, b);
-  const yesPool = current.filter((c) => c.label === 'meme' && (!isMissed(c) || isExample(c.itemId, always))).sort(order);
-  const noPool = current.filter((c) => c.label === 'not' && isExample(c.itemId, always)).sort(order);
+  const yesPool = current.filter((c) => c.label === 'meme' && teachable(c) && (!isMissed(c) || isExample(c.itemId, always, tested))).sort(order);
+  const noPool = current.filter((c) => c.label === 'not' && teachable(c) && isExample(c.itemId, always, tested)).sort(order);
   const half = Math.floor(room / 2);
   const yesTake = Math.min(yesPool.length, Math.max(half, room - noPool.length));
   const noTake = Math.min(noPool.length, room - yesTake);
