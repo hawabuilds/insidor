@@ -34,6 +34,7 @@ import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
+import { reuseCoinPicture } from './picture-reuse.ts';
 
 /* ★ POLICY NUMBERS, to move into contracts/src/policy.ts (the session owner adds them):
      COIN_PICTURES_PER_PASS  coins' pictures embedded per pass, at most. Forty a pass at a pass
@@ -48,7 +49,7 @@ const EMBED_DEADLINE_MS = 60_000;
 
 export interface CoinMatchDeps {
   readonly coins: Pick<PgCoinUniverseRepo, 'postCoinPictures'>;
-  readonly images: Pick<PgImageEmbeddingRepo, 'record'>;
+  readonly images: Pick<PgImageEmbeddingRepo, 'record'> & Partial<Pick<PgImageEmbeddingRepo, 'copyFromSameAddress'>>;
   readonly embed: EmbedPort | null;
   readonly pairs: PairCheckDeps | null;
   readonly meter: Meter;
@@ -73,7 +74,15 @@ export async function pictureCoinMatches(deps: CoinMatchDeps, windowMs: number):
 
   /* ── embed the coins' pictures not yet held ─────────────────────────── */
   let embedded = 0;
-  const unembedded = [...new Map(rows.filter((r) => r.similarity === null).map((r) => [`${r.assetKey}|${r.coinUri}`, r])).values()].slice(0, COIN_PICTURES_PER_PASS);
+  const wanted = [...new Map(rows.filter((r) => r.similarity === null).map((r) => [`${r.assetKey}|${r.coinUri}`, r])).values()].slice(0, COIN_PICTURES_PER_PASS);
+  /* A coin whose identical picture another coin already holds is copied, not paid for (picture-reuse.ts). */
+  const unembedded = [];
+  let reused = 0;
+  for (const r of wanted) {
+    if (await reuseCoinPicture(deps, r.assetKey, r.coinUri, bars.space)) reused += 1;
+    else unembedded.push(r);
+  }
+  if (reused > 0) deps.log.info('coin pictures copied from the same picture already held', { pictures: reused });
   const embed = deps.embed;
   if (unembedded.length > 0 && embed?.embedMedia !== undefined) {
     if (deps.mode === 'dry') {

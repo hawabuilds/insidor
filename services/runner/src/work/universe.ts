@@ -42,6 +42,7 @@ import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
 import { checkPair, type PairCheckDeps } from './image-pairs.ts';
+import { reuseCoinPicture } from './picture-reuse.ts';
 import type { Shadow } from '../judge-shadow.ts';
 
 export interface MetadataReader {
@@ -63,7 +64,7 @@ export interface UniverseDeps {
   readonly items: Pick<PgItemRepo, 'byIds'>;
   readonly authors: Pick<PgAuthorRepo, 'byKeys'>;
   readonly postScores: Pick<PgPostJudgementRepo, 'latest' | 'record'>;
-  readonly images: Pick<PgImageEmbeddingRepo, 'has' | 'record' | 'coinSimilarity'>;
+  readonly images: Pick<PgImageEmbeddingRepo, 'has' | 'record' | 'coinSimilarity'> & Partial<Pick<PgImageEmbeddingRepo, 'copyFromSameAddress'>>;
   /** Store a post read here, as any arrival is stored. */
   readonly store: (items: readonly Item[], authors: readonly Author[]) => Promise<number>;
   /** The judge shown one post alone; null when none is configured. */
@@ -382,7 +383,8 @@ async function matchOwn(deps: UniverseDeps, coin: CoinToCheck, facts: CoinFacts,
 
   /* The coin's picture, embedded once. */
   const space = deps.policy.group.image.space;
-  if (!(await deps.images.has('asset', coin.assetKey, coin.imageUri, space))) {
+  /* Copied when another coin's identical picture is held (picture-reuse.ts); otherwise paid for. */
+  if (!(await deps.images.has('asset', coin.assetKey, coin.imageUri, space)) && !(await reuseCoinPicture(deps, coin.assetKey, coin.imageUri, space))) {
     const embed = deps.embed;
     if (embed?.embedMedia === undefined) return { result: { kind: 'none', why: 'posts name it; no picture comparison is configured' } as const, postedAt };
     const image = { kind: 'image' as const, uri: coin.imageUri, width: null, height: null, durationMs: null };
