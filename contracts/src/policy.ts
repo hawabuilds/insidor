@@ -3512,7 +3512,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v102',
+  version: 'policy.v103',
 
   admit: {
     maxAgeMin: 240,
@@ -4499,7 +4499,7 @@ const POLICY_V1: Policy = {
     rescorePerPass: 15,
     /* 20 a pass, a pass every minute or two: the 2026-10-17 outage's ~460 passed posts in under an
        hour, at about $0.0004 a post on the kind line (Nemotron). */
-    kindCatchUpPerPass: 20,
+    kindCatchUpPerPass: 100,
     scorePassBar: null,
     /* 2026-10-15, launch-trailer day: 44 of For You's 60 were one game, most named for it. Measured on
        that frame, the posts about it under other names (its music, art, city) sat 0.60 to 0.75 from a
