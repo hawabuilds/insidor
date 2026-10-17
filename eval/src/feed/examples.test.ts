@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
 
-import { atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, parseFloor, withRulebook, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall } from './examples.ts';
+import { atCutoff, buildBlock, caught, changed, chooseCutoff, coinedYes, currentCalls, gate, goalsText, isExample, latestSlot, missedCaught, ownerGate, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, withRulebook, ratesOf, regressions, strictestKeeping, sweepCutoff, type CoinedPost, type GradedPost, type OwnerCall, type OwnerSide } from './examples.ts';
 import { OWNER_SPLIT, alwaysTeachIds, checkSplit } from './owner-split.ts';
 
 const L = DEFAULT_POLICY.learning;
@@ -304,7 +304,7 @@ test('the rulebook goes after the examples under its heading; the posts held out
   assert.equal(withRulebook(block, 'RULES:', null), block, 'none written: the block alone');
 });
 
-/* ── the owner's split (2026-10-17) ─────────────────────────────────────────────────── */
+/* ── the owner's split and gate (2026-10-17) ─────────────────────────────────────────────────── */
 
 test("★ a post on the owner's test list is never taught, from any source, whatever its hash or the teach list says", () => {
   const missed = ids(30, 'k').map((id, i) => call(id, 'meme', 'missed', i));
@@ -342,4 +342,46 @@ test("the owner's split file: no id both taught and tested, every untaught miss 
   assert.ok(teach.every((id) => !OWNER_SPLIT.test.includes(id)));
   assert.throws(() => checkSplit({ teach: [{ id: 'x:1', post: '' }], test: [{ id: 'x:1', post: '' }], untaughtMisses: [] }), /both taught and tested/);
   assert.throws(() => checkSplit({ teach: [], test: [{ id: 'x:1', post: '' }], untaughtMisses: ['x:2'] }), /not in test/);
+});
+
+const r = (passed: number, tested: number) => ({ passed, tested });
+const side = (untaught: number, test: number, hand: number, junk: number): OwnerSide => ({ untaught: r(untaught, 6), test: r(test, 16), hand: r(hand, 100), junk: r(junk, 200) });
+const liveSide = side(0, 10, 60, 20);
+
+test("★ the owner's gate: more of the test set caught, gold not lower, junk at most two points up", () => {
+  assert.equal(ownerGate(side(2, 12, 60, 24), liveSide, 0.02).apply, true, 'junk up exactly two points holds');
+  assert.equal(ownerGate(side(2, 10, 70, 10), liveSide, 0.02).apply, false, 'a tie on the test set is no improvement');
+  assert.match(ownerGate(side(2, 12, 59, 20), liveSide, 0.02).why ?? '', /hand gold 59\/100 is lower/);
+  assert.match(ownerGate(side(2, 12, 60, 25), liveSide, 0.02).why ?? '', /junk 12\.5%.*more than 2 points over live's 10\.0%/);
+  assert.match(ownerGate(side(2, 12, 60, 20), { ...liveSide, junk: r(0, 0) }, 0.02).why ?? '', /no recent For You junk post/);
+});
+
+test("the owner's gate picks the sweep's cutoff when it holds there, else the strictest that holds, else refuses at the first", () => {
+  const pts = [
+    { cutoff: 0.7, side: side(3, 13, 62, 30), extra: null },
+    { cutoff: 0.75, side: side(3, 12, 61, 24), extra: null },
+    { cutoff: 0.8, side: side(2, 11, 60, 22), extra: null },
+    { cutoff: 0.85, side: side(1, 10, 55, 15), extra: null },
+  ];
+  assert.equal(pickOwnerCutoff(pts, liveSide, 0.75, 0.02).cutoff, 0.75);
+  assert.equal(pickOwnerCutoff(pts, liveSide, 0.85, 0.02).cutoff, 0.8, 'the sweep chose a point the gate fails: the strictest that holds');
+  assert.equal(pickOwnerCutoff(pts, liveSide, null, 0.02).cutoff, 0.8);
+  const none = pickOwnerCutoff([{ ...pts[0]!, side: side(0, 9, 62, 30) }], liveSide, null, 0.02);
+  assert.equal(none.cutoff, null);
+  assert.match(none.why ?? '', /at 0\.70: the fixed test set caught 9\/16 is not more than live's 10\/16/);
+  assert.equal(pickOwnerCutoff([{ ...pts[1]!, extra: 'TikTok gate fails' }], liveSide, 0.75, 0.02).cutoff, null, 'a further guard still refuses');
+});
+
+test("the owner's numbers come from one grading as live decides; the line says all of them", () => {
+  const rows: GradedPost[] = [
+    g('x:t1', 'missed', true, null), g('x:t2', 'missed', false, null), g('x:t3', 'missed', true, 'SPORT'),
+    g('x:j1', 'live-not', true, null), g('x:j2', 'live-not', false, null), g('x:old', 'live-not', true, null),
+    g('x:gold', 'gold', true, null), g('x:t4', 'missed', null as unknown as boolean, null, null),
+  ];
+  const s = ownerSide(rows, ['SPORT'], { test: new Set(['x:t1', 'x:t2', 'x:t3', 'x:t4']), untaught: new Set(['x:t2', 'x:t3']), junk: new Set(['x:j1', 'x:j2']), hand: ['gold', 'missed'], negatives: 'live-not' });
+  assert.deepEqual(s.test, { passed: 1, tested: 3 }, 'held by its kind, and unanswered left out');
+  assert.deepEqual(s.untaught, { passed: 0, tested: 2 });
+  assert.deepEqual(s.junk, { passed: 1, tested: 2 }, 'only the recent taps');
+  assert.deepEqual(s.hand, { passed: 2, tested: 4 });
+  assert.match(ownerLine(s, s, 0.4567), /untaught misses caught 0\/2 \(live 0\/2\), fixed test set 1\/3 .*junk 50\.0% 1\/2 .*cost \$0\.457/);
 });

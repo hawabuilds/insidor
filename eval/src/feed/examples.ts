@@ -51,9 +51,11 @@
  * leaves out anything that would argue with the owner, the gate's test, the shill rule or the
  * held kinds (see the function). Tragedy is not a held kind, so a coined tragedy is taught.
  *
- * ★ THE OWNER'S FIXED TEST SET IS NEVER TAUGHT (the owner, 2026-10-17). An id on `alwaysTest`
- * (owner-split.json `test`) is on the test side whatever its hash or the teach list says, and is
- * never in the block from any source; `neverTeach` does the same for one run's own hold-outs.
+ * ★ THE OWNER'S FIXED TEST SET IS NEVER TAUGHT, AND THE OWNER'S GATE DECIDES (the owner,
+ * 2026-10-17). An id on `alwaysTest` (owner-split.json `test`) is on the test side whatever its hash
+ * or the teach list says, and is never in the block from any source; `neverTeach` does the same for
+ * one run's own hold-outs. `ownerGate` is the owner's rule: more of that set caught than live,
+ * hand gold not lower, junk at most `maxJunkRise` over live's; `pickOwnerCutoff` picks where.
  *
  * What breaks if changed carelessly: `isExample` must stay a pure function of the id (and the
  * always-teach and always-test lists, which change only with a commit). Anything else (order, a
@@ -532,6 +534,102 @@ export function strictestKeeping(points: readonly CutoffPoint[], floor: Pick<Swe
   const fm = share(floor.missed);
   const ok = (p: CutoffPoint) => share(p.hand) !== null && fh !== null && share(p.hand)! >= fh && (share(p.missed) === null || fm === null || share(p.missed)! >= fm);
   return [...points].reverse().find(ok) ?? null;
+}
+
+/* ── the owner's gate (2026-10-17) ─────────────────────────────────────────────────────────────── */
+
+/** The four numbers the owner's gate reads, for one side (the new block, or the setup live now) at one cutoff. */
+export interface OwnerSide {
+  /** The misses in the owner's fixed test set (owner-split.json `untaughtMisses`): reported on their own. */
+  readonly untaught: Rate;
+  /** The whole fixed test set (`test`): condition 1. */
+  readonly test: Rate;
+  /** Hand gold, as the old gate counts it: condition 2. */
+  readonly hand: Rate;
+  /** The recent For You "Not a meme" taps the block did not teach: condition 3. */
+  readonly junk: Rate;
+}
+
+/** Which posts each of the owner's numbers counts. */
+export interface OwnerSets {
+  readonly test: ReadonlySet<string>;
+  readonly untaught: ReadonlySet<string>;
+  readonly junk: ReadonlySet<string>;
+  /** The groups that make hand gold. */
+  readonly hand: readonly string[];
+  /** The group the junk posts are graded in (the held-out live non-memes). */
+  readonly negatives: string;
+}
+
+/** The owner's numbers from one grading, as live decides (`inFeed`); an unanswered post is out of every rate. */
+export function ownerSide(rows: readonly GradedPost[], held: readonly string[], sets: OwnerSets): OwnerSide {
+  const answered = rows.filter((r) => r.coinable !== null && r.group !== 'missed-taught');
+  const rate = (g: (r: GradedPost) => boolean): Rate => {
+    const of = answered.filter(g);
+    return { passed: of.filter((r) => inFeed(r, held)).length, tested: of.length };
+  };
+  return {
+    untaught: rate((r) => sets.untaught.has(r.id)),
+    test: rate((r) => sets.test.has(r.id)),
+    hand: rate((r) => sets.hand.includes(r.group)),
+    junk: rate((r) => r.group === sets.negatives && sets.junk.has(r.id)),
+  };
+}
+
+/**
+ * The owner's rule, 2026-10-17: "apply only if the untaught missed posts improve, gold doesn't drop,
+ * and junk goes up by no more than 2 points". As shares, so a post one side left unanswered does not
+ * tip it (and any unanswered post keeps the block out anyway):
+ *   1  the fixed test set caught: strictly more than live (a tie is no improvement, as in `gate`);
+ *   2  hand gold: not lower than live;
+ *   3  junk: at most `maxJunkRise` over live's share.
+ * A set nobody could test refuses: a gate that measured nothing passed nothing.
+ */
+export function ownerGate(mine: OwnerSide, live: OwnerSide, maxJunkRise: number): { readonly apply: boolean; readonly why: string | null } {
+  const fails: string[] = [];
+  const t = share(mine.test), lt = share(live.test);
+  const h = share(mine.hand), lh = share(live.hand);
+  const j = share(mine.junk), lj = share(live.junk);
+  if (t === null || lt === null) fails.push('no post of the fixed test set could be tested');
+  else if (!(t > lt)) fails.push(`the fixed test set caught ${ofN(mine.test)} is not more than live's ${ofN(live.test)}`);
+  if (h === null || lh === null) fails.push('no hand gold post could be tested');
+  else if (h < lh) fails.push(`hand gold ${ofN(mine.hand)} is lower than live's ${ofN(live.hand)}`);
+  if (j === null || lj === null) fails.push('no recent For You junk post could be tested');
+  /* A hair of slack for float sums: 0.1 + 0.02 must hold at exactly two points. */
+  else if (j > lj + maxJunkRise + 1e-9) fails.push(`junk ${pct(j)} (${ofN(mine.junk)}) is more than ${Math.round(maxJunkRise * 100)} points over live's ${pct(lj)} (${ofN(live.junk)})`);
+  return { apply: fails.length === 0, why: fails.length === 0 ? null : fails.join('; ') };
+}
+
+const pct = (x: number | null): string => (x === null ? '—' : `${(x * 100).toFixed(1)}%`);
+
+export interface OwnerPick {
+  /** The cutoff the block is applied with; null when no cutoff passes the owner's gate. */
+  readonly cutoff: number | null;
+  /** The new block's numbers at that cutoff (refused: at the first cutoff tried, live's own bar). */
+  readonly side: OwnerSide;
+  readonly why: string | null;
+}
+
+/**
+ * Which cutoff the owner's gate applies the block at. The per-cutoff sweep (`sweepCutoff`) still
+ * runs and proposes one; the owner's three conditions decide. The sweep's own pick when the gate
+ * holds there; else the STRICTEST cutoff where it holds (the owner, 2026-10-16: tune "aiming for LESS
+ * junk"); else refused, with the reasons at the first cutoff (the lowest bar, where the new block
+ * catches the most). A point a further guard fails (`extra`, the short-video gate) is never picked.
+ */
+export function pickOwnerCutoff(points: readonly { readonly cutoff: number; readonly side: OwnerSide; readonly extra: string | null }[], live: OwnerSide, proposed: number | null, maxJunkRise: number): OwnerPick {
+  const holds = points.filter((p) => p.extra === null && ownerGate(p.side, live, maxJunkRise).apply);
+  const pick = holds.find((p) => p.cutoff === proposed) ?? holds[holds.length - 1];
+  if (pick !== undefined) return { cutoff: pick.cutoff, side: pick.side, why: null };
+  const base = points[0];
+  if (base === undefined) return { cutoff: null, side: live, why: 'no cutoff was tried' };
+  const g = ownerGate(base.side, live, maxJunkRise);
+  return { cutoff: null, side: base.side, why: `the owner's gate holds at no cutoff from ${base.cutoff.toFixed(2)} to ${points[points.length - 1]!.cutoff.toFixed(2)}; at ${base.cutoff.toFixed(2)}: ${g.why ?? base.extra ?? 'a further guard fails'}` };
+}
+
+/** The owner's table as one line: caught x/6 untaught, x/16 test, gold, junk, live beside, and the cost. */
+export function ownerLine(mine: OwnerSide, live: OwnerSide, costUsd: number): string {
+  return `untaught misses caught ${ofN(mine.untaught)} (live ${ofN(live.untaught)}), fixed test set ${ofN(mine.test)} (live ${ofN(live.test)}), gold ${pct(share(mine.hand))} ${ofN(mine.hand)} (live ${pct(share(live.hand))} ${ofN(live.hand)}), junk ${pct(share(mine.junk))} ${ofN(mine.junk)} (live ${pct(share(live.junk))} ${ofN(live.junk)}), cost $${costUsd.toFixed(3)}`;
 }
 
 /** Examples added to and removed from the block in use. */

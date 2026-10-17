@@ -2711,6 +2711,25 @@ export interface LearningPolicy {
    */
   readonly alwaysTeach: readonly string[];
   /**
+   * ★ THE OWNER'S GATE (the owner, 2026-10-17, for the 08:00 run on): with `on`, a new block is
+   * applied only if (1) it catches strictly more of the owner's fixed test set than the setup live
+   * now (eval/src/feed/owner-split.json `test`: posts never taught, whatever their hash), (2) its
+   * hand gold is not lower than live's and (3) its junk is at most `maxJunkRise` (a share, 0.02 =
+   * two points) over live's. Junk is measured on the owner's "Not a meme" taps on posts first shown
+   * on `junkFeed` in the last `junkDays` days, as far as the block did not teach them. Among those,
+   * the ones whose live kind label is in `newsKinds` or that carry no picture (random quotes,
+   * celebrity and company news) are never taught while inside the window, so all of them are in
+   * the test. The per-cutoff sweep still runs; these three conditions decide apply or refuse. The
+   * post ids live in that file, not here, because a post id names its source.
+   */
+  readonly ownerGate: {
+    readonly on: boolean;
+    readonly maxJunkRise: number;
+    readonly junkDays: number;
+    readonly junkFeed: string;
+    readonly newsKinds: readonly string[];
+  };
+  /**
    * ★ POSTS PEOPLE COINED, TAUGHT AS "YES" (the owner, 2026-10-16: "teach the re-tune with coined
    * news and tragedy posts as yes examples"). A post that `minCoins` or more distinct coins were
    * launched for `lateMs` or more after it was posted, and that the judge answered "no", goes in
@@ -4376,6 +4395,9 @@ const POLICY_V1: Policy = {
     /* The owner, 2026-10-16: the Flávio Hipotético picture post (coin confirmed by the owner), the one
        missed post the live judge caught and version 9 lost at 07:00 UTC. Taught so it is learned back. */
     alwaysTeach: ['x:2109756994147983482'],
+    /* The owner's three conditions, 2026-10-17: more of the fixed test caught, gold not lower, junk at
+       most two points up, junk on the last three days of For You. */
+    ownerGate: { on: true, maxJunkRise: 0.02, junkDays: 3, junkFeed: 'fyp', newsKinds: ['SHOWBIZ', 'CORP_NEWS', 'TRAGEDY'] },
     coinedYes: {
       /* On: the owner approved it, 2026-10-16. Free: read from our own rows, no judge call. */
       on: true,

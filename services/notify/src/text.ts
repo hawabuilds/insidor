@@ -363,7 +363,10 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       const kept = applied ? '' : ` Kept the current examples: ${s(f['why'], 'a test fell short')}.`;
       const reasons = typeof f['missReasons'] === 'object' && f['missReasons'] !== null ? Object.entries(f['missReasons'] as Record<string, unknown>).filter(([, v]) => n(v) !== null) : [];
       const missedWhy = reasons.length === 0 ? '' : ` Missed today: ${reasons.map(([k, v]) => `${k.replaceAll('_', ' ')} ${n(v)}`).join(', ')}.`;
-      return { title: applied ? 'Judge examples updated' : 'Judge examples kept', body: `${tests}${cut}${auto}${regress} ${from}${kept}${missedWhy}${orderLine(f)}${coinMatchLine(f)}` };
+      /* The owner's gate (2026-10-17) first, as the re-tune wrote it: the table the owner relays. */
+      const ownerLine = s(f['ownerLine'], '');
+      const owner = ownerLine === '' ? '' : `${ownerLine.charAt(0).toUpperCase()}${ownerLine.slice(1)}. `;
+      return { title: applied ? 'Judge examples updated' : 'Judge examples kept', body: `${owner}${tests}${cut}${auto}${regress} ${from}${kept}${missedWhy}${orderLine(f)}${coinMatchLine(f)}` };
     }
   }
 }
