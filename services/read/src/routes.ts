@@ -489,6 +489,8 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
     }
     /* A narrative page's posts with their readings, and its coins (story-sheet.ts). */
     if (deps.postSheet !== undefined && segments.length === 3 && head === 'story' && param !== undefined && segments[2] === 'sheet') {
+      const posts = new URLSearchParams(rawUrl.split('?')[1] ?? '').get('posts');
+      if (posts !== null) return await deps.postSheet.storyPosts(param, posts.split(','));
       return await deps.postSheet.story(param);
     }
 
