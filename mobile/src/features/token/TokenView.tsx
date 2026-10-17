@@ -2,9 +2,17 @@
  * THE TOKEN PAGE'S BODY — Trador's `AssetPage.tsx` for a launchpad coin, rebuilt in our CSS
  * modules and purple: the logo, ticker and name with the coin's own links beside them; the pair,
  * launchpad and fact chips; the address chip with copy and explorer; curve progress while on the
- * curve; the price, chart and timeframe rail; the most-viewed feed post naming the coin, when there
- * is one (ViralPost, which opens the post sheet); then Trades, Comments and Info under tabs that
- * stick to the top once the chart scrolls away; and Buy and Sell pinned above the tab bar.
+ * curve; the price, chart and timeframe rail; then, right under the interval row, the coin's
+ * narrative as a slim card (NarrativeCard, which opens the narrative page), or with no narrative the
+ * most-viewed feed post naming the coin at the same slim size (ViralPost, which opens the post sheet),
+ * or nothing when there is neither; then Trades, Comments and Info under tabs that stick to the top
+ * once the chart scrolls away, with the trades' small "All" filter menu at the right of that row; and
+ * Buy and Sell pinned above the tab bar.
+ *
+ * ★ TWO WHOLE TRADES ABOVE BUY AND SELL ON A 390 BY 844 PHONE (the owner, 2026-10-17). The top half,
+ * down to and including the interval row, is as it was; the card is 68px, the filter sits in the
+ * tabs row, a trade is one 33px line, and the Buy and Sell bar is slimmer. Growing any of them
+ * pushes the second trade under the bar.
  *
  * ★ ONE BODY FOR BOTH WAYS IN. A coin opened from a narrative (TokenPage) and one opened from
  * Search (SearchedToken) are the same page, as Trador's one AssetPage is for every coin: they
@@ -27,7 +35,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { fetchCoinAbout, fetchCoinMarket, type CoinAbout, type CoinMarket, type MarketTimeframe } from '../../shared/api/index.ts';
+import { fetchCoinAbout, fetchCoinMarket, fetchStory, type CoinAbout, type CoinMarket, type MarketTimeframe, type Story } from '../../shared/api/index.ts';
 import { LIVE_POLL_MS, noteMarket } from '../../shared/coin-cap.ts';
 import type { Measured } from '../../shared/format/measure.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
@@ -43,8 +51,11 @@ import { CoinChart } from './CoinChart.tsx';
 import { InfoPanel, latestPrice } from './InfoPanel.tsx';
 import { SocialRow } from './SocialRow.tsx';
 import { servedCap, type TokenFacts } from './token-facts.ts';
-import { TradesPanel } from './TradesPanel.tsx';
+import { TapeFilterMenu, TradesPanel, tapeFilterFor } from './TradesPanel.tsx';
+import type { TapeFilter } from './trades-view.ts';
 import { ViralPost } from './ViralPost.tsx';
+import { NarrativeCard } from './NarrativeCard.tsx';
+import { narrativeIdFor } from './coin-narrative.ts';
 
 export type { TokenFacts } from './token-facts.ts';
 import styles from './token.module.css';
@@ -74,7 +85,7 @@ export function tradesNote(state: 'loading' | 'ready' | 'failed', market: CoinMa
   return 'No trades yet.';
 }
 
-export function TokenView({ facts, chips = [], notice = null, insidor = null, offBar, back = { screen: 'search' } }: {
+export function TokenView({ facts, chips = [], notice = null, insidor = null, offBar, back = { screen: 'search' }, story = null }: {
   facts: TokenFacts;
   /** Fact chips after the pair and launchpad: "Created on Insidor" and the like. */
   chips?: readonly string[];
@@ -86,6 +97,8 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   offBar: ReactNode;
   /** Where Back goes when nothing of ours is under this page (opened from a link or a notification). */
   back?: Route;
+  /** The narrative the page was opened from, when it was; otherwise the coin's own is read. */
+  story?: Story | null;
 }) {
   const now = useNow();
   const toast = useToast();
@@ -96,6 +109,8 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
     defaultTimeframe({ onCurve: facts.venue === 'curve', launchedAt: facts.launchedAt.known ? facts.launchedAt.at : null, now: Date.now() }),
   );
   const [panel, setPanel] = useState<Panel>('trades');
+  const [pickedTape, setTape] = useState<TapeFilter>('all');
+  const tape = tapeFilterFor(pickedTape, account);
   const tabs = useRef<HTMLDivElement>(null);
   const [loaded, reload] = useLoad(`market:${facts.coinId}:${tf}`, (signal) => fetchCoinMarket(facts.coinId, tf, signal));
   useEffect(() => {
@@ -110,6 +125,13 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   /* The links, day numbers, holders, creator and posts: read once when the page opens. */
   const [aboutLoad] = useLoad(`about:${facts.coinId}`, (signal) => fetchCoinAbout(facts.coinId, signal));
   const about: CoinAbout | null = aboutLoad.state === 'ready' ? aboutLoad.value : null;
+  /* The coin's narrative (coin-narrative.ts): the one the page came from, else the one the read
+     service names for the coin, else the most-viewed naming post's. Read once it is known. */
+  const narrativeId = story !== null ? null : narrativeIdFor(about);
+  const [storyLoad] = useLoad(`coin-story:${narrativeId ?? ''}`, (signal) => (narrativeId === null ? Promise.resolve(null) : fetchStory(narrativeId, signal)));
+  const narrative: Story | null = story ?? (storyLoad.state === 'ready' ? storyLoad.value : null);
+  /* The post card stands in only once there is surely no narrative to show: none named, or it could not be read. */
+  const noNarrative = story === null && about !== null && (narrativeId === null || storyLoad.state === 'failed');
   const read = market?.kind === 'read' ? market : null;
   const venue = read?.venue ?? facts.venue;
   const progress = read?.curveProgress?.known ? Math.min(100, Math.max(0, read.curveProgress.amount * 100)) : null;
@@ -166,7 +188,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
 
       <CoinChart market={market} state={loaded.state} tf={tf} onTf={setTf} price={facts.price} change24h={facts.change24h} cap={capWaiting ? 'loading' : cap} liquidity={liquidity} />
 
-      {about !== null ? <ViralPost posts={about.posts} /> : null}
+      {narrative !== null ? <NarrativeCard story={narrative} coinAddress={facts.address} /> : noNarrative && about !== null ? <ViralPost posts={about.posts} /> : null}
 
       {/* Stuck under the top once the chart scrolls away; a second tap on the open tab returns to it. */}
       <div ref={tabs} className={styles['panelTabs']} role="tablist" aria-label="Coin">
@@ -182,10 +204,11 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
             {p.label}
           </button>
         ))}
+        {panel === 'trades' ? <TapeFilterMenu filter={tape} account={account} onPick={setTape} /> : null}
       </div>
 
       <div className={styles['panel']}>
-        {panel === 'trades' ? <TradesPanel ticker={ticker} trades={read?.trades != null && read.trades.length > 0 ? read.trades : null} note={tradesNote(loaded.state, market)} account={account} now={now} /> : null}
+        {panel === 'trades' ? <TradesPanel ticker={ticker} trades={read?.trades != null && read.trades.length > 0 ? read.trades : null} note={tradesNote(loaded.state, market)} account={account} now={now} filter={tape} /> : null}
         {panel === 'comments' ? <Comments subject={`coin:${facts.coinId}`} holdersOf={facts.ticker !== null ? tickerText(facts.ticker) : 'this coin'} about={ticker} /> : null}
         {panel === 'info' ? <InfoPanel facts={facts} market={market} about={about} tradable={facts.tradable} now={now} insidor={insidor} /> : null}
       </div>

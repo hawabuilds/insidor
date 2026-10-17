@@ -86,6 +86,7 @@ function Body({ story, coin }: { story: Story; coin: Coin }) {
       chips={coinLabels(settledCoins(story.coins)).get(coin.coinId) ?? []}
       notice={<Notice notice={noticeFor(story)} />}
       insidor={<NarrativeInfo story={story} coin={coin} />}
+      story={story}
       offBar={<ComingSoonBar coin={coin} soon={soon} />}
     />
   );

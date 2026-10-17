@@ -1,0 +1,103 @@
+/* The token page's slim card under the interval row (the owner, 2026-10-17): 68px tall, #151320
+   with a thin #2B2440 border, radius 18, a 48px picture, one bold line and one small line, and on
+   the right a word and a small arrow. The narrative card and, without a narrative, the post card
+   share it, so the trades below start at the same height either way. */
+
+.card {
+  width: 100%;
+  height: 68px;
+  margin: 10px 0 6px;
+  padding: 0 6px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #2b2440;
+  border-radius: 18px;
+  background: #151320;
+  color: #8b8794;
+  text-align: left;
+}
+
+.card:active {
+  background: #1b1829;
+}
+
+.pic {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 48px;
+}
+
+/* The site's mark on a post's picture, cut out of the card colour. */
+.badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid #151320;
+  background: #000;
+  color: #fff;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.line {
+  display: flex;
+  gap: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* The posts count and the gain always show whole; on a narrow phone the views give way first. */
+.line > span {
+  flex: none;
+}
+
+.line > .shrink {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.up {
+  color: #2fd47a;
+}
+
+.end {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.story {
+  color: #2fd47a;
+}

@@ -1,13 +1,15 @@
-/* Trador's trade bar: pinned 84px above the bottom (over our floating tab bar), a 16px-blurred
+/* Trador's trade bar: pinned 90px above the bottom (over our floating tab bar), a 16px-blurred
    popup panel with the two buttons side by side — Buy a green wash, Sell a red one. The panel is
    framed with a hairline, as the owner's token page design draws it, so it reads as its own
    panel over the trades scrolling behind it and above the tab bar, which stays visible below.
+   Slim since the owner's 2026-10-17 pass: 40px buttons in 5px of panel, so two whole trades show
+   above it on a 390 by 844 phone. The Buy and Sell pop-ups (sheet.module.css) are not this file's.
    The token page's bottom padding (token.module.css .page) is what lets its last row clear both. */
 
 .bar {
   position: fixed;
   left: 50%;
-  bottom: calc(84px + env(safe-area-inset-bottom));
+  bottom: calc(90px + env(safe-area-inset-bottom));
   z-index: 30;
   width: 100%;
   max-width: 480px;
@@ -20,10 +22,10 @@
   pointer-events: auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 8px;
+  gap: 5px;
+  padding: 5px;
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 18px;
   background: rgb(13 13 16 / 88%);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -32,8 +34,9 @@
 
 .buy,
 .sell {
-  padding: 13px 0;
-  border-radius: 16px;
+  height: 40px;
+  padding: 0;
+  border-radius: 14px;
   font-size: 15px;
   font-weight: 700;
   transition: transform 150ms, background-color 150ms;
@@ -63,7 +66,8 @@
 .why {
   grid-column: 1 / -1;
   margin: 0;
-  padding: 13px 0;
+  padding: 0;
+  line-height: 40px;
   color: var(--text-3);
   font-size: 14px;
   font-weight: 600;
