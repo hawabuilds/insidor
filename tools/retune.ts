@@ -107,9 +107,11 @@
  *   · X and TikTok side by side (tools/lib/side-by-side.ts), the biggest gap and what is changing
  *     for it — in the log, the run's detail and the owner's alert; recorded (internal.short_video_tuning)
  *
- * ★ THE OPEN JUDGE GRADES BOTH SIDES (the owner, 2026-10-16: "no Anthropic API at all from now on").
- * The new block and the block in use are both asked of the open judge (OPEN_JUDGE_MODEL, Gemma 3 by
- * default; tools/lib/pass-rates.ts), with its own 40 precedents a post, and the block in use is
+ * ★ THE PRIMARY GRADES BOTH SIDES (the owner, 2026-10-16: "no Anthropic API at all from now on";
+ * 2026-10-17: "the re-tune tests with the primary"). The new block and the block in use are both
+ * asked of the model the runner asks the post question of first (tools/lib/pass-rates.ts
+ * `openGradeSetup`: Nemotron on Together with TOGETHER_API_KEY, else the router's Gemma 3), with its
+ * own 40 precedents a post, and the block in use is
  * held at the cutoff the projector holds that model's answers to (core `answerCutoff`: the block's
  * own when it was chosen on that model, else its settings judge.cutoffs number, else the block's). The new block's cutoff is swept from the policy bar, not from the cutoff
  * in use: a confidence is a model's own scale. The cutoff chosen is stored with the block (0086)
@@ -209,8 +211,8 @@ const soft = <T,>(read: Promise<T>, empty: T): Promise<T> => read.catch((e: unkn
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const url = process.env['DATABASE_URL_INTERNAL'] || process.env['DATABASE_URL'];
-/* `--model=<id>` (measure only) grades with another open model than OPEN_JUDGE_MODEL. */
-const env = { ...process.env, ...(url === undefined ? {} : { DATABASE_URL_INTERNAL: url }), ...(command === 'measure' && arg('model') !== null ? { OPEN_JUDGE_MODEL: arg('model') ?? '' } : {}) };
+/* `--model=<id>` (measure only) grades with another router model than OPEN_JUDGE_MODEL, and so on the router, not the second host. */
+const env = { ...process.env, ...(url === undefined ? {} : { DATABASE_URL_INTERNAL: url }), ...(command === 'measure' && arg('model') !== null ? { OPEN_JUDGE_MODEL: arg('model') ?? '', OPEN_JUDGE_POST_FIRST: 'router' } : {}) };
 
 /* `--floor=<gold>,<junk>,<missed>`: the bar to keep for a switch of judge (eval examples.ts parseFloor). */
 const FLOOR = parseFloor(arg('floor'));
