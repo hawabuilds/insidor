@@ -29,6 +29,16 @@
  *                 A two-hour-old post that suddenly takes off goes to the top of 1h.
  *   Ties: the newer post first, then the id in byte order. The top SHOWN are sent.
  *
+ * ★ A SHORT VIDEO IS RANKED IN A TEXT POST'S VIEWS. The short-video source's views run an order of
+ * magnitude above a text post's (Policy.rising.shortVideoReachScale, measured 2026-10-13: x12.5),
+ * so on raw views every list would be short videos. Its gains are divided by that same scale before
+ * either key is taken — the very factor For You's reach bars, the judge and the narrative's single
+ * post bar already apply to it, never a number of this file's own — so a short video gaining 12,500
+ * a minute ranks with a text post gaining 1,000 (the owner, 2026-10-17: "TikTok in For You's
+ * Trending sort: whatever is best"). Only the ORDER is scaled: `gained`, the number on the card, is
+ * its real views gained. The source comes from the post's item row; a post whose source cannot be
+ * read is ranked as a text post.
+ *
  * ★ THE KEY IS NEVER SENT. The reply carries the cards in order and, per card, its views gained in
  * the window (`gained`), a fact true whether or not Insidor exists; the speed, the speed-up and the
  * key stay in this process. A post with no reading in the window is not on either list, rather than
@@ -44,6 +54,8 @@
  * minute claim a speed from one interval; counting past the last reading invents views; and sending
  * `key` puts the system's reasoning on a screen.
  */
+
+import { DEFAULT_POLICY } from '@insidor/contracts';
 
 import type { Db, Row } from './queries.ts';
 import { RISING_VIEW_SQL } from './queries.ts';
@@ -67,14 +79,22 @@ const SPEED_UP_EASE = 1;
 const MINUTE_MS = 60_000;
 /** A reply is kept no longer than this even when the tick has not moved (a stalled projector). */
 const KEEP_MS = 120_000;
+/** The source held to the short-video scale, as the runner and the projector name it (score-posts.ts, rising.ts). */
+const SHORT_VIDEO_SOURCE = 'tiktok';
+
+/** What a post's views are divided by for ranking: the short-video scale for that source, else 1. */
+export function rankScale(source: unknown, shortVideoScale: number = DEFAULT_POLICY.rising.shortVideoReachScale): number {
+  return source === SHORT_VIDEO_SOURCE ? shortVideoScale : 1;
+}
 
 /**
  * The live members' readings, narrow: no card is read here. A member projected before the window
  * began has no reading in it (a card's readings end where it was projected), so it is left out.
  */
 export const SORT_READINGS_SQL = `
-select f.item_id, f.payload #> '{sheet,views}' as views, f.payload #>> '{postedAt,at}' as posted_ms
+select f.item_id, f.payload #> '{sheet,views}' as views, f.payload #>> '{postedAt,at}' as posted_ms, i.source
   from public.feed_post f
+  left join public.item i on i.item_id = f.item_id
  where f.feed_id = 'fyp'
    and f.withdrawn_at is null
    and f.payload is not null
@@ -131,19 +151,22 @@ export interface Ranked {
   readonly postedMs: number | null;
 }
 
-/** One post's place on a list, or null when it is not on it (see the header for the exact keys). */
-export function rankPost(id: string, readings: readonly Reading[], postedMs: number | null, by: SortBy, windowMs: number, nowMs: number): Ranked | null {
+/**
+ * One post's place on a list, or null when it is not on it (see the header for the exact keys).
+ * `scale` divides its gains for the key alone (rankScale); `gained` stays its real views.
+ */
+export function rankPost(id: string, readings: readonly Reading[], postedMs: number | null, by: SortBy, windowMs: number, nowMs: number, scale: number = 1): Ranked | null {
   const { runs, first, last } = runsOf(readings);
   const from = nowMs - windowMs;
   const read = readIn(first, last, from, nowMs);
   if (read <= 0) return null;
   const gained = gainIn(runs, from, nowMs);
-  if (by === 'most_viewed') return { id, gained, key: gained, postedMs };
+  if (by === 'most_viewed') return { id, gained, key: gained / scale, postedMs };
   const half = from + windowMs / 2;
   const minRead = windowMs / MIN_READ_SHARE;
   const rate = (a: number, b: number): number | null => {
     const r = readIn(first, last, a, b);
-    return r < minRead ? null : gainIn(runs, a, b) / (r / MINUTE_MS);
+    return r < minRead ? null : gainIn(runs, a, b) / scale / (r / MINUTE_MS);
   };
   const now = rate(half, nowMs);
   if (now === null) return null;
@@ -216,7 +239,7 @@ export function createSorts(now: () => number = Date.now) {
     const rows = await db.query(SORT_READINGS_SQL, [new Date(nowMs - windowMs).toISOString()]);
     const list = ranked(rows.flatMap((r: Row) => {
       if (typeof r['item_id'] !== 'string') return [];
-      const one = rankPost(r['item_id'], readingsOf(r['views']), msOf(r['posted_ms']), by, windowMs, nowMs);
+      const one = rankPost(r['item_id'], readingsOf(r['views']), msOf(r['posted_ms']), by, windowMs, nowMs, rankScale(r['source']));
       return one === null ? [] : [one];
     }));
     const ids = list.map((x) => x.id);
