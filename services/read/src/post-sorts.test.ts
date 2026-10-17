@@ -122,7 +122,7 @@ test('the route: 200 with the list, 400 for a sort it does not know, 404 for Pop
   assert.equal((await handle('GET', '/rising/popular/sorted?by=trending', deps)).status, 404);
 });
 
-test("★ a short video is ranked at the policy's short-video scale, and its card keeps its real views", async () => {
+test("★ a short video is ranked at the policy's short-video scale in Trending, raw in Most viewed, and its card keeps its real views", async () => {
   const scale = DEFAULT_POLICY.rising.shortVideoReachScale;
   assert.equal(rankScale('tiktok'), scale);
   assert.equal(rankScale('x'), 1);
@@ -136,7 +136,8 @@ test("★ a short video is ranked at the policy's short-video scale, and its car
   for (const [by, w] of [['trending', '1h'], ['most_viewed', '24h']] as const) {
     const reply = await createSorts(() => NOW)(fakeDb(rows), by, w);
     assert.ok(reply !== null);
-    assert.deepEqual(reply.posts.map((p) => (p as { id: string }).id), ['text', 'video'], by);
+    /* Trending is scaled; Most viewed is raw views (the owner: "keep most viewed raw for tiktok"). */
+    assert.deepEqual(reply.posts.map((p) => (p as { id: string }).id), by === 'trending' ? ['text', 'video'] : ['video', 'text'], by);
     assert.equal(reply.gained['video'], Math.round(gainIn(runsOf(rows[0]?.['views'] as Reading[]).runs, NOW - (by === 'trending' ? 60 : 24 * 60) * MIN, NOW)));
   }
   /* Without the source it would have led: raw views alone. */

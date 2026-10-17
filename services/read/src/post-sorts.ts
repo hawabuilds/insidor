@@ -31,11 +31,12 @@
  *
  * ★ A SHORT VIDEO IS RANKED IN A TEXT POST'S VIEWS. The short-video source's views run an order of
  * magnitude above a text post's (Policy.rising.shortVideoReachScale, measured 2026-10-13: x12.5),
- * so on raw views every list would be short videos. Its gains are divided by that same scale before
- * either key is taken — the very factor For You's reach bars, the judge and the narrative's single
+ * so on raw views every Trending list would be short videos. Its gains are divided by that same scale before
+ * the Trending key is taken — the very factor For You's reach bars, the judge and the narrative's single
  * post bar already apply to it, never a number of this file's own — so a short video gaining 12,500
  * a minute ranks with a text post gaining 1,000 (the owner, 2026-10-17: "TikTok in For You's
- * Trending sort: whatever is best"). Only the ORDER is scaled: `gained`, the number on the card, is
+ * Trending sort: whatever is best"). Trending only: Most viewed ranks raw views gained, short videos
+ * and all (the owner, 2026-10-17: "keep most viewed raw for tiktok"). Only the ORDER is scaled: `gained`, the number on the card, is
  * its real views gained. The source comes from the post's item row; a post whose source cannot be
  * read is ranked as a text post.
  *
@@ -161,7 +162,7 @@ export function rankPost(id: string, readings: readonly Reading[], postedMs: num
   const read = readIn(first, last, from, nowMs);
   if (read <= 0) return null;
   const gained = gainIn(runs, from, nowMs);
-  if (by === 'most_viewed') return { id, gained, key: gained / scale, postedMs };
+  if (by === 'most_viewed') return { id, gained, key: gained, postedMs };
   const half = from + windowMs / 2;
   const minRead = windowMs / MIN_READ_SHARE;
   const rate = (a: number, b: number): number | null => {
