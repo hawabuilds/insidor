@@ -15,10 +15,11 @@
  * core's `postScore`. The picture boost is applied as the projector applies it: the post's picture
  * against the coined pictures, a post never against its OWN coin's picture.
  *
- * ★ THE OPEN JUDGE ANSWERS, NOTHING ELSE (the owner, 2026-10-16: no Anthropic API at all from now
- * on). The model the runner runs as the open judge (OPEN_JUDGE_MODEL, Gemma 3 by default), through
- * the same adapter, pinned providers and prompt files, with its own number of precedents
- * (Policy.judge.precedents.openK). There are no Message Batches on its host, so `batch` is ignored;
+ * ★ THE LIVE POST JUDGE ANSWERS, NOTHING ELSE (the owner, 2026-10-16: no Anthropic API at all from
+ * now on; 2026-10-17: the re-tune tests with the primary). The model the runner asks the post
+ * question of first (`openGradeSetup`: Nemotron on the second host when TOGETHER_API_KEY is set,
+ * else the router's OPEN_JUDGE_MODEL, Gemma 3 by default), through the same adapter, request shape
+ * and prompt files, with its own number of precedents (Policy.judge.precedents.openK). There are no Message Batches on its host, so `batch` is ignored;
  * calls go OPEN_CONCURRENCY at a time instead, because the model takes seconds a post.
  *
  * ★ EVERY REPLY'S TOKENS ARE COUNTED, so the cost of a block of examples is measured, not guessed.
@@ -44,7 +45,7 @@ import { NOT_MEME_MATCH, heldKind } from '../../core/src/qualify/kinds.ts';
 import { closestNot, embedInput, heldAsNotMeme, nearestLabelled, precedentsFor, precedentsWanted, sourceOfItemId, type LabelledVector } from '../../core/src/qualify/precedents.ts';
 import { postScore } from '../../core/src/qualify/post-score.ts';
 import { priceFor, readJudgeSetup, type JudgeClient, type JudgeRequest, type JudgeResponse } from '../../adapters/judge/anthropic/src/index.ts';
-import { KNOWN_MODELS, OPEN_API_KEY, closestModel, listModels, openChatClient, openJudge, readOpenJudgeSetup, type HostModel, type OpenJudgeSetup } from '../../adapters/judge/openai-compatible/src/index.ts';
+import { KNOWN_MODELS, OPEN_API_KEY, closestModel, listModels, openChatClient, openJudge, readOpenJudgeBackupSetup, readOpenJudgeSetup, readPostFirst, type HostModel, type OpenJudgeSetup } from '../../adapters/judge/openai-compatible/src/index.ts';
 import { POST_SPACE, SPACE as EMBED_SPACE, voyageEmbed, httpClient as voyageClient } from '../../adapters/embed/voyage/src/index.ts';
 import { tuning } from '../../eval/src/gold/coin-origins.ts';
 import { loadEvidence } from '../../eval/src/gold/coin-evidence.ts';
@@ -160,13 +161,25 @@ export function judgeSetup(env: Record<string, string | undefined>) {
 }
 
 /**
- * ★ THE OPEN JUDGE, AND ONLY IT (the owner, 2026-10-16: "no Anthropic API at all from now on, not
- * even as a fallback"). The model OPEN_JUDGE_MODEL names (google/gemma-3-27b-it unless set), as the
- * runner resolves it: the host's listing, else the recorded one. Throws when there is no key.
+ * ★ THE LIVE POST JUDGE'S FIRST MODEL, AND ONLY IT (the owner, 2026-10-16: "no Anthropic API at all
+ * from now on, not even as a fallback"; 2026-10-17: the re-tune tests with the primary and stores
+ * the primary's cutoff). Chosen as the runner chooses it (services/runner wiring `firstSide`): the
+ * second host's model (OPEN_JUDGE_BACKUP_* or TOGETHER_API_KEY; Nemotron, priced from KNOWN_MODELS
+ * since its host's list needs the key) unless OPEN_JUDGE_POST_FIRST=router or it is unpriced; else
+ * the model OPEN_JUDGE_MODEL names on the router (google/gemma-3-27b-it unless set), as the runner
+ * resolves it: the host's listing, else the recorded one. Throws when neither has a key.
+ *
+ * Where the re-tune runs without the second host's key (the `project` service before it is given
+ * TOGETHER_API_KEY), it grades with the router's model and stores that model's cutoff under that
+ * model's judge id (0094): coherent, but it tests the block on the fallback, not the live judge.
  */
 export async function openGradeSetup(env: Record<string, string | undefined>): Promise<{ readonly setup: Extract<OpenJudgeSetup, { state: 'configured' }>; readonly model: HostModel }> {
-  const setup = readOpenJudgeSetup(env);
-  if (setup.state !== 'configured') throw new Error(`the open judge is not configured (${OPEN_API_KEY} is not set)`);
+  const second = readOpenJudgeBackupSetup(env);
+  const secondModel = second.state === 'configured' ? (KNOWN_MODELS.find((m) => m.id === second.model) ?? null) : null;
+  const router = readOpenJudgeSetup(env);
+  if (second.state === 'configured' && secondModel !== null && (readPostFirst(env) === 'second' || router.state !== 'configured')) return { setup: second, model: secondModel };
+  const setup = router;
+  if (setup.state !== 'configured') throw new Error(`the open judge is not configured (${OPEN_API_KEY} is not set, nor a priced second host)`);
   const listed = await listModels(globalThis.fetch, setup.baseUrl, P.judge.timeoutMs).catch(() => KNOWN_MODELS);
   const model = listed.find((m) => m.id === setup.model) ?? KNOWN_MODELS.find((m) => m.id === setup.model) ?? closestModel(setup.model, listed);
   if (model === null || model.usdPerInputToken === null || model.usdPerOutputToken === null) throw new Error(`the open judge's host lists no priced model like ${setup.model}`);
@@ -196,6 +209,8 @@ export async function gradePosts<G extends string>(posts: readonly EvalPost<G>[]
     vendor: setup.vendor, apiKey: setup.apiKey, baseUrl: setup.baseUrl, model: model.id, vision: model.vision, maxOutputTokens: P.judge.postBatchMaxOutputTokens,
     timeoutMs: P.judge.timeoutMs, maxAttempts: P.judge.maxAttempts, backoffMs: P.judge.backoffMs, maxWaitMs: P.judge.maxWaitMs,
     maxFrameBytes: P.judge.maxFrameBytes, pictureSize: o.pictureSize === undefined ? LIVE_PICTURE_SIZE : o.pictureSize, providers: setup.providers, fetch: globalThis.fetch, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    /* A host of its own is sent the plain chat body with thinking off, as live (wiring buildOpenJudge). */
+    router: setup.router !== false,
   });
   /* Every reply's usage, summed, for the report. Read through, never changed. The open host does no caching. */
   const used: Usage = { calls: 0, pictures: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0, inputWithPicture: 0, inputWithout: 0 };
