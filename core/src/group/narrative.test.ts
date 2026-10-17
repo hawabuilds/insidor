@@ -14,6 +14,7 @@ import {
   detailOf,
   foldNarrativeCalls,
   groupNarratives,
+  hiddenByOwner,
   hugeAndClimbing,
   narrativeCoin,
   narrativeShown,
@@ -126,12 +127,12 @@ test('★ the owner: Not a narrative keeps its posts apart, Remove this post tak
   assert.deepEqual(membersOf(run(posts, pairs, { calls: undone })), [['a', 'b', 'c']]);
 });
 
-test('★ on screen: two good posts, or one huge and climbing; the owner hides until the posts change', () => {
-  assert.equal(narrativeShown(2, false, null, 0, P), 'shown');
-  assert.equal(narrativeShown(1, false, null, 0, P), 'too_few_posts');
-  assert.equal(narrativeShown(1, true, null, 0, P), 'shown');
-  assert.equal(narrativeShown(5, false, 10, 5, P), 'hidden_by_owner');
-  assert.equal(narrativeShown(5, false, 10, 20, P), 'shown');
+test('★ on screen: two good posts, or one huge and climbing; the owner\'s hide wins over both', () => {
+  assert.equal(narrativeShown(2, false, false, P), 'shown');
+  assert.equal(narrativeShown(1, false, false, P), 'too_few_posts');
+  assert.equal(narrativeShown(1, true, false, P), 'shown');
+  assert.equal(narrativeShown(5, false, true, P), 'hidden_by_owner');
+  assert.equal(narrativeShown(1, true, true, P), 'hidden_by_owner');
   assert.equal(hugeAndClimbing(600_000, 2_500, false, P), true);
   assert.equal(hugeAndClimbing(600_000, 900, false, P), false);
   assert.equal(hugeAndClimbing(null, 9_000, false, P), false);
@@ -151,4 +152,40 @@ test('★ the coin: the owner, then proven, then the coins most posts list; wron
   assert.deepEqual(narrativeCoin([m('a', { listed: ['A', 'B'] })], { right: null, wrong: new Map([['A', 1]]), members: [] }, 5), { kind: 'fitting', addresses: ['B'] });
   assert.deepEqual(narrativeCoin([m('a', { listed: [] })], null, 5), { kind: 'none' });
   assert.deepEqual(narrativeCoin([m('a')], null, 5), { kind: 'pending' });
+});
+
+/* The owner's four "Not a narrative" taps of 2026-10-17 (internal.owner_feedback 1011-1013, 1040),
+   with the posts each was said over, against what the runner holds after them. Each call keeps its
+   posts apart, so every one of these narratives shrank right after the tap: the old rule read that
+   as "its posts changed" and showed it again, two of them as a single huge post. */
+const tap = (id: number, narrativeId: string, members: readonly string[]): NarrativeCallRow =>
+  ({ id, atMs: id, narrativeId, verdict: 'not_narrative', otherId: null, coin: null, members, otherMembers: [] });
+const TAPS: readonly NarrativeCallRow[] = [
+  tap(1011, 'n-x:2111150219731603874', ['x:2111150219731603874', 'x:2111187936485982496']),
+  tap(1012, 'n-x:2111166141418832079', ['x:2111166141418832079', 'x:2111170394124333462', 'x:2111188971447619825']),
+  tap(1013, 'n-x:2111155680799564037', ['x:2111155680799564037', 'x:2111164032933855527']),
+  tap(1040, 'n-x:2111107000549380582', ['x:2111107000549380582', 'x:2111143110826975343', 'x:2111166141418832079', 'x:2111185450937323800', 'x:2111215684923375796', 'x:2111220284242215023', 'x:2111263907297788052', 'x:2111341668100133025']),
+];
+
+test('★ "Not a narrative" stays said: held on its posts, lifted only by posts the owner never saw in it', () => {
+  const calls = foldNarrativeCalls(TAPS);
+  const shown = (id: string, members: readonly string[], single = false) => narrativeShown(members.length, single, hiddenByOwner(id, members, calls, P), P);
+  /* Live after the taps: the same ids, shrunk to one of the hidden posts each, found huge and climbing. */
+  assert.equal(shown('n-x:2111107000549380582', ['x:2111263907297788052'], true), 'hidden_by_owner');
+  assert.equal(shown('n-x:2111150219731603874', ['x:2111187936485982496'], true), 'hidden_by_owner');
+  /* A regroup that gives the hidden posts a new id is still the narrative he hid. */
+  assert.equal(shown('n-x:2111143110826975343', ['x:2111143110826975343', 'x:2111185450937323800']), 'hidden_by_owner');
+  assert.equal(shown('n-x:2111155680799564037', ['x:2111155680799564037', 'x:2111164032933855527']), 'hidden_by_owner');
+  /* One new post beside a hidden one is not a different story. */
+  assert.equal(shown('n-x:2111150219731603874', ['x:2111187936485982496', 'x:new-1']), 'hidden_by_owner');
+  /* `minPosts` posts he never saw in it is a different, bigger story, and it shows. Live: the
+     narrative 1012's was merged into holds one of its posts and five others. */
+  assert.equal(shown('n-x:2111150219731603874', ['x:2111187936485982496', 'x:new-1', 'x:new-2']), 'shown');
+  assert.equal(shown('n-x:2111145801678532810', ['x:2111145801678532810', 'x:2111149725457981741', 'x:2111150463819165973', 'x:2111153823444017255', 'x:2111170394124333462', 'x:2111273748355514575']), 'shown');
+  /* A narrative that holds none of the hidden posts is not touched. */
+  assert.equal(shown('n-x:other', ['x:o1', 'x:o2']), 'shown');
+  /* A call stored without its posts holds on its id. */
+  const bare = foldNarrativeCalls([tap(1011, 'n-x:2111150219731603874', [])]);
+  assert.equal(hiddenByOwner('n-x:2111150219731603874', ['x:a', 'x:b', 'x:c'], bare, P), true);
+  assert.equal(hiddenByOwner('n-x:other', ['x:2111150219731603874', 'x:b'], bare, P), false);
 });

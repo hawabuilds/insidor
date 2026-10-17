@@ -1,7 +1,8 @@
 /**
  * The narratives pass against a fake store: who is grouped (the judge's yes at its own model's
  * cutoff, never the owner's "Not a meme", a held kind or a shill), that vectors are compared in
- * memory and read once, that a dry run writes nothing, and that titles go to the shown narratives.
+ * memory and read once, that a dry run writes nothing, that titles go to the shown narratives, and
+ * that the owner's "Not a narrative" holds through the regroup it causes.
  */
 
 import { strict as assert } from 'node:assert';
@@ -11,6 +12,7 @@ import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { TitlePort } from '@insidor/contracts/ports/titles.ts';
+import type { NarrativeCallRow } from '@insidor/core';
 import type { NarrativePass, NarrativePostRow } from '@insidor/store';
 
 import { createLogger } from '../log.ts';
@@ -42,7 +44,7 @@ const row = (itemId: string, extra: Partial<NarrativePostRow> = {}): NarrativePo
 
 const unit = (angle: number) => Float32Array.from([Math.cos(angle), Math.sin(angle)]);
 
-function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float32Array>, mode: 'live' | 'dry' = 'live') {
+function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float32Array>, mode: 'live' | 'dry' = 'live', calls: readonly NarrativeCallRow[] = []) {
   const saved: NarrativePass[] = [];
   const reads: string[][] = [];
   const titles: [string, string][] = [];
@@ -60,7 +62,7 @@ function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float3
     },
     reach: async () => ({ points: new Map(), latest: new Map() }),
     open: async () => [],
-    calls: async () => [],
+    calls: async () => calls,
     setTitle: async (id: string, title: string) => void titles.push([id, title]),
   };
   const grouper = narrativeGrouper({
@@ -103,4 +105,15 @@ test('a dry run groups and writes nothing', async () => {
   const r = await grouper.pass();
   assert.equal(r.narratives, 1);
   assert.equal(saved.length, 0);
+});
+
+test('★ "Not a narrative" holds through the regroup: a hidden post with one new post stays hidden, with two new posts it shows', async () => {
+  /* As the owner's tap 1040: said over the narrative's posts, which then shrank and changed. */
+  const hide: NarrativeCallRow = { id: 1040, atMs: NOW - 1, narrativeId: 'n-a', verdict: 'not_narrative', otherId: null, coin: null, members: ['a', 'old'], otherMembers: [] };
+  const one = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [hide]);
+  await one.grouper.pass();
+  assert.deepEqual(one.saved[0]?.narratives.map((n) => [[...n.members].sort(), n.shown]), [[['a', 'b'], false]]);
+  const two = setup([row('a'), row('b'), row('c')], { a: unit(0), b: unit(0), c: unit(0) }, 'live', [hide]);
+  await two.grouper.pass();
+  assert.deepEqual(two.saved[0]?.narratives.map((n) => [[...n.members].sort(), n.shown]), [[['a', 'b', 'c'], true]]);
 });

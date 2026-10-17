@@ -42,6 +42,7 @@ import {
   embedInput,
   foldNarrativeCalls,
   groupNarratives,
+  hiddenByOwner,
   hugeAndClimbing,
   isShillText,
   narrativeShown,
@@ -218,7 +219,6 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const calls = foldNarrativeCalls(await deps.repo.calls());
     const stored = await deps.repo.open();
     const previous = new Map(stored.map((s) => [s.id, new Set(s.members)] as const));
-    const changedAt = new Map(stored.map((s) => [s.id, s.postsChangedAtMs] as const));
     const posts: NarrativePost[] = used.map((r) => ({
       itemId: r.itemId,
       atMs: r.atMs,
@@ -229,8 +229,9 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const grouped = groupNarratives({ posts, pairs, calls, previous, single, vectors: postVectors }, p);
     const byId = new Map(used.map((r) => [r.itemId, r] as const));
     const narratives = grouped.narratives.map((g) => {
-      const since = g.changed ? nowMs : changedAt.get(g.id) ?? nowMs;
-      const shown = narrativeShown(g.members.length, g.members.length === 1 && single.has(g.anchor), calls.hiddenAt.get(g.id) ?? null, since, p) === 'shown';
+      /* ★ The owner's "Not a narrative" is held on the posts (core `hiddenByOwner`): the regroup the
+         call itself causes no longer brings the narrative back. */
+      const shown = narrativeShown(g.members.length, g.members.length === 1 && single.has(g.anchor), hiddenByOwner(g.id, g.members, calls, p), p) === 'shown';
       const newest = Math.max(...g.members.map((m) => byId.get(m)?.atMs ?? 0));
       return { id: g.id, members: g.members, anchor: g.anchor, newestPostAtMs: Number.isFinite(newest) && newest > 0 ? newest : null, shown, changed: g.changed };
     });

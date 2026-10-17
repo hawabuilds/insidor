@@ -10,7 +10,8 @@
  *   posts      each post's standing again (core `narrativeStanding`, at its own model's cutoff):
  *              a post the owner hid a second ago is off its narrative's list in this frame
  *   the rule   two good posts, or the one post the runner found huge and climbing; the owner's
- *              "Not a narrative" hides it until its posts change (core `narrativeShown`)
+ *              "Not a narrative" hides it, and any narrative made of its posts, until it has
+ *              `minPosts` good posts he never saw in it (core `hiddenByOwner`)
  *   the coin   ★ FROM THE POSTS' OWN CARDS, so there is one truth: the owner's call on the
  *              narrative, else a coin he confirmed on one of its posts (or for its story, which
  *              reaches the cards through the story coins), else the coin its cards prove, else the
@@ -37,7 +38,7 @@
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { coinCallFor, foldNarrativeCalls, isShillText, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
+import { coinCallFor, foldNarrativeCalls, hiddenByOwner, isShillText, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
 import { PgNarrativeRepo, type Db, type NarrativePostRow } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
@@ -98,7 +99,7 @@ export async function shownNarratives(db: Db, policy: Policy, openPolicy: Policy
     const listed = n.members.filter((m) => good(byId.get(m)) && !removed(m)).sort((a, b) => (byId.get(a)?.atMs ?? 0) - (byId.get(b)?.atMs ?? 0) || a.localeCompare(b));
     /* A narrative of one is shown only as the runner found it: huge and climbing at its last pass. */
     const single = n.members.length === 1 && n.shown;
-    if (narrativeShown(listed.length, single, calls.hiddenAt.get(n.id) ?? null, n.postsChangedAtMs, policy) !== 'shown') continue;
+    if (narrativeShown(listed.length, single, hiddenByOwner(n.id, listed, calls, policy), policy) !== 'shown') continue;
     shown.push({ id: n.id, title: n.title, members: listed, firstShownAtMs: n.firstShownAtMs });
     if (single) singles.add(n.id);
   }

@@ -59,8 +59,8 @@ export { NO_PICTURE_INPUTS, nameKey } from './group/picture.ts';
 export { NAME_SPAN_PREFIX, nameCarriers, nameSpanKey, withNameCarriers } from './group/name-span.ts';
 export type { PictureInputs } from './group/picture.ts';
 /* Narratives: the posts the judge passed, grouped by meaning and one shared detail (group/narrative.ts). */
-export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, groupable, groupNarratives, hugeAndClimbing, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, pairKey, sharedDetail } from './group/narrative.ts';
-export type { FormedNarrative, GroupedNarratives, MemberReach, NarrativeReach, GroupNarrativesInput, NarrativeCallRow, NarrativeCallVerdict, NarrativeCalls, NarrativeCoin, NarrativeCoinCall, NarrativeMemberCoin, NarrativePair, NarrativePost, NarrativeShown, NarrativeStanding, PostDetail, ReachPoint, SharedDetailKind, StandingInput } from './group/narrative.ts';
+export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, groupable, groupNarratives, hiddenByOwner, hugeAndClimbing, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, pairKey, sharedDetail } from './group/narrative.ts';
+export type { FormedNarrative, GroupedNarratives, MemberReach, NarrativeReach, GroupNarrativesInput, NarrativeCallRow, NarrativeCallVerdict, NarrativeCalls, NarrativeCoin, NarrativeCoinCall, NarrativeHide, NarrativeMemberCoin, NarrativePair, NarrativePost, NarrativeShown, NarrativeStanding, PostDetail, ReachPoint, SharedDetailKind, StandingInput } from './group/narrative.ts';
 export { qualify, worthJudging } from './qualify/stage.ts';
 export { presentationFor } from './qualify/presentation.ts';
 export { couldPassWithBoost, passesWithSignal, postScore, postScoreReason, withJudgeCutoff } from './qualify/post-score.ts';
