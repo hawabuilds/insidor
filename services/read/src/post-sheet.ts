@@ -37,7 +37,7 @@ import type { CoinQuote } from '@insidor/market-dexscreener';
 
 import type { Logger } from './log.ts';
 import type { Db, Row } from './queries.ts';
-import { buildStorySheet } from './story-sheet.ts';
+import { buildStoryPosts, buildStorySheet } from './story-sheet.ts';
 import { withTranslations } from './translations.ts';
 
 /** The post on whichever feed holds it, For You first. */
@@ -382,6 +382,11 @@ export function createPostSheet(deps: PostSheetDeps) {
     async story(storyId: string): Promise<SheetReply> {
       if (storyId === '' || storyId.length > 200) return json(400, { error: 'bad request' });
       return keep(`story:${storyId}`, () => buildStorySheet(storyId, { db: deps.db, coinsFor }));
+    },
+    /** GET /story/:id/sheet?posts=a,b: the cards of chosen posts of the narrative (story-sheet.ts). */
+    async storyPosts(storyId: string, ids: readonly string[]): Promise<SheetReply> {
+      if (storyId === '' || storyId.length > 200) return json(400, { error: 'bad request' });
+      return keep(`story:${storyId}:${ids.join(',')}`, () => buildStoryPosts(storyId, ids, { db: deps.db }));
     },
   };
 }

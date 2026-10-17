@@ -17,7 +17,8 @@
  * is exactly what it is. Nothing here adds readings up: the total is the phone's, under its rule.
  *
  * ★ BOUNDED: at most MEMBERS_MAX posts, in the page's own order, and `more` says when the page lists
- * more than that. A story never makes this one statement unbounded.
+ * more than that; the page asks for the rest by id (`?posts=`, `buildStoryPosts`), a screenful at a
+ * time, at most MEMBERS_MAX ids a call. A story never makes one statement unbounded.
  *
  * What breaks if changed carelessly: dropping a post with no readings from `members` would make the
  * phone's total look complete when it is not; it must stay, with its empty readings.
@@ -54,6 +55,22 @@ export const STORY_MEMBERS_FRAME_SQL = STORY_MEMBERS_SQL.replace(
   /\n\s+\(select f\.payload[^\n]+\n/,
   '\n         null::jsonb\n',
 );
+
+/**
+ * The same, for chosen posts of the page only (`$2`, at most MEMBERS_MAX ids): the next page of a
+ * long narrative's posts as the phone scrolls to them. A post the page does not list is not
+ * answered, so an id cannot fetch a card from outside the narrative.
+ */
+export const STORY_MEMBERS_OF_SQL = STORY_MEMBERS_SQL.replace(
+  'where v.story_id = $1\n',
+  "where v.story_id = $1 and (e.value ->> 'evidenceId') = any($2::text[])\n",
+).replace('limit $2', 'limit $3');
+
+/** Its copy for a database from before the infinite scroll's table. */
+export const STORY_MEMBERS_OF_FRAME_SQL = STORY_MEMBERS_FRAME_SQL.replace(
+  'where v.story_id = $1\n',
+  "where v.story_id = $1 and (e.value ->> 'evidenceId') = any($2::text[])\n",
+).replace('limit $2', 'limit $3');
 
 /** Whether the story has a page at all: a story with no listed posts is still a story. */
 export const STORY_EXISTS_SQL = `select payload -> 'coins' as coins, payload -> 'foundAt' as found_at from public.story_view where story_id = $1`;
@@ -102,24 +119,24 @@ function storyLink(coins: unknown): { readonly proven: string | null; readonly a
   return { proven: null, addresses: [], coin: {} };
 }
 
-async function members(db: Db, storyId: string): Promise<readonly Row[]> {
+async function members(db: Db, storyId: string, only: readonly string[] | null = null): Promise<readonly Row[]> {
+  const [sql, frame, params] = only === null
+    ? [STORY_MEMBERS_SQL, STORY_MEMBERS_FRAME_SQL, [storyId, MEMBERS_MAX]]
+    : [STORY_MEMBERS_OF_SQL, STORY_MEMBERS_OF_FRAME_SQL, [storyId, [...only], MEMBERS_MAX]];
   try {
-    return await db.query(STORY_MEMBERS_SQL, [storyId, MEMBERS_MAX]);
+    return await db.query(sql, params);
   } catch (e) {
-    if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return db.query(STORY_MEMBERS_FRAME_SQL, [storyId, MEMBERS_MAX]);
+    if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return db.query(frame, params);
     throw e;
   }
 }
 
-export async function buildStorySheet(storyId: string, deps: { readonly db: Db; readonly coinsFor: CoinsFor }): Promise<Reply> {
-  const rows = await members(deps.db, storyId);
-  const head = rows[0] ?? (await deps.db.query(STORY_EXISTS_SQL, [storyId]))[0];
-  if (head === undefined) return json(404, { error: 'not found' });
-
+/** One listed post as the sheet sends it: its feed card (translated), readings and when it went up. */
+async function membersOut(db: Db, rows: readonly Row[]) {
   /* The English of each post written in another language, as the feed shows it (translations.ts). */
-  const cards = await withTranslations(deps.db, rows.map((r) => r['post'] ?? null).filter((p) => p !== null));
+  const cards = await withTranslations(db, rows.map((r) => r['post'] ?? null).filter((p) => p !== null));
   const byId = new Map(cards.map((p) => [str(rec(p)['id']) ?? '', p] as const));
-  const out = rows.flatMap((r) => {
+  return rows.flatMap((r) => {
     const itemId = str(r['item_id']);
     if (itemId === null) return [];
     const post = r['post'] === null || r['post'] === undefined ? null : (byId.get(itemId) ?? r['post']);
@@ -132,6 +149,27 @@ export async function buildStorySheet(storyId: string, deps: { readonly db: Db; 
       views: readingsOf(post),
     }];
   });
+}
+
+/**
+ * GET /story/:id/sheet?posts=a,b,c — the cards of chosen posts only, for the page's next screenful
+ * of a long narrative (it lists every post; the plain sheet carries the first MEMBERS_MAX). No coins:
+ * the page has them from the plain sheet. More than MEMBERS_MAX ids is a 400, never a long read.
+ */
+export async function buildStoryPosts(storyId: string, ids: readonly string[], deps: { readonly db: Db }): Promise<Reply> {
+  const wanted = [...new Set(ids.filter((x) => x !== '' && x.length <= 200))];
+  if (wanted.length === 0 || wanted.length > MEMBERS_MAX) return json(400, { error: 'bad request' });
+  const rows = await members(deps.db, storyId, wanted);
+  if (rows.length === 0 && (await deps.db.query(STORY_EXISTS_SQL, [storyId]))[0] === undefined) return json(404, { error: 'not found' });
+  return json(200, { storyId, members: await membersOut(deps.db, rows) });
+}
+
+export async function buildStorySheet(storyId: string, deps: { readonly db: Db; readonly coinsFor: CoinsFor }): Promise<Reply> {
+  const rows = await members(deps.db, storyId);
+  const head = rows[0] ?? (await deps.db.query(STORY_EXISTS_SQL, [storyId]))[0];
+  if (head === undefined) return json(404, { error: 'not found' });
+
+  const out = await membersOut(deps.db, rows);
 
   const link = storyLink(head['coins']);
   const listed = (await deps.db.query(STORY_COINS_SQL, [storyId])).flatMap((r) => str(r['address']) ?? []);
