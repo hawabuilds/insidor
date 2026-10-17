@@ -5,7 +5,7 @@
  * Its own file, apart from both adapters, because the decision "this supplier is down" is about
  * the two of them together: either adapter alone can only say its own call failed. The scorer is
  * handed one port and never knows which model answered — each answer names its own judge id, so
- * the projector holds it to that model's cutoff (Policy.judge.openCutoff) and the record says who.
+ * the projector holds it to that model's cutoff (Policy.judge.cutoffs) and the record says who.
  *
  * ★ WHAT COUNTS AS THE PRIMARY FAILING A BATCH. The call threw (anything but a budget refusal); or
  * no reply came within `deadlineMs` (the whole batch, the adapter's own retries included); or not

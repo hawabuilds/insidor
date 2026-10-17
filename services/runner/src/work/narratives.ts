@@ -4,8 +4,9 @@
  *
  * One pass, in order:
  *   1. the posts of the last `narrative.windowMs` the judge said yes to, each held to its own
- *      model's cutoff (the applied block's for the main judge, `judge.openCutoff` for the open
- *      model — services/project judge-cutoff.ts makes the same choice) and to core
+ *      model's cutoff (core `answerCutoff`: the applied block's for the model it was chosen on,
+ *      `judge.cutoffs` for each open model until then — services/project judge-cutoff.ts makes the
+ *      same choice) and to core
  *      `narrativeStanding`: the owner's "Not a meme", shills and held kinds never count; at most
  *      `maxPosts`, newest first
  *   2. their words-and-picture vectors (0074) — a good post with none is embedded here, at most
@@ -48,12 +49,13 @@ import {
   narrativeShown,
   narrativeStanding,
   postPicture,
-  withJudgeCutoff,
+  answerPolicies,
+  type BlockCutoff,
   type NarrativePair,
   type NarrativePost,
   type NarrativeStanding,
 } from '@insidor/core';
-import { isOpenJudgeId } from '@insidor/judge-openai-compatible/setup.ts';
+import { answerSide } from '@insidor/judge-openai-compatible/setup.ts';
 import type { NarrativePass, NarrativePostRow, PgNarrativeRepo } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
@@ -68,8 +70,8 @@ export interface NarrativeDeps {
   readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'open' | 'calls' | 'setTitle'>;
   /** Writes a pass inside one transaction; false before 0093. */
   readonly save: (pass: NarrativePass) => Promise<boolean>;
-  /** The applied learned block's own yes/no cutoff (0086); null: the policy bar. */
-  readonly blockCutoff: () => Promise<number | null>;
+  /** The applied learned block's own yes/no cutoff (0086) and the model it was chosen on (0094); nulls: none, not recorded. */
+  readonly block: () => Promise<BlockCutoff>;
   readonly titler: TitlePort | null;
   /** Embeds a good post that has no vector yet (Policy.narrative.embedPerPass); null: none is. */
   readonly embed: EmbedPort | null;
@@ -168,9 +170,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const space = deps.postSpace;
     if (space === null) return 'no post space: the embeddings are not configured';
     const nowMs = deps.now();
-    const cutoff = await deps.blockCutoff().catch(() => null);
-    const main = withJudgeCutoff(p, cutoff);
-    const open = withJudgeCutoff(p, p.judge.openCutoff ?? cutoff);
+    const held = answerPolicies(p, await deps.block().catch(() => ({ cutoff: null, chosenOn: null })));
 
     const rows = await deps.repo.candidates(nowMs - n.windowMs, n.searchedPosts);
     const left: Record<string, number> = {};
@@ -180,7 +180,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       const answer = r.coinable === null || r.confidence === null || r.lookedAt === null ? null : { coinable: r.coinable, confidence: r.confidence, lookedAt: r.lookedAt, proposedName: r.proposedName };
       const standing = narrativeStanding(
         { answer, kindLabel: r.kindLabel, ownerCall: r.ownerCall, shill: isShillText(r.body, p.attention) || r.ownTalk },
-        isOpenJudgeId(r.judgeId) ? open : main,
+        held.of(answerSide(r.judgeId)),
       );
       if (standing === 'good') good.push(r);
       else count(standing);

@@ -15,7 +15,7 @@
  *   and the verdict by the owner's rule: switch only if a model matches or beats the live judge on
  *   all three sets AND costs less.
  *
- * ★ `--tune`: THE OPEN MODEL'S OWN YES/NO CUTOFF (the owner, 2026-10-16, for Policy.judge.openCutoff).
+ * ★ `--tune`: THE OPEN MODEL'S OWN YES/NO CUTOFF (the owner, 2026-10-16, for Policy.judge.cutoffs).
  * The open model (by default only google/gemma-3-27b-it) and the live judge are asked the three
  * sets with the full live setup — the applied learned block, precedents, the close-match hold and
  * the kind question; For You is skipped. The live judge is graded at its block's own cutoff, the
@@ -509,7 +509,7 @@ if (tune) {
       say(`    ${p.cutoff.toFixed(2)}  hand gold ${o(p.hand).padEnd(16)} junk ${o(p.negatives).padEnd(16)} missed ${o(p.missed).padEnd(14)}${p === t.pick ? '  ← pick' : ''}`);
     }
     if (t.pick === null) say(`    no cutoff keeps hand gold and missed at the live judge's: do not switch on these numbers`);
-    else say(`    PICK judge.openCutoff = ${t.pick.cutoff.toFixed(2)}: hand gold ${o(t.pick.hand)} (live ${o(t.live.hand)}), missed ${o(t.pick.missed)} (live ${o(t.live.missed)}), junk ${o(t.pick.negatives)} against live's ${o(t.live.negatives)} — ${t.junkNoWorse === true ? 'no more junk than the live judge' : t.junkNoWorse === false ? 'MORE junk than the live judge: show the owner and wait' : 'junk not measured'}`);
+    else say(`    PICK this model's judge.cutoffs number = ${t.pick.cutoff.toFixed(2)}: hand gold ${o(t.pick.hand)} (live ${o(t.live.hand)}), missed ${o(t.pick.missed)} (live ${o(t.live.missed)}), junk ${o(t.pick.negatives)} against live's ${o(t.live.negatives)} — ${t.junkNoWorse === true ? 'no more junk than the live judge' : t.junkNoWorse === false ? 'MORE junk than the live judge: show the owner and wait' : 'junk not measured'}`);
     say(`    the re-tune's own rule on the same points: ${t.retuneRule.rule === 'refused' ? `refused (${t.retuneRule.why ?? '-'})` : `rule ${t.retuneRule.rule}, ${t.retuneRule.cutoff}`}`);
   }
 }

@@ -740,16 +740,26 @@ export interface JudgePolicy {
    */
   readonly primary: 'main' | 'open';
   /**
-   * ★ THE OPEN JUDGE'S OWN YES/NO CUTOFF. The applied learned block carries the cutoff the re-tune
-   * tested it at, with `main` answering (0086); an answer from the open model is a different model's
-   * confidence and is held to this instead, chosen by `tools/judge-open-eval.ts --tune`. null until tuned:
-   * the open model's answers are then held to the block's cutoff, the only one measured. Like the
-   * block's, it only ever raises the policy's own bars (core `withJudgeCutoff`), never lowers them.
-   * ★ LEAVE IT NULL FROM 2026-10-16: the re-tune grades with the open judge alone and stores the
-   * cutoff it chose on the open model's answers with each block it applies; a number here would
-   * override that cutoff with an older one.
+   * ★ EACH OPEN MODEL'S OWN YES/NO CUTOFF (the owner, 2026-10-17: "switch the live post judge to
+   * Nemotron at cutoff 0.70, Gemma 3 as its automatic fallback"). A confidence is a model's own
+   * scale: Nemotron's yeses on hand gold sit at a median 0.88, so the 0.90 the evening re-tune chose
+   * on Gemma's answers passes 39% of gold for it, against 63% at 0.70. So an answer is held to the
+   * cutoff of the model that gave it, read per answer because every failover puts both models'
+   * answers on the feed side by side. Named by place, because contracts may not name a vendor:
+   * `primary` is the model that answers the post question first, `fallback` the one behind it; the
+   * judge adapter says which stored judge ids are which (setup.ts `answerSide`), by the model, so a
+   * model's answers keep their cutoff whichever order the runner asks them in.
+   *
+   * Each number is that model's bar until a re-tune has chosen one on its own answers: the re-tune
+   * grades with the primary and stores the cutoff it chose WITH the block and the model it was
+   * chosen on (0086, 0094), and from then on that model's answers are held to the block's. null:
+   * the applied block's cutoff. Like the block's, either only ever raises the policy's own bars
+   * (core `withJudgeCutoff`), never lowers them.
    */
-  readonly openCutoff: number | null;
+  readonly cutoffs: {
+    readonly primary: number | null;
+    readonly fallback: number | null;
+  };
   /**
    * ★ THE FEED NEVER WAITS ON ONE SUPPLIER (the owner, 2026-10-16: "if it errors, is slow, or runs
    * out of credit, the other takes over straight away, and the other way round too"). A batch the
@@ -3699,7 +3709,12 @@ const POLICY_V1: Policy = {
        the evening re-tune's block 10 at its 0.90 cutoff (hand gold 65% against the old judge's 60%,
        missed 64% against 62%, live non-memes 27% against 19%), so the block's own cutoff rules. */
     primary: 'open',
-    openCutoff: null,
+    /* Measured 2026-10-17 on block 10 (scratch vote/nemo), the same test posts: Nemotron at 0.70
+       passes hand gold 76/120, missed 8/15, live non-memes 18/80 and 8 of the owner's 90 fresh "Not
+       a meme" calls; Gemma 3 at the block's 0.90 passes 78, 8, 27 and 24. The fallback's 0.90 is
+       that block's cutoff, written here rather than left null: the next re-tune grades with the
+       primary and stores a cutoff chosen on its answers, which Gemma's must not inherit. */
+    cutoffs: { primary: 0.7, fallback: 0.9 },
     /* 90 s: above the open model's slowest tenth of ten-post calls (77 s, 2026-10-15) and far above
        the live judge's (about 8 s), so a slow but working call is not taken for a dead one. Five
        minutes' rest is a few scoring passes; half an hour after a billing refusal, which waits for

@@ -40,6 +40,7 @@ import { PgFeedRejectionRepo, type Db } from '@insidor/store';
 import { loadMembership, writeMembership } from './feed-members.ts';
 import { keepFeedHistory } from './feed-history.ts';
 import { loadNameIdeas, writeNameIdeas } from './post-match.ts';
+import { onePolicy, type AnswerPolicies } from './judge-cutoff.ts';
 import { buildRising, forYouOrder, kindDetail, loadCandidates, varied, writeRising, type WireRisingPost } from './rising.ts';
 import { replaceSameNameCoins } from './same-name.ts';
 import type { WireCoinLink } from './wire.ts';
@@ -156,13 +157,13 @@ async function committedStoryCoins(db: Db): Promise<ReadonlyMap<string, WireCoin
 }
 
 /** One quick frame, in the caller's transaction. */
-export async function quickForYou(db: Db, nowMs: Millis, cursor: QuickCursor, policy: Policy = DEFAULT_POLICY, openPolicy: Policy = policy): Promise<QuickResult> {
+export async function quickForYou(db: Db, nowMs: Millis, cursor: QuickCursor, policy: Policy = DEFAULT_POLICY, answers: AnswerPolicies = onePolicy(policy)): Promise<QuickResult> {
   const ids = await changedPosts(db, cursor);
   if (ids.length === 0) return { changed: 0, added: 0, removed: 0, wrote: false };
   const changed = new Set(ids);
   const showing = (await db.query<{ item_id: string; payload: WireRisingPost }>(`select item_id, payload from public.rising_row where feed_id = 'fyp' order by position`)).map((r) => r.payload);
   const membership = await loadMembership(db, nowMs - policy.rising.windowMs);
-  const frame = await buildRising(db, nowMs, await committedStoryCoins(db), SPARK_WINDOW_MS, policy, membership === null ? null : { ...membership, refresh: [] }, openPolicy, ids);
+  const frame = await buildRising(db, nowMs, await committedStoryCoins(db), SPARK_WINDOW_MS, policy, membership === null ? null : { ...membership, refresh: [] }, answers, ids);
 
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const mergedIds = [...new Set([...showing.map((p) => p.id), ...frame.fyp.map((p) => p.id)])];

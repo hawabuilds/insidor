@@ -3,8 +3,8 @@
  * IS RECOGNISED LATER — the three facts the runner, the projector and the tools share about it.
  *
  * Separate from client.ts because none of them is about a request: the runner reads the setup once
- * at boot, the projector only needs to tell this judge's stored answers from the main judge's (they
- * are held to different cutoffs, Policy.judge.openCutoff), and both must agree on the id's shape.
+ * at boot, the projector only needs to tell which model gave a stored answer (each model is held to
+ * its own cutoff, Policy.judge.cutoffs, by `answerSide`), and both must agree on the id's shape.
  *
  * ★ TWO STATES, NO FAULT. Without OPENROUTER_API_KEY the open judge is `dormant`: the runner runs the
  * main judge alone — no fallback, no shadow — and says so once at boot. The key is never required,
@@ -17,9 +17,9 @@
  * fallback off. The prices there only shape the pessimistic estimate; a call's real cost is the
  * host's own figure in its reply.
  *
- * What breaks if changed carelessly: `isOpenJudgeId` must match the id `openJudge` writes
- * (`judge:<vendor>/<model>…`). If the two drift, the projector holds the open model's answers to the
- * main judge's cutoff and nobody is told.
+ * What breaks if changed carelessly: `answerSide` and `isOpenJudgeId` must match the id `openJudge`
+ * writes (`judge:<vendor>/<model>…`). If the two drift, the projector holds a model's answers to
+ * another model's cutoff and nobody is told.
  */
 
 import { DEFAULT_BASE_URL, DEFAULT_VENDOR } from './client.ts';
@@ -98,6 +98,10 @@ export const OPEN_BACKUP_BASE_URL = 'OPEN_JUDGE_BACKUP_BASE_URL';
 export const OPEN_BACKUP_MODEL = 'OPEN_JUDGE_BACKUP_MODEL';
 /** Together's OpenAI-compatible address (answers 401 without a key, checked 2026-10-16). */
 export const DEFAULT_BACKUP_BASE_URL = 'https://api.together.xyz/v1';
+/** What a call to that address bills as (`vendorOfHost`), and the vendor in its judge ids. */
+export const BACKUP_VENDOR = 'together';
+/** Nemotron 3.5 Super VL, the owner's live post judge from 2026-10-17 (KNOWN_MODELS has its listing). */
+export const PRIMARY_POST_MODEL = 'nvidia/NVIDIA-Nemotron-3.5-Super-VL';
 /**
  * The backup's model on Together. NOT Gemma 3: Together's public serverless and dedicated lists
  * (read 2026-10-16) have no Gemma 3; its one Gemma is Gemma 4 31B, serverless, with pictures, at
@@ -137,6 +141,32 @@ export function readOpenJudgeBackupSetup(env: Readonly<Record<string, string | u
   return { state: 'configured', apiKey, baseUrl, model: blank(OPEN_BACKUP_MODEL) ?? DEFAULT_BACKUP_MODEL, vendor: vendorOfHost(baseUrl), providers: [], router: false };
 }
 
-/** Whether a stored answer's judge id is this judge's (`openJudge` writes `judge:<vendor>/…`). */
-export const isOpenJudgeId = (judgeId: string | null | undefined, vendor: string = DEFAULT_VENDOR): boolean =>
-  typeof judgeId === 'string' && judgeId.startsWith(`judge:${vendor}/`);
+/** The model one stored answer came from, as `judge:<vendor>/<model>` (no prompt hash, no text-only mark); null for a rule or none. */
+export function judgeModelKey(judgeId: string | null | undefined): string | null {
+  if (typeof judgeId !== 'string' || !judgeId.startsWith('judge:')) return null;
+  return (judgeId.split('@')[0] ?? judgeId).replace(/\+text-only$/, '');
+}
+
+/**
+ * ★ EACH OPEN MODEL'S PLACE FOR ITS CUTOFF (Policy.judge.cutoffs), by the model, not by the order
+ * the runner asks in: the number was measured on that model's confidences, so its answers keep it
+ * when the order is turned round (OPEN_JUDGE_POST_FIRST) or when one answers for the other in a
+ * failover. A model not listed has no measured number and is held to the block's cutoff.
+ */
+const PLACE_OF_MODEL: Readonly<Record<string, 'primary' | 'fallback'>> = {
+  [`judge:${BACKUP_VENDOR}/${PRIMARY_POST_MODEL}`]: 'primary',
+  [`judge:${DEFAULT_VENDOR}/${DEFAULT_OPEN_MODEL}`]: 'fallback',
+};
+
+/** Which open model gave a stored answer, for core `answerCutoff`. */
+export function answerSide(judgeId: string | null | undefined): { readonly model: string | null; readonly place: 'primary' | 'fallback' | null } {
+  const model = judgeModelKey(judgeId);
+  return { model, place: model === null ? null : (PLACE_OF_MODEL[model] ?? null) };
+}
+
+/** The hosts the open models are asked on: the router and the second host. */
+const OPEN_VENDORS: readonly string[] = [DEFAULT_VENDOR, BACKUP_VENDOR];
+
+/** Whether a stored answer is an open model's (`openJudge` writes `judge:<vendor>/…`), on either host. */
+export const isOpenJudgeId = (judgeId: string | null | undefined): boolean =>
+  typeof judgeId === 'string' && OPEN_VENDORS.some((v) => judgeId.startsWith(`judge:${v}/`));

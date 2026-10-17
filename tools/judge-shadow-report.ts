@@ -78,13 +78,13 @@ try {
     detail: r.shadow_detail,
   }));
   const block = await new PgLearningRepo(db).latestApplied();
-  const policies = answerPolicies(DEFAULT_POLICY, block?.cutoff ?? null);
+  const policies = answerPolicies(DEFAULT_POLICY, { cutoff: block?.cutoff ?? null, chosenOn: block?.cutoffModel ?? null });
   const s = summarise(rows, policies, examples);
   const pct = (n: number, of: number) => (of === 0 ? '-' : `${Math.round((n / of) * 100)}%`);
-  const openCut = DEFAULT_POLICY.judge.openCutoff;
+  const cuts = DEFAULT_POLICY.judge.cutoffs;
 
   say(`judge shadow, ${since.toISOString()} to ${until.toISOString()}`);
-  say(`cutoffs: main judge ${block?.cutoff ?? 'policy bar'} (applied block v${block?.versionId ?? '-'}), open model ${openCut ?? `${block?.cutoff ?? 'policy bar'} (not tuned yet: the block's)`}`);
+  say(`cutoffs: main judge ${block?.cutoff ?? 'policy bar'} (applied block v${block?.versionId ?? '-'}), open models: primary ${cuts.primary ?? 'the block\'s'}, fallback ${cuts.fallback ?? 'the block\'s'}${block?.cutoffModel ? ` (the block's own for ${block.cutoffModel})` : ''}`);
   say(`rows ${s.rows}: ${s.pairs} answered by both, ${s.unanswered} the shadow did not answer${s.unanswered > 0 ? ` (first reason: ${rows.find((r) => r.shadow === null)?.detail ?? '-'})` : ''}`);
   say('');
   say(`agreement on yes/no at each model's own cutoff: ${s.agree}/${s.pairs} (${pct(s.agree, s.pairs)}); on the raw coinable answer: ${s.coinableAgree}/${s.pairs} (${pct(s.coinableAgree, s.pairs)})`);

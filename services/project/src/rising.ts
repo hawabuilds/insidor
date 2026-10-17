@@ -100,7 +100,7 @@
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar, coinVouches, heldKind, type PostCoinCalls, type StoryCoin, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
-import { policyForAnswer } from './judge-cutoff.ts';
+import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
 import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
 import { loadMembership, writeMembership, type Membership } from './feed-members.ts';
 import { PgFeedRejectionRepo, PgFinderRepo, type CoinVouchRow, type Db, type FeedRejectionReason } from '@insidor/store';
@@ -629,8 +629,8 @@ export async function buildRising(
   sparkWindowMs: number,
   policy = DEFAULT_POLICY,
   membership: Membership | null = null,
-  /** The policy the open model's answers are held to (judge-cutoff.ts); `policy` for every other. */
-  openPolicy = policy,
+  /** The policy each answer is held to, by the model that gave it (judge-cutoff.ts). */
+  answers: AnswerPolicies = onePolicy(policy),
   /** Only these posts (the quick frame's changed ones, quick-frame.ts); null: every post in the window. */
   only: readonly string[] | null = null,
 ): Promise<RisingFrame> {
@@ -645,7 +645,7 @@ export async function buildRising(
      reason: a member refreshed from outside it did not leave the frame for a reason. */
   const passing = new Set<string>();
   const rows = candidates.filter((row) => {
-    const { why } = postRoute(row, policyForAnswer(row.judge_id, policy, openPolicy), cryptoSignalFor(row, crypto.get(row.item_id), policy));
+    const { why } = postRoute(row, policyForAnswer(row.judge_id, answers), cryptoSignalFor(row, crypto.get(row.item_id), policy));
     const inWindow = atOf(row) >= sinceMs;
     if (why !== 'passes' && inWindow) whyNot.set(row.item_id, why);
     const held = postHeldKind(row, policy);
@@ -930,11 +930,11 @@ export async function projectRisingFeeds(
   coinsByStory: ReadonlyMap<string, WireCoinLink>,
   sparkWindowMs: number,
   policy = DEFAULT_POLICY,
-  openPolicy = policy,
+  answers: AnswerPolicies = onePolicy(policy),
 ): Promise<number> {
   /* The feeds' members for good (feed-members.ts, 0075); null before it is applied. */
   const membership = await loadMembership(db, nowMs - policy.rising.windowMs);
-  const frame = await buildRising(db, nowMs, coinsByStory, sparkWindowMs, policy, membership, openPolicy);
+  const frame = await buildRising(db, nowMs, coinsByStory, sparkWindowMs, policy, membership, answers);
   /* ★ WHAT LEFT, AND WHY. A post that was on a feed and is not now is recorded with the check it
      failed — kept as a "no" example, never deleted. A post that only aged out of the window is
      not a rejection and has no reason here, so it is not recorded. */

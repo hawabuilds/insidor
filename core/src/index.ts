@@ -63,11 +63,11 @@ export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, groupable, g
 export type { FormedNarrative, GroupedNarratives, MemberReach, NarrativeReach, GroupNarrativesInput, NarrativeCallRow, NarrativeCallVerdict, NarrativeCalls, NarrativeCoin, NarrativeCoinCall, NarrativeHide, NarrativeMemberCoin, NarrativePair, NarrativePost, NarrativeShown, NarrativeStanding, PostDetail, ReachPoint, SharedDetailKind, StandingInput } from './group/narrative.ts';
 export { qualify, worthJudging } from './qualify/stage.ts';
 export { presentationFor } from './qualify/presentation.ts';
-export { couldPassWithBoost, passesWithSignal, postScore, postScoreReason, withJudgeCutoff } from './qualify/post-score.ts';
+export { answerCutoff, answerPolicies, couldPassWithBoost, passesWithSignal, postScore, postScoreReason, withJudgeCutoff } from './qualify/post-score.ts';
 export { KIND_LABELS, NEVER_SHOWN_KINDS, NEWS_KINDS, NOT_MEME_MATCH, heldKind, isNewsKind } from './qualify/kinds.ts';
 export { closestNot, embedInput, heldAsNotMeme, nearestLabelled, ownSourceFirst, postPicture, precedentsFor, precedentsWanted, sourceOfItemId, type LabelledVector, type Neighbour } from './qualify/precedents.ts';
 export type { HeldKind, NeverShownKind, NewsKind } from './qualify/kinds.ts';
-export type { CryptoSignal, PassRoute, PostScoreReason } from './qualify/post-score.ts';
+export type { AnswerSide, BlockCutoff, CryptoSignal, PassRoute, PostScoreReason } from './qualify/post-score.ts';
 export { clearsReachBar } from './qualify/reach-bar.ts';
 export { coinVouches, type CoinVouchFacts } from './qualify/coin-vouch.ts';
 export { junkProbability, junkVerdict } from './qualify/junk-filter.ts';

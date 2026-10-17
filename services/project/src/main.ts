@@ -132,28 +132,29 @@ async function main(): Promise<void> {
        with a stricter yes/no cutoff is only the version it tested when every answer is held to that
        cutoff, so the per-post checks below read the policy with it. Read before the transaction, so
        a failed read cannot abort the frame: it is said, and the policy bar holds, as before 0086. */
-    /* ★ AND THE OPEN MODEL'S OWN (judge-cutoff.ts, Policy.judge.openCutoff): an answer is held to the
-       cutoff of the model that gave it, so failover and switch-day answers from both sit side by side. */
-    const { main: policy, open: openPolicy } = await loadAnswerPolicies(asDb(pool), DEFAULT_POLICY);
+    /* ★ AND EACH MODEL'S OWN (judge-cutoff.ts, Policy.judge.cutoffs): an answer is held to the
+       cutoff of the model that gave it, so failover answers from both sit side by side. */
+    const answers = await loadAnswerPolicies(asDb(pool), DEFAULT_POLICY);
+    const policy = answers.main;
 
     const result = await withTransaction(pool, async (db) => {
       /* ★ THE BOARD IS THE NARRATIVES (narrative-frame.ts, 0093): the runner's grouping of the posts
          the judge passed, held to the owner's rule again now. Before 0093 is applied, GROUP's promoted
          stories as before (frame.ts). Posts take no coin from a narrative any more: the narrative
          reads its coin from its posts' own cards, so the two cannot disagree. */
-      const narratives = await projectNarrativeFrame(db, VIEW_ID, options, nowMs - REACH_WINDOW_MS, policy, openPolicy);
+      const narratives = await projectNarrativeFrame(db, VIEW_ID, options, nowMs - REACH_WINDOW_MS, policy, answers);
       const frame = narratives.migrated
         ? { ...narratives, anchors: { earliest_post: 0, first_sight: 0 }, coinsByStory: new Map<string, WireCoinLink>() }
         : await projectStoryFrame(db, VIEW_ID, options, {
             storiesSinceMs: nowMs - STORY_WINDOW_MS,
             reachSinceMs: nowMs - REACH_WINDOW_MS,
             limit: BOARD_LIMIT,
-          }, policy, openPolicy);
+          }, policy, answers);
       const { tick } = frame;
 
       /* The For You and Popular feeds, in the same transaction as the board they read their
          coins from — see rising.ts. */
-      const risingRows = await projectRisingFeeds(db, nowMs as Millis, frame.coinsByStory, SPARK_WINDOW_MS, policy, openPolicy);
+      const risingRows = await projectRisingFeeds(db, nowMs as Millis, frame.coinsByStory, SPARK_WINDOW_MS, policy, answers);
       /* What the feeds showed this hour, kept past the next frame (0063; skipped until applied). */
       await keepFeedHistory(db, nowMs);
 

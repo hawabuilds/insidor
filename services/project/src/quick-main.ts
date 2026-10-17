@@ -36,8 +36,8 @@ async function main(): Promise<void> {
   try {
     const started = performance.now();
     const nowMs = Date.now() as Millis;
-    const { main: policy, open: openPolicy } = await loadAnswerPolicies(asDb(pool), DEFAULT_POLICY);
-    const r = await withTransaction(pool, (db) => quickForYou(db, nowMs, cursor, policy, openPolicy));
+    const answers = await loadAnswerPolicies(asDb(pool), DEFAULT_POLICY);
+    const r = await withTransaction(pool, (db) => quickForYou(db, nowMs, cursor, answers.main, answers));
     console.log(`quick frame changed=${r.changed} added=${r.added} removed=${r.removed} wrote=${String(r.wrote)} ms=${Math.round(performance.now() - started)}`);
   } finally {
     await pool.end();

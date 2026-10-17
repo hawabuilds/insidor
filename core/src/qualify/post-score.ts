@@ -104,6 +104,47 @@ export function withJudgeCutoff<P extends Policy>(p: P, cutoff: number | null): 
   return { ...p, qualify: { ...p.qualify, minJudgeConfidence: raised } };
 }
 
+/** The applied block's cutoff, and the model it was chosen on (the judge id up to its prompt hash); null: not recorded. */
+export interface BlockCutoff {
+  readonly cutoff: number | null;
+  readonly chosenOn: string | null;
+}
+
+/** Which open model gave one stored answer: its model key, and its place (Policy.judge.cutoffs), null for any other judge. */
+export interface AnswerSide {
+  readonly model: string | null;
+  readonly place: 'primary' | 'fallback' | null;
+}
+
+/**
+ * ★ THE CUTOFF ONE ANSWER IS HELD TO, by the model that gave it (Policy.judge.cutoffs). The newest
+ * measurement of that model wins: an answer from the model the block's cutoff was chosen on is held
+ * to the block's; else an open model's to its place's number; else (the main judge, a rule, a copy,
+ * an open model with no number) to the block's. Read per answer, so failover answers from both
+ * models keep their own bars on one feed.
+ */
+export function answerCutoff(p: Policy, block: BlockCutoff, side: AnswerSide): number | null {
+  if (block.chosenOn !== null && side.model === block.chosenOn) return block.cutoff;
+  if (side.place !== null) return p.judge.cutoffs[side.place] ?? block.cutoff;
+  return block.cutoff;
+}
+
+/**
+ * The policy each answer is held to, one per distinct cutoff, built once: the projector asks it for
+ * every post of every frame. `main` is the block's (owner calls and rules carry no judge id).
+ */
+export function answerPolicies<P extends Policy>(base: P, block: BlockCutoff): { readonly main: P; readonly of: (side: AnswerSide) => P } {
+  const built = new Map<number | null, P>();
+  const at = (cutoff: number | null): P => {
+    const known = built.get(cutoff);
+    if (known !== undefined) return known;
+    const made = withJudgeCutoff(base, cutoff);
+    built.set(cutoff, made);
+    return made;
+  };
+  return { main: at(block.cutoff), of: (side) => at(answerCutoff(base, block, side)) };
+}
+
 /** Other accounts' crypto talk under a post, as the projector reads it: null when not read. */
 export interface CryptoSignal {
   /** Another account replied or quoted with a cashtag, a contract address or "CA", early. */
