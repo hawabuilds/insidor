@@ -298,7 +298,7 @@ export function funnelLines(rows: FunnelRows, since: Date, until: Date, p: Polic
   return [
     row(head),
     ...cells.map(row),
-    `Memeable: the owner's meme label, a gold sheet, his missed list, or coined ${Math.round(p.judge.coinModel.lateMs / 60_000)} min+ after posting and over the viral line (X ${lines['x']?.toLocaleString('en-GB')}, TikTok ${lines['tiktok']?.toLocaleString('en-GB')}); never his "Not a meme". Deadline: the first coin or the first reading at ${EARLY_SHARE * 100}% of the line. "judge said no" includes answered only after the deadline.`,
+    `Memeable: the owner's meme label, a gold sheet, your missed list, or coined ${Math.round(p.judge.coinModel.lateMs / 60_000)} min+ after posting and over the viral line (X ${lines['x']?.toLocaleString('en-GB')}, TikTok ${lines['tiktok']?.toLocaleString('en-GB')}); never your "Not a meme". Deadline: the first coin or the first reading at ${EARLY_SHARE * 100}% of the line. "judge said no" includes answered only after the deadline.`,
     ...(missedLines.length === 0 ? ['Owner missed posts posted in the window: none.'] : ['Owner missed posts posted in the window:', ...missedLines]),
   ];
 }
