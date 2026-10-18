@@ -506,11 +506,11 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
     }
 
     if (segments.length === 3 && head === 'rising' && param !== undefined && segments[2] === 'tick') return await risingTick(param, deps);
-    /* For You by Trending or Most viewed over a window (post-sorts.ts). Only For You has them. */
+    /* For You by Trending or Most viewed (post-sorts.ts), a page at a time. Only For You has them. */
     if (segments.length === 3 && head === 'rising' && param === 'fyp' && segments[2] === 'sorted') {
       const sort = parseSort(rawUrl);
       if (sort === null) return BAD_REQUEST;
-      const reply = await (deps.sorts ?? createSorts())(deps.db, sort.by, sort.window);
+      const reply = await (deps.sorts ?? createSorts())(deps.db, sort.by, sort.window, sort.cursor);
       return reply === null ? NOT_FOUND : json(200, reply);
     }
     if (segments.length === 3 && head === 'rising' && param !== undefined && segments[2] === 'older') return await risingOlder(param, rawUrl, deps);

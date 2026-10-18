@@ -2166,11 +2166,20 @@ export interface RisingPolicy {
    * tenfold cannot top the list. One floor a window (the owner, 2026-10-18), because a half window's
    * speed is an average over 30 minutes, 3 hours or 12: one number would let nearly every post over
    * on 1h's terms and almost none on 24h's. A window with no entry takes the nearest window's.
+   * ★ THE LISTS THE APP OFFERS (the owner, 2026-10-18): Trending is one list, "right now", the
+   * ratio rule over `trendingWindowMs` (1h) and that window's floor, with no window chips; Most
+   * viewed is Today or This week (`mostViewedSpansMs`), the posts POSTED inside the span (first seen
+   * when the posted time is unknown) by their total views at the newest reading, biggest first. Both
+   * are sent `pageSize` at a time. The runner keeps exactly these lists' tops fresh (feed.readings
+   * .sortTop), so a span or window added here is read for too, at its cost.
    */
   readonly forYouSorts: {
     readonly freshMs: number;
     readonly minReadShare: number;
     readonly trendFloorsPerMin: readonly { readonly windowMs: number; readonly perMin: number }[];
+    readonly trendingWindowMs: number;
+    readonly mostViewedSpansMs: { readonly today: number; readonly week: number };
+    readonly pageSize: number;
   };
   /**
    * ★ THE SHORT-VIDEO SOURCE'S OWN GROWTH PATHS, in place of the scaled `fypEarly*` / `fypFast*`
@@ -5257,6 +5266,9 @@ const POLICY_V1: Policy = {
       freshMs: 1_800_000,
       minReadShare: 12,
       trendFloorsPerMin: [{ windowMs: 3_600_000, perMin: 300 }, { windowMs: 21_600_000, perMin: 30 }, { windowMs: 86_400_000, perMin: 10 }],
+      trendingWindowMs: 3_600_000,
+      mostViewedSpansMs: { today: 86_400_000, week: 604_800_000 },
+      pageSize: 20,
     },
     shortVideoEarlyReach: 150_000,
     shortVideoEarlyWindowMs: 7_200_000, // two hours

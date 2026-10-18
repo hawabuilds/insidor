@@ -12,7 +12,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts';
 import { narrativeReach, sortOrder, trendFloor } from '@insidor/core';
 
 import { SILENT } from './log.ts';
-import { SORT_CARDS_SQL, SORT_READINGS_SQL, createSorts, gainIn, parseSort, rankPost, rankScale, ranked, runsOf, type Reading } from './post-sorts.ts';
+import { SORT_CARDS_SQL, SORT_READINGS_SQL, SORT_VIEWED_SQL, createSorts, gainIn, parseSort, rankPost, rankScale, ranked, runsOf, type Reading } from './post-sorts.ts';
 import { RISING_VIEW_SQL, type Row } from './queries.ts';
 import { handle } from './routes.ts';
 
@@ -127,20 +127,25 @@ test("the sorts count from the card's counts, the first reading's included, and 
   assert.match(SORT_READINGS_SQL, /coalesce\(f\.payload #> '\{sheet,counts\}', f\.payload #> '\{sheet,views\}'\)/);
 });
 
-test('the window defaults by sort and junk is refused', () => {
-  assert.deepEqual(parseSort('/rising/fyp/sorted?by=trending'), { by: 'trending', window: '1h' });
-  assert.deepEqual(parseSort('/rising/fyp/sorted?by=most_viewed'), { by: 'most_viewed', window: '24h' });
-  assert.deepEqual(parseSort('/rising/fyp/sorted?by=trending&window=6h'), { by: 'trending', window: '6h' });
+test('the window defaults by sort (Trending now, Most viewed Today), an old window is still answered, and junk is refused', () => {
+  assert.deepEqual(parseSort('/rising/fyp/sorted?by=trending'), { by: 'trending', window: 'now', cursor: 0 });
+  assert.deepEqual(parseSort('/rising/fyp/sorted?by=most_viewed'), { by: 'most_viewed', window: 'today', cursor: 0 });
+  assert.deepEqual(parseSort('/rising/fyp/sorted?by=most_viewed&window=week&cursor=40'), { by: 'most_viewed', window: 'week', cursor: 40 });
+  assert.deepEqual(parseSort('/rising/fyp/sorted?by=trending&window=6h'), { by: 'trending', window: '6h', cursor: 0 });
   assert.equal(parseSort('/rising/fyp/sorted?by=score'), null);
   assert.equal(parseSort('/rising/fyp/sorted?by=trending&window=2d'), null);
+  assert.equal(parseSort('/rising/fyp/sorted?by=trending&window=week'), null, 'a span is Most viewed only');
+  assert.equal(parseSort('/rising/fyp/sorted?by=most_viewed&window=now'), null);
+  assert.equal(parseSort('/rising/fyp/sorted?by=most_viewed&cursor=-1'), null);
 });
 
-function fakeDb(rows: readonly Row[], calls: string[] = []) {
+function fakeDb(rows: readonly Row[], calls: string[] = [], viewed: readonly Row[] = []) {
   return {
     query: async (sql: string, params: readonly unknown[]): Promise<readonly Row[]> => {
       calls.push(sql);
       if (sql === RISING_VIEW_SQL) return [{ tick: '7' }];
       if (sql === SORT_READINGS_SQL) return rows;
+      if (sql === SORT_VIEWED_SQL) return viewed.filter((r) => Number(r['posted_at'] ?? r['first_seen_at']) >= Date.parse(String(params[0])));
       if (sql === SORT_CARDS_SQL) return (params[0] as string[]).map((id) => ({ item_id: id, payload: { id, excerpt: id }, payload_at: new Date(NOW) }));
       return [];
     },
@@ -157,8 +162,8 @@ test('the reply is the cards in order with each one\'s views gained, and never t
   const reply = await sorts(fakeDb(rows), 'trending', '1h');
   assert.ok(reply !== null);
   assert.deepEqual(reply.posts.map((p) => (p as { id: string }).id), ['up', 'down']);
-  assert.equal(reply.gained['up'], Math.round(gainIn(runsOf(rows[1]?.['views'] as Reading[]).runs, NOW - 60 * MIN, NOW)));
-  assert.ok((reply.gained['up'] ?? 0) > 10_000);
+  assert.equal(reply.gained?.['up'], Math.round(gainIn(runsOf(rows[1]?.['views'] as Reading[]).runs, NOW - 60 * MIN, NOW)));
+  assert.ok((reply.gained?.['up'] ?? 0) > 10_000);
   assert.doesNotMatch(JSON.stringify(reply), /"key"|speed/i);
 });
 
@@ -194,9 +199,64 @@ test("★ a short video is ranked at the policy's short-video scale in Trending,
     assert.ok(reply !== null);
     /* Trending is scaled; Most viewed is raw views (the owner: "keep most viewed raw for tiktok"). */
     assert.deepEqual(reply.posts.map((p) => (p as { id: string }).id), by === 'trending' ? ['text', 'video'] : ['video', 'text'], by);
-    assert.equal(reply.gained['video'], Math.round(gainIn(runsOf(rows[0]?.['views'] as Reading[]).runs, NOW - (by === 'trending' ? 60 : 24 * 60) * MIN, NOW)));
+    assert.equal(reply.gained?.['video'], Math.round(gainIn(runsOf(rows[0]?.['views'] as Reading[]).runs, NOW - (by === 'trending' ? 60 : 24 * 60) * MIN, NOW)));
   }
   /* Without the source it would have led: raw views alone. */
   const raw = ranked([rankPost('video', rows[0]?.['views'] as Reading[], null, 'most_viewed', 60 * MIN, NOW), rankPost('text', rows[1]?.['views'] as Reading[], null, 'most_viewed', 60 * MIN, NOW)].flatMap((x) => (x === null ? [] : [x])));
   assert.deepEqual(raw.map((x) => x.id), ['video', 'text']);
+});
+
+test('★ Trending now: the reply carries each post\'s two speeds in REAL views a minute, a short video unscaled, null with no speed yet, and never the key', async () => {
+  const floor = trendFloor(60 * MIN, DEFAULT_POLICY);
+  const scale = DEFAULT_POLICY.rising.shortVideoReachScale;
+  const rows: Row[] = [
+    { item_id: 'text', views: readings(120, 5, (m) => (m <= 30 ? floor * 2 : floor)), posted_ms: String(NOW - 120 * MIN), source: 'x' },
+    { item_id: 'video', views: readings(120, 5, (m) => (m <= 30 ? floor * 3 * scale : floor * scale)), posted_ms: String(NOW - 120 * MIN), source: 'tiktok' },
+    { item_id: 'once', views: [{ atMs: NOW - 2 * MIN, value: 10 }, { atMs: NOW - MIN, value: 500_000 }], posted_ms: null, source: 'x' },
+  ];
+  const reply = await createSorts(() => NOW)(fakeDb(rows), 'trending', 'now');
+  assert.ok(reply !== null && reply.speeds !== undefined);
+  assert.deepEqual(reply.posts.map((p) => (p as { id: string }).id), ['video', 'text', 'once']);
+  assert.deepEqual(reply.speeds['text'], { now: floor * 2, before: floor });
+  assert.deepEqual(reply.speeds['video'], { now: floor * 3 * scale, before: floor * scale }, 'what the video really gained a minute');
+  assert.equal(reply.speeds['once'], null);
+  assert.equal(reply.gained, undefined);
+  assert.equal(reply.next, null);
+  assert.doesNotMatch(JSON.stringify(reply), /"key"|"group"|over_floor/);
+});
+
+test('★ Most viewed Today and This week: posted inside the span (first seen when unknown), by total views, biggest first, the card\'s own number', async () => {
+  const H = 60 * MIN;
+  const viewed: Row[] = [
+    { item_id: 'big-old', views: '9000000', read_ms: String(NOW - MIN), posted_at: new Date(NOW - 3 * 24 * H), first_seen_at: new Date(NOW - 3 * 24 * H) },
+    { item_id: 'mid', views: '400000', read_ms: String(NOW - MIN), posted_at: new Date(NOW - 5 * H), first_seen_at: new Date(NOW - 4 * H) },
+    { item_id: 'undated', views: '700000', read_ms: String(NOW - 2 * MIN), posted_at: null, first_seen_at: new Date(NOW - 2 * H) },
+    { item_id: 'stale', views: '5000000', read_ms: String(NOW - 40 * MIN), posted_at: new Date(NOW - 6 * H), first_seen_at: new Date(NOW - 6 * H) },
+    { item_id: 'unread', views: null, read_ms: null, posted_at: new Date(NOW - H), first_seen_at: new Date(NOW - H) },
+  ];
+  const sorts = createSorts(() => NOW);
+  const today = await sorts(fakeDb([], [], viewed), 'most_viewed', 'today');
+  assert.ok(today !== null && today.views !== undefined);
+  assert.deepEqual(today.posts.map((p) => (p as { id: string }).id), ['undated', 'mid', 'stale'], 'a stale post goes below the fresh; an unread one is left off, never at zero');
+  assert.equal(today.views['mid'], 400_000);
+  assert.equal(today.undated, 1);
+  assert.equal(today.gained, undefined);
+  const week = await sorts(fakeDb([], [], viewed), 'most_viewed', 'week');
+  assert.deepEqual(week?.posts.map((p) => (p as { id: string }).id), ['big-old', 'undated', 'mid', 'stale']);
+});
+
+test('the new lists come a page at a time from one ranking, and say where the next page starts', async () => {
+  const size = DEFAULT_POLICY.rising.forYouSorts.pageSize;
+  const viewed: Row[] = Array.from({ length: size + 5 }, (_, i) => ({ item_id: `p${String(i).padStart(3, '0')}`, views: String(1_000_000 - i), read_ms: String(NOW - MIN), posted_at: new Date(NOW - 60 * MIN), first_seen_at: null }));
+  const calls: string[] = [];
+  const sorts = createSorts(() => NOW);
+  const db = fakeDb([], calls, viewed);
+  const one = await sorts(db, 'most_viewed', 'today');
+  assert.equal(one?.posts.length, size);
+  assert.equal(one?.next, String(size));
+  const two = await sorts(db, 'most_viewed', 'today', size);
+  assert.equal(two?.posts.length, 5);
+  assert.equal(two?.next, null);
+  assert.equal((two?.posts[0] as { id: string }).id, `p${String(size).padStart(3, '0')}`);
+  assert.equal(calls.filter((s) => s === SORT_VIEWED_SQL).length, 1, 'the second page is cut from the kept ranking');
 });
