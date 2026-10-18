@@ -8,8 +8,11 @@
  * you watch (the star on a card or the post sheet, read from the alert service: useWatchedPosts.ts),
  * then, compact under them, the narratives starred on this phone (the narrative page's star,
  * shared/watchlist.ts) as the Narratives tab draws them (the owner, 2026-10-17: "Starred narratives:
- * watchlist"). Home stays posts first; a starred id the narratives list does not hold — an old story
- * id from before the rebuild — is left out, never drawn as a broken card.
+ * watchlist"). Each starred narrative is read by its own id (GET /story/:id), wherever it is — on the
+ * board or long dead, the owner 2026-10-18: a starred narrative never drops out — and a merged one
+ * opens as the narrative it was merged into. Home stays posts first; a starred id with no page (an
+ * old story id from before the rebuild, one the owner said is not a narrative) is left out, never
+ * drawn as a broken card.
  * The site pills and the filter panel narrow whichever list is showing (`feed-filters.ts`). The board
  * (`GET /board/default`) is still read, for its provenance alone: the Sample data bar.
  * ★ FOR YOU'S SORT CHIPS (feed-sort.ts, the owner's design of 2026-10-18): New, the default, is the
@@ -61,10 +64,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BOARD_VIEW, fetchBoard, fetchNarratives, fetchRising, fetchRisingSorted, type RisingFeed, type RisingPost, type RisingSorted, type Story } from '../../shared/api/index.ts';
+import { BOARD_VIEW, fetchBoard, fetchRising, fetchRisingSorted, fetchStoryIfAny, type RisingFeed, type RisingPost, type RisingSorted, type Story } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { Card as NarrativeCard } from '../narratives/Narratives.tsx';
-import { starredNarratives, watchLine } from '../narratives/narrative-order.ts';
+import { realNarratives, watchLine } from '../narratives/narrative-order.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
 import type { CoinFace } from '../narrative/story-coin.ts';
 import { usePreloadCreate } from '../create/preload.ts';
@@ -186,12 +189,12 @@ export function Feed({
   const lastFyp = useRef<string | null>(null);
   const lastFypShown = useCallback(() => lastFyp.current, []);
   const older = useOlderPosts('fyp', lastFypShown, newestPosted);
-  /* The narratives starred on this phone (the narrative page's star, shared/watchlist.ts), read from
-     the Narratives tab's list only while Watchlist is open and something is starred. */
+  /* The narratives starred on this phone (the narrative page's star, shared/watchlist.ts), each read
+     by its own id, only while Watchlist is open and something is starred. */
   const starred = useWatchlist();
   const narrativesOn = tab === 'watchlist' && starred.length > 0;
-  const [narratives, reloadNarratives] = useLoad(narrativesOn ? 'narratives' : 'narratives:off', (signal) =>
-    narrativesOn ? fetchNarratives(BOARD_VIEW, signal) : Promise.resolve(null),
+  const [narratives, reloadNarratives] = useLoad(narrativesOn ? `narratives:starred:${starred.join(' ')}` : 'narratives:off', (signal) =>
+    narrativesOn ? starredByIds(starred, signal) : Promise.resolve(null),
   );
   const [buying, setBuying] = useState<CoinFace | null>(null);
   const [note, setNote] = useState<SheetNote | null>(null);
@@ -466,12 +469,24 @@ export function Feed({
   );
 }
 
+/**
+ * Each starred narrative's page by its id, in starred order, at most one card per narrative (a
+ * merged id opens the one it was merged into, which may be starred too). A page that is not there
+ * (404) is left out; any other failure fails the whole read, so the screen says it could not read
+ * them rather than showing fewer than were starred.
+ */
+async function starredByIds(ids: readonly string[], signal: AbortSignal): Promise<{ readonly stories: readonly Story[] }> {
+  const got = await Promise.all(ids.map((id) => fetchStoryIfAny(id, signal)));
+  const seen = new Set<string>();
+  return { stories: got.filter((s): s is Story => s !== null && !seen.has(s.id) && (seen.add(s.id), true)) };
+}
+
 /** Card-shaped placeholders under the list while the next page is on its way: only ever seen when the page is slower than the scroll. */
 /**
  * The narratives starred on this phone, under the watched posts: the Narratives tab's card with no
  * place, "N posts  X views" and the last hour's gain. Nothing is drawn — no heading either — when
- * none of the starred ids is a narrative the list holds (an old story id starred before the rebuild,
- * or one no longer listed): a starred id never becomes an empty or broken card.
+ * none of the starred ids has a page (an old story id starred before the rebuild, or one the owner
+ * said is not a narrative): a starred id never becomes an empty or broken card.
  */
 function StarredNarratives({ starred, list, failed, now, onBuy, onCreate }: {
   starred: readonly string[];
@@ -483,7 +498,7 @@ function StarredNarratives({ starred, list, failed, now, onBuy, onCreate }: {
 }) {
   if (starred.length === 0) return null;
   if (failed) return <p className={styles['hidden']}>Your starred narratives couldn't be read just now.</p>;
-  const shown = list === null ? [] : starredNarratives(list, starred);
+  const shown = list === null ? [] : realNarratives(list);
   if (shown.length === 0) return null;
   return (
     <>

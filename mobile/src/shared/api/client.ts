@@ -226,6 +226,16 @@ export async function fetchAllNarratives(viewId: string, sort: 'viewed' | 'new',
   return decodeNarrativesPage(await read(`/narratives/${encodeURIComponent(viewId)}/all?sort=${sort}&offset=${offset}`, signal));
 }
 
+/** A narrative's page, or null when it has none (a 404): a starred id with no page is left out, never an error. */
+export async function fetchStoryIfAny(storyId: string, signal?: AbortSignal): Promise<Story | null> {
+  try {
+    return await fetchStory(storyId, signal);
+  } catch (e) {
+    if (e instanceof ReadError && e.status === 404) return null;
+    throw e;
+  }
+}
+
 export async function fetchStory(storyId: string, signal?: AbortSignal): Promise<Story> {
   return decodeStory(await read(`/story/${encodeURIComponent(storyId)}`, signal));
 }
