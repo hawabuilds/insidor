@@ -75,6 +75,11 @@ import {
   keepNarratives,
   hugeAndClimbing,
   isShillText,
+  joinExisting,
+  sameSubjectMerges,
+  subjectName,
+  subjectOf,
+  subjectPosts,
   narrativeShown,
   narrativeStanding,
   ownerMerges,
@@ -100,7 +105,7 @@ const SHORT_VIDEO_SOURCE = 'tiktok';
 const READINGS_SLACK_MS = 600_000;
 
 export interface NarrativeDeps {
-  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'>;
+  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'> & Partial<Pick<PgNarrativeRepo, 'live' | 'postNames'>>;
   /** Writes a pass inside one transaction; false before 0093. */
   readonly save: (pass: NarrativePass) => Promise<boolean>;
   /** The applied learned block's own yes/no cutoff (0086) and the model it was chosen on (0094); nulls: none, not recorded. */
@@ -127,8 +132,11 @@ export interface NarrativeResult {
   readonly pairs: number;
   readonly narratives: number;
   readonly shown: number;
-  /** The owner's merges applied this pass (nothing else retires a narrative). */
+  /** The owner's merges applied this pass. */
   readonly retired: number;
+  /** New groups that joined the narrative of their subject instead of becoming another, and newer duplicates merged into the older (core group/narrative-same.ts). */
+  readonly joinedSame: number;
+  readonly mergedSame: number;
   /** New narratives made, and narratives given new posts, this pass. */
   readonly created: number;
   readonly grown: number;
@@ -217,6 +225,8 @@ export const asNarrativePost = (r: NarrativePostRow): NarrativePost => ({
 export function narrativeGrouper(deps: NarrativeDeps) {
   const postVectors = new Map<string, Float32Array>();
   const pictureVectors = new Map<string, Float32Array>();
+  /* Each stored post's judge name, read once per post for the same-subject rule (a name barely changes). */
+  const postNames = new Map<string, { readonly name: string | null; readonly atMs: number | null }>();
   /* The early step's stored good posts in no narrative yet (refreshed every `early.refreshMs`), and
      the ones it has placed since that read. */
   let stored: { readonly atMs: number; readonly rows: readonly NarrativePostRow[] } | null = null;
@@ -318,6 +328,68 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     return { early: out, matchedNow: due.length };
   }
 
+  /**
+   * Step 5b, ONE STORY, ONE NARRATIVE (core group/narrative-same.ts): a new group that is clearly the
+   * subject of a shown narrative already made joins it instead of becoming another, and a newer
+   * shown narrative that is clearly the same subject as an older one is merged into it. Read over
+   * the shown narratives with a post in `same.lookbackMs` (one read a pass; their posts' vectors
+   * and names are cached for the life of the process). Never a narrative the owner made a call
+   * on, hid, or is merging into this pass. Off, or before the repo can read them: nothing changes.
+   */
+  async function sameSubjectStep(input: {
+    readonly kept: ReturnType<typeof keepNarratives>;
+    readonly byId: ReadonlyMap<string, NarrativePostRow>;
+    readonly calls: NarrativeCalls;
+    readonly callRows: readonly { readonly narrativeId: string; readonly otherId: string | null }[];
+    readonly removedFrom: ReadonlyMap<string, ReadonlySet<string>>;
+    readonly nowMs: number;
+    readonly space: string;
+    readonly hideOf: (id: string, members: readonly string[]) => boolean;
+    readonly ownerInto: ReadonlySet<string>;
+  }): Promise<{ readonly kept: ReturnType<typeof keepNarratives>; readonly joined: number; readonly merges: readonly { readonly from: string; readonly into: string }[] }> {
+    const p = deps.policy;
+    const s = p.narrative.same;
+    const unchanged = { kept: input.kept, joined: 0, merges: [] };
+    if (!s.on || deps.repo.live === undefined || deps.repo.postNames === undefined) return unchanged;
+    const existing = (await deps.repo.live(input.nowMs - s.lookbackMs)).filter((x) => !input.hideOf(x.id, x.members));
+    if (existing.length === 0) return unchanged;
+    const all = [...new Set([...existing.flatMap((x) => x.members), ...input.kept.created.flatMap((c) => c.members)])];
+    for (const id of all) {
+      const r = input.byId.get(id);
+      if (r !== undefined && !postNames.has(id)) postNames.set(id, { name: r.proposedName, atMs: r.atMs });
+    }
+    const unnamed = all.filter((id) => !postNames.has(id));
+    for (let i = 0; i < unnamed.length; i += 5_000) for (const [id, name] of await deps.repo.postNames(unnamed.slice(i, i + 5_000))) postNames.set(id, name);
+    await vectorsFor(all, input.space, 'post', postVectors);
+    const names = new Map(all.map((id) => [id, subjectName(postNames.get(id)?.name ?? null, p)] as const));
+    /* The older of two is the one whose first post went up first (a rebuilt narrative's first shown time is the rebuild's). */
+    const oldest = (x: { readonly members: readonly string[] }) => Math.min(input.nowMs, ...x.members.map((m) => postNames.get(m)?.atMs ?? input.nowMs));
+    const subjects = existing.map((x) => subjectOf(x.id, subjectPosts(x.members, names, postVectors), oldest(x)));
+
+    /* The owner's calls outrank the rule: a narrative he called on is never merged nor merged into. */
+    const untouchable = new Set([...input.callRows.flatMap((c) => [c.narrativeId, ...(c.otherId === null ? [] : [c.otherId])]), ...input.ownerInto]);
+    const merges = sameSubjectMerges(subjects, untouchable, p);
+    const lead = new Map(merges.map((m) => [m.from, m.into] as const));
+    const leadOf = (id: string) => lead.get(id) ?? id;
+
+    /* A new group joins its subject's narrative (where that one leads after this pass's merges). */
+    const groupSubjects = input.kept.created.map((c) => subjectOf(c.id, subjectPosts(c.members, names, postVectors), input.nowMs));
+    const joins = joinExisting(groupSubjects, subjects, p);
+    const grown = new Map<string, string[]>();
+    const add = (target: string, posts: readonly string[]) => {
+      const free = posts.filter((m) => !(input.removedFrom.get(m)?.has(target) ?? false));
+      if (free.length > 0) grown.set(target, [...(grown.get(target) ?? []), ...free]);
+    };
+    for (const [id, posts] of input.kept.grown) add(leadOf(id), posts);
+    const created: { id: string; members: readonly string[] }[] = [];
+    input.kept.created.forEach((c, i) => {
+      const target = joins.get(i);
+      if (target === undefined) created.push(c);
+      else add(leadOf(target), c.members);
+    });
+    return { kept: { grown, created }, joined: joins.size, merges };
+  }
+
   /** Steps 1–6 without the write: what the dry run (tools/narratives.ts) and a live pass share. */
   async function group(): Promise<GroupedPass | string> {
     const p = deps.policy;
@@ -370,9 +442,11 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     /* The ids a new narrative could be named, asked of what is stored: none is ever given out twice. */
     const names = groups.filter((g) => !g.some((m) => pinned.has(m))).flatMap((g) => [...g.map((m) => `n-${m}`), `n-${g[0] ?? ''}-1`, `n-${g[0] ?? ''}-2`]);
     const taken = new Set((await deps.repo.states(names)).map((s) => s.id));
-    const kept = keepNarratives({ groups, pinned, taken, removedFrom });
-
+    const keptRaw = keepNarratives({ groups, pinned, taken, removedFrom });
     const byId = new Map(used.map((r) => [r.itemId, r] as const));
+    const same = await sameSubjectStep({ kept: keptRaw, byId, calls, callRows, removedFrom, nowMs, space, hideOf: (id, members) => hiddenByOwner(id, members, calls, p), ownerInto: new Set(merges.map((m) => m.into)) });
+    const kept = same.kept;
+
     const touchedIds = [...kept.grown.keys()];
     const storedOf = new Map((await deps.repo.byIds(touchedIds)).map((s) => [s.id, s] as const));
     const atOf = (m: string) => byId.get(m)?.atMs ?? 0;
@@ -413,7 +487,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const earlyMs = deps.now() - earlyStarted;
     const withEarly = narratives.map((x) => ({ ...x, early: early.get(x.id) ?? [] }));
     return {
-      pass: { narratives: withEarly, retired: merges.map((m) => ({ id: m.from, into: m.into })), removed },
+      pass: { narratives: withEarly, retired: [...merges.map((m) => ({ id: m.from, into: m.into, by: 'owner' as const })), ...same.merges.map((m) => ({ id: m.from, into: m.into, by: 'same_subject' as const }))], removed },
       posts: byId,
       reach: readings.latest,
       stored: storedOf,
@@ -427,6 +501,8 @@ export function narrativeGrouper(deps: NarrativeDeps) {
         grown: kept.grown.size,
         shown: narratives.filter((x) => x.shown).length,
         retired: merges.length,
+        joinedSame: same.joined,
+        mergedSame: same.merges.length,
         embedded,
         early: [...early.values()].reduce((sum, l) => sum + l.length, 0),
         earlyMatched: matchedNow,
@@ -476,7 +552,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
 
   async function pass(): Promise<NarrativeResult> {
     const started = deps.now();
-    const none = (skipped: string): NarrativeResult => ({ skipped, considered: 0, good: 0, withVectors: 0, pairs: 0, narratives: 0, created: 0, grown: 0, shown: 0, retired: 0, titled: 0, embedded: 0, early: 0, earlyMatched: 0, earlyMs: 0, usd: 0, ms: 0, left: {} as NarrativeResult['left'] });
+    const none = (skipped: string): NarrativeResult => ({ skipped, considered: 0, good: 0, withVectors: 0, pairs: 0, narratives: 0, created: 0, grown: 0, shown: 0, retired: 0, joinedSame: 0, mergedSame: 0, titled: 0, embedded: 0, early: 0, earlyMatched: 0, earlyMs: 0, usd: 0, ms: 0, left: {} as NarrativeResult['left'] });
     if (!deps.policy.narrative.on) return none('switched off (Policy.narrative.on)');
     const grouped = await group();
     if (typeof grouped === 'string') return none(grouped);

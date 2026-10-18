@@ -181,8 +181,12 @@ export interface NarrativePass {
     /** Rebuilt from stored posts (0106 `restored_at`). */
     readonly restored?: boolean;
   }[];
-  /** The owner's merges: `id` moves all its posts to `into` and is kept as merged. `into` null is never written (nothing is retired). */
-  readonly retired: readonly { readonly id: string; readonly into: string | null }[];
+  /**
+   * The merges: `id` moves all its posts to `into` and is kept as merged. `into` null is never
+   * written (nothing is retired). `by` is who merged it (0108 `merged_by`): the owner's "Merge
+   * with…" (the default), or the regroup's same-subject rule (core group/narrative-same.ts).
+   */
+  readonly retired: readonly { readonly id: string; readonly into: string | null; readonly by?: 'owner' | 'same_subject' }[];
   /** The owner's "Remove this post": the post leaves that narrative. */
   readonly removed?: readonly { readonly narrativeId: string; readonly itemId: string }[];
 }
@@ -417,6 +421,25 @@ export class PgNarrativeRepo {
     );
   }
 
+  /**
+   * Each post's judge name (its newest answer to the post question's proposed name) and when it
+   * went up, for the same-subject rule (core group/narrative-same.ts): the name says what it is
+   * about, the time which of two narratives is the older. One index-backed read by the posts' ids.
+   */
+  async postNames(itemIds: readonly string[]): Promise<ReadonlyMap<string, { readonly name: string | null; readonly atMs: number | null }>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await this.#db.query<{ item_id: string; proposed_name: string | null; at: Date | string | null }>(
+      `select i.item_id, coalesce(i.posted_at, i.first_seen_at) as at,
+              (select pj.proposed_name from internal.post_judgement pj
+                where pj.item_id = i.item_id and pj.prompt_id not like 'post-kind%'
+                order by pj.judged_at desc, pj.id desc limit 1) as proposed_name
+         from public.item i
+        where i.item_id = any($1::text[])`,
+      [[...itemIds]],
+    );
+    return new Map(rows.map((r) => [r.item_id, { name: r.proposed_name, atMs: toMs(r.at) }] as const));
+  }
+
   /** Each of these narrative ids' state, and where a merged one went; ids never given out are absent. */
   async states(ids: readonly string[]): Promise<readonly NarrativeStateRow[]> {
     if (ids.length === 0 || !(await this.migrated())) return [];
@@ -517,13 +540,18 @@ export class PgNarrativeRepo {
       }
 
       /* The owner's merges: every post moves to the narrative he chose; the merged one stays, pointing there. */
-      const merges = pass.retired.filter((r): r is { id: string; into: string } => r.into !== null && r.into !== r.id);
+      const merges = pass.retired.filter((r): r is { id: string; into: string; by?: 'owner' | 'same_subject' } => r.into !== null && r.into !== r.id);
+      const withBy = merges.length > 0 && (await this.#hasColumn('narrative', 'merged_by'));
       for (const r of merges) {
-        await this.#db.query(`update internal.narrative_member set narrative_id = $2 where narrative_id = $1`, [r.id, r.into]);
-        await this.#db.query(
-          `update internal.narrative set state = 'merged', merged_into = $2, shown = false, member_count = 0, updated_at = now() where narrative_id = $1 and state = 'open'`,
-          [r.id, r.into],
+        /* Only from an open narrative into an open one: a merge read before another pass wrote is not applied over it. */
+        const moved = await this.#db.query<{ narrative_id: string }>(
+          `update internal.narrative set state = 'merged', merged_into = $2, shown = false, member_count = 0, updated_at = now()${withBy ? ', merged_by = $3' : ''}
+            where narrative_id = $1 and state = 'open'
+              and exists (select 1 from internal.narrative t where t.narrative_id = $2 and t.state = 'open')
+            returning narrative_id`,
+          withBy ? [r.id, r.into, r.by ?? 'owner'] : [r.id, r.into],
         );
+        if (moved.length > 0) await this.#db.query(`update internal.narrative_member set narrative_id = $2 where narrative_id = $1`, [r.id, r.into]);
       }
       const removed = pass.removed ?? [];
       if (removed.length > 0) {

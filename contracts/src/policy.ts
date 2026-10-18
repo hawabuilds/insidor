@@ -3391,6 +3391,25 @@ export interface NarrativePolicy {
    * post until it grows (services/project narrative-frame.ts).
    */
   readonly minAccounts: number;
+  /**
+   * ★ ONE STORY, ONE NARRATIVE (the owner, 2026-10-18: "the same narrative posted several times").
+   * Two narratives are the same subject when their posts' average vectors are at least `meaning`
+   * alike AND the judge's most common name is the same for both, held by at least `nameShare` of
+   * each one's named posts. Then a new group of posts joins the narrative already made instead of
+   * becoming another one, and a newer narrative is merged into the older (recorded as an automatic
+   * merge, never over a narrative the owner made a call on). Read over the shown narratives with a
+   * post in the last `lookbackMs`.
+   */
+  readonly same: {
+    readonly on: boolean;
+    readonly meaning: number;
+    readonly nameShare: number;
+    readonly lookbackMs: number;
+    /** A name this short or longer counts (Neo, Gus: three letters), after `group.genericSpans` and `genericNames` are out. */
+    readonly minNameChars: number;
+    /** Names that say what kind of thing, not which one: two different cats are not one story. */
+    readonly genericNames: readonly string[];
+  };
   readonly single: {
     /** Off from 2026-10-18 (the owner's two posts from two accounts): a single post is no narrative however big. */
     readonly on: boolean;
@@ -5624,6 +5643,19 @@ const POLICY_V1: Policy = {
     mergeMeaning: 0.7,
     minPosts: 2,
     minAccounts: 2,
+    /* Measured 2026-10-18 on the 436 open narratives' stored posts: every pair 0.8 or closer with the
+       same most common name was one story told twice (Neo the raccoon three times, Comet the deer
+       three, Gus, Konasu, GTA 6's own pages at 0.68 were left apart as the cautious side); pairs as
+       close with different names were not (0.99 "AI agents" beside "Nakama": a shill's words read
+       alike whatever they are about). So the name decides and the meaning only confirms. */
+    same: {
+      on: true,
+      meaning: 0.8,
+      nameShare: 0.34,
+      lookbackMs: 604_800_000,
+      minNameChars: 3,
+      genericNames: ['cat', 'cats', 'dog', 'dogs', 'kitten', 'kitty', 'puppy', 'pepe', 'doge', 'frog', 'bear', 'monkey', 'penguin', 'raccoon', 'hippo', 'viralcat', 'viraldog', 'catcoin', 'dogcoin', 'elon', 'musk', 'trump', 'tesla', 'france', 'french'],
+    },
     single: { on: false, minReach: 500_000, minPerMinute: 2_000, growthWindowMs: 3_600_000, growthMinSpanMs: 1_200_000 },
     /* Five minutes over the day, 288 numbers a page: the phone's finest chart interval is 5m, and it
        adds these up into 15m, 1h, 4h and 1D. */
