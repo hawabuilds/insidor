@@ -21,7 +21,7 @@
  *                 the window; a post last read before it is left off, never listed at zero (the phone
  *                 drops a card with no number), which puts it below every post that is on the list.
  *   Trending      how many times faster it gains in the window's later half than its earlier half,
- *                 for posts gaining at least `trendFloorPerMin` views a minute now; posts under the
+ *                 for posts gaining at least the window's `trendFloorsPerMin` views a minute now; posts under the
  *                 floor by their speed, below every post over it; a post with no trend yet (one
  *                 reading, or one long gap across both halves) below those, by views gained.
  *   Freshness     (the owner, 2026-10-18: "a post can only rank in the top 20 of either sort if its
