@@ -31,6 +31,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
+import { useScreenActive } from '../screen-active.ts';
 import { anchorShift, rowAt, rowOffsets, rowsNear } from './window-range.ts';
 
 /** Within this many pixels of the top counts as at the top: nothing is held there. */
@@ -62,6 +63,10 @@ export function WindowList<T>({
   rowAttrs?: (item: T) => Record<string, string>;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  /* Whether this list's tab is the one showing (App.tsx keeps hidden tabs open); read from context, never from the DOM, so no check forces a layout. */
+  const active = useScreenActive();
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const heights = useRef(new Map<string, number>());
   const [measuredAt, setMeasuredAt] = useState(0);
   /* Where the screen is relative to the list, from the last scroll or resize. */
@@ -79,7 +84,7 @@ export function WindowList<T>({
     const el = box.current;
     /* A hidden tab's list (App.tsx keeps the tabs open) keeps the rows it had, so coming back to
        the same scroll position finds them already drawn. */
-    if (el === null || el.getClientRects().length === 0) return;
+    if (el === null || !activeRef.current) return;
     const listTop = el.getBoundingClientRect().top;
     view.current = { top: -listTop, height: window.innerHeight };
   }, []);
@@ -121,7 +126,7 @@ export function WindowList<T>({
   /* After every change: hold the row on screen where it was, then note it again. */
   useLayoutEffect(() => {
     /* Hidden (another tab is showing): the page's scroll is that tab's, never this list's to move. */
-    if (box.current !== null && box.current.getClientRects().length === 0) return;
+    if (!activeRef.current) return;
     const was = anchor.current;
     if (was !== null && scrollTop() > TOP_SLACK_PX) {
       const shift = anchorShift(was.key, was.at, keys, offsets);
