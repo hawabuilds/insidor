@@ -195,11 +195,11 @@ function json(status: number, value: unknown): Reply {
  * one, and both the poll and the stream go through it.
  */
 export async function board(viewId: string, deps: Deps): Promise<Reply> {
-  const views = await deps.db.query(BOARD_VIEW_SQL, [viewId]);
+  /* Sent together: two statements still, but one round trip to a database a continent away. */
+  const [views, rows] = await Promise.all([deps.db.query(BOARD_VIEW_SQL, [viewId]), deps.db.query(BOARD_ROWS_SQL, [viewId])]);
   const view = views[0];
   if (view === undefined) return NOT_FOUND;
 
-  const rows = await deps.db.query(BOARD_ROWS_SQL, [viewId]);
   return json(200, {
     tick: tickNumber(view['tick']),
     order: rows.map((r) => textColumn(r['story_id'], 'story_id')),
@@ -222,10 +222,9 @@ export async function board(viewId: string, deps: Deps): Promise<Reply> {
  * are exactly as the feed does. A view never projected is a 404, as for the board.
  */
 async function narratives(viewId: string, deps: Deps): Promise<Reply> {
-  const views = await deps.db.query(BOARD_VIEW_SQL, [viewId]);
+  const [views, rows] = await Promise.all([deps.db.query(BOARD_VIEW_SQL, [viewId]), deps.db.query(NARRATIVES_SQL, [viewId])]);
   const view = views[0];
   if (view === undefined) return NOT_FOUND;
-  const rows = await deps.db.query(NARRATIVES_SQL, [viewId]);
   return json(200, { tick: tickNumber(view['tick']), stories: rows.map(payloadOf), provenance: columnOf(view, 'provenance') });
 }
 
@@ -268,10 +267,9 @@ async function pageIdOf(storyId: string, deps: Deps): Promise<string> {
 async function allNarratives(viewId: string, rawUrl: string, deps: Deps): Promise<Reply> {
   const ask = parseNarrativeList(rawUrl);
   if (ask === null) return BAD_REQUEST;
-  const views = await deps.db.query(BOARD_VIEW_SQL, [viewId]);
+  const [views, [ready]] = await Promise.all([deps.db.query(BOARD_VIEW_SQL, [viewId]), deps.db.query(PERMANENT_NARRATIVES_SQL, [])]);
   const view = views[0];
   if (view === undefined) return NOT_FOUND;
-  const [ready] = await deps.db.query(PERMANENT_NARRATIVES_SQL, []);
   if (ready?.['ok'] !== true) return NOT_FOUND;
   const tick = tickNumber(view['tick']);
   const page = await (deps.narrativeLists ?? createNarrativeLists())(deps.db, tick, ask);
@@ -299,13 +297,26 @@ async function allNarratives(viewId: string, rawUrl: string, deps: Deps): Promis
  */
 /** One feed of single posts — `fyp` or `popular` — handed over verbatim. */
 async function rising(feedId: string, deps: Deps): Promise<Reply> {
-  const views = await deps.db.query(RISING_VIEW_SQL, [feedId]);
+  /* Two round trips, not four: the frame and its rows together, then the cards' two additions together. */
+  const [views, rows] = await Promise.all([deps.db.query(RISING_VIEW_SQL, [feedId]), deps.db.query(RISING_ROWS_SQL, [feedId])]);
   const view = views[0];
   if (view === undefined) return NOT_FOUND;
 
-  const rows = await deps.db.query(RISING_ROWS_SQL, [feedId]);
   /* The English of each post written in another language (translations.ts, 0081), and the real narrative it is part of (story-tags.ts). */
-  return json(200, { tick: tickNumber(view['tick']), posts: await withStoryTags(deps.db, await withTranslations(deps.db, rows.map(payloadOf))) });
+  return json(200, { tick: tickNumber(view['tick']), posts: await withCardAdditions(deps.db, rows.map(payloadOf)) });
+}
+
+/**
+ * A feed's cards with their English (translations.ts) and their narrative (story-tags.ts), the two
+ * reads sent at once. Each leaves a card it adds nothing to as the same object, so the two answers
+ * are put together card by card.
+ */
+async function withCardAdditions(db: Deps['db'], cards: readonly unknown[]): Promise<readonly unknown[]> {
+  const [translated, tagged] = await Promise.all([withTranslations(db, cards), withStoryTags(db, cards)]);
+  return translated.map((card, i) => {
+    const tag = tagged[i];
+    return tag === cards[i] || typeof tag !== 'object' || tag === null ? card : { ...(card as Record<string, unknown>), inStory: (tag as Record<string, unknown>)['inStory'] };
+  });
 }
 
 /**
@@ -341,7 +352,7 @@ async function risingOlder(feedId: string, rawUrl: string, deps: Deps): Promise<
       rows = await deps.db.query(FOR_YOU_PAGE_SQL, [new Date(from.atMs).toISOString(), from.id, FEED_PAGE_SIZE]);
     } else rows = await deps.db.query(FEED_PAGE_SQL, [feedId, new Date(cursor.atMs).toISOString(), cursor.id, FEED_PAGE_SIZE]);
     const page = feedPage(rows, Date.now());
-    return json(200, { ...page, posts: await withStoryTags(deps.db, await withTranslations(deps.db, page.posts)) });
+    return json(200, { ...page, posts: await withCardAdditions(deps.db, page.posts) });
   } catch (e) {
     if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return NOT_FOUND;
     throw e;

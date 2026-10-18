@@ -267,8 +267,10 @@ export function createPostSheet(deps: PostSheetDeps) {
     const row = (await deps.db.query(SHEET_POST_SQL, [itemId]))[0] ?? (await memberRow(itemId));
     if (row === undefined) return json(404, { error: 'not found' });
     /* The post's English when it was written in another language (translations.ts, 0081). */
-    const payload = rec((await withTranslations(deps.db, [row['payload']]))[0]);
-    const storyRow = (await readOr(deps.db, SHEET_STORY_SQL, SHEET_STORY_LEGACY_SQL, [itemId]))[0];
+    /* Sent together: both are read by the post's id alone, and each round trip crosses a sea. */
+    const [translated, storyRows] = await Promise.all([withTranslations(deps.db, [row['payload']]), readOr(deps.db, SHEET_STORY_SQL, SHEET_STORY_LEGACY_SQL, [itemId])]);
+    const payload = rec(translated[0]);
+    const storyRow = storyRows[0];
     const storyId = str(payload['storyId']) ?? str(storyRow?.['story_id']);
 
     const link = linkedAddresses(payload['coins']);
@@ -309,18 +311,19 @@ export function createPostSheet(deps: PostSheetDeps) {
    * sheet (story-sheet.ts) both price their coins here, so one coin reads the same on both.
    */
   async function coinsFor(addresses: readonly string[], proven: string | null, linkCoin: Row): Promise<{ readonly coins: SheetCoinOut[]; readonly marketDown: boolean }> {
-    const held = new Map((addresses.length === 0 ? [] : await deps.db.query(SHEET_COINS_SQL, [addresses])).map((r) => [str(r['address']) ?? '', r] as const));
-
-    let quotes: ReadonlyMap<string, CoinQuote> = new Map();
+    /* The coins we hold and the market's quotes, asked at once: neither needs the other. */
     let marketDown = false;
-    if (deps.quotes !== null && addresses.length > 0) {
-      try {
-        quotes = await deps.quotes.quotes(addresses);
-      } catch (e) {
-        marketDown = true;
-        deps.log.info('post sheet market unavailable', { err: e instanceof Error ? e.message : String(e) });
-      }
-    }
+    const [heldRows, quotes] = await Promise.all([
+      addresses.length === 0 ? Promise.resolve([]) : deps.db.query(SHEET_COINS_SQL, [addresses]),
+      deps.quotes === null || addresses.length === 0
+        ? Promise.resolve(new Map<string, CoinQuote>() as ReadonlyMap<string, CoinQuote>)
+        : deps.quotes.quotes(addresses).catch((e: unknown) => {
+            marketDown = true;
+            deps.log.info('post sheet market unavailable', { err: e instanceof Error ? e.message : String(e) });
+            return new Map<string, CoinQuote>() as ReadonlyMap<string, CoinQuote>;
+          }),
+    ]);
+    const held = new Map(heldRows.map((r) => [str(r['address']) ?? '', r] as const));
     const pictures = new Map<string, string>();
     const missing = addresses.filter((a) => str(held.get(a)?.['image_uri']) === null);
     if (deps.images !== null && missing.length > 0) {
