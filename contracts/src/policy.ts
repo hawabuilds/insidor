@@ -2898,6 +2898,12 @@ export interface SocialPolicy {
   /** The season standings (for GOAT and the leaderboard) are kept this long. */
   readonly standingsKeepMs: number;
   readonly leaderboardSize: number;
+  /** The Feed of people you follow (services/social activity.ts): items a page, Trador's twenty. */
+  readonly feedPageSize: number;
+  /** How many "People to follow" the Feed shows someone who follows nobody yet. */
+  readonly peopleToFollow: number;
+  /** The window "trades this week" and the People to follow ordering count over. */
+  readonly peopleWindowMs: number;
   /** Reads and writes one person may make per `windowMs`. */
   readonly perClient: number;
   readonly windowMs: number;
@@ -5185,6 +5191,12 @@ const POLICY_V1: Policy = {
     holderKeepMs: 60_000,
     standingsKeepMs: 30_000,
     leaderboardSize: 50,
+    /* Trador's Feed page (lib/server/socialFeed.ts FEED_PAGE). */
+    feedPageSize: 20,
+    /* One screen of faces under the empty Feed, not a directory. */
+    peopleToFollow: 8,
+    /* Seven days: "this week" on the People to follow rows. */
+    peopleWindowMs: 604_800_000,
     perClient: 60,
     windowMs: 60_000,
   },
