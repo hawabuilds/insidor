@@ -51,6 +51,9 @@
  *      minutes or more after the post, the judge's answer "no", no self-launching author, no
  *      owner call, no hand gold, no crypto talk, no held kind — the newest twenty, as their own
  *      YES section, in only the room the owner's own calls leave (the owner, 2026-10-18), and never an animal or object by the word test. Free: our own rows, no judge call.
+ *      And last the owner's soft yes (Policy.learning.seenKept): posts on his screen for two seconds
+ *      or opened, with no "Not a meme" in 24 hours and no call of his (0098, store owner-seen.ts),
+ *      the newest `maxPerBlock`, after the coined posts, in whatever room is still left; never tested.
  *   4. the test, asked exactly as the live scorer asks (tools/lib/pass-rates.ts: ten posts a call,
  *      the same picture size and answer budget, then the kind question). HAND GOLD is the gold
  *      sheets, the owner's missed posts and the owner's own list (eval/src/gold/hand-gold.json:
@@ -164,11 +167,11 @@ import process from 'node:process';
 import { DEFAULT_POLICY } from '../contracts/src/policy.ts';
 import type { JudgeEvidence } from '../contracts/src/judgement.ts';
 import { lessonsLine, narrativeLessons } from './lib/narrative-lessons.ts';
-import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwnerAlertRepo, type GoldAddition } from '../store/src/index.ts';
+import { asDb, createPool, DB_ROLE, PgLabelEmbeddingRepo, PgLearningRepo, PgOwnerAlertRepo, PgOwnerSeenRepo, type GoldAddition } from '../store/src/index.ts';
 import { POST_SPACE } from '../adapters/embed/voyage/src/index.ts';
 import { isMissingTable } from '../store/src/repo/learning.ts';
 import { leadFacts, leadLines, leadRows, summarise } from './lib/lead-time.ts';
-import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, gate, goalsText, latestSlot, junkBRose, missedCaught, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, ratesOf, regressions, withRulebook, share, strictestKeeping, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type OwnerPick, type OwnerSets, type OwnerSide, type Rate } from '../eval/src/feed/examples.ts';
+import { atCutoff, buildBlock, caught, changed, coinedYes, currentCalls, keptYes, type KeptPost, gate, goalsText, latestSlot, junkBRose, missedCaught, ownerLine, ownerSide, parseFloor, pickOwnerCutoff, ratesOf, regressions, withRulebook, share, strictestKeeping, sweepCutoff, type CutoffChoice, type CutoffPoint, type GradedPost, type NameCall, type OwnerCall, type OwnerPick, type OwnerSets, type OwnerSide, type Rate } from '../eval/src/feed/examples.ts';
 import { OWNER_SPLIT, alwaysTeachIds } from '../eval/src/feed/owner-split.ts';
 import { drawSample, readUntapped, unclearMarkdown } from './lib/junk-sample.ts';
 import { postTimeFromId, xPlatform, httpClient as xClient } from '../adapters/platform/x/src/index.ts';
@@ -254,6 +257,16 @@ async function readLead(): Promise<{ facts: ReturnType<typeof leadFacts>; lines:
   } finally {
     await pool.end();
   }
+}
+
+/** The posts the owner saw and kept in the last `seenKept.lookbackMs`, with their words and picture. */
+async function keptPosts(db: Db, nowMs: number): Promise<readonly KeptPost[]> {
+  const K = P.learning.seenKept;
+  const now = new Date(nowMs);
+  const kept = await new PgOwnerSeenRepo(db).keptIds({ since: new Date(nowMs - K.lookbackMs), until: now, keepWindowMs: K.keepWindowMs, now });
+  if (kept.size === 0) return [];
+  const rows = await db.query<{ item_id: string; body: string | null; media: unknown }>(`select item_id, body, media from public.item where item_id = any($1::text[])`, [[...kept.keys()]]);
+  return rows.map((r) => ({ itemId: r.item_id, text: r.body ?? '', imageUri: pictureOf(r.media)?.uri ?? null, firstSeenAt: kept.get(r.item_id) ?? 0 }));
 }
 
 async function withRepo<T>(f: (repo: PgLearningRepo, owner: PgOwnerAlertRepo, labels: PgLabelEmbeddingRepo, db: Db) => Promise<T>): Promise<T> {
@@ -428,6 +441,12 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         P,
         new Set([...calls.map((c) => c.itemId), ...handGoldIdsNow]),
       );
+      /* ★ THE OWNER'S SOFT YES (Policy.learning.seenKept; eval examples.ts `keptYes`): posts he saw and
+         kept, never one he called, one this run tests as hand gold, or one on his fixed test set. Before
+         0098 there are none, and the block is what it was. */
+      const K = L.seenKept;
+      const keptRows = K.teach ? await soft(keptPosts(db, Date.now()), []) : [];
+      const keptTaught = keptYes(keptRows, P, new Set([...calls.map((c) => c.itemId), ...handGoldIdsNow, ...OWNER_SPLIT.test]));
       /* ★ THE OWNER'S GATE'S JUNK SET (Policy.learning.ownerGate): the owner's current "Not a meme"
          calls on posts first shown on For You in the last `junkDays` days. Those that are news (a
          `newsKinds` label) or carry no picture are never taught while in the window, so every one of
@@ -439,7 +458,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       const recentNots = currentCalls(calls).filter((c) => c.label === 'not' && shownKind.has(c.itemId));
       const newsKinds = new Set(OG.newsKinds.map((k) => k.toUpperCase()));
       const newsOrText = new Set(recentNots.filter((c) => c.imageUri === null || newsKinds.has((shownKind.get(c.itemId) ?? '').toUpperCase())).map((c) => c.itemId));
-      const examplesOnly = buildBlock(calls, names, L.maxExamples, { alwaysTeach: alwaysTeachIds(P), alwaysTest: OWNER_SPLIT.test, neverTeach: [...newsOrText], coinedYes: coinedTaught });
+      const examplesOnly = buildBlock(calls, names, L.maxExamples, { alwaysTeach: alwaysTeachIds(P), alwaysTest: OWNER_SPLIT.test, neverTeach: [...newsOrText], coinedYes: coinedTaught, keptYes: keptTaught, keptBeforeCoined: !K.afterCoined });
       /* ★ THE OWNER'S RULEBOOK (tools/lib/rulebook.ts): written from the block's own lines, the
          standing decisions and counts over every input, then put in the block, so the test below
          tests both. Not written for `compose` (free) or `--rules-only` (no block); a rulebook that
@@ -517,7 +536,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         coinRight: coinCalls.filter((m) => m.verdict === 'right').length, coinNone: coinCalls.filter((m) => m.verdict === 'none').length,
         liveNegatives: block.testNegatives.length, missedTested: testMissed.length, autoGold: posts.filter((p) => p.group === 'auto').length,
         tiktokCoined: posts.filter((p) => p.group === 'tt-coined').length,
-        coinedYesFound: coinedRows.length, coinedYesAfterTest: coinedTaught.length, coinedYesTaught: block.used.coined, ownerYes: `${block.owner.yesTaught}/${block.owner.yesPool}`, ownerNo: `${block.owner.noTaught}/${block.owner.noPool}`,
+        coinedYesFound: coinedRows.length, coinedYesAfterTest: coinedTaught.length, coinedYesTaught: block.used.coined, keptYesFound: keptRows.length, keptYesTaught: block.used.kept, ownerYes: `${block.owner.yesTaught}/${block.owner.yesPool}`, ownerNo: `${block.owner.noTaught}/${block.owner.noPool}`,
         alwaysTaughtInBlock: `${alwaysTeachIds(P).filter((id) => block.exampleIds.includes(id)).length}/${alwaysTeachIds(P).length}`,
         ownerTest: OWNER_SPLIT.test.length, ownerTaught: alwaysTeachIds(P).filter((id) => block.exampleIds.includes(id)).length,
         recentNots: recentNots.length, recentNotsHeldOut: block.testNegatives.filter((c) => shownKind.has(c.itemId)).length, recentNewsOrText: newsOrText.size,
