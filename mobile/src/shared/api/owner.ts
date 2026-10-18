@@ -8,9 +8,9 @@
  */
 
 import { PeopleError, socialCall } from './people.ts';
-import { decodeCalls, decodeCoinCheck, decodeHidden, decodeOwner, savedCallOf, type CallKind, type CoinCheckResult, type HiddenPost, type SavedCall } from './wire/owner.ts';
+import { decodeCalls, decodeCoinCheck, decodeHidden, decodeOwner, decodeSecondChance, savedCallOf, type CallKind, type CoinCheckResult, type HiddenPost, type SavedCall, type SecondChancePost } from './wire/owner.ts';
 
-export type { CallKind, CoinCall, CoinCheckResult, HiddenCard, HiddenPost, NameCall, PastedCoin, PostCall, SavedCall } from './wire/owner.ts';
+export type { CallKind, CoinCall, CoinCheckResult, HiddenCard, HiddenPost, NameCall, PastedCoin, PostCall, SavedCall, SecondChancePost } from './wire/owner.ts';
 
 /** What the owner saw when making a call: the card's facts, or the coin line. */
 export type Shown = Readonly<Record<string, string | number | boolean | null>>;
@@ -52,6 +52,11 @@ export async function fetchCalls(kind: CallKind, itemIds: readonly string[]): Pr
 
 export async function fetchHidden(): Promise<readonly HiddenPost[]> {
   return decodeHidden(await socialCall('GET', '/owner/hidden'));
+}
+
+/** The For You posts that came in as a second chance after a "no": the owner's check list. */
+export async function fetchSecondChance(): Promise<readonly SecondChancePost[]> {
+  return decodeSecondChance(await socialCall('GET', '/owner/safety-net'));
 }
 
 /**

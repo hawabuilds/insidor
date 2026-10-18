@@ -168,3 +168,20 @@ export function decodeCoinCheck(raw: unknown): CoinCheckResult {
     postStored: post['stored'] === true,
   };
 }
+
+/** A post that reached For You as a second chance after a "no" (the owner's check list, GET /owner/safety-net). */
+export interface SecondChancePost {
+  readonly itemId: string;
+  /** When it first went on For You, in ms. */
+  readonly at: number;
+  readonly text: string | null;
+  readonly link: string | null;
+}
+
+export function decodeSecondChance(raw: unknown): readonly SecondChancePost[] {
+  const list = isObj(raw) && Array.isArray(raw['posts']) ? raw['posts'] : [];
+  return list.flatMap((p) => {
+    if (!isObj(p) || typeof p['itemId'] !== 'string' || typeof p['at'] !== 'number') return [];
+    return [{ itemId: p['itemId'], at: p['at'], text: typeof p['text'] === 'string' ? p['text'] : null, link: typeof p['link'] === 'string' ? p['link'] : null }];
+  });
+}
