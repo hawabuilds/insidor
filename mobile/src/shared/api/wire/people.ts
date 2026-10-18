@@ -26,6 +26,8 @@ export interface ProfileCard extends Omit<PersonRef, 'rank'> {
   readonly iFollow: boolean;
   readonly followsMe: boolean;
   readonly isMe: boolean;
+  /** "Show my trades to followers": theirs to see only, so null on anyone else's profile. */
+  readonly tradesPublic?: boolean | null;
 }
 
 export interface Comment {

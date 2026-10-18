@@ -1,7 +1,9 @@
 /**
  * A PERSON'S PROFILE — Trador's ProfileScreen and RankStanding, in Insidor: picture, name and
  * @handle from their sign-in, their wallet, the rank card ("N rep to Quant"), followers and
- * following, their bio (editable on one's own), and their recent comments.
+ * following, their bio (editable on one's own), and their recent comments. On one's own, the
+ * switch "Show my trades to followers" (off until turned on; services/social honours it), which
+ * decides whether their buys and sells reach the Feed of the people who follow them.
  *
  * ★ A PERSON'S OWN NUMBERS ONLY. Rep, rank and counts are about this person and what others did
  * with their comments. Nothing on this screen rates a coin or a post.
@@ -9,6 +11,7 @@
 
 import { useState } from 'react';
 
+import { saveTradesPublic } from '../../shared/api/following.ts';
 import { follow, fetchProfile, saveBio, type Comment, type ProfileCard } from '../../shared/api/people.ts';
 import { formatAge } from '../../shared/format/duration.ts';
 import { useLoad, useNow } from '../../shared/hooks.ts';
@@ -125,6 +128,7 @@ function Body({ p, comments, reload }: { p: ProfileCard; comments: readonly Comm
         )}
         <a className={styles['ghost']} style={{ display: 'grid', placeItems: 'center', textDecoration: 'none' }} href={hrefFor({ screen: 'leaderboard' })}>Leaderboard</a>
       </div>
+      {p.isMe && typeof p.tradesPublic === 'boolean' ? <ShareTrades on={p.tradesPublic} /> : null}
       <RankCard p={p} />
       <h2 className={styles['section']}>Comments</h2>
       {comments.length === 0 ? <p className={styles['note']}>No comments yet.</p> : null}
@@ -141,5 +145,35 @@ function Body({ p, comments, reload }: { p: ProfileCard; comments: readonly Comm
         return href === null ? <div key={c.id} className={styles['row']}>{inner}</div> : <a key={c.id} className={styles['row']} href={href}>{inner}</a>;
       })}
     </>
+  );
+}
+
+/**
+ * One's own "Show my trades to followers". Flipped at once and put back if the save fails, so the
+ * switch never says something the server did not agree to.
+ */
+function ShareTrades({ on: saved }: { on: boolean }) {
+  const toast = useToast();
+  const [on, setOn] = useState(saved);
+  const flip = async () => {
+    const next = !on;
+    setOn(next);
+    try {
+      await saveTradesPublic(next);
+    } catch (e) {
+      setOn(!next);
+      toast("Couldn't save", e instanceof Error ? e.message : '');
+    }
+  };
+  return (
+    <button type="button" role="switch" aria-checked={on} className={styles['shareTrades']} onClick={() => void flip()}>
+      <span>
+        <b>Show my trades to followers</b>
+        <small>{on ? 'Your buys and sells show in the Feed of people who follow you.' : 'Your buys and sells stay off the Feed. The chain itself is public either way.'}</small>
+      </span>
+      <span className={`${styles['toggle']} ${on ? styles['toggleOn'] : ''}`}>
+        <i />
+      </span>
+    </button>
   );
 }
