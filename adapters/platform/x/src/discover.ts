@@ -57,6 +57,18 @@
  *      extra OLD items, and old items cannot know about anything that happened
  *      later. Being too narrow would silently hide real posts, which is why the
  *      rendering rounds outward.
+ *
+ * ── ★ ONE LANGUAGE A SEARCH (2026-10-18) ──────────────────────────────────
+ *
+ * Several languages used to be one OR group, `(lang:en OR lang:zxx OR lang:pt …)`. From about
+ * 23:15 UTC on 2026-10-16 the supplier honours only the LAST `lang:` of such a group, still
+ * answering 200 with full pages: our English finds fell from 8,811 a day (16 Oct) to 46 (18 Oct)
+ * while Japanese, last in the list, rose from 0 to 5,335. Nothing failed, so nothing said so for
+ * two days — the undetectable withdrawal the cutoff section above is about. A paid probe that
+ * night confirmed one language alone still works (`lang:en` 20 English posts, `lang:pt` 5, each
+ * with more to come). So a filter carrying more than one language is now REFUSED here, and the
+ * runner asks each language as its own search with its own cursor (work/languages.ts). An empty
+ * list still means every language and sends no operator at all.
  */
 
 import type { Author, Item, Millis } from '@insidor/contracts';
@@ -145,7 +157,7 @@ function feedOperators(query: DiscoveryQuery): string[] {
 
 /**
  * The floor, media, language and repost operators of a `FeedFilter`, refused rather than guessed
- * on a missing or non-whole floor or an unknown language code. Shared by the catch-all and by a
+ * on a missing or non-whole floor, an unknown language code, or more than one language. Shared by the catch-all and by a
  * keyword search that carries a filter (`narrowedSearch.filter`): one rendering, so the two cannot
  * drift into two spellings of the same floor.
  */
@@ -159,9 +171,13 @@ function filterOperators(query: DiscoveryQuery, feature: string, what: string): 
   for (const lang of filter.langs) {
     if (!/^[a-z]{2,3}$/.test(lang)) throw new NotImplemented(feature, `no such language code: ${lang}`);
   }
-  /* One code is a bare operator; several are one OR group, so a post in any of them matches. */
+  /* ★ ONE LANGUAGE A SEARCH, NEVER AN OR GROUP (see the header): several languages are several
+     searches, the caller's to ask (work/languages.ts in the runner). Refused, not rendered, so a
+     caller that sends a group again fails loudly instead of quietly getting only the last one. */
+  if (filter.langs.length > 1) {
+    throw new NotImplemented(feature, `${what} takes one language a search; asked ${filter.langs.join(', ')} (the supplier answers only the last of an OR group since 2026-10-16)`);
+  }
   if (filter.langs.length === 1) out.push(`lang:${filter.langs[0]}`);
-  else if (filter.langs.length > 1) out.push(`(${filter.langs.map((l) => `lang:${l}`).join(' OR ')})`);
   if (filter.excludeRebroadcasts) out.push('-filter:retweets');
   return out;
 }
