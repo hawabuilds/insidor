@@ -2156,16 +2156,18 @@ export interface RisingPolicy {
    * ★ FOR YOU'S TRENDING AND MOST VIEWED (core rank/post-sorts.ts, the owner 2026-10-17 and 18).
    * `freshMs`: a post whose newest reading is this old or more is listed after every post read
    * since ("a post can only rank in the top 20 if its latest reading is less than 30 minutes old").
-   * `minReadShare`: a half window's speed needs W / this of it read. `trendFloorPerMin`: Trending
+   * `minReadShare`: a half window's speed needs W / this of it read. `trendFloorsPerMin`: Trending
    * ranks by how many times faster a post gains now than just before only for posts gaining at least
-   * this many views a minute now, in a text post's views (a short video's speed divided by
-   * `shortVideoReachScale` first); below it, by speed, under every post over it, so a tiny post's
-   * tenfold cannot top the list.
+   * their window's floor in views a minute now, in a text post's views (a short video's speed divided
+   * by `shortVideoReachScale` first); below it, by speed, under every post over it, so a tiny post's
+   * tenfold cannot top the list. One floor a window (the owner, 2026-10-18), because a half window's
+   * speed is an average over 30 minutes, 3 hours or 12: one number would let nearly every post over
+   * on 1h's terms and almost none on 24h's. A window with no entry takes the nearest window's.
    */
   readonly forYouSorts: {
     readonly freshMs: number;
     readonly minReadShare: number;
-    readonly trendFloorPerMin: number;
+    readonly trendFloorsPerMin: readonly { readonly windowMs: number; readonly perMin: number }[];
   };
   /**
    * ★ THE SHORT-VIDEO SOURCE'S OWN GROWTH PATHS, in place of the scaled `fypEarly*` / `fypFast*`
@@ -5124,8 +5126,15 @@ const POLICY_V1: Policy = {
     feedBarCountsEveryReading: true, // on 2026-10-14, the owner's call: a first reading counts, $0
     watchMinReachPerMinute: 500,
     shortVideoReachScale: 12.5,
-    /* Trending's floor: 300 recommended on 2026-10-18 (1h: a little over half the fresh posts with a trend are over it); not live until the owner picks one. */
-    forYouSorts: { freshMs: 1_800_000, minReadShare: 12, trendFloorPerMin: 300 },
+    /* Trending's floors, the owner 2026-10-18: 1h at 300. 6h and 24h from the 24 hours before, replayed
+       hourly: 6h at 30 keeps a median 17 of 29 fresh posts with a trend (now 19 of 30); 24h at 10 keeps a
+       median 10 of 11 (now 10 of 13). Fewer than 20 qualify because fewer than 20 posts have a trend at
+       all, not because the floor is high. */
+    forYouSorts: {
+      freshMs: 1_800_000,
+      minReadShare: 12,
+      trendFloorsPerMin: [{ windowMs: 3_600_000, perMin: 300 }, { windowMs: 21_600_000, perMin: 30 }, { windowMs: 86_400_000, perMin: 10 }],
+    },
     shortVideoEarlyReach: 150_000,
     shortVideoEarlyWindowMs: 7_200_000, // two hours
     shortVideoFastReachPerMinute: 1_500,

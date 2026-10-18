@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DEFAULT_POLICY } from '@insidor/contracts';
-import { narrativeReach, sortOrder } from '@insidor/core';
+import { narrativeReach, sortOrder, trendFloor } from '@insidor/core';
 
 import { SILENT } from './log.ts';
 import { SORT_CARDS_SQL, SORT_READINGS_SQL, createSorts, gainIn, parseSort, rankPost, rankScale, ranked, runsOf, type Reading } from './post-sorts.ts';
@@ -57,7 +57,7 @@ test('most viewed is views gained in the window, not lifetime views', () => {
 });
 
 test('trending: over the floor, how many times faster it gains now than before, so a post picking up passes a bigger one gaining steadily', () => {
-  const floor = DEFAULT_POLICY.rising.forYouSorts.trendFloorPerMin;
+  const floor = trendFloor(60 * MIN, DEFAULT_POLICY);
   const takingOff = rankPost('up', readings(120, 5, (m) => (m < 30 ? floor * 3 : floor / 2)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
   const steady = rankPost('steady', readings(120, 5, (m) => (m < 30 ? floor * 10 : floor * 8)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
   const slowing = rankPost('down', readings(120, 5, (m) => (m < 30 ? floor * 20 : floor * 30)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
@@ -67,7 +67,7 @@ test('trending: over the floor, how many times faster it gains now than before, 
 });
 
 test('★ trending: a post under the floor ranks below every post over it, by its speed, whatever its ratio', () => {
-  const floor = DEFAULT_POLICY.rising.forYouSorts.trendFloorPerMin;
+  const floor = trendFloor(60 * MIN, DEFAULT_POLICY);
   const tiny = rankPost('tiny', readings(120, 5, (m) => (m < 30 ? floor / 2 : floor / 50)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
   const smaller = rankPost('smaller', readings(120, 5, (m) => (m < 30 ? floor / 4 : floor / 400)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
   const flat = rankPost('flat', readings(120, 5, () => floor * 2), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
@@ -76,6 +76,18 @@ test('★ trending: a post under the floor ranks below every post over it, by it
   assert.ok(tiny !== null && smaller !== null && flat !== null && woke !== null);
   assert.equal(tiny.group, 'under_floor');
   assert.deepEqual(ranked([smaller, tiny, flat, woke]).map((x) => x.id), ['woke', 'flat', 'tiny', 'smaller']);
+});
+
+test('★ trending: each window has its own floor, a window with no entry takes the nearest', () => {
+  const at = (perMin: number) => ({ ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, forYouSorts: { ...DEFAULT_POLICY.rising.forYouSorts, trendFloorsPerMin: [{ windowMs: 60 * MIN, perMin }, { windowMs: 24 * 60 * MIN, perMin: 10 }] } } });
+  assert.equal(trendFloor(60 * MIN, at(300)), 300);
+  assert.equal(trendFloor(24 * 60 * MIN, at(300)), 10);
+  assert.equal(trendFloor(2 * 60 * MIN, at(300)), 300, 'nearest');
+  /* The same post: over 24h's floor, under 1h's. */
+  const slow = readings(26 * 60, 10, (m) => (m < 12 * 60 ? 60 : 20));
+  assert.equal(rankPost('slow', slow, null, 'trending', 24 * 60 * MIN, NOW, 1, at(300))?.group, 'over_floor');
+  assert.equal(rankPost('slow', slow, null, 'trending', 60 * MIN, NOW, 1, at(300))?.group, 'under_floor');
+  assert.deepEqual(DEFAULT_POLICY.rising.forYouSorts.trendFloorsPerMin.map((f) => [f.windowMs / MIN, f.perMin]), [[60, 300], [360, 30], [1440, 10]]);
 });
 
 test('a post not read inside the window is not on the list', () => {
