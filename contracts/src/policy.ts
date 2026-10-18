@@ -1628,7 +1628,11 @@ export interface FeedPolicy {
   /**
    * ★ THE NARRATIVE-NAME SEARCH (the owner, 2026-10-18): every `everyMs`, each open narrative on the
    * board searched on the text source by its name, forward from that narrative's last search (or one
-   * `everyMs` back on its first), at `minApproval` likes and in `feed.langs`. Posts found are credited
+   * `everyMs` back on its first), at `minApproval` likes and in EVERY language: one search a name with
+   * no language filter, not one per language of `feed.langs` (the owner, 2026-10-18). Since the
+   * supplier stopped honouring an OR of languages (16 Oct) a filtered name would be five asks, five
+   * times the requests under the same $0.35; a name is already narrow, and the posts that carry it in
+   * any language are the ones we want, so it is asked once across all of them. Posts found are credited
    * to the 'narrative_name' lane (0097), judged like any found post, and may reach For You — unlike
    * the story-name backfill (`BackfillPolicy`), whose posts are judged and never shown.
    *
@@ -4481,7 +4485,10 @@ const POLICY_V1: Policy = {
        a day, so the cap is the top of the estimate.
        1,000 likes, not the middle lane's 2,000: that lane already returns every post 15 minutes to
        3 hours old at 2,000 in these languages, so a 2,000 floor over the last hour would find almost
-       nothing it does not; a name narrows the search enough to ask for half the likes. */
+       nothing it does not; a name narrows the search enough to ask for half the likes.
+       The owner, 2026-10-18: one ask a name across all languages (no language filter), not one per
+       language of `feed.langs` — the per-language split would make the ~1,250 asks a day ~6,250 under
+       the same cap. */
     narrativeNames: {
       on: true,
       everyMs: 3_600_000, // hourly
