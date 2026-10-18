@@ -16,6 +16,9 @@
  * `watch:<person>`), so starring a post that already has three coins sends nothing: the card shows
  * them. Only a coin that comes after is news.
  *
+ * A post whose line already shows a coin when starred has had its first coin for this person too
+ * (`firstKey`), so the first-coin push (watch.ts) is only ever about a coin that comes after.
+ *
  * Apart from routes.ts because it is one feature with its own table (people.post_watch, 0068).
  * 0068's `notified_at` (one alert per post, the bell's rule) no longer decides anything: a watched
  * post alerts once per coin, which the seen stream holds.
@@ -32,6 +35,8 @@ export interface ProvenCoin {
 }
 
 export const watchStream = (userId: string): string => `watch:${userId}`;
+/** In the person's watch stream: the post's first settled coin was sent, or was already on its line when starred (watch.ts). */
+export const firstKey = (itemId: string): string => `${itemId}|#first`;
 
 /** Every coin the post shows now: its line's coin and its list (the list needs 0078's grant; without it, the line alone). */
 export async function coinsShown(db: Db, itemId: string): Promise<string[]> {
@@ -98,7 +103,9 @@ export async function postWatchRoute(db: Db, method: string, seg: readonly strin
     /* What the post shows now is not news (see the header): seen at once, for this person. */
     if (fresh.length > 0) {
       const shown = await coinsShown(db, itemId);
-      if (shown.length > 0) await db.query('insert into people.pipeline_seen (stream, key) select $1, unnest($2::text[]) on conflict do nothing', [watchStream(userId), shown.map((a) => `${itemId}|${a}`)]);
+      const lined = (await db.query<{ payload: unknown }>('select payload from public.rising_row where item_id = $1', [itemId])).some((r) => lineCoin(r.payload) !== null);
+      const keys = [...shown.map((a) => `${itemId}|${a}`), ...(lined ? [firstKey(itemId)] : [])];
+      if (keys.length > 0) await db.query('insert into people.pipeline_seen (stream, key) select $1, unnest($2::text[]) on conflict do nothing', [watchStream(userId), keys]);
     }
     return json(200, { watching: true });
   }
