@@ -2,7 +2,7 @@
  * A PERSON'S PROFILE — Trador's ProfileScreen and RankStanding, in Insidor: picture, name and
  * @handle from their sign-in, their wallet, the rank card ("N rep to Quant"), followers and
  * following, their bio (editable on one's own), and their recent comments. On one's own, the
- * switch "Show my trades to followers" (off until turned on; services/social honours it), which
+ * switch "Show my trades to followers" (on by default, as Trador's Public portfolio; services/social honours it), which
  * decides whether their buys and sells reach the Feed of the people who follow them.
  *
  * ★ A PERSON'S OWN NUMBERS ONLY. Rep, rank and counts are about this person and what others did

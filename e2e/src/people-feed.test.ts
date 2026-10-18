@@ -4,7 +4,7 @@
  * service writes them, and comments made through the social routes themselves.
  *
  * What it holds: only people you follow, only landed buys and sells, only from people who turned
- * on "Show my trades to followers" (off until they do), newest first across trades and comments,
+ * on "Show my trades to followers" (on until they turn it off, as Trador's), newest first across trades and comments,
  * twenty a page with no item lost or repeated at the boundary, and People to follow for someone
  * who follows nobody, by counts anyone could make.
  */
@@ -54,7 +54,7 @@ type Item = { kind: string; key: string; at: number; person: { userId: string };
 
 beforeEach(() => forgetKept());
 
-test('★ the Feed shows the people you follow: their landed trades only once shared, and their comments, newest first', async () => {
+test('★ the Feed shows the people you follow: their landed trades unless they turned sharing off, and their comments, newest first', async () => {
   const me = person(1);
   const friend = person(2);
   const stranger = person(3);
@@ -70,20 +70,18 @@ test('★ the Feed shows the people you follow: their landed trades only once sh
   await as(friend)('POST', '/comments', { subject: `coin:${MINT}`, body: 'FERRY has a horn now' });
   await as(stranger)('POST', '/comments', { subject: `coin:${MINT}`, body: 'not followed' });
 
-  /* Off by default: the friend's trades are not shown until they say so. */
-  const before = await as(me)('GET', '/feed');
-  assert.equal(before.status, 200);
-  const items0 = before.body['items'] as Item[];
-  assert.deepEqual(items0.map((i) => i.kind), ['comment'], 'only the comment, from the person followed');
-  assert.equal(before.body['following'], 1);
-
+  /* On by default, as Trador's: the friend shares until they say otherwise. */
   const mine = await as(friend)('GET', '/me');
-  assert.equal(mine.body['tradesPublic'], false, 'off until turned on');
+  assert.equal(mine.body['tradesPublic'], true, 'on until turned off');
   const theirs = (await as(me)('GET', `/profile/${friend.userId}`)).body['profile'] as { tradesPublic: unknown };
   assert.equal(theirs.tradesPublic, null, "another person's switch is not shown");
-  const on = await as(friend)('PUT', '/me', { tradesPublic: true });
-  assert.equal(on.body['tradesPublic'], true);
-  await as(stranger)('PUT', '/me', { tradesPublic: true });
+  const off = await as(friend)('PUT', '/me', { tradesPublic: false });
+  assert.equal(off.body['tradesPublic'], false);
+  const before = await as(me)('GET', '/feed');
+  assert.equal(before.status, 200);
+  assert.deepEqual((before.body['items'] as Item[]).map((i) => i.kind), ['comment'], 'turned off: only the comment, from the person followed');
+  assert.equal(before.body['following'], 1);
+  await as(friend)('PUT', '/me', { tradesPublic: true });
 
   const after = (await as(me)('GET', '/feed')).body['items'] as Item[];
   assert.deepEqual(after.map((i) => [i.kind, i.side ?? null]), [['comment', null], ['trade', 'sell'], ['trade', 'buy']], 'newest first; the unlanded and failed trades and the stranger are left out');
@@ -118,7 +116,6 @@ test('★ twenty a page, and the pages together are every item once, in order', 
   await as(me)('POST', '/me');
   await as(friend)('POST', '/me');
   await as(me)('POST', `/follow/${friend.userId}`);
-  await as(friend)('PUT', '/me', { tradesPublic: true });
   /* Thirty trades, several sharing a second, so the boundary falls inside a tie. */
   for (let n = 0; n < 30; n += 1) await trade(2, `t${n}`, n % 2 === 0 ? 'buy' : 'sell', 'confirmed', `2026-10-18T10:00:${String(Math.floor(n / 3)).padStart(2, '0')}Z`);
   /* Ten comments; the comment window allows ten an hour. */
@@ -149,7 +146,8 @@ test('★ someone who follows nobody gets People to follow, by counts anyone cou
   const privateTrader = person(5);
   const { as, trade } = await setup();
   for (const p of [me, trader, talker, quiet, privateTrader]) await as(p)('POST', '/me');
-  await as(trader)('PUT', '/me', { tradesPublic: true });
+  await as(privateTrader)('PUT', '/me', { tradesPublic: false });
+  await as(talker)('PUT', '/me', { tradesPublic: false });
   const recent = new Date(NOW - 3_600_000).toISOString();
   await trade(2, 'a', 'buy', 'confirmed', recent);
   await trade(2, 'b', 'sell', 'confirmed', recent);
