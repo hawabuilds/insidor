@@ -20,6 +20,7 @@
  *      last three and the three together (tools/lib/scorecard.ts, also tools/scorecard.ts on its own),
  *      then the memeable viral funnel for the same days: never found, found too late, views bar, judge
  *      said no, other, shown early, and where each owner missed post was lost (tools/lib/funnel.ts).
+ *   8. The latest re-tune: its slot, outcome, version, cost and the gate's own line (internal.judge_retune).
  *
  * What breaks if changed carelessly: the owner's posts must be weighed by the projector's code,
  * never a copy (the reason tools/lib/coin-match-fit.ts gives); a number from another path is a
@@ -35,7 +36,7 @@ import { evaluateCase, matchBarsOf, type MatchOutcome } from '../eval/src/gold/m
 import { loadMatchEvidence, matchCases } from '../eval/src/gold/match-cases.ts';
 import { withPlausibleLists } from '../services/project/src/coin-list.ts';
 import { loadFit, weighPostCoins } from '../services/project/src/post-match.ts';
-import { asDb, createPool, DB_ROLE, PgOwnerCoinCallRepo } from '../store/src/index.ts';
+import { asDb, createPool, DB_ROLE, PgLearningRepo, PgOwnerCoinCallRepo } from '../store/src/index.ts';
 import { leadLines, leadRows, summarise } from './lib/lead-time.ts';
 import { funnelLines, funnelRows } from './lib/funnel.ts';
 import { scorecardRows, scorecards, scorecardTable } from './lib/scorecard.ts';
@@ -187,6 +188,13 @@ try {
   say('```');
   for (const line of funnelLines(await funnelRows(db, since, until), since, until)) say(line);
   say('```');
+
+  /* 8. The latest re-tune (the owner, 2026-10-18: "add the latest re-tune's result to it"). */
+  say();
+  say('## Latest re-tune');
+  const [last] = await new PgLearningRepo(db).recentRuns(1);
+  say(last === undefined ? 'No re-tune has run yet.' : `slot ${last.slot.toISOString()}: ${last.outcome}${last.versionId === null ? '' : `, version ${last.versionId}`}${last.costUsd === null ? '' : `, $${last.costUsd.toFixed(3)}`}`);
+  if (last?.detail) say(last.detail);
 
   const out = arg('--out');
   if (out !== null) writeFileSync(out, lines.join('\n') + '\n');
