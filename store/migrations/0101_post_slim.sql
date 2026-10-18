@@ -1,4 +1,4 @@
--- 0103_post_slim.sql
+-- 0101_post_slim.sql
 --
 -- POSTS THAT NEVER MADE FOR YOU, SLIMMED AFTER SEVEN DAYS: the one door through which readings
 -- may leave public.observation, and the record of every post that went through it.
@@ -43,14 +43,14 @@ begin
     return old;
   end if;
   raise exception
-    '% is append-only: % is not permitted (only the post slimming job may delete, 0103)',
+    '% is append-only: % is not permitted (only the post slimming job may delete, 0101)',
     tg_table_name, tg_op
     using errcode = 'restrict_violation';
 end
 $$;
 
 comment on function internal.observation_slim_guard() is
-  'public.observation''s guard (0103): every UPDATE refused; a DELETE only inside a transaction that SET LOCAL insidor.slim = ''on'' (store post-slim.ts).';
+  'public.observation''s guard (0101): every UPDATE refused; a DELETE only inside a transaction that SET LOCAL insidor.slim = ''on'' (store post-slim.ts).';
 
 drop trigger observation_is_append_only on public.observation;
 create trigger observation_is_append_only
@@ -58,7 +58,7 @@ create trigger observation_is_append_only
   for each row execute function internal.observation_slim_guard();
 
 comment on table public.observation is
-  'Append-only counter series. Never updated. Readings are deleted only by the post slimming job (0103): a post that never made For You, a coin, a narrative or an owner call keeps its first reading of each counter after 7 days.';
+  'Append-only counter series. Never updated. Readings are deleted only by the post slimming job (0101): a post that never made For You, a coin, a narrative or an owner call keeps its first reading of each counter after 7 days.';
 
 create table internal.post_slim (
   item_id           text primary key references public.item (item_id) on delete cascade,
@@ -68,7 +68,7 @@ create table internal.post_slim (
 );
 
 comment on table internal.post_slim is
-  'Posts slimmed after 7 days (0103): only the first reading of each counter is left in public.observation; the search record, the picture link and the cached newest count are gone.';
+  'Posts slimmed after 7 days (0101): only the first reading of each counter is left in public.observation; the search record, the picture link and the cached newest count are gone.';
 
 create table internal.post_slim_cursor (
   id             boolean primary key default true check (id),
@@ -78,4 +78,4 @@ create table internal.post_slim_cursor (
 );
 
 comment on table internal.post_slim_cursor is
-  'How far the post slimming job has decided, in (first_seen_at, item_id) order (0103). One row.';
+  'How far the post slimming job has decided, in (first_seen_at, item_id) order (0101). One row.';

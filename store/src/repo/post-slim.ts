@@ -1,5 +1,5 @@
 /**
- * THE POSTS THAT NEVER MADE FOR YOU, SLIMMED A WEEK AFTER WE FOUND THEM (0103, Policy.slim): which
+ * THE POSTS THAT NEVER MADE FOR YOU, SLIMMED A WEEK AFTER WE FOUND THEM (0101, Policy.slim): which
  * posts are kept whole, which are slimmed, and the deletes that slim them, a batch at a time.
  *
  * Its own repository because it is the only code allowed to delete from public.observation, and
@@ -27,7 +27,7 @@
  * What breaks if changed carelessly: the keep rule. A source dropped from `KEEP_SOURCES` silently
  * deletes the readings of every post it held, and nothing can buy them back. A new table that marks
  * a post as worth keeping must be added here the day it is created. `set_config('insidor.slim', 'on',
- * true)` must stay transaction-local: a session-level setting would open 0103's door for whatever
+ * true)` must stay transaction-local: a session-level setting would open 0101's door for whatever
  * borrows the pooled connection next.
  */
 
@@ -129,8 +129,8 @@ const START: SlimCursor = { firstSeenAt: '-infinity', itemId: '' };
 const LOCK_KEY = "hashtext('insidor.post_slim')";
 
 /**
- * Tables the job needs that are not there: every keep source, and 0103's own when it is to write
- * (a dry run measures before 0103 is applied). Empty = ready. A missing keep source stops the run:
+ * Tables the job needs that are not there: every keep source, and 0101's own when it is to write
+ * (a dry run measures before 0101 is applied). Empty = ready. A missing keep source stops the run:
  * without it the rule cannot tell which posts that table would have kept.
  */
 export async function missingTables(db: Db, writing: boolean): Promise<readonly string[]> {
