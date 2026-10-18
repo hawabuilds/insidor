@@ -3674,7 +3674,7 @@ export interface FindersPolicy {
  * You: keep everything forever ... Posts that never made For You: slim them after 7 days to link,
  * text, account, platform, views when found, judge answer and time, and any label I gave. Drop their
  * extra readings and raw search data." The job is store post-slim.ts, run hourly by the projector
- * service (tools/post-slim.ts); migration 0103 is its one door into public.observation.
+ * service (tools/post-slim.ts); migration 0101 is its one door into public.observation.
  *
  * A post is KEPT whole, forever, when it was on For You or Popular (the scroll, the frame or its
  * hourly history), on a narrative or its page, coined (a coin's metadata names it, the origin check

@@ -94,7 +94,7 @@ try {
               (select coalesce(sum(readings_dropped), 0) from internal.post_slim)::bigint as readings_dropped,
               (select count(*) from public.item where first_seen_at < now() - make_interval(secs => $1::float8 / 1000))::int as old_enough`,
       [P.afterMs],
-    ).catch(() => [{ error: 'migration 0103 is not applied' }]);
+    ).catch(() => [{ error: 'migration 0101 is not applied' }]);
     console.log(JSON.stringify({ on: P.on, afterDays: P.afterMs / 86_400_000, cursor, ...r }));
   } else if (cmd === 'dry' || cmd === 'run') {
     const live = cmd === 'run';

@@ -1,5 +1,5 @@
 /**
- * The post slimming job (0103, store post-slim.ts) on the real schema: a week-old post that never
+ * The post slimming job (0101, store post-slim.ts) on the real schema: a week-old post that never
  * made For You keeps its item row, its first reading of each counter and its judge answer, and loses
  * its later readings, search record, picture link and cached count; every kept post and every
  * younger post is left exactly as it was; a dry run writes nothing; the readings stay append-only
