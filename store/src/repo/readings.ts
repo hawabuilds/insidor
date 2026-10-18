@@ -102,13 +102,15 @@ export class PgReadingsRepo {
   }
 
   /** For You's scroll, every member not withdrawn, with its source and posting time: what the sorts rank. */
-  async forYouMembers(): Promise<readonly { readonly itemId: string; readonly source: string; readonly postedAt: number | null }[]> {
-    const rows = await this.#db.query<{ item_id: string; source: string; posted_at: TimestampColumn | null }>(
-      `select f.item_id, i.source, i.posted_at
+  async forYouMembers(): Promise<readonly { readonly itemId: string; readonly source: string; readonly postedAt: number | null; readonly firstSeenAt: number | null; readonly views: number | null; readonly readAtMs: number | null }[]> {
+    /* The card's own total and its time, as the read service's Most viewed orders by (post-sorts.ts). */
+    const rows = await this.#db.query<{ item_id: string; source: string; posted_at: TimestampColumn | null; first_seen_at: TimestampColumn | null; views: string | null; read_ms: string | null }>(
+      `select f.item_id, i.source, i.posted_at, i.first_seen_at, f.payload #>> '{reach,v}' as views, f.payload #>> '{readAt,at}' as read_ms
          from public.feed_post f join public.item i on i.item_id = f.item_id
         where f.feed_id = 'fyp' and f.withdrawn_at is null`,
     );
-    return rows.map((r) => ({ itemId: r.item_id, source: r.source, postedAt: at(r.posted_at) }));
+    const num = (v: string | null): number | null => (v === null || !Number.isFinite(Number(v)) ? null : Number(v));
+    return rows.map((r) => ({ itemId: r.item_id, source: r.source, postedAt: at(r.posted_at), firstSeenAt: at(r.first_seen_at), views: num(r.views), readAtMs: num(r.read_ms) }));
   }
 
   /** Clears the opens these reads answered: rows asked at or before `readAt`, and only those. */
