@@ -31,8 +31,9 @@ const MIN = 60_000;
 const PAGE = 20;
 const USD_PER_POST = 0.00015;
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
-const ON: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, middle: { ...DEFAULT_POLICY.feed.middle, on: true } } };
-const OFF: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, middle: { ...DEFAULT_POLICY.feed.middle, on: false } } };
+/* One language: these tests are about lanes and paging. Asking each language as its own search is ../work/discover-languages.test.ts. */
+const ON: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, langs: ['en'], middle: { ...DEFAULT_POLICY.feed.middle, on: true } } };
+const OFF: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, langs: ['en'], middle: { ...DEFAULT_POLICY.feed.middle, on: false } } };
 const WIDTH = (ON.feed.middle.maxAgeMin - ON.feed.middle.minAgeMin) * MIN;
 
 const isMiddle = (q: DiscoveryQuery): boolean => q.sinceMs !== null && q.untilMs !== null && q.untilMs - q.sinceMs === WIDTH && q.filter?.minApproval === ON.feed.middle.minApproval;

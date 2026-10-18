@@ -24,7 +24,8 @@ import { bandKey, discoverPass, lateBandKey, memoryFreshClock, slowSliceQueries,
 
 /* The fresh bands and the stale cut as they were before they were switched on, so these tests keep
    pinning the switch-off behaviour whatever the live policy says; a test that wants them on says so. */
-const DEFAULT_POLICY = { ...LIVE_POLICY, feed: { ...LIVE_POLICY.feed, fresh: { ...LIVE_POLICY.feed.fresh, enabled: false, cutStale: false } } };
+/* One language: these tests are about lanes and paging. Asking each language as its own search is work/discover-languages.test.ts. */
+const DEFAULT_POLICY = { ...LIVE_POLICY, feed: { ...LIVE_POLICY.feed, langs: ['en'], fresh: { ...LIVE_POLICY.feed.fresh, enabled: false, cutStale: false } } };
 
 const NOW = 1_800_000_000_000 as Millis;
 const MIN = 60_000;

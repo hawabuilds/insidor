@@ -17,6 +17,12 @@
  * plus the judging its new posts bring in (`laneJudgeUsd` over the posts no lane held before it),
  * the same charge the middle lane makes.
  *
+ * ★ ONE SEARCH PER LANGUAGE (work/languages.ts, 2026-10-18): the supplier answers an OR of languages
+ * with the last one only, so a filter naming several is asked as one search per language, each on
+ * its own cursor and to `maxPages` pages, round-robin by page, the lane's day one total checked
+ * before each. A language whose page throws ends alone and the ask's end is `failed`, so its caller
+ * asks the window again; the others' posts are stored and charged as usual.
+ *
  * What breaks if changed carelessly: storing before counting the new posts would count none of
  * them new (the store writes the credit), and the lane would never be charged for its judging.
  * A page that threw is charged its quote unless the meter refused it (then nothing went out).
@@ -32,6 +38,7 @@ import { BudgetRefused } from '@insidor/vendor-kit';
 import { errorText, type Logger } from '../log.ts';
 import type { FoundLane } from './arrivals.ts';
 import type { CappedLane, LaneLedger } from './lane-ledger.ts';
+import { languageAsks, roundOrder } from './languages.ts';
 
 /** How long one page may take before the vendor call is abandoned. */
 const PAGE_DEADLINE_MS = 60_000;
@@ -60,7 +67,8 @@ export interface LaneAsk {
 /**
  * Why the ask stopped. `done`: the source had no more. `pages`: the ask's page limit. `capped`: the
  * lane's day is spent. `unreadable`: the ledger could not be read. `budget`: the source's line
- * refused. `deadline`: the pass ran out of time. `dry`: priced, not sent. `failed`: a page threw.
+ * refused. `deadline`: the pass ran out of time. `dry`: priced, not sent. `failed`: a page threw (of
+ * any one language: the others were still asked).
  */
 export type LaneAskEnd = 'done' | 'pages' | 'capped' | 'unreadable' | 'budget' | 'deadline' | 'dry' | 'failed';
 
@@ -76,63 +84,82 @@ export interface LaneAskResult {
 
 export async function laneSearch(deps: LaneSearchDeps, ask: LaneAsk): Promise<LaneAskResult> {
   const { adapter, lane, cap } = ask;
-  let cursor: string | null = null;
+  /* ★ ONE SEARCH PER LANGUAGE (work/languages.ts), each on its own cursor and to `maxPages` pages,
+     paged round-robin under the lane's one day: every page of every language is checked first. */
+  const threads = languageAsks(ask.query).map((l) => ({ lang: l.lang, query: l.query, cursor: null as string | null, pages: 0, open: true, end: 'done' as 'done' | 'pages' | 'failed' }));
   let pages = 0;
   let returned = 0;
   let fresh = 0;
   let usd = 0;
-  const result = (end: LaneAskEnd, error: string | null = null): LaneAskResult => ({ end, pages, returned, fresh, usd, error });
+  let error: string | null = null;
+  const result = (end: LaneAskEnd, err: string | null = error): LaneAskResult => ({ end, pages, returned, fresh, usd, error: err });
 
-  for (;;) {
-    if (pages >= ask.maxPages) return result('pages');
-    const now = deps.now();
-    if (now >= ask.deadline) return result('deadline');
-    const query: DiscoveryQuery = { ...ask.query, cursor };
-    const quote = adapter.estimate({ kind: 'discover', query });
-    const spent = await deps.ledger.spent(lane, now);
-    if (spent === null) return result('unreadable');
-    /* Room for the page at its most: every post billed and every post new and judged. */
-    if (!laneMayAsk(spent, quote.usd + laneJudgeUsd(query.limit, cap), cap)) return result('capped');
-    if (!deps.meter.mayspend(quote.vendor, quote.usd)) return result('budget');
-    if (deps.mode === 'dry') {
-      deps.log.info('DRY RUN — a lane search priced, not sent', { lane, wouldSpendUsd: quote.usd });
-      return result('dry');
+  for (let round = 0; ; round += 1) {
+    const open = roundOrder(threads, round).filter((t) => t.open);
+    if (open.length === 0) {
+      /* Every language ended: one that failed makes the ask's end `failed` (its window is asked again). */
+      return result(threads.some((t) => t.end === 'failed') ? 'failed' : threads.some((t) => t.end === 'pages') ? 'pages' : 'done');
     }
+    for (const t of open) {
+      if (t.pages >= ask.maxPages) {
+        t.open = false;
+        t.end = 'pages';
+        continue;
+      }
+      const now = deps.now();
+      if (now >= ask.deadline) return result('deadline');
+      const query: DiscoveryQuery = { ...t.query, cursor: t.cursor };
+      const quote = adapter.estimate({ kind: 'discover', query });
+      const spent = await deps.ledger.spent(lane, now);
+      if (spent === null) return result('unreadable');
+      /* Room for the page at its most: every post billed and every post new and judged. */
+      if (!laneMayAsk(spent, quote.usd + laneJudgeUsd(query.limit, cap), cap)) return result('capped');
+      if (!deps.meter.mayspend(quote.vendor, quote.usd)) return result('budget');
+      if (deps.mode === 'dry') {
+        deps.log.info('DRY RUN — a lane search priced, not sent', { lane, languages: threads.length, wouldSpendUsd: quote.usd * threads.length });
+        return result('dry');
+      }
 
-    let page;
-    try {
-      const line = deps.meter.line(quote.vendor);
-      page = await adapter.discover(query, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: 1, deadline: Math.min(ask.deadline, now + PAGE_DEADLINE_MS) as Millis });
-    } catch (e) {
-      if (!(e instanceof BudgetRefused)) {
+      let page;
+      try {
+        const line = deps.meter.line(quote.vendor);
+        page = await adapter.discover(query, { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: 1, deadline: Math.min(ask.deadline, now + PAGE_DEADLINE_MS) as Millis });
+      } catch (e) {
+        if (e instanceof BudgetRefused) return result('budget', errorText(e));
+        /* A page that threw was still billed. It ends its language only; the others are asked. */
         usd += quote.usd;
         await deps.ledger.add(lane, now, quote.usd);
+        error ??= `${t.lang === null ? '' : `lang ${t.lang}: `}${errorText(e)}`;
+        t.open = false;
+        t.end = 'failed';
+        continue;
       }
-      return result(e instanceof BudgetRefused ? 'budget' : 'failed', errorText(e));
-    }
-    pages += 1;
-    const items = page.value.items;
-    returned += items.length;
-    let pageFresh = items.length;
-    if (items.length > 0) {
-      try {
-        pageFresh = await deps.uncredited(items.map((i) => String(i.itemId)));
-      } catch (e) {
-        deps.log.warn("could not count a lane's new posts; charging it for all of them", { lane, err: errorText(e) });
+      pages += 1;
+      t.pages += 1;
+      const items = page.value.items;
+      returned += items.length;
+      let pageFresh = items.length;
+      if (items.length > 0) {
+        try {
+          pageFresh = await deps.uncredited(items.map((i) => String(i.itemId)));
+        } catch (e) {
+          deps.log.warn("could not count a lane's new posts; charging it for all of them", { lane, err: errorText(e) });
+        }
+        fresh += pageFresh;
       }
-      fresh += pageFresh;
-    }
-    const charge = page.spend.usd + laneJudgeUsd(items.length === 0 ? 0 : pageFresh, cap);
-    usd += charge;
-    await deps.ledger.add(lane, now, charge);
-    if (items.length > 0) {
-      try {
-        await deps.store(items, page.value.authors, lane);
-      } catch (e) {
-        return result('failed', errorText(e));
+      const charge = page.spend.usd + laneJudgeUsd(items.length === 0 ? 0 : pageFresh, cap);
+      usd += charge;
+      await deps.ledger.add(lane, now, charge);
+      if (items.length > 0) {
+        try {
+          await deps.store(items, page.value.authors, lane);
+        } catch (e) {
+          /* Our database, not the source: every language would fail the same, so the ask ends. */
+          return result('failed', errorText(e));
+        }
       }
+      t.cursor = page.value.cursor;
+      if (!page.value.hasMore || t.cursor === null || items.length === 0) t.open = false;
     }
-    cursor = page.value.cursor;
-    if (!page.value.hasMore || cursor === null || items.length === 0) return result('done');
   }
 }

@@ -1345,6 +1345,9 @@ export interface FeedPolicy {
    * platform gives a picture or video with no words, which is how 4 of the gold set's missed
    * origin posts were filtered out (eval/src/gold/recall-report.md; about $0.10 a day more). And
    * Portuguese, for a missed post of the owner's (2026-10-14).
+   * ★ EACH LANGUAGE IS ITS OWN SEARCH (2026-10-18, services/runner/src/work/languages.ts): the posts
+   * supplier answers an OR of languages with the last one only, so every search here is asked once a
+   * language, and a language added costs at least one billed page on every ask of every lane.
    */
   readonly langs: readonly string[];
   /**

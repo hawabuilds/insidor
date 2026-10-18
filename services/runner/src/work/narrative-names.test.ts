@@ -81,13 +81,16 @@ test('a pass asks each shown narrative by name, filtered and forward from its la
   assert.equal(r.narratives, 2);
   assert.equal(r.named, 2);
   assert.equal(r.asked, 2);
-  assert.deepEqual(seen.map((q) => q.term).sort(), ['tesla roadster', 'vaquita']);
+  /* ★ Each name is one search per language (work/languages.ts), never an OR of them. */
+  const langs = DEFAULT_POLICY.feed.langs;
+  assert.deepEqual([...new Set(seen.map((q) => q.term))].sort(), ['tesla roadster', 'vaquita']);
+  for (const term of ['tesla roadster', 'vaquita']) assert.deepEqual(seen.filter((q) => q.term === term).map((q) => q.filter?.langs[0]), langs);
   for (const q of seen) {
     assert.equal(q.mode, 'keyword');
     assert.equal(q.sinceMs, NOW - P.everyMs);
-    assert.deepEqual(q.filter, { minApproval: P.minApproval, mediaOnly: false, langs: DEFAULT_POLICY.feed.langs, excludeRebroadcasts: true });
+    assert.deepEqual(q.filter, { minApproval: P.minApproval, mediaOnly: false, langs: [q.filter?.langs[0]], excludeRebroadcasts: true });
   }
-  assert.deepEqual(stored, ['narrative_name', 'narrative_name']);
+  assert.deepEqual(stored, Array.from({ length: 2 * langs.length }, () => 'narrative_name'));
 
   /* The next pass reaches back to where this one began, not an hour before it. */
   const later: DiscoveryQuery[] = [];
