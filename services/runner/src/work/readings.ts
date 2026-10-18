@@ -10,9 +10,10 @@
  *     `shortVideoCadence` for the short-video source), stalest first;
  *   - every post whose sheet was opened (internal.reading_ask, 0090) when its newest reading was
  *     over `openReadMinGapMs` old at the open, up to `openMaxPerPass`, newest open first;
- *   - every text-source post that would be in a top `sortTop.topN` of For You's sorts (sort-top.ts)
- *     whose newest reading is `sortTop.everyMs` old, up to `sortTop.maxPerPass`, stalest first, so the
- *     read service never lists it low for want of a reading (the owner, 2026-10-18);
+ *   - every post that would be in a top of For You's sorts (sort-top.ts: a text post's top 20, a
+ *     short video's top 10) whose newest reading is `sortTop.everyMs` old, up to `sortTop.maxPerPass`
+ *     text posts and `shortVideoMaxPerPass` short videos, stalest first, so the read service never
+ *     lists it low for want of a reading (the owner, 2026-10-18);
  * and appends what came back exactly as TRACK does (core's `observationsFrom`).
  *
  * ★ ITS OWN LOOP, TIME AND MONEY. Not a tier inside TRACK and not a step after discovery: a slow
@@ -103,7 +104,7 @@ export function openDue(c: ReadingCandidate, p: Policy): boolean {
 
 /** A text-source post in a sort's top that has gone `sortTop.everyMs` without a reading. */
 export function sortDue(c: ReadingCandidate, now: number, top: ReadonlySet<string>, p: Policy): boolean {
-  if (!p.feed.readings.sortTop.on || c.source === SHORT_VIDEO_SOURCE || !top.has(c.itemId)) return false;
+  if (!p.feed.readings.sortTop.on || !top.has(c.itemId)) return false;
   return c.lastReadAt === null || now - c.lastReadAt >= p.feed.readings.sortTop.everyMs - p.feed.readings.dueSlackMs;
 }
 
@@ -117,10 +118,13 @@ export function dueReadings(candidates: readonly ReadingCandidate[], now: number
   const taken = new Set(opened.map((c) => c.itemId));
   const cadence = candidates.filter((c) => !taken.has(c.itemId) && cadenceDue(c, now, p));
   for (const c of cadence) taken.add(c.itemId);
-  const sorts = candidates
-    .filter((c) => !taken.has(c.itemId) && sortDue(c, now, top, p))
-    .sort((a, b) => (a.lastReadAt ?? -Infinity) - (b.lastReadAt ?? -Infinity))
-    .slice(0, r.sortTop.maxPerPass);
+  const stalest = (a: ReadingCandidate, b: ReadingCandidate): number => (a.lastReadAt ?? -Infinity) - (b.lastReadAt ?? -Infinity);
+  const owedSort = candidates.filter((c) => !taken.has(c.itemId) && sortDue(c, now, top, p)).sort(stalest);
+  /* Each source its own cap a pass: a short video is a paid credit. */
+  const sorts = [
+    ...owedSort.filter((c) => c.source !== SHORT_VIDEO_SOURCE).slice(0, r.sortTop.maxPerPass),
+    ...owedSort.filter((c) => c.source === SHORT_VIDEO_SOURCE).slice(0, r.sortTop.shortVideoMaxPerPass),
+  ];
   const owed = [...cadence, ...sorts].sort((a, b) => (a.lastReadAt ?? -Infinity) - (b.lastReadAt ?? -Infinity));
   const posts = [...opened, ...owed].slice(0, r.maxPostsPerPass);
   const kept = new Set(posts.map((c) => c.itemId));

@@ -16,27 +16,30 @@ import { sortReadingOf, sortTop, sortTopIds, type SortMember } from './sort-top.
 const NOW = 1_800_000_000_000;
 const MIN = 60_000;
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
-const P: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, readings: { ...DEFAULT_POLICY.feed.readings, sortTop: { ...DEFAULT_POLICY.feed.readings.sortTop, topN: 2 } } } };
+const P: Policy = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, readings: { ...DEFAULT_POLICY.feed.readings, sortTop: { ...DEFAULT_POLICY.feed.readings.sortTop, topN: 3, shortVideoTopN: 1 } } } };
 
 /** Readings every 10 minutes for `spanMin`, gaining `perMin` a minute, the last `lastAgoMin` ago. */
 const series = (spanMin: number, perMin: number, lastAgoMin: number) =>
   Array.from({ length: spanMin / 10 + 1 }, (_, i) => ({ atMs: NOW - (lastAgoMin + spanMin - i * 10) * MIN, value: 1000 + i * 10 * perMin }));
 
-test("★ the top of each list, ranked as if every post were read now; a short video never kept", () => {
+test("★ the top of each list, ranked as if every post were read now; a short video only inside its own, shorter top", () => {
   const members: SortMember[] = [
     { itemId: 'x:stale-big', source: 'x', postedAt: NOW - 30 * 60 * MIN },
     { itemId: 'x:fresh-small', source: 'x', postedAt: NOW - 30 * 60 * MIN },
     { itemId: 'tiktok:huge', source: 'tiktok', postedAt: NOW - 30 * 60 * MIN },
+    { itemId: 'tiktok:second', source: 'tiktok', postedAt: NOW - 30 * 60 * MIN },
   ];
   const readings = new Map([
     /* Gains the most of the text posts but was last read 50 minutes ago: the read service lists it low, so it must be read. */
     ['x:stale-big', series(600, 5000, 50)],
     ['x:fresh-small', series(600, 100, 1)],
     ['tiktok:huge', series(600, 500_000, 1)],
+    ['tiktok:second', series(600, 400_000, 1)],
   ]);
   const top = sortTopIds(members, readings, NOW, P);
   assert.ok(top.has('x:stale-big'));
-  assert.ok(!top.has('tiktok:huge'), 'tops Most viewed, but its credits are not this lane\'s');
+  assert.ok(top.has('tiktok:huge'), 'first on Most viewed: inside the short video top 1');
+  assert.ok(!top.has('tiktok:second'), 'second on every list: inside the text top 3, outside the short video top 1');
 });
 
 test('a reading as the card holds it: a measured level, a first count, nothing else', () => {

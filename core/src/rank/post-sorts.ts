@@ -19,7 +19,7 @@
  *   Most viewed key = gain(now - W, now). On the list only with a reading inside the window.
  *   Trending    speed = rate(now - H, now), before = rate(now - W, now - H), both divided by the
  *               caller's `scale` (the short-video source's reach scale), both known or no trend.
- *               Over the floor (speed >= trendFloorPerMin): key = speed / before, how many times
+ *               Over the window's floor (speed >= its trendFloorsPerMin): key = speed / before, how many times
  *               faster it gains now than just before; a post that gained nothing before and is over
  *               the floor now is faster than any ratio. Under the floor: ordered by speed alone,
  *               below every post over it, so a post going from 3 to 30 views a minute cannot top a
@@ -117,8 +117,17 @@ export function sortPlace(id: string, readings: readonly SortReading[], postedMs
   const speed = rate(half, nowMs, (t) => t >= half && t <= nowMs);
   const before = rate(from, half, (t) => t >= from && t < half);
   if (speed === null || before === null) return { ...base, key: gained / scale, group: 'no_trend', speed: null, before: null };
-  if (speed < p.trendFloorPerMin) return { ...base, key: speed, group: 'under_floor', speed, before };
+  if (speed < trendFloor(windowMs, policy)) return { ...base, key: speed, group: 'under_floor', speed, before };
   return { ...base, key: before > 0 ? speed / before : Infinity, group: 'over_floor', speed, before };
+}
+
+/** The window's Trending floor: its own entry, else the nearest window's; none at all, no floor. */
+export function trendFloor(windowMs: number, policy: Policy): number {
+  let best: { readonly windowMs: number; readonly perMin: number } | null = null;
+  for (const f of policy.rising.forYouSorts.trendFloorsPerMin) {
+    if (best === null || Math.abs(f.windowMs - windowMs) < Math.abs(best.windowMs - windowMs)) best = f;
+  }
+  return best?.perMin ?? 0;
 }
 
 const GROUP_ORDER: Readonly<Record<SortGroup, number>> = { over_floor: 0, under_floor: 1, no_trend: 2 };
