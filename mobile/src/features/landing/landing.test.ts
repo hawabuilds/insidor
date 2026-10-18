@@ -15,9 +15,9 @@ test('★ with sign-in set up, only a signed-in person gets past the door, on ev
   assert.equal(gateFor({ configured: true, state: s('unavailable'), entered: false }), 'landing', 'a first visit waits at the door while sign-in starts');
 });
 
-test('★ a returning person is held, never shown the door, while their session comes back', () => {
-  assert.equal(gateFor({ configured: true, state: s('unavailable'), entered: true }), 'holding');
-  assert.equal(gateFor({ configured: true, state: s('connecting'), entered: true }), 'holding');
+test('★ a returning person goes straight in, never shown the door, while their session comes back', () => {
+  assert.equal(gateFor({ configured: true, state: s('unavailable'), entered: true }), 'app');
+  assert.equal(gateFor({ configured: true, state: s('connecting'), entered: true }), 'app');
   assert.equal(gateFor({ configured: true, state: s('connecting'), entered: false }), 'landing', 'mid sign-in from the door stays on the door');
 });
 

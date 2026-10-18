@@ -6,8 +6,14 @@
  *
  * Pure, so every case runs under a test. App.tsx asks it once per render, after all its hooks.
  *
- *   1. ★ A RETURNING PERSON NEVER SEES THE DOOR FLASH. While the sign-in provider is still starting
- *      in a browser that was signed in before, the answer is `holding`, not `landing`.
+ *   1. ★ A RETURNING PERSON NEVER SEES THE DOOR FLASH, AND NEVER WAITS FOR THE SIGN-IN CODE. While
+ *      the sign-in provider is still loading or starting in a browser that was signed in before,
+ *      the answer is `app` (the owner, 2026-10-18: For You's first paint must not wait on the
+ *      wallet code, which main.tsx now loads after it). The screens are the public ones, read
+ *      without a sign-in; anything that needs the wallet sees it `unavailable` or `connecting`
+ *      for that moment, as it would mid-restore. If the session turns out to be gone, the state
+ *      becomes `disconnected` and the door shows (App.tsx forgets the browser): the one cost is
+ *      a second or two of For You before the door for someone whose session expired.
  *   2. ★ A BUILD WITH NO SIGN-IN IS THE DEMO. With no app id there is nobody to sign in as, so the
  *      door's "Join now" walks in to the app, whose screens show only what the services hold —
  *      empty states where there is nothing, never sample data.
@@ -23,7 +29,7 @@ export type Gate = 'app' | 'landing' | 'holding';
 export function gateFor(r: { readonly configured: boolean; readonly state: WalletState; readonly entered: boolean }): Gate {
   if (!r.configured) return r.entered ? 'app' : 'landing';
   if (r.state.kind === 'connected' || r.state.kind === 'wrong-network') return 'app';
-  if (r.entered && (r.state.kind === 'unavailable' || r.state.kind === 'connecting')) return 'holding';
+  if (r.entered && (r.state.kind === 'unavailable' || r.state.kind === 'connecting')) return 'app';
   return 'landing';
 }
 
