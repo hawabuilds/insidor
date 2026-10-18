@@ -34,6 +34,10 @@
  *   2. `venue`  the launchpad's own copy (its coin record's picture);
  *   3. `market` the market source's copy.
  *
+ * ★ TWO SIZES, NEVER THE ORIGINAL (logo-sizes.ts): each copy is stored as a 256-pixel WebP at the
+ * path every reference already loads and a 64-pixel WebP for the lists. A logo stored before that
+ * (0105's `sized_at` null) is resized once from our own copy, without asking its host again.
+ *
  * Separate from logos-main.ts so the order, the selection and the ledger are tested with
  * stand-ins; the entry only wires real pools, the sources and storage to this.
  *
@@ -80,6 +84,9 @@ const DUE = `(l.address is null
             and l.checked_at < $2::timestamptz - make_interval(secs => $3::double precision / 1000 * power(2, l.attempts - 1)))
         or (l.outcome = 'failed' and l.attempts >= $4 and l.checked_at < $5))`;
 
+/* After 0105: a stored original not yet resized, asked again after NONE_RETRY_MS when it could not be. */
+const UNSIZED = `(l.outcome = 'stored' and l.sized_at is null and l.checked_at < $1)`;
+
 const COLUMNS = `a.declared_social ->> 'metadata' as metadata_uri, m.image_uri as metadata_image, l.outcome as last_outcome, l.attempts`;
 const JOINS = `
   left join public.asset a on a.chain = 'solana' and a.address = s.address
@@ -123,16 +130,19 @@ export function shownSetSql(withPeople: boolean): string {
     .join('\n  union\n  ');
 }
 
-/** The shown coins whose logo is missing, retryable, or never tried. `$6` limit. */
-export function shownSql(withPeople: boolean): string {
+/**
+ * The shown coins whose logo is missing, retryable or never tried, and (`sized`, after 0105) those
+ * still stored as the original: never-tried first, the originals last. `$6` limit.
+ */
+export function shownSql(withPeople: boolean, sized: boolean): string {
   return `
 with shown(address) as (
   ${shownSetSql(withPeople)}
 )
 select s.address, ${COLUMNS}
   from shown s ${JOINS}
- where s.address ~ '${ADDRESS}' and ${DUE}
- order by l.checked_at asc nulls first
+ where s.address ~ '${ADDRESS}' and (${DUE}${sized ? ` or ${UNSIZED}` : ''})
+ order by l.outcome = 'stored' nulls first, l.checked_at asc nulls first
  limit $6`;
 }
 
@@ -155,6 +165,16 @@ on conflict (address) do update
 /** Whether migration 0071 has run; before it the ledger cannot say why, nor name the launchpad. */
 export const MIGRATED_SQL = `
 select 1 from information_schema.columns where table_schema = 'internal' and table_name = 'coin_logo' and column_name = 'why'`;
+
+/** Whether migration 0105 has run; before it every new copy is still resized, but none is recorded so. */
+export const SIZED_MIGRATED_SQL = `
+select 1 from information_schema.columns where table_schema = 'internal' and table_name = 'coin_logo' and column_name = 'sized_at'`;
+
+/** The coin's stored logo is the 256 and 64 pixel pair. */
+export const SIZED_SQL = `update internal.coin_logo set sized_at = now(), checked_at = now() where address = $1`;
+
+/** A stored original that could not be resized this pass: still stored, asked again after NONE_RETRY_MS. */
+export const UNSIZED_SQL = `update internal.coin_logo set checked_at = now() where address = $1 and outcome = 'stored'`;
 
 export interface DueCoin {
   readonly address: string;
@@ -184,9 +204,9 @@ const toCoin = (r: Row): DueCoin => ({
   attempts: r.attempts ?? 0,
 });
 
-export async function dueCoins(db: Db, nowMs: number, withPeople: boolean): Promise<{ readonly shown: readonly DueCoin[] }> {
+export async function dueCoins(db: Db, nowMs: number, withPeople: boolean, sized: boolean): Promise<{ readonly shown: readonly DueCoin[] }> {
   const common = [new Date(nowMs - NONE_RETRY_MS), new Date(nowMs), FAILED_RETRY_MS, MAX_ATTEMPTS, new Date(nowMs - GAVE_UP_RETRY_MS)];
-  const shown = (await db.query<Row>(shownSql(withPeople), [...common, SHOWN_PER_PASS])).map(toCoin);
+  const shown = (await db.query<Row>(shownSql(withPeople, sized), [...common, SHOWN_PER_PASS])).map(toCoin);
   return { shown };
 }
 
@@ -203,12 +223,17 @@ export interface MirrorDeps {
   readonly marketImages: (addresses: readonly string[]) => Promise<ReadonlyMap<string, string | null>>;
   /** The URLs to try for one picture link, best first (a gateway chain for a content id). */
   readonly pictureUrls: (link: string) => readonly string[];
+  /** Fetch the picture at `url`, and store its 256 and 64 pixel copies at the coin's address. */
   readonly copy: (address: string, url: string) => Promise<void>;
+  /** Where our own full copy of a coin's logo is served, to resize an original from. */
+  readonly ownCopyUrl: (address: string) => string;
   readonly log: (msg: string, fields: Record<string, unknown>) => void;
 }
 
 export interface PassResult {
   readonly stored: number;
+  /** Originals stored before the two sizes, resized this pass. */
+  readonly resized: number;
   readonly none: number;
   readonly failed: number;
   /** Coins left as a letter for good this pass: no picture anywhere, or out of tries. */
@@ -309,14 +334,15 @@ export async function resolveCoin(
 /** One pass: the shown coins due, inside the pass budget. */
 export async function mirrorPass(deps: MirrorDeps): Promise<PassResult> {
   const bySource: Record<LogoSource, number> = { launch: 0, venue: 0, market: 0 };
-  const empty: PassResult = { stored: 0, none: 0, failed: 0, letters: 0, bySource, skippedForTime: 0 };
+  const empty: PassResult = { stored: 0, resized: 0, none: 0, failed: 0, letters: 0, bySource, skippedForTime: 0 };
   if ((await deps.db.query(MIGRATED_SQL, [])).length === 0) {
     deps.log('coin logos wait for migration 0071', {});
     return empty;
   }
+  const sized = (await deps.db.query(SIZED_MIGRATED_SQL, [])).length > 0;
   const withPeople = await peopleReadable(deps.db);
   if (!withPeople) deps.log('coin logos: the watchlist tables are not readable by this role; its coins are not mirrored', {});
-  const { shown: due } = await dueCoins(deps.db, deps.nowMs, withPeople);
+  const { shown: due } = await dueCoins(deps.db, deps.nowMs, withPeople, sized);
   if (due.length === 0) return empty;
 
   /* One batch read of the market source for the whole pass; an outage there is not "no picture". */
@@ -338,6 +364,7 @@ export async function mirrorPass(deps: MirrorDeps): Promise<PassResult> {
   };
 
   let stored = 0;
+  let resized = 0;
   let none = 0;
   let failed = 0;
   let letters = 0;
@@ -346,10 +373,30 @@ export async function mirrorPass(deps: MirrorDeps): Promise<PassResult> {
     if (deps.elapsedMs() > PASS_BUDGET_MS) break;
     await Promise.all(
       due.slice(i, i + CONCURRENCY).map(async (coin) => {
+        /* An original stored before the two sizes: resized from our own copy, which is fast and
+           costs no host a call; only when that copy cannot be read is the picture fetched again. */
+        const original = coin.lastOutcome === 'stored';
+        if (original) {
+          try {
+            await deps.copy(coin.address, deps.ownCopyUrl(coin.address));
+            await deps.db.query(SIZED_SQL, [coin.address]);
+            resized += 1;
+            done += 1;
+            return;
+          } catch (e) {
+            deps.log('stored logo not resized from our copy; fetching the picture again', { address: coin.address, err: errText(e) });
+          }
+        }
         const r = await resolveCoin(coin, deps, market, venueOpen, venueResult);
-        await deps.db.query(RECORD_SQL, [coin.address, r.outcome, r.source, r.why]);
         done += 1;
+        if (original && r.outcome !== 'stored') {
+          /* The original stays where it is and stays stored; tried again after NONE_RETRY_MS. */
+          await deps.db.query(UNSIZED_SQL, [coin.address]);
+          return;
+        }
+        await deps.db.query(RECORD_SQL, [coin.address, r.outcome, r.source, r.why]);
         if (r.outcome === 'stored') {
+          if (sized) await deps.db.query(SIZED_SQL, [coin.address]);
           stored += 1;
           bySource[r.source] += 1;
           return;
@@ -364,5 +411,5 @@ export async function mirrorPass(deps: MirrorDeps): Promise<PassResult> {
       }),
     );
   }
-  return { stored, none, failed, letters, bySource, skippedForTime: due.length - done };
+  return { stored, resized, none, failed, letters, bySource, skippedForTime: due.length - done };
 }
