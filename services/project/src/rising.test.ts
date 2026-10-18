@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar } from '@insidor/core';
 
-import { barReadings, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin } from './rising.ts';
+import { barReadings, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin, writeRising } from './rising.ts';
 import type { WireCoin, WireCoinLink } from './wire.ts';
 
 const ROW = {
@@ -247,4 +247,16 @@ test('the coin that brought a post in is left alone when it is listed or proven 
   assert.equal(withVouchingCoin(proven, 'V1', undefined), proven);
   assert.deepEqual(withVouchingCoin({ coins: [], more: false }, 'V1', { wrong: new Set(['V1']), none: false }), { coins: [], more: false });
   assert.equal(withVouchingCoin(undefined, 'V1', { wrong: new Set(), none: true }), undefined, '"No coin is from this": nothing is listed');
+});
+
+test("★ a feed's rows are written in one statement, a post listed twice in its last place", async () => {
+  const asked: { sql: string; params: readonly unknown[] }[] = [];
+  const db = { query: async (sql: string, params: readonly unknown[] = []) => (asked.push({ sql, params }), sql.includes('select tick') ? [{ tick: '4' }] : []) };
+  const post = (id: string) => ({ id }) as unknown as Parameters<typeof writeRising>[2][number];
+  const n = await writeRising(db as never, 'fyp', [post('a'), post('b'), post('a')]);
+  assert.equal(n, 3);
+  const inserts = asked.filter((q) => q.sql.includes('insert into public.rising_row'));
+  assert.equal(inserts.length, 1);
+  assert.deepEqual(inserts[0]?.params.slice(0, 3), ['fyp', ['a', 'b'], [2, 1]]);
+  assert.deepEqual(asked.find((q) => q.sql.includes('rising_view ('))?.params, ['fyp', 5], 'the tick moves on by one');
 });

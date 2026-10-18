@@ -965,7 +965,14 @@ async function withMatches(
   return withPlausibleLists(db, out, weighed, policy, nowMs);
 }
 
-/** Write one feed's frame: the view row first, then its rows, in the caller's transaction. */
+/**
+ * Write one feed's frame: the view row first, then its rows, in the caller's transaction.
+ *
+ * ★ THE ROWS IN ONE STATEMENT. They were written one insert each: fifty round trips for For You, a
+ * hundred for both feeds, and from the project service to the database a round trip costs a large
+ * part of a second — a quick frame that wrote took 18.5 s at the median where one that did not took
+ * 5 s. A post listed twice keeps its last place, as the one-by-one writes left it.
+ */
 export async function writeRising(db: Db, feedId: RisingFeed, posts: readonly WireRisingPost[]): Promise<number> {
   const current = await db.query<{ tick: string }>(`select tick::text as tick from public.rising_view where feed_id = $1`, [feedId]);
   const tick = current[0] === undefined ? 1 : Number(current[0].tick) + 1;
@@ -978,11 +985,14 @@ export async function writeRising(db: Db, feedId: RisingFeed, posts: readonly Wi
     feedId,
     posts.map((post) => post.id),
   ]);
-  for (const [position, post] of posts.entries()) {
+  const last = new Map(posts.map((post, position) => [post.id, { post, position }] as const));
+  if (last.size > 0) {
+    const rows = [...last.values()];
     await db.query(
-      `insert into public.rising_row (feed_id, item_id, position, payload) values ($1, $2, $3, $4::jsonb)
+      `insert into public.rising_row (feed_id, item_id, position, payload)
+       select $1, r.id, r.position, r.payload from unnest($2::text[], $3::int[], $4::jsonb[]) as r(id, position, payload)
        on conflict (feed_id, item_id) do update set position = excluded.position, payload = excluded.payload`,
-      [feedId, post.id, position, JSON.stringify(post)],
+      [feedId, rows.map((r) => r.post.id), rows.map((r) => r.position), rows.map((r) => JSON.stringify(r.post))],
     );
   }
   return posts.length;
