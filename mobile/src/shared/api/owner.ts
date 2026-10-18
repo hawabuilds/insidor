@@ -61,11 +61,11 @@ export async function fetchSecondChance(): Promise<readonly SecondChancePost[]> 
 
 /**
  * The owner's calls on a whole narrative (POST /owner/narrative): it is not one (hide it, and learn
- * from it), it is the same as another (merge), a post does not belong in it, its coin is right or
- * wrong. The server checks the owner from the token like every call here; a server that does not
+ * from it), it is the same as another (merge), a post does not belong in it, some of its posts are
+ * another story (split: they move to a new narrative), its coin is right or wrong. The server checks the owner from the token like every call here; a server that does not
  * take these calls yet answers 404, which the page says in words rather than pretending it saved.
  */
-export type NarrativeAction = 'not_narrative' | 'merge' | 'remove_post' | 'coin_right' | 'coin_wrong';
+export type NarrativeAction = 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'coin_right' | 'coin_wrong';
 
 export interface NarrativeCall {
   readonly action: NarrativeAction;
@@ -74,6 +74,8 @@ export interface NarrativeCall {
   readonly intoStoryId?: string;
   /** Remove this post: the post. */
   readonly itemId?: string;
+  /** Split: the posts that move to a new narrative (some, never all). */
+  readonly itemIds?: readonly string[];
   /** Right coin or Wrong coin: the coin's address. */
   readonly coin?: string;
 }
