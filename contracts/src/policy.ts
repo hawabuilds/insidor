@@ -3261,11 +3261,22 @@ export interface FindersPolicy {
      * by a lane and never answered, is judged at once — the post judge, its kind question and the
      * not-a-meme hold, as the scoring pass would — instead of waiting for the next discovery pass.
      * At most `perMinute` posts a minute. Off: such a post waits for the scoring pass.
+     *
+     * ★ A VIDEO WHOSE FRAME CANNOT BE READ YET (the owner, 2026-10-18: "retry at most 5 times over 10
+     * minutes. Then park them and try again when their video frame is readable. They must not use up
+     * the instant path's 6 a minute"). A video post the judge could not look at comes back unanswered
+     * and was asked again every pass: 244 times in a day, taking the minute's places from posts it
+     * could answer. Now such a post is asked at most `frameTries` times, spread evenly over
+     * `frameTriesOverMs`, and a post waiting for its next try takes no place; after the last it is
+     * parked until its frame is a different picture (a later read of the post brought a new one),
+     * then tried afresh. The scoring pass still asks it as before.
      */
     readonly instant: {
       readonly on: boolean;
       readonly perMinute: number;
       readonly lookbackMs: number;
+      readonly frameTries: number;
+      readonly frameTriesOverMs: number;
     };
   };
   /**
@@ -5028,7 +5039,7 @@ const POLICY_V1: Policy = {
       /* 2026-10-16, three days: 144 posts `rising.coinLinked` passes had no answer yet when the link
          was recorded, about 50 a day, a few in the busiest minute; at the open judge's $0.00017 a
          post, under a cent a day with the kind question. */
-      instant: { on: true, perMinute: 6, lookbackMs: 600_000 },
+      instant: { on: true, perMinute: 6, lookbackMs: 600_000, frameTries: 5, frameTriesOverMs: 600_000 },
     },
     reposts: {
       /* On from 2026-10-15: over 3.7 days of held X posts climbing fast, 22,774 short links led to
