@@ -28,6 +28,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { BOARD_VIEW, fetchAllNarratives, type NarrativeListSort, type NarrativesPage, type Story } from '../../shared/api/index.ts';
+import type { Measured } from '../../shared/format/measure.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { useNow } from '../../shared/hooks.ts';
@@ -271,7 +272,7 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate }:
             <CoinLogo small address={coin.coin.address} ticker={coin.coin.ticker ?? coin.coin.name} imageUrl={coin.coin.imageUrl} size={28} />
             <b className={styles['ticker']}>{tickerText(coin.coin.ticker ?? coin.coin.name ?? coin.coin.address.slice(0, 4))}</b>
             <span className={styles['coinSub']}>
-              {coin.kind === 'top' ? 'Top coin, not checked' : <CardCap coin={coin.coin} />}
+              {coin.kind === 'top' ? 'Top coin, not checked' : <CardCap coin={coin.coin} story={story} />}
             </span>
             <button type="button" className={styles['buy']} onClick={(e) => {
               e.stopPropagation();
@@ -294,8 +295,24 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate }:
   );
 }
 
-/** The checked coin's market cap: the shared live one (useCoinCap), as every other cap in the app; nothing when no market reports one. */
-function CardCap({ coin }: { coin: CoinFace }) {
-  const cap = useCoinCap(coin.address, coin.marketCapUsd, true);
+/**
+ * The checked coin's market cap, by the one rule every cap in the app follows (useCoinCap): a price
+ * another screen read just now, else the price the list itself carried for the coin, else the
+ * list's cap; nothing when no market reports one.
+ *
+ * ★ THE CARD READS NO MARKET OF ITS OWN, as For You's card does not (shared/ui/PostRow.tsx). Each
+ * card used to read its coin's whole one-minute chart every four seconds, up to eight at once, only
+ * to print this number. The list's page carries the coin's stored price and cap (the market pass
+ * reads every live narrative's coins, services/market db.ts), so one list read is the whole cost.
+ */
+function CardCap({ coin, story }: { coin: CoinFace; story: Story }) {
+  const cap = useCoinCap(coin.address, coin.marketCapUsd, false, servedPrice(story, coin.address));
   return cap.known ? <Value r={formatUsd(cap)} /> : null;
+}
+
+/** The price the list sent for one of the narrative's coins, or null when it sent none for that address. */
+function servedPrice(story: Story, address: string): Measured | null {
+  const coins = story.coins.kind === 'one' ? [story.coins.coin] : story.coins.kind === 'several' ? story.coins.coins : [];
+  const c = [...coins, ...(story.topCoin === null ? [] : [story.topCoin])].find((x) => x.address === address);
+  return c?.priceUsd ?? null;
 }
