@@ -787,6 +787,17 @@ export interface WireStory {
    * `coins` stays the narrative's own answer. Absent when a coin is settled or none is listed.
    */
   readonly topCoin?: WireCoin;
+  /**
+   * ★ ITS SPEEDS FOR THE TAB'S TRENDING (the owner, 2026-10-18; core rank/narrative-sorts.ts): views
+   * a minute over the last 30 minutes (`now`) and over the hour before (`before`), its posts' For You
+   * speeds added up over the `posts` whose readings measure both spans; `nowBySource` is `now` by
+   * where the posts went up, for the floor's short-video scale. Null when no post was measured: an
+   * unread narrative is not a slow one. Facts; the ratio and the list are the read service's.
+   */
+  readonly viewsPerMinute?: { readonly now: number; readonly before: number; readonly posts: number; readonly nowBySource: Readonly<Record<string, number>> } | null;
+  /** Views gained over the last 24 hours and 7 days, the posts' gains added up as the chart counts them (Most viewed Today, Week). */
+  readonly viewsGainedDay?: WireMeasured;
+  readonly viewsGainedWeek?: WireMeasured;
 }
 
 /* ── the censor ───────────────────────────────────────────────────────── */
