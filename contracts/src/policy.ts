@@ -3408,13 +3408,16 @@ export interface NarrativePolicy {
   /**
    * ★ "LAUNCHED" IS THE CREATE TRANSACTION'S BLOCK TIME (the owner, 2026-10-18). A coin a shown
    * narrative's page names whose stored launch is not the chain's (a live notice's arrival, an
-   * aggregator's pair time) has its oldest transaction's block time read, at most `perPass` a pass,
-   * and stored as the chain's. Off until the owner has the cost: it is one RPC call a coin on the
-   * runner's chain key, the same call the coin lookup makes for every coin it finds.
+   * aggregator's pair time) has its oldest transaction's block time read, at most `perPass` a pass
+   * and `perDay` a UTC day, and stored as the chain's. One RPC call a coin, never a walk of its
+   * pages (`getTransactionsForAddress`, oldest first, one row), on the runner's chain key, the same
+   * call the coin lookup makes for every coin it finds. A coin past the day's count stays "launch
+   * not known" until the next day.
    */
   readonly launchClock: {
     readonly on: boolean;
     readonly perPass: number;
+    readonly perDay: number;
   };
   /**
    * ★ ONE SEARCH BACKWARDS WHEN A NARRATIVE FORMS (the owner, 2026-10-18). A narrative first shown
@@ -5393,7 +5396,12 @@ const POLICY_V1: Policy = {
       maxVectorsPerPass: 1_500,
       maxPerNarrative: 200,
     },
-    launchClock: { on: false, perPass: 20 },
+    /* On from 2026-10-18 (the owner). On 18 Oct the narrative pages named 8 coins, none with a chain
+       time; 99 to 245 narratives were first shown a day (16-18 Oct) and about 8 in 100 name a coin,
+       so about 8 to 20 new coins a day, one call each: 8 calls on the first pass, then about 8-20
+       calls a day. `perDay` 100 is the worst case a day (plus 100 more on each restart, which
+       starts the count again); a coin's history length never changes it. */
+    launchClock: { on: true, perPass: 20, perDay: 100 },
     /* 99 to 245 narratives were first shown a day (16-18 Oct), and only those with a safe name are
        asked. An ask is at most three pages of 20 at $0.00015 a post returned ($0.009) and its new
        posts judged at the lane's $0.00145 x 0.9 (at most $0.078), so at most $0.087 a narrative; a

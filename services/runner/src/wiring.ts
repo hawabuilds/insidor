@@ -1660,11 +1660,12 @@ export async function withRuntime<T>(
               log: log.child({ step: 'narratives' }),
               now: () => Date.now() as Millis,
             });
-            /* After each pass, off until the owner switches them: the page coins' launch from the chain
+            /* After each pass, both on from 2026-10-18: the page coins' launch from the chain
                (work/launch-clock.ts) and one backward name search per new narrative (work/narrative-back.ts).
                Either failing is logged and never fails the narratives pass. */
             const chain = cfg.chainRpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.chainRpcUrl, fetch: globalThis.fetch });
             const launchTried = new Set<string>();
+            const launchToday = { day: '', read: 0 };
             const backAsked = new Set<string>();
             return async () => {
               const r = await grouper.pass();
@@ -1676,8 +1677,10 @@ export async function withRuntime<T>(
                   mode: cfg.spend.kind,
                   policy,
                   log: log.child({ step: 'launch-clock' }),
+                  now: () => Date.now() as Millis,
                 },
                 launchTried,
+                launchToday,
               ).catch((e: unknown) => log.warn('launch times not read this pass', { err: errorText(e) }));
               await narrativeBackPass(
                 {
