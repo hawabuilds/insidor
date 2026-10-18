@@ -44,7 +44,21 @@ export interface FeedComment {
   readonly likedByMe: boolean;
   readonly replies: number;
   /** What it was said on: a coin, a group of posts (story) or one post, with its title when known. */
-  readonly on: { readonly kind: 'coin' | 'story' | 'post'; readonly id: string; readonly storyId: string | null; readonly title: string | null; readonly coin: FeedCoin | null };
+  readonly on: {
+    readonly kind: 'coin' | 'story' | 'post';
+    readonly id: string;
+    readonly storyId: string | null;
+    readonly title: string | null;
+    readonly coin: FeedCoin | null;
+    /** A post's small picture or video cover, or a narrative's picture; null when there is none. */
+    readonly pictureUrl: string | null;
+    /** The post's picture is a still of a video. */
+    readonly video: boolean;
+    /** The post's site as For You labels it ("X", "TikTok"). */
+    readonly site: string | null;
+    /** The post's author, "@handle". */
+    readonly author: string | null;
+  };
 }
 
 export type FeedItem = FeedTrade | FeedComment;

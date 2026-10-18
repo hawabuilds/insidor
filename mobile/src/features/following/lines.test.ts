@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import type { FeedComment, FeedItem, SuggestedPerson } from '../../shared/api/following.ts';
 import { hrefFor } from '../../shared/route.ts';
-import { coinLabel, mergePage, peopleFacts, tradeDetail, whereOf } from './lines.ts';
+import { coinLabel, mergePage, peopleFacts, siteOf, tradeDetail, whereOf } from './lines.ts';
 
 const MINT = 'FerryHorn1111111111111111111111111111111pump';
 const who = { userId: 'did:privy:1', handle: 'ana', name: 'Ana', pictureUrl: null, rank: 'intern' as const };
@@ -23,14 +23,17 @@ test("a coin we never saw is its address, never a made-up name", () => {
 });
 
 test('a comment opens where it was said', () => {
-  const base: FeedComment = { kind: 'comment', key: 'c:1', at: 0, person: who, commentId: 1, body: 'hi', likes: 0, likedByMe: false, replies: 0, on: { kind: 'coin', id: MINT, storyId: null, title: null, coin: { mint: MINT, symbol: 'FERRY', name: null, imageUrl: null } } };
+  const none = { pictureUrl: null, video: false, site: null, author: null };
+  const base: FeedComment = { kind: 'comment', key: 'c:1', at: 0, person: who, commentId: 1, body: 'hi', likes: 0, likedByMe: false, replies: 0, on: { kind: 'coin', id: MINT, storyId: null, title: null, coin: { mint: MINT, symbol: 'FERRY', name: null, imageUrl: null }, ...none } };
   assert.equal(whereOf(base).href, hrefFor({ screen: 'token', coinId: `solana:${MINT}` }), "a coin's comment opens its token page");
   assert.equal(whereOf(base).label, 'FERRY');
-  const story = whereOf({ ...base, on: { kind: 'story', id: 'st', storyId: 'st', title: 'The ferry horn', coin: null } });
-  assert.equal(story.label, 'The ferry horn');
-  assert.ok(story.href?.includes('st'));
-  const post = whereOf({ ...base, on: { kind: 'post', id: 'x:1', storyId: null, title: null, coin: null } });
-  assert.deepEqual([post.label, post.href], ['a post', null], 'a post with no narrative has nowhere to open');
+  const story = whereOf({ ...base, on: { ...none, kind: 'story', id: 'st', storyId: 'st', title: 'The ferry horn', coin: null } });
+  assert.deepEqual([story.label, story.href], ['The ferry horn', hrefFor({ screen: 'story', storyId: 'st' })]);
+  const post = { ...base, on: { ...none, kind: 'post' as const, id: 'tiktok:1', storyId: null, title: null, coin: null, author: '@ana' } };
+  assert.deepEqual([whereOf(post).label, whereOf(post).href], ['Post by @ana', hrefFor({ screen: 'post', postId: 'tiktok:1' })], 'a post opens its sheet');
+  assert.equal(siteOf(post), 'tiktok', "the site from the post's id when For You never labelled it");
+  assert.equal(siteOf({ ...post, on: { ...post.on, site: 'X' } }), 'x');
+  assert.equal(whereOf({ ...post, on: { ...post.on, author: null } }).label, 'Post');
 });
 
 test("someone to follow says the counts they have, and no trade count when they do not share trades", () => {

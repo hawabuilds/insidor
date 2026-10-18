@@ -184,8 +184,38 @@ async function coinsOf(deps: SocialDeps, mints: readonly string[]): Promise<Map<
   return found;
 }
 
-/** A post's narrative and every narrative's title, for the line under a comment. */
-async function storiesOf(deps: SocialDeps, rows: readonly CommentRow[]): Promise<{ postStory: Map<string, string>; title: Map<string, string | null> }> {
+interface PostFacts {
+  readonly itemId: string;
+  readonly thumbUrl: string | null;
+  readonly video: boolean;
+  readonly site: string | null;
+  readonly author: string | null;
+}
+
+/**
+ * A post's small picture (or its video's cover), its site and its author, for the pill a comment
+ * on it carries, from the card For You already made of it (public.feed_post). A post that was never
+ * on For You has no card: the pill shows the site's empty tile and no author, never a borrowed one.
+ */
+async function postsOf(deps: SocialDeps, rows: readonly CommentRow[]): Promise<Map<string, PostFacts>> {
+  const ids = [...new Set(rows.filter((r) => r.subjectKind === 'post').map((r) => r.subjectId))];
+  const found = new Map<string, PostFacts>();
+  if (ids.length === 0) return found;
+  const posts = await deps.db.query<PostFacts>(
+    `select distinct on (item_id) item_id as "itemId", payload ->> 'thumbUrl' as "thumbUrl",
+            coalesce((payload ->> 'thumbIsVideo')::boolean, false) as video,
+            payload ->> 'sourceLabel' as site, payload ->> 'authorLabel' as author
+       from public.feed_post
+      where item_id = any($1::text[]) and payload is not null
+      order by item_id, payload_at desc nulls last`,
+    [ids],
+  );
+  for (const p of posts) found.set(p.itemId, p);
+  return found;
+}
+
+/** A post's narrative and every narrative's title and picture, for the pill under a comment. */
+async function storiesOf(deps: SocialDeps, rows: readonly CommentRow[]): Promise<{ postStory: Map<string, string>; title: Map<string, string | null>; thumb: Map<string, string | null> }> {
   const postIds = [...new Set(rows.filter((r) => r.subjectKind === 'post').map((r) => r.subjectId))];
   const postStory = new Map<string, string>();
   if (postIds.length > 0) {
@@ -194,16 +224,20 @@ async function storiesOf(deps: SocialDeps, rows: readonly CommentRow[]): Promise
   }
   const storyIds = [...new Set([...rows.filter((r) => r.subjectKind === 'story').map((r) => r.subjectId), ...postStory.values()])];
   const title = new Map<string, string | null>();
+  const thumb = new Map<string, string | null>();
   if (storyIds.length > 0) {
-    const titles = await deps.db.query<{ storyId: string; title: string | null }>(
-      `select s.story_id as "storyId", coalesce(v.payload ->> 'title', s.display_title) as title
+    const titles = await deps.db.query<{ storyId: string; title: string | null; thumbUrl: string | null }>(
+      `select s.story_id as "storyId", coalesce(v.payload ->> 'title', s.display_title) as title, v.payload ->> 'thumbUrl' as "thumbUrl"
          from public.story s left join public.story_view v on v.story_id = s.story_id
         where s.story_id = any($1::text[])`,
       [storyIds],
     );
-    for (const t of titles) title.set(t.storyId, t.title);
+    for (const t of titles) {
+      title.set(t.storyId, t.title);
+      thumb.set(t.storyId, t.thumbUrl);
+    }
   }
-  return { postStory, title };
+  return { postStory, title, thumb };
 }
 
 const person = (r: Who, ranks: Map<string, RankId>) => ({ userId: r.userId, handle: r.handle, name: r.name, pictureUrl: r.pictureUrl, rank: ranks.get(r.userId) ?? 'intern' });
@@ -242,6 +276,25 @@ function decodeRank(raw: string | null): { likes: number; id: string } | null {
   if (raw === null || raw === '') return null;
   const [r, likes, id] = Buffer.from(raw, 'base64url').toString('utf8').split('|');
   return r === 'r' && likes !== undefined && id !== undefined && /^\d{1,9}$/.test(likes) && /^\d{1,19}$/.test(id) ? { likes: Number(likes), id } : null;
+}
+
+/**
+ * What a comment was said on, for its pill (where Trador's row shows the coin): the coin; or the
+ * post, with its small picture, site and author; or the narrative, with its title and picture.
+ */
+function onOf(c: CommentRow, storyId: string | null, coin: CoinFacts | null, stories: { title: Map<string, string | null>; thumb: Map<string, string | null> }, posts: Map<string, PostFacts>) {
+  const post = c.subjectKind === 'post' ? (posts.get(c.subjectId) ?? null) : null;
+  return {
+    kind: c.subjectKind,
+    id: c.subjectId,
+    storyId,
+    title: storyId === null ? null : (stories.title.get(storyId) ?? null),
+    coin,
+    pictureUrl: post !== null ? post.thumbUrl : c.subjectKind === 'story' && storyId !== null ? (stories.thumb.get(storyId) ?? null) : null,
+    video: post?.video ?? false,
+    site: post?.site ?? null,
+    author: post?.author ?? null,
+  };
 }
 
 type Entry = { readonly k: 't' | 'c'; readonly id: string; readonly us: string; readonly trade: TradeRow | null; readonly comment: CommentRow | null };
@@ -286,7 +339,7 @@ async function feed(deps: SocialDeps, me: Person, tab: FeedTab, window: 'week' |
     if (x.comment?.subjectKind === 'coin') mints.add(x.comment.subjectId);
     else if (x.comment?.coinMint) mints.add(x.comment.coinMint);
   }
-  const [coins, stories, rankMap] = await Promise.all([coinsOf(deps, [...mints]), storiesOf(deps, pageComments), ranks([...new Set(page.map((x) => (x.trade ?? x.comment)!.userId))])]);
+  const [coins, stories, posts, rankMap] = await Promise.all([coinsOf(deps, [...mints]), storiesOf(deps, pageComments), postsOf(deps, pageComments), ranks([...new Set(page.map((x) => (x.trade ?? x.comment)!.userId))])]);
   const coin = (mint: string): CoinFacts => coins.get(mint) ?? { mint, symbol: null, name: null, imageUrl: null };
 
   const items = page.map((x) => {
@@ -307,7 +360,7 @@ async function feed(deps: SocialDeps, me: Person, tab: FeedTab, window: 'week' |
       likes: c.likes,
       likedByMe: c.likedByMe,
       replies: c.replies,
-      on: { kind: c.subjectKind, id: c.subjectId, storyId, title: storyId === null ? null : (stories.title.get(storyId) ?? null), coin: coinMint === null ? null : coin(coinMint) },
+      on: onOf(c, storyId, coinMint === null ? null : coin(coinMint), stories, posts),
     };
   });
   return json(200, { items, cursor: nextCursor, following: followed.length });

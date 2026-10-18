@@ -34,7 +34,9 @@ import { useLoad, useNow } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
-import { BellIcon } from '../../shared/ui/icons.tsx';
+import { ArrowUpIcon, BellIcon, PlayIcon, ReplyIcon } from '../../shared/ui/icons.tsx';
+import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
+import { Thumb } from '../../shared/ui/Thumb.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
 import { LoadMore, PullIndicator } from '../alerts/Parts.tsx';
@@ -42,7 +44,7 @@ import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
 import alerts from '../alerts/alerts.module.css';
 import { RankTag } from '../people/RankBadge.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
-import { coinHref, coinLabel, nameOf, peopleFacts, profileHref, tradeDetail, whereOf } from './lines.ts';
+import { coinHref, coinLabel, nameOf, peopleFacts, profileHref, siteOf, tradeDetail, whereOf } from './lines.ts';
 import { usePeopleFeed } from './list.ts';
 import styles from './following.module.css';
 
@@ -162,56 +164,84 @@ function Face({ p }: { p: FeedItem['person'] }) {
   );
 }
 
-/** Trador's FeedTradeRow: who, bought or sold, the coin, the age; under it where it stood or how it went. */
+/**
+ * Trador's FeedTradeRow: lighter than a comment, no box and no button, one line of what happened
+ * ("handle bought [logo] TICKER", the age) and one of where it stood or how it went. Trador's whole
+ * row opens the coin; here the face opens the person (the owner's rule for every face) and the
+ * rest of the row opens the coin. The coin never truncates: a long handle gives way instead.
+ */
 function TradeRow({ t, now }: { t: FeedTrade; now: number }) {
   const bought = t.side === 'buy';
   const detail = tradeDetail(t);
   return (
-    <div className={styles['row']}>
+    <div className={styles['tradeRow']}>
       <Face p={t.person} />
-      <div className={styles['text']}>
+      <a className={styles['text']} href={coinHref(t.coin.mint)}>
         <div className={styles['line']}>
           <span className={styles['what']}>
-            <a className={styles['who']} href={profileHref(t.person)}>{nameOf(t.person)}</a>
+            <span className={styles['who']}>{t.person.handle ?? nameOf(t.person)}</span>
             <span className={bought ? styles['bought'] : styles['sold']}>{bought ? 'bought' : 'sold'}</span>
-            <a className={styles['coin']} href={coinHref(t.coin.mint)}>
-              <CoinLogo small address={t.coin.mint} ticker={t.coin.symbol ?? t.coin.name} imageUrl={t.coin.imageUrl} size={22} />
-              {coinLabel(t.coin)}
-            </a>
+            <CoinLogo small address={t.coin.mint} ticker={t.coin.symbol ?? t.coin.name} imageUrl={t.coin.imageUrl} size={24} />
+            <span className={styles['ticker']}>{coinLabel(t.coin)}</span>
           </span>
           <span className={styles['age']}>{age(t.at, now)}</span>
         </div>
         {detail !== null ? <p className={styles['detail']}>{detail}</p> : null}
-      </div>
+      </a>
     </div>
   );
 }
 
-/** Trador's FeedCommentRow: name, rank and age; where it was said; the words; likes and replies. */
+/** A post's small rounded picture, with a play mark on a video's cover; the site's mark when there is no picture. */
+function PostPicture({ c }: { c: FeedComment }) {
+  const [failed, setFailed] = useState(false);
+  const site = siteOf(c);
+  if (c.on.pictureUrl === null || failed) return <span className={styles['pillTile']}>{site !== null ? <PlatformMark platform={site} size={11} /> : null}</span>;
+  return (
+    <span className={styles['pillPicture']}>
+      <img src={c.on.pictureUrl} alt="" width={20} height={20} loading="lazy" decoding="async" onError={() => setFailed(true)} />
+      {c.on.video ? (
+        <span className={styles['pillPlay']} aria-label="Video">
+          <PlayIcon size={8} />
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Trador's FeedCommentRow: spacing between posts, not cards. Name, rank and age; then the pill of
+ * what it was said on, where Trador shows the coin (the coin's logo and ticker; a post's small
+ * picture and "Post by @handle"; a narrative's picture and title), which opens it; the words; and
+ * the holders' likes and the replies as readouts, as Trador's are.
+ */
 function CommentRow({ c, now }: { c: FeedComment; now: number }) {
   const where = whereOf(c);
-  const label = (
-    <>
-      {where.coin !== null ? <CoinLogo small address={where.coin.mint} ticker={where.coin.symbol ?? where.coin.name} imageUrl={where.coin.imageUrl} size={18} /> : null}
-      {where.label}
-    </>
-  );
   return (
-    <article className={styles['row']}>
+    <article className={styles['commentRow']}>
       <Face p={c.person} />
       <div className={styles['text']}>
-        <div className={styles['line']}>
-          <span className={styles['what']}>
-            <a className={styles['who']} href={profileHref(c.person)}>{nameOf(c.person)}</a>
-            <RankTag rank={c.person.rank} />
-          </span>
+        <div className={styles['commentHead']}>
+          <a className={styles['name']} href={profileHref(c.person)}>{nameOf(c.person)}</a>
+          <RankTag rank={c.person.rank} />
           <span className={styles['age']}>{age(c.at, now)}</span>
         </div>
-        {where.href !== null ? <a className={styles['where']} href={where.href}>{label}</a> : <span className={styles['where']}>{label}</span>}
+        <a className={styles['pill']} href={where.href}>
+          {where.coin !== null ? <CoinLogo small address={where.coin.mint} ticker={where.coin.symbol ?? where.coin.name} imageUrl={where.coin.imageUrl} size={18} /> : null}
+          {c.on.kind === 'post' ? <PostPicture c={c} /> : null}
+          {c.on.kind === 'story' ? <Thumb url={c.on.pictureUrl} size={18} radius={5} /> : null}
+          <span>{where.label}</span>
+        </a>
         <p className={styles['body']}>{c.body}</p>
         <div className={styles['counts']}>
-          <span>↑ {c.likes}</span>
-          <span>{c.replies} {c.replies === 1 ? 'reply' : 'replies'}</span>
+          <span aria-label={`${c.likes} found it useful`}>
+            <ArrowUpIcon size={15} />
+            {c.likes}
+          </span>
+          <span aria-label={`${c.replies} ${c.replies === 1 ? 'reply' : 'replies'}`}>
+            <ReplyIcon size={15} />
+            {c.replies}
+          </span>
         </div>
       </div>
     </article>

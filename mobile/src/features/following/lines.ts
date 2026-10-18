@@ -15,6 +15,7 @@
 import type { FeedCoin, FeedComment, FeedItem, FeedTrade, SuggestedPerson } from '../../shared/api/following.ts';
 import type { PersonRef } from '../../shared/api/people.ts';
 import { compactMoney } from '../../shared/format/number.ts';
+import { platformOf, type Platform } from '../../shared/platform.ts';
 import { hrefFor } from '../../shared/route.ts';
 
 /**
@@ -40,13 +41,23 @@ export const profileHref = (p: Pick<PersonRef, 'handle' | 'userId'>): string => 
 
 export const coinHref = (mint: string): string => hrefFor({ screen: 'token', coinId: `solana:${mint}` });
 
-/** Where a comment was said, and where it opens: the coin's page, or the page of its posts. */
-export function whereOf(c: FeedComment): { readonly label: string; readonly href: string | null; readonly coin: FeedCoin | null } {
+/** The post's site, from For You's label or else the post id's own prefix ("x:…", "tiktok:…"). */
+export function siteOf(c: FeedComment): Platform | null {
+  if (c.on.site !== null) return platformOf(c.on.site);
+  const prefix = c.on.id.slice(0, c.on.id.indexOf(':'));
+  return (['x', 'tiktok', 'youtube', 'reddit', 'instagram'] as const).find((p) => p === prefix) ?? null;
+}
+
+/**
+ * The pill a comment carries, where Trador's row shows its coin: what it says and where a tap
+ * opens. A coin: its ticker, to its token page. A post: "Post by @handle", to its sheet. A
+ * narrative: its title, to its page.
+ */
+export function whereOf(c: FeedComment): { readonly label: string; readonly href: string; readonly coin: FeedCoin | null } {
   const on = c.on;
   if (on.kind === 'coin' && on.coin !== null) return { label: coinLabel(on.coin), href: coinHref(on.coin.mint), coin: on.coin };
-  const href = on.storyId !== null ? hrefFor({ screen: 'story', storyId: on.storyId }) : null;
-  const label = on.title ?? (on.kind === 'post' ? 'a post' : 'a narrative');
-  return { label: on.kind === 'post' && on.title !== null ? `a post in ${on.title}` : label, href, coin: null };
+  if (on.kind === 'post') return { label: on.author !== null ? `Post by ${on.author}` : 'Post', href: hrefFor({ screen: 'post', postId: on.id }), coin: null };
+  return { label: on.title ?? 'Narrative', href: hrefFor({ screen: 'story', storyId: on.storyId ?? on.id }), coin: null };
 }
 
 /** The counts under someone to follow, the ones they have, in a sentence. */
