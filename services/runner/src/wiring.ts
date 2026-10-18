@@ -1271,6 +1271,8 @@ export async function withRuntime<T>(
       /* The keyless search, free a call: the narrative pages' posts are searched on it alone. */
       const freeSearch = dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS });
       const lookupSources = [freeSearch, onChainMarket];
+      /* The narrative posts' chain reads this process made today, kept across passes (coin-lookup.ts). */
+      const narrativeChainReads = { day: 0, reads: 0 };
       log.info('coin lookup sources', { onChainPlan: cfg.marketData.plan });
 
       return {
@@ -1392,6 +1394,7 @@ export async function withRuntime<T>(
               assets: repos.assets,
               sources: lookupSources,
               freeSources: [freeSearch],
+              chainReads: narrativeChainReads,
               chain: cfg.chainRpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.chainRpcUrl, fetch: globalThis.fetch }),
               policy,
               log: log.child({ step: 'coin-lookup' }),

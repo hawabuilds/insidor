@@ -140,3 +140,59 @@ test('★ a narrative post searched days after it went up keeps the coins launch
   });
   assert.deepEqual(recorded[1]?.hits, ['OLD'], 'launched a day after the post: kept; three weeks before it: not');
 });
+
+test("★ the narrative posts' chain reads stop at the day's cap, and a coin past it is added from what the search gave", async () => {
+  const cap = DEFAULT_POLICY.universe.lookup.narrativePosts.chainReadsPerDay;
+  const reads: string[] = [];
+  const chain = {
+    metadataUri: async (m: string) => (reads.push(`meta:${m}`), `https://example.org/${m}.json`),
+    oldestSignatureBlockTime: async (m: string) => (reads.push(`oldest:${m}`), 1_799_000_000),
+  };
+  const upserted: { metadata: unknown; source: string }[] = [];
+  const source: CoinSearch = { search: async () => ({ hits: [hit('So11111111111111111111111111111111111111112', 'Gordão', 60_000), hit('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', 'Gordão', 120_000)], capped: false }) };
+  const feed: LookupTerm = { kind: 'post', id: 'x:feed', term: 'Moo Deng', names: ['Moo Deng'], attempts: 0 };
+  const { d } = deps(feed, [{ search: async () => ({ hits: [], capped: false }) }]);
+  const tally = { day: Math.floor(NOW / 86_400_000), reads: cap - 2 };
+  await lookUpCoins({
+    ...d,
+    chain,
+    freeSources: [source],
+    chainReads: tally,
+    assets: {
+      upsert: async (xs) => {
+        for (const a of xs) upserted.push({ metadata: a.declaredSocial['metadata'], source: a.mintedAt.source });
+        return xs.length;
+      },
+    },
+    coins: {
+      ...d.coins,
+      knownAssets: async () => new Set(),
+      narrativeCoinsAddedSince: async () => 0,
+      narrativePostTerms: async () => [{ kind: 'post', id: 'x:a', term: 'Gordão', names: ['Gordão'], attempts: 0, via: 'narrative', postedAtMs: NOW }],
+    },
+  });
+  assert.equal(reads.length, 2, "room for one coin's two reads, no more");
+  assert.equal(tally.reads, cap);
+  assert.equal(upserted.length, 2, 'both coins are added and listed');
+  assert.deepEqual(upserted.map((u) => [u.metadata === undefined ? 'no link' : 'link', u.source]), [['link', 'chain_rpc'], ['no link', 'vendor_field']]);
+});
+
+test("★ the store's count of today's coins holds the cap after a restart", async () => {
+  const reads: string[] = [];
+  const chain = { metadataUri: async () => (reads.push('m'), null), oldestSignatureBlockTime: async () => (reads.push('o'), null) };
+  const source: CoinSearch = { search: async () => ({ hits: [hit('So11111111111111111111111111111111111111112', 'Gordão', 60_000)], capped: false }) };
+  const { d } = deps({ kind: 'post', id: 'x:feed', term: 'Moo Deng', names: ['Moo Deng'], attempts: 0 }, [{ search: async () => ({ hits: [], capped: false }) }]);
+  await lookUpCoins({
+    ...d,
+    chain,
+    freeSources: [source],
+    chainReads: { day: 0, reads: 0 },
+    coins: {
+      ...d.coins,
+      knownAssets: async () => new Set(),
+      narrativeCoinsAddedSince: async () => DEFAULT_POLICY.universe.lookup.narrativePosts.chainReadsPerDay / 2,
+      narrativePostTerms: async () => [{ kind: 'post', id: 'x:a', term: 'Gordão', names: ['Gordão'], attempts: 0, via: 'narrative', postedAtMs: NOW }],
+    },
+  });
+  assert.equal(reads.length, 0);
+});

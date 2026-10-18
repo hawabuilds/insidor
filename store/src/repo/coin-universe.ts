@@ -420,6 +420,25 @@ export class PgCoinUniverseRepo {
     return rows.map((r) => ({ ...termOf(r), via: 'narrative' as const, postedAtMs: toMillis(r.posted_at) }));
   }
 
+  /**
+   * Coins the narrative pages' posts' searches added since `at` (internal.coin_lookup `added`, on
+   * posts listed on a page and not in the feed frame): what the runner's chain-read cap for those
+   * searches counts from, so a restart does not hand it a fresh day. It can only over-count — a
+   * coin added without its chain reads still counts — never under-count, except for a post searched
+   * twice in the day, whose earlier count its later row replaces.
+   */
+  async narrativeCoinsAddedSince(at: Millis): Promise<number> {
+    const rows = await this.#db.query<{ n: string | number | null }>(
+      `select coalesce(sum(l.added), 0) as n
+         from internal.coin_lookup l
+        where l.subject_kind = 'post' and l.looked_at >= $1
+          and exists (select 1 from public.story_post sp where sp.item_id = l.subject_id)
+          and not exists (select 1 from public.rising_row r where r.item_id = l.subject_id)`,
+      [toTimestamp(at)],
+    );
+    return Number(rows[0]?.n ?? 0);
+  }
+
   /** The namer's guesses for these terms' posts (0076), names and tickers, best first; nothing before 0076. */
   async withGuesses(terms: readonly LookupTerm[]): Promise<readonly LookupTerm[]> {
     const posts = terms.filter((t) => t.kind === 'post').map((t) => t.id);
