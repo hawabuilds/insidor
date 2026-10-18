@@ -5,7 +5,7 @@
  *
  *   GET    /me                         my profile and standing (signed in)
  *   POST   /me                         bring my profile up to date from my sign-in
- *   PUT    /me { bio }
+ *   PUT    /me { bio } or { tradesPublic }   my bio, or "Show my trades to followers"
  *   GET    /profile/:key               by handle or id: profile, rank card, counts, recent comments
  *   GET    /profile/:key/followers     and /following
  *   POST   /follow/:userId             DELETE the same to unfollow
@@ -14,6 +14,7 @@
  *   POST   /comments/:id/like          DELETE the same to unlike
  *   POST   /comments/:id/report { reason }    POST /comments/:id/hide (for me only)
  *   GET    /leaderboard                this season's standings
+ *   GET    /feed, /feed/people          the people you follow's trades and comments, People to follow (activity.ts)
  *   GET    /me/owner, /owner/…         the owner's calls on posts, coin matches and names (owner.ts)
  *   GET    /missed, POST /missed       the owner's missed posts (missed.ts; the owner only)
  *   POST   /post/:id/reading          a post sheet was opened: ask for a fresh view reading (reading-ask.ts)
@@ -38,6 +39,7 @@ import { DEFAULT_POLICY, type OwnerPolicy, type SocialPolicy } from '@insidor/co
 import type { IdentityCheck, Person } from '@insidor/contracts/ports/people.ts';
 import { boughtEarly, earnsRep, nextRank, rankFor, rankedUp, seasonOf, standings, votePoints, type RankId, type Standing } from '@insidor/core';
 
+import { activityRoute } from './activity.ts';
 import { json, type Reply, type Request } from './http.ts';
 import { missedRoute } from './missed.ts';
 import { askForReading } from './reading-ask.ts';
@@ -125,9 +127,10 @@ interface ProfileRow {
   pictureUrl: string | null;
   bio: string;
   wallet: string | null;
+  tradesPublic: boolean;
 }
 
-const PROFILE_COLS = `user_id as "userId", handle, name, picture_url as "pictureUrl", bio, wallet`;
+const PROFILE_COLS = `user_id as "userId", handle, name, picture_url as "pictureUrl", bio, wallet, trades_public as "tradesPublic"`;
 
 /** The profile row brought up to date from a signed sign-in. A handle someone else held moves to its new owner. */
 export async function syncProfile(db: Db, p: Person): Promise<void> {
@@ -190,6 +193,8 @@ async function card(deps: SocialDeps, p: ProfileRow, viewer: string | null) {
     iFollow: counts?.iFollow ?? false,
     followsMe: counts?.followsMe ?? false,
     isMe: viewer === p.userId,
+    /* Their own switch, shown only to them: whether anyone else has it on is not ours to list. */
+    tradesPublic: viewer === p.userId ? p.tradesPublic : null,
   };
 }
 
@@ -298,6 +303,11 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
 
   const owned = await ownerRoute({ method: m, seg, query: url.searchParams, body: req.body }, me, deps);
   if (owned !== null) return owned;
+  const activity = await activityRoute(m, seg, url.searchParams, me, deps, async (ids) => {
+    const { map } = await seasonStandings(deps, seasonNow(deps.now(), P).id);
+    return new Map(ids.map((u) => [u, rankFor(standingOf(map, u), P)]));
+  });
+  if (activity !== null) return activity;
   if (head === 'missed' && seg.length === 1) return missedRoute(m, req.body, me, { db: deps.db, owner: deps.owner, learning: DEFAULT_POLICY.learning, ...(deps.coinCheck === undefined ? {} : { coinCheck: deps.coinCheck }) });
 
   if (head === 'me' && seg.length === 1) {
@@ -306,7 +316,9 @@ export async function handle(req: Request, deps: SocialDeps): Promise<Reply> {
       await syncProfile(deps.db, me);
       synced.set(me.userId, deps.now());
     }
-    if (m === 'PUT') {
+    if (m === 'PUT' && typeof (req.body as { tradesPublic?: unknown } | null)?.tradesPublic === 'boolean') {
+      await deps.db.query('update people.profile set trades_public = $2, updated_at = now() where user_id = $1', [me.userId, (req.body as { tradesPublic: boolean }).tradesPublic]);
+    } else if (m === 'PUT') {
       const bio = typeof (req.body as { bio?: unknown } | null)?.bio === 'string' ? ((req.body as { bio: string }).bio).trim() : null;
       if (bio === null || bio.length > P.maxBioChars) return bad(`A bio is up to ${P.maxBioChars} characters.`);
       if (blockedWord(bio)) return bad("That bio uses a word that isn't allowed here.");
