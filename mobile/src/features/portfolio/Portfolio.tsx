@@ -1,37 +1,36 @@
 /**
- * WHAT A WALLET HOLDS — Trador's Stonkfolio, its layout kept, without the pie chart and the
- * Stonks/Stocks split (Insidor holds launchpad coins only): who you are, your followers and
- * following with Edit profile, your bio, the portfolio value with your SOL and what is not priced,
- * Send and Receive, the chart with its range, and one row per coin (HoldingRow.tsx, shared with a
- * profile's portfolio).
+ * WHAT A WALLET HOLDS — Trador's Stonkfolio, cut to what a glance needs: who you are with two round
+ * buttons (the QR code that opens Receive, and the gear), the total, one line saying how it moved
+ * over the chosen window ("+$8.10 (+0.92%) this week"), the window's chips and the chart, then
+ * HOLDINGS: SOL first, then one short row per coin (HoldingRow.tsx, shared with a profile).
+ * Followers, your bio and Edit profile live on your profile, reached from the gear.
  *
  * ★ FACTS, AND A DASH FOR WHAT WE DO NOT KNOW. A coin no market prices says "Unpriced" (it is not
- * worth zero); a coin not bought in Insidor says so where its gain would be; coins past the list are
- * counted, never dropped silently. Follower counts that could not be read are a dash.
+ * worth zero); a coin with no gain shows "—", and the one note under the list says why ("Gains
+ * count coins bought in Insidor."); coins past the list are counted, never dropped silently.
  *
  * ★ GAINS ARE FROM BUYS MADE IN INSIDOR, IN SOL, SHOWN AT TODAY'S SOL PRICE (services/read
- * wallet.ts). Trador values each buy at SOL's price that minute; we keep no history of SOL's price,
- * so the line under the list says how the number is made.
+ * wallet.ts). Trador values each buy at SOL's price that minute; we keep no history of it.
  *
  * ★ THE CHART STARTS WHEN THE WALLET WAS FIRST SEEN. Its points are snapshots taken when the wallet
- * is read (store/migrations/0041), then the live total; with fewer than two there is no line, and
- * the chart's place says when it will start rather than drawing one from nothing.
+ * is read (store/migrations/0041), then the live total; with fewer than two there is no line and no
+ * move under the total, and the chart's place says when it will start rather than drawing one.
  *
  * Read-only: no key, no TRADING switch. Tapping a coin opens its token page.
  */
 
 import type { ReactNode } from 'react';
 
-import type { Holding, Portfolio as PortfolioData } from '../../shared/api/index.ts';
-import type { Measured } from '../../shared/format/measure.ts';
+import type { Portfolio as PortfolioData } from '../../shared/api/index.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { Avatar } from './Avatar.tsx';
 import { BalanceChart } from './BalanceChart.tsx';
-import { windowChange, type BalancePoint } from './balance-points.ts';
-import { HoldingRow } from './HoldingRow.tsx';
+import type { BalancePoint } from './balance-points.ts';
+import { Holdings } from './HoldingRow.tsx';
+import { gainsNote, rangeLine } from './wallet-view.ts';
 import styles from './portfolio.module.css';
 
 export type ChartRange = '1d' | '1w' | '1m' | 'all';
@@ -50,11 +49,6 @@ const CHART_HEIGHT = 88;
 /** "12 Oct, 18:40" — the moment a scrubbed point was taken. */
 const stamp = (t: number): string => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-const solText = (m: Measured): string => (m.known ? m.amount.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—');
-
-/** Your followers, following and bio from the social service; `null` while they load, `unread` when they could not be read. */
-export type Social = { readonly kind: 'read'; readonly key: string; readonly followers: number; readonly following: number; readonly bio: string } | { readonly kind: 'unread' } | null;
-
 export interface WhoAmI {
   readonly name: string | null;
   readonly handle: string | null;
@@ -62,14 +56,9 @@ export interface WhoAmI {
   readonly address: string;
 }
 
-/** "86xCn…o2MMY": five of each end, as Trador shows it. */
-const shortAddress = (a: string): string => (a.length <= 12 ? a : `${a.slice(0, 5)}…${a.slice(-5)}`);
-
 export function Portfolio({
-  who, social = undefined, data, points, range, onRange, scrubbed, onScrub, copied, onCopy, actions, notice, menu,
+  who, data, points, range, onRange, scrubbed, onScrub, buttons, notice, menu,
 }: {
-  /** Your own social line; absent for a linked wallet, which has no profile. */
-  social?: Social | undefined;
   who: WhoAmI;
   data: PortfolioData | null;
   /** The chart's points, live total last; null while they load. */
@@ -78,54 +67,38 @@ export function Portfolio({
   onRange: (r: ChartRange) => void;
   scrubbed: BalancePoint | null;
   onScrub: (p: BalancePoint | null) => void;
-  copied: boolean;
-  onCopy: () => void;
-  /** Send and Receive, as the screen decides to offer them. */
-  actions: ReactNode;
+  /** The round buttons before the gear: the QR code (Receive), and Send in a trading build. */
+  buttons: ReactNode;
   notice: ReactNode;
   /** The profile menu's gear, top right of the header. */
   menu: ReactNode;
 }) {
   const read = data !== null && data.kind === 'read' ? data : null;
-  const change = points === null ? null : windowChange(points);
+  const move = rangeLine(points, range);
   return (
     <div className={styles['page']}>
       <header className={styles['header']}>
         <div className={styles['who']}>
-          <Avatar name={who.name ?? who.handle} seed={who.address} src={who.pictureUrl} size={46} />
+          <Avatar name={who.name ?? who.handle} seed={who.address} src={who.pictureUrl} size={48} />
           <div className={styles['whoText']}>
             <h1 className={styles['name']}>{who.name ?? who.handle ?? 'Portfolio'}</h1>
-            <div className={styles['ids']}>
-              {who.handle !== null ? <span className={styles['handle']}>@{who.handle}</span> : null}
-              <button type="button" className={styles['copy']} onClick={onCopy} aria-label={`Copy address ${who.address}`}>
-                <span className={styles['mono']}>{copied ? 'Copied' : shortAddress(who.address)}</span>
-                <CopyGlyph />
-              </button>
-            </div>
+            {who.handle !== null ? <div className={styles['ids']}><span className={styles['handle']}>@{who.handle}</span></div> : null}
           </div>
+          {buttons}
           {menu}
         </div>
 
-        {social !== undefined ? <SocialLine social={social} /> : null}
-
         <div className={styles['value']}>
-          <div className={styles['label']}>{scrubbed !== null ? 'Value at' : 'Portfolio value'}</div>
           <div className={styles['big']}>
             {scrubbed !== null ? `$${scrubbed.value.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : read === null ? '—' : <Value r={formatUsd(read.totalUsd)} />}
           </div>
           {scrubbed !== null ? (
-            /* While scrubbing, the line is the moment pointed at: today's composition would be wrong for it. */
-            <div className={styles['subline']}><span>{stamp(scrubbed.t)}</span></div>
-          ) : read !== null ? (
-            <div className={styles['subline']}>
-              {change !== null ? <span className={change < 0 ? styles['downInline'] : styles['upInline']}>{change < 0 ? `▼ ${Math.abs(change).toFixed(2)}%` : `▲ +${change.toFixed(2)}%`}</span> : null}
-              <span>{solText(read.solBalance)} SOL</span>
-              {read.unpriced > 0 ? <span>{read.unpriced.toLocaleString('en-US')} not priced here</span> : null}
-            </div>
+            /* While scrubbing, the line is the moment pointed at. */
+            <div className={styles['moveLine']}>{stamp(scrubbed.t)}</div>
+          ) : move !== null ? (
+            <div className={`${styles['moveLine']} ${move.tone === 'down' ? styles['downInline'] : styles['upInline']}`}>{move.text}</div>
           ) : null}
         </div>
-
-        {actions}
 
         <div className={styles['controls']}>
           <div role="group" aria-label="Chart range" className={styles['pills']}>
@@ -156,19 +129,19 @@ export function Portfolio({
         </ul>
       ) : data.kind === 'unavailable' ? (
         <p className={styles['empty']}>— what this wallet holds could not be read just now.</p>
-      ) : data.holdings.length === 0 ? (
-        <div className={styles['nothing']}>
-          <b>Nothing here yet</b>
-          <p>Buy a coin from a narrative and it shows up here.</p>
-        </div>
       ) : (
-        <ul className={styles['list']}>
-          {data.holdings.map((h) => <li key={h.address}><HoldingRow h={h} /></li>)}
-        </ul>
+        <>
+          <Holdings data={data} />
+          {data.holdings.length === 0 ? (
+            <div className={styles['nothing']}>
+              <b>No coins yet</b>
+              <p>Buy a coin from a narrative and it shows up here.</p>
+            </div>
+          ) : (
+            <p className={styles['foot']}>{gainsNote(data.holdings)}</p>
+          )}
+        </>
       )}
-
-      {read !== null && read.notShown > 0 ? <p className={styles['foot']}>{read.notShown.toLocaleString('en-US')} more coins not shown.</p> : null}
-      {read !== null && read.holdings.length > 0 ? <p className={styles['foot']}>{GAINS_NOTE}</p> : null}
 
       {read !== null && read.created.coins.length > 0 ? (
         <>
@@ -194,42 +167,5 @@ export function Portfolio({
   );
 }
 
-/**
- * Trador's followers / following / Edit profile row, then the bio. The counts open the lists; Edit
- * profile opens your profile, where the bio is edited (Trador's sheet edits it in place).
- */
-function SocialLine({ social }: { social: Social }) {
-  const count = (n: number | null) => (n === null ? '—' : n.toLocaleString('en-US'));
-  const read = social !== null && social.kind === 'read' ? social : null;
-  return (
-    <>
-      <div className={styles['social']}>
-        {read !== null ? (
-          <>
-            <a href={hrefFor({ screen: 'follows', key: read.key, which: 'followers' })}><b>{count(read.followers)}</b> followers</a>
-            <a href={hrefFor({ screen: 'follows', key: read.key, which: 'following' })}><b>{count(read.following)}</b> following</a>
-            <a className={styles['edit']} href={hrefFor({ screen: 'profile', key: read.key })}>Edit profile</a>
-          </>
-        ) : (
-          <>
-            <span><b>{count(null)}</b> followers</span>
-            <span><b>{count(null)}</b> following</span>
-          </>
-        )}
-      </div>
-      {read !== null && read.bio !== '' ? <p className={styles['bio']}>{read.bio}</p> : null}
-    </>
-  );
-}
-
-/** How a gain is made, said once under the list: our record, in SOL, at today's price. */
-export const GAINS_NOTE = "Gains count buys made in Insidor: what each coin is worth in SOL now against the SOL paid, at today's SOL price. Coins bought elsewhere show a dash.";
-
-function CopyGlyph() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="9" y="9" width="12" height="12" rx="2" />
-      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-    </svg>
-  );
-}
+/** The one note under the list, for the profile until it takes gainsNote itself. */
+export const GAINS_NOTE = 'Gains count coins bought in Insidor.';
