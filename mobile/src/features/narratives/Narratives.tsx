@@ -33,6 +33,7 @@ import { formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { useNow } from '../../shared/hooks.ts';
 import { fresh, kept } from '../../shared/kept-reads.ts';
+import { useScreenActive } from '../../shared/screen-active.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -192,13 +193,20 @@ function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null): { readonly
   }, [key]);
   const mine = got !== null && got.key === key ? got : null;
   const firstOnly = mine !== null && mine.pages === 1;
+  /* Hidden behind another tab (App.tsx keeps it open), the list asks nothing; back on screen, the first page is read again. */
+  const active = useScreenActive();
+  const wasActive = useRef(active);
   useEffect(() => {
-    if (!firstOnly) return;
+    if (active && !wasActive.current && firstOnly) load(0, [], 0, true);
+    wasActive.current = active;
+  }, [active]);
+  useEffect(() => {
+    if (!firstOnly || !active) return;
     const id = window.setInterval(() => {
       if (document.visibilityState === 'visible') load(0, [], 0, true);
     }, REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [key, firstOnly]);
+  }, [key, firstOnly, active]);
   return {
     rows: mine?.rows ?? null,
     next: mine?.next ?? null,

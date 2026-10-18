@@ -77,7 +77,9 @@ export function WindowList<T>({
   /* The list's own top on the page, and where the screen is against it. */
   const readView = useCallback(() => {
     const el = box.current;
-    if (el === null) return;
+    /* A hidden tab's list (App.tsx keeps the tabs open) keeps the rows it had, so coming back to
+       the same scroll position finds them already drawn. */
+    if (el === null || el.getClientRects().length === 0) return;
     const listTop = el.getBoundingClientRect().top;
     view.current = { top: -listTop, height: window.innerHeight };
   }, []);
@@ -118,6 +120,8 @@ export function WindowList<T>({
 
   /* After every change: hold the row on screen where it was, then note it again. */
   useLayoutEffect(() => {
+    /* Hidden (another tab is showing): the page's scroll is that tab's, never this list's to move. */
+    if (box.current !== null && box.current.getClientRects().length === 0) return;
     const was = anchor.current;
     if (was !== null && scrollTop() > TOP_SLACK_PX) {
       const shift = anchorShift(was.key, was.at, keys, offsets);

@@ -35,6 +35,7 @@ import type { RisingFeed, RisingPost } from '../../shared/api/index.ts';
 import { fetchRisingTick, openRisingStream } from '../../shared/api/client.ts';
 import type { Load } from '../../shared/hooks.ts';
 import { ownerStore } from '../owner/owner-store.ts';
+import { useScreenActive } from '../../shared/screen-active.ts';
 import { BACKUP_CHECK_MS, merge, reconcile, staggerDelay } from './live-feed.ts';
 import type { Order } from './feed-order.ts';
 
@@ -78,14 +79,16 @@ function firstVisibleCard(): { readonly id: string; readonly top: number } | nul
   return null;
 }
 
+/** On screen: the page is visible and its tab is the one showing (a kept tab is hidden, not gone: App.tsx). */
 function useVisible(): boolean {
+  const active = useScreenActive();
   const [visible, setVisible] = useState(() => typeof document === 'undefined' || document.visibilityState === 'visible');
   useEffect(() => {
     const on = () => setVisible(document.visibilityState === 'visible');
     document.addEventListener('visibilitychange', on);
     return () => document.removeEventListener('visibilitychange', on);
   }, []);
-  return visible;
+  return visible && active;
 }
 
 export function useLiveFeed<V extends { readonly tick: number }, T extends { readonly id: string }>(on: boolean, load: Load<V>, reload: () => void, rowsOf: (value: V) => readonly T[], sameTicks = true, order: Order<T> | null = null): LiveFeed<T> {
