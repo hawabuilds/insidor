@@ -21,7 +21,7 @@
  * to sign in.
  */
 
-import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { CreateFrom } from './features/create/CreateCoin.tsx';
 import { Feed } from './features/feed/Feed.tsx';
 import { bellCount } from './features/alerts/split.ts';
@@ -45,44 +45,46 @@ import { noticeFor } from './shared/story-source.ts';
 import { ComingSoonProvider } from './shared/ui/ComingSoon.tsx';
 import { ScreenActive } from './shared/screen-active.ts';
 import { preloadWhenQuiet } from './shared/preload.ts';
+import { later } from './shared/ui/later.ts';
 import { TabBar } from './shared/ui/TabBar.tsx';
 
 /*
  * ★ For You and Narratives come with the app; every other screen is its own chunk, fetched ahead
- * once the app is quiet (shared/preload.ts) so opening one does not wait on it. While a chunk is
- * still on its way the screen's place is empty for that moment, never a spinner.
+ * once the app is quiet (shared/preload.ts) so opening one does not wait on it, and drawn at once
+ * when it is here (shared/ui/later.ts). While a chunk is still on its way the screen's place is
+ * empty for that moment, never a spinner.
  */
 const SCREENS = {
   /* In the order they are fetched ahead: the tabs first, then where a tap most often leads. */
-  Search: () => import('./features/search/Search.tsx'),
-  AlertsScreen: () => import('./features/alerts/AlertsScreen.tsx'),
-  PortfolioScreen: () => import('./features/portfolio/PortfolioScreen.tsx'),
-  NarrativePage: () => import('./features/narrative/NarrativePage.tsx'),
-  TokenPage: () => import('./features/token/TokenPage.tsx'),
-  SearchedToken: () => import('./features/token/SearchedToken.tsx'),
-  CreateCoin: () => import('./features/create/CreateCoin.tsx'),
-  Learn: () => import('./features/learn/Learn.tsx'),
-  NotificationsScreen: () => import('./features/alerts/NotificationsScreen.tsx'),
-  FollowList: () => import('./features/people/FollowList.tsx'),
-  Leaderboard: () => import('./features/people/Leaderboard.tsx'),
-  ProfileScreen: () => import('./features/people/ProfileScreen.tsx'),
-  ImportScreen: () => import('./features/portfolio/ImportScreen.tsx'),
-  WalletsScreen: () => import('./features/portfolio/WalletsScreen.tsx'),
+  Search: later(() => import('./features/search/Search.tsx'), (m) => m.Search),
+  AlertsScreen: later(() => import('./features/alerts/AlertsScreen.tsx'), (m) => m.AlertsScreen),
+  PortfolioScreen: later(() => import('./features/portfolio/PortfolioScreen.tsx'), (m) => m.PortfolioScreen),
+  NarrativePage: later(() => import('./features/narrative/NarrativePage.tsx'), (m) => m.NarrativePage),
+  TokenPage: later(() => import('./features/token/TokenPage.tsx'), (m) => m.TokenPage),
+  SearchedToken: later(() => import('./features/token/SearchedToken.tsx'), (m) => m.SearchedToken),
+  CreateCoin: later(() => import('./features/create/CreateCoin.tsx'), (m) => m.CreateCoin),
+  Learn: later(() => import('./features/learn/Learn.tsx'), (m) => m.Learn),
+  NotificationsScreen: later(() => import('./features/alerts/NotificationsScreen.tsx'), (m) => m.NotificationsScreen),
+  FollowList: later(() => import('./features/people/FollowList.tsx'), (m) => m.FollowList),
+  Leaderboard: later(() => import('./features/people/Leaderboard.tsx'), (m) => m.Leaderboard),
+  ProfileScreen: later(() => import('./features/people/ProfileScreen.tsx'), (m) => m.ProfileScreen),
+  ImportScreen: later(() => import('./features/portfolio/ImportScreen.tsx'), (m) => m.ImportScreen),
+  WalletsScreen: later(() => import('./features/portfolio/WalletsScreen.tsx'), (m) => m.WalletsScreen),
 };
-const CreateCoin = lazy(() => SCREENS.CreateCoin().then((m) => ({ default: m.CreateCoin })));
-const Learn = lazy(() => SCREENS.Learn().then((m) => ({ default: m.Learn })));
-const AlertsScreen = lazy(() => SCREENS.AlertsScreen().then((m) => ({ default: m.AlertsScreen })));
-const NotificationsScreen = lazy(() => SCREENS.NotificationsScreen().then((m) => ({ default: m.NotificationsScreen })));
-const FollowList = lazy(() => SCREENS.FollowList().then((m) => ({ default: m.FollowList })));
-const Leaderboard = lazy(() => SCREENS.Leaderboard().then((m) => ({ default: m.Leaderboard })));
-const ProfileScreen = lazy(() => SCREENS.ProfileScreen().then((m) => ({ default: m.ProfileScreen })));
-const ImportScreen = lazy(() => SCREENS.ImportScreen().then((m) => ({ default: m.ImportScreen })));
-const WalletsScreen = lazy(() => SCREENS.WalletsScreen().then((m) => ({ default: m.WalletsScreen })));
-const NarrativePage = lazy(() => SCREENS.NarrativePage().then((m) => ({ default: m.NarrativePage })));
-const Search = lazy(() => SCREENS.Search().then((m) => ({ default: m.Search })));
-const SearchedToken = lazy(() => SCREENS.SearchedToken().then((m) => ({ default: m.SearchedToken })));
-const TokenPage = lazy(() => SCREENS.TokenPage().then((m) => ({ default: m.TokenPage })));
-const PortfolioScreen = lazy(() => SCREENS.PortfolioScreen().then((m) => ({ default: m.PortfolioScreen })));
+const CreateCoin = SCREENS.CreateCoin.Component;
+const Learn = SCREENS.Learn.Component;
+const AlertsScreen = SCREENS.AlertsScreen.Component;
+const NotificationsScreen = SCREENS.NotificationsScreen.Component;
+const FollowList = SCREENS.FollowList.Component;
+const Leaderboard = SCREENS.Leaderboard.Component;
+const ProfileScreen = SCREENS.ProfileScreen.Component;
+const ImportScreen = SCREENS.ImportScreen.Component;
+const WalletsScreen = SCREENS.WalletsScreen.Component;
+const NarrativePage = SCREENS.NarrativePage.Component;
+const Search = SCREENS.Search.Component;
+const SearchedToken = SCREENS.SearchedToken.Component;
+const TokenPage = SCREENS.TokenPage.Component;
+const PortfolioScreen = SCREENS.PortfolioScreen.Component;
 
 /** The bottom tabs' own screens: kept open once visited (see the header). */
 const KEPT_TABS = ['feed', 'narratives', 'search', 'alerts', 'portfolio'] as const;
@@ -243,7 +245,7 @@ export function App() {
   }, [inside, readUnread]);
   const keptTab = keptTabOf(route);
   /* The other screens' code and the chart library, fetched once the app is quiet. */
-  useEffect(() => preloadWhenQuiet(Object.values(SCREENS)), []);
+  useEffect(() => preloadWhenQuiet(Object.values(SCREENS).map((x) => x.load)), []);
   useScrollPerTab(keptTab, route);
   const onAlertsSeen = useCallback(() => setUnread(0), []);
   /* After every hook, so the hooks run the same way whichever screen is shown. */

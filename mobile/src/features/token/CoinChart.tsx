@@ -14,7 +14,7 @@
  * 'loading' is a placeholder the size of the number, in its place: never "$0", never empty.
  */
 
-import { Suspense, lazy, useMemo, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 
 import type { CoinMarket, MarketTimeframe } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
@@ -25,12 +25,13 @@ import { Value } from '../../shared/ui/Value.tsx';
 import { TIMEFRAMES, TIMEFRAME_MS, changePctForPoints, chartWindowMs, hoveredCandleChangePct, mergeTradesIntoChart, pointsOf, type ChartPoint, type ChartStyle } from './chart-data.ts';
 import { chartNote, clock, movePercent } from './chart-format.ts';
 import { readChartStyle, writeChartStyle } from './chart-style.ts';
+import { PRICE_CHART } from '../../shared/preload.ts';
 import styles from './token.module.css';
 
 /* ★ THE CHART LIBRARY LOADS WITH THE FIRST CHART, NOT WITH THE APP (shared/preload.ts fetches it
    ahead once the app is quiet). Until it is here the chart's own frame stands in, the same size and
    saying the same empty line, so nothing moves when the lines draw in. */
-const PriceChart = lazy(() => import('./PriceChart.tsx').then((m) => ({ default: m.PriceChart })));
+const PriceChart = PRICE_CHART.Component;
 /** PriceChart's own height (PriceChart.tsx HEIGHT). */
 const CHART_HEIGHT = 190;
 
