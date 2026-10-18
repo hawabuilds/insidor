@@ -81,9 +81,9 @@ if (service in MAIN) {
        row for row before each day's partition is dropped (tools/archive-decisions.ts). Hourly so a
        day is moved soon after it is due; a pass with nothing due is one catalogue query. */
     { name: 'archive', everyMs: 3_600_000, args: ['tools/archive-decisions.ts'] },
-    /* Coin picture vectors: days older than 30 to the private vector-archive bucket, read back and
-       counted before they are deleted (tools/archive-coin-vectors.ts, Policy.coinVectors). Hourly;
-       seconds when nothing is due. */
+    /* Coin picture vectors: an untraded coin's deleted once nothing can read it, and days older than
+       30 to the private vector-archive bucket, read back and counted before they are deleted
+       (tools/archive-coin-vectors.ts, Policy.coinVectors). Hourly; seconds when nothing is due. */
     { name: 'coin-vectors', everyMs: 3_600_000, args: ['tools/archive-coin-vectors.ts', 'run'] },
     /* Once a day: did discovery hold each bonded coin's linked X post before it launched
        (internal.recall_check). Detached, because a day's reads outlast the board's health bar. */

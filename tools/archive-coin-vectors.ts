@@ -1,20 +1,25 @@
 /**
  * `node --env-file=.env.local --experimental-strip-types tools/archive-coin-vectors.ts [dry | run] [--as-of <ISO time>]`
  *
- * COIN PICTURE VECTORS: 30 DAYS IN THE DATABASE, THE REST IN A PRIVATE BUCKET (the owner, 2026-10-18;
- * the rule is Policy.coinVectors, the queries store coin-vectors.ts). Coin vectors were about 84 MB of
- * internal.image_embedding's ~112 MB a day.
+ * COIN PICTURE VECTORS: 30 DAYS IN THE DATABASE, THE REST IN A PRIVATE BUCKET, AND NONE FOR A COIN
+ * THAT NEVER TRADED (the owner, 2026-10-18; the rules are Policy.coinVectors and store
+ * coin-vectors.ts). Coin vectors were about 84 MB of internal.image_embedding's ~112 MB a
+ * day.
  *
  *   dry   the default by hand: what a run would delete and archive, read inside a READ ONLY
  *         transaction, so it cannot write whatever the code does. Nothing is uploaded either.
  *         `--as-of` pretends it is then, to see a future day's run.
  *   run   the live run, scheduled hourly by the projector service (tools/railway-start.mjs):
- *           each UTC day of coin vectors embedded wholly before now − `keepMs`, oldest first,
- *         `daysPerRun` a run — written as gzip JSON lines in parts of at most `partBytes` to the
- *         private bucket `vector-archive` under coin/<day>/<run>/, each part downloaded again and its
- *         SHA-256 and line count checked, the sum compared with the database's own count of the day,
- *         and only then a manifest written and the day's rows deleted in batches. Any mismatch or
- *         error stops that day with nothing deleted.
+ *           1. untraded: while Policy.coinVectors.untraded.on, up to `rowsPerRun` vectors of coins
+ *              that did not trade in their first hour and that nothing can read any more are deleted
+ *              outright, `rowsPerDelete` a transaction (a vector is re-made from its picture for
+ *              $0.00036 if ever needed, so none is archived);
+ *           2. archive: each UTC day of coin vectors embedded wholly before now − `keepMs`, oldest
+ *              first, `daysPerRun` a run — written as gzip JSON lines in parts of at most `partBytes`
+ *              to the private bucket `vector-archive` under coin/<day>/<run>/, each part downloaded
+ *              again and its SHA-256 and line count checked, the sum compared with the database's own
+ *              count of the day, and only then a manifest written and the day's rows deleted in
+ *              batches. Any mismatch or error stops that day with nothing deleted.
  *
  * The same safety as tools/archive-decisions.ts, as its own tool rather than a shared helper: that
  * file drops partitions and this one deletes rows, and a change made for one must never move the
@@ -26,7 +31,7 @@
  * There is no nearest-neighbour index on the table (only its primary key), so a delete costs no
  * index rebuild.
  *
- * What breaks if changed carelessly: the order of the steps. The delete is the last thing, after
+ * What breaks if changed carelessly: the order inside step 2. The delete is the last thing, after
  * the bucket's copy is read back and counted; and only days wholly older than `keepMs` are touched —
  * the tool refuses a `keepMs` shorter than the origin check's windows.
  */
@@ -81,6 +86,29 @@ async function inTransaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {
 
 const log = (fields: Record<string, unknown>): void => console.log(JSON.stringify({ level: 'info', ...fields }));
 
+/* ── step 1: coins that never traded in their first hour ───────────────────────────────── */
+
+async function untraded(): Promise<void> {
+  const u = P.untraded;
+  const due = await inTransaction((db) => new PgCoinVectorRepo(db).untradedDue(DEFAULT_POLICY, now, u.rowsPerRun));
+  if (!u.on || !live) {
+    log({ msg: u.on ? 'untraded coin vectors due (dry)' : 'untraded coin vectors due; Policy.coinVectors.untraded.on is off, nothing deleted', due: due.length, mb: ((due.length * (await bytesPerRow())) / 1e6).toFixed(1) });
+    return;
+  }
+  let deleted = 0;
+  for (let i = 0; i < due.length; i += P.rowsPerDelete) {
+    const batch: readonly CoinVectorKey[] = due.slice(i, i + P.rowsPerDelete);
+    try {
+      deleted += await inTransaction((db) => new PgCoinVectorRepo(db).deleteKeys(batch));
+    } catch (e) {
+      /* A lock or statement timeout: the rest wait for the next run. */
+      log({ level: 'warn', msg: 'untraded coin vectors: a batch did not finish; the next run carries on', err: e instanceof Error ? e.message : String(e) });
+      break;
+    }
+  }
+  log({ msg: 'untraded coin vectors deleted', due: due.length, deleted });
+}
+
 /** On-disk bytes per row of the table, its out-of-line vectors and index included. */
 async function bytesPerRow(): Promise<number> {
   const rows = await asDb(pool).query<{ b: string | null }>(
@@ -89,7 +117,7 @@ async function bytesPerRow(): Promise<number> {
   return Number(rows[0]?.b ?? 0);
 }
 
-/* ── days older than keepMs, to the bucket, checked, then deleted ───────────────── */
+/* ── step 2: days older than keepMs, to the bucket, checked, then deleted ───────────────── */
 
 const storageUrl = (process.env['SUPABASE_URL'] ?? '').trim().replace(/\/$/, '');
 const storageKey = (process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '').trim();
@@ -212,6 +240,7 @@ async function archive(): Promise<void> {
 }
 
 try {
+  await untraded();
   await archive();
 } finally {
   await pool.end();
