@@ -68,6 +68,7 @@ import { BOARD_VIEW, fetchBoard, fetchRising, fetchRisingSorted, fetchStoryIfAny
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { useScreenActive } from '../../shared/screen-active.ts';
 import { firstScreenDrawn } from '../../shared/preload.ts';
+import { aheadRef, readPostAhead, readTabsAhead } from '../../shared/prefetch.ts';
 import { Card as NarrativeCard } from '../narratives/Narratives.tsx';
 import { realNarratives, watchLine } from '../narratives/narrative-order.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
@@ -187,6 +188,8 @@ export function Feed({
     return () => clearInterval(t);
   }, [sortedOn, reloadSorted, active]);
   usePreloadCreate(); /* Create coin then opens with the launchpad's rules already read. */
+  /* The other tabs' first screens, read once For You has drawn (shared/prefetch.ts). */
+  useEffect(() => readTabsAhead(), []);
   /* FYP kept current while it is looked at, when the build switches it on; otherwise null and unused. */
   const live = useLiveFeed(LIVE_FEED && tab === 'fyp' && !sortedOn, fyp, reloadFyp, postsOf, true, newestPosted);
   /* For You's older pages, kept while Watchlist is open. They start under the card the list shows
@@ -284,7 +287,7 @@ export function Feed({
       key={p.id}
       post={p}
       now={now}
-      cardRef={owner && tab === 'fyp' ? seen(p.id) : undefined}
+      cardRef={aheadRef(`post:${p.id}`, () => readPostAhead(p.id), owner && tab === 'fyp' ? seen(p.id) : undefined)}
       extra={
         <>
           {/* An older coin trading on the subject since the post: its own line, never a Buy (OlderCoins.tsx). */}

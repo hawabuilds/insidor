@@ -33,6 +33,7 @@ import { formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { useNow } from '../../shared/hooks.ts';
 import { fresh, kept } from '../../shared/kept-reads.ts';
+import { firstPageKey, readFirstPage } from './first-page.ts';
 import { useScreenActive } from '../../shared/screen-active.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { boardNotice } from '../../shared/notice.ts';
@@ -140,9 +141,6 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
  */
 type Got = { key: string; rows: readonly Story[]; next: number | null; pages: number; provenance: NarrativesPage['provenance'] };
 
-/** The first page this phone last read for a list (shared/kept-reads.ts), to show while it is read again. */
-export const firstPageKey = (sort: NarrativeListSort, on: 'x' | 'tiktok' | null): string => `narratives:${BOARD_VIEW}:${sort}:${on ?? 'all'}`;
-export const readFirstPage = (sort: NarrativeListSort, on: 'x' | 'tiktok' | null) => (signal: AbortSignal) => fetchAllNarratives(BOARD_VIEW, sort, 0, on, signal);
 function keptFirst(key: string, sort: NarrativeListSort, on: 'x' | 'tiktok' | null): Got | null {
   const k = kept<NarrativesPage>(firstPageKey(sort, on));
   return k === undefined ? null : { key, rows: realNarratives(k.value.stories), next: k.value.next, pages: 1, provenance: k.value.provenance };
