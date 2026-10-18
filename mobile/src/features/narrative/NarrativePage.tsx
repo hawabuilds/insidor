@@ -6,11 +6,13 @@
  *   Facts    ONE line under the head, following the chart's interval (15m on All): "Last 15m +420K
  *            MC +12%   Found 58m before $GTA". Real numbers only, no scores, no opinions
  *   Chart    views gained per interval across all its posts (GainChart.tsx), 5m 15m 1h 4h 1D and
- *            All — the whole story from its first post, the page's first view — with First found
+ *            All — the whole story from its first post, the page's first view — with We found it
  *            and the coin's launch at their exact times wherever they fall inside the span; hidden,
  *            not the page, when there is no history
- *   Posts    THE WHOLE STORY (posts-order.ts): "First post we caught" pinned at the top with when it
- *            was posted and when we found it, then every other post since the first, newest first,
+ *   Posts    THE WHOLE STORY (posts-order.ts): the page's two moments, "First post: Thu 09:12" (the
+ *            earliest post we know of, even if we found it later) and "We found it: Fri 14:03" (the
+ *            earliest save of any post listed), the first post pinned under them, then every other
+ *            post, newest first,
  *            twenty at a time as the list's end comes into view. Each row: thumbnail with its site's
  *            badge, one line of text, handle and age, views and the last hour's gain; a tap opens
  *            the post sheet (or the post where it lives)
@@ -21,9 +23,10 @@
  * ★ THE NUMBERS ARE THE PROJECTOR'S (core narrativeReach): the total is each post's newest count,
  * the line and "Last 15m" the posts' gains added up five minutes at a time, so the end label and
  * the fact line are one number. "12 of 14 posts counted" when some posts have no reading at all.
- * ★ THE TIMES ARE THE PROOF (gain-chart.ts): First found is the earliest save of any post listed
- * now; the launch is printed to the minute only from a clock that is the chain's; "Found Xm before"
- * only when we really were first, "Coin was Xm before we found it" when we were not.
+ * ★ THE TIMES ARE THE PROOF (gain-chart.ts): We found it is the earliest save of any post listed
+ * now; the launch is printed only from the create transaction's block time (the server sends no
+ * other clock as known); "Found Xm before $COIN" only when our find is before that block, "Coin was
+ * Xm before we found it" when it is not, and nothing when either time is not known.
  *
  * What breaks if changed carelessly: the page reads two replies, the story and its sheet, and the
  * cards of each further screenful of a long story by id (`fetchStoryPosts`). The story alone draws
@@ -56,7 +59,7 @@ import { useSeenOnScreen } from '../owner/useSeen.ts';
 import { BuyOpen, CHART_INTERVALS, ChooseCoin, GainChart, PostSheet, SheetToast, firstWords, hm, launchTime, lastGain, plus, useMcChange, LAST_WORDS, pctText, type ChartInterval, type ChartMarker, type GainInterval, type SheetNote } from '../post-sheet/index.ts';
 import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { NarrativeEdit } from './NarrativeEdit.tsx';
-import { PAGE, firstCaught, newestFirst } from './posts-order.ts';
+import { PAGE, firstPosted, moments, newestFirst, type Moment } from './posts-order.ts';
 import { storyCoinState, type CoinFace, type StoryCoinState } from './story-coin.ts';
 import styles from './narrative.module.css';
 
@@ -145,14 +148,16 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
   const counted = story.viewsTotalPosts !== null && story.viewsTotalPosts !== posts ? `${story.viewsTotalPosts} of ${posts} posts counted` : null;
 
   const markers: ChartMarker[] = [
-    ...(foundAt !== null ? [{ key: 'found', tone: 'found' as const, text: `First found ${hm(foundAt, now)}`, at: foundAt }] : []),
+    ...(foundAt !== null ? [{ key: 'found', tone: 'found' as const, text: `We found it ${hm(foundAt, now)}`, at: foundAt }] : []),
     ...(launch === null ? [] : launch.kind === 'at'
       ? [{ key: 'coin', tone: 'coin' as const, text: `${ticker} launched ${launch.text}`, at: launch.at }]
       : [{ key: 'coin', tone: 'coin' as const, text: `${ticker} launch time not known`, at: null }]),
   ];
 
   const openCoin = (c: CoinFace) => (window.location.hash = hrefFor(sheetCoinRoute(c.sheet ?? { coinId: `solana:${c.address}`, proven: coin.kind === 'checked' }, story.id)));
-  const pinned = useMemo(() => firstCaught(story), [story]);
+  const pinned = useMemo(() => firstPosted(story), [story]);
+  const when = useMemo(() => moments(story), [story]);
+  const momentText = (m: Moment) => (m.known ? hm(m.at, now) : `— ${m.why}`);
   const rest = useMemo(() => newestFirst(story, pinned?.post.evidenceId ?? null), [story, pinned]);
   const [shownCount, setShownCount] = useState(PAGE);
   const visible = rest.slice(0, shownCount);
@@ -205,14 +210,13 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
 
       <Notice notice={noticeFor(story)} />
 
-      {pinned !== null ? (
+      {story.evidence.length > 0 ? (
         <div className={styles['firstCard']}>
-          <span className={styles['firstLabel']}>First post we caught</span>
           <span className={styles['firstTimes']}>
-            {pinned.post.postedAt.known ? <span>Posted {hm(pinned.post.postedAt.at, now)}</span> : <span>Posted —</span>}
-            <span>Found {hm(pinned.foundAt, now)}</span>
+            <span>First post: <b>{momentText(when.firstPost)}</b></span>
+            <span>We found it: <b>{momentText(when.found)}</b></span>
           </span>
-          <div className={styles['posts']}>{row(pinned.post)}</div>
+          {pinned !== null ? <div className={styles['posts']}>{row(pinned.post)}</div> : null}
         </div>
       ) : null}
 

@@ -1,6 +1,6 @@
 /**
  * THE VIEWS-GAINED CHART, AS DECISIONS — the one chart on the narrative page and on the post sheet
- * (the owner's design of 2026-10-17): views gained per interval as one line, the First found / Found
+ * (the owner's design of 2026-10-17): views gained per interval as one line, the We found it / Found
  * and coin markers at their exact times, the three times along the bottom, and the words the fact
  * line says about who was first. Apart from GainChart.tsx so `node --test` holds the rules.
  *
