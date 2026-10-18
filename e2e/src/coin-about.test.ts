@@ -70,7 +70,7 @@ test('a coin with no read metadata has no launch links; one we do not hold is a 
 
 test('★ the mirror finds the coin on screen, prefers the picture its metadata names, and stores it once', async () => {
   /* B is a coin we hold that no surface shows: it is never due, whatever its ledger says. */
-  const due = await dueCoins(db, NOW, true);
+  const due = await dueCoins(db, NOW, true, true);
   assert.deepEqual(due.shown.map((c) => c.address), [A]);
   assert.equal(due.shown[0]?.metadataImage, 'https://gw.example/ipfs/cid');
   const copied: string[] = [];
@@ -83,13 +83,37 @@ test('★ the mirror finds the coin on screen, prefers the picture its metadata 
     marketImages: async () => new Map(),
     pictureUrls: (link) => [link],
     copy: async (_a, url) => void copied.push(url),
+    ownCopyUrl: (a) => `https://own.example/${a}`,
     log: () => {},
   });
   assert.equal(r.stored, 1);
   assert.equal(r.bySource.launch, 1);
   assert.deepEqual(copied, ['https://gw.example/ipfs/cid']);
-  const after = await dueCoins(db, NOW, true);
+  const [row] = await db.query<{ sized: boolean }>(`select sized_at is not null as sized from internal.coin_logo where address = $1`, [A]);
+  assert.equal(row?.sized, true);
+  const after = await dueCoins(db, NOW, true, true);
   assert.deepEqual(after.shown, []);
+});
+
+test('★ (0105) a shown coin stored as the original is due once, and resized from our own copy', async () => {
+  await db.query(`update internal.coin_logo set sized_at = null, checked_at = now() - interval '7 hours' where address = $1`, [A]);
+  assert.deepEqual((await dueCoins(db, NOW, true, true)).shown.map((c) => [c.address, c.lastOutcome]), [[A, 'stored']]);
+  const copied: string[] = [];
+  const r = await mirrorPass({
+    db,
+    nowMs: NOW,
+    elapsedMs: () => 0,
+    metadataPicture: async () => null,
+    venuePicture: async () => null,
+    marketImages: async () => new Map(),
+    pictureUrls: (link) => [link],
+    copy: async (_a, url) => void copied.push(url),
+    ownCopyUrl: (a) => `https://own.example/${a}`,
+    log: () => {},
+  });
+  assert.equal(r.resized, 1);
+  assert.deepEqual(copied, [`https://own.example/${A}`]);
+  assert.deepEqual((await dueCoins(db, NOW, true, true)).shown, []);
 });
 
 test('★ a coin no source has a picture for is recorded with why, and counted as a letter', async () => {
@@ -105,6 +129,7 @@ test('★ a coin no source has a picture for is recorded with why, and counted a
     marketImages: async () => new Map(),
     pictureUrls: () => [],
     copy: async () => {},
+    ownCopyUrl: (a) => `https://own.example/${a}`,
     log: (m) => void logged.push(m),
   });
   assert.equal(r.letters, 1);

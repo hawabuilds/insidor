@@ -27,6 +27,7 @@ import { asDb, createPool, DB_ROLE } from '@insidor/store';
 import { launchpadPicture, metadataPicture, pictureUrls } from '@insidor/venue-solana-pumpfun';
 
 import { MAX_LOGO_BYTES, mirrorPass } from './coin-logos.ts';
+import { logoSizes } from './logo-sizes.ts';
 import { MAX_POSTER_BYTES, posterPass } from './poster-pics.ts';
 
 /** One market call is abandoned after this long. */
@@ -62,7 +63,13 @@ async function main(): Promise<void> {
       venuePicture: (address) => launchpadPicture(address, documents),
       marketImages: async (addresses) => new Map([...(await market.profiles(addresses))].map(([a, p]) => [a, p.imageUrl])),
       pictureUrls,
-      copy: async (address, source) => store.put(address, await store.download(source)),
+      /* The small copy first: if either write fails, the path existing references load is untouched. */
+      copy: async (address, source) => {
+        const { full, small } = await logoSizes((await store.download(source)).bytes);
+        await store.put(address, small, 'small');
+        await store.put(address, full, 'full');
+      },
+      ownCopyUrl: (address) => store.ownCopyUrl(address),
       log,
     });
     console.log(JSON.stringify({ level: 'info', msg: 'coin logos mirrored', ...result }));

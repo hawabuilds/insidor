@@ -33,6 +33,7 @@ function deps(over: Partial<MirrorDeps> = {}): MirrorDeps & { recorded: unknown[
     marketImages: async () => new Map([[A, 'https://cdn.example/a.png']]),
     pictureUrls: urls,
     copy: async () => {},
+    ownCopyUrl: (a) => `https://own.example/coin-logos/${a}`,
     log: (m, f) => logged.push([m, f]),
     ...over,
   };
@@ -151,4 +152,56 @@ test('★ only coins the app shows are due: no backfill of every coin we hold, a
   const due = asked.find((s) => s.includes('with shown')) ?? '';
   assert.ok(due.includes('public.feed_post') && !due.includes('people.'));
   assert.ok(d.logged.some(([m]) => m.includes('watchlist')));
+});
+
+/** A database stand-in: 0071 and 0105 run, one due coin, every statement kept. */
+const sizedDb = (row: Record<string, unknown>, asked: [string, readonly unknown[]][]) => ({
+  query: async (sql: string, params?: readonly unknown[]) => {
+    asked.push([sql, params ?? []]);
+    if (sql.includes('information_schema')) return [{ x: 1 }] as never[];
+    if (sql.includes('has_table_privilege')) return [{ ok: true }] as never[];
+    if (sql.includes('with shown')) return [row] as never[];
+    return [] as never[];
+  },
+});
+
+test('★ an original stored before the two sizes is resized from our own copy, with no host asked', async () => {
+  const asked: [string, readonly unknown[]][] = [];
+  const copied: string[] = [];
+  let hosts = 0;
+  const d = deps({
+    db: sizedDb({ address: A, metadata_uri: 'https://m.example/doc', metadata_image: null, last_outcome: 'stored', attempts: 1 }, asked),
+    metadataPicture: async () => { hosts += 1; return null; },
+    marketImages: async () => new Map(),
+    copy: async (_a, u) => void copied.push(u),
+  });
+  const r = await mirrorPass(d);
+  assert.equal(r.resized, 1);
+  assert.equal(r.stored, 0);
+  assert.deepEqual(copied, [`https://own.example/coin-logos/${A}`]);
+  assert.equal(hosts, 0);
+  assert.ok(asked.some(([s, p]) => s.includes('set sized_at = now()') && p[0] === A));
+  assert.ok(!asked.some(([s]) => s.includes('insert into internal.coin_logo')));
+  assert.ok((asked.find(([s]) => s.includes('with shown'))?.[0] ?? '').includes('sized_at is null'));
+});
+
+test('an original whose copy and sources all fail stays stored, never turned into a failure', async () => {
+  const asked: [string, readonly unknown[]][] = [];
+  const d = deps({
+    db: sizedDb({ address: A, metadata_uri: null, metadata_image: null, last_outcome: 'stored', attempts: 1 }, asked),
+    copy: async () => { throw new Error('down'); },
+  });
+  const r = await mirrorPass(d);
+  assert.deepEqual([r.resized, r.stored, r.failed, r.letters], [0, 0, 0, 0]);
+  assert.ok(!asked.some(([s]) => s.includes('insert into internal.coin_logo')));
+  assert.ok(asked.some(([s]) => s.includes("set checked_at = now() where address = $1 and outcome = 'stored'")));
+});
+
+test('a new copy is recorded as the two sizes once 0105 has run', async () => {
+  const asked: [string, readonly unknown[]][] = [];
+  const d = deps({ db: sizedDb({ address: A, metadata_uri: null, metadata_image: 'https://pin.example/p.png', last_outcome: null, attempts: null }, asked) });
+  const r = await mirrorPass(d);
+  assert.equal(r.stored, 1);
+  assert.ok(asked.some(([s]) => s.includes('insert into internal.coin_logo')));
+  assert.ok(asked.some(([s]) => s.includes('set sized_at = now()')));
 });
