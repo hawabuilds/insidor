@@ -29,6 +29,9 @@
  *      the create transaction's block time; each narrative that does not match (tools/lib/
  *      narrative-times.ts, also tools/narrative-times.ts on its own). Stored block times only here:
  *      nothing is read from the chain at 20:00.
+ *  11. Database disk and bill (the owner, 2026-10-18): the database's size, the disk inferred from
+ *      the host's grow rule, the share used, growth a day, and the month's projected bill with its
+ *      parts (tools/lib/disk-bill.ts, the runner's disk-alarm model on its hourly samples).
  *
  * What breaks if changed carelessly: the owner's posts must be weighed by the projector's code,
  * never a copy (the reason tools/lib/coin-match-fit.ts gives); a number from another path is a
@@ -48,6 +51,7 @@ import { asDb, createPool, DB_ROLE, PgLearningRepo, PgOwnerCoinCallRepo } from '
 import { leadLines, leadRows, summarise } from './lib/lead-time.ts';
 import { funnelLines, funnelRows } from './lib/funnel.ts';
 import { languageLines } from './lib/language-finds.ts';
+import { diskBillLines } from './lib/disk-bill.ts';
 import { narrativeTimeLines, narrativeTimeRows } from './lib/narrative-times.ts';
 import { scorecardRows, scorecards, scorecardTable } from './lib/scorecard.ts';
 import { sideBySide, sideBySideLines } from './lib/side-by-side.ts';
@@ -215,6 +219,11 @@ try {
   say();
   say('## Narrative times (First post, We found it, launched)');
   for (const line of narrativeTimeLines(await narrativeTimeRows(db, { match: true }))) say(line);
+
+  /* 11. Database disk and bill (the owner, 2026-10-18; tools/lib/disk-bill.ts). */
+  say();
+  say('## Database disk and bill');
+  for (const line of await diskBillLines(db, Date.now(), P.store)) say(line);
 
   const out = arg('--out');
   if (out !== null) writeFileSync(out, lines.join('\n') + '\n');
