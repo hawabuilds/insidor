@@ -15,6 +15,10 @@
  *   notifications          kept: the Feed settings (#/feed/settings)
  *   leaderboard, profile   ours: the season's ranks, and your own profile
  *   edit profile           kept: Trador's Edit profile; it opens your profile, where the bio is edited
+ *   show my trades         kept: Trador's "Public Stonkfolio" switch, here "Show my trades to
+ *                          followers" (on by default, as Trador's): one switch for the Feed and
+ *                          whether others see your portfolio. Read when the menu first opens,
+ *                          flipped at once and put back if the save fails
  *   learn the basics       kept, as How Insidor works (#/learn)
  *   add missed posts       ours, the owner only: a sheet of its own (features/missed/MissedPosts.tsx),
  *                          drawn outside the panel so closing the menu does not close it
@@ -26,6 +30,10 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+
+import { saveTradesPublic } from '../../shared/api/following.ts';
+import { fetchMe } from '../../shared/api/people.ts';
+import { useToast } from '../../shared/ui/ComingSoon.tsx';
 
 import { hrefFor } from '../../shared/route.ts';
 import { BellIcon, CapIcon, CopyIcon, ExternalIcon, GearIcon, LockIcon, LogoutIcon, PlusIcon, TrophyIcon, UserIcon, WalletIcon } from '../../shared/ui/icons.tsx';
@@ -137,6 +145,7 @@ export function ProfileMenu({ name, subtitle, address, onCopy, exportKey, profil
           <a className={styles['row']} role="menuitem" href={hrefFor({ screen: 'wallets' })} onClick={() => setOpen(false)}>
             <WalletIcon size={16} /> Link a wallet to view
           </a>
+          {profileKey !== null ? <ShareTrades /> : null}
           <a className={styles['row']} role="menuitem" href={hrefFor({ screen: 'alert-settings' })} onClick={() => setOpen(false)}>
             <BellIcon size={16} /> Notifications
           </a>
@@ -183,5 +192,49 @@ function PenIcon() {
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
     </svg>
+  );
+}
+
+/**
+ * "Show my trades to followers" as a toggle row. Its state is read from your profile when the menu
+ * first opens; until then the switch is drawn neither on nor off, and a read that fails says so
+ * rather than guessing. Flipped at once and put back if the save fails, so the switch never says
+ * something the server did not agree to.
+ */
+function ShareTrades() {
+  const toast = useToast();
+  const [on, setOn] = useState<boolean | 'loading' | 'unread'>('loading');
+  useEffect(() => {
+    let live = true;
+    fetchMe().then(
+      (me) => live && setOn(typeof me.tradesPublic === 'boolean' ? me.tradesPublic : 'unread'),
+      () => live && setOn('unread'),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const flip = async () => {
+    if (typeof on !== 'boolean') return;
+    const next = !on;
+    setOn(next);
+    try {
+      await saveTradesPublic(next);
+    } catch (e) {
+      setOn(!next);
+      toast("Couldn't save", e instanceof Error ? e.message : '');
+    }
+  };
+  const known = typeof on === 'boolean';
+  return (
+    <button type="button" role="menuitemcheckbox" aria-checked={known ? on : 'mixed'} className={`${styles['row']} ${styles['switchRow']}`} onClick={() => void flip()}>
+      <span className={styles['switchText']}>
+        <b>Show my trades to followers</b>
+        <small>
+          {on === 'loading' ? '—' : on === 'unread' ? "— couldn't be read just now" : on ? 'Your trades and portfolio show to others' : 'Hidden from others, your portfolio included'}
+        </small>
+      </span>
+      <span className={`${styles['toggle']} ${on === true ? styles['toggleOn'] : ''} ${known ? '' : styles['toggleUnknown']}`}><i /></span>
+    </button>
   );
 }
