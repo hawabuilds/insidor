@@ -31,11 +31,18 @@
  * desc) and `after()` here must agree, or a page boundary drops or repeats an item.
  */
 
+import type { SocialPolicy } from '@insidor/contracts/policy.ts';
 import type { Person } from '@insidor/contracts/ports/people.ts';
 import type { RankId } from '@insidor/core';
 
 import { json, type Reply } from './http.ts';
-import type { SocialDeps } from './routes.ts';
+
+/** What the Feed needs of the service: routes.ts's SocialDeps fits it, without this file importing routes.ts back. */
+interface SocialDeps {
+  readonly db: { query<R = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<R[]> };
+  readonly policy: SocialPolicy;
+  readonly now: () => number;
+}
 
 type Ranks = (userIds: readonly string[]) => Promise<Map<string, RankId>>;
 
