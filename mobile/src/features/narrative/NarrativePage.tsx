@@ -61,7 +61,15 @@ import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { NarrativeEdit } from './NarrativeEdit.tsx';
 import { PAGE, firstPosted, moments, newestFirst, type Moment } from './posts-order.ts';
 import { storyCoinState, type CoinFace, type StoryCoinState } from './story-coin.ts';
+import { WindowList } from '../../shared/ui/WindowList.tsx';
 import styles from './narrative.module.css';
+
+/* The posts list draws only the rows near the screen (shared/ui/WindowList.tsx): a narrative can
+   carry hundreds of posts, and each row has a picture. A row's height before it is measured, and
+   how far beyond the screen rows stay drawn. */
+const ROW_GUESS_PX = 72;
+const ROWS_BEYOND_PX = 1200;
+const evidenceKey = (e: Evidence): string => e.evidenceId;
 
 /** The chart opens on the whole story (the owner's design, 2026-10-17). */
 const FIRST_INTERVAL: ChartInterval = 'All';
@@ -225,7 +233,7 @@ function Body({ story, sheet, onCreate }: { story: Story; sheet: StorySheet | nu
         <span>Newest first</span>
       </div>
       <div className={styles['posts']}>
-        {visible.map(row)}
+        <WindowList items={visible} keyOf={evidenceKey} render={row} guess={ROW_GUESS_PX} overscan={ROWS_BEYOND_PX} nearEnd={0} />
         {visible.length < rest.length ? <div ref={end} className={styles['more']}>Loading more posts</div> : null}
       </div>
 

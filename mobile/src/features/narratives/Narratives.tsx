@@ -25,7 +25,7 @@
  * span, never a total; a total always climbs and would make every narrative look like it is rising.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { BOARD_VIEW, fetchAllNarratives, type NarrativeListSort, type NarrativesPage, type Story } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
@@ -48,8 +48,15 @@ import { LIVE_FEED } from '../feed/live-feed.ts';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
 import { SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, type Choice } from './narrative-order.ts';
+import { WindowList } from '../../shared/ui/WindowList.tsx';
 import styles from './narratives.module.css';
 
+/** The space between two cards (narratives.module.css .cards had it as its gap). */
+const CARD_GAP_PX = 10;
+/** A card's height before it is measured, and how far beyond the screen cards stay drawn. */
+const CARD_GUESS_PX = 150;
+const CARDS_BEYOND_PX = 1200;
+const storyKey = (s: Story): string => s.id;
 /** How long a card takes to glide to its new place. */
 const MOVE_MS = 320;
 /** How often the first 20 are read again while they are all that is showing. */
@@ -76,6 +83,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const list = useList(listOf(choice), choice.site === 'all' ? null : choice.site);
   const rows = list.rows;
   const glide = useGlide(rows?.map((s) => s.id).join(' ') ?? '');
+  const places = useMemo(() => new Map((rows ?? []).map((s, i) => [s.id, i])), [rows]);
   const open = (s: Story) => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id }));
 
   return (
@@ -119,11 +127,26 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
       {list.state === 'failed' && rows === null ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
       {rows !== null && rows.length === 0 ? <p className={styles['empty']}>{choice.sort === 'trending' ? NO_RISERS : 'No narratives yet.'}</p> : null}
       <div className={styles['cards']}>
-        {rows?.map((s, i) => (
-          <div key={s.id} ref={glide(s.id)}>
-            <Card story={s} place={i + 1} view={{ sort: choice.sort, span: choice.span }} now={now} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} />
-          </div>
-        ))}
+        {/* Only the cards near the screen are drawn (shared/ui/WindowList.tsx), so a list scrolled
+            through many pages stays smooth; the gap between cards is each card's own top space,
+            the first card's none, as the column's gap was. */}
+        {rows !== null && rows.length > 0 ? (
+          <WindowList
+            items={rows}
+            keyOf={storyKey}
+            render={(s) => {
+              const i = places.get(s.id) ?? 0;
+              return (
+                <div ref={glide(s.id)} style={i === 0 ? undefined : { paddingTop: CARD_GAP_PX }}>
+                  <Card story={s} place={i + 1} view={{ sort: choice.sort, span: choice.span }} now={now} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} />
+                </div>
+              );
+            }}
+            guess={CARD_GUESS_PX}
+            overscan={CARDS_BEYOND_PX}
+            nearEnd={0}
+          />
+        ) : null}
       </div>
       {list.next !== null ? <More onMore={list.more} busy={list.state === 'loading'} failed={list.state === 'failed'} /> : null}
       {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
