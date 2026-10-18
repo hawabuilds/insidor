@@ -167,7 +167,7 @@ export function Portfolio({
             {read.created.coins.map((c) => (
               <li key={c.address}>
                 <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: c.coinId })}>
-                  <CoinLogo address={c.address} ticker={c.ticker} size={36} />
+                  <CoinLogo small address={c.address} ticker={c.ticker} size={36} />
                   <div className={styles['mid']}>
                     <div className={styles['symbolRow']}><span className={styles['symbol']}>{c.ticker ?? '—'}</span><span className={styles['pair']}>Created on Insidor</span></div>
                     <div className={styles['units']}>Market cap</div>
@@ -191,7 +191,7 @@ function Row({ h }: { h: Holding }) {
   const priced = h.valueUsd.known;
   return (
     <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: h.coinId })}>
-      <CoinLogo address={h.address} ticker={h.ticker} imageUrl={h.imageUrl} size={36} />
+      <CoinLogo small address={h.address} ticker={h.ticker} imageUrl={h.imageUrl} size={36} />
       <div className={styles['mid']}>
         <div className={styles['symbolRow']}>
           <span className={styles['symbol']}>{symbol}</span>

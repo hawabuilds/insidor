@@ -176,7 +176,7 @@ export function Card({ story, place, hours, now, line, onOpen, onBuy, onCreate }
       <div className={styles['coin']}>
         {coin.kind === 'checked' || coin.kind === 'top' ? (
           <>
-            <CoinLogo address={coin.coin.address} ticker={coin.coin.ticker ?? coin.coin.name} imageUrl={coin.coin.imageUrl} size={28} />
+            <CoinLogo small address={coin.coin.address} ticker={coin.coin.ticker ?? coin.coin.name} imageUrl={coin.coin.imageUrl} size={28} />
             <b className={styles['ticker']}>{tickerText(coin.coin.ticker ?? coin.coin.name ?? coin.coin.address.slice(0, 4))}</b>
             <span className={styles['coinSub']}>
               {coin.kind === 'top' ? 'Top coin, not checked' : <CardCap coin={coin.coin} />}

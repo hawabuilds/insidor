@@ -153,7 +153,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, gaine
         >
           {post.coins.kind === 'one' || post.coins.kind === 'matched' ? (
             <span className={styles['statusLogo']}>
-              <CoinLogo address={post.coins.coin.address} ticker={post.coins.coin.ticker} imageUrl={post.coins.coin.imageUrl} size={22} />
+              <CoinLogo small address={post.coins.coin.address} ticker={post.coins.coin.ticker} imageUrl={post.coins.coin.imageUrl} size={22} />
             </span>
           ) : null}
           {status.line}

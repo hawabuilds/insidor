@@ -183,7 +183,7 @@ export function CoinRow({ c, now }: { c: SearchCoin; now: number }) {
   const cap = useCoinCap(c.address, c.marketCapUsd);
   return (
     <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: c.coinId })}>
-      <CoinLogo address={c.address} ticker={label} imageUrl={c.imageUrl} size={44} />
+      <CoinLogo small address={c.address} ticker={label} imageUrl={c.imageUrl} size={44} />
       <span className={styles['text']}>
         <span className={styles['coinTop']}>
           <b>{c.ticker ?? '—'}</b>
