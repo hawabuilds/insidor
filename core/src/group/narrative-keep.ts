@@ -19,6 +19,10 @@
  *            survivor (the projector writes public.story_alias)
  *   remove   only the owner's "Remove this post": that post leaves that narrative and is never
  *            added back to it
+ *   split    only the owner's "Split": the posts he picked leave that narrative together and are a
+ *            new one under the id the call named (`ownerSplits`); the narrative they left never
+ *            takes them back. A split is applied once — the new id stored in any state is the mark
+ *            that it was, so reading every call each pass never splits twice
  *
  * A narrative no group touched this pass is left exactly as stored — a narrative whose posts have
  * all aged out of the window is the normal case, not a narrative that ended. Whether it is still
@@ -133,6 +137,42 @@ export function removedPosts(rows: readonly NarrativeCallRow[], states: Readonly
     out.set(r.otherId, set);
   }
   return out;
+}
+
+/** One owner's "Split" still to apply: `members` leave `from` (where his narrative leads now) for the new narrative `into`. */
+export interface OwnerSplit {
+  readonly from: string;
+  readonly into: string;
+  readonly members: readonly string[];
+}
+
+/**
+ * The owner's "Split" calls: the ones still to apply, oldest first, and each moved post with the
+ * narratives (where they lead now) it was moved out of — the narratives it is never added back to.
+ *
+ * A split is still to apply while its new id is not given out (absent from `states`, which must
+ * hold every split's new id the caller could read); once it is stored, in any state, it was applied,
+ * so a split whose narrative the owner later merged back is never split again. A split whose
+ * narrative no longer leads anywhere open (hidden, gone) is left: there is nothing to split.
+ */
+export function ownerSplits(rows: readonly NarrativeCallRow[], states: ReadonlyMap<string, NarrativeState>): { readonly pending: readonly OwnerSplit[]; readonly movedFrom: ReadonlyMap<string, ReadonlySet<string>> } {
+  const pending: OwnerSplit[] = [];
+  const movedFrom = new Map<string, Set<string>>();
+  const named = new Set<string>();
+  for (const r of [...rows].sort((x, y) => x.atMs - y.atMs || x.id - y.id)) {
+    if (r.verdict !== 'split' || r.otherId === null || r.members.length === 0) continue;
+    const lead = survivorOf(r.narrativeId, states);
+    for (const m of r.members) {
+      const set = movedFrom.get(m) ?? new Set<string>();
+      set.add(r.narrativeId);
+      if (lead !== null) set.add(lead);
+      movedFrom.set(m, set);
+    }
+    if (states.has(r.otherId) || named.has(r.otherId) || lead === null || lead === r.otherId) continue;
+    named.add(r.otherId);
+    pending.push({ from: lead, into: r.otherId, members: [...new Set(r.members)] });
+  }
+  return { pending, movedFrom };
 }
 
 /**

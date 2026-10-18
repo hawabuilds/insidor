@@ -1,6 +1,7 @@
 /**
  * The owner's narrative calls: the body checked, the narrative's posts read by the server and
- * stored with the call, and a 404 before 0093 so the app says the call was not saved.
+ * stored with the call, a split's posts checked and its new narrative named once, and a 404 before
+ * 0093 (or before the database takes a split) so the app says the call was not saved.
  */
 
 import { strict as assert } from 'node:assert';
@@ -10,7 +11,7 @@ import { ownerNarrativeRoute, parseNarrativeCall } from './owner-narrative.ts';
 
 const COIN = '6omoGgUH5zDgd5Xwf3K7u56qn1JgMnV9njaNCAejpump';
 
-function fakeDb(ready: boolean, members: Record<string, string[]>) {
+function fakeDb(ready: boolean, members: Record<string, string[]>, taken: readonly string[] = [], refuseSplit = false) {
   const inserts: unknown[][] = [];
   return {
     inserts,
@@ -18,7 +19,9 @@ function fakeDb(ready: boolean, members: Record<string, string[]>) {
       async query<R>(sql: string, params: readonly unknown[] = []): Promise<R[]> {
         if (sql.includes('to_regclass')) return [{ ok: ready }] as R[];
         if (sql.includes('from internal.narrative_member')) return (members[String(params[0])] ?? []).map((item_id) => ({ item_id })) as R[];
+        if (sql.includes('union select other_id')) return taken.filter((id) => (params[0] as string[]).includes(id)).map((id) => ({ id })) as R[];
         if (sql.includes('insert into internal.owner_feedback')) {
+          if (refuseSplit && params[3] === 'split') throw Object.assign(new Error('violates check constraint'), { code: '23514' });
           inserts.push([...params]);
           return [{ id: 1, call: params[3] }] as R[];
         }
@@ -33,7 +36,9 @@ test('a call is checked: the action, the narrative, and what each action needs',
   assert.equal(typeof parseNarrativeCall({ action: 'merge', storyId: 'n-x:1' }), 'string');
   assert.equal(typeof parseNarrativeCall({ action: 'remove_post', storyId: 'n-x:1' }), 'string');
   assert.equal(typeof parseNarrativeCall({ action: 'coin_right', storyId: 'n-x:1', coin: 'nope' }), 'string');
-  assert.deepEqual(parseNarrativeCall({ action: 'coin_wrong', storyId: 'n-x:1', coin: `solana:${COIN}` }), { action: 'coin_wrong', storyId: 'n-x:1', intoStoryId: null, itemId: null, coin: COIN, note: null });
+  assert.equal(typeof parseNarrativeCall({ action: 'split', storyId: 'n-x:1' }), 'string');
+  assert.equal(typeof parseNarrativeCall({ action: 'split', storyId: 'n-x:1', itemIds: ['x:1', 'bad id'] }), 'string');
+  assert.deepEqual(parseNarrativeCall({ action: 'coin_wrong', storyId: 'n-x:1', coin: `solana:${COIN}` }), { action: 'coin_wrong', storyId: 'n-x:1', intoStoryId: null, itemId: null, itemIds: [], coin: COIN, note: null });
 });
 
 test('★ the server reads the posts and stores them with the call; a merge stores both sides', async () => {
@@ -55,4 +60,22 @@ test('★ before 0093 the route is a 404: "not supported yet", nothing saved', a
   const r = await ownerNarrativeRoute('POST', { action: 'not_narrative', storyId: 'n-x:1' }, 'u1', 'wallet:abc', f.db);
   assert.equal(r.status, 404);
   assert.equal(f.inserts.length, 0);
+});
+
+test('★ a split moves some posts, never none or all, and names a new narrative no state has used', async () => {
+  const f = fakeDb(true, { 'n-x:1': ['x:1', 'x:2', 'x:3', 'x:4'] }, ['n-x:1', 'n-x:3', 'n-x:4']);
+  const r = await ownerNarrativeRoute('POST', { action: 'split', storyId: 'n-x:1', itemIds: ['x:4', 'x:3', 'x:3'] }, 'u1', 'wallet:abc', f.db);
+  assert.equal(r.status, 201);
+  assert.deepEqual(f.inserts[0], ['wallet:abc', 'u1', 'n-x:1', 'split', null, null, 'n-x:3-1', ['x:4', 'x:3'], ['x:1', 'x:2']], 'n-x:3 and n-x:4 are taken, so the first post\'s -1');
+  const all = await ownerNarrativeRoute('POST', { action: 'split', storyId: 'n-x:1', itemIds: ['x:1', 'x:2', 'x:3', 'x:4'] }, 'u1', 'wallet:abc', f.db);
+  assert.equal(all.status, 400);
+  const stranger = await ownerNarrativeRoute('POST', { action: 'split', storyId: 'n-x:1', itemIds: ['x:9'] }, 'u1', 'wallet:abc', f.db);
+  assert.equal(stranger.status, 400);
+  assert.equal(f.inserts.length, 1);
+});
+
+test('before the database takes a split, it is a 404: "not set up yet", nothing saved', async () => {
+  const f = fakeDb(true, { 'n-x:1': ['x:1', 'x:2'] }, [], true);
+  const r = await ownerNarrativeRoute('POST', { action: 'split', storyId: 'n-x:1', itemIds: ['x:2'] }, 'u1', 'wallet:abc', f.db);
+  assert.equal(r.status, 404);
 });
