@@ -437,12 +437,13 @@ export async function submitTrade(_coinId: string, _side: 'buy' | 'sell'): Promi
  * The one way the social and alert services are reached (shared/api/people.ts builds on it):
  * here, because this file is the only one allowed to touch the network. The sign-in token rides
  * as a bearer header and nowhere else. Replies are returned whole, with their status, for
- * people.ts to read.
+ * people.ts to read. `keepalive` lets a request sent as the page is hidden finish after it goes.
  */
-export async function peopleRequest(url: string, method: string, token: string | null, body?: unknown): Promise<{ readonly ok: boolean; readonly status: number; readonly json: unknown }> {
+export async function peopleRequest(url: string, method: string, token: string | null, body?: unknown, keepalive = false): Promise<{ readonly ok: boolean; readonly status: number; readonly json: unknown }> {
   const response = await fetch(url, {
     method,
     cache: 'no-store',
+    ...(keepalive ? { keepalive: true } : {}),
     headers: { accept: 'application/json', ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...(token === null ? {} : { authorization: `Bearer ${token}` }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });

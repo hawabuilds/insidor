@@ -98,6 +98,7 @@ import { AddMissedPostSheet } from '../owner/AddMissedPost.tsx';
 import { OwnerCardStrip } from '../owner/OwnerCard.tsx';
 import { HideBar } from '../owner/OwnerPost.tsx';
 import { useIsOwner, useOwnerState, useSavedCalls } from '../owner/hooks.ts';
+import { useSeenOnScreen } from '../owner/useSeen.ts';
 import { withoutHidden } from '../owner/owner-store.ts';
 import styles from './feed.module.css';
 
@@ -203,6 +204,8 @@ export function Feed({
   const [hiddenList, setHiddenList] = useState(false);
   const [secondChance, setSecondChance] = useState(false);
   const [addMissed, setAddMissed] = useState(false);
+  /* The owner's screen (features/owner/useSeen.ts): For You cards in view for two seconds, the owner's sign-in only. */
+  const seen = useSeenOnScreen('fyp', owner && tab === 'fyp');
 
   /* Coming back to the app is when somebody expects it to be current. */
   useEffect(() => {
@@ -261,6 +264,7 @@ export function Feed({
       key={p.id}
       post={p}
       now={now}
+      cardRef={owner && tab === 'fyp' ? seen(p.id) : undefined}
       extra={
         <>
           {/* An older coin trading on the subject since the post: its own line, never a Buy (OlderCoins.tsx). */}
