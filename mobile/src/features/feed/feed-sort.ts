@@ -34,8 +34,8 @@ export const SORTS: readonly { readonly key: PostSort; readonly label: string }[
 /** Most viewed's chips: the posts posted today, or this week. */
 export const SPANS: readonly { readonly key: ViewedSpan; readonly label: string }[] = [
   { key: 'today', label: 'Today' },
-  { key: 'week', label: 'This week' },
-  { key: 'all', label: 'All time' },
+  { key: 'week', label: 'Week' },
+  { key: 'all', label: 'All' },
 ];
 
 export interface SortChoice {

@@ -13,7 +13,7 @@
  * opens as the narrative it was merged into. Home stays posts first; a starred id with no page (an
  * old story id from before the rebuild, one the owner said is not a narrative) is left out, never
  * drawn as a broken card.
- * The site pills and the filter panel narrow whichever list is showing (`feed-filters.ts`). The board
+ * The site pills narrow whichever list is showing (`feed-filters.ts`); the filter panel was removed by the owner (2026-10-18), and Most viewed's Today / Week / All sits at the right of that row. The board
  * (`GET /board/default`) is still read, for its provenance alone: the Sample data bar.
  * ★ FOR YOU'S SORT CHIPS (feed-sort.ts, the owner's design of 2026-10-18): New, the default, is the
  * feed as it always was; Trending (right now, no window) and Most viewed (Today or This week) are the
@@ -76,19 +76,18 @@ import { FILTER_PLATFORMS } from '../../shared/platform.ts';
 import { hrefFor, parseRoute } from '../../shared/route.ts';
 import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { Button } from '../../shared/ui/Button.tsx';
-import { FilterIcon, StarIcon } from '../../shared/ui/icons.tsx';
+import { StarIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { PostRow } from '../../shared/ui/PostRow.tsx';
 import { OlderCoinsLine } from './OlderCoins.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
-import { FilterPanel } from './FilterPanel.tsx';
 import { NO_RISERS, SORTS, SPANS, gainedLine, loadChoice, saveChoice, speedLine, windowOf, type SortChoice } from './feed-sort.ts';
 import { useSortedPages } from './useSortedPages.ts';
 
 const speedLineOf = (s: PostSpeeds | undefined) => (s === undefined ? null : speedLine(s));
 const gainedLineOf = (g: number | undefined, w: string) => (w === 'all' ? null : g === undefined ? null : gainedLine(g, w === 'week' ? 'week' : 'today'));
-import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyPostFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
+import { NO_FILTERS, applyPostFilters, type FeedFilters } from './feed-filters.ts';
 import { LIVE_FEED } from './live-feed.ts';
 import { LiveCard } from './LiveCard.tsx';
 import { useLiveFeed } from './useLiveFeed.ts';
@@ -141,7 +140,6 @@ export function Feed({
 }) {
   const [tab, setTab] = useState<FeedTab>('fyp');
   const [filters, setFilters] = useState<FeedFilters>(NO_FILTERS);
-  const [panel, setPanel] = useState(false);
   /* The post whose post sheet is open and the view it opened on, or none. */
   const [sheet, setSheet] = useState<{ readonly id: string; readonly start: 'post' | 'coins' } | null>(null);
   /*
@@ -317,28 +315,10 @@ export function Feed({
                 </button>
               ))}
             </div>
-            {choice.sort === 'most_viewed' ? (
-              <div className={styles['windows']} role="group" aria-label="Posted">
-                {SPANS.map((s) => (
-                  <button key={s.key} type="button" className={s.key === choice.span ? styles['windowOn'] : ''} aria-pressed={s.key === choice.span} onClick={() => choose({ ...choice, span: s.key })}>
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
           </div>
         ) : null}
 
         <div className={styles['filterRow']}>
-          <button
-            type="button"
-            className={`${styles['filterButton']} ${isFiltered(filters) ? styles['filterOn'] : ''}`}
-            aria-label="Filters"
-            aria-expanded={panel}
-            onClick={() => setPanel((p) => !p)}
-          >
-            <FilterIcon size={18} />
-          </button>
           <div className={styles['quick']}>
             <button
               type="button"
@@ -358,17 +338,14 @@ export function Feed({
               </button>
             ))}
           </div>
-          {panel ? (
-            <FilterPanel
-              applied={filters}
-              steps={VIEW_STEPS}
-              windows={POSTED_WINDOWS}
-              onApply={(f) => {
-                setFilters(f);
-                setPanel(false);
-              }}
-              onClose={() => setPanel(false)}
-            />
+          {tab === 'fyp' && choice.sort === 'most_viewed' ? (
+            <div className={styles['windows']} role="group" aria-label="Window">
+              {SPANS.map((s) => (
+                <button key={s.key} type="button" className={s.key === choice.span ? styles['windowOn'] : ''} aria-pressed={s.key === choice.span} onClick={() => choose({ ...choice, span: s.key })}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
           ) : null}
         </div>
 
