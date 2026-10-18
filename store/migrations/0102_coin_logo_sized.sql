@@ -1,4 +1,4 @@
--- 0105_coin_logo_sized.sql
+-- 0102_coin_logo_sized.sql
 --
 -- WHICH STORED LOGOS ARE THE TWO SMALL COPIES, AND WHICH ARE STILL THE PICTURE AS ITS HOST SERVED IT.
 --

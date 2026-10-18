@@ -154,7 +154,7 @@ test('★ only coins the app shows are due: no backfill of every coin we hold, a
   assert.ok(d.logged.some(([m]) => m.includes('watchlist')));
 });
 
-/** A database stand-in: 0071 and 0105 run, one due coin, every statement kept. */
+/** A database stand-in: 0071 and 0102 run, one due coin, every statement kept. */
 const sizedDb = (row: Record<string, unknown>, asked: [string, readonly unknown[]][]) => ({
   query: async (sql: string, params?: readonly unknown[]) => {
     asked.push([sql, params ?? []]);
@@ -197,7 +197,7 @@ test('an original whose copy and sources all fail stays stored, never turned int
   assert.ok(asked.some(([s]) => s.includes("set checked_at = now() where address = $1 and outcome = 'stored'")));
 });
 
-test('a new copy is recorded as the two sizes once 0105 has run', async () => {
+test('a new copy is recorded as the two sizes once 0102 has run', async () => {
   const asked: [string, readonly unknown[]][] = [];
   const d = deps({ db: sizedDb({ address: A, metadata_uri: null, metadata_image: 'https://pin.example/p.png', last_outcome: null, attempts: null }, asked) });
   const r = await mirrorPass(d);

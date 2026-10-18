@@ -36,7 +36,7 @@
  *
  * ★ TWO SIZES, NEVER THE ORIGINAL (logo-sizes.ts): each copy is stored as a 256-pixel WebP at the
  * path every reference already loads and a 64-pixel WebP for the lists. A logo stored before that
- * (0105's `sized_at` null) is resized once from our own copy, without asking its host again.
+ * (0102's `sized_at` null) is resized once from our own copy, without asking its host again.
  *
  * Separate from logos-main.ts so the order, the selection and the ledger are tested with
  * stand-ins; the entry only wires real pools, the sources and storage to this.
@@ -84,7 +84,7 @@ const DUE = `(l.address is null
             and l.checked_at < $2::timestamptz - make_interval(secs => $3::double precision / 1000 * power(2, l.attempts - 1)))
         or (l.outcome = 'failed' and l.attempts >= $4 and l.checked_at < $5))`;
 
-/* After 0105: a stored original not yet resized, asked again after NONE_RETRY_MS when it could not be. */
+/* After 0102: a stored original not yet resized, asked again after NONE_RETRY_MS when it could not be. */
 const UNSIZED = `(l.outcome = 'stored' and l.sized_at is null and l.checked_at < $1)`;
 
 const COLUMNS = `a.declared_social ->> 'metadata' as metadata_uri, m.image_uri as metadata_image, l.outcome as last_outcome, l.attempts`;
@@ -131,7 +131,7 @@ export function shownSetSql(withPeople: boolean): string {
 }
 
 /**
- * The shown coins whose logo is missing, retryable or never tried, and (`sized`, after 0105) those
+ * The shown coins whose logo is missing, retryable or never tried, and (`sized`, after 0102) those
  * still stored as the original: never-tried first, the originals last. `$6` limit.
  */
 export function shownSql(withPeople: boolean, sized: boolean): string {
@@ -166,7 +166,7 @@ on conflict (address) do update
 export const MIGRATED_SQL = `
 select 1 from information_schema.columns where table_schema = 'internal' and table_name = 'coin_logo' and column_name = 'why'`;
 
-/** Whether migration 0105 has run; before it every new copy is still resized, but none is recorded so. */
+/** Whether migration 0102 has run; before it every new copy is still resized, but none is recorded so. */
 export const SIZED_MIGRATED_SQL = `
 select 1 from information_schema.columns where table_schema = 'internal' and table_name = 'coin_logo' and column_name = 'sized_at'`;
 
