@@ -827,6 +827,58 @@ export interface JudgePolicy {
     readonly minProtected: number;
   };
   /**
+   * ★ OUR OWN COIN MODEL, A SAFETY NET BEHIND THE JUDGE (the owner, 2026-10-18: "if the judge says
+   * no but our model is sure the post will get coined, the post still goes to For You"). A
+   * class-weighted logistic regression over the post's words-and-picture vector (the precedents'
+   * own space) and a few dozen facts we already hold at the moment the judge answers — reach for
+   * age, reach a minute, how fast that rises, replies and approvals so far, post type, source,
+   * language, account size, catchphrase hints from the words (core `coinModelFeatures`). It is fitted
+   * on our own rows at each re-tune (tools/lib/coin-model.ts) and stored in internal.coin_model
+   * (0096) with the threshold it chose; the runner scores each post the judge did not pass, once,
+   * in its own loop, and stores the score (internal.coin_model_score).
+   *
+   * `shadow` scores and stores only: nothing reaches For You. `on` lets the projector take a post
+   * the judge did not pass when its stored score is at or over the threshold and every other gate
+   * still passes (held kinds and the close-match hold, the owner's Not a meme, the reach bar, age).
+   * `threshold` overrides the fit's own when set; null takes the fit's.
+   *
+   * The fit: `l2s` the ridges tried (chosen on the newest `validationShare` of the training time,
+   * never on the test), `negativeShare` of never-coined posts kept by a hash of the id (all coined,
+   * labelled and owner posts are kept), a post counted coined when a coin was launched `lateMs` or
+   * more after it by an account that does not coin its own posts (`deployerWindowMs`,
+   * `deployerMinPosts`, as `learning.coinedYes`). The threshold is the lowest at which, on the
+   * validation slice, For You's junk (the old judges' labels) rises at most `maxJunkRise` and the
+   * extra posts stay at or under `maxExtrasPerHour`. A refit replaces the applied one only when it
+   * catches more of the owner's held-out missed posts with no more junk (`tools/lib/coin-model.ts`).
+   *
+   * The runner: each pass scores at most `maxPerPass` posts answered in the last `lookbackMs`. It is
+   * refitted at the re-tune slots in `refitAt` only.
+   * `text` sizes the catchphrase hints: a quoted phrase of at most `maxQuotedWords` words, a word in
+   * capitals of at least `minCapsLetters` letters, a text of at most `shortWords` words.
+   */
+  readonly coinModel: {
+    readonly on: boolean;
+    readonly shadow: boolean;
+    readonly threshold: number | null;
+    readonly l2s: readonly number[];
+    readonly validationShare: number;
+    readonly negativeShare: number;
+    readonly lateMs: number;
+    readonly deployerWindowMs: number;
+    readonly deployerMinPosts: number;
+    readonly maxJunkRise: number;
+    readonly maxExtrasPerHour: number;
+    readonly maxPerPass: number;
+    readonly lookbackMs: number;
+    /** The re-tune slots (London clock, as `learning.retuneAt`) at which it is refitted. */
+    readonly refitAt: readonly string[];
+    readonly text: {
+      readonly maxQuotedWords: number;
+      readonly minCapsLetters: number;
+      readonly shortWords: number;
+    };
+  };
+  /**
    * ★ HOW THE OPEN JUDGE ASKS (measured 2026-10-16 on 58 real posts from the shadow's own batches,
    * after it left 19% of shadow posts and most of the evening's live batches unanswered). Ten posts
    * a call made the model skip posts (the text-only posts among pictured ones) or repeat posts, and
@@ -3868,6 +3920,30 @@ const POLICY_V1: Policy = {
        or meme post, and about 4% of the day's judged posts. 0.25 dropped one later missed post on a
        time split (train before 15 Oct 13:00, test after); 0.5 dropped none on either split. */
     junkFilter: { on: false, l2: 0.3, folds: 5, margin: 0.5, minProtected: 30 },
+    /* Shadow first (the owner, 2026-10-18): 24 hours of scores and what it would have added, then the
+       owner decides. Seven minutes is the owner's "winnable" bar; the launcher test is coinedYes's.
+       Measured 2026-10-18 on 43,983 answered posts (2,075 coined late), test the newest 24 h (8,003
+       posts, 461 coined): l2 3 by validation; the validation chose 0.75, which on the test adds 1.3
+       posts an hour past the reach and age bars, coined caught 19 of 461 with the judge against 17
+       alone, 9 of 17 held-out missed posts over it (most found only by the owner). The junk among
+       the extras is not yet measurable on the owner's labels: the shadow is that test. */
+    coinModel: {
+      on: false,
+      shadow: true,
+      threshold: null,
+      l2s: [1, 3, 10, 30, 100],
+      validationShare: 0.25,
+      negativeShare: 0.35,
+      lateMs: 420_000, // seven minutes
+      deployerWindowMs: 420_000,
+      deployerMinPosts: 3,
+      maxJunkRise: 0.03,
+      maxExtrasPerHour: 6,
+      maxPerPass: 400,
+      lookbackMs: 21_600_000, // six hours, For You's own age bar
+      refitAt: ['20:00'],
+      text: { maxQuotedWords: 6, minCapsLetters: 3, shortWords: 8 },
+    },
     open: { batchSize: 5, parallel: 4, reask: 1, reaskWithinMs: 60_000, timeoutMs: 35_000, maxAttempts: 2, answerTokensPerPost: 150, primaryBatchSize: 10 },
     /* The owner, 2026-10-16: no main-judge API from now on (its credit ran out at 19:26 UTC that
        evening). Each question copy-tested that night on 30 recent real inputs against the main

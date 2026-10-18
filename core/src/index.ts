@@ -173,3 +173,5 @@ export { RANKS, boughtEarly, earnsRep, goatCount, nextRank, rankFor, rankedUp, s
 export type { RankId, Standing } from './social/rank.ts';
 export { ALERT_KINDS, FEED_KINDS, SWITCHES, defaultPrefs, deliveryFor, highestMilestone, isQuiet, normalisePrefs, spentWith, wants } from './notify/alerts.ts';
 export type { AlertKind, AlertPrefs, AlertSwitch, Delivery } from './notify/alerts.ts';
+export { coinModelFeatures, coinModelProbability, coinModelVerdict, oneHotsOf, standardised, textHints, vectorFits } from './qualify/coin-model.ts';
+export type { CoinModelFacts, CoinFeatures, CoinModelFit, CoinModelVerdict } from './qualify/coin-model.ts';
