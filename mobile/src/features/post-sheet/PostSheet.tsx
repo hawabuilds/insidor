@@ -147,7 +147,16 @@ export function PostSheet({ postId, onClose, start = 'post' }: PostSheetProps) {
           <>
             <SheetHead title="Post" />
             <SheetBody last>
-              {loaded.state === 'loading' ? <p className={styles['note']}>Reading the post.</p> : null}
+              {loaded.state === 'loading' ? (
+                <div className={styles['skeleton']} role="status">
+                  <span className={styles['unseen']}>Reading the post.</span>
+                  <div className={styles['skeletonHead']} aria-hidden="true"><span /><span /></div>
+                  <div className={styles['skeletonLine']} aria-hidden="true" />
+                  <div className={`${styles['skeletonLine']} ${styles['skeletonShort']}`} aria-hidden="true" />
+                  <div className={styles['skeletonMedia']} aria-hidden="true" />
+                  <div className={styles['skeletonChart']} aria-hidden="true" />
+                </div>
+              ) : null}
               {loaded.state === 'failed' ? (
                 <div className={styles['note']}>
                   <p>
