@@ -1,11 +1,12 @@
 /**
  * NOTIFICATIONS, behind the Feed's bell — Trador's (app/(app)/notifications/NotificationsScreen.tsx)
- * with Insidor's items: what happened to you. Your coins' multiples and curves, the narratives you
- * watch reaching a multiple, follows, replies, a rank-up, and for the owner the supplier and
- * learning reports.
+ * with Insidor's items: what happened to you — your coins doubling or halving, the first coin of
+ * what you saved or starred, posts blowing up, follows, replies, a rank-up, for the owner the
+ * supplier and learning reports — and, since the Feed tab became the people you follow (2026-10-18),
+ * the in-app-only rows it used to show: new For You posts, coins found for them, narratives on the
+ * board (split.ts: listed, never pushed, not counted on the bell).
  *
- * Trador's rules, kept: no tabs and no filters (only things about you reach it, so it is short
- * enough to read to the end); grouped Today, This week, Earlier; what is new is a soft purple row,
+ * Trador's rules, kept: no tabs and no filters; grouped Today, This week, Earlier; what is new is a soft purple row,
  * not a dot, and the line between new and read is fixed when the screen opens so rows do not lose
  * their tint while being read; opening it marks everything read. The gear opens Feed settings in a
  * sheet over the list, and `#/feed/settings` opens the list with the sheet already up.
@@ -38,12 +39,11 @@ import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon, GearIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { SettingsSheet } from './AlertSettings.tsx';
-import { linkOf } from './AlertsScreen.tsx';
 import { grouped } from './group.ts';
 import { useAlertList } from './list.ts';
 import { Headline, LoadMore, Mark, PullIndicator } from './Parts.tsx';
 import { pullStyle, usePullToRefresh } from './pull.ts';
-import { notifications } from './split.ts';
+import { linkOf } from './split.ts';
 import styles from './alerts.module.css';
 
 const ASK = { list: 'notifications' } as const;
@@ -74,7 +74,7 @@ export function NotificationsScreen({ settings, onSeen }: { settings: boolean; o
   }, [list.state, onSeen]);
 
   const closeSheet = () => setSheet(false);
-  const items = list.state === 'ready' ? notifications(list.value.alerts) : [];
+  const items = list.state === 'ready' ? list.value.alerts : [];
 
   return (
     <>

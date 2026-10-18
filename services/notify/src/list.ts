@@ -14,20 +14,24 @@
  * offset would show a row twice when one lands above it. One more row than the page is read, so
  * the cursor is null exactly when nothing is left and "Load more" never loads nothing.
  *
- * ★ WHAT REACHED THE PHONE IS A NOTIFICATION (the owner, 2026-10-14: "every notification also shows
- * in the Notifications list"). A Feed kind that was pushed — a New on FYP post — is listed in
- * Notifications as well as on the Feed, and counted on the bell; one that was only listed stays on
- * the Feed alone.
+ * ★ NOTIFICATIONS IS EVERY ROW (the owner's notification design, 2026-10-18). The app's Feed tab is
+ * now the people you follow; the rows it showed — new For You posts, new narratives, coins found for
+ * them — are in Notifications with the rest, as in-app rows that are never pushed. `list=feed` still
+ * answers the old Feed's side for an app not yet updated.
  *
- * ★ THE BELL COUNTS NOTIFICATIONS ONLY, ALL OF THEM. `bell` is counted over every unread
- * notification, not over the rows on this page, so paging cannot change it.
+ * ★ THE BELL COUNTS WHAT IS ABOUT YOU, OR REACHED THE PHONE. The listed-only kinds (`QUIET_KINDS`)
+ * come by the hundred a day and are left out of the count unless one was pushed. It is counted over
+ * every unread row, not over this page, so paging cannot change it.
  *
  * Apart from routes.ts because the query has grown its own rules (the sides, the tabs, the
  * cursor); routes.ts stays a list of routes. What breaks if changed carelessly: the hidden-post
  * rule (0050) must stay in the page AND the bell count, or the bell counts rows nobody can see.
  */
 
-import { FEED_KINDS } from '@insidor/core';
+import { FEED_KINDS, LIST_ONLY } from '@insidor/core';
+
+/** Listed, never pushed, and not counted on the bell unless one was pushed: the old Feed kinds and core LIST_ONLY, less a rank-up, which is about you. */
+const QUIET_KINDS = [...new Set([...FEED_KINDS, ...LIST_ONLY])].filter((k) => k !== 'rank_up');
 
 import type { Db } from './deliver.ts';
 
@@ -111,7 +115,7 @@ export async function readPage(db: Db, userId: string, q: ListQuery): Promise<{ 
        from people.alert a
       where a.user_id = $1
         and ${VISIBLE}
-        and (case $2::text when 'feed' then a.kind = any($3::text[]) when 'notifications' then (not (a.kind = any($3::text[])) or a.delivery = 'push') else true end)
+        and ($2::text <> 'feed' or a.kind = any($3::text[]))
         and ($4::text <> 'rising' or a.kind = 'rising_post')
         and ($4::text <> 'watching' or ${WATCHED})
         and ($5::bigint is null or a.at >= to_timestamp($5::bigint / 1000.0))
@@ -134,7 +138,7 @@ export async function bellCount(db: Db, userId: string): Promise<number> {
         and a.at > coalesce((select s.seen_at from people.alert_seen s where s.user_id = $1), '-infinity'::timestamptz)
         and (not (a.kind = any($2::text[])) or a.delivery = 'push')
         and ${VISIBLE}`,
-    [userId, [...FEED_KINDS]],
+    [userId, QUIET_KINDS],
   );
   return row?.n ?? 0;
 }
