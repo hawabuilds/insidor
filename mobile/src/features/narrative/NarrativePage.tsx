@@ -74,8 +74,8 @@ export function NarrativePage({ storyId, onCreate }: {
   storyId: string;
   onCreate: (story: Story) => void;
 }) {
-  const [story] = useLoad(storyId, (signal) => loadStory(storyId, signal));
-  const [sheet] = useLoad(`story-sheet:${storyId}`, (signal) => fetchStorySheet(storyId, signal));
+  const [story] = useLoad(storyId, (signal) => loadStory(storyId, signal), 'phone');
+  const [sheet] = useLoad(`story-sheet:${storyId}`, (signal) => fetchStorySheet(storyId, signal), 'phone');
   const [editing, setEditing] = useState(false);
   const owner = useIsOwner();
   const ready = story.state === 'ready' ? story.value : null;

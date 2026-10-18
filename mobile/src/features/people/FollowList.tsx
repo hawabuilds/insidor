@@ -10,7 +10,7 @@ import styles from './people.module.css';
 import { goBack } from '../../shared/nav.ts';
 
 export function FollowList({ profileKey, which }: { profileKey: string; which: 'followers' | 'following' }) {
-  const [loaded] = useLoad(`follows:${profileKey}:${which}`, () => fetchFollows(profileKey, which));
+  const [loaded] = useLoad(`follows:${profileKey}:${which}`, () => fetchFollows(profileKey, which), 'memory');
   return (
     <section className={styles['screen']}>
       <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'profile', key: profileKey })}>
