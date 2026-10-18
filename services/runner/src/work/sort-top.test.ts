@@ -44,20 +44,32 @@ test("★ the top of each list, ranked as if every post were read now; a short v
   assert.ok(!top.has('tiktok:second'), 'second on every list: outside the short video top 1');
 });
 
-test("★ the app's lists are followed: Trending now, Most viewed Today, Most viewed This week, on the card's total", () => {
+test("★ the app's lists are followed: Trending now, Most viewed Today and This week by views gained, All time by the card's total", () => {
   const P1: Policy = { ...P, feed: { ...P.feed, readings: { ...P.feed.readings, sortTop: { ...P.feed.readings.sortTop, topN: 1 } } } };
   const members: SortMember[] = [
-    /* The week's biggest, read three days ago: only This week has it, and it must be read. */
+    /* The biggest of all, read three days ago: only All time has it, and it must be read. */
     member('x:week', 'x', 4 * 24 * 60, 9_000_000, 3 * 24 * 60),
-    /* Today's biggest. */
+    /* Gained the most today and this week. */
     member('x:today', 'x', 5 * 60, 800_000, 40),
     /* Picking up hardest right now, small in total. */
     member('x:rising', 'x', 3 * 60, 20_000, 1),
     member('x:none', 'x', 3 * 60, 10_000, 1),
   ];
+  /* Every 5 minutes for two hours, the last 20 minutes ago: gaining 300 a minute, then 900 over its last 30. */
+  const every5 = (lastAgo: number, rate: (minAgo: number) => number) => {
+    const out: { atMs: number; value: number }[] = [];
+    let v = 1000;
+    for (let m = lastAgo + 120; m >= lastAgo; m -= 5) {
+      out.push({ atMs: NOW - m * MIN, value: v });
+      v += rate(m - lastAgo) * 5;
+    }
+    return out;
+  };
   const readings = new Map([
-    ['x:rising', series(60, 400, 1).map((r, i) => ({ ...r, value: i < 3 ? 1000 + i * 100 : 1000 + i * 4000 }))],
-    ['x:none', series(60, 50, 1)],
+    /* Rising as of its newest reading, 20 minutes ago: kept fresh although it could not measure the last 30 now. */
+    ['x:rising', every5(20, (m) => (m <= 30 ? 900 : 300))],
+    ['x:none', every5(1, () => 500)],
+    ['x:today', [{ atMs: NOW - 20 * 60 * MIN, value: 0 }, { atMs: NOW - 40 * MIN, value: 1_000_000 }]],
   ]);
   const top = sortTopIds(members, readings, NOW, P1);
   assert.deepEqual([...top].sort(), ['x:rising', 'x:today', 'x:week']);

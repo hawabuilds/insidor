@@ -4,31 +4,35 @@
  * every post read since (rising.forYouSorts.freshMs). Without this, a post that left the live frame
  * stops being read, and the post that should top Most viewed sinks for want of a reading rather
  * than for anything it did. So every `recomputeMs` this ranks For You's scroll on the lists the app
- * offers (the owner, 2026-10-18: Trending now, Most viewed Today, Most viewed This week;
- * Policy.rising.forYouSorts) exactly as the read service does (core rank/post-sorts.ts, the one copy
- * of the rule) as if every post were read just now, and returns the text-source posts in any list's
- * top `topN` and the short videos in any list's top `shortVideoTopN`; readings.ts reads those whose
- * newest reading is `everyMs` old.
+ * offers (the owner's third design, 2026-10-18: Trending now, Most viewed Today, This week and All
+ * time; Policy.rising.forYouSorts) exactly as the read service does (core rank/post-sorts.ts, the one
+ * copy of the rule) as if every post were read just now, and returns the text-source posts in any
+ * list's top `topN` and the short videos in any list's top `shortVideoTopN` (Trending) or
+ * `shortVideoViewedTopN` (Most viewed); readings.ts reads those whose newest reading is `everyMs` old.
  *
- * ★ MOST VIEWED IS RANKED ON THE CARD'S OWN TOTAL (`views`, `readAtMs`: the projected card's `reach`
- * and `readAt`), because that is what the read service orders it by; so a post read three days ago
- * with the week's biggest total is in the week's top and is read again. Trending needs the
- * readings of its one window and a twelfth more, so that is all the series asks for.
+ * ★ MOST VIEWED Today and This week rank by views gained in the window from the readings; All time
+ * by the card's own total (`views`, `readAtMs`: the projected card's `reach` and `readAt`), because
+ * that is what the read service orders it by.
+ * ★ TRENDING NOW IS THE RISERS, filled from the 1h rule under 5 (core `riserPlace`, `trendingList`),
+ * ranked as of each post's own newest reading for the riser test: a post that was rising when last
+ * read is in the top and is read again. Ranked at the moment asked, a post not read lately could
+ * never measure the last 30 minutes and so could never be kept fresh.
  *
  * Its own file because it is a ranking over the whole scroll, not a cadence over one post, and it
- * reads an hour of readings for every member — too much for every 30-second pass, so it is kept in
- * memory between recomputes. A failure keeps the last set (or none) and says so once.
+ * reads a week of readings for every member (This week's gain needs them) — far too much for every
+ * 30-second pass, so it is kept in memory between recomputes. A failure keeps the last set (or none) and says so once.
  *
  * What breaks if changed carelessly: ranking with freshness applied would only ever keep fresh the
  * posts already fresh; keeping short videos past `shortVideoTopN` spends credits the owner has not
  * agreed to (and Most viewed's own, smaller short-video top is what holds the redesign's extra
  * credits under the owner's ~$0.50 a day);
  * a list the app does not offer spends reads on a top nobody sees; and reading less than the window
- * and its twelfth back makes Trending's earlier half start at the wrong reading.
+ * and ranking Trending at the moment asked rather than at each post's newest reading keeps only the
+ * posts already fresh.
  */
 
 import type { ItemId, Millis, Observation, Policy } from '@insidor/contracts';
-import { sortOrder, sortPlace, viewedPlace, type SortPlace, type SortReading } from '@insidor/core';
+import { riserPlace, sortOrder, sortPlace, trendingList, viewedPlace, type SortPlace, type SortReading } from '@insidor/core';
 
 import { errorText, type Logger } from '../log.ts';
 
@@ -52,19 +56,36 @@ export function sortReadingOf(o: Observation): SortReading {
   return { atMs: o.capturedAt, value: o.rate.reason === 'no_prior' ? o.counter.value : null };
 }
 
-/** The app's lists, each as its places: Trending now, Most viewed Today, Most viewed This week. */
+/** The 1h rule's window, the one Trending's fill comes from (as the read service takes it). */
+const fillWindowMs = (p: Policy): number => p.rising.forYouSorts.trendFloorsPerMin[0]?.windowMs ?? 3_600_000;
+
+/** The app's lists in order, ranked as if every post were read now: Trending now, then Most viewed Today, This week and All time. */
 export function sortLists(members: readonly SortMember[], readings: ReadonlyMap<string, readonly SortReading[]>, nowMs: number, p: Policy): readonly (readonly SortPlace[])[] {
   const f = p.rising.forYouSorts;
-  const trending = members.flatMap((m) => {
-    const scale = m.source === SHORT_VIDEO_SOURCE ? p.rising.shortVideoReachScale : 1;
-    const one = sortPlace(m.itemId, readings.get(m.itemId) ?? [], m.postedAt, 'trending', f.trendingWindowMs, nowMs, p, scale);
+  const scaleOf = (m: SortMember) => (m.source === SHORT_VIDEO_SOURCE ? p.rising.shortVideoReachScale : 1);
+  const risers = members.flatMap((m) => {
+    const r = readings.get(m.itemId) ?? [];
+    const last = Math.max(-Infinity, ...r.filter((x) => x.value !== null).map((x) => x.atMs));
+    /* As of its newest reading, and only if that reading could still be listed after a re-read. */
+    if (!Number.isFinite(last) || nowMs - last >= 2 * f.freshMs) return [];
+    const one = riserPlace(m.itemId, r, m.postedAt, Math.min(nowMs, last), p, scaleOf(m));
     return one === null ? [] : [one];
   });
-  const viewed = (spanMs: number) => members.flatMap((m) => {
-    const one = viewedPlace(m.itemId, m.views, m.readAtMs, m.postedAt, m.firstSeenAt, spanMs, nowMs, p);
+  const windowed = (by: 'trending' | 'most_viewed', windowMs: number) => members.flatMap((m) => {
+    const one = sortPlace(m.itemId, readings.get(m.itemId) ?? [], m.postedAt, by, windowMs, nowMs, p, by === 'trending' ? scaleOf(m) : 1);
     return one === null ? [] : [one];
   });
-  return [trending, viewed(f.mostViewedSpansMs.today), viewed(f.mostViewedSpansMs.week)];
+  const allTime = members.flatMap((m) => {
+    const one = viewedPlace(m.itemId, m.views, m.readAtMs, m.postedAt, m.firstSeenAt, Infinity, nowMs, p);
+    return one === null ? [] : [one];
+  });
+  const ordered = (xs: readonly SortPlace[]) => sortOrder(xs, xs.length, true);
+  return [
+    trendingList(risers, ordered(windowed('trending', fillWindowMs(p))), p, true),
+    ordered(windowed('most_viewed', f.mostViewedSpansMs.today)),
+    ordered(windowed('most_viewed', f.mostViewedSpansMs.week)),
+    ordered(allTime),
+  ];
 }
 
 /** The text posts in the top `topN` and the short videos in the top `shortVideoTopN` of any of the app's lists, ranked as if all were read now. */
@@ -78,7 +99,7 @@ export function sortTopIds(members: readonly SortMember[], readings: ReadonlyMap
     let text = 0;
     let video = 0;
     /* Each source's own top: the text top 20 and the video top 10 of the same list, counted apart. */
-    for (const x of sortOrder(places, places.length, true)) {
+    for (const x of places) {
       if (isVideo.get(x.id) === true ? video++ < shortVideoTopN : text++ < topN) top.add(x.id);
       if (text >= topN && video >= shortVideoTopN) break;
     }
@@ -104,11 +125,10 @@ export function sortTop(deps: SortTopDeps): () => Promise<ReadonlySet<string>> {
     if (kept !== null && now - kept.at < p.feed.readings.sortTop.recomputeMs) return kept.ids;
     try {
       const members = await deps.members();
-      const w = p.rising.forYouSorts.trendingWindowMs;
-      /* Trending's window and a twelfth more (65 minutes): a gain at the window's start needs the reading
-         before it. A gap longer than that before the window counts from the first reading after it,
-         a little under what the read service, which has every reading on the card, counts. */
-      const series = await deps.series(members.map((m) => m.itemId as ItemId), (now - w - w / p.rising.forYouSorts.minReadShare) as Millis);
+      const f = p.rising.forYouSorts;
+      /* This week's gain, and the reading before the week began (a twelfth more, as the read service's card has it). */
+      const back = f.mostViewedSpansMs.week + f.mostViewedSpansMs.week / f.minReadShare;
+      const series = await deps.series(members.map((m) => m.itemId as ItemId), (now - back) as Millis);
       const readings = new Map([...series].map(([id, obs]) => [id as string, obs.filter((o) => o.kind === 'reach').map(sortReadingOf)] as const));
       kept = { at: now, ids: sortTopIds(members, readings, now, p) };
       warned = false;

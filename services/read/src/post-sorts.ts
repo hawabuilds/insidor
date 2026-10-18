@@ -3,17 +3,21 @@
  * For You's Trending and Most viewed chips (the owner, 2026-10-17, redesigned 2026-10-18). New is the
  * frame and its scroll (feed-page.ts), unchanged.
  *
- * ★ THE LISTS THE APP OFFERS (the owner, 2026-10-18; Policy.rising.forYouSorts):
- *   Trending now      one list, no window chips: the ratio rule below over `trendingWindowMs` (1h)
- *                     and its floor. Per post the reply carries `speeds`: its views a minute in the
- *                     window's later half (`now`) and earlier half (`before`), REAL views a minute
- *                     for a short video too (the scale orders the list and is never on screen); null
- *                     for a post with no speed yet (no trend: one reading, or one long gap).
- *   Most viewed       Today or This week: the posts POSTED inside the span, or first seen when the
- *                     posted time is unknown (`undated` says how many of the list that is), by their
- *                     total views at the newest reading, biggest first. The total is the card's own
- *                     `reach`, so the big number on the card IS what the list is ordered by; `views`
- *                     carries it per post for the decoder to hold the list to. No gain is sent.
+ * ★ THE LISTS THE APP OFFERS (the owner's third design, 2026-10-18; Policy.rising.forYouSorts):
+ *   Trending now      one list, no window chips (core `riserPlace`, `trendingList`): the RISERS, views
+ *                     a minute over the last 30 minutes at least 1.15 times those over the hour before
+ *                     (30 to 90 minutes ago), over the 300-a-minute floor, read under 30 minutes ago,
+ *                     ranked by how many times faster. Under 5 risers, the list is filled to 10 with
+ *                     the 1h rule's fresh picks over its floor (later half against earlier half). Per
+ *                     post `speeds`: `now` and `before` in REAL views a minute, a short video's too
+ *                     (the scale only decides the floor), from whichever rule listed it, so a filled
+ *                     card says its own flat or slowing speed honestly.
+ *   Most viewed       Today and This week: views GAINED in the last 24 hours / 7 days from each post's
+ *                     own readings (the first reading's count a reading like any other), any For You
+ *                     post with a reading in the window, stale below fresh; `gained` per post. All
+ *                     time: every For You post by its total, the card's own `reach`. `views` carries
+ *                     each post's total on all three; `undated` is 0 and kept only for the app built
+ *                     before this design.
  *   Both are sent `pageSize` at a time (`cursor` the place to start, `next` the next one, null at
  *   the end), from one ranking kept per tick, so pages of one tick never overlap.
  * ★ THE OLD WINDOWS (`1h` `6h` `24h`, the 2026-10-17 lists, with `gained`) are still answered as they
@@ -76,7 +80,7 @@
  */
 
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts';
-import { sortGainIn, sortOrder, sortPlace, sortRunsOf, viewedPlace, type SortPlace, type SortReading } from '@insidor/core';
+import { riserPlace, sortGainIn, sortOrder, sortPlace, sortRunsOf, trendingList, viewedPlace, type SortPlace, type SortReading } from '@insidor/core';
 
 import type { Db, Row } from './queries.ts';
 import { RISING_VIEW_SQL } from './queries.ts';
@@ -89,10 +93,10 @@ export type SortBy = 'trending' | 'most_viewed';
 /** The 2026-10-17 windows, still answered for the app built before the redesign. */
 export const SORT_WINDOWS = { '1h': 3_600_000, '6h': 21_600_000, '24h': 86_400_000 } as const;
 export type LegacyWindow = keyof typeof SORT_WINDOWS;
-/** The lists the app offers now: Trending's one, Most viewed's two spans. */
-export type ListWindow = 'now' | 'today' | 'week';
+/** The lists the app offers now: Trending's one, Most viewed's three. */
+export type ListWindow = 'now' | 'today' | 'week' | 'all';
 export type SortWindow = LegacyWindow | ListWindow;
-const LIST_WINDOWS: Readonly<Record<SortBy, readonly ListWindow[]>> = { trending: ['now'], most_viewed: ['today', 'week'] };
+const LIST_WINDOWS: Readonly<Record<SortBy, readonly ListWindow[]>> = { trending: ['now'], most_viewed: ['today', 'week', 'all'] };
 const isLegacy = (w: SortWindow): w is LegacyWindow => Object.hasOwn(SORT_WINDOWS, w);
 
 /** Posts sent per list: a screen and a half of scrolling; the rest of For You is under New. */
@@ -113,7 +117,7 @@ export function rankScale(source: unknown, shortVideoScale: number = DEFAULT_POL
  * The card's `counts` where it has them, else its `views`.
  */
 export const SORT_READINGS_SQL = `
-select f.item_id, coalesce(f.payload #> '{sheet,counts}', f.payload #> '{sheet,views}') as views, f.payload #>> '{postedAt,at}' as posted_ms, i.source
+select f.item_id, coalesce(f.payload #> '{sheet,counts}', f.payload #> '{sheet,views}') as views, f.payload #>> '{postedAt,at}' as posted_ms, i.source, f.payload #>> '{reach,v}' as total
   from public.feed_post f
   left join public.item i on i.item_id = f.item_id
  where f.feed_id = 'fyp'
@@ -202,13 +206,13 @@ export interface SortReply {
   readonly by: SortBy;
   readonly window: SortWindow;
   readonly posts: readonly unknown[];
-  /** Old windows only. Per post id: its views gained in the window, rounded. */
+  /** Old windows, and Most viewed Today and This week. Per post id: its views gained in the window, rounded. */
   readonly gained?: Readonly<Record<string, number>>;
-  /** Trending now only. Per post id: its two speeds, or null when it has none yet. */
-  readonly speeds?: Readonly<Record<string, Speeds | null>>;
+  /** Trending now only. Per post id: its two speeds. Every listed post has them. */
+  readonly speeds?: Readonly<Record<string, Speeds>>;
   /** Most viewed only. Per post id: its total views, the card's own number. */
   readonly views?: Readonly<Record<string, number>>;
-  /** Most viewed only: how many posts of the whole list are placed by when we first saw them, having no posted time. */
+  /** Most viewed only: always 0 now; kept for the app built before the third design, which requires it. */
   readonly undated?: number;
   /** New lists only: the cursor of the next page, null when this was the last. */
   readonly next?: string | null;
@@ -223,11 +227,11 @@ const perMin = (v: number): number => (v < 10 ? Math.round(v * 10) / 10 : Math.r
  * the same ranking. `now` is injected for tests.
  */
 export function createSorts(now: () => number = Date.now, policy: Policy = DEFAULT_POLICY) {
-  type Kept = { readonly tick: number; readonly at: number; readonly list: readonly Ranked[]; readonly scales: ReadonlyMap<string, number>; readonly undated: number };
+  type Kept = { readonly tick: number; readonly at: number; readonly list: readonly Ranked[]; readonly scales: ReadonlyMap<string, number>; readonly totals: ReadonlyMap<string, number> };
   const kept = new Map<string, Kept>();
   return async function sorted(db: Db, by: SortBy, window: SortWindow, cursor = 0): Promise<SortReply | null> {
-    const views = await db.query(RISING_VIEW_SQL, ['fyp']);
-    const view = views[0];
+    const ticks = await db.query(RISING_VIEW_SQL, ['fyp']);
+    const view = ticks[0];
     if (view === undefined) return null;
     const tick = Number(view['tick']);
     const nowMs = now();
@@ -249,40 +253,73 @@ export function createSorts(now: () => number = Date.now, policy: Policy = DEFAU
     const next = end < hit.list.length ? String(end) : null;
     const scales = hit.scales;
     if (by === 'trending') {
-      const speeds = Object.fromEntries(shown.map((x) => {
+      const speeds = Object.fromEntries(shown.flatMap((x) => {
         const scale = scales.get(x.id) ?? 1;
-        return [x.id, x.speed === null || x.before === null ? null : { now: perMin(x.speed * scale), before: perMin(x.before * scale) }];
+        return x.speed === null || x.before === null ? [] : [[x.id, { now: perMin(x.speed * scale), before: perMin(x.before * scale) }] as const];
       }));
       return { tick, by, window, posts, speeds, next };
     }
-    return { tick, by, window, posts, views: Object.fromEntries(shown.map((x) => [x.id, Math.round(x.gained)])), undated: hit.undated, next };
+    const totals = hit.totals;
+    const views = Object.fromEntries(shown.flatMap((x) => {
+      const t = totals.get(x.id);
+      return t === undefined ? [] : [[x.id, Math.round(t)] as const];
+    }));
+    if (window === 'all') return { tick, by, window, posts, views, undated: 0, next };
+    return { tick, by, window, posts, views, gained: Object.fromEntries(shown.map((x) => [x.id, Math.round(x.gained)])), undated: 0, next };
   };
 }
 
-/** The whole list for a sort and window, in order, with each post's ranking scale and how many have no posted time. */
-async function rankAll(db: Db, by: SortBy, window: SortWindow, nowMs: number, policy: Policy): Promise<{ readonly list: readonly Ranked[]; readonly scales: ReadonlyMap<string, number>; readonly undated: number }> {
+/** The whole list for a sort and window, in order, with each post's ranking scale and its total views. */
+async function rankAll(db: Db, by: SortBy, window: SortWindow, nowMs: number, policy: Policy): Promise<{ readonly list: readonly Ranked[]; readonly scales: ReadonlyMap<string, number>; readonly totals: ReadonlyMap<string, number> }> {
   const p = policy.rising.forYouSorts;
   const scales = new Map<string, number>();
-  if (by === 'most_viewed' && !isLegacy(window)) {
-    const spanMs = window === 'week' ? p.mostViewedSpansMs.week : p.mostViewedSpansMs.today;
-    const rows = await db.query(SORT_VIEWED_SQL, [new Date(nowMs - spanMs).toISOString()]);
+  const totals = new Map<string, number>();
+  const num = (v: unknown): number | null => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+  if (by === 'most_viewed' && window === 'all') {
+    /* Every For You post, by its total at its newest reading. */
+    const rows = await db.query(SORT_VIEWED_SQL, [new Date(0).toISOString()]);
     const places = rows.flatMap((r: Row) => {
       if (typeof r['item_id'] !== 'string') return [];
-      const v = r['views'] === null || r['views'] === undefined ? null : Number(r['views']);
-      const one = viewedPlace(r['item_id'], v !== null && Number.isFinite(v) ? v : null, msOf(r['read_ms']), msOf(r['posted_at']), msOf(r['first_seen_at']), spanMs, nowMs, policy);
+      const v = num(r['views']);
+      if (v !== null) totals.set(r['item_id'], v);
+      const one = viewedPlace(r['item_id'], v, msOf(r['read_ms']), msOf(r['posted_at']), msOf(r['first_seen_at']), Infinity, nowMs, policy);
       return one === null ? [] : [one];
     });
-    const list = sortOrder(places, places.length);
-    return { list, scales, undated: list.filter((x) => !x.postedKnown).length };
+    return { list: sortOrder(places, places.length), scales, totals };
   }
-  const windowMs = isLegacy(window) ? SORT_WINDOWS[window] : p.trendingWindowMs;
+  const legacy = isLegacy(window);
+  const r = p.risers;
+  const windowMs = legacy
+    ? SORT_WINDOWS[window]
+    : by === 'most_viewed'
+      ? (window === 'week' ? p.mostViewedSpansMs.week : p.mostViewedSpansMs.today)
+      /* Trending now reads back over both spans and the 1h rule's window, whichever is longer. */
+      : Math.max(r.nowSpanMs + r.beforeSpanMs, trendingFillWindowMs(policy)) + r.maxMarkGapMs;
   const rows = await db.query(SORT_READINGS_SQL, [new Date(nowMs - windowMs).toISOString()]);
-  const places = rows.flatMap((r: Row) => {
-    if (typeof r['item_id'] !== 'string') return [];
-    const scale = rankScale(r['source'], policy.rising.shortVideoReachScale);
-    scales.set(r['item_id'], scale);
-    const one = rankPost(r['item_id'], readingsOf(r['views']), msOf(r['posted_ms']), by, windowMs, nowMs, scale, policy);
-    return one === null ? [] : [one];
+  const risers: Ranked[] = [];
+  const places = rows.flatMap((row: Row) => {
+    const id = row['item_id'];
+    if (typeof id !== 'string') return [];
+    const scale = rankScale(row['source'], policy.rising.shortVideoReachScale);
+    scales.set(id, scale);
+    const t = num(row['total']);
+    if (t !== null) totals.set(id, t);
+    const readings = readingsOf(row['views']);
+    if (legacy || by === 'most_viewed') {
+      const one = rankPost(id, readings, msOf(row['posted_ms']), by, windowMs, nowMs, scale, policy);
+      return one === null ? [] : [one];
+    }
+    /* Trending now: fresh posts only, a riser or the 1h rule's pick. */
+    const riser = riserPlace(id, readings, msOf(row['posted_ms']), nowMs, policy, scale);
+    if (riser !== null && riser.fresh) risers.push(riser);
+    const fill = rankPost(id, readings, msOf(row['posted_ms']), 'trending', trendingFillWindowMs(policy), nowMs, scale, policy);
+    return fill === null || !fill.fresh ? [] : [fill];
   });
-  return { list: sortOrder(places, places.length), scales, undated: 0 };
+  if (!legacy && by === 'trending') return { list: trendingList(risers, places, policy), scales, totals };
+  return { list: sortOrder(places, places.length), scales, totals };
+}
+
+/** The 1h rule's window, the one the fill comes from: the trending floor's 1h entry. */
+function trendingFillWindowMs(policy: Policy): number {
+  return policy.rising.forYouSorts.trendFloorsPerMin[0]?.windowMs ?? SORT_WINDOWS['1h'];
 }

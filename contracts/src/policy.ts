@@ -2168,9 +2168,8 @@ export interface RisingPolicy {
    * speed is an average over 30 minutes, 3 hours or 12: one number would let nearly every post over
    * on 1h's terms and almost none on 24h's. A window with no entry takes the nearest window's.
    * ★ THE LISTS THE APP OFFERS (the owner, 2026-10-18): Trending is one list, "right now", the
-   * ratio rule over `trendingWindowMs` (1h) and that window's floor, with no window chips; Most
-   * viewed is Today or This week (`mostViewedSpansMs`), the posts POSTED inside the span (first seen
-   * when the posted time is unknown) by their total views at the newest reading, biggest first. Both
+   * risers of `risers` below (filled from the 1h rule when there are few), with no window chips; Most
+   * viewed is Today, This week (views gained in `mostViewedSpansMs`) or All time (total views). All
    * are sent `pageSize` at a time. The runner keeps exactly these lists' tops fresh (feed.readings
    * .sortTop), so a span or window added here is read for too, at its cost.
    */
@@ -2178,7 +2177,36 @@ export interface RisingPolicy {
     readonly freshMs: number;
     readonly minReadShare: number;
     readonly trendFloorsPerMin: readonly { readonly windowMs: number; readonly perMin: number }[];
-    readonly trendingWindowMs: number;
+    /**
+     * ★ TRENDING NOW (the owner, 2026-10-18, third design; core `riserPlace`, `trendingList`).
+     * Speed now = views a minute over the last `nowSpanMs` (30 min); speed before = views a minute
+     * over the `beforeSpanMs` (1 h) before that, 30 to 90 minutes ago. Each from the post's own
+     * readings, linear between consecutive readings and nothing past the last one, and only when the
+     * readings measure both spans: a reading inside each, at least `minCoverShare` of each span lying
+     * between readings, and the two readings either side of the 30-minute mark at most `maxMarkGapMs`
+     * apart (one long gap across the mark would give both sides the same speed by construction).
+     * A RISER: speed now >= `floorPerMin` (text-post views; a short video divided by
+     * `shortVideoReachScale` first), speed now >= `minRatio` x speed before, a reading under `freshMs`
+     * old; ranked by the ratio. When fewer than `fillBelow` posts are risers, the list is filled to
+     * `fillTo` with the 1h rule's picks over its floor (later half against earlier half), each card
+     * saying its own real speed-up, flat or slowing included.
+     */
+    readonly risers: {
+      readonly nowSpanMs: number;
+      readonly beforeSpanMs: number;
+      readonly minCoverShare: number;
+      readonly maxMarkGapMs: number;
+      readonly minRatio: number;
+      readonly floorPerMin: number;
+      readonly fillBelow: number;
+      readonly fillTo: number;
+    };
+    /**
+     * ★ MOST VIEWED (the owner, 2026-10-18, third design): Today and This week rank by views GAINED in
+     * the last `today` / `week` ms from each post's own readings (the first reading's count included as
+     * a reading), any For You post with a reading in the window; All time ranks every For You post by
+     * its total at its newest reading.
+     */
     readonly mostViewedSpansMs: { readonly today: number; readonly week: number };
     readonly pageSize: number;
   };
@@ -5291,7 +5319,11 @@ const POLICY_V1: Policy = {
       freshMs: 1_800_000,
       minReadShare: 12,
       trendFloorsPerMin: [{ windowMs: 3_600_000, perMin: 300 }, { windowMs: 21_600_000, perMin: 30 }, { windowMs: 86_400_000, perMin: 10 }],
-      trendingWindowMs: 3_600_000,
+      /* The owner, 2026-10-18 (third design): 30 minutes now against the hour before, 1.15 times faster
+         at least, over the 1h floor of 300 a minute; under 5 risers, filled to 10 with the 1h rule's
+         picks. Half of each span read, and no gap over 20 minutes across the mark: the text source's
+         older posts are read every 15 minutes, so one gap of 15 can cross it and still be a measurement. */
+      risers: { nowSpanMs: 1_800_000, beforeSpanMs: 3_600_000, minCoverShare: 0.5, maxMarkGapMs: 1_200_000, minRatio: 1.15, floorPerMin: 300, fillBelow: 5, fillTo: 10 },
       mostViewedSpansMs: { today: 86_400_000, week: 604_800_000 },
       pageSize: 20,
     },
