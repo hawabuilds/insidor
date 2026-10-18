@@ -4,13 +4,14 @@ import assert from 'node:assert/strict';
 import { decodeStory } from '../../shared/api/decode.ts';
 import type { Story } from '../../shared/api/index.ts';
 import { fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
+import { speedLine } from '../feed/feed-sort.ts';
 import { storyCoinState } from '../narrative/story-coin.ts';
-import { DEFAULT_CHOICE, allTimeOf, cardLine, gainText, loadChoice, ordered, realNarratives, saveChoice, starredNarratives, watchLine, windowsOf, type Choice } from './narrative-order.ts';
+import { DEFAULT_CHOICE, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, starredNarratives, viewsText, watchLine, type Choice } from './narrative-order.ts';
 
 const list = sampleNarrativeIds().map((id) => decodeStory(fixtureStory(id)));
 const base = list[0] as Story;
 const measured = (v: number | null) => (v === null ? { known: false as const, pending: 'not_read_yet' as const } : { known: true as const, amount: v });
-/** A story with its 1h and 24h windows: views gained, posts found, trending place. */
+/** A story with its last hour's gain, as Home's Watchlist reads it. */
 const story = (id: string, w: Record<number, [number | null, number, number]>, extra: Partial<Story> = {}): Story => ({
   ...base,
   id,
@@ -18,48 +19,66 @@ const story = (id: string, w: Record<number, [number | null, number, number]>, e
   ...extra,
 });
 const ids = (xs: readonly Story[]) => xs.map((s) => s.id);
-const pick = (order: Choice['order'], trending: 1 | 6 | 24 = 1, viewed: 1 | 6 | 24 = 24): Choice => ({ order, windows: { trending, viewed } });
+const pick = (sort: Choice['sort'], span: Choice['span'] = 'today', site: Choice['site'] = 'all'): Choice => ({ sort, span, site });
 
-test('★ Trending is the server\'s place for the window, not the biggest gain', () => {
-  const big = story('big', { 1: [900_000, 0, 3], 24: [9_000_000, 4, 1] });
-  const rising = story('rising', { 1: [40_000, 6, 1], 24: [60_000, 6, 2] });
-  const quiet = story('quiet', { 1: [1_000, 1, 2], 24: [2_000, 1, 3] });
-  assert.deepEqual(ids(ordered([big, quiet, rising], DEFAULT_CHOICE)), ['rising', 'quiet', 'big']);
-  assert.deepEqual(ids(ordered([big, quiet, rising], pick('trending', 24))), ['big', 'rising', 'quiet']);
+test('★ the sorts are For You\'s, and each choice reads its own server list', () => {
+  assert.deepEqual(DEFAULT_CHOICE, { sort: 'new', span: 'today', site: 'all' });
+  assert.equal(listOf(pick('new')), 'new');
+  assert.equal(listOf(pick('trending', 'week')), 'trending', 'Trending has no window');
+  assert.equal(listOf(pick('most_viewed', 'today')), 'today');
+  assert.equal(listOf(pick('most_viewed', 'week')), 'week');
+  assert.equal(listOf(pick('most_viewed', 'all')), 'viewed');
+  assert.deepEqual(SITES.map((x) => x.label), ['All', 'X', 'TikTok'], 'plain words, no logos');
 });
 
-test('★ Most viewed is views GAINED in the window; an unknown goes after every known one, never as zero', () => {
-  const a = story('a', { 1: [5, 0, 1], 24: [50, 0, 1] });
-  const b = story('b', { 1: [9, 0, 2], 24: [10, 0, 2] });
-  const dark = story('dark', { 1: [null, 0, 3], 24: [null, 0, 3] });
-  assert.deepEqual(ids(ordered([dark, b, a], pick('viewed'))), ['a', 'b', 'dark']);
-  assert.deepEqual(ids(ordered([dark, b, a], pick('viewed', 1, 1))), ['b', 'a', 'dark']);
-  assert.equal(gainText(dark, 24), null);
-  assert.equal(gainText(a, 24), '+50');
+test('★ the card says facts: views, the span\'s gain, the speeds in For You\'s words; an unknown is never 0', () => {
+  const s: Story = { ...base, viewsTotal: measured(125_000_000), viewsGainedDay: measured(8_100_000), viewsGainedWeek: measured(null), viewsPerMinute: { now: 394, before: 280 } };
+  assert.equal(viewsText(s), '125M');
+  assert.equal(gainedIn(s, 'today'), 8_100_000);
+  assert.equal(gainedIn(s, 'week'), null, 'not said, so no line');
+  assert.equal(gainedIn(s, 'all'), null);
+  const sp = speedsOf(s);
+  assert.ok(sp !== null);
+  assert.equal(speedLine(sp).text, '394 views a minute, up 1.4x in the last hour');
+  assert.equal(viewsText({ ...base, viewsTotal: measured(null) }), null);
 });
 
-test('★ New is newest found first', () => {
-  const found = (id: string, at: number): Story => ({ ...base, id, foundAt: { known: true, at } as Story['foundAt'] }) as Story;
-  assert.deepEqual(ids(ordered([found('old', 1), found('new', 9)], pick('new'))), ['new', 'old']);
+test('the card line is the post count, the age and Dead, facts only', () => {
+  const s = story('s', { 1: [10, 3, 1] }, { foundAt: { known: true, at: 0 } as Story['foundAt'], postCount: 61 });
+  assert.deepEqual(cardLine(s, 3 * 3_600_000), ['61 posts', '3h old']);
+  assert.deepEqual(cardLine({ ...s, dead: true, foundAt: null, firstSeenAt: { known: false, pending: 'not_read_yet' } as Story['firstSeenAt'], postCount: 4 }, 0), ['4 posts', 'Dead']);
 });
 
-test('the card says new posts in the window and the story\'s age, facts only', () => {
-  const s = story('s', { 1: [10, 3, 1], 24: [10, 0, 1] }, { foundAt: { known: true, at: 0 } as Story['foundAt'], postCount: 61 });
-  assert.deepEqual(cardLine(s, 1, 28 * 60_000), ['3 new posts', '28m old']);
-  assert.deepEqual(cardLine(s, 24, 28 * 60_000), ['No new posts', '28m old']);
-  assert.deepEqual(cardLine(s, null, 3 * 3_600_000), ['61 posts', '3h old']);
+test('the Watchlist card keeps the last hour\'s gain', () => {
+  assert.equal(hourGainText(story('a', { 1: [12_000, 0, 1] })), '+12K');
+  assert.equal(hourGainText(story('b', { 1: [null, 0, 1] })), null);
 });
 
-test('★ the choice is remembered, and a phone that cannot keep it gets the defaults', () => {
+test('★ the choice is remembered, a phone that cannot keep it gets the defaults, and an old choice keeps its sort', () => {
   const kept = new Map<string, string>();
   const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
   assert.deepEqual(loadChoice(store), DEFAULT_CHOICE);
-  assert.deepEqual(DEFAULT_CHOICE, { order: 'trending', windows: { trending: 1, viewed: 24 } });
-  saveChoice(store, pick('viewed', 6, 1));
-  assert.deepEqual(loadChoice(store), pick('viewed', 6, 1));
+  saveChoice(store, pick('most_viewed', 'week', 'tiktok'));
+  assert.deepEqual(loadChoice(store), pick('most_viewed', 'week', 'tiktok'));
   assert.deepEqual(loadChoice({ getItem: () => { throw new Error('private window'); } }), DEFAULT_CHOICE);
-  assert.deepEqual(loadChoice({ getItem: () => '{"order":"nonsense","windows":{"trending":7}}' }), DEFAULT_CHOICE);
+  assert.deepEqual(loadChoice({ getItem: () => '{"sort":"nonsense","span":7,"site":"facebook"}' }), DEFAULT_CHOICE);
+  /* Stored before this design: { order, windows }. */
+  assert.deepEqual(loadChoice({ getItem: () => '{"order":"trending","windows":{"trending":6,"viewed":24}}' }), pick('trending'));
+  assert.deepEqual(loadChoice({ getItem: () => '{"order":"viewed","windows":{"trending":1,"viewed":"all"}}' }), pick('most_viewed', 'all'));
+  assert.deepEqual(loadChoice({ getItem: () => '{"order":"viewed","windows":{"trending":1,"viewed":1}}' }), pick('most_viewed', 'today'));
+  assert.deepEqual(loadChoice({ getItem: () => '{"order":"nonsense"}' }), DEFAULT_CHOICE);
   assert.doesNotThrow(() => saveChoice({ setItem: () => { throw new Error('full'); } }, DEFAULT_CHOICE));
+});
+
+test('★ the decoder takes the speeds and the gains, and refuses speeds that are not two numbers', () => {
+  const raw = fixtureStory(sampleNarrativeIds()[0] as string) as Record<string, unknown>;
+  const s = decodeStory({ ...raw, viewsPerMinute: { now: 12.5, before: 3, posts: 2, nowBySource: { x: 12.5 } }, viewsGainedDay: { v: 900 }, viewsGainedWeek: { v: null, why: 'not_read_yet' } });
+  assert.deepEqual(s.viewsPerMinute, { now: 12.5, before: 3 });
+  assert.equal(gainedIn(s, 'today'), 900);
+  assert.equal(gainedIn(s, 'week'), null);
+  assert.equal(decodeStory(raw).viewsPerMinute, null, 'absent: none');
+  assert.throws(() => decodeStory({ ...raw, viewsPerMinute: { now: 'fast', before: 1 } }));
+  assert.throws(() => decodeStory({ ...raw, viewsPerMinute: { now: 1, before: -1 } }));
 });
 
 test('★ only narratives the server says happened, with a post', () => {
@@ -97,26 +116,3 @@ test('the Watchlist card line is posts and views, and unknown views are said, ne
   assert.deepEqual(watchLine({ ...base, postCount: 2, viewsTotal: unknown, reach: unknown }), ['2 posts', 'views not reported']);
 });
 
-test('★ a dead narrative is never in Trending, and still in Most viewed; the card says Dead', () => {
-  const live = story('live', { 1: [5, 1, 1], 24: [5, 1, 1] });
-  const dead: Story = { ...base, id: 'dead', dead: true, postCount: 4, inWindow: new Map([[1, { viewsGained: measured(900), newPosts: 0, trendingPlace: null }], [24, { viewsGained: measured(9_000), newPosts: 0, trendingPlace: null }]]) };
-  assert.deepEqual(ids(ordered([dead, live], DEFAULT_CHOICE)), ['live']);
-  assert.deepEqual(ids(ordered([live, dead], pick('viewed'))), ['dead', 'live']);
-  assert.deepEqual(cardLine(dead, null, 0), ['4 posts', 'Dead']);
-});
-
-test('★ All time: Most viewed and New read the whole list, ordered by views and by found; the window is remembered', () => {
-  const v = (id: string, views: number | null): Story => ({ ...base, id, viewsTotal: views === null ? { known: false, pending: 'not_read_yet' } : { known: true, amount: views } }) as Story;
-  const all: Choice = { order: 'viewed', windows: { trending: 1, viewed: 'all' } };
-  assert.equal(allTimeOf(all), 'viewed');
-  assert.equal(allTimeOf(pick('new')), 'new');
-  assert.equal(allTimeOf(DEFAULT_CHOICE), null);
-  assert.deepEqual(ids(ordered([v('dark', null), v('small', 10), v('big', 3_000_000)], all)), ['big', 'small', 'dark']);
-  assert.equal(gainText(v('big', 3_400_000), 'all'), '3.4M');
-  assert.deepEqual(windowsOf('trending'), [1, 6, 24], 'Trending has no All time');
-  assert.deepEqual(windowsOf('viewed'), [1, 6, 24, 'all']);
-  const kept = new Map<string, string>();
-  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, val: string) => void kept.set(k, val) };
-  saveChoice(store, all);
-  assert.deepEqual(loadChoice(store), all);
-});

@@ -492,7 +492,20 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     postCount: count(o.postCount),
     foundAt: o.foundAt === undefined || o.foundAt === null ? null : instantAt(o.foundAt, `${path}.foundAt`, 'not_reported'),
     dead: o.dead === true,
+    viewsPerMinute: decodeSpeeds(o.viewsPerMinute, `${path}.viewsPerMinute`),
+    viewsGainedDay: o.viewsGainedDay === undefined || o.viewsGainedDay === null ? null : measured(o.viewsGainedDay, `${path}.viewsGainedDay`, 'not_read_yet'),
+    viewsGainedWeek: o.viewsGainedWeek === undefined || o.viewsGainedWeek === null ? null : measured(o.viewsGainedWeek, `${path}.viewsGainedWeek`, 'not_read_yet'),
   };
+}
+
+/** A narrative's two speeds: absent or null is none; anything else must be two views-a-minute numbers. */
+function decodeSpeeds(raw: unknown, path: string): { readonly now: number; readonly before: number } | null {
+  if (raw === undefined || raw === null) return null;
+  const o = obj(raw, path);
+  const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  if (!ok(o['now'])) throw new WireShapeError(`${path}.now`, o['now']);
+  if (!ok(o['before'])) throw new WireShapeError(`${path}.before`, o['before']);
+  return { now: o['now'], before: o['before'] };
 }
 
 /** A whole count of posts the server sent, or null when it sent none or something that is not one. */
