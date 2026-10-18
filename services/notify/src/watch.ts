@@ -30,6 +30,15 @@
  * and digits only, is the guess's — and the guess has at least Policy.notify.watchMinNameChars of
  * them. Three-letter tickers are taken all day by chance.
  *
+ * ★ THE FIRST SETTLED COIN IS THE PUSH (the owner's notification design, 2026-10-18). When a watched
+ * post's own line gets its first coin — proven, or its story's coin — that one alert is
+ * `watched_first_coin`, pushed at once ("$FALCON is the first coin for a post you saved"); it is
+ * remembered as `post|#first` in the person's stream, so a post that showed a coin when it was
+ * starred (post-watch.ts marks it) or had one before this rule (the first look marks it) never sends
+ * it. Every other coin tied to the post — a name match off the mint stream, a coin in its list, a
+ * later line coin — stays `watch_coin`, which is listed, not pushed (core `LIST_ONLY`): a coin that
+ * merely shares the post's name is not its coin.
+ *
  * Cost: our own tables, plus one free read of a new coin's metadata document (at most
  * Policy.notify.watchMetadataPerPass a look), only while someone watches a post that has an id to
  * look for. No paid call.
@@ -40,7 +49,10 @@ import type { NotifyPolicy } from '@insidor/contracts/policy.ts';
 import { coinFacts, type Quotes } from './coin-facts.ts';
 import { queue, type Db } from './deliver.ts';
 import { tokenHref } from './pipeline.ts';
-import { lineCoin, watchStream } from './post-watch.ts';
+import { firstKey, lineCoin, watchStream } from './post-watch.ts';
+
+/** Marks that the first look has remembered every watched post's existing line coin. */
+const FIRST_STREAM = 'watch-first';
 
 export interface WatchPorts {
   readonly policy: NotifyPolicy;
@@ -182,6 +194,12 @@ export async function checkWatched(db: Db, ports: WatchPorts, state: WatchState)
   if (watches.length === 0) return 0;
   const itemIds = [...new Set(watches.map((w) => w.itemId))];
   const posts = await postsOf(db, itemIds);
+  const firstLook = (await db.query(`select 1 from people.pipeline_seen where stream = $1 and key = '#seeded'`, [FIRST_STREAM])).length === 0;
+  if (firstLook) {
+    /* The first look: every watched post that already shows a line coin has had its first. */
+    for (const w of watches) if (lineCoin(posts.get(w.itemId)?.payload ?? null) !== null) await db.query('insert into people.pipeline_seen (stream, key) values ($1, $2) on conflict do nothing', [watchStream(w.userId), firstKey(w.itemId)]);
+    await db.query(`insert into people.pipeline_seen (stream, key) values ($1, '#seeded') on conflict do nothing`, [FIRST_STREAM]);
+  }
 
   /* post → coins tied to it this look, and whether each came off the mint stream. */
   const tied = new Map<string, Map<string, boolean>>();
@@ -259,7 +277,13 @@ export async function checkWatched(db: Db, ports: WatchPorts, state: WatchState)
       logo: coin?.logo ?? null,
       ...(post?.picture ? { picture: post.picture } : {}),
     };
-    await queue(db, { userId: w.userId, kind: 'watch_coin', subject: `${w.itemId}|${address}`, rung: 0, facts, href: tokenHref(address) });
+    if (line?.address === address && !seen.has(`${watchStream(w.userId)}#${firstKey(w.itemId)}`)) {
+      /* The post's first settled coin: the one push. */
+      await queue(db, { userId: w.userId, kind: 'watched_first_coin', subject: w.itemId, rung: 0, facts, href: tokenHref(address) });
+      await db.query('insert into people.pipeline_seen (stream, key) values ($1, $2) on conflict do nothing', [watchStream(w.userId), firstKey(w.itemId)]);
+    } else {
+      await queue(db, { userId: w.userId, kind: 'watch_coin', subject: `${w.itemId}|${address}`, rung: 0, facts, href: tokenHref(address) });
+    }
     await db.query('insert into people.pipeline_seen (stream, key) values ($1, $2) on conflict do nothing', [watchStream(w.userId), `${w.itemId}|${address}`]);
   }
   return due.length;

@@ -165,8 +165,9 @@ test('★ a watched post: what it showed when starred is not news; each coin aft
   assert.equal(await checkWatched(db, ports, state), 1, 'a coin now: one alert');
   assert.equal(await checkWatched(db, ports, state), 0, 'and only once');
   const [q] = await db.query<{ kind: string; subject: string; href: string; facts: { symbol: string; address: string; found: string } }>('select kind, subject, href, facts from people.alert_queue');
-  assert.equal(q?.kind, 'watch_coin');
-  assert.equal(q?.subject, `x:new|${mint}`);
+  /* Its line's first coin: the one push (watch.ts), once per person and post. */
+  assert.equal(q?.kind, 'watched_first_coin');
+  assert.equal(q?.subject, 'x:new');
   assert.equal(q?.facts.address, mint);
   assert.equal(q?.href, `/#/token/${encodeURIComponent(`solana:${mint}`)}`);
   assert.deepEqual(await as('DELETE', '/post-watch/x%3Anew'), { watching: false });
