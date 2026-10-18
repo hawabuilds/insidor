@@ -24,6 +24,11 @@
  *      the last 24 hours against the 24 before, and which languages the runner's language-drop alarm
  *      holds down now (tools/lib/language-finds.ts, the alarm's own reading and rule).
  *   9. The latest re-tune: its slot, outcome, version, cost and the gate's own line (internal.judge_retune).
+ *  10. Narrative times (the owner, 2026-10-18): every live narrative's shown "First post", "We found
+ *      it" and "launched" against the stored posts, the runner's own pass with its early posts, and
+ *      the create transaction's block time; each narrative that does not match (tools/lib/
+ *      narrative-times.ts, also tools/narrative-times.ts on its own). Stored block times only here:
+ *      nothing is read from the chain at 20:00.
  *
  * What breaks if changed carelessly: the owner's posts must be weighed by the projector's code,
  * never a copy (the reason tools/lib/coin-match-fit.ts gives); a number from another path is a
@@ -43,6 +48,7 @@ import { asDb, createPool, DB_ROLE, PgLearningRepo, PgOwnerCoinCallRepo } from '
 import { leadLines, leadRows, summarise } from './lib/lead-time.ts';
 import { funnelLines, funnelRows } from './lib/funnel.ts';
 import { languageLines } from './lib/language-finds.ts';
+import { narrativeTimeLines, narrativeTimeRows } from './lib/narrative-times.ts';
 import { scorecardRows, scorecards, scorecardTable } from './lib/scorecard.ts';
 import { sideBySide, sideBySideLines } from './lib/side-by-side.ts';
 
@@ -204,6 +210,11 @@ try {
   const [last] = await new PgLearningRepo(db).recentRuns(1);
   say(last === undefined ? 'No re-tune has run yet.' : `slot ${last.slot.toISOString()}: ${last.outcome}${last.versionId === null ? '' : `, version ${last.versionId}`}${last.costUsd === null ? '' : `, $${last.costUsd.toFixed(3)}`}`);
   if (last?.detail) say(last.detail);
+
+  /* 10. Narrative times, the check from 2026-10-18 (tools/lib/narrative-times.ts). */
+  say();
+  say('## Narrative times (First post, We found it, launched)');
+  for (const line of narrativeTimeLines(await narrativeTimeRows(db, { match: true }))) say(line);
 
   const out = arg('--out');
   if (out !== null) writeFileSync(out, lines.join('\n') + '\n');

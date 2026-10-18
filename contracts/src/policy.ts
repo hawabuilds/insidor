@@ -3347,6 +3347,59 @@ export interface NarrativePolicy {
     readonly maxOutputTokens: number;
     readonly maxTitleChars: number;
   };
+  /**
+   * ★ THE EARLY POSTS (the owner, 2026-10-18: "when a narrative forms or grows, check all stored
+   * posts from up to 7 days back that match it and add them, so the earliest one is included").
+   * The regroup sees only the last `windowMs`, newest first, at most `maxPosts`; a story's first
+   * posts fall off it as it ages. After each regroup, posts the regroup could NOT see — older than
+   * the window but inside `lookbackMs`, or over the cap — are matched to the narratives that formed
+   * or grew (core group/narrative-early.ts): a link to one of its posts (meaning at `sameMeaning`
+   * and a shared name or topic word) and the narrative's average at `mergeMeaning`, the parts'
+   * own rule. They are listed with it, marked early (0100), and never change its id or the owner's
+   * calls on it.
+   *
+   * Bounded: the stored posts are read once and again every `refreshMs` (one index-backed read of
+   * judged-yes posts, at most `maxArchive`); at most `perPass` narratives are matched a pass and at
+   * most `maxVectorsPerPass` new vectors read for it; a narrative keeps at most `maxPerNarrative`
+   * early posts, the earliest first. A narrative not matched this pass keeps the early posts it had.
+   */
+  readonly early: {
+    readonly on: boolean;
+    readonly lookbackMs: number;
+    readonly refreshMs: number;
+    readonly maxArchive: number;
+    readonly perPass: number;
+    readonly maxVectorsPerPass: number;
+    readonly maxPerNarrative: number;
+  };
+  /**
+   * ★ "LAUNCHED" IS THE CREATE TRANSACTION'S BLOCK TIME (the owner, 2026-10-18). A coin a shown
+   * narrative's page names whose stored launch is not the chain's (a live notice's arrival, an
+   * aggregator's pair time) has its oldest transaction's block time read, at most `perPass` a pass,
+   * and stored as the chain's. Off until the owner has the cost: it is one RPC call a coin on the
+   * runner's chain key, the same call the coin lookup makes for every coin it finds.
+   */
+  readonly launchClock: {
+    readonly on: boolean;
+    readonly perPass: number;
+  };
+  /**
+   * ★ ONE SEARCH BACKWARDS WHEN A NARRATIVE FORMS (the owner, 2026-10-18). A narrative first shown
+   * in the last `formedWithinMs` is searched once by its narrative-name search name (work/
+   * narrative-names.ts `chooseName`), from `lookbackMs` before its first post up to that post, at
+   * most `maxPagesPerAsk` pages, at most `perPass` narratives a pass. Its posts go to the
+   * 'narrative_name' lane and its day (`feed.narrativeNames.cap`), are judged like any found post,
+   * and the early posts above put the ones that pass into the narrative. Off until the owner has
+   * the cost.
+   */
+  readonly backSearch: {
+    readonly on: boolean;
+    readonly formedWithinMs: number;
+    readonly lookbackMs: number;
+    readonly maxPagesPerAsk: number;
+    readonly perPass: number;
+    readonly passDeadlineMs: number;
+  };
 }
 
 /**
@@ -5289,6 +5342,29 @@ const POLICY_V1: Policy = {
     },
     /* About 600 input and 20 output tokens a call on the open model: $0.00006, under a cent a day. */
     title: { on: true, perPass: 10, retitleGrowth: 0.5, postsSent: 6, maxChars: 240, maxOutputTokens: 40, maxTitleChars: 60 },
+    /* 2026-10-18 on live data, read-only: 9,251 judged-yes posts went up between seven and two days
+       back (0.2 s by the judged-time index). The step took 1.4-2.2 s on a pass that read them and
+       0.13-0.15 s on the passes between, beside the pass's own 3-8 s; 16 of 109 narratives were given
+       early posts, 417-432 in all, the Roadster 196 (its first post Wednesday 14:47, not Saturday
+       13:30). Free: stored rows and stored vectors, nothing embedded. */
+    early: {
+      on: true,
+      lookbackMs: 604_800_000, // seven days, the owner's
+      refreshMs: 1_800_000, // half an hour
+      maxArchive: 15_000,
+      perPass: 30,
+      maxVectorsPerPass: 1_500,
+      maxPerNarrative: 200,
+    },
+    launchClock: { on: false, perPass: 20 },
+    /* 99 to 245 narratives were first shown a day (16-18 Oct), and only those with a safe name are
+       asked. An ask is at most three pages of 20 at $0.00015 a post returned ($0.009) and its new
+       posts judged at the lane's $0.00145 x 0.9 (at most $0.078), so at most $0.087 a narrative; a
+       name before its story began finds few posts at 1,000 likes, about $0.01-0.03 a narrative,
+       $1-4 a day. ★ It shares the narrative-name lane's day (`feed.narrativeNames.cap`, $0.35), so
+       switched on it can never add more than what that day has left, and it takes from the forward
+       search's room: raise that cap to give it its own. */
+    backSearch: { on: false, formedWithinMs: 3_600_000, lookbackMs: 604_800_000, maxPagesPerAsk: 3, perPass: 10, passDeadlineMs: 120_000 },
   },
 
   /* The owner approved switching on what fits on 2026-10-15 ("approve and switch on when ready"),

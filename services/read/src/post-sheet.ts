@@ -165,20 +165,22 @@ export interface SheetCoinOut {
  * ★ WHOSE CLOCK A COIN'S LAUNCH TIME IS. The screens print it to the minute beside "Found", as the
  * proof that we were early, so they must know when it is the chain's own time:
  *
- *   chain    the create transaction's block time, or the launchpad's own creation stamp
- *            (minted_at_source chain_rpc or issuer_api)
- *   within   the live launch notice's arrival, which bounds the create to `withinS` seconds either
- *            side of the time (vendor_field with a bound: one relay hop, seconds)
- *   unknown  anything else: an aggregator's pair time (minutes off, sometimes days), or a time
- *            kept in the name index after the coin's own row was swept. Shown as not known.
+ *   chain    the create transaction's block time (minted_at_source chain_rpc)
+ *   unknown  anything else: the launchpad's own stamp, a live launch notice's arrival, an
+ *            aggregator's pair time (minutes off, sometimes days), or a time kept in the name index
+ *            after the coin's own row was swept. Shown as not known.
+ *
+ * ★ ONLY THE BLOCK TIME (the owner, 2026-10-18: "'launched' must be the block time of the create
+ * transaction on chain. Never use any other time"). Until then a live notice printed as "within"
+ * a few seconds; on the Tesla Roadster's coin it was 4.6 s before the block, the same minute, and
+ * still not the chain's time. `within` stays in the type so an older phone reads a reply either
+ * way; the server no longer sends it. The runner fills the block time for the coins the narrative
+ * pages name (Policy.narrative.launchClock).
  */
 export type LaunchClock = { readonly kind: 'chain' } | { readonly kind: 'within'; readonly withinS: number } | { readonly kind: 'unknown' };
 
-export function launchClock(source: unknown, boundS: unknown): LaunchClock {
-  if (source === 'chain_rpc' || source === 'issuer_api') return { kind: 'chain' };
-  const b = typeof boundS === 'number' ? boundS : typeof boundS === 'string' ? Number(boundS) : NaN;
-  if (source === 'vendor_field' && Number.isFinite(b) && b >= 0) return { kind: 'within', withinS: b };
-  return { kind: 'unknown' };
+export function launchClock(source: unknown, _boundS?: unknown): LaunchClock {
+  return source === 'chain_rpc' ? { kind: 'chain' } : { kind: 'unknown' };
 }
 
 const json = (status: number, value: unknown): SheetReply => ({ status, body: JSON.stringify(value) });
