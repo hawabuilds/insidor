@@ -81,10 +81,10 @@ test('a GIF goes out as a picture with a file that loops; a real video stays a v
   assert.deepEqual([still?.kind, still?.playUrl, still?.loops], ['video', null, false]);
 });
 
-test('a launch time says whose clock it is: the chain, a live notice within seconds, or not known', () => {
+test('★ a launch time is the chain\'s block time or not known: never the launchpad\'s stamp or a live notice', () => {
   assert.deepEqual(launchClock('chain_rpc', 1), { kind: 'chain' });
-  assert.deepEqual(launchClock('issuer_api', null), { kind: 'chain' });
-  assert.deepEqual(launchClock('vendor_field', 3), { kind: 'within', withinS: 3 });
+  assert.deepEqual(launchClock('issuer_api', null), { kind: 'unknown' }, 'the launchpad\'s own clock is not the block');
+  assert.deepEqual(launchClock('vendor_field', 3), { kind: 'unknown' }, 'a live notice is seconds off the block, still not it');
   assert.deepEqual(launchClock('vendor_field', null), { kind: 'unknown' }, 'an aggregator pair time is not a launch time');
   assert.deepEqual(launchClock(null, null), { kind: 'unknown' }, 'a time kept after the coin row was swept');
 });
