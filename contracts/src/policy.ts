@@ -2135,6 +2135,21 @@ export interface RisingPolicy {
    */
   readonly shortVideoReachScale: number;
   /**
+   * ★ FOR YOU'S TRENDING AND MOST VIEWED (core rank/post-sorts.ts, the owner 2026-10-17 and 18).
+   * `freshMs`: a post whose newest reading is this old or more is listed after every post read
+   * since ("a post can only rank in the top 20 if its latest reading is less than 30 minutes old").
+   * `minReadShare`: a half window's speed needs W / this of it read. `trendFloorPerMin`: Trending
+   * ranks by how many times faster a post gains now than just before only for posts gaining at least
+   * this many views a minute now, in a text post's views (a short video's speed divided by
+   * `shortVideoReachScale` first); below it, by speed, under every post over it, so a tiny post's
+   * tenfold cannot top the list.
+   */
+  readonly forYouSorts: {
+    readonly freshMs: number;
+    readonly minReadShare: number;
+    readonly trendFloorPerMin: number;
+  };
+  /**
    * ★ THE SHORT-VIDEO SOURCE'S OWN GROWTH PATHS, in place of the scaled `fypEarly*` / `fypFast*`
    * ones. Scaled, they asked for 250k views inside fifteen minutes or 25k a minute inside the
    * first half hour, and its newest-first search finds videos 0.5 to 6.6 hours old (median 1.35,
@@ -4988,6 +5003,8 @@ const POLICY_V1: Policy = {
     feedBarCountsEveryReading: true, // on 2026-10-14, the owner's call: a first reading counts, $0
     watchMinReachPerMinute: 500,
     shortVideoReachScale: 12.5,
+    /* Trending's floor: 300 recommended on 2026-10-18 (1h: a little over half the fresh posts with a trend are over it); not live until the owner picks one. */
+    forYouSorts: { freshMs: 1_800_000, minReadShare: 12, trendFloorPerMin: 300 },
     shortVideoEarlyReach: 150_000,
     shortVideoEarlyWindowMs: 7_200_000, // two hours
     shortVideoFastReachPerMinute: 1_500,
