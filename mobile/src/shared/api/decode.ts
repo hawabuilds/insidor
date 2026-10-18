@@ -29,7 +29,7 @@ import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoin
 import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
-import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
+import type { CreatedCoin, Gain, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, OriginGap, SameNameCoins, SearchCoin, SearchCoins, TickerUse, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 import {
   BOARD_ROW_FIELDS,
@@ -946,6 +946,28 @@ export function decodeSearchedCoin(raw: unknown, path = '$.coin'): SearchedCoin 
 
 const PORTFOLIO_RANGES: readonly PortfolioRange[] = ['1h', '6h', '24h'];
 
+/**
+ * A holding's gain, strictly: a known gain needs every number, finite, and a cost above zero; an
+ * absence needs one of the two reasons. Anything else is a shape error, never a guessed number.
+ */
+export function decodeGain(p: Record<string, unknown>, path: string): Gain {
+  if (p['kind'] === 'none') {
+    if (p['why'] !== 'not_bought_here' && p['why'] !== 'history_unread') throw new WireShapeError(`${path}.why`, p['why']);
+    return { kind: 'none', why: p['why'] };
+  }
+  if (p['kind'] !== 'known') throw new WireShapeError(`${path}.kind`, p['kind']);
+  const costSol = int(p['costSol'], `${path}.costSol`);
+  if (!(costSol > 0)) throw new WireShapeError(`${path}.costSol`, costSol);
+  return {
+    kind: 'known',
+    sol: int(p['sol'], `${path}.sol`),
+    costSol,
+    pct: int(p['pct'], `${path}.pct`),
+    usd: measured(p['usd'], `${path}.usd`, 'not_reported'),
+    partial: bool(p['partial'], `${path}.partial`),
+  };
+}
+
 export function decodePortfolio(raw: unknown, path = '$'): Portfolio {
   assertNoInternalVocabulary(raw, path);
   const o = obj(raw, path);
@@ -968,10 +990,7 @@ export function decodePortfolio(raw: unknown, path = '$'): Portfolio {
       priceUsd: measured(r['priceUsd'], `${q}.priceUsd`, 'not_reported'),
       valueUsd: measured(r['valueUsd'], `${q}.valueUsd`, 'not_reported'),
       change: measured(r['change'], `${q}.change`, 'not_reported'),
-      /* A number only when the server says it knows; anything else is the dash. */
-      profit: p['kind'] === 'known' && typeof p['sol'] === 'number' && Number.isFinite(p['sol'])
-        ? { kind: 'known', sol: p['sol'], partial: p['partial'] === true }
-        : { kind: 'none', why: p['why'] === 'history_unread' ? 'history_unread' : 'no_buy_history' },
+      profit: decodeGain(p, `${q}.profit`),
       story: n === null ? null : { storyId: str(n['storyId'], `${q}.story.storyId`), title: str(n['title'], `${q}.story.title`) },
     };
   });
@@ -991,7 +1010,6 @@ export function decodePortfolio(raw: unknown, path = '$'): Portfolio {
     holdings,
     notShown: typeof o['notShown'] === 'number' ? o['notShown'] : 0,
     unpriced: typeof o['unpriced'] === 'number' ? o['unpriced'] : 0,
-    historyDepth: typeof o['historyDepth'] === 'number' ? o['historyDepth'] : 0,
     created: { unclaimedFeesSol: measured(c['unclaimedFeesSol'], `${path}.created.unclaimedFeesSol`, 'not_reported'), coins: created },
   };
 }

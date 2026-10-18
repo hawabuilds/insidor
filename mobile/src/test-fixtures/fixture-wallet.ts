@@ -41,7 +41,7 @@ const SAMPLE = {
    },
    "profit": {
     "kind": "none",
-    "why": "no_buy_history"
+    "why": "not_bought_here"
    },
    "story": null
   },
@@ -65,7 +65,7 @@ const SAMPLE = {
    },
    "profit": {
     "kind": "none",
-    "why": "no_buy_history"
+    "why": "not_bought_here"
    },
    "story": null
   },
@@ -88,7 +88,7 @@ const SAMPLE = {
    },
    "profit": {
     "kind": "none",
-    "why": "no_buy_history"
+    "why": "not_bought_here"
    },
    "story": null
   },
@@ -111,7 +111,7 @@ const SAMPLE = {
    },
    "profit": {
     "kind": "none",
-    "why": "no_buy_history"
+    "why": "not_bought_here"
    },
    "story": null
   },
@@ -134,7 +134,7 @@ const SAMPLE = {
    },
    "profit": {
     "kind": "none",
-    "why": "no_buy_history"
+    "why": "not_bought_here"
    },
    "story": null
   },
@@ -157,7 +157,7 @@ const SAMPLE = {
    },
    "profit": {
     "kind": "none",
-    "why": "no_buy_history"
+    "why": "not_bought_here"
    },
    "story": null
   },
@@ -180,7 +180,7 @@ const SAMPLE = {
    },
    "profit": {
     "kind": "none",
-    "why": "no_buy_history"
+    "why": "not_bought_here"
    },
    "story": null
   },
@@ -203,7 +203,7 @@ const SAMPLE = {
    },
    "profit": {
     "kind": "none",
-    "why": "no_buy_history"
+    "why": "not_bought_here"
    },
    "story": null
   },
@@ -226,7 +226,7 @@ const SAMPLE = {
    },
    "profit": {
     "kind": "none",
-    "why": "no_buy_history"
+    "why": "not_bought_here"
    },
    "story": null
   },
@@ -249,14 +249,13 @@ const SAMPLE = {
    },
    "profit": {
     "kind": "none",
-    "why": "no_buy_history"
+    "why": "not_bought_here"
    },
    "story": null
   }
  ],
  "notShown": 1080,
  "unpriced": 1056,
- "historyDepth": 200,
  "created": {
   "unclaimedFeesSol": {
    "v": null,

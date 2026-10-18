@@ -1,8 +1,11 @@
 /**
  * The Portfolio tab's reply, as the phone app holds it (services/read/src/wallet.ts).
  *
- * ★ PROFIT IS A NUMBER ONLY WITH BUY HISTORY. `profit.kind === 'none'` carries why — no buy in
- * the history read, or the history could not be read — and the screen shows a dash with it.
+ * ★ A GAIN IS A NUMBER ONLY WHERE INSIDOR MADE THE BUY. Cost basis is the SOL paid by this
+ * wallet's landed buys in Insidor (our trade record); `profit.kind === 'none'` carries why — never
+ * bought here, or the record could not be read — and the screen shows a dash with it. A known gain
+ * is in SOL, with its share of what was paid and today's dollar equivalent (pending without a SOL
+ * price).
  * ★ A NARRATIVE ONLY ON A CONFIDENT MATCH: the field is the narrative or null; nothing between.
  */
 
@@ -23,10 +26,27 @@ export interface Holding {
   readonly valueUsd: Measured;
   /** The price move over the chosen range, in percent. */
   readonly change: Measured;
-  readonly profit: { readonly kind: 'known'; readonly sol: number; readonly partial: boolean } | { readonly kind: 'none'; readonly why: 'no_buy_history' | 'history_unread' };
+  readonly profit: Gain;
   /** The narrative whose page names this coin as its one coin. `story` on the wire: the word is ours. */
   readonly story: { readonly storyId: string; readonly title: string } | null;
 }
+
+/** A holding's gain against what was paid for it in Insidor (services/read wallet.ts profitWire). */
+export type Gain =
+  | {
+      readonly kind: 'known';
+      /** Worth in SOL now minus SOL paid, for the part bought here. */
+      readonly sol: number;
+      /** SOL paid for that part, at average cost. */
+      readonly costSol: number;
+      /** `sol` as a share of `costSol`, in percent. */
+      readonly pct: number;
+      /** `sol` at today's SOL price. */
+      readonly usd: Measured;
+      /** True when more is held than was bought here: only the part bought here is measured. */
+      readonly partial: boolean;
+    }
+  | { readonly kind: 'none'; readonly why: 'not_bought_here' | 'history_unread' };
 
 export interface CreatedCoin {
   readonly coinId: string;
@@ -47,7 +67,6 @@ export type Portfolio =
       readonly holdings: readonly Holding[];
       readonly notShown: number;
       readonly unpriced: number;
-      readonly historyDepth: number;
       readonly created: { readonly unclaimedFeesSol: Measured; readonly coins: readonly CreatedCoin[] };
     }
   | { readonly kind: 'unavailable' };
