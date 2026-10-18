@@ -22,6 +22,8 @@
  * envelope. If something here starts computing, it belongs in services/project.
  */
 
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+
 import { coinAbout, type AboutDeps } from './coin-about.ts';
 import { coinMarket, type MarketDeps } from './market.ts';
 import { FEED_PAGE_FEEDS, FEED_PAGE_SIZE, FEED_PAGE_SQL, FOR_YOU_PAGE_SQL, FOR_YOU_START_SQL, feedPage, parseCursor, startCursor } from './feed-page.ts';
@@ -43,6 +45,11 @@ import {
   PAIR_VIEW_SQL,
   SOURCE_VIEW_SQL,
   NARRATIVES_SQL,
+  ALL_NARRATIVES_NEW_SQL,
+  ALL_NARRATIVES_VIEWED_SQL,
+  PERMANENT_NARRATIVES_SQL,
+  STORY_ALIAS_SQL,
+  STORY_ALIAS_ID_SQL,
   STORY_SQL,
   type Db,
   type Row,
@@ -233,9 +240,48 @@ async function narratives(viewId: string, deps: Deps): Promise<Reply> {
 async function story(storyId: string, deps: Deps): Promise<Reply> {
   const found = await deps.db.query(STORY_SQL, [storyId]);
   const row = found[0];
-  if (row === undefined) return NOT_FOUND;
-  return json(200, payloadOf(row));
+  if (row !== undefined) return json(200, payloadOf(row));
+  /* ★ A merged narrative's old link opens the one it was merged into (0106), never a 404. */
+  const [ready] = await deps.db.query(PERMANENT_NARRATIVES_SQL, []);
+  if (ready?.['ok'] !== true) return NOT_FOUND;
+  const alias = (await deps.db.query(STORY_ALIAS_SQL, [storyId]))[0];
+  return alias === undefined ? NOT_FOUND : json(200, payloadOf(alias));
 }
+
+/** The id whose page a narrative link opens: its own, or for a merged one the survivor's (0106). */
+async function pageIdOf(storyId: string, deps: Deps): Promise<string> {
+  if ((await deps.db.query(STORY_SQL, [storyId]))[0] !== undefined) return storyId;
+  const [ready] = await deps.db.query(PERMANENT_NARRATIVES_SQL, []);
+  if (ready?.['ok'] !== true) return storyId;
+  const [alias] = await deps.db.query(STORY_ALIAS_ID_SQL, [storyId]);
+  return typeof alias?.['into_story_id'] === 'string' ? alias['into_story_id'] : storyId;
+}
+
+/**
+ * GET /narratives/:viewId/all?sort=viewed|new&offset=N
+ *
+ * The Narratives tab's All time list (the owner, 2026-10-18): every narrative, dead ones included,
+ * `narrative.dead.pageSize` (20) at a time, by views or by when we found it. `next` is the offset
+ * of the next page, or null on the last. A view never projected is a 404, as the board's; so is a
+ * database before 0106, which has no list to page.
+ */
+async function allNarratives(viewId: string, rawUrl: string, deps: Deps): Promise<Reply> {
+  const q = new URLSearchParams(rawUrl.split('?')[1] ?? '');
+  const sort = q.get('sort') ?? 'new';
+  const offset = Number(q.get('offset') ?? '0');
+  if ((sort !== 'viewed' && sort !== 'new') || !Number.isSafeInteger(offset) || offset < 0 || offset > MAX_OFFSET) return BAD_REQUEST;
+  const views = await deps.db.query(BOARD_VIEW_SQL, [viewId]);
+  const view = views[0];
+  if (view === undefined) return NOT_FOUND;
+  const [ready] = await deps.db.query(PERMANENT_NARRATIVES_SQL, []);
+  if (ready?.['ok'] !== true) return NOT_FOUND;
+  const size = DEFAULT_POLICY.narrative.dead.pageSize;
+  const rows = await deps.db.query(sort === 'viewed' ? ALL_NARRATIVES_VIEWED_SQL : ALL_NARRATIVES_NEW_SQL, [size, offset]);
+  return json(200, { tick: tickNumber(view['tick']), stories: rows.map(payloadOf), provenance: columnOf(view, 'provenance'), next: rows.length < size ? null : offset + rows.length });
+}
+
+/** How deep the All time list pages: past this an offset is a malformed request, not a slow scan. */
+const MAX_OFFSET = 100_000;
 
 /**
  * GET /launches/:feedId
@@ -490,8 +536,9 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
     /* A narrative page's posts with their readings, and its coins (story-sheet.ts). */
     if (deps.postSheet !== undefined && segments.length === 3 && head === 'story' && param !== undefined && segments[2] === 'sheet') {
       const posts = new URLSearchParams(rawUrl.split('?')[1] ?? '').get('posts');
-      if (posts !== null) return await deps.postSheet.storyPosts(param, posts.split(','));
-      return await deps.postSheet.story(param);
+      const id = await pageIdOf(param, deps);
+      if (posts !== null) return await deps.postSheet.storyPosts(id, posts.split(','));
+      return await deps.postSheet.story(id);
     }
 
     if (deps.search !== undefined) {
@@ -514,6 +561,9 @@ export async function handle(method: string, rawUrl: string, deps: Deps, client 
       return reply === null ? NOT_FOUND : json(200, reply);
     }
     if (segments.length === 3 && head === 'rising' && param !== undefined && segments[2] === 'older') return await risingOlder(param, rawUrl, deps);
+
+    /* Every narrative, dead ones included, a page at a time: the tab's All time list. */
+    if (segments.length === 3 && head === 'narratives' && param !== undefined && segments[2] === 'all') return await allNarratives(param, rawUrl, deps);
 
     if (segments.length === 2 && param !== undefined) {
       if (head === 'board') return await board(param, deps);

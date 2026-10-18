@@ -78,6 +78,9 @@ export const STORY_FIELDS = [
   'postIds',
   'postCount',
   'foundAt',
+  /* No post in 48 hours (services/project narrative-frame.ts): out of Trending, still everywhere else. */
+  'dead',
+  'lastPostAt',
 ] as const;
 
 /** A single post on the For You or Popular feed. See wire/rising.ts. */

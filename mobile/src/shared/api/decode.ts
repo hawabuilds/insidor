@@ -27,7 +27,7 @@ import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
 import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, RisingPost, RisingSorted } from './wire/rising.ts';
-import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
+import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, NarrativesPage, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, OriginGap, SameNameCoins, SearchCoin, SearchCoins, TickerUse, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
@@ -339,6 +339,17 @@ export function decodeBoardRow(raw: unknown, path = '$.row'): BoardRow {
   };
 }
 
+/** One page of the All time list. A `next` that is not a whole offset ends the list rather than looping. */
+export function decodeNarrativesPage(raw: unknown, path = '$'): NarrativesPage {
+  const o = obj(raw, path);
+  const next = o['next'];
+  return {
+    stories: arr(o['stories'], `${path}.stories`).map((s, i) => decodeStory(s, `${path}.stories[${i}]`)),
+    provenance: decodeBoardProvenance(o['provenance'], `${path}.provenance`),
+    next: typeof next === 'number' && Number.isSafeInteger(next) && next > 0 ? next : null,
+  };
+}
+
 export function decodeNarratives(raw: unknown, path = '$'): NarrativesList {
   const o = obj(raw, path);
   return {
@@ -480,6 +491,7 @@ export function decodeStory(raw: unknown, path = '$.story'): Story {
     })(),
     postCount: count(o.postCount),
     foundAt: o.foundAt === undefined || o.foundAt === null ? null : instantAt(o.foundAt, `${path}.foundAt`, 'not_reported'),
+    dead: o.dead === true,
   };
 }
 
@@ -529,7 +541,8 @@ function decodeInWindow(raw: unknown, path: string): ReadonlyMap<number, InWindo
     const hours = n(r['hours']);
     const place = n(r['trendingPlace']);
     const posts = n(r['newPosts']);
-    if (hours === null || place === null || posts === null) return [];
+    /* A dead narrative has the window's facts and no Trending place. */
+    if (hours === null || posts === null) return [];
     try {
       return [[hours, { viewsGained: measured(r['viewsGained'], `${path}[${i}].viewsGained`, 'not_read_yet'), newPosts: posts, trendingPlace: place }] as const];
     } catch {
