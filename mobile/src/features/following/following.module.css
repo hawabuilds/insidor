@@ -1,0 +1,197 @@
+/*
+ * THE FEED OF PEOPLE'S OWN PIECES: Trador's FeedTradeRow and FeedCommentRow, and the People to
+ * follow rows, in Insidor's tokens. The page, the sticky title, the tabs, the skeleton, the empty
+ * sentence and Load more are the Feed's existing ones (features/alerts/alerts.module.css), so the
+ * tab looks as it did around its new rows.
+ *
+ * What breaks if changed carelessly: green and red are price direction only (tokens.css rule 1),
+ * so "bought" and "sold" use them and nothing else on the row does.
+ */
+
+/* A row: no box, spacing between rows (Trador: "a feed of boxes reads as a list of adverts"). */
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 0;
+  color: var(--text-1);
+}
+
+.face {
+  flex-shrink: 0;
+  border-radius: 50%;
+  text-decoration: none;
+}
+
+.text {
+  min-width: 0;
+  flex: 1;
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* The coin never truncates: it is the point of the row; a long name gives way instead. */
+.what {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  color: var(--text-1);
+}
+
+.who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.bought,
+.sold {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.bought {
+  color: var(--up);
+}
+
+.sold {
+  color: var(--down);
+}
+
+.coin {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.age {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.detail {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* A comment: name, rank and age; where it was said; the words; the counts as readouts. */
+.where {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.counts {
+  display: flex;
+  gap: 20px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* People to follow, above the latest activity while you follow nobody. */
+.heading {
+  margin: 20px 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.lead {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.personText {
+  min-width: 0;
+  flex: 1;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.personText b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.personText span {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+/* Trador's Follow pill: 36px in a 44px tap area. */
+.follow {
+  flex-shrink: 0;
+  height: 44px;
+  padding: 0;
+  background: none;
+}
+
+.follow span {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.follow.on span {
+  background: var(--overlay-wash);
+  color: var(--text-1);
+}
