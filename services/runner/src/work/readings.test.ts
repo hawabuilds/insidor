@@ -148,7 +148,7 @@ function setup(opts: { policy?: Policy; candidates?: ReadingCandidate[]; ledger?
   return { deps, calls, appended, answered, ledger };
 }
 
-test("★ the sorts' top: a text post that would top a list and has gone 25 minutes unread is due, off the frame or not; a short video never", () => {
+test("★ the sorts' top: a post that would top a list and has gone 25 minutes unread is due, off the frame or not, each source to its own cap a pass", () => {
   const top = new Set(['x:old', 'x:fresh', 'tiktok:v', 'x:never']);
   const everyMs = ON.feed.readings.sortTop.everyMs;
   const off = { onForYou: false, postedAt: NOW - 30 * H };
@@ -160,15 +160,17 @@ test("★ the sorts' top: a text post that would top a list and has gone 25 minu
     video('v', { ...off, lastReadAt: NOW - 10 * H }),
   ];
   const { posts, sorts } = dueReadings(cs, NOW, ON, top);
-  assert.deepEqual(posts.map((c) => c.itemId), ['x:never', 'x:old']);
-  assert.equal(sorts, 2);
+  assert.deepEqual(posts.map((c) => c.itemId), ['x:never', 'tiktok:v', 'x:old']);
+  assert.equal(sorts, 3);
   /* Off, nothing is read for the sorts. */
   const quietPolicy = { ...ON, feed: { ...ON.feed, readings: { ...ON.feed.readings, sortTop: { ...ON.feed.readings.sortTop, on: false } } } };
   assert.equal(dueReadings(cs, NOW, quietPolicy, top).posts.length, 0);
   /* Bounded a pass. */
   const many = Array.from({ length: 50 }, (_, i) => post(`m${i}`, { ...off, lastReadAt: null }));
-  const capped = dueReadings(many, NOW, ON, new Set(many.map((c) => c.itemId)));
-  assert.equal(capped.sorts, ON.feed.readings.sortTop.maxPerPass);
+  const videos = Array.from({ length: 50 }, (_, i) => video(`v${i}`, { ...off, lastReadAt: null }));
+  const capped = dueReadings([...many, ...videos], NOW, ON, new Set([...many, ...videos].map((c) => c.itemId)));
+  assert.equal(capped.sorts, ON.feed.readings.sortTop.maxPerPass + ON.feed.readings.sortTop.shortVideoMaxPerPass);
+  assert.equal(capped.posts.filter((c) => c.source === 'tiktok').length, ON.feed.readings.sortTop.shortVideoMaxPerPass);
 });
 
 test("★ the pass asks the store for the sorts' top posts too, and reads them", async () => {
