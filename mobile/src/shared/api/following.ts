@@ -10,7 +10,7 @@
  * edge or browser cache holds it.
  */
 
-import { socialCall, type ProfileCard } from './people.ts';
+import { notifyCall, socialCall, type ProfileCard } from './people.ts';
 import type { FeedPage, SuggestedPerson } from './wire/following.ts';
 
 export type { FeedCoin, FeedComment, FeedItem, FeedPage, FeedTrade, SuggestedPerson } from './wire/following.ts';
@@ -23,5 +23,15 @@ export const fetchPeopleFeed = async (tab: FeedTab, cursor: string | null = null
   (await socialCall('GET', `/feed?tab=${tab}${tab === 'top' ? `&window=${window}` : ''}${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}`)) as FeedPage;
 
 export const fetchPeopleToFollow = async (): Promise<readonly SuggestedPerson[]> => ((await socialCall('GET', '/feed/people')) as { people: readonly SuggestedPerson[] }).people;
+
+/**
+ * How many notifications are unread, for the Feed bell's dot: the alert service's own count
+ * (GET /alerts/unread, the same count Notifications' bell rule uses), one number rather than the
+ * whole list. Personal and no-store, through the signed notify call.
+ */
+export const fetchUnread = async (): Promise<number> => {
+  const n = ((await notifyCall('GET', '/alerts/unread')) as { unread?: unknown }).unread;
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : 0;
+};
 
 export const saveTradesPublic = async (on: boolean): Promise<ProfileCard> => (await socialCall('PUT', '/me', { tradesPublic: on })) as ProfileCard;
