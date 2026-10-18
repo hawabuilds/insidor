@@ -291,10 +291,10 @@ export async function fetchNarratives(viewId: string, signal?: AbortSignal): Pro
   return decodeNarratives(await read(`/narratives/${encodeURIComponent(viewId)}`, signal));
 }
 
-/** The Narratives tab's lists, a page at a time (services/read narrative-sorts.ts): `on` keeps the narratives with a post on that site. */
+/** The Narratives tab's lists, a page at a time (services/read narrative-sorts.ts): `on` keeps the narratives with a post on that site, `noCoin` those whose card says "No coin yet". */
 export type NarrativeListSort = 'new' | 'trending' | 'today' | 'week' | 'viewed';
-export async function fetchAllNarratives(viewId: string, sort: NarrativeListSort, offset: number, on: 'x' | 'tiktok' | null = null, signal?: AbortSignal): Promise<NarrativesPage> {
-  return decodeNarrativesPage(await read(`/narratives/${encodeURIComponent(viewId)}/all?sort=${sort}&offset=${offset}${on === null ? '' : `&on=${on}`}`, signal));
+export async function fetchAllNarratives(viewId: string, sort: NarrativeListSort, offset: number, on: 'x' | 'tiktok' | null = null, noCoin = false, signal?: AbortSignal): Promise<NarrativesPage> {
+  return decodeNarrativesPage(await read(`/narratives/${encodeURIComponent(viewId)}/all?sort=${sort}&offset=${offset}${on === null ? '' : `&on=${on}`}${noCoin ? '&coin=none' : ''}`, signal));
 }
 
 /** A narrative's page, or null when it has none (a 404): a starred id with no page is left out, never an error. */

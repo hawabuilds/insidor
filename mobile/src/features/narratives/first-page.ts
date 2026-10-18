@@ -9,6 +9,6 @@
 import { BOARD_VIEW, fetchAllNarratives, type NarrativeListSort } from '../../shared/api/index.ts';
 
 /** The first page this phone last read for a list, kept to show while it is read again. */
-export const firstPageKey = (sort: NarrativeListSort, on: 'x' | 'tiktok' | null): string => `narratives:${BOARD_VIEW}:${sort}:${on ?? 'all'}`;
+export const firstPageKey = (sort: NarrativeListSort, on: 'x' | 'tiktok' | null, noCoin = false): string => `narratives:${BOARD_VIEW}:${sort}:${on ?? 'all'}${noCoin ? ':no-coin' : ''}`;
 
-export const readFirstPage = (sort: NarrativeListSort, on: 'x' | 'tiktok' | null) => (signal: AbortSignal) => fetchAllNarratives(BOARD_VIEW, sort, 0, on, signal);
+export const readFirstPage = (sort: NarrativeListSort, on: 'x' | 'tiktok' | null, noCoin = false) => (signal: AbortSignal) => fetchAllNarratives(BOARD_VIEW, sort, 0, on, noCoin, signal);

@@ -2,7 +2,7 @@
  * NARRATIVES — viral posts grouped by the story they are about, sorted exactly as For You's posts
  * are (the owner, 2026-10-18): the header; the sort chips New, Trending and Most viewed in For You's
  * order and style (features/feed feed-sort.ts SORTS, feed.module.css); under them the All / X /
- * TikTok pills, plain words, and on Most viewed its Today / Week / All at the right end of that row,
+ * TikTok pills, plain words, with "No coin yet" beside them for creators (it combines with the site), and on Most viewed its Today / Week / All at the right end of that row,
  * as For You's. The choice is remembered on the phone (narrative-order.ts). One card per real
  * narrative; a card opens the narrative's page.
  *
@@ -47,7 +47,7 @@ import feedStyles from '../feed/feed.module.css';
 import { LIVE_FEED } from '../feed/live-feed.ts';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
-import { SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, type Choice } from './narrative-order.ts';
+import { NO_COIN_PILL, SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, type Choice } from './narrative-order.ts';
 import { WindowList } from '../../shared/ui/WindowList.tsx';
 import { useIsOwner } from '../owner/hooks.ts';
 import { NarrativeHideBar, NotANarrativeStrip, useHiddenNarratives } from '../owner/OwnerNarrative.tsx';
@@ -82,7 +82,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const [buying, setBuying] = useState<CoinFace | null>(null);
   const [note, setNote] = useState<SheetNote | null>(null);
   const now = useNow();
-  const list = useList(listOf(choice), choice.site === 'all' ? null : choice.site);
+  const list = useList(listOf(choice), choice.site === 'all' ? null : choice.site, choice.noCoin);
   /* The owner's "Not a narrative" (features/owner/OwnerNarrative.tsx): drawn only for the owner, and a card it hid leaves at once. */
   const owner = useIsOwner();
   const { hidden } = useHiddenNarratives();
@@ -114,6 +114,9 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
               {p.label}
             </button>
           ))}
+          <button type="button" className={`${feedStyles['quickPill']} ${choice.noCoin ? feedStyles['quickOn'] : ''}`} aria-pressed={choice.noCoin} onClick={() => setChoice({ ...choice, noCoin: !choice.noCoin })}>
+            {NO_COIN_PILL}
+          </button>
         </div>
         {choice.sort === 'most_viewed' ? (
           <div className={feedStyles['windows']} role="group" aria-label="Window">
@@ -130,7 +133,7 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
 
       {list.state === 'loading' && rows === null ? <p className={styles['empty']}>Loading.</p> : null}
       {list.state === 'failed' && rows === null ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
-      {rows !== null && rows.length === 0 ? <p className={styles['empty']}>{choice.sort === 'trending' ? NO_RISERS : 'No narratives yet.'}</p> : null}
+      {rows !== null && rows.length === 0 ? <p className={styles['empty']}>{choice.noCoin ? 'No narratives here with no coin yet.' : choice.sort === 'trending' ? NO_RISERS : 'No narratives yet.'}</p> : null}
       <div className={styles['cards']}>
         {/* Only the cards near the screen are drawn (shared/ui/WindowList.tsx), so a list scrolled
             through many pages stays smooth; the gap between cards is each card's own top space,
@@ -170,15 +173,15 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
  */
 type Got = { key: string; rows: readonly Story[]; next: number | null; pages: number; provenance: NarrativesPage['provenance'] };
 
-function keptFirst(key: string, sort: NarrativeListSort, on: 'x' | 'tiktok' | null): Got | null {
-  const k = kept<NarrativesPage>(firstPageKey(sort, on));
+function keptFirst(key: string, sort: NarrativeListSort, on: 'x' | 'tiktok' | null, noCoin: boolean): Got | null {
+  const k = kept<NarrativesPage>(firstPageKey(sort, on, noCoin));
   return k === undefined ? null : { key, rows: realNarratives(k.value.stories), next: k.value.next, pages: 1, provenance: k.value.provenance };
 }
 
-function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null): { readonly rows: readonly Story[] | null; readonly next: number | null; readonly provenance: NarrativesPage['provenance'] | null; readonly state: 'loading' | 'ready' | 'failed'; readonly more: () => void } {
-  const key = `${sort}:${on ?? 'all'}`;
+function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null, noCoin: boolean): { readonly rows: readonly Story[] | null; readonly next: number | null; readonly provenance: NarrativesPage['provenance'] | null; readonly state: 'loading' | 'ready' | 'failed'; readonly more: () => void } {
+  const key = `${sort}:${on ?? 'all'}:${noCoin ? 'no-coin' : 'any'}`;
   /* The list as this phone last read it, at once; the first page is read again under it. */
-  const [got, setGot] = useState<Got | null>(() => keptFirst(key, sort, on));
+  const [got, setGot] = useState<Got | null>(() => keptFirst(key, sort, on, noCoin));
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>(() => (got === null ? 'loading' : 'ready'));
   const asking = useRef<string | null>(null);
   const current = useRef(key);
@@ -189,7 +192,7 @@ function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null): { readonly
     asking.current = ask;
     if (!quiet) setState('loading');
     /* The first page goes through the kept reads, so a read ahead (shared/prefetch.ts) is shared, and the answer is kept for next time. */
-    (offset === 0 ? fresh(firstPageKey(sort, on), readFirstPage(sort, on), true) : fetchAllNarratives(BOARD_VIEW, sort, offset, on)).then(
+    (offset === 0 ? fresh(firstPageKey(sort, on, noCoin), readFirstPage(sort, on, noCoin), true) : fetchAllNarratives(BOARD_VIEW, sort, offset, on, noCoin)).then(
       (page) => {
         asking.current = null;
         if (current.current !== key) return;
@@ -212,11 +215,11 @@ function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null): { readonly
     );
   };
   useEffect(() => {
-    const was = keptFirst(key, sort, on);
+    const was = keptFirst(key, sort, on, noCoin);
     setGot(was);
     if (was !== null) setState('ready');
     load(0, [], 0, was !== null, was !== null);
-    // `load` is a fresh closure every render; the sort and site are what decide a fresh list.
+    // `load` is a fresh closure every render; the sort, site and coin pill (all in `key`) decide a fresh list.
   }, [key]);
   const mine = got !== null && got.key === key ? got : null;
   const firstOnly = mine !== null && mine.pages === 1;
