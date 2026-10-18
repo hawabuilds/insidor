@@ -14,8 +14,13 @@
  * host claimed, and the file must be under the cap; anything else is refused with the reason and
  * nothing is written. An SVG is refused on purpose: it can carry script, and this bucket is public.
  *
- * What breaks if changed carelessly: the path. The app builds the same path (mobile
- * shared/ui/CoinLogo.tsx); renaming one side without the other turns every logo into a letter.
+ * Two sizes since 2026-10-18 (services/project/src/logo-sizes.ts): the 256-pixel copy at
+ * `coin-logos/<address>`, the path every existing reference already loads, and the 64-pixel copy
+ * at `coin-logos/64/<address>` for the lists. "64" can never be an address (those are 32 to 44
+ * characters), so the removal tool's path patterns cannot mistake one for the other.
+ *
+ * What breaks if changed carelessly: the paths. The app builds the same paths (mobile
+ * shared/coin-logo.ts); renaming one side without the other turns every logo into a letter.
  */
 
 import { VendorUnavailable } from '@insidor/vendor-kit';
@@ -24,6 +29,10 @@ const VENDOR = 'supabase-storage';
 const BUCKET = 'launch-metadata';
 /** The folder in the bucket; the app's VITE_COIN_LOGO_BASE ends in it. */
 export const COIN_LOGO_FOLDER = 'coin-logos';
+/** The small copies' folder inside it. */
+export const COIN_LOGO_SMALL_FOLDER = '64';
+/** Which copy: `full` at the original path, `small` in the 64 folder. */
+export type LogoCopy = 'full' | 'small';
 
 export class LogoRefused extends Error {}
 
@@ -85,12 +94,18 @@ export function coinLogoStore(config: LogoStoreConfig) {
 
   return {
     download,
-    /** Store a coin's picture at its address, replacing any earlier copy. */
-    async put(address: string, picture: { readonly bytes: Uint8Array; readonly type: string }): Promise<void> {
+    /** Where our own full copy of a coin's logo is served: the mirror reads it back to resize it. */
+    ownCopyUrl(address: string): string {
+      return `${base}/storage/v1/object/public/${BUCKET}/${COIN_LOGO_FOLDER}/${address}`;
+    },
+    /** Store one copy of a coin's picture at its address, replacing any earlier one. */
+    async put(address: string, picture: { readonly bytes: Uint8Array; readonly type: string }, copy: LogoCopy = 'full'): Promise<void> {
       if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) throw new LogoRefused('not an address');
+      if (sniffPicture(picture.bytes) !== picture.type) throw new LogoRefused('not the picture it says it is');
+      const path = copy === 'small' ? `${COIN_LOGO_FOLDER}/${COIN_LOGO_SMALL_FOLDER}/${address}` : `${COIN_LOGO_FOLDER}/${address}`;
       let response: Response;
       try {
-        response = await config.fetch(`${base}/storage/v1/object/${BUCKET}/${COIN_LOGO_FOLDER}/${address}`, {
+        response = await config.fetch(`${base}/storage/v1/object/${BUCKET}/${path}`, {
           method: 'POST',
           headers: { ...headers, 'content-type': picture.type, 'x-upsert': 'true', 'cache-control': 'max-age=604800' },
           body: new Blob([Buffer.from(picture.bytes)], { type: picture.type }),
