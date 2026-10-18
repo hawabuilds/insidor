@@ -64,6 +64,9 @@ const ALLOWED_SPECIFIERS = [
      the one place the vendor's SDK may be imported (test 5). Named without the vendor's name,
      so the fragment ban in test 4 still covers every file here. */
   '@insidor/wallet-embedded',
+  /* The same package's port alone, with no vendor SDK under it (store.ts is pure): the phone app's
+     entry imports it so the vendor's code can load after the first paint (mobile/src/main.tsx). */
+  '@insidor/wallet-embedded/store.ts',
   /* The coin chart, Trador's: a canvas drawing library with no network and no keys, added so
      the token page pans, zooms and scrubs like Trador's does. Nothing in it builds, signs or
      sends, and the fragment ban in test 4 still applies to it. */

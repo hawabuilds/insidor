@@ -67,6 +67,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BOARD_VIEW, fetchBoard, fetchRising, fetchRisingSorted, fetchStoryIfAny, type PostSpeeds, type RisingFeed, type RisingPost, type RisingSorted, type Story } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { useScreenActive } from '../../shared/screen-active.ts';
+import { firstScreenDrawn } from '../../shared/preload.ts';
 import { Card as NarrativeCard } from '../narratives/Narratives.tsx';
 import { realNarratives, watchLine } from '../narratives/narrative-order.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
@@ -273,6 +274,11 @@ export function Feed({
   const posts = listLoad.state === 'ready' && listPosts !== null ? applyPostFilters(withoutHidden(listPosts, hiddenNow, (p) => p.id), filters, now) : null;
   useSavedCalls('coin_match', posts === null ? [] : posts.rows.map((p) => p.id), owner);
   const liveOn = live.rows !== null && !sortedOn;
+  /* The first fresh answer is on screen: background code may load now (shared/preload.ts). */
+  const answered = listLoad.state === 'failed' || (listLoad.state === 'ready' && listLoad.stale !== true);
+  useEffect(() => {
+    if (answered) firstScreenDrawn();
+  }, [answered]);
   const post = (p: RisingPost) => (
     <PostRow
       key={p.id}
