@@ -24,7 +24,7 @@ import { parseLink as parseLinkOf, postTimeFromId as postTimeOf } from './post-t
 
 import { billedUnits, CAPABILITIES, LOOKUP, lookupBilledUnits, PRICES, SEARCH, SOURCE, VENDOR } from './capabilities.ts';
 import type { XClient } from './client.ts';
-import { searchPage } from './discover.ts';
+import { searchPage, toSearchQuery } from './discover.ts';
 import { chunk, observeBatch } from './observe.ts';
 import { toAuthor, toItem } from './to-item.ts';
 import { estimateResponses, readResponses } from './responses.ts';
@@ -48,6 +48,9 @@ export function xPlatform(deps: XAdapterDeps): PlatformAdapter {
 
     async discover(query: DiscoveryQuery, _budget: Budget): Promise<Metered<Discovered>> {
       const at = deps.now();
+      /* Rendered once before the meter, so a query this source refuses (an OR of languages, a
+         missing floor) throws without a call and without a charge on the ledger. */
+      toSearchQuery(query);
       const result = await metered(
         deps.meter,
         prices,

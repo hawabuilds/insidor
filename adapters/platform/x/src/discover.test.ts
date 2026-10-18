@@ -61,11 +61,13 @@ test('a keyword and an account render into this vendor\'s own operators', () => 
 });
 
 test('a keyword ask with a filter carries the catch-all floor and languages after its phrase', () => {
-  const filter = { minApproval: 500, mediaOnly: false, langs: ['en', 'ja'], excludeRebroadcasts: true };
+  const filter = { minApproval: 500, mediaOnly: false, langs: ['ja'], excludeRebroadcasts: true };
   assert.equal(
     toSearchQuery(query({ term: 'tesla roadster', filter, sinceMs: 1_800_000_000_000 })),
-    '"tesla roadster" min_faves:500 (lang:en OR lang:ja) -filter:retweets since_time:1800000000',
+    '"tesla roadster" min_faves:500 lang:ja -filter:retweets since_time:1800000000',
   );
+  /* Two languages are two searches, the caller's to ask: an OR group is refused here too. */
+  assert.throws(() => toSearchQuery(query({ term: 'tesla roadster', filter: { ...filter, langs: ['en', 'ja'] } })), NotImplemented);
   /* An account ask never takes one, and a broken floor is refused, not defaulted. */
   assert.equal(toSearchQuery(query({ mode: 'account', term: 'someone', filter })), 'from:someone');
   assert.throws(() => toSearchQuery(query({ term: 'roadster', filter: { ...filter, minApproval: 0 } })), NotImplemented);
