@@ -143,7 +143,7 @@ export type { VelocityRank } from './track/velocity.ts';
  * For You's Trending and Most viewed: one rule for the read service that orders the lists and the
  * runner that keeps their top posts read.
  */
-export { gainIn as sortGainIn, runsOf as sortRunsOf, sortOrder, sortPlace, trendFloor, viewedPlace } from './rank/post-sorts.ts';
+export { gainIn as sortGainIn, runsOf as sortRunsOf, sortOrder, sortPlace, riserPlace, riserSpeeds, trendFloor, trendingList, viewedPlace } from './rank/post-sorts.ts';
 export type { GainRun, PostSortBy, SortGroup, SortPlace, SortReading } from './rank/post-sorts.ts';
 
 /**

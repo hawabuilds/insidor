@@ -25,6 +25,12 @@
  *               below every post over it, so a post going from 3 to 30 views a minute cannot top a
  *               list on its tenfold. No trend (one reading, or one long gap across both halves that
  *               would make the two rates equal by construction): below those, by views gained.
+ *   Trending now (the owner's third design, 2026-10-18; `riserPlace`, `trendingList`, Policy.rising
+ *               .forYouSorts.risers): speed now = rate over the last 30 minutes, before = rate over the
+ *               hour before (30 to 90 minutes ago), each needing readings that measure its span (see
+ *               the policy). A riser: now >= the floor, now >= minRatio x before, fresh; key = now /
+ *               before (a post that gained nothing before is faster than any ratio). Under `fillBelow`
+ *               risers, the 1h rule's picks over its floor fill the list to `fillTo`.
  *   Most viewed over a span (the app's Today and This week, the owner 2026-10-18; `viewedPlace`):
  *               on the list when it was POSTED inside the span (first seen, when the posted time is
  *               unknown), key = its total views at its newest reading, the number the card shows.
@@ -125,6 +131,66 @@ export function sortPlace(id: string, readings: readonly SortReading[], postedMs
   if (speed === null || before === null) return { ...base, key: gained / scale, group: 'no_trend', speed: null, before: null };
   if (speed < trendFloor(windowMs, policy)) return { ...base, key: speed, group: 'under_floor', speed, before };
   return { ...base, key: before > 0 ? speed / before : Infinity, group: 'over_floor', speed, before };
+}
+
+/**
+ * A post's two speeds for Trending now, scaled, when its readings measure both spans; null when they
+ * do not (see Policy.rising.forYouSorts.risers). Each speed is over the part of its span that lies
+ * between readings, and speed now never runs past the last reading.
+ */
+export function riserSpeeds(readings: readonly SortReading[], nowMs: number, policy: Policy, scale: number = 1): { readonly now: number; readonly before: number; readonly last: number } | null {
+  const r = policy.rising.forYouSorts.risers;
+  const { runs, first, last, times } = runsOf(readings);
+  if (first === null || last === null) return null;
+  const mark = nowMs - r.nowSpanMs;
+  const start = mark - r.beforeSpanMs;
+  if (!times.some((t) => t > mark && t <= nowMs) || !times.some((t) => t >= start && t < mark)) return null;
+  const across = runs.find((x) => x[0] < mark && x[1] > mark);
+  if (across !== undefined && across[1] - across[0] > r.maxMarkGapMs) return null;
+  const nowRead = Math.min(last, nowMs) - mark;
+  const beforeRead = mark - Math.max(first, start);
+  if (nowRead < r.nowSpanMs * r.minCoverShare || beforeRead < r.beforeSpanMs * r.minCoverShare) return null;
+  const now = gainIn(runs, mark, mark + nowRead) / scale / (nowRead / MS_PER_MINUTE);
+  const before = gainIn(runs, mark - beforeRead, mark) / scale / (beforeRead / MS_PER_MINUTE);
+  return { now, before, last };
+}
+
+/**
+ * One post's place on Trending now as a riser, or null when it is not one: its spans not measured,
+ * under the floor, or under `minRatio` times its speed before. Freshness is the caller's: `fresh`
+ * says it, the read service lists only fresh posts, the runner ranks as of each post's newest reading.
+ */
+export function riserPlace(id: string, readings: readonly SortReading[], postedMs: number | null, nowMs: number, policy: Policy, scale: number = 1): SortPlace | null {
+  const r = policy.rising.forYouSorts.risers;
+  const s = riserSpeeds(readings, nowMs, policy, scale);
+  if (s === null || s.now < r.floorPerMin || s.now < r.minRatio * s.before) return null;
+  const { runs } = runsOf(readings);
+  return {
+    id,
+    gained: gainIn(runs, nowMs - r.nowSpanMs - r.beforeSpanMs, nowMs),
+    key: s.before > 0 ? s.now / s.before : Infinity,
+    group: 'over_floor',
+    fresh: nowMs - s.last < policy.rising.forYouSorts.freshMs,
+    speed: s.now,
+    before: s.before,
+    postedMs,
+    postedKnown: postedMs !== null,
+    lastReadMs: s.last,
+  };
+}
+
+/**
+ * Trending now in order: the risers by their ratio; when fewer than `fillBelow`, then the 1h rule's
+ * picks over its floor (`fill`, already in that rule's order) not already listed, to `fillTo`. Both
+ * lists come in as the caller placed them (fresh only, for the read service).
+ */
+export function trendingList(risers: readonly SortPlace[], fill: readonly SortPlace[], policy: Policy, ignoreFresh = false): readonly SortPlace[] {
+  const r = policy.rising.forYouSorts.risers;
+  const top = sortOrder(risers, risers.length, ignoreFresh);
+  if (top.length >= r.fillBelow) return top;
+  const taken = new Set(top.map((x) => x.id));
+  const more = sortOrder(fill.filter((x) => x.group === 'over_floor' && !taken.has(x.id)), r.fillTo, ignoreFresh);
+  return [...top, ...more].slice(0, Math.max(r.fillTo, top.length));
 }
 
 /**
