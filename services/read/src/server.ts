@@ -27,12 +27,18 @@
  * No `access-control-allow-credentials`: this surface is unauthenticated and sends
  * no cookie, and declaring credentials support would be inviting a future one.
  *
- * ★ TWO EXCEPTIONS TO THE HEADERS ABOVE, BOTH ABOUT BYTES, NOT ABOUT WHAT IS SAID (October 2026):
+ * ★ THREE EXCEPTIONS TO THE HEADERS ABOVE, NONE ABOUT WHAT IS SAID (October 2026):
  *
  *   A reply with an ETag says `private, no-cache` instead of `no-store`: a browser may keep it but
  *     must ask again before every use, and gets a bodiless 304 when nothing changed. `private`
  *     keeps every shared cache out, which is the risk `no-store` was guarding against; `no-cache`
  *     means a kept board is never shown without the server confirming it is the current one.
+ *
+ *   A reply that is the same for everyone who asks (a frame's lists, a sheet, a coin's chart) also
+ *     carries `vercel-cdn-cache-control`, and its browser header becomes `public, max-age=0,
+ *     must-revalidate`: Vercel's edge near the phone may answer it for a few seconds while the
+ *     browser still asks before each use. The list, the lifetimes and why For You's own feed is
+ *     not on it are in edge-cache.ts.
  *
  *   A reply over a kilobyte is compressed (brotli, else gzip, as the caller accepts), and `vary`
  *     names `accept-encoding` beside `origin`. The Narratives list was 1.3 MB raw and the platform
@@ -45,6 +51,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Logger } from './log.ts';
 import { errorText } from './log.ts';
 import { encodingFor, prepare, type Encoding, type Prepared } from './compress.ts';
+import { edgeHeaders } from './edge-cache.ts';
 import type { PreparedAnswers } from './prepared.ts';
 import { handle, type Deps } from './routes.ts';
 import type { BoardStream } from './stream.ts';
@@ -84,7 +91,12 @@ function unchanged(req: IncomingMessage, etag: string | null): boolean {
 
 /** Writes a prepared reply: a 304 when the caller holds it, else the bytes in the encoding it accepts. */
 function send(req: IncomingMessage, res: ServerResponse, p: Prepared, encoding: Encoding, base: Record<string, string>): void {
-  const kept = p.etag === null ? {} : { etag: p.etag, 'cache-control': REVALIDATE };
+  /* Same for everyone who asks: Vercel's edge may keep it for a few seconds (edge-cache.ts). */
+  const edge = edgeHeaders(req.method ?? 'GET', req.url ?? '/', p.status, p.body, {
+    authorization: req.headers.authorization !== undefined,
+    cookie: req.headers.cookie !== undefined,
+  });
+  const kept = p.etag === null ? {} : { etag: p.etag, 'cache-control': REVALIDATE, ...edge };
   if (p.status === 200 && unchanged(req, p.etag)) {
     res.writeHead(304, { ...base, ...kept });
     res.end();
