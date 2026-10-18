@@ -53,6 +53,13 @@
  * leaves out anything that would argue with the owner, the gate's test, the shill rule or the
  * held kinds (see the function). Tragedy is not a held kind, so a coined tragedy is taught.
  *
+ * ★ AND THE OWNER'S SOFT YES, LAST (Policy.learning.seenKept, the owner 2026-10-18: "anything I
+ * leave on For You without tapping Not a meme counts as good ... softer yes labels than a gold or
+ * missed post I sent you"). `keptYes` picks posts that were on his screen for two seconds or opened
+ * with no "Not a meme" in 24 hours and no call of his (store owner-seen.ts). They take only the room
+ * his own calls and missed posts leave — after the coined posts by default (`afterCoined`) — never
+ * one he called, and are never tested.
+ *
  * ★ THE OWNER'S FIXED TEST SET IS NEVER TAUGHT, AND THE OWNER'S GATE DECIDES (the owner,
  * 2026-10-17). An id on `alwaysTest` (owner-split.json `test`) is on the test side whatever its hash
  * or the teach list says, and is never in the block from any source; `neverTeach` does the same for
@@ -90,10 +97,16 @@ export interface Teach {
   readonly alwaysTest?: readonly string[];
   readonly neverTeach?: readonly string[];
   readonly coinedYes?: readonly OwnerCall[];
+  /** The owner's soft yes (`keptYes`): in the room left after his calls; after the coined posts unless `keptBeforeCoined`. */
+  readonly keptYes?: readonly OwnerCall[];
+  readonly keptBeforeCoined?: boolean;
 }
 
-/** `coined`: not the owner's call — a post several coins were launched for (`coinedYes`). */
-export type CallSource = 'tap' | 'missed' | 'labels' | 'coined';
+/**
+ * `coined`: not the owner's call — a post several coins were launched for (`coinedYes`).
+ * `kept`: the owner's soft yes — on his screen, no "Not a meme" in 24 hours (`keptYes`).
+ */
+export type CallSource = 'tap' | 'missed' | 'labels' | 'coined' | 'kept';
 
 /** One post with the owner's call on it. `at` is when the call (or, failing that, the post) was made. */
 export interface OwnerCall {
@@ -127,12 +140,12 @@ export interface Block {
   /** The owner's taps, counted: in the block, or in the test. Every tap is one or the other. */
   readonly taps: { readonly taught: number; readonly tested: number };
   /** What it learned from, counted in the block. */
-  readonly used: { readonly taps: number; readonly missed: number; readonly labels: number; readonly names: number; readonly coined: number };
+  readonly used: { readonly taps: number; readonly missed: number; readonly labels: number; readonly names: number; readonly coined: number; readonly kept: number };
   /** The owner's own calls that could be taught, and how many are: coined posts never take their room. */
   readonly owner: { readonly yesPool: number; readonly yesTaught: number; readonly noPool: number; readonly noTaught: number };
 }
 
-const SOURCE_RANK: Readonly<Record<CallSource, number>> = { tap: 3, missed: 2, labels: 1, coined: 0 };
+const SOURCE_RANK: Readonly<Record<CallSource, number>> = { tap: 3, missed: 2, labels: 1, coined: 0, kept: 0 };
 const EXCERPT = 140;
 const excerpt = (t: string): string => t.replace(/https:\/\/t\.co\/\S+/g, '').replace(/\s+/g, ' ').trim().slice(0, EXCERPT);
 const newestFirst = (a: { at: number | null; itemId: string }, b: { at: number | null; itemId: string }): number =>
@@ -169,8 +182,14 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
   const noTake = Math.min(noPool.length, room - yesTake);
   const yes = yesPool.slice(0, yesTake);
   const no = noPool.slice(0, noTake);
-  /* Coined posts (the caller capped and filtered them) in whatever room is left; never one the owner called. */
-  const coined = (teach.coinedYes ?? []).filter((c) => !called.has(c.itemId) && teachable(c)).slice(0, Math.max(0, maxExamples - yes.length - no.length));
+  /* Coined posts and the owner's soft yes (the caller capped and filtered both) in whatever room is
+     left, in the policy's order; never one the owner called, never one post twice. */
+  const left = (taken: number) => Math.max(0, maxExamples - yes.length - no.length - taken);
+  const fill = (xs: readonly OwnerCall[] | undefined, taken: number, skip: ReadonlySet<string>) => (xs ?? []).filter((c) => !called.has(c.itemId) && !skip.has(c.itemId) && teachable(c)).slice(0, left(taken));
+  const keptFirst = teach.keptBeforeCoined === true;
+  const keptA = keptFirst ? fill(teach.keptYes, 0, new Set()) : [];
+  const coined = fill(teach.coinedYes, keptA.length, new Set(keptA.map((c) => c.itemId)));
+  const soft = keptFirst ? keptA : fill(teach.keptYes, coined.length, new Set(coined.map((c) => c.itemId)));
   const nameCalls = [...names].sort(newestFirst).slice(0, Math.floor(maxExamples / 2));
 
   const line = (p: OwnerCall) => `  "${excerpt(p.text)}"${p.imageUri === null ? '' : ' [picture]'} — ${p.why}`;
@@ -186,12 +205,13 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
     ...yes.map(line),
     '',
     ...(coined.length === 0 ? [] : ['', 'YES — not the owner\'s calls: posts several people coined, ten minutes or more after they were posted, that the judge had answered no. News and tragedies people coin are yes:', ...coined.map(line)]),
+    ...(soft.length === 0 ? [] : ['', 'YES, LESS SURE — posts the owner looked at on the feed and left there, without saying they were not a meme:', ...soft.map(line)]),
     '',
     'NO — nothing to coin, though it may look busy:',
     ...no.map(line),
     ...(nameCalls.length === 0 ? [] : ['', 'NAMES — the owner\'s calls on names suggested for posts; name the way the owner does:', ...nameCalls.map(nameLine)]),
   ];
-  const inBlock = [...yes, ...coined, ...no];
+  const inBlock = [...yes, ...coined, ...soft, ...no];
   const taught = new Set(inBlock.map((p) => p.itemId));
   return {
     text: lines.join('\n'),
@@ -208,6 +228,7 @@ export function buildBlock(calls: readonly OwnerCall[], names: readonly NameCall
       labels: inBlock.filter((p) => p.from === 'labels').length,
       names: nameCalls.length,
       coined: coined.length,
+      kept: soft.length,
     },
     owner: { yesPool: yesPool.length, yesTaught: yes.length, noPool: noPool.length, noTaught: no.length },
   };
@@ -290,6 +311,31 @@ export function coinedYes(posts: readonly CoinedPost[], p: Policy, exclude: Read
       itemId: c.itemId, text: c.text, imageUri: c.imageUri, label: 'meme' as const, at: c.postedAt, from: 'coined' as const,
       why: `${c.coins} coins launched for it, the first ${Math.round((c.firstLateAt - c.postedAt) / MS_PER_MIN)} minutes after it was posted`,
     }));
+}
+
+/* ── the owner's soft yes, taught last ─────────────────────────────────────────────────────────── */
+
+/** A post the owner saw and kept (store owner-seen.ts `keptIds`), with its words. */
+export interface KeptPost {
+  readonly itemId: string;
+  readonly text: string;
+  readonly imageUri: string | null;
+  readonly firstSeenAt: number;
+}
+
+/**
+ * Which kept posts the block may teach as "yes" (Policy.learning.seenKept), newest sight first, at
+ * most `maxPerBlock`. Never one in `exclude` (the owner's calls and every post the run tests — a
+ * taught post graded is its own answer key) and never one with no words to show the judge.
+ */
+export function keptYes(posts: readonly KeptPost[], p: Policy, exclude: ReadonlySet<string>): readonly OwnerCall[] {
+  const K = p.learning.seenKept;
+  if (!K.teach) return [];
+  return posts
+    .filter((k) => !exclude.has(k.itemId) && k.text.trim() !== '')
+    .sort((a, b) => b.firstSeenAt - a.firstSeenAt || (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0))
+    .slice(0, K.maxPerBlock)
+    .map((k) => ({ itemId: k.itemId, text: k.text, imageUri: k.imageUri, label: 'meme' as const, at: k.firstSeenAt, from: 'kept' as const, why: 'the owner had it on his screen and kept it on the feed' }));
 }
 
 /* ── whether a graded post reaches the feed ─────────────────────────────────────────────────────── */

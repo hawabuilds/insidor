@@ -101,3 +101,28 @@ export async function saveCoinLabel(coin: string, post: PostRef): Promise<SavedC
   const reply = (await socialCall('POST', '/owner/coin-label', { coin, ...post })) as { saved?: unknown };
   return savedCallOf(reply.saved);
 }
+
+/** Where a post was on the owner's screen: For You, a narrative page's posts, or its opened post sheet. */
+export type SeenSurface = 'fyp' | 'narrative' | 'sheet';
+
+/** One post the owner had on screen (for the app's two seconds) or opened, with when. */
+export interface SeenPost {
+  readonly itemId: string;
+  readonly surface: SeenSurface;
+  readonly onScreenAt?: number;
+  readonly openedAt?: number;
+}
+
+/**
+ * What was on the owner's screen (POST /owner/seen): saved for the owner only, never shown. `gone`
+ * is a server without the route yet (404) or a sign-in that is not the owner's, so the app stops
+ * sending; `failed` is worth a retry. `keepalive` for the batch sent as the page is hidden.
+ */
+export async function sendSeen(posts: readonly SeenPost[], keepalive = false): Promise<'ok' | 'gone' | 'failed'> {
+  try {
+    await socialCall('POST', '/owner/seen', { posts }, keepalive);
+    return 'ok';
+  } catch (e) {
+    return e instanceof PeopleError && (e.status === 404 || e.status === 403) ? 'gone' : 'failed';
+  }
+}

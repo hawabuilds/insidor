@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import type { SeenRow } from '../../store/src/index.ts';
 import { finalViews, rightTally, scorecard, type CoverRow, type FypRow, type RightRow } from './scorecard.ts';
 
 const H = 3_600_000;
@@ -47,4 +48,12 @@ test('right coin: biggest at +1 h wins; an unmeasured rival is not zero; ours un
   ];
   assert.deepEqual(rightTally(rows), { coins: 5, alone: 1, biggest: 1, beaten: 2, cantTell: 1 });
   assert.deepEqual(rightTally(rows, (x) => x.namesPost), { coins: 5, alone: 4, biggest: 1, beaten: 0, cantTell: 0 });
+});
+
+test('★ seen and kept: only posts the owner saw count, his "Not a meme" against, waiting out of both sides', () => {
+  const c = scorecard('t', [post({ seen: 'kept' }), post({ seen: 'kept' }), post({ seen: 'meme' }), post({ seen: 'not', label: 'not' }), post({ seen: 'waiting' }), post({ seen: null })], [], [], []);
+  assert.deepEqual(c.memeable.seen, { kept: 2, meme: 1, not: 1, waiting: 1 });
+  const seen = (outcome: SeenRow['outcome'], notInWindow = false): SeenRow => ({ itemId: 'x:1', firstSeenAtMs: 0, call: null, listed: false, onScreen: true, opened: false, notInWindow, outcome });
+  const d = scorecard('t', [], [], [], [], undefined, [seen('kept'), seen('kept'), seen('not', true), seen('not'), seen('waiting')]);
+  assert.deepEqual(d.screen, { seen: 5, kept: 2, not: 2, notInWindow: 1, meme: 0, waiting: 1 });
 });

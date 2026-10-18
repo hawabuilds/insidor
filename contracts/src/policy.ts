@@ -2931,6 +2931,28 @@ export interface LearningPolicy {
      */
     readonly animalObjectWords: readonly string[];
   };
+  /**
+   * ★ "SEEN AND KEPT", THE OWNER'S SOFT YES (the owner, 2026-10-18: "anything I leave on For You
+   * without tapping Not a meme counts as good ... these count as softer yes labels than a gold or
+   * missed post I sent you ... my explicit labels win if they disagree"). A post the app saw on the
+   * owner's screen for two seconds, or that he opened (internal.owner_seen, 0098), with no "Not a
+   * meme" `keepWindowMs` after the first sight, and no explicit call of his (store owner-seen.ts).
+   *
+   * Read from the posts first seen in the last `lookbackMs`. The judge's block teaches the newest
+   * `maxPerBlock` of them as yes in the room the owner's own calls and missed posts leave — never
+   * displacing one — and after the coined posts when `afterCoined` (the default: a kept post is one
+   * the judge already passed, so it confirms where a coined "no" corrects), before them otherwise.
+   * They are never tested. The coin model's fit counts each as a yes with sample weight `fitWeight`
+   * (an explicit label or a coined post weighs 1), and never in its test or validation numbers.
+   */
+  readonly seenKept: {
+    readonly keepWindowMs: number;
+    readonly lookbackMs: number;
+    readonly teach: boolean;
+    readonly maxPerBlock: number;
+    readonly afterCoined: boolean;
+    readonly fitWeight: number;
+  };
   /** Missed-post links the owner may paste at once. */
   readonly maxMissedPerPaste: number;
   /**
@@ -4714,6 +4736,17 @@ const POLICY_V1: Policy = {
         'dolphin', 'octopus', 'crab', 'bee', 'porcupine', 'squirrel', 'koala', 'giraffe', 'elephant', 'zebra', 'hedgehog', 'bat',
         'robot', 'toy', 'plush', 'plushie', 'doll', 'statue', 'figurine', 'car', 'truck', 'shoe', 'hat', 'rock', 'banana', 'potato',
       ],
+    },
+    /* The owner's rule, 2026-10-18: two seconds on screen or opened, no "Not a meme" within 24 hours.
+       Twenty of the 120 examples at most, after the coined posts; half an explicit label's weight in
+       the coin model's fit. Free: our own rows. */
+    seenKept: {
+      keepWindowMs: 86_400_000, // 24 hours
+      lookbackMs: 1_209_600_000, // 14 days, the coin model's own window
+      teach: true,
+      maxPerBlock: 20,
+      afterCoined: true,
+      fitWeight: 0.5,
     },
     maxMissedPerPaste: 10,
     scoreHeldOutShare: 0.3,

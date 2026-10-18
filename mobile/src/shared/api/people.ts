@@ -56,16 +56,16 @@ function checkKeys(raw: unknown, path = '$'): void {
   }
 }
 
-async function call(service: 'social' | 'notify', method: string, path: string, body?: unknown): Promise<unknown> {
+async function call(service: 'social' | 'notify', method: string, path: string, body?: unknown, keepalive = false): Promise<unknown> {
   const base = service === 'social' ? SOCIAL : NOTIFY;
-  const response = await peopleRequest(`${base}${path}`, method, tokenSource(), body);
+  const response = await peopleRequest(`${base}${path}`, method, tokenSource(), body, keepalive);
   const parsed = response.json;
   if (!response.ok) throw new PeopleError(response.status, typeof (parsed as { error?: unknown }).error === 'string' ? (parsed as { error: string }).error : 'That did not work. Try again.');
   checkKeys(parsed);
   return parsed;
 }
 
-const social = (method: string, path: string, body?: unknown) => call('social', method, path, body);
+const social = (method: string, path: string, body?: unknown, keepalive = false) => call('social', method, path, body, keepalive);
 const notify = (method: string, path: string, body?: unknown) => call('notify', method, path, body);
 /** The social service, signed and key-checked, for the owner's calls (shared/api/owner.ts). */
 export const socialCall = social;

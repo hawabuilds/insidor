@@ -13,6 +13,10 @@
  * rows (a few in a hundred, and sampled negatives) does not set the intercept; the probability is
  * a ranking with a threshold chosen on held-out time, not a calibrated chance.
  *
+ * ★ A ROW MAY WEIGH LESS THAN ONE (`w`, the owner 2026-10-18: his "seen and kept" posts are softer
+ * yes labels than an explicit one). The class weights are taken over the summed row weights, so a
+ * half-weight yes moves the intercept half as much as a full one.
+ *
  * ★ THE TEST IS TIME AND THE OWNER'S HALF. Rows are split by decision time: the fit sees only the
  * older ones, the l2 and the threshold are chosen on the newest slice of those, and the table is
  * read on posts newer than every one it was taught. The owner's held-out missed posts are never
@@ -40,6 +44,8 @@ export interface FitRow {
   /** The standardised named part, then the vector part (zeros when the post has none). */
   readonly x: Float64Array;
   readonly y: 0 | 1;
+  /** The row's own weight; absent is 1. */
+  readonly w?: number;
 }
 
 /** Mean and spread of each named feature over the training rows; a constant feature gets spread 0 (never scored). */
@@ -78,12 +84,15 @@ export interface LogisticFit {
  * the last bit. The intercept is not penalised.
  */
 export function fitLogistic(rows: readonly FitRow[], l2: number): LogisticFit {
-  const n = rows.length;
   const dim = rows[0]?.x.length ?? 0;
   const k = dim + 1;
-  const pos = rows.filter((r) => r.y === 1).length;
-  const neg = n - pos;
-  const cw = (y: number): number => (pos === 0 || neg === 0 ? 1 : y === 1 ? n / (2 * pos) : n / (2 * neg));
+  /* Every class weighs half the summed row weight: with all rows at 1 this is n / (2 · class count). */
+  let pos = 0;
+  let neg = 0;
+  for (const r of rows) if (r.y === 1) pos += r.w ?? 1;
+  else neg += r.w ?? 1;
+  const total = pos + neg;
+  const cw = (y: number): number => (pos === 0 || neg === 0 ? 1 : y === 1 ? total / (2 * pos) : total / (2 * neg));
   const beta = new Float64Array(k);
   for (let step = 0; step < NEWTON_MAX_STEPS; step++) {
     const grad = new Float64Array(k);
@@ -107,7 +116,7 @@ export function fitLogistic(rows: readonly FitRow[], l2: number): LogisticFit {
         }
       }
       const p = sigmoid(z);
-      const w = cw(r.y);
+      const w = cw(r.y) * (r.w ?? 1);
       const g = w * (r.y - p);
       const h = w * p * (1 - p);
       for (let ai = 0; ai < m; ai++) {

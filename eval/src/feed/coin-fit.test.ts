@@ -57,3 +57,16 @@ test('the table: extras an hour, coined caught alone and combined, and the junk 
   assert.equal(chooseThreshold(posts, [0.1, 0.8, 0.99], 2, 0.03, 0.5), 0.99, 'one an hour is over a cap of 0.5');
   assert.equal(chooseThreshold(posts, [0.1, 0.8], 2, 0.03, 5), 0.8, 'at 0.1 the junk rises');
 });
+
+test('★ a row\'s weight: all ones is the unweighted fit, a zero-weight row is no row, a half-weight yes pulls less than a full one', () => {
+  const row = (v: number, y: 0 | 1, w?: number): FitRow => ({ x: Float64Array.from([v]), y, ...(w === undefined ? {} : { w }) });
+  const base = [row(-1, 0), row(-0.5, 0), row(0, 0), row(0.5, 1), row(1, 1), row(0.2, 0)];
+  const plain = fitLogistic(base, 1);
+  assert.deepEqual(fitLogistic(base.map((r) => ({ ...r, w: 1 })), 1), plain);
+  const withZero = fitLogistic([...base, row(-2, 1, 0)], 1);
+  assert.ok(Math.abs(withZero.intercept - plain.intercept) < 1e-9 && Math.abs((withZero.weights[0] ?? 0) - (plain.weights[0] ?? 0)) < 1e-9);
+  const half = fitLogistic([...base, row(-0.8, 1, 0.5)], 1);
+  const full = fitLogistic([...base, row(-0.8, 1, 1)], 1);
+  const at = (f: typeof plain) => scoreRow([-0.8], f);
+  assert.ok(at(plain) < at(half) && at(half) < at(full), `${at(plain)} < ${at(half)} < ${at(full)}`);
+});

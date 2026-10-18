@@ -84,8 +84,9 @@ const NO_COIN = { known: false, pending: 'not_minted' } as const;
 /**
  * `extra`: a strip under the coin line that the card does not decide (the owner's controls).
  * `watch`: the Watch star, last on the coin line's row, drawn by the caller (shared/ui/WatchStar.tsx).
+ * `cardRef`: the card's element, for a caller that times what is on screen (the owner's, features/owner/useSeen.ts).
  */
-export function PostRow({ post, now, handlers, extra = null, watch = null, gained = null }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode; watch?: ReactNode; gained?: { readonly views: number; readonly window: string } | null }) {
+export function PostRow({ post, now, handlers, extra = null, watch = null, gained = null, cardRef }: { post: RisingPost; now: number; handlers: PostHandlers; extra?: ReactNode; watch?: ReactNode; gained?: { readonly views: number; readonly window: string } | null; cardRef?: ((el: Element | null) => void) | undefined }) {
   /* The coin line's cap is the shared one (shared/coin-cap.ts): live while a fresh price is held,
      so the card says what the sheet and token page say. The card itself never polls. */
   const own = post.coins.kind === 'one' || post.coins.kind === 'matched' ? post.coins.coin : null;
@@ -96,7 +97,7 @@ export function PostRow({ post, now, handlers, extra = null, watch = null, gaine
   const words = useShownWords(post);
 
   return (
-    <article className={styles['card']} onClick={handlers.open}>
+    <article className={styles['card']} onClick={handlers.open} ref={cardRef}>
       <div className={styles['body']}>
         {/* A post with no picture or video has no thumbnail box: its words take the card's width. */}
         {post.thumbUrl !== null || post.thumbIsVideo ? (
