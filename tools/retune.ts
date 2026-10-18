@@ -6,8 +6,8 @@
  * gate holds (Policy.learning). The live runner reads the latest APPLIED block within minutes
  * (services/runner/src/learned-examples.ts).
  *
- *   due [--detach]       what the `project` schedule runs every ten minutes: if the latest 08:00 or
- *                        20:00 London slot (Policy.learning.retuneAt/timeZone) has no run yet, runs
+ *   due [--detach]       what the `project` schedule runs every ten minutes: if the latest 00:00 or
+ *                        12:00 London slot (Policy.learning.retuneAt/timeZone) has no run yet, runs
  *                        it. `--detach` starts that run and returns at once (see below).
  *   run [--dry] [--force] [--baseline] [--slot=<iso>] [--floor=<gold>,<junk>,<missed>]
  *                        one run now (by hand: the slot is this minute). `--dry` tests and records
@@ -853,7 +853,7 @@ if (command === 'status') {
     process.exit(1);
   }
   const slotArg = arg('slot');
-  /* `due` claims a slot `startAheadMs` before it, so the run is finished by 08:00 and 20:00, not started then. */
+  /* `due` claims a slot `startAheadMs` before it, so the run is finished by 00:00 and 12:00, not started then. */
   const slot = command === 'due' ? new Date(latestSlot(Date.now() + L.startAheadMs, L.retuneAt, L.timeZone)) : new Date(slotArg ?? new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString());
   if (command === 'due') {
     /* ★ EVERY TEN MINUTES, FREE: new coined TikToks into the training set, so the learned list, the
@@ -867,6 +867,9 @@ if (command === 'status') {
       }
     });
     if (await withRepo((repo) => repo.hasRun(slot))) process.exit(0);
+    /* A slot more than an hour past is skipped, not caught up: when the slots move, the newest slot
+       before the change never ran, and running it then would put a re-tune at an hour nobody chose. */
+    if (Date.now() > slot.getTime() + 3_600_000) process.exit(0);
   }
   if (flag('--detach')) {
     const args = ['run', '--yes', `--slot=${slot.toISOString()}`, ...(flag('--dry') ? ['--dry'] : []), ...(flag('--force') ? ['--force'] : []), ...(arg('floor') === null ? [] : [`--floor=${arg('floor') ?? ''}`])];

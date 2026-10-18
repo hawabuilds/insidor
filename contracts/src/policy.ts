@@ -3776,7 +3776,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v109',
+  version: 'policy.v110',
 
   admit: {
     maxAgeMin: 240,
@@ -4110,7 +4110,7 @@ const POLICY_V1: Policy = {
       maxExtrasPerHour: 6,
       maxPerPass: 400,
       lookbackMs: 21_600_000, // six hours, For You's own age bar
-      refitAt: ['20:00'],
+      refitAt: ['00:00'],
       text: { maxQuotedWords: 6, minCapsLetters: 3, shortWords: 8 },
     },
     open: { batchSize: 5, parallel: 4, reask: 1, reaskWithinMs: 60_000, timeoutMs: 35_000, maxAttempts: 2, answerTokensPerPost: 150, primaryBatchSize: 10 },
@@ -4738,7 +4738,7 @@ const POLICY_V1: Policy = {
   },
 
   learning: {
-    retuneAt: ['08:00', '20:00'],
+    retuneAt: ['00:00', '12:00'],
     timeZone: 'Europe/London',
     startAheadMs: 1_200_000, // twenty minutes
     minGoldPass: 0.65,
