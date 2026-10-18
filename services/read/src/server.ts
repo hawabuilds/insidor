@@ -36,7 +36,8 @@
  *
  *   A reply over a kilobyte is compressed (brotli, else gzip, as the caller accepts), and `vary`
  *     names `accept-encoding` beside `origin`. The Narratives list was 1.3 MB raw and the platform
- *     in front of this process does not compress.
+ *     in front of this process does not compress. The kept replies (prepared.ts) are compressed
+ *     once when built; any other reply is compressed as it is sent.
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -44,6 +45,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Logger } from './log.ts';
 import { errorText } from './log.ts';
 import { encodingFor, prepare, type Encoding, type Prepared } from './compress.ts';
+import type { PreparedAnswers } from './prepared.ts';
 import { handle, type Deps } from './routes.ts';
 import type { BoardStream } from './stream.ts';
 
@@ -63,6 +65,8 @@ export interface ServerDeps extends Deps {
    * should say rather than opening a socket nothing will ever write to.
    */
   readonly stream?: BoardStream;
+  /** The replies kept ready in memory (prepared.ts). Absent: every request is built as it arrives. */
+  readonly prepared?: PreparedAnswers;
 }
 
 /** What a browser is told about a reply it may keep: keep it for yourself, and ask before each use. */
@@ -173,9 +177,10 @@ export function createReadServer(deps: ServerDeps): Server {
        the process on those and a single malformed request would take the service
        down. */
     const encoding = encodingFor(header(req.headers['accept-encoding']));
-    /* Built now, compressed only into the one encoding this caller accepts. */
-    handle(req.method ?? 'GET', req.url ?? '/', deps, clientOf(req))
-      .then((reply) => prepare(reply, encoding === null ? [] : [encoding]))
+    /* A kept reply is one memory read (prepared.ts); anything else is built now, compressed only
+       into the one encoding this caller accepts. */
+    const kept = req.method === 'GET' ? (deps.prepared?.serve(req.url ?? '/') ?? null) : null;
+    (kept ?? handle(req.method ?? 'GET', req.url ?? '/', deps, clientOf(req)).then((reply) => prepare(reply, encoding === null ? [] : [encoding])))
       .then((p) => send(req, res, p, encoding, routed))
       .catch((e: unknown) => {
         deps.log.error('response failed', { url: req.url, err: errorText(e) });
