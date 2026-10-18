@@ -1,7 +1,8 @@
 /**
- * The alert service, assembled. The routes always answer. With NOTIFY=on, six loops run:
- * deliver what is queued (seconds), check the watched posts (seconds, watch.ts), check prices and
- * curves (minutes), check the pipeline, the owner's outage alarm (each minute, alarm.ts) and his
+ * The alert service, assembled. The routes always answer. With NOTIFY=on, these loops run:
+ * deliver what is queued and push the held groups of follows and likes (seconds), check the
+ * watched posts (seconds, watch.ts), check prices, curves and created coins' first buyers
+ * (minutes), check the pipeline, what is blowing up on For You and the starred narratives, the owner's outage alarm (each minute, alarm.ts) and his
  * Not-a-meme alarm (every five minutes, junk.ts) — each pass independent, a failed pass logged
  * and tried again next time.
  *
@@ -21,7 +22,10 @@ import { curveOf } from '@insidor/venue-solana-pumpfun/curve-facts.ts';
 import { ALARM_LOOP_MS, alarmMemory, checkAlarms, JUDGE_VENDOR_OF_ROLE } from './alarm.ts';
 import { checkJunk, JUNK_LOOP_MS, junkMemory } from './junk.ts';
 import { loadNotifyConfig } from './config.ts';
-import { deliverQueued } from './deliver.ts';
+import { checkBlowingUp } from './blowing-up.ts';
+import { checkCreatorBuyers, type CreatorState } from './creator-buyers.ts';
+import { deliverGroups, deliverQueued } from './deliver.ts';
+import { checkStarred } from './starred.ts';
 import { pacer, serve } from './http.ts';
 import { checkMarket, type MarketPorts } from './market.ts';
 import type { Answer } from './devices.ts';
@@ -101,6 +105,11 @@ function every(ms: number, name: string, work: () => Promise<unknown>): void {
 
 if (cfg.notifyOn) {
   every(P.deliverLoopMs, 'delivered', async () => (await deliverQueued(deps)).length);
+  /* New followers and likes, pushed as one group (deliver.ts `deliverGroups`). */
+  every(P.deliverLoopMs, 'grouped pushes', async () => (await deliverGroups(deps)).length);
+  /* The notification design (2026-10-18): For You posts and new narratives blowing up, starred narratives' speed and big accounts. */
+  every(P.pipelineLoopMs, 'blowing up alerts', () => checkBlowingUp(db, DEFAULT_POLICY, Date.now()));
+  every(P.pipelineLoopMs, 'starred narrative alerts', () => checkStarred(db, P, Date.now()));
   /* The owner's outage alarm (alarm.ts): For You stalled, no judge answering, the backup failing too, the database unreadable —
      watched from here because this service is neither the runner nor the projector. */
   const alarm = alarmMemory();
@@ -136,6 +145,10 @@ if (cfg.notifyOn) {
       curve: (mint) => curveOf(rpcUrl, mint),
     };
     every(P.marketLoopMs, 'market alerts', () => checkMarket(db, ports, P));
+    /* A coin you made getting its first buyers (creator-buyers.ts): its newest transactions, parsed. */
+    const creatorState: CreatorState = { next: 0 };
+    const recentTxs = async (address: string, limit: number) => reader.parse(await reader.signatures(address, limit));
+    every(P.marketLoopMs, 'creator alerts', () => checkCreatorBuyers(db, { recentTxs, quotes }, P, creatorState));
   } else {
     log('info', 'market alerts off: no HELIUS_API_KEY for the chain');
   }
