@@ -25,7 +25,9 @@
  *              coins its cards list — core `narrativeCoin`. The cards are the feeds' last frame
  *              (public.rising_row, the scroll's public.feed_post) and their "See N coins" lists
  *              (public.same_name_coin), so the page and its posts' cards never disagree by more
- *              than one frame
+ *              than one frame. A post with no card (never on a feed's frame, as most are) reads
+ *              its own name search instead (`cardCoins`), so "still checking" means no post of
+ *              the narrative has been searched yet, never that its posts were off the feeds
  *   the views  core `narrativeReach` over the posts' readings, per post and then added up: the
  *              total, the last hour's gain, the views gained every five minutes over the day (the
  *              page's line), the same in half-hours from its first reading (the page's "All") and
@@ -67,6 +69,8 @@ import { PgNarrativeRepo, type Db, type NarrativePostRow, type StoredNarrative }
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
 import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
+import { loadCoinCalls } from './owner-calls.ts';
+import { loadPostLookups } from './rising.ts';
 import { checkedCoinOf, loadTrendCoins, trendWindows, type TrendSubject } from './narrative-trend.ts';
 import { permalinkFor } from './permalinks.ts';
 import { projectBoard, projectCoin, projectStory, type CoinCandidate, type MemberFacts, type ProjectOptions, type ReachReading, type StoryFacts } from './project.ts';
@@ -167,7 +171,7 @@ export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPol
 }
 
 /** Each post's coin as its own card shows it, and the list behind a card's "See N coins". */
-async function cardCoins(db: Db, itemIds: readonly string[]): Promise<ReadonlyMap<string, NarrativeMemberCoin>> {
+async function cardCoins(db: Db, itemIds: readonly string[], nowMs: number): Promise<ReadonlyMap<string, NarrativeMemberCoin>> {
   if (itemIds.length === 0) return new Map();
   const [has] = await db.query<{ scroll: boolean }>(`select to_regclass('public.feed_post') is not null as scroll`);
   const scroll = has?.scroll === true
@@ -201,6 +205,31 @@ async function cardCoins(db: Db, itemIds: readonly string[]): Promise<ReadonlyMa
       proven: matched && !confirmed ? address : null,
       listed: kind === 'pending' || kind === 'unchecked' || kind === undefined ? null : listed.get(c.item_id) ?? [],
     });
+  }
+  /* ★ A POST WITH NO CARD, OR A CARD STILL WAITING, READS ITS OWN SEARCH (2026-10-18). Most of a
+     narrative's posts were never on a feed's last frame, so they had no card, and a narrative none
+     of whose posts has one said "still checking for a coin" for good (373 of 411 pages on 18 Oct).
+     The runner now searches every listed post (work/coin-lookup.ts); here such a post's coin is
+     what its finished search (internal.coin_lookup) and the owner's calls on it say, by the cards'
+     own rule: the owner's coin on it is confirmed, "No coin is from this" or a search that found
+     none is searched-and-empty, the coins the search kept (minus those called wrong) are its list.
+     Never proven: proving takes the weighing the feed does for its cards, and an unweighed coin is
+     only ever a fitting one. Not searched yet stays null — the one honest "still checking". */
+  const waiting = itemIds.filter((id) => {
+    const card = out.get(id);
+    return card === undefined || (card.listed === null && card.confirmed === null && card.proven === null);
+  });
+  if (waiting.length === 0) return out;
+  /* One after the other: this runs on the projector's one transaction. */
+  const searched = await loadPostLookups(db, waiting, nowMs);
+  const calls = await loadCoinCalls(db, waiting);
+  for (const id of waiting) {
+    const call = calls.get(id);
+    const lookup = searched.get(id);
+    const own = call?.own ?? null;
+    const list = call?.none === true ? [] : lookup !== undefined && 'coins' in lookup ? lookup.coins.filter((a) => call?.wrong.has(a) !== true) : null;
+    if (own === null && list === null) continue;
+    out.set(id, { itemId: id, confirmed: call?.none === true ? null : own, proven: null, listed: list });
   }
   return out;
 }
@@ -283,7 +312,7 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   const olderIds = [...new Set(offBoard.flatMap((n) => n.members))].filter((m) => !reach.has(m));
   const olderFrom = Math.min(...olderIds.map((m) => toMs(rowOf.get(m)?.posted_at ?? null) ?? toMs(rowOf.get(m)?.first_seen_at ?? null) ?? options.nowMs));
   if (olderIds.length > 0) for (const [k, v] of await loadReach(db, olderIds, Math.min(olderFrom, options.nowMs - policy.narrative.windowMs) as Millis)) reach.set(k, v);
-  const cards = await cardCoins(db, ids);
+  const cards = await cardCoins(db, ids, options.nowMs);
   const calls = foldNarrativeCalls(await new PgNarrativeRepo(db).calls());
 
   const coinOf = new Map<string, NarrativeCoin>();
