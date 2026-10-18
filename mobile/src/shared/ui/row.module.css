@@ -124,7 +124,7 @@
 }
 
 /* Trending's speed line under the byline, the card's full width: green when it is gaining faster
-   than the half hour before, as every gain in the app; the quieter text colour otherwise. */
+   than the hour before, as every gain in the app; the quieter text colour otherwise. */
 .gained,
 .speed {
   grid-area: sortline;

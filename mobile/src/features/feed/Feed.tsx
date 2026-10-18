@@ -18,7 +18,7 @@
  * ★ FOR YOU'S SORT CHIPS (feed-sort.ts, the owner's design of 2026-10-18): New, the default, is the
  * feed as it always was; Trending (right now, no window) and Most viewed (Today or This week) are the
  * read service's lists of For You's own posts in its order (`GET /rising/fyp/sorted`,
- * services/read/src/post-sorts.ts). A Trending card says its views a minute now and before; a Most
+ * services/read/src/post-sorts.ts). A Trending card (only posts speeding up) says its views a minute and how many times faster than the hour before; a Most
  * viewed card's big views number is what the list is ordered by. The choice is remembered on this
  * phone. The live slide-ins are New's; a sorted list comes 20 at a time as it is scrolled
  * (useSortedPages.ts), its first page read again every two minutes and on pull to refresh.
@@ -64,7 +64,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BOARD_VIEW, fetchBoard, fetchRising, fetchRisingSorted, fetchStoryIfAny, type RisingFeed, type RisingPost, type RisingSorted, type Story } from '../../shared/api/index.ts';
+import { BOARD_VIEW, fetchBoard, fetchRising, fetchRisingSorted, fetchStoryIfAny, type PostSpeeds, type RisingFeed, type RisingPost, type RisingSorted, type Story } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
 import { Card as NarrativeCard } from '../narratives/Narratives.tsx';
 import { realNarratives, watchLine } from '../narratives/narrative-order.ts';
@@ -83,8 +83,11 @@ import { PostRow } from '../../shared/ui/PostRow.tsx';
 import { OlderCoinsLine } from './OlderCoins.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
 import { FilterPanel } from './FilterPanel.tsx';
-import { SORTS, SPANS, loadChoice, saveChoice, speedLine, windowOf, type SortChoice } from './feed-sort.ts';
+import { NO_RISERS, SORTS, SPANS, gainedLine, loadChoice, saveChoice, speedLine, windowOf, type SortChoice } from './feed-sort.ts';
 import { useSortedPages } from './useSortedPages.ts';
+
+const speedLineOf = (s: PostSpeeds | undefined) => (s === undefined ? null : speedLine(s));
+const gainedLineOf = (g: number | undefined, w: string) => (w === 'all' ? null : g === undefined ? null : gainedLine(g, w === 'week' ? 'week' : 'today'));
 import { NO_FILTERS, POSTED_WINDOWS, VIEW_STEPS, applyPostFilters, isFiltered, type FeedFilters } from './feed-filters.ts';
 import { LIVE_FEED } from './live-feed.ts';
 import { LiveCard } from './LiveCard.tsx';
@@ -281,7 +284,7 @@ export function Feed({
         </>
       }
       watch={<WatchStar postId={p.id} />}
-      sortLine={ranked !== null && ranked.by === 'trending' && ranked.speeds.has(p.id) ? speedLine(ranked.speeds.get(p.id) ?? null) : null}
+      sortLine={ranked === null ? null : ranked.by === 'trending' ? speedLineOf(ranked.speeds.get(p.id)) : gainedLineOf(ranked.gained.get(p.id), ranked.window)}
       handlers={{
         open: () => setSheet({ id: p.id, start: 'post' }),
         create: () => onCreatePost(p),
@@ -418,13 +421,10 @@ export function Feed({
                 {ranked !== null && ranked.posts.length === 0 ? (
                   <p className={styles['empty']}>
                     {ranked.by === 'trending'
-                      ? 'No For You post was read in the last hour, so nothing can be shown as trending yet.'
-                      : `No For You post was posted ${ranked.window === 'week' ? 'this week' : 'today'} and read since, so there is nothing to show yet.`}
-                  </p>
-                ) : null}
-                {ranked !== null && ranked.by === 'most_viewed' && ranked.undated > 0 ? (
-                  <p className={styles['hidden']}>
-                    {ranked.undated === 1 ? '1 of these posts has' : `${ranked.undated} of these posts have`} no posted time and {ranked.undated === 1 ? 'is' : 'are'} counted from when we first saw {ranked.undated === 1 ? 'it' : 'them'}.
+                      ? NO_RISERS
+                      : ranked.window === 'all'
+                        ? 'No For You post has been read yet.'
+                        : `No For You post was read ${ranked.window === 'week' ? 'this week' : 'today'}, so there is nothing to show yet.`}
                   </p>
                 ) : null}
                 {!sortedOn && (feedPosts?.length ?? 0) === 0 && paging.phase === 'done' ? <p className={styles['empty']}>No posts yet.</p> : null}

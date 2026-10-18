@@ -105,14 +105,13 @@ export interface RisingFeed {
 /**
  * For You by Trending now or Most viewed Today / This week (`GET /rising/fyp/sorted`,
  * services/read/src/post-sorts.ts, the owner's design of 2026-10-18): one page of posts in the
- * server's order, and per post the facts the list is about. Trending: its views a minute in the last
- * half hour and the half hour before, real views, or null when it has not been read often enough to
- * say. Most viewed: its total views, the number its card shows. The order's key is never sent.
+ * server's order, and per post the facts the list is about. Trending: its views a minute over the
+ * last 30 minutes and over the hour before them, real views. Most viewed: its total views, the number its card shows. The order's key is never sent.
  */
 export type PostSortBy = 'trending' | 'most_viewed';
-export type PostSortWindow = 'now' | 'today' | 'week';
+export type PostSortWindow = 'now' | 'today' | 'week' | 'all';
 
-/** Views a minute in the last half hour (`now`) and the half hour before (`before`). */
+/** Views a minute over the last 30 minutes (`now`) and over the hour before them (`before`). */
 export interface PostSpeeds {
   readonly now: number;
   readonly before: number;
@@ -122,12 +121,12 @@ export interface RisingSorted {
   readonly by: PostSortBy;
   readonly window: PostSortWindow;
   readonly posts: readonly RisingPost[];
-  /** Trending: per post id, its speeds or null. Every listed post has an entry; empty on Most viewed. */
-  readonly speeds: ReadonlyMap<string, PostSpeeds | null>;
+  /** Trending: per post id, its speeds. Every listed post has them; empty on Most viewed. */
+  readonly speeds: ReadonlyMap<string, PostSpeeds>;
   /** Most viewed: per post id, its total views. Every listed post has one; empty on Trending. */
   readonly views: ReadonlyMap<string, number>;
-  /** Most viewed: how many posts of the whole list have no posted time and are placed by when they were first seen. */
-  readonly undated: number;
+  /** Most viewed Today and This week: per post id, its views gained in the window. Every listed post has one there; empty otherwise. */
+  readonly gained: ReadonlyMap<string, number>;
   /** The next page's cursor, null when this was the last. */
   readonly next: string | null;
 }
