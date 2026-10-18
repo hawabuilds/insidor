@@ -205,6 +205,11 @@ export interface RisingRow {
    * `post-kind…`); null otherwise. Only a held kind holds (core `heldKind`): OTHER holds nothing.
    */
   kind_label?: string | null;
+  /**
+   * Whether our own coin model's stored score (0096) would let this post through: read only while
+   * Policy.judge.coinModel.on, absent otherwise. The score itself is never loaded.
+   */
+  net_add?: boolean | null;
 }
 
 /**
@@ -226,12 +231,15 @@ const toMs = (value: Date | string | null): Millis | null => {
  * role reads `internal`; the score never leaves
  * this function except as the yes or no `postScore` makes of it.
  */
-export async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[] = [], only: readonly string[] | null = null): Promise<readonly RisingRow[]> {
+export async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[] = [], only: readonly string[] | null = null, net = false): Promise<readonly RisingRow[]> {
+  /* ★ The safety net's one bit, joined only while it is on: before 0096 is applied the table does not
+     exist, and with the net off nothing here may depend on it. */
+  const netColumn = net ? `exists (select 1 from internal.coin_model_score cms where cms.item_id = i.item_id and cms.would_add) as net_add` : `null::boolean as net_add`;
   return db.query<RisingRow>(
     `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media,
             a.handle, a.display_name, a.source_author_id,
             j.coinable, j.confidence, j.looked_at, j.proposed_name, j.judge_id,
-            k.kind_label,
+            k.kind_label, ${netColumn},
             pic.similarity as picture_similarity,
             s.story_id,
             oc.verdict as owner_call
@@ -543,7 +551,13 @@ export function barReadings(readings: readonly ReachReading[], policy = DEFAULT_
  * with other accounts' crypto signal, or the signal alone on a kind not held; a shill never), with
  * the owner's call over it. A row with no answer is here only because the owner called it a meme.
  */
-export function postRoute(row: RisingRow, policy = DEFAULT_POLICY, signal: CryptoSignal | null = null): { readonly why: FeedRejectionReason | 'passes'; readonly route: PassRoute | null } {
+/**
+ * How a post passed: core's routes, or `net` — the judge said no and our own coin model's stored
+ * score would let it through (Policy.judge.coinModel.on). A `net` post is For You's only.
+ */
+export type RisingRoute = PassRoute | 'net';
+
+export function postRoute(row: RisingRow, policy = DEFAULT_POLICY, signal: CryptoSignal | null = null): { readonly why: FeedRejectionReason | 'passes'; readonly route: RisingRoute | null } {
   const similarity = row.picture_similarity === null ? null : Number(row.picture_similarity);
   const answer =
     row.coinable === null || row.confidence === null || row.looked_at === null
@@ -556,6 +570,13 @@ export function postRoute(row: RisingRow, policy = DEFAULT_POLICY, signal: Crypt
   if (call === 'not') return { why: withOwnerCall(judge, call) ?? 'owner_not_meme', route: null };
   const route = answer === null ? null : passesWithSignal(answer, policy, similarity, kind, signal);
   if (route !== null) return { why: 'passes', route };
+  /* ★ THE SAFETY NET (the owner, 2026-10-18): the judge said no, our own coin model is sure. Only a
+     plain "no" — never an unsure yes, a held kind or the close-match hold (filed as a kind), a shill,
+     or the owner's Not a meme (returned above) — and every gate after this one still applies: the
+     score bar, the reach bar, the age bar, variety. */
+  if (policy.judge.coinModel.on && row.net_add === true && answer !== null && !answer.coinable && heldKind(kind, policy.judge.heldKinds) === null && signal?.shill !== true) {
+    return { why: 'passes', route: 'net' };
+  }
   /* Not passed: the judge's own reason, or — when the judge passed it and a shill stopped it — not memeable. */
   return { why: judge === undefined ? 'not_scored' : judge === 'passes' ? 'not_memeable' : judge, route: null };
 }
@@ -637,20 +658,23 @@ export async function buildRising(
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
   const heldBy = new Map<string, HeldKind>();
-  const candidates = await loadCandidates(db, sinceMs, membership?.refresh ?? [], only);
+  const candidates = await loadCandidates(db, sinceMs, membership?.refresh ?? [], only, policy.judge.coinModel.on);
   const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
   const atOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
   /* Whether each loaded post passes now; a member that no longer does is still projected for its
      card (feed-members.ts), and is never in the frame. Only posts inside the window are given a
      reason: a member refreshed from outside it did not leave the frame for a reason. */
   const passing = new Set<string>();
+  /* Passed only through the safety net: For You's, never Popular's. */
+  const netOnly = new Set<string>();
   const rows = candidates.filter((row) => {
-    const { why } = postRoute(row, policyForAnswer(row.judge_id, answers), cryptoSignalFor(row, crypto.get(row.item_id), policy));
+    const { why, route } = postRoute(row, policyForAnswer(row.judge_id, answers), cryptoSignalFor(row, crypto.get(row.item_id), policy));
     const inWindow = atOf(row) >= sinceMs;
     if (why !== 'passes' && inWindow) whyNot.set(row.item_id, why);
     const held = postHeldKind(row, policy);
     if (why !== 'passes' && held !== null && inWindow) heldBy.set(row.item_id, held);
     if (why === 'passes' && inWindow) passing.add(row.item_id);
+    if (route === 'net' && inWindow) netOnly.add(row.item_id);
     return passing.has(row.item_id) || membership?.all.has(row.item_id) === true;
   });
   /* A refreshed member's readings start before the window: read from its own time. */
@@ -734,7 +758,7 @@ export async function buildRising(
   /* ★ No one topic fills For You (variety.ts): only who is on it changes, never the order. */
   const fyp = policy.rising.varietyOn ? await varied(db, fypAll, rows, policy) : fypAll;
   const views = (p: WireRisingPost): number | null => p.reach.v;
-  const popular = posts.filter((p) => p.passes && p.popular).sort((a, b) => {
+  const popular = posts.filter((p) => p.passes && p.popular && !netOnly.has(p.post.id)).sort((a, b) => {
     const va = views(a.post);
     const vb = views(b.post);
     if (va === null || vb === null) return va === null ? (vb === null ? b.at - a.at : 1) : -1;

@@ -308,14 +308,16 @@ export async function kindCatchUp(
   if (deps.kindJudge === undefined || deps.kindJudge === null || deps.mode !== 'live' || find === undefined || cap <= 0) return 0;
   /* The lowest "yes" the boost could still lift, for the database; core makes the exact call. */
   const floor = Math.min(...Object.values(deps.policy.qualify.minJudgeConfidence)) - deps.policy.rising.boostBarMargin;
+  /* With the safety net on (Policy.judge.coinModel.on), a "no" it would let through is screened by kind too. */
+  const net = deps.policy.judge.coinModel.on;
   let found: Awaited<ReturnType<NonNullable<ScoringDeps['items']['catchAllKindUnasked']>>>;
   try {
-    found = await find(opts.since, cap * PREFETCH_FACTOR, opts.kindLabel, floor);
+    found = await find(opts.since, cap * PREFETCH_FACTOR, opts.kindLabel, floor, net);
   } catch (e) {
     deps.log.warn('posts the kind question missed could not be read; caught up next pass', { err: errorText(e) });
     return 0;
   }
-  const due = found.filter((f) => !opts.justJudged.has(String(f.item.itemId)) && couldPassWithBoost(f.answer, deps.policy)).slice(0, cap);
+  const due = found.filter((f) => !opts.justJudged.has(String(f.item.itemId)) && (couldPassWithBoost(f.answer, deps.policy) || (net && !f.answer.coinable))).slice(0, cap);
   if (due.length === 0) return 0;
   const near: ReadonlyMap<string, PostPrecedents> =
     deps.precedents === undefined || deps.precedents === null ? new Map() : await deps.precedents.refresh().then(() => deps.precedents!.forPosts(due.map((f) => f.item)));
