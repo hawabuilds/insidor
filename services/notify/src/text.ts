@@ -309,6 +309,26 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
         if (back) return { title: 'The database answers again', body: long === null ? 'The alert service read the database again.' : `The alert service read the database again after ${long}.` };
         return { title: 'Insidor cannot read its database', body: `Every read by the alert service has failed${long === null ? '' : ` for ${long}`}. The feed, the judge and alerts all need it.` };
       }
+      if (f['what'] === 'lang') {
+        /* The runner's language-drop alarm (services/runner language-alarm.ts): one source's finds in
+           one language (or every language, `language` null) over the last few hours, against the same
+           hours the day before. Said as counts, which are what we saw. */
+        const source = s(f['source'], 'A source');
+        const language = typeof f['language'] === 'string' && f['language'] !== '' ? f['language'] : null;
+        const finds = n(f['finds']);
+        const base = n(f['baselineFinds']);
+        const hours = n(f['windowHours']);
+        const since = typeof f['sinceAt'] === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(f['sinceAt']) ? `${f['sinceAt'].slice(11, 16)} UTC` : null;
+        const what = language === null ? `${source} finds` : `${source} ${language} finds`;
+        const window = `the last ${hours ?? 'few'} hours`;
+        if (back)
+          return { title: `${what} are back`, body: `${finds === null ? 'Finds are up again' : `${finds} found in ${window}`}${base === null ? '' : `, against ${base} the day before the drop`}${since === null ? '' : ` (down since ${since})`}.` };
+        const fell = finds !== null && base !== null && base > 0 ? ` ${Math.round((100 * (base - finds)) / base)}%` : '';
+        return {
+          title: `${what} down${fell}`,
+          body: `${finds === null ? 'Few' : finds} ${language === null ? '' : `${language} `}posts found by the ${source} searches in ${window}, against ${base ?? 'many more'} in the same hours the day before.${language === null ? ' Every language fell together.' : ''}`,
+        };
+      }
       if (f['what'] === 'junk') {
         /* The owner's Not-a-meme alarm (junk.ts): his own taps per 100 For You posts shown, against the days before. */
         const taps = n(f['taps']);

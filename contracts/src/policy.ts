@@ -2848,6 +2848,51 @@ export interface NotifyPolicy {
   /** Reads and writes one person may make per `windowMs`. */
   readonly perClient: number;
   readonly windowMs: number;
+  readonly languageDrop: LanguageDropPolicy;
+}
+
+/**
+ * ★ THE LANGUAGE-DROP ALARM (the owner, 2026-10-18): the owner is told when one language's finds by
+ * a source's searches fall by more than `dropShare` against the same hours the day before. From
+ * about 23:15 UTC on 16 Oct the text supplier answered an OR of languages with the last one only;
+ * English finds fell from 8,811 a day to 46 and Japanese rose from 0 to 5,335, nothing failed, and
+ * nobody was told for two days. The total barely moved, so only a per-language count says it.
+ *
+ * THE RULE (core notify/language-drop.ts, pure): every `everyMs`, a language's finds in the last
+ * `windowMs` (rolling, not one clock hour: an hour is too few posts to tell a drop from a lull)
+ * against the same `windowMs` `baselineAgoMs` earlier (the same hours of the day, so night is
+ * compared with night). Down when the earlier window had at least `minBaselineFinds` and the last
+ * one has fewer than (1 − `dropShare`) of it; back when the last window reaches `recoverShare` of
+ * the window it dropped from. A language with too small a baseline, or none (newly added), never
+ * goes down: it is too few posts to say. Each drop is said once and its recovery once.
+ *
+ * `lanes`: the search lanes counted, by the source's role (internal.item_found_by.lane; a post is
+ * counted once, at the first of these lanes to find it). The coin-link and repost lanes are not
+ * searches and are left out. `lookbackMs`: how far back each pass replays the rule, so a restart
+ * knows a drop already under way (and its start, which names the alert) without a table;
+ * `announceWithinMs`: only a change this recent is pushed, so a restart, or the replay's own
+ * first steps, never push an old one.
+ *
+ * What breaks if changed carelessly: a `baselineAgoMs` other than a whole day compares night with
+ * day and fires every evening; a `minBaselineFinds` much lower lets a small language's quiet
+ * hours alarm; `announceWithinMs` at or above `lookbackMs` pushes the replay's first step.
+ */
+export interface LanguageDropPolicy {
+  readonly on: boolean;
+  readonly everyMs: number;
+  readonly windowMs: number;
+  readonly baselineAgoMs: number;
+  readonly dropShare: number;
+  readonly recoverShare: number;
+  readonly minBaselineFinds: number;
+  readonly lookbackMs: number;
+  readonly announceWithinMs: number;
+  readonly lanes: {
+    /** The text source's searches. */
+    readonly text: readonly string[];
+    /** The short-video source's searches and lists. */
+    readonly video: readonly string[];
+  };
 }
 
 /**
@@ -4857,6 +4902,32 @@ const POLICY_V1: Policy = {
     pushTtlS: 86_400,
     perClient: 60,
     windowMs: 60_000,
+    /* The owner, 2026-10-18: "if any language's X finds per hour drop by more than 70% ... alert me",
+       a rolling 3 hours against the same 3 hours the day before, at least 30 finds in the baseline.
+       Recovery at half the window it dropped from, so a language hovering near the line is not said
+       down and back each pass.
+       Backtested 14 Oct 00:00 to 18 Oct 10:00 UTC (tools/language-drop-backtest.ts): on the text
+       source nothing fired before the bug; English went down at 00:50 UTC on 17 Oct (Portuguese 00:40,
+       no-text 01:30, media-only at the 23:20 onset and again at 20:30 when Japanese became the one
+       language answered, every language together 01:50), all the same bug; the one push that was
+       not a fault was media-only at 09:50 on 18 Oct, falling back from the day the bug made it the
+       language answered. The short-video source fell in every language at once four times (three on
+       15 Oct, one at 05:40 on 18 Oct): one push each for the whole source, none per language. */
+    languageDrop: {
+      on: true,
+      everyMs: 600_000, // ten minutes
+      windowMs: 10_800_000, // three hours
+      baselineAgoMs: 86_400_000, // the same hours the day before
+      dropShare: 0.7,
+      recoverShare: 0.5,
+      minBaselineFinds: 30,
+      lookbackMs: 172_800_000, // two days
+      announceWithinMs: 3_600_000, // an hour
+      lanes: {
+        text: ['all', 'media', 'slow', 'middle', 'narrative_name', 'quote'],
+        video: ['watch', 'learned_tag', 'trending', 'trend', 'creator'],
+      },
+    },
   },
 
   wallet: {
