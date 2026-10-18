@@ -88,7 +88,62 @@ export async function assetsToRead(
   db: Db,
   chain: string,
   limit: number,
+  hour: PictureHour | null = null,
 ): Promise<readonly AssetRow[]> {
+  const pictured = hour === null ? [] : await picturedAtTheHour(db, chain, hour);
+  const rest = await onScreenThenNewest(db, chain, limit);
+  /* The hour's coins go first among the newest, never ahead of the coins on screen: those are what
+     a card shows. They are at most `hour.limit`, so the bound still holds. */
+  const seen = new Set<string>();
+  const out: AssetRow[] = [];
+  for (const row of [...rest.filter((r) => r.tier === 0), ...pictured, ...rest.filter((r) => r.tier !== 0)]) {
+    if (seen.has(row.address) || out.length >= limit) continue;
+    seen.add(row.address);
+    out.push({ chain: row.chain, address: row.address });
+  }
+  return out;
+}
+
+/** Which pictured coins to read once after their first hour (Policy.coinVectors.untraded). */
+export interface PictureHour {
+  readonly nowMs: number;
+  readonly afterLaunchMs: number;
+  readonly withinMs: number;
+  readonly limit: number;
+}
+
+/**
+ * ★ A PICTURED COIN IS READ ONCE AFTER ITS FIRST HOUR. The owner's rule for coin picture vectors
+ * (tools/archive-coin-vectors.ts) needs to know whether each coin traded in its first hour, and the
+ * newest-first bound above reads a coin only in its first few minutes: on 16 Oct, 7,307 of 11,430
+ * pictured coins had no reading after their hour, so their vectors could not be decided and stayed.
+ * This adds the coins with a picture vector that passed their hour in the last `withinMs` and have
+ * no reading since, oldest hour first, at most `limit` a pass (about 40 at the busiest). A failed
+ * read here is an empty list: the pass reads its usual coins.
+ */
+async function picturedAtTheHour(db: Db, chain: string, hour: PictureHour): Promise<readonly (AssetRow & { tier: number })[]> {
+  try {
+    return await db.query<AssetRow & { tier: number }>(
+      `select a.chain, a.address, 2 as tier
+         from public.asset a
+        where a.chain = $1
+          and a.origin = any($6::text[])
+          and a.minted_at <= $2::timestamptz - make_interval(secs => $3::double precision / 1000)
+          and a.minted_at >= $2::timestamptz - make_interval(secs => ($3::double precision + $4::double precision) / 1000)
+          and exists (select 1 from internal.image_embedding e where e.subject_kind = 'asset' and e.subject_id = a.asset_key)
+          and not exists (select 1 from public.market_reading m
+                           where m.chain = a.chain and m.address = a.address
+                             and m.taken_at >= a.minted_at + make_interval(secs => $3::double precision / 1000))
+        order by a.minted_at asc, a.asset_key asc
+        limit $5`,
+      [chain, new Date(hour.nowMs).toISOString(), hour.afterLaunchMs, hour.withinMs, hour.limit, [...OBSERVED_ASSET_ORIGINS]],
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function onScreenThenNewest(db: Db, chain: string, limit: number): Promise<readonly (AssetRow & { tier: number })[]> {
   /* ★ THE COINS ON SCREEN COME FIRST. The newest-first bound reads about five minutes of
      mints, and a coin on a For You or Popular card is usually older than that — measured on
      2026-10-13, the six coins on the cards ranked 7,864th to 10,603rd newest, so they were
@@ -96,7 +151,7 @@ export async function assetsToRead(
      absence and no Buy. So every coin a projected feed or board names (`coinId`, at any
      depth of its payload) is read first, then the newest fill the rest of the bound. The
      origin allowlist holds on both halves. */
-  return db.query<AssetRow>(
+  return db.query<AssetRow & { tier: number }>(
     `with on_screen as (
        select distinct c #>> '{}' as asset_key
          from (select payload from public.rising_row
@@ -119,7 +174,7 @@ export async function assetsToRead(
         order by first_seen_at desc, asset_key asc
         limit $2
      )
-     select chain, address
+     select chain, address, tier
        from (select * from screen
              union all
              select * from newest where asset_key not in (select asset_key from screen)) picked

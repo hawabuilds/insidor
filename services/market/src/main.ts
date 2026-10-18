@@ -164,6 +164,10 @@ async function main(): Promise<void> {
       asDb(pool),
       String(CHAIN),
       DEFAULT_POLICY.market.maxAssetsPerPass,
+      /* Pictured coins read once after their first hour, for the coin vector rule (db.ts). */
+      DEFAULT_POLICY.coinVectors.untraded.on
+        ? { nowMs: now(), afterLaunchMs: DEFAULT_POLICY.coinVectors.untraded.afterLaunchMs, withinMs: DEFAULT_POLICY.coinVectors.untraded.readWithinMs, limit: DEFAULT_POLICY.coinVectors.untraded.readsPerPass }
+        : null,
     );
     const refs: readonly AssetRef[] = assets.map((row) => ({
       chain: CHAIN,

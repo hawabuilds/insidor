@@ -3724,6 +3724,14 @@ export interface SlimPolicy {
  * same content-addressed picture. No reader compares one coin's vector with another coin's to find
  * an earliest coin; the 30-day walk back (`universe.pictureLookbackMs`) is over POST vectors. So 30
  * days is past every coin reader, and the tool refuses a `keepMs` shorter than the origin windows.
+ *
+ * `untraded`: a coin whose market, read an hour or more after launch, shows no trade — no market at
+ * all, or its launch market cap within `flatWithin` — has its vector deleted (not archived: it is
+ * re-made from the picture for $0.00036 if ever needed) once nothing can read it: its origin check is
+ * settled (not waiting, not due its one recheck, or past `universe.lookbackMs`), it has no origin
+ * post, it is on no screen and no feed post's name search found it. A coin we hold no reading for an
+ * hour after launch is unknown, not untraded, and is kept. The market reader reads each pictured coin
+ * once after its first hour (services/market db.ts) so the hour is known for nearly all of them.
  */
 export interface CoinVectorPolicy {
   /** Vectors embedded longer ago than this go to the bucket, checked, then out of the database. */
@@ -3738,6 +3746,28 @@ export interface CoinVectorPolicy {
   /** How long a DELETE waits for a lock before giving up; the next run retries. */
   readonly lockTimeoutMs: number;
   readonly statementTimeoutMs: number;
+  readonly untraded: {
+    /** While off the job reports what it would delete and deletes nothing. */
+    readonly on: boolean;
+    /** The owner's hour: a reading taken this long after launch decides. */
+    readonly afterLaunchMs: number;
+    /**
+     * A market cap at or after the hour within this fraction of the coin's first reading is "no
+     * trade". A curve's price moves only on a trade; the margin is the dollar's drift against the
+     * chain's own coin over an hour, which a cap in dollars carries with no trade at all.
+     */
+    readonly flatWithin: number;
+    /** Vectors deleted per run at most. */
+    readonly rowsPerRun: number;
+    /**
+     * Coins launched longer ago than this are not looked at again: by then each was decided by an
+     * earlier run (its check settles within `universe.lookbackMs`), and the archive takes the rest.
+     */
+    readonly decideWithinMs: number;
+    /** Pictured coins the market reader reads once after their hour, per pass at most, and how far back it looks. */
+    readonly readsPerPass: number;
+    readonly readWithinMs: number;
+  };
 }
 
 export interface Policy {
@@ -3786,7 +3816,7 @@ export interface Policy {
   readonly labels: LabelPolicy;
   /** Posts that never made For You, slimmed after a week. */
   readonly slim: SlimPolicy;
-  /** Coin picture vectors: 30 days in the database, the rest in the bucket. */
+  /** Coin picture vectors: 30 days in the database, the rest in the bucket; an untraded coin's deleted. */
   readonly coinVectors: CoinVectorPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
@@ -5664,6 +5694,22 @@ const POLICY_V1: Policy = {
     daysPerRun: 3,
     lockTimeoutMs: 2_000,
     statementTimeoutMs: 30_000,
+    /* On: the origin check needs a coin's own vector only until its check settles, which the rule
+       waits for. On 16 Oct, of 11,430 pictured coins, 2,813 were read an hour or more after launch
+       and showed no trade, 1,310 had traded, 7,307 had no reading after their hour — hence the reads. */
+    untraded: {
+      on: true,
+      afterLaunchMs: 3_600_000, // an hour
+      /* 2%: the dollar against the chain's coin rarely moves more in an hour; a 0.1-unit buy on a
+         fresh curve moves its cap by about 0.7%, so a trade that size or smaller reads as none. */
+      flatWithin: 0.02,
+      rowsPerRun: 20_000,
+      /* Fourteen days: twice the origin check's week, so a run missed for days still decides them. */
+      decideWithinMs: 1_209_600_000,
+      /* ~500 pictured coins an hour at the busiest, a market pass every five minutes: ~42 a pass. */
+      readsPerPass: 100,
+      readWithinMs: 21_600_000, // six hours after the hour
+    },
   },
 
   scorers: {

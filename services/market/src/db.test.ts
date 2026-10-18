@@ -111,3 +111,27 @@ test('★ the coins on screen are read before the newest, under the same origin 
   assert.match(sql, /and a\.origin = any\(\$3::text\[\]\)/);
   assert.match(sql, /order by tier, first_seen_at desc, asset_key asc limit \$2$/);
 });
+
+test('a pictured coin past its first hour is read after the coins on screen, before the newest, inside the bound', async () => {
+  const statements: { sql: string; params: readonly unknown[] }[] = [];
+  const db = {
+    query: async <R>(s: string, p?: readonly unknown[]): Promise<R[]> => {
+      statements.push({ sql: s.replace(/\s+/g, ' ').trim(), params: p ?? [] });
+      if (s.includes('internal.image_embedding')) return [{ chain: 'solana', address: 'hour1', tier: 2 }, { chain: 'solana', address: 'new1', tier: 2 }] as R[];
+      return [{ chain: 'solana', address: 'screen1', tier: 0 }, { chain: 'solana', address: 'new1', tier: 1 }, { chain: 'solana', address: 'new2', tier: 1 }] as R[];
+    },
+  } as Db;
+  const rows = await assetsToRead(db, 'solana', 3, { nowMs: Date.UTC(2026, 9, 18), afterLaunchMs: 3_600_000, withinMs: 21_600_000, limit: 100 });
+  assert.deepEqual(rows.map((r) => r.address), ['screen1', 'hour1', 'new1']);
+  const hour = statements.find((s) => s.sql.includes('internal.image_embedding'));
+  assert.ok(hour !== undefined);
+  assert.match(hour.sql, /and a\.origin = any\(\$\d+::text\[\]\)/);
+  assert.equal(hour.params.some((p) => Array.isArray(p) && (p as unknown[]).includes('fixture')), false, '★ a seeded address would be sent to a real market vendor');
+});
+
+test('without the hour, the pass reads exactly what it read before', async () => {
+  let calls = 0;
+  const db = { query: async <R>(): Promise<R[]> => { calls++; return [] as R[]; } } as Db;
+  await assetsToRead(db, 'solana', 300);
+  assert.equal(calls, 1);
+});
