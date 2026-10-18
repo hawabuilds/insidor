@@ -64,8 +64,8 @@ export { climbPerMinute, coinCallFor, detailOf, foldNarrativeCalls, gainedSeries
 export { earlyMatches, earlyShortlist } from './group/narrative-early.ts';
 export type { EarlyInput, EarlyNarrative } from './group/narrative-early.ts';
 /* Narratives are permanent: what a regroup may add, create, merge (the owner's) and remove (group/narrative-keep.ts). */
-export { keepNarratives, narrativeDead, ownerMerges, removedPosts, survivorOf } from './group/narrative-keep.ts';
-export type { KeepInput, KeptPass, NarrativeState } from './group/narrative-keep.ts';
+export { keepNarratives, narrativeDead, ownerMerges, ownerSplits, removedPosts, survivorOf } from './group/narrative-keep.ts';
+export type { KeepInput, KeptPass, NarrativeState, OwnerSplit } from './group/narrative-keep.ts';
 /* The trending order among narratives (group/narrative-trend.ts): order only, never shown. */
 export { trendFacts, trendOrder, trendStanding } from './group/narrative-trend.ts';
 export type { TrendCoin, TrendFacts, TrendInput, TrendPost, TrendStanding } from './group/narrative-trend.ts';

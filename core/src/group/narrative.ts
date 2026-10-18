@@ -157,7 +157,7 @@ export function sharedDetail(a: PostDetail, b: PostDetail, samePicture: boolean)
 
 /* ── the owner's calls ────────────────────────────────────────────────── */
 
-export type NarrativeCallVerdict = 'not_narrative' | 'merge' | 'remove_post' | 'right' | 'wrong' | 'cleared';
+export type NarrativeCallVerdict = 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared';
 
 /** One stored call on a narrative (internal.owner_feedback, subject 'narrative', 0093). */
 export interface NarrativeCallRow {
@@ -165,12 +165,12 @@ export interface NarrativeCallRow {
   readonly atMs: number;
   readonly narrativeId: string;
   readonly verdict: NarrativeCallVerdict;
-  /** merge: the narrative it was merged with; remove_post: the post removed. */
+  /** merge: the narrative it was merged with; remove_post: the post removed; split: the new narrative's id. */
   readonly otherId: string | null;
   readonly coin: string | null;
-  /** The narrative's posts when the call was made, as the server read them. */
+  /** The narrative's posts when the call was made, as the server read them; split: the posts moved out. */
   readonly members: readonly string[];
-  /** merge: the other narrative's posts when the call was made. */
+  /** merge: the other narrative's posts when the call was made; split: the posts that stayed. */
   readonly otherMembers: readonly string[];
 }
 
@@ -222,6 +222,17 @@ export function foldNarrativeCalls(rows: readonly NarrativeCallRow[]): Narrative
         was.add(m);
       }
       removed.set(post, was);
+    } else if (r.verdict === 'split') {
+      /* "Split": the posts moved out and the posts that stayed are two stories, each moved post
+         removed from beside every post that stayed (so a page drops it at once, as remove_post). */
+      for (const post of r.members) {
+        const was = removed.get(post) ?? new Set<string>();
+        for (const m of r.otherMembers) if (m !== post) {
+          apart.add(pairKey(post, m));
+          was.add(m);
+        }
+        removed.set(post, was);
+      }
     } else if (r.verdict === 'merge') {
       /* A later merge undoes any earlier "apart" between the posts it names. */
       for (const a of r.members) for (const b of r.otherMembers) apart.delete(pairKey(a, b));

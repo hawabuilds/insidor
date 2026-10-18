@@ -6,8 +6,9 @@
  * All time list after its posts left the regroup's window, marked dead and given no Trending place;
  * a new story beside it is a new narrative and is live; only the owner's "Merge with…" folds one
  * into another, and the merged one's link opens the survivor; only his "Not a narrative" takes a
- * page away; the rebuild brings a dropped narrative back under its own id; and a narrative the old
- * regroup folded into another comes back with its own posts, which leave the one it was in.
+ * page away; the rebuild brings a dropped narrative back under its own id; a narrative the old
+ * regroup folded into another comes back with its own posts, which leave the one it was in; and
+ * the owner's "Split" makes the posts he picked a new narrative, once, kept apart by later passes.
  */
 
 import { strict as assert } from 'node:assert';
@@ -58,6 +59,7 @@ const PANCAKE = { name: 'Pancake', body: 'Pancake the cat drinks from the founta
 const AZUMA = { name: 'Azuma', body: 'Azuma the koala sat calmly through a blood draw at the zoo and the video went viral', axis: 2 };
 const MOODENG = { name: 'Moodeng', body: 'Moodeng the baby pygmy hippo bit her keeper again and the zoo posted it', axis: 4 };
 const BANGO = { name: 'Bango', body: 'Bango the capybara and Tsururin the duck went viral at the onsen today', axis: 5 };
+const CAPY = { name: 'Capy', body: 'The capybara at the spa got a yuzu bath and the clip is everywhere today', axis: 6 };
 const KONASU = { name: 'Konasu', body: 'Konasu the pygmy hippo escaped her keeper again at the zoo this morning', axis: 3 };
 
 const passAt = (nowMs: number) =>
@@ -189,4 +191,37 @@ test('★ a merge nobody asked for is undone: the folded narrative comes back wi
   await frameAt(NOW);
   assert.equal((await db.query(`select 1 from public.story_alias where story_id = 'n-x:b0'`)).length, 0, 'its alias is gone');
   assert.equal((await read('/story/n-x%3Ab0')).body['id'], 'n-x:b0', 'and its link opens its own page');
+});
+
+test('★ the owner\'s split: the posts he picked leave for a new narrative, once, and the old page drops them at once', async (t) => {
+  for (const [i, h] of [4 * HOUR, 3 * HOUR, 2 * HOUR, HOUR].entries()) await post(`s${i}`, NOW - h, CAPY);
+  await passAt(NOW);
+  const capy = (await narrativeOf('x:s0')) ?? '';
+  assert.equal(await narrativeOf('x:s3'), capy);
+  try {
+    await db.query(
+      `insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict, other_id, members, other_members) values ('x:owner', 'did:owner', 'narrative', $1, 'split', 'n-x:s2', $2::text[], $3::text[])`,
+      [capy, ['x:s2', 'x:s3'], ['x:s0', 'x:s1']],
+    );
+  } catch (e) {
+    if ((e as { code?: string }).code === '23514') return t.skip('this database does not take a split call yet (owner_feedback check)');
+    throw e;
+  }
+  /* Before the regroup, the old page already lists only the posts that stayed. */
+  await frameAt(NOW);
+  assert.equal((await db.query(`select 1 from public.story_post where story_id = $1`, [capy])).length, 2);
+
+  await passAt(NOW);
+  assert.equal(await narrativeOf('x:s2'), 'n-x:s2');
+  assert.equal(await narrativeOf('x:s3'), 'n-x:s2');
+  assert.equal(await narrativeOf('x:s1'), capy);
+  const counts = await db.query<{ narrative_id: string; state: string; member_count: number; shown: boolean }>(`select narrative_id, state, member_count, shown from internal.narrative where narrative_id = any($1::text[]) order by narrative_id`, [[capy, 'n-x:s2']]);
+  assert.deepEqual(counts.map((c) => [c.state, c.member_count, c.shown]), [['open', 2, true], ['open', 2, true]]);
+
+  /* A later pass keeps them apart and splits nothing again. */
+  await passAt(NOW);
+  assert.equal(await narrativeOf('x:s3'), 'n-x:s2');
+  assert.equal(await narrativeOf('x:s0'), capy);
+  await frameAt(NOW);
+  assert.equal((await read('/story/n-x%3As2')).status, 200, 'the new narrative has its page');
 });

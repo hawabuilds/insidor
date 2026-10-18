@@ -21,7 +21,8 @@
  * pass writes nothing, and the board shows no narratives rather than the old stories.
  *
  * ★ PERMANENT SINCE 2026-10-18 (0106): `save` only adds — a narrative's new posts, new narratives,
- * the owner's merges (its posts moved to the narrative he chose) and his removed posts. Nothing is
+ * the owner's merges (its posts moved to the narrative he chose), his splits (the posts he picked
+ * moved to a new narrative) and his removed posts. Nothing is
  * rewritten whole and no narrative is retired because a pass did not see it. A narrative's post
  * count, newest post and oldest post are counted here from its stored posts after each write, so
  * the caller never has to hold every post of a narrative it grew by one.
@@ -180,6 +181,12 @@ export interface NarrativePass {
   readonly retired: readonly { readonly id: string; readonly into: string | null }[];
   /** The owner's "Remove this post": the post leaves that narrative. */
   readonly removed?: readonly { readonly narrativeId: string; readonly itemId: string }[];
+  /**
+   * The owner's "Split": `members` still in `from` move to `into`, which is one of `narratives`
+   * (written there as a new narrative with no rows of its own). One whose posts had all left `from`
+   * is kept as `gone`, so its id stays given out and the split is not tried again.
+   */
+  readonly split?: readonly { readonly from: string; readonly into: string; readonly members: readonly string[] }[];
 }
 
 /** A narrative's state, for the owner's merges and the ids already given out. */
@@ -194,7 +201,7 @@ export interface NarrativeCallRecord {
   readonly id: number;
   readonly atMs: number;
   readonly narrativeId: string;
-  readonly verdict: 'not_narrative' | 'merge' | 'remove_post' | 'right' | 'wrong' | 'cleared';
+  readonly verdict: 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared';
   readonly otherId: string | null;
   readonly coin: string | null;
   readonly members: readonly string[];
@@ -520,6 +527,12 @@ export class PgNarrativeRepo {
           [r.id, r.into],
         );
       }
+      /* The owner's splits, after his merges (a split names where its narrative leads now): the
+         posts he picked that are still in it move to the new narrative the upsert above made. */
+      const splits = pass.split ?? [];
+      for (const r of splits) {
+        await this.#db.query(`update internal.narrative_member set narrative_id = $2 where narrative_id = $1 and item_id = any($3::text[])`, [r.from, r.into, [...r.members]]);
+      }
       const removed = pass.removed ?? [];
       if (removed.length > 0) {
         await this.#db.query(
@@ -529,7 +542,14 @@ export class PgNarrativeRepo {
         );
       }
 
-      await this.#recount([...new Set([...n.map((x) => x.id), ...merges.map((r) => r.into), ...removed.map((r) => r.narrativeId)])]);
+      await this.#recount([...new Set([...n.map((x) => x.id), ...merges.map((r) => r.into), ...splits.map((r) => r.from), ...removed.map((r) => r.narrativeId)])]);
+      if (splits.length > 0) {
+        await this.#db.query(
+          `update internal.narrative n set state = 'gone', shown = false, updated_at = now()
+            where n.narrative_id = any($1::text[]) and not exists (select 1 from internal.narrative_member m where m.narrative_id = n.narrative_id)`,
+          [splits.map((r) => r.into)],
+        );
+      }
       return true;
     } catch (e) {
       if (notMigrated(e)) return false;

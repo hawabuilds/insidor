@@ -10,7 +10,9 @@
  * already in a narrative is pinned to it (core group/narrative.ts `pinned`), so a group can only
  * add new posts to the one narrative it holds or be a new one (core group/narrative-keep.ts); a
  * narrative no group touched is not written at all. Only the owner merges (his "Merge with…"
- * moves its posts to the one he chose) and removes posts, and his "Not a narrative" hides one.
+ * moves its posts to the one he chose), splits (his "Split" moves the posts he picked to a new
+ * narrative, written this pass and titled by step 7 like any new one) and removes posts, and his
+ * "Not a narrative" hides one.
  *
  * One pass, in order:
  *   1. the posts of the last `narrative.windowMs` the judge said yes to, each held to its own
@@ -78,6 +80,7 @@ import {
   narrativeShown,
   narrativeStanding,
   ownerMerges,
+  ownerSplits,
   postPicture,
   removedPosts,
   survivorOf,
@@ -98,6 +101,13 @@ import { errorText, type Logger } from '../log.ts';
 const SHORT_VIDEO_SOURCE = 'tiktok';
 /** Readings a little older than the growth window, so its earliest reading is in hand. */
 const READINGS_SLACK_MS = 600_000;
+
+/** Post → narratives it is never added back to: the owner's removals and his splits together. */
+const outOfEither = (a: ReadonlyMap<string, ReadonlySet<string>>, b: ReadonlyMap<string, ReadonlySet<string>>): ReadonlyMap<string, ReadonlySet<string>> => {
+  const out = new Map<string, Set<string>>([...a].map(([k, v]) => [k, new Set(v)] as const));
+  for (const [k, v] of b) out.set(k, new Set([...(out.get(k) ?? []), ...v]));
+  return out;
+};
 
 export interface NarrativeDeps {
   readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'>;
@@ -355,14 +365,19 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const calls = foldNarrativeCalls(callRows);
     /* ★ WHAT IS ALREADY MADE STAYS MADE: each window post's narrative, the owner's merges and removals. */
     const pinnedNow = await deps.repo.ofPosts(used.map((r) => r.itemId));
-    const callIds = callRows.flatMap((c) => (c.verdict === 'merge' && c.otherId !== null ? [c.narrativeId, c.otherId] : c.verdict === 'remove_post' ? [c.narrativeId] : []));
+    const callIds = callRows.flatMap((c) => ((c.verdict === 'merge' || c.verdict === 'split') && c.otherId !== null ? [c.narrativeId, c.otherId] : c.verdict === 'remove_post' ? [c.narrativeId] : []));
     const states = new Map((await deps.repo.states([...new Set([...callIds, ...pinnedNow.values()])])).map((s) => [s.id, { state: s.state, mergedInto: s.mergedInto }] as const));
     const merges = ownerMerges(callRows, states);
     for (const m of merges) states.set(m.from, { state: 'merged', mergedInto: m.into });
     const lead = new Map(merges.map((m) => [m.from, m.into] as const));
     const pinned = new Map([...pinnedNow].map(([post, id]) => [post, survivorOf(id, states) ?? lead.get(id) ?? id] as const));
-    const removedFrom = removedPosts(callRows, states);
-    const removed = [...removedFrom].flatMap(([itemId, from]) => [...from].map((narrativeId) => ({ narrativeId, itemId })));
+    const ownerRemoved = removedPosts(callRows, states);
+    const removed = [...ownerRemoved].flatMap(([itemId, from]) => [...from].map((narrativeId) => ({ narrativeId, itemId })));
+    /* The owner's splits still to apply: the posts he picked are the new narrative's from this pass
+       on, and never added back to the one they left (only his removals are deleted, below). */
+    const splits = ownerSplits(callRows, states);
+    for (const sp of splits.pending) for (const m of sp.members) if (pinned.get(m) === sp.from) pinned.set(m, sp.into);
+    const removedFrom = outOfEither(ownerRemoved, splits.movedFrom);
 
     const posts: NarrativePost[] = used.map(asNarrativePost);
     const formed = groupNarratives({ posts, pairs, calls, previous: new Map(), single, vectors: postVectors, pinned }, p);
@@ -393,6 +408,14 @@ export function narrativeGrouper(deps: NarrativeDeps) {
       const newest = Math.max(...c.members.map(atOf));
       narratives.push({ id: c.id, members: c.members, added: c.members, anchor: c.members[0] ?? '', newestPostAtMs: Number.isFinite(newest) && newest > 0 ? newest : null, shown, changed: true });
     }
+    /* A split's new narrative: the posts he picked (moved by the write, not inserted) and any new post grouped with them. */
+    for (const sp of splits.pending) {
+      const added = kept.grown.get(sp.into) ?? [];
+      const members = [...sp.members, ...added];
+      const shown = narrativeShown(members.length, members.length === 1 && single.has(members[0] ?? ''), hideOf(sp.into, members), p) === 'shown';
+      const newest = Math.max(0, ...members.map(atOf));
+      narratives.push({ id: sp.into, members, added, anchor: sp.members[0] ?? '', newestPostAtMs: newest > 0 ? newest : null, shown, changed: true });
+    }
 
     const earlyStarted = deps.now();
     const isGood = (r: NarrativePostRow) => standingOf(r) === 'good';
@@ -410,7 +433,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const earlyMs = deps.now() - earlyStarted;
     const withEarly = narratives.map((x) => ({ ...x, early: early.get(x.id) ?? [] }));
     return {
-      pass: { narratives: withEarly, retired: merges.map((m) => ({ id: m.from, into: m.into })), removed },
+      pass: { narratives: withEarly, retired: merges.map((m) => ({ id: m.from, into: m.into })), removed, split: splits.pending },
       posts: byId,
       reach: readings.latest,
       stored: storedOf,
@@ -441,7 +464,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     if (!t.on || titler === null || deps.mode !== 'live') return { titled: 0, usd: 0 };
     const stored = grouped.stored;
     const due = grouped.pass.narratives
-      .filter((x) => x.shown)
+      .filter((x) => x.shown && x.members.some((m) => grouped.posts.has(m)))
       .filter((x) => {
         const s = stored.get(x.id);
         return s === undefined || s.title === null || s.titlePosts === null || x.members.length >= s.titlePosts * (1 + t.retitleGrowth);
