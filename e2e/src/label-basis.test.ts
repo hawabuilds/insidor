@@ -67,7 +67,8 @@ interface Answers {
 }
 
 async function answers(db: Db): Promise<Answers> {
-  const due = await dueSubjects(db, KINDS, 1000);
+  /* A clock far past every window and no labels: the queue filters nothing, so this is the whole log. */
+  const due = await dueSubjects(db, KINDS, 1000, { labelName: 'peak_multiple', definition: 'v1', windowDays: 30, nowMs: Date.parse('2100-01-01T00:00:00Z') });
   const att = [...(await attributions(db))].sort((a, b) => `${a.storyId}${a.assetKey}${a.verdict}`.localeCompare(`${b.storyId}${b.assetKey}${b.verdict}`));
   return { due, attributions: att, examined: [...(await examinedStories(db))].sort() };
 }
