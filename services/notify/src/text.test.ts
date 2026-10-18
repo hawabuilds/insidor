@@ -189,3 +189,15 @@ test("a language's finds down, or every language's, said as counts against the d
     body: '600 found in the last 3 hours, against 1034 the day before the drop (down since 00:50 UTC).',
   });
 });
+
+test('the disk alerts say the size against the inferred disk; the bill says its parts and that compute is assumed', () => {
+  assert.deepEqual(alertText('outage', { what: 'disk', state: 'over', dbGb: 6.5, provisionedGb: 8, percent: 81, gbPerDay: 0.12, growAtPercent: 90 }), {
+    title: 'The database is 81% of its 8 GB disk',
+    body: '6.5 GB used, growing 0.12 GB a day. The host grows the disk at 90% full; the log files are not counted here, so the disk is fuller than this.',
+  });
+  assert.equal(alertText('outage', { what: 'disk', state: 'grew', fromGb: 8, toGb: 12, dbGb: 7.3 }).title, 'The database disk has probably grown to 12 GB');
+  assert.deepEqual(alertText('outage', { what: 'bill', projectedUsd: 75, overUsd: 40, planUsd: 25, computeUsd: 50, computeConfirmed: false, diskUsd: 0, storageUsd: null }), {
+    title: 'Database bill heading for $75.00 this month',
+    body: 'Over your $40 line. Plan $25.00, compute $50.00 (assumed, please confirm), disk $0.00, files unknown. Egress is not counted.',
+  });
+});

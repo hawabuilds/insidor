@@ -329,6 +329,36 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
           body: `${finds === null ? 'Few' : finds} ${language === null ? '' : `${language} `}posts found by the ${source} searches in ${window}, against ${base ?? 'many more'} in the same hours the day before.${language === null ? ' Every language fell together.' : ''}`,
         };
       }
+      if (f['what'] === 'disk') {
+        /* The runner's disk alarm (services/runner disk-alarm.ts): the database's own size against the
+           disk the host's grow rule says it has. Inferred, so said as "probably" where it is. */
+        const db = n(f['dbGb']);
+        if (f['state'] === 'grew') {
+          const to = n(f['toGb']);
+          const from = n(f['fromGb']);
+          return { title: `The database disk has probably grown to ${to ?? 'a larger size'} GB`, body: `The database reached ${db ?? 'its limit'} GB${from === null ? '' : ` of ${from} GB`}, where the host grows the disk by half. Disk over the plan's included size is billed by the hour.` };
+        }
+        const pct = n(f['percent']);
+        const disk = n(f['provisionedGb']);
+        const perDay = n(f['gbPerDay']);
+        const growAt = n(f['growAtPercent']);
+        return {
+          title: `The database is ${pct ?? 'over 80'}% of its ${disk === null ? '' : `${disk} GB `}disk`,
+          body: `${db ?? 'The database'}${db === null ? '' : ' GB'} used${perDay === null ? '' : `, growing ${perDay} GB a day`}. The host grows the disk at ${growAt ?? 90}% full; the log files are not counted here, so the disk is fuller than this.`,
+        };
+      }
+      if (f['what'] === 'bill') {
+        /* The runner's bill projection (services/runner disk-model.ts): the month's parts, said as dollars; compute is an assumption until the owner confirms it. */
+        const usd = (k: string): string | null => {
+          const x = n(f[k]);
+          return x === null ? null : `$${x.toFixed(2)}`;
+        };
+        const files = usd('storageUsd');
+        return {
+          title: `Database bill heading for ${usd('projectedUsd') ?? 'over the line'} this month`,
+          body: `Over your $${n(f['overUsd']) ?? 40} line. Plan ${usd('planUsd') ?? '–'}, compute ${usd('computeUsd') ?? '–'}${f['computeConfirmed'] === true ? '' : ' (assumed, please confirm)'}, disk ${usd('diskUsd') ?? '–'}, files ${files ?? 'unknown'}. Egress is not counted.`,
+        };
+      }
       if (f['what'] === 'junk') {
         /* The owner's Not-a-meme alarm (junk.ts): his own taps per 100 For You posts shown, against the days before. */
         const taps = n(f['taps']);
