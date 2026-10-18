@@ -88,7 +88,7 @@ if (service in MAIN) {
     /* Once a day: did discovery hold each bonded coin's linked X post before it launched
        (internal.recall_check). Detached, because a day's reads outlast the board's health bar. */
     { name: 'recall', everyMs: 86_400_000, args: ['tools/recall-check.ts', 'daily', '--yes', '--detach'] },
-    /* The judge learns from the owner at 00:00 and 12:00 London (Policy.learning): asked every ten
+    /* The judge learns from the owner at 00:00 London (Policy.learning): asked every ten
        minutes whether the latest slot has run; the run itself is detached, like the recall check,
        because a batch of a hundred-odd posts outlasts the board's health bar. */
     { name: 'retune', everyMs: 600_000, args: ['tools/retune.ts', 'due', '--yes', '--detach'] },

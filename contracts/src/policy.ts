@@ -4092,7 +4092,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v112',
+  version: 'policy.v113',
 
   admit: {
     maxAgeMin: 240,
@@ -5061,7 +5061,7 @@ const POLICY_V1: Policy = {
   },
 
   learning: {
-    retuneAt: ['00:00', '12:00'],
+    retuneAt: ['00:00'],
     timeZone: 'Europe/London',
     startAheadMs: 1_200_000, // twenty minutes
     minGoldPass: 0.65,
@@ -5070,7 +5070,7 @@ const POLICY_V1: Policy = {
     maxExamples: 120,
     /* The owner, 2026-10-16: the Flávio Hipotético picture post (coin confirmed by the owner), the one
        missed post the live judge caught and version 9 lost at 07:00 UTC. Taught so it is learned back. */
-    alwaysTeach: ['x:2109756994147983482'],
+    alwaysTeach: [],
     /* The owner's three conditions, 2026-10-17: more of the fixed test caught, gold not lower, junk at
        most two points up, junk on the last three days of For You. */
     ownerGate: {
@@ -5128,9 +5128,9 @@ const POLICY_V1: Policy = {
       /* The owner's rule, 2026-10-17, word for word. The video sentence stays: the live judge is sent
          the cover of every video, on both sources, as a picture, and Nemotron describes it correctly
          (checked with three calls on Together, 2026-10-17). */
-      ownerRules: [
-        "A person's catchphrase, a memorable line, or a named person or show in the news is coinable, the same as an animal or object. If the post is a video, judge the picture, not only the caption.",
-      ],
+      /* The catchphrase rule (2026-10-17) was dropped by the owner on 2026-10-18: with it the candidate
+         did worse twice. */
+      ownerRules: [],
       maxRules: 25, maxRuleChars: 220, maxChars: 3_000, maxOutputTokens: 1_500, maxNotes: 30, minNoteUses: 2, maxNoteChars: 60 },
     shortVideo: {
       barAgesMin: [30, 60, 120],
