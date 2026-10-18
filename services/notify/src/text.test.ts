@@ -177,3 +177,15 @@ test("a prepaid account in dollars: what is left and how long it lasts; topped u
   assert.deepEqual(alertText('supplier_account', { supplier: 'OpenRouter', uses: 'the open-model judge', state: 'topped', usd: 50 }), { title: 'OpenRouter credit topped up', body: 'OpenRouter (the open-model judge) has $50.00 left again.' });
   assert.equal(alertText('supplier_account', { supplier: 'X', state: 'low', credits: 40, backup: 'Y' }).title, 'X credits low', 'a credit count reads as before');
 });
+
+test("a language's finds down, or every language's, said as counts against the day before; back says when it fell", () => {
+  assert.deepEqual(alertText('outage', { what: 'lang', state: 'down', source: 'X', lang: 'en', language: 'English', finds: 310, baselineFinds: 1034, windowHours: 3, sinceAt: '2026-10-17T00:50:00.000Z' }), {
+    title: 'X English finds down 70%',
+    body: '310 English posts found by the X searches in the last 3 hours, against 1034 in the same hours the day before.',
+  });
+  assert.equal(alertText('outage', { what: 'lang', state: 'down', source: 'TikTok', lang: null, language: null, finds: 85, baselineFinds: 320, windowHours: 3 }).title, 'TikTok finds down 73%');
+  assert.deepEqual(alertText('outage', { what: 'lang', state: 'back', source: 'X', lang: 'en', language: 'English', finds: 600, baselineFinds: 1034, windowHours: 3, sinceAt: '2026-10-17T00:50:00.000Z' }), {
+    title: 'X English finds are back',
+    body: '600 found in the last 3 hours, against 1034 the day before the drop (down since 00:50 UTC).',
+  });
+});
