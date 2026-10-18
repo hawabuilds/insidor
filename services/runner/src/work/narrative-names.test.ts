@@ -1,6 +1,6 @@
 /**
  * The narrative-name search (work/narrative-names.ts): which name a narrative is searched by, and
- * what one pass asks — shown narratives only, a filtered keyword search forward from the last ask,
+ * what one pass asks — shown narratives only, one keyword search in every language forward from the last ask,
  * credited to 'narrative_name', stopping the whole pass at the lane's cap.
  */
 
@@ -73,7 +73,7 @@ function deps(seen: DiscoveryQuery[], stored: unknown[], policy: Policy = DEFAUL
   };
 }
 
-test('a pass asks each shown narrative by name, filtered and forward from its last ask, and credits the lane', async () => {
+test('a pass asks each shown narrative by name, once across every language and forward from its last ask, and credits the lane', async () => {
   const seen: DiscoveryQuery[] = [];
   const stored: unknown[] = [];
   const clock = narrativeNameClock();
@@ -81,16 +81,14 @@ test('a pass asks each shown narrative by name, filtered and forward from its la
   assert.equal(r.narratives, 2);
   assert.equal(r.named, 2);
   assert.equal(r.asked, 2);
-  /* ★ Each name is one search per language (work/languages.ts), never an OR of them. */
-  const langs = DEFAULT_POLICY.feed.langs;
-  assert.deepEqual([...new Set(seen.map((q) => q.term))].sort(), ['tesla roadster', 'vaquita']);
-  for (const term of ['tesla roadster', 'vaquita']) assert.deepEqual(seen.filter((q) => q.term === term).map((q) => q.filter?.langs[0]), langs);
+  /* ★ Each name is ONE search with no language filter (the owner, 2026-10-18), never one per language. */
+  assert.deepEqual(seen.map((q) => q.term).sort(), ['tesla roadster', 'vaquita']);
   for (const q of seen) {
     assert.equal(q.mode, 'keyword');
     assert.equal(q.sinceMs, NOW - P.everyMs);
-    assert.deepEqual(q.filter, { minApproval: P.minApproval, mediaOnly: false, langs: [q.filter?.langs[0]], excludeRebroadcasts: true });
+    assert.deepEqual(q.filter, { minApproval: P.minApproval, mediaOnly: false, langs: [], excludeRebroadcasts: true });
   }
-  assert.deepEqual(stored, Array.from({ length: 2 * langs.length }, () => 'narrative_name'));
+  assert.deepEqual(stored, ['narrative_name', 'narrative_name']);
 
   /* The next pass reaches back to where this one began, not an hour before it. */
   const later: DiscoveryQuery[] = [];
