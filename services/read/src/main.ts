@@ -31,6 +31,8 @@ import { loadReadConfig } from './config.ts';
 import { BOARD_CHANNEL, createNotifier, type ListenSocket } from './listen.ts';
 import { createLogger, errorText } from './log.ts';
 import { createPostSheet } from './post-sheet.ts';
+import { createPrepared, type PreparedAnswers } from './prepared.ts';
+import { handle } from './routes.ts';
 import { createNarrativeLists } from './narrative-sorts.ts';
 import { createSorts } from './post-sorts.ts';
 import { createSearch } from './search.ts';
@@ -50,8 +52,13 @@ const log = createLogger();
 /* Three, not five: the pool sits behind the transaction pooler and a page's reads are short,
    and every process's pool adds up against the same pooler (store/src/client.ts counts it). */
 const POOL_MAX = 3;
-/** An unused client is closed after this long, so a burst of page loads does not hold its peak. */
-const IDLE_CLIENT_MS = 10_000;
+/**
+ * An unused client is closed after this long. Two minutes, not ten seconds: opening a connection to
+ * the database costs several round trips (TCP, TLS, the login exchange), about half a second from
+ * another continent, and paying that on the first read after every ten quiet seconds was most of a
+ * cold request. Three connections held is the most this pool can ever hold anyway (POOL_MAX).
+ */
+const IDLE_CLIENT_MS = 120_000;
 /** A market data request is abandoned after this long: a person is waiting on the token page. */
 const MARKET_TIMEOUT_MS = 6_000;
 /** A curve account read is kept this long; the page polls, and a curve moves trade by trade. */
@@ -61,6 +68,11 @@ const PROFILE_KEEP_MS = 60_000;
 /** Profiles held at once; past it the oldest-kept go, so a day of opened coins cannot grow the process. */
 const PROFILES_KEPT = 2_000;
 const STATEMENT_TIMEOUT_MS = 5_000;
+/**
+ * Built at boot and kept current from then on (prepared.ts): For You, the board, and the Narratives
+ * tab's first page in its default sort and the next most used, exactly as the phone asks for them.
+ */
+const WARM_URLS = ['/rising/fyp', '/rising/fyp/tick', '/board/default', '/narratives/default/all?sort=new&offset=0', '/narratives/default/all?sort=trending&offset=0'];
 const IDLE_IN_TRANSACTION_TIMEOUT_MS = 30_000;
 
 /**
@@ -162,13 +174,18 @@ async function main(): Promise<void> {
      socket, the database going away is an outage that every attached browser has to be told
      about — and the telling is what makes a dead board look different from a quiet one. */
   const stream = createBoardStream(deps);
+  /* Made below, once every route's dependency exists; a frame announced before then has nothing kept to rebuild. */
+  let kept: PreparedAnswers | null = null;
   const notifier = createNotifier({
     open: () => pgListenSocket(cfg.listenUrl),
     log,
     /* The tick is not used to decide anything: the frame is re-read from the table through
        the same statements the polled route uses. Acting on a number from a payload anyone
        can forge is the one thing this must not do. */
-    onFrame: (viewId) => stream.publish(viewId),
+    onFrame: (viewId) => {
+      stream.publish(viewId);
+      kept?.changed();
+    },
     onListening: () => stream.linkUp(),
     onLost: () => stream.linkDown(),
   });
@@ -259,10 +276,19 @@ async function main(): Promise<void> {
     now: Date.now,
   });
 
-  const server = createReadServer({ ...deps, market, search, wallet, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists(), allowedOrigins: cfg.allowedOrigins, stream });
+  const routeDeps = { ...deps, market, search, wallet, about, postSheet, sorts: createSorts(), narrativeLists: createNarrativeLists() };
+  /* The replies phones ask for most, kept ready (prepared.ts): rebuilt through the same `handle` a
+     request runs, so a kept reply and a live one say the same thing. The notifier above tells it
+     when a board frame lands. */
+  const prepared = createPrepared({ db: deps.db, log, build: (url) => handle('GET', url, routeDeps, '') });
+  kept = prepared;
+  const server = createReadServer({ ...routeDeps, allowedOrigins: cfg.allowedOrigins, stream, prepared });
 
   server.listen(cfg.port, () => log.info('listening', { port: cfg.port, origins: cfg.allowedOrigins }));
   notifier.start();
+  prepared.start();
+  /* The first screens of the app, built at boot so the first phone after a deploy does not wait. */
+  prepared.warm(WARM_URLS);
 
   const stop = async (signal: string): Promise<void> => {
     log.info('shutting down', { signal, streams: stream.size() });
@@ -270,6 +296,7 @@ async function main(): Promise<void> {
        `server.close()` ahead of this would wait for connections that are designed not to
        end and the process would hang until the platform killed it. */
     stream.close();
+    prepared.close();
     await notifier.close();
     server.close();
     await pool.end();
