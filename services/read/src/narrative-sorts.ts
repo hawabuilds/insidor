@@ -1,5 +1,5 @@
 /**
- * GET /narratives/:viewId/all?sort=…&offset=N[&on=x|tiktok] — the Narratives tab's lists, as For
+ * GET /narratives/:viewId/all?sort=…&offset=N[&on=x|tiktok][&coin=none] — the Narratives tab's lists, as For
  * You's sorts (the owner, 2026-10-18: "the Narratives tab works exactly like For You's sorts"),
  * 20 at a time with `next` the offset of the next page, null on the last.
  *
@@ -12,6 +12,8 @@
  *   week      `viewsGainedDay` / `viewsGainedWeek`); a page that does not say is left off, never 0
  *   viewed    every narrative by its views, dead ones included (Most viewed, All)
  *   `on`      only narratives with a post on X, or on TikTok (any of its posts); absent: all of them
+ *   `coin`    `none`: only the narratives whose card says "No coin yet" (the owner, 2026-10-18, for
+ *             creators), with `on` and on every sort. See `NO_COIN_YET` for exactly which
  *
  * ★ new AND viewed READ THROUGH story_view's 0106 INDEXES, a page at a time. trending, today and
  * week order by numbers on the pages, so they read every observed page's few numbers (one narrow
@@ -22,7 +24,8 @@
  * facts a reader can check. The ratio, the floor and the list's groups stay in this process.
  *
  * What breaks if changed carelessly: the site labels are the page's own `sourceLabel` ("X",
- * "TikTok", services/project db.ts `sourceLabel`); renaming one there empties that filter here.
+ * "TikTok", services/project db.ts `sourceLabel`); renaming one there empties that filter here. And `NO_COIN_YET` must stay the card's "No coin
+ * yet": widen it to `pending` and the pill offers Create on names nobody has searched.
  */
 
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts';
@@ -46,26 +49,46 @@ export interface NarrativeListAsk {
   readonly sort: NarrativeSort;
   readonly offset: number;
   readonly on: Site | null;
+  /** True: only the narratives with no coin yet (`NO_COIN_YET`). */
+  readonly noCoin: boolean;
 }
 
-/** The sort (New when absent), where to start and the site; null for anything else. */
+/** The sort (New when absent), where to start, the site and the coin pill; null for anything else. */
 export function parseNarrativeList(rawUrl: string): NarrativeListAsk | null {
   const q = new URLSearchParams(rawUrl.split('?')[1] ?? '');
   const sort = q.get('sort') ?? 'new';
   const raw = q.get('offset') ?? '0';
   const on = q.get('on');
+  const coin = q.get('coin');
   if (!(NARRATIVE_SORTS as readonly string[]).includes(sort) || !/^\d{1,6}$/.test(raw) || Number(raw) > MAX_OFFSET) return null;
   if (on !== null && on !== 'x' && on !== 'tiktok') return null;
-  return { sort: sort as NarrativeSort, offset: Number(raw), on };
+  if (coin !== null && coin !== 'none') return null;
+  return { sort: sort as NarrativeSort, offset: Number(raw), on, noCoin: coin === 'none' };
 }
+
+/**
+ * ★ "NO COIN YET" IS THE CARD'S OWN STATE, NOT A GUESS ABOUT ONE. A narrative is on the pill's list
+ * exactly when its card says "No coin yet" with Create (mobile narrative/story-coin.ts): the
+ * projector searched its name and found no coin (`coins.kind = 'none'`) and there is no top coin.
+ * Left off, each for its own reason:
+ *
+ *   pending   its name has not been searched yet ("still checking"): no coin is a claim not checked
+ *   unsure    coins with its name exist and none is settled: not "no coin", only not a sure one
+ *   one/several, or a top coin   it has a coin
+ *
+ * So the pill never offers Create on a name that may already be taken.
+ */
+const NO_COIN_YET = `(payload #>> '{coins,kind}' = 'none' and coalesce(jsonb_typeof(payload -> 'topCoin'), 'null') = 'null')`;
 
 /** Only observed pages, as Search; `$3` the site's label or null for every site. */
 const ON_SITE = `($3::text is null or payload -> 'evidence' @> jsonb_build_array(jsonb_build_object('sourceLabel', $3::text)))`;
+/** `$4` true: only the narratives with no coin yet. */
+const NO_COIN = `($4::boolean is not true or ${NO_COIN_YET})`;
 export const LIST_VIEWED_SQL = `select payload from public.story_view
-  where payload #>> '{provenance,kind}' = 'observed' and ${ON_SITE}
+  where payload #>> '{provenance,kind}' = 'observed' and ${ON_SITE} and ${NO_COIN}
   order by views_total desc nulls last, story_id limit $1 offset $2`;
 export const LIST_NEW_SQL = `select payload from public.story_view
-  where payload #>> '{provenance,kind}' = 'observed' and ${ON_SITE}
+  where payload #>> '{provenance,kind}' = 'observed' and ${ON_SITE} and ${NO_COIN}
   order by found_at desc nulls last, story_id limit $1 offset $2`;
 
 /** Every observed page's few numbers, narrow: no page is read whole here. */
@@ -73,7 +96,8 @@ export const LIST_NUMBERS_SQL = `select story_id, dead, projected_at, views_tota
        payload -> 'viewsPerMinute' as speeds,
        payload #>> '{viewsGainedDay,v}' as day, payload #>> '{viewsGainedWeek,v}' as week,
        payload -> 'evidence' @> '[{"sourceLabel":"X"}]' as on_x,
-       payload -> 'evidence' @> '[{"sourceLabel":"TikTok"}]' as on_tiktok
+       payload -> 'evidence' @> '[{"sourceLabel":"TikTok"}]' as on_tiktok,
+       ${NO_COIN_YET} as no_coin
   from public.story_view where payload #>> '{provenance,kind}' = 'observed'`;
 export const LIST_PAGES_SQL = `select story_id, payload from public.story_view where story_id = any($1::text[])`;
 
@@ -86,6 +110,7 @@ export interface NumbersRow {
   readonly day: number | null;
   readonly week: number | null;
   readonly on: ReadonlySet<Site>;
+  readonly noCoin: boolean;
 }
 
 const num = (v: unknown): number | null => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -109,12 +134,12 @@ export function numbersOf(r: Row): NumbersRow | null {
   const on = new Set<Site>();
   if (r['on_x'] === true) on.add('x');
   if (r['on_tiktok'] === true) on.add('tiktok');
-  return { id: r['story_id'], dead: r['dead'] === true, projectedMs: msOf(r['projected_at']), views: num(r['views_total']), speeds: speedsOf(r['speeds']), day: num(r['day']), week: num(r['week']), on };
+  return { id: r['story_id'], dead: r['dead'] === true, projectedMs: msOf(r['projected_at']), views: num(r['views_total']), speeds: speedsOf(r['speeds']), day: num(r['day']), week: num(r['week']), on, noCoin: r['no_coin'] === true };
 }
 
 /** The list for a ranked sort, in order: ids only. */
-export function rankNarratives(rows: readonly NumbersRow[], sort: 'trending' | 'today' | 'week', on: Site | null, nowMs: number, policy: Policy = DEFAULT_POLICY): readonly string[] {
-  const mine = rows.filter((r) => on === null || r.on.has(on));
+export function rankNarratives(rows: readonly NumbersRow[], sort: 'trending' | 'today' | 'week', on: Site | null, nowMs: number, policy: Policy = DEFAULT_POLICY, noCoin = false): readonly string[] {
+  const mine = rows.filter((r) => (on === null || r.on.has(on)) && (!noCoin || r.noCoin));
   if (sort === 'trending') {
     const live = mine.flatMap((r) => (r.dead || r.speeds === null ? [] : [{ id: r.id, speeds: r.speeds, fresh: r.projectedMs !== null && nowMs - r.projectedMs < policy.rising.forYouSorts.freshMs }]));
     return narrativeTrending(live, (s) => rankScale(s, policy.rising.shortVideoReachScale), policy).map((x) => x.id);
@@ -164,15 +189,15 @@ export function createNarrativeLists(now: () => number = Date.now, policy: Polic
     const size = policy.rising.forYouSorts.pageSize;
     const label = ask.on === null ? null : SITE_LABELS[ask.on];
     if (ask.sort === 'new' || ask.sort === 'viewed') {
-      const rows = await db.query(ask.sort === 'viewed' ? LIST_VIEWED_SQL : LIST_NEW_SQL, [size, ask.offset, label]);
+      const rows = await db.query(ask.sort === 'viewed' ? LIST_VIEWED_SQL : LIST_NEW_SQL, [size, ask.offset, label, ask.noCoin]);
       return { stories: rows.map((r) => cardOf(r['payload'])), next: rows.length < size ? null : ask.offset + rows.length };
     }
     const nowMs = now();
-    const key = `${ask.sort}:${ask.on ?? 'all'}`;
+    const key = `${ask.sort}:${ask.on ?? 'all'}:${ask.noCoin ? 'no-coin' : 'any'}`;
     let hit = kept.get(key);
     if (hit === undefined || hit.tick !== tick || nowMs - hit.at >= KEEP_MS) {
       const rows = (await db.query(LIST_NUMBERS_SQL, [])).flatMap((r) => numbersOf(r) ?? []);
-      hit = { tick, at: nowMs, ids: rankNarratives(rows, ask.sort, ask.on, nowMs, policy) };
+      hit = { tick, at: nowMs, ids: rankNarratives(rows, ask.sort, ask.on, nowMs, policy, ask.noCoin) };
       kept.set(key, hit);
     }
     const ids = hit.ids.slice(ask.offset, ask.offset + size);

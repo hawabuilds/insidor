@@ -19,10 +19,10 @@ const story = (id: string, w: Record<number, [number | null, number, number]>, e
   ...extra,
 });
 const ids = (xs: readonly Story[]) => xs.map((s) => s.id);
-const pick = (sort: Choice['sort'], span: Choice['span'] = 'today', site: Choice['site'] = 'all'): Choice => ({ sort, span, site });
+const pick = (sort: Choice['sort'], span: Choice['span'] = 'today', site: Choice['site'] = 'all', noCoin = false): Choice => ({ sort, span, site, noCoin });
 
 test('★ the sorts are For You\'s, and each choice reads its own server list', () => {
-  assert.deepEqual(DEFAULT_CHOICE, { sort: 'new', span: 'today', site: 'all' });
+  assert.deepEqual(DEFAULT_CHOICE, { sort: 'new', span: 'today', site: 'all', noCoin: false });
   assert.equal(listOf(pick('new')), 'new');
   assert.equal(listOf(pick('trending', 'week')), 'trending', 'Trending has no window');
   assert.equal(listOf(pick('most_viewed', 'today')), 'today');
@@ -60,6 +60,8 @@ test('★ the choice is remembered, a phone that cannot keep it gets the default
   assert.deepEqual(loadChoice(store), DEFAULT_CHOICE);
   saveChoice(store, pick('most_viewed', 'week', 'tiktok'));
   assert.deepEqual(loadChoice(store), pick('most_viewed', 'week', 'tiktok'));
+  saveChoice(store, pick('trending', 'today', 'tiktok', true));
+  assert.deepEqual(loadChoice(store), pick('trending', 'today', 'tiktok', true), 'No coin yet is remembered with the site');
   assert.deepEqual(loadChoice({ getItem: () => { throw new Error('private window'); } }), DEFAULT_CHOICE);
   assert.deepEqual(loadChoice({ getItem: () => '{"sort":"nonsense","span":7,"site":"facebook"}' }), DEFAULT_CHOICE);
   /* Stored before this design: { order, windows }. */

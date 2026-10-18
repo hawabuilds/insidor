@@ -257,7 +257,7 @@ async function pageIdOf(storyId: string, deps: Deps): Promise<string> {
 }
 
 /**
- * GET /narratives/:viewId/all?sort=new|trending|today|week|viewed&offset=N[&on=x|tiktok]
+ * GET /narratives/:viewId/all?sort=new|trending|today|week|viewed&offset=N[&on=x|tiktok][&coin=none]
  *
  * The Narratives tab's lists, as For You's sorts (the owner, 2026-10-18; narrative-sorts.ts says
  * each): every narrative, dead ones included where the sort keeps them, 20 at a time. `next` is the

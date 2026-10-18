@@ -16,6 +16,9 @@
  *                own words, feed-sort.ts speedLine), from the narrative's posts' speeds added up
  *   Most viewed  Today and Week: its views and "+8.1M today" / "+X this week" under them; All: views
  *   All X TikTok the narratives with a post on that site, on every sort
+ *   No coin yet  beside them, for creators (the owner, 2026-10-18): only the narratives whose card
+ *                says "No coin yet" (searched, no coin found, no top coin; never one still being
+ *                checked), with any site pill and on every sort. The server decides which
  *
  * ★ AN UNKNOWN IS NEVER 0. Views no post reported are a dash, a gain the server could not say is
  * left out of the line, never "+0".
@@ -44,8 +47,12 @@ export interface Choice {
   /** Most viewed's span; the other sorts have none. */
   readonly span: ViewedSpan;
   readonly site: Site;
+  /** The "No coin yet" pill, on or off; it combines with the site. */
+  readonly noCoin: boolean;
 }
-export const DEFAULT_CHOICE: Choice = { sort: FOR_YOU_DEFAULT.sort, span: FOR_YOU_DEFAULT.span, site: 'all' };
+export const DEFAULT_CHOICE: Choice = { sort: FOR_YOU_DEFAULT.sort, span: FOR_YOU_DEFAULT.span, site: 'all', noCoin: false };
+/** The pill's words, the card's own. */
+export const NO_COIN_PILL = 'No coin yet';
 
 /** The server's list for the choice (GET /narratives/:view/all?sort=…). */
 export function listOf(c: Choice): NarrativeListSort {
@@ -136,9 +143,9 @@ export function loadChoice(store: Pick<Storage, 'getItem'> | null): Choice {
       const order = typeof r['order'] === 'string' ? OLD_ORDER[r['order']] : undefined;
       const w = r['windows'];
       const viewed = typeof w === 'object' && w !== null ? (w as Record<string, unknown>)['viewed'] : undefined;
-      return { sort: order ?? DEFAULT_CHOICE.sort, span: viewed === 'all' ? 'all' : 'today', site: 'all' };
+      return { sort: order ?? DEFAULT_CHOICE.sort, span: viewed === 'all' ? 'all' : 'today', site: 'all', noCoin: false };
     }
-    return { sort: isSort(r['sort']) ? r['sort'] : DEFAULT_CHOICE.sort, span: isSpan(r['span']) ? r['span'] : DEFAULT_CHOICE.span, site: isSite(r['site']) ? r['site'] : DEFAULT_CHOICE.site };
+    return { sort: isSort(r['sort']) ? r['sort'] : DEFAULT_CHOICE.sort, span: isSpan(r['span']) ? r['span'] : DEFAULT_CHOICE.span, site: isSite(r['site']) ? r['site'] : DEFAULT_CHOICE.site, noCoin: r['noCoin'] === true };
   } catch {
     return DEFAULT_CHOICE;
   }

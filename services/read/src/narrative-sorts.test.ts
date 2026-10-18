@@ -14,8 +14,10 @@ const NOW = Date.parse('2026-10-18T15:00:00Z');
 const MIN = 60_000;
 
 test('the ask: the sort, the offset and the site, nothing else', () => {
-  assert.deepEqual(parseNarrativeList('/narratives/default/all'), { sort: 'new', offset: 0, on: null });
-  assert.deepEqual(parseNarrativeList('/x/all?sort=week&offset=40&on=tiktok'), { sort: 'week', offset: 40, on: 'tiktok' });
+  assert.deepEqual(parseNarrativeList('/narratives/default/all'), { sort: 'new', offset: 0, on: null, noCoin: false });
+  assert.deepEqual(parseNarrativeList('/x/all?sort=week&offset=40&on=tiktok'), { sort: 'week', offset: 40, on: 'tiktok', noCoin: false });
+  assert.deepEqual(parseNarrativeList('/x/all?sort=trending&on=tiktok&coin=none'), { sort: 'trending', offset: 0, on: 'tiktok', noCoin: true });
+  assert.equal(parseNarrativeList('/x/all?sort=new&coin=unsure'), null);
   assert.equal(parseNarrativeList('/x/all?sort=hot'), null);
   assert.equal(parseNarrativeList('/x/all?sort=new&offset=-1'), null);
   assert.equal(parseNarrativeList('/x/all?sort=new&offset=1.5'), null);
@@ -80,10 +82,10 @@ test('a ranked list is cut 20 at a time from one ranking a tick', async () => {
   const many = Array.from({ length: 25 }, (_, i) => row(`n${String(i).padStart(2, '0')}`, { day: String(1000 - i) }));
   const f = db(many);
   const list = createNarrativeLists(() => NOW);
-  const first = await list(f.db, 7, { sort: 'today', offset: 0, on: null });
+  const first = await list(f.db, 7, { sort: 'today', offset: 0, on: null, noCoin: false });
   assert.equal(first.stories.length, 20);
   assert.equal(first.next, 20);
-  const second = await list(f.db, 7, { sort: 'today', offset: 20, on: null });
+  const second = await list(f.db, 7, { sort: 'today', offset: 20, on: null, noCoin: false });
   assert.deepEqual(second.stories, ['n20', 'n21', 'n22', 'n23', 'n24'].map((id) => ({ id })));
   assert.equal(second.next, null);
   assert.equal(f.calls.filter((c) => c.sql === LIST_NUMBERS_SQL).length, 1, 'one ranking for the tick');
@@ -91,8 +93,8 @@ test('a ranked list is cut 20 at a time from one ranking a tick', async () => {
 
 test('New and Most viewed All page through the index with the site label', async () => {
   const f = db([]);
-  const page = await createNarrativeLists(() => NOW)(f.db, 1, { sort: 'viewed', offset: 0, on: 'tiktok' });
-  assert.deepEqual(f.calls[0]?.params, [20, 0, 'TikTok']);
+  const page = await createNarrativeLists(() => NOW)(f.db, 1, { sort: 'viewed', offset: 0, on: 'tiktok', noCoin: false });
+  assert.deepEqual(f.calls[0]?.params, [20, 0, 'TikTok', false]);
   assert.equal(page.next, null, 'a short page is the last');
 });
 
@@ -100,4 +102,20 @@ test('★ a list sends a narrative as its card: the page-only series, per-post v
   const page = { id: 'n1', title: 'T', postCount: 3, evidence: [{ e: 1 }, { e: 2 }, { e: 3 }], discussion: [{ d: 1 }], viewsGained: { fromMs: 1, stepMs: 1, values: [] }, viewsGainedAll: {}, postViews: [], inWindow: [], viewsTotal: { v: 9 }, topCoin: { address: 'a' } };
   assert.deepEqual(cardOf(page), { id: 'n1', title: 'T', postCount: 3, evidence: [{ e: 1 }], discussion: [], viewsTotal: { v: 9 }, topCoin: { address: 'a' } });
   assert.equal(cardOf(null), null);
+});
+
+test('★ No coin yet: only the narratives whose card says it, with the site pill, on every ranked sort', () => {
+  const rows = nums([row('none', { day: '5', no_coin: true }), row('coined', { day: '9' }), row('tiktok-none', { day: '7', no_coin: true, on_x: false, on_tiktok: true })]);
+  assert.deepEqual(rankNarratives(rows, 'today', null, NOW, undefined, true), ['tiktok-none', 'none']);
+  assert.deepEqual(rankNarratives(rows, 'today', 'tiktok', NOW, undefined, true), ['tiktok-none']);
+  assert.deepEqual(rankNarratives(rows, 'today', null, NOW), ['coined', 'tiktok-none', 'none'], 'off, every narrative');
+});
+
+test('No coin yet is its own ranking a tick, and New and Most viewed pass it to the statement', async () => {
+  const f = db([row('none', { day: '5', no_coin: true }), row('coined', { day: '9' })]);
+  const list = createNarrativeLists(() => NOW);
+  assert.deepEqual((await list(f.db, 3, { sort: 'today', offset: 0, on: null, noCoin: true })).stories, [{ id: 'none' }]);
+  assert.deepEqual((await list(f.db, 3, { sort: 'today', offset: 0, on: null, noCoin: false })).stories, [{ id: 'coined' }, { id: 'none' }]);
+  await list(f.db, 3, { sort: 'new', offset: 20, on: 'x', noCoin: true });
+  assert.deepEqual(f.calls.at(-1)?.params, [20, 20, 'X', true]);
 });

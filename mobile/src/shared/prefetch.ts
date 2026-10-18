@@ -81,7 +81,7 @@ export function readTabsAhead(): () => void {
     }
     const sort = listOf(choice);
     const on = choice.site === 'all' ? null : choice.site;
-    ahead(firstPageKey(sort, on), readFirstPage(sort, on), true);
+    ahead(firstPageKey(sort, on, choice.noCoin), readFirstPage(sort, on, choice.noCoin), true);
   });
 }
 
