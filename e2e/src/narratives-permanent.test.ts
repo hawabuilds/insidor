@@ -40,11 +40,13 @@ let db: Db;
 /** A unit vector pointing along `axis`: posts of one story share it, other stories are at right angles. */
 const along = (axis: number) => `[${Array.from({ length: 1024 }, (_, i) => (i === axis ? 1 : 0)).join(',')}]`;
 
-async function post(id: string, atMs: number, story: { name: string; body: string; axis: number }): Promise<void> {
+/** Each post from its own account (a narrative needs two), unless `author` names a shared one. */
+async function post(id: string, atMs: number, story: { name: string; body: string; axis: number }, author = `x:by-${id}`): Promise<void> {
   const at = new Date(atMs).toISOString();
+  await db.query(`insert into public.author (author_key, source, source_author_id, handle) values ($1, 'x', $2, $2) on conflict do nothing`, [author, author.replace(/[^a-z0-9]/gi, '')]);
   await db.query(
-    `insert into public.item (item_id, source, source_item_id, author_key, posted_at, first_seen_at, body, raw_ref, origin) values ($1, 'x', $2, 'x:a', $3, $3, $4, 'r', 'observed')`,
-    [`x:${id}`, id, at, story.body],
+    `insert into public.item (item_id, source, source_item_id, author_key, posted_at, first_seen_at, body, raw_ref, origin) values ($1, 'x', $2, $5, $3, $3, $4, 'r', 'observed')`,
+    [`x:${id}`, id, at, story.body, author],
   );
   await db.query(`insert into internal.item_found_by (item_id, lane, found_at) values ($1, 'all', now()) on conflict do nothing`, [`x:${id}`]);
   await db.query(
@@ -193,20 +195,16 @@ test('★ a merge nobody asked for is undone: the folded narrative comes back wi
   assert.equal((await read('/story/n-x%3Ab0')).body['id'], 'n-x:b0', 'and its link opens its own page');
 });
 
-test('★ the owner\'s split: the posts he picked leave for a new narrative, once, and the old page drops them at once', async (t) => {
+test('★ the owner\'s split: the posts he picked leave for a new narrative, once, and the old page drops them at once', async () => {
   for (const [i, h] of [4 * HOUR, 3 * HOUR, 2 * HOUR, HOUR].entries()) await post(`s${i}`, NOW - h, CAPY);
   await passAt(NOW);
   const capy = (await narrativeOf('x:s0')) ?? '';
   assert.equal(await narrativeOf('x:s3'), capy);
-  try {
-    await db.query(
-      `insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict, other_id, members, other_members) values ('x:owner', 'did:owner', 'narrative', $1, 'split', 'n-x:s2', $2::text[], $3::text[])`,
-      [capy, ['x:s2', 'x:s3'], ['x:s0', 'x:s1']],
-    );
-  } catch (e) {
-    if ((e as { code?: string }).code === '23514') return t.skip('this database does not take a split call yet (owner_feedback check)');
-    throw e;
-  }
+  /* 0108 takes a split call. */
+  await db.query(
+    `insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict, other_id, members, other_members) values ('x:owner', 'did:owner', 'narrative', $1, 'split', 'n-x:s2', $2::text[], $3::text[])`,
+    [capy, ['x:s2', 'x:s3'], ['x:s0', 'x:s1']],
+  );
   /* Before the regroup, the old page already lists only the posts that stayed. */
   await frameAt(NOW);
   assert.equal((await db.query(`select 1 from public.story_post where story_id = $1`, [capy])).length, 2);
@@ -224,4 +222,71 @@ test('★ the owner\'s split: the posts he picked leave for a new narrative, onc
   assert.equal(await narrativeOf('x:s0'), capy);
   await frameAt(NOW);
   assert.equal((await read('/story/n-x%3As2')).status, 200, 'the new narrative has its page');
+});
+
+const COMET = { name: 'Comet', body: 'Comet the six legged deer is going viral in North Carolina again today', axis: 7 };
+const GLORP = { name: 'Glorp', body: 'Glorp the alien cat is running on every timeline today and people love it', axis: 8 };
+const NEO = { name: 'Neo', body: 'Neo the raccoon got a tiny wheelchair after his rescue and the clip is everywhere', axis: 9 };
+
+test('★ two posts from one account are kept as a narrative but not listed until another account posts it', async () => {
+  for (const [i, h] of [2 * HOUR, HOUR].entries()) await post(`g${i}`, NOW - h, GLORP, 'x:glorper');
+  await passAt(NOW);
+  const glorp = (await narrativeOf('x:g0')) ?? '';
+  assert.ok(glorp !== '', 'kept: narratives are permanent');
+  await frameAt(NOW);
+  assert.equal((await read(`/story/${encodeURIComponent(glorp)}`)).status, 404, 'no page');
+  assert.equal((await db.query(`select 1 from public.story_post where story_id = $1`, [glorp])).length, 0, 'and no story tag on its posts');
+
+  await post('g2', NOW - HOUR / 2, GLORP);
+  await passAt(NOW);
+  assert.equal(await narrativeOf('x:g2'), glorp);
+  await frameAt(NOW);
+  assert.equal((await read(`/story/${encodeURIComponent(glorp)}`)).status, 200, 'listed once a second account posts it');
+});
+
+test('★ one story, one narrative: new posts about a narrative already made join it, and a newer duplicate merges into the older', async () => {
+  for (const [i, h] of [3 * DAY + 2 * HOUR, 3 * DAY + HOUR].entries()) await post(`comet${i}`, NOW - h, COMET);
+  await passAt(NOW - 3 * DAY);
+  const comet = (await narrativeOf('x:comet0')) ?? '';
+  assert.ok(comet !== '');
+  /* Three days on its posts are out of the window: the new ones are a group with no pinned post. */
+  for (const [i, h] of [2 * HOUR, HOUR].entries()) await post(`comet${i + 2}`, NOW - h, COMET);
+  const r = await passAt(NOW);
+  assert.equal(r.joinedSame, 1);
+  assert.equal(await narrativeOf('x:comet2'), comet, 'the new posts joined the narrative of their subject');
+
+  /* Two narratives already made about one story (as the old passes left them): the newer merges in. */
+  for (const [i, h] of [5 * HOUR, 4 * HOUR].entries()) await post(`neoa${i}`, NOW - h, NEO);
+  for (const [i, h] of [3 * HOUR, 2 * HOUR].entries()) await post(`neob${i}`, NOW - h, NEO);
+  const repo = new PgNarrativeRepo(db);
+  await repo.save({ narratives: [
+    { id: 'n-x:neoa0', members: ['x:neoa0', 'x:neoa1'], anchor: 'x:neoa0', newestPostAtMs: NOW - 4 * HOUR, shown: true, changed: true },
+    { id: 'n-x:neob0', members: ['x:neob0', 'x:neob1'], anchor: 'x:neob0', newestPostAtMs: NOW - 2 * HOUR, shown: true, changed: true },
+  ], retired: [] });
+  const m = await passAt(NOW);
+  assert.equal(m.mergedSame, 1);
+  assert.equal(await narrativeOf('x:neob0'), 'n-x:neoa0', 'the newer moved into the older');
+  const [row] = await db.query<{ state: string; merged_into: string; merged_by: string }>(`select state, merged_into, merged_by from internal.narrative where narrative_id = 'n-x:neob0'`);
+  assert.deepEqual(row, { state: 'merged', merged_into: 'n-x:neoa0', merged_by: 'same_subject' });
+  await frameAt(NOW);
+  assert.equal((await read('/story/n-x%3Aneob0')).body['id'], 'n-x:neoa0', 'its old link opens the older one');
+  /* Comet and Glorp are other subjects: untouched. */
+  assert.equal(await narrativeOf('x:comet0'), comet);
+  assert.equal((await db.query(`select 1 from internal.narrative where merged_by = 'same_subject'`)).length, 1);
+});
+
+test('★ the owner\'s calls outrank the same-subject rule: a narrative he called on is never merged', async () => {
+  for (const [i, h] of [5 * HOUR, 4 * HOUR].entries()) await post(`q${i}`, NOW - h, { ...NEO, name: 'Zazu', axis: 10 });
+  for (const [i, h] of [3 * HOUR, 2 * HOUR].entries()) await post(`r${i}`, NOW - h, { ...NEO, name: 'Zazu', axis: 10 });
+  await new PgNarrativeRepo(db).save({ narratives: [
+    { id: 'n-x:q0', members: ['x:q0', 'x:q1'], anchor: 'x:q0', newestPostAtMs: NOW - 4 * HOUR, shown: true, changed: true },
+    { id: 'n-x:r0', members: ['x:r0', 'x:r1'], anchor: 'x:r0', newestPostAtMs: NOW - 2 * HOUR, shown: true, changed: true },
+  ], retired: [] });
+  await db.query(
+    `insert into internal.owner_feedback (owner_ref, user_id, subject_kind, item_id, verdict, coin_address, members) values ('x:owner', 'did:owner', 'narrative', 'n-x:r0', 'right', 'So11111111111111111111111111111111111111112', $1::text[])`,
+    [['x:r0', 'x:r1']],
+  );
+  const r = await passAt(NOW);
+  assert.equal(r.mergedSame, 0);
+  assert.equal(await narrativeOf('x:r0'), 'n-x:r0');
 });

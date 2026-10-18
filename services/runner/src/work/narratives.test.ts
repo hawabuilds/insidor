@@ -195,7 +195,7 @@ test('★ only the owner merges: his "Merge with…" moves one narrative into th
   const merge: NarrativeCallRow = { id: 7, atMs: NOW - 1, narrativeId: 'n-one', verdict: 'merge', otherId: 'n-two', coin: null, members: ['a'], otherMembers: ['b'] };
   const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [merge], [], () => stored);
   await s.grouper.pass();
-  assert.deepEqual(s.saved[0]?.retired, [{ id: 'n-one', into: 'n-two' }]);
+  assert.deepEqual(s.saved[0]?.retired, [{ id: 'n-one', into: 'n-two', by: 'owner' }]);
 });
 
 test('★ the owner\'s split: the posts he picked are a new narrative this pass, shown and titled, and it is done once', async () => {
