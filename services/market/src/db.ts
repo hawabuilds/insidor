@@ -150,13 +150,23 @@ async function onScreenThenNewest(db: Db, chain: string, limit: number): Promise
      read once when they were new and then never again, and every card showed a stale
      absence and no Buy. So every coin a projected feed or board names (`coinId`, at any
      depth of its payload) is read first, then the newest fill the rest of the bound. The
-     origin allowlist holds on both halves. */
+     origin allowlist holds on both halves.
+
+     ★ AND EVERY LIVE NARRATIVE'S PAGE (October 2026). The Narratives card's coin line shows its
+     coin's market cap, and a narrative's coin (`coins`, `topCoin`) is on its page, not on the
+     board's row, so it was read only while new: on 18 Oct every top coin on the tab said
+     "not read yet" and each phone read every card's market from the token chart instead, every
+     four seconds. A live narrative is one not marked dead, observed; about 25 coins. They join the
+     coins on screen in the same bounded pass and cost no call of their own. */
   return db.query<AssetRow & { tier: number }>(
     `with on_screen as (
        select distinct c #>> '{}' as asset_key
          from (select payload from public.rising_row
                union all
-               select payload from public.board_row) p,
+               select payload from public.board_row
+               union all
+               select payload from public.story_view
+                where dead is not true and payload #>> '{provenance,kind}' = 'observed') p,
               jsonb_path_query(p.payload, 'strict $.**.coinId') c
      ),
      screen as (
