@@ -24,11 +24,11 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { CreateFrom } from './features/create/CreateCoin.tsx';
 import { Feed } from './features/feed/Feed.tsx';
-import { bellCount } from './features/alerts/split.ts';
+import { fetchUnread } from './shared/api/following.ts';
 import { RankUp } from './features/people/RankUp.tsx';
 import { resavePush } from './features/alerts/push.ts';
 import { PushAsk } from './features/alerts/PushAsk.tsx';
-import { fetchAlertSettings, fetchAlerts, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
+import { fetchAlertSettings, setTokenSource, syncMe, syncWatch } from './shared/api/people.ts';
 import { watchedPosts } from './shared/watched-posts.ts';
 import { useWatchlist } from './shared/hooks.ts';
 import { InstallPrompt } from './features/install/InstallPrompt.tsx';
@@ -234,9 +234,9 @@ export function App() {
   useEffect(() => {
     if (signedIn) void syncWatch(watchedKey === '' ? [] : watchedKey.split(',')).catch(() => undefined);
   }, [signedIn, watchedKey]);
-  /* The Feed bell's count (unread notifications, not the Feed's own rows), read every minute while the app is open. */
+  /* The Feed bell's dot: the alert service's unread count (GET /alerts/unread), read every minute while the app is open. */
   const readUnread = useCallback(() => {
-    void fetchAlerts().then((a) => setUnread(bellCount(a.alerts)), () => undefined);
+    void fetchUnread().then(setUnread, () => undefined);
   }, []);
   useEffect(() => {
     if (!inside) return;
