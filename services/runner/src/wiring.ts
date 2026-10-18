@@ -131,6 +131,7 @@ import { readCryptoAttention, type AttentionResult } from './work/crypto-attenti
 import { refillMemory, refillPosts, type RefillResult } from './work/post-refill.ts';
 import { narrativeGrouper, type NarrativeResult } from './work/narratives.ts';
 import { launchClockPass } from './work/launch-clock.ts';
+import { narrativeBackPass } from './work/narrative-back.ts';
 import { scoreCoinModel, type CoinModelResult } from './work/coin-model.ts';
 import { readingsMemory, readingsPass, type ReadingsResult } from './work/readings.ts';
 import { narrativeNameClock, narrativeNamesPass, type NarrativeNamesResult } from './work/narrative-names.ts';
@@ -1635,10 +1636,11 @@ export async function withRuntime<T>(
               now: () => Date.now() as Millis,
             });
             /* After each pass, off until the owner switches them: the page coins' launch from the chain
-               (work/launch-clock.ts).
-               Its failing is logged and never fails the narratives pass. */
+               (work/launch-clock.ts) and one backward name search per new narrative (work/narrative-back.ts).
+               Either failing is logged and never fails the narratives pass. */
             const chain = cfg.chainRpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.chainRpcUrl, fetch: globalThis.fetch });
             const launchTried = new Set<string>();
+            const backAsked = new Set<string>();
             return async () => {
               const r = await grouper.pass();
               await launchClockPass(
@@ -1652,6 +1654,21 @@ export async function withRuntime<T>(
                 },
                 launchTried,
               ).catch((e: unknown) => log.warn('launch times not read this pass', { err: errorText(e) }));
+              await narrativeBackPass(
+                {
+                  sources: () => platforms.all(),
+                  narratives: new PgNarrativeRepo(db),
+                  store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                  uncredited: (ids) => repos.items.uncredited(ids),
+                  ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'name-back-lane' })),
+                  meter,
+                  mode: cfg.spend.kind,
+                  policy,
+                  log: log.child({ step: 'name-back' }),
+                  now: () => Date.now() as Millis,
+                },
+                backAsked,
+              ).catch((e: unknown) => log.warn('backward name search not run this pass', { err: errorText(e) }));
               return r;
             };
           })(),
