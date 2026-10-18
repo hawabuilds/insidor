@@ -42,15 +42,17 @@ async function serving(): Promise<{ base: string; close: () => Promise<void> }> 
   };
 }
 
-test('a board request answers JSON with no-store and the configured origin', async () => {
+test('a board request answers JSON the browser must revalidate, with an ETag and the configured origin', async () => {
   const { base, close } = await serving();
   try {
     const res = await fetch(`${base}/board/main`, { headers: { origin: ORIGIN } });
 
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('content-type'), 'application/json; charset=utf-8');
-    assert.equal(res.headers.get('cache-control'), 'no-store');
-    assert.equal(res.headers.get('vary'), 'origin');
+    /* Kept by the browser alone, and never used without asking: see server.ts. */
+    assert.equal(res.headers.get('cache-control'), 'private, no-cache');
+    assert.match(res.headers.get('etag') ?? '', /^W\/"[A-Za-z0-9_-]+"$/);
+    assert.equal(res.headers.get('vary'), 'origin, accept-encoding');
     assert.equal(res.headers.get('access-control-allow-origin'), ORIGIN);
 
     assert.deepEqual(await res.json(), {
@@ -72,7 +74,23 @@ test('an origin nobody configured gets no allow header, and never a wildcard', a
     assert.equal(res.headers.get('access-control-allow-origin'), null);
     /* Vary must be present even when the header is absent, or a cache can store the
        no-header answer and replay it to the origin that should have got one. */
-    assert.equal(res.headers.get('vary'), 'origin');
+    assert.equal(res.headers.get('vary'), 'origin, accept-encoding');
+  } finally {
+    await close();
+  }
+});
+
+test('a caller holding the current reply gets a 304 with no body; a changed one gets the reply', async () => {
+  const { base, close } = await serving();
+  try {
+    const first = await fetch(`${base}/board/main`);
+    const etag = first.headers.get('etag') ?? '';
+    const again = await fetch(`${base}/board/main`, { headers: { 'if-none-match': etag } });
+    assert.equal(again.status, 304);
+    assert.equal(again.headers.get('etag'), etag);
+    assert.equal(await again.text(), '');
+    const other = await fetch(`${base}/board/main`, { headers: { 'if-none-match': 'W/"not-this-one"' } });
+    assert.equal(other.status, 200);
   } finally {
     await close();
   }
