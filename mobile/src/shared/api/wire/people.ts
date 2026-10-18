@@ -15,7 +15,10 @@ export interface PersonRef {
 
 export interface ProfileCard extends Omit<PersonRef, 'rank'> {
   readonly bio: string;
+  /** Withheld (null) when their portfolio is private, as Trador withholds it; always theirs to see. */
   readonly wallet: string | null;
+  /** Whether the portfolio is on the profile: shown, private (switched off), or no wallet yet. */
+  readonly portfolio: 'shown' | 'private' | 'no_wallet';
   readonly rank: RankId;
   readonly rep: number;
   readonly next: { readonly rank: RankId; readonly repToGo: number } | null;

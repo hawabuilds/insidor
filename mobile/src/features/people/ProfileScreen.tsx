@@ -1,9 +1,23 @@
 /**
- * A PERSON'S PROFILE — Trador's ProfileScreen and RankStanding, in Insidor: picture, name and
- * @handle from their sign-in, their wallet, the rank card ("N rep to Quant"), followers and
- * following, their bio (editable on one's own), and their recent comments. On one's own, the
- * switch "Show my trades to followers" (on by default, as Trador's Public portfolio; services/social honours it), which
- * decides whether their buys and sells reach the Feed of the people who follow them.
+ * A PERSON'S PROFILE — Trador's /u/[handle] ProfileScreen, in Insidor's colours, in its order: the
+ * picture, name and @handle with Follow / Following for someone else, the rank card (RankStanding,
+ * "N rep to Quant"), the bio, followers and following (each opens its list), then their portfolio
+ * (Trador's PublicStonkfolio): its value, their SOL, what is not priced, the wallet, and one row
+ * per coin with its gain (portfolio/HoldingRow.tsx, the same row as your own Portfolio).
+ *
+ * ★ A PRIVATE PORTFOLIO IS SAID, NOT DRAWN EMPTY. The social service withholds the wallet unless
+ * "Show my trades to followers" is on (Trador's `portfolio_public`, one switch for the Feed and the
+ * profile, on by default as Trador's is); turned off, this says "@handle keeps their portfolio
+ * private." Your own is always shown to
+ * you, with a line saying whether others see it.
+ *
+ * ★ THE SAME NUMBERS AS YOUR OWN PORTFOLIO, FOR EVERYONE. Trador shows another person's exact gain
+ * on each coin, not "in profit / at a loss", and so does this; the gain is only for buys made in
+ * Insidor, else a dash with its reason.
+ *
+ * Nothing Trador's profile lacks: no tabs, no comment list, no leaderboard button. Two things are
+ * Insidor's own: Edit bio on your own (Trador edits it in a sheet on the Stonkfolio) and the switch
+ * block below, which lives here rather than in a settings gear.
  *
  * ★ A PERSON'S OWN NUMBERS ONLY. Rep, rank and counts are about this person and what others did
  * with their comments. Nothing on this screen rates a coin or a post.
@@ -11,21 +25,26 @@
 
 import { useState } from 'react';
 
+import { fetchPortfolio, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
 import { saveTradesPublic } from '../../shared/api/following.ts';
-import { follow, fetchProfile, saveBio, type Comment, type ProfileCard } from '../../shared/api/people.ts';
-import { formatAge } from '../../shared/format/duration.ts';
-import { useLoad, useNow } from '../../shared/hooks.ts';
+import { follow, fetchProfile, saveBio, type ProfileCard } from '../../shared/api/people.ts';
+import { formatUsd } from '../../shared/format/number.ts';
+import { useLoad } from '../../shared/hooks.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
-import { RankBadge, RankTag } from './RankBadge.tsx';
+import { HoldingRow } from '../portfolio/HoldingRow.tsx';
+import { GAINS_NOTE } from '../portfolio/Portfolio.tsx';
+import folio from '../portfolio/portfolio.module.css';
+import { RankBadge } from './RankBadge.tsx';
 import { RANK_NAME, rankCardLine } from './rank.ts';
 import styles from './people.module.css';
 import { goBack } from '../../shared/nav.ts';
 
-const short = (a: string) => `${a.slice(0, 5)}…${a.slice(-5)}`;
+/** Trador's shortPubkey(wallet, 4, 4). */
+const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 
 export function subjectHref(subject: string): string | null {
   const at = subject.indexOf(':');
@@ -56,29 +75,37 @@ export function ProfileScreen({ profileKey }: { profileKey: string }) {
       <button type="button" className={styles['back']} aria-label="Back" onClick={() => goBack({ screen: 'portfolio' })}>
         <BackIcon size={22} />
       </button>
-      {loaded.state === 'loading' ? <p className={styles['note']}>Loading.</p> : null}
-      {loaded.state === 'failed' ? <p className={styles['note']}>This profile couldn't be read. It may not exist.</p> : null}
-      {loaded.state === 'ready' ? <Body p={loaded.value.profile} comments={loaded.value.comments} reload={reload} /> : null}
+      {loaded.state === 'loading' ? (
+        <div className={styles['head']}>
+          <span className={styles['skAvatar']} />
+          <span className={styles['skName']} />
+        </div>
+      ) : null}
+      {loaded.state === 'failed' ? <p className={styles['note']}>No account @{profileKey}. Nobody has claimed this handle here yet, or it could not be read just now.</p> : null}
+      {loaded.state === 'ready' ? <Body p={loaded.value.profile} reload={reload} /> : null}
     </section>
   );
 }
 
-function Body({ p, comments, reload }: { p: ProfileCard; comments: readonly Comment[]; reload: () => void }) {
-  const now = useNow();
+function Body({ p, reload }: { p: ProfileCard; reload: () => void }) {
   const toast = useToast();
   const [following, setFollowing] = useState(p.iFollow);
+  const [followers, setFollowers] = useState(p.followers);
   const [editing, setEditing] = useState(false);
   const [bio, setBio] = useState(p.bio);
   const key = p.handle ?? p.userId;
+  const at = p.handle !== null ? `@${p.handle}` : (p.name ?? 'This person');
 
   const toggleFollow = async () => {
     const next = !following;
     setFollowing(next);
+    setFollowers((n) => n + (next ? 1 : -1));
     try {
       await follow(p.userId, next);
     } catch (e) {
       setFollowing(!next);
-      toast("Couldn't follow", e instanceof Error ? e.message : '');
+      setFollowers((n) => n + (next ? -1 : 1));
+      toast("Couldn't update that follow", e instanceof Error ? e.message : '');
     }
   };
 
@@ -95,13 +122,22 @@ function Body({ p, comments, reload }: { p: ProfileCard; comments: readonly Comm
   return (
     <>
       <div className={styles['head']}>
-        <Avatar name={p.name ?? p.handle} seed={p.userId} src={p.pictureUrl} size={64} />
+        <Avatar name={p.name ?? p.handle} seed={p.userId} src={p.pictureUrl} size={56} />
         <div className={styles['headText']}>
-          <h1 className={styles['name']}>{p.name ?? (p.handle !== null ? `@${p.handle}` : 'Someone')}</h1>
-          {p.handle !== null ? <span className={styles['handle']}>@{p.handle}</span> : null}{' '}
-          <RankTag rank={p.rank} />
+          <h1 className={styles['name']}>{p.name ?? at}</h1>
+          {p.handle !== null ? <div className={styles['handle']}>@{p.handle}</div> : null}
         </div>
+        {p.isMe ? (
+          !editing ? <button type="button" className={styles['pillGhost']} onClick={() => setEditing(true)}>Edit bio</button> : null
+        ) : (
+          <button type="button" className={following ? styles['pillGhost'] : styles['pillFollow']} onClick={() => void toggleFollow()}>
+            {following ? 'Following' : 'Follow'}
+          </button>
+        )}
       </div>
+
+      <RankCard p={p} />
+
       {editing ? (
         <>
           <textarea className={styles['bioField']} value={bio} maxLength={160} onChange={(e) => setBio(e.target.value)} aria-label="Bio" />
@@ -113,38 +149,71 @@ function Body({ p, comments, reload }: { p: ProfileCard; comments: readonly Comm
       ) : p.bio !== '' ? (
         <p className={styles['bio']}>{p.bio}</p>
       ) : null}
+
       <div className={styles['counts']}>
-        <a href={hrefFor({ screen: 'follows', key, which: 'followers' })}><b>{p.followers.toLocaleString('en-US')}</b> followers</a>
+        <a href={hrefFor({ screen: 'follows', key, which: 'followers' })}><b>{followers.toLocaleString('en-US')}</b> followers</a>
         <a href={hrefFor({ screen: 'follows', key, which: 'following' })}><b>{p.following.toLocaleString('en-US')}</b> following</a>
-        {p.wallet !== null ? <span>{short(p.wallet)}</span> : null}
       </div>
-      <div className={styles['actions']}>
-        {p.isMe ? (
-          !editing ? <button type="button" className={styles['ghost']} onClick={() => setEditing(true)}>Edit bio</button> : null
-        ) : (
-          <button type="button" className={following ? styles['ghost'] : styles['follow']} onClick={() => void toggleFollow()}>
-            {following ? 'Following' : p.followsMe ? 'Follow back' : 'Follow'}
-          </button>
-        )}
-        <a className={styles['ghost']} style={{ display: 'grid', placeItems: 'center', textDecoration: 'none' }} href={hrefFor({ screen: 'leaderboard' })}>Leaderboard</a>
-      </div>
+
+      {/* ── Show my trades to followers (the Feed's switch; it also decides whether others see the portfolio below) ── */}
       {p.isMe && typeof p.tradesPublic === 'boolean' ? <ShareTrades on={p.tradesPublic} /> : null}
-      <RankCard p={p} />
-      <h2 className={styles['section']}>Comments</h2>
-      {comments.length === 0 ? <p className={styles['note']}>No comments yet.</p> : null}
-      {comments.map((c) => {
-        const href = subjectHref(c.subject);
-        const inner = (
-          <div className={styles['rowText']}>
-            <b>{c.body}</b>
-            <span>
-              <Value r={formatAge({ known: true, at: c.at as never }, now as never)} />, {c.likes} {c.likes === 1 ? 'like' : 'likes'}
-            </span>
-          </div>
-        );
-        return href === null ? <div key={c.id} className={styles['row']}>{inner}</div> : <a key={c.id} className={styles['row']} href={href}>{inner}</a>;
-      })}
+      {/* ── end of the switch block ── */}
+
+      {p.portfolio === 'shown' && p.wallet !== null ? (
+        <PublicPortfolio wallet={p.wallet} at={at} self={p.isMe} othersSee={p.isMe ? p.tradesPublic === true : true} />
+      ) : p.portfolio === 'private' ? (
+        <p className={styles['private']}>{at} keeps their portfolio private.</p>
+      ) : (
+        <p className={styles['private']}>— {at} has no wallet on Insidor yet, so there is no portfolio to show.</p>
+      )}
     </>
+  );
+}
+
+/**
+ * Someone's portfolio on their profile — Trador's PublicStonkfolio: "Portfolio value", their SOL,
+ * what is not priced, the wallet, and the same rows as your own Portfolio. A list only: Trador keeps
+ * the pie for your own allocation, and Insidor has no pie.
+ */
+function PublicPortfolio({ wallet, at, self, othersSee }: { wallet: string; at: string; self: boolean; othersSee: boolean }) {
+  const [loaded] = useLoad(`wallet:${wallet}`, (signal) => fetchPortfolio(wallet, '24h', signal), 'memory');
+  const data: PortfolioData | null = loaded.state === 'ready' ? loaded.value : loaded.state === 'failed' ? { kind: 'unavailable' } : null;
+  const read = data !== null && data.kind === 'read' ? data : null;
+  return (
+    <section className={styles['folio']}>
+      <div className={folio['label']}>Portfolio value</div>
+      <div className={styles['folioBig']}>{read === null ? '—' : <Value r={formatUsd(read.totalUsd)} />}</div>
+      <div className={styles['folioSub']}>
+        {read !== null ? <span>{read.solBalance.known ? read.solBalance.amount.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—'} SOL</span> : null}
+        {read !== null && read.unpriced > 0 ? <span>{read.unpriced.toLocaleString('en-US')} not priced here</span> : null}
+        <span className={styles['folioWallet']}>{short(wallet)}</span>
+      </div>
+      {self ? (
+        <p className={styles['folioNote']}>
+          {othersSee ? 'Others see this. Hide it with Show my trades to followers.' : 'Only you see this. Others see it once Show my trades to followers is on.'}
+        </p>
+      ) : null}
+
+      {data === null ? (
+        <ul className={folio['list']} style={{ marginTop: 16 }}>
+          {[0, 1, 2].map((i) => (
+            <li key={i} className={folio['skeleton']}><span className={folio['skDot']} /><span className={folio['skLines']}><span /><span /></span></li>
+          ))}
+        </ul>
+      ) : data.kind === 'unavailable' ? (
+        <p className={styles['note']}>— what this wallet holds could not be read just now.</p>
+      ) : data.holdings.length === 0 ? (
+        <p className={styles['note']}>{at} holds nothing Insidor can price yet.</p>
+      ) : (
+        <>
+          <ul className={folio['list']} style={{ marginTop: 16 }}>
+            {data.holdings.map((h) => <li key={h.address}><HoldingRow h={h} /></li>)}
+          </ul>
+          {data.notShown > 0 ? <p className={folio['foot']}>{data.notShown.toLocaleString('en-US')} more coins not shown.</p> : null}
+          <p className={folio['foot']}>{GAINS_NOTE}</p>
+        </>
+      )}
+    </section>
   );
 }
 

@@ -82,8 +82,30 @@ export const askForReading = async (postId: string): Promise<void> => void (awai
 export const syncMe = async (): Promise<ProfileCard> => (await social('POST', '/me')) as ProfileCard;
 export const fetchMe = async (): Promise<ProfileCard> => (await social('GET', '/me')) as ProfileCard;
 export const saveBio = async (bio: string): Promise<ProfileCard> => (await social('PUT', '/me', { bio })) as ProfileCard;
-export const fetchProfile = async (key: string): Promise<{ profile: ProfileCard; comments: readonly Comment[] }> =>
-  (await social('GET', `/profile/${encodeURIComponent(key)}`)) as { profile: ProfileCard; comments: readonly Comment[] };
+export const fetchProfile = async (key: string): Promise<{ profile: ProfileCard; comments: readonly Comment[] }> => {
+  const raw = (await social('GET', `/profile/${encodeURIComponent(key)}`)) as { profile: unknown; comments: readonly Comment[] };
+  return { profile: decodeProfileWallet(raw.profile), comments: raw.comments };
+};
+
+/**
+ * A profile's wallet and whether its portfolio shows, read strictly: `portfolio` is one of three
+ * words, and a wallet comes only with `shown` and a Solana address. A profile that says private
+ * yet carries a wallet is refused rather than shown, so a server slip cannot publish a portfolio
+ * its owner hid. The rest of the card is the social service's, as before.
+ */
+export function decodeProfileWallet(raw: unknown): ProfileCard {
+  if (typeof raw !== 'object' || raw === null) throw new PeopleError(500, 'profile is not an object');
+  const o = raw as Record<string, unknown>;
+  const portfolio = o['portfolio'];
+  if (portfolio !== 'shown' && portfolio !== 'private' && portfolio !== 'no_wallet') throw new PeopleError(500, 'profile.portfolio is not a known value');
+  const wallet = o['wallet'];
+  if (portfolio === 'shown') {
+    if (typeof wallet !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet)) throw new PeopleError(500, 'profile.wallet is not an address');
+  } else if (wallet !== null) {
+    throw new PeopleError(500, 'profile.wallet came with a portfolio that is not shown');
+  }
+  return { ...(o as unknown as ProfileCard), portfolio, wallet };
+}
 export const fetchFollows = async (key: string, which: 'followers' | 'following'): Promise<readonly PersonRef[]> =>
   ((await social('GET', `/profile/${encodeURIComponent(key)}/${which}`)) as { people: readonly PersonRef[] }).people;
 export const follow = async (userId: string, on: boolean): Promise<void> => void (await social(on ? 'POST' : 'DELETE', `/follow/${encodeURIComponent(userId)}`));
