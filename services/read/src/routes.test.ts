@@ -179,12 +179,13 @@ test('a tick too large for a JSON number is refused rather than rounded', async 
   assert.equal(reply.status, 500, 'silently losing digits would make the gap detector lie');
 });
 
-test('an unknown board view is 404 and never asks for its rows', async () => {
-  const { deps, calls } = fakeDb({ [BOARD_VIEW_SQL]: [] });
+test('an unknown board view is 404, though its rows are asked for in the same round trip', async () => {
+  /* The view and its rows are sent together (one round trip, not two); the view alone decides. */
+  const { deps, calls } = fakeDb({ [BOARD_VIEW_SQL]: [], [BOARD_ROWS_SQL]: [] });
   const reply = await handle('GET', '/board/does-not-exist', deps);
   assert.equal(reply.status, 404);
   assert.deepEqual(JSON.parse(reply.body), { error: 'not found' });
-  assert.deepEqual(calls.map((c) => c.sql), [BOARD_VIEW_SQL]);
+  assert.deepEqual(calls.map((c) => c.sql).sort(), [BOARD_ROWS_SQL, BOARD_VIEW_SQL].sort());
 });
 
 test('a view that exists with no rows is an empty board, not a 404', async () => {
@@ -603,6 +604,21 @@ test('★ a post written in another language carries its English and the languag
   assert.deepEqual(calls[2]?.params, [['x:2', POST.id]]);
 });
 
+test('a card with both its English and its narrative carries both, though the two are read at once', async () => {
+  const later = { ...POST, id: 'x:2', excerpt: 'o rato caiu' };
+  const { deps } = fakeDb({
+    [RISING_VIEW_SQL]: [{ tick: '4' }],
+    [RISING_ROWS_SQL]: [{ payload: later }, { payload: POST }],
+    [TRANSLATIONS_SQL]: [{ item_id: 'x:2', lang_from: 'pt', text_en: 'the rat fell' }],
+    [STORY_TAGS_SQL]: [{ item_id: 'x:2', story_id: 'n-1', title: 'Rat', posts: 3 }, { item_id: POST.id, story_id: 'n-2', title: 'Ferry', posts: 2 }],
+  });
+  const reply = await handle('GET', '/rising/fyp', deps);
+  assert.deepEqual(JSON.parse(reply.body).posts, [
+    { ...later, translation: { text: 'the rat fell', from: 'pt' }, inStory: { storyId: 'n-1', title: 'Rat', posts: 3 } },
+    { ...POST, inStory: { storyId: 'n-2', title: 'Ferry', posts: 2 } },
+  ]);
+});
+
 test('★ a feed reply carries no score and no internal word', async () => {
   const { deps } = fakeDb({ [RISING_VIEW_SQL]: [{ tick: '1' }], [RISING_ROWS_SQL]: [{ payload: POST }] });
   const body = (await handle('GET', '/rising/popular', deps)).body.toLowerCase();
@@ -611,10 +627,10 @@ test('★ a feed reply carries no score and no internal word', async () => {
   }
 });
 
-test('a feed that has never been projected is 404 and never asks for its rows', async () => {
+test('a feed that has never been projected is 404, and nothing is added to rows it does not have', async () => {
   const { deps, calls } = fakeDb({});
   assert.equal((await handle('GET', '/rising/fyp', deps)).status, 404);
-  assert.deepEqual(calls.map((c) => c.sql), [RISING_VIEW_SQL]);
+  assert.deepEqual(calls.map((c) => c.sql).sort(), [RISING_ROWS_SQL, RISING_VIEW_SQL].sort());
 });
 
 test('a feed\'s tick alone is one single-row read and never the rows, for the phone\'s backup check', async () => {

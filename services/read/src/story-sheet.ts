@@ -165,14 +165,15 @@ export async function buildStoryPosts(storyId: string, ids: readonly string[], d
 }
 
 export async function buildStorySheet(storyId: string, deps: { readonly db: Db; readonly coinsFor: CoinsFor }): Promise<Reply> {
-  const rows = await members(deps.db, storyId);
+  /* The posts and the coins written beside the narrative are both read by its id alone: sent together. */
+  const [rows, listedRows] = await Promise.all([members(deps.db, storyId), deps.db.query(STORY_COINS_SQL, [storyId])]);
   const head = rows[0] ?? (await deps.db.query(STORY_EXISTS_SQL, [storyId]))[0];
   if (head === undefined) return json(404, { error: 'not found' });
 
   const out = await membersOut(deps.db, rows);
 
   const link = storyLink(head['coins']);
-  const listed = (await deps.db.query(STORY_COINS_SQL, [storyId])).flatMap((r) => str(r['address']) ?? []);
+  const listed = listedRows.flatMap((r) => str(r['address']) ?? []);
   /* A coin proven from one of its posts (the card's `matched` or `one` link) fits the narrative too:
      listed after its own coin, never made its own coin here. */
   const fromPosts = out.flatMap((m) => {
