@@ -8,7 +8,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import type { Row } from './queries.ts';
-import { LIST_NEW_SQL, LIST_NUMBERS_SQL, LIST_PAGES_SQL, LIST_VIEWED_SQL, createNarrativeLists, numbersOf, parseNarrativeList, rankNarratives, type NumbersRow } from './narrative-sorts.ts';
+import { LIST_NEW_SQL, cardOf, LIST_NUMBERS_SQL, LIST_PAGES_SQL, LIST_VIEWED_SQL, createNarrativeLists, numbersOf, parseNarrativeList, rankNarratives, type NumbersRow } from './narrative-sorts.ts';
 
 const NOW = Date.parse('2026-10-18T15:00:00Z');
 const MIN = 60_000;
@@ -94,4 +94,10 @@ test('New and Most viewed All page through the index with the site label', async
   const page = await createNarrativeLists(() => NOW)(f.db, 1, { sort: 'viewed', offset: 0, on: 'tiktok' });
   assert.deepEqual(f.calls[0]?.params, [20, 0, 'TikTok']);
   assert.equal(page.next, null, 'a short page is the last');
+});
+
+test('★ a list sends a narrative as its card: the page-only series, per-post views and all but one post are cut', () => {
+  const page = { id: 'n1', title: 'T', postCount: 3, evidence: [{ e: 1 }, { e: 2 }, { e: 3 }], discussion: [{ d: 1 }], viewsGained: { fromMs: 1, stepMs: 1, values: [] }, viewsGainedAll: {}, postViews: [], inWindow: [], viewsTotal: { v: 9 }, topCoin: { address: 'a' } };
+  assert.deepEqual(cardOf(page), { id: 'n1', title: 'T', postCount: 3, evidence: [{ e: 1 }], discussion: [], viewsTotal: { v: 9 }, topCoin: { address: 'a' } });
+  assert.equal(cardOf(null), null);
 });
