@@ -417,26 +417,44 @@
   line-height: 1;
 }
 
-.folioSub {
-  display: flex;
+
+
+
+/* The rank as one small pill under the name: badge, "Intern, 0 rep". */
+.rankRow {
+  margin-top: 12px;
+}
+
+.rankPill {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-  color: var(--text-3);
+  gap: 6px;
+  padding: 4px 10px 4px 5px;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text-2);
   font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
-.folioWallet {
-  margin-left: auto;
-  font-family: var(--font-mono);
+.folioLabel {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 12px;
   font-weight: 600;
 }
 
-.folioNote {
-  margin: 6px 0 0;
+/* Your own profile's switch and Edit bio, quietly at the bottom. */
+.mine {
+  margin-top: 28px;
+}
+
+.quiet {
+  display: block;
+  margin-top: 12px;
+  padding: 6px 0;
   color: var(--text-3);
-  font-size: 11.5px;
-  line-height: 1.4;
+  font-size: 13px;
+  font-weight: 600;
 }
