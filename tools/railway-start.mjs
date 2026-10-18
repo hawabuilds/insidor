@@ -77,7 +77,7 @@ if (service in MAIN) {
        Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on this service; without them it says so and exits. */
     { name: 'logos', everyMs: 120_000, args: ['services/project/src/logos-main.ts'] },
     { name: 'label', everyMs: 3_600_000, args: ['tools/db.mjs', 'label'] },
-    /* The decision log's days older than three move to the private decision-archive bucket, checked
+    /* The decision log's days older than one move to the private decision-archive bucket, checked
        row for row before each day's partition is dropped (tools/archive-decisions.ts). Hourly so a
        day is moved soon after it is due; a pass with nothing due is one catalogue query. */
     { name: 'archive', everyMs: 3_600_000, args: ['tools/archive-decisions.ts'] },
