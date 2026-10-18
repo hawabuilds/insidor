@@ -246,6 +246,36 @@ export async function ownerRoute(
     return json(200, { posts });
   }
 
+  /* ★ THE SAFETY NET'S POSTS, FOR THE OWNER ONLY (the owner, 2026-10-18: "an owner-only way to see
+     which posts came in through the safety net"): For You posts of the last two days whose judge
+     said no and whose coin model score (0096) let them through, with no owner "meme" call that would
+     have passed them anyway. No score is sent — only which posts, when and their words. Before 0096
+     is applied the table is missing and the list is empty. */
+  if (sub === 'safety-net' && r.method === 'GET') {
+    try {
+      const posts = await deps.db.query<{ itemId: string; at: number; text: string | null; link: string | null }>(
+        `select f.item_id as "itemId", (extract(epoch from f.first_shown_at) * 1000)::float8 as at, i.body as text,
+                case i.source when 'x' then 'https://x.com/i/status/' || i.source_item_id
+                              when 'tiktok' then 'https://www.tiktok.com/@' || coalesce(a.handle, '') || '/video/' || i.source_item_id end as link
+           from public.feed_post f
+           join internal.coin_model_score s on s.item_id = f.item_id and s.would_add and s.mode = 'live'
+           join public.item i on i.item_id = f.item_id
+           left join public.author a on a.author_key = i.author_key
+           join lateral (select pj.coinable from internal.post_judgement pj
+                          where pj.item_id = f.item_id and pj.prompt_id not like 'post-kind%'
+                          order by pj.judged_at desc, pj.id desc limit 1) j on not j.coinable
+          where f.feed_id = 'fyp' and f.first_shown_at >= now() - interval '2 days' and f.first_shown_at >= s.scored_at
+            and not exists (select 1 from internal.owner_feedback o where o.item_id = f.item_id and o.subject_kind = 'post' and o.verdict = 'meme')
+          order by f.first_shown_at desc
+          limit ${MAX_HIDDEN}`,
+      );
+      return json(200, { posts });
+    } catch (e) {
+      if (typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '42P01') return json(200, { posts: [] });
+      throw e;
+    }
+  }
+
   if (sub === 'coin-check' || sub === 'coin-label') return ownerCoinRoute(r.method, sub, r.body, me, ref, deps);
   /* The owner's calls on a narrative (owner-narrative.ts, 0093). */
   if (sub === 'narrative') return ownerNarrativeRoute(r.method, r.body, me.userId, ref, deps.db);

@@ -93,6 +93,7 @@ import { PostSheet } from '../post-sheet/index.ts';
 import { PullIndicator } from '../alerts/Parts.tsx';
 import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
 import { HiddenByMe } from '../owner/HiddenByMe.tsx';
+import { SecondChance } from '../owner/SecondChance.tsx';
 import { AddMissedPostSheet } from '../owner/AddMissedPost.tsx';
 import { OwnerCardStrip } from '../owner/OwnerCard.tsx';
 import { HideBar } from '../owner/OwnerPost.tsx';
@@ -200,6 +201,7 @@ export function Feed({
   const owner = useIsOwner();
   const { hidden: hiddenNow } = useOwnerState();
   const [hiddenList, setHiddenList] = useState(false);
+  const [secondChance, setSecondChance] = useState(false);
   const [addMissed, setAddMissed] = useState(false);
 
   /* Coming back to the app is when somebody expects it to be current. */
@@ -360,6 +362,7 @@ export function Feed({
         {owner && onPosts ? (
           <div className={styles['ownerRow']}>
             <Button look="quiet" onClick={() => setHiddenList(true)}>Hidden by me</Button>
+            <Button look="quiet" onClick={() => setSecondChance(true)}>Second chances</Button>
             <Button look="quiet" onClick={() => setAddMissed(true)}>Add a missed post</Button>
           </div>
         ) : null}
@@ -436,6 +439,7 @@ export function Feed({
         <SheetToast note={note} onDone={() => setNote(null)} />
 
         {hiddenList ? <HiddenByMe onClose={() => setHiddenList(false)} /> : null}
+        {owner && secondChance ? <SecondChance onClose={() => setSecondChance(false)} /> : null}
         {owner && addMissed ? <AddMissedPostSheet onClose={() => setAddMissed(false)} /> : null}
         {owner ? <HideBar /> : null}
         {sheet !== null ? <PostSheet key={sheet.id} postId={sheet.id} start={sheet.start} onClose={() => setSheet(null)} /> : null}
