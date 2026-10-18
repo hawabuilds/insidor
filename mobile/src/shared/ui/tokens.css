@@ -139,6 +139,14 @@ button {
   cursor: pointer;
 }
 
+/* Every tap answers at once (the owner, 2026-10-18): anything pressable dims while the finger is on
+   it. Opacity only, so nothing moves or reflows; zero specificity (:where), so a control's own
+   pressed look (row.module.css, trade.module.css) still applies on top. iPhone Safari shows :active
+   only on a page with a touch listener, which main.tsx adds. */
+:where(button, a[href], [role='button'], [role='tab'], summary):active {
+  opacity: 0.72;
+}
+
 input {
   font: inherit;
   color: inherit;
