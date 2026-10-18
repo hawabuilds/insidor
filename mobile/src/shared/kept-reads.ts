@@ -28,7 +28,7 @@
  * that two different loaders share hands one screen the other's shape — keys name their read.
  */
 
-const VERSION = 1;
+const VERSION = 2;
 /** The phone's store's own key prefix, for tests and for clearing. */
 export const KEPT_PREFIX = `insidor.kept.v${VERSION}.`;
 const PREFIX = KEPT_PREFIX;
