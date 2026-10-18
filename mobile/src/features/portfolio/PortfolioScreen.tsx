@@ -128,6 +128,31 @@ function Arrow({ up = false }: { up?: boolean }) {
   );
 }
 
+/* ★ THE LAST SIGNED-IN WALLET, REMEMBERED ON THE PHONE (the owner, 2026-10-18: "portfolio should
+   load instantly"). Only public facts: the address and the name shown on it, never a key. While the
+   session is still being restored, Portfolio opens on this wallet's last answer at once, read-only
+   (no Send, no export), and swaps to the live session the moment it is back. Cleared on sign out. */
+const LAST_WALLET = 'insidor.lastWallet.v1';
+interface LastWallet { readonly address: string; readonly name: string | null; readonly handle: string | null; readonly pictureUrl: string | null }
+function readLastWallet(): LastWallet | null {
+  try {
+    const raw = globalThis.localStorage?.getItem(LAST_WALLET);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<LastWallet>;
+    return typeof v.address === 'string' && v.address.length >= 32 ? { address: v.address, name: v.name ?? null, handle: v.handle ?? null, pictureUrl: v.pictureUrl ?? null } : null;
+  } catch {
+    return null;
+  }
+}
+function writeLastWallet(v: LastWallet | null): void {
+  try {
+    if (v === null) globalThis.localStorage?.removeItem(LAST_WALLET);
+    else globalThis.localStorage?.setItem(LAST_WALLET, JSON.stringify(v));
+  } catch {
+    /* a blocked store keeps nothing; Portfolio waits for the session as before */
+  }
+}
+
 export function PortfolioScreen() {
   const { wallet, state } = useWallet();
   const linkedKey = useSyncExternalStore(
@@ -146,6 +171,7 @@ export function PortfolioScreen() {
 
   if (state.kind === 'connected' || state.kind === 'wrong-network') {
     const id = wallet?.identity() ?? null;
+    writeLastWallet({ address: state.account, name: id?.name ?? null, handle: id?.handle ?? null, pictureUrl: id?.pictureUrl ?? null });
     const shown = viewing !== null && linked.includes(viewing) ? viewing : state.account;
     const own = shown === state.account;
     const who: WhoAmI = own
@@ -173,7 +199,7 @@ export function PortfolioScreen() {
         profileKey={id?.handle ?? null}
         linked={linked}
         switcher={switcher}
-        leave={{ label: 'Sign out', run: () => void wallet?.disconnect() }}
+        leave={{ label: 'Sign out', run: () => { writeLastWallet(null); void wallet?.disconnect(); } }}
       />
     );
   }
@@ -182,6 +208,24 @@ export function PortfolioScreen() {
      a signed-in person can reach this tab a moment before their wallet is back. Say so, never
      "Sign in". */
   if (SIGN_IN_CONFIGURED && (state.kind === 'unavailable' || state.kind === 'connecting')) {
+    const last = readLastWallet();
+    if (last !== null) {
+      return (
+        <Loaded
+          key={last.address}
+          who={{ name: last.name, handle: last.handle, pictureUrl: last.pictureUrl, address: last.address }}
+          canAct={false}
+          load={(signal) => fetchPortfolio(last.address, '24h', signal)}
+          history={(signal, range) => fetchWalletHistory(last.address, range, signal)}
+          exportKey={() => undefined}
+          ownAddress={last.address}
+          profileKey={last.handle}
+          linked={[]}
+          switcher={null}
+          leave={{ label: 'Sign out', run: () => { writeLastWallet(null); void wallet?.disconnect(); } }}
+        />
+      );
+    }
     return (
       <section className={box['screen']}>
         <div className={box['signedOut']}>
