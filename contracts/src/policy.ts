@@ -2955,6 +2955,73 @@ export interface NotifyPolicy {
   readonly firstCoinPerPass: number;
   /** A push undelivered after this long is dropped by the push service. */
   readonly pushTtlS: number;
+  /**
+   * ★ BLOWING UP ON FOR YOU (the owner, 2026-10-18: pushes bring people back, each worth opening).
+   * A For You post is pushed as blowing up only when it is one of the first `topN` risers of
+   * Trending now (Policy.rising.forYouSorts.risers, the list the app shows) AND gains at least
+   * `minPerMin` views a minute over the last half hour (text-post views; a short video's divided by
+   * its reach scale first, as Trending does). Posts with no coin yet are taken first. A brand-new
+   * narrative (first post found under `newNarrativeMaxAgeMs` ago) counts as one too when its last
+   * hour brought `newNarrativeMinPosts` new posts and `newNarrativeMinReach` views. A person gets at
+   * most `perDay` of these in any `dayMs`, `minGapMs` apart; the rest are listed, not pushed. At
+   * most `perPass` posts or narratives are taken a pass, each once ever.
+   */
+  readonly blowingUp: {
+    readonly topN: number;
+    readonly minPerMin: number;
+    readonly perDay: number;
+    readonly dayMs: number;
+    readonly minGapMs: number;
+    readonly perPass: number;
+    readonly newNarrativeMaxAgeMs: number;
+    readonly newNarrativeMinPosts: number;
+    readonly newNarrativeMinReach: number;
+  };
+  /**
+   * ★ A NARRATIVE YOU STARRED PICKS UP SPEED: its last hour brought at least `minNewPosts` new posts
+   * and `minReach` views, and its views a minute now are at least `minRatio` times the half hour
+   * before (when that is known). At most one push per person and narrative every `gapMs`.
+   */
+  readonly starredSpeed: {
+    readonly minNewPosts: number;
+    readonly minReach: number;
+    readonly minRatio: number;
+    readonly gapMs: number;
+  };
+  /**
+   * ★ A BIG ACCOUNT POSTS IN A NARRATIVE YOU STARRED: an account with at least `minFollowers`
+   * followers (as last read from its profile), a post made under `maxPostAgeMs` ago, once per
+   * narrative and post. At most `perPass` such posts a pass. One push per person and narrative
+   * every `gapMs`; the others are listed (on 16-18 Oct a busy narrative had six such posts a day).
+   */
+  readonly bigAccount: {
+    readonly minFollowers: number;
+    readonly maxPostAgeMs: number;
+    readonly perPass: number;
+    readonly gapMs: number;
+  };
+  /** A coin you hold halved: its price at or under this fraction of what you paid. Once per coin, ever. */
+  readonly holdingDownAt: number;
+  /**
+   * ★ A COIN YOU MADE GETS ITS FIRST BUYERS: a coin created through Insidor under `maxCoinAgeMs` ago
+   * whose newest `signaturesRead` transactions show a wallet other than its creator buying it.
+   * At most `perPass` coins read a pass, oldest-checked first; once per coin.
+   */
+  readonly creatorBuyers: {
+    readonly maxCoinAgeMs: number;
+    readonly perPass: number;
+    readonly signaturesRead: number;
+  };
+  /**
+   * ★ GROUPED PUSHES: new followers and likes on your comments are listed one by one but pushed as
+   * one ("3 new followers", "12 people liked your comment"). A group is pushed once its oldest
+   * member has waited `waitMs` (so a burst lands in one push) and at least `gapMs` after that
+   * group's last push. `useful` (people liking your comments): at most one push a day.
+   */
+  readonly grouped: {
+    readonly follow: { readonly waitMs: number; readonly gapMs: number };
+    readonly useful: { readonly waitMs: number; readonly gapMs: number };
+  };
   /** Reads and writes one person may make per `windowMs`. */
   readonly perClient: number;
   readonly windowMs: number;
@@ -5319,6 +5386,28 @@ const POLICY_V1: Policy = {
     /* Twenty narratives a pass, a pass every twenty seconds: 18 Oct had 13 first coins in three days. */
     firstCoinPerPass: 20,
     pushTtlS: 86_400,
+    /* The owner's notification design, 2026-10-18. Bars from tools/notify-backtest.ts on the three
+       days before (see the commit that set them). */
+    blowingUp: {
+      topN: 3,
+      minPerMin: 3_000,
+      perDay: 3,
+      dayMs: 86_400_000,
+      minGapMs: 10_800_000, // three hours, so three pushes spread over the day
+      perPass: 3,
+      newNarrativeMaxAgeMs: 21_600_000, // six hours
+      newNarrativeMinPosts: 5,
+      newNarrativeMinReach: 1_000_000,
+    },
+    starredSpeed: { minNewPosts: 3, minReach: 500_000, minRatio: 1.5, gapMs: 14_400_000 }, // four hours
+    bigAccount: { minFollowers: 1_000_000, maxPostAgeMs: 21_600_000, perPass: 20, gapMs: 10_800_000 }, // three hours a narrative
+    holdingDownAt: 0.5,
+    /* Seven days, ten coins a pass, the newest twenty transactions: one signatures read and one parse per coin a pass. */
+    creatorBuyers: { maxCoinAgeMs: 604_800_000, perPass: 10, signaturesRead: 20 },
+    grouped: {
+      follow: { waitMs: 600_000, gapMs: 3_600_000 }, // ten minutes to gather, an hour apart
+      useful: { waitMs: 3_600_000, gapMs: 86_400_000 }, // an hour to gather, once a day
+    },
     perClient: 60,
     windowMs: 60_000,
     /* The owner, 2026-10-18: "if any language's X finds per hour drop by more than 70% ... alert me",

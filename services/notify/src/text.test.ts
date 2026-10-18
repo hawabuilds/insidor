@@ -201,3 +201,15 @@ test('the disk alerts say the size against the inferred disk; the bill says its 
     body: 'Over your $40 line. Plan $25.00, compute $50.00 (assumed, please confirm), disk $0.00, files unknown. Egress is not counted.',
   });
 });
+
+test('★ the notification design in its own words (2026-10-18)', () => {
+  assert.deepEqual(alertText('starred_speed', { title: 'Pancake the cat', newPosts: 6, viewsGained: 2_100_000 }), { title: 'Pancake the cat is taking off', body: '6 new posts, +2.1M views in the last hour' });
+  assert.deepEqual(alertText('blowing_up', { what: 'post', author: '@rawsalerts', excerpt: 'Goliath at Six Flags closed', views: 1_200_000, gain: 240_000, gainMinutes: 30, noCoin: true }), { title: 'Rising fast, no coin yet', body: '@rawsalerts: Goliath at Six Flags closed 1.2M views, +240K in 30m' });
+  assert.equal(alertText('blowing_up', { what: 'post', author: '@a', excerpt: 'x', views: 10, symbol: 'GOL', mcUsd: 12_000, noCoin: false }).body, '@a: x 10 views $GOL $12K MC.');
+  assert.deepEqual(alertText('follow', { grouped: true, count: 5, who: '@e', others: ['@d', '@c'] }), { title: '5 new followers', body: '@e, @d, @c and 2 others followed you' });
+  assert.deepEqual(alertText('follow', { grouped: true, count: 1, who: '@e' }), { title: 'New follower', body: '@e followed you' });
+  assert.deepEqual(alertText('comment_useful', { grouped: true, count: 12, comments: 3 }), { title: '12 people liked your comments', body: 'On 3 of your comments.' });
+  assert.equal(alertText('holding_down', { symbol: 'GOL', downPercent: 52.4, positionUsd: 48 }).title, '$GOL is down 52% since you bought');
+  assert.deepEqual(alertText('creator_buyers', { symbol: 'PAN', buyers: 1 }), { title: '$PAN has its first buyer', body: 'A wallet bought the coin you made.' });
+  assert.equal(alertText('starred_big_account', { author: '@elonmusk', title: 'Pancake', followers: 220_000_000, excerpt: 'lol' }).body, '220M followers: lol');
+});

@@ -66,13 +66,13 @@ test('★ switching an alert type off stops it — no list row, no push, and its
   assert.equal((await db.query('select 1 from people.alert')).length, 0);
   await prefs('u1', {});
   await q('u1', 'rising_post', 'x:1');
-  assert.deepEqual(await run(), ['push'], 'switched back on, the same post can still reach them');
+  assert.deepEqual(await run(), ['list-only'], 'switched back on, the same post still reaches their list (a new For You post is listed, never pushed)');
 });
 
 test('★ the hourly limit holds: past it, alerts are listed and not pushed', async () => {
   const { prefs, q, run, sent } = await setup();
   await prefs('u1', { perHour: 2 });
-  for (const s of ['a', 'b', 'c', 'd']) await q('u1', 'narrative_promoted', s);
+  for (const s of ['a', 'b', 'c', 'd']) await q('u1', 'graduated', s);
   assert.deepEqual(await run(), ['push', 'push', 'hourly-limit', 'hourly-limit']);
   assert.equal(sent.length, 2);
 });
@@ -106,5 +106,5 @@ test('★ pipeline alerts: the first look alerts on nothing; then a new rising p
   const kinds = (await db.query<{ userId: string; kind: string }>('select user_id as "userId", kind from people.alert_queue order by queue_id')).map((r) => `${r.userId}:${r.kind}`);
   assert.deepEqual(kinds.sort(), ['u1:narrative_coin', 'u1:narrative_promoted', 'u1:rising_post', 'u2:coin_matched', 'u2:narrative_coin', 'u2:narrative_promoted', 'u2:rising_post']);
   assert.equal(await checkPipeline(db), 0, 'and the next pass finds nothing new');
-  assert.ok((await run()).every((o) => o === 'push'));
+  assert.ok((await run()).every((o) => o === 'list-only'), 'all of it is listed; none of it is pushed (the notification design, 2026-10-18)');
 });
