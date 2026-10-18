@@ -33,14 +33,16 @@ import { languageAsks, roundOrder } from './languages.ts';
 const NOW = 1_800_000_000_000 as Millis;
 const MIN = 60_000;
 const USD_PER_POST = 0.00015;
-const LANGS = DEFAULT_POLICY.feed.langs;
+/* These tests are about splitting by language, so they pin the five languages they were written for. */
+const P5 = { ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, langs: ['en', 'zxx', 'pt', 'qme', 'ja'] } } as typeof DEFAULT_POLICY;
+const LANGS = P5.feed.langs;
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
 
 /** What one language's page `page` (from 0) answers: a count of posts with more to come or not, or a throw. */
 type Page = { readonly n: number; readonly more: boolean } | 'throw' | 'refuse';
 type Script = (lang: string, page: number, q: DiscoveryQuery) => Page;
 
-const isMiddle = (q: DiscoveryQuery): boolean => q.filter?.minApproval === DEFAULT_POLICY.feed.middle.minApproval && q.untilMs === NOW - DEFAULT_POLICY.feed.middle.minAgeMin * MIN;
+const isMiddle = (q: DiscoveryQuery): boolean => q.filter?.minApproval === P5.feed.middle.minApproval && q.untilMs === NOW - P5.feed.middle.minAgeMin * MIN;
 
 function item(lang: string, i: number): Item {
   return {
@@ -93,8 +95,8 @@ function source(seen: Seen[], script: Script, crossed: string[] = []): PlatformA
 
 const registry = (adapter: PlatformAdapter) => ({ get: () => adapter, all: () => [adapter], has: () => true, absent: () => [] }) as unknown as PlatformRegistry;
 const openMeter = { record: () => undefined, spentUsd: () => 0, mayspend: () => true, line: () => ({ capUsd: 1, spentUsd: 0, stopAtUsd: 1, remainingUsd: 1, unrecordedUsd: 0 }) } as unknown as Meter;
-const withFeed = (feed: Partial<Policy['feed']>): Policy => ({ ...DEFAULT_POLICY, feed: { ...DEFAULT_POLICY.feed, ...feed } });
-const MIDDLE_ONLY = withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: true } });
+const withFeed = (feed: Partial<Policy['feed']>): Policy => ({ ...P5, feed: { ...P5.feed, ...feed } });
+const MIDDLE_ONLY = withFeed({ middle: { ...P5.feed.middle, on: true } });
 
 function pass(adapter: PlatformAdapter, policy: Policy, opts: { middle?: LaneLedger; fresh?: FreshClock; meter?: Meter; only?: 'middle'; mode?: 'live' | 'dry'; lanes?: readonly ('all' | 'media' | 'slow')[] } = {}) {
   const stored: { lane: unknown; langs: string[] }[] = [];
@@ -133,11 +135,11 @@ test('languageAsks splits a filter of several languages into one search each; on
 
 test('★ the discover pass as shipped asks every catch-all band once per language, never an OR, and stores them all', async () => {
   const seen: Seen[] = [];
-  const { result, stored } = pass(source(seen, (lang) => ({ n: lang === 'en' ? 7 : 2, more: false })), DEFAULT_POLICY, { fresh: memoryFreshClock() });
+  const { result, stored } = pass(source(seen, (lang) => ({ n: lang === 'en' ? 7 : 2, more: false })), P5, { fresh: memoryFreshClock() });
   const r = await result;
   assert.equal(r.failed, 0);
   /* The fresh bands (6, 50 minutes) and the late band (five hours): three asks, five languages each. */
-  const asks = 2 + DEFAULT_POLICY.feed.fresh.late.bands.length;
+  const asks = 2 + P5.feed.fresh.late.bands.length;
   assert.equal(seen.length, asks * LANGS.length);
   for (const window of new Set(seen.map((s) => s.q.untilMs))) {
     assert.deepEqual(seen.filter((s) => s.q.untilMs === window).map((s) => s.lang), [...LANGS], 'each band asks every language, in policy order');
@@ -148,7 +150,7 @@ test('★ the discover pass as shipped asks every catch-all band once per langua
 
 test('★ round-robin: every language gets its first page before any gets a second, and the order turns each round', async () => {
   const seen: Seen[] = [];
-  const policy = withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: true, maxPages: 3 } });
+  const policy = withFeed({ middle: { ...P5.feed.middle, on: true, maxPages: 3 } });
   await pass(source(seen, endless), policy, { middle: memoryLaneLedger(), only: 'middle' }).result;
   assert.deepEqual(seen.map((s) => `${s.lang}${s.page}`), [
     'en0', 'zxx0', 'pt0', 'qme0', 'ja0',
@@ -230,7 +232,7 @@ test('★ an empty run ends that language alone: the others page on', async () =
 
 test('★ on the old rule a short page ends that language only', async () => {
   const seen: Seen[] = [];
-  const policy = withFeed({ fresh: { ...DEFAULT_POLICY.feed.fresh, enabled: false }, middle: { ...DEFAULT_POLICY.feed.middle, on: false } });
+  const policy = withFeed({ fresh: { ...P5.feed.fresh, enabled: false }, middle: { ...P5.feed.middle, on: false } });
   /* The 'all' lane: en's pages are full (20) with more, the others' short. */
   await pass(source(seen, (lang) => ({ n: lang === 'en' ? 20 : 3, more: true })), policy, { lanes: ['all'] }).result;
   assert.equal(seen.filter((s) => s.lang === 'en').length, policy.feed.maxPagesPerLane, 'English reads its full pages');
@@ -266,7 +268,7 @@ test('★ every language failing is one failed ask, charged, and nothing stored'
 
 test('★ a band keeps each language\'s window on its own clock: a failed language is asked again from where it stood', async () => {
   const clock = memoryFreshClock();
-  const policy = withFeed({ middle: { ...DEFAULT_POLICY.feed.middle, on: false }, fresh: { ...DEFAULT_POLICY.feed.fresh, late: { ...DEFAULT_POLICY.feed.fresh.late, on: false } } });
+  const policy = withFeed({ middle: { ...P5.feed.middle, on: false }, fresh: { ...P5.feed.fresh, late: { ...P5.feed.fresh.late, on: false } } });
   await pass(source([], (lang) => (lang === 'pt' ? 'throw' : { n: 1, more: false })), policy, { fresh: clock }).result;
   for (const age of policy.feed.fresh.bandAgesMin) {
     assert.equal(clock.lastUntil(bandKey('x', age, 'pt')), null, 'pt failed: its window stays open');
@@ -290,7 +292,7 @@ test('a dry run prices one first page a language and asks nobody', async () => {
   const r = await pass(source(seen, endless), MIDDLE_ONLY, { middle: memoryLaneLedger(), only: 'middle', mode: 'dry' }).result;
   assert.equal(seen.length, 0);
   const planned = r.outcomes.find((o) => o.kind === 'planned');
-  assert.ok(planned !== undefined && planned.kind === 'planned' && planned.estUnits === LANGS.length * DEFAULT_POLICY.feed.pageLimit);
+  assert.ok(planned !== undefined && planned.kind === 'planned' && planned.estUnits === LANGS.length * P5.feed.pageLimit);
 });
 
 test('★ the lane search (narrative names) asks each language on its own cursor under one day, round-robin, a failure ending only its language', async () => {
