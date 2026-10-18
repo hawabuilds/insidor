@@ -1596,6 +1596,37 @@ export interface FeedPolicy {
     readonly commonWords: readonly string[];
     readonly cap: LaneCapPolicy;
   };
+  /**
+   * ★ THE QUOTE SEARCH ON BIG ACCOUNTS (the owner, 2026-10-18): a held text post by an account with
+   * at least `minFollowers` followers whose likes have reached `minApproval` has its quotes searched
+   * at about each age in `askAtMin` (within `askGraceMin` after it), at `reproductionMinApproval` likes. The
+   * quotes are credited to the 'quote' lane (0097), judged like any found post, and may reach For You.
+   * A quote of a giant account's post is where its meme is often made (the Tesla 7:55 post).
+   *
+   * Its own loop (loops/quotes.ts) and its own day in internal.lane_spend: `cap`. A pass asks at most
+   * `maxPostsPerPass` posts, most liked first, each at most `maxPagesPerAsk` pages, and stops at
+   * `passDeadlineMs`. Which ages a post was asked at is kept in the process: a restart may ask one
+   * post's current age once more, inside the cap. What breaks if changed carelessly: a grace as long
+   * as the gap between two ages asks every post at both on every restart.
+   */
+  readonly reproductions: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    readonly minFollowers: number;
+    readonly minApproval: number;
+    readonly reproductionMinApproval: number;
+    readonly askAtMin: readonly number[];
+    readonly askGraceMin: number;
+    /** Big posts in the asking windows read from the store per pass, most liked first. */
+    readonly maxCandidates: number;
+    /** A reading under `minApproval` this old, at an asking age, is read again by id before deciding. */
+    readonly rereadAfterMin: number;
+    readonly maxRereadsPerPass: number;
+    readonly maxPostsPerPass: number;
+    readonly maxPagesPerAsk: number;
+    readonly passDeadlineMs: number;
+    readonly cap: LaneCapPolicy;
+  };
 }
 
 /**
@@ -4339,6 +4370,30 @@ const POLICY_V1: Policy = {
       ],
       /* The middle lane's judging figures: the same judge, on the same kind of post. */
       cap: { dailyUsd: 0.35, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
+    },
+    /* The owner, 2026-10-18: "build ... the quote search on 10M+ accounts ... $1.00". Over the three
+       days to 2026-10-18, 325 held text posts by 10M+ accounts reached 5,000 likes within 3 hours by our
+       readings (~110 a day), and 469 more had only an early reading under 5,000 (re-read below). Two
+       asks each is ~220-300 asks a day; probed, a typical big post has 0-1 quotes at 300 likes by 3
+       hours and a viral one 12 or more (the Tesla post). Search ~$0.07, re-reads ~$0.11, and ~150
+       new quotes judged ~$0.20: ~$0.35-0.45 a day, the cap's $1.00 is a viral day's. */
+    reproductions: {
+      on: true,
+      everyMs: 300_000, // every 5 minutes
+      minFollowers: 10_000_000,
+      minApproval: 5_000,
+      reproductionMinApproval: 300,
+      askAtMin: [60, 180],
+      askGraceMin: 45,
+      maxCandidates: 200,
+      /* About 350 big posts a day have only an early reading under 5,000; one re-read by id an age is
+         ~700 ids, $0.11 a day, on this lane's cap. */
+      rereadAfterMin: 15,
+      maxRereadsPerPass: 50,
+      maxPostsPerPass: 40,
+      maxPagesPerAsk: 3,
+      passDeadlineMs: 120_000,
+      cap: { dailyUsd: 1, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
     },
   },
 

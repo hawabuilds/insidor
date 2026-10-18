@@ -43,6 +43,7 @@ import { findersLoop } from './loops/finders.ts';
 import { middleLoop } from './loops/middle.ts';
 import { readingsLoop } from './loops/readings.ts';
 import { nameSearchLoop } from './loops/name-search.ts';
+import { quotesLoop } from './loops/quotes.ts';
 import { earlyLoop } from './loops/early.ts';
 import { groupLoop } from './loops/group.ts';
 import { qualifyLoop } from './loops/qualify.ts';
@@ -228,9 +229,10 @@ async function main(): Promise<void> {
          cost): its own loop, deadline and daily cap, so it can never hold up discovery, the judge or
          TRACK (loops/readings.ts). */
       readingsLoop(runtime.loopDeps.policy.feed.readings.everyMs, runtime.readings),
-      /* The narrative-name search (`feed.narrativeNames`, the owner 2026-10-18): its own loop, deadline
-         and daily cap, so it can never hold up discovery or the judge. */
+      /* The narrative-name and quote searches (`feed.narrativeNames`, `feed.reproductions`, the owner 2026-10-18):
+         each its own loop, deadline and daily cap, so neither can hold up discovery or the judge. */
       nameSearchLoop(runtime.loopDeps.policy.feed.narrativeNames.everyMs, runtime.nameSearch),
+      quotesLoop(runtime.loopDeps.policy.feed.reproductions.everyMs, runtime.quoteSearch),
       /* Early judging (`judge.early`, work/early-judge.ts): the likeliest catch-all posts judged before
          their views clear For You's bar. Its own loop, cadence and daily cap, never in the discovery
          pass, so a slow judge here cannot hold up the normal judging or the feed. */

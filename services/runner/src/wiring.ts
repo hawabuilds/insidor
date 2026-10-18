@@ -110,6 +110,7 @@ import {
   PgStageRunRepo,
   PgStoryRepo,
   PgNarrativeRepo,
+  PgQuoteTargetRepo,
   asDb,
   createPool,
   withAdvisoryLock,
@@ -131,6 +132,7 @@ import { narrativeGrouper, type NarrativeResult } from './work/narratives.ts';
 import { scoreCoinModel, type CoinModelResult } from './work/coin-model.ts';
 import { readingsMemory, readingsPass, type ReadingsResult } from './work/readings.ts';
 import { narrativeNameClock, narrativeNamesPass, type NarrativeNamesResult } from './work/narrative-names.ts';
+import { quoteClock, quoteSearchPass, type QuoteSearchResult } from './work/quote-search.ts';
 import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
 import { translatePosts } from './work/translate-posts.ts';
 import { embedImages } from './work/embed-images.ts';
@@ -202,6 +204,8 @@ export interface Runtime {
   readonly readings: () => Promise<ReadingsResult>;
   /** Each board narrative searched by its name, forward, on its own cadence and ledger. See work/narrative-names.ts. */
   readonly nameSearch: () => Promise<NarrativeNamesResult>;
+  /** Big accounts' held posts' quotes searched at about 1 and 3 hours old, own ledger. See work/quote-search.ts. */
+  readonly quoteSearch: () => Promise<QuoteSearchResult>;
   /** Embed the first image of each new post once, for GROUP's image evidence. */
   readonly embedImages: () => Promise<unknown>;
   /** Follow promoted stories' quotes back to where they started. See work/backfill.ts. */
@@ -825,8 +829,9 @@ export async function withRuntime<T>(
       /* The video and author fill-in's tries and day count, kept across passes for this process (work/post-refill.ts). */
       const refills = refillMemory();
       const readingNotes = readingsMemory();
-      /* Where each narrative's name search last began (this process). */
+      /* Where each narrative's name search last began, and which ages each big post was asked at (this process). */
       const nameClock = narrativeNameClock();
+      const quotesAsked = quoteClock();
       /* Each poster's last profile re-read and the day's count (work/bio-refresh.ts). */
       const bioReads = bioRefreshMemory();
       /* The feed's translations table (work/translate-posts.ts); its translator is built below, with the open model. */
@@ -1270,6 +1275,22 @@ export async function withRuntime<T>(
                 now: () => Date.now() as Millis,
               },
               nameClock,
+            ),
+          quoteSearch: () =>
+            quoteSearchPass(
+              {
+                sources: () => platforms.all(),
+                targets: new PgQuoteTargetRepo(db),
+                store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                uncredited: (ids) => repos.items.uncredited(ids),
+                ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'quote-lane' })),
+                meter,
+                mode: cfg.spend.kind,
+                policy,
+                log: log.child({ step: 'quote-search' }),
+                now: () => Date.now() as Millis,
+              },
+              quotesAsked,
             ),
           embedImages: () =>
             embedImages({
