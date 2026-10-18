@@ -98,7 +98,7 @@
  */
 
 import type { Millis } from '@insidor/contracts';
-import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
+import { COIN_MODEL_TARGETS, DEFAULT_POLICY, type CoinModelTarget } from '@insidor/contracts/policy.ts';
 import { clearsReachBar, coinVouches, heldKind, type PostCoinCalls, type StoryCoin, isShillText, passesWithSignal, postRankScore, postScoreReason, postSignals, type CryptoSignal, type HeldKind, type PassRoute, type ReachLevel, type ScoreFit } from '@insidor/core';
 import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
 import { freshForYou, recentGrowthPerMinute } from './fyp-freshness.ts';
@@ -232,10 +232,12 @@ const toMs = (value: Date | string | null): Millis | null => {
  * role reads `internal`; the score never leaves
  * this function except as the yes or no `postScore` makes of it.
  */
-export async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[] = [], only: readonly string[] | null = null, net = false): Promise<readonly RisingRow[]> {
+export async function loadCandidates(db: Db, sinceMs: Millis, members: readonly string[] = [], only: readonly string[] | null = null, net: CoinModelTarget | null = null): Promise<readonly RisingRow[]> {
   /* ★ The safety net's one bit, joined only while it is on: before 0096 is applied the table does not
-     exist, and with the net off nothing here may depend on it. */
-  const netColumn = net ? `exists (select 1 from internal.coin_model_score cms where cms.item_id = i.item_id and cms.would_add) as net_add` : `null::boolean as net_add`;
+     exist, and with the net off nothing here may depend on it. Only the live target's would-add
+     (Policy.judge.coinModel.liveTarget, 0099): a shadowed target never lets a post through. The
+     target is one of COIN_MODEL_TARGETS, so it is spelled into the query rather than bound. */
+  const netColumn = net !== null && COIN_MODEL_TARGETS.includes(net) ? `exists (select 1 from internal.coin_model_score cms where cms.item_id = i.item_id and cms.would_add and cms.target = '${net}') as net_add` : `null::boolean as net_add`;
   return db.query<RisingRow>(
     `select i.item_id, i.source, i.source_item_id, i.posted_at, i.first_seen_at, i.body, i.media,
             a.handle, a.display_name, a.source_author_id,
@@ -695,7 +697,7 @@ export async function buildRising(
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const whyNot = new Map<string, FeedRejectionReason>();
   const heldBy = new Map<string, HeldKind>();
-  const candidates = await loadCandidates(db, sinceMs, membership?.refresh ?? [], only, policy.judge.coinModel.on);
+  const candidates = await loadCandidates(db, sinceMs, membership?.refresh ?? [], only, policy.judge.coinModel.on ? policy.judge.coinModel.liveTarget : null);
   const crypto = await loadCryptoReads(db, candidates.map((row) => row.item_id));
   const atOf = (row: RisingRow): number => toMs(row.posted_at) ?? toMs(row.first_seen_at) ?? 0;
   /* Whether each loaded post passes now; a member that no longer does is still projected for its

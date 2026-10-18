@@ -16,6 +16,7 @@ import type { Item, CounterSet, Fingerprint, Judgement, MediaRef, Millis } from 
 import { JUDGE_EVIDENCE } from '@insidor/contracts';
 import type { ItemId, SourceId } from '@insidor/contracts/ids.ts';
 import type { ItemRepo } from '@insidor/contracts/ports/store.ts';
+import type { CoinModelTarget } from '@insidor/contracts/policy.ts';
 
 import type { Db } from '../client.ts';
 import { NotImplemented } from '../not-implemented.ts';
@@ -250,9 +251,10 @@ export class PgItemRepo implements ItemRepo {
    *
    * `withNet` (Policy.judge.coinModel.on) also takes a "no" our own coin model's stored score would
    * let through (0096): such a post may reach For You, so it is screened by kind like a yes. Off, the
-   * coin model's table is never read.
+   * coin model's table is never read. `withNet` names the target the net acts on
+   * (Policy.judge.coinModel.liveTarget, 0099): a shadowed target's would-add is never read here.
    */
-  async catchAllKindUnasked(at: Millis, limit: number, kindPrefix: string, minConfidence: number, withNet = false): Promise<readonly { readonly item: Item; readonly answer: Pick<Judgement, 'coinable' | 'confidence' | 'lookedAt' | 'proposedName' | 'judgedAt'> }[]> {
+  async catchAllKindUnasked(at: Millis, limit: number, kindPrefix: string, minConfidence: number, withNet: CoinModelTarget | null = null): Promise<readonly { readonly item: Item; readonly answer: Pick<Judgement, 'coinable' | 'confidence' | 'lookedAt' | 'proposedName' | 'judgedAt'> }[]> {
     if (limit <= 0) return [];
     const rows = await this.#db.query<{ item_id: string; judged_at: TimestampColumn; looked_at: string | null; coinable: boolean; confidence: number; proposed_name: string | null }>(
       `with latest as (
@@ -264,7 +266,7 @@ export class PgItemRepo implements ItemRepo {
        select l.item_id, l.judged_at, l.looked_at, l.coinable, l.confidence, l.proposed_name
          from latest l
          join public.item i on i.item_id = l.item_id
-        where ((l.coinable and l.confidence >= $4)${withNet ? ` or (not l.coinable and exists (select 1 from internal.coin_model_score s where s.item_id = l.item_id and s.would_add))` : ''})
+        where ((l.coinable and l.confidence >= $4)${withNet !== null ? ` or (not l.coinable and exists (select 1 from internal.coin_model_score s where s.item_id = l.item_id and s.would_add and s.target = $5))` : ''})
           and i.origin = 'observed'
           and not exists (select 1 from internal.post_judgement k
                            where k.item_id = l.item_id and k.prompt_id like $3 and k.judged_at >= l.judged_at)
@@ -272,7 +274,7 @@ export class PgItemRepo implements ItemRepo {
                            where a.item_id = l.item_id and a.answer_judged_at >= l.judged_at)
         order by l.judged_at desc
         limit $2`,
-      [toTimestamp(at), limit, `${kindPrefix}%`, minConfidence],
+      [toTimestamp(at), limit, `${kindPrefix}%`, minConfidence, ...(withNet !== null ? [withNet] : [])],
     );
     if (rows.length === 0) return [];
     const items = await this.byIds(rows.map((r) => r.item_id as ItemId));

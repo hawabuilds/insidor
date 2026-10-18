@@ -659,6 +659,10 @@ export interface QualifyPolicy {
 /** Which model asks one of the judge's other questions (JudgePolicy.askWith); `off` asks none. */
 export type AskWith = 'open' | 'main' | 'off';
 
+/** What our own model is taught to predict (JudgePolicy.coinModel; 0099's CHECK spells the same list). */
+export const COIN_MODEL_TARGETS = ['coined', 'viral'] as const;
+export type CoinModelTarget = (typeof COIN_MODEL_TARGETS)[number];
+
 export interface JudgePolicy {
   /** Tries per batch, the first included. A small bound: each retry is a wait and, on some errors, a charge. */
   readonly maxAttempts: number;
@@ -855,10 +859,26 @@ export interface JudgePolicy {
    * refitted at the re-tune slots in `refitAt` only.
    * `text` sizes the catchphrase hints: a quoted phrase of at most `maxQuotedWords` words, a word in
    * capitals of at least `minCapsLetters` letters, a text of at most `shortWords` words.
+   *
+   * ★ TWO TARGETS (the owner, 2026-10-18: "retrain it to predict memeable and about to go viral";
+   * 0099). `coined` is fit 1's: a coin launched for the post late, by others. `viral` is the owner's
+   * measure: the post went over the scorecard's viral line from under it (tools/lib/scorecard.ts
+   * `VIRAL_LINE`) and he never tapped it Not a meme, or he called it a meme (gold, his meme taps,
+   * his taught missed posts); his Not a meme taps and his no calls are no, and so is a post that
+   * never went viral. A coin known by the decision is one input of the viral fit, never its label.
+   * `targets` are the ones the re-tune refits and the runner scores, each with its own latest applied
+   * fit and one score a post; `liveTarget` is the one whose would-add `on` lets onto For You — a
+   * target not live is shadow only, whatever `on` says, and scores with its newest fit even one that
+   * failed the gate (the gate decides whether a fit may act, not whether it is watched); the live
+   * target scores with its applied fit only. `viral.settleMs`: a post decided less than
+   * this long ago has not had its day to go viral, so it is neither fitted nor tested on.
    */
   readonly coinModel: {
     readonly on: boolean;
     readonly shadow: boolean;
+    readonly targets: readonly CoinModelTarget[];
+    readonly liveTarget: CoinModelTarget;
+    readonly viral: { readonly settleMs: number };
     readonly threshold: number | null;
     readonly l2s: readonly number[];
     readonly validationShare: number;
@@ -3756,7 +3776,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v108',
+  version: 'policy.v109',
 
   admit: {
     maxAgeMin: 240,
@@ -4076,6 +4096,9 @@ const POLICY_V1: Policy = {
     coinModel: {
       on: false,
       shadow: true,
+      targets: ['coined', 'viral'],
+      liveTarget: 'coined',
+      viral: { settleMs: 86_400_000 }, // a day: the scorecard's 24-hour views
       threshold: null,
       l2s: [1, 3, 10, 30, 100],
       validationShare: 0.25,

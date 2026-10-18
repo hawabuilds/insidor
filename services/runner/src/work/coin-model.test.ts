@@ -13,18 +13,20 @@ import { scoreCoinModel, type CoinModelDeps } from './coin-model.ts';
 const quiet: Logger = { info: () => undefined, warn: () => undefined, error: () => undefined, child: () => quiet };
 const NOW = 1_800_000_000_000 as Millis;
 const FIT: AppliedCoinModel = {
-  id: 9, fittedAt: new Date(0), space: 'post', intercept: 0, names: ['no_vector'], means: [0], spreads: [1], weights: [0], vectorWeights: [4, 0], threshold: 0.9, heldOut: {},
+  id: 9, target: 'coined', fittedAt: new Date(0), space: 'post', intercept: 0, names: ['no_vector'], means: [0], spreads: [1], weights: [0], vectorWeights: [4, 0], threshold: 0.9, heldOut: {},
 };
 const fact = (itemId: string, at: Date): CoinFactRow => ({
   itemId, decidedAt: at, source: 'x', lang: 'en', text: 'a line', mediaKinds: [], postedAt: new Date(at.getTime() - 60_000), firstSeenAt: at,
-  reach: 100, reachAt: at, ratePerMinute: null, priorRatePerMinute: null, approval: 1, conversation: 0, rebroadcast: 0, followers: 10, echoes: 0,
+  reach: 100, reachAt: at, ratePerMinute: null, priorRatePerMinute: null, approval: 1, conversation: 0, rebroadcast: 0, followers: 10, echoes: 0, coins: 0,
 });
 
-function deps(p: Policy, fit: AppliedCoinModel | null, written: CoinModelScore[], asked: { at?: Date[] }): CoinModelDeps {
+function deps(p: Policy, fit: AppliedCoinModel | readonly AppliedCoinModel[] | null, written: CoinModelScore[], asked: { at?: Date[] }): CoinModelDeps {
+  const fits = fit === null ? [] : Array.isArray(fit) ? fit : [fit as AppliedCoinModel];
   const todo: ToScore[] = [{ itemId: 'x:1', answerJudgedAt: new Date(NOW - 5 * 60_000) }, { itemId: 'x:2', answerJudgedAt: new Date(NOW - 9 * 60_000) }];
   return {
     repo: {
-      latestApplied: async () => fit,
+      latestApplied: async (target) => fits.find((f) => f.target === target) ?? null,
+      latestForShadow: async (target) => fits.find((f) => f.target === target) ?? null,
       toScore: async () => todo,
       facts: async (pairs) => {
         asked.at = pairs.map((x) => x.decidedAt);
@@ -45,7 +47,7 @@ test('off, a dry run or no applied fit scores nothing', async () => {
   const w: CoinModelScore[] = [];
   assert.equal((await scoreCoinModel(deps(off, FIT, w, {}))).skipped, 'off');
   assert.equal((await scoreCoinModel({ ...deps(DEFAULT_POLICY, FIT, w, {}), mode: 'dry' })).skipped, 'dry run');
-  assert.equal((await scoreCoinModel(deps(DEFAULT_POLICY, null, w, {}))).skipped, 'no applied fit');
+  assert.equal((await scoreCoinModel(deps(DEFAULT_POLICY, null, w, {}))).skipped, 'no applied coined fit; no viral fit');
   assert.equal(w.length, 0);
 });
 
@@ -65,4 +67,32 @@ test('switched on, the rows say live', async () => {
   const w: CoinModelScore[] = [];
   await scoreCoinModel(deps(on, FIT, w, {}));
   assert.ok(w.every((x) => x.mode === 'live'));
+});
+
+test('★ each target scores with its own fit; with on, only the live target\'s rows say live', async () => {
+  const on: Policy = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, coinModel: { ...DEFAULT_POLICY.judge.coinModel, on: true, liveTarget: 'coined', threshold: 0.01 } } };
+  const viral: AppliedCoinModel = { ...FIT, id: 12, target: 'viral', threshold: 0.95 };
+  const w: CoinModelScore[] = [];
+  const r = await scoreCoinModel(deps(on, [FIT, viral], w, {}));
+  assert.equal(r.scored, 4);
+  assert.deepEqual(w.map((x) => [x.target, x.fitId, x.mode, x.threshold]), [
+    ['coined', 9, 'live', 0.01], ['coined', 9, 'live', 0.01],
+    ['viral', 12, 'shadow', 0.95], ['viral', 12, 'shadow', 0.95],
+  ], 'the policy threshold overrides the live target\'s fit only');
+});
+
+test('a target with no fit is skipped and the other still scores', async () => {
+  const w: CoinModelScore[] = [];
+  const r = await scoreCoinModel(deps(DEFAULT_POLICY, { ...FIT, target: 'viral' }, w, {}));
+  assert.equal(r.skipped, null);
+  assert.ok(w.length === 2 && w.every((x) => x.target === 'viral'));
+});
+
+test('★ a fit that failed its gate is watched for a shadowed target and never scores the live one', async () => {
+  const w: CoinModelScore[] = [];
+  const unapplied = (t: 'coined' | 'viral'): AppliedCoinModel => ({ ...FIT, id: 13, target: t });
+  const d = deps(DEFAULT_POLICY, null, w, {});
+  const r = await scoreCoinModel({ ...d, repo: { ...d.repo, latestApplied: async () => null, latestForShadow: async (t) => unapplied(t) } });
+  assert.equal(r.scored, 2);
+  assert.ok(w.every((x) => x.target === 'viral' && x.mode === 'shadow' && x.fitId === 13), 'the live target (coined) waits for an applied fit');
 });

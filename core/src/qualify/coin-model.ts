@@ -17,6 +17,10 @@
  * so a feature added here later is simply not scored by an older fit, and the source and language
  * one-hots come from the fit's own list (core names no source).
  *
+ * ★ A COIN IS AN INPUT, NOT THE LABEL, FOR THE VIRAL TARGET (0099). The coins linked to the post by
+ * the decision are two features (`COIN_FEATURES`); the coined target's fit leaves them out, since
+ * for it they would be the answer read before the question.
+ *
  * ★ THE VECTOR IS ONE SPACE. A vector of another space or length is scored as "no vector", the
  * same flag a post without one gets; weights fitted on one meaning say nothing about another.
  *
@@ -51,7 +55,15 @@ export interface CoinModelFacts {
   readonly followers: number | null;
   /** Posts we held by then that rebroadcast this one. */
   readonly echoes: number | null;
+  /**
+   * Coins we had linked to the post by the decision (launched and found by then); null when not
+   * read. An input of the viral target only: for the coined target it is the label arriving early.
+   */
+  readonly coins?: number | null;
 }
+
+/** The features that read a coin: the coined target's fit leaves them out (its label is a coin). */
+export const COIN_FEATURES: readonly string[] = ['coins', 'coined_by_then'];
 
 /** A named feature's value; null is "not known at the decision". */
 export type CoinFeatures = Readonly<Record<string, number | null>>;
@@ -123,6 +135,8 @@ export function coinModelFeatures(f: CoinModelFacts, sources: readonly string[],
     age: ln1p(ageAtDecision),
     followers: ln1p(f.followers),
     echoes: ln1p(f.echoes),
+    coins: ln1p(f.coins ?? null),
+    coined_by_then: f.coins === undefined || f.coins === null ? null : flag(f.coins > 0),
     no_reading: flag(!read),
     no_rate: flag(rate === null),
     no_followers: flag(f.followers === null),
@@ -173,15 +187,19 @@ export type CoinModelVerdict =
   | { readonly kind: 'keep_out'; readonly probability: number; readonly threshold: number; readonly fitId: number }
   | { readonly kind: 'unscored'; readonly why: 'off' | 'no_fit' | 'not_finite' };
 
-/** Whether the safety net would take one post the judge did not pass. */
-export function coinModelVerdict(facts: CoinModelFacts, vector: { readonly space: string; readonly values: ArrayLike<number> } | null, fit: CoinModelFit | null, p: Policy): CoinModelVerdict {
+/**
+ * Whether the safety net would take one post the judge did not pass. Policy `threshold` overrides
+ * the fit's own only for the live target (`isLiveTarget`): it was set for that target's scale, and
+ * a shadowed target's probabilities mean something else.
+ */
+export function coinModelVerdict(facts: CoinModelFacts, vector: { readonly space: string; readonly values: ArrayLike<number> } | null, fit: CoinModelFit | null, p: Policy, isLiveTarget = true): CoinModelVerdict {
   const C = p.judge.coinModel;
   if (!C.on && !C.shadow) return { kind: 'unscored', why: 'off' };
   if (fit === null) return { kind: 'unscored', why: 'no_fit' };
   const { sources, langs } = oneHotsOf(fit.names);
   const probability = coinModelProbability(coinModelFeatures(facts, sources, langs, p), vector, fit);
   if (probability === null) return { kind: 'unscored', why: 'not_finite' };
-  const threshold = C.threshold ?? fit.threshold;
+  const threshold = (isLiveTarget ? C.threshold : null) ?? fit.threshold;
   return probability >= threshold ? { kind: 'add', probability, threshold, fitId: fit.id } : { kind: 'keep_out', probability, threshold, fitId: fit.id };
 }
 

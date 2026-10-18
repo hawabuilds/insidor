@@ -9,17 +9,29 @@
  *
  * ★ A TABLE NOT YET MIGRATED IS "NO FIT". The runner may deploy before 0096 is applied:
  * `latestApplied` then answers null and nothing is scored; the projector's read answers no scores.
+ * Before 0099's `target` column, the coined target reads and writes as 0096 had it (every row then
+ * was coined), so the runner may deploy first; any other target has no fit and scores nothing.
+ *
+ * ★ EVERY FIT AND SCORE HAS A TARGET (0099): what the fit predicts (contracts COIN_MODEL_TARGETS).
+ * Each target has its own latest applied fit and scores a post once; a reader of would-add names
+ * the target it acts on.
  *
  * What breaks if changed carelessly: `latestApplied` filters on `applied` (a fit that failed its
- * gate must never score); `facts` must keep its `<= decided_at` bounds on every reading; and
+ * gate must never score the live target; `latestForShadow` is for a target that cannot act); `facts` must keep its `<= decided_at` bounds on every reading; and
  * `toScore` must read the NEWEST answer, the one For You acts on.
  */
+
+import type { CoinModelTarget } from '@insidor/contracts/policy.ts';
 
 import type { Db } from '../client.ts';
 import { CURRENT_COIN_CALLS } from './owner-coin-calls.ts';
 
 const UNDEFINED_TABLE = '42P01';
-const isMissingTable = (e: unknown): boolean => typeof e === 'object' && e !== null && (e as { code?: unknown }).code === UNDEFINED_TABLE;
+/* 0099's `target` column before 0099 is applied: the coined target reads and writes as 0096 had it, any other is "no fit". */
+const UNDEFINED_COLUMN = '42703';
+const codeOf = (e: unknown): string | null => (typeof e === 'object' && e !== null ? String((e as { code?: unknown }).code) : null);
+const isMissingColumn = (e: unknown): boolean => codeOf(e) === UNDEFINED_COLUMN;
+const isMissingTable = (e: unknown): boolean => codeOf(e) === UNDEFINED_TABLE || isMissingColumn(e);
 async function orNone<R>(read: () => Promise<readonly R[]>): Promise<readonly R[]> {
   try {
     return await read();
@@ -48,6 +60,8 @@ export interface CoinFactRow {
   readonly rebroadcast: number | null;
   readonly followers: number | null;
   readonly echoes: number | null;
+  /** Coins linked to the post that were launched and found by the decision. */
+  readonly coins: number | null;
 }
 
 /** A post's first answer from the live judge (not a rule, not a copy, not the kind question). */
@@ -62,6 +76,7 @@ export interface FirstAnswer {
 }
 
 export interface CoinModelFitRow {
+  readonly target: CoinModelTarget;
   readonly fittedAt: Date;
   readonly space: string;
   readonly intercept: number;
@@ -79,6 +94,7 @@ export interface CoinModelFitRow {
 
 export interface AppliedCoinModel {
   readonly id: number;
+  readonly target: CoinModelTarget;
   readonly fittedAt: Date;
   readonly space: string;
   readonly intercept: number;
@@ -93,6 +109,7 @@ export interface AppliedCoinModel {
 
 export interface CoinModelScore {
   readonly itemId: string;
+  readonly target: CoinModelTarget;
   readonly fitId: number;
   readonly probability: number;
   readonly threshold: number;
@@ -126,7 +143,9 @@ select d.item_id, d.decided_at, i.source, i.lang, coalesce(i.body, '') as body,
        (select o.value from public.observation o where o.item_id = d.item_id and o.kind = 'approval' and o.captured_at <= d.decided_at order by o.captured_at desc limit 1) as approval,
        (select o.value from public.observation o where o.item_id = d.item_id and o.kind = 'conversation' and o.captured_at <= d.decided_at order by o.captured_at desc limit 1) as conversation,
        (select o.value from public.observation o where o.item_id = d.item_id and o.kind = 'rebroadcast' and o.captured_at <= d.decided_at order by o.captured_at desc limit 1) as rebroadcast,
-       (select count(*) from e where e.item_id = d.item_id and e.first_seen_at <= d.decided_at) as echoes
+       (select count(*) from e where e.item_id = d.item_id and e.first_seen_at <= d.decided_at) as echoes,
+       (select count(distinct l.address) from internal.coin_post_link l
+         where l.source = i.source and l.source_item_id = i.source_item_id and l.minted_at <= d.decided_at and l.found_at <= d.decided_at) as coins
   from d
   join public.item i on i.item_id = d.item_id
   left join public.author a on a.author_key = i.author_key
@@ -165,6 +184,7 @@ export class PgCoinModelRepo {
       rebroadcast: num(r['rebroadcast']),
       followers: num(r['follower_count']),
       echoes: num(r['echoes']),
+      coins: num(r['coins']),
     }));
   }
 
@@ -262,6 +282,22 @@ export class PgCoinModelRepo {
     return out;
   }
 
+  /** Each post's highest reach reading ever, with when it first went over `share` of its source's line: the viral target's label. */
+  async reachPeaks(itemIds: readonly string[], lines: Readonly<Record<string, number>>, share: number): Promise<ReadonlyMap<string, { readonly top: number; readonly earlyAt: Date | null; readonly crossedAt: Date | null }>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await this.#db.query<{ item_id: string; top: number; early_at: Date | null; crossed_at: Date | null }>(
+      `with l as (select * from unnest($2::text[], $3::float8[]) as l(source, line))
+       select o.item_id, max(o.value) as top,
+              min(o.captured_at) filter (where o.value >= $4::float8 * l.line) as early_at,
+              min(o.captured_at) filter (where o.value >= l.line) as crossed_at
+         from public.observation o join public.item i on i.item_id = o.item_id left join l on l.source = i.source
+        where o.kind = 'reach' and o.value is not null and o.item_id = any($1::text[])
+        group by o.item_id`,
+      [[...itemIds], Object.keys(lines), Object.values(lines), share],
+    );
+    return new Map(rows.map((r) => [r.item_id, { top: Number(r.top), earlyAt: r.early_at, crossedAt: r.crossed_at }] as const));
+  }
+
   /** The newest post-question answer of two old judges, by judge id pattern: the junk labels' inputs. */
   async oldAnswers(itemIds: readonly string[], patterns: readonly [string, string]): Promise<ReadonlyMap<string, { readonly a: { coinable: boolean; confidence: number } | null; readonly b: { coinable: boolean; confidence: number } | null }>> {
     const out = new Map<string, { a: { coinable: boolean; confidence: number } | null; b: { coinable: boolean; confidence: number } | null }>();
@@ -302,30 +338,61 @@ export class PgCoinModelRepo {
 
   /* ── the fits ─────────────────────────────────────────────────────────────────────────────── */
 
-  /** The fit the runner scores with, or null: none applied, or 0096 not applied here yet. */
-  async latestApplied(): Promise<AppliedCoinModel | null> {
-    const rows = await orNone(() => this.#db.query<Record<string, unknown>>(
-      `select id, fitted_at, space, intercept, names, means, spreads, weights, vector_weights, threshold, held_out
-         from internal.coin_model where applied and threshold is not null order by applied_at desc, id desc limit 1`,
-    ));
+  /**
+   * The read or write as 0099 has it, or, before 0099 is applied, as 0096 had it for the coined
+   * target (every row then was coined); another target before 0099 is "no fit".
+   */
+  async #byTarget<R>(target: CoinModelTarget, withTarget: () => Promise<R>, before0099: () => Promise<R>): Promise<R> {
+    try {
+      return await withTarget();
+    } catch (e) {
+      if (target === 'coined' && isMissingColumn(e)) return before0099();
+      throw e;
+    }
+  }
+
+  /** The fit the runner scores this target with, or null: none applied, or 0096 (or, for a target but coined, 0099) not applied here yet. */
+  async latestApplied(target: CoinModelTarget): Promise<AppliedCoinModel | null> {
+    return this.#latest(target, true);
+  }
+
+  /**
+   * The fit a SHADOWED target scores with: its newest fit with a threshold, applied or not. A shadow
+   * score is a log and lets nothing onto For You, so the gate that decides `applied` (whether the
+   * fit may ever act) does not decide whether it may be watched; the live target scores with
+   * `latestApplied` only.
+   */
+  async latestForShadow(target: CoinModelTarget): Promise<AppliedCoinModel | null> {
+    return this.#latest(target, false);
+  }
+
+  async #latest(target: CoinModelTarget, appliedOnly: boolean): Promise<AppliedCoinModel | null> {
+    const read = (withTarget: boolean) => () => this.#db.query<Record<string, unknown>>(
+      `select id, ${withTarget ? 'target' : `'coined' as target`}, fitted_at, space, intercept, names, means, spreads, weights, vector_weights, threshold, held_out
+         from internal.coin_model where ${appliedOnly ? 'applied and ' : ''}threshold is not null${withTarget ? ' and target = $1' : ''}
+        order by ${appliedOnly ? 'applied_at desc, ' : ''}fitted_at desc, id desc limit 1`,
+      withTarget ? [target] : [],
+    );
+    const rows = await orNone(() => this.#byTarget(target, read(true), read(false)));
     const r = rows[0];
     if (r === undefined) return null;
     const nums = (k: string): number[] => ((r[k] as unknown[]) ?? []).map(Number);
     return {
-      id: Number(r['id']), fittedAt: r['fitted_at'] as Date, space: String(r['space']), intercept: Number(r['intercept']),
+      id: Number(r['id']), target: r['target'] === 'viral' ? 'viral' : 'coined', fittedAt: r['fitted_at'] as Date, space: String(r['space']), intercept: Number(r['intercept']),
       names: (r['names'] as string[]) ?? [], means: nums('means'), spreads: nums('spreads'), weights: nums('weights'), vectorWeights: nums('vector_weights'),
       threshold: Number(r['threshold']), heldOut: (r['held_out'] as Record<string, unknown>) ?? {},
     };
   }
 
-  /** Writes one fit; null before 0096. */
+  /** Writes one fit; null before 0096, or before 0099 for a target but coined. */
   async record(f: CoinModelFitRow): Promise<number | null> {
+    const write = (withTarget: boolean) => () => this.#db.query<{ id: string }>(
+      `insert into internal.coin_model (fitted_at, space, intercept, names, means, spreads, weights, vector_weights, threshold, fit_n, held_out, applied, applied_at, why${withTarget ? ', target' : ''})
+       values ($1, $2, $3, $4::text[], $5::double precision[], $6::double precision[], $7::double precision[], $8::double precision[], $9, $10, $11::jsonb, $12, $13, $14${withTarget ? ', $15' : ''}) returning id`,
+      [f.fittedAt, f.space, f.intercept, [...f.names], [...f.means], [...f.spreads], [...f.weights], [...f.vectorWeights], f.threshold, f.fitN, JSON.stringify(f.heldOut), f.applied, f.applied ? f.fittedAt : null, f.why, ...(withTarget ? [f.target] : [])],
+    );
     try {
-      const rows = await this.#db.query<{ id: string }>(
-        `insert into internal.coin_model (fitted_at, space, intercept, names, means, spreads, weights, vector_weights, threshold, fit_n, held_out, applied, applied_at, why)
-         values ($1, $2, $3, $4::text[], $5::double precision[], $6::double precision[], $7::double precision[], $8::double precision[], $9, $10, $11::jsonb, $12, $13, $14) returning id`,
-        [f.fittedAt, f.space, f.intercept, [...f.names], [...f.means], [...f.spreads], [...f.weights], [...f.vectorWeights], f.threshold, f.fitN, JSON.stringify(f.heldOut), f.applied, f.applied ? f.fittedAt : null, f.why],
-      );
+      const rows = await this.#byTarget(f.target, write(true), write(false));
       return Number(rows[0]?.id);
     } catch (e) {
       if (isMissingTable(e)) return null;
@@ -336,41 +403,46 @@ export class PgCoinModelRepo {
   /* ── the scores ───────────────────────────────────────────────────────────────────────────── */
 
   /**
-   * Posts whose newest live answer is "no", answered since `since`, never scored: newest answer
-   * first, at most `limit`. A post re-answered "yes" later drops out by itself.
+   * Posts whose newest live answer is "no", answered since `since`, never scored for `target`:
+   * newest answer first, at most `limit`. A post re-answered "yes" later drops out by itself.
    */
-  async toScore(since: Date, limit: number): Promise<readonly ToScore[]> {
-    const rows = await orNone(() => this.#db.query<{ item_id: string; judged_at: Date }>(
+  async toScore(since: Date, limit: number, target: CoinModelTarget): Promise<readonly ToScore[]> {
+    const read = (withTarget: boolean) => () => this.#db.query<{ item_id: string; judged_at: Date }>(
       `select n.item_id, n.judged_at from (
          select distinct on (item_id) item_id, judged_at, coinable from internal.post_judgement
           where judged_at >= $1 and prompt_id not like 'post-kind%' and judge_id not like 'rule:%' and copied_from is null
           order by item_id, judged_at desc, id desc
        ) n
        join public.item i on i.item_id = n.item_id
-       where not n.coinable and not exists (select 1 from internal.coin_model_score s where s.item_id = n.item_id)
+       where not n.coinable and not exists (select 1 from internal.coin_model_score s where s.item_id = n.item_id${withTarget ? ' and s.target = $3' : ''})
        order by n.judged_at desc limit $2`,
-      [since, limit],
-    ));
+      withTarget ? [since, limit, target] : [since, limit],
+    );
+    const rows = await orNone(() => this.#byTarget(target, read(true), read(false)));
     return rows.map((r) => ({ itemId: r.item_id, answerJudgedAt: r.judged_at }));
   }
 
-  /** Records scores, once per post. */
+  /** Records scores, once per post and target. Before 0099 only coined scores can be written. */
   async recordScores(rows: readonly CoinModelScore[]): Promise<void> {
     if (rows.length === 0) return;
-    await this.#db.query(
-      `insert into internal.coin_model_score (item_id, fit_id, probability, threshold, would_add, answer_judged_at, scored_at, mode)
-       select * from unnest($1::text[], $2::bigint[], $3::double precision[], $4::double precision[], $5::boolean[], $6::timestamptz[], $7::timestamptz[], $8::text[])
-       on conflict (item_id) do nothing`,
-      [rows.map((r) => r.itemId), rows.map((r) => r.fitId), rows.map((r) => r.probability), rows.map((r) => r.threshold), rows.map((r) => r.wouldAdd), rows.map((r) => r.answerJudgedAt), rows.map((r) => r.scoredAt), rows.map((r) => r.mode)],
-    );
+    const write = (withTarget: boolean) => async (): Promise<void> => {
+      await this.#db.query(
+        `insert into internal.coin_model_score (item_id, fit_id, probability, threshold, would_add, answer_judged_at, scored_at, mode${withTarget ? ', target' : ''})
+         select * from unnest($1::text[], $2::bigint[], $3::double precision[], $4::double precision[], $5::boolean[], $6::timestamptz[], $7::timestamptz[], $8::text[]${withTarget ? ', $9::text[]' : ''})
+         on conflict (item_id${withTarget ? ', target' : ''}) do nothing`,
+        [rows.map((r) => r.itemId), rows.map((r) => r.fitId), rows.map((r) => r.probability), rows.map((r) => r.threshold), rows.map((r) => r.wouldAdd), rows.map((r) => r.answerJudgedAt), rows.map((r) => r.scoredAt), rows.map((r) => r.mode), ...(withTarget ? [rows.map((r) => r.target)] : [])],
+      );
+    };
+    await this.#byTarget(rows.every((r) => r.target === 'coined') ? 'coined' : 'viral', write(true), write(false));
   }
 
-  /** Every score written since `since`: the shadow report's input. */
-  async scoresSince(since: Date): Promise<readonly CoinModelScore[]> {
-    const rows = await orNone(() => this.#db.query<{ item_id: string; fit_id: string; probability: number; threshold: number; would_add: boolean; answer_judged_at: Date; scored_at: Date; mode: string }>(
-      `select item_id, fit_id, probability, threshold, would_add, answer_judged_at, scored_at, mode from internal.coin_model_score where scored_at >= $1 order by scored_at`,
-      [since],
-    ));
-    return rows.map((r) => ({ itemId: r.item_id, fitId: Number(r.fit_id), probability: Number(r.probability), threshold: Number(r.threshold), wouldAdd: r.would_add, answerJudgedAt: r.answer_judged_at, scoredAt: r.scored_at, mode: r.mode === 'live' ? 'live' : 'shadow' }));
+  /** Every score of `target` written since `since`: the shadow report's input. */
+  async scoresSince(since: Date, target: CoinModelTarget): Promise<readonly CoinModelScore[]> {
+    const read = (withTarget: boolean) => () => this.#db.query<{ item_id: string; fit_id: string; probability: number; threshold: number; would_add: boolean; answer_judged_at: Date; scored_at: Date; mode: string }>(
+      `select item_id, fit_id, probability, threshold, would_add, answer_judged_at, scored_at, mode from internal.coin_model_score where scored_at >= $1${withTarget ? ' and target = $2' : ''} order by scored_at`,
+      withTarget ? [since, target] : [since],
+    );
+    const rows = await orNone(() => this.#byTarget(target, read(true), read(false)));
+    return rows.map((r) => ({ itemId: r.item_id, target, fitId: Number(r.fit_id), probability: Number(r.probability), threshold: Number(r.threshold), wouldAdd: r.would_add, answerJudgedAt: r.answer_judged_at, scoredAt: r.scored_at, mode: r.mode === 'live' ? 'live' : 'shadow' }));
   }
 }

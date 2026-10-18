@@ -9,9 +9,15 @@
  * the table are typechecked and tested with the rest of eval. Not in core: a fit is learning, not a
  * decision. Not in ml/train: it must refit unattended at the 20:00 re-tune.
  *
- * ★ y = 1 IS "COINED". Each class weighs half the total, so the share of coined posts among the
- * rows (a few in a hundred, and sampled negatives) does not set the intercept; the probability is
- * a ranking with a threshold chosen on held-out time, not a calibrated chance.
+ * ★ y = 1 IS THE TARGET'S YES: "coined", or "memeable and about to go viral" (0099). Each class
+ * weighs half the total, so the share of yes posts among the rows (a few in a hundred, and sampled
+ * negatives) does not set the intercept; the probability is a ranking with a threshold chosen on
+ * held-out time, not a calibrated chance.
+ *
+ * ★ ONE RULER FOR EVERY TARGET. The table counts the target's own yes (`hit`) and, beside it, the
+ * scorecard's measures (tools/lib/scorecard.ts) on the same posts whatever the target: memeable %,
+ * earliness, coverage of memeable viral posts before the early share of the line. So the coined
+ * fit, the viral fit and the judge alone are read side by side on one test window.
  *
  * ★ A ROW MAY WEIGH LESS THAN ONE (`w`, the owner 2026-10-18: his "seen and kept" posts are softer
  * yes labels than an explicit one). The class weights are taken over the summed row weights, so a
@@ -172,7 +178,8 @@ export function averagePrecision(scored: readonly { readonly score: number; read
 export interface TablePost {
   readonly itemId: string;
   readonly score: number;
-  readonly coined: boolean;
+  /** The target's own yes, as measured (coined late by others; or memeable and viral). Never a soft yes. */
+  readonly hit: boolean;
   /** It went on For You with the judge as it is (public.feed_post). */
   readonly shown: boolean;
   /** The judge's newest answer is "no": the only posts the net may add. */
@@ -183,6 +190,30 @@ export interface TablePost {
   readonly junk: boolean | null;
   /** The owner tapped it Not a meme: the owner's own junk measure, which only shown posts can have. */
   readonly tappedNot: boolean;
+  /**
+   * The scorecard's measures, the same for every target so two fits are read on one ruler:
+   * `memeViral` it went over the viral line from under it at its decision and the owner never
+   * called it not a meme; `earlyAtMs` its first reading at the early share of the line (null:
+   * never); `shownAtMs` when For You first showed it; `addAtMs` when the net would have added it
+   * (its decision, or the first reading after it that clears the reach bar; null: never clears);
+   * `viewsShown` and `viewsAdd` the newest reading by then; `views24` its views a day after
+   * posting (the scorecard's `NEAR_24H_MS` rule, else its highest reading).
+   */
+  readonly memeViral: boolean;
+  readonly earlyAtMs: number | null;
+  readonly shownAtMs: number | null;
+  readonly addAtMs: number | null;
+  readonly viewsShown: number | null;
+  readonly viewsAdd: number | null;
+  readonly views24: number | null;
+}
+
+/** Earliness of a set of posts: the median share of their day's views they had when they went on For You. */
+export interface Earliness {
+  readonly n: number;
+  readonly medianShare: number | null;
+  readonly medianViewsAt: number | null;
+  readonly median24: number | null;
 }
 
 export interface TableRow {
@@ -191,20 +222,51 @@ export interface TableRow {
   readonly extrasPerHour: number;
   /** Of the extras with a junk label: how many are junk, of how many. */
   readonly extrasJunk: { readonly junk: number; readonly labelled: number };
-  /** Of the extras, how many were coined (late, by others). */
-  readonly extrasCoined: number;
+  /** Of the extras, how many are the target's yes. */
+  readonly extrasHit: number;
+  /** Of the extras, how many went viral from under the line and are not the owner's Not a meme. */
+  readonly extrasMemeViral: number;
   /** The owner's Not a meme taps among For You's posts with the judge alone, of how many shown. */
   readonly tapsAlone: { readonly not: number; readonly shown: number };
-  readonly coined: { readonly alone: number; readonly combined: number; readonly model: number; readonly of: number };
+  readonly hits: { readonly alone: number; readonly combined: number; readonly model: number; readonly of: number };
   /** For You's junk share, judge alone and with the net, over labelled posts. */
   readonly junkAlone: number | null;
   readonly junkCombined: number | null;
   /** Combined minus alone, in points of share (0.03 is three points). */
   readonly junkRise: number | null;
+  /** Memeable share over labelled posts (one minus junk): For You alone, with the net, the extras alone. */
+  readonly memeable: { readonly alone: number | null; readonly combined: number | null; readonly extras: number | null };
+  readonly earliness: { readonly alone: Earliness; readonly extras: Earliness; readonly combined: Earliness };
+  /**
+   * Of the memeable viral posts in the window, how many were on For You before the early share of
+   * the line: judge alone, with the net (shown early, or added early), and the net's adds alone.
+   */
+  readonly coverage: { readonly alone: number; readonly combined: number; readonly model: number; readonly of: number };
 }
 
 /** Would the net add this post at `threshold`. */
 export const added = (p: TablePost, threshold: number): boolean => !p.shown && p.judgeNo && p.gates && p.score >= threshold;
+
+const median = (xs: readonly number[]): number | null => {
+  if (xs.length === 0) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? (s[m] as number) : ((s[m - 1] as number) + (s[m] as number)) / 2;
+};
+
+/** Earliness over (views then, views a day on) pairs; a post missing either is left out, never a zero. */
+export function earliness(pairs: readonly { readonly at: number | null; readonly day: number | null }[]): Earliness {
+  const both = pairs.filter((x): x is { at: number; day: number } => x.at !== null && x.day !== null && x.day > 0);
+  return {
+    n: both.length,
+    medianShare: median(both.map((x) => Math.min(1, x.at / x.day))),
+    medianViewsAt: median(both.map((x) => x.at)),
+    median24: median(both.map((x) => x.day)),
+  };
+}
+
+/** On For You at `at`, before `deadline` (a post that never reached the early share has no deadline). */
+const before = (at: number | null, deadline: number | null): boolean => at !== null && (deadline === null || at < deadline);
 
 export function tableRow(posts: readonly TablePost[], threshold: number, hours: number): TableRow {
   const extras = posts.filter((p) => added(p, threshold));
@@ -213,20 +275,30 @@ export function tableRow(posts: readonly TablePost[], threshold: number, hours: 
   const alone = share(shown);
   const both = share([...shown, ...extras]);
   const ex = share(extras);
-  const coined = posts.filter((p) => p.coined);
+  const hit = posts.filter((p) => p.hit);
   const junkAlone = alone.labelled === 0 ? null : alone.junk / alone.labelled;
   const junkCombined = both.labelled === 0 ? null : both.junk / both.labelled;
+  const memeShare = (x: { junk: number; labelled: number }): number | null => (x.labelled === 0 ? null : 1 - x.junk / x.labelled);
+  const atShown = shown.map((p) => ({ at: p.viewsShown, day: p.views24 }));
+  const atAdd = extras.map((p) => ({ at: p.viewsAdd, day: p.views24 }));
+  const mv = posts.filter((p) => p.memeViral);
+  const shownEarly = (p: TablePost): boolean => p.shown && before(p.shownAtMs, p.earlyAtMs);
+  const addedEarly = (p: TablePost): boolean => added(p, threshold) && before(p.addAtMs, p.earlyAtMs);
   return {
     threshold,
     extras: extras.length,
     extrasPerHour: hours > 0 ? extras.length / hours : 0,
     extrasJunk: ex,
-    extrasCoined: extras.filter((p) => p.coined).length,
+    extrasHit: extras.filter((p) => p.hit).length,
+    extrasMemeViral: extras.filter((p) => p.memeViral).length,
     tapsAlone: { not: shown.filter((p) => p.tappedNot).length, shown: shown.length },
-    coined: { alone: coined.filter((p) => p.shown).length, combined: coined.filter((p) => p.shown || added(p, threshold)).length, model: coined.filter((p) => p.score >= threshold).length, of: coined.length },
+    hits: { alone: hit.filter((p) => p.shown).length, combined: hit.filter((p) => p.shown || added(p, threshold)).length, model: hit.filter((p) => p.score >= threshold).length, of: hit.length },
     junkAlone,
     junkCombined,
     junkRise: junkAlone === null || junkCombined === null ? null : junkCombined - junkAlone,
+    memeable: { alone: memeShare(alone), combined: memeShare(both), extras: memeShare(ex) },
+    earliness: { alone: earliness(atShown), extras: earliness(atAdd), combined: earliness([...atShown, ...atAdd]) },
+    coverage: { alone: mv.filter(shownEarly).length, combined: mv.filter((p) => shownEarly(p) || addedEarly(p)).length, model: mv.filter(addedEarly).length, of: mv.length },
   };
 }
 

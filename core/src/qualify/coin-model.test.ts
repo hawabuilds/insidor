@@ -70,6 +70,19 @@ test("the verdict: off, no fit, the fit's own threshold, and the policy's overri
   assert.equal(v.kind === 'add' && v.threshold, 0.6);
   const strict: Policy = { ...SHADOW, judge: { ...SHADOW.judge, coinModel: { ...SHADOW.judge.coinModel, threshold: 0.999 } } };
   assert.equal(coinModelVerdict(FACTS, { space: 'post', values: [3, 0] }, FIT, strict).kind, 'keep_out');
+  assert.equal(coinModelVerdict(FACTS, { space: 'post', values: [3, 0] }, FIT, strict, false).kind, 'add', 'a shadowed target keeps its own fit\'s threshold');
+});
+
+test('★ a coin known by the decision is an input, and an unread one is missing, never none', () => {
+  const unread = coinModelFeatures(FACTS, ['x'], [], SHADOW);
+  assert.equal(unread['coins'], null);
+  assert.equal(unread['coined_by_then'], null);
+  const none = coinModelFeatures({ ...FACTS, coins: 0 }, ['x'], [], SHADOW);
+  assert.equal(none['coins'], 0);
+  assert.equal(none['coined_by_then'], 0);
+  const two = coinModelFeatures({ ...FACTS, coins: 2 }, ['x'], [], SHADOW);
+  assert.equal(two['coined_by_then'], 1);
+  assert.equal(two['coins'], Math.log1p(2));
 });
 
 test('the one-hots are read back from the fit\'s names', () => {
