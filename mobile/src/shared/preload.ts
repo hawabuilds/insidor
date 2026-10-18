@@ -55,7 +55,7 @@ export function afterFirstScreen(f: () => void): () => void {
 }
 
 /** At most this many chunks are fetched at once. */
-const AT_ONCE = 2;
+const AT_ONCE = 3;
 /** The longest the first chunk waits for a quiet moment after the page has loaded. */
 const QUIET_WAIT_MS = 3_000;
 
@@ -74,7 +74,8 @@ export function preloadWhenQuiet(loads: readonly Load[]): () => void {
   const go = () => {
     if (started) return;
     started = true;
-    const queue = [chart, ...loads];
+    /* The tabs' screens first (App.tsx orders them), then the chart, then the rest. */
+    const queue = [...loads.slice(0, 3), chart, ...loads.slice(3)];
     const next = (): Promise<void> => {
       const load = queue.shift();
       return load === undefined ? Promise.resolve() : load().then(next, next);
