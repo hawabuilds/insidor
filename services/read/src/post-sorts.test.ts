@@ -63,12 +63,50 @@ test('trending puts a post that is picking up above a bigger one that is slowing
   assert.deepEqual(ranked([slowing, takingOff]).map((x) => x.id), ['up', 'down']);
 });
 
-test('a post not read inside the window, or read too little of its second half, is not on the list', () => {
+test('a post not read inside the window is not on the list', () => {
   const old = [{ atMs: NOW - 5 * 60 * MIN, value: 10 }, { atMs: NOW - 4 * 60 * MIN, value: 5000 }];
   assert.equal(rankPost('x', old, null, 'most_viewed', 60 * MIN, NOW), null);
   assert.equal(rankPost('x', old, null, 'trending', 60 * MIN, NOW), null);
-  const glimpse = [{ atMs: NOW - 2 * MIN, value: 10 }, { atMs: NOW - MIN, value: 5000 }];
-  assert.equal(rankPost('x', glimpse, null, 'trending', 60 * MIN, NOW), null);
+  assert.equal(rankPost('x', [{ atMs: NOW - MIN, value: 5000 }], null, 'most_viewed', 60 * MIN, NOW), null, 'one reading has gained nothing we can say');
+});
+
+test('★ trending: a post with no before has no trend and is listed under every post that has one, however much it gained', () => {
+  const steady = rankPost('steady', readings(120, 5, () => 20), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  /* Read twice in the last two minutes: a big gain, no first half. */
+  const glimpse = rankPost('glimpse', [{ atMs: NOW - 2 * MIN, value: 10 }, { atMs: NOW - MIN, value: 500_000 }], null, 'trending', 60 * MIN, NOW);
+  /* Read either side of one long gap: the same rate in both halves by construction, so no trend either. */
+  const gap = rankPost('gap', [{ atMs: NOW - 70 * MIN, value: 0 }, { atMs: NOW - 2 * MIN, value: 900_000 }], null, 'trending', 60 * MIN, NOW);
+  assert.ok(steady !== null && glimpse !== null && gap !== null);
+  assert.deepEqual(ranked([glimpse, gap, steady]).map((x) => x.id), ['steady', 'gap', 'glimpse']);
+});
+
+test('★ trending is how much faster it gains now than before: a big post gaining steadily is under a small one picking up', () => {
+  const big = rankPost('big', readings(120, 5, () => 5000), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  const small = rankPost('small', readings(120, 5, (m) => (m < 30 ? 600 : 100)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  const fading = rankPost('fading', readings(120, 5, (m) => (m < 30 ? 2000 : 6000)), NOW - 120 * MIN, 'trending', 60 * MIN, NOW);
+  assert.ok(big !== null && small !== null && fading !== null);
+  assert.deepEqual(ranked([big, fading, small]).map((x) => x.id), ['small', 'big', 'fading']);
+  assert.ok(Math.abs(big.key) < 1e-6);
+});
+
+test('★ freshness: a post last read 30 minutes ago or more is listed after every post read since, on both sorts', () => {
+  /* Gained a million, picking up hard, and stopped being read 40 minutes ago. */
+  const stopped = readings(400, 10, (m) => (m < 180 ? 9000 : 1000)).filter((r) => r.atMs <= NOW - 40 * MIN);
+  /* Gains a tenth as much, read a minute ago. */
+  const live = readings(400, 10, () => 300).map((r, i, all) => (i === all.length - 1 ? { ...r, atMs: NOW - MIN } : r));
+  for (const [by, w] of [['most_viewed', 6 * 60 * MIN], ['most_viewed', 24 * 60 * MIN], ['trending', 6 * 60 * MIN]] as const) {
+    const a = rankPost('stopped', stopped, null, by, w, NOW);
+    const b = rankPost('live', live, null, by, w, NOW);
+    assert.ok(a !== null && b !== null, by);
+    assert.ok(a.key > b.key, 'the stale post has the bigger key');
+    assert.deepEqual(ranked([a, b]).map((x) => x.id), ['live', 'stopped'], `${by} ${w}`);
+  }
+  const edge = rankPost('edge', readings(60, 5, () => 10).map((r) => ({ ...r, atMs: r.atMs - 30 * MIN })), null, 'most_viewed', 6 * 60 * MIN, NOW);
+  assert.equal(edge?.tier, 1, 'exactly 30 minutes old is stale');
+});
+
+test("the sorts count from the card's counts, the first reading's included, and fall back to its views", () => {
+  assert.match(SORT_READINGS_SQL, /coalesce\(f\.payload #> '\{sheet,counts\}', f\.payload #> '\{sheet,views\}'\)/);
 });
 
 test('the window defaults by sort and junk is refused', () => {

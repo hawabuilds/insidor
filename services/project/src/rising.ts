@@ -166,6 +166,13 @@ export interface WireRisingPost {
  *
  *   views          every view reading we took, oldest first; a censored one is null and breaks
  *                  the chart's line rather than dropping it to the floor
+ *   counts         the same readings, with the post's first reading's count too (`firstCount`):
+ *                  For You's Trending and Most viewed (services/read post-sorts.ts) count a post's
+ *                  views gained from these. `views` has no first count (its rate has nothing
+ *                  before it, so it is censored), so a gain worked out from `views` lost the whole
+ *                  interval between the first and second reading: every post on For You, its early
+ *                  climb most of all. A first count gives away no rate we refused to publish:
+ *                  there is no reading before it to take a difference from. Not for the chart.
  *   perMinute      views a minute lately (fyp-freshness.ts `recentGrowthPerMinute`, the same
  *                  rate For You is ordered by); null when the readings cannot say
  *   tickersInReplies  how many times other accounts named a $ticker in the newest replies and
@@ -174,6 +181,8 @@ export interface WireRisingPost {
  */
 export interface WirePostSheetFacts {
   readonly views: readonly { readonly atMs: number; readonly value: number | null }[];
+  /** Absent on a card projected before it existed: the read service then counts from `views`. */
+  readonly counts?: readonly { readonly atMs: number; readonly value: number | null }[];
   readonly perMinute: number | null;
   readonly tickersInReplies: number | null;
 }
@@ -539,6 +548,18 @@ export function cryptoSignalFor(row: Pick<RisingRow, 'body'>, read: CryptoRead |
 }
 
 /**
+ * A reading's count when its rate is censored only because nothing was read before it (`no_prior`),
+ * else null. Every other censored reason stays null on the card, as on `views`: a count under the
+ * rounding step or read twice at one instant would let a client take the very difference that was
+ * refused (db.ts `loadReach`).
+ */
+export function firstCount(x: ReachReading): number | null {
+  if (x.rate.kind !== 'censored' || x.rate.reason !== 'no_prior') return null;
+  const v = x.count ?? x.rate.lastLevel;
+  return v !== null && v !== undefined && Number.isFinite(v) ? v : null;
+}
+
+/**
  * The readings a feed's views bars hold a post to. Measured counts only, as the card's views line
  * shows them; with `rising.feedBarCountsEveryReading`, every readable count, as the scorer reads
  * them — a first reading and a flat one included. A reading loaded without its count keeps its
@@ -768,6 +789,7 @@ export async function buildRising(
       underBar,
       post: projectRisingPost(row, readings, coinsByStory, sparkWindowMs, lookup, older.get(row.item_id) ?? [], {
         views: views.map((v) => ({ atMs: v.atMs, value: v.reach })),
+        counts: readings.map((x) => ({ atMs: x.atMs, value: x.rate.kind === 'measured' ? x.rate.level : firstCount(x) })),
         perMinute: (() => {
           const g = recentGrowthPerMinute(views, nowMs, policy);
           return g === null ? null : Math.round(g);

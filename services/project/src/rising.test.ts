@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar } from '@insidor/core';
 
-import { barReadings, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin, writeRising } from './rising.ts';
+import { barReadings, firstCount, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin, writeRising } from './rising.ts';
 import type { WireCoin, WireCoinLink } from './wire.ts';
 
 const ROW = {
@@ -194,6 +194,19 @@ test("★ the owner's coin wins over the story's link and the evidence, and says
   /* Without the owner's mark, a matched coin still yields to the story. */
   const plain = postCoins({ kind: 'one', coin: COIN }, { ...lookup, match: { kind: 'matched', coin: owned, evidence } });
   assert.equal(plain.fromStory, true);
+});
+
+test("a card's counts carry a first reading's count, and no other censored one", () => {
+  const at = 1_800_000_000_000;
+  const q = 'quantized' as const;
+  assert.equal(firstCount({ atMs: at, fidelity: q, rate: { kind: 'censored', reason: 'no_prior', lastLevel: 12_425 }, count: 12_425 }), 12_425);
+  assert.equal(firstCount({ atMs: at, fidelity: q, rate: { kind: 'censored', reason: 'no_prior', lastLevel: 12_425 } }), 12_425, 'loaded without its count: the level it carries');
+  /* Under the rounding step, or twice at one instant: the difference was refused, so the count stays off the card. */
+  assert.equal(firstCount({ atMs: at, fidelity: q, rate: { kind: 'censored', reason: 'below_step', lastLevel: 12_430 }, count: 12_430 }), null);
+  assert.equal(firstCount({ atMs: at, fidelity: q, rate: { kind: 'censored', reason: 'no_elapsed', lastLevel: 12_430 }, count: 12_430 }), null);
+  assert.equal(firstCount({ atMs: at, fidelity: 'absent', rate: { kind: 'censored', reason: 'no_prior', lastLevel: null }, count: null }), null);
+  /* A measured reading is not this function's: the card takes its level. */
+  assert.equal(firstCount({ atMs: at, fidelity: q, rate: { kind: 'measured', perMin: 691, overMs: 60_000, level: 13_116 }, count: 13_116 }), null);
 });
 
 test("the views bars: measured readings only, or every readable count with rising.feedBarCountsEveryReading", () => {
