@@ -1,18 +1,21 @@
 /**
  * WHAT A WALLET HOLDS — Trador's Stonkfolio, its layout kept, without the pie chart and the
- * Stonks/Stocks split: who you are, the portfolio value with your SOL and what is not priced,
- * Send and Receive, the chart's place, and one row per coin.
+ * Stonks/Stocks split (Insidor holds launchpad coins only): who you are, your followers and
+ * following with Edit profile, your bio, the portfolio value with your SOL and what is not priced,
+ * Send and Receive, the chart with its range, and one row per coin (HoldingRow.tsx, shared with a
+ * profile's portfolio).
  *
  * ★ FACTS, AND A DASH FOR WHAT WE DO NOT KNOW. A coin no market prices says "Unpriced" (it is not
- * worth zero); a coin with no buy history says so under its value; a coin's narrative appears only
- * on a confident match. Coins past the list are counted, never dropped silently.
+ * worth zero); a coin not bought in Insidor says so where its gain would be; coins past the list are
+ * counted, never dropped silently. Follower counts that could not be read are a dash.
+ *
+ * ★ GAINS ARE FROM BUYS MADE IN INSIDOR, IN SOL, SHOWN AT TODAY'S SOL PRICE (services/read
+ * wallet.ts). Trador values each buy at SOL's price that minute; we keep no history of SOL's price,
+ * so the line under the list says how the number is made.
  *
  * ★ THE CHART STARTS WHEN THE WALLET WAS FIRST SEEN. Its points are snapshots taken when the wallet
  * is read (store/migrations/0041), then the live total; with fewer than two there is no line, and
  * the chart's place says when it will start rather than drawing one from nothing.
- *
- * Each coin's move is over 24 hours, the longest a market source reports; the chart's window
- * does not change it.
  *
  * Read-only: no key, no TRADING switch. Tapping a coin opens its token page.
  */
@@ -21,14 +24,14 @@ import type { ReactNode } from 'react';
 
 import type { Holding, Portfolio as PortfolioData } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
-import { formatPrice, formatUsd } from '../../shared/format/number.ts';
+import { formatUsd } from '../../shared/format/number.ts';
 import { hrefFor } from '../../shared/route.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { Avatar } from './Avatar.tsx';
 import { BalanceChart } from './BalanceChart.tsx';
 import { windowChange, type BalancePoint } from './balance-points.ts';
-import { compactAmount, profitLine } from './wallet-view.ts';
+import { HoldingRow } from './HoldingRow.tsx';
 import styles from './portfolio.module.css';
 
 export type ChartRange = '1d' | '1w' | '1m' | 'all';
@@ -49,6 +52,9 @@ const stamp = (t: number): string => new Date(t).toLocaleString('en-GB', { day: 
 
 const solText = (m: Measured): string => (m.known ? m.amount.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—');
 
+/** Your followers, following and bio from the social service; `null` while they load, `unread` when they could not be read. */
+export type Social = { readonly kind: 'read'; readonly key: string; readonly followers: number; readonly following: number; readonly bio: string } | { readonly kind: 'unread' } | null;
+
 export interface WhoAmI {
   readonly name: string | null;
   readonly handle: string | null;
@@ -60,8 +66,10 @@ export interface WhoAmI {
 const shortAddress = (a: string): string => (a.length <= 12 ? a : `${a.slice(0, 5)}…${a.slice(-5)}`);
 
 export function Portfolio({
-  who, data, points, range, onRange, scrubbed, onScrub, copied, onCopy, actions, notice, menu,
+  who, social = undefined, data, points, range, onRange, scrubbed, onScrub, copied, onCopy, actions, notice, menu,
 }: {
+  /** Your own social line; absent for a linked wallet, which has no profile. */
+  social?: Social | undefined;
   who: WhoAmI;
   data: PortfolioData | null;
   /** The chart's points, live total last; null while they load. */
@@ -97,6 +105,8 @@ export function Portfolio({
           </div>
           {menu}
         </div>
+
+        {social !== undefined ? <SocialLine social={social} /> : null}
 
         <div className={styles['value']}>
           <div className={styles['label']}>{scrubbed !== null ? 'Value at' : 'Portfolio value'}</div>
@@ -153,12 +163,12 @@ export function Portfolio({
         </div>
       ) : (
         <ul className={styles['list']}>
-          {data.holdings.map((h) => <li key={h.address}><Row h={h} /></li>)}
+          {data.holdings.map((h) => <li key={h.address}><HoldingRow h={h} /></li>)}
         </ul>
       )}
 
       {read !== null && read.notShown > 0 ? <p className={styles['foot']}>{read.notShown.toLocaleString('en-US')} more coins not shown.</p> : null}
-      {read !== null ? <p className={styles['foot']}>Profit is counted in SOL, from this wallet's last {read.historyDepth} transactions.</p> : null}
+      {read !== null && read.holdings.length > 0 ? <p className={styles['foot']}>{GAINS_NOTE}</p> : null}
 
       {read !== null && read.created.coins.length > 0 ? (
         <>
@@ -184,40 +194,36 @@ export function Portfolio({
   );
 }
 
-/** One holding, Trador's HoldingRow: picture, symbol with its pair, amount and price; value, move, profit. */
-function Row({ h }: { h: Holding }) {
-  const symbol = h.ticker ?? '—';
-  const p = profitLine(h.profit);
-  const priced = h.valueUsd.known;
+/**
+ * Trador's followers / following / Edit profile row, then the bio. The counts open the lists; Edit
+ * profile opens your profile, where the bio is edited (Trador's sheet edits it in place).
+ */
+function SocialLine({ social }: { social: Social }) {
+  const count = (n: number | null) => (n === null ? '—' : n.toLocaleString('en-US'));
+  const read = social !== null && social.kind === 'read' ? social : null;
   return (
-    <a className={styles['row']} href={hrefFor({ screen: 'token', coinId: h.coinId })}>
-      <CoinLogo small address={h.address} ticker={h.ticker} imageUrl={h.imageUrl} size={36} />
-      <div className={styles['mid']}>
-        <div className={styles['symbolRow']}>
-          <span className={styles['symbol']}>{symbol}</span>
-          <span className={styles['pair']}>SOL</span>
-        </div>
-        <div className={styles['units']}>
-          {compactAmount(h.amount, h.decimals)} {symbol}&nbsp;&nbsp;&nbsp;<Value r={formatPrice(h.priceUsd)} />
-        </div>
-        {h.story !== null ? <span className={styles['story']}>From {h.story.title}</span> : null}
+    <>
+      <div className={styles['social']}>
+        {read !== null ? (
+          <>
+            <a href={hrefFor({ screen: 'follows', key: read.key, which: 'followers' })}><b>{count(read.followers)}</b> followers</a>
+            <a href={hrefFor({ screen: 'follows', key: read.key, which: 'following' })}><b>{count(read.following)}</b> following</a>
+            <a className={styles['edit']} href={hrefFor({ screen: 'profile', key: read.key })}>Edit profile</a>
+          </>
+        ) : (
+          <>
+            <span><b>{count(null)}</b> followers</span>
+            <span><b>{count(null)}</b> following</span>
+          </>
+        )}
       </div>
-      <div className={styles['right']}>
-        <div className={priced ? styles['worth'] : `${styles['worth']} ${styles['faint']}`}>
-          {/* Unpriced says so. It is not worth zero. */}
-          {priced ? <Value r={formatUsd(h.valueUsd)} /> : 'Unpriced'}
-        </div>
-        {h.change.known ? (
-          /* Trador's PriceDelta: the glyph and the sign, never colour alone. */
-          <div className={h.change.amount < 0 ? styles['down'] : styles['up']}>
-            {h.change.amount < 0 ? `▼ ${Math.abs(h.change.amount).toFixed(2)}%` : `▲ +${h.change.amount.toFixed(2)}%`} <span className={styles['faintSmall']}>24h</span>
-          </div>
-        ) : null}
-        <div className={p.tone === 'up' ? styles['up'] : p.tone === 'down' ? styles['down'] : styles['faintSmall']}>{p.text}</div>
-      </div>
-    </a>
+      {read !== null && read.bio !== '' ? <p className={styles['bio']}>{read.bio}</p> : null}
+    </>
   );
 }
+
+/** How a gain is made, said once under the list: our record, in SOL, at today's price. */
+export const GAINS_NOTE = "Gains count buys made in Insidor: what each coin is worth in SOL now against the SOL paid, at today's SOL price. Coins bought elsewhere show a dash.";
 
 function CopyGlyph() {
   return (

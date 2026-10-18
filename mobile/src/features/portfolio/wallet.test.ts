@@ -7,18 +7,34 @@ import { confirmBuilt, fromBase64 } from '../trade/order-flow.ts';
 import { tradingOn } from '../../shared/trading.ts';
 import { compactAmount, profitLine } from './wallet-view.ts';
 
-test('★ no buy history means a dash with its reason, never a number', () => {
-  assert.deepEqual(profitLine({ kind: 'none', why: 'no_buy_history' }), { text: '— no buy history', tone: 'none' });
-  assert.deepEqual(profitLine({ kind: 'none', why: 'history_unread' }), { text: '— buy history not read', tone: 'none' });
-  assert.deepEqual(profitLine({ kind: 'known', sol: 0.0123, partial: false }), { text: '+0.012 SOL', tone: 'up' });
-  assert.equal(profitLine({ kind: 'known', sol: -0.004, partial: true }).text, '−0.0040 SOL on part');
+const usd = (v: number | null) => (v === null ? { known: false, pending: 'no_market' } : { known: true, amount: v }) as never;
+const gain = (sol: number, usdV: number | null, partial = false) => ({ kind: 'known', sol, costSol: 0.1, pct: (sol / 0.1) * 100, usd: usd(usdV), partial }) as const;
+
+test('★ not bought in Insidor is a dash with its reason, never a number', () => {
+  assert.equal(profitLine({ kind: 'none', why: 'not_bought_here' }).text, '— not bought in Insidor');
+  assert.equal(profitLine({ kind: 'none', why: 'history_unread' }).text, '— trades not read');
+  assert.equal(profitLine({ kind: 'none', why: 'not_bought_here' }).tone, 'none');
 });
 
-test('★ a profit the server did not claim to know is never decoded as a number', () => {
+test("a gain reads as Trador's signed dollars; with no SOL price it stays in SOL; partial says so in the title", () => {
+  assert.deepEqual(profitLine(gain(0.0123, 16.52)), { text: '+$16.52', tone: 'up', title: 'Current value minus what you paid.' });
+  assert.equal(profitLine(gain(-0.02, -3.1)).text, '−$3.10');
+  assert.equal(profitLine(gain(0.00001, 0.004)).text, '+$0.0040');
+  assert.equal(profitLine(gain(-0.004, null)).text, '−0.0040 SOL');
+  assert.equal(profitLine(gain(0.5, 80, true)).title, 'Covers only the part of this holding with a known purchase price.');
+});
+
+test('★ a gain the server did not fully state is refused, never decoded as a number', () => {
   const raw = fixturePortfolio() as { holdings: Record<string, unknown>[] };
-  const forged = { ...raw, holdings: [{ ...raw.holdings[0], profit: { kind: 'known', sol: null } }] };
-  const p = decodePortfolio(forged);
-  assert.equal(p.kind === 'read' && p.holdings[0]?.profit.kind, 'none');
+  const withGain = (profit: unknown) => ({ ...raw, holdings: [{ ...raw.holdings[0], profit }] });
+  assert.throws(() => decodePortfolio(withGain({ kind: 'known', sol: null })), 'no number is not a gain');
+  assert.throws(() => decodePortfolio(withGain({ kind: 'known', sol: 0.1, costSol: 0, pct: 1, usd: { v: 1 }, partial: false })), 'a gain on nothing paid');
+  assert.throws(() => decodePortfolio(withGain({ kind: 'known', sol: 0.1, costSol: 0.1, pct: 100, usd: { v: 1 } })), 'partial must be said');
+  assert.throws(() => decodePortfolio(withGain({ kind: 'none', why: 'no_buy_history' })), 'an unknown reason is a shape error');
+  const ok = decodePortfolio(withGain({ kind: 'known', sol: 0.1, costSol: 0.1, pct: 100, usd: { v: null, why: 'no_market' }, partial: false }));
+  const g = ok.kind === 'read' ? ok.holdings[0]?.profit : null;
+  assert.equal(g?.kind, 'known');
+  assert.equal(g?.kind === 'known' && g.usd.known, false, 'no dollars is a pending value, not zero');
 });
 
 test('★ an unsure narrative match shows nothing: only a named narrative object is read', () => {
@@ -27,7 +43,7 @@ test('★ an unsure narrative match shows nothing: only a named narrative object
   assert.equal(p.kind === 'read' && p.holdings[0]?.story, null);
 });
 
-test('a recorded wallet decodes: real holdings, each a dash for profit (no buy history in what was read)', () => {
+test('a recorded wallet decodes: real holdings, each a dash for its gain (none bought in Insidor)', () => {
   const p = decodePortfolio(fixturePortfolio());
   assert.equal(p.kind, 'read');
   if (p.kind !== 'read') return;

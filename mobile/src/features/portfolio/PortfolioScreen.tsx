@@ -17,6 +17,7 @@
 import { useState, useSyncExternalStore } from 'react';
 
 import { fetchPortfolio, fetchWalletHistory, type Holding, type Portfolio as PortfolioData } from '../../shared/api/index.ts';
+import { fetchMe } from '../../shared/api/people.ts';
 import { useLoad } from '../../shared/hooks.ts';
 import { LINKED_WALLET } from '../../shared/notice.ts';
 import { tradingOn } from '../../shared/trading.ts';
@@ -24,7 +25,7 @@ import { Notice } from '../../shared/ui/Notice.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { useWallet } from '../../shared/wallet.tsx';
 import { forgetEntered } from '../landing/entered.ts';
-import { Portfolio, type ChartRange, type WhoAmI } from './Portfolio.tsx';
+import { Portfolio, type ChartRange, type Social, type WhoAmI } from './Portfolio.tsx';
 import { ProfileMenu } from './ProfileMenu.tsx';
 import { withLive, type BalancePoint } from './balance-points.ts';
 import { ReceiveSheet } from './ReceiveSheet.tsx';
@@ -59,6 +60,13 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
   const live = portfolio?.kind === 'read' && portfolio.totalUsd.known ? portfolio.totalUsd.amount : null;
   const points = stored.state === 'loading' ? null : withLive(stored.state === 'ready' ? stored.value : [], live, Date.now());
   const holdings: readonly Holding[] = portfolio?.kind === 'read' ? portfolio.holdings : [];
+  /* Your followers, following and bio, as Trador's Stonkfolio header shows them; only on your own wallet. */
+  const [me] = useLoad(`profile:me:${canAct ? who.address : 'none'}`, async (): Promise<Social> => {
+    if (!canAct) return { kind: 'unread' };
+    const card = await fetchMe();
+    return { kind: 'read', key: card.handle ?? card.userId, followers: card.followers, following: card.following, bio: card.bio };
+  }, 'memory');
+  const social: Social | undefined = !canAct ? undefined : me.state === 'ready' ? me.value : me.state === 'failed' ? { kind: 'unread' } : null;
 
   const copy = async () => {
     try {
@@ -82,6 +90,7 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
       {switcher}
       <Portfolio
         who={who}
+        social={social}
         data={portfolio}
         points={points}
         range={range}

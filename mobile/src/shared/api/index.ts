@@ -13,7 +13,7 @@ export type { AboutLink, AboutLinkKind, AboutPost, CoinAbout } from './about.ts'
 export type { PostSheetData, SheetCoin, SheetMedia, ViewReading } from './post-sheet.ts';
 export type { StoryMember, StorySheet } from './story-sheet.ts';
 export type { BuildResult, Holding as TradeHolding, TradeLimits, TradeQuote, TradeVenue } from './wire/trade.ts';
-export type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
+export type { CreatedCoin, Gain, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
 export type { NameIdea, OriginGap, SameNameCoin, SameNameCoins, SearchCoin, TickerUse, SearchCoins, SearchedCoin, SearchNarrative, SearchPost, SearchResults } from './wire/search.ts';
 
 export {
