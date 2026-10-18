@@ -2213,8 +2213,13 @@ export interface RisingPolicy {
    * judge passed or the owner's call on a post has landed since the last frame began. When one has, and the answers have
    * been quiet for `settleMs` (a pass files its kind answers after its yeses), it runs a quick frame
    * (services/project quick-frame.ts): only the changed posts are weighed, and For You is the last
-   * frame with them added, re-placed or taken off. Never while another frame runs (the jobs run one
-   * at a time), never within `minGapMs` of the last quick one; the full frame keeps its own minute.
+   * frame with them added, re-placed or taken off. Beside a full frame that is still running (each
+   * takes For You's write lock only to write, for-you-lock.ts), never within `minGapMs` of the last
+   * quick one; the full frame keeps its own minute.
+   * ★ `kindsInSkipsWait` (the owner, 2026-10-18: "run a quick feed update straight after an
+   * instant-path answer, with no 10-second wait"): when every yes filed since the last quick frame
+   * already has its kind answer — the instant coin path asks both in one pass — there is nothing to
+   * wait for, and the frame runs at the next check with no settle and no gap.
    * Off: For You moves only with the full frame.
    */
   readonly quickFrame: {
@@ -2222,6 +2227,7 @@ export interface RisingPolicy {
     readonly checkEveryMs: number;
     readonly minGapMs: number;
     readonly settleMs: number;
+    readonly kindsInSkipsWait: boolean;
   };
 }
 
@@ -4748,7 +4754,7 @@ const POLICY_V1: Policy = {
        five minutes apart that evening; a quick frame over 2, 5 and 30 minutes of changes (50, 84 and
        311 posts) took 1.1, 2.1 and 2.5 s, and its probe 20 ms. The answers came in 121 bursts in six
        hours and were quiet 92% of the time, so a ten-second settle seldom waits. */
-    quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000 },
+    quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true },
   },
 
   rank: {

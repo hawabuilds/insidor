@@ -101,7 +101,7 @@ async function main(): Promise<void> {
      owner credential that .env.example calls DATABASE_URL, so it is handed in under the
      service role's key rather than duplicating the pool tuning that lives in
      store/src/client.ts. The projector holds no session state — one `withTransaction`,
-     no advisory lock, and its NOTIFY is sent at commit by whichever backend ran the
+     no session advisory lock (For You's write lock is the transaction's own, for-you-lock.ts), and its NOTIFY is sent at commit by whichever backend ran the
      transaction — so DATABASE_URL may be the transaction-mode pooler (6543), and is on
      Railway. A session advisory lock added here later must open its pool with
      `session: true`; withAdvisoryLock refuses a transaction-mode pool either way. */
