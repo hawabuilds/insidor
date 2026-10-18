@@ -5,9 +5,8 @@
  * Separate from wire/people.ts because these are a page of two kinds of thing merged by time,
  * and the Feed is the only screen that reads them.
  *
- * ★ A TRADE'S SOL IS THE QUOTE. `quotedLamports` is what was quoted before slippage, never the
- * fill; the screen writes "about" in front of it. There is no profit field and must not be one:
- * the service does not have the fill to compute it from.
+ * ★ NO AMOUNTS, AS TRADOR. A trade carries where a buy stood (the market cap when it landed) or
+ * how a sell went (profit or loss against the seller's average buy), and never what anyone spent.
  */
 
 import type { PersonRef } from './people.ts';
@@ -27,8 +26,10 @@ export interface FeedTrade {
   readonly person: PersonRef;
   readonly side: 'buy' | 'sell';
   readonly coin: FeedCoin;
-  /** SOL in (a buy) or out (a sell) as quoted, in lamports; null when the record has none. */
-  readonly quotedLamports: string | null;
+  /** A buy's coin market cap when it landed, in USD; null for a sell, or when no reading was that close. */
+  readonly marketCapUsd: number | null;
+  /** A sell against the seller's own average buy; null for a buy, or when either side is not known. */
+  readonly outcome: 'profit' | 'loss' | null;
   readonly signature: string | null;
 }
 

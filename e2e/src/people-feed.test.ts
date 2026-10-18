@@ -47,10 +47,18 @@ async function setup() {
     );
   };
   await db.query(`insert into public.asset (chain, address, asset_key, venue_id, minted_at_source, minted_at_conf, symbol, name, origin) values ('solana', $1, $2, 'curve', 'none', 'unknown', 'FERRY', 'Ferry Horn', 'live_stream')`, [MINT, `solana:${MINT}`]);
-  return { db, as, trade };
+  /* What the market said of FERRY at `at`: its market cap, the one figure a buy row shows. */
+  const reading = async (at: string, cap: number) => {
+    await db.query(
+      `insert into public.market_reading (chain, address, asset_key, venue_id, taken_at, price_absent, market_cap_usd, market_cap_basis, liquidity_absent, price_change_24h_absent, tradable, source_vendor, source_endpoint)
+       values ('solana', $1, $2, 'solana:curve', $3, 'no_market', $4, 'circulating', 'no_market', 'no_market', false, 'test', 'test')`,
+      [MINT, `solana:${MINT}`, at, cap],
+    );
+  };
+  return { db, as, trade, reading };
 }
 
-type Item = { kind: string; key: string; at: number; person: { userId: string }; side?: string; quotedLamports?: string; coin?: { symbol: string | null }; body?: string };
+type Item = { kind: string; key: string; at: number; person: { userId: string }; side?: string; marketCapUsd?: number | null; outcome?: string | null; coin?: { symbol: string | null }; body?: string };
 
 beforeEach(() => forgetKept());
 
@@ -58,9 +66,12 @@ test('★ the Feed shows the people you follow: their landed trades unless they 
   const me = person(1);
   const friend = person(2);
   const stranger = person(3);
-  const { as, trade, db } = await setup();
+  const { as, trade, db, reading } = await setup();
   for (const p of [me, friend, stranger]) await as(p)('POST', '/me');
   assert.equal((await as(me)('POST', `/follow/${friend.userId}`)).status, 200);
+  /* Three minutes before the friend's buy; the stranger's buy at 11:50 has none within ten minutes. */
+  await reading('2026-10-18T09:57:00Z', 48_000);
+  await reading('2026-10-18T11:30:00Z', 90_000);
 
   await trade(2, 'f-buy', 'buy', 'confirmed', '2026-10-18T10:00:00Z');
   await trade(2, 'f-sell', 'sell', 'confirmed', '2026-10-18T11:00:00Z');
@@ -86,9 +97,12 @@ test('★ the Feed shows the people you follow: their landed trades unless they 
   const after = (await as(me)('GET', '/feed')).body['items'] as Item[];
   assert.deepEqual(after.map((i) => [i.kind, i.side ?? null]), [['comment', null], ['trade', 'sell'], ['trade', 'buy']], 'newest first; the unlanded and failed trades and the stranger are left out');
   const sell = after[1]!;
-  assert.equal(sell.quotedLamports, '250000000', "a sell's SOL is its quoted out amount");
+  assert.equal(sell.outcome, 'loss', 'sold at 250,000 lamports a unit against an average buy of 500,000: at a loss');
+  assert.equal(sell.marketCapUsd, null, 'a sell carries no market cap');
   assert.equal(sell.coin?.symbol, 'FERRY');
-  assert.equal(after[2]!.quotedLamports, '500000000', "a buy's SOL is its quoted in amount");
+  assert.equal(after[2]!.marketCapUsd, 48_000, "a buy's market cap is the reading nearest its landing");
+  assert.equal(after[2]!.outcome, null);
+  assert.ok(!('quotedLamports' in after[2]!) && !('amount' in after[2]!), 'no amounts, as Trador');
 
   /* Latest is everyone who shares, and every comment. */
   const latest = (await as(me)('GET', '/feed?tab=latest')).body['items'] as Item[];
@@ -167,4 +181,31 @@ test('★ someone who follows nobody gets People to follow, by counts anyone cou
   await as(me)('POST', `/follow/${trader.userId}`);
   const after = (await as(me)('GET', '/feed/people')).body['people'] as { userId: string }[];
   assert.ok(!after.some((p) => p.userId === trader.userId), 'someone followed is no longer suggested');
+});
+
+test('★ a trade records the market cap when it lands, from a reading at most ten minutes old; none that close is none', async () => {
+  const me = person(1);
+  const friend = person(2);
+  const { as, db, trade, reading } = await setup();
+  await as(me)('POST', '/me');
+  await as(friend)('POST', '/me');
+  await as(me)('POST', `/follow/${friend.userId}`);
+  /* Sent now, settled by the trade service's own step. */
+  await trade(2, 'live', 'buy', 'sent', new Date().toISOString());
+  await reading(new Date(Date.now() - 120_000).toISOString(), 51_500);
+  await db.query('select public.record_trade_settled($1, $2, true, null)', [tradeId('live'), `${'5'.repeat(64)}`]);
+  const [none] = await db.query<{ cap: number | null }>('select market_cap_usd as cap from public.trade where id = $1', [tradeId('live')]);
+  assert.equal(none?.cap ?? null, null, 'a different signature settles nothing');
+  await db.query(`update public.trade set signature = $2 where id = $1`, [tradeId('live'), '5'.repeat(64)]);
+  await db.query('select public.record_trade_settled($1, $2, true, null)', [tradeId('live'), '5'.repeat(64)]);
+  const [row] = await db.query<{ cap: number | null; at: string | null }>('select market_cap_usd as cap, market_cap_at as at from public.trade where id = $1', [tradeId('live')]);
+  assert.equal(row?.cap, 51_500);
+  assert.ok(row?.at !== null);
+
+  /* A buy with no reading within the window says nothing. */
+  await trade(2, 'old', 'buy', 'confirmed', '2026-10-01T10:00:00Z');
+  await reading('2026-10-01T10:30:00Z', 70_000);
+  const items = (await as(me)('GET', '/feed')).body['items'] as Item[];
+  const old = items.find((i) => i.key === `t:${tradeId('old')}`);
+  assert.equal(old?.marketCapUsd, null, 'thirty minutes away is not the market cap at the trade');
 });

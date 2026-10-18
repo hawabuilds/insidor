@@ -11,9 +11,9 @@
  * vote-ranked list of calls, so its tabs are Following and Latest (everyone's).
  *
  * Insidor's differences, each a rule of the product:
- *   - A trade shows its quoted SOL as "about", not Trador's "at $40M market cap" or "in profit": the
- *     record holds the quote, not the fill or the cap at the time, and a guess about someone's money
- *     is not a fact.
+ *   - A trade shows no amount, as Trador: "at $48K market cap" under a buy, "in profit" or "at a
+ *     loss" under a sell, and nothing when the server could not say (no market reading close to the
+ *     landing, no known average buy) rather than a guess.
  *   - Someone who follows nobody sees People to follow (their counts this week, a Follow button)
  *     above Latest, instead of Trador's switch to another tab: the first visit is never empty.
  *   - A person's trades appear only once they turn on "Show my trades to followers" (their
@@ -39,7 +39,7 @@ import { pullStyle, usePullToRefresh } from '../alerts/pull.ts';
 import alerts from '../alerts/alerts.module.css';
 import { RankTag } from '../people/RankBadge.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
-import { coinHref, coinLabel, nameOf, peopleFacts, profileHref, solText, whereOf } from './lines.ts';
+import { coinHref, coinLabel, nameOf, peopleFacts, profileHref, tradeDetail, whereOf } from './lines.ts';
 import { usePeopleFeed } from './list.ts';
 import styles from './following.module.css';
 
@@ -128,10 +128,10 @@ function Face({ p }: { p: FeedItem['person'] }) {
   );
 }
 
-/** Trador's FeedTradeRow: who, bought or sold, the coin, the age; under it the quoted SOL. */
+/** Trador's FeedTradeRow: who, bought or sold, the coin, the age; under it where it stood or how it went. */
 function TradeRow({ t, now }: { t: FeedTrade; now: number }) {
   const bought = t.side === 'buy';
-  const sol = solText(t.quotedLamports);
+  const detail = tradeDetail(t);
   return (
     <div className={styles['row']}>
       <Face p={t.person} />
@@ -147,7 +147,7 @@ function TradeRow({ t, now }: { t: FeedTrade; now: number }) {
           </span>
           <span className={styles['age']}>{age(t.at, now)}</span>
         </div>
-        {sol !== null ? <p className={styles['detail']}>for {sol}</p> : null}
+        {detail !== null ? <p className={styles['detail']}>{detail}</p> : null}
       </div>
     </div>
   );

@@ -2904,6 +2904,8 @@ export interface SocialPolicy {
   readonly peopleToFollow: number;
   /** The window "trades this week" and the People to follow ordering count over. */
   readonly peopleWindowMs: number;
+  /** A trade's market cap is the market reading nearest its landing, if one is this close; none closer is no figure. */
+  readonly tradeCapWindowMs: number;
   /** Reads and writes one person may make per `windowMs`. */
   readonly perClient: number;
   readonly windowMs: number;
@@ -5264,6 +5266,8 @@ const POLICY_V1: Policy = {
     peopleToFollow: 8,
     /* Seven days: "this week" on the People to follow rows. */
     peopleWindowMs: 604_800_000,
+    /* Ten minutes either side of the landing, as 0109's settle step looks ten minutes back. */
+    tradeCapWindowMs: 600_000,
     perClient: 60,
     windowMs: 60_000,
   },

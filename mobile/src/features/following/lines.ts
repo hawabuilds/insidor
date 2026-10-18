@@ -1,10 +1,10 @@
 /**
- * WHAT THE FEED OF PEOPLE WRITES, apart from the screen so `node --test` holds it: a trade's SOL,
- * where a comment was said and where it opens, a person's name, and the counts under someone to
- * follow.
+ * WHAT THE FEED OF PEOPLE WRITES, apart from the screen so `node --test` holds it: a trade's
+ * second line, where a comment was said and where it opens, a person's name, and the counts under
+ * someone to follow.
  *
- * ★ EVERY WORD IS A FACT OR NOTHING. A trade's SOL is the quote, so it is "about"; a trade with no
- * recorded amount says nothing rather than "0 SOL". A person who does not share trades has no
+ * ★ EVERY WORD IS A FACT OR NOTHING. No amounts, as Trador; a buy with no market cap that close to
+ * its landing, or a sell with no known average buy, has no second line. A person who does not share trades has no
  * trade count at all, never "0 trades". A coin we never saw is its shortened address, never a
  * made-up name.
  *
@@ -12,19 +12,20 @@
  * what keeps a refresh racing Load more from showing one trade twice.
  */
 
-import type { FeedCoin, FeedComment, FeedItem, SuggestedPerson } from '../../shared/api/following.ts';
+import type { FeedCoin, FeedComment, FeedItem, FeedTrade, SuggestedPerson } from '../../shared/api/following.ts';
 import type { PersonRef } from '../../shared/api/people.ts';
+import { compactMoney } from '../../shared/format/number.ts';
 import { hrefFor } from '../../shared/route.ts';
 
-const LAMPORTS = 1_000_000_000;
-
-/** "about 0.5 SOL", from a quote in lamports; null when there is no amount to say. */
-export function solText(lamports: string | null): string | null {
-  if (lamports === null || !/^\d+$/.test(lamports)) return null;
-  const sol = Number(lamports) / LAMPORTS;
-  if (!(sol > 0)) return null;
-  const shown = sol >= 1 ? sol.toLocaleString('en-US', { maximumFractionDigits: 2 }) : sol.toLocaleString('en-US', { maximumSignificantDigits: 2 });
-  return `about ${shown} SOL`;
+/**
+ * A trade's second line, Trador's `detail()`: where a buy stood ("at $48K market cap"), or how a
+ * sell went ("in profit", "at a loss"). Null rather than filler when neither can be said.
+ */
+export function tradeDetail(t: Pick<FeedTrade, 'side' | 'marketCapUsd' | 'outcome'>): string | null {
+  if (t.side === 'buy') return t.marketCapUsd !== null && t.marketCapUsd > 0 ? `at $${compactMoney(t.marketCapUsd)} market cap` : null;
+  if (t.outcome === 'profit') return 'in profit';
+  if (t.outcome === 'loss') return 'at a loss';
+  return null;
 }
 
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;

@@ -16,11 +16,14 @@
  * landed and succeeded (`confirmed`) are shown: a trade that was built, sent and never seen
  * landing did not happen as far as anyone can tell.
  *
- * ★ THE AMOUNT IS THE QUOTE, AND SAYS SO. `public.trade` records what was quoted before slippage
- * (0062), never the fill. So a row carries the quoted SOL as `quotedLamports` and the app writes
- * "about". A profit or a percentage is not computed from quotes at all: it would read as a fact
- * about someone's money and it would not be one. People to follow says how many trades and how
- * many holders' likes, which are counts anyone could make, and never a return.
+ * ★ NO AMOUNTS, AS TRADOR. A trade says what somebody did and roughly where, never how much:
+ * a buy carries the coin's market cap when it landed (recorded at settle, 0109, or else the
+ * market reading nearest the landing within social.tradeCapWindowMs; none that close is null,
+ * never a guess), and a sell says whether it was above or below the seller's own average buy
+ * (Trador's sellOutcomes), from the SOL and coin amounts of their landed buys before it. Those
+ * amounts are the quotes the trade service recorded (0062), the only per-trade figures we hold;
+ * either side missing is null, and the app says nothing. People to follow says how many trades
+ * and how many holders' likes, which are counts anyone could make, and never a return.
  *
  * ★ PAGING IS KEYSET OVER BOTH STREAMS. Each stream is read one page deep below the cursor, the two
  * are merged by (time, kind, id), and the cursor is the last item kept, so the next page starts
@@ -95,7 +98,8 @@ interface TradeRow extends Who {
   id: string;
   side: 'buy' | 'sell';
   mint: string;
-  lamports: string | null;
+  marketCapUsd: number | null;
+  outcome: 'profit' | 'loss' | null;
   signature: string | null;
   us: string;
 }
@@ -115,9 +119,18 @@ interface CommentRow extends Who {
 /** Landed buys and sells of people who share them; `authors` null is everyone's (Latest). */
 async function tradeRows(deps: SocialDeps, authors: readonly string[] | null, cursor: Cursor | null, limit: number): Promise<TradeRow[]> {
   return deps.db.query<TradeRow>(
-    `select t.id, t.kind as side, t.mint,
-            (case when t.kind = 'buy' then t.in_amount else t.out_amount end)::text as lamports,
-            t.signature, ${US('t.settled_at')} as us,
+    `select t.id, t.kind as side, t.mint, t.signature,
+            case when t.kind = 'buy' then coalesce(t.market_cap_usd, (
+              select m.market_cap_usd from public.market_reading m
+               where m.chain = 'solana' and m.address = t.mint and m.market_cap_usd is not null
+                 and m.taken_at between t.settled_at - $6::bigint * interval '1 millisecond' and t.settled_at + $6::bigint * interval '1 millisecond'
+               order by abs(extract(epoch from m.taken_at - t.settled_at)) limit 1)) end as "marketCapUsd",
+            case when t.kind = 'sell' and t.in_amount > 0 and t.out_amount > 0 then (
+              select case when sum(b.out_amount) > 0 and sum(b.in_amount) > 0
+                          then case when t.out_amount / t.in_amount >= sum(b.in_amount) / sum(b.out_amount) then 'profit' else 'loss' end end
+                from public.trade b
+               where b.wallet = t.wallet and b.mint = t.mint and b.kind = 'buy' and b.status = 'confirmed'
+                 and b.settled_at < t.settled_at and b.in_amount > 0 and b.out_amount > 0) end as outcome, ${US('t.settled_at')} as us,
             p.user_id as "userId", p.handle, p.name, p.picture_url as "pictureUrl"
        from public.trade t
        join people.profile p on p.wallet = t.wallet and p.trades_public
@@ -127,7 +140,7 @@ async function tradeRows(deps: SocialDeps, authors: readonly string[] | null, cu
              and (t.settled_at, 't'::text, t.id) < (${AT_CURSOR(2)}, $3::text, $4::text)))
       order by t.settled_at desc, t.id desc
       limit $5`,
-    [authors, cursor?.us ?? null, cursor?.k ?? 't', cursor?.id ?? '', limit],
+    [authors, cursor?.us ?? null, cursor?.k ?? 't', cursor?.id ?? '', limit, deps.policy.tradeCapWindowMs],
   );
 }
 
@@ -225,7 +238,7 @@ async function feed(deps: SocialDeps, me: Person, tab: 'following' | 'latest', c
   const items = page.map((x) => {
     if (x.trade !== null) {
       const t = x.trade;
-      return { kind: 'trade' as const, key: `t:${t.id}`, at: microsToMs(t.us), person: person(t, rankMap), side: t.side, coin: coin(t.mint), quotedLamports: t.lamports, signature: t.signature };
+      return { kind: 'trade' as const, key: `t:${t.id}`, at: microsToMs(t.us), person: person(t, rankMap), side: t.side, coin: coin(t.mint), marketCapUsd: t.marketCapUsd, outcome: t.outcome, signature: t.signature };
     }
     const c = x.comment!;
     const storyId = c.subjectKind === 'story' ? c.subjectId : c.subjectKind === 'post' ? (stories.postStory.get(c.subjectId) ?? null) : null;
