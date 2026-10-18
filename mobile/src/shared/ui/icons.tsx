@@ -240,6 +240,28 @@ export const GlobeIcon = (p: IconProps) => (
   </Stroke>
 );
 
+/** A line rising to the right: a post rising fast (Notifications). */
+export const TrendingUpIcon = (p: IconProps) => (
+  <Stroke {...p} strokeWidth={2}>
+    <path d="M3 17l6-6 4 4 8-8M15 7h6v6" />
+  </Stroke>
+);
+
+/** A coin: a coin's news on a post (Notifications). */
+export const CoinIcon = (p: IconProps) => (
+  <Stroke {...p} strokeWidth={1.8}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M14.5 9.2c-.5-.8-1.4-1.2-2.5-1.2-1.5 0-2.6.8-2.6 2s1.1 1.6 2.6 2 2.6.8 2.6 2-1.1 2-2.6 2c-1.1 0-2-.4-2.5-1.2M12 6.5v11" />
+  </Stroke>
+);
+
+/** A flame: a narrative taking off (Notifications). */
+export const FlameIcon = (p: IconProps) => (
+  <Stroke {...p} strokeWidth={1.8}>
+    <path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.3 2.4-5.4 3.6-8.3.5 1.6 1.3 2.6 2.4 3.2-.2-2.9.9-5.4 3.2-7.2.4 3.1 2.2 4.8 3.4 6.8.9 1.5 1.4 3 1.4 4.6C19.5 18.2 16 21 12 21z" />
+  </Stroke>
+);
+
 /** Trador's ArrowUpIcon: the like on a comment. */
 export const ArrowUpIcon = (p: IconProps) => (
   <Stroke {...p} strokeWidth={2.2}>

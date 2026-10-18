@@ -5,6 +5,7 @@
  *   GET    /alerts                  the list, newest first, with which are unread; ?list=feed|notifications
  *                                    pages one side of it, twenty at a time (list.ts)
  *   POST   /alerts/seen             everything up to now is read
+ *   GET    /alerts/unread           { unread }: the bell's dot, the same count as `bell` (personal, never cached)
  *   GET    /prefs                   settings, the multiples offered, the hourly ceiling, push state
  *   PUT    /prefs { prefs }         saved as normalised (core): a bad value is corrected, not stored
  *   POST   /push/subscribe { endpoint, keys, device? }     DELETE the same to stop this device
@@ -34,8 +35,11 @@ import { normalisePrefs, type AlertPrefs } from '@insidor/core';
 import { prefsOf, type Db } from './deliver.ts';
 import { devicesOf, sendToDevices, type Answers } from './devices.ts';
 import { json, type Reply, type Request } from './http.ts';
-import { coinOf, httpsOrNull, peopleOf, posterPictures } from './faces.ts';
+import { cardsOf, coinOf, httpsOrNull, peopleOf, posterPictures, thumbsOf } from './faces.ts';
 import { bellCount, parseList, readPage } from './list.ts';
+
+/** The rows drawn as a narrative's card in Notifications. */
+const NARRATIVE_ROWS = ['starred_speed', 'blowing_up', 'narrative_promoted'];
 import { postWatchRoute } from './post-watch.ts';
 
 export interface NotifyDeps {
@@ -111,6 +115,9 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
     const followers = rows.flatMap((r) => (r.kind === 'follow' ? [people.get(r.id)?.userId ?? ''] : [])).filter((u) => u !== '');
     const iFollow = new Set(followers.length === 0 ? [] : (await deps.db.query<{ userId: string }>('select followee_id as "userId" from people.follow where follower_id = $1 and followee_id = any($2::text[])', [me.userId, followers])).map((f) => f.userId));
     const posters = await posterPictures(deps.db, rows.filter((r) => r.kind === 'rising_post' && httpsOrNull(r.facts['picture']) === null).map((r) => r.subject));
+    /* What each row is about, drawn as such (faces.ts): a post's own card, a post's or narrative's picture. */
+    const thumbs = await thumbsOf(deps.db, rows);
+    const cards = await cardsOf(deps.db, rows);
     const alerts = rows.map((r) => {
       const facts = r.facts;
       const at = new Date(r.at).getTime();
@@ -119,7 +126,13 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
       return {
         id: r.id, kind: r.kind, title: r.title, body: r.body, href: r.href, at, unread: at > seenAt, pushed: r.pushed === true,
         symbol: typeof facts['symbol'] === 'string' ? facts['symbol'] : null, rank: typeof facts['rank'] === 'string' ? facts['rank'] : null, season: typeof facts['season'] === 'number' ? facts['season'] : null,
-        picture, coin: coinOf(r),
+        picture, coin: coinOf(r), thumb: thumbs.get(r.id) ?? null, post: cards.get(r.id) ?? null,
+        /* A post blowing up: its views gained over the last half hour, the card's green fact. */
+        speed: r.kind === 'blowing_up' && typeof facts['gain'] === 'number' && typeof facts['gainMinutes'] === 'number' ? { gain: facts['gain'], minutes: facts['gainMinutes'] } : null,
+        /* A narrative's row: its title and the last hour's facts, for the narrative card. */
+        story: NARRATIVE_ROWS.includes(r.kind) && facts['what'] !== 'post' && typeof facts['title'] === 'string'
+          ? { title: facts['title'], newPosts: typeof facts['newPosts'] === 'number' ? facts['newPosts'] : null, viewsGained: typeof facts['viewsGained'] === 'number' ? facts['viewsGained'] : null, starred: r.kind === 'starred_speed' }
+          : null,
         actor: r.kind === 'follow' && person !== null && person.userId !== me.userId ? { userId: person.userId, handle: person.handle, name: person.name, iFollow: iFollow.has(person.userId) } : null,
       };
     });
@@ -129,6 +142,7 @@ export async function handle(req: Request, deps: NotifyDeps): Promise<Reply> {
   }
   const watchedPost = await postWatchRoute(deps.db, m, seg, me.userId);
   if (watchedPost !== null) return watchedPost;
+  if (m === 'GET' && path === 'alerts/unread') return json(200, { unread: await bellCount(deps.db, me.userId) });
   if (m === 'POST' && path === 'alerts/seen') {
     await deps.db.query('insert into people.alert_seen (user_id, seen_at) values ($1, now()) on conflict (user_id) do update set seen_at = now()', [me.userId]);
     return json(200, { seen: true });
