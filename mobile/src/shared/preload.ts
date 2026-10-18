@@ -9,6 +9,8 @@
  * way of the first screen's own reads on a slow connection.
  */
 
+import { later } from './ui/later.ts';
+
 /*
  * ★ AFTER THE FIRST SCREEN, NOT JUST AFTER THE PAGE. The page's load event comes when the app's
  * own code is in, a second or more before For You's posts and pictures are; code fetched then
@@ -61,7 +63,9 @@ const QUIET_WAIT_MS = 3_000;
 
 type Load = () => Promise<unknown>;
 
-const chart: Load = () => import('../features/token/PriceChart.tsx');
+/** The token page's chart (features/token/CoinChart.tsx draws it), with the chart library under it. */
+export const PRICE_CHART = later(() => import('../features/token/PriceChart.tsx'), (m) => m.PriceChart);
+const chart: Load = PRICE_CHART.load;
 
 let started = false;
 
