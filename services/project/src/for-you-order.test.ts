@@ -9,6 +9,7 @@ import { test } from 'node:test';
 
 import { cryptoSignalFor, forYouOrder, postRoute, underScoreBar, type RisingRow } from './rising.ts';
 import { withVariety } from './variety.ts';
+import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 type P = { at: number; id: string };
 const sorted = (posts: P[]) => [...posts].sort(forYouOrder).map((p) => p.id);
@@ -62,4 +63,16 @@ test('★ the bar holds a post back only when set, with a number, and never over
   assert.equal(underScoreBar(0.5, 0.5, null), false, 'at the bar is over it');
   assert.equal(underScoreBar(0.2, 0.5, 'meme'), false);
   assert.equal(underScoreBar(0.2, 0.5, 'not'), true);
+});
+
+test('★ the safety net: a plain no with a net score passes only while it is on, never over a held kind, a shill or the owner', () => {
+  const NET = { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, coinModel: { ...DEFAULT_POLICY.judge.coinModel, on: true } } };
+  const net = { ...NO, net_add: true };
+  assert.equal(postRoute(net).route, null, 'off (the default): the stored score is not read');
+  assert.deepEqual(postRoute(net, NET), { why: 'passes', route: 'net' });
+  assert.equal(postRoute({ ...NO, net_add: false }, NET).route, null, 'a score under the threshold');
+  assert.equal(postRoute({ ...net, kind_label: 'SPORT' }, NET).route, null, 'a held kind still holds');
+  assert.equal(postRoute(net, NET, { others: false, shill: true }).route, null, 'a shill never');
+  assert.equal(postRoute({ ...net, owner_call: 'not' }, NET).route, null, "the owner's Not a meme wins");
+  assert.equal(postRoute({ ...ROW, confidence: 0.1, net_add: true }, NET).route, null, 'an unsure yes is not a no');
 });

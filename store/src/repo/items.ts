@@ -247,8 +247,12 @@ export class PgItemRepo implements ItemRepo {
    * any path that answered them (a lane, a coin's instant pass, a backfill): each path asked the kind
    * of what it passed, so each is screened here. Driven from post_judgement's judged_at index, so
    * it reads one window of answers, not every post.
+   *
+   * `withNet` (Policy.judge.coinModel.on) also takes a "no" our own coin model's stored score would
+   * let through (0096): such a post may reach For You, so it is screened by kind like a yes. Off, the
+   * coin model's table is never read.
    */
-  async catchAllKindUnasked(at: Millis, limit: number, kindPrefix: string, minConfidence: number): Promise<readonly { readonly item: Item; readonly answer: Pick<Judgement, 'coinable' | 'confidence' | 'lookedAt' | 'proposedName' | 'judgedAt'> }[]> {
+  async catchAllKindUnasked(at: Millis, limit: number, kindPrefix: string, minConfidence: number, withNet = false): Promise<readonly { readonly item: Item; readonly answer: Pick<Judgement, 'coinable' | 'confidence' | 'lookedAt' | 'proposedName' | 'judgedAt'> }[]> {
     if (limit <= 0) return [];
     const rows = await this.#db.query<{ item_id: string; judged_at: TimestampColumn; looked_at: string | null; coinable: boolean; confidence: number; proposed_name: string | null }>(
       `with latest as (
@@ -260,7 +264,7 @@ export class PgItemRepo implements ItemRepo {
        select l.item_id, l.judged_at, l.looked_at, l.coinable, l.confidence, l.proposed_name
          from latest l
          join public.item i on i.item_id = l.item_id
-        where l.coinable and l.confidence >= $4
+        where ((l.coinable and l.confidence >= $4)${withNet ? ` or (not l.coinable and exists (select 1 from internal.coin_model_score s where s.item_id = l.item_id and s.would_add))` : ''})
           and i.origin = 'observed'
           and not exists (select 1 from internal.post_judgement k
                            where k.item_id = l.item_id and k.prompt_id like $3 and k.judged_at >= l.judged_at)
