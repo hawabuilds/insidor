@@ -66,6 +66,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BOARD_VIEW, fetchBoard, fetchRising, fetchRisingSorted, fetchStoryIfAny, type PostSpeeds, type RisingFeed, type RisingPost, type RisingSorted, type Story } from '../../shared/api/index.ts';
 import { useLoad, useNow, useWatchlist } from '../../shared/hooks.ts';
+import { useScreenActive } from '../../shared/screen-active.ts';
+import { firstScreenDrawn } from '../../shared/preload.ts';
+import { aheadRef, readPostAhead, readTabsAhead } from '../../shared/prefetch.ts';
 import { Card as NarrativeCard } from '../narratives/Narratives.tsx';
 import { realNarratives, watchLine } from '../narratives/narrative-order.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
@@ -159,8 +162,8 @@ export function Feed({
     window.addEventListener('hashchange', take);
     return () => window.removeEventListener('hashchange', take);
   }, []);
-  const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal));
-  const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal));
+  const [board, reloadBoard] = useLoad('board', (signal) => fetchBoard(BOARD_VIEW, signal), 'phone');
+  const [fyp, reloadFyp] = useLoad('rising:fyp', (signal) => fetchRising('fyp', signal), 'phone');
   /* The sort chip and each sort's window, as this phone last left them (feed-sort.ts). */
   const [choice, setChoice] = useState<SortChoice>(loadChoice);
   const choose = (c: SortChoice) => {
@@ -171,17 +174,22 @@ export function Feed({
   const sortedOn = tab === 'fyp' && choice.sort !== 'new';
   const [sorted, reloadSorted] = useLoad<RisingSorted | null>(sortedOn ? `rising:fyp:${choice.sort}:${win ?? ''}` : 'rising:fyp:new', (signal) =>
     sortedOn && win !== null ? fetchRisingSorted(choice.sort, win, null, signal) : Promise.resolve(null),
+    'phone',
   );
   /* The pages under the first, as the person scrolls (useSortedPages.ts). */
   const sortedPages = useSortedPages(`${choice.sort}:${win ?? ''}`, sortedOn && sorted.state === 'ready' ? sorted.value : null);
+  /* Hidden behind another tab (App.tsx keeps it open), For You asks nothing. */
+  const active = useScreenActive();
   useEffect(() => {
-    if (!sortedOn) return;
+    if (!sortedOn || !active) return;
     const t = setInterval(() => {
       if (document.visibilityState === 'visible') reloadSorted();
     }, SORTED_EVERY_MS);
     return () => clearInterval(t);
-  }, [sortedOn, reloadSorted]);
+  }, [sortedOn, reloadSorted, active]);
   usePreloadCreate(); /* Create coin then opens with the launchpad's rules already read. */
+  /* The other tabs' first screens, read once For You has drawn (shared/prefetch.ts). */
+  useEffect(() => readTabsAhead(), []);
   /* FYP kept current while it is looked at, when the build switches it on; otherwise null and unused. */
   const live = useLiveFeed(LIVE_FEED && tab === 'fyp' && !sortedOn, fyp, reloadFyp, postsOf, true, newestPosted);
   /* For You's older pages, kept while Watchlist is open. They start under the card the list shows
@@ -195,6 +203,7 @@ export function Feed({
   const narrativesOn = tab === 'watchlist' && starred.length > 0;
   const [narratives, reloadNarratives] = useLoad(narrativesOn ? `narratives:starred:${starred.join(' ')}` : 'narratives:off', (signal) =>
     narrativesOn ? starredByIds(starred, signal) : Promise.resolve(null),
+    'memory',
   );
   const [buying, setBuying] = useState<CoinFace | null>(null);
   const [note, setNote] = useState<SheetNote | null>(null);
@@ -217,12 +226,13 @@ export function Feed({
 
   /* Coming back to the app is when somebody expects it to be current. */
   useEffect(() => {
+    if (!active) return;
     const onShow = () => {
       if (document.visibilityState === 'visible') reload();
     };
     document.addEventListener('visibilitychange', onShow);
     return () => document.removeEventListener('visibilitychange', onShow);
-  }, [reload]);
+  }, [reload, active]);
 
   /* Pull to refresh: everything is read again, and the spinner stops when this tab's list is back.
      For You comes newest first from the server, so new posts arrive at the top; a post the owner
@@ -267,12 +277,17 @@ export function Feed({
   const posts = listLoad.state === 'ready' && listPosts !== null ? applyPostFilters(withoutHidden(listPosts, hiddenNow, (p) => p.id), filters, now) : null;
   useSavedCalls('coin_match', posts === null ? [] : posts.rows.map((p) => p.id), owner);
   const liveOn = live.rows !== null && !sortedOn;
+  /* The first fresh answer is on screen: background code may load now (shared/preload.ts). */
+  const answered = listLoad.state === 'failed' || (listLoad.state === 'ready' && listLoad.stale !== true);
+  useEffect(() => {
+    if (answered) firstScreenDrawn();
+  }, [answered]);
   const post = (p: RisingPost) => (
     <PostRow
       key={p.id}
       post={p}
       now={now}
-      cardRef={owner && tab === 'fyp' ? seen(p.id) : undefined}
+      cardRef={aheadRef(`post:${p.id}`, () => readPostAhead(p.id), owner && tab === 'fyp' ? seen(p.id) : undefined)}
       extra={
         <>
           {/* An older coin trading on the subject since the post: its own line, never a Buy (OlderCoins.tsx). */}

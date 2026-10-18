@@ -53,8 +53,8 @@ function Loaded({ who, load, history, canAct, ownAddress, exportKey, profileKey 
   const [scrubbed, setScrubbed] = useState<BalancePoint | null>(null);
   const [copied, setCopied] = useState(false);
   const [sheet, setSheet] = useState<'send' | 'receive' | null>(null);
-  const [data] = useLoad(`wallet:${who.address}`, (signal) => load(signal));
-  const [stored] = useLoad(`wallet-history:${who.address}:${range}`, (signal) => history(signal, range));
+  const [data] = useLoad(`wallet:${who.address}`, (signal) => load(signal), 'phone');
+  const [stored] = useLoad(`wallet-history:${who.address}:${range}`, (signal) => history(signal, range), 'memory');
   const portfolio: PortfolioData | null = data.state === 'ready' ? data.value : data.state === 'failed' ? { kind: 'unavailable' } : null;
   const live = portfolio?.kind === 'read' && portfolio.totalUsd.known ? portfolio.totalUsd.amount : null;
   const points = stored.state === 'loading' ? null : withLive(stored.state === 'ready' ? stored.value : [], live, Date.now());

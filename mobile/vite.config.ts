@@ -47,6 +47,10 @@ const config = {
   build: {
     sourcemap: true,
     target: 'es2022',
+    /* Everything the first paint needs in one file: the other screens, the chart library and the
+       wallet code are split off (App.tsx, main.tsx), and without this the bundler cuts what is
+       shared between them into ~30 tiny files, each one more round trip on a phone's first open. */
+    rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'app', tags: ['$initial' as const] }] } } },
   },
   server: {
     port: 5174,

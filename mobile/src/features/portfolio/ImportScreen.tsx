@@ -1,13 +1,14 @@
 /**
  * IMPORT A WALLET — a clear warning first, then a box whose contents go straight into the sign-in
- * provider's own wallet SDK on this phone (@insidor/wallet-embedded KeyImport). Insidor's servers
+ * provider's own wallet SDK on this phone (@insidor/wallet-embedded KeyImport, drawn into this screen
+ * through shared/wallet-slot.tsx). Insidor's servers
  * never receive the key; it is not stored, logged or kept in the app's state, and the box empties
  * the moment the import ends or is cancelled.
  */
 
 import { useState } from 'react';
 
-import { KeyImport } from '@insidor/wallet-embedded';
+import { KeyImportSlot } from '../../shared/wallet-slot.tsx';
 
 import { SIGN_IN_CONFIGURED } from '../../shared/sign-in.ts';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
@@ -41,7 +42,7 @@ export function ImportScreen() {
       ) : !understood ? (
         <button type="button" className={box['linkButton']} onClick={() => setUnderstood(true)}>I understand, continue</button>
       ) : (
-        <KeyImport
+        <KeyImportSlot
           classes={{ field: box['keyField'], primary: box['linkButton'], secondary: box['quietButton'], row: box['keyRow'] }}
           onDone={(outcome) => {
             setUnderstood(false);

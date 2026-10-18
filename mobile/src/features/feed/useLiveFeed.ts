@@ -35,6 +35,7 @@ import type { RisingFeed, RisingPost } from '../../shared/api/index.ts';
 import { fetchRisingTick, openRisingStream } from '../../shared/api/client.ts';
 import type { Load } from '../../shared/hooks.ts';
 import { ownerStore } from '../owner/owner-store.ts';
+import { useScreenActive } from '../../shared/screen-active.ts';
 import { BACKUP_CHECK_MS, merge, reconcile, staggerDelay } from './live-feed.ts';
 import type { Order } from './feed-order.ts';
 
@@ -78,14 +79,16 @@ function firstVisibleCard(): { readonly id: string; readonly top: number } | nul
   return null;
 }
 
+/** On screen: the page is visible and its tab is the one showing (a kept tab is hidden, not gone: App.tsx). */
 function useVisible(): boolean {
+  const active = useScreenActive();
   const [visible, setVisible] = useState(() => typeof document === 'undefined' || document.visibilityState === 'visible');
   useEffect(() => {
     const on = () => setVisible(document.visibilityState === 'visible');
     document.addEventListener('visibilitychange', on);
     return () => document.removeEventListener('visibilitychange', on);
   }, []);
-  return visible;
+  return visible && active;
 }
 
 export function useLiveFeed<V extends { readonly tick: number }, T extends { readonly id: string }>(on: boolean, load: Load<V>, reload: () => void, rowsOf: (value: V) => readonly T[], sameTicks = true, order: Order<T> | null = null): LiveFeed<T> {
@@ -140,6 +143,9 @@ export function useLiveFeed<V extends { readonly tick: number }, T extends { rea
     }
     listRef.current = next;
     setList(next);
+    /* A list kept from the last visit (shared/kept-reads.ts) is only a stand-in: the fresh read
+       after it rebuilds in the server's order, removals included, as a first read does. */
+    if (load.stale === true) rebuild.current = true;
   }, [on, load]);
 
   /* After the new list is laid out: put the card that was on screen back where it was. */
@@ -156,7 +162,14 @@ export function useLiveFeed<V extends { readonly tick: number }, T extends { rea
   /* Read the feed again when the number moved past the one we hold, or when we cannot tell. */
   const latestReload = useRef(reload);
   latestReload.current = reload;
+  /* ★ THE STREAM'S FIRST "ready" DOES NOT READ AGAIN WHILE THE FIRST READ IS ON ITS WAY: that read
+     was aborted and started over on every open (~300 ms lost on For You). Frames between that read
+     and the line opening are caught by the next "changed" or the 30-second check (tick > held). */
+  const firstOnItsWay = load.state === 'loading' || (load.state === 'ready' && load.stale === true);
+  const reading = useRef(firstOnItsWay);
+  reading.current = firstOnItsWay;
   const onChanged = useCallback((tick: number | null) => {
+    if (tick === null && reading.current) return;
     if (!sameTicks || tick === null || held.current === null || tick > held.current) latestReload.current();
   }, [sameTicks]);
 

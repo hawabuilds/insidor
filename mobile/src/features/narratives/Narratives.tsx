@@ -25,13 +25,16 @@
  * span, never a total; a total always climbs and would make every narrative look like it is rising.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { BOARD_VIEW, fetchAllNarratives, type NarrativeListSort, type NarrativesPage, type Story } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { tickerText } from '../../shared/format/ticker.ts';
 import { useNow } from '../../shared/hooks.ts';
+import { fresh, kept } from '../../shared/kept-reads.ts';
+import { firstPageKey, readFirstPage } from './first-page.ts';
+import { useScreenActive } from '../../shared/screen-active.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
 import { boardNotice } from '../../shared/notice.ts';
 import { hrefFor } from '../../shared/route.ts';
@@ -45,8 +48,17 @@ import { LIVE_FEED } from '../feed/live-feed.ts';
 import { storyCoinState, type CoinFace } from '../narrative/story-coin.ts';
 import { BuyOpen, SheetToast, type SheetNote } from '../post-sheet/index.ts';
 import { SITES, cardLine, gainedIn, hourGainText, listOf, loadChoice, realNarratives, saveChoice, speedsOf, viewsText, type Choice } from './narrative-order.ts';
+import { WindowList } from '../../shared/ui/WindowList.tsx';
+import { useIsOwner } from '../owner/hooks.ts';
+import { NarrativeHideBar, NotANarrativeStrip, useHiddenNarratives } from '../owner/OwnerNarrative.tsx';
 import styles from './narratives.module.css';
 
+/** The space between two cards (narratives.module.css .cards had it as its gap). */
+const CARD_GAP_PX = 10;
+/** A card's height before it is measured, and how far beyond the screen cards stay drawn. */
+const CARD_GUESS_PX = 150;
+const CARDS_BEYOND_PX = 1200;
+const storyKey = (s: Story): string => s.id;
 /** How long a card takes to glide to its new place. */
 const MOVE_MS = 320;
 /** How often the first 20 are read again while they are all that is showing. */
@@ -71,8 +83,12 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
   const [note, setNote] = useState<SheetNote | null>(null);
   const now = useNow();
   const list = useList(listOf(choice), choice.site === 'all' ? null : choice.site);
-  const rows = list.rows;
+  /* The owner's "Not a narrative" (features/owner/OwnerNarrative.tsx): drawn only for the owner, and a card it hid leaves at once. */
+  const owner = useIsOwner();
+  const { hidden } = useHiddenNarratives();
+  const rows = useMemo(() => (list.rows === null || hidden.size === 0 ? list.rows : list.rows.filter((s) => !hidden.has(s.id))), [list.rows, hidden]);
   const glide = useGlide(rows?.map((s) => s.id).join(' ') ?? '');
+  const places = useMemo(() => new Map((rows ?? []).map((s, i) => [s.id, i])), [rows]);
   const open = (s: Story) => (window.location.hash = hrefFor({ screen: 'story', storyId: s.id }));
 
   return (
@@ -116,15 +132,31 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
       {list.state === 'failed' && rows === null ? <p className={styles['empty']}>Couldn't load the narratives.</p> : null}
       {rows !== null && rows.length === 0 ? <p className={styles['empty']}>{choice.sort === 'trending' ? NO_RISERS : 'No narratives yet.'}</p> : null}
       <div className={styles['cards']}>
-        {rows?.map((s, i) => (
-          <div key={s.id} ref={glide(s.id)}>
-            <Card story={s} place={i + 1} view={{ sort: choice.sort, span: choice.span }} now={now} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} />
-          </div>
-        ))}
+        {/* Only the cards near the screen are drawn (shared/ui/WindowList.tsx), so a list scrolled
+            through many pages stays smooth; the gap between cards is each card's own top space,
+            the first card's none, as the column's gap was. */}
+        {rows !== null && rows.length > 0 ? (
+          <WindowList
+            items={rows}
+            keyOf={storyKey}
+            render={(s) => {
+              const i = places.get(s.id) ?? 0;
+              return (
+                <div ref={glide(s.id)} style={i === 0 ? undefined : { paddingTop: CARD_GAP_PX }}>
+                  <Card story={s} place={i + 1} view={{ sort: choice.sort, span: choice.span }} now={now} onOpen={() => open(s)} onBuy={setBuying} onCreate={() => onCreate(s)} extra={owner ? <NotANarrativeStrip storyId={s.id} /> : null} />
+                </div>
+              );
+            }}
+            guess={CARD_GUESS_PX}
+            overscan={CARDS_BEYOND_PX}
+            nearEnd={0}
+          />
+        ) : null}
       </div>
       {list.next !== null ? <More onMore={list.more} busy={list.state === 'loading'} failed={list.state === 'failed'} /> : null}
       {buying !== null ? <BuyOpen mint={buying.address} ticker={buying.ticker ?? buying.name ?? ''} onClose={() => setBuying(null)} onNote={setNote} /> : null}
       <SheetToast note={note} onDone={() => setNote(null)} />
+      {owner ? <NarrativeHideBar /> : null}
     </section>
   );
 }
@@ -136,19 +168,28 @@ export function Narratives({ onCreate }: { onCreate: (story: Story) => void }) {
  * showing it is read again every minute, so the list stays current; once more are loaded it holds
  * still, so a scrolled list does not move under the thumb.
  */
+type Got = { key: string; rows: readonly Story[]; next: number | null; pages: number; provenance: NarrativesPage['provenance'] };
+
+function keptFirst(key: string, sort: NarrativeListSort, on: 'x' | 'tiktok' | null): Got | null {
+  const k = kept<NarrativesPage>(firstPageKey(sort, on));
+  return k === undefined ? null : { key, rows: realNarratives(k.value.stories), next: k.value.next, pages: 1, provenance: k.value.provenance };
+}
+
 function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null): { readonly rows: readonly Story[] | null; readonly next: number | null; readonly provenance: NarrativesPage['provenance'] | null; readonly state: 'loading' | 'ready' | 'failed'; readonly more: () => void } {
   const key = `${sort}:${on ?? 'all'}`;
-  const [got, setGot] = useState<{ key: string; rows: readonly Story[]; next: number | null; pages: number; provenance: NarrativesPage['provenance'] } | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
+  /* The list as this phone last read it, at once; the first page is read again under it. */
+  const [got, setGot] = useState<Got | null>(() => keptFirst(key, sort, on));
+  const [state, setState] = useState<'loading' | 'ready' | 'failed'>(() => (got === null ? 'loading' : 'ready'));
   const asking = useRef<string | null>(null);
   const current = useRef(key);
   current.current = key;
-  const load = (offset: number, prev: readonly Story[], pages: number, quiet = false) => {
+  const load = (offset: number, prev: readonly Story[], pages: number, quiet = false, standIn = false) => {
     const ask = `${key}:${offset}:${pages}`;
     if (asking.current === ask) return;
     asking.current = ask;
     if (!quiet) setState('loading');
-    fetchAllNarratives(BOARD_VIEW, sort, offset, on).then(
+    /* The first page goes through the kept reads, so a read ahead (shared/prefetch.ts) is shared, and the answer is kept for next time. */
+    (offset === 0 ? fresh(firstPageKey(sort, on), readFirstPage(sort, on), true) : fetchAllNarratives(BOARD_VIEW, sort, offset, on)).then(
       (page) => {
         asking.current = null;
         if (current.current !== key) return;
@@ -158,25 +199,41 @@ function useList(sort: NarrativeListSort, on: 'x' | 'tiktok' | null): { readonly
       },
       () => {
         asking.current = null;
-        if (current.current !== key || quiet) return;
+        if (current.current !== key) return;
+        /* Over a kept list, a failed first read is still a failure: the old list is not left standing as if current. */
+        if (standIn) {
+          setGot(null);
+          setState('failed');
+          return;
+        }
+        if (quiet) return;
         setState('failed');
       },
     );
   };
   useEffect(() => {
-    setGot(null);
-    load(0, [], 0);
+    const was = keptFirst(key, sort, on);
+    setGot(was);
+    if (was !== null) setState('ready');
+    load(0, [], 0, was !== null, was !== null);
     // `load` is a fresh closure every render; the sort and site are what decide a fresh list.
   }, [key]);
   const mine = got !== null && got.key === key ? got : null;
   const firstOnly = mine !== null && mine.pages === 1;
+  /* Hidden behind another tab (App.tsx keeps it open), the list asks nothing; back on screen, the first page is read again. */
+  const active = useScreenActive();
+  const wasActive = useRef(active);
   useEffect(() => {
-    if (!firstOnly) return;
+    if (active && !wasActive.current && firstOnly) load(0, [], 0, true);
+    wasActive.current = active;
+  }, [active]);
+  useEffect(() => {
+    if (!firstOnly || !active) return;
     const id = window.setInterval(() => {
       if (document.visibilityState === 'visible') load(0, [], 0, true);
     }, REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [key, firstOnly]);
+  }, [key, firstOnly, active]);
   return {
     rows: mine?.rows ?? null,
     next: mine?.next ?? null,
@@ -237,7 +294,7 @@ function useGlide(key: string): (id: string) => (el: HTMLDivElement | null) => v
  * watchLine); there the right side is the last hour's gain, as it always was. `hours` is what the
  * Watchlist still passes and is not read.
  */
-export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate }: { story: Story; place: number | null; view?: { readonly sort: Choice['sort']; readonly span: ViewedSpan }; hours?: number; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void }) {
+export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate, extra = null }: { story: Story; place: number | null; view?: { readonly sort: Choice['sort']; readonly span: ViewedSpan }; hours?: number; now: number; line?: readonly string[]; onOpen: () => void; onBuy: (c: CoinFace) => void; onCreate: () => void; extra?: ReactNode }) {
   const coin = storyCoinState(story);
   const right = view === undefined ? hourGainText(story) : viewsText(story);
   const gained = view?.sort === 'most_viewed' ? gainedIn(story, view.span) : null;
@@ -291,6 +348,7 @@ export function Card({ story, place, view, now, line, onOpen, onBuy, onCreate }:
           <span className={styles['coinNone']}>{coin.line}</span>
         )}
       </div>
+      {extra}
     </article>
   );
 }

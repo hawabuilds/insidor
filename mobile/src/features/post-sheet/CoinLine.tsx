@@ -16,6 +16,7 @@ import type { ReactNode } from 'react';
 import type { SheetCoin } from '../../shared/api/index.ts';
 import { formatUsd } from '../../shared/format/number.ts';
 import { useCoinCap } from '../../shared/useCoinCap.ts';
+import { aheadRef, readCoinAhead } from '../../shared/prefetch.ts';
 import { CoinLogo } from '../../shared/ui/CoinLogo.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { ageText, pctText } from './sheet-view.ts';
@@ -26,7 +27,7 @@ export function CoinLine({ coin, now, onOpen, action }: { coin: SheetCoin; now: 
   const age = ageText(coin.launchedAt, now);
   const cap = useCoinCap(coin.address, coin.marketCapUsd, true);
   return (
-    <div className={styles['coinRow']} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => {
+    <div ref={aheadRef(`coin:${coin.coinId}`, () => readCoinAhead(coin))} className={styles['coinRow']} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => {
       if (e.key === 'Enter') onOpen();
     }}>
       <CoinLogo small address={coin.address} ticker={coin.ticker ?? coin.name} imageUrl={coin.imageUrl} size={44} />

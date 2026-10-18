@@ -14,7 +14,7 @@
  * 'loading' is a placeholder the size of the number, in its place: never "$0", never empty.
  */
 
-import { useMemo, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 
 import type { CoinMarket, MarketTimeframe } from '../../shared/api/index.ts';
 import type { Measured } from '../../shared/format/measure.ts';
@@ -22,11 +22,18 @@ import { formatChangePercent, formatPrice, formatUsd } from '../../shared/format
 import { value, type Rendered } from '../../shared/format/rendered.ts';
 import { CandleIcon, LineChartIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
-import { PriceChart } from './PriceChart.tsx';
 import { TIMEFRAMES, TIMEFRAME_MS, changePctForPoints, chartWindowMs, hoveredCandleChangePct, mergeTradesIntoChart, pointsOf, type ChartPoint, type ChartStyle } from './chart-data.ts';
 import { chartNote, clock, movePercent } from './chart-format.ts';
 import { readChartStyle, writeChartStyle } from './chart-style.ts';
+import { PRICE_CHART } from '../../shared/preload.ts';
 import styles from './token.module.css';
+
+/* ★ THE CHART LIBRARY LOADS WITH THE FIRST CHART, NOT WITH THE APP (shared/preload.ts fetches it
+   ahead once the app is quiet). Until it is here the chart's own frame stands in, the same size and
+   saying the same empty line, so nothing moves when the lines draw in. */
+const PriceChart = PRICE_CHART.Component;
+/** PriceChart's own height (PriceChart.tsx HEIGHT). */
+const CHART_HEIGHT = 190;
 
 export function CoinChart({ market, state, tf, onTf, price, change24h, cap, liquidity }: {
   market: CoinMarket | null;
@@ -84,7 +91,15 @@ export function CoinChart({ market, state, tf, onTf, price, change24h, cap, liqu
         </div>
       </div>
 
-      <PriceChart points={points} rising={rising} windowMs={chartWindowMs(tf)} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={setScrubbed} />
+      <Suspense
+        fallback={
+          <div className={styles['chart']} style={{ height: CHART_HEIGHT }}>
+            {points.length < 2 ? <div className={styles['chartEmpty']}>{chartNote(state, market, tf)}</div> : null}
+          </div>
+        }
+      >
+        <PriceChart points={points} rising={rising} windowMs={chartWindowMs(tf)} style={style} emptyLabel={chartNote(state, market, tf)} onScrub={setScrubbed} />
+      </Suspense>
 
       <div className={styles['tfRow']}>
         <div className={styles['tfs']} role="group" aria-label="Chart timeframe">

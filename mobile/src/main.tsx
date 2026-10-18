@@ -12,12 +12,22 @@
  * @insidor/wallet-embedded, when the build carries `VITE_PRIVY_APP_ID`. Without it the wallet is
  * `unavailable` and the Portfolio tab says so. Screens get the port (shared/wallet.tsx), never the
  * vendor.
+ *
+ * ★ THE WALLET CODE NEVER HOLDS UP THE FIRST PAINT. The vendor's provider and SDK are their own
+ * chunk (wallet-vendor.tsx), drawn beside the app rather than around it. A returning person's app
+ * paints first (shared/sign-in.ts lets them in while the session comes back) and the chunk starts
+ * loading once the first screen has drawn its answer (shared/preload.ts); at the door, where Join now needs it, it starts
+ * at once. Until it arrives the port says `unavailable`, exactly as while the vendor starts.
  */
 
-import { Component, StrictMode, type ReactNode } from 'react';
+import { Component, StrictMode, Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { EmbeddedWalletProvider, embeddedWallet } from '@insidor/wallet-embedded';
+/* The port alone (no SDK): the vendor's code arrives later, in wallet-vendor.tsx. */
+import { embeddedWallet } from '@insidor/wallet-embedded/store.ts';
+import { hasEntered } from './features/landing/entered.ts';
+import { afterFirstScreen } from './shared/preload.ts';
+import { listenForNewVersion } from './shared/new-version.ts';
 
 import { App } from './App.tsx';
 import { listenForOpens, settleLaunch } from './features/alerts/push-open.ts';
@@ -36,8 +46,12 @@ settleLaunch();
 /* Every history entry numbered from here, so a Back with nothing of ours under it still leads somewhere (shared/nav.ts). */
 trackHistory();
 listenForOpens();
+/* iPhone Safari draws a pressed (:active) state only on a page that listens for touches (tokens.css). */
+document.addEventListener('touchstart', () => undefined, { passive: true });
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  /* A newer build seen while the kept one stood in: taken at the next return to the app. */
+  listenForNewVersion();
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error: unknown) => {
       console.warn('service worker registration failed', error);
@@ -56,6 +70,36 @@ const app = (
     <App />
   </WalletProvider>
 );
+
+const WalletVendor = lazy(() => import('./wallet-vendor.tsx'));
+/** How long after the page has loaded the wallet code may wait for a quiet moment, at most. */
+const VENDOR_WAIT_MS = 2_000;
+
+/** The vendor's part, mounted after the first paint (see the header). */
+function LaterWallet() {
+  const [go, setGo] = useState(() => !hasEntered());
+  useEffect(() => {
+    if (go) return;
+    const w = window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (n: number) => void };
+    let idle = 0;
+    let timer = 0;
+    const cancel = afterFirstScreen(() => {
+      if (typeof w.requestIdleCallback === 'function') idle = w.requestIdleCallback(() => setGo(true), { timeout: VENDOR_WAIT_MS });
+      else timer = window.setTimeout(() => setGo(true), 200);
+    });
+    return () => {
+      cancel();
+      w.cancelIdleCallback?.(idle);
+      window.clearTimeout(timer);
+    };
+  }, [go]);
+  if (!go) return null;
+  return (
+    <Suspense fallback={null}>
+      <WalletVendor appId={appId} bridge={bridge} />
+    </Suspense>
+  );
+}
 
 /** The last net (see the header): the error in its own words and a way back, never a black page. */
 class Crashed extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -83,6 +127,9 @@ class Crashed extends Component<{ children: ReactNode }, { error: string | null 
 
 createRoot(container).render(
   <StrictMode>
-    <Crashed>{appId === '' ? app : <EmbeddedWalletProvider appId={appId} bridge={bridge}>{app}</EmbeddedWalletProvider>}</Crashed>
+    <Crashed>
+      {app}
+      {appId === '' ? null : <LaterWallet />}
+    </Crashed>
   </StrictMode>,
 );

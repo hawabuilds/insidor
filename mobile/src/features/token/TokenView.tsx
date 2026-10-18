@@ -112,7 +112,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
   const [pickedTape, setTape] = useState<TapeFilter>('all');
   const tape = tapeFilterFor(pickedTape, account);
   const tabs = useRef<HTMLDivElement>(null);
-  const [loaded, reload] = useLoad(`market:${facts.coinId}:${tf}`, (signal) => fetchCoinMarket(facts.coinId, tf, signal));
+  const [loaded, reload] = useLoad(`market:${facts.coinId}:${tf}`, (signal) => fetchCoinMarket(facts.coinId, tf, signal), 'memory');
   useEffect(() => {
     const timer = setInterval(reload, MARKET_POLL_MS);
     return () => clearInterval(timer);
@@ -123,7 +123,7 @@ export function TokenView({ facts, chips = [], notice = null, insidor = null, of
     if (market !== null) noteMarket(facts.address, market, Date.now());
   }, [market, facts.address]);
   /* The links, day numbers, holders, creator and posts: read once when the page opens. */
-  const [aboutLoad] = useLoad(`about:${facts.coinId}`, (signal) => fetchCoinAbout(facts.coinId, signal));
+  const [aboutLoad] = useLoad(`about:${facts.coinId}`, (signal) => fetchCoinAbout(facts.coinId, signal), 'phone');
   const about: CoinAbout | null = aboutLoad.state === 'ready' ? aboutLoad.value : null;
   /* The coin's narrative (coin-narrative.ts): the one the page came from, else the one the read
      service names for the coin, else the most-viewed naming post's. Read once it is known. */
