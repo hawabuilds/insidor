@@ -5,6 +5,9 @@
  *
  *   - Your holdings: a coin you hold, worth at least `minPositionUsd`, priced at a multiple of
  *     your average buy price (in SOL, the unit the buys were made in). No buy history, no alert.
+ *   - Your holdings halved (the owner's notification design, 2026-10-18: "doubles or halves"): the
+ *     same holding priced at Policy.notify.holdingDownAt of your average buy or under, once per
+ *     coin, ever (level 50, for the fifty per cent). Doubling is the 2x level above, on by default.
  *   - Your watchlist: a coin of a narrative you watch, at a multiple of its price when you
  *     started watching (recorded the first time it is seen for you).
  *   - Graduations: a watched or held coin past `graduatingSoonAt` of its curve, and a coin whose
@@ -52,6 +55,16 @@ export function holdingLevel(r: { readonly held: number; readonly costSol: numbe
   return level === null ? null : { level, facts: { symbol: r.quote.ticker, multiple: level, positionUsd } };
 }
 
+/** The level a holding should alert at for having halved, if any (50: down by half). Pure. */
+export const HALVED = 50;
+export function holdingDown(r: { readonly held: number; readonly costSol: number | undefined; readonly quote: Quote | undefined; readonly spent: boolean }, P: NotifyPolicy): { readonly level: number; readonly facts: Facts } | null {
+  if (r.spent || r.costSol === undefined || !(r.costSol > 0) || r.quote?.priceSol == null || r.quote.priceUsd === null) return null;
+  const positionUsd = r.held * r.quote.priceUsd;
+  const ratio = r.quote.priceSol / r.costSol;
+  if (positionUsd < P.minPositionUsd * P.holdingDownAt || !(ratio <= P.holdingDownAt)) return null;
+  return { level: HALVED, facts: { symbol: r.quote.ticker, downPercent: (1 - ratio) * 100, positionUsd } };
+}
+
 export async function checkMarket(db: Db, ports: MarketPorts, P: NotifyPolicy): Promise<number> {
   let queued = 0;
   const people = await db.query<{ userId: string; wallet: string | null }>('select user_id as "userId", wallet from people.profile');
@@ -92,6 +105,11 @@ export async function checkMarket(db: Db, ports: MarketPorts, P: NotifyPolicy): 
         const hit = holdingLevel({ held: amount, costSol: b.get(mint), quote: quotes.get(mint), multiples: prefs.multiples, spent: await spent(db, p.userId, 'holding_multiple', mint) }, P);
         if (hit !== null) {
           await queue(db, { userId: p.userId, kind: 'holding_multiple', subject: mint, rung: hit.level, facts: hit.facts, href: tokenHref(mint) });
+          queued += 1;
+        }
+        const down = holdingDown({ held: amount, costSol: b.get(mint), quote: quotes.get(mint), spent: (await spent(db, p.userId, 'holding_down', mint)).length > 0 }, P);
+        if (down !== null) {
+          await queue(db, { userId: p.userId, kind: 'holding_down', subject: mint, rung: down.level, facts: down.facts, href: tokenHref(mint) });
           queued += 1;
         }
       }
