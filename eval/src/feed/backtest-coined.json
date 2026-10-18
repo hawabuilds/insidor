@@ -1,0 +1,315 @@
+{
+ "about": "The origin posts of the coins on the owner's backtest 2 and backtest 3 blind sheets (backtest2-blind-sheet.xlsx, backtest3-blind-sheet.xlsx, 1,000 rows each; 79 rows name a post, 62 of them an X post id we can key). Coined posts the coin model is taught as yes (tools/lib/coin-model.ts). None is held in public.item, so each is taught on its words-and-picture vector (internal.label_embedding) and its words alone, with no reading: the model's no_reading flag carries that, so these teach what such posts say and never what their reach was. Short TikTok links (vm.tiktok.com) could not be keyed and are left out.",
+ "posts": [
+  {
+   "id": "x:2074100341155434793",
+   "sheet": "backtest2",
+   "ticker": "AOP"
+  },
+  {
+   "id": "x:2080050311725756531",
+   "sheet": "backtest2",
+   "ticker": "KIMCHI"
+  },
+  {
+   "id": "x:2071972414653632892",
+   "sheet": "backtest2",
+   "ticker": "HIM"
+  },
+  {
+   "id": "x:2076257881465192450",
+   "sheet": "backtest2",
+   "ticker": "WINGIT"
+  },
+  {
+   "id": "x:2081884301096784210",
+   "sheet": "backtest2",
+   "ticker": "imy"
+  },
+  {
+   "id": "x:2080165738464280725",
+   "sheet": "backtest2",
+   "ticker": "GROK"
+  },
+  {
+   "id": "x:2080759984069947864",
+   "sheet": "backtest2",
+   "ticker": "Iry"
+  },
+  {
+   "id": "x:2079837600689332595",
+   "sheet": "backtest2",
+   "ticker": "DIA"
+  },
+  {
+   "id": "x:2074111506992583138",
+   "sheet": "backtest2",
+   "ticker": "KIRB"
+  },
+  {
+   "id": "x:2073034775569330570",
+   "sheet": "backtest2",
+   "ticker": "July 4th"
+  },
+  {
+   "id": "x:2078521506007560474",
+   "sheet": "backtest2",
+   "ticker": "CAGE"
+  },
+  {
+   "id": "x:2072634580675235965",
+   "sheet": "backtest2",
+   "ticker": "America250"
+  },
+  {
+   "id": "x:2074224204132864115",
+   "sheet": "backtest2",
+   "ticker": "SpaceXAI"
+  },
+  {
+   "id": "x:2071421006858866961",
+   "sheet": "backtest2",
+   "ticker": "MOOM"
+  },
+  {
+   "id": "x:2072681271566708832",
+   "sheet": "backtest2",
+   "ticker": "DR TRUMP"
+  },
+  {
+   "id": "x:2075190553185030606",
+   "sheet": "backtest2",
+   "ticker": "Bullchuriki"
+  },
+  {
+   "id": "x:2081761712659739063",
+   "sheet": "backtest2",
+   "ticker": "Horses"
+  },
+  {
+   "id": "x:2076102489464504608",
+   "sheet": "backtest2",
+   "ticker": "Boardy"
+  },
+  {
+   "id": "x:2081892242289991803",
+   "sheet": "backtest2",
+   "ticker": "blepunc"
+  },
+  {
+   "id": "x:2081434948485939422",
+   "sheet": "backtest2",
+   "ticker": "PVP"
+  },
+  {
+   "id": "x:2081733077198327841",
+   "sheet": "backtest2",
+   "ticker": "$SAVEACT"
+  },
+  {
+   "id": "x:2078472356377645226",
+   "sheet": "backtest2",
+   "ticker": "Lala"
+  },
+  {
+   "id": "x:2079311468231545077",
+   "sheet": "backtest2",
+   "ticker": "BIGTROUT"
+  },
+  {
+   "id": "x:2072722702914220335",
+   "sheet": "backtest2",
+   "ticker": "NICK"
+  },
+  {
+   "id": "x:1942482533972677031",
+   "sheet": "backtest2",
+   "ticker": "Xianba"
+  },
+  {
+   "id": "x:2071770035425624410",
+   "sheet": "backtest2",
+   "ticker": "PORTY"
+  },
+  {
+   "id": "x:2077387825255690569",
+   "sheet": "backtest2",
+   "ticker": "Soladier"
+  },
+  {
+   "id": "x:2068770326599577842",
+   "sheet": "backtest3",
+   "ticker": "BANKS"
+  },
+  {
+   "id": "x:2071667886469394717",
+   "sheet": "backtest3",
+   "ticker": "ME"
+  },
+  {
+   "id": "x:2069498273346310313",
+   "sheet": "backtest3",
+   "ticker": "IM BACK"
+  },
+  {
+   "id": "x:2066518673053868543",
+   "sheet": "backtest3",
+   "ticker": "Pepe"
+  },
+  {
+   "id": "x:2080371426909913165",
+   "sheet": "backtest3",
+   "ticker": "Fushin"
+  },
+  {
+   "id": "x:2068615404919140775",
+   "sheet": "backtest3",
+   "ticker": "Kirby"
+  },
+  {
+   "id": "x:2071655261949788658",
+   "sheet": "backtest3",
+   "ticker": "Sonala$200"
+  },
+  {
+   "id": "x:2069526985475244388",
+   "sheet": "backtest3",
+   "ticker": "TRASHCAN"
+  },
+  {
+   "id": "x:2041805671365029988",
+   "sheet": "backtest3",
+   "ticker": "MOODER"
+  },
+  {
+   "id": "x:2065107430787178590",
+   "sheet": "backtest3",
+   "ticker": "GUILTY"
+  },
+  {
+   "id": "x:2069788716642582699",
+   "sheet": "backtest3",
+   "ticker": "SPCX NDX"
+  },
+  {
+   "id": "x:2072778994416603185",
+   "sheet": "backtest3",
+   "ticker": "Christian"
+  },
+  {
+   "id": "x:2036399822312292486",
+   "sheet": "backtest3",
+   "ticker": "BUYDIP"
+  },
+  {
+   "id": "x:2069911846812053747",
+   "sheet": "backtest3",
+   "ticker": "JUAN"
+  },
+  {
+   "id": "x:2073439229695136043",
+   "sheet": "backtest3",
+   "ticker": "TATE"
+  },
+  {
+   "id": "x:2079993377324437620",
+   "sheet": "backtest3",
+   "ticker": "Carina"
+  },
+  {
+   "id": "x:2061783664745193776",
+   "sheet": "backtest3",
+   "ticker": "AIRDROP"
+  },
+  {
+   "id": "x:2080002774582850025",
+   "sheet": "backtest3",
+   "ticker": "Bear Rippe"
+  },
+  {
+   "id": "x:2061558621658394925",
+   "sheet": "backtest3",
+   "ticker": "Tristian"
+  },
+  {
+   "id": "x:2062318641542988097",
+   "sheet": "backtest3",
+   "ticker": "MOGGED"
+  },
+  {
+   "id": "x:2063406281130398012",
+   "sheet": "backtest3",
+   "ticker": "BOUTYWORK"
+  },
+  {
+   "id": "x:2072444649525092454",
+   "sheet": "backtest3",
+   "ticker": "AIRDROP"
+  },
+  {
+   "id": "x:2067260989280600369",
+   "sheet": "backtest3",
+   "ticker": "Alfie"
+  },
+  {
+   "id": "x:2075672977497035108",
+   "sheet": "backtest3",
+   "ticker": "AUREON"
+  },
+  {
+   "id": "x:2069514787852034259",
+   "sheet": "backtest3",
+   "ticker": "FITNESS"
+  },
+  {
+   "id": "x:2070253292383252879",
+   "sheet": "backtest3",
+   "ticker": "Guardians"
+  },
+  {
+   "id": "x:2081699755965505804",
+   "sheet": "backtest3",
+   "ticker": "FIT"
+  },
+  {
+   "id": "x:2068525578358047028",
+   "sheet": "backtest3",
+   "ticker": "RTM"
+  },
+  {
+   "id": "x:2069124520661696843",
+   "sheet": "backtest3",
+   "ticker": "Schrödinger"
+  },
+  {
+   "id": "x:2061413468549324819",
+   "sheet": "backtest3",
+   "ticker": "Odysseus"
+  },
+  {
+   "id": "x:2071915554651209979",
+   "sheet": "backtest3",
+   "ticker": "Becker"
+  },
+  {
+   "id": "x:2074740539874775163",
+   "sheet": "backtest3",
+   "ticker": "grok 4.5"
+  },
+  {
+   "id": "x:2062062058376663408",
+   "sheet": "backtest3",
+   "ticker": "MBGA"
+  },
+  {
+   "id": "x:2063258328508039411",
+   "sheet": "backtest3",
+   "ticker": "NoDi"
+  },
+  {
+   "id": "x:2081816360879899060",
+   "sheet": "backtest3",
+   "ticker": "something"
+  }
+ ]
+}

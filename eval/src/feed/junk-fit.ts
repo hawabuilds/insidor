@@ -74,7 +74,7 @@ export function foldOf(e: Pick<JunkExample, 'itemId' | 'text'>, folds: number): 
 /* ── the fit ──────────────────────────────────────────────────────────────────────────────────── */
 
 /** Solves A x = b for symmetric positive definite A (n×n, row-major), in place on a copy. */
-function choleskySolve(a: Float64Array, b: Float64Array, n: number): Float64Array {
+export function choleskySolve(a: Float64Array, b: Float64Array, n: number): Float64Array {
   const l = new Float64Array(a);
   for (let j = 0; j < n; j++) {
     let d = l[j * n + j] as number;

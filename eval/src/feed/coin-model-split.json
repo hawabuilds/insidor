@@ -1,0 +1,40 @@
+{
+  "about": "The coin model's own split of the owner's 33 missed posts (the owner, 2026-10-18: keep half in the test, with the catchphrase, people and news ones across both halves). Separate from owner-split.json, which is the judge re-tune's. `test` is never taught to the coin model and is always in its test, whatever its time; `teach` is always taught. Picked by posting order inside three groups, alternating: the 12 the live judge still misses (6 and 6: people, catchphrases and a show in the news in each half, TikTok and X videos in each), the 6 people and news posts it catches (3 and 3), and the 15 animal posts (8 and 7). Ids live here, not in the policy, because a post id names its source. An id must never be in both.",
+  "test": [
+    { "id": "x:2109001190100849122", "post": "@acervoarii, TOPO, Portuguese X video", "group": "judge misses" },
+    { "id": "tiktok:7695781291517627662", "post": "@dikshithardik, brothers cooking, DIKSHIT", "group": "judge misses" },
+    { "id": "x:2109777563425869858", "post": "@suguboobies_, pfps to match with your bae", "group": "judge misses" },
+    { "id": "x:2109995948407476369", "post": "@johnternus, Welcome HomeView", "group": "judge misses" },
+    { "id": "x:2110443836673823030", "post": "@Complex, the Daejon Love scam show, DAEJON", "group": "judge misses" },
+    { "id": "tiktok:7697232335028178208", "post": "@islam.eldeh.babies, Baby king, Chillbaby", "group": "judge misses" },
+    { "id": "x:2109741351642321071", "post": "@TMZ, RJ Mitte has died", "group": "people and news" },
+    { "id": "x:2110225239515041849", "post": "@niccruzpatane, Tesla 7:55 Easter egg", "group": "people and news" },
+    { "id": "x:2110378618345967808", "post": "@mattvanswol, robot dog in Atlanta, Oppy", "group": "people and news" },
+    { "id": "x:2101876063102025865", "post": "@razzydjazzy, the Hi", "group": "animals" },
+    { "id": "x:2109233978045780106", "post": "@BetaBitss, scientists reveal the Hi", "group": "animals" },
+    { "id": "x:2109699787985404067", "post": "@Zeehondencreche, seal centre news", "group": "animals" },
+    { "id": "x:2109826862906233339", "post": "@hardcatmemes, cat picture", "group": "animals" },
+    { "id": "x:2110004261857706393", "post": "@tsitsiii_t, monkey video, H2O", "group": "animals" },
+    { "id": "tiktok:7696598086612880647", "post": "@agenor.tupinamba, PETAH", "group": "animals" },
+    { "id": "x:2110916017006489931", "post": "@higashiyamapark, pygmy hippo calf, Konasu", "group": "animals" },
+    { "id": "x:2111141052463882552", "post": "@hardcatmemes, fire-breathing kitten", "group": "animals" }
+  ],
+  "teach": [
+    { "id": "tiktok:7690714003953175841", "post": "@givefromtheheart2, single mum of four, MIRACLE", "group": "judge misses" },
+    { "id": "x:2109756994147983482", "post": "@abrahubstudio, Flávio Hipotético, Portuguese X video", "group": "judge misses" },
+    { "id": "x:2109813738559693002", "post": "@rrealist, UK crypto line", "group": "judge misses" },
+    { "id": "x:2110053432371376380", "post": "@obie, programmers line, SAINDRA", "group": "judge misses" },
+    { "id": "tiktok:7696634551283584289", "post": "@jeancultouw, Toc-Toc dance, Cul", "group": "judge misses" },
+    { "id": "x:2111327635095834954", "post": "@elonmusk, Optimus will build Optimus Prime", "group": "judge misses" },
+    { "id": "x:2110055234563461488", "post": "@Polymarket, 3D-printed salmon, Shalmon", "group": "people and news" },
+    { "id": "x:2110249450690031716", "post": "@nikkei, Akita robot dog, Hatchan", "group": "people and news" },
+    { "id": "x:2110402156104700129", "post": "@ShadowPatriotUS, dog and a Tesla", "group": "people and news" },
+    { "id": "x:2108915644301238722", "post": "@H2RScotland, wedding cat, PLUS1", "group": "animals" },
+    { "id": "x:2109619894878884113", "post": "@RoxbyVinyl, wide-eyed cat", "group": "animals" },
+    { "id": "tiktok:7695856190563061006", "post": "@nbcchicago, albino porcupine, Polarpine", "group": "animals" },
+    { "id": "tiktok:7695970441126579470", "post": "@buddytrashpanda, Buddy", "group": "animals" },
+    { "id": "tiktok:7696516827739966738", "post": "@cp24breakingnews, red-lipped batfish", "group": "animals" },
+    { "id": "x:2110577169047203945", "post": "@lolitascak3, calico cat, 鬧鬧", "group": "animals" },
+    { "id": "x:2111049521165943148", "post": "@neopark754, sloth, Mozuku", "group": "animals" }
+  ]
+}
