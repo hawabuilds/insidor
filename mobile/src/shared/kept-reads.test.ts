@@ -41,6 +41,8 @@ test('the last caller to stop waiting stops the read', async () => {
   const p = fresh('k:stop', load, false, ac.signal);
   ac.abort();
   await assert.rejects(p);
+  /* Stopped after the turn, so a reload asking at once would have joined it. */
+  await new Promise((r) => setTimeout(r, 5));
   assert.equal(stopped, true);
 });
 

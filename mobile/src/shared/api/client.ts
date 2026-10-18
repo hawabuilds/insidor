@@ -61,15 +61,83 @@ export const BOARD_VIEW = 'default';
 
 const BASE = (import.meta.env?.['VITE_READ_URL'] as string | undefined) || '/api/read';
 
-async function read(path: string, signal?: AbortSignal): Promise<unknown> {
+/*
+ * ★ ONE READ OF A PATH AT A TIME. Callers asking for the same path while it is on its way share
+ * that one answer (the post sheet and the token page used to read the same coin's market three or
+ * four times at once); the read is stopped only when every caller has stopped waiting. A coin's
+ * reads (its market, facts, about) answered in the last REUSE_MS are handed out again rather than
+ * read again: within that the answer cannot have moved by anything the screen shows. Nothing else
+ * is reused once answered, so a reload is always a fresh read.
+ */
+const REUSE_MS = 5_000;
+const REUSED = /^\/coin\//;
+const sharing = new Map<string, { readonly body: Promise<unknown>; readonly ac: AbortController; waiting: number }>();
+const answered = new Map<string, { readonly body: unknown; readonly at: number }>();
+
+async function readOnce(path: string, signal: AbortSignal): Promise<unknown> {
   const response = await fetch(`${BASE}${path}`, {
     headers: { accept: 'application/json' },
     /* Every number on the board is stale within a tick; a cached one is worse than none. */
     cache: 'no-store',
-    ...(signal ? { signal } : {}),
+    signal,
   });
   if (!response.ok) throw new ReadError(path, response.status, await saidBy(response));
   return response.json();
+}
+
+function read(path: string, signal?: AbortSignal): Promise<unknown> {
+  const done = answered.get(path);
+  if (done !== undefined && Date.now() - done.at < REUSE_MS) return Promise.resolve(done.body);
+  let way = sharing.get(path);
+  if (way === undefined) {
+    const ac = new AbortController();
+    const body = readOnce(path, ac.signal);
+    const mine = { body, ac, waiting: 0 };
+    way = mine;
+    sharing.set(path, mine);
+    body.then(
+      (b) => {
+        if (REUSED.test(path)) answered.set(path, { body: b, at: Date.now() });
+        if (answered.size > 50) answered.delete(answered.keys().next().value ?? '');
+      },
+      () => undefined,
+    ).finally(() => {
+      if (sharing.get(path) === mine) sharing.delete(path);
+    });
+  }
+  const w = way;
+  if (signal === undefined) {
+    w.waiting = Number.POSITIVE_INFINITY;
+    return w.body;
+  }
+  w.waiting += 1;
+  return new Promise((resolve, reject) => {
+    const stop = () => {
+      w.waiting -= 1;
+      /* Stopped after this turn, so a caller asking again at once (a reload) joins it instead. */
+      setTimeout(() => {
+        if (w.waiting > 0) return;
+        w.ac.abort();
+        if (sharing.get(path) === w) sharing.delete(path);
+      }, 0);
+      reject(new DOMException('aborted', 'AbortError'));
+    };
+    if (signal.aborted) {
+      stop();
+      return;
+    }
+    signal.addEventListener('abort', stop, { once: true });
+    w.body.then(
+      (b) => {
+        signal.removeEventListener('abort', stop);
+        resolve(b);
+      },
+      (e: unknown) => {
+        signal.removeEventListener('abort', stop);
+        reject(e);
+      },
+    );
+  });
 }
 
 export async function fetchBoard(viewId: string, signal?: AbortSignal): Promise<BoardTick> {
