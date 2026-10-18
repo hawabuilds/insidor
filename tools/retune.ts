@@ -269,6 +269,21 @@ async function keptPosts(db: Db, nowMs: number): Promise<readonly KeptPost[]> {
   return rows.map((r) => ({ itemId: r.item_id, text: r.body ?? '', imageUri: pictureOf(r.media)?.uri ?? null, firstSeenAt: kept.get(r.item_id) ?? 0 }));
 }
 
+/**
+ * The posts first stored inside one of `learning.abnormalWindows` (the owner, 2026-10-18): the X
+ * language bug filled the feed with one language, and the re-tune must not read that as normal.
+ */
+async function storedInAbnormal(db: Db, itemIds: readonly string[]): Promise<ReadonlySet<string>> {
+  const W = P.learning.abnormalWindows;
+  if (W.length === 0 || itemIds.length === 0) return new Set();
+  const rows = await db.query<{ item_id: string }>(
+    `select i.item_id from public.item i, jsonb_to_recordset($2::jsonb) as w("from" timestamptz, "until" timestamptz)
+      where i.item_id = any($1::text[]) and i.first_seen_at >= w."from" and i.first_seen_at < w."until"`,
+    [[...itemIds], JSON.stringify(W.map((w) => ({ from: w.from, until: w.until })))],
+  );
+  return new Set(rows.map((r) => r.item_id));
+}
+
 async function withRepo<T>(f: (repo: PgLearningRepo, owner: PgOwnerAlertRepo, labels: PgLabelEmbeddingRepo, db: Db) => Promise<T>): Promise<T> {
   const pool = createPool(DB_ROLE.internal, { env: { DATABASE_URL_INTERNAL: url }, applicationName: 'insidor-retune' });
   try {
@@ -445,7 +460,9 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
          kept, never one he called, one this run tests as hand gold, or one on his fixed test set. Before
          0098 there are none, and the block is what it was. */
       const K = L.seenKept;
-      const keptRows = K.teach ? await soft(keptPosts(db, Date.now()), []) : [];
+      const keptAll = K.teach ? await soft(keptPosts(db, Date.now()), []) : [];
+      const keptOdd = await soft(storedInAbnormal(db, keptAll.map((r) => r.itemId)), new Set<string>());
+      const keptRows = keptAll.filter((r) => !keptOdd.has(r.itemId));
       const keptTaught = keptYes(keptRows, P, new Set([...calls.map((c) => c.itemId), ...handGoldIdsNow, ...OWNER_SPLIT.test]));
       /* ★ THE OWNER'S GATE'S JUNK SET (Policy.learning.ownerGate): the owner's current "Not a meme"
          calls on posts first shown on For You in the last `junkDays` days. Those that are news (a
@@ -522,7 +539,10 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
       /* ★ JUNK (B), THE OWNER'S SECOND MEASURE (tools/lib/junk-sample.ts, Policy.learning.ownerGate.untapped):
          a seeded sample of untapped For You posts from the window, labelled from the old judges'
          answers; only its old-label "not" posts are graded, in their own group, never in a rate. */
-      const sample = OG.on ? drawSample(await soft(readUntapped(repo, P, new Date(Date.now() - OG.junkDays * DAY_MS), pictureOf), []), P, new Set([...inTest, ...taught])) : [];
+      /* Posts first stored in an abnormal window (Policy.learning.abnormalWindows) are not drawn. */
+      const untapped = OG.on ? await soft(readUntapped(repo, P, new Date(Date.now() - OG.junkDays * DAY_MS), pictureOf), []) : [];
+      const untappedOdd = await soft(storedInAbnormal(db, untapped.map((u) => u.itemId)), new Set<string>());
+      const sample = OG.on ? drawSample(untapped.filter((u) => !untappedOdd.has(u.itemId)), P, new Set([...inTest, ...taught])) : [];
       for (const u of sample) {
         if (u.old.label !== 'not') continue;
         posts.push({ group: 'untapped', id: u.itemId, kind: 'untapped For You post, old label not', text: u.text, imageUri: u.imageUri });
@@ -540,7 +560,7 @@ async function run(slot: Date, opts: { readonly dry: boolean; readonly force: bo
         alwaysTaughtInBlock: `${alwaysTeachIds(P).filter((id) => block.exampleIds.includes(id)).length}/${alwaysTeachIds(P).length}`,
         ownerTest: OWNER_SPLIT.test.length, ownerTaught: alwaysTeachIds(P).filter((id) => block.exampleIds.includes(id)).length,
         recentNots: recentNots.length, recentNotsHeldOut: block.testNegatives.filter((c) => shownKind.has(c.itemId)).length, recentNewsOrText: newsOrText.size,
-        untappedSample: sample.length, untappedNot: sample.filter((u) => u.old.label === 'not').length, untappedMeme: sample.filter((u) => u.old.label === 'meme').length, untappedUnclear: unclearPosts.length,
+        untappedSample: sample.length, untappedAbnormal: untappedOdd.size, keptAbnormal: keptOdd.size, untappedNot: sample.filter((u) => u.old.label === 'not').length, untappedMeme: sample.filter((u) => u.old.label === 'meme').length, untappedUnclear: unclearPosts.length,
       };
       if (opts.composeOnly === true) {
         console.log(JSON.stringify({ msg: 'retune composition (nothing asked, nothing written)', slot: slot.toISOString(), ...composition }, null, 1));
