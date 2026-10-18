@@ -3421,6 +3421,24 @@ export interface NarrativePolicy {
     readonly maxPerNarrative: number;
   };
   /**
+   * ★ A NARRATIVE IS PERMANENT; A QUIET ONE IS DEAD (the owner, 2026-10-18: "if a narrative has had
+   * no new posts for 48 hours, mark it dead. It still shows under Most viewed and New, and its own
+   * page and posts stay reachable. It's just left out of Trending"). Dead is read from its newest
+   * post (core group/narrative-keep.ts `narrativeDead`), never stored, so a new post brings it back.
+   *
+   * The board frame projects the newest narratives in full every frame (live ones first, then the
+   * most recently dead, at most the board's limit); every other narrative keeps the page last
+   * written for it, and `pagesPerFrame` of them are projected again each frame, never-projected
+   * first, then the longest since — so a page written once stays reachable for good, and its views
+   * are at most (narratives ÷ `pagesPerFrame`) frames old. `pageSize` is the All time list's page
+   * (services/read GET /narratives/:view/all), the phone's 20 at a time.
+   */
+  readonly dead: {
+    readonly afterMs: number;
+    readonly pagesPerFrame: number;
+    readonly pageSize: number;
+  };
+  /**
    * ★ "LAUNCHED" IS THE CREATE TRANSACTION'S BLOCK TIME (the owner, 2026-10-18). A coin a shown
    * narrative's page names whose stored launch is not the chain's (a live notice's arrival, an
    * aggregator's pair time) has its oldest transaction's block time read, at most `perPass` a pass
@@ -5598,6 +5616,10 @@ const POLICY_V1: Policy = {
        calls a day. `perDay` 100 is the worst case a day (plus 100 more on each restart, which
        starts the count again); a coin's history length never changes it. */
     launchClock: { on: true, perPass: 20, perDay: 100 },
+    /* The owner's 48 hours. 25 pages a frame: the frame projects at most 200 narratives in full, so
+       25 more is an eighth on top; at a frame a minute, 1,500 older narratives are each re-read
+       about once an hour. */
+    dead: { afterMs: 172_800_000, pagesPerFrame: 25, pageSize: 20 },
     /* On from 2026-10-18 (the owner): 3 posts or more, once a narrative, seven days back, three
        pages, its own $0.50 a day apart from the forward name search's $0.35. 99 to 245 narratives
        were first shown a day (16-18 Oct) and about half reach 3 posts (52 of 107 live on 18 Oct).

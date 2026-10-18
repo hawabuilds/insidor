@@ -40,7 +40,7 @@ const rows = (ids: readonly string[]): NarrativePostRow[] => ids.map((itemId, i)
 function deps(seen: DiscoveryQuery[], stored: unknown[], open: readonly StoredNarrative[], policy = DEFAULT_POLICY, ledger = memoryLaneLedger()): NarrativeBackDeps {
   return {
     sources: () => [pagingSource(seen, () => 3)],
-    narratives: { open: async () => open, standingRows: async (ids) => rows(ids) },
+    narratives: { live: async () => open, standingRows: async (ids) => rows(ids) },
     store: async (items, _a, lane) => (stored.push(lane), items.length),
     uncredited: async (ids) => ids.length,
     ledger,

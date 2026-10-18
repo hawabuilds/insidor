@@ -8,7 +8,12 @@
  * runs every minute and re-reads what can change in between, so the owner's calls act at once:
  *
  *   posts      each post's standing again (core `narrativeStanding`, at its own model's cutoff):
- *              a post the owner hid a second ago is off its narrative's list in this frame
+ *              a post the owner hid a second ago is off its narrative's list in this frame, and so
+ *              is a shill or a held kind (an ad) found since. ★ A judge's bar that moved since the
+ *              post joined does not take it off (the owner, 2026-10-18: a narrative only goes when
+ *              he says so): the bar decides which posts join a narrative, not which stay. On 16-18
+ *              Oct 46 of the 208 narratives the old regroup dropped went because their first post
+ *              no longer passed the bar of the day
  *   the rule   two good posts, or the one post the runner found huge and climbing; the owner's
  *              "Not a narrative" hides it, and any narrative made of its posts, until it has
  *              `minPosts` good posts he never saw in it (core `hiddenByOwner`)
@@ -29,24 +34,34 @@
  *   found      the earliest moment we saved any post it lists now (public.item.first_seen_at),
  *              not when the narrative was first shown and not when a post went up
  *
- * ★ ONLY THE BOARD'S PAGES. public.story_view and public.story_post hold exactly the narratives
- * this frame put on the board: a page for anything else (hidden by the owner, merged, gone, the
- * old board's stories) is deleted here, because every read route reads story_view by id.
+ * ★ A PAGE STAYS (the owner, 2026-10-18: "narratives never disappear"). The board is the newest
+ * narratives, projected in full every frame: live ones first, then the most recently dead, at most
+ * `BOARD_LIMIT`. Every other narrative keeps the page last written for it, and
+ * `narrative.dead.pagesPerFrame` of them are projected again each frame (never-projected first,
+ * then the longest since), so an old narrative's page, its posts' tags and its search entry stay,
+ * and its numbers are never more than one turn of that queue old. A page is deleted only when its
+ * narrative is no longer one: the owner said "Not a narrative" (or hid enough of its posts that
+ * fewer than `minPosts` are left), or it was merged — then public.story_alias sends its link to
+ * the narrative it was merged into.
+ *
+ * ★ DEAD (core `narrativeDead`): its newest listed post went up `narrative.dead.afterMs` ago or
+ * more. Said on the page (`dead`, `lastPostAt`), given no trending place, and so left out of
+ * Trending; still on the board after the live ones, and in Most viewed and New.
  *
  * ★ ONE POST COUNT EVERYWHERE. `memberCount`, the summary's "N posts from M accounts", `postIds`,
  * `postCount`, the evidence list and public.story_post's `posts` are all the posts listed here.
  *
  * What breaks if changed carelessly: this runs inside the projector's transaction, and is bounded
- * by the board (at most `BOARD_LIMIT` narratives, read in a handful of statements, no pairwise
- * work). A missing table (0093 not applied) is asked first, never caught: inside the transaction a
+ * by the board (at most `BOARD_LIMIT` narratives and `pagesPerFrame` more, read in a handful of
+ * statements, no pairwise work) — never by every narrative ever made, which grows every day. A missing table (0093 not applied) is asked first, never caught: inside the transaction a
  * failed statement would abort the frame, so a board with no narratives is what an unmigrated
  * database shows.
  */
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
-import { coinCallFor, foldNarrativeCalls, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeReach, narrativeShown, narrativeStanding, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
-import { PgNarrativeRepo, type Db, type NarrativePostRow } from '@insidor/store';
+import { coinCallFor, foldNarrativeCalls, gainedSeries, hiddenByOwner, isShillText, narrativeCoin, narrativeDead, narrativeReach, narrativeShown, narrativeStanding, survivorOf, type NarrativeCoin, type NarrativeMemberCoin } from '@insidor/core';
+import { PgNarrativeRepo, type Db, type NarrativePostRow, type StoredNarrative } from '@insidor/store';
 
 import { loadCoinFactsByAddress, loadReach, nextTick, pictureOf, previousBoardStoryIds, sourceLabel, writeBoard, writeStories } from './db.ts';
 import { onePolicy, policyForAnswer, type AnswerPolicies } from './judge-cutoff.ts';
@@ -58,6 +73,13 @@ import { instant, measured, WireLeakError, assertNoInternalVocabulary, type Wire
 
 /** At most this many narratives on the board, as the old board's limit. */
 const BOARD_LIMIT = 200;
+/**
+ * An older narrative whose page could not be written (a payload the censor caught, too few posts
+ * it can cite) is not asked again for this long, in this process: never-written pages go first in
+ * the queue, and one that can never be written would otherwise hold its place every frame.
+ */
+const UNWRITTEN_RETRY_MS = 3_600_000;
+const unwritten = new Map<string, number>();
 
 interface MemberRow {
   item_id: string;
@@ -84,34 +106,58 @@ export interface ShownNarrative {
 }
 
 /**
- * The runner's open narratives held to the rule NOW: each post's standing re-read, the owner's
- * calls re-folded. Pure but for the reads; the board's input.
+ * The runner's narratives held to the rule NOW: each post's standing re-read, the owner's calls
+ * re-folded. `shown` is the board (the newest, at most `BOARD_LIMIT`), `pages` the older ones whose
+ * page is due this frame, `dropped` the ones looked at that are no longer narratives (their pages
+ * go). Pure but for the reads; the board's input.
  */
-export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPolicies = onePolicy(policy)): Promise<{ readonly shown: readonly ShownNarrative[]; readonly standing: ReadonlyMap<string, NarrativePostRow>; readonly single: ReadonlySet<string> }> {
+export async function shownNarratives(db: Db, policy: Policy, answers: AnswerPolicies = onePolicy(policy), skip: readonly string[] = []): Promise<{ readonly shown: readonly ShownNarrative[]; readonly pages: readonly ShownNarrative[]; readonly dropped: readonly string[]; readonly standing: ReadonlyMap<string, NarrativePostRow>; readonly single: ReadonlySet<string> }> {
   const repo = new PgNarrativeRepo(db);
-  if (!(await repo.migrated())) return { shown: [], standing: new Map(), single: new Set() };
-  const open = (await repo.open()).filter((n) => n.shown);
-  const calls = foldNarrativeCalls(await repo.calls());
-  const rows = await repo.standingRows([...new Set(open.flatMap((n) => n.members))]);
+  if (!(await repo.migrated())) return { shown: [], pages: [], dropped: [], standing: new Map(), single: new Set() };
+  const callRows = await repo.calls();
+  const calls = foldNarrativeCalls(callRows);
+  /* Room for the hidden ones among the newest, so the board still fills to its limit. */
+  const newest = await repo.newest(BOARD_LIMIT + calls.hidden.length);
+  const onBoard = new Set(newest.map((n) => n.id));
+  const due = (await repo.pagesDue(policy.narrative.dead.pagesPerFrame, [...onBoard, ...skip])).filter((n) => !onBoard.has(n.id));
+  /* ★ Every narrative an owner's hide could reach, wherever it is, so its page goes the frame he says so. */
+  const hideIds = [...new Set([...calls.hidden.map((h) => h.narrativeId), ...(await repo.ofPosts([...new Set(calls.hidden.flatMap((h) => [...h.members]))])).values()])];
+  const seen = new Set([...onBoard, ...due.map((n) => n.id)]);
+  const hideCheck = (await repo.byIds(hideIds.filter((id) => !seen.has(id)))).filter((n) => !seen.has(n.id));
+  const all: StoredNarrative[] = [...newest, ...due, ...hideCheck];
+  const rows = await repo.standingRows([...new Set(all.flatMap((n) => n.members))]);
   const byId = new Map(rows.map((r) => [r.itemId, r] as const));
   const good = (r: NarrativePostRow | undefined): boolean => {
     if (r === undefined) return false;
     const answer = r.coinable === null || r.confidence === null || r.lookedAt === null ? null : { coinable: r.coinable, confidence: r.confidence, lookedAt: r.lookedAt, proposedName: r.proposedName };
-    return narrativeStanding({ answer, kindLabel: r.kindLabel, ownerCall: r.ownerCall, shill: isShillText(r.body, policy.attention) || r.ownTalk }, policyForAnswer(r.judgeId, answers)) === 'good';
+    const s = narrativeStanding({ answer, kindLabel: r.kindLabel, ownerCall: r.ownerCall, shill: isShillText(r.body, policy.attention) || r.ownTalk }, policyForAnswer(r.judgeId, answers));
+    return s !== 'owner_not_meme' && s !== 'shill' && s !== 'held_kind';
   };
-  const shown: ShownNarrative[] = [];
   const singles = new Set<string>();
-  for (const n of open) {
+  const dropped: string[] = [];
+  const held = (n: StoredNarrative): ShownNarrative | null => {
+    if (!n.shown) return null;
     /* A post the owner removed from beside these posts is off the list at once, before the regroup. */
     const removed = (m: string) => [...(calls.removed.get(m) ?? [])].some((x) => x !== m && n.members.includes(x));
     const listed = n.members.filter((m) => good(byId.get(m)) && !removed(m)).sort((a, b) => (byId.get(a)?.atMs ?? 0) - (byId.get(b)?.atMs ?? 0) || a.localeCompare(b));
     /* A narrative of one is shown only as the runner found it: huge and climbing at its last pass. */
     const single = n.members.length === 1 && n.shown;
-    if (narrativeShown(listed.length, single, hiddenByOwner(n.id, listed, calls, policy), policy) !== 'shown') continue;
-    shown.push({ id: n.id, title: n.title, members: listed, firstShownAtMs: n.firstShownAtMs });
+    if (narrativeShown(listed.length, single, hiddenByOwner(n.id, listed, calls, policy), policy) !== 'shown') {
+      dropped.push(n.id);
+      return null;
+    }
     if (single) singles.add(n.id);
-  }
-  return { shown: shown.slice(0, BOARD_LIMIT), standing: byId, single: singles };
+    return { id: n.id, title: n.title, members: listed, firstShownAtMs: n.firstShownAtMs };
+  };
+  const shown = newest.flatMap((n) => {
+    const h = held(n);
+    return h === null ? [] : [h];
+  }).slice(0, BOARD_LIMIT);
+  const pages = [...due, ...hideCheck].flatMap((n) => {
+    const h = held(n);
+    return h === null ? [] : [h];
+  });
+  return { shown, pages, dropped, standing: byId, single: singles };
 }
 
 /** Each post's coin as its own card shows it, and the list behind a card's "See N coins". */
@@ -205,7 +251,11 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   if (!(await new PgNarrativeRepo(db).migrated())) return empty;
   const tick = await nextTick(db, viewId);
   const previous = await previousBoardStoryIds(db, viewId);
-  const { shown, standing, single } = await shownNarratives(db, policy, answers);
+  for (const [id, at] of unwritten) if (options.nowMs - at >= UNWRITTEN_RETRY_MS) unwritten.delete(id);
+  const { shown: boardSet, pages: offBoard, dropped, standing, single } = await shownNarratives(db, policy, answers, [...unwritten.keys()]);
+  /* The board's narratives and the older pages due this frame are projected alike; only the board's get rows. */
+  const shown = [...boardSet, ...offBoard];
+  const boardIds = new Set(boardSet.map((n) => n.id));
   const ids = [...new Set(shown.flatMap((n) => n.members))];
 
   const rows = ids.length === 0 ? [] : await db.query<MemberRow>(
@@ -217,7 +267,11 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   );
   const rowOf = new Map(rows.map((r) => [r.item_id, r] as const));
   /* Every reading of the narrative window: a post's newest count may be older than the board's reach window. */
-  const reach = await loadReach(db, ids, Math.min(reachSinceMs, options.nowMs - policy.narrative.windowMs) as Millis);
+  const reach = new Map(await loadReach(db, [...new Set(boardSet.flatMap((n) => n.members))], Math.min(reachSinceMs, options.nowMs - policy.narrative.windowMs) as Millis));
+  /* An older page counts its posts' readings from its first post: a story four days old was read before the window. */
+  const olderIds = [...new Set(offBoard.flatMap((n) => n.members))].filter((m) => !reach.has(m));
+  const olderFrom = Math.min(...olderIds.map((m) => toMs(rowOf.get(m)?.posted_at ?? null) ?? toMs(rowOf.get(m)?.first_seen_at ?? null) ?? options.nowMs));
+  if (olderIds.length > 0) for (const [k, v] of await loadReach(db, olderIds, Math.min(olderFrom, options.nowMs - policy.narrative.windowMs) as Millis)) reach.set(k, v);
   const cards = await cardCoins(db, ids);
   const calls = foldNarrativeCalls(await new PgNarrativeRepo(db).calls());
 
@@ -233,6 +287,7 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   const facts: StoryFacts[] = [];
   const extras = new Map<string, Partial<WireStory>>();
   const subjects: TrendSubject[] = [];
+  const deadIds = new Set<string>();
   for (const n of shown) {
     /* ★ Only posts the page can cite (a link we can build): the list, the count and the summary are one set. */
     const members: MemberFacts[] = n.members.flatMap((m) => {
@@ -260,6 +315,11 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
     const picture = [...members].filter((m) => m.thumbUrl !== null).sort((a, b) => latest(b) - latest(a) || a.itemId.localeCompare(b.itemId))[0]?.thumbUrl ?? null;
     const used = members.map((m) => rowOf.get(m.itemId)).filter((r): r is MemberRow => r !== undefined);
     const coin = coinOf.get(n.id) ?? { kind: 'pending' };
+    /* ★ Dead: its newest listed post (when it went up, else when we saved it) is the owner's 48 hours old. */
+    const newestAt = Math.max(...used.map((r) => toMs(r.posted_at) ?? toMs(r.first_seen_at) ?? 0));
+    const lastPostAtMs = Number.isFinite(newestAt) && newestAt > 0 ? newestAt : null;
+    const dead = narrativeDead(lastPostAtMs, options.nowMs, policy);
+    if (dead) deadIds.add(n.id);
     facts.push({
       storyId: n.id,
       displayTitle: n.title ?? judgesName(n.members, standing),
@@ -290,7 +350,7 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       },
       coin: checkedCoinOf(coin),
     });
-    /* "All": from its first reading (no post is older than the window) to now, in coarser slots. */
+    /* "All": from its first reading to now in coarser slots, at most the window's length (an older story's line is its last two days). */
     const r = policy.narrative.reach;
     const all = gainedSeries(memberReach, Math.max(options.nowMs - policy.narrative.windowMs, foundAtMs ?? options.nowMs), options.nowMs, r.allStepMs, Math.ceil(policy.narrative.windowMs / r.allStepMs));
     extras.set(n.id, {
@@ -304,6 +364,8 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
       viewsGainedAll: all,
       postViews: members.map((m, i) => ({ postId: m.itemId, views: views.posts[i]?.total ?? null, gainedLastHour: views.posts[i]?.lastHour ?? null, foundAt: foundOf(m) })),
       foundAt: instant(foundAtMs, 'not_reported'),
+      dead,
+      lastPostAt: instant(lastPostAtMs, 'not_reported'),
       /* ★ The top coin when none is settled (fitting, or several proven equally): shown as "Top coin,
          not checked", never as the narrative's coin. The coins most posts list come first. */
       ...(coin.kind === 'fitting' || (coin.kind === 'proven' && coin.addresses.length > 1) ? topCoinOf(coin.addresses, coinFacts, options) : {}),
@@ -314,18 +376,21 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
      in the first window's order, the tab's default. A story with no reading in it goes after every
      one that has one, never as a slow story. */
   const coinsRead = await loadTrendCoins(db, [...new Set(subjects.flatMap((s) => (s.coin === null ? [] : [s.coin])))], options.nowMs, policy.narrative.trend.windows.map((w) => w.ms));
-  const trend = trendWindows(subjects, coinsRead, options.nowMs, policy);
+  /* Trending is the board's live narratives only: an older page and a dead one get the facts, no place. */
+  const trend = trendWindows(subjects.filter((x) => boardIds.has(x.id) || deadIds.has(x.id)), coinsRead, options.nowMs, policy, deadIds);
+  const offTrend = subjects.filter((x) => !boardIds.has(x.id) && !deadIds.has(x.id));
+  if (offTrend.length > 0) for (const [id, inWindow] of trendWindows(offTrend, coinsRead, options.nowMs, policy, new Set(offTrend.map((x) => x.id))).pages) trend.pages.set(id, inWindow);
   for (const [id, inWindow] of trend.pages) extras.set(id, { ...extras.get(id), inWindow });
   const place = new Map(trend.order.map((id, i) => [id, i] as const));
   const byTrend = (list: readonly StoryFacts[]) => [...list].sort((a, b) => (place.get(a.storyId) ?? Number.MAX_SAFE_INTEGER) - (place.get(b.storyId) ?? Number.MAX_SAFE_INTEGER) || b.lastMemberAt - a.lastMemberAt);
-  const board = projectBoard(facts, options, byTrend);
+  const board = projectBoard(facts.filter((f) => boardIds.has(f.storyId)), options, byTrend);
   for (const id of board.withheld) console.warn(`narrative ${id} was withheld from the board: its payload would have leaked`);
   const onBoard = new Set(board.order);
 
   const pages: WireStory[] = [];
   let skipped = 0;
   for (const story of facts) {
-    if (!onBoard.has(story.storyId)) continue;
+    if (boardIds.has(story.storyId) && !onBoard.has(story.storyId)) continue;
     try {
       const page = projectStory(story, options, { kind: 'observed' });
       if (page === null) {
@@ -344,24 +409,58 @@ export async function projectNarrativeFrame(db: Db, viewId: string, options: Pro
   /* The board lists only narratives with a page: a row that opens a 404 is worse than none. */
   const paged = new Set(pages.map((p) => p.id));
   const rowsWithPages = board.rows.filter((r) => paged.has(r.id));
+  for (const n of offBoard) if (!paged.has(n.id)) unwritten.set(n.id, options.nowMs);
   const boardRows = await writeBoard(db, viewId, tick, rowsWithPages, { kind: 'observed' });
   const storyViews = await writeStories(db, pages);
-  /* ★ A PAGE IS THERE ONLY WHILE ITS NARRATIVE IS ON THE BOARD. One the owner hid, one merged or
-     gone, and the old board's stories leave public.story_view at this frame, so no read route
-     (a story page, search, the post sheet, alerts) can serve a narrative the board no longer shows. */
-  await db.query(`delete from public.story_view where not (story_id = any($1::text[]))`, [[...paged]]);
+  /* ★ A PAGE GOES ONLY WITH ITS NARRATIVE: one the owner hid (or left under `minPosts` good posts),
+     one merged, and anything that is not a narrative at all. Every other page stays — the board
+     moving on is not a reason — so a story page, search, the post sheet and alerts keep serving it. */
+  await db.query(
+    `delete from public.story_view v
+      where v.story_id = any($1::text[])
+         or not exists (select 1 from internal.narrative n where n.narrative_id = v.story_id and n.state = 'open' and n.shown)`,
+    [dropped.filter((id) => !paged.has(id))],
+  );
   const coinsByStory = new Map(rowsWithPages.map((row) => [row.id, row.coins]));
-  await writeSameNameCoins(db, 'story', storySameNameLists(facts.filter((f) => paged.has(f.storyId)), coinsByStory));
+  await writeSameNameCoins(db, 'story', storySameNameLists(facts.filter((f) => paged.has(f.storyId) && boardIds.has(f.storyId)), coinsByStory));
 
-  /* ★ Each listed post's narrative, its title and post count: the cards' tag and the post sheet's tile. */
+  /* ★ Each listed post's narrative, its title and post count: the cards' tag and the post sheet's tile.
+     Rewritten for the pages written this frame; kept for every page that stays; gone with a page. */
   const posts = pages.flatMap((p) => (p.postIds ?? []).map((itemId) => ({ itemId, storyId: p.id, title: p.title, posts: p.postCount ?? p.evidence.length })));
-  await db.query(`delete from public.story_post`);
+  await db.query(`delete from public.story_post p where p.story_id = any($1::text[]) or not exists (select 1 from public.story_view v where v.story_id = p.story_id)`, [[...paged]]);
   if (posts.length > 0) {
     await db.query(
       `insert into public.story_post (item_id, story_id, title, posts)
-       select * from unnest($1::text[], $2::text[], $3::text[], $4::int[]) on conflict (item_id) do nothing`,
+       select * from unnest($1::text[], $2::text[], $3::text[], $4::int[])
+       on conflict (item_id) do update set story_id = excluded.story_id, title = excluded.title, posts = excluded.posts, projected_at = now()`,
       [posts.map((p) => p.itemId), posts.map((p) => p.storyId), posts.map((p) => p.title), posts.map((p) => p.posts)],
     );
   }
+  await writeAliases(db);
   return { migrated: true, tick, boardRows, storyViews, considered: shown.length, skipped, withheld: board.withheld.length, posts: posts.length };
+}
+
+/**
+ * ★ A MERGED NARRATIVE'S LINK OPENS THE ONE IT WAS MERGED INTO (0106 public.story_alias): every
+ * merged narrative, by the owner or by the old regroup (16-18 Oct), to the open narrative at the end
+ * of its merges. Rewritten whole each frame — a few hundred rows at most, one statement each way —
+ * and skipped before 0106.
+ */
+async function writeAliases(db: Db): Promise<void> {
+  const [has] = await db.query<{ ok: boolean }>(`select to_regclass('public.story_alias') is not null as ok`);
+  if (has?.ok !== true) return;
+  const rows = await new PgNarrativeRepo(db).merged();
+  const states = new Map(rows.map((r) => [r.id, { state: r.state, mergedInto: r.mergedInto }] as const));
+  const alias = rows.filter((r) => r.state === 'merged').flatMap((r) => {
+    const into = survivorOf(r.id, states);
+    return into === null || into === r.id ? [] : [{ from: r.id, into }];
+  });
+  await db.query(`delete from public.story_alias where not (story_id = any($1::text[]))`, [alias.map((a) => a.from)]);
+  if (alias.length > 0) {
+    await db.query(
+      `insert into public.story_alias (story_id, into_story_id) select * from unnest($1::text[], $2::text[])
+       on conflict (story_id) do update set into_story_id = excluded.into_story_id, projected_at = now()`,
+      [alias.map((a) => a.from), alias.map((a) => a.into)],
+    );
+  }
 }

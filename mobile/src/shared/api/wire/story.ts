@@ -147,6 +147,8 @@ export interface Story {
   readonly postCount: number | null;
   /** We found it: the earliest moment we saved any post it lists now. Null from a server that does not say. */
   readonly foundAt: Instant | null;
+  /** No post it lists went up in the last 48 hours: left out of Trending, still in Most viewed and New. False from a server that does not say. */
+  readonly dead: boolean;
 }
 
 export interface ViewsGained {
@@ -165,7 +167,8 @@ export interface PostViews {
 export interface InWindow {
   readonly viewsGained: Measured;
   readonly newPosts: number;
-  readonly trendingPlace: number;
+  /** Its place in Trending for the window; null for a dead narrative, which is not in Trending. */
+  readonly trendingPlace: number | null;
 }
 
 /**
@@ -178,6 +181,13 @@ export type StoryProvenance =
   | { readonly kind: 'unstated' };
 
 /** The Narratives list: the board's stories as whole pages, with the board's provenance. */
+/** One page of the All time list (GET /narratives/:view/all): `next` is the next page's offset, null on the last. */
+export interface NarrativesPage {
+  readonly stories: readonly Story[];
+  readonly provenance: BoardProvenance;
+  readonly next: number | null;
+}
+
 export interface NarrativesList {
   readonly tick: number;
   readonly stories: readonly Story[];

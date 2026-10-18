@@ -64,6 +64,7 @@ import type {
   WirePair,
   WirePairHead,
   WireSourceHealth,
+  WireInstant,
   WireStory,
 } from './wire.ts';
 import { coinWindow, windowIsOrdered } from './window.ts';
@@ -1682,15 +1683,32 @@ export async function writeBoard(
  * remove.
  */
 export async function writeStories(db: Db, pages: readonly WireStory[]): Promise<number> {
+  /* ★ 0106: the page's own facts copied beside it, in the same statement, for the All time list's order. */
+  const [has] = pages.length === 0 ? [] : await db.query<{ ok: boolean }>(
+    `select exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'story_view' and column_name = 'views_total') as ok`,
+  );
   let written = 0;
   for (const page of pages) {
-    await db.query(
-      `insert into public.story_view (story_id, payload, projected_at)
-       values ($1, $2::jsonb, now())
-       on conflict (story_id) do update
-         set payload = excluded.payload, projected_at = excluded.projected_at`,
-      [page.id, JSON.stringify(page)],
-    );
+    if (has?.ok === true) {
+      const at = (x: WireInstant | undefined) => (x === undefined || x.at === null ? null : new Date(x.at).toISOString());
+      const views = page.viewsTotal === undefined || page.viewsTotal.v === null ? null : Math.round(page.viewsTotal.v);
+      await db.query(
+        `insert into public.story_view (story_id, payload, projected_at, found_at, views_total, newest_post_at, dead)
+         values ($1, $2::jsonb, now(), $3, $4, $5, $6)
+         on conflict (story_id) do update
+           set payload = excluded.payload, projected_at = excluded.projected_at, found_at = excluded.found_at,
+               views_total = excluded.views_total, newest_post_at = excluded.newest_post_at, dead = excluded.dead`,
+        [page.id, JSON.stringify(page), at(page.foundAt), views, at(page.lastPostAt), page.dead ?? null],
+      );
+    } else {
+      await db.query(
+        `insert into public.story_view (story_id, payload, projected_at)
+         values ($1, $2::jsonb, now())
+         on conflict (story_id) do update
+           set payload = excluded.payload, projected_at = excluded.projected_at`,
+        [page.id, JSON.stringify(page)],
+      );
+    }
     written += 1;
   }
   return written;

@@ -45,7 +45,7 @@ import { chooseName } from './narrative-names.ts';
 export interface NarrativeBackDeps {
   readonly sources: () => readonly PlatformAdapter[];
   readonly narratives: {
-    open(): Promise<readonly StoredNarrative[]>;
+    live(sinceMs: number): Promise<readonly StoredNarrative[]>;
     standingRows(itemIds: readonly string[]): Promise<readonly NarrativePostRow[]>;
   };
   readonly store: (items: readonly Item[], authors: readonly Author[], lane?: FoundLane | null) => Promise<number>;
@@ -79,8 +79,9 @@ export async function narrativeBackPass(deps: NarrativeBackDeps, asked: Narrativ
   if (source === undefined) return NONE;
   const started = deps.now();
   const deadline = (started + b.passDeadlineMs) as Millis;
-  const due = (await deps.narratives.open())
-    .filter((n) => n.shown && n.members.length >= b.minPosts && n.firstShownAtMs !== null && n.firstShownAtMs >= started - b.formedWithinMs && !asked.has(n.id))
+  /* Live, and never one the rebuild restored: it already matched seven days of stored posts (0106). */
+  const due = (await deps.narratives.live(started - b.formedWithinMs))
+    .filter((n) => n.shown && (n.restoredAtMs ?? null) === null && n.members.length >= b.minPosts && n.firstShownAtMs !== null && n.firstShownAtMs >= started - b.formedWithinMs && !asked.has(n.id))
     .sort((x, y) => y.members.length - x.members.length || (y.firstShownAtMs ?? 0) - (x.firstShownAtMs ?? 0) || x.id.localeCompare(y.id))
     .slice(0, b.perPass);
 

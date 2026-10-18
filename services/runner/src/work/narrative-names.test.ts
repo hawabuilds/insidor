@@ -55,7 +55,7 @@ function deps(seen: DiscoveryQuery[], stored: unknown[], policy: Policy = DEFAUL
   return {
     sources: () => [pagingSource(seen, () => 3)],
     narratives: {
-      open: async () => [narrative('n1', true, 'Tesla Roadster Launched'), narrative('n2', true, 'Vaquita Facing Extinction'), narrative('n3', false, 'Tesla Roadster Hidden')],
+      live: async () => [narrative('n1', true, 'Tesla Roadster Launched'), narrative('n2', true, 'Vaquita Facing Extinction'), narrative('n3', false, 'Tesla Roadster Hidden')],
       standingRows: async (ids) => rows(ids),
     },
     store: async (items, _a, lane) => {

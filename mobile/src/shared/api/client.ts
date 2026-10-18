@@ -20,14 +20,14 @@ import { notImplemented } from '../not-implemented.ts';
 import { decodeCoinAbout, type CoinAbout } from './about.ts';
 import { decodePostSheet, type PostSheetData } from './post-sheet.ts';
 import { decodeStorySheet, type StoryMember, type StorySheet } from './story-sheet.ts';
-import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodePortfolio, decodeRisingFeed, decodeRisingPage, decodeRisingSorted, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
+import { decodeBoardTick, decodeCoinMarket, decodeNameIdeas, decodeNarratives, decodeNarrativesPage, decodePortfolio, decodeRisingFeed, decodeRisingPage, decodeRisingSorted, decodeSameNameCoins, decodeSearch, decodeSearchedCoin, decodeStory, decodeTickerCoins } from './decode.ts';
 import type { Portfolio, PortfolioRange } from './wire/wallet.ts';
 import type { NameIdea, SameNameCoins, SearchedCoin, SearchResults } from './wire/search.ts';
 import type { BuildResult, Holding, TradeLimits, TradeQuote, TradeVenue } from './wire/trade.ts';
 import type { CoinMarket, MarketTimeframe } from './wire/market.ts';
 import type { BoardTick } from './wire/board.ts';
 import type { PostSortBy, PostSortWindow, RisingFeed, RisingFeedId, RisingPage, RisingSorted } from './wire/rising.ts';
-import type { NarrativesList, Story } from './wire/story.ts';
+import type { NarrativesList, NarrativesPage, Story } from './wire/story.ts';
 
 /** A failure of the transport, as opposed to a failure of the payload. */
 export class ReadError extends Error {
@@ -219,6 +219,11 @@ export async function fetchSearchedCoin(coinId: string, signal?: AbortSignal): P
 /** The Narratives list: the board's stories as whole pages, in the board's order. */
 export async function fetchNarratives(viewId: string, signal?: AbortSignal): Promise<NarrativesList> {
   return decodeNarratives(await read(`/narratives/${encodeURIComponent(viewId)}`, signal));
+}
+
+/** The All time list, a page at a time: every narrative, dead ones too, by views or by when we found it. */
+export async function fetchAllNarratives(viewId: string, sort: 'viewed' | 'new', offset: number, signal?: AbortSignal): Promise<NarrativesPage> {
+  return decodeNarrativesPage(await read(`/narratives/${encodeURIComponent(viewId)}/all?sort=${sort}&offset=${offset}`, signal));
 }
 
 export async function fetchStory(storyId: string, signal?: AbortSignal): Promise<Story> {

@@ -92,10 +92,12 @@ export const windowHours = (ms: number): number => Math.round(ms / HOUR_MS);
 
 /**
  * Each narrative's facts and trending place in every window, as the page's `inWindow`; and the
- * first window's order, the board's own order (Trending 1h is the tab's default).
+ * first window's order, the board's own order (Trending 1h is the tab's default). ★ A dead
+ * narrative (`dead`, core `narrativeDead`) gets its facts and no place, and is not in the order:
+ * Trending is the stories still picking up.
  */
-export function trendWindows(subjects: readonly TrendSubject[], coins: ReadonlyMap<string, ReadonlyMap<number, TrendCoin>>, nowMs: number, policy: Policy): { readonly pages: ReadonlyMap<string, NonNullable<WireStory['inWindow']>>; readonly order: readonly string[] } {
-  const pages = new Map<string, { hours: number; viewsGained: ReturnType<typeof measured>; newPosts: number; trendingPlace: number }[]>();
+export function trendWindows(subjects: readonly TrendSubject[], coins: ReadonlyMap<string, ReadonlyMap<number, TrendCoin>>, nowMs: number, policy: Policy, dead: ReadonlySet<string> = new Set()): { readonly pages: Map<string, NonNullable<WireStory['inWindow']>>; readonly order: readonly string[] } {
+  const pages = new Map<string, { hours: number; viewsGained: ReturnType<typeof measured>; newPosts: number; trendingPlace?: number }[]>();
   let first: readonly string[] = [];
   policy.narrative.trend.windows.forEach((w, i) => {
     const facts = new Map<string, TrendFacts>();
@@ -103,8 +105,13 @@ export function trendWindows(subjects: readonly TrendSubject[], coins: ReadonlyM
       const coin = s.coin === null ? null : (coins.get(s.coin)?.get(w.ms) ?? null);
       facts.set(s.id, trendFacts({ ...s.input, coin }, nowMs, w.ms));
     }
-    const order = trendOrder(subjects.map((s) => ({ id: s.id, facts: facts.get(s.id) as TrendFacts, foundAtMs: s.input.foundAtMs })), policy);
+    const order = trendOrder(subjects.filter((s) => !dead.has(s.id)).map((s) => ({ id: s.id, facts: facts.get(s.id) as TrendFacts, foundAtMs: s.input.foundAtMs })), policy);
     if (i === 0) first = order;
+    for (const s of subjects) {
+      const f = facts.get(s.id);
+      if (!dead.has(s.id) || f === undefined) continue;
+      pages.set(s.id, [...(pages.get(s.id) ?? []), { hours: windowHours(w.ms), viewsGained: measured(f.gained, 'not_read_yet'), newPosts: f.newPosts }]);
+    }
     order.forEach((id, place) => {
       const f = facts.get(id);
       if (f === undefined) return;

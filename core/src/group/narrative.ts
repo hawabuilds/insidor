@@ -17,12 +17,16 @@
  * linkage — any one link joins — is how a chain of posts each a little further from the first
  * becomes one "narrative" about nothing; average linkage is what keeps a story from drifting.
  *
- * ★ EVERY PASS REGROUPS FROM SCRATCH, AND THE IDS ARE KEPT BY OVERLAP. Splitting a narrative
- * whose posts drifted, and merging two that turned out to be one, both fall out of regrouping
- * the current posts; nothing is patched in place. A new group keeps the id of the previous
- * narrative it shares the most posts with, so a link to a narrative, and the owner's calls on it,
- * survive its growth. A previous narrative no group took is retired — merged into the group that
- * took most of its posts, or gone.
+ * ★ EVERY PASS REGROUPS THE WINDOW'S POSTS FROM SCRATCH; WHAT IT MADE BEFORE IS KEPT. The groups
+ * are formed afresh each pass, but a post already in a narrative is pinned to it (`pinned`): two
+ * groups holding different narratives' posts never join, so a group can only add new posts to the
+ * one narrative it holds, or be a new narrative (narrative-keep.ts decides which, and the id). The
+ * owner, 2026-10-18: a narrative is permanent once made — the regroup adds posts, makes new ones
+ * and joins the ones HE merges, and never drops or folds one away because the window moved on.
+ * Before that rule this function kept ids by overlap and retired the rest, and on 16-18 Oct the
+ * "parts of one story" step below folded 89 narratives (Pancake the cat, Azuma the koala, Konasu
+ * the hippo…) into one, each leaving the app as it went. `previous` still names ids by overlap
+ * for a caller that passes no pins (the old tests, the dry tools).
  *
  * ★ THE OWNER OUTRANKS EVERY NUMBER HERE. "Not a narrative" keeps the posts he saw together from
  * being grouped together again; "Remove this post" keeps that post out of any group holding the
@@ -299,12 +303,21 @@ export interface GroupNarrativesInput {
    * one story joining by their average vectors, and drifted posts leaving. Absent: links only.
    */
   readonly vectors?: ReadonlyMap<string, Float32Array>;
+  /**
+   * ★ THE POSTS ALREADY IN A NARRATIVE (narrative-keep.ts): post → the narrative it is in. Two
+   * groups holding posts of different narratives never join, by a link or as parts of one story,
+   * so the regroup can add a new post to a narrative or make a new one but never fold one
+   * narrative into another. Only the owner's "Merge with…" does that. Absent: nothing is pinned.
+   */
+  readonly pinned?: ReadonlyMap<string, string>;
 }
 
 interface Group {
   members: string[];
   minAt: number;
   maxAt: number;
+  /** The narratives its posts are already in (at most one, but for the owner's merges). */
+  pins: Set<string>;
 }
 
 export function groupNarratives(input: GroupNarrativesInput, p: Policy): GroupedNarratives {
@@ -338,9 +351,13 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
   const groupOf = new Map<string, number>();
   const groups = new Map<number, Group>();
   let next = 0;
+  const pinOf = (id: string): Set<string> => {
+    const pin = input.pinned?.get(id);
+    return pin === undefined ? new Set<string>() : new Set([pin]);
+  };
   for (const id of [...details.keys()].sort()) {
     const at = atOf.get(id) ?? 0;
-    groups.set(next, { members: [id], minAt: at, maxAt: at });
+    groups.set(next, { members: [id], minAt: at, maxAt: at, pins: pinOf(id) });
     groupOf.set(id, next);
     next += 1;
   }
@@ -358,6 +375,8 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
     bump(gb, ga, 1);
   }
   const kept = (x: Group, y: Group): boolean => {
+    /* Two narratives already made stay two: only the owner merges them. */
+    if (x.pins.size > 0 && y.pins.size > 0 && [...x.pins].some((pin) => !y.pins.has(pin))) return true;
     const [small, big] = x.members.length <= y.members.length ? [x, y] : [y, x];
     const bigSet = new Set(big.members);
     for (const s of small.members) for (const t of bigSet) if (input.calls.apart.has(pairKey(s, t))) return true;
@@ -370,6 +389,7 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
     gi.members.push(...gf.members);
     gi.minAt = Math.min(gi.minAt, gf.minAt);
     gi.maxAt = Math.max(gi.maxAt, gf.maxAt);
+    for (const pin of gf.pins) gi.pins.add(pin);
     for (const m of gf.members) groupOf.set(m, into);
     for (const [other, count] of between.get(from) ?? []) {
       between.get(other)?.delete(from);
@@ -514,7 +534,7 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
     if (group === undefined || group.members.length < 2 || !group.members.some((m) => m !== post && beside.has(m))) continue;
     group.members = group.members.filter((m) => m !== post);
     const at = atOf.get(post) ?? 0;
-    groups.set(next, { members: [post], minAt: at, maxAt: at });
+    groups.set(next, { members: [post], minAt: at, maxAt: at, pins: pinOf(post) });
     groupOf.set(post, next);
     next += 1;
   }
@@ -536,7 +556,7 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
       for (const m of drifted) {
         group.members = group.members.filter((x) => x !== m);
         const at = atOf.get(m) ?? 0;
-        groups.set(next, { members: [m], minAt: at, maxAt: at });
+        groups.set(next, { members: [m], minAt: at, maxAt: at, pins: pinOf(m) });
         groupOf.set(m, next);
         next += 1;
       }

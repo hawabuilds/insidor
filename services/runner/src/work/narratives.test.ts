@@ -2,9 +2,10 @@
  * The narratives pass against a fake store: who is grouped (the judge's yes at its own model's
  * cutoff, never the owner's "Not a meme", a held kind or a shill), that vectors are compared in
  * memory and read once, that a dry run writes nothing, that titles go to the shown narratives, and
- * that the owner's "Not a narrative" holds through the regroup it causes; and the early posts: a
- * stored post the regroup could not see joins the narrative it matches, by the parts' rule, never
- * against the owner's calls, and never moves the narrative's id or makes its posts read as changed.
+ * that the owner's "Not a narrative" holds through the regroup it causes; that a narrative made
+ * stays made (never retired, never folded into another, grown only by new posts) and only the
+ * owner's merge folds one into another; and the early posts: a stored post the regroup could not
+ * see joins the narrative it matches, by the parts' rule, never against the owner's calls.
  */
 
 import { strict as assert } from 'node:assert';
@@ -63,8 +64,10 @@ function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float3
       return new Map(kind === 'post' ? ids.flatMap((id) => (vectors[id] === undefined ? [] : [[id, vectors[id]] as const])) : []);
     },
     reach: async () => ({ points: new Map(), latest: new Map() }),
-    open: async () => open(),
     calls: async () => calls,
+    ofPosts: async (ids: readonly string[]) => new Map(open().flatMap((n) => n.members.filter((m) => ids.includes(m)).map((m) => [m, n.id] as const))),
+    states: async (ids: readonly string[]) => open().filter((n) => ids.includes(n.id)).map((n) => ({ id: n.id, state: 'open' as const, mergedInto: null })),
+    byIds: async (ids: readonly string[]) => open().filter((n) => ids.includes(n.id)),
     setTitle: async (id: string, title: string) => void titles.push([id, title]),
     storedGood: async () => older,
   };
@@ -147,22 +150,52 @@ test('★ a stored post from before the window that matches joins the narrative 
   assert.equal(r.early, 2);
 });
 
-test('★ an early post never moves the id or reads as a change: the next pass keeps both', async () => {
+test('★ a narrative made stays made: the next pass with nothing new writes nothing for it, and a new post is added to it', async () => {
   const rows = [edge('a'), edge('b')];
   const older = [old('first', 2.5)];
-  const v = { a: unit(0), b: unit(0), first: unit(0) };
+  const v = { a: unit(0), b: unit(0), c: unit(0), first: unit(0) };
   let stored: StoredNarrative[] = [];
   const s = setup(rows, v, 'live', [], older, () => stored);
   await s.grouper.pass();
   const first = s.saved[0]?.narratives[0];
   assert.ok(first !== undefined);
   assert.deepEqual(first.early, ['first']);
-  stored = [{ id: first.id, members: [...first.members, ...(first.early ?? [])], anchor: first.anchor, shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 't', titlePosts: 3, early: [...(first.early ?? [])] }];
+  stored = [{ id: first.id, members: [...first.members, ...(first.early ?? [])], anchor: first.anchor, shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 't', titlePosts: 3, newestPostAtMs: NOW, early: [...(first.early ?? [])] }];
   await s.grouper.pass();
-  const again = s.saved[1]?.narratives[0];
-  assert.equal(again?.id, first.id);
-  assert.equal(again?.changed, false, 'the early post is not a post the regroup lost');
-  assert.deepEqual(again?.early, ['first']);
+  assert.deepEqual(s.saved[1]?.narratives, [], 'untouched: nothing rewritten, nothing retired');
+  assert.deepEqual(s.saved[1]?.retired, []);
+  const later = [edge('a'), edge('b'), edge('c')];
+  const t = setup(later, v, 'live', [], older, () => stored);
+  await t.grouper.pass();
+  const grown = t.saved[0]?.narratives[0];
+  assert.equal(grown?.id, first.id, 'the id holds');
+  assert.deepEqual(grown?.added, ['c']);
+  assert.deepEqual([...(grown?.members ?? [])].sort(), ['a', 'b', 'c'], 'its posts, the early one aside');
+});
+
+test('★ a narrative whose posts all left the window is never retired, and two narratives never fold into one', async () => {
+  const stored: StoredNarrative[] = [
+    { id: 'n-old', members: ['gone1', 'gone2'], anchor: 'gone1', shown: true, firstShownAtMs: NOW - 5 * DAY, postsChangedAtMs: NOW - 5 * DAY, title: 'Old', titlePosts: 2, newestPostAtMs: NOW - 5 * DAY, early: [] },
+    { id: 'n-one', members: ['a'], anchor: 'a', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'One', titlePosts: 2, newestPostAtMs: NOW, early: [] },
+    { id: 'n-two', members: ['b'], anchor: 'b', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'Two', titlePosts: 2, newestPostAtMs: NOW, early: [] },
+  ];
+  const v = { a: unit(0), b: unit(0), c: unit(0) };
+  const s = setup([row('a'), row('b'), row('c')], v, 'live', [], [], () => stored);
+  const r = await s.grouper.pass();
+  assert.deepEqual(s.saved[0]?.retired, []);
+  assert.equal(r.created, 0);
+  assert.deepEqual(s.saved[0]?.narratives.map((n) => n.added), [['c']], 'c joins one of them; n-one and n-two stay two');
+});
+
+test('★ only the owner merges: his "Merge with…" moves one narrative into the other', async () => {
+  const stored: StoredNarrative[] = [
+    { id: 'n-one', members: ['a'], anchor: 'a', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'One', titlePosts: 2, newestPostAtMs: NOW, early: [] },
+    { id: 'n-two', members: ['b'], anchor: 'b', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'Two', titlePosts: 2, newestPostAtMs: NOW, early: [] },
+  ];
+  const merge: NarrativeCallRow = { id: 7, atMs: NOW - 1, narrativeId: 'n-one', verdict: 'merge', otherId: 'n-two', coin: null, members: ['a'], otherMembers: ['b'] };
+  const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [merge], [], () => stored);
+  await s.grouper.pass();
+  assert.deepEqual(s.saved[0]?.retired, [{ id: 'n-one', into: 'n-two' }]);
 });
 
 test('★ the owner outranks the match: a post he removed from beside the narrative, or kept apart, is not early', async () => {
