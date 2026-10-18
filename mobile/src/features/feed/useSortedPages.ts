@@ -28,22 +28,26 @@ export interface SortedPages {
 export function joinPages(first: RisingSorted, later: readonly RisingSorted[]): RisingSorted {
   const seen = new Set<string>();
   const posts: RisingPost[] = [];
-  const speeds = new Map<string, PostSpeeds | null>(first.speeds);
+  const speeds = new Map<string, PostSpeeds>(first.speeds);
   const views = new Map<string, number>(first.views);
+  const gained = new Map<string, number>(first.gained);
   for (const page of [first, ...later]) {
     for (const p of page.posts) {
       if (seen.has(p.id)) continue;
       seen.add(p.id);
       posts.push(p);
       if (page !== first) {
-        if (page.speeds.has(p.id)) speeds.set(p.id, page.speeds.get(p.id) ?? null);
+        const s = page.speeds.get(p.id);
+        if (s !== undefined) speeds.set(p.id, s);
         const v = page.views.get(p.id);
         if (v !== undefined) views.set(p.id, v);
+        const g = page.gained.get(p.id);
+        if (g !== undefined) gained.set(p.id, g);
       }
     }
   }
   const last = later[later.length - 1] ?? first;
-  return { ...first, posts, speeds, views, next: last.next };
+  return { ...first, posts, speeds, views, gained, next: last.next };
 }
 
 export function useSortedPages(key: string, first: RisingSorted | null): SortedPages {

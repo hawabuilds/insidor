@@ -681,7 +681,7 @@ export function decodeRisingPage(raw: unknown, path = '$'): RisingPage {
 
 const SORT_BYS = ['trending', 'most_viewed'] as const;
 /** Each sort's own windows: Trending has one, Most viewed two. A pair outside these is refused. */
-const SORT_WINDOWS: Readonly<Record<PostSortBy, readonly PostSortWindow[]>> = { trending: ['now'], most_viewed: ['today', 'week'] };
+const SORT_WINDOWS: Readonly<Record<PostSortBy, readonly PostSortWindow[]>> = { trending: ['now'], most_viewed: ['today', 'week', 'all'] };
 
 const viewCount = (v: unknown, path: string): number => {
   if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) throw new WireShapeError(path, v);
@@ -700,27 +700,23 @@ export function decodeRisingSorted(raw: unknown, path = '$'): RisingSorted {
   if (by === undefined) throw new WireShapeError(`${path}.by`, o['by']);
   const window = SORT_WINDOWS[by].find((w) => w === o['window']);
   if (window === undefined) throw new WireShapeError(`${path}.window`, o['window']);
-  const speeds = new Map<string, PostSpeeds | null>();
+  const speeds = new Map<string, PostSpeeds>();
   const views = new Map<string, number>();
-  let undated = 0;
+  const gained = new Map<string, number>();
   if (by === 'trending') {
     for (const [id, v] of Object.entries(obj(o['speeds'], `${path}.speeds`))) {
-      if (v === null) {
-        speeds.set(id, null);
-        continue;
-      }
       const s = obj(v, `${path}.speeds.${id}`);
       speeds.set(id, { now: viewCount(s['now'], `${path}.speeds.${id}.now`), before: viewCount(s['before'], `${path}.speeds.${id}.before`) });
     }
   } else {
     for (const [id, v] of Object.entries(obj(o['views'], `${path}.views`))) views.set(id, viewCount(v, `${path}.views.${id}`));
-    undated = int(o['undated'], `${path}.undated`);
+    if (window !== 'all') for (const [id, v] of Object.entries(obj(o['gained'], `${path}.gained`))) gained.set(id, viewCount(v, `${path}.gained.${id}`));
   }
   const next = o['next'];
   if (next !== null && typeof next !== 'string') throw new WireShapeError(`${path}.next`, next);
-  const has = (id: string): boolean => (by === 'trending' ? speeds.has(id) : views.has(id));
+  const has = (id: string): boolean => (by === 'trending' ? speeds.has(id) : views.has(id) && (window === 'all' || gained.has(id)));
   const posts = arr(o['posts'], `${path}.posts`).map((p, i) => decodeRisingPost(p, `${path}.posts[${i}]`)).filter((p) => has(p.id));
-  return { by, window, posts, speeds, views, undated, next };
+  return { by, window, posts, speeds, views, gained, next };
 }
 
 export function decodeRisingFeed(raw: unknown, path = '$'): RisingFeed {

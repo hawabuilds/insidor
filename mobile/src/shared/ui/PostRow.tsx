@@ -34,7 +34,7 @@
  *              the search found more than it kept) and Create coin — never Buy on an unsure match
  *   several  → how many, and View coins
  *
- * ★ ON TRENDING THE CARD SAYS HOW FAST IT IS GAINING (`sortLine`): "480 views a minute, up from 290"
+ * ★ ON TRENDING THE CARD SAYS HOW FAST IT IS GAINING (`sortLine`): "394 views a minute, up 2.1x in the last hour"
  * under its views, green when up, from its own readings as the read service counted them (the owner,
  * 2026-10-18). It is the fact the list is about, never the list's own key, which is not sent. On
  * Most viewed there is no line: the big views number is what the list is ordered by.
