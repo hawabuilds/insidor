@@ -391,16 +391,26 @@
   background: var(--hover);
 }
 
-/* What is new: Trador's soft purple row rather than a dot. */
+/* What is new: a small purple dot on the app's dark rows. */
 .note {
   border: 1px solid transparent;
   border-radius: 16px;
 }
 
-/* Unread, the owner's colours (2026-10-18), the same on every row and card. */
+/* Unread: the app's own dark look with a small purple dot (the owner, 2026-10-18: the purple card was too loud). */
 .note.unread {
-  background: #1a1526;
-  border-color: #3a2d55;
+  position: relative;
+}
+
+.note.unread::after {
+  content: '';
+  position: absolute;
+  top: 16px;
+  right: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
 }
 
 /* The settings button on Notifications: round. */
@@ -691,10 +701,24 @@
   text-decoration: none;
 }
 
-/* Unread, the owner's colours (2026-10-18): a light purple card. */
+/* Unread: the same dark card with a small purple dot, never a purple card. */
 .noteCardUnread {
-  background: #1a1526;
-  border-color: #3a2d55;
+  position: relative;
+}
+
+.noteCardUnread::after {
+  content: '';
+  position: absolute;
+  top: 16px;
+  right: 14px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+.noteCardUnread .reasonAge {
+  margin-right: 14px;
 }
 
 .reason {
