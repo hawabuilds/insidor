@@ -12,6 +12,14 @@
  *   3. each part is downloaded again, its SHA-256 and its line count checked, and the lines summed;
  *   4. only when that sum equals the partition's own count is the manifest written and the
  *      partition dropped. Dropping a partition frees its disk at once: no VACUUM FULL, no rewrite.
+ *
+ * ★ AND BEFORE ANY OF THAT LEAVES THE DATABASE, THE LABEL JOB'S COPY (the owner, 2026-10-18:
+ * "Before each day of the decision log is archived, copy just the columns the 30-day label job
+ * needs into a small table that stays in the database"). The same pass that writes the parts feeds
+ * each row to a `LabelBasisDay` (store label-basis.ts); after the parts are uploaded, its rows are
+ * written to internal.decision_label_basis in short batches, counted back, and the day switched on
+ * in internal.decision_label_basis_day. Its counts must equal the partition's, or nothing is
+ * dropped. A day already switched on and dropped is never revisited, so this is written once a day.
  * Any mismatch, upload error or download error stops that day with nothing removed.
  *
  * Why the DROP waits on a short lock_timeout and retries: dropping a partition takes a brief
@@ -28,6 +36,8 @@
 import { createHash } from 'node:crypto';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { asDb, createPool, DB_ROLE } from '../store/src/index.ts';
+import { LABEL_BASIS_COLUMNS, LABEL_BASIS_KINDS, LabelBasisDay, writeLabelBasisDay } from '../store/src/repo/label-basis.ts';
+import type { LabelBasisSource } from '../store/src/repo/label-basis.ts';
 
 const BUCKET = 'decision-archive';
 const KEEP_DAYS_DEFAULT = 1;
@@ -134,10 +144,12 @@ try {
       partBytes = 0;
       partRows = 0;
     };
+    const basis = new LabelBasisDay(day);
     let lastId = '-9223372036854775808';
     for (;;) {
-      const rows = await db.query<{ id: string; j: string }>(`select id::text as id, row_to_json(d)::text as j from internal.${name} d where d.id > $1::bigint order by d.id limit ${BATCH_ROWS}`, [lastId]);
+      const rows = await db.query<{ id: string; j: string } & LabelBasisSource>(`select id::text as id, row_to_json(d)::text as j, ${LABEL_BASIS_COLUMNS} from internal.${name} d where d.id > $1::bigint order by d.id limit ${BATCH_ROWS}`, [lastId]);
       if (rows.length === 0) break;
+      for (const r of rows) basis.addRow(r);
       /* Each batch is its own gzip member; members laid end to end are one valid gzip file. */
       const member = gzipSync(Buffer.from(rows.map((r) => r.j).join('\n') + '\n'));
       if (partBytes + member.byteLength > PART_BYTES) await flush();
@@ -147,6 +159,14 @@ try {
       lastId = rows[rows.length - 1]?.id ?? lastId;
     }
     await flush();
+
+    /* The label job's copy, checked against the partition's own counts before anything is removed. */
+    const [{ graded = '-1' } = {}] = await db.query<{ graded: string }>(`select count(*)::text as graded from internal.${name} where subject_kind = any($1::text[])`, [LABEL_BASIS_KINDS]);
+    if (basis.logRows !== expected || basis.decisions !== Number(graded)) {
+      throw new Error(`${day}: read ${basis.logRows} rows (${basis.decisions} graded) for the label basis, the partition holds ${expected} (${graded}); nothing removed`);
+    }
+    const kept = await writeLabelBasisDay(db, basis, 'archive');
+    const [{ basisBytes = '0' } = {}] = await db.query<{ basisBytes: string }>(`select pg_total_relation_size('internal.decision_label_basis')::text as "basisBytes"`);
 
     /* Step 3: read every part back and count it, before anything is removed. */
     let verified = 0;
@@ -175,7 +195,7 @@ try {
       }
     }
     if (!dropped) throw new Error(`${day}: archived and checked, but the partition could not be dropped in ${DROP_TRIES} tries; it is kept and the next run drops it`);
-    console.log(`  ${day}: ${expected} rows in ${files.length} file(s), ${(files.reduce((s, f) => s + f.bytes, 0) / 1e6).toFixed(1)} MB compressed, ${(Number(bytes) / 1e6).toFixed(0)} MB freed, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    console.log(`  ${day}: ${expected} rows in ${files.length} file(s), ${(files.reduce((s, f) => s + f.bytes, 0) / 1e6).toFixed(1)} MB compressed, ${(Number(bytes) / 1e6).toFixed(0)} MB freed, ${((Date.now() - t0) / 1000).toFixed(0)} s; label basis kept ${kept.subjects} subjects for ${kept.decisions} decisions (table now ${(Number(basisBytes) / 1e6).toFixed(1)} MB)`);
   }
 } finally {
   await pool.end();
