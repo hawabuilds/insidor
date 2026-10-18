@@ -2982,6 +2982,13 @@ export interface LearningPolicy {
     readonly afterCoined: boolean;
     readonly fitWeight: number;
   };
+  /**
+   * ★ PERIODS THE RE-TUNE DOES NOT TAKE AS NORMAL (the owner, 2026-10-18). A post first stored inside
+   * one of these is left out of what the re-tune reads as the usual feed: the junk (b) sample of
+   * untapped For You posts and the seen-and-kept soft yes. The owner's own calls, missed posts and
+   * coined posts are kept: they are true whatever the search was doing. ISO times, `until` exclusive.
+   */
+  readonly abnormalWindows: readonly { readonly from: string; readonly until: string; readonly why: string }[];
   /** Missed-post links the owner may paste at once. */
   readonly maxMissedPerPaste: number;
   /**
@@ -3779,7 +3786,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v110',
+  version: 'policy.v111',
 
   admit: {
     maxAgeMin: 240,
@@ -4791,6 +4798,9 @@ const POLICY_V1: Policy = {
       afterCoined: true,
       fitWeight: 0.5,
     },
+    /* The X language bug: from 16 Oct 23:20 UTC the posts supplier honoured only the last language
+       asked, so the X search found almost only Japanese until the per-language fix at 09:22 on 18 Oct. */
+    abnormalWindows: [{ from: '2026-10-16T23:20:00Z', until: '2026-10-18T09:22:00Z', why: 'X search returned only one language' }],
     maxMissedPerPaste: 10,
     scoreHeldOutShare: 0.3,
     scoreL2: 1,
