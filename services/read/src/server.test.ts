@@ -42,15 +42,16 @@ async function serving(): Promise<{ base: string; close: () => Promise<void> }> 
   };
 }
 
-test('a board request answers JSON the browser must revalidate, with an ETag and the configured origin', async () => {
+test('a board request answers JSON the browser must revalidate and the edge may keep briefly, with an ETag and the configured origin', async () => {
   const { base, close } = await serving();
   try {
     const res = await fetch(`${base}/board/main`, { headers: { origin: ORIGIN } });
 
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('content-type'), 'application/json; charset=utf-8');
-    /* Kept by the browser alone, and never used without asking: see server.ts. */
-    assert.equal(res.headers.get('cache-control'), 'private, no-cache');
+    /* The same for everyone: the browser asks before each use, Vercel's edge may answer it for 2 s (edge-cache.ts). */
+    assert.equal(res.headers.get('cache-control'), 'public, max-age=0, must-revalidate');
+    assert.equal(res.headers.get('vercel-cdn-cache-control'), 'max-age=2, stale-while-revalidate=8');
     assert.match(res.headers.get('etag') ?? '', /^W\/"[A-Za-z0-9_-]+"$/);
     assert.equal(res.headers.get('vary'), 'origin, accept-encoding');
     assert.equal(res.headers.get('access-control-allow-origin'), ORIGIN);
@@ -96,6 +97,33 @@ test('a caller holding the current reply gets a 304 with no body; a changed one 
   }
 });
 
+test('a request carrying a sign-in token or a cookie is answered privately, so no edge keeps it', async () => {
+  const { base, close } = await serving();
+  try {
+    for (const headers of [{ authorization: 'Bearer x' }, { cookie: 'a=b' }]) {
+      const res = await fetch(`${base}/board/main`, { headers });
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('cache-control'), 'private, no-cache');
+      assert.equal(res.headers.get('vercel-cdn-cache-control'), null);
+    }
+  } finally {
+    await close();
+  }
+});
+
+test('a 304 to an edge-kept route carries the same cache headers as its 200', async () => {
+  const { base, close } = await serving();
+  try {
+    const first = await fetch(`${base}/story/st_ferry`);
+    const again = await fetch(`${base}/story/st_ferry`, { headers: { 'if-none-match': first.headers.get('etag') ?? '' } });
+    assert.equal(again.status, 304);
+    assert.equal(again.headers.get('cache-control'), first.headers.get('cache-control'));
+    assert.equal(again.headers.get('vercel-cdn-cache-control'), first.headers.get('vercel-cdn-cache-control'));
+  } finally {
+    await close();
+  }
+});
+
 test('an OPTIONS preflight is answered without a body', async () => {
   const { base, close } = await serving();
   try {
@@ -118,6 +146,7 @@ test('an unknown route and a write attempt are both refused over the wire', asyn
     assert.equal(missing.status, 404);
     assert.deepEqual(await missing.json(), { error: 'not found' });
     assert.equal(missing.headers.get('cache-control'), 'no-store', 'errors are not cacheable either');
+    assert.equal(missing.headers.get('vercel-cdn-cache-control'), null, 'nor kept by the edge');
 
     const write = await fetch(`${base}/board/main`, {
       method: 'POST',
