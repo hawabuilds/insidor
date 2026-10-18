@@ -4286,7 +4286,7 @@ const POLICY_V1: Policy = {
      multiples, the curve mark, the hourly limit, the loops).
 
      v36 adds `universe.history.minLiquidityUsd` and `minHolders`: the pilot's fake-coin filter. */
-  version: 'policy.v114',
+  version: 'policy.v115',
 
   admit: {
     maxAgeMin: 240,
@@ -4773,7 +4773,7 @@ const POLICY_V1: Policy = {
     /* 'ja' from 2026-10-17, the owner's choice: 16 viral Japanese posts were coined in 7 days, judged
        yes, and none held before its coin, because Japanese was never searched. Estimated +$1.75 to
        $3.50 a day; the posts line below was raised so English search is not squeezed. */
-    langs: ['en', 'zxx', 'pt', 'qme', 'ja'],
+    langs: ['en', 'zxx', 'pt', 'qme', 'ja', 'fr', 'es', 'ko'],
     /* The owner's watch words, chosen 2026-10-14 by what the newest-first search returns for each
        (every run from 17:30 UTC on 2026-10-13, videos a run, median age, under two hours a run):
        cute 25.8, 1.3 h, 23.7; meme 18.8, 1.6 h, 15.3; dog 25.6, 2.0 h, 13.6; pet 22.3, 2.0 h, 12.2;
