@@ -1268,10 +1268,9 @@ export async function withRuntime<T>(
          both were thrown away every minute and the count guarded nothing. With a CoinGecko key
          `cfg.marketData` is the paid plan at its own host, and its limit is that plan's. */
       const onChainMarket = geckoterminal({ ...cfg.marketData, fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS, now: Date.now });
-      const lookupSources = [
-        dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS }),
-        onChainMarket,
-      ];
+      /* The keyless search, free a call: the narrative pages' posts are searched on it alone. */
+      const freeSearch = dexscreenerSearch({ baseUrl: 'https://api.dexscreener.com', fetch: globalThis.fetch, timeoutMs: SEARCH_TIMEOUT_MS });
+      const lookupSources = [freeSearch, onChainMarket];
       log.info('coin lookup sources', { onChainPlan: cfg.marketData.plan });
 
       return {
@@ -1392,6 +1391,7 @@ export async function withRuntime<T>(
               coins: new PgCoinUniverseRepo(db),
               assets: repos.assets,
               sources: lookupSources,
+              freeSources: [freeSearch],
               chain: cfg.chainRpcUrl === null ? null : chainClient({ launchpadBaseUrl: '', rpcUrl: cfg.chainRpcUrl, fetch: globalThis.fetch }),
               policy,
               log: log.child({ step: 'coin-lookup' }),

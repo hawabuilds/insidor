@@ -149,6 +149,15 @@ const WAITING = `
        ),
        waiting as (select * from posts union all select * from stories)`;
 
+/** A waiting subject's row as a term: every name the judge gave it, short spans included. */
+function termOf(r: { subject_kind: 'story' | 'post'; subject_id: string; term: string; alternates: unknown; spans: unknown; attempts: number | null }): LookupTerm {
+  const strings = (v: unknown) => (Array.isArray(v) ? v.filter((n): n is string => typeof n === 'string' && n.trim() !== '') : []);
+  /* A span short enough to be a name (the words the judge read in the post or its picture,
+     "Koi-4B", "Banana Duck"); a longer one is a description and is not searched. */
+  const spans = strings(r.spans).filter((t) => t.trim().split(/\s+/).length <= SPAN_NAME_WORDS);
+  return { kind: r.subject_kind, id: r.subject_id, term: r.term, names: [...new Set([r.term, ...strings(r.alternates), ...spans])], attempts: Number(r.attempts ?? 0) };
+}
+
 export class PgCoinUniverseRepo {
   readonly #db: Db;
 
@@ -364,13 +373,51 @@ export class PgCoinUniverseRepo {
         limit $3`,
       [toTimestamp(keepBefore), retries, limit],
     );
-    return rows.map((r) => {
-      const strings = (v: unknown) => (Array.isArray(v) ? v.filter((n): n is string => typeof n === 'string' && n.trim() !== '') : []);
-      /* A span short enough to be a name (the words the judge read in the post or its picture,
-         "Koi-4B", "Banana Duck"); a longer one is a description and is not searched. */
-      const spans = strings(r.spans).filter((t) => t.trim().split(/\s+/).length <= SPAN_NAME_WORDS);
-      return { kind: r.subject_kind, id: r.subject_id, term: r.term, names: [...new Set([r.term, ...strings(r.alternates), ...spans])], attempts: Number(r.attempts ?? 0) };
-    });
+    return rows.map(termOf);
+  }
+
+  /**
+   * ★ THE POSTS OF THE NARRATIVE PAGES, NOT ONLY THE FEED'S (2026-10-18). A narrative's coin is
+   * read from its posts' searches (services/project narrative-frame.ts), and before this only a
+   * post in the live feed frame (public.rising_row) was ever searched: on 18 Oct 373 of 411 pages
+   * said "still checking for a coin" because none of their 1,632 posts had been. These are the
+   * posts listed on a narrative page (public.story_post) that the feed's own queue does not hold,
+   * with a name from the judge. Owed: never searched first, then a live narrative's posts once
+   * `liveKeepBefore` has passed their last search, a dead one's once `deadKeepBefore` has — a dead
+   * narrative is checked, then re-checked on a slow cadence, never every six hours forever.
+   * Siblings come together (by narrative), so one pass can reuse a name its siblings share. Failed
+   * searches wait as the feed's do. `postedAtMs` is the post's own time, for which launches count.
+   */
+  async narrativePostTerms(liveKeepBefore: Millis, deadKeepBefore: Millis, retries: number, limit: number): Promise<readonly LookupTerm[]> {
+    if (limit <= 0) return [];
+    const rows = await this.#db.query<{ subject_kind: 'post'; subject_id: string; term: string; alternates: unknown; spans: unknown; attempts: number | null; posted_at: string | Date | null }>(
+      `with listed as (
+         select distinct on (sp.item_id) sp.item_id, sp.story_id, coalesce(v.dead, false) as dead, v.newest_post_at
+           from public.story_post sp
+           join public.story_view v on v.story_id = sp.story_id
+          where not exists (select 1 from public.rising_row r where r.item_id = sp.item_id)
+          order by sp.item_id, coalesce(v.dead, false), v.newest_post_at desc nulls last
+       )
+       select 'post' as subject_kind, p.item_id as subject_id, pj.proposed_name as term, pj.alternate_names as alternates,
+              pj.subject_spans as spans, a.attempts, coalesce(i.posted_at, i.first_seen_at) as posted_at
+         from listed p
+         join public.item i on i.item_id = p.item_id
+         join lateral (
+           select proposed_name, alternate_names, subject_spans from internal.post_judgement x
+            where x.item_id = p.item_id and x.proposed_name is not null and x.prompt_id not like 'post-kind%'
+            order by x.judged_at desc limit 1
+         ) pj on true
+         left join internal.coin_lookup l on l.subject_kind = 'post' and l.subject_id = p.item_id
+         left join internal.coin_lookup_attempt a on a.subject_kind = 'post' and a.subject_id = p.item_id
+        where (l.subject_id is null
+               or (l.hits is null and l.found > 0)
+               or l.looked_at < case when p.dead then $2::timestamptz else $1::timestamptz end)
+          and (a.subject_id is null or a.attempts <= $3 or a.last_failed_at < $1)
+        order by (l.subject_id is null) desc, p.dead, p.newest_post_at desc nulls last, p.story_id, p.item_id
+        limit $4`,
+      [toTimestamp(liveKeepBefore), toTimestamp(deadKeepBefore), retries, limit],
+    );
+    return rows.map((r) => ({ ...termOf(r), via: 'narrative' as const, postedAtMs: toMillis(r.posted_at) }));
   }
 
   /** The namer's guesses for these terms' posts (0076), names and tickers, best first; nothing before 0076. */
@@ -541,4 +588,8 @@ export interface LookupTerm {
   readonly guesses?: readonly string[];
   /** Searches for it that failed on every source since the last one that finished. */
   readonly attempts: number;
+  /** Set for a narrative page's post (`narrativePostTerms`): searched on the free sources only. */
+  readonly via?: 'narrative';
+  /** A narrative page's post's own time, so a coin launched after it still counts when it is re-searched days later. */
+  readonly postedAtMs?: Millis | null;
 }
