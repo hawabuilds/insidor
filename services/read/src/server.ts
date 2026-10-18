@@ -26,12 +26,24 @@
  *
  * No `access-control-allow-credentials`: this surface is unauthenticated and sends
  * no cookie, and declaring credentials support would be inviting a future one.
+ *
+ * ★ TWO EXCEPTIONS TO THE HEADERS ABOVE, BOTH ABOUT BYTES, NOT ABOUT WHAT IS SAID (October 2026):
+ *
+ *   A reply with an ETag says `private, no-cache` instead of `no-store`: a browser may keep it but
+ *     must ask again before every use, and gets a bodiless 304 when nothing changed. `private`
+ *     keeps every shared cache out, which is the risk `no-store` was guarding against; `no-cache`
+ *     means a kept board is never shown without the server confirming it is the current one.
+ *
+ *   A reply over a kilobyte is compressed (brotli, else gzip, as the caller accepts), and `vary`
+ *     names `accept-encoding` beside `origin`. The Narratives list was 1.3 MB raw and the platform
+ *     in front of this process does not compress.
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
 import type { Logger } from './log.ts';
 import { errorText } from './log.ts';
+import { encodingFor, prepare, type Encoding, type Prepared } from './compress.ts';
 import { handle, type Deps } from './routes.ts';
 import type { BoardStream } from './stream.ts';
 
@@ -51,6 +63,38 @@ export interface ServerDeps extends Deps {
    * should say rather than opening a socket nothing will ever write to.
    */
   readonly stream?: BoardStream;
+}
+
+/** What a browser is told about a reply it may keep: keep it for yourself, and ask before each use. */
+const REVALIDATE = 'private, no-cache';
+
+const header = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v.join(',') : v);
+
+/** Whether the caller already holds exactly this reply (If-None-Match names its ETag, weak comparison). */
+function unchanged(req: IncomingMessage, etag: string | null): boolean {
+  const asked = header(req.headers['if-none-match']);
+  if (etag === null || asked === undefined) return false;
+  const bare = (t: string) => t.trim().replace(/^W\//, '');
+  return asked.split(',').some((t) => t.trim() === '*' || bare(t) === bare(etag));
+}
+
+/** Writes a prepared reply: a 304 when the caller holds it, else the bytes in the encoding it accepts. */
+function send(req: IncomingMessage, res: ServerResponse, p: Prepared, encoding: Encoding, base: Record<string, string>): void {
+  const kept = p.etag === null ? {} : { etag: p.etag, 'cache-control': REVALIDATE };
+  if (p.status === 200 && unchanged(req, p.etag)) {
+    res.writeHead(304, { ...base, ...kept });
+    res.end();
+    return;
+  }
+  const coded = encoding === 'br' ? p.br : encoding === 'gzip' ? p.gzip : null;
+  const bytes = coded ?? p.body;
+  res.writeHead(p.status, {
+    ...base,
+    ...kept,
+    ...(coded === null ? {} : { 'content-encoding': encoding as string }),
+    'content-length': String(bytes.length),
+  });
+  res.end(bytes);
 }
 
 /** Preflight lives 10 minutes. Long enough to stop the chatter, short enough to fix. */
@@ -91,6 +135,8 @@ export function createReadServer(deps: ServerDeps): Server {
     };
 
     const base = { 'content-type': 'application/json; charset=utf-8', ...shared };
+    /* The routes' replies may be compressed, so their `vary` says so; the stream's is not. */
+    const routed = { ...base, vary: 'origin, accept-encoding' };
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
@@ -126,11 +172,11 @@ export function createReadServer(deps: ServerDeps): Server {
        it must not be allowed to become an unhandled rejection, because main.ts exits
        the process on those and a single malformed request would take the service
        down. */
+    const encoding = encodingFor(header(req.headers['accept-encoding']));
+    /* Built now, compressed only into the one encoding this caller accepts. */
     handle(req.method ?? 'GET', req.url ?? '/', deps, clientOf(req))
-      .then((reply) => {
-        res.writeHead(reply.status, base);
-        res.end(reply.body);
-      })
+      .then((reply) => prepare(reply, encoding === null ? [] : [encoding]))
+      .then((p) => send(req, res, p, encoding, routed))
       .catch((e: unknown) => {
         deps.log.error('response failed', { url: req.url, err: errorText(e) });
         if (!res.headersSent) res.writeHead(500, base);
