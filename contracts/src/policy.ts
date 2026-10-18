@@ -1561,6 +1561,41 @@ export interface FeedPolicy {
     readonly dailyUsd: number;
     readonly bookReserveUsd: number;
   };
+  /**
+   * ★ THE NARRATIVE-NAME SEARCH (the owner, 2026-10-18): every `everyMs`, each open narrative on the
+   * board searched on the text source by its name, forward from that narrative's last search (or one
+   * `everyMs` back on its first), at `minApproval` likes and in `feed.langs`. Posts found are credited
+   * to the 'narrative_name' lane (0097), judged like any found post, and may reach For You — unlike
+   * the story-name backfill (`BackfillPolicy`), whose posts are judged and never shown.
+   *
+   * THE NAME (services/runner/src/work/narrative-names.ts): a phrase of 1 to `maxWords` words from the
+   * narrative's title or its posts' judged names that appears, word for word, in the text of at least
+   * `minMemberPosts` of its posts. Of two or more words, the last and at least one must not be in
+   * `commonWords` ("tesla roadster", "the hi"); a single word must be a name the judge gave a post,
+   * not in `commonWords`, of `minWordLetters` letters ("vaquita", never a title's "police"). A phrase
+   * is preferred to a single word, then the one in more posts. A narrative with no such name is not
+   * searched: a generic word ("cat", "Elon") would bring an hour of everything about it.
+   *
+   * Its own loop (loops/name-search.ts) and its own day in internal.lane_spend: `cap`, read before
+   * every page (work/lane-search.ts). A pass is bounded by `passDeadlineMs` and each name by
+   * `maxPagesPerAsk`; narratives searched longest ago go first, so a pass cut short resumes fairly.
+   * What breaks if changed carelessly: a floor much under the middle lane's lets every generic name
+   * fill its pages with posts the judge must then be paid for; the cap stops it, an hour early.
+   */
+  readonly narrativeNames: {
+    readonly on: boolean;
+    readonly everyMs: number;
+    readonly minApproval: number;
+    readonly maxNarratives: number;
+    readonly maxPagesPerAsk: number;
+    readonly passDeadlineMs: number;
+    readonly minMemberPosts: number;
+    readonly membersRead: number;
+    readonly maxWords: number;
+    readonly minWordLetters: number;
+    readonly commonWords: readonly string[];
+    readonly cap: LaneCapPolicy;
+  };
 }
 
 /**
@@ -4270,6 +4305,40 @@ const POLICY_V1: Policy = {
       passDeadlineMs: 25_000,
       dailyUsd: 3.75,
       bookReserveUsd: 3,
+    },
+    /* The owner, 2026-10-18: "build the narrative-name search ... its own daily $ cap at your top
+       estimate: $0.35". 52 of the 95-99 shown narratives had a safe name on 2026-10-18; one ask an hour
+       each is ~1,250 asks a day, $0.19 at the source's one-post floor a request. Probed that night, 52
+       asks at this floor over the last hour returned nothing; over the three days before, 115 held
+       posts carrying one of those names had 1,000 likes inside their first hour (87 at 2,000), ~40 a
+       day, most already found by another lane. With their re-finds and the new ones judged: ~$0.20-0.25
+       a day, so the cap is the top of the estimate.
+       1,000 likes, not the middle lane's 2,000: that lane already returns every post 15 minutes to
+       3 hours old at 2,000 in these languages, so a 2,000 floor over the last hour would find almost
+       nothing it does not; a name narrows the search enough to ask for half the likes. */
+    narrativeNames: {
+      on: true,
+      everyMs: 3_600_000, // hourly
+      minApproval: 1_000,
+      maxNarratives: 60,
+      maxPagesPerAsk: 3,
+      passDeadlineMs: 240_000,
+      minMemberPosts: 2,
+      membersRead: 40,
+      maxWords: 3,
+      minWordLetters: 5,
+      commonWords: [
+        'a', 'about', 'after', 'ai', 'all', 'an', 'and', 'are', 'as', 'at', 'baby', 'be', 'big', 'but', 'by',
+        'cat', 'cats', 'coin', 'coins', 'community', 'controversy', 'crypto', 'day', 'discovered', 'dog',
+        'dogs', 'elon', 'for', 'france', 'french', 'from', 'gains', 'goes', 'has', 'have', 'he', 'her',
+        'his', 'i', 'in', 'incident', 'into', 'is', 'it', 'its', 'just', 'man', 'meme', 'memes', 'musk',
+        'my', 'named', 'new', 'news', 'not', 'now', 'of', 'on', 'or', 'our', 'out', 'people', 'popularity',
+        'post', 'project', 'protests', 'rise', 'she', 'so', 'social', 'media', 'tesla', 'that', 'the',
+        'their', 'they', 'this', 'to', 'token', 'trump', 'up', 'video', 'viral', 'was', 'we', 'what',
+        'when', 'who', 'why', 'will', 'with', 'world', 'x', 'you', 'your',
+      ],
+      /* The middle lane's judging figures: the same judge, on the same kind of post. */
+      cap: { dailyUsd: 0.35, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
     },
   },
 

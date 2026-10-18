@@ -130,6 +130,7 @@ import { refillMemory, refillPosts, type RefillResult } from './work/post-refill
 import { narrativeGrouper, type NarrativeResult } from './work/narratives.ts';
 import { scoreCoinModel, type CoinModelResult } from './work/coin-model.ts';
 import { readingsMemory, readingsPass, type ReadingsResult } from './work/readings.ts';
+import { narrativeNameClock, narrativeNamesPass, type NarrativeNamesResult } from './work/narrative-names.ts';
 import { bioRefreshMemory, refreshBios } from './work/bio-refresh.ts';
 import { translatePosts } from './work/translate-posts.ts';
 import { embedImages } from './work/embed-images.ts';
@@ -199,6 +200,8 @@ export interface Runtime {
   readonly refillPosts: () => Promise<RefillResult>;
   /** For You's view readings and opened sheets, on their own cadence and ledger. See work/readings.ts. */
   readonly readings: () => Promise<ReadingsResult>;
+  /** Each board narrative searched by its name, forward, on its own cadence and ledger. See work/narrative-names.ts. */
+  readonly nameSearch: () => Promise<NarrativeNamesResult>;
   /** Embed the first image of each new post once, for GROUP's image evidence. */
   readonly embedImages: () => Promise<unknown>;
   /** Follow promoted stories' quotes back to where they started. See work/backfill.ts. */
@@ -822,6 +825,8 @@ export async function withRuntime<T>(
       /* The video and author fill-in's tries and day count, kept across passes for this process (work/post-refill.ts). */
       const refills = refillMemory();
       const readingNotes = readingsMemory();
+      /* Where each narrative's name search last began (this process). */
+      const nameClock = narrativeNameClock();
       /* Each poster's last profile re-read and the day's count (work/bio-refresh.ts). */
       const bioReads = bioRefreshMemory();
       /* The feed's translations table (work/translate-posts.ts); its translator is built below, with the open model. */
@@ -1249,6 +1254,22 @@ export async function withRuntime<T>(
                 now: () => Date.now() as Millis,
               },
               readingNotes,
+            ),
+          nameSearch: () =>
+            narrativeNamesPass(
+              {
+                sources: () => platforms.all(),
+                narratives: new PgNarrativeRepo(db),
+                store: storeArrivals(repos, policy, () => Date.now() as Millis),
+                uncredited: (ids) => repos.items.uncredited(ids),
+                ledger: laneLedger(new PgLaneSpendRepo(db), log.child({ step: 'name-search-lane' })),
+                meter,
+                mode: cfg.spend.kind,
+                policy,
+                log: log.child({ step: 'name-search' }),
+                now: () => Date.now() as Millis,
+              },
+              nameClock,
             ),
           embedImages: () =>
             embedImages({
