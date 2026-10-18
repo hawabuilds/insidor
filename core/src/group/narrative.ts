@@ -7,7 +7,9 @@
  * four days, and the board's narratives were built from ads, shills and posts the owner hid. A
  * narrative here is built only from GOOD posts, and only on two things at once:
  *
- *   meaning     the two posts' words-and-picture vectors are close (`narrative.sameMeaning`)
+ *   meaning     the two posts' words-and-picture vectors are close (`narrative.sameMeaning`, or
+ *               `nameMeaning` when the detail is the same name: a text post and a short video on
+ *               one story read further apart than two text posts)
  *   a detail    they share a name, the same picture, or a topic word that is not a hashtag —
  *               the story coins' rule (match/story-coin.ts), so a narrative and a story coin
  *               agree on what "the same story" means
@@ -157,7 +159,7 @@ export function sharedDetail(a: PostDetail, b: PostDetail, samePicture: boolean)
 
 /* ── the owner's calls ────────────────────────────────────────────────── */
 
-export type NarrativeCallVerdict = 'not_narrative' | 'merge' | 'remove_post' | 'right' | 'wrong' | 'cleared';
+export type NarrativeCallVerdict = 'not_narrative' | 'merge' | 'remove_post' | 'split' | 'right' | 'wrong' | 'cleared';
 
 /** One stored call on a narrative (internal.owner_feedback, subject 'narrative', 0093). */
 export interface NarrativeCallRow {
@@ -165,12 +167,12 @@ export interface NarrativeCallRow {
   readonly atMs: number;
   readonly narrativeId: string;
   readonly verdict: NarrativeCallVerdict;
-  /** merge: the narrative it was merged with; remove_post: the post removed. */
+  /** merge: the narrative it was merged with; remove_post: the post removed; split: the new narrative's id. */
   readonly otherId: string | null;
   readonly coin: string | null;
-  /** The narrative's posts when the call was made, as the server read them. */
+  /** The narrative's posts when the call was made, as the server read them; split: the posts moved out. */
   readonly members: readonly string[];
-  /** merge: the other narrative's posts when the call was made. */
+  /** merge: the other narrative's posts when the call was made; split: the posts that stayed. */
   readonly otherMembers: readonly string[];
 }
 
@@ -222,6 +224,17 @@ export function foldNarrativeCalls(rows: readonly NarrativeCallRow[]): Narrative
         was.add(m);
       }
       removed.set(post, was);
+    } else if (r.verdict === 'split') {
+      /* "Split": the posts moved out and the posts that stayed are two stories, each moved post
+         removed from beside every post that stayed (so a page drops it at once, as remove_post). */
+      for (const post of r.members) {
+        const was = removed.get(post) ?? new Set<string>();
+        for (const m of r.otherMembers) if (m !== post) {
+          apart.add(pairKey(post, m));
+          was.add(m);
+        }
+        removed.set(post, was);
+      }
     } else if (r.verdict === 'merge') {
       /* A later merge undoes any earlier "apart" between the posts it names. */
       for (const a of r.members) for (const b of r.otherMembers) apart.delete(pairKey(a, b));
@@ -335,14 +348,15 @@ export function groupNarratives(input: GroupNarrativesInput, p: Policy): Grouped
   const links = { name: 0, picture: 0, topic: 0 };
   const edges: [string, string][] = [];
   for (const pair of input.pairs) {
-    if (pair.a === pair.b || pair.meaning < n.sameMeaning) continue;
+    if (pair.a === pair.b || pair.meaning < Math.min(n.sameMeaning, n.nameMeaning)) continue;
     const da = details.get(pair.a);
     const db = details.get(pair.b);
     if (da === undefined || db === undefined) continue;
     if (Math.abs((atOf.get(pair.a) ?? 0) - (atOf.get(pair.b) ?? 0)) > n.maxGapMs) continue;
     if (input.calls.apart.has(pairKey(pair.a, pair.b))) continue;
     const kind = sharedDetail(da, db, pair.samePicture);
-    if (kind === null) continue;
+    /* ★ A shared name links at `nameMeaning`; a shared topic word or picture only at `sameMeaning`. */
+    if (kind === null || pair.meaning < (kind === 'name' ? n.nameMeaning : n.sameMeaning)) continue;
     links[kind] += 1;
     edges.push([pair.a, pair.b]);
   }
@@ -655,7 +669,7 @@ export function hugeAndClimbing(reach: number | null, perMinute: number | null, 
 }
 
 /** Why a group is or is not shown as a narrative. */
-export type NarrativeShown = 'shown' | 'too_few_posts' | 'hidden_by_owner';
+export type NarrativeShown = 'shown' | 'too_few_posts' | 'too_few_accounts' | 'hidden_by_owner';
 
 /**
  * ★ "NOT A NARRATIVE" STAYS SAID. A hide applies to the narrative it was said on and to any
@@ -679,15 +693,18 @@ export function hiddenByOwner(narrativeId: string, members: readonly string[], c
 }
 
 /**
- * ★ A NARRATIVE NEEDS `minPosts` GOOD POSTS, OR ONE POST THAT IS HUGE AND CLIMBING. Otherwise it
- * is just a post, and For You already shows posts. `goodPosts` are the posts still good NOW (the
- * projector re-reads their standing: an owner's "Not a meme" since the pass takes a post out at
- * once); `hidden` is the owner's "Not a narrative" as `hiddenByOwner` holds it.
+ * ★ A NARRATIVE NEEDS `minPosts` GOOD POSTS FROM `minAccounts` ACCOUNTS (the owner, 2026-10-18).
+ * Otherwise it is just a post — or one account posting it twice — and For You already shows posts.
+ * The one post that is huge and climbing counts only while `single.on` (off since that day).
+ * `goodPosts` are the posts still good NOW (the projector re-reads their standing: an owner's "Not
+ * a meme" since the pass takes a post out at once), `accounts` how many accounts posted them (a
+ * caller that cannot tell passes `goodPosts`, and the projector, which can, holds it to the rule);
+ * `hidden` is the owner's "Not a narrative" as `hiddenByOwner` holds it.
  */
-export function narrativeShown(goodPosts: number, single: boolean, hidden: boolean, p: Policy): NarrativeShown {
+export function narrativeShown(goodPosts: number, single: boolean, hidden: boolean, p: Policy, accounts: number = goodPosts): NarrativeShown {
   if (hidden) return 'hidden_by_owner';
-  if (goodPosts >= p.narrative.minPosts) return 'shown';
-  return goodPosts === 1 && single ? 'shown' : 'too_few_posts';
+  if (goodPosts >= p.narrative.minPosts) return accounts >= p.narrative.minAccounts ? 'shown' : 'too_few_accounts';
+  return goodPosts === 1 && single && p.narrative.single.on ? 'shown' : 'too_few_posts';
 }
 
 /* ── the coin ─────────────────────────────────────────────────────────── */
