@@ -83,6 +83,8 @@ export { CURRENT_COIN_CALLS, PgOwnerCoinCallRepo } from './repo/owner-coin-calls
 export type { StoredCoinCall } from './repo/owner-coin-calls.ts';
 export { PgPostEmbeddingRepo } from './repo/post-embeddings.ts';
 export { PgJunkFilterRepo } from './repo/junk-filter.ts';
+export { PgCoinModelRepo } from './repo/coin-model.ts';
+export type { AppliedCoinModel, CoinFactRow, CoinModelFitRow, CoinModelScore, FirstAnswer, ToScore } from './repo/coin-model.ts';
 export type { AppliedJunkFit, JunkFitRow, JunkSkip, PostVector } from './repo/junk-filter.ts';
 export { PgNameExampleRepo, PgNameGuessRepo } from './repo/name-examples.ts';
 export type { NameCandidate, NameExampleSource, NamePair, StoredExample } from './repo/name-examples.ts';
