@@ -42,3 +42,13 @@ test('★ stored at coin-logos/<address>, the path the app builds', async () => 
   assert.ok(seen.some((x) => x.startsWith('POST https://storage.test/storage/v1/object/launch-metadata/coin-logos/')));
   await assert.rejects(s.put('../../etc', picture), LogoRefused);
 });
+
+test('★ the small copy at coin-logos/64/<address>, and bytes that are not the type they claim are refused', async () => {
+  const seen: string[] = [];
+  const s = store(PNG, seen);
+  const address = 'So1aNaCoinMint1111111111111111111111111pump'.slice(0, 44);
+  await s.put(address, { bytes: PNG, type: 'image/png' }, 'small');
+  assert.deepEqual(seen, [`POST https://storage.test/storage/v1/object/launch-metadata/coin-logos/64/${address}`]);
+  await assert.rejects(s.put(address, { bytes: SVG, type: 'image/png' }), LogoRefused);
+  assert.equal(s.ownCopyUrl(address), `https://storage.test/storage/v1/object/public/launch-metadata/coin-logos/${address}`);
+});

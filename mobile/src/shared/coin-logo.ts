@@ -95,13 +95,19 @@ export const LAUNCHPAD_IMAGE = 'https://images.pump.fun/coin-image';
 const LAUNCHPAD_SIZE = '256x256';
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
+/** Our small copies' folder under the base, for the lists (services/project/src/logo-sizes.ts). */
+const SMALL_FOLDER = '64';
+
 /**
- * The pictures to try, in order: our copy (when storage is configured), the launchpad's copy (its
- * own coins only), then the coin's own picture through its gateway chain.
+ * The pictures to try, in order: our copy (when storage is configured) — for a list's `small`
+ * disc the 64-pixel copy first, then the 256-pixel one at the plain path, which every logo stored
+ * before the two sizes still only has — the launchpad's copy (its own coins only), then the coin's
+ * own picture through its gateway chain.
  */
-export function logoSources(address: string | null, imageUrl: string | null, base: string): readonly string[] {
+export function logoSources(address: string | null, imageUrl: string | null, base: string, small = false): readonly string[] {
   const out: string[] = [];
   const valid = address !== null && ADDRESS.test(address);
+  if (base !== '' && valid && small) out.push(`${base}/${SMALL_FOLDER}/${address}`);
   if (base !== '' && valid) out.push(`${base}/${address}`);
   if (valid && /pump$/.test(address)) out.push(`${LAUNCHPAD_IMAGE}/${address}?variant=${LAUNCHPAD_SIZE}`);
   if (imageUrl !== null && imageUrl !== '') for (const u of pictureChain(imageUrl)) if (!out.includes(u)) out.push(u);

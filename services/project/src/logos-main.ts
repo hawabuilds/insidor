@@ -1,6 +1,6 @@
 /**
- * THE COIN-LOGO MIRROR, run once: find the coins whose logo is not in our storage yet (the ones on
- * screen first, then a slice of every other coin we hold), copy each one's picture there, record
+ * THE COIN-LOGO MIRROR, run once: find the coins the app shows whose logo is not in our storage
+ * yet (only those: coin-logos.ts says which), copy each one's picture there, record
  * the outcome and, for a coin left as a letter, why; then copy the profile pictures of the posters
  * on the feeds the same way (poster-pics.ts); exit. Scheduled every two minutes by
  * tools/railway-start.mjs beside the board's projector.
@@ -27,6 +27,7 @@ import { asDb, createPool, DB_ROLE } from '@insidor/store';
 import { launchpadPicture, metadataPicture, pictureUrls } from '@insidor/venue-solana-pumpfun';
 
 import { MAX_LOGO_BYTES, mirrorPass } from './coin-logos.ts';
+import { logoSizes } from './logo-sizes.ts';
 import { MAX_POSTER_BYTES, posterPass } from './poster-pics.ts';
 
 /** One market call is abandoned after this long. */
@@ -62,7 +63,13 @@ async function main(): Promise<void> {
       venuePicture: (address) => launchpadPicture(address, documents),
       marketImages: async (addresses) => new Map([...(await market.profiles(addresses))].map(([a, p]) => [a, p.imageUrl])),
       pictureUrls,
-      copy: async (address, source) => store.put(address, await store.download(source)),
+      /* The small copy first: if either write fails, the path existing references load is untouched. */
+      copy: async (address, source) => {
+        const { full, small } = await logoSizes((await store.download(source)).bytes);
+        await store.put(address, small, 'small');
+        await store.put(address, full, 'full');
+      },
+      ownCopyUrl: (address) => store.ownCopyUrl(address),
       log,
     });
     console.log(JSON.stringify({ level: 'info', msg: 'coin logos mirrored', ...result }));

@@ -52,7 +52,7 @@ export function OlderCoinsLine({ post, now }: { post: RisingPost; now: Millis })
           href={hrefFor({ screen: 'token', coinId: olderCoinId(only) })}
           onClick={stop}
         >
-          <CoinLogo address={only.address} ticker={only.ticker ?? only.name} size={22} />
+          <CoinLogo small address={only.address} ticker={only.ticker ?? only.name} size={22} />
           <span className={styles['text']}>
             <span className={styles['line']}>{line}</span>
             <span className={styles['facts']}>{olderFacts(only, now).join(', ')}</span>
@@ -62,7 +62,7 @@ export function OlderCoinsLine({ post, now }: { post: RisingPost; now: Millis })
         <div className={styles['several']}>
           <span className={styles['stack']} aria-hidden="true">
             {post.runningOlder.slice(0, STACKED).map((c) => (
-              <span key={c.address} className={styles['stackItem']}><CoinLogo address={c.address} ticker={c.ticker ?? c.name} size={22} /></span>
+              <span key={c.address} className={styles['stackItem']}><CoinLogo small address={c.address} ticker={c.ticker ?? c.name} size={22} /></span>
             ))}
           </span>
           <span className={`${styles['line']} ${styles['text']}`}>{line}</span>
@@ -81,7 +81,7 @@ export function OlderCoinsList({ coins, now, onClose }: { coins: readonly OlderC
       <div className={styles['list']}>
         {coins.map((c) => (
           <button key={c.address} type="button" className={styles['row']} onClick={() => open(c)}>
-            <CoinLogo address={c.address} ticker={c.ticker ?? c.name} size={32} />
+            <CoinLogo small address={c.address} ticker={c.ticker ?? c.name} size={32} />
             <span className={styles['text']}>
               <span className={styles['ticker']}>{olderCoinLabel(c)}</span>
               {c.name !== null && c.ticker !== null ? <span className={styles['name']}>{c.name}</span> : null}

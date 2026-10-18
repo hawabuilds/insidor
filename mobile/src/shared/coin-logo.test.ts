@@ -14,6 +14,11 @@ test('★ our copy first, built from the address; then the coin\'s own picture',
   assert.deepEqual(logoSources(A, 'https://gw.example/ipfs/x', 'https://store.example/coin-logos'), ['https://store.example/coin-logos/' + A, 'https://gw.example/ipfs/x']);
 });
 
+test('★ a list\'s small disc asks for the 64-pixel copy first, then the plain path a logo stored before the two sizes still has', () => {
+  assert.deepEqual(logoSources(A, null, 'https://store.example/coin-logos', true), ['https://store.example/coin-logos/64/' + A, 'https://store.example/coin-logos/' + A]);
+  assert.deepEqual(logoSources(A, null, '', true), []);
+});
+
 test('without storage configured, or without an address, only the coin\'s own picture', () => {
   assert.deepEqual(logoSources(A, 'https://gw.example/ipfs/x', ''), ['https://gw.example/ipfs/x']);
   assert.deepEqual(logoSources(null, null, 'https://store.example'), []);

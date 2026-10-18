@@ -341,7 +341,7 @@ function CoinBar({ state, coins, onBuy, onOpen, onAll, onCreate }: {
             <div className={styles['barCoin']} role="button" tabIndex={0} onClick={() => onOpen(face)} onKeyDown={(e) => {
               if (e.key === 'Enter') onOpen(face);
             }}>
-              <CoinLogo address={face.address} ticker={face.ticker ?? face.name} imageUrl={face.imageUrl} size={48} />
+              <CoinLogo small address={face.address} ticker={face.ticker ?? face.name} imageUrl={face.imageUrl} size={48} />
               <span className={styles['barText']}>
                 <span className={styles['barTop']}>
                   <b>{tickerText(face.ticker ?? face.name ?? face.address.slice(0, 4))}</b>
