@@ -1,6 +1,6 @@
 /**
- * The quick frame's two decisions: when it runs (something changed, the answers have settled, not
- * too soon after the last), and what For You becomes (the committed list with the changed posts
+ * The quick frame's two decisions: when it runs (something changed, and either every yes has its kind
+ * answer or the answers have settled, not too soon after the last), and what For You becomes (the committed list with the changed posts
  * put in, re-placed or taken off, newest first, every unchanged card kept as it was).
  */
 
@@ -11,7 +11,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
 import { mergeForYou, quickDue, type QuickProbe } from './quick-frame.ts';
 
-const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000 } } };
+const P = { ...DEFAULT_POLICY, rising: { ...DEFAULT_POLICY.rising, quickFrame: { on: true, checkEveryMs: 5_000, minGapMs: 20_000, settleMs: 10_000, kindsInSkipsWait: true } } };
 const NOW = 1_800_000_000_000;
 const probe = (answerId: number, answerAgoMs: number | null, linkAtMs: number | null = null, callAtMs: number | null = null): QuickProbe => ({ answerId, atMs: NOW, answerAtMs: answerAgoMs === null ? null : NOW - answerAgoMs, linkAtMs, callAtMs });
 
@@ -22,6 +22,17 @@ test('a new answer, settled, past the gap: a quick frame is due', () => {
 
 test('★ answers still arriving: not yet — a pass files its kind answers after its yeses', () => {
   assert.equal(quickDue({ answerId: 10, atMs: NOW - 60_000 }, null, probe(11, 3_000), NOW, P), false);
+});
+
+test('★ every yes since the cursor has its kind answer: due now, inside the gap and before the settle', () => {
+  const kinds = (yeses: number, awaitingKind: number): QuickProbe => ({ ...probe(11, 1_000), kinds: { yeses, awaitingKind } });
+  assert.equal(quickDue({ answerId: 10, atMs: NOW - 60_000 }, NOW - 5_000, kinds(1, 0), NOW, P), true);
+  assert.equal(quickDue({ answerId: 10, atMs: NOW - 60_000 }, NOW - 5_000, kinds(2, 1), NOW, P), false, 'one yes still waits for its kind: the settle and the gap hold');
+  assert.equal(quickDue({ answerId: 10, atMs: NOW - 60_000 }, NOW - 5_000, kinds(0, 0), NOW, P), false, 'only noes: nothing to show at once');
+  assert.equal(quickDue({ answerId: 10, atMs: NOW - 60_000 }, NOW - 5_000, { ...probe(11, 1_000), kinds: null }, NOW, P), false, 'the kinds could not be read: the settle holds');
+  const off = { ...P, rising: { ...P.rising, quickFrame: { ...P.rising.quickFrame, kindsInSkipsWait: false } } };
+  assert.equal(quickDue({ answerId: 10, atMs: NOW - 60_000 }, NOW - 5_000, kinds(1, 0), NOW, off), false, 'switched off: the settle and the gap as before');
+  assert.equal(quickDue({ answerId: 11, atMs: NOW - 60_000 }, NOW - 5_000, kinds(1, 0), NOW, P), false, 'nothing new past the cursor');
 });
 
 test('nothing new, too soon after the last, no cursor yet, or switched off: not due', () => {

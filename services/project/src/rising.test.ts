@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import { clearsReachBar } from '@insidor/core';
 
-import { barReadings, postCoins, projectRisingPost, withoutTrailingShortLinks } from './rising.ts';
+import { barReadings, postCoins, projectRisingPost, withoutTrailingShortLinks, withVouchingCoin, writeRising } from './rising.ts';
 import type { WireCoin, WireCoinLink } from './wire.ts';
 
 const ROW = {
@@ -215,4 +215,48 @@ test("the views bars: measured readings only, or every readable count with risin
   /* A reading loaded without its count keeps its measured level either way. */
   const { count: _drop, ...noCount } = readings[1]!;
   assert.deepEqual(barReadings([noCount], on).map((r) => r.reach), [13_116]);
+});
+
+test('★ the coin that brought a post in is on its list, never its proven coin and never with the weighing\'s facts', () => {
+  /* A search that found nothing: the card lists the one coin, "See 1 coin", not "No coin yet". */
+  const alone = withVouchingCoin({ coins: [], more: false }, 'V1', undefined);
+  assert.deepEqual(alone, { coins: ['V1'], more: false });
+  const card = postCoins(undefined, alone ?? null);
+  assert.deepEqual(card.coins, { kind: 'unsure', claimCount: 1 });
+  assert.deepEqual(card.sameName, ['V1']);
+  /* A search not finished, or given up: the same one coin. */
+  assert.deepEqual(withVouchingCoin(undefined, 'V1', undefined), { coins: ['V1'], more: false });
+  assert.deepEqual(withVouchingCoin({ gaveUp: true }, 'V1', undefined), { coins: ['V1'], more: false });
+  /* Weighed coins first in their order, then the coin that brought it in, then the rest. */
+  const evidence = new Map([['B2', { linksPost: null, samePicture: true, launchedAfterMs: 60_000 }]]);
+  const weighed = withVouchingCoin({ coins: ['A1', 'B2'], more: false, match: { kind: 'unsure', order: ['B2'], evidence } }, 'V1', undefined);
+  assert.deepEqual(postCoins(undefined, weighed ?? null).sameName, ['B2', 'V1', 'A1']);
+  assert.equal(weighed !== undefined && 'coins' in weighed && weighed.match?.kind === 'unsure' && weighed.match.evidence.has('V1'), false, 'no facts of its own: never "Links this post"');
+  /* A proven coin stays the card's coin; the coin that brought it in is listed after it. */
+  const one = { coinId: 'solana:B2', address: 'B2' } as unknown as WireCoin;
+  const matched = withVouchingCoin({ coins: ['A1'], more: false, match: { kind: 'matched', coin: one, evidence: { linksPost: true, samePicture: null, launchedAfterMs: 1 } } }, 'V1', undefined);
+  const m = postCoins(undefined, matched ?? null);
+  assert.equal(m.coins.kind === 'matched' && m.coins.coin.address, 'B2');
+  assert.deepEqual(m.sameName, ['B2', 'V1', 'A1']);
+});
+
+test('the coin that brought a post in is left alone when it is listed or proven already, and kept off when the owner called it wrong', () => {
+  const listed = { coins: ['A1', 'V1'], more: false };
+  assert.equal(withVouchingCoin(listed, 'V1', undefined), listed);
+  const proven = { coins: [], more: false, match: { kind: 'matched' as const, coin: { address: 'V1' } as unknown as WireCoin, evidence: { linksPost: true, samePicture: null, launchedAfterMs: 1 } } };
+  assert.equal(withVouchingCoin(proven, 'V1', undefined), proven);
+  assert.deepEqual(withVouchingCoin({ coins: [], more: false }, 'V1', { wrong: new Set(['V1']), none: false }), { coins: [], more: false });
+  assert.equal(withVouchingCoin(undefined, 'V1', { wrong: new Set(), none: true }), undefined, '"No coin is from this": nothing is listed');
+});
+
+test("★ a feed's rows are written in one statement, a post listed twice in its last place", async () => {
+  const asked: { sql: string; params: readonly unknown[] }[] = [];
+  const db = { query: async (sql: string, params: readonly unknown[] = []) => (asked.push({ sql, params }), sql.includes('select tick') ? [{ tick: '4' }] : []) };
+  const post = (id: string) => ({ id }) as unknown as Parameters<typeof writeRising>[2][number];
+  const n = await writeRising(db as never, 'fyp', [post('a'), post('b'), post('a')]);
+  assert.equal(n, 3);
+  const inserts = asked.filter((q) => q.sql.includes('insert into public.rising_row'));
+  assert.equal(inserts.length, 1);
+  assert.deepEqual(inserts[0]?.params.slice(0, 3), ['fyp', ['a', 'b'], [2, 1]]);
+  assert.deepEqual(asked.find((q) => q.sql.includes('rising_view ('))?.params, ['fyp', 5], 'the tick moves on by one');
 });

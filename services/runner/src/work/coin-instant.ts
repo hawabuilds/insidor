@@ -20,6 +20,17 @@
  * next pass (five seconds later) or for the scoring pass, whichever comes first. A dry run, a dormant
  * judge or a spent line answers nothing, exactly as in the scoring pass: no answer is not a no.
  *
+ * ★ A VIDEO THE JUDGE CANNOT LOOK AT YET IS NOT ASKED EVERY PASS (`frameTries`). A short video whose
+ * frame the judge could not read comes back unanswered, and was queued again five seconds later:
+ * 244 times on 2026-10-17, each time taking one of the minute's places from a post it could answer.
+ * Now a video post is asked at most `frameTries` times, evenly over `frameTriesOverMs`; while it
+ * waits for its next try it takes no place, and after the last it is parked — said once, in the log —
+ * until its frame is a different picture (a later read of the post brought a new one), when it is
+ * tried afresh. The count is this process's own: a restart gives each waiting video its tries again,
+ * which is at most `frameTries` more asks. A post the judge answered leaves the queue by itself.
+ * Any unanswered video counts, an outage's too: after a long outage a video waits for the scoring
+ * pass, which asks it as before, rather than for this step.
+ *
  * What breaks if changed carelessly: the queue must only ever hold posts the coin rule picked. Handed
  * the open queue, `backfilled` would wave every post past the view bar and the judge's line with it.
  */
@@ -28,6 +39,8 @@ import type { Item, ItemId, Millis } from '@insidor/contracts';
 import type { Policy } from '@insidor/contracts/policy.ts';
 import type { CoinVouchRow, PgFinderRepo, PgItemRepo } from '@insidor/store';
 import { coinVouches } from '@insidor/core';
+
+import { frameUriFor } from '@insidor/judge-anthropic';
 
 import type { Logger } from '../log.ts';
 import type { ScoringDeps, ScoringResult } from './score-posts.ts';
@@ -70,27 +83,79 @@ export function picked(rows: readonly CoinVouchRow[], room: number, p: Policy): 
   return rows.filter((r) => coinVouches(r, p)).slice(0, Math.max(0, room)).map((r) => r.itemId);
 }
 
+/** A video post's tries so far: how many, the first and the last, the frame it was tried with, and whether it is parked. */
+export interface FrameTries {
+  readonly tries: number;
+  readonly firstAtMs: number;
+  readonly lastAtMs: number;
+  readonly frame: string | null;
+  readonly parked: boolean;
+}
+
+/** The frame the judge would be shown: the post's video member's picture, null when it has none to show; undefined for a post with no video. */
+export const frameOf = (item: Item): string | null | undefined => frameUriFor({ media: item.media } as Parameters<typeof frameUriFor>[0]);
+
+/**
+ * Whether a post may take a place in this pass, by its tries (the header's `frameTries`): a post that
+ * is no video, or a video never tried, may; a video waiting out the gap before its next try may not;
+ * a parked one may only once its frame is a different picture. Returns the tries to keep: null when
+ * they start afresh.
+ */
+export function mayTry(prior: FrameTries | undefined, frame: string | null | undefined, nowMs: number, p: Policy): { readonly ok: boolean; readonly keep: FrameTries | null } {
+  if (frame === undefined || prior === undefined) return { ok: true, keep: prior ?? null };
+  const c = p.finders.coinLinks.instant;
+  if (prior.parked) return frame !== prior.frame ? { ok: true, keep: null } : { ok: false, keep: prior };
+  const gapMs = c.frameTriesOverMs / Math.max(1, c.frameTries - 1);
+  return { ok: nowMs - prior.lastAtMs >= gapMs, keep: prior };
+}
+
+/** A video's tries after one more ask: parked at the last try, or once the tries' span is over. */
+export function triedOnce(prior: FrameTries | null, frame: string | null, nowMs: number, p: Policy): FrameTries {
+  const c = p.finders.coinLinks.instant;
+  const tries = (prior?.tries ?? 0) + 1;
+  const firstAtMs = prior?.firstAtMs ?? nowMs;
+  return { tries, firstAtMs, lastAtMs: nowMs, frame, parked: tries >= c.frameTries || nowMs - firstAtMs >= c.frameTriesOverMs };
+}
+
 /** One instant judge, holding its own count of the last minute's posts. */
 export function instantJudge(deps: InstantDeps): () => Promise<InstantResult> {
   let recent: number[] = [];
+  /* Each video post's tries (the header's `frameTries`), kept while the post can come back to this queue. */
+  const tried = new Map<string, FrameTries>();
   return async () => {
     const c = deps.policy.finders.coinLinks;
     if (!c.on || !c.instant.on) return NONE;
     const now = deps.now();
     recent = recent.filter((at) => now - at < MINUTE_MS);
+    /* Past the lookback and the tries' span, a post no longer comes back to this queue: forgotten. */
+    for (const [id, t] of tried) if (now - t.lastAtMs > c.instant.lookbackMs + c.instant.frameTriesOverMs) tried.delete(id);
     const room = c.instant.perMinute - recent.length;
     if (room <= 0) return NONE;
     const rows = await deps.finders.coinNamedUnjudged((now - c.instant.lookbackMs) as Millis, room * PREFETCH_FACTOR);
-    const ids = picked(rows, room, deps.policy);
+    /* Every post the rule picks, then those whose tries allow a place now, up to the room. */
+    const ids = picked(rows, rows.length, deps.policy);
     if (ids.length === 0) return NONE;
     const held = await deps.items.byIds(ids.map((id) => id as ItemId));
-    const queue = ids.flatMap((id) => {
+    const queue: Item[] = [];
+    for (const id of ids) {
       const item = held.get(id as ItemId);
-      return item === undefined ? [] : [item];
-    });
+      if (item === undefined || queue.length >= room) continue;
+      const verdict = mayTry(tried.get(id), frameOf(item), now, deps.policy);
+      if (verdict.keep === null) tried.delete(id);
+      if (verdict.ok) queue.push(item);
+    }
     if (queue.length === 0) return NONE;
     for (const _ of queue) recent.push(now);
     const result = await deps.score(queue);
+    for (const item of queue) {
+      const frame = frameOf(item);
+      if (frame === undefined) continue;
+      const id = String(item.itemId);
+      const next = triedOnce(tried.get(id) ?? null, frame, now, deps.policy);
+      tried.set(id, next);
+      /* Said once, when it parks; an answered post has left the queue and never comes back to park. */
+      if (next.parked) deps.log.info('a video the judge could not look at yet is parked until its frame changes', { post: id, tries: next.tries, overS: Math.round((now - next.firstAtMs) / 1000) });
+    }
     const launches = new Map(rows.map((r) => [r.itemId, r.firstCoinAtMs] as const));
     deps.log.info('coin-named posts judged at once', {
       queued: queue.length,

@@ -1,7 +1,9 @@
 /**
  * The instant judge, against stand-ins: only posts the coin rule picks are judged, at most
  * `perMinute` a minute; its queue hands the scoring pass exactly those posts, past the view bar;
- * switched off it reads nothing.
+ * a video the judge cannot look at is asked at most `frameTries` times over `frameTriesOverMs`, takes
+ * no place while it waits or once parked, and is tried afresh when its frame changes; switched off it
+ * reads nothing.
  */
 
 import assert from 'node:assert/strict';
@@ -12,7 +14,7 @@ import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
 import type { CoinVouchRow } from '@insidor/store';
 
 import type { Logger } from '../log.ts';
-import { instantItems, instantJudge, picked } from './coin-instant.ts';
+import { instantItems, instantJudge, mayTry, picked, triedOnce } from './coin-instant.ts';
 import { scorePosts, type ScoringResult } from './score-posts.ts';
 
 const NOW = 1_800_000_000_000 as Millis;
@@ -21,7 +23,7 @@ const quiet: Logger = { info: () => {}, warn: () => {}, error: () => {}, child: 
 const P: Policy = {
   ...DEFAULT_POLICY,
   rising: { ...DEFAULT_POLICY.rising, coinLinked: { on: true, maxPostAgeAtLaunchMs: 6 * 60 * MIN, minApprovals: 5_000 } },
-  finders: { ...DEFAULT_POLICY.finders, coinLinks: { ...DEFAULT_POLICY.finders.coinLinks, on: true, instant: { on: true, perMinute: 2, lookbackMs: 10 * MIN } } },
+  finders: { ...DEFAULT_POLICY.finders, coinLinks: { ...DEFAULT_POLICY.finders.coinLinks, on: true, instant: { on: true, perMinute: 2, lookbackMs: 10 * MIN, frameTries: 5, frameTriesOverMs: 10 * MIN } } },
 };
 
 const row = (id: string, approvals: number | null, launchAfterMin = 5): CoinVouchRow => ({
@@ -30,15 +32,17 @@ const row = (id: string, approvals: number | null, launchAfterMin = 5): CoinVouc
   firstCoinAtMs: (NOW - 10 * MIN + launchAfterMin * MIN) as Millis,
   approvals,
 });
-const item = (id: string): Item => ({ itemId: id as ItemId }) as unknown as Item;
+const item = (id: string): Item => ({ itemId: id as ItemId, media: [] }) as unknown as Item;
+/** A short video whose frame is this picture. */
+const video = (id: string, frame: string): Item => ({ itemId: id as ItemId, media: [{ kind: 'image', uri: frame, width: 720, height: 720, durationMs: 30_000 }] }) as unknown as Item;
 const scored = (n: number): ScoringResult => ({ queued: n, scored: n, copied: 0, waiting: 0, wouldSpendUsd: 0, spentUsd: 0.0003 });
 
-function judgeOver(rows: readonly CoinVouchRow[], policy = P, clock = { at: NOW }) {
+function judgeOver(rows: readonly CoinVouchRow[], policy = P, clock = { at: NOW }, items: Map<string, Item> = new Map()) {
   const queues: string[][] = [];
   let reads = 0;
   const run = instantJudge({
     finders: { coinNamedUnjudged: async () => ((reads += 1), rows) },
-    items: { byIds: async (ids) => new Map(ids.map((id) => [id, item(String(id))] as const)) },
+    items: { byIds: async (ids) => new Map(ids.map((id) => [id, items.get(String(id)) ?? item(String(id))] as const)) },
     score: async (queue) => (queues.push(queue.map((i) => String(i.itemId))), scored(queue.length)),
     policy,
     log: quiet,
@@ -116,4 +120,56 @@ test('★ end to end with the scoring pass: a coin-named post under the view bar
   });
   assert.equal(result.scored, 1, '900 views is far under the bar, and it is judged anyway');
   assert.deepEqual(asked, ['post', 'post-kind'], 'the yes is followed by the kind question');
+});
+
+test('★ a video the judge cannot look at: five tries over ten minutes, no place taken between them, then parked', async () => {
+  const clock = { at: NOW };
+  const items = new Map([['tiktok:v', video('tiktok:v', 'https://cdn/cover.heic')]]);
+  /* Never answered: the same post comes back every pass, beside a text post that is answered once. */
+  const j = judgeOver([row('tiktok:v', 9_000), row('x:t', 9_000)], P, clock, items);
+  await j.run();
+  assert.deepEqual(j.queues, [['tiktok:v', 'x:t']]);
+  /* Every five seconds for twelve minutes, a minute's room each time. */
+  const passes: string[][] = [];
+  for (let t = 5_000; t <= 12 * MIN; t += 5_000) {
+    clock.at = NOW + t;
+    const before = j.queues.length;
+    await j.run();
+    if (j.queues.length > before) passes.push(j.queues.at(-1) ?? []);
+  }
+  const videoTries = 1 + passes.filter((q) => q.includes('tiktok:v')).length;
+  assert.equal(videoTries, 5, 'five asks in all, the first included');
+  assert.ok(passes.every((q) => q.length <= 2));
+});
+
+test('a parked video is tried afresh once a later read brings a different frame', async () => {
+  const clock = { at: NOW };
+  const items = new Map([['tiktok:v', video('tiktok:v', 'https://cdn/a.heic')]]);
+  const j = judgeOver([row('tiktok:v', 9_000)], P, clock, items);
+  for (let t = 0; t <= 11 * MIN; t += 5_000) {
+    clock.at = NOW + t;
+    await j.run();
+  }
+  const parkedAt = j.queues.length;
+  assert.equal(parkedAt, 5);
+  clock.at += 5_000;
+  await j.run();
+  assert.equal(j.queues.length, parkedAt, 'parked: the same frame is not asked again');
+  items.set('tiktok:v', video('tiktok:v', 'https://cdn/b.jpeg'));
+  clock.at += 5_000;
+  await j.run();
+  assert.equal(j.queues.length, parkedAt + 1, 'a new frame: asked again');
+});
+
+test('the tries decide by the clock and the frame, and a post with no video is never held back', () => {
+  assert.deepEqual(mayTry(undefined, 'f', NOW, P), { ok: true, keep: null });
+  const one = triedOnce(null, 'f', NOW, P);
+  assert.equal(mayTry(one, 'f', NOW + MIN, P).ok, false, 'inside the gap: two and a half minutes for five tries over ten');
+  assert.equal(mayTry(one, 'f', NOW + 2.5 * MIN, P).ok, true);
+  assert.equal(mayTry(one, undefined, NOW + 1, P).ok, true, 'no video member: the tries do not apply');
+  let t = one;
+  for (let i = 1; i < 5; i++) t = triedOnce(t, 'f', NOW + i * 2.5 * MIN, P);
+  assert.equal(t.parked, true);
+  assert.deepEqual(mayTry(t, 'f', NOW + 60 * MIN, P).ok, false);
+  assert.deepEqual(mayTry(t, 'g', NOW + 60 * MIN, P), { ok: true, keep: null });
 });

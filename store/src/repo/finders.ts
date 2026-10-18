@@ -27,6 +27,8 @@ export interface CoinVouchRow {
   readonly postedAtMs: Millis | null;
   readonly firstCoinAtMs: Millis | null;
   readonly approvals: number | null;
+  /** That first coin's address (the earliest launched; the lower address on a tie): the coin that brought the post in. Absent from rows built by hand. */
+  readonly firstCoinAddress?: string | null;
 }
 
 interface VouchRow {
@@ -34,13 +36,14 @@ interface VouchRow {
   posted_at: Date | string | null;
   approvals: number | string | null;
   first_coin_at: Date | string | null;
+  first_coin_address: string | null;
 }
 
-const VOUCH_SELECT = `select i.item_id, i.posted_at, (i.counters -> 'approval' ->> 'value')::double precision as approvals, c.first_coin_at`;
+const VOUCH_SELECT = `select i.item_id, i.posted_at, (i.counters -> 'approval' ->> 'value')::double precision as approvals, c.first_coin_at, c.first_coin_address`;
 
 /** The first launch among the observed coins naming post `i`; a post none names is dropped. */
 const vouchFirstCoin = (originsParam: string): string => `join lateral (
-             select min(l.minted_at) as first_coin_at
+             select min(l.minted_at) as first_coin_at, (array_agg(l.address order by l.minted_at, l.address))[1] as first_coin_address
                from internal.coin_post_link l
                join public.asset a on a.asset_key = l.asset_key
               where l.source = i.source and l.source_item_id = i.source_item_id
@@ -52,6 +55,7 @@ const toVouch = (r: VouchRow): CoinVouchRow => ({
   postedAtMs: toMillis(r.posted_at),
   firstCoinAtMs: toMillis(r.first_coin_at),
   approvals: r.approvals === null ? null : Number(r.approvals),
+  firstCoinAddress: r.first_coin_address,
 });
 
 const MISSING_TABLE = '42P01';

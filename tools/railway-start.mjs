@@ -13,8 +13,8 @@
  * ★ THE PROJECTOR IS A SCHEDULE, NOT A PROCESS. `project` runs the one-shot jobs (`db.mjs
  * project` every minute; coin logos every two; `market`, `pairs` and the source indicator every five; `label` hourly; the
  * daily recall check and the twice-daily judge re-tune, both detached; the namer's watch every ten
- * minutes; and between them, when a judge's answer has landed, the quick For You frame), one at a time,
- * and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
+ * minutes; and, when a judge's answer has landed, the quick For You frame) in three lanes — the full
+ * frame, the quick frame, everything else — each one job at a time, and answers /health on PORT: 200 while the board was rebuilt in the last five minutes, 503
  * otherwise — so Railway restarts it when the board stops moving, not just when it crashes.
  *
  * Nothing here holds a setting of its own: every value is the service's environment, set by the
@@ -52,12 +52,24 @@ if (service in MAIN) {
   for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => child.kill(signal));
   child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
 } else if (service === 'project') {
+  /* ★ THREE LANES, EACH ONE AT A TIME (the owner, 2026-10-18: "don't let a full rebuild block it").
+     Until then every job here ran in one queue, so the full frame, meant every minute, waited behind
+     whatever else was due: the market read (about 60 s), the logos (about 50 s, every two minutes),
+     the pairs (20 s), the re-tune check (60 s) and, once an hour, the labels (15 minutes) — full
+     frames came 263 s apart at the median and up to 21 minutes apart, and the quick frame waited in
+     the same queue. Now:
+       frames  the full frame, every minute from its last start (it takes about two of them);
+       quick   the quick frame, asked every second (quick-wake.ts), beside a running full frame —
+               the two take For You's write lock only to write (services/project for-you-lock.ts);
+       jobs    everything else, in the old order and on the old clocks.
+     Three children at most at any moment, none of them sharing a table they both write but For You,
+     which the lock covers. */
   /* `sources` runs only the indicator's projector, not `db.mjs sources`: that command also
      DECLARES the sources from its own environment, and this service holds no platform key —
      every five minutes it would overwrite the runner's declaration with "dormant". On Railway
      the runner, which holds the keys, declares at boot (declare-sources.ts explains the split). */
+  const FRAME = { name: 'project', everyMs: 60_000, args: ['tools/db.mjs', 'project'] };
   const JOBS = [
-    { name: 'project', everyMs: 60_000, args: ['tools/db.mjs', 'project'] },
     { name: 'market', everyMs: 300_000, args: ['tools/db.mjs', 'market'] },
     { name: 'pairs', everyMs: 300_000, args: ['tools/db.mjs', 'pairs'] },
     { name: 'sources', everyMs: 300_000, args: ['services/project/src/sources-main.ts'] },
@@ -76,23 +88,39 @@ if (service in MAIN) {
        Wrong coin / No coin calls on them, and its veto if wrong coins go up. Free; database only. */
     { name: 'name-watch', everyMs: 600_000, args: ['tools/name-watch.ts', 'run'] },
   ];
+  /* A quick frame that has not finished in this long is stopped: it is seconds of work, and a hung
+     one would stop this lane until the service restarts (the health check watches the full frame). */
+  const QUICK_KILL_AFTER_MS = 120_000;
   const last = new Map();
-  const due = (job, now) => now - (last.get(job.name)?.at ?? 0) >= job.everyMs;
-  const once = (job) =>
+  const started = new Map();
+  const due = (job, now) => now - (started.get(job.name) ?? 0) >= job.everyMs;
+  const once = (job, killAfterMs = null) =>
     new Promise((resolve) => {
       const child = run(job.args);
-      child.on('exit', (code) => resolve(code === 0));
+      const timer = killAfterMs === null ? null : setTimeout(() => child.kill('SIGKILL'), killAfterMs);
+      child.on('exit', (code) => {
+        if (timer !== null) clearTimeout(timer);
+        resolve(code === 0);
+      });
     });
-  /* ★ THE QUICK FRAME (services/project/src/quick-wake.ts, Policy.rising.quickFrame): asked between
-     jobs and on every tick, so a judge's answer reaches For You without waiting for the minute. It is
-     one more job in this one-at-a-time loop, so it never runs beside a frame; the cursor is read just
-     before each full frame. Without it (the module fails to load) the full frame runs as before. */
+  const ran = (job, at, ok) => {
+    last.set(job.name, { at: Date.now(), ok });
+    console.log(JSON.stringify({ level: ok ? 'info' : 'error', msg: 'job ran', job: job.name, ok, ms: Date.now() - at }));
+  };
+  const runJob = async (job) => {
+    const at = Date.now();
+    started.set(job.name, at);
+    ran(job, at, await once(job));
+  };
+  /* ★ THE QUICK FRAME (services/project/src/quick-wake.ts, Policy.rising.quickFrame): its own lane,
+     asked every second, so a judge's answer reaches For You without waiting for the full frame or
+     any other job. Without it (the module fails to load) the full frame runs as before. */
   const quick = await import('../services/project/src/quick-wake.ts')
     .then((m) =>
       m.openQuickWake(
         process.env,
         async (from) => {
-          const ok = await once({ args: ['services/project/src/quick-main.ts', String(from.answerId), String(from.atMs)] });
+          const ok = await once({ args: ['services/project/src/quick-main.ts', String(from.answerId), String(from.atMs)] }, QUICK_KILL_AFTER_MS);
           last.set('project-quick', { at: Date.now(), ok });
           return ok;
         },
@@ -105,19 +133,24 @@ if (service in MAIN) {
     });
   let stopping = false;
   for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => (stopping = true, process.exit(0)));
-  (async () => {
+  const tick = () => new Promise((r) => setTimeout(r, 1_000));
+  const lane = async (step) => {
     while (!stopping) {
-      for (const job of JOBS) {
-        await quick?.maybe();
-        if (!due(job, Date.now())) continue;
-        if (job.name === 'project') await quick?.mark();
-        const ok = await once(job);
-        last.set(job.name, { at: Date.now(), ok });
-        console.log(JSON.stringify({ level: ok ? 'info' : 'error', msg: 'job ran', job: job.name, ok }));
+      try {
+        await step();
+      } catch (e) {
+        console.log(JSON.stringify({ level: 'error', msg: 'project lane step failed', err: e instanceof Error ? e.message : String(e) }));
       }
-      await new Promise((r) => setTimeout(r, 1_000));
+      await tick();
     }
-  })();
+  };
+  void lane(async () => {
+    if (due(FRAME, Date.now())) await runJob(FRAME);
+  });
+  void lane(async () => {
+    for (const job of JOBS) if (due(job, Date.now())) await runJob(job);
+  });
+  if (quick !== null) void lane(() => quick.maybe());
   createServer((req, res) => {
     const board = last.get('project');
     const fresh = board !== undefined && board.ok && Date.now() - board.at < 300_000;
