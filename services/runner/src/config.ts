@@ -96,8 +96,9 @@ export type SupervisedStage = (typeof SUPERVISED_STAGES)[number];
    `early`: early judging (loops/early.ts), out of the discover pass; with HEARTBEAT=on, HEARTBEAT_SLUG_EARLY.
    `narratives`: the judge's passed posts regrouped into narratives (loops/narratives.ts).
    `coinmodel`: our own coin model scoring the posts the judge said no to (loops/coin-model.ts); with
-   HEARTBEAT=on, HEARTBEAT_SLUG_COINMODEL. */
-export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders', 'middle', 'readings', 'early', 'narratives', 'coinmodel'] as const;
+   HEARTBEAT=on, HEARTBEAT_SLUG_COINMODEL. `namesearch`: the narrative-name search
+   (loops/name-search.ts), with its own cap; with HEARTBEAT=on, HEARTBEAT_SLUG_NAMESEARCH. */
+export const SUPERVISED_TASKS = ['discover', 'universe', 'missed', 'refill', 'finders', 'middle', 'readings', 'early', 'narratives', 'coinmodel', 'namesearch'] as const;
 
 export type SupervisedTask = (typeof SUPERVISED_TASKS)[number];
 
