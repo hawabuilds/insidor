@@ -29,6 +29,7 @@ const ROWS: readonly { readonly key: AlertSwitch; readonly label: string; readon
   { key: 'storyCoins', label: 'Coin for this story', hint: 'A new FYP post on a story whose coin you confirmed.' },
   { key: 'watchedPosts', label: 'Watched posts', hint: 'A coin for a post you starred, the moment it launches or is found. Not held back by the hourly limit.' },
   { key: 'narratives', label: 'New narratives', hint: 'When a narrative reaches the board, and when one gets its first coin.' },
+  { key: 'starredFirstCoin', label: 'First coin for narratives you star', hint: 'When a narrative you starred gets its first coin. A tap opens the narrative.' },
   { key: 'coins', label: 'Coins for narratives you star', hint: 'When a coin is matched to a narrative you starred.' },
   { key: 'holdings', label: 'Your holdings', hint: 'When a coin you hold reaches a multiple of what you paid.' },
   { key: 'watchlist', label: 'Your watchlist', hint: 'When a coin of a narrative you watch reaches a multiple. Off to start: a watchlist is for browsing.' },

@@ -237,6 +237,11 @@ export function alertText(kind: AlertKind, f: Facts): { readonly title: string; 
       return { title: 'New narrative', body: s(f['title'], 'A new narrative is on the board.') };
     case 'narrative_coin':
       return { title: `${s(f['title'], 'A narrative')} has a coin`, body: `${ticker(f)} was matched to it.` };
+    case 'starred_first_coin': {
+      /* "Pancake the cat has its first coin: $PANCAKE" / "$12K MC. A narrative you starred." */
+      const mc = cap(f);
+      return { title: `${s(f['title'], 'A narrative you starred')} has its first coin: ${ticker(f)}`, body: `${mc === null ? '' : `${mc}. `}A narrative you starred.` };
+    }
     case 'coin_matched':
       return { title: `${ticker(f)} matched to a narrative you watch`, body: s(f['title'], 'A narrative you watch') };
     case 'supplier_warning': {

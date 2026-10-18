@@ -1,6 +1,9 @@
 /**
  * ALERTS FROM THE PIPELINE — Insidor's own, and the lead feature: a rising post, a new narrative
- * on the board, a narrative's first coin, and a coin matched to a narrative someone watches.
+ * on the board, a narrative's first coin, and a coin matched to a narrative someone watches. A
+ * starred narrative's first coin, on or off the board, is first-coin.ts's, run in the same pass; the
+ * people it told are left out of the board's two coin alerts for that narrative, so one coin is
+ * one push to them.
  *
  * ★ THE PROJECTION KEEPS NO HISTORY, SO WE KEEP WHAT WE ALERTED ON. Rising rows and coin links
  * are rewritten every frame (services/project), with no "first seen" time. So each check compares
@@ -36,8 +39,11 @@
 
 import type { AlertKind } from '@insidor/core';
 
+import { DEFAULT_POLICY, type NotifyPolicy } from '@insidor/contracts/policy.ts';
+
 import { coinFacts, type Quotes } from './coin-facts.ts';
 import { queue, type Db } from './deliver.ts';
+import { checkFirstCoins } from './first-coin.ts';
 import { posterPictures } from './faces.ts';
 import { lineCoin } from './post-watch.ts';
 import type { Facts } from './text.ts';
@@ -243,7 +249,10 @@ async function markSeen(db: Db, stream: string, keys: readonly string[]): Promis
   await db.query('insert into people.pipeline_seen (stream, key) select $1, unnest($2::text[]) on conflict do nothing', [stream, [...keys]]);
 }
 
-async function send(db: Db, proposed: readonly Proposed[], ownerWallets: readonly string[] = []): Promise<number> {
+/** The board's coin alerts about a narrative; `told` (first-coin.ts) leaves out who already heard of its first coin. */
+const BOARD_COIN_KINDS: readonly AlertKind[] = ['narrative_coin', 'coin_matched'];
+
+async function send(db: Db, proposed: readonly Proposed[], ownerWallets: readonly string[] = [], told: ReadonlyMap<string, ReadonlySet<string>> = new Map()): Promise<number> {
   if (proposed.length === 0) return 0;
   const everyone = await db.query<{ userId: string; wallet: string | null }>('select user_id as "userId", wallet from people.profile');
   let n = 0;
@@ -254,7 +263,9 @@ async function send(db: Db, proposed: readonly Proposed[], ownerWallets: readonl
       : a === 'owner' ? everyone.filter((e) => e.wallet !== null && ownerWallets.includes(e.wallet)).map((e) => e.userId)
       : 'notWatching' in a ? await notWatching(db, everyone.map((e) => e.userId), a.notWatching)
       : (await db.query<{ userId: string }>('select user_id as "userId" from people.watch where story_id = $1', [a.watchers])).map((w) => w.userId);
+    const heard = BOARD_COIN_KINDS.includes(p.kind) ? told.get(p.subject.split('|')[0] ?? '') : undefined;
     for (const userId of to) {
+      if (heard?.has(userId) === true) continue;
       await queue(db, { userId, kind: p.kind, subject: p.subject, rung: 0, facts: p.facts, href: p.href });
       n += 1;
     }
@@ -282,6 +293,8 @@ export interface PipelinePorts {
   readonly quotes?: Quotes;
   /** The owner's wallets (Policy.owner): "Your coin" on a story coin is his. */
   readonly ownerWallets?: readonly string[];
+  /** The alert policy (first-coin.ts's bound); the default policy's when absent. */
+  readonly policy?: NotifyPolicy;
 }
 
 async function listedCoins(db: Db, itemIds: readonly string[]): Promise<Map<string, ListedCoin>> {
@@ -355,10 +368,14 @@ export async function checkPipeline(db: Db, ports: PipelinePorts = {}): Promise<
   if (p.seeded) queued += await send(db, newPromoted(board, p.keys));
   await markSeen(db, 'promoted', [SEEDED, ...board.filter((s) => s.promoted).map((s) => s.storyId)]);
 
+  /* A starred narrative's first coin, on every narrative (first-coin.ts); who it told is left out of the board's own coin alerts below. */
+  const first = await checkFirstCoins(db, { policy: ports.policy ?? DEFAULT_POLICY.notify, ...(ports.quotes === undefined ? {} : { quotes: ports.quotes }) });
+  queued += first.queued;
+
   const c = await seenSet(db, 'story-coin');
   c.keys.delete(SEEDED);
   const events = coinEvents(board, c.keys);
-  if (c.seeded) queued += await send(db, events.proposed);
+  if (c.seeded) queued += await send(db, events.proposed, [], first.told);
   await markSeen(db, 'story-coin', [SEEDED, ...events.keys]);
 
   /* The owner's push list on For You posts: a coin found, a proven coin, a story's coin (see the header). */
