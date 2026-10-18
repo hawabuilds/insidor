@@ -57,7 +57,8 @@ import { TabBar } from './shared/ui/TabBar.tsx';
 const SCREENS = {
   /* In the order they are fetched ahead: the tabs first, then where a tap most often leads. */
   Search: later(() => import('./features/search/Search.tsx'), (m) => m.Search),
-  AlertsScreen: later(() => import('./features/alerts/AlertsScreen.tsx'), (m) => m.AlertsScreen),
+  /* The Feed tab: the people you follow's trades and comments (the alert rows it showed before are AlertsScreen.tsx's, no longer a tab). */
+  FollowingScreen: later(() => import('./features/following/FollowingScreen.tsx'), (m) => m.FollowingScreen),
   PortfolioScreen: later(() => import('./features/portfolio/PortfolioScreen.tsx'), (m) => m.PortfolioScreen),
   NarrativePage: later(() => import('./features/narrative/NarrativePage.tsx'), (m) => m.NarrativePage),
   TokenPage: later(() => import('./features/token/TokenPage.tsx'), (m) => m.TokenPage),
@@ -73,7 +74,7 @@ const SCREENS = {
 };
 const CreateCoin = SCREENS.CreateCoin.Component;
 const Learn = SCREENS.Learn.Component;
-const AlertsScreen = SCREENS.AlertsScreen.Component;
+const FollowingScreen = SCREENS.FollowingScreen.Component;
 const NotificationsScreen = SCREENS.NotificationsScreen.Component;
 const FollowList = SCREENS.FollowList.Component;
 const Leaderboard = SCREENS.Leaderboard.Component;
@@ -173,7 +174,7 @@ function Screen({ route, create, unread, onAlertsSeen, readUnread }: ScreenProps
     case 'learn':
       return <Learn />;
     case 'alerts':
-      return <AlertsScreen unread={unread} onRefreshed={readUnread} />;
+      return <FollowingScreen unread={unread} onRefreshed={readUnread} />;
     case 'notifications':
     case 'alert-settings':
       return <NotificationsScreen settings={route.screen === 'alert-settings'} onSeen={onAlertsSeen} />;
