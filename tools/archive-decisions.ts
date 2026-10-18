@@ -4,7 +4,7 @@
  * partition per UTC day and nothing ever dropped one, so it was 72% of the database's growth
  * (about 0.95 GB a day) and was about to fill the plan's 8 GB disk. The app never reads it.
  *
- * For each day whose partition ended more than `KEEP_DAYS` days ago, in order:
+ * For each day whose partition ended more than `KEEP_DAYS` days ago (1, the owner, 2026-10-18: "keep only 1 day in the database"), in order:
  *   1. every row is written as one JSON line, gzip-compressed, into parts of at most PART_BYTES
  *      (Storage refuses one upload over its file-size limit, so a day is several files plus a
  *      manifest naming them, their row counts and their SHA-256);
@@ -30,7 +30,7 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import { asDb, createPool, DB_ROLE } from '../store/src/index.ts';
 
 const BUCKET = 'decision-archive';
-const KEEP_DAYS_DEFAULT = 3;
+const KEEP_DAYS_DEFAULT = 1;
 const PART_BYTES = 40 * 1024 * 1024;
 const BATCH_ROWS = 5000;
 const DROP_TRIES = 20;
@@ -41,7 +41,7 @@ const arg = (name: string): string | null => {
 };
 const dry = process.argv.includes('--dry');
 const keepDays = Number(arg('keep-days') ?? KEEP_DAYS_DEFAULT);
-if (!Number.isInteger(keepDays) || keepDays < 2) throw new Error('--keep-days must be a whole number of at least 2');
+if (!Number.isInteger(keepDays) || keepDays < 1) throw new Error('--keep-days must be a whole number of at least 1');
 
 const storageUrl = (process.env['SUPABASE_URL'] ?? '').trim().replace(/\/$/, '');
 const storageKey = (process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '').trim();
