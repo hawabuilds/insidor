@@ -24,14 +24,21 @@
  * ★ THE STORY'S COIN IS THE COMMITTED BOARD'S. A post in a promoted story offers the coin the story's
  * row on screen names (public.board_row), as the full frame's post would offer its own run's.
  *
- * ★ NEVER ALONGSIDE ANOTHER FRAME. The project service runs its jobs one at a time; this is one of
- * them, started only when `quickDue` says so: something changed, the answers have been quiet for
- * `settleMs` (a pass files its kind answers after its yeses, so a post is not shown between the
- * two), and the last quick frame was at least `minGapMs` ago.
+ * ★ BESIDE THE FULL FRAME, NEVER UNDER IT. The project service runs this on its own, while a full
+ * frame may be running (tools/railway-start.mjs): both build without a lock, then take For You's
+ * one write lock (for-you-lock.ts) before they read the list as committed and write theirs, and the
+ * full frame leaves every post that changed since it began as this frame placed it.
+ *
+ * ★ WHEN. `quickDue` says so: something changed, and either every yes since the cursor already has
+ * its kind answer (`kindsInSkipsWait`: the instant coin path asks both questions in one pass, so its
+ * post is ready seconds after the launch's answer), or the answers have been quiet for `settleMs` (a
+ * pass files its kind answers after its yeses, so a post is not shown between the two) and the last
+ * quick frame was at least `minGapMs` ago.
  *
  * What breaks if changed carelessly: the cursor. It is read BEFORE a frame starts, and the next quick
  * frame looks only past it; read after, an answer filed while a frame ran would be in neither.
  */
+
 
 import type { Millis } from '@insidor/contracts';
 import { DEFAULT_POLICY, type Policy } from '@insidor/contracts/policy.ts';
@@ -39,36 +46,61 @@ import { PgFeedRejectionRepo, type Db } from '@insidor/store';
 
 import { loadMembership, writeMembership } from './feed-members.ts';
 import { keepFeedHistory } from './feed-history.ts';
+import { changedPosts, lockForYou, type QuickCursor } from './for-you-lock.ts';
 import { loadNameIdeas, writeNameIdeas } from './post-match.ts';
 import { onePolicy, type AnswerPolicies } from './judge-cutoff.ts';
-import { buildRising, forYouOrder, kindDetail, loadCandidates, varied, writeRising, type WireRisingPost } from './rising.ts';
+import { buildRising, kindDetail, loadCandidates, mergeForYou, varied, writeRising, type WireRisingPost } from './rising.ts';
 import { replaceSameNameCoins } from './same-name.ts';
 import type { WireCoinLink } from './wire.ts';
 
+export { changedPosts, mergeForYou, type QuickCursor };
+
 /** The spark's window, as the full frame draws it (main.ts SPARK_WINDOW_MS). A presentation bound. */
 const SPARK_WINDOW_MS = 30 * 60_000;
-/** The most changed posts one quick frame weighs; past it the full frame, a minute away, has them. */
-const MAX_CHANGED = 300;
 /** The newest links looked at for a passed post: a few minutes of launches. */
 const RECENT_LINKS = 200;
 
-/** Where the last frame began: the newest answer's id, and the database's clock. */
-export interface QuickCursor {
-  readonly answerId: number;
-  readonly atMs: number;
+/**
+ * The yeses filed past the cursor: how many, and how many of them still wait for their kind answer.
+ * A kind answer is a later `post-kind…` row (a held kind, or the not-a-meme hold) or the kind
+ * question's note on that very answer (internal.kind_asked, 0095: OTHER files no row of its own).
+ */
+export interface KindsSince {
+  readonly yeses: number;
+  readonly awaitingKind: number;
 }
 
-/** The cursor now; when the newest answer was filed; the newest link to a passed post; the newest owner call on a post. */
+/** The cursor now; when the newest answer was filed; the newest link to a passed post; the newest owner call on a post; and, past the cursor asked about, its yeses' kinds (null: not asked, or not readable). */
 export interface QuickProbe extends QuickCursor {
   readonly answerAtMs: number | null;
   readonly linkAtMs: number | null;
   readonly callAtMs: number | null;
+  readonly kinds?: KindsSince | null;
 }
 
 const ms = (v: Date | string | null | undefined): number | null => (v === null || v === undefined ? null : new Date(v).getTime());
 
-/** A few index reads: cheap enough to ask every few seconds. Times are the database's, never this host's. */
-export async function readProbe(db: Db): Promise<QuickProbe> {
+/** The yeses past `afterAnswerId` and their kind answers; null when the read fails (0095 not applied, say): no shortcut, the settle holds. */
+async function kindsSince(db: Db, afterAnswerId: number): Promise<KindsSince | null> {
+  try {
+    const rows = await db.query<{ yeses: string | number; awaiting: string | number }>(
+      `select count(*) as yeses,
+              count(*) filter (where not exists (select 1 from internal.post_judgement k
+                                                  where k.item_id = j.item_id and k.prompt_id like 'post-kind%' and k.id > j.id)
+                                 and not exists (select 1 from internal.kind_asked a
+                                                  where a.item_id = j.item_id and a.answer_judged_at = j.judged_at)) as awaiting
+         from internal.post_judgement j
+        where j.id > $1 and j.prompt_id not like 'post-kind%' and j.coinable`,
+      [afterAnswerId],
+    );
+    return { yeses: Number(rows[0]?.yeses ?? 0), awaitingKind: Number(rows[0]?.awaiting ?? 0) };
+  } catch {
+    return null;
+  }
+}
+
+/** A few index reads: cheap enough to ask every few seconds. Times are the database's, never this host's. With a cursor, its yeses' kinds too. */
+export async function readProbe(db: Db, since: QuickCursor | null = null): Promise<QuickProbe> {
   const rows = await db.query<{ answer_id: string | null; answer_at: Date | string | null; link_at: Date | string | null; call_at: Date | string | null; now: Date | string }>(
     `select a.id::text as answer_id, a.recorded_at as answer_at,
             (select max(l.found_at)
@@ -83,61 +115,30 @@ export async function readProbe(db: Db): Promise<QuickProbe> {
     [RECENT_LINKS],
   );
   const r = rows[0];
+  const answerId = r?.answer_id === null || r?.answer_id === undefined ? 0 : Number(r.answer_id);
   return {
-    answerId: r?.answer_id === null || r?.answer_id === undefined ? 0 : Number(r.answer_id),
+    answerId,
     atMs: ms(r?.now) ?? 0,
     answerAtMs: ms(r?.answer_at),
     linkAtMs: ms(r?.link_at),
     callAtMs: ms(r?.call_at),
+    kinds: since === null || answerId <= since.answerId ? null : await kindsSince(db, since.answerId),
   };
 }
 
-/** Whether a quick frame should run now (the header's three conditions), given the last frame's cursor. */
+/** Whether every yes past the cursor has its kind answer (and there is one): a post is ready to show now. */
+export const kindsAllIn = (probe: QuickProbe): boolean => probe.kinds !== undefined && probe.kinds !== null && probe.kinds.yeses > 0 && probe.kinds.awaitingKind === 0;
+
+/** Whether a quick frame should run now (the header's conditions), given the last frame's cursor. */
 export function quickDue(cursor: QuickCursor | null, lastQuickAtMs: number | null, probe: QuickProbe, nowMs: number, p: Policy = DEFAULT_POLICY): boolean {
   const q = p.rising.quickFrame;
   if (!q.on || cursor === null) return false;
-  if (lastQuickAtMs !== null && nowMs - lastQuickAtMs < q.minGapMs) return false;
   const changed = probe.answerId > cursor.answerId || (probe.linkAtMs ?? 0) > cursor.atMs || (probe.callAtMs ?? 0) > cursor.atMs;
-  const settled = probe.answerAtMs === null || probe.atMs - probe.answerAtMs >= q.settleMs;
-  return changed && settled;
-}
-
-/** The posts that changed past the cursor (the header's step 1). */
-export async function changedPosts(db: Db, cursor: QuickCursor): Promise<readonly string[]> {
-  const rows = await db.query<{ item_id: string }>(
-    `(select distinct item_id from internal.post_judgement where id > $1 order by item_id limit $3)
-     union
-     (select l.source || ':' || l.source_item_id as item_id
-        from internal.coin_post_link l
-       where l.found_at > $2
-         and exists (select 1 from internal.post_judgement j
-                      where j.item_id = l.source || ':' || l.source_item_id
-                        and j.prompt_id not like 'post-kind%' and j.coinable)
-       limit $3)
-     union
-     (select o.item_id from internal.owner_feedback o
-       where o.subject_kind = 'post' and o.created_at > $2 and o.item_id is not null
-       limit $3)`,
-    [cursor.answerId, new Date(cursor.atMs).toISOString(), MAX_CHANGED],
-  );
-  return rows.map((r) => r.item_id);
-}
-
-/**
- * The committed For You with the changed posts put in, re-placed or taken off (the header's step 3,
- * before the variety rule and the cut): unchanged cards as they were, changed ones as built now,
- * newest first by `at`.
- */
-export function mergeForYou<P extends { readonly id: string }>(
-  showing: readonly P[],
-  changed: ReadonlySet<string>,
-  built: readonly P[],
-  at: (post: P) => number,
-): P[] {
-  const kept = showing.filter((p) => !changed.has(p.id));
-  const keptIds = new Set(kept.map((p) => p.id));
-  const all = [...kept, ...built.filter((p) => !keptIds.has(p.id))];
-  return all.sort((a, b) => forYouOrder({ at: at(a), id: a.id }, { at: at(b), id: b.id }));
+  if (!changed) return false;
+  /* ★ Every yes has its kind: nothing can show between its two answers, so no wait and no gap. */
+  if (q.kindsInSkipsWait && kindsAllIn(probe)) return true;
+  if (lastQuickAtMs !== null && nowMs - lastQuickAtMs < q.minGapMs) return false;
+  return probe.answerAtMs === null || probe.atMs - probe.answerAtMs >= q.settleMs;
 }
 
 export interface QuickResult {
@@ -161,10 +162,12 @@ export async function quickForYou(db: Db, nowMs: Millis, cursor: QuickCursor, po
   const ids = await changedPosts(db, cursor);
   if (ids.length === 0) return { changed: 0, added: 0, removed: 0, wrote: false };
   const changed = new Set(ids);
-  const showing = (await db.query<{ item_id: string; payload: WireRisingPost }>(`select item_id, payload from public.rising_row where feed_id = 'fyp' order by position`)).map((r) => r.payload);
   const membership = await loadMembership(db, nowMs - policy.rising.windowMs);
   const frame = await buildRising(db, nowMs, await committedStoryCoins(db), SPARK_WINDOW_MS, policy, membership === null ? null : { ...membership, refresh: [] }, answers, ids);
 
+  /* ★ Built; now the one right to write For You, and For You as committed under it (for-you-lock.ts). */
+  await lockForYou(db);
+  const showing = (await db.query<{ item_id: string; payload: WireRisingPost }>(`select item_id, payload from public.rising_row where feed_id = 'fyp' order by position`)).map((r) => r.payload);
   const sinceMs = (nowMs - policy.rising.windowMs) as Millis;
   const mergedIds = [...new Set([...showing.map((p) => p.id), ...frame.fyp.map((p) => p.id)])];
   const rows = await loadCandidates(db, sinceMs, mergedIds, mergedIds);

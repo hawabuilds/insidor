@@ -1,20 +1,27 @@
 /**
- * WHEN THE QUICK FRAME RUNS: the project service's launcher asks this between its jobs.
+ * WHEN THE QUICK FRAME RUNS: the project service's launcher asks this on its own lane, every second.
  *
- * Its own file because the launcher (tools/railway-start.mjs) is plain JavaScript that runs one job
- * at a time and holds no database connection of its own; the decision (quick-frame.ts `quickDue`)
- * and the cursor it keeps belong next to the frame they start, where they are typed and tested.
+ * Its own file because the launcher (tools/railway-start.mjs) is plain JavaScript that holds no
+ * database connection of its own; the decision (quick-frame.ts `quickDue`) and the cursor it keeps
+ * belong next to the frame they start, where they are typed and tested.
  *
- * The launcher calls `mark()` just before every full frame and `maybe()` between jobs and every
- * loop tick. `maybe()` reads the probe at most every `checkEveryMs`; when a quick frame is due it
- * moves the cursor to the probe it read and runs one, handing it the cursor before. A quick frame
- * that fails puts the cursor back, so its posts are tried again — `minGapMs` later at the soonest.
+ * `maybe()` reads the probe at most every `checkEveryMs`. The first read only sets the cursor: what
+ * was filed before the service started is the first full frame's. After that, when a quick frame is
+ * due it moves the cursor to the probe it read and runs one, handing it the cursor before. A quick
+ * frame that fails puts the cursor back, so its posts are tried again — `minGapMs` later at the
+ * soonest, unless every yes since has its kind answer.
+ *
+ * ★ THE FULL FRAME NO LONGER MOVES THE CURSOR. It used to (`mark()` before each full frame, when the
+ * two ran one after the other): an answer filed as a full frame began was left to that frame, two
+ * minutes away. Now they run side by side, and every answer is this lane's to place within seconds;
+ * the full frame leaves the posts that changed since it began as this lane placed them
+ * (for-you-lock.ts).
  *
  * ★ POLLED, NOT LISTENED FOR. A LISTEN needs a session connection (5432), and the session pooler
  * caps clients per user (DEPLOY.md); this service's DATABASE_URL is the transaction pooler. One
- * pooled client asking three index reads every five seconds costs less than a held session.
+ * pooled client asking a few index reads every five seconds costs less than a held session.
  *
- * What breaks if changed carelessly: `mark()` must run BEFORE the full frame, not after it. After,
+ * What breaks if changed carelessly: the cursor must move BEFORE the frame runs, not after it. After,
  * an answer filed while the frame ran (after it had read its posts) would be behind the cursor and
  * wait for the next full frame — the minute this exists to save.
  */
@@ -25,7 +32,8 @@ import { asDb, createPool, DB_ROLE } from '@insidor/store';
 import { quickDue, readProbe, type QuickCursor, type QuickProbe } from './quick-frame.ts';
 
 export interface QuickWakeDeps {
-  readonly probe: () => Promise<QuickProbe>;
+  /** The probe, with the yeses' kinds past this cursor when there is one. */
+  readonly probe: (since: QuickCursor | null) => Promise<QuickProbe>;
   /** Run one quick frame from this cursor; true when it exited cleanly. */
   readonly run: (from: QuickCursor) => Promise<boolean>;
   readonly policy: Policy;
@@ -34,7 +42,6 @@ export interface QuickWakeDeps {
 }
 
 export interface QuickWake {
-  mark(): Promise<void>;
   maybe(): Promise<void>;
   close(): Promise<void>;
 }
@@ -45,10 +52,11 @@ export function quickWake(deps: QuickWakeDeps, close: () => Promise<void> = asyn
   let cursor: QuickCursor | null = null;
   let lastQuickAt: number | null = null;
   let lastCheckAt: number | null = null;
+  let lastOk = true;
   let failing = false;
   const probe = async (): Promise<QuickProbe | null> => {
     try {
-      const p = await deps.probe();
+      const p = await deps.probe(cursor);
       if (failing) deps.log({ level: 'info', msg: 'quick frame probe answers again' });
       failing = false;
       return p;
@@ -60,24 +68,26 @@ export function quickWake(deps: QuickWakeDeps, close: () => Promise<void> = asyn
     }
   };
   return {
-    async mark() {
-      if (!deps.policy.rising.quickFrame.on) return;
-      const p = await probe();
-      /* A failed read keeps the older cursor: a larger set of changed posts, never a missed one. */
-      if (p !== null) cursor = cursorOf(p);
-    },
     async maybe() {
       const q = deps.policy.rising.quickFrame;
       const now = deps.now();
-      if (!q.on || cursor === null || (lastCheckAt !== null && now - lastCheckAt < q.checkEveryMs)) return;
+      if (!q.on || (lastCheckAt !== null && now - lastCheckAt < q.checkEveryMs)) return;
       lastCheckAt = now;
       const p = await probe();
-      if (p === null || !quickDue(cursor, lastQuickAt, p, now, deps.policy)) return;
+      if (p === null) return;
+      /* The first read: where this lane begins. */
+      if (cursor === null) {
+        cursor = cursorOf(p);
+        return;
+      }
+      /* After a failed frame the gap holds whatever the probe says: a frame that keeps failing is tried every `minGapMs`, not every check. */
+      if (!lastOk && lastQuickAt !== null && now - lastQuickAt < q.minGapMs) return;
+      if (!quickDue(cursor, lastQuickAt, p, now, deps.policy)) return;
       const from = cursor;
       cursor = cursorOf(p);
       lastQuickAt = now;
-      const ok = await deps.run(from);
-      if (!ok) cursor = from;
+      lastOk = await deps.run(from);
+      if (!lastOk) cursor = from;
     },
     close,
   };
@@ -86,5 +96,5 @@ export function quickWake(deps: QuickWakeDeps, close: () => Promise<void> = asyn
 /** The launcher's wake: one pooled client on the service credential, and the quick frame as a child. */
 export function openQuickWake(env: Readonly<Record<string, string | undefined>>, run: QuickWakeDeps['run'], log: QuickWakeDeps['log'], policy: Policy = DEFAULT_POLICY): QuickWake {
   const pool = createPool(DB_ROLE.service, { applicationName: 'insidor-project-wake', env: { DATABASE_URL_SERVICE: env['DATABASE_URL'] }, max: 1 });
-  return quickWake({ probe: () => readProbe(asDb(pool)), run, policy, now: () => Date.now(), log }, () => pool.end());
+  return quickWake({ probe: (since) => readProbe(asDb(pool), since), run, policy, now: () => Date.now(), log }, () => pool.end());
 }
