@@ -27,9 +27,10 @@ import { errorText, type Logger } from '../log.ts';
  * (judge-shadow.ts, Policy.judge.shadow), which keeps its day's spend in the same ledger for the
  * same reason: a restart must not hand it a fresh day's money. So do For You's view readings
  * (work/readings.ts, Policy.feed.readings). So does each catch-all search that reads past short
- * pages (`search:<name>`, Policy.feed.paging), its search bill only. The table holds any lane name.
+ * pages (`search:<name>`, Policy.feed.paging), its search bill only, and so do the narrative-name and
+ * quote searches (0097, work/lane-search.ts). The table holds any lane name.
  */
-export type CappedLane = 'middle' | 'learned_tag' | 'judge_shadow' | 'readings' | 'judge_early' | `search:${string}`;
+export type CappedLane = 'middle' | 'learned_tag' | 'judge_shadow' | 'readings' | 'judge_early' | 'narrative_name' | 'quote' | `search:${string}`;
 
 export interface LaneLedger {
   /** Dollars the lane has recorded today, or null when that cannot be read (do not ask). */

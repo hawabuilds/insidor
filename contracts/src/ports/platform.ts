@@ -62,6 +62,13 @@ export interface Capabilities {
   readonly lineage: boolean;
   /** Differs in KIND across vendors and therefore cannot be averaged. */
   readonly billing: BillingUnit;
+  /**
+   * What a `keyword` search can also be narrowed by, on a source that says so: `filter` (an
+   * approval floor and languages, `DiscoveryQuery.filter`) and `reproductionsOf` (only the
+   * reproductions of one post). Absent: neither, and a caller that needs one asks another source
+   * rather than sending a filter that would be silently dropped and billed as an unfiltered search.
+   */
+  readonly narrowedSearch?: { readonly filter: boolean; readonly reproductionsOf: boolean };
 }
 
 export interface DiscoveryQuery {
@@ -92,7 +99,8 @@ export interface DiscoveryQuery {
   readonly cursor: string | null;
   /**
    * Narrows a `catchall` query — "whatever is moving, whatever it is about" — to something a
-   * budget can pay for. Absent on every other mode.
+   * budget can pay for. On a `keyword` query only where the source declares
+   * `narrowedSearch.filter` (the narrative-name search); absent on every other mode.
    *
    * ★ A COST CONTROL AT THE VENDOR, NOT A JUDGEMENT. `minApproval` is how many approvals a
    * post must already have for the source to return it at all; it exists so a search with
@@ -100,6 +108,12 @@ export interface DiscoveryQuery {
    * not ADMIT's bar and must never become one: what we keep is still decided on rates.
    */
   readonly filter?: FeedFilter;
+  /**
+   * Only the reproductions (quotes) of this post, by the source's own post id: a `keyword` query
+   * with an empty term, on a source that declares `narrowedSearch.reproductionsOf`. Absent on
+   * every other query.
+   */
+  readonly reproductionsOf?: string;
 }
 
 /**

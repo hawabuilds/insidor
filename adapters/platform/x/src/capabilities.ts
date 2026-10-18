@@ -58,6 +58,8 @@ export const CAPABILITIES: Capabilities = {
   lineage: true,
   /** Billed per item returned — the vendor's own header says so. */
   billing: 'per-item-returned',
+  /** A keyword search takes the catch-all's floor and languages, and `quoted_tweet_id:` (discover.ts). */
+  narrowedSearch: { filter: true, reproductionsOf: true },
 };
 
 /**
