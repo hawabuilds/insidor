@@ -1,17 +1,27 @@
 /**
- * GET /wallet/:address?range=1h|6h|24h — the Portfolio tab: what a wallet holds, what it is worth,
- * what each coin cost when we can see it, the narrative each coin came from when the match is
- * confident, and the coins it created through Insidor. Trador's Stonkfolio, read-only, cut to
- * launchpad coins.
+ * GET /wallet/:address?range=1h|6h|24h — the Portfolio tab and the portfolio on a profile: what a
+ * wallet holds, what it is worth, what each coin cost when Insidor made the buy, the narrative each
+ * coin came from when the match is confident, and the coins it created through Insidor. Trador's
+ * Stonkfolio, read-only, cut to launchpad coins.
  *
- * ★ READ-ONLY, AND NEEDS NO KEY. Everything here is public chain and market data: no signer, no
- * TRADING switch. The phone app asks only for the signed-in person's own wallet; this route has
- * no way to tell who is asking (there is no sign-in token on it yet), so it serves what any block
- * explorer would — balances and public transactions — and nothing private. Checking the
- * vendor's sign-in token here is the step that would let it refuse other people's wallets.
+ * ★ READ-ONLY, AND NEEDS NO KEY. Everything here is public chain and market data plus the facts of
+ * trades already on the chain: no signer, no TRADING switch. This route has no way to tell who is
+ * asking (there is no sign-in token on it), so it serves what any block explorer would. Whether a
+ * profile shows a wallet at all is the social service's decision (its `portfolio` field), as
+ * Trador withholds the wallet of a private Stonkfolio; this route never edge-caches (edge-cache.ts).
  *
- * ★ NO BUY HISTORY, NO NUMBER. Profit is shown in SOL, only for a coin whose buys we read in the
- * wallet's recent transactions (`wallet.signaturesRead`). Anything else says "no buy history".
+ * ★ COST BASIS FROM OUR OWN TRADE RECORD, NOT A GUESS. A coin's cost is the SOL its landed buys
+ * paid, from `public.trade` (0062: status confirmed, kind buy or sell), at average cost, a sell
+ * taking out its share (Trador's walletTrades.ts). A buy made outside Insidor is not in the record,
+ * so a coin bought only elsewhere has no gain ("not_bought_here"), and one held beyond what was
+ * bought here has its gain measured on the covered part only, marked partial. A buy's coin amount is
+ * the quote the trade service recorded, not the landed amount, which slippage can raise (never
+ * lower, past `bound`); the SOL paid is exact.
+ *
+ * ★ GAINS ARE IN SOL, SHOWN IN TODAY'S DOLLARS. Trador values each past buy at SOL's dollar price
+ * that minute; we store no history of SOL's price, so the gain is measured in SOL (worth in SOL now,
+ * minus SOL paid) and then converted at today's SOL price, `usd` null when that is unknown. The
+ * screen says so under the list.
  *
  * ★ A NARRATIVE ONLY ON A CONFIDENT MATCH. A coin shows the narrative whose page names it as its
  * one coin (`kind: 'one'`); "several", "unsure" and "none" show nothing.
@@ -21,11 +31,14 @@
  * read, and says so.
  *
  * An outage is said, never shown as an empty wallet. Answers are kept `wallet.keepMs` and each
- * client may ask `wallet.perClient` times a `windowMs`, so free RPC and parsing tiers last.
+ * client may ask `wallet.perClient` times a `windowMs`, so free RPC tiers last.
+ *
+ * What breaks if changed carelessly: reading trades whose status is not `confirmed` counts a buy
+ * that never landed as money spent, and every gain on that coin comes out too low.
  */
 
 import type { WalletPolicy } from '@insidor/contracts/policy.ts';
-import { NATIVE, positionsFrom, profitOf, tradesFromTx, type Balances, type ParsedTx, type Profit } from '@insidor/chain-portfolio';
+import { NATIVE, positionsFrom, profitOf, type Balances, type Profit, type Trade } from '@insidor/chain-portfolio';
 import type { CoinQuote } from '@insidor/market-dexscreener';
 
 import type { Logger } from './log.ts';
@@ -44,6 +57,34 @@ select c.address, c.story_id, c.created_at, n.name, n.ticker
   left join public.coin_name n on n.address = c.address
  where c.creator = $1
  order by c.created_at desc`;
+
+/* A wallet's landed buys and sells, newest `$2` (trade_landed_idx, 0109), turned oldest first in code. */
+export const LANDED_TRADES_SQL = `
+select kind, mint, in_amount::text as in_amount, out_amount::text as out_amount, (extract(epoch from settled_at) * 1000)::bigint as at
+  from public.trade
+ where wallet = $1 and status = 'confirmed' and kind in ('buy', 'sell') and settled_at is not null and mint is not null
+ order by settled_at desc
+ limit $2`;
+
+/**
+ * Our trade rows as trades, for the coins held now (only their decimals are known). A buy's SOL is
+ * `in_amount` lamports and its coins `out_amount`; a sell's coins are `in_amount` and its SOL
+ * `out_amount`. A row with an amount that is not a positive number is skipped, never read as zero.
+ */
+export function tradesFromRecord(rows: readonly Row[], decimalsOf: ReadonlyMap<string, number>): Trade[] {
+  return rows.flatMap((r): Trade[] => {
+    const mint = str(r['mint']);
+    const kind = r['kind'];
+    const decimals = mint === null ? undefined : decimalsOf.get(mint);
+    if (mint === null || decimals === undefined || (kind !== 'buy' && kind !== 'sell')) return [];
+    const inAmount = Number(r['in_amount']);
+    const outAmount = Number(r['out_amount']);
+    if (!(inAmount > 0) || !(outAmount > 0)) return [];
+    const coins = (kind === 'buy' ? outAmount : inAmount) / 10 ** decimals;
+    const sol = (kind === 'buy' ? inAmount : outAmount) / 1e9;
+    return [{ signature: '', at: Number(r['at']), mint, side: kind, amount: coins, sol }];
+  });
+}
 
 /* The balance chart's one write: append a point if the wallet's newest is older than the gap (0041). */
 export const RECORD_SNAPSHOT_SQL = `select public.record_wallet_snapshot($1, $2, $3)`;
@@ -68,8 +109,6 @@ export interface WalletDeps {
   readonly policy: WalletPolicy;
   readonly reader: {
     balances(owner: string): Promise<Balances>;
-    signatures(owner: string, limit: number): Promise<readonly string[]>;
-    parse(signatures: readonly string[]): Promise<readonly ParsedTx[]>;
   } | null;
   readonly quotes: { quotes(addresses: readonly string[]): Promise<ReadonlyMap<string, CoinQuote>> };
   readonly images: ((mints: readonly string[]) => Promise<ReadonlyMap<string, string>>) | null;
@@ -84,6 +123,24 @@ const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 
 /** Base units → a decimal number of coins, for valuing only. The exact amount travels as text. */
 const units = (amount: string, decimals: number): number => Number(amount) / 10 ** decimals;
+
+/**
+ * A holding's gain on the wire: SOL, its share of what was paid, and today's dollars (null with no
+ * SOL price). No recorded buy is `not_bought_here`; a record that could not be read is
+ * `history_unread`.
+ */
+export function profitWire(profit: Profit, solUsd: number | null, historyRead: boolean) {
+  if (!historyRead) return { kind: 'none', why: 'history_unread' } as const;
+  if (profit.kind === 'none') return { kind: 'none', why: 'not_bought_here' } as const;
+  return {
+    kind: 'known',
+    sol: profit.sol,
+    costSol: profit.costSol,
+    pct: (profit.sol / profit.costSol) * 100,
+    usd: measured(solUsd === null ? null : profit.sol * solUsd, 'no_market'),
+    partial: profit.partial,
+  } as const;
+}
 
 export function createWallet(deps: WalletDeps) {
   const kept = new Map<string, { at: number; reply: { status: number; body: string } }>();
@@ -110,16 +167,15 @@ export function createWallet(deps: WalletDeps) {
     const solUsd = quotes.get(NATIVE)?.priceUsd ?? null;
     const sol = units(balances.lamports, 9);
 
-    /* Buy history: the recent transactions, parsed once, read by balance change. */
+    /* Cost basis: this wallet's landed trades in Insidor. A failed read is said, never a zero. */
     let positions: ReturnType<typeof positionsFrom> = new Map();
     let historyRead = false;
     try {
-      const sigs = await deps.reader.signatures(address, deps.policy.signaturesRead);
-      const parsed = await deps.reader.parse(sigs);
-      positions = positionsFrom(parsed.flatMap((tx) => tradesFromTx(tx, address)));
-      historyRead = parsed.length > 0 || sigs.length === 0;
+      const rows = await deps.db.query(LANDED_TRADES_SQL, [address, deps.policy.tradesRead]);
+      positions = positionsFrom(tradesFromRecord(rows, new Map(balances.tokens.map((t) => [t.mint, t.decimals]))));
+      historyRead = true;
     } catch (e) {
-      deps.log.info('wallet history unavailable', { err: e instanceof Error ? e.message : String(e) });
+      deps.log.info('wallet trades unavailable', { err: e instanceof Error ? e.message : String(e) });
     }
 
     const [narratives, names] = await Promise.all([
@@ -149,9 +205,7 @@ export function createWallet(deps: WalletDeps) {
         priceUsd: measured(q?.priceUsd, q === undefined ? 'no_market' : 'not_reported'),
         valueUsd: measured(valueUsd, q === undefined ? 'no_market' : 'not_reported'),
         change: measured(change, q === undefined ? 'no_market' : 'not_reported'),
-        profit: profit.kind === 'known'
-          ? { kind: 'known', sol: profit.sol, partial: profit.partial }
-          : { kind: 'none', why: historyRead ? 'no_buy_history' : 'history_unread' },
+        profit: profitWire(profit, solUsd, historyRead),
         story: narrative !== undefined && narrative.storyId !== null && narrative.title !== null ? { storyId: narrative.storyId, title: narrative.title } : null,
       };
     }).sort((a, b) => (b.valueUsd.v ?? -1) - (a.valueUsd.v ?? -1));
@@ -193,7 +247,6 @@ export function createWallet(deps: WalletDeps) {
       holdings: shown,
       notShown: Math.max(0, holdings.length - deps.policy.holdingsShown),
       unpriced,
-      historyDepth: deps.policy.signaturesRead,
       created: {
         unclaimedFeesSol: fees,
         coins: createdRows.map((r) => {

@@ -138,7 +138,8 @@ export function positionsFrom(trades: readonly Trade[]): ReadonlyMap<string, Pos
   return book;
 }
 
-export type Profit = { readonly kind: 'known'; readonly sol: number; readonly partial: boolean } | { readonly kind: 'none'; readonly why: 'no_buy_history' };
+/** `costSol` is what the measured part cost, so a caller can say the gain as a share of it. */
+export type Profit = { readonly kind: 'known'; readonly sol: number; readonly costSol: number; readonly partial: boolean } | { readonly kind: 'none'; readonly why: 'no_buy_history' };
 
 /**
  * Unrealised profit on a holding, in SOL: what it is worth now minus what it cost. Units held
@@ -148,6 +149,7 @@ export type Profit = { readonly kind: 'known'; readonly sol: number; readonly pa
 export function profitOf(held: number, valueSol: number | null, position: Position | undefined): Profit {
   if (position === undefined || valueSol === null || !(held > 0) || !(position.qty > 0) || !(position.costSol > 0)) return { kind: 'none', why: 'no_buy_history' };
   const covered = Math.min(held, position.qty);
-  const sol = valueSol * (covered / held) - position.costSol * (covered / position.qty);
-  return { kind: 'known', sol, partial: !position.complete || held > position.qty * (1 + QTY_TOLERANCE) };
+  const costSol = position.costSol * (covered / position.qty);
+  const sol = valueSol * (covered / held) - costSol;
+  return { kind: 'known', sol, costSol, partial: !position.complete || held > position.qty * (1 + QTY_TOLERANCE) };
 }
