@@ -130,7 +130,10 @@ test('★ the owner: Not a narrative keeps its posts apart, Remove this post tak
 test('★ on screen: two good posts, or one huge and climbing; the owner\'s hide wins over both', () => {
   assert.equal(narrativeShown(2, false, false, P), 'shown');
   assert.equal(narrativeShown(1, false, false, P), 'too_few_posts');
-  assert.equal(narrativeShown(1, true, false, P), 'shown');
+  assert.equal(narrativeShown(1, true, false, P), 'too_few_posts');
+  assert.equal(narrativeShown(1, true, false, { ...P, narrative: { ...P.narrative, single: { ...P.narrative.single, on: true } } }), 'shown');
+  assert.equal(narrativeShown(3, false, false, P, 1), 'too_few_accounts');
+  assert.equal(narrativeShown(2, false, false, P, 2), 'shown');
   assert.equal(narrativeShown(5, false, true, P), 'hidden_by_owner');
   assert.equal(narrativeShown(1, true, true, P), 'hidden_by_owner');
   assert.equal(hugeAndClimbing(600_000, 2_500, false, P), true);

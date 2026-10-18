@@ -195,7 +195,30 @@ test('★ only the owner merges: his "Merge with…" moves one narrative into th
   const merge: NarrativeCallRow = { id: 7, atMs: NOW - 1, narrativeId: 'n-one', verdict: 'merge', otherId: 'n-two', coin: null, members: ['a'], otherMembers: ['b'] };
   const s = setup([row('a'), row('b')], { a: unit(0), b: unit(0) }, 'live', [merge], [], () => stored);
   await s.grouper.pass();
-  assert.deepEqual(s.saved[0]?.retired, [{ id: 'n-one', into: 'n-two' }]);
+  assert.deepEqual(s.saved[0]?.retired, [{ id: 'n-one', into: 'n-two', by: 'owner' }]);
+});
+
+test('★ the owner\'s split: the posts he picked are a new narrative this pass, shown and titled, and it is done once', async () => {
+  const before: StoredNarrative[] = [
+    { id: 'n-a', members: ['a', 'b', 'c', 'd'], anchor: 'a', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 'All', titlePosts: 4, newestPostAtMs: NOW, early: [] },
+  ];
+  const split: NarrativeCallRow = { id: 9, atMs: NOW - 1, narrativeId: 'n-a', verdict: 'split', otherId: 'n-c', coin: null, members: ['c', 'd'], otherMembers: ['a', 'b'] };
+  const v = { a: unit(0), b: unit(0), c: unit(0), d: unit(0), e: unit(0) };
+  let stored = before;
+  const s = setup([row('a'), row('b'), row('c'), row('d')], v, 'live', [split], [], () => stored);
+  await s.grouper.pass();
+  assert.deepEqual(s.saved[0]?.split, [{ from: 'n-a', into: 'n-c', members: ['c', 'd'] }]);
+  const made = s.saved[0]?.narratives.find((x) => x.id === 'n-c');
+  assert.deepEqual({ members: made?.members, added: made?.added, shown: made?.shown, changed: made?.changed }, { members: ['c', 'd'], added: [], shown: true, changed: true });
+  assert.ok(!(s.saved[0]?.narratives.find((x) => x.id === 'n-a')?.added ?? []).some((m) => m === 'c' || m === 'd'), 'n-a never takes them back');
+  assert.ok(s.titles.some(([id]) => id === 'n-c'), 'named by the title step like any new narrative');
+
+  /* As the write left it: the new narrative stored, so the split is not applied again; a new post beside them is not n-a\'s. */
+  stored = [{ ...before[0]!, members: ['a', 'b'] }, { id: 'n-c', members: ['c', 'd'], anchor: 'c', shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: null, titlePosts: null, newestPostAtMs: NOW, early: [] }];
+  const again = setup([row('a'), row('b'), row('c'), row('d')], v, 'live', [split], [], () => stored);
+  await again.grouper.pass();
+  assert.deepEqual(again.saved[0]?.split, []);
+  assert.ok(!(again.saved[0]?.narratives ?? []).some((x) => x.id === 'n-a' && x.added?.some((m) => m === 'c' || m === 'd')));
 });
 
 test('★ the owner outranks the match: a post he removed from beside the narrative, or kept apart, is not early', async () => {

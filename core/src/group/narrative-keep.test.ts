@@ -1,7 +1,8 @@
 /**
  * Keeping narratives (narrative-keep.ts, and the pins in narrative.ts): the regroup adds posts and
  * makes new narratives, never folds one narrative into another or drops one; only the owner merges
- * and removes; a new id is never one already given out; dead is the newest post's age.
+ * and removes; a new id is never one already given out; the owner's split applies once and its
+ * posts never go back; dead is the newest post's age.
  */
 
 import { strict as assert } from 'node:assert';
@@ -9,7 +10,7 @@ import { test } from 'node:test';
 
 import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 
-import { keepNarratives, narrativeDead, ownerMerges, removedPosts, survivorOf, type NarrativeState } from './narrative-keep.ts';
+import { keepNarratives, narrativeDead, ownerMerges, ownerSplits, removedPosts, survivorOf, type NarrativeState } from './narrative-keep.ts';
 import { foldNarrativeCalls, groupNarratives, type NarrativeCallRow, type NarrativePair, type NarrativePost } from './narrative.ts';
 
 const P = DEFAULT_POLICY;
@@ -78,4 +79,29 @@ test('★ dead after 48 hours with no new post; an unknown post time is not dead
   assert.equal(narrativeDead(now - P.narrative.dead.afterMs, now, P), true);
   assert.equal(narrativeDead(now - P.narrative.dead.afterMs + 1, now, P), false);
   assert.equal(narrativeDead(null, now, P), false);
+});
+
+test('★ the owner\'s split applies once, from where his narrative leads now, and its posts never go back', () => {
+  const split = (id: number, from: string, into: string, moved: readonly string[], stayed: readonly string[]): NarrativeCallRow => ({ id, atMs: id, narrativeId: from, verdict: 'split', otherId: into, coin: null, members: moved, otherMembers: stayed });
+  const states = new Map<string, NarrativeState>([
+    ['n-a', { state: 'open', mergedInto: null }],
+    ['n-old', { state: 'merged', mergedInto: 'n-a' }],
+    ['n-done', { state: 'open', mergedInto: null }],
+  ]);
+  const rows = [split(1, 'n-old', 'n-c', ['c', 'd'], ['a', 'b']), split(2, 'n-a', 'n-done', ['e'], ['a']), split(3, 'n-a', 'n-c', ['f'], ['a'])];
+  const out = ownerSplits(rows, states);
+  assert.deepEqual(out.pending, [{ from: 'n-a', into: 'n-c', members: ['c', 'd'] }], 'n-done is stored: applied; a second call naming n-c is not applied twice');
+  assert.deepEqual([...(out.movedFrom.get('c') ?? [])].sort(), ['n-a', 'n-old']);
+  assert.deepEqual([...(out.movedFrom.get('e') ?? [])], ['n-a'], 'an applied split still keeps its posts out');
+  assert.deepEqual(ownerSplits([split(4, 'n-gone', 'n-x', ['x'], ['y'])], states).pending, [], 'nothing to split in a narrative that leads nowhere open');
+
+  const back = keepNarratives({ groups: [['a', 'b', 'c']], pinned: new Map([['a', 'n-a'], ['b', 'n-a']]), taken: new Set(), removedFrom: out.movedFrom });
+  assert.equal(back.grown.size, 0, 'a moved post that is free again is never added back to the narrative it left');
+
+  /* The fold: moved and stayed are kept apart, and a moved post is "removed" from beside the ones that stayed. */
+  const calls = foldNarrativeCalls(rows.slice(0, 1));
+  assert.ok(calls.apart.has('a|c') && calls.apart.has('b|d'));
+  assert.ok(!calls.apart.has('c|d'), 'the moved posts stay together');
+  assert.deepEqual([...(calls.removed.get('c') ?? [])].sort(), ['a', 'b']);
+  assert.equal(calls.coins.size, 0, 'a split is not a coin call');
 });
