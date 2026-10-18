@@ -39,6 +39,7 @@ import { fromSearchActor } from '../adapters/platform/tiktok/src/search-actor.ts
 import { asDb, createPool, DB_ROLE } from '../store/src/index.ts';
 import { loadReach } from '../services/project/src/db.ts';
 import { firstCount } from '../services/project/src/rising.ts';
+import { trendFloor } from '../core/src/rank/post-sorts.ts';
 import { gainIn, rankPost, rankScale, ranked, runsOf, SORT_WINDOWS, type Reading, type SortBy, type SortWindow } from '../services/read/src/post-sorts.ts';
 import { openSharedMeter } from './lib/shared-meter.ts';
 
@@ -162,7 +163,7 @@ function truth(id: string, by: SortBy, w: SortWindow): number | null {
   const speed = (f.views - mid) / scale / minutes;
   const before = (mid - start) / scale / minutes;
   /* Over the floor ranks by the ratio, above every post under it, which ranks by speed (core rank/post-sorts.ts). */
-  if (speed < DEFAULT_POLICY.rising.forYouSorts.trendFloorPerMin) return speed - Number.MAX_SAFE_INTEGER;
+  if (speed < trendFloor(W, DEFAULT_POLICY)) return speed - Number.MAX_SAFE_INTEGER;
   return before > 0 ? speed / before : Number.MAX_SAFE_INTEGER;
 }
 

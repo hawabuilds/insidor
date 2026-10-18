@@ -1,19 +1,21 @@
 /**
- * WHICH TEXT-SOURCE POSTS THE READINGS LOOP KEEPS FRESH FOR FOR YOU'S SORTS (Policy.feed.readings.sortTop,
- * the owner's yes of 2026-10-18). The read service lists a post last read 30 minutes ago or more below
+ * WHICH POSTS THE READINGS LOOP KEEPS FRESH FOR FOR YOU'S SORTS (Policy.feed.readings.sortTop, the
+ * owner's yeses of 2026-10-18: the text source's top 20, the short video's top 10). The read service lists a post last read 30 minutes ago or more below
  * every post read since (rising.forYouSorts.freshMs). Without this, a post that left the live frame
  * stops being read, and the post that should top Most viewed 24h sinks for want of a reading rather
  * than for anything it did. So every `recomputeMs` this ranks For You's scroll on every sort and window
  * exactly as the read service does (core rank/post-sorts.ts, the one copy of the rule) as if every
- * post were read just now, and returns the text-source posts in any list's top `topN`; readings.ts
- * reads those whose newest reading is `everyMs` old.
+ * post were read just now, and returns the text-source posts in any list's top `topN` and the short
+ * videos in any list's top `shortVideoTopN`; readings.ts reads those whose newest reading is
+ * `everyMs` old.
  *
  * Its own file because it is a ranking over the whole scroll, not a cadence over one post, and it
  * reads a day of readings for every member — far too much for every 30-second pass, so it is kept in
  * memory between recomputes. A failure keeps the last set (or none) and says so once.
  *
  * What breaks if changed carelessly: ranking with freshness applied would only ever keep fresh the
- * posts already fresh; letting the short-video source in spends credits the owner has not agreed to;
+ * posts already fresh; keeping short videos past `shortVideoTopN` spends credits the owner has not
+ * agreed to;
  * and reading less than a window back makes a 24-hour gain start at the wrong reading.
  */
 
@@ -38,10 +40,11 @@ export function sortReadingOf(o: Observation): SortReading {
   return { atMs: o.capturedAt, value: o.rate.reason === 'no_prior' ? o.counter.value : null };
 }
 
-/** The text-source posts in the top `topN` of any sort and window, ranked as if all were read now. */
+/** The text posts in the top `topN` and the short videos in the top `shortVideoTopN` of any sort and window, ranked as if all were read now. */
 export function sortTopIds(members: readonly SortMember[], readings: ReadonlyMap<string, readonly SortReading[]>, nowMs: number, p: Policy): ReadonlySet<string> {
   const top = new Set<string>();
-  const n = p.feed.readings.sortTop.topN;
+  const { topN, shortVideoTopN } = p.feed.readings.sortTop;
+  const isVideo = new Map(members.map((m) => [m.itemId, m.source === SHORT_VIDEO_SOURCE] as const));
   for (const by of SORTS) {
     for (const windowMs of p.feed.readings.sortTop.windowsMs) {
       const places = members.flatMap((m) => {
@@ -49,11 +52,12 @@ export function sortTopIds(members: readonly SortMember[], readings: ReadonlyMap
         const one = sortPlace(m.itemId, readings.get(m.itemId) ?? [], m.postedAt, by, windowMs, nowMs, p, scale);
         return one === null ? [] : [one];
       });
-      for (const x of sortOrder(places, n, true)) top.add(x.id);
+      sortOrder(places, Math.max(topN, shortVideoTopN), true).forEach((x, i) => {
+        if (i < (isVideo.get(x.id) === true ? shortVideoTopN : topN)) top.add(x.id);
+      });
     }
   }
-  const source = new Map(members.map((m) => [m.itemId, m.source] as const));
-  return new Set([...top].filter((id) => source.get(id) !== SHORT_VIDEO_SOURCE));
+  return top;
 }
 
 export interface SortTopDeps {
