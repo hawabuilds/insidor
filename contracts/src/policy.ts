@@ -3291,6 +3291,31 @@ export interface NarrativePolicy {
     readonly maxOutputTokens: number;
     readonly maxTitleChars: number;
   };
+  /**
+   * ★ THE EARLY POSTS (the owner, 2026-10-18: "when a narrative forms or grows, check all stored
+   * posts from up to 7 days back that match it and add them, so the earliest one is included").
+   * The regroup sees only the last `windowMs`, newest first, at most `maxPosts`; a story's first
+   * posts fall off it as it ages. After each regroup, posts the regroup could NOT see — older than
+   * the window but inside `lookbackMs`, or over the cap — are matched to the narratives that formed
+   * or grew (core group/narrative-early.ts): a link to one of its posts (meaning at `sameMeaning`
+   * and a shared name or topic word) and the narrative's average at `mergeMeaning`, the parts'
+   * own rule. They are listed with it, marked early (0100), and never change its id or the owner's
+   * calls on it.
+   *
+   * Bounded: the stored posts are read once and again every `refreshMs` (one index-backed read of
+   * judged-yes posts, at most `maxArchive`); at most `perPass` narratives are matched a pass and at
+   * most `maxVectorsPerPass` new vectors read for it; a narrative keeps at most `maxPerNarrative`
+   * early posts, the earliest first. A narrative not matched this pass keeps the early posts it had.
+   */
+  readonly early: {
+    readonly on: boolean;
+    readonly lookbackMs: number;
+    readonly refreshMs: number;
+    readonly maxArchive: number;
+    readonly perPass: number;
+    readonly maxVectorsPerPass: number;
+    readonly maxPerNarrative: number;
+  };
 }
 
 /**
@@ -5201,6 +5226,20 @@ const POLICY_V1: Policy = {
     },
     /* About 600 input and 20 output tokens a call on the open model: $0.00006, under a cent a day. */
     title: { on: true, perPass: 10, retitleGrowth: 0.5, postsSent: 6, maxChars: 240, maxOutputTokens: 40, maxTitleChars: 60 },
+    /* 2026-10-18 on live data, read-only: 9,251 judged-yes posts went up between seven and two days
+       back (0.2 s by the judged-time index). The step took 1.4-2.2 s on a pass that read them and
+       0.13-0.15 s on the passes between, beside the pass's own 3-8 s; 16 of 109 narratives were given
+       early posts, 417-432 in all, the Roadster 196 (its first post Wednesday 14:47, not Saturday
+       13:30). Free: stored rows and stored vectors, nothing embedded. */
+    early: {
+      on: true,
+      lookbackMs: 604_800_000, // seven days, the owner's
+      refreshMs: 1_800_000, // half an hour
+      maxArchive: 15_000,
+      perPass: 30,
+      maxVectorsPerPass: 1_500,
+      maxPerNarrative: 200,
+    },
   },
 
   /* The owner approved switching on what fits on 2026-10-15 ("approve and switch on when ready"),

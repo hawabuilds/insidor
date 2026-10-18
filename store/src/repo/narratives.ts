@@ -13,6 +13,10 @@
  * feed reads (services/project rising.ts). The runner groups on them and the projector re-checks
  * them each frame, so a post the owner hides leaves its narrative within a minute.
  *
+ * ★ THE EARLY POSTS (0100) are written with the narrative's own and marked: every reader reads them
+ * as its posts, and only the runner tells them apart (`StoredNarrative.early`), so the regroup keeps
+ * ids and says "changed" by the posts it made. Before 0100 none is written, never one unmarked.
+ *
  * ★ BEFORE 0093 NOTHING FAILS: every read answers empty on a missing table or column, the grouping
  * pass writes nothing, and the board shows no narratives rather than the old stories.
  *
@@ -138,6 +142,8 @@ export interface StoredNarrative {
   readonly postsChangedAtMs: number;
   readonly title: string | null;
   readonly titlePosts: number | null;
+  /** Of `members`, the early posts (0100): matched back in by the runner, never made by the regroup. Empty before 0100. */
+  readonly early?: readonly string[];
 }
 
 /** What one grouping pass writes. */
@@ -149,6 +155,8 @@ export interface NarrativePass {
     readonly newestPostAtMs: number | null;
     readonly shown: boolean;
     readonly changed: boolean;
+    /** Stored posts the regroup could not see, matched back in (0100); not in `members`. Dropped before 0100. */
+    readonly early?: readonly string[];
   }[];
   readonly retired: readonly { readonly id: string; readonly into: string | null }[];
 }
@@ -168,6 +176,7 @@ export interface NarrativeCallRecord {
 export class PgNarrativeRepo {
   readonly #db: Db;
   #migrated: Promise<boolean> | null = null;
+  #early: Promise<boolean> | null = null;
   constructor(db: Db) {
     this.#db = db;
   }
@@ -185,6 +194,17 @@ export class PgNarrativeRepo {
       )
       .then((r) => r[0]?.ok === true);
     return this.#migrated;
+  }
+
+  /** Whether 0100's early column is there; asked once, never caught (as `migrated`). */
+  async earlyMigrated(): Promise<boolean> {
+    this.#early ??= this.#db
+      .query<{ ok: boolean }>(
+        `select exists (select 1 from information_schema.columns
+                         where table_schema = 'internal' and table_name = 'narrative_member' and column_name = 'early') as ok`,
+      )
+      .then((r) => r[0]?.ok === true);
+    return this.#early;
   }
 
   /**
@@ -211,6 +231,35 @@ export class PgNarrativeRepo {
           and (j.coinable or oc.verdict = 'meme')
         order by coalesce(i.posted_at, i.first_seen_at) desc, i.item_id`,
       [new Date(sinceMs).toISOString()],
+    );
+    return rows.map(toPost);
+  }
+
+  /**
+   * ★ THE STORED POSTS FOR THE EARLY MATCH (0100): posts that went up in [`fromMs`, `toMs`) and that
+   * the judge said yes to since `fromMs` (or the owner called a meme), with their standing, oldest
+   * first, at most `limit`. Index-backed: the judged-time index (post_judgement_judged_idx) picks the
+   * answers, the item key the posts — never a walk of every post or of every feed credit. With
+   * `searched` false, feed posts only, as `candidates`.
+   */
+  async storedGood(fromMs: number, toMs: number, limit: number, searched = true): Promise<readonly NarrativePostRow[]> {
+    const feedOnly = searched ? '' : 'and exists (select 1 from internal.item_found_by fb where fb.item_id = i.item_id)';
+    const rows = await this.#db.query<PostRow>(
+      `select i.item_id, i.source, i.body, i.media, coalesce(i.posted_at, i.first_seen_at) as at, ${STANDING_COLUMNS}
+         from (select pj.item_id from internal.post_judgement pj
+                where pj.judged_at >= $1 and pj.prompt_id not like 'post-kind%' and pj.coinable
+               union
+               select ofb.item_id from internal.owner_feedback ofb
+                where ofb.subject_kind = 'post' and ofb.verdict = 'meme' and ofb.item_id is not null) f
+         join public.item i on i.item_id = f.item_id
+         ${STANDING_JOINS}
+        where i.origin = 'observed'
+          and coalesce(i.posted_at, i.first_seen_at) >= $1 and coalesce(i.posted_at, i.first_seen_at) < $2
+          and (j.coinable or oc.verdict = 'meme')
+          ${feedOnly}
+        order by coalesce(i.posted_at, i.first_seen_at), i.item_id
+        limit $3`,
+      [new Date(fromMs).toISOString(), new Date(toMs).toISOString(), limit],
     );
     return rows.map(toPost);
   }
@@ -269,10 +318,14 @@ export class PgNarrativeRepo {
   /** The open narratives the last pass wrote, with their posts. */
   async open(): Promise<readonly StoredNarrative[]> {
     if (!(await this.migrated())) return [];
-    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; members: string[] | null };
+    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; members: string[] | null; early: string[] | null };
+    const early = (await this.earlyMigrated())
+      ? '(select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id and m.early)'
+      : 'null::text[]';
     const rows = await orEmpty(() => this.#db.query<Row>(
       `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts,
-              (select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id) as members
+              (select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id) as members,
+              ${early} as early
          from internal.narrative n
         where n.state = 'open'`,
     ), []);
@@ -285,6 +338,7 @@ export class PgNarrativeRepo {
       postsChangedAtMs: toMs(r.posts_changed_at) ?? 0,
       title: r.title,
       titlePosts: r.title_posts,
+      early: r.early ?? [],
     }));
   }
 
@@ -315,6 +369,9 @@ export class PgNarrativeRepo {
    */
   async save(pass: NarrativePass): Promise<boolean> {
     if (!(await this.migrated())) return false;
+    /* Before 0100 an early post could not be told from a grouped one on the next read: none is written. */
+    const withEarly = await this.earlyMigrated();
+    const earlyOf = (x: NarrativePass['narratives'][number]): readonly string[] => (withEarly ? x.early ?? [] : []);
     try {
       const n = pass.narratives;
       await this.#db.query(
@@ -327,7 +384,7 @@ export class PgNarrativeRepo {
            first_shown_at = coalesce(internal.narrative.first_shown_at, excluded.first_shown_at),
            posts_changed_at = case when internal.narrative.state <> 'open' then now() else internal.narrative.posts_changed_at end,
            updated_at = now()`,
-        [n.map((x) => x.id), n.map((x) => x.anchor), n.map((x) => x.members.length), n.map((x) => (x.newestPostAtMs === null ? null : new Date(x.newestPostAtMs).toISOString())), n.map((x) => x.shown)],
+        [n.map((x) => x.id), n.map((x) => x.anchor), n.map((x) => x.members.length + earlyOf(x).length), n.map((x) => (x.newestPostAtMs === null ? null : new Date(x.newestPostAtMs).toISOString())), n.map((x) => x.shown)],
       );
       /* A narrative whose posts changed this pass: the owner's "Not a narrative" said before now no longer hides it. */
       const changed = n.filter((x) => x.changed).map((x) => x.id);
@@ -344,14 +401,25 @@ export class PgNarrativeRepo {
       await this.#db.query(`delete from internal.narrative_member`);
       const ids: string[] = [];
       const items: string[] = [];
-      for (const x of n) for (const m of x.members) {
-        ids.push(x.id);
-        items.push(m);
+      const early: boolean[] = [];
+      for (const x of n) {
+        for (const m of x.members) {
+          ids.push(x.id);
+          items.push(m);
+          early.push(false);
+        }
+        for (const m of earlyOf(x)) {
+          ids.push(x.id);
+          items.push(m);
+          early.push(true);
+        }
       }
       if (ids.length > 0) {
         await this.#db.query(
-          `insert into internal.narrative_member (narrative_id, item_id) select * from unnest($1::text[], $2::text[])`,
-          [ids, items],
+          withEarly
+            ? `insert into internal.narrative_member (narrative_id, item_id, early) select * from unnest($1::text[], $2::text[], $3::boolean[])`
+            : `insert into internal.narrative_member (narrative_id, item_id) select * from unnest($1::text[], $2::text[])`,
+          withEarly ? [ids, items, early] : [ids, items],
         );
       }
       return true;

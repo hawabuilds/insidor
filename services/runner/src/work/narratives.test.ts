@@ -2,7 +2,9 @@
  * The narratives pass against a fake store: who is grouped (the judge's yes at its own model's
  * cutoff, never the owner's "Not a meme", a held kind or a shill), that vectors are compared in
  * memory and read once, that a dry run writes nothing, that titles go to the shown narratives, and
- * that the owner's "Not a narrative" holds through the regroup it causes.
+ * that the owner's "Not a narrative" holds through the regroup it causes; and the early posts: a
+ * stored post the regroup could not see joins the narrative it matches, by the parts' rule, never
+ * against the owner's calls, and never moves the narrative's id or makes its posts read as changed.
  */
 
 import { strict as assert } from 'node:assert';
@@ -13,7 +15,7 @@ import { DEFAULT_POLICY } from '@insidor/contracts/policy.ts';
 import type { Meter } from '@insidor/contracts/ports/meter.ts';
 import type { TitlePort } from '@insidor/contracts/ports/titles.ts';
 import type { NarrativeCallRow } from '@insidor/core';
-import type { NarrativePass, NarrativePostRow } from '@insidor/store';
+import type { NarrativePass, NarrativePostRow, StoredNarrative } from '@insidor/store';
 
 import { createLogger } from '../log.ts';
 import { narrativeGrouper } from './narratives.ts';
@@ -44,7 +46,7 @@ const row = (itemId: string, extra: Partial<NarrativePostRow> = {}): NarrativePo
 
 const unit = (angle: number) => Float32Array.from([Math.cos(angle), Math.sin(angle)]);
 
-function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float32Array>, mode: 'live' | 'dry' = 'live', calls: readonly NarrativeCallRow[] = []) {
+function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float32Array>, mode: 'live' | 'dry' = 'live', calls: readonly NarrativeCallRow[] = [], older: readonly NarrativePostRow[] = [], open: () => readonly StoredNarrative[] = () => [], policy = DEFAULT_POLICY) {
   const saved: NarrativePass[] = [];
   const reads: string[][] = [];
   const titles: [string, string][] = [];
@@ -61,13 +63,14 @@ function setup(rows: readonly NarrativePostRow[], vectors: Record<string, Float3
       return new Map(kind === 'post' ? ids.flatMap((id) => (vectors[id] === undefined ? [] : [[id, vectors[id]] as const])) : []);
     },
     reach: async () => ({ points: new Map(), latest: new Map() }),
-    open: async () => [],
+    open: async () => open(),
     calls: async () => calls,
     setTitle: async (id: string, title: string) => void titles.push([id, title]),
+    storedGood: async () => older,
   };
   const grouper = narrativeGrouper({
     repo, save: async (p) => (saved.push(p), true), block: async () => ({ cutoff: null, chosenOn: null }), titler, embed: null, keepVectors: async () => false,
-    meter, mode, policy: { ...DEFAULT_POLICY, judge: { ...DEFAULT_POLICY.judge, cutoffs: { primary: 0.7, fallback: 0.95 } } }, postSpace: 'post-space', log, now: () => NOW as Millis,
+    meter, mode, policy: { ...policy, judge: { ...policy.judge, cutoffs: { primary: 0.7, fallback: 0.95 } } }, postSpace: 'post-space', log, now: () => NOW as Millis,
   });
   return { grouper, saved, reads, titles };
 }
@@ -116,4 +119,81 @@ test('★ "Not a narrative" holds through the regroup: a hidden post with one ne
   const two = setup([row('a'), row('b'), row('c')], { a: unit(0), b: unit(0), c: unit(0) }, 'live', [hide]);
   await two.grouper.pass();
   assert.deepEqual(two.saved[0]?.narratives.map((n) => [[...n.members].sort(), n.shown]), [[['a', 'b', 'c'], true]]);
+});
+
+/* ── the early posts (0100) ── */
+
+const DAY = 86_400_000;
+const old = (itemId: string, daysBack: number, extra: Partial<NarrativePostRow> = {}) => row(itemId, { atMs: NOW - daysBack * DAY, ...extra });
+/* The window's oldest posts, so a post a little before the window is inside the regroup's one-day gap. */
+const edge = (itemId: string) => old(itemId, 1.9);
+
+test('★ a stored post from before the window that matches joins the narrative as early, followed back one link at a time', async () => {
+  const rows = [edge('a'), edge('b')];
+  const older = [
+    old('bridge', 2.5), // half a day before the window's first post
+    old('first', 3.2), // the story's first post: linked to the bridge, not to the window
+    old('jump', 5), // the same words, but two days before anything: a gap the regroup never links across
+    old('other', 2.5, { body: 'A new cat cafe opened downtown with twenty rescue cats', proposedName: 'Cat Cafe' }),
+    old('far', 2.5), // the same words but far in meaning
+    old('tooOld', 9), // outside the seven days
+  ];
+  const v = { a: unit(0), b: unit(0.05), bridge: unit(0.1), first: unit(0.1), jump: unit(0), other: unit(0.05), far: unit(1.5), tooOld: unit(0) };
+  const { grouper, saved } = setup(rows, v, 'live', [], older);
+  const r = await grouper.pass();
+  const n = saved[0]?.narratives[0];
+  assert.deepEqual([...(n?.members ?? [])].sort(), ['a', 'b'], 'the regroup made the narrative from the window');
+  assert.deepEqual(n?.early, ['first', 'bridge'], 'earliest first');
+  assert.equal(r.early, 2);
+});
+
+test('★ an early post never moves the id or reads as a change: the next pass keeps both', async () => {
+  const rows = [edge('a'), edge('b')];
+  const older = [old('first', 2.5)];
+  const v = { a: unit(0), b: unit(0), first: unit(0) };
+  let stored: StoredNarrative[] = [];
+  const s = setup(rows, v, 'live', [], older, () => stored);
+  await s.grouper.pass();
+  const first = s.saved[0]?.narratives[0];
+  assert.ok(first !== undefined);
+  assert.deepEqual(first.early, ['first']);
+  stored = [{ id: first.id, members: [...first.members, ...(first.early ?? [])], anchor: first.anchor, shown: true, firstShownAtMs: NOW, postsChangedAtMs: NOW, title: 't', titlePosts: 3, early: [...(first.early ?? [])] }];
+  await s.grouper.pass();
+  const again = s.saved[1]?.narratives[0];
+  assert.equal(again?.id, first.id);
+  assert.equal(again?.changed, false, 'the early post is not a post the regroup lost');
+  assert.deepEqual(again?.early, ['first']);
+});
+
+test('★ the owner outranks the match: a post he removed from beside the narrative, or kept apart, is not early', async () => {
+  const rows = [edge('a'), edge('b'), edge('c')];
+  const older = [old('removed', 2.5), old('apart', 2.5), old('kept', 2.5)];
+  const calls: NarrativeCallRow[] = [
+    { id: 1, atMs: NOW - 10, narrativeId: 'n-x', verdict: 'remove_post', otherId: 'removed', coin: null, members: ['removed', 'a', 'b'], otherMembers: [] },
+    { id: 2, atMs: NOW - 5, narrativeId: 'n-y', verdict: 'not_narrative', otherId: null, coin: null, members: ['apart', 'a'], otherMembers: [] },
+  ];
+  const v = { a: unit(0), b: unit(0), c: unit(0), removed: unit(0), apart: unit(0), kept: unit(0) };
+  const { grouper, saved } = setup(rows, v, 'live', calls, older);
+  await grouper.pass();
+  const shown = saved[0]?.narratives.find((x) => x.members.includes('b'));
+  assert.equal(shown?.shown, true, 'b and c are posts he never saw in it');
+  assert.deepEqual(shown?.early, ['kept']);
+});
+
+test('a good post the regroup dropped at its cap is matched back in as early', async () => {
+  const policy = { ...DEFAULT_POLICY, narrative: { ...DEFAULT_POLICY.narrative, maxPosts: 2 } };
+  const rows = [row('a', { atMs: NOW - 1_000 }), row('b', { atMs: NOW - 2_000 }), row('dropped', { atMs: NOW - 3 * 3_600_000 })];
+  const v = { a: unit(0), b: unit(0), dropped: unit(0.05) };
+  const { grouper, saved } = setup(rows, v, 'live', [], [], () => [], policy);
+  const r = await grouper.pass();
+  assert.equal(r.left.over_cap, 1);
+  assert.deepEqual(saved[0]?.narratives[0]?.early, ['dropped']);
+});
+
+test('switched off, nothing is early', async () => {
+  const policy = { ...DEFAULT_POLICY, narrative: { ...DEFAULT_POLICY.narrative, early: { ...DEFAULT_POLICY.narrative.early, on: false } } };
+  const { grouper, saved } = setup([edge('a'), edge('b')], { a: unit(0), b: unit(0), first: unit(0) }, 'live', [], [old('first', 2.5)], () => [], policy);
+  const r = await grouper.pass();
+  assert.deepEqual(saved[0]?.narratives[0]?.early, []);
+  assert.equal(r.early, 0);
 });
