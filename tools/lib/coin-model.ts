@@ -102,7 +102,7 @@ export interface CoinModelRefit {
   readonly weightsByName: readonly { readonly name: string; readonly weight: number }[];
 }
 
-const hashShare = (id: string): number => createHash('sha256').update(`coin-model|${id}`).digest().readUInt32BE(0) / 0x1_0000_0000;
+export const hashShare = (id: string): number => createHash('sha256').update(`coin-model|${id}`).digest().readUInt32BE(0) / 0x1_0000_0000;
 const chunks = <T,>(xs: readonly T[]): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < xs.length; i += CHUNK) out.push(xs.slice(i, i + CHUNK));
