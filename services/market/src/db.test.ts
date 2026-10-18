@@ -108,6 +108,8 @@ test('★ the coins on screen are read before the newest, under the same origin 
   const { sql } = last();
   assert.match(sql, /from public\.rising_row/);
   assert.match(sql, /from public\.board_row/);
+  /* Every live narrative's page too: the Narratives card's coin and top coin are only there. */
+  assert.match(sql, /from public\.story_view where dead is not true and payload #>> '\{provenance,kind\}' = 'observed'/);
   assert.match(sql, /and a\.origin = any\(\$3::text\[\]\)/);
   assert.match(sql, /order by tier, first_seen_at desc, asset_key asc limit \$2$/);
 });
