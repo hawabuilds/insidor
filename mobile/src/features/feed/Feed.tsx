@@ -78,7 +78,6 @@ import { sheetCoinRoute } from '../token/coin-opening.ts';
 import { Button } from '../../shared/ui/Button.tsx';
 import { StarIcon } from '../../shared/ui/icons.tsx';
 import { Notice } from '../../shared/ui/Notice.tsx';
-import { PlatformMark } from '../../shared/ui/PlatformMark.tsx';
 import { PostRow } from '../../shared/ui/PostRow.tsx';
 import { OlderCoinsLine } from './OlderCoins.tsx';
 import { UnderlineTabs } from '../../shared/ui/UnderlineTabs.tsx';
@@ -334,7 +333,7 @@ export function Feed({
                 className={`${styles['quickPill']} ${filters.sites.includes(p.key) ? styles['quickOn'] : ''}`}
                 onClick={() => setFilters((f) => ({ ...f, sites: quickSite === p.key ? [] : [p.key] }))}
               >
-                <PlatformMark platform={p.key} size={14} /> {p.label}
+                {p.label}
               </button>
             ))}
           </div>

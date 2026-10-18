@@ -119,15 +119,15 @@
 
 .quickPill {
   flex: none;
-  height: 36px;
-  padding: 0 14px;
+  height: 32px;
+  padding: 0 12px;
   border-radius: var(--r-pill);
   display: inline-flex;
   align-items: center;
   gap: 7px;
   background: var(--card);
   color: var(--text-2);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 
