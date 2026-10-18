@@ -86,3 +86,57 @@ test("★ the namer's guesses are searched after the judge's names, only names n
   assert.deepEqual(searchNames(term, 4, 3), ['Attack', 'Pumpfun', 'Attack On Pumpfun', 'AOP', 'First Target']);
   assert.deepEqual(searchNames(term, 4), ['Attack', 'Pumpfun'], 'no guesses while the switch is off');
 });
+
+test('★ the narrative pages\' posts are searched after the feed, on the free sources only, a shared name once a pass', async () => {
+  const paid: string[] = [];
+  const free: string[] = [];
+  const paidSource: CoinSearch = { search: async (t) => (paid.push(t), { hits: [], capped: false }) };
+  const freeSource: CoinSearch = { search: async (t) => (free.push(t), { hits: [hit('C', t, 60_000)], capped: false }) };
+  const feed: LookupTerm = { kind: 'post', id: 'x:feed', term: 'Moo Deng', names: ['Moo Deng'], attempts: 0 };
+  const siblings: LookupTerm[] = [
+    { kind: 'post', id: 'x:a', term: 'Gordão', names: ['Gordão'], attempts: 0, via: 'narrative', postedAtMs: NOW },
+    { kind: 'post', id: 'x:b', term: 'gordão', names: ['gordão', 'Fat Cat'], attempts: 0, via: 'narrative', postedAtMs: NOW },
+  ];
+  const { d, recorded } = deps(feed, [paidSource]);
+  const asked: number[] = [];
+  const r = await lookUpCoins({
+    ...d,
+    freeSources: [freeSource],
+    coins: { ...d.coins, narrativePostTerms: async (_live, _dead, _retries, limit) => (asked.push(limit), siblings) },
+  });
+  assert.deepEqual(paid, ['Moo Deng'], 'the paid source is asked for the feed post alone');
+  assert.deepEqual(free.sort(), ['Fat Cat', 'Gordão'], 'the free source: each distinct name of the siblings once');
+  assert.equal(r.searched, 3);
+  assert.equal(recorded.length, 3);
+  assert.equal(asked[0], DEFAULT_POLICY.universe.lookup.narrativePosts.perPass, 'at most perPass a pass');
+});
+
+test('★ narrative posts wait while only the feed\'s reserve is left of the day, and are never searched with no free source', async () => {
+  const feed: LookupTerm = { kind: 'post', id: 'x:feed', term: 'Moo Deng', names: ['Moo Deng'], attempts: 0 };
+  const source: CoinSearch = { search: async () => ({ hits: [], capped: false }) };
+  const l = DEFAULT_POLICY.universe.lookup;
+  const names = l.namesPerSubject + (DEFAULT_POLICY.names.on ? l.guessNamesPerSubject : 0);
+  let asked = 0;
+  const narrativePostTerms = async () => (asked += 1, []);
+  const { d } = deps(feed, [source]);
+  const late = Math.ceil((l.perDay - l.narrativePosts.feedReserve) / names);
+  await lookUpCoins({ ...d, freeSources: [source], coins: { ...d.coins, narrativePostTerms, searchesSince: async (at) => (at === NOW - 60_000 ? 0 : late) } });
+  assert.equal(asked, 0, 'the reserve is the feed\'s');
+  await lookUpCoins({ ...d, coins: { ...d.coins, narrativePostTerms } });
+  assert.equal(asked, 0, 'no free source: not searched');
+  await lookUpCoins({ ...d, freeSources: [source], coins: { ...d.coins, narrativePostTerms } });
+  assert.equal(asked, 1);
+});
+
+test('★ a narrative post searched days after it went up keeps the coins launched after it', async () => {
+  const posted = NOW - 10 * 86_400_000;
+  const source: CoinSearch = { search: async () => ({ hits: [hit('OLD', 'Gordão', 9 * 86_400_000), hit('BEFORE', 'Gordão', 30 * 86_400_000)], capped: false }) };
+  const feed: LookupTerm = { kind: 'post', id: 'x:feed', term: 'Moo Deng', names: ['Moo Deng'], attempts: 0 };
+  const { d, recorded } = deps(feed, [{ search: async () => ({ hits: [], capped: false }) }]);
+  await lookUpCoins({
+    ...d,
+    freeSources: [source],
+    coins: { ...d.coins, narrativePostTerms: async () => [{ kind: 'post', id: 'x:a', term: 'Gordão', names: ['Gordão'], attempts: 0, via: 'narrative', postedAtMs: posted as Millis }] },
+  });
+  assert.deepEqual(recorded[1]?.hits, ['OLD'], 'launched a day after the post: kept; three weeks before it: not');
+});

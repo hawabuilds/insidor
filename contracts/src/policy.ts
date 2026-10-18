@@ -1819,6 +1819,22 @@ export interface UniversePolicy {
     readonly retries: number;
     /** A post still not looked up this long after entering the feed shows "Couldn't check". */
     readonly giveUpMs: number;
+    /**
+     * ★ THE NARRATIVE PAGES' POSTS (2026-10-18): a narrative's coin is read from its posts'
+     * searches, and a post off the live feed frame was never searched, so 373 of 411 pages said
+     * "still checking for a coin" for good. They are searched after the feed's posts, on the free
+     * source only (never the paid plan's monthly credits).
+     */
+    readonly narrativePosts: {
+      /** Posts searched a pass at most, inside the room the feed left. */
+      readonly perPass: number;
+      /** Calls of `perDay` kept for the feed: narrative posts stop for the UTC day when only this is left. */
+      readonly feedReserve: number;
+      /** A live narrative's post is searched again this long after its last search. */
+      readonly liveKeepMs: number;
+      /** A dead narrative's post: checked once, then again only this long after. */
+      readonly deadKeepMs: number;
+    };
   };
   /**
    * ★ WHICH COINS THE UNIVERSE KEEPS. Every coin chainwatch sees is kept for `allMs`. After that a
@@ -5094,6 +5110,16 @@ const POLICY_V1: Policy = {
       perMinute: 100,
       retries: 3,
       giveUpMs: 600_000, // ten minutes
+      narrativePosts: {
+        /* 4 a pass, a pass a minute, with the feed's posts always searched first: the day's cap, not
+           this, is what bounds the sweep — about 1,200 a day, so the 2,000-odd posts of the pages on
+           18 Oct are all searched in about two days, and the new ones each day well inside it. */
+        perPass: 4,
+        /* 5,000 calls: 500 feed posts at ten names, over twice the most the feed searched in a day (452, 16 Oct). */
+        feedReserve: 5_000,
+        liveKeepMs: 21_600_000, // six hours, as the feed's
+        deadKeepMs: 259_200_000, // three days
+      },
     },
     keep: {
       allMs: 1_209_600_000, // fourteen days

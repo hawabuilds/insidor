@@ -30,6 +30,13 @@
  * the feed first, then narratives (the store's `lookupTerms`). Every waiting subject is noted
  * before the caps apply, so one the caps leave for later still has the moment it began waiting.
  *
+ * ★ AND THE NARRATIVE PAGES' POSTS (2026-10-18). A narrative's coin is its posts' searches, and a
+ * post off the live feed frame was never searched: 373 of 411 pages said "still checking" for good.
+ * After the feed, a few of those posts a pass (`lookup.narrativePosts`): never searched first, a
+ * live narrative's again after `liveKeepMs`, a dead one's only after `deadKeepMs`. They are asked
+ * of `freeSources` alone, never the paid plan, and stop for the day while the feed's reserve is
+ * all that is left of `perDay`.
+ *
  * ★ THE ADDRESSES KEPT ARE RECORDED, NOT ONLY HOW MANY (0051). A card that says "3 coins use this
  * name" offers to list them, and the list is these addresses; `more` says the search found more
  * than `hitsPerTerm`, or a source cut its answer, so the card can say "10+" instead of a count
@@ -56,9 +63,11 @@ import { assetFromSearch, CHAIN } from '@insidor/venue-solana-pumpfun';
 import { errorText, type Logger } from '../log.ts';
 
 export interface LookupDeps {
-  readonly coins: Pick<PgCoinUniverseRepo, 'queueLookups' | 'lookupTerms' | 'recordLookup' | 'recordFailedLookup' | 'searchesSince' | 'knownAssets'> & Partial<Pick<PgCoinUniverseRepo, 'withGuesses'>>;
+  readonly coins: Pick<PgCoinUniverseRepo, 'queueLookups' | 'lookupTerms' | 'recordLookup' | 'recordFailedLookup' | 'searchesSince' | 'knownAssets'> & Partial<Pick<PgCoinUniverseRepo, 'withGuesses' | 'narrativePostTerms'>>;
   readonly assets: Pick<PgAssetRepo, 'upsert'>;
   readonly sources: readonly CoinSearch[];
+  /** The sources that cost nothing a call, for the narrative pages' posts. Absent or empty: those are not searched. */
+  readonly freeSources?: readonly CoinSearch[];
   /** The chain, for a candidate's metadata link and launch time. Null: neither is read. */
   readonly chain: { metadataUri(mint: string): Promise<string | null>; oldestSignatureBlockTime(address: string): Promise<number | null> } | null;
   readonly policy: Policy;
@@ -117,75 +126,121 @@ export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
     return { searched: 0, added: 0, failed: 0 };
   }
 
-  let searched = 0;
-  let added = 0;
-  let failed = 0;
+  const tally = { searched: 0, added: 0, failed: 0 };
   const waiting = await deps.coins.lookupTerms((now - l.keepMs) as Millis, l.retries, room);
   const terms = guessMax > 0 && deps.coins.withGuesses !== undefined ? await deps.coins.withGuesses(waiting) : waiting;
-  for (const term of terms) {
-    const perName = await Promise.all(searchNames(term, Math.max(1, l.namesPerSubject), guessMax).map((n) => Promise.allSettled(deps.sources.map((s) => s.search(n)))));
-    const answers = perName.flat();
-    const read = answers.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []));
-    if (read.length === 0) {
-      const why = answers.map((a) => (a.status === 'rejected' ? errorText(a.reason) : '')).filter((e) => e !== '').join('; ');
-      await deps.coins.recordFailedLookup(term, why, deps.now());
-      failed += 1;
-      const tries = term.attempts + 1;
-      if (tries > l.retries) deps.log.warn('coin search failed on every source, the last try; the post shows it could not be checked', { term: term.term, tries, err: why });
-      else deps.log.warn('coin search unavailable on every source; the name is searched again next pass', { term: term.term, tries, err: why });
-      continue;
-    }
-    const merged = mergeHits(read);
-    if (term.kind === 'post' && deps.older !== undefined) {
-      const dated = merged.flatMap((h) => (h.createdAt === null ? [] : [{ address: h.address, name: h.name, ticker: h.ticker, launchedAt: h.createdAt as Millis }]));
-      /* Never at the lookup's expense: a failure here (0060 not applied yet) loses only the note. */
-      try {
-        await deps.older.recordFound(term.id, dated, deps.policy.origin.launchAllowanceMs, now);
-      } catch (e) {
-        deps.log.warn('older coins for a post could not be noted; the lookup goes on', { post: term.id, err: errorText(e) });
-      }
-    }
-    const isRecent = (h: { createdAt: number | null }) => h.createdAt !== null && h.createdAt >= now - l.withinMs;
-    const newest = <T extends { createdAt: number | null }>(xs: readonly T[]) => [...xs].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-    /* Each name keeps its own newest `hitsPerTerm`, so a common alternate cannot crowd out the
-       proposed name's coins; the union is listed newest first. */
-    const kept = new Map<string, (typeof merged)[number]>();
-    let cut = false;
-    for (const answersOfName of perName) {
-      /* A name every source failed on may hold coins we did not see: the list says "more". */
-      if (answersOfName.every((a) => a.status === 'rejected')) cut = true;
-      const recentOfName = newest(mergeHits(answersOfName.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []))).filter(isRecent));
-      if (recentOfName.length > l.hitsPerTerm) cut = true;
-      for (const h of recentOfName.slice(0, l.hitsPerTerm)) if (!kept.has(h.address)) kept.set(h.address, merged.find((m) => m.address === h.address) ?? h);
-    }
-    const hits = newest([...kept.values()]);
-    /* A source that cut its own answer short may have left out more coins of this name. */
-    const more = cut || answers.some((a) => a.status === 'fulfilled' && a.value.capped);
-    const known = await deps.coins.knownAssets(hits.map((h) => assetKey({ chain: CHAIN, address: h.address })));
-    let newHere = 0;
-    for (const hit of hits) {
-      if (known.has(assetKey({ chain: CHAIN, address: hit.address }))) continue;
-      let metadataUri: string | null = null;
-      let chainCreatedAt: Millis | null = null;
-      if (deps.chain !== null) {
-        try {
-          metadataUri = await deps.chain.metadataUri(hit.address);
-          const seconds = await deps.chain.oldestSignatureBlockTime(hit.address);
-          chainCreatedAt = seconds === null ? null : ((seconds * 1_000) as Millis);
-        } catch (e) {
-          deps.log.info('chain read for a found coin failed; it is added with what the search gave', { coin: hit.address, err: errorText(e) });
-        }
-      }
-      const asset = assetFromSearch(hit, { firstSeenAt: now, metadataUri, chainCreatedAt });
-      if (asset === null) continue;
-      await deps.assets.upsert([asset]);
-      newHere += 1;
-    }
-    /* Stamped when the search ran, not when the pass began: the rolling minute counts by it. */
-    await deps.coins.recordLookup(term, { hits: hits.map((h) => h.address), more }, newHere, deps.now());
-    searched += 1;
-    added += newHere;
+  for (const term of terms) await searchOne(deps, term, deps.sources, guessMax, now, tally);
+
+  /* ★ THEN THE NARRATIVE PAGES' POSTS (`narrativePostTerms`), in what room the feed left: at most
+     `narrativePosts.perPass` a pass, and none once the day's searches would eat into the
+     `narrativePosts.feedReserve` calls kept for the feed. On the free sources only, so a backlog of
+     old narratives never spends the paid market plan's monthly credits. Siblings share names: a
+     name searched once this pass is answered from that search, never asked twice. */
+  const np = l.narrativePosts;
+  const free = deps.freeSources ?? [];
+  const narrativeRoom = Math.min(room - terms.length, np.perPass, Math.floor((l.perDay - np.feedReserve - today * names) / names) - terms.length);
+  if (free.length > 0 && deps.coins.narrativePostTerms !== undefined && narrativeRoom > 0) {
+    const owed = await deps.coins.narrativePostTerms((now - np.liveKeepMs) as Millis, (now - np.deadKeepMs) as Millis, l.retries, narrativeRoom);
+    const memo: NameMemo = new Map();
+    const named = guessMax > 0 && deps.coins.withGuesses !== undefined ? await deps.coins.withGuesses(owed) : owed;
+    for (const term of named) await searchOne(deps, term, free, guessMax, now, tally, memo);
   }
-  if (searched > 0 || failed > 0) deps.log.info('coins looked up by name', { searched, added, failed, room });
-  return { searched, added, failed };
+  if (tally.searched > 0 || tally.failed > 0) deps.log.info('coins looked up by name', { ...tally, room });
+  return tally;
+}
+
+type CoinSearchResult = Awaited<ReturnType<CoinSearch['search']>>;
+type NameMemo = Map<string, Promise<PromiseSettledResult<CoinSearchResult>[]>>;
+
+/** The key two spellings of one name share ("Banana Duck", "banana-duck"): searched once a pass. */
+const nameKey = (n: string): string => n.toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '');
+
+/**
+ * One subject's search under each of its names on `sources`, recorded as finished or failed.
+ * `memo` answers a name already searched this pass on the same sources.
+ */
+async function searchOne(
+  deps: LookupDeps,
+  term: LookupTerm,
+  sources: readonly CoinSearch[],
+  guessMax: number,
+  now: Millis,
+  tally: { searched: number; added: number; failed: number },
+  memo: NameMemo | null = null,
+): Promise<void> {
+  const l = deps.policy.universe.lookup;
+  const ask = (n: string): Promise<PromiseSettledResult<CoinSearchResult>[]> => {
+    const k = nameKey(n);
+    const had = memo?.get(k);
+    if (had !== undefined) return had;
+    const asked = Promise.allSettled(sources.map((s) => s.search(n)));
+    memo?.set(k, asked);
+    return asked;
+  };
+  const perName = await Promise.all(searchNames(term, Math.max(1, l.namesPerSubject), guessMax).map(ask));
+  const answers = perName.flat();
+  const read = answers.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []));
+  if (read.length === 0) {
+    const why = answers.map((a) => (a.status === 'rejected' ? errorText(a.reason) : '')).filter((e) => e !== '').join('; ');
+    await deps.coins.recordFailedLookup(term, why, deps.now());
+    tally.failed += 1;
+    const tries = term.attempts + 1;
+    if (tries > l.retries) deps.log.warn('coin search failed on every source, the last try; the post shows it could not be checked', { term: term.term, tries, err: why });
+    else deps.log.warn('coin search unavailable on every source; the name is searched again next pass', { term: term.term, tries, err: why });
+    return;
+  }
+  const merged = mergeHits(read);
+  if (term.kind === 'post' && deps.older !== undefined) {
+    const dated = merged.flatMap((h) => (h.createdAt === null ? [] : [{ address: h.address, name: h.name, ticker: h.ticker, launchedAt: h.createdAt as Millis }]));
+    /* Never at the lookup's expense: a failure here (0060 not applied yet) loses only the note. */
+    try {
+      await deps.older.recordFound(term.id, dated, deps.policy.origin.launchAllowanceMs, now);
+    } catch (e) {
+      deps.log.warn('older coins for a post could not be noted; the lookup goes on', { post: term.id, err: errorText(e) });
+    }
+  }
+  /* A launch within `withinMs` of now — or, for a narrative page's post searched days after it
+     went up, of the post itself: a coin launched after the post does not stop counting with age. */
+  const posted = term.postedAtMs ?? null;
+  const since = posted === null ? now - l.withinMs : Math.min(now - l.withinMs, posted - l.withinMs);
+  const isRecent = (h: { createdAt: number | null }) => h.createdAt !== null && h.createdAt >= since;
+  const newest = <T extends { createdAt: number | null }>(xs: readonly T[]) => [...xs].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  /* Each name keeps its own newest `hitsPerTerm`, so a common alternate cannot crowd out the
+     proposed name's coins; the union is listed newest first. */
+  const kept = new Map<string, (typeof merged)[number]>();
+  let cut = false;
+  for (const answersOfName of perName) {
+    /* A name every source failed on may hold coins we did not see: the list says "more". */
+    if (answersOfName.every((a) => a.status === 'rejected')) cut = true;
+    const recentOfName = newest(mergeHits(answersOfName.flatMap((a) => (a.status === 'fulfilled' ? [a.value.hits] : []))).filter(isRecent));
+    if (recentOfName.length > l.hitsPerTerm) cut = true;
+    for (const h of recentOfName.slice(0, l.hitsPerTerm)) if (!kept.has(h.address)) kept.set(h.address, merged.find((m) => m.address === h.address) ?? h);
+  }
+  const hits = newest([...kept.values()]);
+  /* A source that cut its own answer short may have left out more coins of this name. */
+  const more = cut || answers.some((a) => a.status === 'fulfilled' && a.value.capped);
+  const known = await deps.coins.knownAssets(hits.map((h) => assetKey({ chain: CHAIN, address: h.address })));
+  let newHere = 0;
+  for (const hit of hits) {
+    if (known.has(assetKey({ chain: CHAIN, address: hit.address }))) continue;
+    let metadataUri: string | null = null;
+    let chainCreatedAt: Millis | null = null;
+    if (deps.chain !== null) {
+      try {
+        metadataUri = await deps.chain.metadataUri(hit.address);
+        const seconds = await deps.chain.oldestSignatureBlockTime(hit.address);
+        chainCreatedAt = seconds === null ? null : ((seconds * 1_000) as Millis);
+      } catch (e) {
+        deps.log.info('chain read for a found coin failed; it is added with what the search gave', { coin: hit.address, err: errorText(e) });
+      }
+    }
+    const asset = assetFromSearch(hit, { firstSeenAt: now, metadataUri, chainCreatedAt });
+    if (asset === null) continue;
+    await deps.assets.upsert([asset]);
+    newHere += 1;
+  }
+  /* Stamped when the search ran, not when the pass began: the rolling minute counts by it. */
+  await deps.coins.recordLookup(term, { hits: hits.map((h) => h.address), more }, newHere, deps.now());
+  tally.searched += 1;
+  tally.added += newHere;
 }
