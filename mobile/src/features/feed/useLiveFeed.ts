@@ -162,7 +162,14 @@ export function useLiveFeed<V extends { readonly tick: number }, T extends { rea
   /* Read the feed again when the number moved past the one we hold, or when we cannot tell. */
   const latestReload = useRef(reload);
   latestReload.current = reload;
+  /* ★ THE STREAM'S FIRST "ready" DOES NOT READ AGAIN WHILE THE FIRST READ IS ON ITS WAY: that read
+     was aborted and started over on every open (~300 ms lost on For You). Frames between that read
+     and the line opening are caught by the next "changed" or the 30-second check (tick > held). */
+  const firstOnItsWay = load.state === 'loading' || (load.state === 'ready' && load.stale === true);
+  const reading = useRef(firstOnItsWay);
+  reading.current = firstOnItsWay;
   const onChanged = useCallback((tick: number | null) => {
+    if (tick === null && reading.current) return;
     if (!sameTicks || tick === null || held.current === null || tick > held.current) latestReload.current();
   }, [sameTicks]);
 

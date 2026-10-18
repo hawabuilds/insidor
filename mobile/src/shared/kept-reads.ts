@@ -220,10 +220,12 @@ export function fresh<T>(key: string, load: (signal: AbortSignal) => Promise<T>,
     /* The last caller to stop waiting stops the read itself, as a plain fetch would have. */
     const stop = () => {
       w.waiting -= 1;
-      if (w.waiting <= 0) {
+      /* Stopped after this turn, so a caller asking again at once (a reload) joins it instead. */
+      setTimeout(() => {
+        if (w.waiting > 0) return;
         w.ac.abort();
         if (onTheWay.get(key) === w) onTheWay.delete(key);
-      }
+      }, 0);
       reject(new DOMException('aborted', 'AbortError'));
     };
     signal.addEventListener('abort', stop, { once: true });
