@@ -2034,6 +2034,11 @@ export interface WalletPolicy {
   readonly holdingsShown: number;
   /** Recent transactions read for buy history. Older buys are not seen, and the screen says so. */
   readonly signaturesRead: number;
+  /**
+   * Landed buys and sells read from our own trade record for a wallet's cost basis, oldest first.
+   * A wallet with more than this has its oldest left out, and its coins' gains marked partial.
+   */
+  readonly tradesRead: number;
   /** The balance chart's spacing: a wallet adds a point at most this often (Trador's ten minutes). */
   readonly snapshotGapMs: number;
 }
@@ -5449,6 +5454,8 @@ const POLICY_V1: Policy = {
     holdingsShown: 50,
     /* 200 transactions: two parse calls of a hundred, well inside a free parsing tier. */
     signaturesRead: 200,
+    /* 1,000 rows: one index range read of a few hundred kilobytes; nobody trades that much here yet. */
+    tradesRead: 1_000,
     /* Ten minutes: fine enough to see a real move, coarse enough that a day is 144 points. */
     snapshotGapMs: 600_000,
   },
