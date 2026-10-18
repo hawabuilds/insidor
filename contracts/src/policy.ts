@@ -3709,6 +3709,37 @@ export interface SlimPolicy {
   readonly statementTimeoutMs: number;
 }
 
+/**
+ * ★ COIN PICTURE VECTORS, KEPT FOR THE WINDOW THAT READS THEM (the owner, 2026-10-18: "Keep the last
+ * 30 days in the database … Archive older ones to the bucket the same way as the log, checked before
+ * removing. Also stop storing vectors for coins that never got a single trade after 1 hour, if the
+ * origin check doesn't need them"). Coin vectors (internal.image_embedding, subject_kind 'asset')
+ * were three quarters of that table's growth, about 84 MB a day. Run hourly by the projector service
+ * (tools/archive-coin-vectors.ts).
+ *
+ * Who reads a coin's vector, and for how long: the origin check reads the coin's OWN vector while it
+ * checks the coin (picked up for `universe.lookbackMs`, a week, and rechecked once after a day); the
+ * coin-match step and the projector's post-match read it for a feed post's name-search coins
+ * (launched up to `universe.matchWindowMs` after the post); picture reuse copies any row holding the
+ * same content-addressed picture. No reader compares one coin's vector with another coin's to find
+ * an earliest coin; the 30-day walk back (`universe.pictureLookbackMs`) is over POST vectors. So 30
+ * days is past every coin reader, and the tool refuses a `keepMs` shorter than the origin windows.
+ */
+export interface CoinVectorPolicy {
+  /** Vectors embedded longer ago than this go to the bucket, checked, then out of the database. */
+  readonly keepMs: number;
+  /** One archive file at most; a day is several files and a manifest. */
+  readonly partBytes: number;
+  /** Rows read per query while archiving, and deleted per statement. */
+  readonly rowsPerRead: number;
+  readonly rowsPerDelete: number;
+  /** UTC days archived per run; the next run carries on. */
+  readonly daysPerRun: number;
+  /** How long a DELETE waits for a lock before giving up; the next run retries. */
+  readonly lockTimeoutMs: number;
+  readonly statementTimeoutMs: number;
+}
+
 export interface Policy {
   /** Bumped by hand on every edit. The hash is computed from the object, not this. */
   readonly version: string;
@@ -3755,6 +3786,8 @@ export interface Policy {
   readonly labels: LabelPolicy;
   /** Posts that never made For You, slimmed after a week. */
   readonly slim: SlimPolicy;
+  /** Coin picture vectors: 30 days in the database, the rest in the bucket. */
+  readonly coinVectors: CoinVectorPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
    * the one field that makes "a rule today, a model tomorrow" a swap rather than a
@@ -5617,6 +5650,18 @@ const POLICY_V1: Policy = {
     postsPerBatch: 500,
     rowsPerStatement: 5_000,
     batchesPerRun: 40,
+    lockTimeoutMs: 2_000,
+    statementTimeoutMs: 30_000,
+  },
+
+  /* 30 days, the owner's: past every reader of a coin's vector (the origin check reads it for a week).
+     A day of coin vectors is ~12,000 rows of ~6 KB, so 1,000 a statement is a few seconds. */
+  coinVectors: {
+    keepMs: 2_592_000_000, // 30 days
+    partBytes: 40 * 1024 * 1024,
+    rowsPerRead: 1_000,
+    rowsPerDelete: 1_000,
+    daysPerRun: 3,
     lockTimeoutMs: 2_000,
     statementTimeoutMs: 30_000,
   },
