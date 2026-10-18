@@ -767,9 +767,18 @@ export interface WireStory {
    * The Narratives tab's orders (narrative-trend.ts), one entry per window (`hours` 1, 6, 24): the
    * views gained in it (Most viewed's order and the card's number), the posts we found in it, and
    * its place in the trending order for that window. The place is a position, 1 first; the number
-   * that decides it is never sent.
+   * that decides it is never sent. A dead narrative (`dead`) has the facts and no place: it is not
+   * in Trending.
    */
-  readonly inWindow?: readonly { readonly hours: number; readonly viewsGained: WireMeasured; readonly newPosts: number; readonly trendingPlace: number }[];
+  readonly inWindow?: readonly { readonly hours: number; readonly viewsGained: WireMeasured; readonly newPosts: number; readonly trendingPlace?: number }[];
+  /**
+   * No post it lists went up in the last Policy.narrative.dead.afterMs (the owner's 48 hours): left out
+   * of Trending, still in Most viewed and New, its page and posts still here. A fact about its posts'
+   * times, so a new post makes it live again.
+   */
+  readonly dead?: boolean;
+  /** When the newest post it lists went up (when we saved it, for a source that gave no time). */
+  readonly lastPostAt?: WireInstant;
   /** First found: the earliest moment we saved any post it lists now (item.first_seen_at). */
   readonly foundAt?: WireInstant;
   /**

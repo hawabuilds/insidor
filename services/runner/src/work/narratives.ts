@@ -1,6 +1,16 @@
 /**
- * THE NARRATIVES PASS: every couple of minutes, the feed's posts the judge passed are regrouped
- * into narratives and written whole (0093), and each new or grown narrative is given a title.
+ * THE NARRATIVES PASS: every couple of minutes, the feed's posts the judge passed are regrouped,
+ * new posts are added to the narratives already made and new narratives are made (0093, 0106), and
+ * each new or grown narrative is given a title.
+ *
+ * ★ A NARRATIVE IS PERMANENT (the owner, 2026-10-18). Until then this pass rewrote every narrative
+ * from the last two days of posts and retired whatever no new group took: 387 of the 496 narratives
+ * made 16-18 Oct left the app that way, nearly all while their posts were still inside the window
+ * (89 folded into one "viral cat" story by the parts-of-one-story step). Now each window post
+ * already in a narrative is pinned to it (core group/narrative.ts `pinned`), so a group can only
+ * add new posts to the one narrative it holds or be a new one (core group/narrative-keep.ts); a
+ * narrative no group touched is not written at all. Only the owner merges (his "Merge with…"
+ * moves its posts to the one he chose) and removes posts, and his "Not a narrative" hides one.
  *
  * One pass, in order:
  *   1. the posts of the last `narrative.windowMs` the judge said yes to, each held to its own
@@ -15,12 +25,13 @@
  *      with the vectors kept between passes, it takes about a second
  *   3. their view readings, for the one-post narrative ("huge and climbing")
  *   4. the owner's calls on narratives, folded (core `foldNarrativeCalls`)
- *   5. core `groupNarratives`, then `narrativeShown`, and the result written in one transaction
+ *   5. each window post's narrative now (the pins), the owner's merges and removed posts; core
+ *      `groupNarratives` with the pins, core `keepNarratives` (which narrative each group adds to,
+ *      or a new one), `narrativeShown` for the new ones, and the result written in one transaction
  *   6. the early posts (Policy.narrative.early, 0100): stored posts the regroup could not see —
- *      older than its window but inside seven days, or over its cap — matched back into the shown
- *      narratives that formed or grew (core group/narrative-early.ts), so a story's first post stays
- *      in it as it ages. Written with the narrative, marked early, and left out of the `previous`
- *      the regroup keeps ids by, so they never move an id or make the posts read as changed
+ *      older than its window but inside seven days, or over its cap — and in no narrative yet,
+ *      matched into the shown narratives that formed or grew (core group/narrative-early.ts), so a
+ *      story's first post is in it. Written with the narrative, marked early, kept for good
  *   7. titles: up to `title.perPass` shown narratives with no title, or grown by `retitleGrowth`
  *      since theirs, asked of the cheap open model (contracts ports/titles.ts) on its own ledger
  *      endpoint; a failure leaves the judge's name, asked again next pass
@@ -36,8 +47,12 @@
  * ★ THE EARLY MATCH IS BOUNDED, so the pass is not slowed by it: the stored posts are one
  * index-backed read every `early.refreshMs` (judged-yes posts by the judged-time index, at most
  * `maxArchive`), at most `early.perPass` narratives are matched a pass (the ones that formed or grew
- * first), at most `maxVectorsPerPass` vectors are read for it, and a narrative matched before keeps
- * its early posts until its own posts change. Measured 2026-10-18 (tools/narrative-times.ts).
+ * first), at most `maxVectorsPerPass` vectors are read for it, and a narrative keeps its early posts.
+ * Measured 2026-10-18 (tools/narrative-times.ts).
+ *
+ * ★ KEEPING IS BOUNDED TOO: the pins are one read by the window's posts, the stored narratives one
+ * read of the ones this pass grew, the ids one read of the names a new one could take — never a
+ * read of every narrative ever made, which grows every day.
  *
  * What breaks if changed carelessly: the vector cache. Vectors are written once per post and never
  * change, so a post's vector is read once for the life of the process — re-reading 1,500 every two
@@ -57,11 +72,15 @@ import {
   foldNarrativeCalls,
   groupNarratives,
   hiddenByOwner,
+  keepNarratives,
   hugeAndClimbing,
   isShillText,
   narrativeShown,
   narrativeStanding,
+  ownerMerges,
   postPicture,
+  removedPosts,
+  survivorOf,
   answerPolicies,
   type BlockCutoff,
   type NarrativeCalls,
@@ -70,7 +89,7 @@ import {
   type NarrativeStanding,
 } from '@insidor/core';
 import { answerSide } from '@insidor/judge-openai-compatible/setup.ts';
-import type { NarrativePass, NarrativePostRow, PgNarrativeRepo } from '@insidor/store';
+import type { NarrativePass, NarrativePostRow, PgNarrativeRepo, StoredNarrative } from '@insidor/store';
 import { BudgetRefused } from '@insidor/vendor-kit';
 
 import { errorText, type Logger } from '../log.ts';
@@ -81,7 +100,7 @@ const SHORT_VIDEO_SOURCE = 'tiktok';
 const READINGS_SLACK_MS = 600_000;
 
 export interface NarrativeDeps {
-  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'open' | 'calls' | 'setTitle' | 'storedGood'>;
+  readonly repo: Pick<PgNarrativeRepo, 'candidates' | 'vectors' | 'reach' | 'calls' | 'setTitle' | 'storedGood' | 'ofPosts' | 'states' | 'byIds'>;
   /** Writes a pass inside one transaction; false before 0093. */
   readonly save: (pass: NarrativePass) => Promise<boolean>;
   /** The applied learned block's own yes/no cutoff (0086) and the model it was chosen on (0094); nulls: none, not recorded. */
@@ -108,7 +127,11 @@ export interface NarrativeResult {
   readonly pairs: number;
   readonly narratives: number;
   readonly shown: number;
+  /** The owner's merges applied this pass (nothing else retires a narrative). */
   readonly retired: number;
+  /** New narratives made, and narratives given new posts, this pass. */
+  readonly created: number;
+  readonly grown: number;
   readonly titled: number;
   readonly embedded: number;
   /** Early posts listed with the shown narratives, and the narratives matched for them this pass. */
@@ -127,6 +150,8 @@ export interface GroupedPass {
   readonly pass: NarrativePass;
   readonly posts: ReadonlyMap<string, NarrativePostRow>;
   readonly reach: ReadonlyMap<string, number>;
+  /** The stored narratives this pass grew, as they were before it: their titles and early posts. */
+  readonly stored: ReadonlyMap<string, StoredNarrative>;
   readonly result: Omit<NarrativeResult, 'titled' | 'usd' | 'ms' | 'skipped'>;
   /** What embedding the posts with no vector cost this pass. */
   readonly embedUsd: number;
@@ -144,14 +169,58 @@ const budgetOf = (meter: Meter, at: Millis, timeoutMs: number) => {
   return { capUsd: line.capUsd, spentUsd: line.spentUsd, maxCalls: null, deadline: (at + timeoutMs) as Millis };
 };
 
+/**
+ * Every pair of `posts` close enough in meaning and inside the gap, with whether their pictures
+ * match: the regroup's input, compared in memory. Shared with tools/narrative-rebuild.ts, which
+ * replays the regroup over stored days and must pair posts exactly as a pass does.
+ */
+export function narrativePairs(posts: readonly NarrativePostRow[], postVectors: ReadonlyMap<string, Float32Array>, pictureVectors: ReadonlyMap<string, Float32Array>, p: Policy): NarrativePair[] {
+  const n = p.narrative;
+  const pairs: NarrativePair[] = [];
+  for (let i = 0; i < posts.length; i += 1) {
+    const a = posts[i];
+    const va = a === undefined ? undefined : postVectors.get(a.itemId);
+    if (a === undefined || va === undefined) continue;
+    for (let j = i + 1; j < posts.length; j += 1) {
+      const b = posts[j];
+      if (b === undefined || Math.abs(a.atMs - b.atMs) > n.maxGapMs) continue;
+      const vb = postVectors.get(b.itemId);
+      if (vb === undefined) continue;
+      const meaning = dot(va, vb);
+      if (meaning < n.sameMeaning) continue;
+      const pa = pictureVectors.get(a.itemId);
+      const pb = pictureVectors.get(b.itemId);
+      pairs.push({ a: a.itemId, b: b.itemId, meaning, samePicture: pa !== undefined && pb !== undefined && dot(pa, pb) >= p.group.image.likely });
+    }
+  }
+  return pairs;
+}
+
+/** A stored post's standing as a pass reads it: its own model's cutoff, the owner, kinds and shills (core `narrativeStanding`). */
+export function postStanding(held: ReturnType<typeof answerPolicies>, p: Policy): (r: NarrativePostRow) => NarrativeStanding {
+  return (r) => {
+    const answer = r.coinable === null || r.confidence === null || r.lookedAt === null ? null : { coinable: r.coinable, confidence: r.confidence, lookedAt: r.lookedAt, proposedName: r.proposedName };
+    return narrativeStanding({ answer, kindLabel: r.kindLabel, ownerCall: r.ownerCall, shill: isShillText(r.body, p.attention) || r.ownTalk }, held.of(answerSide(r.judgeId)));
+  };
+}
+
+/** The post as the grouping reads it: its time, words, the judge's names and whether it has a picture. */
+export const asNarrativePost = (r: NarrativePostRow): NarrativePost => ({
+  itemId: r.itemId,
+  atMs: r.atMs,
+  text: r.body,
+  names: [r.proposedName, ...r.alternateNames].filter((x): x is string => x !== null && x.trim() !== ''),
+  hasPicture: postPicture(r.media) !== null,
+});
+
 /** The step the runner holds for the life of the process: vectors are read once per post. */
 export function narrativeGrouper(deps: NarrativeDeps) {
   const postVectors = new Map<string, Float32Array>();
   const pictureVectors = new Map<string, Float32Array>();
-  /* The early step's stored good posts (refreshed every `early.refreshMs`), and each narrative's
-     last match by its grouped posts: a narrative whose posts did not change keeps its early posts. */
+  /* The early step's stored good posts in no narrative yet (refreshed every `early.refreshMs`), and
+     the ones it has placed since that read. */
   let stored: { readonly atMs: number; readonly rows: readonly NarrativePostRow[] } | null = null;
-  const matched = new Map<string, { readonly key: string; readonly early: readonly string[] }>();
+  const placed = new Set<string>();
 
   async function vectorsFor(ids: readonly string[], space: string, kind: 'post' | 'picture', cache: Map<string, Float32Array>): Promise<void> {
     const missing = ids.filter((id) => !cache.has(id));
@@ -187,15 +256,17 @@ export function narrativeGrouper(deps: NarrativeDeps) {
   }
 
   /**
-   * Step 6: each shown narrative's early posts. `seen` is every post the regroup looked at (they are
-   * its to place), `overCap` the good posts with a vector it dropped at `maxPosts`.
+   * Step 6: early posts for the narratives this pass touched. `seen` is every post the regroup looked
+   * at (they are its to place), `overCap` the good posts with a vector it dropped at `maxPosts`,
+   * `earlyHad` how many early posts each already holds. Only adds: a post already in any narrative
+   * is never offered, and a narrative keeps every early post it was given.
    */
   async function earlyPosts(input: {
     readonly narratives: readonly { readonly id: string; readonly members: readonly string[]; readonly shown: boolean; readonly changed: boolean }[];
     readonly byId: ReadonlyMap<string, NarrativePostRow>;
     readonly seen: ReadonlySet<string>;
     readonly overCap: readonly NarrativePostRow[];
-    readonly before: ReadonlyMap<string, readonly string[]>;
+    readonly earlyHad: ReadonlyMap<string, number>;
     readonly calls: NarrativeCalls;
     readonly isGood: (r: NarrativePostRow) => boolean;
     readonly nowMs: number;
@@ -206,48 +277,43 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     if (!e.on) return { early: new Map(), matchedNow: 0 };
     const windowStart = input.nowMs - p.narrative.windowMs;
     if (stored === null || input.nowMs - stored.atMs >= e.refreshMs) {
-      const rows = await deps.repo.storedGood(input.nowMs - e.lookbackMs, windowStart, e.maxArchive, p.narrative.searchedPosts);
-      stored = { atMs: input.nowMs, rows: rows.filter(input.isGood) };
+      const rows = (await deps.repo.storedGood(input.nowMs - e.lookbackMs, windowStart, e.maxArchive, p.narrative.searchedPosts)).filter(input.isGood);
+      /* ★ A stored post already in a narrative is that narrative's for good: never offered again. */
+      const inOne = new Set<string>();
+      for (let i = 0; i < rows.length; i += 5_000) for (const id of (await deps.repo.ofPosts(rows.slice(i, i + 5_000).map((r) => r.itemId))).keys()) inOne.add(id);
+      stored = { atMs: input.nowMs, rows: rows.filter((r) => !inOne.has(r.itemId)) };
+      placed.clear();
     }
     const lookFrom = input.nowMs - e.lookbackMs;
     const eligible = new Map<string, NarrativePostRow>();
-    for (const r of [...stored.rows, ...input.overCap]) if (r.atMs >= lookFrom && !input.seen.has(r.itemId)) eligible.set(r.itemId, r);
-    const grouped = new Set(input.narratives.flatMap((x) => x.members));
-    const asPost = (r: NarrativePostRow): NarrativePost => ({ itemId: r.itemId, atMs: r.atMs, text: r.body, names: [r.proposedName, ...r.alternateNames].filter((x): x is string => x !== null && x.trim() !== ''), hasPicture: postPicture(r.media) !== null });
-    const keyOf = (members: readonly string[]) => [...members].sort().join(' ');
+    for (const r of [...stored.rows, ...input.overCap]) if (r.atMs >= lookFrom && !input.seen.has(r.itemId) && !placed.has(r.itemId)) eligible.set(r.itemId, r);
+    const asPost = asNarrativePost;
 
-    /* Which narratives are matched this pass: those that formed or grew, then the ones never matched in this process. */
-    const shown = input.narratives.filter((x) => x.shown);
-    const due = shown
-      .filter((x) => matched.get(x.id)?.key !== keyOf(x.members))
-      .sort((a, b) => Number(b.changed) - Number(a.changed) || b.members.length - a.members.length || a.id.localeCompare(b.id))
+    /* The narratives that formed or grew, biggest first, that have room for more early posts. */
+    const room = (id: string) => e.maxPerNarrative - (input.earlyHad.get(id) ?? 0);
+    const due = input.narratives
+      .filter((x) => x.shown && x.changed && room(x.id) > 0)
+      .sort((a, b) => b.members.length - a.members.length || a.id.localeCompare(b.id))
       .slice(0, e.perPass);
+    if (due.length === 0 || eligible.size === 0) return { early: new Map(), matchedNow: due.length };
     const posts = new Map<string, NarrativePost>();
     for (const x of due) for (const m of x.members) {
       const r = input.byId.get(m);
       if (r !== undefined) posts.set(m, asPost(r));
     }
-    const match = { narratives: due.map((x) => ({ id: x.id, members: x.members })), posts, stored: [...eligible.values()].map(asPost), calls: input.calls };
+    const match = { narratives: due.map((x) => ({ id: x.id, members: x.members.filter((m) => posts.has(m)) })), posts, stored: [...eligible.values()].map(asPost), calls: input.calls };
     const shortlist = earlyShortlist(match, p);
     const wanted = [...new Set([...shortlist.values()].flat())].filter((id) => !postVectors.has(id)).slice(0, e.maxVectorsPerPass);
     await vectorsFor(wanted, input.space, 'post', postVectors);
     const found = earlyMatches(match, shortlist, postVectors, p);
-    for (const x of due) matched.set(x.id, { key: keyOf(x.members), early: found.get(x.id) ?? [] });
-
-    /* Each post in one narrative: this pass's matches first, then what each kept, never a grouped post. */
-    const taken = new Set<string>(grouped);
+    /* Checked again against what is stored now: a post placed since the stored read stays where it is. */
+    const already = await deps.repo.ofPosts([...new Set([...found.values()].flat())]);
+    const grouped = new Set(input.narratives.flatMap((x) => x.members));
     const out = new Map<string, readonly string[]>();
-    const claim = (id: string, list: readonly string[]) => {
-      const kept = list.filter((m) => !taken.has(m));
-      for (const m of kept) taken.add(m);
-      if (kept.length > 0) out.set(id, kept);
-    };
-    const dueIds = new Set(due.map((x) => x.id));
-    for (const x of due) claim(x.id, found.get(x.id) ?? []);
-    for (const x of shown) {
-      if (dueIds.has(x.id)) continue;
-      const memo = matched.get(x.id);
-      claim(x.id, memo !== undefined && memo.key === keyOf(x.members) ? memo.early : input.before.get(x.id) ?? []);
+    for (const x of due) {
+      const kept = (found.get(x.id) ?? []).filter((m) => !grouped.has(m) && !already.has(m) && !placed.has(m)).slice(0, room(x.id));
+      for (const m of kept) placed.add(m);
+      if (kept.length > 0) out.set(x.id, kept);
     }
     return { early: out, matchedNow: due.length };
   }
@@ -265,12 +331,9 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const left: Record<string, number> = {};
     const count = (why: string) => (left[why] = (left[why] ?? 0) + 1);
     const good: NarrativePostRow[] = [];
+    const standingOf = postStanding(held, p);
     for (const r of rows) {
-      const answer = r.coinable === null || r.confidence === null || r.lookedAt === null ? null : { coinable: r.coinable, confidence: r.confidence, lookedAt: r.lookedAt, proposedName: r.proposedName };
-      const standing = narrativeStanding(
-        { answer, kindLabel: r.kindLabel, ownerCall: r.ownerCall, shill: isShillText(r.body, p.attention) || r.ownTalk },
-        held.of(answerSide(r.judgeId)),
-      );
+      const standing = standingOf(r);
       if (standing === 'good') good.push(r);
       else count(standing);
     }
@@ -282,61 +345,63 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     for (let i = 0; i < withVectors.length - used.length; i += 1) count('over_cap');
     await vectorsFor(used.filter((r) => postPicture(r.media) !== null).map((r) => r.itemId), p.group.image.space, 'picture', pictureVectors);
 
-    /* Every pair close enough in meaning, inside the gap, with whether their pictures match. */
-    const pairs: NarrativePair[] = [];
-    for (let i = 0; i < used.length; i += 1) {
-      const a = used[i];
-      const va = a === undefined ? undefined : postVectors.get(a.itemId);
-      if (a === undefined || va === undefined) continue;
-      for (let j = i + 1; j < used.length; j += 1) {
-        const b = used[j];
-        if (b === undefined || Math.abs(a.atMs - b.atMs) > n.maxGapMs) continue;
-        const vb = postVectors.get(b.itemId);
-        if (vb === undefined) continue;
-        const meaning = dot(va, vb);
-        if (meaning < n.sameMeaning) continue;
-        const pa = pictureVectors.get(a.itemId);
-        const pb = pictureVectors.get(b.itemId);
-        pairs.push({ a: a.itemId, b: b.itemId, meaning, samePicture: pa !== undefined && pb !== undefined && dot(pa, pb) >= p.group.image.likely });
-      }
-    }
+    const pairs = narrativePairs(used, postVectors, pictureVectors, p);
 
     /* The one-post narrative: clearly huge and climbing now. */
     const readings = await deps.repo.reach(used.map((r) => r.itemId), nowMs - n.single.growthWindowMs - READINGS_SLACK_MS);
     const single = new Set(used.filter((r) => hugeAndClimbing(readings.latest.get(r.itemId) ?? null, climbPerMinute(readings.points.get(r.itemId) ?? [], nowMs, p), r.source === SHORT_VIDEO_SOURCE, p)).map((r) => r.itemId));
 
-    const calls = foldNarrativeCalls(await deps.repo.calls());
-    const open = await deps.repo.open();
-    /* ★ The regroup keeps ids by the posts IT made: the early posts are not its to count. */
-    const previous = new Map(open.map((s) => [s.id, new Set(s.members.filter((m) => !(s.early ?? []).includes(m)))] as const));
-    const posts: NarrativePost[] = used.map((r) => ({
-      itemId: r.itemId,
-      atMs: r.atMs,
-      text: r.body,
-      names: [r.proposedName, ...r.alternateNames].filter((x): x is string => x !== null && x.trim() !== ''),
-      hasPicture: postPicture(r.media) !== null,
-    }));
-    const grouped = groupNarratives({ posts, pairs, calls, previous, single, vectors: postVectors }, p);
+    const callRows = await deps.repo.calls();
+    const calls = foldNarrativeCalls(callRows);
+    /* ★ WHAT IS ALREADY MADE STAYS MADE: each window post's narrative, the owner's merges and removals. */
+    const pinnedNow = await deps.repo.ofPosts(used.map((r) => r.itemId));
+    const callIds = callRows.flatMap((c) => (c.verdict === 'merge' && c.otherId !== null ? [c.narrativeId, c.otherId] : c.verdict === 'remove_post' ? [c.narrativeId] : []));
+    const states = new Map((await deps.repo.states([...new Set([...callIds, ...pinnedNow.values()])])).map((s) => [s.id, { state: s.state, mergedInto: s.mergedInto }] as const));
+    const merges = ownerMerges(callRows, states);
+    for (const m of merges) states.set(m.from, { state: 'merged', mergedInto: m.into });
+    const lead = new Map(merges.map((m) => [m.from, m.into] as const));
+    const pinned = new Map([...pinnedNow].map(([post, id]) => [post, survivorOf(id, states) ?? lead.get(id) ?? id] as const));
+    const removedFrom = removedPosts(callRows, states);
+    const removed = [...removedFrom].flatMap(([itemId, from]) => [...from].map((narrativeId) => ({ narrativeId, itemId })));
+
+    const posts: NarrativePost[] = used.map(asNarrativePost);
+    const formed = groupNarratives({ posts, pairs, calls, previous: new Map(), single, vectors: postVectors, pinned }, p);
+    const groups = formed.narratives.map((g) => g.members);
+    /* The ids a new narrative could be named, asked of what is stored: none is ever given out twice. */
+    const names = groups.filter((g) => !g.some((m) => pinned.has(m))).flatMap((g) => [...g.map((m) => `n-${m}`), `n-${g[0] ?? ''}-1`, `n-${g[0] ?? ''}-2`]);
+    const taken = new Set((await deps.repo.states(names)).map((s) => s.id));
+    const kept = keepNarratives({ groups, pinned, taken, removedFrom });
+
     const byId = new Map(used.map((r) => [r.itemId, r] as const));
-    const narratives = grouped.narratives.map((g) => {
-      /* ★ The owner's "Not a narrative" is held on the posts (core `hiddenByOwner`): the regroup the
-         call itself causes no longer brings the narrative back. */
-      const shown = narrativeShown(g.members.length, g.members.length === 1 && single.has(g.anchor), hiddenByOwner(g.id, g.members, calls, p), p) === 'shown';
-      const newest = Math.max(...g.members.map((m) => byId.get(m)?.atMs ?? 0));
-      return { id: g.id, members: g.members, anchor: g.anchor, newestPostAtMs: Number.isFinite(newest) && newest > 0 ? newest : null, shown, changed: g.changed };
-    });
+    const touchedIds = [...kept.grown.keys()];
+    const storedOf = new Map((await deps.repo.byIds(touchedIds)).map((s) => [s.id, s] as const));
+    const atOf = (m: string) => byId.get(m)?.atMs ?? 0;
+    const hideOf = (id: string, members: readonly string[]) => hiddenByOwner(id, members, calls, p);
+    const narratives: NarrativePass['narratives'][number][] = [];
+    for (const [id, added] of kept.grown) {
+      const s = storedOf.get(id);
+      if (s === undefined) continue; // merged or gone since the pins were read: nothing to add to
+      const own = s.members.filter((m) => !(s.early ?? []).includes(m));
+      const members = [...own, ...added];
+      const newest = Math.max(s.newestPostAtMs ?? 0, ...added.map(atOf));
+      /* ★ Once shown, shown: only the owner's "Not a narrative" takes it off. */
+      const shown = !hideOf(id, members) && (s.shown || narrativeShown(members.length, false, false, p) === 'shown');
+      narratives.push({ id, members, added, anchor: s.anchor, newestPostAtMs: newest > 0 ? newest : null, shown, changed: true });
+    }
+    for (const c of kept.created) {
+      const shown = narrativeShown(c.members.length, c.members.length === 1 && single.has(c.members[0] ?? ''), hideOf(c.id, c.members), p) === 'shown';
+      const newest = Math.max(...c.members.map(atOf));
+      narratives.push({ id: c.id, members: c.members, added: c.members, anchor: c.members[0] ?? '', newestPostAtMs: Number.isFinite(newest) && newest > 0 ? newest : null, shown, changed: true });
+    }
 
     const earlyStarted = deps.now();
-    const isGood = (r: NarrativePostRow) => {
-      const answer = r.coinable === null || r.confidence === null || r.lookedAt === null ? null : { coinable: r.coinable, confidence: r.confidence, lookedAt: r.lookedAt, proposedName: r.proposedName };
-      return narrativeStanding({ answer, kindLabel: r.kindLabel, ownerCall: r.ownerCall, shill: isShillText(r.body, p.attention) || r.ownTalk }, held.of(answerSide(r.judgeId))) === 'good';
-    };
+    const isGood = (r: NarrativePostRow) => standingOf(r) === 'good';
     const { early, matchedNow } = await earlyPosts({
       narratives,
       byId,
       seen: new Set(used.map((r) => r.itemId)),
       overCap: withVectors.slice(n.maxPosts),
-      before: new Map(open.map((s) => [s.id, s.early ?? []] as const)),
+      earlyHad: new Map([...storedOf].map(([id, s]) => [id, (s.early ?? []).length] as const)),
       calls,
       isGood,
       nowMs,
@@ -345,17 +410,20 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const earlyMs = deps.now() - earlyStarted;
     const withEarly = narratives.map((x) => ({ ...x, early: early.get(x.id) ?? [] }));
     return {
-      pass: { narratives: withEarly, retired: grouped.retired },
+      pass: { narratives: withEarly, retired: merges.map((m) => ({ id: m.from, into: m.into })), removed },
       posts: byId,
       reach: readings.latest,
+      stored: storedOf,
       result: {
         considered: rows.length,
         good: good.length,
         withVectors: withVectors.length,
         pairs: pairs.length,
         narratives: narratives.length,
+        created: kept.created.length,
+        grown: kept.grown.size,
         shown: narratives.filter((x) => x.shown).length,
-        retired: grouped.retired.length,
+        retired: merges.length,
         embedded,
         early: [...early.values()].reduce((sum, l) => sum + l.length, 0),
         earlyMatched: matchedNow,
@@ -371,7 +439,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
     const t = deps.policy.narrative.title;
     const titler = deps.titler;
     if (!t.on || titler === null || deps.mode !== 'live') return { titled: 0, usd: 0 };
-    const stored = new Map((await deps.repo.open()).map((s) => [s.id, s] as const));
+    const stored = grouped.stored;
     const due = grouped.pass.narratives
       .filter((x) => x.shown)
       .filter((x) => {
@@ -405,7 +473,7 @@ export function narrativeGrouper(deps: NarrativeDeps) {
 
   async function pass(): Promise<NarrativeResult> {
     const started = deps.now();
-    const none = (skipped: string): NarrativeResult => ({ skipped, considered: 0, good: 0, withVectors: 0, pairs: 0, narratives: 0, shown: 0, retired: 0, titled: 0, embedded: 0, early: 0, earlyMatched: 0, earlyMs: 0, usd: 0, ms: 0, left: {} as NarrativeResult['left'] });
+    const none = (skipped: string): NarrativeResult => ({ skipped, considered: 0, good: 0, withVectors: 0, pairs: 0, narratives: 0, created: 0, grown: 0, shown: 0, retired: 0, titled: 0, embedded: 0, early: 0, earlyMatched: 0, earlyMs: 0, usd: 0, ms: 0, left: {} as NarrativeResult['left'] });
     if (!deps.policy.narrative.on) return none('switched off (Policy.narrative.on)');
     const grouped = await group();
     if (typeof grouped === 'string') return none(grouped);

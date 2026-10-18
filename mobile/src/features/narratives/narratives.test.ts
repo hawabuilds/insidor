@@ -5,7 +5,7 @@ import { decodeStory } from '../../shared/api/decode.ts';
 import type { Story } from '../../shared/api/index.ts';
 import { fixtureStory, sampleNarrativeIds } from '../../test-fixtures/fixtures.ts';
 import { storyCoinState } from '../narrative/story-coin.ts';
-import { DEFAULT_CHOICE, cardLine, gainText, loadChoice, ordered, realNarratives, saveChoice, starredNarratives, watchLine, type Choice } from './narrative-order.ts';
+import { DEFAULT_CHOICE, allTimeOf, cardLine, gainText, loadChoice, ordered, realNarratives, saveChoice, starredNarratives, watchLine, windowsOf, type Choice } from './narrative-order.ts';
 
 const list = sampleNarrativeIds().map((id) => decodeStory(fixtureStory(id)));
 const base = list[0] as Story;
@@ -95,4 +95,28 @@ test('the Watchlist card line is posts and views, and unknown views are said, ne
   assert.deepEqual(watchLine({ ...base, postCount: 12, viewsTotal: { known: true, amount: 3_400_000 } }), ['12 posts', '3.4M views']);
   assert.deepEqual(watchLine({ ...base, postCount: 1, viewsTotal: null, reach: { known: true, amount: 900 } }), ['1 post', '900 views']);
   assert.deepEqual(watchLine({ ...base, postCount: 2, viewsTotal: unknown, reach: unknown }), ['2 posts', 'views not reported']);
+});
+
+test('★ a dead narrative is never in Trending, and still in Most viewed; the card says Dead', () => {
+  const live = story('live', { 1: [5, 1, 1], 24: [5, 1, 1] });
+  const dead: Story = { ...base, id: 'dead', dead: true, postCount: 4, inWindow: new Map([[1, { viewsGained: measured(900), newPosts: 0, trendingPlace: null }], [24, { viewsGained: measured(9_000), newPosts: 0, trendingPlace: null }]]) };
+  assert.deepEqual(ids(ordered([dead, live], DEFAULT_CHOICE)), ['live']);
+  assert.deepEqual(ids(ordered([live, dead], pick('viewed'))), ['dead', 'live']);
+  assert.deepEqual(cardLine(dead, null, 0), ['4 posts', 'Dead']);
+});
+
+test('★ All time: Most viewed and New read the whole list, ordered by views and by found; the window is remembered', () => {
+  const v = (id: string, views: number | null): Story => ({ ...base, id, viewsTotal: views === null ? { known: false, pending: 'not_read_yet' } : { known: true, amount: views } }) as Story;
+  const all: Choice = { order: 'viewed', windows: { trending: 1, viewed: 'all' } };
+  assert.equal(allTimeOf(all), 'viewed');
+  assert.equal(allTimeOf(pick('new')), 'new');
+  assert.equal(allTimeOf(DEFAULT_CHOICE), null);
+  assert.deepEqual(ids(ordered([v('dark', null), v('small', 10), v('big', 3_000_000)], all)), ['big', 'small', 'dark']);
+  assert.equal(gainText(v('big', 3_400_000), 'all'), '3.4M');
+  assert.deepEqual(windowsOf('trending'), [1, 6, 24], 'Trending has no All time');
+  assert.deepEqual(windowsOf('viewed'), [1, 6, 24, 'all']);
+  const kept = new Map<string, string>();
+  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, val: string) => void kept.set(k, val) };
+  saveChoice(store, all);
+  assert.deepEqual(loadChoice(store), all);
 });

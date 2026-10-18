@@ -7,11 +7,15 @@
  *                a seeded or hand-written one, and it lists at least one post
  *   Trending     the default (the owner, 2026-10-17): the server's trending place for the window
  *                (services/project narrative-trend.ts) — how fast the story is picking up, not how
- *                big it is. Only the place reaches the phone; the number behind it never does
- *   Most viewed  views gained IN the window ("Most viewed 24h" is the last 24 hours, not lifetime)
- *   New          first found (`foundAt`, the earliest save of any post it lists), newest first
- *   Window       1h 6h 24h on Trending and Most viewed: 1h for Trending, 24h for Most viewed until
- *                the user picks another. New has none
+ *                big it is. Only the place reaches the phone; the number behind it never does.
+ *                ★ A dead narrative (no new post in 48 hours, the owner 2026-10-18) is never here
+ *   Most viewed  views gained IN the window ("Most viewed 24h" is the last 24 hours, not lifetime);
+ *                on All time, every narrative ever made, dead ones too, by its views, from the
+ *                server 20 at a time (GET /narratives/:view/all?sort=viewed)
+ *   New          first found (`foundAt`, the earliest save of any post it lists), newest first: every
+ *                narrative ever made, dead ones too, from the server 20 at a time (sort=new)
+ *   Window       1h 6h 24h on Trending; 1h 6h 24h All time on Most viewed: 1h for Trending, 24h for
+ *                Most viewed until the user picks another. New has none
  *
  * ★ AN UNKNOWN NEVER SORTS AS ZERO. A narrative whose number the server did not send, or could not
  * say, goes after every one that has it, in the board's order among themselves, so a missing number
@@ -31,17 +35,35 @@ export const ORDER_LABEL: Readonly<Record<Order, string>> = { trending: 'Trendin
 
 export const WINDOWS = [1, 6, 24] as const;
 export type WindowHours = (typeof WINDOWS)[number];
-export const WINDOW_LABEL: Readonly<Record<WindowHours, string>> = { 1: '1h', 6: '6h', 24: '24h' };
+/** Every narrative ever made: Most viewed's last window. */
+export const ALL_TIME = 'all' as const;
+export type Window = WindowHours | typeof ALL_TIME;
+/** The windows each chip offers: Trending is what is picking up now, so it has no All time. */
+export const VIEWED_WINDOWS: readonly Window[] = [...WINDOWS, ALL_TIME];
+export const WINDOW_LABEL: Readonly<Record<Window, string>> = { 1: '1h', 6: '6h', 24: '24h', all: 'All time' };
 
 /** The chip and each windowed chip's window, as the user last left them. */
 export interface Choice {
   readonly order: Order;
-  readonly windows: { readonly trending: WindowHours; readonly viewed: WindowHours };
+  readonly windows: { readonly trending: WindowHours; readonly viewed: Window };
 }
 export const DEFAULT_CHOICE: Choice = { order: 'trending', windows: { trending: 1, viewed: 24 } };
 
 /** The window the chosen chip uses; New has none. */
-export const windowOf = (c: Choice): WindowHours | null => (c.order === 'new' ? null : c.windows[c.order]);
+export const windowOf = (c: Choice): Window | null => (c.order === 'new' ? null : c.windows[c.order]);
+
+/** The windows the chosen chip offers; New has none. */
+export const windowsOf = (o: Order): readonly Window[] => (o === 'trending' ? WINDOWS : o === 'viewed' ? VIEWED_WINDOWS : []);
+
+/**
+ * Which of the server's whole lists the choice reads, 20 at a time: Most viewed on All time by views,
+ * New by when we found it. Null: the board (Trending, and Most viewed over 1h, 6h or 24h).
+ */
+export function allTimeOf(c: Choice): 'viewed' | 'new' | null {
+  if (c.order === 'new') return 'new';
+  if (c.order === 'viewed' && c.windows.viewed === ALL_TIME) return 'viewed';
+  return null;
+}
 
 /** Only narratives the server says happened, with a post to show. */
 export function realNarratives(list: readonly Story[]): readonly Story[] {
@@ -65,17 +87,27 @@ function by(list: readonly Story[], key: (s: Story) => number | null, dir: 1 | -
   return [...known].sort((a, b) => dir * ((key(b) ?? 0) - (key(a) ?? 0))).concat(unknown);
 }
 
+/** Its views, all its posts' newest counts added up; null when the server could not say. */
+const viewsOf = (s: Story): number | null => (s.viewsTotal !== null && s.viewsTotal.known ? s.viewsTotal.amount : null);
+
 export function ordered(list: readonly Story[], choice: Choice): readonly Story[] {
   const h = windowOf(choice);
   if (choice.order === 'new' || h === null) return by(list, foundOf, 1);
+  if (h === ALL_TIME) return by(list, viewsOf, 1);
   if (choice.order === 'viewed') return by(list, (s) => gainedIn(s, h), 1);
+  /* ★ Trending is the stories still picking up: a dead one is never in it. */
+  const live = list.filter((s) => !s.dead);
   /* A server from before the trending places: its board order is the last hour's gain. */
-  if (!list.some((s) => placeOf(s, h) !== null)) return by(list, (s) => gainedIn(s, h), 1);
-  return by(list, (s) => placeOf(s, h), -1);
+  if (!live.some((s) => placeOf(s, h) !== null)) return by(live, (s) => gainedIn(s, h), 1);
+  return by(live, (s) => placeOf(s, h), -1);
 }
 
-/** "+12K", or null when the server did not say. */
-export function gainText(s: Story, h: WindowHours): string | null {
+/** "+12K" gained in the window, or on All time its views, "3.4M"; null when the server did not say. */
+export function gainText(s: Story, h: Window): string | null {
+  if (h === ALL_TIME) {
+    const v = viewsOf(s);
+    return v === null ? null : compact(v);
+  }
   const g = gainedIn(s, h);
   return g === null ? null : `${g >= 0 ? '+' : ''}${compact(g)}`;
 }
@@ -84,12 +116,13 @@ export function gainText(s: Story, h: WindowHours): string | null {
  * The card's line under the title: on a windowed chip "3 new posts" in the window (or "No new
  * posts"), on New the post count; then the story's age since we found it, "28m old". Facts only.
  */
-export function cardLine(s: Story, h: WindowHours | null, now: number): readonly string[] {
+export function cardLine(s: Story, h: Window | null, now: number): readonly string[] {
   const n = s.postCount ?? s.evidence.length;
-  const fresh = h === null ? null : (s.inWindow?.get(h)?.newPosts ?? null);
+  const fresh = h === null || h === ALL_TIME ? null : (s.inWindow?.get(h)?.newPosts ?? null);
   const posts = fresh === null ? (n === 1 ? '1 post' : `${n} posts`) : fresh === 0 ? 'No new posts' : fresh === 1 ? '1 new post' : `${fresh} new posts`;
   const found = foundOf(s);
-  return [posts, ...(found !== null && now >= found ? [`${formatDuration(now - found)} old`] : [])];
+  /* ★ Dead is said: no new post in 48 hours. */
+  return [posts, ...(found !== null && now >= found ? [`${formatDuration(now - found)} old`] : []), ...(s.dead ? ['Dead'] : [])];
 }
 
 /**
@@ -118,6 +151,7 @@ export function starredNarratives(list: readonly Story[], starred: readonly stri
 
 const KEY = 'insidor.narratives.order';
 const isWindow = (v: unknown): v is WindowHours => v === 1 || v === 6 || v === 24;
+const isViewedWindow = (v: unknown): v is Window => isWindow(v) || v === ALL_TIME;
 
 /** The remembered choice, or the defaults when there is none or it cannot be read. */
 export function loadChoice(store: Pick<Storage, 'getItem'> | null): Choice {
@@ -128,7 +162,7 @@ export function loadChoice(store: Pick<Storage, 'getItem'> | null): Choice {
     const order = ORDERS.find((x) => x === o.order) ?? DEFAULT_CHOICE.order;
     const t = o.windows?.trending;
     const v = o.windows?.viewed;
-    return { order, windows: { trending: isWindow(t) ? t : DEFAULT_CHOICE.windows.trending, viewed: isWindow(v) ? v : DEFAULT_CHOICE.windows.viewed } };
+    return { order, windows: { trending: isWindow(t) ? t : DEFAULT_CHOICE.windows.trending, viewed: isViewedWindow(v) ? v : DEFAULT_CHOICE.windows.viewed } };
   } catch {
     return DEFAULT_CHOICE;
   }

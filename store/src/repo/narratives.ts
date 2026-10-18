@@ -3,8 +3,8 @@
  * owner's routes and the re-tune make of what it wrote.
  *
  * Its own repository, apart from stories.ts, because a narrative is not a GROUP story (0093 says
- * why): it is regrouped from scratch every pass from the posts the judge passed, so its write is a
- * whole replacement of the current post sets, and its reads are of posts and vectors, not carriers.
+ * why): it is grouped from the posts the judge passed, on their vectors, so its reads are of posts
+ * and vectors, not carriers, and its write is what a pass adds to the narratives already made.
  *
  * ★ ONE DEFINITION OF A POST'S STANDING, READ ONE WAY. `standingRows` is the newest answer to the
  * post question (never a kind answer: its yes/no is not the judge's verdict on the post), the kind
@@ -20,8 +20,15 @@
  * ★ BEFORE 0093 NOTHING FAILS: every read answers empty on a missing table or column, the grouping
  * pass writes nothing, and the board shows no narratives rather than the old stories.
  *
- * What breaks if changed carelessly: `save` must run inside the caller's transaction. The posts are
- * deleted and rewritten whole; committed halfway, the board would read narratives with no posts.
+ * ★ PERMANENT SINCE 2026-10-18 (0106): `save` only adds — a narrative's new posts, new narratives,
+ * the owner's merges (its posts moved to the narrative he chose) and his removed posts. Nothing is
+ * rewritten whole and no narrative is retired because a pass did not see it. A narrative's post
+ * count, newest post and oldest post are counted here from its stored posts after each write, so
+ * the caller never has to hold every post of a narrative it grew by one.
+ *
+ * What breaks if changed carelessly: `save` must run inside the caller's transaction: a merge moves
+ * posts and marks the narrative merged in two statements, and half of it would leave a narrative
+ * with no posts that is still open.
  */
 
 import type { Db } from '../client.ts';
@@ -142,23 +149,44 @@ export interface StoredNarrative {
   readonly postsChangedAtMs: number;
   readonly title: string | null;
   readonly titlePosts: number | null;
+  /** Its newest post's time as last counted (narrative.newest_post_at); absent from an older reader. */
+  readonly newestPostAtMs?: number | null;
+  /** When tools/narrative-rebuild.ts rebuilt it from stored posts (0106); null or absent: the runner made it. */
+  readonly restoredAtMs?: number | null;
   /** Of `members`, the early posts (0100): matched back in by the runner, never made by the regroup. Empty before 0100. */
   readonly early?: readonly string[];
 }
 
-/** What one grouping pass writes. */
+/** What one grouping pass writes: only what it adds, and the owner's merges and removals. */
 export interface NarrativePass {
   readonly narratives: readonly {
     readonly id: string;
+    /** All its grouped posts after this pass (what a reader of the pass, such as the times check, lists). */
     readonly members: readonly string[];
     readonly anchor: string;
     readonly newestPostAtMs: number | null;
     readonly shown: boolean;
     readonly changed: boolean;
-    /** Stored posts the regroup could not see, matched back in (0100); not in `members`. Dropped before 0100. */
+    /** Of `members`, the ones new to it this pass: the rows written. Absent: every one of `members` (a post already in a narrative stays where it is). */
+    readonly added?: readonly string[];
+    /** Stored posts the regroup could not see, matched back in (0100), new to it this pass; not in `members`. Dropped before 0100. */
     readonly early?: readonly string[];
+    /** When it was first shown, for a narrative the rebuild made (tools/narrative-rebuild.ts); absent: now, if shown. */
+    readonly firstShownAtMs?: number | null;
+    /** Rebuilt from stored posts (0106 `restored_at`). */
+    readonly restored?: boolean;
   }[];
+  /** The owner's merges: `id` moves all its posts to `into` and is kept as merged. `into` null is never written (nothing is retired). */
   readonly retired: readonly { readonly id: string; readonly into: string | null }[];
+  /** The owner's "Remove this post": the post leaves that narrative. */
+  readonly removed?: readonly { readonly narrativeId: string; readonly itemId: string }[];
+}
+
+/** A narrative's state, for the owner's merges and the ids already given out. */
+export interface NarrativeStateRow {
+  readonly id: string;
+  readonly state: 'open' | 'merged' | 'gone';
+  readonly mergedInto: string | null;
 }
 
 /** One stored owner call on a narrative, as core `foldNarrativeCalls` reads it. */
@@ -315,19 +343,22 @@ export class PgNarrativeRepo {
     return { points, latest: new Map(latest.map((r) => [r.item_id, Number(r.value)] as const)) };
   }
 
-  /** The open narratives the last pass wrote, with their posts. */
-  async open(): Promise<readonly StoredNarrative[]> {
+  /** Open narratives with their posts, as `where` (on `n`) and `tail` (order and limit) choose them. */
+  async #narratives(where: string, params: readonly unknown[], tail = ''): Promise<readonly StoredNarrative[]> {
     if (!(await this.migrated())) return [];
-    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; members: string[] | null; early: string[] | null };
+    type Row = { narrative_id: string; anchor_item: string; shown: boolean; first_shown_at: Date | string | null; posts_changed_at: Date | string; title: string | null; title_posts: number | null; newest_post_at: Date | string | null; restored_at: Date | string | null; members: string[] | null; early: string[] | null };
     const early = (await this.earlyMigrated())
       ? '(select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id and m.early)'
       : 'null::text[]';
+    const restored = (await this.#hasColumn('narrative', 'restored_at')) ? 'n.restored_at' : 'null::timestamptz';
     const rows = await orEmpty(() => this.#db.query<Row>(
-      `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts,
+      `select n.narrative_id, n.anchor_item, n.shown, n.first_shown_at, n.posts_changed_at, n.title, n.title_posts, n.newest_post_at, ${restored} as restored_at,
               (select array_agg(m.item_id order by m.item_id) from internal.narrative_member m where m.narrative_id = n.narrative_id) as members,
               ${early} as early
          from internal.narrative n
-        where n.state = 'open'`,
+        where n.state = 'open' and (${where})
+        ${tail}`,
+      params,
     ), []);
     return rows.map((r) => ({
       id: r.narrative_id,
@@ -338,8 +369,67 @@ export class PgNarrativeRepo {
       postsChangedAtMs: toMs(r.posts_changed_at) ?? 0,
       title: r.title,
       titlePosts: r.title_posts,
+      newestPostAtMs: toMs(r.newest_post_at),
+      restoredAtMs: toMs(r.restored_at),
       early: r.early ?? [],
     }));
+  }
+
+  /** Every open narrative with its posts. Grows with every narrative ever made: for tools, never a pass. */
+  async open(): Promise<readonly StoredNarrative[]> {
+    return this.#narratives('true', []);
+  }
+
+  /** These open narratives, with their posts. */
+  async byIds(ids: readonly string[]): Promise<readonly StoredNarrative[]> {
+    if (ids.length === 0) return [];
+    return this.#narratives('n.narrative_id = any($1::text[])', [[...ids]]);
+  }
+
+  /**
+   * ★ THE LIVE NARRATIVES: shown, with a post that went up since `sinceMs` — what the name searches
+   * read (work/narrative-names.ts, work/narrative-back.ts). Bounded by what is live, never by every
+   * narrative ever made, so the searches spend on stories still running.
+   */
+  async live(sinceMs: number): Promise<readonly StoredNarrative[]> {
+    return this.#narratives('n.shown and n.newest_post_at >= $1', [new Date(sinceMs).toISOString()]);
+  }
+
+  /** The board's narratives: shown, newest post first, at most `limit` (0106 narrative_board_idx). */
+  async newest(limit: number): Promise<readonly StoredNarrative[]> {
+    return this.#narratives('n.shown', [limit], 'order by n.newest_post_at desc nulls last, n.narrative_id limit $1');
+  }
+
+  /**
+   * The shown narratives off the board whose page is due again: never projected first, then the
+   * longest since (public.story_view.projected_at), at most `limit`, none of `skip`.
+   */
+  async pagesDue(limit: number, skip: readonly string[]): Promise<readonly StoredNarrative[]> {
+    return this.#narratives(
+      'n.shown and not (n.narrative_id = any($2::text[]))',
+      [limit, [...skip]],
+      'order by (select v.projected_at from public.story_view v where v.story_id = n.narrative_id) asc nulls first, n.narrative_id limit $1',
+    );
+  }
+
+  /** Each of these narrative ids' state, and where a merged one went; ids never given out are absent. */
+  async states(ids: readonly string[]): Promise<readonly NarrativeStateRow[]> {
+    if (ids.length === 0 || !(await this.migrated())) return [];
+    const rows = await orEmpty(() => this.#db.query<{ narrative_id: string; state: NarrativeStateRow['state']; merged_into: string | null }>(
+      `select narrative_id, state, merged_into from internal.narrative where narrative_id = any($1::text[])`,
+      [[...ids]],
+    ), []);
+    return rows.map((r) => ({ id: r.narrative_id, state: r.state, mergedInto: r.merged_into }));
+  }
+
+  /** Every merged narrative, and every narrative one was merged into: the alias list (0106 public.story_alias). */
+  async merged(): Promise<readonly NarrativeStateRow[]> {
+    if (!(await this.migrated())) return [];
+    const rows = await orEmpty(() => this.#db.query<{ narrative_id: string; state: NarrativeStateRow['state']; merged_into: string | null }>(
+      `select narrative_id, state, merged_into from internal.narrative
+        where state = 'merged' or narrative_id in (select merged_into from internal.narrative where state = 'merged')`,
+    ), []);
+    return rows.map((r) => ({ id: r.narrative_id, state: r.state, mergedInto: r.merged_into }));
   }
 
   /** Every call the owner made on a narrative, oldest first. Empty before 0093. */
@@ -363,47 +453,45 @@ export class PgNarrativeRepo {
   }
 
   /**
-   * One pass, written whole: each narrative upserted (open again if it had been retired), each
-   * retired one marked merged or gone, and every narrative's posts replaced. Run it inside the
-   * caller's transaction. False before 0093.
+   * ★ ONE PASS, ADDED: each narrative it touched upserted (a new one open; a rebuilt one may reopen a
+   * gone id; a merged one is never reopened, so its alias holds), its new posts and new early posts
+   * inserted — a post already in any narrative stays where it is (the one-narrative-a-post index) —
+   * the owner's merges moved and marked, his removed posts deleted, and every touched narrative's
+   * post count, newest post and oldest post counted again from what is stored. Nothing is deleted
+   * but a post the owner removed. Run it inside the caller's transaction. False before 0093.
    */
   async save(pass: NarrativePass): Promise<boolean> {
     if (!(await this.migrated())) return false;
     /* Before 0100 an early post could not be told from a grouped one on the next read: none is written. */
     const withEarly = await this.earlyMigrated();
+    const withRestored = await this.#hasColumn('narrative', 'restored_at');
     const earlyOf = (x: NarrativePass['narratives'][number]): readonly string[] => (withEarly ? x.early ?? [] : []);
     try {
       const n = pass.narratives;
+      const iso = (ms: number | null | undefined) => (ms === null || ms === undefined ? null : new Date(ms).toISOString());
       await this.#db.query(
         `insert into internal.narrative (narrative_id, state, merged_into, anchor_item, member_count, newest_post_at, shown, first_shown_at, posts_changed_at, updated_at)
-         select x.id, 'open', null, x.anchor, x.members, x.newest, x.shown, case when x.shown then now() end, now(), now()
-           from unnest($1::text[], $2::text[], $3::int[], $4::timestamptz[], $5::boolean[]) as x(id, anchor, members, newest, shown)
+         select x.id, 'open', null, x.anchor, 0, x.newest, x.shown, case when x.shown then coalesce(x.first, now()) end, now(), now()
+           from unnest($1::text[], $2::text[], $3::timestamptz[], $4::boolean[], $5::timestamptz[]) as x(id, anchor, newest, shown, first)
          on conflict (narrative_id) do update set
-           state = 'open', merged_into = null, anchor_item = excluded.anchor_item, member_count = excluded.member_count,
-           newest_post_at = excluded.newest_post_at, shown = excluded.shown,
+           state = 'open', merged_into = null, shown = excluded.shown,
            first_shown_at = coalesce(internal.narrative.first_shown_at, excluded.first_shown_at),
            posts_changed_at = case when internal.narrative.state <> 'open' then now() else internal.narrative.posts_changed_at end,
-           updated_at = now()`,
-        [n.map((x) => x.id), n.map((x) => x.anchor), n.map((x) => x.members.length + earlyOf(x).length), n.map((x) => (x.newestPostAtMs === null ? null : new Date(x.newestPostAtMs).toISOString())), n.map((x) => x.shown)],
+           updated_at = now()
+         where internal.narrative.state <> 'merged'`,
+        [n.map((x) => x.id), n.map((x) => x.anchor), n.map((x) => iso(x.newestPostAtMs)), n.map((x) => x.shown), n.map((x) => iso(x.firstShownAtMs))],
       );
+      const restored = n.filter((x) => x.restored === true).map((x) => x.id);
+      if (withRestored && restored.length > 0) await this.#db.query(`update internal.narrative set restored_at = now() where narrative_id = any($1::text[])`, [restored]);
       /* A narrative whose posts changed this pass: the owner's "Not a narrative" said before now no longer hides it. */
       const changed = n.filter((x) => x.changed).map((x) => x.id);
       if (changed.length > 0) await this.#db.query(`update internal.narrative set posts_changed_at = now() where narrative_id = any($1::text[])`, [changed]);
-      if (pass.retired.length > 0) {
-        await this.#db.query(
-          `update internal.narrative n
-              set state = case when r.target is null then 'gone' else 'merged' end, merged_into = r.target, shown = false, updated_at = now()
-             from unnest($1::text[], $2::text[]) as r(id, target)
-            where n.narrative_id = r.id and n.state = 'open'`,
-          [pass.retired.map((r) => r.id), pass.retired.map((r) => r.into)],
-        );
-      }
-      await this.#db.query(`delete from internal.narrative_member`);
+
       const ids: string[] = [];
       const items: string[] = [];
       const early: boolean[] = [];
       for (const x of n) {
-        for (const m of x.members) {
+        for (const m of x.added ?? x.members) {
           ids.push(x.id);
           items.push(m);
           early.push(false);
@@ -417,9 +505,45 @@ export class PgNarrativeRepo {
       if (ids.length > 0) {
         await this.#db.query(
           withEarly
-            ? `insert into internal.narrative_member (narrative_id, item_id, early) select * from unnest($1::text[], $2::text[], $3::boolean[])`
-            : `insert into internal.narrative_member (narrative_id, item_id) select * from unnest($1::text[], $2::text[])`,
+            ? `insert into internal.narrative_member (narrative_id, item_id, early) select * from unnest($1::text[], $2::text[], $3::boolean[]) on conflict do nothing`
+            : `insert into internal.narrative_member (narrative_id, item_id) select * from unnest($1::text[], $2::text[]) on conflict do nothing`,
           withEarly ? [ids, items, early] : [ids, items],
+        );
+      }
+
+      /* The owner's merges: every post moves to the narrative he chose; the merged one stays, pointing there. */
+      const merges = pass.retired.filter((r): r is { id: string; into: string } => r.into !== null && r.into !== r.id);
+      for (const r of merges) {
+        await this.#db.query(`update internal.narrative_member set narrative_id = $2 where narrative_id = $1`, [r.id, r.into]);
+        await this.#db.query(
+          `update internal.narrative set state = 'merged', merged_into = $2, shown = false, member_count = 0, updated_at = now() where narrative_id = $1 and state = 'open'`,
+          [r.id, r.into],
+        );
+      }
+      const removed = pass.removed ?? [];
+      if (removed.length > 0) {
+        await this.#db.query(
+          `delete from internal.narrative_member m using unnest($1::text[], $2::text[]) as r(narrative_id, item_id)
+            where m.narrative_id = r.narrative_id and m.item_id = r.item_id`,
+          [removed.map((r) => r.narrativeId), removed.map((r) => r.itemId)],
+        );
+      }
+
+      /* ★ Counted from what is stored, never from what this pass held: its posts, its newest and its oldest. */
+      const touched = [...new Set([...n.map((x) => x.id), ...merges.map((r) => r.into), ...removed.map((r) => r.narrativeId)])];
+      if (touched.length > 0) {
+        await this.#db.query(
+          `update internal.narrative n
+              set member_count = s.c, newest_post_at = s.newest, anchor_item = coalesce(s.anchor, n.anchor_item), updated_at = now()
+             from (select m.narrative_id, count(*)::int as c,
+                          max(coalesce(i.posted_at, i.first_seen_at)) as newest,
+                          (array_agg(m.item_id order by coalesce(i.posted_at, i.first_seen_at), m.item_id))[1] as anchor
+                     from internal.narrative_member m
+                     left join public.item i on i.item_id = m.item_id
+                    where m.narrative_id = any($1::text[])
+                    group by m.narrative_id) s
+            where n.narrative_id = s.narrative_id`,
+          [touched],
         );
       }
       return true;
@@ -427,6 +551,23 @@ export class PgNarrativeRepo {
       if (notMigrated(e)) return false;
       throw e;
     }
+  }
+
+  readonly #columns = new Map<string, Promise<boolean>>();
+  /** Whether internal.<table>.<column> is there; asked once, never caught (as `migrated`). */
+  #hasColumn(table: string, column: string): Promise<boolean> {
+    const key = `${table}.${column}`;
+    let p = this.#columns.get(key);
+    if (p === undefined) {
+      p = this.#db
+        .query<{ ok: boolean }>(
+          `select exists (select 1 from information_schema.columns where table_schema = 'internal' and table_name = $1 and column_name = $2) as ok`,
+          [table, column],
+        )
+        .then((r) => r[0]?.ok === true);
+      this.#columns.set(key, p);
+    }
+    return p;
   }
 
   /**
@@ -474,7 +615,9 @@ export class PgNarrativeRepo {
   async lessonsSince(sinceMs: number): Promise<{ readonly shown: number; readonly calls: readonly NarrativeCallRecord[] }> {
     if (!(await this.migrated())) return { shown: 0, calls: [] };
     const since = new Date(sinceMs).toISOString();
-    const [count] = await orEmpty(() => this.#db.query<{ n: string | number }>(`select count(*) as n from internal.narrative where first_shown_at >= $1`, [since]), [{ n: 0 }]);
+    /* A narrative the rebuild restored (0106) was not shown that day: it is not one of the day's lessons. */
+    const notRestored = (await this.#hasColumn('narrative', 'restored_at')) ? 'and restored_at is null' : '';
+    const [count] = await orEmpty(() => this.#db.query<{ n: string | number }>(`select count(*) as n from internal.narrative where first_shown_at >= $1 ${notRestored}`, [since]), [{ n: 0 }]);
     const calls = (await this.calls()).filter((c) => c.atMs >= sinceMs);
     return { shown: Number(count?.n ?? 0), calls };
   }
