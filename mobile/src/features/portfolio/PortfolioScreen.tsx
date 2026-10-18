@@ -23,6 +23,7 @@ import { LINKED_WALLET } from '../../shared/notice.ts';
 import { tradingOn } from '../../shared/trading.ts';
 import { Notice } from '../../shared/ui/Notice.tsx';
 import { useToast } from '../../shared/ui/ComingSoon.tsx';
+import { SIGN_IN_CONFIGURED } from '../../shared/sign-in.ts';
 import { useWallet } from '../../shared/wallet.tsx';
 import { forgetEntered } from '../landing/entered.ts';
 import { Portfolio, type ChartRange, type WhoAmI } from './Portfolio.tsx';
@@ -174,6 +175,19 @@ export function PortfolioScreen() {
         switcher={switcher}
         leave={{ label: 'Sign out', run: () => void wallet?.disconnect() }}
       />
+    );
+  }
+
+  /* Still restoring the session: the app now opens For You before the sign-in code has loaded, so
+     a signed-in person can reach this tab a moment before their wallet is back. Say so, never
+     "Sign in". */
+  if (SIGN_IN_CONFIGURED && (state.kind === 'unavailable' || state.kind === 'connecting')) {
+    return (
+      <section className={box['screen']}>
+        <div className={box['signedOut']}>
+          <b>Loading your portfolio</b>
+        </div>
+      </section>
     );
   }
 
