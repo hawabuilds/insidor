@@ -6,7 +6,9 @@
  *   COIN    Right coin (the coin the page shows is the narrative's), and Wrong coin, which saves
  *           at once and then offers the narrative's other coins to pick, or an address to paste,
  *           as the right one
- *   POSTS   Merge with another (pick the narrative it is the same as), and Remove a post (pick it)
+ *   POSTS   Merge with another (pick the narrative it is the same as), Remove a post (pick it),
+ *           and Split (tick the posts that are another story, then "Move N posts to a new
+ *           narrative"; the server refuses none or all of them, and names the new one)
  *   and, on its own at the bottom, a red Not a narrative
  *
  * Each choice is one POST /owner/narrative to services/social (shared/api/owner.ts
@@ -34,7 +36,7 @@ import styles from './narrative.module.css';
 /** A pasted coin address: base58, as long as one is. */
 const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-type Pane = 'main' | 'pick' | 'merge' | 'remove';
+type Pane = 'main' | 'pick' | 'merge' | 'remove' | 'split';
 
 export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: StorySheet | null; onClose: () => void }) {
   const [pane, setPane] = useState<Pane>('main');
@@ -65,12 +67,14 @@ export function NarrativeEdit({ story, sheet, onClose }: { story: Story; sheet: 
             <h3 className={styles['editLabel']}>Posts</h3>
             <Row title="Merge with another" sub="Same story, two narratives" then={() => setPane('merge')} />
             <Row title="Remove a post" sub="A post here doesn't belong" then={() => setPane('remove')} />
+            <Row title="Split" sub="Some posts here are another story" then={() => setPane('split')} />
             <Call call={{ action: 'not_narrative', storyId: story.id }} label="Not a narrative" danger />
           </div>
         ) : null}
         {pane === 'pick' ? <PickCoin story={story} sheet={sheet} wrong={shown?.address ?? null} onBack={() => setPane('main')} /> : null}
         {pane === 'merge' ? <Merge story={story} onBack={() => setPane('main')} /> : null}
         {pane === 'remove' ? <Remove story={story} onBack={() => setPane('main')} /> : null}
+        {pane === 'split' ? <Split story={story} onBack={() => setPane('main')} /> : null}
       </SheetBody>
     </Sheet>
   );
@@ -223,6 +227,67 @@ function Remove({ story, onBack }: { story: Story; onBack: () => void }) {
           <Call call={{ action: 'remove_post', storyId: story.id, itemId: e.evidenceId }} label="Remove" small />
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Some of its posts are another story: tick them, then move them to a new narrative in one call.
+ * The move button is only there for some posts, never none or every one (the server refuses both
+ * too). Once saved the ticks lock, since the posts have gone; the new narrative is written and
+ * named on the next pass.
+ */
+function Split({ story, onBack }: { story: Story; onBack: () => void }) {
+  const toast = useToast();
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const n = picked.size;
+  const can = n > 0 && n < story.evidence.length && state === 'idle';
+  const toggle = (id: string): void => {
+    if (state !== 'idle') return;
+    setPicked((was) => {
+      const next = new Set(was);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const posts = `${n} post${n === 1 ? '' : 's'}`;
+  return (
+    <div className={styles['editBody']}>
+      <Back onBack={onBack} title="Split" />
+      <p className={styles['editNote']}>Tick the posts that are another story.</p>
+      {story.evidence.map((e: Evidence) => (
+        <label key={e.evidenceId} className={styles['editRow']}>
+          <input type="checkbox" className={styles['editCheck']} checked={picked.has(e.evidenceId)} onChange={() => toggle(e.evidenceId)} />
+          <span className={styles['editRowText']}>
+            <b>{e.authorLabel}</b> {e.excerpt}
+          </span>
+        </label>
+      ))}
+      {n > 0 && n >= story.evidence.length ? <p className={styles['editNote']}>Leave at least one post here.</p> : null}
+      {can || state !== 'idle' ? (
+        <button
+          type="button"
+          className={`${styles['editButton']} ${state === 'saved' ? styles['editSaved'] : ''}`}
+          onClick={() => {
+            if (!can) return;
+            setState('saving');
+            save({ action: 'split', storyId: story.id, itemIds: [...picked] }).then(
+              () => {
+                setState('saved');
+                toast(`Saved: ${posts} moved to a new narrative`);
+              },
+              (err: unknown) => {
+                setState('idle');
+                toast(err instanceof Error ? err.message : 'That did not save. Try again.');
+              },
+            );
+          }}
+        >
+          {state === 'saving' ? 'Saving' : state === 'saved' ? 'Saved' : `Move ${posts} to a new narrative`}
+        </button>
+      ) : null}
     </div>
   );
 }
