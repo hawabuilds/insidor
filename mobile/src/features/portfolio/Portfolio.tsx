@@ -166,6 +166,3 @@ export function Portfolio({
     </div>
   );
 }
-
-/** The one note under the list, for the profile until it takes gainsNote itself. */
-export const GAINS_NOTE = 'Gains count coins bought in Insidor.';

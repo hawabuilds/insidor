@@ -1,23 +1,19 @@
 /**
- * A PERSON'S PROFILE — Trador's /u/[handle] ProfileScreen, in Insidor's colours, in its order: the
- * picture, name and @handle with Follow / Following for someone else, the rank card (RankStanding,
- * "N rep to Quant"), the bio, followers and following (each opens its list), then their portfolio
- * (Trador's PublicStonkfolio): its value, their SOL, what is not priced, the wallet, and one row
- * per coin with its gain (portfolio/HoldingRow.tsx, the same row as your own Portfolio).
+ * A PERSON'S PROFILE — Trador's /u/[handle], cut to what a glance needs: back, the picture, name
+ * and @handle with Follow / Following at the right (none on your own), their rank as one small
+ * pill ("Intern, 0 rep"), the bio, "2 followers  1 following" (each opens its list), then their
+ * portfolio: the total with "Portfolio value" under it and HOLDINGS, the same short rows as your
+ * own Portfolio (portfolio/HoldingRow.tsx), SOL first. On your own profile, the switch "Show my
+ * trades to followers" and Edit bio sit quietly at the bottom.
  *
  * ★ A PRIVATE PORTFOLIO IS SAID, NOT DRAWN EMPTY. The social service withholds the wallet unless
  * "Show my trades to followers" is on (Trador's `portfolio_public`, one switch for the Feed and the
  * profile, on by default as Trador's is); turned off, this says "@handle keeps their portfolio
- * private." Your own is always shown to
- * you, with a line saying whether others see it.
+ * private." Your own is always shown to you. No wallet address is shown: the rows are the facts.
  *
  * ★ THE SAME NUMBERS AS YOUR OWN PORTFOLIO, FOR EVERYONE. Trador shows another person's exact gain
- * on each coin, not "in profit / at a loss", and so does this; the gain is only for buys made in
- * Insidor, else a dash with its reason.
- *
- * Nothing Trador's profile lacks: no tabs, no comment list, no leaderboard button. Two things are
- * Insidor's own: Edit bio on your own (Trador edits it in a sheet on the Stonkfolio) and the switch
- * block below, which lives here rather than in a settings gear.
+ * on each coin, not "in profit / at a loss", and so does this; a coin not bought in Insidor shows
+ * "—". The note saying why is on your own Portfolio and your own profile, not on other people's.
  *
  * ★ A PERSON'S OWN NUMBERS ONLY. Rep, rank and counts are about this person and what others did
  * with their comments. Nothing on this screen rates a coin or a post.
@@ -35,36 +31,21 @@ import { useToast } from '../../shared/ui/ComingSoon.tsx';
 import { BackIcon } from '../../shared/ui/icons.tsx';
 import { Value } from '../../shared/ui/Value.tsx';
 import { Avatar } from '../portfolio/Avatar.tsx';
-import { HoldingRow } from '../portfolio/HoldingRow.tsx';
-import { GAINS_NOTE } from '../portfolio/Portfolio.tsx';
+import { Holdings } from '../portfolio/HoldingRow.tsx';
 import folio from '../portfolio/portfolio.module.css';
+import { gainsNote } from '../portfolio/wallet-view.ts';
 import { RankBadge } from './RankBadge.tsx';
-import { RANK_NAME, rankCardLine } from './rank.ts';
+import { RANK_NAME } from './rank.ts';
 import styles from './people.module.css';
 import { goBack } from '../../shared/nav.ts';
 
-/** Trador's shortPubkey(wallet, 4, 4). */
-const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
-
-export function subjectHref(subject: string): string | null {
-  const at = subject.indexOf(':');
-  const kind = subject.slice(0, at);
-  const id = subject.slice(at + 1);
-  if (kind === 'story') return hrefFor({ screen: 'story', storyId: id });
-  if (kind === 'coin') return hrefFor({ screen: 'token', coinId: id.startsWith('solana:') ? id : `solana:${id}` });
-  return null;
-}
-
-export function RankCard({ p }: { p: ProfileCard }) {
+/** The rank as one small pill: its badge, "Intern, 0 rep". */
+export function RankPill({ p }: { p: ProfileCard }) {
   return (
-    <div className={styles['card']}>
-      <RankBadge rank={p.rank} size={64} />
-      <div className={styles['cardText']}>
-        <b>{RANK_NAME[p.rank]}</b>
-        <span>{p.rep.toLocaleString('en-US')} rep in Season {p.season.id}</span>
-        <span>{rankCardLine(p)}</span>
-      </div>
-    </div>
+    <span className={styles['rankPill']}>
+      <RankBadge rank={p.rank} size={16} />
+      {RANK_NAME[p.rank]}, {p.rep.toLocaleString('en-US')} rep
+    </span>
   );
 }
 
@@ -122,95 +103,84 @@ function Body({ p, reload }: { p: ProfileCard; reload: () => void }) {
   return (
     <>
       <div className={styles['head']}>
-        <Avatar name={p.name ?? p.handle} seed={p.userId} src={p.pictureUrl} size={56} />
+        <Avatar name={p.name ?? p.handle} seed={p.userId} src={p.pictureUrl} size={48} />
         <div className={styles['headText']}>
           <h1 className={styles['name']}>{p.name ?? at}</h1>
           {p.handle !== null ? <div className={styles['handle']}>@{p.handle}</div> : null}
         </div>
-        {p.isMe ? (
-          !editing ? <button type="button" className={styles['pillGhost']} onClick={() => setEditing(true)}>Edit bio</button> : null
-        ) : (
+        {p.isMe ? null : (
           <button type="button" className={following ? styles['pillGhost'] : styles['pillFollow']} onClick={() => void toggleFollow()}>
             {following ? 'Following' : 'Follow'}
           </button>
         )}
       </div>
 
-      <RankCard p={p} />
+      <div className={styles['rankRow']}><RankPill p={p} /></div>
 
-      {editing ? (
-        <>
-          <textarea className={styles['bioField']} value={bio} maxLength={160} onChange={(e) => setBio(e.target.value)} aria-label="Bio" />
-          <div className={styles['actions']}>
-            <button type="button" className={styles['ghost']} onClick={() => setEditing(false)}>Cancel</button>
-            <button type="button" className={styles['follow']} onClick={() => void save()}>Save bio</button>
-          </div>
-        </>
-      ) : p.bio !== '' ? (
-        <p className={styles['bio']}>{p.bio}</p>
-      ) : null}
+      {p.bio !== '' && !editing ? <p className={styles['bio']}>{p.bio}</p> : null}
 
       <div className={styles['counts']}>
         <a href={hrefFor({ screen: 'follows', key, which: 'followers' })}><b>{followers.toLocaleString('en-US')}</b> followers</a>
         <a href={hrefFor({ screen: 'follows', key, which: 'following' })}><b>{p.following.toLocaleString('en-US')}</b> following</a>
       </div>
 
-      {/* ── Show my trades to followers (the Feed's switch; it also decides whether others see the portfolio below) ── */}
-      {p.isMe && typeof p.tradesPublic === 'boolean' ? <ShareTrades on={p.tradesPublic} /> : null}
-      {/* ── end of the switch block ── */}
-
       {p.portfolio === 'shown' && p.wallet !== null ? (
-        <PublicPortfolio wallet={p.wallet} at={at} self={p.isMe} othersSee={p.isMe ? p.tradesPublic === true : true} />
+        <PublicPortfolio wallet={p.wallet} at={at} self={p.isMe} />
       ) : p.portfolio === 'private' ? (
         <p className={styles['private']}>{at} keeps their portfolio private.</p>
       ) : (
         <p className={styles['private']}>— {at} has no wallet on Insidor yet, so there is no portfolio to show.</p>
       )}
+
+      {p.isMe ? (
+        <div className={styles['mine']}>
+          {/* ── Show my trades to followers (the Feed's switch; it also decides whether others see the portfolio above) ── */}
+          {typeof p.tradesPublic === 'boolean' ? <ShareTrades on={p.tradesPublic} /> : null}
+          {/* ── end of the switch block ── */}
+          {editing ? (
+            <>
+              <textarea className={styles['bioField']} value={bio} maxLength={160} onChange={(e) => setBio(e.target.value)} aria-label="Bio" />
+              <div className={styles['actions']}>
+                <button type="button" className={styles['ghost']} onClick={() => setEditing(false)}>Cancel</button>
+                <button type="button" className={styles['follow']} onClick={() => void save()}>Save bio</button>
+              </div>
+            </>
+          ) : (
+            <button type="button" className={styles['quiet']} onClick={() => setEditing(true)}>Edit bio</button>
+          )}
+        </div>
+      ) : null}
     </>
   );
 }
 
 /**
- * Someone's portfolio on their profile — Trador's PublicStonkfolio: "Portfolio value", their SOL,
- * what is not priced, the wallet, and the same rows as your own Portfolio. A list only: Trador keeps
- * the pie for your own allocation, and Insidor has no pie.
+ * Someone's portfolio on their profile — Trador's PublicStonkfolio, cut down: the total with
+ * "Portfolio value" under it, then HOLDINGS with the same rows as your own Portfolio. A list only:
+ * Trador keeps the pie for your own allocation, and Insidor has no pie.
  */
-function PublicPortfolio({ wallet, at, self, othersSee }: { wallet: string; at: string; self: boolean; othersSee: boolean }) {
+function PublicPortfolio({ wallet, at, self }: { wallet: string; at: string; self: boolean }) {
   const [loaded] = useLoad(`wallet:${wallet}`, (signal) => fetchPortfolio(wallet, '24h', signal), 'memory');
   const data: PortfolioData | null = loaded.state === 'ready' ? loaded.value : loaded.state === 'failed' ? { kind: 'unavailable' } : null;
   const read = data !== null && data.kind === 'read' ? data : null;
   return (
     <section className={styles['folio']}>
-      <div className={folio['label']}>Portfolio value</div>
       <div className={styles['folioBig']}>{read === null ? '—' : <Value r={formatUsd(read.totalUsd)} />}</div>
-      <div className={styles['folioSub']}>
-        {read !== null ? <span>{read.solBalance.known ? read.solBalance.amount.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—'} SOL</span> : null}
-        {read !== null && read.unpriced > 0 ? <span>{read.unpriced.toLocaleString('en-US')} not priced here</span> : null}
-        <span className={styles['folioWallet']}>{short(wallet)}</span>
-      </div>
-      {self ? (
-        <p className={styles['folioNote']}>
-          {othersSee ? 'Others see this. Hide it with Show my trades to followers.' : 'Only you see this. Others see it once Show my trades to followers is on.'}
-        </p>
-      ) : null}
+      <div className={styles['folioLabel']}>Portfolio value</div>
 
       {data === null ? (
-        <ul className={folio['list']} style={{ marginTop: 16 }}>
+        <ul className={folio['list']}>
           {[0, 1, 2].map((i) => (
             <li key={i} className={folio['skeleton']}><span className={folio['skDot']} /><span className={folio['skLines']}><span /><span /></span></li>
           ))}
         </ul>
       ) : data.kind === 'unavailable' ? (
         <p className={styles['note']}>— what this wallet holds could not be read just now.</p>
-      ) : data.holdings.length === 0 ? (
-        <p className={styles['note']}>{at} holds nothing Insidor can price yet.</p>
       ) : (
         <>
-          <ul className={folio['list']} style={{ marginTop: 16 }}>
-            {data.holdings.map((h) => <li key={h.address}><HoldingRow h={h} /></li>)}
-          </ul>
-          {data.notShown > 0 ? <p className={folio['foot']}>{data.notShown.toLocaleString('en-US')} more coins not shown.</p> : null}
-          <p className={folio['foot']}>{GAINS_NOTE}</p>
+          <Holdings data={data} />
+          {data.holdings.length === 0 ? <p className={styles['note']}>{at} holds no coins yet.</p> : null}
+          {self && data.holdings.length > 0 ? <p className={folio['foot']}>{gainsNote(data.holdings)}</p> : null}
         </>
       )}
     </section>
