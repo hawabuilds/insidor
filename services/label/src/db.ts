@@ -5,7 +5,7 @@
  * it knowingly rather than quietly — the same bend, for the same reason and with the same
  * containment, that `services/project/src/db.ts` makes and names. Four of the reads below
  * have no repository behind them and would each cost store/ a method invented for one
- * caller: the subject sweep over `internal.decisions` is an aggregate no `DecisionRepo`
+ * caller: the subject sweep over the decision log (live and archived, see below) is an aggregate no `DecisionRepo`
  * shape covers, the coin attribution is a parse of a subject id rather than a row read,
  * and `public.story_member` and `public.market_reading` have no repository at all.
  *
@@ -32,6 +32,43 @@ import { chainId } from '@insidor/contracts';
 import type { ChainId, Millis } from '@insidor/contracts';
 import type { Db } from '@insidor/store';
 
+/* ── the log, live and archived ───────────────────────────────────────── */
+
+/**
+ * ★ EVERY READ OF THE DECISION LOG BELOW IS THE UNION OF TWO PLACES (0103). internal.decisions
+ * keeps only its newest day or two; each older day was copied into internal.decision_label_basis
+ * (one row per day and subject: earliest origin, count, resolve verdicts) before it was archived
+ * and dropped (tools/archive-decisions.ts, store label-basis.ts). A day is read from the basis
+ * when internal.decision_label_basis_day lists it, and from the live partition otherwise — never
+ * from both, so a day copied but not yet dropped is not counted twice, and a day half-copied is
+ * still read whole from the partition. The answers are the ones the log alone used to give
+ * (e2e/src/label-basis.test.ts).
+ */
+const LIVE_DAY_NOT_IN_BASIS =
+  `(decided_at at time zone 'UTC')::date not in (select day from internal.decision_label_basis_day)`;
+
+/**
+ * Every resolve-stage candidate decision with one of the verdicts in `param` (a text[] parameter),
+ * live and archived. `attributions()` reads it as the coins matched to stories, and the queue in
+ * `dueSubjects()` reads it for the mint that anchors a story's or an item's window: one spelling,
+ * so the two can never disagree about which coin came out of which story.
+ */
+const MATCHED_CANDIDATES = (param: string): string =>
+  `select subject_id, verdict
+     from internal.decisions
+    where stage = 'resolve'
+      and subject_kind = 'candidate'
+      and verdict = any(${param}::text[])
+      and ${LIVE_DAY_NOT_IN_BASIS}
+   union
+   select b.subject_id, v.verdict
+     from internal.decision_label_basis b
+     join internal.decision_label_basis_day using (day)
+    cross join lateral unnest(b.resolve_verdicts) as v(verdict)
+    where b.subject_kind = 'candidate'
+      and b.resolve_verdicts is not null
+      and v.verdict = any(${param}::text[])`;
+
 /* ── the subjects a decision was made about ───────────────────────────── */
 
 export interface SubjectRow {
@@ -49,8 +86,19 @@ interface RawSubject {
   decisions: string | number;
 }
 
+/** What the queue needs to know about the label it is filling. */
+export interface QueueRule {
+  readonly labelName: string;
+  /** `Policy.labels.definition`: rows of an older definition do not make a subject final. */
+  readonly definition: string;
+  readonly windowDays: number;
+  readonly nowMs: Millis;
+}
+
 /**
- * Every subject anything was ever decided about, with the earliest origin recorded for it.
+ * The subjects worth grading this run: every subject anything was ever decided about, with the
+ * earliest origin recorded for it, less the ones already final and the ones whose window is
+ * still open.
  *
  * ★ `min(subject_origin)` AND NOT THE LATEST ONE. A subject is decided about many times —
  * 773 of the live rows are one stage re-reading twenty-two items — and the recorded origin
@@ -65,6 +113,29 @@ interface RawSubject {
  * against — the same discipline that makes the stored feature vector the only admissible
  * one, applied to the clock.
  *
+ * ★ WHY THE QUEUE FILTERS, AND WHAT IT FILTERS (the owner, 2026-10-18: the labels must really
+ * finish). The run takes at most `limit` subjects. Until now it took the oldest `limit` of ALL
+ * subjects, finished or not, open or not, so once the log held more than that (52,000 on one
+ * day of it) the same oldest few thousand were picked every run and nothing younger was ever
+ * graded. Now a subject is skipped when:
+ *   · its latest revision under this definition is FINAL — `resolved` (main.ts already treats
+ *     it as terminal), or `unresolvable` for a reason that cannot change (the story merged or
+ *     gone, the item gone, the id unparseable). `unresolvable: no_origin_recorded` is not final:
+ *     a later decision can record an origin. `censored` is never final: a backfilled coverage
+ *     gap is how it becomes measurable;
+ *   · its window is still open, computed exactly as `labelWindow` does: from the earliest known
+ *     mint among its coins (the candidate's own; a story's matched coins; an item's stories'
+ *     matched coins), else from its own origin. A subject that main.ts would call ungradeable is
+ *     always due, since its row can be written now.
+ * Then the never-labelled go first, oldest first, and the censored re-measurements after them,
+ * oldest first: censored subjects never leave the queue, and ahead of the rest they would fill
+ * the cap again within a few weeks. A censored subject past the cap is re-measured on a later
+ * run once the backlog clears; nothing is lost by the wait.
+ *
+ * What breaks if changed carelessly: the window here must stay the one `labelWindow` computes.
+ * A later one here holds a subject back past its due date; an earlier one only costs a slot
+ * that main.ts counts as pending.
+ *
  * `pair` is deliberately absent from the kinds this service will accept: a pair subject is
  * a judgement about whether two things are the same story, and its outcome is a match
  * being right, not a coin peaking. Grading it under `peak_multiple` would put a number
@@ -74,18 +145,90 @@ export async function dueSubjects(
   db: Db,
   kinds: readonly SubjectRow['subjectKind'][],
   limit: number,
+  rule: QueueRule,
 ): Promise<readonly SubjectRow[]> {
   const rows = await db.query<RawSubject>(
-    `select subject_kind,
+    `with per_day as (
+       select subject_kind, subject_id, min(subject_origin) as origin, count(*)::bigint as n
+         from internal.decisions
+        where subject_kind = any($1::text[])
+          and ${LIVE_DAY_NOT_IN_BASIS}
+        group by subject_kind, subject_id
+       union all
+       select b.subject_kind, b.subject_id, b.origin_min, b.decisions::bigint
+         from internal.decision_label_basis b
+         join internal.decision_label_basis_day using (day)
+        where b.subject_kind = any($1::text[])
+     ),
+     subjects as (
+       select subject_kind, subject_id, min(origin) as origin, sum(n)::bigint as n
+         from per_day
+        group by subject_kind, subject_id
+     ),
+     matched as (
+       select distinct split_part(subject_id, '|', 1) as story_id,
+                       substr(subject_id, strpos(subject_id, '|') + 1) as asset_key
+         from (${MATCHED_CANDIDATES('$6')}) m
+        where strpos(subject_id, '|') > 1 and strpos(subject_id, '|') < length(subject_id)
+     ),
+     story_coin as (
+       select m.story_id, min(a.minted_at) as minted
+         from matched m
+         join public.asset a on a.asset_key = m.asset_key
+        where a.minted_at is not null
+        group by m.story_id
+     ),
+     item_coin as (
+       select sm.item_id, min(sc.minted) as minted
+         from public.story_member sm
+         join story_coin sc on sc.story_id = sm.story_id
+        group by sm.item_id
+     ),
+     latest as (
+       select distinct on (subject_kind, subject_id) subject_kind, subject_id, status, censor_reason
+         from internal.labels
+        where label_name = $3
+          and (label_version = $4 or (left(label_version, length($4) + 2) = $4 || '.r'
+                                      and substr(label_version, length($4) + 3) ~ '^[0-9]+$'))
+        order by subject_kind, subject_id,
+                 case when label_version = $4 then 1 else substr(label_version, length($4) + 3)::int end desc
+     ),
+     judged as (
+       select s.subject_kind, s.subject_id, s.origin, s.n, l.status, l.censor_reason,
+              coalesce(
+                case s.subject_kind
+                  when 'candidate' then ca.minted_at
+                  when 'story' then sc.minted
+                  else ic.minted
+                end,
+                s.origin) as anchor,
+              case s.subject_kind
+                when 'story' then st.story_id is null or st.merged_into is not null
+                when 'item' then it.item_id is null
+                else strpos(s.subject_id, '|') <= 1 or strpos(s.subject_id, '|') = length(s.subject_id)
+              end as ungradeable
+         from subjects s
+         left join latest l using (subject_kind, subject_id)
+         left join public.asset ca
+           on s.subject_kind = 'candidate' and ca.asset_key = substr(s.subject_id, strpos(s.subject_id, '|') + 1)
+         left join story_coin sc on s.subject_kind = 'story' and sc.story_id = s.subject_id
+         left join item_coin ic on s.subject_kind = 'item' and ic.item_id = s.subject_id
+         left join public.story st on s.subject_kind = 'story' and st.story_id = s.subject_id
+         left join public.item it on s.subject_kind = 'item' and it.item_id = s.subject_id
+     )
+     select subject_kind,
             subject_id,
-            (extract(epoch from min(subject_origin)) * 1000)::bigint as origin_ms,
-            count(*)::bigint                                         as decisions
-       from internal.decisions
-      where subject_kind = any($1::text[])
-      group by subject_kind, subject_id
-      order by min(subject_origin) asc nulls last, subject_id asc
+            (extract(epoch from origin) * 1000)::bigint as origin_ms,
+            n                                           as decisions
+       from judged
+      where coalesce(status, '') <> 'resolved'
+        and not (coalesce(status, '') = 'unresolvable' and coalesce(censor_reason, '') !~ '^no_origin_recorded')
+        and (ungradeable
+             or anchor is null
+             or anchor + make_interval(days => $5::int) <= to_timestamp($7::double precision / 1000))
+      order by (status is not null), origin asc nulls last, subject_id asc
       limit $2`,
-    [kinds, limit],
+    [kinds, limit, rule.labelName, rule.definition, rule.windowDays, MATCHED_VERDICTS, rule.nowMs],
   );
   return rows.map((row) => ({
     subjectKind: row.subject_kind,
@@ -125,11 +268,7 @@ export interface Attribution {
  */
 export async function attributions(db: Db): Promise<readonly Attribution[]> {
   const rows = await db.query<{ subject_id: string; verdict: string }>(
-    `select distinct subject_id, verdict
-       from internal.decisions
-      where stage = 'resolve'
-        and subject_kind = 'candidate'
-        and verdict = any($1::text[])`,
+    `select distinct subject_id, verdict from (${MATCHED_CANDIDATES('$1')}) m`,
     [MATCHED_VERDICTS],
   );
   const out: Attribution[] = [];
@@ -174,10 +313,17 @@ export async function attributions(db: Db): Promise<readonly Attribution[]> {
  */
 export async function examinedStories(db: Db): Promise<ReadonlySet<string>> {
   const rows = await db.query<{ subject_kind: string; subject_id: string }>(
-    `select distinct subject_kind, subject_id
+    `select subject_kind, subject_id
        from internal.decisions
       where stage = 'resolve'
-        and subject_kind = any($1::text[])`,
+        and subject_kind = any($1::text[])
+        and ${LIVE_DAY_NOT_IN_BASIS}
+     union
+     select b.subject_kind, b.subject_id
+       from internal.decision_label_basis b
+       join internal.decision_label_basis_day using (day)
+      where b.subject_kind = any($1::text[])
+        and b.resolve_verdicts is not null`,
     [['story', 'candidate']],
   );
   const out = new Set<string>();

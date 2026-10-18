@@ -10,6 +10,7 @@
     "@insidor/core": "workspace:*",
     "@insidor/embed-voyage": "workspace:*",
     "@insidor/judge-anthropic": "workspace:*",
+    "@insidor/label": "workspace:*",
     "@insidor/meter": "workspace:*",
     "@insidor/notify": "workspace:*",
     "@insidor/platform-x": "workspace:*",

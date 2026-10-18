@@ -310,7 +310,13 @@ async function main(): Promise<void> {
     const assets = new PgAssetRepo(db);
     const labels = new PgLabelRepo(db);
 
-    const subjects = await dueSubjects(db, GRADED_KINDS, limit);
+    /* Only subjects that can be written now: not final, window closed (db.ts dueSubjects). */
+    const subjects = await dueSubjects(db, GRADED_KINDS, limit, {
+      labelName: LABEL_PEAK_MULTIPLE,
+      definition: p.definition,
+      windowDays: p.windowDays,
+      nowMs,
+    });
     const prepared = await prepare(db, subjects);
 
     /* Chains we have ever observed an asset on. This is the coverage question for a

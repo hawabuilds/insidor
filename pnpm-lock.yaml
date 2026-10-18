@@ -349,6 +349,9 @@ importers:
       '@insidor/judge-anthropic':
         specifier: workspace:*
         version: link:../adapters/judge/anthropic
+      '@insidor/label':
+        specifier: workspace:*
+        version: link:../services/label
       '@insidor/meter':
         specifier: workspace:*
         version: link:../adapters/meter/spend
