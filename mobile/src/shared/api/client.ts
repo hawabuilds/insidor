@@ -81,9 +81,10 @@ export async function fetchRising(feed: RisingFeedId, signal?: AbortSignal): Pro
   return decodeRisingFeed(await read(`/rising/${encodeURIComponent(feed)}`, signal));
 }
 
-/** For You by Trending or Most viewed over a window, in the server's order (services/read post-sorts.ts). */
-export async function fetchRisingSorted(by: PostSortBy, window: PostSortWindow, signal?: AbortSignal): Promise<RisingSorted> {
-  return decodeRisingSorted(await read(`/rising/fyp/sorted?by=${by}&window=${window}`, signal));
+/** For You by Trending now or Most viewed Today / This week, one page from `cursor` (null: the first), in the server's order (services/read post-sorts.ts). */
+export async function fetchRisingSorted(by: PostSortBy, window: PostSortWindow, cursor: string | null = null, signal?: AbortSignal): Promise<RisingSorted> {
+  const from = cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`;
+  return decodeRisingSorted(await read(`/rising/fyp/sorted?by=${by}&window=${window}${from}`, signal));
 }
 
 /**

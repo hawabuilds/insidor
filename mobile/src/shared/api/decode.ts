@@ -26,7 +26,7 @@ import { instantFrom, measuredFrom } from '../format/measure.ts';
 import { posterPicFile } from '../poster-pic.ts';
 import type { BoardProvenance, BoardRow, BoardTick, Spark, SparkPoint, Tone } from './wire/board.ts';
 import type { Coin, CoinEvidence, CoinLink, CoinOrigin, MarketCapBasis, PostCoinLink } from './wire/coin.ts';
-import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, RisingPost, RisingSorted } from './wire/rising.ts';
+import type { OlderCoin, PostInStory, PostTranslation, RisingFeed, RisingPage, PostSortBy, PostSortWindow, PostSpeeds, RisingPost, RisingSorted } from './wire/rising.ts';
 import type { DiscussionPost, EarliestPost, Evidence, InWindow, NarrativesList, PostViews, Story, StoryProvenance, ViewsGained } from './wire/story.ts';
 import type { Candle, CoinMarket, MarketTimeframe, MarketTrade } from './wire/market.ts';
 import type { CreatedCoin, Holding, Portfolio, PortfolioRange } from './wire/wallet.ts';
@@ -667,21 +667,47 @@ export function decodeRisingPage(raw: unknown, path = '$'): RisingPage {
 }
 
 const SORT_BYS = ['trending', 'most_viewed'] as const;
-const SORT_WINDOWS = ['1h', '6h', '24h'] as const;
+/** Each sort's own windows: Trending has one, Most viewed two. A pair outside these is refused. */
+const SORT_WINDOWS: Readonly<Record<PostSortBy, readonly PostSortWindow[]>> = { trending: ['now'], most_viewed: ['today', 'week'] };
 
-/** For You's Trending or Most viewed: a post with no views gained on the reply is dropped, never shown at zero. */
+const viewCount = (v: unknown, path: string): number => {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) throw new WireShapeError(path, v);
+  return v;
+};
+
+/**
+ * For You's Trending or Most viewed, one page. Strict: a sort with a window not its own, a speed or
+ * total that is not a count, or a missing `next` throws. A post with no entry of its own (no speeds
+ * on Trending, no total on Most viewed) is dropped, never shown at zero.
+ */
 export function decodeRisingSorted(raw: unknown, path = '$'): RisingSorted {
   assertNoInternalVocabulary(raw, path);
   const o = obj(raw, path);
   const by = SORT_BYS.find((b) => b === o['by']);
-  const window = SORT_WINDOWS.find((w) => w === o['window']);
   if (by === undefined) throw new WireShapeError(`${path}.by`, o['by']);
+  const window = SORT_WINDOWS[by].find((w) => w === o['window']);
   if (window === undefined) throw new WireShapeError(`${path}.window`, o['window']);
-  const g = obj(o['gained'], `${path}.gained`);
-  const gained = new Map<string, number>();
-  for (const [id, v] of Object.entries(g)) if (typeof v === 'number' && Number.isFinite(v) && v >= 0) gained.set(id, v);
-  const posts = arr(o['posts'], `${path}.posts`).map((p, i) => decodeRisingPost(p, `${path}.posts[${i}]`)).filter((p) => gained.has(p.id));
-  return { by, window, posts, gained };
+  const speeds = new Map<string, PostSpeeds | null>();
+  const views = new Map<string, number>();
+  let undated = 0;
+  if (by === 'trending') {
+    for (const [id, v] of Object.entries(obj(o['speeds'], `${path}.speeds`))) {
+      if (v === null) {
+        speeds.set(id, null);
+        continue;
+      }
+      const s = obj(v, `${path}.speeds.${id}`);
+      speeds.set(id, { now: viewCount(s['now'], `${path}.speeds.${id}.now`), before: viewCount(s['before'], `${path}.speeds.${id}.before`) });
+    }
+  } else {
+    for (const [id, v] of Object.entries(obj(o['views'], `${path}.views`))) views.set(id, viewCount(v, `${path}.views.${id}`));
+    undated = int(o['undated'], `${path}.undated`);
+  }
+  const next = o['next'];
+  if (next !== null && typeof next !== 'string') throw new WireShapeError(`${path}.next`, next);
+  const has = (id: string): boolean => (by === 'trending' ? speeds.has(id) : views.has(id));
+  const posts = arr(o['posts'], `${path}.posts`).map((p, i) => decodeRisingPost(p, `${path}.posts[${i}]`)).filter((p) => has(p.id));
+  return { by, window, posts, speeds, views, undated, next };
 }
 
 export function decodeRisingFeed(raw: unknown, path = '$'): RisingFeed {
