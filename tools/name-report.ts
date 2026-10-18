@@ -16,6 +16,8 @@
  *   5. Lead time on coined posts: shown before the first coin, and by how much (tools/lib/lead-time.ts).
  *   6. X and TikTok side by side, the TikTok training set, and the biggest gap (tools/lib/side-by-side.ts,
  *      the same table the re-tune reports).
+ *   7. The scorecard (the owner, 2026-10-18): the six numbers we are measured on, each UTC day of the
+ *      last three and the three together (tools/lib/scorecard.ts, also tools/scorecard.ts on its own).
  *
  * What breaks if changed carelessly: the owner's posts must be weighed by the projector's code,
  * never a copy (the reason tools/lib/coin-match-fit.ts gives); a number from another path is a
@@ -33,6 +35,7 @@ import { withPlausibleLists } from '../services/project/src/coin-list.ts';
 import { loadFit, weighPostCoins } from '../services/project/src/post-match.ts';
 import { asDb, createPool, DB_ROLE, PgOwnerCoinCallRepo } from '../store/src/index.ts';
 import { leadLines, leadRows, summarise } from './lib/lead-time.ts';
+import { scorecardRows, scorecards, scorecardTable } from './lib/scorecard.ts';
 import { sideBySide, sideBySideLines } from './lib/side-by-side.ts';
 
 const arg = (name: string): string | null => {
@@ -166,6 +169,15 @@ try {
   say('## X and TikTok side by side');
   say('```');
   for (const line of sideBySideLines(await sideBySide(db, 3, P))) say(line);
+  say('```');
+
+  /* 7. The scorecard, the six numbers from 2026-10-18 (tools/lib/scorecard.ts). */
+  say();
+  say('## Scorecard (last 3 days)');
+  const until = new Date();
+  const since = new Date(until.getTime() - 3 * 86_400_000);
+  say('```');
+  for (const line of scorecardTable(scorecards(await scorecardRows(db, since, until), since, until))) say(line);
   say('```');
 
   const out = arg('--out');
