@@ -21,6 +21,8 @@ export function profitLine(p: Holding['profit']): { readonly text: string; reado
       ? { text: '—', tone: 'none', title: 'Our record of your trades could not be read just now.' }
       : { text: '—', tone: 'none', title: 'Not bought in Insidor, so there is no price paid to measure against.' };
   }
+  /* A kept read from an older build can carry an older shape: say nothing rather than break. */
+  if (typeof p.sol !== 'number' || p.usd === undefined) return { text: '—', tone: 'none', title: 'Reading this again.' };
   const tone = p.sol < 0 ? 'down' : 'up';
   const title = p.partial ? 'Covers only the part of this holding bought in Insidor.' : 'Current value minus what you paid.';
   if (p.usd.known) return { text: signedUsd(p.usd.amount), tone, title };
