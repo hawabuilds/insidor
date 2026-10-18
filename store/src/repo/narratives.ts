@@ -429,6 +429,29 @@ export class PgNarrativeRepo {
     }
   }
 
+  /**
+   * The coins the narrative pages name — each page's own coin first, then the coins its sheet lists
+   * — whose stored launch is not the create transaction's block time (minted_at_source other than
+   * chain_rpc), newest first, at most `limit`: the coins whose "launched" the page cannot print.
+   */
+  async pageCoinsWithoutChainTime(limit: number): Promise<readonly string[]> {
+    const rows = await this.#db.query<{ address: string }>(
+      `with named as (
+         select v.payload -> 'coins' -> 'coin' ->> 'address' as address, 0 as pref
+           from public.story_view v where v.payload -> 'coins' ->> 'kind' = 'one'
+         union all
+         select s.address, 1 from public.same_name_coin s where s.subject_kind = 'story'
+       )
+       select a.address from (select address, min(pref) as pref from named where address is not null group by address) c
+         join public.asset a on a.chain = 'solana' and a.address = c.address
+        where a.minted_at_source <> 'chain_rpc'
+        order by c.pref, a.first_seen_at desc
+        limit $1`,
+      [limit],
+    );
+    return rows.map((r) => r.address);
+  }
+
   /** The cheap model's title for a narrative, with the post count it was written for. */
   async setTitle(id: string, title: string, posts: number, model: string): Promise<void> {
     await this.#db.query(

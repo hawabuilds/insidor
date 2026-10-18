@@ -3316,6 +3316,17 @@ export interface NarrativePolicy {
     readonly maxVectorsPerPass: number;
     readonly maxPerNarrative: number;
   };
+  /**
+   * ★ "LAUNCHED" IS THE CREATE TRANSACTION'S BLOCK TIME (the owner, 2026-10-18). A coin a shown
+   * narrative's page names whose stored launch is not the chain's (a live notice's arrival, an
+   * aggregator's pair time) has its oldest transaction's block time read, at most `perPass` a pass,
+   * and stored as the chain's. Off until the owner has the cost: it is one RPC call a coin on the
+   * runner's chain key, the same call the coin lookup makes for every coin it finds.
+   */
+  readonly launchClock: {
+    readonly on: boolean;
+    readonly perPass: number;
+  };
 }
 
 /**
@@ -5240,6 +5251,7 @@ const POLICY_V1: Policy = {
       maxVectorsPerPass: 1_500,
       maxPerNarrative: 200,
     },
+    launchClock: { on: false, perPass: 20 },
   },
 
   /* The owner approved switching on what fits on 2026-10-15 ("approve and switch on when ready"),
