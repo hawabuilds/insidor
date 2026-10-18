@@ -35,7 +35,8 @@
  * After the feed, a few of those posts a pass (`lookup.narrativePosts`): never searched first, a
  * live narrative's again after `liveKeepMs`, a dead one's only after `deadKeepMs`. They are asked
  * of `freeSources` alone, never the paid plan, and stop for the day while the feed's reserve is
- * all that is left of `perDay`.
+ * all that is left of `perDay`. The chain reads for the coins those searches add have their own
+ * day's cap (`chainReadsPerDay`); past it a coin is added and listed without them.
  *
  * ★ THE ADDRESSES KEPT ARE RECORDED, NOT ONLY HOW MANY (0051). A card that says "3 coins use this
  * name" offers to list them, and the list is these addresses; `more` says the search found more
@@ -63,7 +64,7 @@ import { assetFromSearch, CHAIN } from '@insidor/venue-solana-pumpfun';
 import { errorText, type Logger } from '../log.ts';
 
 export interface LookupDeps {
-  readonly coins: Pick<PgCoinUniverseRepo, 'queueLookups' | 'lookupTerms' | 'recordLookup' | 'recordFailedLookup' | 'searchesSince' | 'knownAssets'> & Partial<Pick<PgCoinUniverseRepo, 'withGuesses' | 'narrativePostTerms'>>;
+  readonly coins: Pick<PgCoinUniverseRepo, 'queueLookups' | 'lookupTerms' | 'recordLookup' | 'recordFailedLookup' | 'searchesSince' | 'knownAssets'> & Partial<Pick<PgCoinUniverseRepo, 'withGuesses' | 'narrativePostTerms' | 'narrativeCoinsAddedSince'>>;
   readonly assets: Pick<PgAssetRepo, 'upsert'>;
   readonly sources: readonly CoinSearch[];
   /** The sources that cost nothing a call, for the narrative pages' posts. Absent or empty: those are not searched. */
@@ -75,6 +76,17 @@ export interface LookupDeps {
   readonly now: () => Millis;
   /** Where a post's older coins are noted (0060). Absent: they are not. */
   readonly older?: Pick<PgOlderCoinRepo, 'recordFound'>;
+  /**
+   * The narrative posts' chain reads this process made in the UTC day `day`: one object kept for
+   * the process's life (wiring.ts), so the cap holds between passes even before the store's count
+   * shows them. Absent: only the store's count is used.
+   */
+  readonly chainReads?: ChainReadTally;
+}
+
+export interface ChainReadTally {
+  day: number;
+  reads: number;
 }
 
 const DAY_MS = 86_400_000;
@@ -142,8 +154,21 @@ export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
   if (free.length > 0 && deps.coins.narrativePostTerms !== undefined && narrativeRoom > 0) {
     const owed = await deps.coins.narrativePostTerms((now - np.liveKeepMs) as Millis, (now - np.deadKeepMs) as Millis, l.retries, narrativeRoom);
     const memo: NameMemo = new Map();
+    /* ★ THEIR CHAIN READS HAVE THEIR OWN DAY'S CAP (`narrativePosts.chainReadsPerDay`): counted
+       from the store (coins these searches added today, two reads each, an over-count) and from
+       this process's own tally, whichever is more, so neither a restart nor a stale row lets the
+       day run past it. */
+    const day = Math.floor(now / DAY_MS);
+    const mine = deps.chainReads ?? { day, reads: 0 };
+    if (mine.day !== day) {
+      mine.day = day;
+      mine.reads = 0;
+    }
+    const stored = deps.coins.narrativeCoinsAddedSince === undefined ? 0 : (await deps.coins.narrativeCoinsAddedSince((day * DAY_MS) as Millis)) * CHAIN_READS_PER_COIN;
+    const budget: ChainBudget = { left: Math.max(0, np.chainReadsPerDay - Math.max(stored, mine.reads)), tally: mine, skipped: 0 };
     const named = guessMax > 0 && deps.coins.withGuesses !== undefined ? await deps.coins.withGuesses(owed) : owed;
-    for (const term of named) await searchOne(deps, term, free, guessMax, now, tally, memo);
+    for (const term of named) await searchOne(deps, term, free, guessMax, now, tally, memo, budget);
+    if (budget.skipped > 0) deps.log.info("narrative posts' coins added without their chain reads: the day's cap is spent", { coins: budget.skipped, cap: np.chainReadsPerDay });
   }
   if (tally.searched > 0 || tally.failed > 0) deps.log.info('coins looked up by name', { ...tally, room });
   return tally;
@@ -151,6 +176,16 @@ export async function lookUpCoins(deps: LookupDeps): Promise<LookupResult> {
 
 type CoinSearchResult = Awaited<ReturnType<CoinSearch['search']>>;
 type NameMemo = Map<string, Promise<PromiseSettledResult<CoinSearchResult>[]>>;
+
+/** A found coin's chain reads: its metadata link (`metadataUri`) and its oldest transaction (`oldestSignatureBlockTime`). */
+const CHAIN_READS_PER_COIN = 2;
+
+/** What is left of the narrative posts' chain reads today, this process's own count, and the coins added without. */
+interface ChainBudget {
+  left: number;
+  readonly tally: ChainReadTally;
+  skipped: number;
+}
 
 /** The key two spellings of one name share ("Banana Duck", "banana-duck"): searched once a pass. */
 const nameKey = (n: string): string => n.toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '');
@@ -167,6 +202,7 @@ async function searchOne(
   now: Millis,
   tally: { searched: number; added: number; failed: number },
   memo: NameMemo | null = null,
+  budget: ChainBudget | null = null,
 ): Promise<void> {
   const l = deps.policy.universe.lookup;
   const ask = (n: string): Promise<PromiseSettledResult<CoinSearchResult>[]> => {
@@ -225,8 +261,18 @@ async function searchOne(
     if (known.has(assetKey({ chain: CHAIN, address: hit.address }))) continue;
     let metadataUri: string | null = null;
     let chainCreatedAt: Millis | null = null;
-    if (deps.chain !== null) {
+    /* ★ Past the narrative posts' day's cap the coin is added from what the search gave: no
+       metadata link (so no picture, links or description are read for it, and its picture and
+       link evidence stay unknown, never "no") and a launch time from the market's creation,
+       claimed only to within five minutes, or unknown — never a guess. */
+    const capped = budget !== null && budget.left < CHAIN_READS_PER_COIN;
+    if (capped) budget.skipped += 1;
+    if (deps.chain !== null && !capped) {
       try {
+        if (budget !== null) {
+          budget.left -= CHAIN_READS_PER_COIN;
+          budget.tally.reads += CHAIN_READS_PER_COIN;
+        }
         metadataUri = await deps.chain.metadataUri(hit.address);
         const seconds = await deps.chain.oldestSignatureBlockTime(hit.address);
         chainCreatedAt = seconds === null ? null : ((seconds * 1_000) as Millis);

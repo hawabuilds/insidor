@@ -1834,6 +1834,12 @@ export interface UniversePolicy {
       readonly liveKeepMs: number;
       /** A dead narrative's post: checked once, then again only this long after. */
       readonly deadKeepMs: number;
+      /**
+       * Chain reads (the RPC provider's `getAsset` and `getTransactionsForAddress`, two per coin
+       * the search adds) these searches may make in a UTC day. Past it a found coin is still
+       * added and listed, without its metadata link and its chain launch time.
+       */
+      readonly chainReadsPerDay: number;
     };
   };
   /**
@@ -5119,6 +5125,10 @@ const POLICY_V1: Policy = {
         feedReserve: 5_000,
         liveKeepMs: 21_600_000, // six hours, as the feed's
         deadKeepMs: 259_200_000, // three days
+        /* 2,000 (2026-10-18): a thousand coins a day enriched. The plan's allowance could not be
+           confirmed and the two methods are not the provider's one-credit kind, while the backlog
+           alone would have asked ~26,000. */
+        chainReadsPerDay: 2_000,
       },
     },
     keep: {
