@@ -31,6 +31,23 @@ test('★ two narratives already made never join, even when every pair between t
   assert.equal([...out.grown.values()].flat().sort().join(), 'c,d');
 });
 
+test('★ the "parts of one story" step never joins two narratives already made; it may join new posts to one', () => {
+  /* Every post the same meaning and the same name: unpinned, the parts step makes them one story. */
+  const ids = ['a1', 'a2', 'b1', 'b2', 'c1', 'c2'];
+  const posts = ids.map((id) => post(id, 'pancake the cat drinks from the fountain again', ['Pancake']));
+  const pairs = [pair('a1', 'a2'), pair('b1', 'b2'), pair('c1', 'c2')];
+  const vectors = new Map(ids.map((id) => [id, Float32Array.from([1, 0])] as const));
+  const free = groupNarratives({ posts, pairs, calls: foldNarrativeCalls([]), previous: new Map(), single: new Set(), vectors }, P);
+  assert.equal(free.narratives.length, 1, 'unpinned, the parts join');
+  const pinned = new Map([['a1', 'n-a'], ['a2', 'n-a'], ['b1', 'n-b'], ['b2', 'n-b']]);
+  const kept = groupNarratives({ posts, pairs, calls: foldNarrativeCalls([]), previous: new Map(), single: new Set(), vectors, pinned }, P);
+  const groups = kept.narratives.map((n) => [...n.members].sort());
+  assert.ok(groups.every((g) => !(g.includes('a1') && g.includes('b1'))), 'n-a and n-b stay two');
+  const out = keepNarratives({ groups: kept.narratives.map((n) => n.members), pinned, taken: new Set(['n-a', 'n-b']), removedFrom: new Map() });
+  assert.deepEqual([...out.grown.values()].flat().sort(), ['c1', 'c2'], 'the new part joins one of them');
+  assert.equal(out.created.length, 0);
+});
+
 test('★ a group with no narrative\'s post is new, named after its oldest post, never an id given out', () => {
   const out = keepNarratives({ groups: [['x', 'y'], ['p', 'q']], pinned: new Map(), taken: new Set(['n-x', 'n-p', 'n-q']), removedFrom: new Map() });
   assert.deepEqual(out.created.map((c) => c.id), ['n-y', 'n-p-1']);
