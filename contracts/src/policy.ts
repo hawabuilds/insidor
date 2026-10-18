@@ -4260,7 +4260,13 @@ const POLICY_V1: Policy = {
       /* Three minutes: a normal pass is 10 to 12 pages of about a second or two each, so it binds
          only when the supplier is slow or refusing. */
       passDeadlineMs: 180_000,
-      cap: { dailyUsd: 6, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
+      /* `judgeUsdPerPost` 0.00046 from 2026-10-18 (was 0.00145, the earlier judge's price): Nemotron,
+         the live judge since 2026-10-17 11:06 UTC, measured as the judge line's whole bill (vendor
+         together, endpoint judge-open: the post question, the kind question and re-judges) over the
+         posts it answered — $2.13 over 4,614 posts in the 24 hours to 01:15 UTC on 2026-10-18, and
+         $0.88 over 2,053 ($0.00043) in the last six of them, when it was the only judge answering.
+         The higher of the two, so the cap closes early rather than late. */
+      cap: { dailyUsd: 6, judgeUsdPerPost: 0.00046, judgedShare: 0.9 },
       /* On from 2026-10-18, the owner's approval: "keep reading while there's more, with your limits:
          40 pages a pass, 3 minutes a pass, and its own $6 a day cap". */
       fullPaging: true,
