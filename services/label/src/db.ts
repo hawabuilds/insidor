@@ -5,7 +5,7 @@
  * it knowingly rather than quietly — the same bend, for the same reason and with the same
  * containment, that `services/project/src/db.ts` makes and names. Four of the reads below
  * have no repository behind them and would each cost store/ a method invented for one
- * caller: the subject sweep over `internal.decisions` is an aggregate no `DecisionRepo`
+ * caller: the subject sweep over the decision log (live and archived, see below) is an aggregate no `DecisionRepo`
  * shape covers, the coin attribution is a parse of a subject id rather than a row read,
  * and `public.story_member` and `public.market_reading` have no repository at all.
  *
@@ -31,6 +31,21 @@
 import { chainId } from '@insidor/contracts';
 import type { ChainId, Millis } from '@insidor/contracts';
 import type { Db } from '@insidor/store';
+
+/* ── the log, live and archived ───────────────────────────────────────── */
+
+/**
+ * ★ EVERY READ OF THE DECISION LOG BELOW IS THE UNION OF TWO PLACES (0103). internal.decisions
+ * keeps only its newest day or two; each older day was copied into internal.decision_label_basis
+ * (one row per day and subject: earliest origin, count, resolve verdicts) before it was archived
+ * and dropped (tools/archive-decisions.ts, store label-basis.ts). A day is read from the basis
+ * when internal.decision_label_basis_day lists it, and from the live partition otherwise — never
+ * from both, so a day copied but not yet dropped is not counted twice, and a day half-copied is
+ * still read whole from the partition. The answers are the ones the log alone used to give
+ * (e2e/src/label-basis.test.ts).
+ */
+const LIVE_DAY_NOT_IN_BASIS =
+  `(decided_at at time zone 'UTC')::date not in (select day from internal.decision_label_basis_day)`;
 
 /* ── the subjects a decision was made about ───────────────────────────── */
 
@@ -76,14 +91,25 @@ export async function dueSubjects(
   limit: number,
 ): Promise<readonly SubjectRow[]> {
   const rows = await db.query<RawSubject>(
-    `select subject_kind,
+    `with per_day as (
+       select subject_kind, subject_id, min(subject_origin) as origin, count(*)::bigint as n
+         from internal.decisions
+        where subject_kind = any($1::text[])
+          and ${LIVE_DAY_NOT_IN_BASIS}
+        group by subject_kind, subject_id
+       union all
+       select b.subject_kind, b.subject_id, b.origin_min, b.decisions::bigint
+         from internal.decision_label_basis b
+         join internal.decision_label_basis_day using (day)
+        where b.subject_kind = any($1::text[])
+     )
+     select subject_kind,
             subject_id,
-            (extract(epoch from min(subject_origin)) * 1000)::bigint as origin_ms,
-            count(*)::bigint                                         as decisions
-       from internal.decisions
-      where subject_kind = any($1::text[])
+            (extract(epoch from min(origin)) * 1000)::bigint as origin_ms,
+            sum(n)::bigint                                   as decisions
+       from per_day
       group by subject_kind, subject_id
-      order by min(subject_origin) asc nulls last, subject_id asc
+      order by min(origin) asc nulls last, subject_id asc
       limit $2`,
     [kinds, limit],
   );
@@ -125,11 +151,20 @@ export interface Attribution {
  */
 export async function attributions(db: Db): Promise<readonly Attribution[]> {
   const rows = await db.query<{ subject_id: string; verdict: string }>(
-    `select distinct subject_id, verdict
+    `select subject_id, verdict
        from internal.decisions
       where stage = 'resolve'
         and subject_kind = 'candidate'
-        and verdict = any($1::text[])`,
+        and verdict = any($1::text[])
+        and ${LIVE_DAY_NOT_IN_BASIS}
+     union
+     select b.subject_id, v.verdict
+       from internal.decision_label_basis b
+       join internal.decision_label_basis_day using (day)
+      cross join lateral unnest(b.resolve_verdicts) as v(verdict)
+      where b.subject_kind = 'candidate'
+        and b.resolve_verdicts is not null
+        and v.verdict = any($1::text[])`,
     [MATCHED_VERDICTS],
   );
   const out: Attribution[] = [];
@@ -174,10 +209,17 @@ export async function attributions(db: Db): Promise<readonly Attribution[]> {
  */
 export async function examinedStories(db: Db): Promise<ReadonlySet<string>> {
   const rows = await db.query<{ subject_kind: string; subject_id: string }>(
-    `select distinct subject_kind, subject_id
+    `select subject_kind, subject_id
        from internal.decisions
       where stage = 'resolve'
-        and subject_kind = any($1::text[])`,
+        and subject_kind = any($1::text[])
+        and ${LIVE_DAY_NOT_IN_BASIS}
+     union
+     select b.subject_kind, b.subject_id
+       from internal.decision_label_basis b
+       join internal.decision_label_basis_day using (day)
+      where b.subject_kind = any($1::text[])
+        and b.resolve_verdicts is not null`,
     [['story', 'candidate']],
   );
   const out = new Set<string>();
