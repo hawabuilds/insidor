@@ -6,7 +6,8 @@
  * All time list after its posts left the regroup's window, marked dead and given no Trending place;
  * a new story beside it is a new narrative and is live; only the owner's "Merge with…" folds one
  * into another, and the merged one's link opens the survivor; only his "Not a narrative" takes a
- * page away; and the rebuild brings a dropped narrative back under its own id.
+ * page away; the rebuild brings a dropped narrative back under its own id; and a narrative the old
+ * regroup folded into another comes back with its own posts, which leave the one it was in.
  */
 
 import { strict as assert } from 'node:assert';
@@ -23,6 +24,7 @@ import { narrativeGrouper } from '@insidor/runner/src/work/narratives.ts';
 import { PgNarrativeRepo, type Db } from '@insidor/store';
 
 import { planRebuild } from '@insidor/runner/src/work/narrative-rebuild.ts';
+import { planUnmerge } from '@insidor/runner/src/work/narrative-unmerge.ts';
 import { migratedDb } from './db.ts';
 
 const NOW = Date.now();
@@ -54,6 +56,8 @@ async function post(id: string, atMs: number, story: { name: string; body: strin
 
 const PANCAKE = { name: 'Pancake', body: 'Pancake the cat drinks from the fountain again and everyone online is sharing the clip', axis: 1 };
 const AZUMA = { name: 'Azuma', body: 'Azuma the koala sat calmly through a blood draw at the zoo and the video went viral', axis: 2 };
+const MOODENG = { name: 'Moodeng', body: 'Moodeng the baby pygmy hippo bit her keeper again and the zoo posted it', axis: 4 };
+const BANGO = { name: 'Bango', body: 'Bango the capybara and Tsururin the duck went viral at the onsen today', axis: 5 };
 const KONASU = { name: 'Konasu', body: 'Konasu the pygmy hippo escaped her keeper again at the zoo this morning', axis: 3 };
 
 const passAt = (nowMs: number) =>
@@ -158,4 +162,31 @@ test('★ the rebuild brings a dropped narrative back under its own id, from the
   /* Its page is written by the next frame, off the board's newest if need be. */
   await frameAt(NOW);
   assert.equal((await read('/story/n-x%3Ak0')).status, 200);
+});
+
+test('★ a merge nobody asked for is undone: the folded narrative comes back with its own posts, and they leave the blob', async () => {
+  for (const [i, h] of [5 * HOUR, 4 * HOUR].entries()) await post(`m${i}`, NOW - h, MOODENG);
+  for (const [i, h] of [5 * HOUR, 4 * HOUR].entries()) await post(`b${i}`, NOW - h, BANGO);
+  /* As the old regroup left it: Bango folded into Moodeng, every post in Moodeng. */
+  await db.query(`insert into internal.narrative (narrative_id, state, anchor_item, member_count, shown, first_shown_at, title) values ('n-x:m0', 'open', 'x:m0', 4, true, now(), 'Moodeng')`);
+  await db.query(`insert into internal.narrative_member (narrative_id, item_id) select 'n-x:m0', unnest(array['x:m0', 'x:m1', 'x:b0', 'x:b1'])`);
+  await db.query(`insert into internal.narrative (narrative_id, state, merged_into, anchor_item, member_count, shown, first_shown_at, title) values ('n-x:b0', 'merged', 'n-x:m0', 'x:b0', 2, false, now(), 'Bango And Tsururin Go Viral')`);
+  await frameAt(NOW);
+  assert.equal((await read('/story/n-x%3Ab0')).body['id'], 'n-x:m0', 'folded, its link opens the blob');
+
+  const plan = await planUnmerge(db, { policy: DEFAULT_POLICY });
+  const bango = plan.back.find((b) => b.id === 'n-x:b0');
+  assert.deepEqual([...(bango?.items ?? [])].sort(), ['x:b0', 'x:b1']);
+  assert.deepEqual(plan.back.map((b) => b.id), ['n-x:b0'], 'my own merge (Azuma into Pancake) is never undone');
+  assert.equal(plan.holders.find((h) => h.id === 'n-x:m0')?.after, 2);
+  assert.equal(await new PgNarrativeRepo(db).unmerge(plan.back), plan.back.length);
+  assert.equal(await narrativeOf('x:b1'), 'n-x:b0');
+  assert.equal(await narrativeOf('x:m1'), 'n-x:m0');
+  const [row] = await db.query<{ state: string; title: string }>(`select state, title from internal.narrative where narrative_id = 'n-x:b0'`);
+  assert.deepEqual(row, { state: 'open', title: 'Bango And Tsururin Go Viral' });
+  assert.equal((await planUnmerge(db, { policy: DEFAULT_POLICY })).back.length, 0, 'a second run does nothing');
+
+  await frameAt(NOW);
+  assert.equal((await db.query(`select 1 from public.story_alias where story_id = 'n-x:b0'`)).length, 0, 'its alias is gone');
+  assert.equal((await read('/story/n-x%3Ab0')).body['id'], 'n-x:b0', 'and its link opens its own page');
 });
