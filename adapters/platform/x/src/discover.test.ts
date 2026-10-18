@@ -60,6 +60,26 @@ test('a keyword and an account render into this vendor\'s own operators', () => 
   assert.equal(toSearchQuery(query({ mode: 'account', term: 'someone' })), 'from:someone');
 });
 
+test('a keyword ask with a filter carries the catch-all floor and languages after its phrase', () => {
+  const filter = { minApproval: 500, mediaOnly: false, langs: ['en', 'ja'], excludeRebroadcasts: true };
+  assert.equal(
+    toSearchQuery(query({ term: 'tesla roadster', filter, sinceMs: 1_800_000_000_000 })),
+    '"tesla roadster" min_faves:500 (lang:en OR lang:ja) -filter:retweets since_time:1800000000',
+  );
+  /* An account ask never takes one, and a broken floor is refused, not defaulted. */
+  assert.equal(toSearchQuery(query({ mode: 'account', term: 'someone', filter })), 'from:someone');
+  assert.throws(() => toSearchQuery(query({ term: 'roadster', filter: { ...filter, minApproval: 0 } })), NotImplemented);
+});
+
+test("a post's quotes render as quoted_tweet_id: with the floor, and nothing else is accepted", () => {
+  const filter = { minApproval: 300, mediaOnly: false, langs: [], excludeRebroadcasts: true };
+  assert.equal(toSearchQuery(query({ term: '', reproductionsOf: '2110222071229989249', filter })), 'quoted_tweet_id:2110222071229989249 min_faves:300 -filter:retweets');
+  assert.equal(toSearchQuery(query({ term: '', reproductionsOf: '2110222071229989249' })), 'quoted_tweet_id:2110222071229989249');
+  assert.throws(() => toSearchQuery(query({ term: 'cats', reproductionsOf: '2110222071229989249' })), NotImplemented);
+  assert.throws(() => toSearchQuery(query({ term: '', reproductionsOf: '21 OR elon' })), NotImplemented);
+  assert.throws(() => toSearchQuery(query({ mode: 'catchall', term: '', reproductionsOf: '2110222071229989249', filter })), NotImplemented);
+});
+
 test('a mode this source cannot express is an error, never an empty page', () => {
   // An empty result reads downstream as "nothing is happening", which is the failure
   // the capability list exists to design out.
