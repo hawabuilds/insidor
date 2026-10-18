@@ -25,6 +25,10 @@
  *               below every post over it, so a post going from 3 to 30 views a minute cannot top a
  *               list on its tenfold. No trend (one reading, or one long gap across both halves that
  *               would make the two rates equal by construction): below those, by views gained.
+ *   Most viewed over a span (the app's Today and This week, the owner 2026-10-18; `viewedPlace`):
+ *               on the list when it was POSTED inside the span (first seen, when the posted time is
+ *               unknown), key = its total views at its newest reading, the number the card shows.
+ *               No reading, no total: left off, never listed at zero.
  *   Freshness   a post whose newest reading is freshMs old or more is listed after every post read
  *               since, whatever its key.
  *   Ties        the speed (Trending), then the newer post, then the id in byte order.
@@ -81,8 +85,10 @@ export type SortGroup = 'over_floor' | 'under_floor' | 'no_trend';
 
 export interface SortPlace {
   readonly id: string;
-  /** Views gained in the window: the one number the card shows. */
+  /** Views gained in the window (windowed lists); its total on Most viewed over a span. */
   readonly gained: number;
+  /** Whether `postedMs` is the post's posted time (false: when we first saw it). */
+  readonly postedKnown: boolean;
   /** The ordering key inside its group. Never on the wire. */
   readonly key: number;
   readonly group: SortGroup;
@@ -106,7 +112,7 @@ export function sortPlace(id: string, readings: readonly SortReading[], postedMs
   const from = nowMs - windowMs;
   if (last === null || readIn(first, last, from, nowMs) <= 0) return null;
   const gained = gainIn(runs, from, nowMs);
-  const base = { id, gained, postedMs, lastReadMs: last, fresh: nowMs - last < p.freshMs };
+  const base = { id, gained, postedMs, postedKnown: postedMs !== null, lastReadMs: last, fresh: nowMs - last < p.freshMs };
   if (by === 'most_viewed') return { ...base, key: gained, group: 'over_floor', speed: null, before: null };
   const half = from + windowMs / 2;
   const minRead = windowMs / p.minReadShare;
@@ -119,6 +125,17 @@ export function sortPlace(id: string, readings: readonly SortReading[], postedMs
   if (speed === null || before === null) return { ...base, key: gained / scale, group: 'no_trend', speed: null, before: null };
   if (speed < trendFloor(windowMs, policy)) return { ...base, key: speed, group: 'under_floor', speed, before };
   return { ...base, key: before > 0 ? speed / before : Infinity, group: 'over_floor', speed, before };
+}
+
+/**
+ * One post's place on Most viewed over a span (Today, This week), or null when it is not on it.
+ * `total` and `readMs` are its newest reading's count and time; `postedMs` its posted time, `seenMs`
+ * when we first saw it, which stands in only when the posted time is unknown.
+ */
+export function viewedPlace(id: string, total: number | null, readMs: number | null, postedMs: number | null, seenMs: number | null, spanMs: number, nowMs: number, policy: Policy): SortPlace | null {
+  const since = postedMs ?? seenMs;
+  if (total === null || !Number.isFinite(total) || readMs === null || since === null || since < nowMs - spanMs) return null;
+  return { id, gained: total, key: total, group: 'over_floor', speed: null, before: null, postedMs: since, postedKnown: postedMs !== null, lastReadMs: readMs, fresh: nowMs - readMs < policy.rising.forYouSorts.freshMs };
 }
 
 /** The window's Trending floor: its own entry, else the nearest window's; none at all, no floor. */
