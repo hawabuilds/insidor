@@ -18,8 +18,10 @@
  *   - Every reply is also rebuilt in the background once it is `refreshMs` old, on the next request
  *     for it: a translation, a story tag or a poster picture can land without a new tick, and a
  *     coin's market moves with no frame at all.
- *   - A reply older than `keepMs` is never served: the request waits for a fresh build. This is
- *     the only time a request waits on the database or a market source.
+ *   - A reply older than `keepMs` is never served: the request waits for a fresh build. So does
+ *     a request for a frame's reply the watcher has just seen move (it is a frame behind and the
+ *     rebuild is already running). These are the only times a request waits on the database or a
+ *     market source.
  * Concurrent requests for one reply share one build, so four parallel reads of one coin's market
  * cost one market read.
  *
@@ -262,8 +264,14 @@ export function createPrepared(deps: PreparedDeps): PreparedAnswers {
       const e = entries.get(rule.key);
       if (e === undefined || t - e.builtAt > rule.keepMs) return build(rule, t);
       e.askedAt = t;
+      /* ★ A reply KNOWN to be behind its frame is not served: the request waits for the build
+         (already running, usually: the watcher started it). This is the phone that was just told
+         "For You changed" over the live stream and asks at once; handing it the frame it already
+         has would leave it a frame behind until its next check. If the build fails, the reply
+         that is behind is still better than an error. */
       const moved = rule.tick !== null && t - ticksAt <= WATCH_MS * 2 && (ticks.get(rule.tick) ?? null) !== e.version;
-      if (moved || t - e.builtAt > rule.refreshMs) later(rule.key);
+      if (moved) return build(rule, t).then((p) => (p.status === 200 ? p : e.reply), () => e.reply);
+      if (t - e.builtAt > rule.refreshMs) later(rule.key);
       /* Asked for after a quiet spell: the watcher was idle, so look at the ticks now, behind this reply. */
       else if (rule.tick !== null && t - ticksAt > WATCH_MS * 2) void beat();
       return Promise.resolve(e.reply);

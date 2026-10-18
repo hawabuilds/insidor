@@ -110,3 +110,15 @@ test('a reply that is not a 200 is answered and never kept', async () => {
   assert.equal(r.builds(), 2);
   assert.equal(r.prepared.size(), 0);
 });
+
+test('★ a request for a reply known to be a frame behind waits for the rebuild, never gets the old frame', async () => {
+  const r = rig();
+  await r.read('/rising/fyp');
+  r.moveFyp('9');
+  r.advance(1_000);
+  r.prepared.changed();
+  /* The watcher has read tick 9 and started the rebuild; a phone told "changed" asks now. */
+  await new Promise((res) => setTimeout(res, 1));
+  assert.equal((await r.read('/rising/fyp')).n, 2);
+  assert.equal(r.builds(), 2, 'the request joined the running rebuild');
+});
