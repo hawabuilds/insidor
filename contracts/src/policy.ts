@@ -3669,6 +3669,46 @@ export interface FindersPolicy {
   };
 }
 
+/**
+ * ★ POSTS THAT NEVER MADE FOR YOU, SLIMMED AFTER A WEEK (the owner, 2026-10-18): "Posts that made For
+ * You: keep everything forever ... Posts that never made For You: slim them after 7 days to link,
+ * text, account, platform, views when found, judge answer and time, and any label I gave. Drop their
+ * extra readings and raw search data." The job is store post-slim.ts, run hourly by the projector
+ * service (tools/post-slim.ts); migration 0103 is its one door into public.observation.
+ *
+ * A post is KEPT whole, forever, when it was on For You or Popular (the scroll, the frame or its
+ * hourly history), on a narrative or its page, coined (a coin's metadata names it, the origin check
+ * matched it, the namer learned from it, the older-coin check or a create pick used it), in the gold
+ * or missed lists, or the owner called it, saw it or watched it, or the label job labelled it.
+ * Everything else, once `afterMs` old, keeps its item row (link, text, account, platform) without
+ * the picture link or the cached newest count, its first reading of each counter, its judge answer
+ * and every label, and loses its later readings and its search record (internal.item_found_by;
+ * raw.capture by raw_ref, which no writer fills today).
+ *
+ * GROUP's machine clusters (public.story_member) do not keep a post: eight in ten posts are in one,
+ * so counting them would keep almost everything. Picture vectors and fingerprints are kept: the
+ * coin origin check looks 30 days back for a picture's first post (universe.pictureLookbackMs).
+ *
+ * The DELETEs free room inside the tables for new rows; they do not hand disk back (that needs
+ * pg_repack or VACUUM FULL), so growth slows, the size does not drop.
+ */
+export interface SlimPolicy {
+  /** Off until the owner says yes; while off the job reports what it would do and writes nothing. */
+  readonly on: boolean;
+  /** How old (from first_seen_at) a post must be before it is decided. The owner's 7 days. */
+  readonly afterMs: number;
+  /** Posts decided per batch: one keep check, then the deletes for the slimmed ones. */
+  readonly postsPerBatch: number;
+  /** Rows one DELETE removes at most; a batch repeats its DELETE until none are left. */
+  readonly rowsPerStatement: number;
+  /** Batches per run, so one run is minutes at most; the next run carries on from the cursor. */
+  readonly batchesPerRun: number;
+  /** How long a statement waits for a lock before giving up; the next run retries. */
+  readonly lockTimeoutMs: number;
+  /** How long one statement may run. */
+  readonly statementTimeoutMs: number;
+}
+
 export interface Policy {
   /** Bumped by hand on every edit. The hash is computed from the object, not this. */
   readonly version: string;
@@ -3713,6 +3753,8 @@ export interface Policy {
    * whether the decision was right, and under which definition of right.
    */
   readonly labels: LabelPolicy;
+  /** Posts that never made For You, slimmed after a week. */
+  readonly slim: SlimPolicy;
   /**
    * A model, when one exists, arrives as a pure synchronous closure here. This is
    * the one field that makes "a rule today, a model tomorrow" a swap rather than a
@@ -5564,6 +5606,19 @@ const POLICY_V1: Policy = {
     peakSupportFraction: 0.9,
     minPeakSupportReadings: 2,
     minCoveredFraction: 0.99,
+  },
+
+  /* Off until the owner's yes. A slimmed post had about 9 readings besides its first ones (12–18
+     Oct), so a batch of 500 is ~4,500 rows and one DELETE of at most 5,000 usually finishes it; 40
+     batches is 20,000 posts, a day of them and more, per hourly run. */
+  slim: {
+    on: false,
+    afterMs: 604_800_000, // 7 days
+    postsPerBatch: 500,
+    rowsPerStatement: 5_000,
+    batchesPerRun: 40,
+    lockTimeoutMs: 2_000,
+    statementTimeoutMs: 30_000,
   },
 
   scorers: {
