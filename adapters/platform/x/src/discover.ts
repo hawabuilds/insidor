@@ -64,7 +64,7 @@ import type { DiscoveryQuery } from '@insidor/contracts/ports/platform.ts';
 import { NotImplemented } from '@insidor/vendor-kit';
 
 import { billedUnits, CAPABILITIES, SOURCE } from './capabilities.ts';
-import type { XClient } from './client.ts';
+import { isPostId, type XClient } from './client.ts';
 import { toAuthor, toItem } from './to-item.ts';
 
 /**
@@ -137,17 +137,27 @@ export class CutoffNotHonoured extends Error {
  * would quietly turn the catch-all back into a keyword search.
  */
 function feedOperators(query: DiscoveryQuery): string[] {
-  const filter = query.filter;
-  if (filter === undefined || !Number.isInteger(filter.minApproval) || filter.minApproval < 1) {
-    throw new NotImplemented('x:discover:catchall', 'a catch-all search needs a whole approval floor of at least 1');
-  }
   if (query.term.trim() !== '') {
     throw new NotImplemented('x:discover:catchall', 'a catch-all search takes no term');
+  }
+  return filterOperators(query, 'x:discover:catchall', 'a catch-all search');
+}
+
+/**
+ * The floor, media, language and repost operators of a `FeedFilter`, refused rather than guessed
+ * on a missing or non-whole floor or an unknown language code. Shared by the catch-all and by a
+ * keyword search that carries a filter (`narrowedSearch.filter`): one rendering, so the two cannot
+ * drift into two spellings of the same floor.
+ */
+function filterOperators(query: DiscoveryQuery, feature: string, what: string): string[] {
+  const filter = query.filter;
+  if (filter === undefined || !Number.isInteger(filter.minApproval) || filter.minApproval < 1) {
+    throw new NotImplemented(feature, `${what} needs a whole approval floor of at least 1`);
   }
   const out = [`min_faves:${filter.minApproval}`];
   if (filter.mediaOnly) out.push('filter:media');
   for (const lang of filter.langs) {
-    if (!/^[a-z]{2,3}$/.test(lang)) throw new NotImplemented('x:discover:catchall', `no such language code: ${lang}`);
+    if (!/^[a-z]{2,3}$/.test(lang)) throw new NotImplemented(feature, `no such language code: ${lang}`);
   }
   /* One code is a bare operator; several are one OR group, so a post in any of them matches. */
   if (filter.langs.length === 1) out.push(`lang:${filter.langs[0]}`);
@@ -169,7 +179,19 @@ export function toSearchQuery(query: DiscoveryQuery): string {
   }
 
   const parts: string[] = [];
-  if (query.mode === 'catchall') {
+  if (query.reproductionsOf !== undefined) {
+    /* ★ ONLY ONE POST'S QUOTES: `quoted_tweet_id:` (the same operator responses.ts reads quote posts
+       with, measured working 2026-10-13), on a keyword ask with no term — a term beside it would
+       narrow the quotes to the ones that repeat it, which no caller means. */
+    if (query.mode !== 'keyword' || query.term.trim() !== '') {
+      throw new NotImplemented('x:discover:quotes', "a post's quotes are asked as a keyword search with no term");
+    }
+    if (!isPostId(query.reproductionsOf)) {
+      throw new NotImplemented('x:discover:quotes', `'${query.reproductionsOf.slice(0, 64)}' is not a post id on this source`);
+    }
+    parts.push(`quoted_tweet_id:${query.reproductionsOf}`);
+    if (query.filter !== undefined) parts.push(...filterOperators(query, 'x:discover:quotes', "a post's quotes"));
+  } else if (query.mode === 'catchall') {
     parts.push(...feedOperators(query));
   } else {
     const term = query.term.trim();
@@ -177,9 +199,12 @@ export function toSearchQuery(query: DiscoveryQuery): string {
       throw new NotImplemented('x:discover', 'a keyword or account search needs a term');
     }
     parts.push(query.mode === 'account' ? `from:${term}` : term.includes(' ') ? `"${term}"` : term);
+    /* A keyword ask that carries a filter (the narrative-name search) is held to its floor and
+       languages, exactly as the catch-all renders them. An account ask never carries one. */
+    if (query.mode === 'keyword' && query.filter !== undefined) parts.push(...filterOperators(query, 'x:discover:keyword', 'a filtered keyword search'));
   }
-  // A keyword search applies no language filter: pinning one language is what made every
-  // non-English story invisible. The catch-all search takes its language from policy, where
+  // A keyword search applies no language filter unless its caller sent one (above): pinning one
+  // language is what made every non-English story invisible. The catch-all search takes its language from policy, where
   // that cost is written beside the setting.
   //
   // The lower bound rounds DOWN to the second, which widens it. Wide is safe here for
