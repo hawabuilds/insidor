@@ -58,6 +58,8 @@ export interface LaneAsk {
   readonly adapter: PlatformAdapter;
   readonly query: DiscoveryQuery;
   readonly lane: CappedLane & FoundLane;
+  /** The day the ask is charged to, when not the lane its posts are credited to (the backward name search). */
+  readonly ledgerLane?: CappedLane;
   readonly cap: LaneCapPolicy;
   readonly maxPages: number;
   /** No page is started at or after this instant. */
@@ -84,6 +86,7 @@ export interface LaneAskResult {
 
 export async function laneSearch(deps: LaneSearchDeps, ask: LaneAsk): Promise<LaneAskResult> {
   const { adapter, lane, cap } = ask;
+  const day = ask.ledgerLane ?? lane;
   /* ★ ONE SEARCH PER LANGUAGE (work/languages.ts), each on its own cursor and to `maxPages` pages,
      paged round-robin under the lane's one day: every page of every language is checked first. */
   const threads = languageAsks(ask.query).map((l) => ({ lang: l.lang, query: l.query, cursor: null as string | null, pages: 0, open: true, end: 'done' as 'done' | 'pages' | 'failed' }));
@@ -110,7 +113,7 @@ export async function laneSearch(deps: LaneSearchDeps, ask: LaneAsk): Promise<La
       if (now >= ask.deadline) return result('deadline');
       const query: DiscoveryQuery = { ...t.query, cursor: t.cursor };
       const quote = adapter.estimate({ kind: 'discover', query });
-      const spent = await deps.ledger.spent(lane, now);
+      const spent = await deps.ledger.spent(day, now);
       if (spent === null) return result('unreadable');
       /* Room for the page at its most: every post billed and every post new and judged. */
       if (!laneMayAsk(spent, quote.usd + laneJudgeUsd(query.limit, cap), cap)) return result('capped');
@@ -128,7 +131,7 @@ export async function laneSearch(deps: LaneSearchDeps, ask: LaneAsk): Promise<La
         if (e instanceof BudgetRefused) return result('budget', errorText(e));
         /* A page that threw was still billed. It ends its language only; the others are asked. */
         usd += quote.usd;
-        await deps.ledger.add(lane, now, quote.usd);
+        await deps.ledger.add(day, now, quote.usd);
         error ??= `${t.lang === null ? '' : `lang ${t.lang}: `}${errorText(e)}`;
         t.open = false;
         t.end = 'failed';
@@ -149,7 +152,7 @@ export async function laneSearch(deps: LaneSearchDeps, ask: LaneAsk): Promise<La
       }
       const charge = page.spend.usd + laneJudgeUsd(items.length === 0 ? 0 : pageFresh, cap);
       usd += charge;
-      await deps.ledger.add(lane, now, charge);
+      await deps.ledger.add(day, now, charge);
       if (items.length > 0) {
         try {
           await deps.store(items, page.value.authors, lane);

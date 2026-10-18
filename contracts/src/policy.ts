@@ -3420,20 +3420,23 @@ export interface NarrativePolicy {
     readonly perDay: number;
   };
   /**
-   * ★ ONE SEARCH BACKWARDS WHEN A NARRATIVE FORMS (the owner, 2026-10-18). A narrative first shown
-   * in the last `formedWithinMs` is searched once by its narrative-name search name (work/
-   * narrative-names.ts `chooseName`), from `lookbackMs` before its first post up to that post, at
-   * most `maxPagesPerAsk` pages, at most `perPass` narratives a pass. Its posts go to the
-   * 'narrative_name' lane and its day (`feed.narrativeNames.cap`), are judged like any found post,
-   * and the early posts above put the ones that pass into the narrative. Off until the owner has
-   * the cost.
+   * ★ ONE SEARCH BACKWARDS WHEN A NARRATIVE FORMS (the owner, 2026-10-18). A shown narrative of at
+   * least `minPosts` posts, first shown in the last `formedWithinMs`, is searched once by its
+   * narrative-name search name (work/narrative-names.ts `chooseName`), from `lookbackMs` before its
+   * first post up to that post, at most `maxPagesPerAsk` pages, at most `perPass` narratives a
+   * pass, biggest first. Its own day, `cap`, in the 'narrative_back' ledger lane, apart from the
+   * forward search's `feed.narrativeNames.cap`; its posts are credited to the 'narrative_name'
+   * found-by lane, are judged like any found post, and the early posts above put the ones that
+   * pass into the narrative.
    */
   readonly backSearch: {
     readonly on: boolean;
+    readonly minPosts: number;
     readonly formedWithinMs: number;
     readonly lookbackMs: number;
     readonly maxPagesPerAsk: number;
     readonly perPass: number;
+    readonly cap: LaneCapPolicy;
     readonly passDeadlineMs: number;
   };
 }
@@ -5402,14 +5405,25 @@ const POLICY_V1: Policy = {
        calls a day. `perDay` 100 is the worst case a day (plus 100 more on each restart, which
        starts the count again); a coin's history length never changes it. */
     launchClock: { on: true, perPass: 20, perDay: 100 },
-    /* 99 to 245 narratives were first shown a day (16-18 Oct), and only those with a safe name are
-       asked. An ask is at most three pages of 20 at $0.00015 a post returned ($0.009) and its new
-       posts judged at the lane's $0.00145 x 0.9 (at most $0.078), so at most $0.087 a narrative; a
-       name before its story began finds few posts at 1,000 likes, about $0.01-0.03 a narrative,
-       $1-4 a day. ★ It shares the narrative-name lane's day (`feed.narrativeNames.cap`, $0.35), so
-       switched on it can never add more than what that day has left, and it takes from the forward
-       search's room: raise that cap to give it its own. */
-    backSearch: { on: false, formedWithinMs: 3_600_000, lookbackMs: 604_800_000, maxPagesPerAsk: 3, perPass: 10, passDeadlineMs: 120_000 },
+    /* On from 2026-10-18 (the owner): 3 posts or more, once a narrative, seven days back, three
+       pages, its own $0.50 a day apart from the forward name search's $0.35. 99 to 245 narratives
+       were first shown a day (16-18 Oct) and about half reach 3 posts (52 of 107 live on 18 Oct).
+       An ask is at most three pages of 20 at $0.00015 a post returned ($0.009) and its new posts
+       judged at $0.00145 x 0.9 (at most $0.078), so at most $0.087 a narrative; a name before its
+       story began finds few posts at 1,000 likes, about $0.01-0.03 a narrative, so the $0.50 is
+       spent on the busiest days and the smallest wait to the next. Two days, not one hour, so a
+       narrative that reaches 3 posts on its first or second day is asked, and the ones live when it
+       was switched on (the Roadster, first shown 16 Oct) are asked once. */
+    backSearch: {
+      on: true,
+      minPosts: 3,
+      formedWithinMs: 172_800_000, // two days
+      lookbackMs: 604_800_000, // seven days
+      maxPagesPerAsk: 3,
+      perPass: 10,
+      cap: { dailyUsd: 0.5, judgeUsdPerPost: 0.00145, judgedShare: 0.9 },
+      passDeadlineMs: 120_000,
+    },
   },
 
   /* The owner approved switching on what fits on 2026-10-15 ("approve and switch on when ready"),
