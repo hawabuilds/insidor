@@ -3327,6 +3327,23 @@ export interface NarrativePolicy {
     readonly on: boolean;
     readonly perPass: number;
   };
+  /**
+   * ★ ONE SEARCH BACKWARDS WHEN A NARRATIVE FORMS (the owner, 2026-10-18). A narrative first shown
+   * in the last `formedWithinMs` is searched once by its narrative-name search name (work/
+   * narrative-names.ts `chooseName`), from `lookbackMs` before its first post up to that post, at
+   * most `maxPagesPerAsk` pages, at most `perPass` narratives a pass. Its posts go to the
+   * 'narrative_name' lane and its day (`feed.narrativeNames.cap`), are judged like any found post,
+   * and the early posts above put the ones that pass into the narrative. Off until the owner has
+   * the cost.
+   */
+  readonly backSearch: {
+    readonly on: boolean;
+    readonly formedWithinMs: number;
+    readonly lookbackMs: number;
+    readonly maxPagesPerAsk: number;
+    readonly perPass: number;
+    readonly passDeadlineMs: number;
+  };
 }
 
 /**
@@ -5252,6 +5269,14 @@ const POLICY_V1: Policy = {
       maxPerNarrative: 200,
     },
     launchClock: { on: false, perPass: 20 },
+    /* 99 to 245 narratives were first shown a day (16-18 Oct), and only those with a safe name are
+       asked. An ask is at most three pages of 20 at $0.00015 a post returned ($0.009) and its new
+       posts judged at the lane's $0.00145 x 0.9 (at most $0.078), so at most $0.087 a narrative; a
+       name before its story began finds few posts at 1,000 likes, about $0.01-0.03 a narrative,
+       $1-4 a day. ★ It shares the narrative-name lane's day (`feed.narrativeNames.cap`, $0.35), so
+       switched on it can never add more than what that day has left, and it takes from the forward
+       search's room: raise that cap to give it its own. */
+    backSearch: { on: false, formedWithinMs: 3_600_000, lookbackMs: 604_800_000, maxPagesPerAsk: 3, perPass: 10, passDeadlineMs: 120_000 },
   },
 
   /* The owner approved switching on what fits on 2026-10-15 ("approve and switch on when ready"),
