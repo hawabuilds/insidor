@@ -12,6 +12,13 @@
  * from the environment the owner set in Vercel; nothing in the request can point it anywhere
  * else. A service with no address answers 503 saying which setting is missing.
  *
+ * ★ A REPEAT READ COSTS NO BODY. `if-none-match` goes to the service and its `etag` comes back, so
+ * a phone holding the current reply gets the service's empty 304. The service's own cache-control
+ * passes through only when it is `private, no-cache` (kept by the browser alone, revalidated before
+ * every use); anything else is sent as `no-store`, as before. Compression needs nothing here: this
+ * function's fetch asks the service for gzip or brotli and unpacks it, and Vercel packs the reply
+ * again for the phone.
+ *
  * ★ THE SIGN-IN TOKEN PASSES THROUGH, UNREAD. `authorization` is forwarded as is for social and
  * notify to check; this function never logs, stores or inspects it.
  *
@@ -19,7 +26,9 @@
  */
 
 const TARGETS = { read: 'READ_SERVICE_URL', trade: 'TRADE_SERVICE_URL', social: 'SOCIAL_SERVICE_URL', notify: 'NOTIFY_SERVICE_URL' };
-const PASSED = ['accept', 'content-type', 'authorization', 'last-event-id'];
+const PASSED = ['accept', 'content-type', 'authorization', 'last-event-id', 'if-none-match'];
+/** The one cache-control a service may send through: the browser keeps it and asks before each use. */
+const REVALIDATE = 'private, no-cache';
 
 async function forward(request) {
   const url = new URL(request.url);
@@ -50,10 +59,12 @@ async function forward(request) {
   } catch {
     return Response.json({ error: `The ${service} service did not answer.` }, { status: 502 });
   }
-  const out = new Headers({ 'cache-control': 'no-store' });
+  const kept = reply.headers.get('cache-control') === REVALIDATE ? reply.headers.get('etag') : null;
+  const out = new Headers({ 'cache-control': kept !== null ? REVALIDATE : 'no-store' });
+  if (kept !== null) out.set('etag', kept);
   const type = reply.headers.get('content-type');
   if (type !== null) out.set('content-type', type);
-  return new Response(reply.body, { status: reply.status, headers: out });
+  return new Response(reply.status === 304 ? null : reply.body, { status: reply.status, headers: out });
 }
 
 export const GET = forward;
