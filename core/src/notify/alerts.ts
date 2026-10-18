@@ -70,7 +70,8 @@ export const ALERT_KINDS = [
   'story_post',
   'watch_coin',
   'push_test',
-  /* The owner's outage alarm (services/notify alarm.ts): For You stalled, the judge refused, the database unreadable. */
+  /* The owner's outage alarm (services/notify alarm.ts): For You stalled, the judge refused, the database unreadable;
+     and from the runner (language-alarm.ts), one language's finds fallen against the day before. */
   'outage',
 ] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];

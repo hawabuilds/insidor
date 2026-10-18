@@ -21,6 +21,14 @@
  * back on its first, kept in the process: a restart searches the last hour again, never a gap
  * longer than the time it was down, and never the narrative's whole past (that is the backfill's).
  *
+ * ★ ONE ASK ACROSS EVERY LANGUAGE (the owner, 2026-10-18). A name is asked with no language filter
+ * (`langs: []`), not in `feed.langs`. Since 16 Oct the supplier answers an OR of languages with the
+ * last one only, so a filtered ask is split into one search per language (work/languages.ts) — five
+ * asks a name, five times the requests under the same $0.35 day. A name is already narrow, and a
+ * post that carries it is wanted in any language, so one unfiltered ask finds them all for a fifth
+ * of the price. What breaks if changed carelessly: putting `feed.langs` back here quintuples this
+ * lane's requests and spends its cap in a fifth of the day.
+ *
  * What breaks if changed carelessly: moving the clock forward before an ask that failed would skip
  * that hour for good; it moves only on an ask that answered.
  */
@@ -182,7 +190,8 @@ export async function narrativeNamesPass(deps: NarrativeNamesDeps, clock: Narrat
       untilMs: null,
       limit: deps.policy.feed.pageLimit,
       cursor: null,
-      filter: { minApproval: Math.round(p.minApproval), mediaOnly: false, langs: deps.policy.feed.langs, excludeRebroadcasts: true },
+      /* ★ No language filter: one ask across every language (see the header). */
+      filter: { minApproval: Math.round(p.minApproval), mediaOnly: false, langs: [], excludeRebroadcasts: true },
     };
     const r = await laneSearch(deps, { adapter: source, query, lane: 'narrative_name', cap: p.cap, maxPages: p.maxPagesPerAsk, deadline });
     usd += r.usd;

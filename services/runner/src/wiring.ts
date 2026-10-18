@@ -54,6 +54,7 @@ import type { AskWith, Policy } from '@insidor/contracts/policy.ts';
 import { jobVendorLines, learningDailyCapUsd, supplierRoles, vendorLines } from './vendor-lines.ts';
 import { supplierWarnings } from './supplier-warnings.ts';
 import { billingAlerts, SUPPLIER_NAMES } from './billing-alerts.ts';
+import { languageAlarm } from './language-alarm.ts';
 import { onOutOfCredit } from '@insidor/vendor-kit';
 import { EXAMPLES_RECHECK_MS, learnedJudge } from './learned-examples.ts';
 import type { JudgePort } from '@insidor/contracts/ports/judge.ts';
@@ -103,6 +104,7 @@ import {
   PgItemRepo,
   PgMissedPostRepo,
   PgObservationRepo,
+  PgLanguageFindsRepo,
   PgOwnerAlertRepo,
   PgSourceHealthRepo,
   PgSpendRepo,
@@ -797,6 +799,19 @@ export async function withRuntime<T>(
         void credit.check();
         setInterval(() => void credit.check(), CREDIT_CHECK_MS).unref();
       }
+      /* ★ THE OWNER'S LANGUAGE-DROP ALARM (language-alarm.ts): each source's finds per language
+         against the same hours the day before, every `everyMs`; a language that falls by more than
+         the policy's share is queued for the owner as an outage alert, once a drop. */
+      const languages = languageAlarm({
+        policy: policy.notify.languageDrop,
+        buckets: (source, lanes, fromMs, toMs, bucketMs) => new PgLanguageFindsRepo(db).buckets(source, lanes, fromMs, toMs, bucketMs),
+        ownerWallets: cfg.ownerWallets,
+        owner,
+        log: log.child({ step: 'language-drop' }),
+        now: () => Date.now(),
+      });
+      void languages.check();
+      setInterval(() => void languages.check(), policy.notify.languageDrop.everyMs).unref();
       log.info('supplier warnings', {
         at: policy.budget.warnAt,
         alert: cfg.ownerWallets.length === 0 ? 'no OWNER_WALLET; logged only' : 'queued for the owner',

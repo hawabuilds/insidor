@@ -20,7 +20,10 @@
  *      last three and the three together (tools/lib/scorecard.ts, also tools/scorecard.ts on its own),
  *      then the memeable viral funnel for the same days: never found, found too late, views bar, judge
  *      said no, other, shown early, and where each owner missed post was lost (tools/lib/funnel.ts).
- *   8. The latest re-tune: its slot, outcome, version, cost and the gate's own line (internal.judge_retune).
+ *   8. Finds per language (the owner, 2026-10-18): each source's search finds in each language over
+ *      the last 24 hours against the 24 before, and which languages the runner's language-drop alarm
+ *      holds down now (tools/lib/language-finds.ts, the alarm's own reading and rule).
+ *   9. The latest re-tune: its slot, outcome, version, cost and the gate's own line (internal.judge_retune).
  *
  * What breaks if changed carelessly: the owner's posts must be weighed by the projector's code,
  * never a copy (the reason tools/lib/coin-match-fit.ts gives); a number from another path is a
@@ -39,6 +42,7 @@ import { loadFit, weighPostCoins } from '../services/project/src/post-match.ts';
 import { asDb, createPool, DB_ROLE, PgLearningRepo, PgOwnerCoinCallRepo } from '../store/src/index.ts';
 import { leadLines, leadRows, summarise } from './lib/lead-time.ts';
 import { funnelLines, funnelRows } from './lib/funnel.ts';
+import { languageLines } from './lib/language-finds.ts';
 import { scorecardRows, scorecards, scorecardTable } from './lib/scorecard.ts';
 import { sideBySide, sideBySideLines } from './lib/side-by-side.ts';
 
@@ -189,7 +193,12 @@ try {
   for (const line of funnelLines(await funnelRows(db, since, until), since, until)) say(line);
   say('```');
 
-  /* 8. The latest re-tune (the owner, 2026-10-18: "add the latest re-tune's result to it"). */
+  /* 8. Finds per language, and the language-drop alarm (the owner, 2026-10-18; tools/lib/language-finds.ts). */
+  say();
+  say('## Finds per language (last 24h against the 24h before)');
+  for (const line of await languageLines(db, until.getTime(), P.notify.languageDrop)) say(line);
+
+  /* 9. The latest re-tune (the owner, 2026-10-18: "add the latest re-tune's result to it"). */
   say();
   say('## Latest re-tune');
   const [last] = await new PgLearningRepo(db).recentRuns(1);
